@@ -1,0 +1,120 @@
+import { describe, it, expect } from 'vitest';
+import {
+  isAnonymousDispatcharrUserName,
+  normalizeDispatcharrUserName,
+  parseSessionsFromChannels,
+  parseStatusResponse,
+  parseUser,
+  parseUsersResponse,
+} from '../dispatcharr/parser.js';
+
+describe('Dispatcharr parser', () => {
+  describe('user parsing', () => {
+    it('maps display name from first_name and last_name', () => {
+      const user = parseUser({
+        id: 42,
+        username: 'ignored-login',
+        first_name: 'Jan',
+        last_name: 'Kowalski',
+        email: 'jan@example.com',
+        user_level: 10,
+      });
+
+      expect(user).toMatchObject({
+        id: '42',
+        username: 'Jan Kowalski',
+        email: 'jan@example.com',
+        isAdmin: true,
+      });
+    });
+
+    it('falls back to username when first and last name are empty', () => {
+      expect(
+        normalizeDispatcharrUserName({
+          id: 2,
+          username: 'local-user',
+          first_name: '',
+          last_name: '',
+        })
+      ).toBe('local-user');
+    });
+
+    it('filters Anonymous and Anonymouse users', () => {
+      expect(isAnonymousDispatcharrUserName('Anonymous')).toBe(true);
+      expect(isAnonymousDispatcharrUserName('Anonymouse')).toBe(true);
+      expect(parseUser({ id: 1, first_name: 'Anonymous', last_name: '' })).toBeNull();
+      expect(parseUser({ id: 2, first_name: 'Anonymouse', last_name: '' })).toBeNull();
+    });
+
+    it('parses both array and paginated users responses', () => {
+      expect(
+        parseUsersResponse([{ id: 1, first_name: 'Ada', last_name: 'Lovelace' }])
+      ).toHaveLength(1);
+      expect(
+        parseUsersResponse({ results: [{ id: 2, first_name: 'Grace', last_name: 'Hopper' }] })
+      ).toHaveLength(1);
+    });
+  });
+
+  describe('status parsing', () => {
+    it('parses status channels and maps clients to live sessions', () => {
+      const channels = parseStatusResponse({
+        channels: [
+          {
+            channel_id: 'channel-1',
+            channel_name: 'News HD',
+            state: 'active',
+            client_count: 2,
+            avg_bitrate_kbps: 4500,
+            resolution: '1080p',
+            clients: [
+              {
+                client_id: 'client-1',
+                user_id: '7',
+                user_agent: 'TiviMate',
+                ip_address: '203.0.113.10',
+              },
+              {
+                client_id: 'anonymous-client',
+                user_id: '0',
+                user_agent: 'Unknown',
+                ip_address: '203.0.113.11',
+              },
+            ],
+          },
+        ],
+      });
+
+      const userById = new Map([
+        ['7', { id: '7', username: 'Valid User', isAdmin: false }],
+        ['0', { id: '0', username: 'Anonymous', isAdmin: false }],
+      ]);
+      const sessions = parseSessionsFromChannels(channels, userById);
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]).toMatchObject({
+        sessionKey: 'channel-1:client-1',
+        mediaId: 'channel-1',
+        user: { id: '7', username: 'Valid User' },
+        media: { title: 'News HD', type: 'live' },
+        live: { channelTitle: 'News HD', channelIdentifier: 'channel-1' },
+        player: { deviceId: 'client-1', product: 'TiviMate' },
+        quality: { bitrate: 4500, videoResolution: '1080p' },
+      });
+    });
+
+    it('skips sessions whose mapped user is anonymous', () => {
+      const sessions = parseSessionsFromChannels(
+        [
+          {
+            channel_id: 'channel-1',
+            clients: [{ client_id: 'client-1', user_id: '9' }],
+          },
+        ],
+        new Map([['9', { id: '9', username: 'Anonymouse', isAdmin: false }]])
+      );
+
+      expect(sessions).toHaveLength(0);
+    });
+  });
+});

@@ -51,6 +51,7 @@ export class HttpClientError extends Error {
       this.service === 'plex' ||
       this.service === 'jellyfin' ||
       this.service === 'emby' ||
+      this.service === 'dispatcharr' ||
       this.service === 'geoip'
     ) {
       return new ExternalServiceError(this.service, this.message);

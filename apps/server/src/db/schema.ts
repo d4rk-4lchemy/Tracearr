@@ -28,7 +28,7 @@ import { relations, sql } from 'drizzle-orm';
 import { MEDIA_TYPES } from '@tracearr/shared';
 
 // Server types enum
-export const serverTypeEnum = ['plex', 'jellyfin', 'emby'] as const;
+export const serverTypeEnum = ['plex', 'jellyfin', 'emby', 'dispatcharr'] as const;
 
 // Session state enum
 export const sessionStateEnum = ['playing', 'paused', 'stopped'] as const;

@@ -106,7 +106,11 @@ async function handleFirstMisses(
     if (missedPollTracking.has(cachedKey)) continue; // Already in grace period
 
     const cachedActiveSession = activeSessions.find((s) => {
-      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as 'plex' | 'jellyfin' | 'emby';
+      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as
+        | 'plex'
+        | 'jellyfin'
+        | 'emby'
+        | 'dispatcharr';
       return (
         buildCompositeKey({
           serverType: sType,

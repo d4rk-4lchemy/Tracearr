@@ -39,6 +39,7 @@ export const ErrorCodes = {
   JELLYFIN_ERROR: 'EXT_002',
   GEOIP_ERROR: 'EXT_003',
   EMBY_ERROR: 'EXT_004',
+  DISPATCHARR_ERROR: 'EXT_005',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
@@ -200,11 +201,12 @@ export class ServiceUnavailableError extends AppError {
  * External service error (Plex, Jellyfin, Emby, etc.)
  */
 export class ExternalServiceError extends AppError {
-  constructor(service: 'plex' | 'jellyfin' | 'emby' | 'geoip', message: string) {
+  constructor(service: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'geoip', message: string) {
     const codeMap: Record<typeof service, ErrorCode> = {
       plex: ErrorCodes.PLEX_ERROR,
       jellyfin: ErrorCodes.JELLYFIN_ERROR,
       emby: ErrorCodes.EMBY_ERROR,
+      dispatcharr: ErrorCodes.DISPATCHARR_ERROR,
       geoip: ErrorCodes.GEOIP_ERROR,
     };
     const code = codeMap[service];

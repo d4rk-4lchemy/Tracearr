@@ -18,7 +18,7 @@ export interface StoredServer {
   id: string;
   url: string;
   name: string;
-  type: 'plex' | 'jellyfin' | 'emby';
+  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
   pairedAt: string;
 }
 

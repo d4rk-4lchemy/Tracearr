@@ -85,7 +85,9 @@ export function ServerSettings() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editServer, setEditServer] = useState<Server | null>(null);
-  const [serverType, setServerType] = useState<'plex' | 'jellyfin' | 'emby'>('plex');
+  const [serverType, setServerType] = useState<'plex' | 'jellyfin' | 'emby' | 'dispatcharr'>(
+    'plex'
+  );
   const [serverUrl, setServerUrl] = useState('');
   const [serverName, setServerName] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -182,7 +184,7 @@ export function ServerSettings() {
     setServerName('');
     setApiKey('');
     setConnectError(null);
-    setServerType(defaultServerType as 'plex' | 'jellyfin' | 'emby');
+    setServerType(defaultServerType as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr');
     setPlexDialogStep('loading');
     setPlexServers([]);
     setConnectingPlexServer(null);
@@ -293,20 +295,30 @@ export function ServerSettings() {
     setConnectError(null);
 
     try {
-      const connectFn =
-        serverType === 'jellyfin'
-          ? api.auth.connectJellyfinWithApiKey
-          : api.auth.connectEmbyWithApiKey;
-      const result = await connectFn({
-        serverUrl,
-        serverName,
-        apiKey,
-      });
-
-      // Update tokens if provided
-      if (result.accessToken && result.refreshToken) {
-        tokenStorage.setTokens(result.accessToken, result.refreshToken);
+      if (serverType === 'dispatcharr') {
+        await api.servers.create({
+          name: serverName,
+          type: serverType,
+          url: serverUrl,
+          token: apiKey,
+        });
         await refetchUser();
+      } else {
+        const connectFn =
+          serverType === 'jellyfin'
+            ? api.auth.connectJellyfinWithApiKey
+            : api.auth.connectEmbyWithApiKey;
+        const result = await connectFn({
+          serverUrl,
+          serverName,
+          apiKey,
+        });
+
+        // Update tokens if provided
+        if (result.accessToken && result.refreshToken) {
+          tokenStorage.setTokens(result.accessToken, result.refreshToken);
+          await refetchUser();
+        }
       }
 
       // Refresh server list
@@ -448,7 +460,7 @@ export function ServerSettings() {
               <Select
                 value={serverType}
                 onValueChange={(v) => {
-                  const newType = v as 'plex' | 'jellyfin' | 'emby';
+                  const newType = v as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
                   setServerType(newType);
                   setConnectError(null);
                   // Fetch Plex accounts when switching to Plex type
@@ -464,6 +476,7 @@ export function ServerSettings() {
                   {user?.role === 'owner' && <SelectItem value="plex">Plex</SelectItem>}
                   <SelectItem value="jellyfin">Jellyfin</SelectItem>
                   <SelectItem value="emby">Emby</SelectItem>
+                  <SelectItem value="dispatcharr">Dispatcharr</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -637,7 +650,9 @@ export function ServerSettings() {
                   <p className="text-muted-foreground text-xs">
                     {serverType === 'jellyfin'
                       ? t('servers.serverUrlHelpJellyfin')
-                      : t('servers.serverUrlHelpEmby')}
+                      : serverType === 'emby'
+                        ? t('servers.serverUrlHelpEmby')
+                        : 'Dispatcharr base URL, for example http://dispatcharr.local:9191'}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -665,7 +680,9 @@ export function ServerSettings() {
                   <p className="text-muted-foreground text-xs">
                     {serverType === 'jellyfin'
                       ? t('servers.apiKeyHelpJellyfin')
-                      : t('servers.apiKeyHelpEmby')}
+                      : serverType === 'emby'
+                        ? t('servers.apiKeyHelpEmby')
+                        : 'Dispatcharr API key or JWT bearer token. API keys are sent as X-API-Key.'}
                   </p>
                 </div>
                 {connectError && (

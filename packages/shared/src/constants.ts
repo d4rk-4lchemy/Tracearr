@@ -203,8 +203,7 @@ export const REDIS_KEYS = {
   MOBILE_REFRESH_TOKEN: (hash: string) => `${_redisPrefix}tracearr:mobile_refresh:${hash}`,
   MOBILE_BLACKLISTED_TOKEN: (deviceId: string) =>
     `${_redisPrefix}tracearr:mobile:blacklist:${deviceId}`,
-  MOBILE_LAST_SEEN: (deviceId: string) =>
-    `${_redisPrefix}tracearr:mobile:last_seen:${deviceId}`,
+  MOBILE_LAST_SEEN: (deviceId: string) => `${_redisPrefix}tracearr:mobile:last_seen:${deviceId}`,
   // Rate limiting
   MOBILE_TOKEN_GEN_RATE: (userId: string) => `${_redisPrefix}mobile_token_gen:${userId}`,
   // Distributed locks
@@ -762,15 +761,16 @@ export const SERVER_COLOR_PALETTE = [
   { hex: '#E5A00D', label: 'Gold' }, // Plex brand
   { hex: '#AA5CC3', label: 'Purple' }, // Jellyfin brand
   { hex: '#52B54B', label: 'Green' }, // Emby brand
+  { hex: '#14B8A6', label: 'Teal' }, // Dispatcharr brand
   { hex: '#3B82F6', label: 'Blue' },
   { hex: '#EF4444', label: 'Red' },
-  { hex: '#14B8A6', label: 'Teal' },
 ] as const;
 
 export const SERVER_TYPE_BRAND_COLORS: Record<string, string> = {
   plex: '#E5A00D',
   jellyfin: '#AA5CC3',
   emby: '#52B54B',
+  dispatcharr: '#14B8A6',
 };
 
 /** Pick best color for a server given its type and colors already used by other servers */

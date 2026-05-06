@@ -16,7 +16,12 @@ import {
 import { db } from '../db/client.js';
 import { servers, plexAccounts } from '../db/schema.js';
 // Token encryption removed - tokens now stored in plain text (DB is localhost-only)
-import { PlexClient, JellyfinClient, EmbyClient } from '../services/mediaServer/index.js';
+import {
+  PlexClient,
+  JellyfinClient,
+  EmbyClient,
+  DispatcharrClient,
+} from '../services/mediaServer/index.js';
 import { syncServer } from '../services/sync.js';
 import { getCacheService } from '../services/cache.js';
 import { enqueueLibrarySync } from '../jobs/librarySyncQueue.js';
@@ -146,6 +151,11 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         const isAdmin = await EmbyClient.verifyServerAdmin(token, url);
         if (!isAdmin) {
           return reply.forbidden('Token does not have admin access to this Emby server');
+        }
+      } else if (type === 'dispatcharr') {
+        const adminCheck = await DispatcharrClient.verifyServerAdmin(token, url);
+        if (!adminCheck.success) {
+          return reply.serviceUnavailable(adminCheck.message);
         }
       }
     } catch (error) {
@@ -291,6 +301,11 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
             const isAdmin = await EmbyClient.verifyServerAdmin(server.token, newUrl);
             if (!isAdmin) {
               return reply.forbidden('Token does not have admin access at this URL');
+            }
+          } else if (server.type === 'dispatcharr') {
+            const adminCheck = await DispatcharrClient.verifyServerAdmin(server.token, newUrl);
+            if (!adminCheck.success) {
+              return reply.serviceUnavailable(adminCheck.message);
             }
           }
         } catch (error) {

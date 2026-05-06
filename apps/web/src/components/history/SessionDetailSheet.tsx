@@ -71,6 +71,7 @@ const SERVER_CONFIG: Record<ServerType, { label: string; color: string }> = {
   plex: { label: 'Plex', color: 'text-amber-500' },
   jellyfin: { label: 'Jellyfin', color: 'text-purple-500' },
   emby: { label: 'Emby', color: 'text-green-500' },
+  dispatcharr: { label: 'Dispatcharr', color: 'text-teal-500' },
 };
 
 // State configuration
@@ -264,11 +265,7 @@ function SegmentTable({
 }
 
 // Inner content component — keeps state hooks and derived values together
-function SessionContent({
-  session,
-}: {
-  session: SessionWithDetails | ActiveSession;
-}) {
+function SessionContent({ session }: { session: SessionWithDetails | ActiveSession }) {
   const [locationOpen, setLocationOpen] = useState(false);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
 
@@ -567,9 +564,7 @@ function SessionContent({
             {session.deviceId && (
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Device ID</span>
-                <span className="max-w-[160px] truncate font-mono text-xs">
-                  {session.deviceId}
-                </span>
+                <span className="max-w-[160px] truncate font-mono text-xs">{session.deviceId}</span>
               </div>
             )}
           </div>

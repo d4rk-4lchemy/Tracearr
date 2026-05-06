@@ -38,7 +38,7 @@ export interface SSEManagerEvents {
 interface ServerConnection {
   serverId: string;
   serverName: string;
-  serverType: 'plex' | 'jellyfin' | 'emby';
+  serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
   eventSource: PlexEventSource | null;
   state: SSEConnectionState;
   inFallback: boolean;
@@ -140,7 +140,7 @@ export class SSEManager extends EventEmitter {
   async addServer(
     serverId: string,
     serverName: string,
-    serverType: 'plex' | 'jellyfin' | 'emby',
+    serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
     url: string,
     token: string
   ): Promise<void> {

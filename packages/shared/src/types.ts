@@ -35,7 +35,7 @@ export const isOwner = (role: UserRole): boolean => role === 'owner';
 export const isActive = (role: UserRole): boolean => canLogin(role);
 
 // Server types
-export type ServerType = 'plex' | 'jellyfin' | 'emby';
+export type ServerType = 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
 
 export interface Server {
   id: string;
@@ -1178,7 +1178,7 @@ export interface UserFilterOption {
 export interface ServerFilterOption {
   id: string;
   name: string;
-  type: 'plex' | 'jellyfin' | 'emby';
+  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
 }
 
 /**
@@ -1282,7 +1282,7 @@ export interface MobilePairResponse {
   server: {
     id: string;
     name: string;
-    type: 'plex' | 'jellyfin' | 'emby';
+    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
   };
   user: {
     userId: string;

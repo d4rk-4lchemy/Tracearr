@@ -153,7 +153,7 @@ export class NotificationManager {
   async notifyServerDown(
     serverName: string,
     settings: NotificationSettings,
-    serverType?: 'plex' | 'jellyfin' | 'emby'
+    serverType?: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr'
   ): Promise<SendResult[]> {
     const payload = PayloadBuilders.fromServerDown(serverName, serverType);
     return this.sendAll(payload, settings);
@@ -165,7 +165,7 @@ export class NotificationManager {
   async notifyServerUp(
     serverName: string,
     settings: NotificationSettings,
-    serverType?: 'plex' | 'jellyfin' | 'emby'
+    serverType?: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr'
   ): Promise<SendResult[]> {
     const payload = PayloadBuilders.fromServerUp(serverName, serverType);
     return this.sendAll(payload, settings);
