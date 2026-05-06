@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe('DispatcharrClient', () => {
-  it('fetches users, expands channel details, and filters anonymous sessions', async () => {
+  it('fetches users, expands channel details, resolves logos, and filters anonymous sessions', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       const headers = init?.headers as Record<string, string> | undefined;
@@ -29,7 +29,7 @@ describe('DispatcharrClient', () => {
       if (url.endsWith('/proxy/ts/status')) {
         return jsonResponse({
           channels: [
-            { channel_id: 'channel-1', client_count: 2 },
+            { channel_id: 'channel-1', channel_name: 'News 24', client_count: 2 },
             { channel_id: 'channel-2', client_count: 1 },
           ],
         });
@@ -37,7 +37,7 @@ describe('DispatcharrClient', () => {
       if (url.endsWith('/proxy/ts/status/channel-1')) {
         return jsonResponse({
           channel_id: 'channel-1',
-          channel_name: 'Channel One',
+          stream_name: 'Stream Name Should Not Win',
           clients: [
             { client_id: 'client-1', user_id: '7', ip_address: '198.51.100.10' },
             { client_id: 'anon-client', user_id: '8', ip_address: '198.51.100.11' },
@@ -51,6 +51,11 @@ describe('DispatcharrClient', () => {
           clients: [{ client_id: 'anonymous-zero', user_id: '0' }],
         });
       }
+      if (url.endsWith('/api/channels/channels/by-uuids/')) {
+        expect(init?.method).toBe('POST');
+        expect(init?.body).toBe(JSON.stringify({ uuids: ['channel-1', 'channel-2'] }));
+        return jsonResponse([{ uuid: 'channel-1', logo_id: 'logo-123' }]);
+      }
 
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
@@ -58,10 +63,12 @@ describe('DispatcharrClient', () => {
     const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
     const sessions = await client.getSessions();
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.sessionKey).toBe('channel-1:client-1');
     expect(sessions[0]?.user.username).toBe('Valid User');
+    expect(sessions[0]?.media.title).toBe('News 24');
+    expect(sessions[0]?.live?.channelThumb).toBe('/api/channels/logos/logo-123/cache/');
   });
 
   it('uses bearer auth for JWT-like tokens', async () => {

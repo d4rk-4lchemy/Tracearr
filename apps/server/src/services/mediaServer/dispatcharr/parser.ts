@@ -25,6 +25,19 @@ export interface DispatcharrChannelStatus {
   resolution?: unknown;
 }
 
+export interface NormalizedDispatcharrChannel {
+  channelId: string;
+  channelName: string;
+  streamName?: string;
+  streamProfile?: string;
+  state?: string;
+  avgBitrateKbps?: number;
+  videoCodec?: string;
+  audioCodec?: string;
+  resolution?: string;
+  clients: DispatcharrClientStatus[];
+}
+
 export interface DispatcharrStatusResponse {
   channels?: unknown;
   count?: unknown;
@@ -145,21 +158,82 @@ export function parseChannelClients(raw: unknown): DispatcharrClientStatus[] {
   });
 }
 
+function asOptionalNumber(value: unknown): number | undefined {
+  const parsed = asNumber(value);
+  return parsed > 0 ? parsed : undefined;
+}
+
+function mergeClients(
+  primary: DispatcharrClientStatus[],
+  secondary: DispatcharrClientStatus[]
+): DispatcharrClientStatus[] {
+  if (primary.length === 0) return secondary;
+  if (secondary.length === 0) return primary;
+  const seen = new Set<string>();
+  const merged: DispatcharrClientStatus[] = [];
+
+  for (const client of [...primary, ...secondary]) {
+    const record = asRecord(client);
+    if (!record) continue;
+    const clientId = asString(record.client_id).trim();
+    if (!clientId) continue;
+    if (seen.has(clientId)) continue;
+    seen.add(clientId);
+    merged.push(record as DispatcharrClientStatus);
+  }
+
+  return merged;
+}
+
+export function normalizeDispatcharrChannel(
+  baseChannel: DispatcharrChannelStatus,
+  detailChannel?: DispatcharrChannelStatus | null
+): NormalizedDispatcharrChannel | null {
+  const base = asRecord(baseChannel);
+  if (!base) return null;
+  const detail = asRecord(detailChannel);
+
+  const channelId =
+    asString(base.channel_id).trim() || asString(detail?.channel_id).trim() || undefined;
+  if (!channelId) return null;
+
+  const channelName =
+    asString(base.channel_name).trim() ||
+    asString(detail?.channel_name).trim() ||
+    asString(base.stream_name).trim() ||
+    asString(detail?.stream_name).trim() ||
+    `Channel ${channelId}`;
+
+  return {
+    channelId,
+    channelName,
+    streamName: asOptionalString(base.stream_name) ?? asOptionalString(detail?.stream_name),
+    streamProfile:
+      asOptionalString(base.stream_profile) ?? asOptionalString(detail?.stream_profile),
+    state: asOptionalString(base.state) ?? asOptionalString(detail?.state),
+    avgBitrateKbps:
+      asOptionalNumber(base.avg_bitrate_kbps) ?? asOptionalNumber(detail?.avg_bitrate_kbps),
+    videoCodec: asOptionalString(base.video_codec) ?? asOptionalString(detail?.video_codec),
+    audioCodec: asOptionalString(base.audio_codec) ?? asOptionalString(detail?.audio_codec),
+    resolution: asOptionalString(base.resolution) ?? asOptionalString(detail?.resolution),
+    clients: mergeClients(parseChannelClients(detail), parseChannelClients(base)),
+  };
+}
+
 export function parseSessionsFromChannels(
-  channels: DispatcharrChannelStatus[],
-  userById: Map<string, MediaUser>
+  channels: NormalizedDispatcharrChannel[],
+  userById: Map<string, MediaUser>,
+  logoPathByChannelId?: Map<string, string>
 ): MediaSession[] {
   const sessions: MediaSession[] = [];
 
   for (const channel of channels) {
-    const channelId = asString(channel.channel_id).trim();
+    const channelId = channel.channelId.trim();
     if (!channelId) continue;
 
-    const channelTitle =
-      asString(channel.channel_name).trim() ||
-      asString(channel.stream_name).trim() ||
-      `Channel ${channelId}`;
-    const clients = parseChannelClients(channel);
+    const channelTitle = channel.channelName;
+    const clients = channel.clients;
+    const channelThumb = logoPathByChannelId?.get(channelId);
 
     for (const client of clients) {
       const clientId = asString(client.client_id).trim();
@@ -170,8 +244,8 @@ export function parseSessionsFromChannels(
       if (!user || isAnonymousDispatcharrUserName(user.username)) continue;
 
       const ipAddress = asString(client.ip_address).trim() || '0.0.0.0';
-      const bitrate = Math.round(asNumber(channel.avg_bitrate_kbps));
-      const streamProfile = asString(channel.stream_profile).toLowerCase();
+      const bitrate = Math.round(channel.avgBitrateKbps ?? 0);
+      const streamProfile = (channel.streamProfile ?? '').toLowerCase();
       const isTranscode = streamProfile.includes('transcod');
 
       sessions.push({
@@ -190,9 +264,10 @@ export function parseSessionsFromChannels(
         live: {
           channelTitle,
           channelIdentifier: channelId,
+          channelThumb,
         },
         playback: {
-          state: asString(channel.state).toLowerCase() === 'buffering' ? 'buffering' : 'playing',
+          state: (channel.state ?? '').toLowerCase() === 'buffering' ? 'buffering' : 'playing',
           positionMs: 0,
           progressPercent: 0,
         },
@@ -211,9 +286,9 @@ export function parseSessionsFromChannels(
           isTranscode,
           videoDecision: isTranscode ? 'transcode' : 'directplay',
           audioDecision: isTranscode ? 'transcode' : 'directplay',
-          videoResolution: asOptionalString(channel.resolution),
-          sourceVideoCodec: asOptionalString(channel.video_codec),
-          sourceAudioCodec: asOptionalString(channel.audio_codec),
+          videoResolution: channel.resolution,
+          sourceVideoCodec: channel.videoCodec,
+          sourceAudioCodec: channel.audioCodec,
         },
       });
     }

@@ -88,6 +88,10 @@ function getCacheKey(serverId: string, imagePath: string, width: number, height:
   return `${hash}.webp`;
 }
 
+function isJwtLike(token: string): boolean {
+  return token.split('.').length === 3;
+}
+
 /**
  * Get fallback SVG buffer
  */
@@ -227,6 +231,17 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     const baseUrl = server.url.replace(/\/$/, '');
     const separator = imagePath.includes('?') ? '&' : '?';
     imageUrl = `${baseUrl}${imagePath}${separator}X-Plex-Token=${token}`;
+    headers['Accept'] = 'image/*';
+  } else if (server.type === 'dispatcharr') {
+    const baseUrl = server.url.replace(/\/$/, '');
+    imageUrl = `${baseUrl}${imagePath}`;
+    if (token.toLowerCase().startsWith('bearer ')) {
+      headers.Authorization = token;
+    } else if (isJwtLike(token)) {
+      headers.Authorization = `Bearer ${token}`;
+    } else {
+      headers['X-API-Key'] = token;
+    }
     headers['Accept'] = 'image/*';
   } else {
     // Jellyfin - imagePath should include the full endpoint

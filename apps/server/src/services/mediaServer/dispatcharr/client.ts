@@ -8,6 +8,7 @@ import type {
   MediaUser,
 } from '../types.js';
 import {
+  normalizeDispatcharrChannel,
   parseChannelClients,
   parseSessionsFromChannels,
   parseStatusResponse,
@@ -48,6 +49,14 @@ export class DispatcharrClient implements IMediaServerClient {
   async getSessions(): Promise<MediaSession[]> {
     const [users, status] = await Promise.all([this.getUsers(), this.getStatus()]);
     const userById = new Map(users.map((user) => [user.id, user]));
+    const channelById = new Map(
+      status
+        .map((channel) => {
+          const channelId = String(channel.channel_id ?? '').trim();
+          return channelId ? [channelId, channel] : null;
+        })
+        .filter((entry): entry is [string, DispatcharrChannelStatus] => entry !== null)
+    );
 
     const detailResults = await Promise.allSettled(
       status
@@ -62,7 +71,19 @@ export class DispatcharrClient implements IMediaServerClient {
       result.status === 'fulfilled' && result.value ? [result.value] : []
     );
 
-    return parseSessionsFromChannels(detailedChannels, userById);
+    const normalizedChannels = detailedChannels.flatMap((detailChannel) => {
+      const channelId = String(detailChannel.channel_id ?? '').trim();
+      if (!channelId) return [];
+      const baseChannel = channelById.get(channelId) ?? detailChannel;
+      const normalized = normalizeDispatcharrChannel(baseChannel, detailChannel);
+      return normalized ? [normalized] : [];
+    });
+
+    const logoPathByChannelId = await this.getLogoPathByChannelId(
+      normalizedChannels.map((channel) => channel.channelId)
+    );
+
+    return parseSessionsFromChannels(normalizedChannels, userById, logoPathByChannelId);
   }
 
   async getUsers(): Promise<MediaUser[]> {
@@ -172,5 +193,67 @@ export class DispatcharrClient implements IMediaServerClient {
         timeout: 10000,
       }
     );
+  }
+
+  private async getLogoPathByChannelId(channelIds: string[]): Promise<Map<string, string>> {
+    const uniqIds = [...new Set(channelIds.map((id) => id.trim()).filter(Boolean))];
+    if (uniqIds.length === 0) return new Map();
+
+    try {
+      const data = await fetchJson<unknown>(`${this.baseUrl}/api/channels/channels/by-uuids/`, {
+        method: 'POST',
+        headers: {
+          ...this.buildHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uuids: uniqIds }),
+        service: 'dispatcharr',
+        timeout: 10000,
+      });
+
+      const records = this.extractRecords(data);
+      const logoPathByChannelId = new Map<string, string>();
+      for (const record of records) {
+        const channelId = this.getRecordString(record, ['uuid', 'channel_id', 'id']);
+        const logoId = this.getRecordString(record, ['logo_id', 'logoId']);
+        if (!channelId || !logoId) continue;
+        logoPathByChannelId.set(
+          channelId,
+          `/api/channels/logos/${encodeURIComponent(logoId)}/cache/`
+        );
+      }
+      return logoPathByChannelId;
+    } catch {
+      return new Map();
+    }
+  }
+
+  private extractRecords(payload: unknown): Record<string, unknown>[] {
+    if (Array.isArray(payload)) return payload.filter(this.isRecord);
+    if (!this.isRecord(payload)) return [];
+    const candidates = [payload.results, payload.data, payload.channels];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) {
+        return candidate.filter(this.isRecord);
+      }
+    }
+    return [payload];
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private getRecordString(
+    record: Record<string, unknown>,
+    keys: string[]
+  ): string | undefined {
+    for (const key of keys) {
+      const value = record[key];
+      const str =
+        typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : '';
+      if (str) return str;
+    }
+    return undefined;
   }
 }

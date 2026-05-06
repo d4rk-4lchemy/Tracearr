@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isAnonymousDispatcharrUserName,
+  normalizeDispatcharrChannel,
   normalizeDispatcharrUserName,
   parseSessionsFromChannels,
   parseStatusResponse,
@@ -58,7 +59,7 @@ describe('Dispatcharr parser', () => {
 
   describe('status parsing', () => {
     it('parses status channels and maps clients to live sessions', () => {
-      const channels = parseStatusResponse({
+      const status = parseStatusResponse({
         channels: [
           {
             channel_id: 'channel-1',
@@ -84,6 +85,10 @@ describe('Dispatcharr parser', () => {
           },
         ],
       });
+      const channels = status.flatMap((channel) => {
+        const normalized = normalizeDispatcharrChannel(channel);
+        return normalized ? [normalized] : [];
+      });
 
       const userById = new Map([
         ['7', { id: '7', username: 'Valid User', isAdmin: false }],
@@ -104,17 +109,38 @@ describe('Dispatcharr parser', () => {
     });
 
     it('skips sessions whose mapped user is anonymous', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        clients: [{ client_id: 'client-1', user_id: '9' }],
+      });
       const sessions = parseSessionsFromChannels(
-        [
-          {
-            channel_id: 'channel-1',
-            clients: [{ client_id: 'client-1', user_id: '9' }],
-          },
-        ],
+        normalized ? [normalized] : [],
         new Map([['9', { id: '9', username: 'Anonymouse', isAdmin: false }]])
       );
 
       expect(sessions).toHaveLength(0);
+    });
+
+    it('uses channel_name from base status over stream_name from detail', () => {
+      const normalized = normalizeDispatcharrChannel(
+        {
+          channel_id: 'channel-1',
+          channel_name: 'BBC News',
+        },
+        {
+          channel_id: 'channel-1',
+          stream_name: 'generic-stream-title',
+          clients: [{ client_id: 'client-1', user_id: '7' }],
+        }
+      );
+
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.media.title).toBe('BBC News');
+      expect(sessions[0]?.live?.channelTitle).toBe('BBC News');
     });
   });
 });
