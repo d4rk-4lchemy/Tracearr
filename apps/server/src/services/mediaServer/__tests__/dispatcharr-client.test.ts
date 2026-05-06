@@ -57,9 +57,13 @@ describe('DispatcharrClient', () => {
         return jsonResponse([{ uuid: 'channel-1', logo_id: 'logo-123' }]);
       }
       if (url.endsWith('/api/epg/current-programs/')) {
+        expect(init?.method).toBe('POST');
+        expect(init?.body).toBe(
+          JSON.stringify({ channel_uuids: ['channel-1', 'channel-2'] })
+        );
         return jsonResponse([
-          { channel_id: 'channel-1', title: 'Morning News' },
-          { channel_id: 'channel-2', title: 'Sports Live' },
+          { channel_uuid: 'channel-1', title: 'Morning News' },
+          { channel_uuid: 'channel-2', title: 'Sports Live' },
         ]);
       }
 
