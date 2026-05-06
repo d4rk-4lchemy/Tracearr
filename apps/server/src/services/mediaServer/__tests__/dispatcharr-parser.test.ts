@@ -159,5 +159,23 @@ describe('Dispatcharr parser', () => {
       expect(sessions[0]?.media.title).toBe('Top Stories');
       expect(sessions[0]?.live?.channelTitle).toBe('BBC News');
     });
+
+    it('normalizes WxH resolution to quality label and preserves dimensions', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'BBC News',
+        resolution: '1920x1080',
+        clients: [{ client_id: 'client-1', user_id: '7' }],
+      });
+
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.quality.videoResolution).toBe('1080p');
+      expect(sessions[0]?.quality.videoWidth).toBe(1920);
+      expect(sessions[0]?.quality.videoHeight).toBe(1080);
+    });
   });
 });

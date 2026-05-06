@@ -1,4 +1,5 @@
 import type { MediaSession, MediaUser } from '../types.js';
+import { normalizeResolution } from '../../../utils/resolutionNormalizer.js';
 
 export interface DispatcharrClientStatus {
   client_id?: unknown;
@@ -186,6 +187,24 @@ function mergeClients(
   return merged;
 }
 
+function parseResolutionDimensions(
+  resolution?: string
+): { width?: number; height?: number; normalized?: string } {
+  const value = resolution?.trim();
+  if (!value) return {};
+
+  // Common Dispatcharr format: "1920x1080" (or with spaces)
+  const match = value.match(/^(\d{3,5})\s*[xX]\s*(\d{3,5})$/);
+  if (match) {
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    const normalized = normalizeResolution({ width, height }) ?? value;
+    return { width, height, normalized };
+  }
+
+  return { normalized: normalizeResolution({ resolution: value }) ?? value };
+}
+
 export function normalizeDispatcharrChannel(
   baseChannel: DispatcharrChannelStatus,
   detailChannel?: DispatcharrChannelStatus | null
@@ -249,6 +268,7 @@ export function parseSessionsFromChannels(
       const bitrate = Math.round(channel.avgBitrateKbps ?? 0);
       const streamProfile = (channel.streamProfile ?? '').toLowerCase();
       const isTranscode = streamProfile.includes('transcod');
+      const resolution = parseResolutionDimensions(channel.resolution);
 
       sessions.push({
         sessionKey: `${channelId}:${clientId}`,
@@ -288,7 +308,9 @@ export function parseSessionsFromChannels(
           isTranscode,
           videoDecision: isTranscode ? 'transcode' : 'directplay',
           audioDecision: isTranscode ? 'transcode' : 'directplay',
-          videoResolution: channel.resolution,
+          videoResolution: resolution.normalized,
+          videoWidth: resolution.width,
+          videoHeight: resolution.height,
           sourceVideoCodec: channel.videoCodec,
           sourceAudioCodec: channel.audioCodec,
         },
