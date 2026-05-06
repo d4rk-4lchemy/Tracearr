@@ -1,8 +1,0 @@
-pnpm typecheck
-pnpm test:unit
-pnpm lint
-pnpm translations:check
-
-echo ""
-echo "Tip: Run 'pnpm local-ci' to mimic the full PR CI pipeline."
-echo ""
