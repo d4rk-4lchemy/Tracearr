@@ -226,7 +226,7 @@ export class DispatcharrClient implements IMediaServerClient {
         if (!channelId || !logoId) continue;
         logoPathByChannelId.set(
           channelId,
-          `/api/channels/logos/${encodeURIComponent(logoId)}/cache/`
+          `${this.baseUrl}/api/channels/logos/${encodeURIComponent(logoId)}/cache/`
         );
       }
       return logoPathByChannelId;

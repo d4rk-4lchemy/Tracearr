@@ -75,7 +75,9 @@ describe('DispatcharrClient', () => {
     expect(sessions[0]?.user.username).toBe('Valid User');
     expect(sessions[0]?.media.title).toBe('Morning News');
     expect(sessions[0]?.live?.channelTitle).toBe('News 24');
-    expect(sessions[0]?.live?.channelThumb).toBe('/api/channels/logos/logo-123/cache/');
+    expect(sessions[0]?.live?.channelThumb).toBe(
+      'http://dispatcharr.local/api/channels/logos/logo-123/cache/'
+    );
   });
 
   it('uses bearer auth for JWT-like tokens', async () => {

@@ -234,7 +234,7 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     headers['Accept'] = 'image/*';
   } else if (server.type === 'dispatcharr') {
     const baseUrl = server.url.replace(/\/$/, '');
-    imageUrl = `${baseUrl}${imagePath}`;
+    imageUrl = /^https?:\/\//i.test(imagePath) ? imagePath : `${baseUrl}${imagePath}`;
     if (token.toLowerCase().startsWith('bearer ')) {
       headers.Authorization = token;
     } else if (isJwtLike(token)) {
