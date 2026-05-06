@@ -242,7 +242,10 @@ export class DispatcharrClient implements IMediaServerClient {
     try {
       const data = await fetchJson<unknown>(`${this.baseUrl}/api/epg/current-programs/`, {
         method: 'POST',
-        headers: this.buildHeaders(),
+        headers: {
+          ...this.buildHeaders(),
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ channel_uuids: uniqIds }),
         service: 'dispatcharr',
         timeout: 10000,

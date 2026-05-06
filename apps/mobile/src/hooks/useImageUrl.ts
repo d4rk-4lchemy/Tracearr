@@ -22,6 +22,7 @@ export function useImageUrl() {
   return useCallback(
     ({ serverId, path, width, height }: ImageUrlOptions): string | null => {
       if (!serverUrl || !path) return null;
+      if (/^https?:\/\//i.test(path)) return path;
       return `${serverUrl}/api/v1/images/proxy?server=${serverId}&url=${encodeURIComponent(path)}&width=${width}&height=${height}`;
     },
     [serverUrl]

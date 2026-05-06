@@ -58,6 +58,8 @@ describe('DispatcharrClient', () => {
       }
       if (url.endsWith('/api/epg/current-programs/')) {
         expect(init?.method).toBe('POST');
+        const headers = init?.headers as Record<string, string> | undefined;
+        expect(headers?.['Content-Type']).toBe('application/json');
         expect(init?.body).toBe(
           JSON.stringify({ channel_uuids: ['channel-1', 'channel-2'] })
         );
