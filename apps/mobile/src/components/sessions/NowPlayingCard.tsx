@@ -32,6 +32,13 @@ interface NowPlayingCardProps {
  * Get display title for media (handles TV shows vs movies)
  */
 function getMediaDisplay(session: ActiveSession): { title: string; subtitle: string | null } {
+  if (session.mediaType === 'live') {
+    const channelTitle = session.channelTitle?.trim() || session.mediaTitle;
+    const programTitle = session.mediaTitle?.trim() || null;
+    const subtitle = programTitle && programTitle !== channelTitle ? programTitle : null;
+    return { title: channelTitle, subtitle };
+  }
+
   if (session.mediaType === 'episode' && session.grandparentTitle) {
     // TV Show episode
     const episodeInfo =
@@ -43,7 +50,17 @@ function getMediaDisplay(session: ActiveSession): { title: string; subtitle: str
       subtitle: episodeInfo ? `${episodeInfo} · ${session.mediaTitle}` : session.mediaTitle,
     };
   }
-  // Movie or music
+  if (session.mediaType === 'track') {
+    const parts: string[] = [];
+    if (session.artistName) parts.push(session.artistName);
+    if (session.albumName) parts.push(session.albumName);
+    return {
+      title: session.mediaTitle,
+      subtitle: parts.length > 0 ? parts.join(' · ') : null,
+    };
+  }
+
+  // Movie or other
   return {
     title: session.mediaTitle,
     subtitle: session.year ? `${session.year}` : null,

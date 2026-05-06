@@ -28,6 +28,7 @@ export interface DispatcharrChannelStatus {
 export interface NormalizedDispatcharrChannel {
   channelId: string;
   channelName: string;
+  currentProgramTitle?: string;
   streamName?: string;
   streamProfile?: string;
   state?: string;
@@ -232,6 +233,7 @@ export function parseSessionsFromChannels(
     if (!channelId) continue;
 
     const channelTitle = channel.channelName;
+    const mediaTitle = channel.currentProgramTitle?.trim() || channelTitle;
     const clients = channel.clients;
     const channelThumb = logoPathByChannelId?.get(channelId);
 
@@ -257,7 +259,7 @@ export function parseSessionsFromChannels(
           thumb: user.thumb,
         },
         media: {
-          title: channelTitle,
+          title: mediaTitle,
           type: 'live',
           durationMs: 0,
         },

@@ -17,7 +17,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { cn, formatLocationCompact, getMediaDisplay } from '@/lib/utils';
+import { cn, formatLocationCompact } from '@/lib/utils';
 import { imageProxyUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/formatters';
 import { useEstimatedProgress } from '@/hooks/useEstimatedProgress';
@@ -30,6 +30,41 @@ interface NowPlayingCardProps {
   onClick?: () => void;
   isMultiServer?: boolean;
   serverColor?: string | null;
+}
+
+function getCardMediaDisplay(session: ActiveSession): { title: string; subtitle: string | null } {
+  if (session.mediaType === 'live') {
+    const channelTitle = session.channelTitle?.trim() || session.mediaTitle;
+    const programTitle = session.mediaTitle?.trim() || null;
+    const subtitle = programTitle && programTitle !== channelTitle ? programTitle : null;
+    return { title: channelTitle, subtitle };
+  }
+
+  if (session.mediaType === 'episode' && session.grandparentTitle) {
+    const episodeInfo =
+      session.seasonNumber && session.episodeNumber
+        ? `S${session.seasonNumber.toString().padStart(2, '0')} E${session.episodeNumber.toString().padStart(2, '0')}`
+        : '';
+    return {
+      title: session.grandparentTitle,
+      subtitle: episodeInfo ? `${episodeInfo} · ${session.mediaTitle}` : session.mediaTitle,
+    };
+  }
+
+  if (session.mediaType === 'track') {
+    const parts: string[] = [];
+    if (session.artistName) parts.push(session.artistName);
+    if (session.albumName) parts.push(session.albumName);
+    return {
+      title: session.mediaTitle,
+      subtitle: parts.length > 0 ? parts.join(' · ') : null,
+    };
+  }
+
+  return {
+    title: session.mediaTitle,
+    subtitle: session.year ? `${session.year}` : null,
+  };
 }
 
 // Get device icon based on platform/device info
@@ -65,7 +100,7 @@ export function NowPlayingCard({
   isMultiServer,
   serverColor,
 }: NowPlayingCardProps) {
-  const { title, subtitle } = getMediaDisplay(session);
+  const { title, subtitle } = getCardMediaDisplay(session);
   const { user } = useAuth();
   const [showTerminateDialog, setShowTerminateDialog] = useState(false);
 

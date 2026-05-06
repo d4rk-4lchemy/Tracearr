@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe('DispatcharrClient', () => {
-  it('fetches users, expands channel details, resolves logos, and filters anonymous sessions', async () => {
+  it('fetches users, expands channel details, resolves logos+epg, and filters anonymous sessions', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       const headers = init?.headers as Record<string, string> | undefined;
@@ -56,6 +56,12 @@ describe('DispatcharrClient', () => {
         expect(init?.body).toBe(JSON.stringify({ uuids: ['channel-1', 'channel-2'] }));
         return jsonResponse([{ uuid: 'channel-1', logo_id: 'logo-123' }]);
       }
+      if (url.endsWith('/api/epg/current-programs/')) {
+        return jsonResponse([
+          { channel_id: 'channel-1', title: 'Morning News' },
+          { channel_id: 'channel-2', title: 'Sports Live' },
+        ]);
+      }
 
       return jsonResponse({ error: 'not found' }, { status: 404 });
     });
@@ -63,11 +69,12 @@ describe('DispatcharrClient', () => {
     const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
     const sessions = await client.getSessions();
 
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.sessionKey).toBe('channel-1:client-1');
     expect(sessions[0]?.user.username).toBe('Valid User');
-    expect(sessions[0]?.media.title).toBe('News 24');
+    expect(sessions[0]?.media.title).toBe('Morning News');
+    expect(sessions[0]?.live?.channelTitle).toBe('News 24');
     expect(sessions[0]?.live?.channelThumb).toBe('/api/channels/logos/logo-123/cache/');
   });
 

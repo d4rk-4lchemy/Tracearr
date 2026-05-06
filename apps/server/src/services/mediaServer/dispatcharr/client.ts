@@ -82,6 +82,13 @@ export class DispatcharrClient implements IMediaServerClient {
     const logoPathByChannelId = await this.getLogoPathByChannelId(
       normalizedChannels.map((channel) => channel.channelId)
     );
+    const currentProgramByChannelId = await this.getCurrentProgramByChannelId(
+      normalizedChannels.map((channel) => channel.channelId)
+    );
+
+    for (const channel of normalizedChannels) {
+      channel.currentProgramTitle = currentProgramByChannelId.get(channel.channelId);
+    }
 
     return parseSessionsFromChannels(normalizedChannels, userById, logoPathByChannelId);
   }
@@ -228,10 +235,35 @@ export class DispatcharrClient implements IMediaServerClient {
     }
   }
 
+  private async getCurrentProgramByChannelId(channelIds: string[]): Promise<Map<string, string>> {
+    const uniqIds = [...new Set(channelIds.map((id) => id.trim()).filter(Boolean))];
+    if (uniqIds.length === 0) return new Map();
+
+    try {
+      const data = await fetchJson<unknown>(`${this.baseUrl}/api/epg/current-programs/`, {
+        headers: this.buildHeaders(),
+        service: 'dispatcharr',
+        timeout: 10000,
+      });
+
+      const records = this.extractRecords(data);
+      const map = new Map<string, string>();
+      for (const record of records) {
+        const channelId = this.getRecordString(record, ['channel_id', 'channel_uuid', 'uuid']);
+        const title = this.getRecordString(record, ['title', 'program_title', 'name']);
+        if (!channelId || !title) continue;
+        map.set(channelId, title);
+      }
+      return map;
+    } catch {
+      return new Map();
+    }
+  }
+
   private extractRecords(payload: unknown): Record<string, unknown>[] {
     if (Array.isArray(payload)) return payload.filter(this.isRecord);
     if (!this.isRecord(payload)) return [];
-    const candidates = [payload.results, payload.data, payload.channels];
+    const candidates = [payload.results, payload.data, payload.channels, payload.programs];
     for (const candidate of candidates) {
       if (Array.isArray(candidate)) {
         return candidate.filter(this.isRecord);
