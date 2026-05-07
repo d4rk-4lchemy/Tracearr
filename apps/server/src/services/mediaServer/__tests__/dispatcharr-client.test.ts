@@ -181,6 +181,33 @@ describe('DispatcharrClient', () => {
     ]);
   });
 
+  it('returns live sessions when vod stats fetch fails', async () => {
+    const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
+    const liveSessions = [
+      {
+        sessionKey: 'channel-1:client-1',
+        userId: '7',
+        user: { id: '7', username: 'Valid User' },
+        mediaId: 'channel-1',
+        media: { type: 'episode', title: 'Morning News' },
+      },
+    ];
+
+    vi.spyOn(client, 'getStatusSnapshot').mockResolvedValue([{ channel_id: 'channel-1' }]);
+    vi.spyOn(client, 'getVodStatsSnapshot').mockRejectedValue(new Error('vod unavailable'));
+    vi.spyOn(client, 'getUserMap').mockResolvedValue(new Map());
+    vi.spyOn(client, 'buildSessionsFromStatusSnapshot').mockResolvedValue(liveSessions as never);
+    const buildVodSpy = vi.spyOn(client, 'buildSessionsFromVodStatsSnapshot');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(client.getSessions()).resolves.toEqual(liveSessions);
+    expect(buildVodSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Failed to fetch Dispatcharr VOD stats from http://dispatcharr.local; continuing with live sessions only',
+      expect.any(Error)
+    );
+  });
+
   it('uses bearer auth for JWT-like tokens', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
       const headers = init?.headers as Record<string, string> | undefined;

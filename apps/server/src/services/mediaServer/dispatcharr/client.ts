@@ -132,13 +132,47 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   async getSessions(): Promise<MediaSession[]> {
-    const [status, vodStats] = await Promise.all([this.getStatusSnapshot(), this.getVodStatsSnapshot()]);
-    const userById = await this.getUserMap();
-    const [liveSessions, vodSessions] = await Promise.all([
-      this.buildSessionsFromStatusSnapshot(status, userById),
-      this.buildSessionsFromVodStatsSnapshot(vodStats, userById),
+    const [statusResult, vodStatsResult, userByIdResult] = await Promise.allSettled([
+      this.getStatusSnapshot(),
+      this.getVodStatsSnapshot(),
+      this.getUserMap(),
     ]);
+
+    if (statusResult.status === 'rejected') {
+      throw statusResult.reason;
+    }
+    if (userByIdResult.status === 'rejected') {
+      throw userByIdResult.reason;
+    }
+
+    const liveSessionsPromise = this.buildSessionsFromStatusSnapshot(
+      statusResult.value,
+      userByIdResult.value
+    );
+    const vodSessionsPromise =
+      vodStatsResult.status === 'fulfilled'
+        ? this.buildSessionsFromVodStatsSnapshot(vodStatsResult.value, userByIdResult.value).catch(
+            (error: unknown) => {
+              this.warnVodStatsFailure(error);
+              return [];
+            }
+          )
+        : Promise.resolve(this.warnAndSkipVodSessions(vodStatsResult.reason));
+
+    const [liveSessions, vodSessions] = await Promise.all([liveSessionsPromise, vodSessionsPromise]);
     return [...liveSessions, ...vodSessions];
+  }
+
+  private warnAndSkipVodSessions(error: unknown): MediaSession[] {
+    this.warnVodStatsFailure(error);
+    return [];
+  }
+
+  private warnVodStatsFailure(error: unknown): void {
+    console.warn(
+      `Failed to fetch Dispatcharr VOD stats from ${this.baseUrl}; continuing with live sessions only`,
+      error
+    );
   }
 
   async buildSessionsFromStatusSnapshot(
