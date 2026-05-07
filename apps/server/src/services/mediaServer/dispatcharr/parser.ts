@@ -267,6 +267,16 @@ function parseAudioChannels(value: unknown): number | undefined {
   return undefined;
 }
 
+function parseConnectedAtElapsedMs(connectedAt: unknown, nowMs: number): number {
+  const connectedAtSeconds = asNumber(connectedAt);
+  if (connectedAtSeconds <= 0) return 0;
+
+  const connectedAtMs = Math.floor(connectedAtSeconds * 1000);
+  if (!Number.isFinite(connectedAtMs)) return 0;
+
+  return Math.max(0, nowMs - connectedAtMs);
+}
+
 export function normalizeDispatcharrChannel(
   baseChannel: DispatcharrChannelStatus,
   detailChannel?: DispatcharrChannelStatus | null
@@ -313,6 +323,7 @@ export function parseSessionsFromChannels(
   logoPathByChannelId?: Map<string, string>
 ): MediaSession[] {
   const sessions: MediaSession[] = [];
+  const nowMs = Date.now();
 
   for (const channel of channels) {
     const channelId = channel.channelId.trim();
@@ -357,7 +368,7 @@ export function parseSessionsFromChannels(
         },
         playback: {
           state: (channel.state ?? '').toLowerCase() === 'buffering' ? 'buffering' : 'playing',
-          positionMs: 0,
+          positionMs: parseConnectedAtElapsedMs(client.connected_at, nowMs),
           progressPercent: 0,
         },
         player: {

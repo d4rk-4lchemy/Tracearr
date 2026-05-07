@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   isAnonymousDispatcharrUserName,
   normalizeDispatcharrChannel,
@@ -247,6 +247,89 @@ describe('Dispatcharr parser', () => {
       expect(sessions[0]?.quality.videoResolution).toBe('1080p');
       expect(sessions[0]?.quality.videoWidth).toBe(1920);
       expect(sessions[0]?.quality.videoHeight).toBe(1080);
+    });
+
+    it('maps connected_at (float) to elapsed playback position', () => {
+      const nowMs = 1_778_150_600_000;
+      const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+
+      try {
+        const normalized = normalizeDispatcharrChannel({
+          channel_id: 'channel-1',
+          channel_name: 'BBC News',
+          clients: [
+            { client_id: 'client-1', user_id: '7', connected_at: 1_778_150_550.3093927 },
+          ],
+        });
+
+        const sessions = parseSessionsFromChannels(
+          normalized ? [normalized] : [],
+          new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+        );
+
+        expect(sessions[0]?.playback.positionMs).toBe(49_691);
+      } finally {
+        dateNowSpy.mockRestore();
+      }
+    });
+
+    it('maps connected_at string to elapsed playback position', () => {
+      const nowMs = 1_000_000_000_000;
+      const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+
+      try {
+        const normalized = normalizeDispatcharrChannel({
+          channel_id: 'channel-1',
+          channel_name: 'BBC News',
+          clients: [{ client_id: 'client-1', user_id: '7', connected_at: '999999995.5' }],
+        });
+
+        const sessions = parseSessionsFromChannels(
+          normalized ? [normalized] : [],
+          new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+        );
+
+        expect(sessions[0]?.playback.positionMs).toBe(4_500);
+      } finally {
+        dateNowSpy.mockRestore();
+      }
+    });
+
+    it('falls back to 0 playback position when connected_at is missing', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'BBC News',
+        clients: [{ client_id: 'client-1', user_id: '7' }],
+      });
+
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.playback.positionMs).toBe(0);
+    });
+
+    it('clamps playback position to 0 when connected_at is in the future', () => {
+      const nowMs = 1_000_000_000_000;
+      const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+
+      try {
+        const normalized = normalizeDispatcharrChannel({
+          channel_id: 'channel-1',
+          channel_name: 'BBC News',
+          clients: [{ client_id: 'client-1', user_id: '7', connected_at: 1_000_000_100 }],
+        });
+
+        const sessions = parseSessionsFromChannels(
+          normalized ? [normalized] : [],
+          new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+        );
+
+        expect(sessions[0]?.playback.positionMs).toBe(0);
+      } finally {
+        dateNowSpy.mockRestore();
+      }
     });
   });
 });
