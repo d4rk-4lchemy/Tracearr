@@ -40,4 +40,21 @@ describe('buildExternalIdMatchKey', () => {
     expect(tmdb).toBeLessThan(tvdb);
     expect(tvdb).toBeLessThan(titleFallback);
   });
+
+  it('does not compare integer external ids to an empty string', () => {
+    const text = compile();
+    expect(text).not.toMatch(/tmdb_id\s*<>\s*''/i);
+    expect(text).not.toMatch(/tvdb_id\s*<>\s*''/i);
+  });
+
+  it('casts integer external ids to text for the prefix concatenation', () => {
+    const text = compile();
+    expect(text).toMatch(/tmdb_id"?::text|cast\s*\(\s*"?tmdb_id"?\s+as\s+text\s*\)/i);
+    expect(text).toMatch(/tvdb_id"?::text|cast\s*\(\s*"?tvdb_id"?\s+as\s+text\s*\)/i);
+  });
+
+  it('returns NULL instead of a literal "title:" when the title is empty/null/all-punctuation', () => {
+    const text = compile();
+    expect(text).toMatch(/NULLIF/i);
+  });
 });
