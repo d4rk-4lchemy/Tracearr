@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -94,6 +95,7 @@ export function ServerSettings() {
   const [dispatcharrAuthMode, setDispatcharrAuthMode] = useState<'token' | 'credentials'>('token');
   const [dispatcharrUsername, setDispatcharrUsername] = useState('');
   const [dispatcharrPassword, setDispatcharrPassword] = useState('');
+  const [ignoreAnonymousStreams, setIgnoreAnonymousStreams] = useState(true);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -189,6 +191,7 @@ export function ServerSettings() {
     setDispatcharrAuthMode('token');
     setDispatcharrUsername('');
     setDispatcharrPassword('');
+    setIgnoreAnonymousStreams(true);
     setConnectError(null);
     setServerType(defaultServerType as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr');
     setPlexDialogStep('loading');
@@ -320,12 +323,14 @@ export function ServerSettings() {
                 url: serverUrl,
                 username: dispatcharrUsername,
                 password: dispatcharrPassword,
+                ignoreAnonymousStreams,
               }
             : {
                 name: serverName,
                 type: serverType,
                 url: serverUrl,
                 token: apiKey,
+                ignoreAnonymousStreams,
               };
 
         await api.servers.create({
@@ -498,6 +503,7 @@ export function ServerSettings() {
                     setDispatcharrAuthMode('token');
                     setDispatcharrUsername('');
                     setDispatcharrPassword('');
+                    setIgnoreAnonymousStreams(true);
                   }
                   // Fetch Plex accounts when switching to Plex type
                   if (newType === 'plex' && user?.role === 'owner') {
@@ -780,6 +786,28 @@ export function ServerSettings() {
                     </p>
                   </div>
                 )}
+                {serverType === 'dispatcharr' && (
+                  <div className="flex items-start gap-3 rounded-md border p-3">
+                    <Checkbox
+                      id="dispatcharrIgnoreAnonymousStreams"
+                      checked={ignoreAnonymousStreams}
+                      onCheckedChange={(checked) => {
+                        setIgnoreAnonymousStreams(checked === true);
+                      }}
+                    />
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="dispatcharrIgnoreAnonymousStreams"
+                        className="cursor-pointer font-medium"
+                      >
+                        Ignore Anonymouse streams
+                      </Label>
+                      <p className="text-muted-foreground text-sm">
+                        When enabled, Dispatcharr streams reported as anonymous are ignored.
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {connectError && (
                   <div className="text-destructive flex items-center gap-2 text-sm">
                     <XCircle className="h-4 w-4" />
@@ -835,10 +863,17 @@ export function ServerSettings() {
         onClose={() => {
           setEditServer(null);
         }}
-        onUpdate={(name, url, clientIdentifier, color) => {
+        onUpdate={(name, url, clientIdentifier, color, ignoreAnonymousStreamsValue) => {
           if (editServer) {
             updateServer.mutate(
-              { id: editServer.id, name, url, clientIdentifier, color },
+              {
+                id: editServer.id,
+                name,
+                url,
+                clientIdentifier,
+                color,
+                ignoreAnonymousStreams: ignoreAnonymousStreamsValue,
+              },
               {
                 onSuccess: () => {
                   setEditServer(null);
@@ -867,14 +902,22 @@ function EditServerDialog({
   server: Server | null;
   servers: Server[];
   onClose: () => void;
-  onUpdate: (name?: string, url?: string, clientIdentifier?: string, color?: string | null) => void;
+  onUpdate: (
+    name?: string,
+    url?: string,
+    clientIdentifier?: string,
+    color?: string | null,
+    ignoreAnonymousStreams?: boolean
+  ) => void;
   isUpdating: boolean;
 }) {
   const { t } = useTranslation(['settings', 'common', 'pages']);
   const [editName, setEditName] = useState('');
   const [manualUrl, setManualUrl] = useState('');
   const [editColor, setEditColor] = useState('#3b82f6');
+  const [editIgnoreAnonymousStreams, setEditIgnoreAnonymousStreams] = useState(true);
   const isPlexServer = server?.type === 'plex';
+  const isDispatcharrServer = server?.type === 'dispatcharr';
 
   // Fetch connections for Plex servers
   const { data: connectionsData, isLoading: isLoadingConnections } = usePlexServerConnections(
@@ -886,6 +929,7 @@ function EditServerDialog({
     if (server) {
       setEditName(server.name);
       setManualUrl(server.url);
+      setEditIgnoreAnonymousStreams(server.ignoreAnonymousStreams ?? true);
       const otherColors = servers.filter((s) => s.id !== server.id).map((s) => s.color);
       setEditColor(server.color ?? pickServerColor(server.type, otherColors));
     }
@@ -893,20 +937,37 @@ function EditServerDialog({
 
   const handlePlexSelect = (uri: string, _name: string, clientIdentifier: string) => {
     const colorChanged = editColor !== (server?.color ?? '') ? editColor : undefined;
-    onUpdate(editName !== server?.name ? editName : undefined, uri, clientIdentifier, colorChanged);
+    const ignoreAnonymousStreamsChanged =
+      isDispatcharrServer && editIgnoreAnonymousStreams !== (server?.ignoreAnonymousStreams ?? true)
+        ? editIgnoreAnonymousStreams
+        : undefined;
+
+    onUpdate(
+      editName !== server?.name ? editName : undefined,
+      uri,
+      clientIdentifier,
+      colorChanged,
+      ignoreAnonymousStreamsChanged
+    );
   };
 
   const hasNameChange = server ? editName.trim() !== server.name : false;
   const hasUrlChange = server ? manualUrl.trim() !== server.url : false;
   const hasColorChange = server ? editColor !== (server.color ?? '') : false;
-  const canSave = (hasNameChange || hasUrlChange || hasColorChange) && editName.trim().length > 0;
+  const hasIgnoreAnonymousStreamsChange = server
+    ? isDispatcharrServer && editIgnoreAnonymousStreams !== (server.ignoreAnonymousStreams ?? true)
+    : false;
+  const canSave =
+    (hasNameChange || hasUrlChange || hasColorChange || hasIgnoreAnonymousStreamsChange) &&
+    editName.trim().length > 0;
 
   const handleSave = () => {
     onUpdate(
       hasNameChange ? editName.trim() : undefined,
       hasUrlChange ? manualUrl.trim() : undefined,
       undefined,
-      hasColorChange ? editColor : undefined
+      hasColorChange ? editColor : undefined,
+      hasIgnoreAnonymousStreamsChange ? editIgnoreAnonymousStreams : undefined
     );
   };
 
@@ -980,6 +1041,29 @@ function EditServerDialog({
                 onChange={(e) => setManualUrl(e.target.value)}
                 placeholder="http://192.168.1.100:8096"
               />
+            </div>
+          )}
+
+          {isDispatcharrServer && (
+            <div className="flex items-start gap-3 rounded-md border p-3">
+              <Checkbox
+                id="edit-ignore-anonymous-streams"
+                checked={editIgnoreAnonymousStreams}
+                onCheckedChange={(checked) => {
+                  setEditIgnoreAnonymousStreams(checked === true);
+                }}
+              />
+              <div className="space-y-1">
+                <Label
+                  htmlFor="edit-ignore-anonymous-streams"
+                  className="cursor-pointer font-medium"
+                >
+                  Ignore Anonymouse streams
+                </Label>
+                <p className="text-muted-foreground text-sm">
+                  When enabled, Dispatcharr streams reported as anonymous are ignored.
+                </p>
+              </div>
             </div>
           )}
 

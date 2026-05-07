@@ -90,7 +90,13 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private programCache = new Map<string, string>();
   private lastProgramSetKey = '';
 
-  constructor(config: { serverId: string; serverName: string; url: string; token: string }) {
+  constructor(config: {
+    serverId: string;
+    serverName: string;
+    url: string;
+    token: string;
+    ignoreAnonymousStreams?: boolean;
+  }) {
     super();
     this.serverId = config.serverId;
     this.serverName = config.serverName;
@@ -100,6 +106,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       name: config.serverName,
       url: config.url,
       token: config.token,
+      ignoreAnonymousStreams: config.ignoreAnonymousStreams,
     });
 
     const tokenMode = this.client.getTokenMode();

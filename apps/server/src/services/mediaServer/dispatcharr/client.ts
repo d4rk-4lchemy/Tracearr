@@ -74,11 +74,13 @@ export class DispatcharrClient implements IMediaServerClient {
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly credentials: DispatcharrCredentials | null;
+  private readonly ignoreAnonymousStreams: boolean;
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
     this.token = config.token.trim();
     this.credentials = DispatcharrClient.decodeCredentialToken(this.token);
+    this.ignoreAnonymousStreams = config.ignoreAnonymousStreams !== false;
   }
 
   static encodeCredentialToken(username: string, password: string): string {
@@ -182,7 +184,9 @@ export class DispatcharrClient implements IMediaServerClient {
     userById: Map<string, MediaUser>,
     logoPathByChannelId?: Map<string, string>
   ): MediaSession[] {
-    return parseSessionsFromChannels(channels, userById, logoPathByChannelId);
+    return parseSessionsFromChannels(channels, userById, logoPathByChannelId, {
+      ignoreAnonymousStreams: this.ignoreAnonymousStreams,
+    });
   }
 
   async getUsers(): Promise<MediaUser[]> {
@@ -196,7 +200,11 @@ export class DispatcharrClient implements IMediaServerClient {
         service: 'dispatcharr',
         timeout: 10000,
       });
-      users.push(...parseUsersResponse(data));
+      users.push(
+        ...parseUsersResponse(data, {
+          ignoreAnonymousStreams: this.ignoreAnonymousStreams,
+        })
+      );
 
       const record: { next?: unknown } | null =
         data && typeof data === 'object' && !Array.isArray(data)

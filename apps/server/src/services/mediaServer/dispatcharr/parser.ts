@@ -67,6 +67,10 @@ export interface DispatcharrUserResponse {
   is_active?: unknown;
 }
 
+interface DispatcharrParserOptions {
+  ignoreAnonymousStreams?: boolean;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -110,6 +114,13 @@ export function isAnonymousDispatcharrUserName(name: string): boolean {
   return normalized === 'anonymous' || normalized === 'anonymouse';
 }
 
+function shouldIgnoreAnonymousDispatcharrUser(
+  name: string,
+  options?: DispatcharrParserOptions
+): boolean {
+  return options?.ignoreAnonymousStreams !== false && isAnonymousDispatcharrUserName(name);
+}
+
 export function normalizeDispatcharrUserName(user: DispatcharrUserResponse): string {
   const firstName = asString(user.first_name).trim();
   const lastName = asString(user.last_name).trim();
@@ -117,13 +128,13 @@ export function normalizeDispatcharrUserName(user: DispatcharrUserResponse): str
   return fullName || asString(user.username).trim();
 }
 
-export function parseUser(raw: unknown): MediaUser | null {
+export function parseUser(raw: unknown, options?: DispatcharrParserOptions): MediaUser | null {
   const user = asRecord(raw);
   if (!user) return null;
 
   const id = asString(user.id).trim();
   const username = normalizeDispatcharrUserName(user);
-  if (!id || !username || isAnonymousDispatcharrUserName(username)) return null;
+  if (!id || !username || shouldIgnoreAnonymousDispatcharrUser(username, options)) return null;
 
   return {
     id,
@@ -135,7 +146,7 @@ export function parseUser(raw: unknown): MediaUser | null {
   };
 }
 
-export function parseUsersResponse(raw: unknown): MediaUser[] {
+export function parseUsersResponse(raw: unknown, options?: DispatcharrParserOptions): MediaUser[] {
   const source = Array.isArray(raw)
     ? raw
     : Array.isArray(asRecord(raw)?.results)
@@ -143,7 +154,7 @@ export function parseUsersResponse(raw: unknown): MediaUser[] {
       : [];
 
   return source.flatMap((entry) => {
-    const parsed = parseUser(entry);
+    const parsed = parseUser(entry, options);
     return parsed ? [parsed] : [];
   });
 }
@@ -320,10 +331,12 @@ export function normalizeDispatcharrChannel(
 export function parseSessionsFromChannels(
   channels: NormalizedDispatcharrChannel[],
   userById: Map<string, MediaUser>,
-  logoPathByChannelId?: Map<string, string>
+  logoPathByChannelId?: Map<string, string>,
+  options?: DispatcharrParserOptions
 ): MediaSession[] {
   const sessions: MediaSession[] = [];
   const nowMs = Date.now();
+  const ignoreAnonymousStreams = options?.ignoreAnonymousStreams !== false;
 
   for (const channel of channels) {
     const channelId = channel.channelId.trim();
@@ -337,10 +350,19 @@ export function parseSessionsFromChannels(
     for (const client of clients) {
       const clientId = asString(client.client_id).trim();
       const userId = asString(client.user_id).trim();
-      if (!clientId || !userId || userId === '0') continue;
+      if (!clientId || !userId) continue;
 
-      const user = userById.get(userId);
-      if (!user || isAnonymousDispatcharrUserName(user.username)) continue;
+      const fallbackAnonymousUser =
+        !ignoreAnonymousStreams && userId === '0'
+          ? ({
+              id: userId,
+              username: 'Anonymous',
+              isAdmin: false,
+            } as MediaUser)
+          : null;
+      const user = userById.get(userId) ?? fallbackAnonymousUser;
+      if (!user) continue;
+      if (shouldIgnoreAnonymousDispatcharrUser(user.username, options)) continue;
 
       const ipAddress = asString(client.ip_address).trim() || '0.0.0.0';
       const bitrate = Math.round(channel.avgBitrateKbps ?? 0);

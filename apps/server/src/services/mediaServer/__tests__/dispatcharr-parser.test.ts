@@ -48,6 +48,27 @@ describe('Dispatcharr parser', () => {
       expect(parseUser({ id: 2, first_name: 'Anonymouse', last_name: '' })).toBeNull();
     });
 
+    it('keeps Anonymous and Anonymouse users when ignoreAnonymousStreams is disabled', () => {
+      expect(
+        parseUser(
+          { id: 1, first_name: 'Anonymous', last_name: '', username: 'anonymous' },
+          { ignoreAnonymousStreams: false }
+        )
+      ).toMatchObject({
+        id: '1',
+        username: 'Anonymous',
+      });
+      expect(
+        parseUser(
+          { id: 2, first_name: 'Anonymouse', last_name: '', username: 'anonymouse' },
+          { ignoreAnonymousStreams: false }
+        )
+      ).toMatchObject({
+        id: '2',
+        username: 'Anonymouse',
+      });
+    });
+
     it('parses both array and paginated users responses', () => {
       expect(
         parseUsersResponse([{ id: 1, first_name: 'Ada', last_name: 'Lovelace' }])
@@ -55,6 +76,19 @@ describe('Dispatcharr parser', () => {
       expect(
         parseUsersResponse({ results: [{ id: 2, first_name: 'Grace', last_name: 'Hopper' }] })
       ).toHaveLength(1);
+    });
+
+    it('includes anonymous users when ignoreAnonymousStreams is disabled', () => {
+      const users = parseUsersResponse(
+        [
+          { id: 1, first_name: 'Anonymous', last_name: '', username: 'anonymous' },
+          { id: 2, first_name: 'Ada', last_name: 'Lovelace', username: 'ada' },
+        ],
+        { ignoreAnonymousStreams: false }
+      );
+
+      expect(users).toHaveLength(2);
+      expect(users.map((user) => user.username)).toEqual(['Anonymous', 'Ada Lovelace']);
     });
   });
 
@@ -190,6 +224,31 @@ describe('Dispatcharr parser', () => {
       );
 
       expect(sessions).toHaveLength(0);
+    });
+
+    it('includes anonymous sessions when ignoreAnonymousStreams is disabled', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'News HD',
+        clients: [
+          { client_id: 'named-anonymous', user_id: '9', user_agent: 'Browser' },
+          { client_id: 'zero-user', user_id: '0', user_agent: 'Browser' },
+        ],
+      });
+
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['9', { id: '9', username: 'Anonymouse', isAdmin: false }]]),
+        undefined,
+        { ignoreAnonymousStreams: false }
+      );
+
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]?.user.username).toBe('Anonymouse');
+      expect(sessions[1]?.user).toMatchObject({
+        id: '0',
+        username: 'Anonymous',
+      });
     });
 
     it('uses channel_name from base status over stream_name from detail', () => {

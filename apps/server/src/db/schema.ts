@@ -87,6 +87,7 @@ export const servers = pgTable(
     // For Plex servers: which linked Plex account this server was added from (nullable for Jellyfin/Emby and legacy)
     plexAccountId: uuid('plex_account_id'),
     displayOrder: integer('display_order').default(0).notNull(),
+    ignoreAnonymousStreams: boolean('ignore_anonymous_streams').default(true).notNull(),
     color: varchar('color', { length: 7 }), // Hex color like #3b82f6
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

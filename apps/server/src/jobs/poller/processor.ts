@@ -253,6 +253,7 @@ async function processServerSessions(
             type: server.type,
             url: server.url,
             token: server.token,
+            ignoreAnonymousStreams: server.ignoreAnonymousStreams,
           }).getSessions();
     const processedSessions = mediaSessions.map((s) => mapMediaSession(s, server.type));
 

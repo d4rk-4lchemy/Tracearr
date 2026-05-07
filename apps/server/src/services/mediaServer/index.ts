@@ -53,6 +53,7 @@ export function createMediaServerClient(options: CreateClientOptions): IMediaSer
   const config: MediaServerConfig = {
     url: options.url,
     token: options.token,
+    ignoreAnonymousStreams: options.ignoreAnonymousStreams,
     id: options.id,
     name: options.name,
   };

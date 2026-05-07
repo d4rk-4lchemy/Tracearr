@@ -45,6 +45,7 @@ export interface ServerWithToken {
   type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
   url: string;
   token: string;
+  ignoreAnonymousStreams?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

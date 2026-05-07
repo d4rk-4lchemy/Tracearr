@@ -41,6 +41,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         displayOrder: servers.displayOrder,
         color: servers.color,
         createdAt: servers.createdAt,
@@ -87,7 +88,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Invalid request body');
     }
 
-    const { name, type, url, token, username, password } = body.data;
+    const { name, type, url, token, username, password, ignoreAnonymousStreams } = body.data;
     const authUser = request.user;
 
     // Only owners can add servers
@@ -188,6 +189,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         type,
         url,
         token: normalizedToken,
+        ignoreAnonymousStreams,
         color,
         plexAccountId, // Links Plex servers to their owning account (undefined for non-Plex)
       })
@@ -196,6 +198,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
@@ -246,7 +249,13 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const { id } = params.data;
-    const { name: newName, url: bodyUrl, clientIdentifier, color: newColor } = body.data;
+    const {
+      name: newName,
+      url: bodyUrl,
+      clientIdentifier,
+      ignoreAnonymousStreams: newIgnoreAnonymousStreams,
+      color: newColor,
+    } = body.data;
     const newUrl = bodyUrl !== undefined ? bodyUrl.replace(/\/$/, '') : undefined;
     const authUser = request.user;
 
@@ -272,6 +281,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           name: newName ?? server.name,
           type: server.type,
           url: server.url,
+          ignoreAnonymousStreams: server.ignoreAnonymousStreams,
           createdAt: server.createdAt,
           updatedAt: server.updatedAt,
         };
@@ -327,22 +337,30 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       }
     } else if (newName !== undefined && server.name === newName) {
       // Name-only update but name unchanged
-      return {
-        id: server.id,
-        name: server.name,
-        type: server.type,
-        url: server.url,
-        createdAt: server.createdAt,
-        updatedAt: server.updatedAt,
-      };
+        return {
+          id: server.id,
+          name: server.name,
+          type: server.type,
+          url: server.url,
+          ignoreAnonymousStreams: server.ignoreAnonymousStreams,
+          createdAt: server.createdAt,
+          updatedAt: server.updatedAt,
+        };
     }
 
     // Build update object
-    const updatePayload: { name?: string; url?: string; color?: string | null; updatedAt: Date } = {
-      updatedAt: new Date(),
-    };
+    const updatePayload: {
+      name?: string;
+      url?: string;
+      ignoreAnonymousStreams?: boolean;
+      color?: string | null;
+      updatedAt: Date;
+    } = { updatedAt: new Date() };
     if (newName !== undefined) updatePayload.name = newName;
     if (newUrl !== undefined) updatePayload.url = newUrl;
+    if (newIgnoreAnonymousStreams !== undefined) {
+      updatePayload.ignoreAnonymousStreams = newIgnoreAnonymousStreams;
+    }
     if (newColor !== undefined) updatePayload.color = newColor;
 
     const updated = await db
@@ -354,6 +372,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,

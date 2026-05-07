@@ -86,6 +86,61 @@ describe('DispatcharrClient', () => {
     );
   });
 
+  it('includes anonymous sessions and users when ignoreAnonymousStreams is disabled', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.['X-API-Key']).toBe('api-key');
+
+      if (url.endsWith('/api/accounts/users/')) {
+        return jsonResponse([
+          { id: 7, first_name: 'Valid', last_name: 'User', username: 'valid' },
+          { id: 8, first_name: 'Anonymouse', last_name: '', username: 'anonymouse' },
+        ]);
+      }
+      if (url.endsWith('/proxy/ts/status')) {
+        return jsonResponse({
+          channels: [{ channel_id: 'channel-1', channel_name: 'News 24', client_count: 3 }],
+        });
+      }
+      if (url.endsWith('/proxy/ts/status/channel-1')) {
+        return jsonResponse({
+          channel_id: 'channel-1',
+          clients: [
+            { client_id: 'client-1', user_id: '7', ip_address: '198.51.100.10' },
+            { client_id: 'anon-client', user_id: '8', ip_address: '198.51.100.11' },
+            { client_id: 'anon-zero', user_id: '0', ip_address: '198.51.100.12' },
+          ],
+        });
+      }
+      if (url.endsWith('/api/channels/channels/by-uuids/')) {
+        return jsonResponse([{ uuid: 'channel-1', logo_id: 'logo-123' }]);
+      }
+      if (url.endsWith('/api/epg/current-programs/')) {
+        return jsonResponse([{ channel_uuid: 'channel-1', title: 'Morning News' }]);
+      }
+
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const client = new DispatcharrClient({
+      url: 'http://dispatcharr.local/',
+      token: 'api-key',
+      ignoreAnonymousStreams: false,
+    });
+
+    const [users, sessions] = await Promise.all([client.getUsers(), client.getSessions()]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(users.map((user) => user.username)).toEqual(['Valid User', 'Anonymouse']);
+    expect(sessions).toHaveLength(3);
+    expect(sessions.map((session) => session.user.username)).toEqual([
+      'Valid User',
+      'Anonymouse',
+      'Anonymous',
+    ]);
+  });
+
   it('uses bearer auth for JWT-like tokens', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
       const headers = init?.headers as Record<string, string> | undefined;

@@ -42,6 +42,7 @@ export interface Server {
   name: string;
   type: ServerType;
   url: string;
+  ignoreAnonymousStreams?: boolean;
   displayOrder?: number;
   color?: string | null;
   createdAt: Date;

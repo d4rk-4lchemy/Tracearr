@@ -238,6 +238,7 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
         type: session.server.type,
         url: session.server.url,
         token: session.server.token,
+        ignoreAnonymousStreams: session.server.ignoreAnonymousStreams,
       });
 
       // Jellyfin/Emby use sessionKey for API calls

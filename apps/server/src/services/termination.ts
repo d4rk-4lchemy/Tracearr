@@ -106,6 +106,7 @@ export async function terminateSession(
     type: session.server.type as ServerType,
     url: session.server.url,
     token: session.server.token,
+    ignoreAnonymousStreams: session.server.ignoreAnonymousStreams,
   });
 
   // Get the session ID for termination

@@ -196,7 +196,8 @@ async function syncMediaServerUsers(
   serverId: string,
   serverType: 'jellyfin' | 'emby' | 'dispatcharr',
   serverUrl: string,
-  token: string
+  token: string,
+  ignoreAnonymousStreams = true
 ): Promise<{
   added: number;
   updated: number;
@@ -211,6 +212,7 @@ async function syncMediaServerUsers(
       type: serverType,
       url: serverUrl,
       token,
+      ignoreAnonymousStreams,
     });
     const users = await client.getUsers();
     return syncServerUsers(serverId, users); // isPlexServer defaults to false
@@ -271,7 +273,13 @@ export async function syncServer(
       server.type === 'emby' ||
       server.type === 'dispatcharr'
     ) {
-      const userResult = await syncMediaServerUsers(serverId, server.type, serverUrl, server.token);
+      const userResult = await syncMediaServerUsers(
+        serverId,
+        server.type,
+        serverUrl,
+        server.token,
+        server.ignoreAnonymousStreams
+      );
       result.usersAdded = userResult.added;
       result.usersUpdated = userResult.updated;
       result.usersSkipped = userResult.skipped;
@@ -288,6 +296,7 @@ export async function syncServer(
         type: server.type,
         url: serverUrl,
         token: server.token,
+        ignoreAnonymousStreams: server.ignoreAnonymousStreams,
       });
       const libraries = await client.getLibraries();
       result.librariesSynced = libraries.length;

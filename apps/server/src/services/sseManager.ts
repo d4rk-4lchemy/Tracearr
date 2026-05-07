@@ -104,7 +104,8 @@ export class SSEManager extends EventEmitter {
           server.name,
           server.type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
           server.url,
-          server.token
+          server.token,
+          server.ignoreAnonymousStreams
         )
       )
     );
@@ -153,7 +154,8 @@ export class SSEManager extends EventEmitter {
     serverName: string,
     serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
     url: string,
-    token: string
+    token: string,
+    ignoreAnonymousStreams = true
   ): Promise<void> {
     if (this.pendingOperations.has(serverId)) {
       console.log(`[SSEManager] Operation already in progress for ${serverName}, skipping`);
@@ -199,6 +201,7 @@ export class SSEManager extends EventEmitter {
           serverName,
           url,
           token,
+          ignoreAnonymousStreams,
         });
 
         this.setupDispatcharrRealtimeHandlers(realtime, serverId, serverName);
@@ -518,7 +521,8 @@ export class SSEManager extends EventEmitter {
             server.name,
             server.type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
             server.url,
-            server.token
+            server.token,
+            server.ignoreAnonymousStreams
           );
         }
       }

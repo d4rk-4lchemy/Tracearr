@@ -49,6 +49,12 @@ vi.mock('../../services/mediaServer/index.js', () => ({
   EmbyClient: {
     verifyServerAdmin: vi.fn(),
   },
+  DispatcharrClient: {
+    verifyServerAdmin: vi.fn(),
+    encodeCredentialToken: vi.fn((username: string, password: string) => {
+      return `encoded:${username}:${password}`;
+    }),
+  },
 }));
 
 vi.mock('../../services/sync.js', () => ({
@@ -67,7 +73,12 @@ vi.mock('../../jobs/librarySyncQueue.js', () => ({
 
 // Import mocked modules
 import { db } from '../../db/client.js';
-import { PlexClient, JellyfinClient, EmbyClient } from '../../services/mediaServer/index.js';
+import {
+  PlexClient,
+  JellyfinClient,
+  EmbyClient,
+  DispatcharrClient,
+} from '../../services/mediaServer/index.js';
 import { syncServer } from '../../services/sync.js';
 import { serverRoutes } from '../servers.js';
 
@@ -172,6 +183,7 @@ const mockServer = {
   type: 'plex' as const,
   url: 'http://localhost:32400',
   token: 'encrypted_test-token',
+  ignoreAnonymousStreams: true,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -194,6 +206,7 @@ describe('Server Routes', () => {
           name: mockServer.name,
           type: mockServer.type,
           url: mockServer.url,
+          ignoreAnonymousStreams: true,
           displayOrder: 0,
           color: '#4B8BFF',
           createdAt: mockServer.createdAt,
@@ -228,6 +241,7 @@ describe('Server Routes', () => {
           name: 'Guest Server',
           type: 'jellyfin',
           url: 'http://localhost:8096',
+          ignoreAnonymousStreams: true,
           displayOrder: 0,
           color: '#9B59B6',
           createdAt: new Date(),
@@ -271,6 +285,7 @@ describe('Server Routes', () => {
       vi.mocked(PlexClient.verifyServerAdmin).mockResolvedValue({ success: true });
       vi.mocked(JellyfinClient.verifyServerAdmin).mockResolvedValue({ success: true });
       vi.mocked(EmbyClient.verifyServerAdmin).mockResolvedValue(true);
+      vi.mocked(DispatcharrClient.verifyServerAdmin).mockResolvedValue({ success: true });
       vi.mocked(syncServer).mockResolvedValue({
         usersAdded: 5,
         usersUpdated: 0,
@@ -296,6 +311,7 @@ describe('Server Routes', () => {
         name: 'New Plex',
         type: 'plex',
         url: 'http://plex.local:32400',
+        ignoreAnonymousStreams: true,
         color: '#4B8BFF',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -346,6 +362,7 @@ describe('Server Routes', () => {
         name: 'New Jellyfin',
         type: 'jellyfin',
         url: 'http://jellyfin.local:8096',
+        ignoreAnonymousStreams: true,
         color: '#9B59B6',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -393,6 +410,7 @@ describe('Server Routes', () => {
         name: 'New Emby',
         type: 'emby',
         url: 'http://emby.local:8096',
+        ignoreAnonymousStreams: true,
         color: '#2ECC71',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -448,6 +466,56 @@ describe('Server Routes', () => {
 
       expect(response.statusCode).toBe(403);
       expect(response.json().message).toContain('Only server owners');
+    });
+
+    it('creates a new Dispatcharr server with ignoreAnonymousStreams disabled', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const newServer = {
+        id: randomUUID(),
+        name: 'Dispatcharr',
+        type: 'dispatcharr',
+        url: 'http://dispatcharr.local:9191',
+        ignoreAnonymousStreams: false,
+        color: '#F97316',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      let selectCall = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCall++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([]),
+        };
+        if (selectCall === 2) {
+          chain.from = vi.fn().mockResolvedValue([]);
+        }
+        return chain as never;
+      });
+
+      mockDbInsert([newServer]);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/servers',
+        payload: {
+          name: 'Dispatcharr',
+          type: 'dispatcharr',
+          url: 'http://dispatcharr.local:9191',
+          token: 'dispatcharr-api-key',
+          ignoreAnonymousStreams: false,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(DispatcharrClient.verifyServerAdmin).toHaveBeenCalledWith(
+        'dispatcharr-api-key',
+        'http://dispatcharr.local:9191'
+      );
+      expect(response.json().ignoreAnonymousStreams).toBe(false);
     });
 
     it('rejects duplicate server URL', async () => {
@@ -570,6 +638,36 @@ describe('Server Routes', () => {
 
       expect(response.statusCode).toBe(400);
       expect(response.json().message).toMatch(/name or url|At least one/);
+    });
+
+    it('updates Dispatcharr ignoreAnonymousStreams flag', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const dispatcharrServer = {
+        ...mockServer,
+        type: 'dispatcharr' as const,
+        name: 'Dispatcharr',
+        url: 'http://dispatcharr.local:9191',
+        ignoreAnonymousStreams: true,
+      };
+      mockDbSelectLimit([dispatcharrServer]);
+      mockDbUpdateReturning([
+        {
+          ...dispatcharrServer,
+          ignoreAnonymousStreams: false,
+          updatedAt: new Date(),
+        },
+      ]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/servers/${dispatcharrServer.id}`,
+        payload: { ignoreAnonymousStreams: false },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().ignoreAnonymousStreams).toBe(false);
+      expect(db.update).toHaveBeenCalled();
     });
 
     it('rejects non-owner with 403', async () => {
