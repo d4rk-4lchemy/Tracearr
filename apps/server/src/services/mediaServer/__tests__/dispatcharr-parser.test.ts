@@ -3,6 +3,7 @@ import {
   isAnonymousDispatcharrUserName,
   normalizeDispatcharrChannel,
   normalizeDispatcharrUserName,
+  parseRealtimeChannelStatsPayload,
   parseSessionsFromChannels,
   parseStatusResponse,
   parseUser,
@@ -58,6 +59,23 @@ describe('Dispatcharr parser', () => {
   });
 
   describe('status parsing', () => {
+    it('parses websocket channel_stats payload where stats is JSON string', () => {
+      const parsed = parseRealtimeChannelStatsPayload({
+        data: {
+          type: 'channel_stats',
+          stats: JSON.stringify({
+            channels: [{ channel_id: 'channel-1', clients: [] }],
+            count: 1,
+          }),
+        },
+      });
+
+      expect(parsed).toEqual({
+        channels: [{ channel_id: 'channel-1', clients: [] }],
+        count: 1,
+      });
+    });
+
     it('parses status channels and maps clients to live sessions', () => {
       const status = parseStatusResponse({
         channels: [

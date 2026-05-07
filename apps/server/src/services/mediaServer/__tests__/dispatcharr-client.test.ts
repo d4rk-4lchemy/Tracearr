@@ -97,6 +97,32 @@ describe('DispatcharrClient', () => {
     await client.getUsers();
   });
 
+  it('authenticates with username/password credential token and then uses JWT bearer', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/accounts/token/')) {
+        expect(init?.method).toBe('POST');
+        return jsonResponse({
+          access:
+            'eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQ3NDA3MTY4MDB9.signature',
+          refresh: 'refresh-token',
+        });
+      }
+      if (url.endsWith('/api/accounts/users/')) {
+        const headers = init?.headers as Record<string, string> | undefined;
+        expect(headers?.Authorization).toBe(
+          'Bearer eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQ3NDA3MTY4MDB9.signature'
+        );
+        return jsonResponse([]);
+      }
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const token = DispatcharrClient.encodeCredentialToken('admin', 'secret');
+    const client = new DispatcharrClient({ url: 'http://dispatcharr.local', token });
+    await client.getUsers();
+  });
+
   it('terminates sessions using stop_client endpoint', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

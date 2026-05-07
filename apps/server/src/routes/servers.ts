@@ -87,7 +87,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Invalid request body');
     }
 
-    const { name, type, url, token } = body.data;
+    const { name, type, url, token, username, password } = body.data;
     const authUser = request.user;
 
     // Only owners can add servers
@@ -102,13 +102,23 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.conflict('A server with this URL already exists');
     }
 
+    // Normalize auth payload (Dispatcharr can use API key/JWT token OR username+password)
+    const normalizedToken =
+      type === 'dispatcharr' && !token && username && password
+        ? DispatcharrClient.encodeCredentialToken(username, password)
+        : token;
+
+    if (!normalizedToken) {
+      return reply.badRequest('Missing authentication credentials');
+    }
+
     // For Plex servers, find the owning plex account to set plexAccountId
     let plexAccountId: string | undefined;
 
     // Verify the server connection
     try {
       if (type === 'plex') {
-        const adminCheck = await PlexClient.verifyServerAdmin(token, url);
+        const adminCheck = await PlexClient.verifyServerAdmin(normalizedToken, url);
         if (!adminCheck.success) {
           // Provide specific error based on failure type
           if (adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED) {
@@ -119,7 +129,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
 
         // Get the Plex account ID from the token and link to user's plex_accounts
         try {
-          const accountInfo = await PlexClient.getAccountInfo(token);
+          const accountInfo = await PlexClient.getAccountInfo(normalizedToken);
           const matchingAccount = await db
             .select({ id: plexAccounts.id })
             .from(plexAccounts)
@@ -139,7 +149,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           app.log.debug('Could not link Plex server to account at creation time');
         }
       } else if (type === 'jellyfin') {
-        const adminCheck = await JellyfinClient.verifyServerAdmin(token, url);
+        const adminCheck = await JellyfinClient.verifyServerAdmin(normalizedToken, url);
         if (!adminCheck.success) {
           // Provide specific error based on failure type
           if (adminCheck.code === JellyfinClient.AdminVerifyError.CONNECTION_FAILED) {
@@ -148,12 +158,12 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           return reply.forbidden(adminCheck.message);
         }
       } else if (type === 'emby') {
-        const isAdmin = await EmbyClient.verifyServerAdmin(token, url);
+        const isAdmin = await EmbyClient.verifyServerAdmin(normalizedToken, url);
         if (!isAdmin) {
           return reply.forbidden('Token does not have admin access to this Emby server');
         }
       } else if (type === 'dispatcharr') {
-        const adminCheck = await DispatcharrClient.verifyServerAdmin(token, url);
+        const adminCheck = await DispatcharrClient.verifyServerAdmin(normalizedToken, url);
         if (!adminCheck.success) {
           return reply.serviceUnavailable(adminCheck.message);
         }
@@ -177,7 +187,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name,
         type,
         url,
-        token,
+        token: normalizedToken,
         color,
         plexAccountId, // Links Plex servers to their owning account (undefined for non-Plex)
       })

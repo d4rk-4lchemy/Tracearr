@@ -112,12 +112,37 @@ export const callbackSchema = z.object({
 // Server Schemas
 // ============================================================================
 
-export const createServerSchema = z.object({
-  name: z.string().min(1).max(100),
-  type: serverTypeSchema,
-  url: z.url(),
-  token: z.string().min(1),
-});
+export const createServerSchema = z
+  .object({
+    name: z.string().min(1).max(100),
+    type: serverTypeSchema,
+    url: z.url(),
+    token: z.string().min(1).optional(),
+    username: z.string().min(1).optional(),
+    password: z.string().min(1).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'dispatcharr') {
+      const hasToken = Boolean(data.token?.trim());
+      const hasUserPass = Boolean(data.username?.trim()) && Boolean(data.password);
+      if (!hasToken && !hasUserPass) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Dispatcharr requires either token or username+password',
+          path: ['token'],
+        });
+      }
+      return;
+    }
+
+    if (!data.token?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Token is required',
+        path: ['token'],
+      });
+    }
+  });
 
 export const serverIdParamSchema = z.object({
   id: uuidSchema,

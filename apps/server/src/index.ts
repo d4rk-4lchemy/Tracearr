@@ -84,6 +84,10 @@ import {
   stopSSEProcessor,
   cleanupOrphanedPendingSessions,
 } from './jobs/sseProcessor.js';
+import {
+  startDispatcharrRealtimeProcessor,
+  stopDispatcharrRealtimeProcessor,
+} from './jobs/dispatcharrRealtimeProcessor.js';
 import { initializeWebSocket, broadcastToSessions } from './websocket/index.js';
 import {
   initNotificationQueue,
@@ -466,6 +470,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     await sseManager.stop();
     await tailscaleService.shutdown();
     stopSSEProcessor();
+    stopDispatcharrRealtimeProcessor();
     await shutdownNotificationQueue();
     await shutdownImportQueue();
     await shutdownMaintenanceQueue();
@@ -961,15 +966,16 @@ async function initializePostListen(app: FastifyInstance) {
     app.log.info('Session poller disabled in settings');
   }
 
-  // Start SSE connections for Plex servers (real-time updates)
+  // Start realtime upstream connections (Plex SSE + Dispatcharr WS)
   try {
     // Clean up any orphaned pending sessions from previous server instance
     await cleanupOrphanedPendingSessions();
     startSSEProcessor(); // Subscribe to SSE events
-    await sseManager.start(); // Start SSE connections
-    app.log.info('SSE connections started for Plex servers');
+    startDispatcharrRealtimeProcessor(); // Subscribe to Dispatcharr snapshot updates
+    await sseManager.start(); // Start realtime connections
+    app.log.info('Realtime connections started for Plex SSE and Dispatcharr WS');
   } catch (err) {
-    app.log.error({ err }, 'Failed to start SSE connections - falling back to polling');
+    app.log.error({ err }, 'Failed to start realtime connections - falling back to polling');
   }
 
   // Log network settings status
@@ -1087,6 +1093,7 @@ async function start() {
         app.log.info('Entering maintenance mode — shutting down services');
         stopPoller();
         stopSSEProcessor();
+        stopDispatcharrRealtimeProcessor();
         void sseManager.stop();
         void tailscaleService.shutdown();
 

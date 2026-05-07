@@ -50,6 +50,11 @@ export interface DispatcharrStatusResponse {
   count?: unknown;
 }
 
+export interface DispatcharrChannelStatsRealtimeEnvelope {
+  type?: unknown;
+  data?: unknown;
+}
+
 export interface DispatcharrUserResponse {
   id?: unknown;
   username?: unknown;
@@ -154,6 +159,36 @@ export function parseStatusResponse(raw: unknown): DispatcharrChannelStatus[] {
     const parsed = asRecord(channel);
     return parsed ? [parsed as DispatcharrChannelStatus] : [];
   });
+}
+
+export function parseRealtimeChannelStatsPayload(
+  raw: unknown
+): DispatcharrStatusResponse | null {
+  const envelope = asRecord(raw);
+  if (!envelope) return null;
+
+  // Dispatcharr websocket messages typically use:
+  // { data: { type: "channel_stats", stats: "{\"channels\": [...], \"count\": N}" } }
+  // but we also tolerate direct { type: "channel_stats", stats: ... }.
+  const data = asRecord(envelope.data) ?? envelope;
+  const eventType = asString(data.type).trim();
+  if (eventType !== 'channel_stats') return null;
+
+  const rawStats = data.stats;
+  if (typeof rawStats === 'string') {
+    try {
+      const parsed = JSON.parse(rawStats) as unknown;
+      const record = asRecord(parsed);
+      if (!record) return null;
+      return record as DispatcharrStatusResponse;
+    } catch {
+      return null;
+    }
+  }
+
+  const record = asRecord(rawStats);
+  if (!record) return null;
+  return record as DispatcharrStatusResponse;
 }
 
 export function parseChannelClients(raw: unknown): DispatcharrClientStatus[] {
