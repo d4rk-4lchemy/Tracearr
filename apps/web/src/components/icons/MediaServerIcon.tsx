@@ -33,7 +33,8 @@ export function MediaServerIcon({ type, className, alt }: MediaServerIconProps) 
 
 function getIconPath(type: ServerType): string | null {
   const base = BASE_URL;
-  switch (type) {
+  const normalizedType = String(type).trim().toLowerCase();
+  switch (normalizedType) {
     case 'plex':
       return `${base}images/servers/plex.png`;
     case 'jellyfin':
@@ -43,6 +44,9 @@ function getIconPath(type: ServerType): string | null {
     case 'dispatcharr':
       return `${base}images/servers/dispatcharr.png`;
     default:
+      if (normalizedType.includes('dispatch')) {
+        return `${base}images/servers/dispatcharr.png`;
+      }
       return null;
   }
 }
