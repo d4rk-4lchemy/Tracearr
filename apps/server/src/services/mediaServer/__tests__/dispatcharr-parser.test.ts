@@ -593,7 +593,7 @@ describe('Dispatcharr parser', () => {
       expect(percentSessions[1]?.playback.positionMs).toBe(2_000_000);
     });
 
-    it('falls back to connection duration and clamps position to media duration', () => {
+    it('returns 0 when no playback position or seek metadata is available', () => {
       const sessions = parseSessionsFromVodStats(
         {
           vod_connections: [
@@ -604,7 +604,7 @@ describe('Dispatcharr parser', () => {
               content_metadata: { duration_secs: 6000 },
               connections: [
                 {
-                  client_id: 'vod_duration_fallback',
+                  client_id: 'vod_no_position',
                   user_id: '7',
                   position_seconds: 0,
                   last_known_position: 0,
@@ -617,8 +617,8 @@ describe('Dispatcharr parser', () => {
         new Map([['7', { id: '7', username: 'Known User', isAdmin: false }]])
       );
 
-      expect(sessions[0]?.playback.positionMs).toBe(6_000_000);
-      expect(sessions[0]?.playback.progressPercent).toBe(100);
+      expect(sessions[0]?.playback.positionMs).toBe(0);
+      expect(sessions[0]?.playback.progressPercent).toBe(0);
     });
   });
 });

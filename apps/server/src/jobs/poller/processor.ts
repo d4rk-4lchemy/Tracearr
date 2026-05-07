@@ -244,17 +244,27 @@ async function processServerSessions(
   const { usePlexGeoip } = await getGeoIPSettings();
 
   try {
-    // Fetch sessions from server using unified adapter.
-    // Dispatcharr in healthy WS mode uses realtime snapshot cache to avoid REST polling.
+    const client = createMediaServerClient({
+      type: server.type,
+      url: server.url,
+      token: server.token,
+      ignoreAnonymousStreams: server.ignoreAnonymousStreams,
+    });
+
+    // Dispatcharr note:
+    // - WS path is great for Live TV snapshots and triggering polls.
+    // - VOD progress is not pushed continuously over WS (vod_stats is event-driven),
+    //   so we refresh VOD via REST each poll for accurate position and timely stop detection.
     const mediaSessions =
       server.type === 'dispatcharr' && sseManager.isDispatcharrRealtimeHealthy(server.id)
-        ? (sseManager.getDispatcharrLatestSessions(server.id) ?? [])
-        : await createMediaServerClient({
-            type: server.type,
-            url: server.url,
-            token: server.token,
-            ignoreAnonymousStreams: server.ignoreAnonymousStreams,
-          }).getSessions();
+        ? await (async () => {
+            const wsSessions = sseManager.getDispatcharrLatestSessions(server.id) ?? [];
+            const restSessions = await client.getSessions();
+            const liveFromWs = wsSessions.filter((session) => session.media.type === 'live');
+            const vodFromRest = restSessions.filter((session) => session.media.type !== 'live');
+            return [...liveFromWs, ...vodFromRest];
+          })()
+        : await client.getSessions();
     const processedSessions = mediaSessions.map((s) => mapMediaSession(s, server.type));
 
     // OPTIMIZATION: Early return if no active sessions from media server

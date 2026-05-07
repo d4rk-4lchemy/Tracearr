@@ -420,9 +420,6 @@ function estimateVodPositionSeconds(
     return clamp(normalizedSeekRatio * durationSeconds);
   }
 
-  const sessionDurationSeconds = asNumber(connection.duration);
-  if (sessionDurationSeconds > 0) return clamp(sessionDurationSeconds);
-
   return 0;
 }
 
