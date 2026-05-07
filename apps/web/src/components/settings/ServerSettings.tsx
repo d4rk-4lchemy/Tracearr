@@ -91,6 +91,9 @@ export function ServerSettings() {
   const [serverUrl, setServerUrl] = useState('');
   const [serverName, setServerName] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [dispatcharrAuthMode, setDispatcharrAuthMode] = useState<'token' | 'credentials'>('token');
+  const [dispatcharrUsername, setDispatcharrUsername] = useState('');
+  const [dispatcharrPassword, setDispatcharrPassword] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -183,6 +186,9 @@ export function ServerSettings() {
     setServerUrl('');
     setServerName('');
     setApiKey('');
+    setDispatcharrAuthMode('token');
+    setDispatcharrUsername('');
+    setDispatcharrPassword('');
     setConnectError(null);
     setServerType(defaultServerType as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr');
     setPlexDialogStep('loading');
@@ -286,7 +292,17 @@ export function ServerSettings() {
   };
 
   const handleAddServer = async () => {
-    if (!serverUrl || !serverName || !apiKey) {
+    const isDispatcharrTokenMode = serverType === 'dispatcharr' && dispatcharrAuthMode === 'token';
+    const hasRequiredFields =
+      Boolean(serverUrl.trim()) &&
+      Boolean(serverName.trim()) &&
+      (serverType === 'dispatcharr'
+        ? isDispatcharrTokenMode
+          ? Boolean(apiKey.trim())
+          : Boolean(dispatcharrUsername.trim()) && Boolean(dispatcharrPassword)
+        : Boolean(apiKey.trim()));
+
+    if (!hasRequiredFields) {
       setConnectError(t('servers.allFieldsRequired'));
       return;
     }
@@ -296,11 +312,24 @@ export function ServerSettings() {
 
     try {
       if (serverType === 'dispatcharr') {
+        const payload =
+          dispatcharrAuthMode === 'credentials'
+            ? {
+                name: serverName,
+                type: serverType,
+                url: serverUrl,
+                username: dispatcharrUsername,
+                password: dispatcharrPassword,
+              }
+            : {
+                name: serverName,
+                type: serverType,
+                url: serverUrl,
+                token: apiKey,
+              };
+
         await api.servers.create({
-          name: serverName,
-          type: serverType,
-          url: serverUrl,
-          token: apiKey,
+          ...payload,
         });
         await refetchUser();
       } else {
@@ -449,7 +478,9 @@ export function ServerSettings() {
             <DialogDescription>
               {serverType === 'plex'
                 ? t('servers.addServerDialogDescPlex')
-                : t('servers.addServerDialogDescOther')}
+                : serverType === 'dispatcharr'
+                  ? 'Connect a Dispatcharr server.'
+                  : t('servers.addServerDialogDescOther')}
             </DialogDescription>
           </DialogHeader>
 
@@ -463,6 +494,11 @@ export function ServerSettings() {
                   const newType = v as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
                   setServerType(newType);
                   setConnectError(null);
+                  if (newType !== 'dispatcharr') {
+                    setDispatcharrAuthMode('token');
+                    setDispatcharrUsername('');
+                    setDispatcharrPassword('');
+                  }
                   // Fetch Plex accounts when switching to Plex type
                   if (newType === 'plex' && user?.role === 'owner') {
                     void fetchPlexAccounts();
@@ -666,25 +702,84 @@ export function ServerSettings() {
                     }}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="apiKey">{t('common:labels.apiKey')}</Label>
-                  <Input
-                    id="apiKey"
-                    type="password"
-                    placeholder={t('servers.apiKeyPlaceholder')}
-                    value={apiKey}
-                    onChange={(e) => {
-                      setApiKey(e.target.value);
-                    }}
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    {serverType === 'jellyfin'
-                      ? t('servers.apiKeyHelpJellyfin')
-                      : serverType === 'emby'
-                        ? t('servers.apiKeyHelpEmby')
-                        : 'Dispatcharr API key or JWT bearer token. API keys are sent as X-API-Key.'}
-                  </p>
-                </div>
+                {serverType === 'dispatcharr' && (
+                  <div className="space-y-2">
+                    <Label>Authentication</Label>
+                    <Select
+                      value={dispatcharrAuthMode}
+                      onValueChange={(value) => {
+                        const mode = value as 'token' | 'credentials';
+                        setDispatcharrAuthMode(mode);
+                        setConnectError(null);
+                        if (mode === 'token') {
+                          setDispatcharrUsername('');
+                          setDispatcharrPassword('');
+                        } else {
+                          setApiKey('');
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="token">API Key / JWT Token</SelectItem>
+                        <SelectItem value="credentials">Username + Password</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {serverType === 'dispatcharr' && dispatcharrAuthMode === 'credentials' ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="dispatcharrUsername">Username</Label>
+                      <Input
+                        id="dispatcharrUsername"
+                        placeholder="admin"
+                        value={dispatcharrUsername}
+                        onChange={(e) => {
+                          setDispatcharrUsername(e.target.value);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dispatcharrPassword">Password</Label>
+                      <Input
+                        id="dispatcharrPassword"
+                        type="password"
+                        placeholder="Enter your password"
+                        value={dispatcharrPassword}
+                        onChange={(e) => {
+                          setDispatcharrPassword(e.target.value);
+                        }}
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        Tracearr will authenticate against Dispatcharr and manage JWT tokens
+                        automatically.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="apiKey">{t('common:labels.apiKey')}</Label>
+                    <Input
+                      id="apiKey"
+                      type="password"
+                      placeholder={t('servers.apiKeyPlaceholder')}
+                      value={apiKey}
+                      onChange={(e) => {
+                        setApiKey(e.target.value);
+                      }}
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      {serverType === 'jellyfin'
+                        ? t('servers.apiKeyHelpJellyfin')
+                        : serverType === 'emby'
+                          ? t('servers.apiKeyHelpEmby')
+                          : 'Dispatcharr API key or JWT bearer token. API keys are sent as X-API-Key.'}
+                    </p>
+                  </div>
+                )}
                 {connectError && (
                   <div className="text-destructive flex items-center gap-2 text-sm">
                     <XCircle className="h-4 w-4" />
