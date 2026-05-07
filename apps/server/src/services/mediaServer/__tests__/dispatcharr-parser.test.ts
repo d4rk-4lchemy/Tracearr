@@ -4,7 +4,9 @@ import {
   normalizeDispatcharrChannel,
   normalizeDispatcharrUserName,
   parseRealtimeChannelStatsPayload,
+  parseRealtimeVodStatsPayload,
   parseSessionsFromChannels,
+  parseSessionsFromVodStats,
   parseStatusResponse,
   parseUser,
   parseUsersResponse,
@@ -389,6 +391,117 @@ describe('Dispatcharr parser', () => {
       } finally {
         dateNowSpy.mockRestore();
       }
+    });
+
+    it('parses websocket vod_stats payload where stats is JSON string', () => {
+      const parsed = parseRealtimeVodStatsPayload({
+        data: {
+          type: 'vod_stats',
+          stats: JSON.stringify({
+            vod_connections: [
+              {
+                content_type: 'movie',
+                content_name: 'Movie A',
+                connections: [{ client_id: 'vod_1', user_id: '7', content_uuid: 'movie-1' }],
+              },
+            ],
+          }),
+        },
+      });
+
+      expect(parsed).toMatchObject({
+        vod_connections: [
+          {
+            content_type: 'movie',
+            content_name: 'Movie A',
+          },
+        ],
+      });
+    });
+
+    it('maps movie and episode sessions from vod_stats', () => {
+      const sessions = parseSessionsFromVodStats(
+        {
+          vod_connections: [
+            {
+              content_type: 'movie',
+              content_name: 'The Movie',
+              content_uuid: 'movie-uuid',
+              content_metadata: { year: 2021, duration_secs: 5400, logo_url: '/logos/m1.png' },
+              connections: [
+                {
+                  client_id: 'vod_123',
+                  user_id: '7',
+                  client_ip: '203.0.113.20',
+                  user_agent: 'VLC',
+                  position_seconds: 1200,
+                },
+              ],
+            },
+            {
+              content_type: 'episode',
+              content_name: 'Fallback Episode Name',
+              content_uuid: 'episode-uuid',
+              content_metadata: {
+                episode_name: 'Pilot',
+                series_name: 'Great Show',
+                season_number: 1,
+                episode_number: 2,
+                duration_secs: 1800,
+                logo_url: '/logos/s1.png',
+                series_year: 2020,
+              },
+              connections: [
+                {
+                  client_id: 'vod_124',
+                  user_id: '8',
+                  client_ip: '10.0.0.2',
+                  user_agent: 'Kodi',
+                  position_seconds: 600,
+                },
+              ],
+            },
+          ],
+        },
+        new Map([
+          ['7', { id: '7', username: 'Movie User', isAdmin: false }],
+          ['8', { id: '8', username: 'Episode User', isAdmin: false }],
+        ])
+      );
+
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]).toMatchObject({
+        sessionKey: 'vod_123',
+        mediaId: 'movie-uuid',
+        media: { type: 'movie', title: 'The Movie', durationMs: 5_400_000, year: 2021, thumbPath: '/logos/m1.png' },
+        playback: { positionMs: 1_200_000, state: 'playing' },
+        quality: { bitrate: 0, isTranscode: false, videoDecision: 'directplay', audioDecision: 'directplay' },
+      });
+      expect(sessions[1]).toMatchObject({
+        sessionKey: 'vod_124',
+        mediaId: 'episode-uuid',
+        media: { type: 'episode', title: 'Pilot', durationMs: 1_800_000, year: 2020 },
+        episode: { showTitle: 'Great Show', seasonNumber: 1, episodeNumber: 2, showThumbPath: '/logos/s1.png' },
+        network: { ipAddress: '10.0.0.2', isLocal: true },
+      });
+    });
+
+    it('filters vod sessions when user is unknown', () => {
+      const sessions = parseSessionsFromVodStats(
+        {
+          vod_connections: [
+            {
+              content_type: 'movie',
+              content_name: 'Movie',
+              content_uuid: 'movie-uuid',
+              connections: [{ client_id: 'vod_1', user_id: '999' }],
+            },
+          ],
+        },
+        new Map([['7', { id: '7', username: 'Known User', isAdmin: false }]])
+      );
+
+      expect(sessions).toHaveLength(0);
     });
   });
 });

@@ -4,8 +4,11 @@ import { DispatcharrClient } from './client.js';
 import type { MediaSession, MediaUser } from '../types.js';
 import {
   parseRealtimeChannelStatsPayload,
+  parseRealtimeVodStatsPayload,
+  parseSessionsFromVodStats,
   parseStatusResponse,
   type DispatcharrChannelStatus,
+  type DispatcharrVodStatsResponse,
   type NormalizedDispatcharrChannel,
 } from './parser.js';
 
@@ -64,11 +67,36 @@ function extractReferencedUserIds(channels: NormalizedDispatcharrChannel[]): str
   return [...ids];
 }
 
+function extractReferencedVodUserIds(stats: DispatcharrVodStatsResponse): string[] {
+  const ids = new Set<string>();
+  const groups = Array.isArray(stats.vod_connections) ? stats.vod_connections : [];
+
+  for (const rawGroup of groups) {
+    if (!isRecord(rawGroup)) continue;
+    const connections = Array.isArray(rawGroup.connections) ? rawGroup.connections : [];
+    for (const rawConnection of connections) {
+      if (!isRecord(rawConnection)) continue;
+      const rawUserId = rawConnection.user_id;
+      const userId =
+        typeof rawUserId === 'string'
+          ? rawUserId.trim()
+          : typeof rawUserId === 'number'
+            ? String(rawUserId)
+            : '';
+      if (!userId || userId === '0') continue;
+      ids.add(userId);
+    }
+  }
+
+  return [...ids];
+}
+
 export class DispatcharrRealtimeConnector extends EventEmitter {
   private readonly serverId: string;
   private readonly serverName: string;
   private readonly baseUrl: string;
   private readonly client: DispatcharrClient;
+  private readonly ignoreAnonymousStreams: boolean;
 
   private ws: WebSocketLike | null = null;
   private manualDisconnect = false;
@@ -85,6 +113,8 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private lastBootstrapAt: Date | null = null;
 
   private latestSessions: MediaSession[] = [];
+  private latestLiveSessions: MediaSession[] = [];
+  private latestVodSessions: MediaSession[] = [];
   private userCache = new Map<string, MediaUser>();
   private logoCache = new Map<string, string>();
   private programCache = new Map<string, string>();
@@ -101,12 +131,13 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.serverId = config.serverId;
     this.serverName = config.serverName;
     this.baseUrl = config.url.replace(/\/$/, '');
+    this.ignoreAnonymousStreams = config.ignoreAnonymousStreams !== false;
     this.client = new DispatcharrClient({
       id: config.serverId,
       name: config.serverName,
       url: config.url,
       token: config.token,
-      ignoreAnonymousStreams: config.ignoreAnonymousStreams,
+      ignoreAnonymousStreams: this.ignoreAnonymousStreams,
     });
 
     const tokenMode = this.client.getTokenMode();
@@ -245,19 +276,47 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     }
 
     const channelStatsPayload = parseRealtimeChannelStatsPayload(parsed);
-    if (!channelStatsPayload) return;
+    if (channelStatsPayload) {
+      this.lastEventAt = new Date();
+      this.resetHeartbeat();
+
+      const statusChannels = parseStatusResponse(channelStatsPayload);
+      await this.applyLiveStatusUpdate(statusChannels);
+      return;
+    }
+
+    const vodStatsPayload = parseRealtimeVodStatsPayload(parsed);
+    if (!vodStatsPayload) return;
 
     this.lastEventAt = new Date();
     this.resetHeartbeat();
-
-    const statusChannels = parseStatusResponse(channelStatsPayload);
-    await this.applyStatusUpdate(statusChannels);
+    await this.applyVodStatsUpdate(vodStatsPayload);
   }
 
   private async bootstrapFromRest(): Promise<void> {
     try {
-      const statusChannels = await this.client.getStatusSnapshot();
-      await this.applyStatusUpdate(statusChannels, true);
+      const [statusResult, vodResult] = await Promise.allSettled([
+        this.client.getStatusSnapshot(),
+        this.client.getVodStatsSnapshot(),
+      ]);
+
+      if (statusResult.status === 'fulfilled') {
+        await this.applyLiveStatusUpdate(statusResult.value, true, false);
+      } else {
+        this.lastError =
+          statusResult.reason instanceof Error
+            ? statusResult.reason
+            : new Error(String(statusResult.reason));
+      }
+
+      if (vodResult.status === 'fulfilled') {
+        await this.applyVodStatsUpdate(vodResult.value, true, false);
+      } else if (!this.lastError) {
+        this.lastError =
+          vodResult.reason instanceof Error ? vodResult.reason : new Error(String(vodResult.reason));
+      }
+
+      this.emitMergedSnapshot();
       this.lastBootstrapAt = new Date();
       this.emitStatus();
     } catch (error) {
@@ -266,9 +325,10 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     }
   }
 
-  private async applyStatusUpdate(
+  private async applyLiveStatusUpdate(
     statusChannels: DispatcharrChannelStatus[],
-    forceEnrichment = false
+    forceEnrichment = false,
+    emitSnapshot = true
   ): Promise<void> {
     const normalizedChannels = await this.client.buildNormalizedChannelsFromStatus(
       statusChannels,
@@ -283,11 +343,36 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       channel.currentProgramTitle = this.programCache.get(channel.channelId);
     }
 
-    this.latestSessions = this.client.buildSessionsFromNormalizedChannels(
+    this.latestLiveSessions = this.client.buildSessionsFromNormalizedChannels(
       normalizedChannels,
       this.userCache,
       this.logoCache
     );
+    if (emitSnapshot) this.emitMergedSnapshot();
+    else this.emitStatus();
+  }
+
+  private async applyVodStatsUpdate(
+    vodStats: DispatcharrVodStatsResponse,
+    forceUserRefresh = false,
+    emitSnapshot = true
+  ): Promise<void> {
+    const referencedUserIds = extractReferencedVodUserIds(vodStats);
+    const missingUsers = referencedUserIds.filter((id) => !this.userCache.has(id));
+    if (forceUserRefresh || this.userCache.size === 0 || missingUsers.length > 0) {
+      this.userCache = await this.client.getUserMap();
+    }
+
+    this.latestVodSessions = parseSessionsFromVodStats(vodStats, this.userCache, {
+      ignoreAnonymousStreams: this.ignoreAnonymousStreams,
+    });
+
+    if (emitSnapshot) this.emitMergedSnapshot();
+    else this.emitStatus();
+  }
+
+  private emitMergedSnapshot(): void {
+    this.latestSessions = [...this.latestLiveSessions, ...this.latestVodSessions];
     this.emit('snapshot:update', { serverId: this.serverId, sessions: this.latestSessions });
     this.emitStatus();
   }

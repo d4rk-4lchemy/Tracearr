@@ -9,11 +9,14 @@ import type {
 } from '../types.js';
 import {
   normalizeDispatcharrChannel,
+  parseSessionsFromVodStats,
   parseChannelClients,
+  parseVodStatsResponse,
   parseSessionsFromChannels,
   parseStatusResponse,
   parseUsersResponse,
   type DispatcharrChannelStatus,
+  type DispatcharrVodStatsResponse,
   type NormalizedDispatcharrChannel,
 } from './parser.js';
 
@@ -129,13 +132,21 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   async getSessions(): Promise<MediaSession[]> {
-    const status = await this.getStatusSnapshot();
-    return this.buildSessionsFromStatusSnapshot(status);
+    const [status, vodStats] = await Promise.all([this.getStatusSnapshot(), this.getVodStatsSnapshot()]);
+    const userById = await this.getUserMap();
+    const [liveSessions, vodSessions] = await Promise.all([
+      this.buildSessionsFromStatusSnapshot(status, userById),
+      this.buildSessionsFromVodStatsSnapshot(vodStats, userById),
+    ]);
+    return [...liveSessions, ...vodSessions];
   }
 
-  async buildSessionsFromStatusSnapshot(status: DispatcharrChannelStatus[]): Promise<MediaSession[]> {
+  async buildSessionsFromStatusSnapshot(
+    status: DispatcharrChannelStatus[],
+    userById?: Map<string, MediaUser>
+  ): Promise<MediaSession[]> {
     const normalizedChannels = await this.buildNormalizedChannelsFromStatus(status);
-    const userById = await this.getUserMap();
+    const resolvedUserMap = userById ?? (await this.getUserMap());
     const [logoPathByChannelId, currentProgramByChannelId] = await Promise.all([
       this.getLogoPathByChannelId(normalizedChannels.map((channel) => channel.channelId)),
       this.getCurrentProgramByChannelId(normalizedChannels.map((channel) => channel.channelId)),
@@ -145,7 +156,11 @@ export class DispatcharrClient implements IMediaServerClient {
       channel.currentProgramTitle = currentProgramByChannelId.get(channel.channelId);
     }
 
-    return this.buildSessionsFromNormalizedChannels(normalizedChannels, userById, logoPathByChannelId);
+    return this.buildSessionsFromNormalizedChannels(
+      normalizedChannels,
+      resolvedUserMap,
+      logoPathByChannelId
+    );
   }
 
   async buildNormalizedChannelsFromStatus(
@@ -236,23 +251,44 @@ export class DispatcharrClient implements IMediaServerClient {
 
   async terminateSession(sessionId: string): Promise<boolean> {
     const separator = sessionId.indexOf(':');
-    if (separator <= 0 || separator === sessionId.length - 1) {
-      throw new Error('Dispatcharr session id must be in channel_id:client_id format');
+    if (separator > 0 && separator < sessionId.length - 1) {
+      const channelId = sessionId.slice(0, separator);
+      const clientId = sessionId.slice(separator + 1);
+      const response = await fetch(
+        `${this.baseUrl}/proxy/ts/stop_client/${encodeURIComponent(channelId)}`,
+        {
+          method: 'POST',
+          headers: {
+            ...(await this.buildHeaders()),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ client_id: clientId }),
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 404) throw new Error('Session not found (may have already ended)');
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Unauthorized to terminate Dispatcharr session');
+        }
+        throw new Error(
+          `Failed to terminate Dispatcharr session: ${response.status} ${response.statusText}`
+        );
+      }
+
+      return true;
     }
 
-    const channelId = sessionId.slice(0, separator);
-    const clientId = sessionId.slice(separator + 1);
-    const response = await fetch(
-      `${this.baseUrl}/proxy/ts/stop_client/${encodeURIComponent(channelId)}`,
-      {
-        method: 'POST',
-        headers: {
-          ...(await this.buildHeaders()),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ client_id: clientId }),
-      }
-    );
+    const clientId = sessionId.trim();
+    if (!clientId) throw new Error('Dispatcharr session id must not be empty');
+    const response = await fetch(`${this.baseUrl}/proxy/vod/stop_client/`, {
+      method: 'POST',
+      headers: {
+        ...(await this.buildHeaders()),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ client_id: clientId }),
+    });
 
     if (!response.ok) {
       if (response.status === 404) throw new Error('Session not found (may have already ended)');
@@ -293,6 +329,26 @@ export class DispatcharrClient implements IMediaServerClient {
       timeout: 10000,
     });
     return parseStatusResponse(data);
+  }
+
+  async getVodStatsSnapshot(): Promise<DispatcharrVodStatsResponse> {
+    const data = await fetchJson<unknown>(`${this.baseUrl}/proxy/vod/stats/`, {
+      headers: await this.buildHeaders(),
+      service: 'dispatcharr',
+      timeout: 10000,
+    });
+
+    return parseVodStatsResponse(data);
+  }
+
+  async buildSessionsFromVodStatsSnapshot(
+    stats: DispatcharrVodStatsResponse,
+    userById?: Map<string, MediaUser>
+  ): Promise<MediaSession[]> {
+    const resolvedUserMap = userById ?? (await this.getUserMap());
+    return parseSessionsFromVodStats(stats, resolvedUserMap, {
+      ignoreAnonymousStreams: this.ignoreAnonymousStreams,
+    });
   }
 
   async getChannelStatus(channelId: string): Promise<DispatcharrChannelStatus | null> {

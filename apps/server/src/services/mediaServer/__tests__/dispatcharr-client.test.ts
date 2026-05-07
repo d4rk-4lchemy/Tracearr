@@ -34,6 +34,27 @@ describe('DispatcharrClient', () => {
           ],
         });
       }
+      if (url.endsWith('/proxy/vod/stats/')) {
+        return jsonResponse({
+          vod_connections: [
+            {
+              content_type: 'movie',
+              content_name: 'VOD Movie',
+              content_uuid: 'movie-1',
+              content_metadata: { duration_secs: 7200, year: 2022, logo_url: '/logos/movie-1.png' },
+              connections: [
+                {
+                  client_id: 'vod_1',
+                  user_id: '7',
+                  client_ip: '203.0.113.50',
+                  user_agent: 'VLC',
+                  position_seconds: 50,
+                },
+              ],
+            },
+          ],
+        });
+      }
       if (url.endsWith('/proxy/ts/status/channel-1')) {
         return jsonResponse({
           channel_id: 'channel-1',
@@ -75,8 +96,8 @@ describe('DispatcharrClient', () => {
     const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
     const sessions = await client.getSessions();
 
-    expect(fetchMock).toHaveBeenCalledTimes(6);
-    expect(sessions).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(sessions).toHaveLength(2);
     expect(sessions[0]?.sessionKey).toBe('channel-1:client-1');
     expect(sessions[0]?.user.username).toBe('Valid User');
     expect(sessions[0]?.media.title).toBe('Morning News');
@@ -84,6 +105,11 @@ describe('DispatcharrClient', () => {
     expect(sessions[0]?.live?.channelThumb).toBe(
       'http://dispatcharr.local/api/channels/logos/logo-123/cache/'
     );
+    expect(sessions[1]).toMatchObject({
+      sessionKey: 'vod_1',
+      mediaId: 'movie-1',
+      media: { type: 'movie', title: 'VOD Movie', year: 2022 },
+    });
   });
 
   it('includes anonymous sessions and users when ignoreAnonymousStreams is disabled', async () => {
@@ -101,6 +127,19 @@ describe('DispatcharrClient', () => {
       if (url.endsWith('/proxy/ts/status')) {
         return jsonResponse({
           channels: [{ channel_id: 'channel-1', channel_name: 'News 24', client_count: 3 }],
+        });
+      }
+      if (url.endsWith('/proxy/vod/stats/')) {
+        return jsonResponse({
+          vod_connections: [
+            {
+              content_type: 'movie',
+              content_name: 'Anon VOD',
+              content_uuid: 'movie-2',
+              content_metadata: { duration_secs: 3600 },
+              connections: [{ client_id: 'vod_anon', user_id: '0', client_ip: '198.51.100.90' }],
+            },
+          ],
         });
       }
       if (url.endsWith('/proxy/ts/status/channel-1')) {
@@ -131,12 +170,13 @@ describe('DispatcharrClient', () => {
 
     const [users, sessions] = await Promise.all([client.getUsers(), client.getSessions()]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
     expect(users.map((user) => user.username)).toEqual(['Valid User', 'Anonymouse']);
-    expect(sessions).toHaveLength(3);
+    expect(sessions).toHaveLength(4);
     expect(sessions.map((session) => session.user.username)).toEqual([
       'Valid User',
       'Anonymouse',
+      'Anonymous',
       'Anonymous',
     ]);
   });
@@ -178,7 +218,7 @@ describe('DispatcharrClient', () => {
     await client.getUsers();
   });
 
-  it('terminates sessions using stop_client endpoint', async () => {
+  it('terminates live sessions using ts stop_client endpoint', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(jsonResponse({ success: true }));
@@ -190,6 +230,22 @@ describe('DispatcharrClient', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ client_id: 'client-1' }),
+      })
+    );
+  });
+
+  it('terminates vod sessions using vod stop_client endpoint', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(jsonResponse({ success: true }));
+    const client = new DispatcharrClient({ url: 'http://dispatcharr.local', token: 'api-key' });
+
+    await expect(client.terminateSession('vod_123')).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://dispatcharr.local/proxy/vod/stop_client/',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ client_id: 'vod_123' }),
       })
     );
   });

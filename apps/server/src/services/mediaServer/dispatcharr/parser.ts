@@ -50,6 +50,33 @@ export interface DispatcharrStatusResponse {
   count?: unknown;
 }
 
+export interface DispatcharrVodStatsResponse {
+  vod_connections?: unknown;
+  total_connections?: unknown;
+  timestamp?: unknown;
+}
+
+export interface DispatcharrVodConnectionGroup {
+  content_type?: unknown;
+  content_name?: unknown;
+  content_uuid?: unknown;
+  content_metadata?: unknown;
+  connection_count?: unknown;
+  connections?: unknown;
+}
+
+export interface DispatcharrVodConnection {
+  content_type?: unknown;
+  content_name?: unknown;
+  content_uuid?: unknown;
+  content_metadata?: unknown;
+  client_id?: unknown;
+  client_ip?: unknown;
+  user_id?: unknown;
+  user_agent?: unknown;
+  position_seconds?: unknown;
+}
+
 export interface DispatcharrChannelStatsRealtimeEnvelope {
   type?: unknown;
   data?: unknown;
@@ -202,6 +229,72 @@ export function parseRealtimeChannelStatsPayload(
   return record as DispatcharrStatusResponse;
 }
 
+export function parseRealtimeVodStatsPayload(raw: unknown): DispatcharrVodStatsResponse | null {
+  const envelope = asRecord(raw);
+  if (!envelope) return null;
+
+  const data = asRecord(envelope.data) ?? envelope;
+  const eventType = asString(data.type).trim();
+  if (eventType !== 'vod_stats') return null;
+
+  const rawStats = data.stats;
+  if (typeof rawStats === 'string') {
+    try {
+      const parsed = JSON.parse(rawStats) as unknown;
+      const record = asRecord(parsed);
+      if (!record) return null;
+      return record as DispatcharrVodStatsResponse;
+    } catch {
+      return null;
+    }
+  }
+
+  const record = asRecord(rawStats);
+  if (!record) return null;
+  return record as DispatcharrVodStatsResponse;
+}
+
+export function parseVodStatsResponse(raw: unknown): DispatcharrVodStatsResponse {
+  const record = asRecord(raw);
+  if (!record) return { vod_connections: [] };
+
+  return {
+    vod_connections: Array.isArray(record.vod_connections) ? record.vod_connections : [],
+    total_connections: record.total_connections,
+    timestamp: record.timestamp,
+  };
+}
+
+function flattenVodConnections(raw: unknown): DispatcharrVodConnection[] {
+  const stats = parseVodStatsResponse(raw);
+  const groups = Array.isArray(stats.vod_connections) ? stats.vod_connections : [];
+  const flattened: DispatcharrVodConnection[] = [];
+
+  for (const rawGroup of groups) {
+    const group = asRecord(rawGroup) as DispatcharrVodConnectionGroup | null;
+    if (!group) continue;
+    const groupConnections = Array.isArray(group.connections) ? group.connections : [];
+
+    for (const rawConnection of groupConnections) {
+      const connection = asRecord(rawConnection);
+      if (!connection) continue;
+      flattened.push({
+        content_type: connection.content_type ?? group.content_type,
+        content_name: connection.content_name ?? group.content_name,
+        content_uuid: connection.content_uuid ?? group.content_uuid,
+        content_metadata: connection.content_metadata ?? group.content_metadata,
+        client_id: connection.client_id,
+        client_ip: connection.client_ip,
+        user_id: connection.user_id,
+        user_agent: connection.user_agent,
+        position_seconds: connection.position_seconds,
+      });
+    }
+  }
+
+  return flattened;
+}
+
 export function parseChannelClients(raw: unknown): DispatcharrClientStatus[] {
   const channel = asRecord(raw);
   const clients = Array.isArray(channel?.clients) ? channel.clients : [];
@@ -286,6 +379,105 @@ function parseConnectedAtElapsedMs(connectedAt: unknown, nowMs: number): number 
   if (!Number.isFinite(connectedAtMs)) return 0;
 
   return Math.max(0, nowMs - connectedAtMs);
+}
+
+export function parseSessionsFromVodStats(
+  raw: unknown,
+  userById: Map<string, MediaUser>,
+  options?: DispatcharrParserOptions
+): MediaSession[] {
+  const sessions: MediaSession[] = [];
+  const ignoreAnonymousStreams = options?.ignoreAnonymousStreams !== false;
+
+  for (const connection of flattenVodConnections(raw)) {
+    const clientId = asString(connection.client_id).trim();
+    const userId = asString(connection.user_id).trim();
+    const mediaId = asString(connection.content_uuid).trim();
+    const rawType = asString(connection.content_type).trim().toLowerCase();
+    const mediaType = rawType === 'movie' || rawType === 'episode' ? rawType : 'unknown';
+    if (!clientId || !userId || !mediaId || (mediaType !== 'movie' && mediaType !== 'episode')) {
+      continue;
+    }
+
+    const fallbackAnonymousUser =
+      !ignoreAnonymousStreams && userId === '0'
+        ? ({
+            id: userId,
+            username: 'Anonymous',
+            isAdmin: false,
+          } as MediaUser)
+        : null;
+    const user = userById.get(userId) ?? fallbackAnonymousUser;
+    if (!user) continue;
+    if (shouldIgnoreAnonymousDispatcharrUser(user.username, options)) continue;
+
+    const metadata = asRecord(connection.content_metadata);
+    const durationMs = Math.max(0, Math.round(asNumber(metadata?.duration_secs) * 1000));
+    const positionMs = Math.max(0, Math.round(asNumber(connection.position_seconds) * 1000));
+    const mediaTitle =
+      mediaType === 'episode'
+        ? asString(metadata?.episode_name).trim() || asString(connection.content_name).trim()
+        : asString(connection.content_name).trim();
+    if (!mediaTitle) continue;
+
+    const logoUrl = asOptionalString(metadata?.logo_url);
+    const ipAddress = asString(connection.client_ip).trim() || '0.0.0.0';
+    const userAgent = asOptionalString(connection.user_agent);
+    const yearValue =
+      mediaType === 'movie' ? asNumber(metadata?.year) : asNumber(metadata?.series_year);
+    const year = yearValue > 0 ? Math.round(yearValue) : undefined;
+    const seasonValue = Math.round(asNumber(metadata?.season_number));
+    const episodeValue = Math.round(asNumber(metadata?.episode_number));
+
+    sessions.push({
+      sessionKey: clientId,
+      mediaId,
+      user: {
+        id: user.id,
+        username: user.username,
+        thumb: user.thumb,
+      },
+      media: {
+        title: mediaTitle,
+        type: mediaType,
+        durationMs,
+        year,
+        thumbPath: logoUrl,
+      },
+      episode:
+        mediaType === 'episode'
+          ? {
+              showTitle: asString(metadata?.series_name).trim() || 'Unknown Series',
+              seasonNumber: seasonValue > 0 ? seasonValue : 0,
+              episodeNumber: episodeValue > 0 ? episodeValue : 0,
+              showThumbPath: logoUrl,
+            }
+          : undefined,
+      playback: {
+        state: 'playing',
+        positionMs,
+        progressPercent: durationMs > 0 ? Math.min(100, Math.round((positionMs / durationMs) * 100)) : 0,
+      },
+      player: {
+        name: userAgent ?? 'Dispatcharr VOD Client',
+        deviceId: clientId,
+        product: userAgent,
+        platform: 'Dispatcharr',
+      },
+      network: {
+        ipAddress,
+        isLocal: isPrivateIp(ipAddress),
+      },
+      quality: {
+        bitrate: 0,
+        isTranscode: false,
+        videoDecision: 'directplay',
+        audioDecision: 'directplay',
+      },
+    });
+  }
+
+  return sessions;
 }
 
 export function normalizeDispatcharrChannel(
