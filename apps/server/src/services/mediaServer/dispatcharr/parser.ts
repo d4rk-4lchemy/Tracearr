@@ -21,8 +21,11 @@ export interface DispatcharrChannelStatus {
   client_count?: unknown;
   clients?: unknown;
   avg_bitrate_kbps?: unknown;
+  avg_bitrate?: unknown;
   video_codec?: unknown;
   audio_codec?: unknown;
+  audio_channels?: unknown;
+  source_fps?: unknown;
   resolution?: unknown;
 }
 
@@ -36,6 +39,8 @@ export interface NormalizedDispatcharrChannel {
   avgBitrateKbps?: number;
   videoCodec?: string;
   audioCodec?: string;
+  audioChannels?: number;
+  sourceFps?: string;
   resolution?: string;
   clients: DispatcharrClientStatus[];
 }
@@ -232,9 +237,15 @@ export function normalizeDispatcharrChannel(
       asOptionalString(base.stream_profile) ?? asOptionalString(detail?.stream_profile),
     state: asOptionalString(base.state) ?? asOptionalString(detail?.state),
     avgBitrateKbps:
-      asOptionalNumber(base.avg_bitrate_kbps) ?? asOptionalNumber(detail?.avg_bitrate_kbps),
+      asOptionalNumber(base.avg_bitrate_kbps) ??
+      asOptionalNumber(detail?.avg_bitrate_kbps) ??
+      asOptionalNumber(base.avg_bitrate) ??
+      asOptionalNumber(detail?.avg_bitrate),
     videoCodec: asOptionalString(base.video_codec) ?? asOptionalString(detail?.video_codec),
     audioCodec: asOptionalString(base.audio_codec) ?? asOptionalString(detail?.audio_codec),
+    audioChannels:
+      asOptionalNumber(base.audio_channels) ?? asOptionalNumber(detail?.audio_channels),
+    sourceFps: asOptionalString(base.source_fps) ?? asOptionalString(detail?.source_fps),
     resolution: asOptionalString(base.resolution) ?? asOptionalString(detail?.resolution),
     clients: mergeClients(parseChannelClients(detail), parseChannelClients(base)),
   };
@@ -313,6 +324,15 @@ export function parseSessionsFromChannels(
           videoHeight: resolution.height,
           sourceVideoCodec: channel.videoCodec,
           sourceAudioCodec: channel.audioCodec,
+          sourceAudioChannels: channel.audioChannels,
+          sourceVideoDetails: channel.sourceFps
+            ? {
+                framerate: channel.sourceFps,
+                ...(bitrate > 0 ? { bitrate } : {}),
+              }
+            : bitrate > 0
+              ? { bitrate }
+              : undefined,
         },
       });
     }

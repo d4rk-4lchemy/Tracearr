@@ -6,7 +6,7 @@ import { BASE_URL } from '@/lib/basePath';
 import type { ServerType } from '@tracearr/shared';
 
 interface MediaServerIconProps {
-  /** Server type: 'plex', 'jellyfin', or 'emby' */
+  /** Server type: 'plex', 'jellyfin', 'emby', or 'dispatcharr' */
   type: ServerType;
   /** CSS class name for sizing (e.g., "h-4 w-4") */
   className?: string;
@@ -40,6 +40,8 @@ function getIconPath(type: ServerType): string | null {
       return `${base}images/servers/jellyfin.png`;
     case 'emby':
       return `${base}images/servers/emby.png`;
+    case 'dispatcharr':
+      return `${base}images/servers/dispatcharr.png`;
     default:
       return null;
   }

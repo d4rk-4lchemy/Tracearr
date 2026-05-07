@@ -67,6 +67,8 @@ describe('Dispatcharr parser', () => {
             state: 'active',
             client_count: 2,
             avg_bitrate_kbps: 4500,
+            source_fps: '50',
+            audio_channels: 2,
             resolution: '1080p',
             clients: [
               {
@@ -104,8 +106,29 @@ describe('Dispatcharr parser', () => {
         media: { title: 'News HD', type: 'live' },
         live: { channelTitle: 'News HD', channelIdentifier: 'channel-1' },
         player: { deviceId: 'client-1', product: 'TiviMate' },
-        quality: { bitrate: 4500, videoResolution: '1080p' },
+        quality: {
+          bitrate: 4500,
+          videoResolution: '1080p',
+          sourceAudioChannels: 2,
+          sourceVideoDetails: { framerate: '50', bitrate: 4500 },
+        },
       });
+    });
+
+    it('maps avg_bitrate fallback when avg_bitrate_kbps is missing', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'News HD',
+        avg_bitrate: 3200,
+        clients: [{ client_id: 'client-1', user_id: '7' }],
+      });
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.quality.bitrate).toBe(3200);
+      expect(sessions[0]?.quality.sourceVideoDetails?.bitrate).toBe(3200);
     });
 
     it('skips sessions whose mapped user is anonymous', () => {
