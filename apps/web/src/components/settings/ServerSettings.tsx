@@ -731,8 +731,8 @@ export function ServerSettings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="credentials">Username + Password</SelectItem>
-                        <SelectItem value="token">API Key / JWT Token</SelectItem>
+                        <SelectItem value="credentials">Username + Password (for WebSocket)</SelectItem>
+                        <SelectItem value="token">API Key</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
