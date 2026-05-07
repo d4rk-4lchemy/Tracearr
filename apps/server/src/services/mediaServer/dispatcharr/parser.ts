@@ -395,11 +395,8 @@ export function parseSessionsFromChannels(
           sourceVideoDetails: channel.sourceFps
             ? {
                 framerate: channel.sourceFps,
-                ...(bitrate > 0 ? { bitrate } : {}),
               }
-            : bitrate > 0
-              ? { bitrate }
-              : undefined,
+            : undefined,
         },
       });
     }

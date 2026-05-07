@@ -257,6 +257,7 @@ export function StreamDetailsPanel({
   const transcodeReasons = transcodeInfo?.reasons ?? [];
   const videoTranscodeReasons = filterTranscodeReasons(transcodeReasons, 'video');
   const audioTranscodeReasons = filterTranscodeReasons(transcodeReasons, 'audio');
+  const showUnavailableBitrateTooltip = serverType === 'jellyfin' || serverType === 'emby';
 
   return (
     <div className="space-y-3">
@@ -318,7 +319,7 @@ export function StreamDetailsPanel({
                   // Show N/A with tooltip for Jellyfin/Emby transcodes without stream bitrate
                   videoDecision === 'transcode' &&
                   !streamVideoDetails?.bitrate &&
-                  serverType !== 'plex' ? (
+                  showUnavailableBitrateTooltip ? (
                     <UnavailableBitrate />
                   ) : (
                     formatBitrate(streamVideoDetails?.bitrate ?? sourceVideoDetails?.bitrate)
@@ -403,7 +404,7 @@ export function StreamDetailsPanel({
                 // Show N/A with tooltip for Jellyfin/Emby transcodes without stream bitrate
                 audioDecision === 'transcode' &&
                 !streamAudioDetails?.bitrate &&
-                serverType !== 'plex' ? (
+                showUnavailableBitrateTooltip ? (
                   <UnavailableBitrate />
                 ) : (
                   formatBitrate(streamAudioDetails?.bitrate ?? sourceAudioDetails?.bitrate)

@@ -128,7 +128,7 @@ describe('Dispatcharr parser', () => {
           bitrate: 4500,
           videoResolution: '1080p',
           sourceAudioChannels: 2,
-          sourceVideoDetails: { framerate: '50', bitrate: 4500 },
+          sourceVideoDetails: { framerate: '50' },
         },
       });
     });
@@ -146,7 +146,7 @@ describe('Dispatcharr parser', () => {
       );
 
       expect(sessions[0]?.quality.bitrate).toBe(3200);
-      expect(sessions[0]?.quality.sourceVideoDetails?.bitrate).toBe(3200);
+      expect(sessions[0]?.quality.sourceVideoDetails?.bitrate).toBeUndefined();
     });
 
     it('maps string audio_channels value "stereo" to 2 channels', () => {
