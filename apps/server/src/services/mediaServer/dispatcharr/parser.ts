@@ -1,5 +1,6 @@
 import type { MediaSession, MediaUser } from '../types.js';
 import { normalizeResolution } from '../../../utils/resolutionNormalizer.js';
+import { calculateProgress } from '../shared/parserUtils.js';
 
 export interface DispatcharrClientStatus {
   client_id?: unknown;
@@ -75,6 +76,11 @@ export interface DispatcharrVodConnection {
   user_id?: unknown;
   user_agent?: unknown;
   position_seconds?: unknown;
+  last_known_position?: unknown;
+  duration?: unknown;
+  last_seek_byte?: unknown;
+  total_content_size?: unknown;
+  last_seek_percentage?: unknown;
 }
 
 export interface DispatcharrChannelStatsRealtimeEnvelope {
@@ -288,6 +294,11 @@ function flattenVodConnections(raw: unknown): DispatcharrVodConnection[] {
         user_id: connection.user_id,
         user_agent: connection.user_agent,
         position_seconds: connection.position_seconds,
+        last_known_position: connection.last_known_position,
+        duration: connection.duration,
+        last_seek_byte: connection.last_seek_byte,
+        total_content_size: connection.total_content_size,
+        last_seek_percentage: connection.last_seek_percentage,
       });
     }
   }
@@ -381,6 +392,40 @@ function parseConnectedAtElapsedMs(connectedAt: unknown, nowMs: number): number 
   return Math.max(0, nowMs - connectedAtMs);
 }
 
+function estimateVodPositionSeconds(
+  connection: DispatcharrVodConnection,
+  durationSeconds: number
+): number {
+  const clamp = (value: number): number => {
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    if (durationSeconds > 0) return Math.min(durationSeconds, Math.floor(value));
+    return Math.floor(value);
+  };
+
+  const positionSeconds = asNumber(connection.position_seconds);
+  if (positionSeconds > 0) return clamp(positionSeconds);
+
+  const lastKnownPosition = asNumber(connection.last_known_position);
+  if (lastKnownPosition > 0) return clamp(lastKnownPosition);
+
+  const lastSeekByte = asNumber(connection.last_seek_byte);
+  const totalContentSize = asNumber(connection.total_content_size);
+  if (lastSeekByte > 0 && totalContentSize > 0 && durationSeconds > 0) {
+    return clamp((lastSeekByte / totalContentSize) * durationSeconds);
+  }
+
+  const rawSeekPercent = asNumber(connection.last_seek_percentage);
+  if (rawSeekPercent > 0 && durationSeconds > 0) {
+    const normalizedSeekRatio = rawSeekPercent > 1 ? rawSeekPercent / 100 : rawSeekPercent;
+    return clamp(normalizedSeekRatio * durationSeconds);
+  }
+
+  const sessionDurationSeconds = asNumber(connection.duration);
+  if (sessionDurationSeconds > 0) return clamp(sessionDurationSeconds);
+
+  return 0;
+}
+
 export function parseSessionsFromVodStats(
   raw: unknown,
   userById: Map<string, MediaUser>,
@@ -412,8 +457,10 @@ export function parseSessionsFromVodStats(
     if (shouldIgnoreAnonymousDispatcharrUser(user.username, options)) continue;
 
     const metadata = asRecord(connection.content_metadata);
-    const durationMs = Math.max(0, Math.round(asNumber(metadata?.duration_secs) * 1000));
-    const positionMs = Math.max(0, Math.round(asNumber(connection.position_seconds) * 1000));
+    const durationSeconds = Math.max(0, Math.round(asNumber(metadata?.duration_secs)));
+    const durationMs = durationSeconds * 1000;
+    const positionSeconds = estimateVodPositionSeconds(connection, durationSeconds);
+    const positionMs = Math.max(0, Math.round(positionSeconds * 1000));
     const mediaTitle =
       mediaType === 'episode'
         ? asString(metadata?.episode_name).trim() || asString(connection.content_name).trim()
@@ -456,7 +503,7 @@ export function parseSessionsFromVodStats(
       playback: {
         state: 'playing',
         positionMs,
-        progressPercent: durationMs > 0 ? Math.min(100, Math.round((positionMs / durationMs) * 100)) : 0,
+        progressPercent: calculateProgress(positionMs, durationMs),
       },
       player: {
         name: userAgent ?? 'Dispatcharr VOD Client',

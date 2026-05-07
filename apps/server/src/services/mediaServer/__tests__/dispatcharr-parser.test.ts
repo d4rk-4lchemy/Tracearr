@@ -503,5 +503,122 @@ describe('Dispatcharr parser', () => {
 
       expect(sessions).toHaveLength(0);
     });
+
+    it('falls back to last_known_position when position_seconds is zero', () => {
+      const sessions = parseSessionsFromVodStats(
+        {
+          vod_connections: [
+            {
+              content_type: 'episode',
+              content_name: 'Episode',
+              content_uuid: 'ep-1',
+              content_metadata: { duration_secs: 3600, episode_name: 'Episode 1', series_name: 'Show' },
+              connections: [
+                {
+                  client_id: 'vod_last_known',
+                  user_id: '7',
+                  position_seconds: 0,
+                  last_known_position: 3000,
+                },
+              ],
+            },
+          ],
+        },
+        new Map([['7', { id: '7', username: 'Known User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.playback.positionMs).toBe(3_000_000);
+      expect(sessions[0]?.playback.progressPercent).toBe(83);
+    });
+
+    it('falls back to seek byte ratio when position fields are unavailable', () => {
+      const sessions = parseSessionsFromVodStats(
+        {
+          vod_connections: [
+            {
+              content_type: 'movie',
+              content_name: 'Movie',
+              content_uuid: 'movie-1',
+              content_metadata: { duration_secs: 6000 },
+              connections: [
+                {
+                  client_id: 'vod_seek_bytes',
+                  user_id: '7',
+                  position_seconds: 0,
+                  last_known_position: 0,
+                  last_seek_byte: 1_740_000_000,
+                  total_content_size: 3_480_000_000,
+                },
+              ],
+            },
+          ],
+        },
+        new Map([['7', { id: '7', username: 'Known User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.playback.positionMs).toBe(3_000_000);
+      expect(sessions[0]?.playback.progressPercent).toBe(50);
+    });
+
+    it('falls back to seek percentage and handles both 0..100 and 0..1 scales', () => {
+      const percentSessions = parseSessionsFromVodStats(
+        {
+          vod_connections: [
+            {
+              content_type: 'movie',
+              content_name: 'Movie',
+              content_uuid: 'movie-1',
+              content_metadata: { duration_secs: 4000 },
+              connections: [
+                {
+                  client_id: 'vod_seek_percent_100',
+                  user_id: '7',
+                  position_seconds: 0,
+                  last_seek_percentage: 25,
+                },
+                {
+                  client_id: 'vod_seek_percent_ratio',
+                  user_id: '7',
+                  position_seconds: 0,
+                  last_seek_percentage: 0.5,
+                },
+              ],
+            },
+          ],
+        },
+        new Map([['7', { id: '7', username: 'Known User', isAdmin: false }]])
+      );
+
+      expect(percentSessions[0]?.playback.positionMs).toBe(1_000_000);
+      expect(percentSessions[1]?.playback.positionMs).toBe(2_000_000);
+    });
+
+    it('falls back to connection duration and clamps position to media duration', () => {
+      const sessions = parseSessionsFromVodStats(
+        {
+          vod_connections: [
+            {
+              content_type: 'movie',
+              content_name: 'Movie',
+              content_uuid: 'movie-1',
+              content_metadata: { duration_secs: 6000 },
+              connections: [
+                {
+                  client_id: 'vod_duration_fallback',
+                  user_id: '7',
+                  position_seconds: 0,
+                  last_known_position: 0,
+                  duration: 7000,
+                },
+              ],
+            },
+          ],
+        },
+        new Map([['7', { id: '7', username: 'Known User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.playback.positionMs).toBe(6_000_000);
+      expect(sessions[0]?.playback.progressPercent).toBe(100);
+    });
   });
 });
