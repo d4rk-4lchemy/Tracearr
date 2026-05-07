@@ -455,7 +455,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       server: {
         id: row.server_id,
         name: row.server_name,
-        type: row.server_type as 'plex' | 'jellyfin' | 'emby',
+        type: row.server_type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
       },
       sessionKey: row.session_key,
       state: row.state,
@@ -797,7 +797,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       server: {
         id: row.server_id,
         name: row.server_name,
-        type: row.server_type as 'plex' | 'jellyfin' | 'emby',
+        type: row.server_type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
       },
       sessionKey: row.session_key,
       state: row.state,
@@ -983,7 +983,12 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     // Check cache
     const cacheService = getCacheService();
     const filterScopeHash = buildCacheFingerprint(
-      { serverId, startDate: startDate?.toISOString(), endDate: endDate?.toISOString(), includeAllCountries },
+      {
+        serverId,
+        startDate: startDate?.toISOString(),
+        endDate: endDate?.toISOString(),
+        includeAllCountries,
+      },
       authUser.userId
     );
     if (cacheService) {
@@ -1196,7 +1201,11 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
 
       // Cache the result
       if (cacheService) {
-        void cacheService.setFilterOptions(authUser.userId, filterScopeHash, JSON.stringify(rulesResponse));
+        void cacheService.setFilterOptions(
+          authUser.userId,
+          filterScopeHash,
+          JSON.stringify(rulesResponse)
+        );
       }
 
       return rulesResponse;
@@ -1215,7 +1224,11 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
 
     // Cache the result
     if (cacheService) {
-      void cacheService.setFilterOptions(authUser.userId, filterScopeHash, JSON.stringify(response));
+      void cacheService.setFilterOptions(
+        authUser.userId,
+        filterScopeHash,
+        JSON.stringify(response)
+      );
     }
 
     return response;

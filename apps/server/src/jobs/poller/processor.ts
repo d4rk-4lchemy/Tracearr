@@ -106,7 +106,11 @@ async function handleFirstMisses(
     if (missedPollTracking.has(cachedKey)) continue; // Already in grace period
 
     const cachedActiveSession = activeSessions.find((s) => {
-      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as 'plex' | 'jellyfin' | 'emby';
+      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as
+        | 'plex'
+        | 'jellyfin'
+        | 'emby'
+        | 'dispatcharr';
       return (
         buildCompositeKey({
           serverType: sType,
@@ -240,13 +244,27 @@ async function processServerSessions(
   const { usePlexGeoip } = await getGeoIPSettings();
 
   try {
-    // Fetch sessions from server using unified adapter
     const client = createMediaServerClient({
       type: server.type,
       url: server.url,
       token: server.token,
+      ignoreAnonymousStreams: server.ignoreAnonymousStreams,
     });
-    const mediaSessions = await client.getSessions();
+
+    // Dispatcharr note:
+    // - WS path is great for Live TV snapshots and triggering polls.
+    // - VOD progress is not pushed continuously over WS (vod_stats is event-driven),
+    //   so we refresh VOD via REST each poll for accurate position and timely stop detection.
+    const mediaSessions =
+      server.type === 'dispatcharr' && sseManager.isDispatcharrRealtimeHealthy(server.id)
+        ? await (async () => {
+            const wsSessions = sseManager.getDispatcharrLatestSessions(server.id) ?? [];
+            const restSessions = await client.getSessions();
+            const liveFromWs = wsSessions.filter((session) => session.media.type === 'live');
+            const vodFromRest = restSessions.filter((session) => session.media.type !== 'live');
+            return [...liveFromWs, ...vodFromRest];
+          })()
+        : await client.getSessions();
     const processedSessions = mediaSessions.map((s) => mapMediaSession(s, server.type));
 
     // OPTIMIZATION: Early return if no active sessions from media server
@@ -1153,6 +1171,8 @@ async function processServerSessions(
  * - Plex servers with active SSE connections are skipped (handled by SSE)
  * - Plex servers in fallback mode are polled
  * - Jellyfin/Emby servers are always polled (no SSE support)
+ * - Dispatcharr servers are always processed, but healthy WS mode reads
+ *   sessions from in-memory realtime snapshot instead of REST status polling
  */
 async function pollServers(): Promise<void> {
   // Bail out if maintenance mode was activated while we were queued.
@@ -1508,42 +1528,61 @@ export async function triggerPoll(): Promise<void> {
  * Reconciliation poll for SSE-connected servers
  *
  * This is a lighter poll that runs periodically to catch any events
- * that might have been missed by SSE. Only polls Plex servers that
- * have active SSE connections (not in fallback mode).
+ * that might have been missed by realtime transport.
+ * - Plex: only servers with active SSE connections
+ * - Dispatcharr: servers in healthy WS mode
  *
  * Unlike the main poller, this processes results and updates the cache
  * to sync any sessions that SSE may have missed.
  */
 export async function triggerReconciliationPoll(): Promise<void> {
   try {
-    // Get all Plex servers with active SSE connections
+    // Get servers with active realtime connections
     const allServers = await db.select().from(servers);
-    const sseServers = allServers.filter(
-      (server) => server.type === 'plex' && !sseManager.isInFallback(server.id)
+    const realtimeServers = allServers.filter(
+      (server) =>
+        (server.type === 'plex' && !sseManager.isInFallback(server.id)) ||
+        (server.type === 'dispatcharr' && sseManager.isDispatcharrRealtimeHealthy(server.id))
     );
 
-    if (sseServers.length === 0) {
+    if (realtimeServers.length === 0) {
       return;
     }
 
     console.log(
-      `[Poller] Running reconciliation poll for ${sseServers.length} SSE-connected server(s)`
+      `[Poller] Running reconciliation poll for ${realtimeServers.length} realtime-connected server(s)`
     );
 
     // Get cached session keys from atomic SET-based cache
     const cachedSessions = cacheService ? await cacheService.getAllActiveSessions() : [];
-    const cachedSessionKeys = new Set(cachedSessions.map((s) => `${s.serverId}:${s.sessionKey}`));
+    const serverTypeMap = new Map(allServers.map((s) => [s.id, s.type]));
+    const cachedSessionKeys = new Set(
+      cachedSessions.map((s) => {
+        const sType = serverTypeMap.get(s.serverId);
+        if (sType && sType !== 'plex') {
+          return buildCompositeKey({
+            serverType: sType,
+            serverId: s.serverId,
+            externalUserId: s.serverUserId,
+            deviceId: s.deviceId ?? null,
+            ratingKey: s.ratingKey ?? null,
+            sessionKey: s.sessionKey,
+          });
+        }
+        return `${s.serverId}:${s.sessionKey}`;
+      })
+    );
 
     // Get active V2 rules
     const activeRulesV2 = await getActiveRulesV2();
 
-    // Collect results from all SSE servers
+    // Collect results from all realtime-connected servers
     const allNewSessions: ActiveSession[] = [];
     const allStoppedKeys: string[] = [];
     const allUpdatedSessions: ActiveSession[] = [];
 
-    // Process each SSE server and collect results
-    for (const server of sseServers) {
+    // Process each realtime-connected server and collect results
+    for (const server of realtimeServers) {
       const serverWithToken = server as ServerWithToken;
       const { newSessions, stoppedSessionKeys, updatedSessions } = await processServerSessions(
         serverWithToken,

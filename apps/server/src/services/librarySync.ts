@@ -110,6 +110,7 @@ export class LibrarySyncService {
       type: server.type,
       url: server.url,
       token: server.token,
+      ignoreAnonymousStreams: server.ignoreAnonymousStreams,
       id: server.id,
       name: server.name,
     });
@@ -1077,9 +1078,10 @@ export class LibrarySyncService {
   private async getServer(serverId: string): Promise<{
     id: string;
     name: string;
-    type: 'plex' | 'jellyfin' | 'emby';
+    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
     url: string;
     token: string;
+    ignoreAnonymousStreams: boolean;
   } | null> {
     const [server] = await db
       .select({
@@ -1088,6 +1090,7 @@ export class LibrarySyncService {
         type: servers.type,
         url: servers.url,
         token: servers.token,
+        ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
       })
       .from(servers)
       .where(eq(servers.id, serverId))

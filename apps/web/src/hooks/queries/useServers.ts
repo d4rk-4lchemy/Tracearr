@@ -24,7 +24,15 @@ export function useCreateServer() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { name: string; type: string; url: string; token: string }) =>
+    mutationFn: (data: {
+      name: string;
+      type: string;
+      url: string;
+      token?: string;
+      username?: string;
+      password?: string;
+      ignoreAnonymousStreams?: boolean;
+    }) =>
       api.servers.create(data),
     onSuccess: (_, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['servers', 'list'] });
@@ -66,14 +74,16 @@ export function useUpdateServer() {
       name,
       url,
       clientIdentifier,
+      ignoreAnonymousStreams,
       color,
     }: {
       id: string;
       name?: string;
       url?: string;
       clientIdentifier?: string;
+      ignoreAnonymousStreams?: boolean;
       color?: string | null;
-    }) => api.servers.update(id, { name, url, clientIdentifier, color }),
+    }) => api.servers.update(id, { name, url, clientIdentifier, ignoreAnonymousStreams, color }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['servers', 'list'] });
       void queryClient.invalidateQueries({ queryKey: ['plex', 'server-connections'] });

@@ -30,7 +30,7 @@ registry.registerComponent('securitySchemes', 'bearerAuth', {
 // Shared Enums (single source of truth)
 // ============================================================================
 
-const ServerTypeEnum = z.enum(['plex', 'jellyfin', 'emby']);
+const ServerTypeEnum = z.enum(['plex', 'jellyfin', 'emby', 'dispatcharr']);
 const MediaTypeEnum = z.enum(['movie', 'episode', 'track', 'live', 'photo', 'unknown']);
 const PlaybackStateEnum = z.enum(['playing', 'paused', 'stopped']);
 const SeverityEnum = z.enum(['low', 'warning', 'high']);
@@ -89,13 +89,10 @@ const MediaInfo = z.object({
     .string()
     .nullable()
     .openapi({ description: 'Artist name (music tracks only)', example: 'Pink Floyd' }),
-  albumName: z
-    .string()
-    .nullable()
-    .openapi({
-      description: 'Album name (music tracks only)',
-      example: 'The Dark Side of the Moon',
-    }),
+  albumName: z.string().nullable().openapi({
+    description: 'Album name (music tracks only)',
+    example: 'The Dark Side of the Moon',
+  }),
   trackNumber: z
     .number()
     .int()

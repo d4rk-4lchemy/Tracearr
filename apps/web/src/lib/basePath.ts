@@ -20,6 +20,9 @@ export function imageProxyUrl(
   height: number,
   fallback?: 'poster' | 'avatar'
 ): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
   const params = new URLSearchParams({
     server: serverId,
     url: path,

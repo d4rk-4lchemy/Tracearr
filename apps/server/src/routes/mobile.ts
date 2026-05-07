@@ -610,7 +610,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
       owner: { id: string; username: string };
       serverName: string;
       serverId: string;
-      serverType: 'plex' | 'jellyfin' | 'emby';
+      serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
       serverIds: string[];
       oldRefreshTokenHash?: string; // Track old hash for cleanup outside transaction
     };

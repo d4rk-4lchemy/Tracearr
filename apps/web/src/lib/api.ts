@@ -527,11 +527,24 @@ class ApiClient {
       const response = await this.request<{ data: Server[] }>('/servers');
       return response.data;
     },
-    create: (data: { name: string; type: string; url: string; token: string }) =>
-      this.request<Server>('/servers', { method: 'POST', body: JSON.stringify(data) }),
+    create: (data: {
+      name: string;
+      type: string;
+      url: string;
+      token?: string;
+      username?: string;
+      password?: string;
+      ignoreAnonymousStreams?: boolean;
+    }) => this.request<Server>('/servers', { method: 'POST', body: JSON.stringify(data) }),
     update: (
       id: string,
-      data: { name?: string; url?: string; clientIdentifier?: string; color?: string | null }
+      data: {
+        name?: string;
+        url?: string;
+        clientIdentifier?: string;
+        ignoreAnonymousStreams?: boolean;
+        color?: string | null;
+      }
     ) =>
       this.request<Server>(`/servers/${id}`, {
         method: 'PATCH',
@@ -540,6 +553,7 @@ class ApiClient {
             name?: string;
             url?: string;
             clientIdentifier?: string;
+            ignoreAnonymousStreams?: boolean;
             color?: string | null;
           }
         ),

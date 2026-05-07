@@ -154,7 +154,7 @@ export interface BuildActiveSessionInput {
   server: {
     id: string;
     name: string;
-    type: 'plex' | 'jellyfin' | 'emby';
+    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
   };
 
   /** Optional overrides for update scenarios */

@@ -126,7 +126,7 @@ export function pickStreamDetailFields<T extends StreamDetailFields>(
  */
 export function mapMediaSession(
   session: MediaSession,
-  serverType: 'plex' | 'jellyfin' | 'emby'
+  serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr'
 ): ProcessedSession {
   // Resolve thumb path using lookup table
   const thumbPath = resolveThumbPath(session);

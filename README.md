@@ -1,4 +1,14 @@
 <p align="center">
+  <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br>
+  Do with it whatever you want, there is no guarantee it will work ¯\_(ツ)_/¯
+</p>
+
+It requires building your own Docker image if you want to use Docker, example docker build command for supervised image:
+```bash
+docker build -f docker/Dockerfile.supervised  -t distracearr-supervised  --build-arg APP_VERSION=1.4.27  --build-arg APP_TAG=supervised-1.4.27  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+```
+
+<p align="center">
   <img src="apps/web/public/images/og_image.png" alt="Tracearr" width="600" />
 </p>
 

@@ -58,6 +58,7 @@ const SERVER_CONFIG: Record<ServerType, { label: string; color: string }> = {
   plex: { label: 'Plex', color: '#E5A00D' },
   jellyfin: { label: 'Jellyfin', color: '#A855F7' },
   emby: { label: 'Emby', color: '#22C55E' },
+  dispatcharr: { label: 'Dispatcharr', color: '#14B8A6' },
 };
 
 // State configuration

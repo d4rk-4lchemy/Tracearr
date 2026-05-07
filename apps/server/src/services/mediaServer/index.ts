@@ -20,6 +20,7 @@
 import { PlexClient } from './plex/client.js';
 import { JellyfinClient } from './jellyfin/client.js';
 import { EmbyClient } from './emby/client.js';
+import { DispatcharrClient } from './dispatcharr/client.js';
 import type {
   IMediaServerClient,
   IMediaServerClientWithHistory,
@@ -52,6 +53,7 @@ export function createMediaServerClient(options: CreateClientOptions): IMediaSer
   const config: MediaServerConfig = {
     url: options.url,
     token: options.token,
+    ignoreAnonymousStreams: options.ignoreAnonymousStreams,
     id: options.id,
     name: options.name,
   };
@@ -63,6 +65,8 @@ export function createMediaServerClient(options: CreateClientOptions): IMediaSer
       return new JellyfinClient(config);
     case 'emby':
       return new EmbyClient(config);
+    case 'dispatcharr':
+      return new DispatcharrClient(config);
     default:
       throw new Error(`Unknown media server type: ${options.type as string}`);
   }
@@ -101,6 +105,7 @@ export type {
 export { PlexClient } from './plex/client.js';
 export { JellyfinClient } from './jellyfin/client.js';
 export { EmbyClient } from './emby/client.js';
+export { DispatcharrClient } from './dispatcharr/client.js';
 
 // Plex-specific types
 export type { PlexServerResource, PlexServerConnection } from './plex/parser.js';
@@ -115,3 +120,4 @@ export type { EmbyActivityEntry, EmbyAuthResult } from './emby/parser.js';
 export * as plexParser from './plex/parser.js';
 export * as jellyfinParser from './jellyfin/parser.js';
 export * as embyParser from './emby/parser.js';
+export * as dispatcharrParser from './dispatcharr/parser.js';

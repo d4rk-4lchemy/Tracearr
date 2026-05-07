@@ -28,7 +28,7 @@ import { relations, sql } from 'drizzle-orm';
 import { MEDIA_TYPES } from '@tracearr/shared';
 
 // Server types enum
-export const serverTypeEnum = ['plex', 'jellyfin', 'emby'] as const;
+export const serverTypeEnum = ['plex', 'jellyfin', 'emby', 'dispatcharr'] as const;
 
 // Session state enum
 export const sessionStateEnum = ['playing', 'paused', 'stopped'] as const;
@@ -87,6 +87,7 @@ export const servers = pgTable(
     // For Plex servers: which linked Plex account this server was added from (nullable for Jellyfin/Emby and legacy)
     plexAccountId: uuid('plex_account_id'),
     displayOrder: integer('display_order').default(0).notNull(),
+    ignoreAnonymousStreams: boolean('ignore_anonymous_streams').default(true).notNull(),
     color: varchar('color', { length: 7 }), // Hex color like #3b82f6
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

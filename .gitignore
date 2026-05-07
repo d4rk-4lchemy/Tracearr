@@ -34,6 +34,8 @@ apps/e2e/playwright-report/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+.tmp/
+.plans/
 
 # Database (keep GeoLite2 database committed)
 data/*.mmdb

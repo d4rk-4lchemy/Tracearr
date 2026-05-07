@@ -16,7 +16,12 @@ import {
 import { db } from '../db/client.js';
 import { servers, plexAccounts } from '../db/schema.js';
 // Token encryption removed - tokens now stored in plain text (DB is localhost-only)
-import { PlexClient, JellyfinClient, EmbyClient } from '../services/mediaServer/index.js';
+import {
+  PlexClient,
+  JellyfinClient,
+  EmbyClient,
+  DispatcharrClient,
+} from '../services/mediaServer/index.js';
 import { syncServer } from '../services/sync.js';
 import { getCacheService } from '../services/cache.js';
 import { enqueueLibrarySync } from '../jobs/librarySyncQueue.js';
@@ -36,6 +41,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         displayOrder: servers.displayOrder,
         color: servers.color,
         createdAt: servers.createdAt,
@@ -82,7 +88,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Invalid request body');
     }
 
-    const { name, type, url, token } = body.data;
+    const { name, type, url, token, username, password, ignoreAnonymousStreams } = body.data;
     const authUser = request.user;
 
     // Only owners can add servers
@@ -97,13 +103,23 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.conflict('A server with this URL already exists');
     }
 
+    // Normalize auth payload (Dispatcharr can use API key/JWT token OR username+password)
+    const normalizedToken =
+      type === 'dispatcharr' && !token && username && password
+        ? DispatcharrClient.encodeCredentialToken(username, password)
+        : token;
+
+    if (!normalizedToken) {
+      return reply.badRequest('Missing authentication credentials');
+    }
+
     // For Plex servers, find the owning plex account to set plexAccountId
     let plexAccountId: string | undefined;
 
     // Verify the server connection
     try {
       if (type === 'plex') {
-        const adminCheck = await PlexClient.verifyServerAdmin(token, url);
+        const adminCheck = await PlexClient.verifyServerAdmin(normalizedToken, url);
         if (!adminCheck.success) {
           // Provide specific error based on failure type
           if (adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED) {
@@ -114,7 +130,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
 
         // Get the Plex account ID from the token and link to user's plex_accounts
         try {
-          const accountInfo = await PlexClient.getAccountInfo(token);
+          const accountInfo = await PlexClient.getAccountInfo(normalizedToken);
           const matchingAccount = await db
             .select({ id: plexAccounts.id })
             .from(plexAccounts)
@@ -134,7 +150,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           app.log.debug('Could not link Plex server to account at creation time');
         }
       } else if (type === 'jellyfin') {
-        const adminCheck = await JellyfinClient.verifyServerAdmin(token, url);
+        const adminCheck = await JellyfinClient.verifyServerAdmin(normalizedToken, url);
         if (!adminCheck.success) {
           // Provide specific error based on failure type
           if (adminCheck.code === JellyfinClient.AdminVerifyError.CONNECTION_FAILED) {
@@ -143,9 +159,14 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           return reply.forbidden(adminCheck.message);
         }
       } else if (type === 'emby') {
-        const isAdmin = await EmbyClient.verifyServerAdmin(token, url);
+        const isAdmin = await EmbyClient.verifyServerAdmin(normalizedToken, url);
         if (!isAdmin) {
           return reply.forbidden('Token does not have admin access to this Emby server');
+        }
+      } else if (type === 'dispatcharr') {
+        const adminCheck = await DispatcharrClient.verifyServerAdmin(normalizedToken, url);
+        if (!adminCheck.success) {
+          return reply.serviceUnavailable(adminCheck.message);
         }
       }
     } catch (error) {
@@ -167,7 +188,8 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name,
         type,
         url,
-        token,
+        token: normalizedToken,
+        ignoreAnonymousStreams,
         color,
         plexAccountId, // Links Plex servers to their owning account (undefined for non-Plex)
       })
@@ -176,6 +198,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
@@ -226,7 +249,13 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const { id } = params.data;
-    const { name: newName, url: bodyUrl, clientIdentifier, color: newColor } = body.data;
+    const {
+      name: newName,
+      url: bodyUrl,
+      clientIdentifier,
+      ignoreAnonymousStreams: newIgnoreAnonymousStreams,
+      color: newColor,
+    } = body.data;
     const newUrl = bodyUrl !== undefined ? bodyUrl.replace(/\/$/, '') : undefined;
     const authUser = request.user;
 
@@ -252,6 +281,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           name: newName ?? server.name,
           type: server.type,
           url: server.url,
+          ignoreAnonymousStreams: server.ignoreAnonymousStreams,
           createdAt: server.createdAt,
           updatedAt: server.updatedAt,
         };
@@ -292,6 +322,11 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
             if (!isAdmin) {
               return reply.forbidden('Token does not have admin access at this URL');
             }
+          } else if (server.type === 'dispatcharr') {
+            const adminCheck = await DispatcharrClient.verifyServerAdmin(server.token, newUrl);
+            if (!adminCheck.success) {
+              return reply.serviceUnavailable(adminCheck.message);
+            }
           }
         } catch (error) {
           app.log.error({ err: error, serverId: id, newUrl }, 'Failed to verify new server URL');
@@ -302,22 +337,30 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       }
     } else if (newName !== undefined && server.name === newName) {
       // Name-only update but name unchanged
-      return {
-        id: server.id,
-        name: server.name,
-        type: server.type,
-        url: server.url,
-        createdAt: server.createdAt,
-        updatedAt: server.updatedAt,
-      };
+        return {
+          id: server.id,
+          name: server.name,
+          type: server.type,
+          url: server.url,
+          ignoreAnonymousStreams: server.ignoreAnonymousStreams,
+          createdAt: server.createdAt,
+          updatedAt: server.updatedAt,
+        };
     }
 
     // Build update object
-    const updatePayload: { name?: string; url?: string; color?: string | null; updatedAt: Date } = {
-      updatedAt: new Date(),
-    };
+    const updatePayload: {
+      name?: string;
+      url?: string;
+      ignoreAnonymousStreams?: boolean;
+      color?: string | null;
+      updatedAt: Date;
+    } = { updatedAt: new Date() };
     if (newName !== undefined) updatePayload.name = newName;
     if (newUrl !== undefined) updatePayload.url = newUrl;
+    if (newIgnoreAnonymousStreams !== undefined) {
+      updatePayload.ignoreAnonymousStreams = newIgnoreAnonymousStreams;
+    }
     if (newColor !== undefined) updatePayload.color = newColor;
 
     const updated = await db
@@ -329,6 +372,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,

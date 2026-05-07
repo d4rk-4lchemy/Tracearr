@@ -228,6 +228,10 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     const separator = imagePath.includes('?') ? '&' : '?';
     imageUrl = `${baseUrl}${imagePath}${separator}X-Plex-Token=${token}`;
     headers['Accept'] = 'image/*';
+  } else if (server.type === 'dispatcharr') {
+    const baseUrl = server.url.replace(/\/$/, '');
+    imageUrl = /^https?:\/\//i.test(imagePath) ? imagePath : `${baseUrl}${imagePath}`;
+    headers['Accept'] = 'image/*';
   } else {
     // Jellyfin - imagePath should include the full endpoint
     const baseUrl = server.url.replace(/\/$/, '');

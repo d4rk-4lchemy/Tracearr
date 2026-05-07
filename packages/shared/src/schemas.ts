@@ -10,7 +10,7 @@ import { isValidTimezone } from './constants.js';
 // ============================================================================
 
 /** Server types supported by Tracearr */
-const SERVER_TYPES = ['plex', 'jellyfin', 'emby'] as const;
+const SERVER_TYPES = ['plex', 'jellyfin', 'emby', 'dispatcharr'] as const;
 export const serverTypeSchema = z.enum(SERVER_TYPES);
 export type ServerType = z.infer<typeof serverTypeSchema>;
 
@@ -112,12 +112,38 @@ export const callbackSchema = z.object({
 // Server Schemas
 // ============================================================================
 
-export const createServerSchema = z.object({
-  name: z.string().min(1).max(100),
-  type: serverTypeSchema,
-  url: z.url(),
-  token: z.string().min(1),
-});
+export const createServerSchema = z
+  .object({
+    name: z.string().min(1).max(100),
+    type: serverTypeSchema,
+    url: z.url(),
+    token: z.string().min(1).optional(),
+    username: z.string().min(1).optional(),
+    password: z.string().min(1).optional(),
+    ignoreAnonymousStreams: z.boolean().default(true),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'dispatcharr') {
+      const hasToken = Boolean(data.token?.trim());
+      const hasUserPass = Boolean(data.username?.trim()) && Boolean(data.password);
+      if (!hasToken && !hasUserPass) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Dispatcharr requires either token or username+password',
+          path: ['token'],
+        });
+      }
+      return;
+    }
+
+    if (!data.token?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Token is required',
+        path: ['token'],
+      });
+    }
+  });
 
 export const serverIdParamSchema = z.object({
   id: uuidSchema,
@@ -137,15 +163,23 @@ export const updateServerSchema = z
     name: z.string().min(1).max(100).optional(),
     url: z.url().optional(),
     clientIdentifier: z.string().optional(),
+    ignoreAnonymousStreams: z.boolean().optional(),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a valid hex color (e.g. #3b82f6)')
       .optional()
       .nullable(),
   })
-  .refine((data) => data.name !== undefined || data.url !== undefined || data.color !== undefined, {
-    message: 'At least one of name, url, or color is required',
-  });
+  .refine(
+    (data) =>
+      data.name !== undefined ||
+      data.url !== undefined ||
+      data.color !== undefined ||
+      data.ignoreAnonymousStreams !== undefined,
+    {
+      message: 'At least one of name, url, color, or ignoreAnonymousStreams is required',
+    }
+  );
 
 // ============================================================================
 // User Schemas

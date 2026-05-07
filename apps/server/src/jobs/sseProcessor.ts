@@ -691,6 +691,7 @@ async function fetchFullSession(
       type: server.type as 'plex',
       url: server.url,
       token: server.token,
+      ignoreAnonymousStreams: server.ignoreAnonymousStreams,
     });
 
     const allSessions = await client.getSessions();

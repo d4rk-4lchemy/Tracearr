@@ -11,7 +11,6 @@
  */
 
 import { EventEmitter } from 'events';
-import { eq } from 'drizzle-orm';
 import {
   POLLING_INTERVALS,
   type SSEConnectionState,
@@ -22,6 +21,8 @@ import { registerService, unregisterService } from './serviceTracker.js';
 import { db } from '../db/client.js';
 import { servers } from '../db/schema.js';
 import { PlexEventSource } from './mediaServer/plex/eventSource.js';
+import { DispatcharrRealtimeConnector } from './mediaServer/dispatcharr/realtime.js';
+import type { MediaSession } from './mediaServer/types.js';
 import type { CacheService, PubSubService } from './cache.js';
 
 // Events emitted by SSEManager for consumers
@@ -30,6 +31,7 @@ export interface SSEManagerEvents {
   'plex:session:paused': { serverId: string; notification: PlexPlaySessionNotification };
   'plex:session:stopped': { serverId: string; notification: PlexPlaySessionNotification };
   'plex:session:progress': { serverId: string; notification: PlexPlaySessionNotification };
+  'dispatcharr:snapshot': { serverId: string; sessions: MediaSession[] };
   'connection:status': SSEConnectionStatus;
   'fallback:activated': { serverId: string; serverName: string };
   'fallback:deactivated': { serverId: string; serverName: string };
@@ -38,8 +40,9 @@ export interface SSEManagerEvents {
 interface ServerConnection {
   serverId: string;
   serverName: string;
-  serverType: 'plex' | 'jellyfin' | 'emby';
+  serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
   eventSource: PlexEventSource | null;
+  dispatcharrRealtime: DispatcharrRealtimeConnector | null;
   state: SSEConnectionState;
   inFallback: boolean;
 }
@@ -83,22 +86,27 @@ export class SSEManager extends EventEmitter {
   }
 
   /**
-   * Start SSE connections for all Plex servers
+   * Start realtime connections for all configured servers
    */
   async start(): Promise<void> {
     if (!this.initialized) {
       throw new Error('SSEManager not initialized');
     }
 
-    // Get all Plex servers
-    const allServers = await db.select().from(servers).where(eq(servers.type, 'plex'));
+    const allServers = await db.select().from(servers);
+    console.log(`[SSEManager] Starting realtime manager for ${allServers.length} server(s)`);
 
-    console.log(`[SSEManager] Starting SSE for ${allServers.length} Plex server(s)`);
-
-    // Create SSE connections for each Plex server in parallel
+    // Create realtime connections for each server in parallel
     await Promise.all(
       allServers.map((server) =>
-        this.addServer(server.id, server.name, server.type as 'plex', server.url, server.token)
+        this.addServer(
+          server.id,
+          server.name,
+          server.type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
+          server.url,
+          server.token,
+          server.ignoreAnonymousStreams
+        )
       )
     );
 
@@ -106,7 +114,7 @@ export class SSEManager extends EventEmitter {
     this.startReconciliation();
     registerService('sse-manager', {
       name: 'SSE Manager',
-      description: 'Manages real-time Plex SSE connections',
+      description: 'Manages realtime Plex SSE and Dispatcharr WS connections',
       intervalMs: POLLING_INTERVALS.SSE_RECONCILIATION,
     });
   }
@@ -124,10 +132,14 @@ export class SSEManager extends EventEmitter {
     }
     unregisterService('sse-manager');
 
-    // Disconnect all SSE connections
+    // Disconnect all realtime connections
     for (const connection of this.connections.values()) {
       if (connection.eventSource) {
         connection.eventSource.disconnect();
+      }
+      if (connection.dispatcharrRealtime) {
+        connection.dispatcharrRealtime.removeAllListeners();
+        connection.dispatcharrRealtime.disconnect();
       }
     }
 
@@ -140,9 +152,10 @@ export class SSEManager extends EventEmitter {
   async addServer(
     serverId: string,
     serverName: string,
-    serverType: 'plex' | 'jellyfin' | 'emby',
+    serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
     url: string,
-    token: string
+    token: string,
+    ignoreAnonymousStreams = true
   ): Promise<void> {
     if (this.pendingOperations.has(serverId)) {
       console.log(`[SSEManager] Operation already in progress for ${serverName}, skipping`);
@@ -161,11 +174,12 @@ export class SSEManager extends EventEmitter {
         serverName,
         serverType,
         eventSource: null,
+        dispatcharrRealtime: null,
         state: 'disconnected',
         inFallback: false,
       };
+      this.connections.set(serverId, connection);
 
-      // Only Plex supports SSE currently
       if (serverType === 'plex') {
         const eventSource = new PlexEventSource({
           serverId,
@@ -181,14 +195,30 @@ export class SSEManager extends EventEmitter {
 
         // Connect
         await eventSource.connect();
+      } else if (serverType === 'dispatcharr') {
+        const realtime = new DispatcharrRealtimeConnector({
+          serverId,
+          serverName,
+          url,
+          token,
+          ignoreAnonymousStreams,
+        });
+
+        this.setupDispatcharrRealtimeHandlers(realtime, serverId, serverName);
+        connection.dispatcharrRealtime = realtime;
+        connection.inFallback = realtime.isInFallback();
+        connection.state = realtime.isInFallback() ? 'fallback' : 'connecting';
+
+        await realtime.connect();
       } else {
         // Jellyfin/Emby: Start in fallback mode (polling)
         connection.inFallback = true;
         connection.state = 'fallback';
         this.emit('fallback:activated', { serverId, serverName });
       }
-
-      this.connections.set(serverId, connection);
+    } catch (error) {
+      this.connections.delete(serverId);
+      throw error;
     } finally {
       this.pendingOperations.delete(serverId);
     }
@@ -223,6 +253,10 @@ export class SSEManager extends EventEmitter {
       connection.eventSource.removeAllListeners();
       connection.eventSource.disconnect();
     }
+    if (connection.dispatcharrRealtime) {
+      connection.dispatcharrRealtime.removeAllListeners();
+      connection.dispatcharrRealtime.disconnect();
+    }
 
     this.connections.delete(serverId);
     console.log(`[SSEManager] Removed server ${connection.serverName}`);
@@ -237,6 +271,17 @@ export class SSEManager extends EventEmitter {
     for (const connection of this.connections.values()) {
       if (connection.eventSource) {
         statuses.push(connection.eventSource.getStatus());
+      } else if (connection.dispatcharrRealtime) {
+        const status = connection.dispatcharrRealtime.getStatus();
+        statuses.push({
+          serverId: status.serverId,
+          serverName: status.serverName,
+          state: status.state,
+          connectedAt: status.connectedAt,
+          lastEventAt: status.lastEventAt,
+          reconnectAttempts: status.reconnectAttempts,
+          error: status.error,
+        });
       } else {
         // Non-SSE server (Jellyfin/Emby)
         statuses.push({
@@ -260,6 +305,20 @@ export class SSEManager extends EventEmitter {
   isInFallback(serverId: string): boolean {
     const connection = this.connections.get(serverId);
     return connection?.inFallback ?? true; // Default to fallback if not found
+  }
+
+  getDispatcharrLatestSessions(serverId: string): MediaSession[] | null {
+    const connection = this.connections.get(serverId);
+    if (!connection?.dispatcharrRealtime) return null;
+    return connection.dispatcharrRealtime.getLatestSessions();
+  }
+
+  isDispatcharrRealtimeHealthy(serverId: string): boolean {
+    const connection = this.connections.get(serverId);
+    if (!connection || connection.serverType !== 'dispatcharr' || !connection.dispatcharrRealtime) {
+      return false;
+    }
+    return connection.dispatcharrRealtime.getMode() === 'ws' && !connection.dispatcharrRealtime.isInFallback();
   }
 
   /**
@@ -329,6 +388,53 @@ export class SSEManager extends EventEmitter {
     });
   }
 
+  private setupDispatcharrRealtimeHandlers(
+    realtime: DispatcharrRealtimeConnector,
+    serverId: string,
+    serverName: string
+  ): void {
+    realtime.on('snapshot:update', ({ sessions }) => {
+      this.emit('dispatcharr:snapshot', { serverId, sessions });
+    });
+
+    realtime.on('connection:status', (status) => {
+      const connection = this.connections.get(serverId);
+      if (!connection) return;
+      connection.state = status.state;
+      connection.inFallback = status.mode !== 'ws' || status.state === 'fallback';
+
+      this.emit('connection:status', {
+        serverId: status.serverId,
+        serverName: status.serverName,
+        state: status.state,
+        connectedAt: status.connectedAt,
+        lastEventAt: status.lastEventAt,
+        reconnectAttempts: status.reconnectAttempts,
+        error: status.error,
+      });
+    });
+
+    realtime.on('fallback:activated', ({ reason }) => {
+      const connection = this.connections.get(serverId);
+      if (connection) {
+        connection.inFallback = true;
+        connection.state = 'fallback';
+      }
+      console.warn(`[SSEManager] Dispatcharr ${serverName} entering fallback: ${reason}`);
+      this.emit('fallback:activated', { serverId, serverName });
+    });
+
+    realtime.on('fallback:deactivated', () => {
+      const connection = this.connections.get(serverId);
+      if (connection) {
+        connection.inFallback = false;
+        connection.state = 'connected';
+      }
+      console.info(`[SSEManager] Dispatcharr ${serverName} exited fallback`);
+      this.emit('fallback:deactivated', { serverId, serverName });
+    });
+  }
+
   /**
    * Start periodic reconciliation
    * Light poll to catch any events that might have been missed
@@ -361,13 +467,18 @@ export class SSEManager extends EventEmitter {
 
     try {
       const connection = this.connections.get(serverId);
-      if (!connection?.eventSource) {
+      if (!connection) {
         return;
       }
 
       console.log(`[SSEManager] Manual reconnect for ${connection.serverName}`);
-      connection.eventSource.disconnect();
-      await connection.eventSource.connect();
+      if (connection.eventSource) {
+        connection.eventSource.disconnect();
+        await connection.eventSource.connect();
+      } else if (connection.dispatcharrRealtime) {
+        connection.dispatcharrRealtime.disconnect();
+        await connection.dispatcharrRealtime.connect();
+      }
     } finally {
       this.pendingOperations.delete(serverId);
     }
@@ -402,15 +513,16 @@ export class SSEManager extends EventEmitter {
         }
       }
 
-      // Add new Plex servers
+      // Add new servers
       for (const server of allServers) {
-        if (!connectedServerIds.has(server.id) && server.type === 'plex') {
+        if (!connectedServerIds.has(server.id)) {
           await this.addServer(
             server.id,
             server.name,
-            server.type as 'plex',
+            server.type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
             server.url,
-            server.token
+            server.token,
+            server.ignoreAnonymousStreams
           );
         }
       }
