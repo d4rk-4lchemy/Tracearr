@@ -133,8 +133,6 @@ export function Dashboard() {
               <NowPlayingCard
                 key={session.id}
                 session={session}
-                isMultiServer={isMultiServer}
-                serverColor={serverColorMap.get(session.server.id)}
                 onClick={() => {
                   setSelectedSession(session);
                   setSheetOpen(true);
