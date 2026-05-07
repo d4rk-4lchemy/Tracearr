@@ -92,7 +92,9 @@ export function ServerSettings() {
   const [serverUrl, setServerUrl] = useState('');
   const [serverName, setServerName] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [dispatcharrAuthMode, setDispatcharrAuthMode] = useState<'token' | 'credentials'>('token');
+  const [dispatcharrAuthMode, setDispatcharrAuthMode] = useState<'token' | 'credentials'>(
+    'credentials'
+  );
   const [dispatcharrUsername, setDispatcharrUsername] = useState('');
   const [dispatcharrPassword, setDispatcharrPassword] = useState('');
   const [ignoreAnonymousStreams, setIgnoreAnonymousStreams] = useState(true);
@@ -188,7 +190,7 @@ export function ServerSettings() {
     setServerUrl('');
     setServerName('');
     setApiKey('');
-    setDispatcharrAuthMode('token');
+    setDispatcharrAuthMode('credentials');
     setDispatcharrUsername('');
     setDispatcharrPassword('');
     setIgnoreAnonymousStreams(true);
@@ -500,7 +502,7 @@ export function ServerSettings() {
                   setServerType(newType);
                   setConnectError(null);
                   if (newType !== 'dispatcharr') {
-                    setDispatcharrAuthMode('token');
+                    setDispatcharrAuthMode('credentials');
                     setDispatcharrUsername('');
                     setDispatcharrPassword('');
                     setIgnoreAnonymousStreams(true);
@@ -729,8 +731,8 @@ export function ServerSettings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="token">API Key / JWT Token</SelectItem>
                         <SelectItem value="credentials">Username + Password</SelectItem>
+                        <SelectItem value="token">API Key / JWT Token</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
