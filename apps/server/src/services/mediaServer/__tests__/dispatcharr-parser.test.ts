@@ -131,6 +131,36 @@ describe('Dispatcharr parser', () => {
       expect(sessions[0]?.quality.sourceVideoDetails?.bitrate).toBe(3200);
     });
 
+    it('maps string audio_channels value "stereo" to 2 channels', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'Mocny Full TV',
+        audio_channels: 'stereo',
+        clients: [{ client_id: 'client-1', user_id: '7' }],
+      });
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.quality.sourceAudioChannels).toBe(2);
+    });
+
+    it('maps string audio_channels value "5.1" to 6 channels', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'Mocny Full TV',
+        audio_channels: '5.1',
+        clients: [{ client_id: 'client-1', user_id: '7' }],
+      });
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.quality.sourceAudioChannels).toBe(6);
+    });
+
     it('skips sessions whose mapped user is anonymous', () => {
       const normalized = normalizeDispatcharrChannel({
         channel_id: 'channel-1',

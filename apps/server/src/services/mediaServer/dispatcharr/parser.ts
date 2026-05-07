@@ -210,6 +210,28 @@ function parseResolutionDimensions(
   return { normalized: normalizeResolution({ resolution: value }) ?? value };
 }
 
+function parseAudioChannels(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  if (normalized === 'mono') return 1;
+  if (normalized === 'stereo') return 2;
+  if (normalized === '5.1') return 6;
+  if (normalized === '7.1') return 8;
+
+  const parsed = Number(normalized);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.round(parsed);
+  }
+
+  return undefined;
+}
+
 export function normalizeDispatcharrChannel(
   baseChannel: DispatcharrChannelStatus,
   detailChannel?: DispatcharrChannelStatus | null
@@ -243,8 +265,7 @@ export function normalizeDispatcharrChannel(
       asOptionalNumber(detail?.avg_bitrate),
     videoCodec: asOptionalString(base.video_codec) ?? asOptionalString(detail?.video_codec),
     audioCodec: asOptionalString(base.audio_codec) ?? asOptionalString(detail?.audio_codec),
-    audioChannels:
-      asOptionalNumber(base.audio_channels) ?? asOptionalNumber(detail?.audio_channels),
+    audioChannels: parseAudioChannels(base.audio_channels) ?? parseAudioChannels(detail?.audio_channels),
     sourceFps: asOptionalString(base.source_fps) ?? asOptionalString(detail?.source_fps),
     resolution: asOptionalString(base.resolution) ?? asOptionalString(detail?.resolution),
     clients: mergeClients(parseChannelClients(detail), parseChannelClients(base)),
