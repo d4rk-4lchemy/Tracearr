@@ -43,14 +43,14 @@ describe('Dispatcharr parser', () => {
       ).toBe('local-user');
     });
 
-    it('filters Anonymous and Anonymouse users', () => {
+    it('filters Anonymous users', () => {
       expect(isAnonymousDispatcharrUserName('Anonymous')).toBe(true);
-      expect(isAnonymousDispatcharrUserName('Anonymouse')).toBe(true);
+      expect(isAnonymousDispatcharrUserName(' anonymous ')).toBe(true);
       expect(parseUser({ id: 1, first_name: 'Anonymous', last_name: '' })).toBeNull();
-      expect(parseUser({ id: 2, first_name: 'Anonymouse', last_name: '' })).toBeNull();
+      expect(parseUser({ id: 2, first_name: 'Anonymous', last_name: '' })).toBeNull();
     });
 
-    it('keeps Anonymous and Anonymouse users when ignoreAnonymousStreams is disabled', () => {
+    it('keeps Anonymous users when ignoreAnonymousStreams is disabled', () => {
       expect(
         parseUser(
           { id: 1, first_name: 'Anonymous', last_name: '', username: 'anonymous' },
@@ -62,12 +62,12 @@ describe('Dispatcharr parser', () => {
       });
       expect(
         parseUser(
-          { id: 2, first_name: 'Anonymouse', last_name: '', username: 'anonymouse' },
+          { id: 2, first_name: 'Anonymous', last_name: '', username: 'anonymous' },
           { ignoreAnonymousStreams: false }
         )
       ).toMatchObject({
         id: '2',
-        username: 'Anonymouse',
+        username: 'Anonymous',
       });
     });
 
@@ -239,7 +239,7 @@ describe('Dispatcharr parser', () => {
       });
       const sessions = parseSessionsFromChannels(
         normalized ? [normalized] : [],
-        new Map([['9', { id: '9', username: 'Anonymouse', isAdmin: false }]])
+        new Map([['9', { id: '9', username: 'Anonymous', isAdmin: false }]])
       );
 
       expect(sessions).toHaveLength(0);
@@ -257,13 +257,13 @@ describe('Dispatcharr parser', () => {
 
       const sessions = parseSessionsFromChannels(
         normalized ? [normalized] : [],
-        new Map([['9', { id: '9', username: 'Anonymouse', isAdmin: false }]]),
+        new Map([['9', { id: '9', username: 'Anonymous', isAdmin: false }]]),
         undefined,
         { ignoreAnonymousStreams: false }
       );
 
       expect(sessions).toHaveLength(2);
-      expect(sessions[0]?.user.username).toBe('Anonymouse');
+      expect(sessions[0]?.user.username).toBe('Anonymous');
       expect(sessions[1]?.user).toMatchObject({
         id: '0',
         username: 'Anonymous',

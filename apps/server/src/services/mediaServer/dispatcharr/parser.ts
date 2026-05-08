@@ -146,7 +146,7 @@ function isPrivateIp(ip: string): boolean {
 
 export function isAnonymousDispatcharrUserName(name: string): boolean {
   const normalized = name.trim().toLowerCase();
-  return normalized === 'anonymous' || normalized === 'anonymouse';
+  return normalized === 'anonymous';
 }
 
 function shouldIgnoreAnonymousDispatcharrUser(

@@ -4,17 +4,18 @@
 </p>
 
 > [!WARNING]  
-> You can do "in-place" replacement of your current Tracearr instance.<br>But **CREATE A BACKUP FIRST**, as I don't guarantee 100% success rate, and **I don't care if you breake your setup** ¯\\\_(ツ)_/¯
+> You can do "in-place" replacement of your current Tracearr instance.<br>But **CREATE A BACKUP FIRST**, as I don't guarantee 100% success rate, and **I don't care if you break your setup** ¯\\\_(ツ)_/¯
 
 **What's New:**
 - Support for Dispatcharr servers, with Login/Password (for WebSocket integration) or API Key auth,
 - Shows currently running Live TV streams, as well as VOD Movies or VOD Shows,
-- Allows killing Dispatcharr streams directly from Tracearr dashboard,
+- Allows you to discard streams from "Anonymous" user if you want,
+- You can kill Dispatcharr streams directly from Tracearr dashboard,
 - Live TV card is aligned to Dispatcharr needs, showing speed threshold, watchtime,
 - Stream details for Live TV shows bitrate, codecs and video resolution,
 - Fixed multi-server selection memory on Dashboard tab _(this has nothing to do with Dispatcharr, just annoying bug)._
 
-It requires building your own Docker image if you want to use Docker. I tested it on Supervised image, so keep that in mind.<br>
+It requires building your own Docker image if you want to use Docker. I tested it on **Supervised image**, so keep that in mind.<br>
 Example docker build commands:
 ```bash
 # Regular Image
@@ -46,6 +47,11 @@ tracearr:
     start_period: 60s
     retries: 3
 ```
+
+---
+_Original README.md_
+
+---
 
 <p align="center">
   <img src="apps/web/public/images/og_image.png" alt="Tracearr" width="600" />

@@ -802,7 +802,7 @@ export function ServerSettings() {
                         htmlFor="dispatcharrIgnoreAnonymousStreams"
                         className="cursor-pointer font-medium"
                       >
-                        Ignore Anonymouse streams
+                        Ignore Anonymous streams
                       </Label>
                       <p className="text-muted-foreground text-sm">
                         When enabled, Dispatcharr streams reported as anonymous are ignored.
@@ -1060,7 +1060,7 @@ function EditServerDialog({
                   htmlFor="edit-ignore-anonymous-streams"
                   className="cursor-pointer font-medium"
                 >
-                  Ignore Anonymouse streams
+                  Ignore Anonymous streams
                 </Label>
                 <p className="text-muted-foreground text-sm">
                   When enabled, Dispatcharr streams reported as anonymous are ignored.
