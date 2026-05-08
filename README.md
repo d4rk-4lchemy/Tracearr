@@ -15,20 +15,26 @@
 - Stream details for Live TV shows bitrate, codecs and video resolution,
 - Fixed multi-server selection memory on Dashboard tab _(this has nothing to do with Dispatcharr, just annoying bug)._
 
-It requires building your own Docker image if you want to use Docker. I tested it on **Supervised image**, so keep that in mind.<br>
+**Docker images:**
+- `darkalchemy2137/distracearr:latest` - supervised image (default)
+- `darkalchemy2137/distracearr:standalone` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
+
+
+I tested it on **Supervised image**, so keep that in mind.<br>
+You can also build your own Docker image.<br>
 Example docker build commands:
 ```bash
 # Regular Image
-docker build  -f docker/Dockerfile  -t distracearr  --build-arg APP_VERSION=1.4.27  --build-arg APP_TAG=1.4.27  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=1.4.27  --build-arg APP_TAG=1.4.27  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 
 # Supervised Image
-docker build  -f docker/Dockerfile.supervised  -t distracearr-supervised  --build-arg APP_VERSION=1.4.27  --build-arg APP_TAG=supervised-1.4.27  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=1.4.27  --build-arg APP_TAG=supervised-1.4.27  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 ```
 
 Example `docker-compose.yml` for **Supervised** image:
 ```yaml
 tracearr:
-  image: distracearr-supervised
+  image: darkalchemy2137/distracearr:latest
   container_name: distracearr
   ports:
     - 3000:3000
