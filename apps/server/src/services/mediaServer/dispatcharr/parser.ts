@@ -28,6 +28,7 @@ export interface DispatcharrChannelStatus {
   audio_channels?: unknown;
   source_fps?: unknown;
   resolution?: unknown;
+  ffmpeg_speed?: unknown;
 }
 
 export interface NormalizedDispatcharrChannel {
@@ -43,6 +44,7 @@ export interface NormalizedDispatcharrChannel {
   audioChannels?: number;
   sourceFps?: string;
   resolution?: string;
+  ffmpegSpeed?: number;
   clients: DispatcharrClientStatus[];
 }
 
@@ -560,6 +562,8 @@ export function normalizeDispatcharrChannel(
     audioChannels: parseAudioChannels(base.audio_channels) ?? parseAudioChannels(detail?.audio_channels),
     sourceFps: asOptionalString(base.source_fps) ?? asOptionalString(detail?.source_fps),
     resolution: asOptionalString(base.resolution) ?? asOptionalString(detail?.resolution),
+    ffmpegSpeed:
+      asOptionalNumber(base.ffmpeg_speed) ?? asOptionalNumber(detail?.ffmpeg_speed),
     clients: mergeClients(parseChannelClients(detail), parseChannelClients(base)),
   };
 }
@@ -605,6 +609,7 @@ export function parseSessionsFromChannels(
       const streamProfile = (channel.streamProfile ?? '').toLowerCase();
       const isTranscode = streamProfile.includes('transcod');
       const resolution = parseResolutionDimensions(channel.resolution);
+      const transcodeSpeed = channel.ffmpegSpeed;
 
       sessions.push({
         sessionKey: `${channelId}:${clientId}`,
@@ -644,6 +649,8 @@ export function parseSessionsFromChannels(
           isTranscode,
           videoDecision: isTranscode ? 'transcode' : 'directplay',
           audioDecision: isTranscode ? 'transcode' : 'directplay',
+          transcodeInfo:
+            transcodeSpeed !== undefined ? { speed: transcodeSpeed } : undefined,
           videoResolution: resolution.normalized,
           videoWidth: resolution.width,
           videoHeight: resolution.height,

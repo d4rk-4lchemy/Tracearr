@@ -240,8 +240,8 @@ export function StreamDetailsPanel({
   const hasVideoDetails = sourceVideoCodec || streamVideoCodec || sourceVideoWidth;
   const hasAudioDetails = sourceAudioCodec || streamAudioCodec || sourceAudioChannels;
   const hasSubtitleDetails = subtitleInfo?.codec || subtitleInfo?.language;
-  const hasTranscodeDetails =
-    transcodeInfo && (transcodeInfo.hwDecoding || transcodeInfo.hwEncoding || transcodeInfo.speed);
+  const hasTranscodeDetails = transcodeInfo && (transcodeInfo.hwDecoding || transcodeInfo.hwEncoding);
+  const ffmpegSpeed = transcodeInfo?.speed;
 
   // If no details at all, show a simple message
   if (!hasVideoDetails && !hasAudioDetails) {
@@ -261,7 +261,7 @@ export function StreamDetailsPanel({
 
   return (
     <div className="space-y-3">
-      {(transcodeInfo?.sourceContainer || bitrate) && (
+      {(transcodeInfo?.sourceContainer || bitrate || ffmpegSpeed !== undefined) && (
         <>
           {transcodeInfo?.sourceContainer && (
             <ComparisonRow
@@ -272,12 +272,23 @@ export function StreamDetailsPanel({
               )}
             />
           )}
-          {!!bitrate && (
-            <div className="flex justify-between py-1 text-sm">
-              <span className="text-muted-foreground">Bitrate</span>
-              <span className="font-medium">{formatBitrate(bitrate)}</span>
-            </div>
-          )}
+          <div className="space-y-1">
+            {!!bitrate && (
+              <div className="flex justify-between py-1 text-sm">
+                <span className="text-muted-foreground">Bitrate</span>
+                <span className="font-medium">{formatBitrate(bitrate)}</span>
+              </div>
+            )}
+            {ffmpegSpeed !== undefined && (
+              <div className="flex justify-between py-1 text-sm">
+                <span className="text-muted-foreground">Speed</span>
+                <span className={cn('font-medium', ffmpegSpeed < 1 && 'text-amber-500')}>
+                  {ffmpegSpeed.toFixed(2)}x
+                  {transcodeInfo?.throttled && ' (throttled)'}
+                </span>
+              </div>
+            )}
+          </div>
           <Separator />
         </>
       )}
@@ -499,14 +510,6 @@ export function StreamDetailsPanel({
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">HW Encode</span>
                   <span>{transcodeInfo.hwEncoding}</span>
-                </div>
-              )}
-              {transcodeInfo?.speed !== undefined && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Speed</span>
-                  <span className={cn(transcodeInfo.speed < 1 && 'text-amber-500')}>
-                    {transcodeInfo.speed.toFixed(1)}x{transcodeInfo.throttled && ' (throttled)'}
-                  </span>
                 </div>
               )}
             </div>

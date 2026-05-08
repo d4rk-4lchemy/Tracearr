@@ -25,6 +25,7 @@ interface ServerContextValue {
   isLoading: boolean;
   isFetching: boolean;
   toggleServer: (serverId: string) => void;
+  setSelectedServers: (serverIds: string[]) => void;
   selectAllServers: () => void;
   deselectAllExcept: (serverId: string) => void;
   refetch: () => Promise<unknown>;
@@ -133,6 +134,19 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     [invalidateServerQueries]
   );
 
+  const setSelectedServers = useCallback(
+    (serverIds: string[]) => {
+      const accessibleIds = new Set(accessibleServers.map((s) => s.id));
+      const deduped = [...new Set(serverIds)];
+      const next = deduped.filter((id) => accessibleIds.has(id));
+      if (next.length === 0) return;
+      setSelectedServerIds(next);
+      localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(next));
+      invalidateServerQueries();
+    },
+    [accessibleServers, invalidateServerQueries]
+  );
+
   const selectAllServers = useCallback(() => {
     const allIds = accessibleServers.map((s) => s.id);
     setSelectedServerIds(allIds);
@@ -182,6 +196,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       isLoading,
       isFetching,
       toggleServer,
+      setSelectedServers,
       selectAllServers,
       deselectAllExcept,
       refetch,
@@ -199,6 +214,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       isLoading,
       isFetching,
       toggleServer,
+      setSelectedServers,
       selectAllServers,
       deselectAllExcept,
       refetch,

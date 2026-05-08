@@ -127,6 +127,12 @@ export function NowPlayingCard({
 
   const isPaused = session.state === 'paused';
   const isSquareArt = session.mediaType === 'track' || session.mediaType === 'live';
+  const dispatcharrLiveSpeed =
+    session.server.type === 'dispatcharr' &&
+    session.mediaType === 'live' &&
+    session.transcodeInfo?.speed !== undefined
+      ? `${session.transcodeInfo.speed.toFixed(2)}x`
+      : null;
 
   return (
     <div
@@ -273,6 +279,8 @@ export function NowPlayingCard({
               <span>
                 {isPaused ? (
                   <span className="font-medium text-yellow-500">Paused</span>
+                ) : dispatcharrLiveSpeed ? (
+                  dispatcharrLiveSpeed
                 ) : remaining ? (
                   `-${formatDuration(remaining)}`
                 ) : (
