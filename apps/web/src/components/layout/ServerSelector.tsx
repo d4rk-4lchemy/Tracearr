@@ -9,6 +9,9 @@ import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const DASHBOARD_SELECTED_SERVERS_KEY = 'tracearr_dashboard_selected_servers';
+const LAST_SINGLE_SERVER_KEY = 'tracearr_last_single_server';
+
 export function ServerSelector() {
   const location = useLocation();
   const isDashboard = location.pathname === '/';
@@ -17,24 +20,56 @@ export function ServerSelector() {
     selectedServerIds,
     isAllServersSelected,
     toggleServer,
+    setSelectedServers,
     selectAllServers,
     deselectAllExcept,
     isLoading,
     isFetching,
   } = useServer();
 
-  // When navigating away from Dashboard with multiple servers selected,
-  // collapse to the first selected server since other pages are single-server
+  // Preserve Dashboard multi-select while keeping non-Dashboard pages single-server only.
   const prevPathname = useRef(location.pathname);
   useEffect(() => {
     const wasDashboard = prevPathname.current === '/';
     const isNowDashboard = location.pathname === '/';
     prevPathname.current = location.pathname;
 
-    if (wasDashboard && !isNowDashboard && selectedServerIds.length > 1) {
-      deselectAllExcept(selectedServerIds[0]!);
+    if (wasDashboard && !isNowDashboard) {
+      if (selectedServerIds.length > 1) {
+        localStorage.setItem(DASHBOARD_SELECTED_SERVERS_KEY, JSON.stringify(selectedServerIds));
+
+        const rememberedSingle = localStorage.getItem(LAST_SINGLE_SERVER_KEY);
+        const fallbackSingle = selectedServerIds.find((id) => id === rememberedSingle);
+        deselectAllExcept(fallbackSingle ?? selectedServerIds[0]!);
+      }
+      return;
     }
-  }, [location.pathname, selectedServerIds, deselectAllExcept]);
+
+    if (!wasDashboard && isNowDashboard) {
+      try {
+        const stored = localStorage.getItem(DASHBOARD_SELECTED_SERVERS_KEY);
+        if (!stored) return;
+        const parsed = JSON.parse(stored) as string[];
+        if (!Array.isArray(parsed) || parsed.length < 2) return;
+        const validIds = parsed.filter((id) => servers.some((s) => s.id === id));
+        if (validIds.length < 2) return;
+        const isSameSelection =
+          validIds.length === selectedServerIds.length &&
+          validIds.every((id, idx) => id === selectedServerIds[idx]);
+        if (!isSameSelection) {
+          setSelectedServers(validIds);
+        }
+      } catch {
+        // Ignore invalid localStorage payload
+      }
+    }
+  }, [location.pathname, selectedServerIds, servers, deselectAllExcept, setSelectedServers]);
+
+  // Remember non-Dashboard single selection as preferred fallback.
+  useEffect(() => {
+    if (isDashboard || selectedServerIds.length !== 1) return;
+    localStorage.setItem(LAST_SINGLE_SERVER_KEY, selectedServerIds[0]!);
+  }, [isDashboard, selectedServerIds]);
 
   // Show skeleton while loading initially or refetching with no cached data
   if (isLoading || (servers.length === 0 && isFetching)) {

@@ -121,7 +121,7 @@ describe('DispatcharrClient', () => {
       if (url.endsWith('/api/accounts/users/')) {
         return jsonResponse([
           { id: 7, first_name: 'Valid', last_name: 'User', username: 'valid' },
-          { id: 8, first_name: 'Anonymouse', last_name: '', username: 'anonymouse' },
+          { id: 8, first_name: 'Anonymous', last_name: '', username: 'anonymous' },
         ]);
       }
       if (url.endsWith('/proxy/ts/status')) {
@@ -171,11 +171,11 @@ describe('DispatcharrClient', () => {
     const [users, sessions] = await Promise.all([client.getUsers(), client.getSessions()]);
 
     expect(fetchMock).toHaveBeenCalledTimes(7);
-    expect(users.map((user) => user.username)).toEqual(['Valid User', 'Anonymouse']);
+    expect(users.map((user) => user.username)).toEqual(['Valid User', 'Anonymous']);
     expect(sessions).toHaveLength(4);
     expect(sessions.map((session) => session.user.username)).toEqual([
       'Valid User',
-      'Anonymouse',
+      'Anonymous',
       'Anonymous',
       'Anonymous',
     ]);

@@ -43,14 +43,14 @@ describe('Dispatcharr parser', () => {
       ).toBe('local-user');
     });
 
-    it('filters Anonymous and Anonymouse users', () => {
+    it('filters Anonymous users', () => {
       expect(isAnonymousDispatcharrUserName('Anonymous')).toBe(true);
-      expect(isAnonymousDispatcharrUserName('Anonymouse')).toBe(true);
+      expect(isAnonymousDispatcharrUserName(' anonymous ')).toBe(true);
       expect(parseUser({ id: 1, first_name: 'Anonymous', last_name: '' })).toBeNull();
-      expect(parseUser({ id: 2, first_name: 'Anonymouse', last_name: '' })).toBeNull();
+      expect(parseUser({ id: 2, first_name: 'Anonymous', last_name: '' })).toBeNull();
     });
 
-    it('keeps Anonymous and Anonymouse users when ignoreAnonymousStreams is disabled', () => {
+    it('keeps Anonymous users when ignoreAnonymousStreams is disabled', () => {
       expect(
         parseUser(
           { id: 1, first_name: 'Anonymous', last_name: '', username: 'anonymous' },
@@ -62,12 +62,12 @@ describe('Dispatcharr parser', () => {
       });
       expect(
         parseUser(
-          { id: 2, first_name: 'Anonymouse', last_name: '', username: 'anonymouse' },
+          { id: 2, first_name: 'Anonymous', last_name: '', username: 'anonymous' },
           { ignoreAnonymousStreams: false }
         )
       ).toMatchObject({
         id: '2',
-        username: 'Anonymouse',
+        username: 'Anonymous',
       });
     });
 
@@ -122,6 +122,7 @@ describe('Dispatcharr parser', () => {
             client_count: 2,
             avg_bitrate_kbps: 4500,
             source_fps: '50',
+            ffmpeg_speed: 1.03,
             audio_channels: 2,
             resolution: '1080p',
             clients: [
@@ -162,6 +163,7 @@ describe('Dispatcharr parser', () => {
         player: { deviceId: 'client-1', product: 'TiviMate' },
         quality: {
           bitrate: 4500,
+          transcodeInfo: { speed: 1.03 },
           videoResolution: '1080p',
           sourceAudioChannels: 2,
           sourceVideoDetails: { framerate: '50' },
@@ -183,6 +185,21 @@ describe('Dispatcharr parser', () => {
 
       expect(sessions[0]?.quality.bitrate).toBe(3200);
       expect(sessions[0]?.quality.sourceVideoDetails?.bitrate).toBeUndefined();
+    });
+
+    it('maps ffmpeg_speed from channel stats to transcodeInfo.speed', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'News HD',
+        ffmpeg_speed: '0.97',
+        clients: [{ client_id: 'client-1', user_id: '7' }],
+      });
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(0.97);
     });
 
     it('maps string audio_channels value "stereo" to 2 channels', () => {
@@ -222,7 +239,7 @@ describe('Dispatcharr parser', () => {
       });
       const sessions = parseSessionsFromChannels(
         normalized ? [normalized] : [],
-        new Map([['9', { id: '9', username: 'Anonymouse', isAdmin: false }]])
+        new Map([['9', { id: '9', username: 'Anonymous', isAdmin: false }]])
       );
 
       expect(sessions).toHaveLength(0);
@@ -240,13 +257,13 @@ describe('Dispatcharr parser', () => {
 
       const sessions = parseSessionsFromChannels(
         normalized ? [normalized] : [],
-        new Map([['9', { id: '9', username: 'Anonymouse', isAdmin: false }]]),
+        new Map([['9', { id: '9', username: 'Anonymous', isAdmin: false }]]),
         undefined,
         { ignoreAnonymousStreams: false }
       );
 
       expect(sessions).toHaveLength(2);
-      expect(sessions[0]?.user.username).toBe('Anonymouse');
+      expect(sessions[0]?.user.username).toBe('Anonymous');
       expect(sessions[1]?.user).toMatchObject({
         id: '0',
         username: 'Anonymous',

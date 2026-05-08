@@ -361,7 +361,7 @@ export interface MediaServerConfig {
   url: string;
   /** Authentication token (encrypted) */
   token: string;
-  /** Dispatcharr-only: ignore sessions reported as anonymous/anonymouse */
+  /** Dispatcharr-only: ignore sessions reported as anonymous */
   ignoreAnonymousStreams?: boolean;
   /** Server ID (for logging and reference) */
   id?: string;

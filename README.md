@@ -1,12 +1,57 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br>
-  Do with it whatever you want, there is no guarantee it will work ¯\_(ツ)_/¯
+  <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯
 </p>
 
-It requires building your own Docker image if you want to use Docker, example docker build command for supervised image:
+> [!WARNING]  
+> You can do "in-place" replacement of your current Tracearr instance.<br>But **CREATE A BACKUP FIRST**, as I don't guarantee 100% success rate, and **I don't care if you break your setup** ¯\\\_(ツ)_/¯
+
+**What's New:**
+- Support for Dispatcharr servers, with Login/Password (for WebSocket integration) or API Key auth,
+- Shows currently running Live TV streams, as well as VOD Movies or VOD Shows,
+- Allows you to discard streams from "Anonymous" user if you want,
+- You can kill Dispatcharr streams directly from Tracearr dashboard,
+- Live TV card is aligned to Dispatcharr needs, showing speed threshold, watchtime,
+- Stream details for Live TV shows bitrate, codecs and video resolution,
+- Fixed multi-server selection memory on Dashboard tab _(this has nothing to do with Dispatcharr, just annoying bug)._
+
+It requires building your own Docker image if you want to use Docker. I tested it on **Supervised image**, so keep that in mind.<br>
+Example docker build commands:
 ```bash
-docker build -f docker/Dockerfile.supervised  -t distracearr-supervised  --build-arg APP_VERSION=1.4.27  --build-arg APP_TAG=supervised-1.4.27  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+# Regular Image
+docker build  -f docker/Dockerfile  -t distracearr  --build-arg APP_VERSION=1.4.27  --build-arg APP_TAG=1.4.27  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+
+# Supervised Image
+docker build  -f docker/Dockerfile.supervised  -t distracearr-supervised  --build-arg APP_VERSION=1.4.27  --build-arg APP_TAG=supervised-1.4.27  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 ```
+
+Example `docker-compose.yml` for **Supervised** image:
+```yaml
+tracearr:
+  image: distracearr-supervised
+  container_name: distracearr
+  ports:
+    - 3000:3000
+  environment:
+    - TZ=GMT
+    - LOG_LEVEL=info
+  volumes:
+    - /docker/distracearr/postgres:/data/postgres
+    - /docker/distracearr/redis:/data/redis
+    - /docker/distracearr/data:/data/tracearr
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://127.0.0.1:4567/health"]
+    interval: 30s
+    timeout: 10s
+    start_period: 60s
+    retries: 3
+```
+
+---
+_Original README.md_
+
+---
 
 <p align="center">
   <img src="apps/web/public/images/og_image.png" alt="Tracearr" width="600" />
