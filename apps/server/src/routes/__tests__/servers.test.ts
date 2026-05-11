@@ -184,6 +184,7 @@ const mockServer = {
   url: 'http://localhost:32400',
   token: 'encrypted_test-token',
   ignoreAnonymousStreams: true,
+  dispatcharrLiveHistoryThresholdSeconds: 30,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -207,6 +208,7 @@ describe('Server Routes', () => {
           type: mockServer.type,
           url: mockServer.url,
           ignoreAnonymousStreams: true,
+          dispatcharrLiveHistoryThresholdSeconds: 30,
           displayOrder: 0,
           color: '#4B8BFF',
           createdAt: mockServer.createdAt,
@@ -242,6 +244,7 @@ describe('Server Routes', () => {
           type: 'jellyfin',
           url: 'http://localhost:8096',
           ignoreAnonymousStreams: true,
+          dispatcharrLiveHistoryThresholdSeconds: 30,
           displayOrder: 0,
           color: '#9B59B6',
           createdAt: new Date(),
@@ -477,6 +480,7 @@ describe('Server Routes', () => {
         type: 'dispatcharr',
         url: 'http://dispatcharr.local:9191',
         ignoreAnonymousStreams: false,
+        dispatcharrLiveHistoryThresholdSeconds: 45,
         color: '#F97316',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -507,6 +511,7 @@ describe('Server Routes', () => {
           url: 'http://dispatcharr.local:9191',
           token: 'dispatcharr-api-key',
           ignoreAnonymousStreams: false,
+          dispatcharrLiveHistoryThresholdSeconds: 45,
         },
       });
 
@@ -516,6 +521,7 @@ describe('Server Routes', () => {
         'http://dispatcharr.local:9191'
       );
       expect(response.json().ignoreAnonymousStreams).toBe(false);
+      expect(response.json().dispatcharrLiveHistoryThresholdSeconds).toBe(45);
     });
 
     it('rejects duplicate server URL', async () => {
@@ -649,12 +655,14 @@ describe('Server Routes', () => {
         name: 'Dispatcharr',
         url: 'http://dispatcharr.local:9191',
         ignoreAnonymousStreams: true,
+        dispatcharrLiveHistoryThresholdSeconds: 30,
       };
       mockDbSelectLimit([dispatcharrServer]);
       mockDbUpdateReturning([
         {
           ...dispatcharrServer,
           ignoreAnonymousStreams: false,
+          dispatcharrLiveHistoryThresholdSeconds: 10,
           updatedAt: new Date(),
         },
       ]);
@@ -662,11 +670,15 @@ describe('Server Routes', () => {
       const response = await app.inject({
         method: 'PATCH',
         url: `/servers/${dispatcharrServer.id}`,
-        payload: { ignoreAnonymousStreams: false },
+        payload: {
+          ignoreAnonymousStreams: false,
+          dispatcharrLiveHistoryThresholdSeconds: 10,
+        },
       });
 
       expect(response.statusCode).toBe(200);
       expect(response.json().ignoreAnonymousStreams).toBe(false);
+      expect(response.json().dispatcharrLiveHistoryThresholdSeconds).toBe(10);
       expect(db.update).toHaveBeenCalled();
     });
 

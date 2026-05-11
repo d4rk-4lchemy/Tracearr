@@ -386,12 +386,13 @@ export function isPlaybackConfirmed(
   state: PlaybackConfirmationState,
   currentViewOffset: number,
   _currentState: string,
-  now: number
+  now: number,
+  thresholdMs: number = PLAYBACK_CONFIRM_THRESHOLD_MS
 ): boolean {
   if (state.confirmedPlayback) return true;
-  if (currentViewOffset > PLAYBACK_CONFIRM_THRESHOLD_MS) return true;
+  if (currentViewOffset > thresholdMs) return true;
   const activeDuration = now - state.firstSeenAt;
-  if (activeDuration > PLAYBACK_CONFIRM_THRESHOLD_MS) {
+  if (activeDuration > thresholdMs) {
     return true;
   }
   return false;

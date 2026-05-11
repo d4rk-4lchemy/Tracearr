@@ -15,6 +15,7 @@ import {
   type RuleV2,
   type SessionState,
 } from '@tracearr/shared';
+import { randomUUID } from 'node:crypto';
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { servers, serverUsers, sessions, users } from '../../db/schema.js';
@@ -33,6 +34,7 @@ import { updatePendingSession } from './pendingConfirmation.js';
 import {
   buildActiveSession,
   buildPendingActiveSession,
+  confirmAndPersistSession,
   createSessionWithRulesAtomic,
   findActiveSession,
   findActiveSessionByComposite,
@@ -51,7 +53,12 @@ import {
   shouldForceStopStaleSession,
   shouldWriteToDb,
 } from './stateTracker.js';
-import type { PollerConfig, ServerProcessingResult, ServerWithToken } from './types.js';
+import type {
+  PendingSessionData,
+  PollerConfig,
+  ServerProcessingResult,
+  ServerWithToken,
+} from './types.js';
 import { DB_WRITE_FLUSH_INTERVAL_MS } from './types.js';
 import { broadcastViolations } from './violations.js';
 
@@ -88,6 +95,31 @@ const missedPollTracking = new Map<string, ActiveSession>();
 
 // Last DB write time per session — for 30s periodic flush.
 const lastDbWriteMap = new Map<string, number>();
+
+export function syncDispatcharrPendingProgress(
+  pendingData: PendingSessionData,
+  dispatcharrLiveConfirmThresholdMs: number | null
+): PendingSessionData {
+  if (dispatcharrLiveConfirmThresholdMs === null || dispatcharrLiveConfirmThresholdMs <= 0) {
+    return pendingData;
+  }
+
+  const maxViewOffset = Math.max(0, pendingData.confirmation.maxViewOffset || 0);
+  const existingProgress = Math.max(0, pendingData.processed.progressMs || 0);
+  const nextProgress = Math.max(existingProgress, maxViewOffset);
+
+  if (pendingData.processed.progressMs === nextProgress) {
+    return pendingData;
+  }
+
+  return {
+    ...pendingData,
+    processed: {
+      ...pendingData.processed,
+      progressMs: nextProgress,
+    },
+  };
+}
 
 /**
  * Handle first-miss grace period entries for a set of cached session keys.
@@ -490,8 +522,46 @@ async function processServerSessions(
       const geo: GeoLocation = await lookupGeoIP(processed.ipAddress, usePlexGeoip);
 
       const isNew = !cachedSessionKeys.has(sessionKey);
+      const dispatcharrLiveConfirmThresholdMs =
+        server.type === 'dispatcharr' && processed.mediaType === 'live'
+          ? Math.max(0, (server.dispatcharrLiveHistoryThresholdSeconds ?? 30) * 1000)
+          : null;
 
       if (isNew) {
+        if (dispatcharrLiveConfirmThresholdMs !== null && dispatcharrLiveConfirmThresholdMs > 0) {
+          if (!cacheService) {
+            console.warn('[Poller] Cache service not available, skipping pending session creation');
+            continue;
+          }
+
+          const now = Date.now();
+          const pendingData = {
+            id: randomUUID(),
+            confirmation: {
+              rulesEvaluated: false,
+              confirmedPlayback: false,
+              firstSeenAt: now,
+              maxViewOffset: Math.max(0, processed.progressMs ?? 0),
+            },
+            processed,
+            server: { id: server.id, name: server.name, type: server.type },
+            serverUser: userDetail,
+            geo,
+            startedAt: now,
+            lastSeenAt: now,
+            currentState: processed.state as SessionState,
+            pausedDurationMs: 0,
+            lastPausedAt: processed.state === 'paused' ? now : null,
+          };
+
+          await cacheService.setPendingSession(server.id, sessionKey, pendingData);
+
+          const activeSession = buildPendingActiveSession(pendingData);
+          newSessions.push(activeSession);
+          cachedSessionKeys.add(sessionKey);
+          continue;
+        }
+
         // Distributed lock prevents race condition with SSE
         if (!cacheService) {
           console.warn('[Poller] Cache service not available, skipping session creation');
@@ -703,16 +773,30 @@ async function processServerSessions(
               pendingSession,
               processed.state,
               processed.progressMs,
-              Date.now()
+              Date.now(),
+              dispatcharrLiveConfirmThresholdMs ?? undefined
             );
 
             if (isConfirmed) {
               const recentSessions = recentSessionsMap.get(serverUserId) ?? [];
+              const pendingDataForPersist = syncDispatcharrPendingProgress(
+                updatedData,
+                dispatcharrLiveConfirmThresholdMs
+              );
               const createResult = await cacheService.withSessionCreateLock(
                 server.id,
                 processed.sessionKey,
-                async () =>
-                  createSessionWithRulesAtomic({
+                async () => {
+                  if (dispatcharrLiveConfirmThresholdMs !== null) {
+                    return confirmAndPersistSession({
+                      pendingData: pendingDataForPersist,
+                      activeRulesV2,
+                      activeSessions,
+                      recentSessions,
+                    });
+                  }
+
+                  return createSessionWithRulesAtomic({
                     processed,
                     server: { id: server.id, name: server.name, type: server.type },
                     serverUser: userDetail,
@@ -720,8 +804,9 @@ async function processServerSessions(
                     activeRulesV2,
                     activeSessions,
                     recentSessions,
-                    preGeneratedId: updatedData.id,
-                  })
+                    preGeneratedId: pendingDataForPersist.id,
+                  });
+                }
               );
               if (createResult && 'insertedSession' in createResult) {
                 await cacheService.deletePendingSession(server.id, pendingKey);
@@ -729,12 +814,16 @@ async function processServerSessions(
                 if (!wasTerminatedByRule) {
                   const activeSession = buildActiveSession({
                     session: insertedSession,
-                    processed,
+                    processed: pendingDataForPersist.processed,
                     user: userDetail,
                     geo,
                     server,
                   });
-                  newSessions.push(activeSession);
+                  if (dispatcharrLiveConfirmThresholdMs !== null) {
+                    updatedSessions.push(activeSession);
+                  } else {
+                    newSessions.push(activeSession);
+                  }
                   lastDbWriteMap.set(insertedSession.id, Date.now());
                 }
                 if (violationResults.length > 0 && pubSubService) {
@@ -746,8 +835,12 @@ async function processServerSessions(
                 }
               }
             } else {
-              await cacheService.setPendingSession(server.id, pendingKey, updatedData);
-              const activeSession = buildPendingActiveSession(updatedData);
+              const pendingDataForCache = syncDispatcharrPendingProgress(
+                updatedData,
+                dispatcharrLiveConfirmThresholdMs
+              );
+              await cacheService.setPendingSession(server.id, pendingKey, pendingDataForCache);
+              const activeSession = buildPendingActiveSession(pendingDataForCache);
               updatedSessions.push(activeSession);
             }
             continue;

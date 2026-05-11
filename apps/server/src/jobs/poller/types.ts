@@ -46,6 +46,7 @@ export interface ServerWithToken {
   url: string;
   token: string;
   ignoreAnonymousStreams?: boolean;
+  dispatcharrLiveHistoryThresholdSeconds?: number;
   createdAt: Date;
   updatedAt: Date;
 }

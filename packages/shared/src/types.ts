@@ -43,6 +43,7 @@ export interface Server {
   type: ServerType;
   url: string;
   ignoreAnonymousStreams?: boolean;
+  dispatcharrLiveHistoryThresholdSeconds?: number;
   displayOrder?: number;
   color?: string | null;
   createdAt: Date;

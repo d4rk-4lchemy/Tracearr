@@ -33,7 +33,8 @@ export function updatePendingSession(
   pendingData: PendingSessionData,
   newState: string,
   viewOffset: number | undefined,
-  now: number
+  now: number,
+  confirmThresholdMs?: number
 ): { updatedData: PendingSessionData; isConfirmed: boolean } {
   const previousState = pendingData.currentState ?? 'playing';
 
@@ -47,7 +48,13 @@ export function updatePendingSession(
 
   const currentViewOffset = viewOffset ?? pendingData.confirmation.maxViewOffset;
   const updatedConfirmation = updateConfirmationState(pendingData.confirmation, currentViewOffset);
-  const confirmed = isPlaybackConfirmed(updatedConfirmation, currentViewOffset, newState, now);
+  const confirmed = isPlaybackConfirmed(
+    updatedConfirmation,
+    currentViewOffset,
+    newState,
+    now,
+    confirmThresholdMs
+  );
 
   const updatedData: PendingSessionData = {
     ...pendingData,

@@ -88,6 +88,9 @@ export const servers = pgTable(
     plexAccountId: uuid('plex_account_id'),
     displayOrder: integer('display_order').default(0).notNull(),
     ignoreAnonymousStreams: boolean('ignore_anonymous_streams').default(true).notNull(),
+    dispatcharrLiveHistoryThresholdSeconds: integer('dispatcharr_live_history_threshold_seconds')
+      .default(30)
+      .notNull(),
     color: varchar('color', { length: 7 }), // Hex color like #3b82f6
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
