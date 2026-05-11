@@ -77,6 +77,8 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
 
   const serverId = searchParams.get('serverId');
   if (serverId) filters.serverId = serverId;
+  const serverIds = searchParams.getAll('serverIds').filter(Boolean);
+  if (serverIds.length > 0) filters.serverIds = serverIds;
 
   const mediaTypes = parseCommaSeparated(searchParams.get('mediaTypes'), [
     'movie',
@@ -152,6 +154,11 @@ function filtersToUrlParams(filters: HistoryFilters): URLSearchParams {
 
   if (filters.serverUserIds?.length) params.set('userIds', filters.serverUserIds.join(','));
   if (filters.serverId) params.set('serverId', filters.serverId);
+  if (filters.serverIds?.length) {
+    for (const id of filters.serverIds) {
+      params.append('serverIds', id);
+    }
+  }
   if (filters.mediaTypes?.length) params.set('mediaTypes', filters.mediaTypes.join(','));
   if (filters.state) params.set('state', filters.state);
   if (filters.transcodeDecisions?.length)
@@ -174,7 +181,7 @@ export function History() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedServerId } = useServer();
+  const { selectedServerIds, selectedServers } = useServer();
   const [selectedSession, setSelectedSession] = useState<SessionWithDetails | null>(null);
 
   // Deep-link: fetch session by ID from route param and auto-open sheet
@@ -192,12 +199,12 @@ export function History() {
   // Parse filters from URL on mount and when URL changes
   const filters = useMemo(() => {
     const parsed = parseFiltersFromUrl(searchParams);
-    // Apply selected server from context if not in URL
-    if (!parsed.serverId && selectedServerId) {
-      parsed.serverId = selectedServerId;
+    // Apply selected servers from context if not explicitly provided in URL
+    if (!parsed.serverIds?.length && !parsed.serverId && selectedServerIds.length > 0) {
+      parsed.serverIds = selectedServerIds;
     }
     return parsed;
-  }, [searchParams, selectedServerId]);
+  }, [searchParams, selectedServerIds]);
 
   // Query hooks
   const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
@@ -210,9 +217,15 @@ export function History() {
 
   const { data: filterOptions, isLoading: filterOptionsLoading } = useFilterOptions({
     serverId: filters.serverId,
+    serverIds: filters.serverIds,
     startDate: filters.startDate,
     endDate: filters.endDate,
   });
+
+  const serverColorMap = useMemo(
+    () => new Map(selectedServers.map((server) => [server.id, server.color ?? null])),
+    [selectedServers]
+  );
 
   // Flatten pages into single sessions array
   const sessions = useMemo(() => {
@@ -302,6 +315,8 @@ export function History() {
             sortBy={filters.orderBy ?? 'startedAt'}
             sortDir={filters.orderDir ?? 'desc'}
             onSortChange={handleSortChange}
+            showServerColorBar={selectedServerIds.length > 1}
+            serverColorMap={serverColorMap}
           />
         </CardContent>
       </Card>

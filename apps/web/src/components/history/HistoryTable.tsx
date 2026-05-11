@@ -138,6 +138,8 @@ interface Props {
   sortBy?: SortableColumn;
   sortDir?: SortDirection;
   onSortChange?: (column: SortableColumn) => void;
+  showServerColorBar?: boolean;
+  serverColorMap?: Map<string, string | null>;
   // Selection props
   selectable?: boolean;
   selectedIds?: Set<string>;
@@ -205,8 +207,19 @@ interface HistoryTableRowProps {
   selectable?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+  showServerColorBar?: boolean;
+  serverColorMap?: Map<string, string | null>;
   style?: React.CSSProperties;
   'data-index'?: number;
+}
+
+function getDeterministicServerColor(serverId: string): string {
+  let hash = 0;
+  for (let i = 0; i < serverId.length; i += 1) {
+    hash = (hash * 31 + serverId.charCodeAt(i)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 52%)`;
 }
 
 // Session row component with column visibility support
@@ -220,6 +233,8 @@ export const HistoryTableRow = memo(
         selectable,
         isSelected,
         onSelect,
+        showServerColorBar,
+        serverColorMap,
         style,
         'data-index': dataIndex,
       },
@@ -232,7 +247,14 @@ export const HistoryTableRow = memo(
         <TableRow
           ref={ref}
           data-index={dataIndex}
-          style={style}
+          style={{
+            ...style,
+            borderLeftWidth: showServerColorBar ? '3px' : undefined,
+            borderLeftStyle: showServerColorBar ? 'solid' : undefined,
+            borderLeftColor: showServerColorBar
+              ? (serverColorMap?.get(session.serverId) ?? getDeterministicServerColor(session.serverId))
+              : undefined,
+          }}
           className={cn(
             'cursor-pointer transition-colors',
             onClick && 'hover:bg-muted/50',
@@ -609,6 +631,8 @@ export function HistoryTable({
   sortBy,
   sortDir,
   onSortChange,
+  showServerColorBar = false,
+  serverColorMap,
   selectable = false,
   selectedIds,
   selectAllMode = false,
@@ -812,6 +836,8 @@ export function HistoryTable({
                 selectable={selectable}
                 isSelected={selectAllMode || (selectedIds?.has(session.id) ?? false)}
                 onSelect={onRowSelect ? () => onRowSelect(session) : undefined}
+                showServerColorBar={showServerColorBar}
+                serverColorMap={serverColorMap}
               />
             );
           })}

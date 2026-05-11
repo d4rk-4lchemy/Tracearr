@@ -21,7 +21,7 @@ export function Map() {
   const { t } = useTranslation(['pages', 'common']);
   const [searchParams, setSearchParams] = useSearchParams();
   const { value: timeRange, setValue: setTimeRange } = useTimeRange();
-  const { selectedServerId } = useServer();
+  const { selectedServerIds } = useServer();
 
   const MEDIA_TYPES = useMemo(
     () =>
@@ -41,11 +41,11 @@ export function Map() {
 
     return {
       serverUserId: serverUserId || undefined,
-      serverId: selectedServerId || undefined,
+      serverIds: selectedServerIds.length ? selectedServerIds : undefined,
       mediaType: mediaType || undefined,
       viewMode,
     };
-  }, [searchParams, selectedServerId]);
+  }, [searchParams, selectedServerIds]);
 
   // Build API params including time range
   const apiParams = useMemo(
@@ -56,7 +56,7 @@ export function Map() {
         endDate: timeRange.endDate?.toISOString(),
       },
       serverUserId: filters.serverUserId,
-      serverId: filters.serverId,
+      serverIds: filters.serverIds,
       mediaType: filters.mediaType,
     }),
     [timeRange, filters]

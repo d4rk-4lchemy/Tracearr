@@ -14,7 +14,10 @@ const LAST_SINGLE_SERVER_KEY = 'tracearr_last_single_server';
 
 export function ServerSelector() {
   const location = useLocation();
-  const isDashboard = location.pathname === '/';
+  const isMultiSelectRoute =
+    location.pathname === '/' ||
+    location.pathname.startsWith('/map') ||
+    location.pathname.startsWith('/history');
   const {
     servers,
     selectedServerIds,
@@ -27,14 +30,20 @@ export function ServerSelector() {
     isFetching,
   } = useServer();
 
-  // Preserve Dashboard multi-select while keeping non-Dashboard pages single-server only.
+  // Preserve multi-select on Dashboard/Map/History while keeping other pages single-server only.
   const prevPathname = useRef(location.pathname);
   useEffect(() => {
-    const wasDashboard = prevPathname.current === '/';
-    const isNowDashboard = location.pathname === '/';
+    const wasMultiRoute =
+      prevPathname.current === '/' ||
+      prevPathname.current.startsWith('/map') ||
+      prevPathname.current.startsWith('/history');
+    const isNowMultiRoute =
+      location.pathname === '/' ||
+      location.pathname.startsWith('/map') ||
+      location.pathname.startsWith('/history');
     prevPathname.current = location.pathname;
 
-    if (wasDashboard && !isNowDashboard) {
+    if (wasMultiRoute && !isNowMultiRoute) {
       if (selectedServerIds.length > 1) {
         localStorage.setItem(DASHBOARD_SELECTED_SERVERS_KEY, JSON.stringify(selectedServerIds));
 
@@ -45,7 +54,7 @@ export function ServerSelector() {
       return;
     }
 
-    if (!wasDashboard && isNowDashboard) {
+    if (!wasMultiRoute && isNowMultiRoute) {
       try {
         const stored = localStorage.getItem(DASHBOARD_SELECTED_SERVERS_KEY);
         if (!stored) return;
@@ -65,11 +74,11 @@ export function ServerSelector() {
     }
   }, [location.pathname, selectedServerIds, servers, deselectAllExcept, setSelectedServers]);
 
-  // Remember non-Dashboard single selection as preferred fallback.
+  // Remember non-multi-route single selection as preferred fallback.
   useEffect(() => {
-    if (isDashboard || selectedServerIds.length !== 1) return;
+    if (isMultiSelectRoute || selectedServerIds.length !== 1) return;
     localStorage.setItem(LAST_SINGLE_SERVER_KEY, selectedServerIds[0]!);
-  }, [isDashboard, selectedServerIds]);
+  }, [isMultiSelectRoute, selectedServerIds]);
 
   // Show skeleton while loading initially or refetching with no cached data
   if (isLoading || (servers.length === 0 && isFetching)) {
@@ -127,8 +136,8 @@ export function ServerSelector() {
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-2" align="start">
-          {/* Select All toggle — only on Dashboard */}
-          {isDashboard && (
+          {/* Select All toggle — on multi-select routes */}
+          {isMultiSelectRoute && (
             <>
               <button
                 type="button"
@@ -155,7 +164,7 @@ export function ServerSelector() {
           {/* Server list */}
           {servers.map((server) => {
             const isSelected = selectedServerIds.includes(server.id);
-            return isDashboard ? (
+            return isMultiSelectRoute ? (
               <label
                 key={server.id}
                 className="hover:bg-accent flex cursor-pointer items-center gap-2.5 rounded-sm border-l-2 px-2 py-1.5"

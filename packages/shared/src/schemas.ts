@@ -234,6 +234,7 @@ export const historyQuerySchema = z.object({
 
   // Server filter
   serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
   state: z.enum(['playing', 'paused', 'stopped']).optional(),
 
   // Media type filter - supports multi-select
@@ -650,6 +651,7 @@ export const locationStatsQuerySchema = z
     endDate: z.iso.datetime().optional(),
     serverUserId: uuidSchema.optional(),
     serverId: uuidSchema.optional(),
+    serverIds: serverIdsQuerySchema,
     mediaType: mediaTypeSchema.optional(),
   })
   .refine(dateValidationRefinements.customPeriodRequiresDates.refinement, {

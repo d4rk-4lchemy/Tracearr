@@ -677,11 +677,17 @@ class ApiClient {
      */
     history: (params: Partial<HistoryQueryInput> & { cursor?: string }) => {
       const searchParams = new URLSearchParams();
+      const multiServerParams = params as { serverIds?: string[] };
       if (params.cursor) searchParams.set('cursor', params.cursor);
       if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
       if (params.serverUserIds?.length)
         searchParams.set('serverUserIds', params.serverUserIds.join(','));
       if (params.serverId) searchParams.set('serverId', params.serverId);
+      if (multiServerParams.serverIds?.length) {
+        for (const id of multiServerParams.serverIds) {
+          searchParams.append('serverIds', id);
+        }
+      }
       if (params.state) searchParams.set('state', params.state);
       if (params.mediaTypes?.length) searchParams.set('mediaTypes', params.mediaTypes.join(','));
       if (params.startDate) searchParams.set('startDate', params.startDate.toISOString());
@@ -710,9 +716,15 @@ class ApiClient {
      */
     historyAggregates: (params: Partial<HistoryAggregatesQueryInput>) => {
       const searchParams = new URLSearchParams();
+      const multiServerParams = params as { serverIds?: string[] };
       if (params.serverUserIds?.length)
         searchParams.set('serverUserIds', params.serverUserIds.join(','));
       if (params.serverId) searchParams.set('serverId', params.serverId);
+      if (multiServerParams.serverIds?.length) {
+        for (const id of multiServerParams.serverIds) {
+          searchParams.append('serverIds', id);
+        }
+      }
       if (params.state) searchParams.set('state', params.state);
       if (params.mediaTypes?.length) searchParams.set('mediaTypes', params.mediaTypes.join(','));
       if (params.startDate) searchParams.set('startDate', params.startDate.toISOString());
@@ -739,9 +751,19 @@ class ApiClient {
      * Get available filter values for dropdowns on the History page.
      * Accepts optional date range to match history query filters.
      */
-    filterOptions: (params?: { serverId?: string; startDate?: Date; endDate?: Date }) => {
+    filterOptions: (params?: {
+      serverId?: string;
+      serverIds?: string[];
+      startDate?: Date;
+      endDate?: Date;
+    }) => {
       const searchParams = new URLSearchParams();
       if (params?.serverId) searchParams.set('serverId', params.serverId);
+      if (params?.serverIds?.length) {
+        for (const id of params.serverIds) {
+          searchParams.append('serverIds', id);
+        }
+      }
       if (params?.startDate) searchParams.set('startDate', params.startDate.toISOString());
       if (params?.endDate) searchParams.set('endDate', params.endDate.toISOString());
       return this.request<HistoryFilterOptions>(
@@ -916,6 +938,7 @@ class ApiClient {
       timeRange?: StatsTimeRange;
       serverUserId?: string;
       serverId?: string;
+      serverIds?: string[];
       mediaType?: 'movie' | 'episode' | 'track';
     }) => {
       const searchParams = new URLSearchParams();
@@ -924,6 +947,11 @@ class ApiClient {
       if (params?.timeRange?.endDate) searchParams.set('endDate', params.timeRange.endDate);
       if (params?.serverUserId) searchParams.set('serverUserId', params.serverUserId);
       if (params?.serverId) searchParams.set('serverId', params.serverId);
+      if (params?.serverIds?.length) {
+        for (const id of params.serverIds) {
+          searchParams.append('serverIds', id);
+        }
+      }
       if (params?.mediaType) searchParams.set('mediaType', params.mediaType);
       const query = searchParams.toString();
       return this.request<LocationStatsResponse>(`/stats/locations${query ? `?${query}` : ''}`);
