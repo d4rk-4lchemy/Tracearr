@@ -23,6 +23,7 @@ export default mergeConfig(
         'src/services/**/__tests__/*.test.ts',
         'src/jobs/__tests__/*.test.ts',
         'src/jobs/poller/__tests__/*.test.ts',
+        'src/db/__tests__/*.test.ts',
       ],
       coverage: {
         provider: 'v8',
