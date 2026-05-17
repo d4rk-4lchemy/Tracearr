@@ -116,7 +116,7 @@ describe('HistoryTable mobile layout protections', () => {
     );
 
     const table = screen.getByRole('table');
-    expect(table.className).toContain('w-max');
+    expect(table.className).toContain('w-full');
     expect(table.getAttribute('style') ?? '').toContain('min-width: 1074px');
 
     const title = screen.getByText('Very Long Movie Name That Should Be Truncated On Mobile Layout');

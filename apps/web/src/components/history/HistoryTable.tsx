@@ -699,10 +699,7 @@ export function HistoryTable({
         className="scrollbar-thin relative overflow-auto"
         style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
       >
-        <table
-          className="w-max min-w-full caption-bottom text-sm"
-          style={{ minWidth: `${minTableWidth}px` }}
-        >
+        <table className="w-full caption-bottom text-sm" style={{ minWidth: `${minTableWidth}px` }}>
           <thead
             className="bg-card sticky top-0 z-10 [&_tr]:border-b"
             style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
@@ -737,10 +734,7 @@ export function HistoryTable({
         className="scrollbar-thin relative overflow-auto"
         style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
       >
-        <table
-          className="w-max min-w-full caption-bottom text-sm"
-          style={{ minWidth: `${minTableWidth}px` }}
-        >
+        <table className="w-full caption-bottom text-sm" style={{ minWidth: `${minTableWidth}px` }}>
           <thead
             className="bg-card sticky top-0 z-10 [&_tr]:border-b"
             style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
@@ -780,10 +774,7 @@ export function HistoryTable({
       className="scrollbar-thin relative overflow-auto"
       style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
     >
-      <table
-        className="w-max min-w-full caption-bottom text-sm"
-        style={{ minWidth: `${minTableWidth}px` }}
-      >
+      <table className="w-full caption-bottom text-sm" style={{ minWidth: `${minTableWidth}px` }}>
         <thead
           className="bg-card sticky top-0 z-10 [&_tr]:border-b"
           style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
@@ -880,7 +871,7 @@ export function HistoryTable({
       {/* Skeleton rows shown while fetching next page, rendered below the virtual table */}
       {isFetchingNextPage && (
         <table
-          className="w-max min-w-full caption-bottom text-sm"
+          className="w-full caption-bottom text-sm"
           style={{ tableLayout: 'fixed', minWidth: `${minTableWidth}px` }}
         >
           <tbody>
