@@ -110,7 +110,7 @@ function EngagementTierBadge({
       <TooltipTrigger asChild>
         <span
           className={cn(
-            'rounded px-1 py-0.5 text-[10px] font-medium',
+            'shrink-0 rounded px-1 py-0.5 text-[10px] font-medium',
             config.color,
             config.bgClass
           )}
@@ -325,12 +325,12 @@ export const HistoryTableRow = memo(
 
           {/* Content */}
           {columnVisibility.content && (
-            <TableCell className="max-w-[300px] min-w-[200px]">
-              <div className="flex items-center gap-2">
+            <TableCell className="min-w-[200px] max-w-[300px] overflow-hidden">
+              <div className="flex min-w-0 items-center gap-2">
                 <MediaTypeIcon type={session.mediaType} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate font-medium">{primary}</span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="block min-w-0 flex-1 truncate font-medium">{primary}</span>
                     <EngagementTierBadge
                       progress={progress}
                       state={session.state}
@@ -591,6 +591,29 @@ function getVisibleColumnCount(columnVisibility: ColumnVisibility): number {
   return Object.values(columnVisibility).filter(Boolean).length;
 }
 
+function getMinTableWidth(columnVisibility: ColumnVisibility, selectable: boolean): number {
+  const widthByColumn: Record<keyof ColumnVisibility, number> = {
+    date: 140,
+    user: 150,
+    content: 200,
+    platform: 120,
+    location: 130,
+    ip: 120,
+    quality: 110,
+    duration: 100,
+    progress: 100,
+  };
+
+  const visibleWidth = (Object.keys(columnVisibility) as Array<keyof ColumnVisibility>)
+    .filter((column) => columnVisibility[column])
+    .reduce((sum, column) => sum + widthByColumn[column], 0);
+
+  const selectionWidth = selectable ? 40 : 0;
+  const borderAndPaddingBuffer = 24;
+
+  return visibleWidth + selectionWidth + borderAndPaddingBuffer;
+}
+
 // Sortable header component
 function SortableHeader({
   column,
@@ -642,6 +665,7 @@ export function HistoryTable({
   isAllVisibleIndeterminate: _isAllVisibleIndeterminate = false,
 }: Props) {
   const visibleColumnCount = getVisibleColumnCount(columnVisibility) + (selectable ? 1 : 0);
+  const minTableWidth = getMinTableWidth(columnVisibility, selectable);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const rowVirtualizer = useVirtualizer({
@@ -675,7 +699,10 @@ export function HistoryTable({
         className="scrollbar-thin relative overflow-auto"
         style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
       >
-        <table className="w-full caption-bottom text-sm">
+        <table
+          className="w-max min-w-full caption-bottom text-sm"
+          style={{ minWidth: `${minTableWidth}px` }}
+        >
           <thead
             className="bg-card sticky top-0 z-10 [&_tr]:border-b"
             style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
@@ -684,7 +711,7 @@ export function HistoryTable({
               {selectable && <TableHead className="w-10" />}
               {columnVisibility.date && <TableHead className="w-[140px]">Date</TableHead>}
               {columnVisibility.user && <TableHead className="w-[150px]">User</TableHead>}
-              {columnVisibility.content && <TableHead className="min-w-[200px]">Content</TableHead>}
+              {columnVisibility.content && <TableHead className="w-[200px]">Content</TableHead>}
               {columnVisibility.platform && <TableHead className="w-[120px]">Platform</TableHead>}
               {columnVisibility.location && <TableHead className="w-[130px]">Location</TableHead>}
               {columnVisibility.ip && <TableHead className="w-[120px]">IP Address</TableHead>}
@@ -710,7 +737,10 @@ export function HistoryTable({
         className="scrollbar-thin relative overflow-auto"
         style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
       >
-        <table className="w-full caption-bottom text-sm">
+        <table
+          className="w-max min-w-full caption-bottom text-sm"
+          style={{ minWidth: `${minTableWidth}px` }}
+        >
           <thead
             className="bg-card sticky top-0 z-10 [&_tr]:border-b"
             style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
@@ -719,7 +749,7 @@ export function HistoryTable({
               {selectable && <TableHead className="w-10" />}
               {columnVisibility.date && <TableHead className="w-[140px]">Date</TableHead>}
               {columnVisibility.user && <TableHead className="w-[150px]">User</TableHead>}
-              {columnVisibility.content && <TableHead className="min-w-[200px]">Content</TableHead>}
+              {columnVisibility.content && <TableHead className="w-[200px]">Content</TableHead>}
               {columnVisibility.platform && <TableHead className="w-[120px]">Platform</TableHead>}
               {columnVisibility.location && <TableHead className="w-[130px]">Location</TableHead>}
               {columnVisibility.ip && <TableHead className="w-[120px]">IP Address</TableHead>}
@@ -750,7 +780,10 @@ export function HistoryTable({
       className="scrollbar-thin relative overflow-auto"
       style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
     >
-      <table className="w-full caption-bottom text-sm">
+      <table
+        className="w-max min-w-full caption-bottom text-sm"
+        style={{ minWidth: `${minTableWidth}px` }}
+      >
         <thead
           className="bg-card sticky top-0 z-10 [&_tr]:border-b"
           style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
@@ -778,7 +811,7 @@ export function HistoryTable({
             )}
             {columnVisibility.user && <TableHead className="w-[150px]">User</TableHead>}
             {columnVisibility.content && (
-              <TableHead className="min-w-[200px]">
+              <TableHead className="w-[200px]">
                 <SortableHeader
                   column="mediaTitle"
                   label="Content"
@@ -846,7 +879,10 @@ export function HistoryTable({
 
       {/* Skeleton rows shown while fetching next page, rendered below the virtual table */}
       {isFetchingNextPage && (
-        <table className="w-full caption-bottom text-sm" style={{ tableLayout: 'fixed' }}>
+        <table
+          className="w-max min-w-full caption-bottom text-sm"
+          style={{ tableLayout: 'fixed', minWidth: `${minTableWidth}px` }}
+        >
           <tbody>
             {Array.from({ length: 5 }).map((_, i) => (
               <SkeletonRow
