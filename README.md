@@ -31,7 +31,6 @@
 </p>
 
 I tested it on **Supervised image**, so keep that in mind.
-
 You can also build your own Docker image.<br>
 Example docker build commands:
 ```bash
