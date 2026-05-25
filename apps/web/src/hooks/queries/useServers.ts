@@ -32,6 +32,7 @@ export function useCreateServer() {
       username?: string;
       password?: string;
       ignoreAnonymousStreams?: boolean;
+      dispatcharrLiveHistoryThresholdSeconds?: number;
     }) =>
       api.servers.create(data),
     onSuccess: (_, variables) => {
@@ -75,6 +76,7 @@ export function useUpdateServer() {
       url,
       clientIdentifier,
       ignoreAnonymousStreams,
+      dispatcharrLiveHistoryThresholdSeconds,
       color,
     }: {
       id: string;
@@ -82,8 +84,17 @@ export function useUpdateServer() {
       url?: string;
       clientIdentifier?: string;
       ignoreAnonymousStreams?: boolean;
+      dispatcharrLiveHistoryThresholdSeconds?: number;
       color?: string | null;
-    }) => api.servers.update(id, { name, url, clientIdentifier, ignoreAnonymousStreams, color }),
+    }) =>
+      api.servers.update(id, {
+        name,
+        url,
+        clientIdentifier,
+        ignoreAnonymousStreams,
+        dispatcharrLiveHistoryThresholdSeconds,
+        color,
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['servers', 'list'] });
       void queryClient.invalidateQueries({ queryKey: ['plex', 'server-connections'] });

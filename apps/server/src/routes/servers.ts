@@ -42,6 +42,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         type: servers.type,
         url: servers.url,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
+        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         displayOrder: servers.displayOrder,
         color: servers.color,
         createdAt: servers.createdAt,
@@ -88,7 +89,16 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Invalid request body');
     }
 
-    const { name, type, url, token, username, password, ignoreAnonymousStreams } = body.data;
+    const {
+      name,
+      type,
+      url,
+      token,
+      username,
+      password,
+      ignoreAnonymousStreams,
+      dispatcharrLiveHistoryThresholdSeconds,
+    } = body.data;
     const authUser = request.user;
 
     // Only owners can add servers
@@ -190,6 +200,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         url,
         token: normalizedToken,
         ignoreAnonymousStreams,
+        dispatcharrLiveHistoryThresholdSeconds,
         color,
         plexAccountId, // Links Plex servers to their owning account (undefined for non-Plex)
       })
@@ -199,6 +210,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         type: servers.type,
         url: servers.url,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
+        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
@@ -254,6 +266,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       url: bodyUrl,
       clientIdentifier,
       ignoreAnonymousStreams: newIgnoreAnonymousStreams,
+      dispatcharrLiveHistoryThresholdSeconds: newDispatcharrLiveHistoryThresholdSeconds,
       color: newColor,
     } = body.data;
     const newUrl = bodyUrl !== undefined ? bodyUrl.replace(/\/$/, '') : undefined;
@@ -282,6 +295,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           type: server.type,
           url: server.url,
           ignoreAnonymousStreams: server.ignoreAnonymousStreams,
+          dispatcharrLiveHistoryThresholdSeconds: server.dispatcharrLiveHistoryThresholdSeconds,
           createdAt: server.createdAt,
           updatedAt: server.updatedAt,
         };
@@ -337,15 +351,16 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       }
     } else if (newName !== undefined && server.name === newName) {
       // Name-only update but name unchanged
-        return {
-          id: server.id,
-          name: server.name,
-          type: server.type,
-          url: server.url,
-          ignoreAnonymousStreams: server.ignoreAnonymousStreams,
-          createdAt: server.createdAt,
-          updatedAt: server.updatedAt,
-        };
+      return {
+        id: server.id,
+        name: server.name,
+        type: server.type,
+        url: server.url,
+        ignoreAnonymousStreams: server.ignoreAnonymousStreams,
+        dispatcharrLiveHistoryThresholdSeconds: server.dispatcharrLiveHistoryThresholdSeconds,
+        createdAt: server.createdAt,
+        updatedAt: server.updatedAt,
+      };
     }
 
     // Build update object
@@ -353,6 +368,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       name?: string;
       url?: string;
       ignoreAnonymousStreams?: boolean;
+      dispatcharrLiveHistoryThresholdSeconds?: number;
       color?: string | null;
       updatedAt: Date;
     } = { updatedAt: new Date() };
@@ -360,6 +376,10 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     if (newUrl !== undefined) updatePayload.url = newUrl;
     if (newIgnoreAnonymousStreams !== undefined) {
       updatePayload.ignoreAnonymousStreams = newIgnoreAnonymousStreams;
+    }
+    if (newDispatcharrLiveHistoryThresholdSeconds !== undefined) {
+      updatePayload.dispatcharrLiveHistoryThresholdSeconds =
+        newDispatcharrLiveHistoryThresholdSeconds;
     }
     if (newColor !== undefined) updatePayload.color = newColor;
 
@@ -373,6 +393,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         type: servers.type,
         url: servers.url,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
+        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,

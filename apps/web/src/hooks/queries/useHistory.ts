@@ -14,6 +14,7 @@ import { api } from '@/lib/api';
 export interface HistoryFilters {
   serverUserIds?: string[];
   serverId?: string;
+  serverIds?: string[];
   state?: 'playing' | 'paused' | 'stopped';
   mediaTypes?: ('movie' | 'episode' | 'track' | 'live')[];
   startDate?: Date;
@@ -78,12 +79,19 @@ export function useHistoryAggregates(filters: AggregateFilters = {}) {
  * Used to populate filter dropdowns.
  * Accepts optional date range to match the current history filter.
  */
-export function useFilterOptions(params?: { serverId?: string; startDate?: Date; endDate?: Date }) {
+export function useFilterOptions(params?: {
+  serverId?: string;
+  serverIds?: string[];
+  startDate?: Date;
+  endDate?: Date;
+}) {
+  const serverIdsKey = params?.serverIds?.length ? [...params.serverIds].sort().join(',') : '';
   return useQuery({
     queryKey: [
       'sessions',
       'filter-options',
       params?.serverId,
+      serverIdsKey,
       params?.startDate?.toISOString(),
       params?.endDate?.toISOString(),
     ],

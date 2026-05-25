@@ -58,7 +58,8 @@ function buildHistoryFilterConditions(
 ): HistoryFilterResult {
   const {
     serverUserIds,
-    serverId,
+    serverId: legacyServerId,
+    serverIds: parsedServerIds,
     state,
     mediaTypes,
     startDate,
@@ -76,17 +77,18 @@ function buildHistoryFilterConditions(
     watched,
     excludeShortSessions,
   } = params;
+  const rawServerIds = parsedServerIds as string[] | undefined;
 
   const conditions: ReturnType<typeof sql>[] = [];
-
-  // Filter by user's accessible servers (owners see all)
-  if (authUser.role !== 'owner') {
-    if (authUser.serverIds.length === 0) {
-      return null; // No server access
-    } else if (authUser.serverIds.length === 1) {
-      conditions.push(sql`s.server_id = ${authUser.serverIds[0]}`);
+  const resolvedServerIds = resolveServerIds(authUser, legacyServerId, rawServerIds);
+  if (resolvedServerIds && resolvedServerIds.length === 0) {
+    return null; // No server access
+  }
+  if (resolvedServerIds && resolvedServerIds.length > 0) {
+    if (resolvedServerIds.length === 1) {
+      conditions.push(sql`s.server_id = ${resolvedServerIds[0]}`);
     } else {
-      const serverIdList = authUser.serverIds.map((id: string) => sql`${id}`);
+      const serverIdList = resolvedServerIds.map((id: string) => sql`${id}`);
       conditions.push(sql`s.server_id IN (${sql.join(serverIdList, sql`, `)})`);
     }
   }
@@ -100,7 +102,6 @@ function buildHistoryFilterConditions(
       conditions.push(sql`s.server_user_id IN (${sql.join(userIdList, sql`, `)})`);
     }
   }
-  if (serverId) conditions.push(sql`s.server_id = ${serverId}`);
   if (state) conditions.push(sql`s.state = ${state}`);
   if (mediaTypes && mediaTypes.length > 0) {
     const types = mediaTypes as string[];
@@ -894,12 +895,6 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
 
     const authUser = request.user;
 
-    // Validate serverId access if provided (consistent with /filter-options)
-    const { serverId } = query.data;
-    if (serverId && !hasServerAccess(authUser, serverId)) {
-      return reply.forbidden('You do not have access to this server');
-    }
-
     // Build WHERE clause using shared helper
     const filterResult = buildHistoryFilterConditions(query.data, authUser);
     if (!filterResult) {
@@ -959,10 +954,16 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
   app.get('/filter-options', { preHandler: [app.authenticate] }, async (request, reply) => {
     const query = request.query as {
       serverId?: string;
+      serverIds?: string[] | string;
       startDate?: string;
       endDate?: string;
       includeAllCountries?: string;
     };
+    const rawServerIds = Array.isArray(query.serverIds)
+      ? query.serverIds
+      : query.serverIds
+        ? [query.serverIds]
+        : undefined;
     const serverId = query.serverId;
     const startDate = query.startDate ? new Date(query.startDate) : undefined;
     const endDate = query.endDate ? new Date(query.endDate) : undefined;
@@ -979,12 +980,38 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const authUser = request.user;
+    const resolvedServerIds = resolveServerIds(authUser, serverId, rawServerIds);
+    if (resolvedServerIds && resolvedServerIds.length === 0) {
+      if (includeAllCountries) {
+        const emptyRulesResponse: RulesFilterOptions = {
+          platforms: [],
+          products: [],
+          devices: [],
+          countries: [],
+          cities: [],
+          users: [],
+          servers: [],
+        };
+        return emptyRulesResponse;
+      }
+      const emptyResponse: HistoryFilterOptions = {
+        platforms: [],
+        products: [],
+        devices: [],
+        countries: [],
+        cities: [],
+        users: [],
+        servers: [],
+      };
+      return emptyResponse;
+    }
 
     // Check cache
     const cacheService = getCacheService();
     const filterScopeHash = buildCacheFingerprint(
       {
         serverId,
+        serverIds: resolvedServerIds,
         startDate: startDate?.toISOString(),
         endDate: endDate?.toISOString(),
         includeAllCountries,
@@ -1000,39 +1027,11 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
 
     // Build server access conditions
     const serverConditions: ReturnType<typeof sql>[] = [];
-    if (serverId) {
-      if (!hasServerAccess(authUser, serverId)) {
-        return reply.forbidden('You do not have access to this server');
-      }
-      serverConditions.push(sql`s.server_id = ${serverId}`);
-    } else if (authUser.role !== 'owner') {
-      if (authUser.serverIds.length === 0) {
-        // Return empty response for users with no server access
-        if (includeAllCountries) {
-          const emptyRulesResponse: RulesFilterOptions = {
-            platforms: [],
-            products: [],
-            devices: [],
-            countries: [],
-            cities: [],
-            users: [],
-            servers: [],
-          };
-          return emptyRulesResponse;
-        }
-        const emptyResponse: HistoryFilterOptions = {
-          platforms: [],
-          products: [],
-          devices: [],
-          countries: [],
-          cities: [],
-          users: [],
-        };
-        return emptyResponse;
-      } else if (authUser.serverIds.length === 1) {
-        serverConditions.push(sql`s.server_id = ${authUser.serverIds[0]}`);
+    if (resolvedServerIds && resolvedServerIds.length > 0) {
+      if (resolvedServerIds.length === 1) {
+        serverConditions.push(sql`s.server_id = ${resolvedServerIds[0]}`);
       } else {
-        const serverIdList = authUser.serverIds.map((id: string) => sql`${id}`);
+        const serverIdList = resolvedServerIds.map((id: string) => sql`${id}`);
         serverConditions.push(sql`s.server_id IN (${sql.join(serverIdList, sql`, `)})`);
       }
     }

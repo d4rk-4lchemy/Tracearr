@@ -22,6 +22,7 @@ import { TautulliService } from '../services/tautulli.js';
 import { importJellystatBackup } from '../services/jellystat.js';
 import { getPubSubService } from '../services/cache.js';
 import { extendJobLock } from './lockUtils.js';
+import { withSessionsCompressionPaused } from '../db/timescale.js';
 import {
   acquireHeavyOpsLock,
   releaseHeavyOpsLock,
@@ -264,7 +265,7 @@ export function startImportWorker(): void {
       console.log(`[Import] Job ${job.id} acquired heavy ops lock`);
 
       try {
-        const result = await processImportJob(job);
+        const result = await withSessionsCompressionPaused(() => processImportJob(job));
         const duration = Math.round((Date.now() - startTime) / 1000);
         console.log(`[Import] Job ${job.id} completed in ${duration}s:`, result);
         return result;

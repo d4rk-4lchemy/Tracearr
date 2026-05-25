@@ -499,6 +499,67 @@ describe('LibrarySyncService', () => {
         }),
       ]);
     });
+
+    it('should collapse duplicate ratingKeys, keeping the last occurrence', async () => {
+      const service = new LibrarySyncService();
+      const serverId = randomUUID();
+      const libraryId = '1';
+      const items = [
+        createMockLibraryItem({ ratingKey: 'dup', title: 'First' }),
+        createMockLibraryItem({ ratingKey: 'unique', title: 'Other' }),
+        createMockLibraryItem({ ratingKey: 'dup', title: 'Second' }),
+      ];
+
+      const { insertChain } = mockTransaction();
+
+      await service.upsertItems(serverId, libraryId, items);
+
+      const valuesArg = insertChain.values.mock.calls[0]![0] as Array<{
+        ratingKey: string;
+        title: string;
+      }>;
+      expect(valuesArg).toHaveLength(2);
+      const dup = valuesArg.find((v) => v.ratingKey === 'dup');
+      expect(dup?.title).toBe('Second');
+      expect(valuesArg.find((v) => v.ratingKey === 'unique')?.title).toBe('Other');
+    });
+
+    it('should drop items with empty ratingKey and skip insert when batch becomes empty', async () => {
+      const service = new LibrarySyncService();
+      const serverId = randomUUID();
+      const libraryId = '1';
+      const items = [
+        createMockLibraryItem({ ratingKey: '', title: 'No ID 1' }),
+        createMockLibraryItem({ ratingKey: '', title: 'No ID 2' }),
+      ];
+
+      mockTransaction();
+
+      await service.upsertItems(serverId, libraryId, items);
+
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it('should drop empty-ratingKey items but still insert valid ones', async () => {
+      const service = new LibrarySyncService();
+      const serverId = randomUUID();
+      const libraryId = '1';
+      const items = [
+        createMockLibraryItem({ ratingKey: '', title: 'No ID' }),
+        createMockLibraryItem({ ratingKey: 'real', title: 'Real Item' }),
+      ];
+
+      const { insertChain } = mockTransaction();
+
+      await service.upsertItems(serverId, libraryId, items);
+
+      const valuesArg = insertChain.values.mock.calls[0]![0] as Array<{
+        ratingKey: string;
+        title: string;
+      }>;
+      expect(valuesArg).toHaveLength(1);
+      expect(valuesArg[0]!.ratingKey).toBe('real');
+    });
   });
 
   describe('createSnapshot', () => {
@@ -747,6 +808,58 @@ describe('LibrarySyncService', () => {
       const results = await service.syncServer(mockServer.id);
 
       expect(results[0]!.itemsRemoved).toBe(1); // item-2 removed
+      expect(db.delete).toHaveBeenCalled();
+    });
+
+    it('should remove previously imported empty rating keys when the upstream still returns blanks', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const mockLibraries = [createMockLibrary()];
+      const existingItems = [
+        createMockDbItem({ ratingKey: '' }),
+        createMockDbItem({ ratingKey: 'item-1' }),
+      ];
+      const serverItems = [
+        createMockLibraryItem({ ratingKey: '', title: 'Still Broken' }),
+        createMockLibraryItem({ ratingKey: 'item-1' }),
+      ];
+
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockImplementation(() => {
+            const whereResult = Promise.resolve(existingItems);
+            (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
+              .fn()
+              .mockImplementation(() => {
+                if (selectCallCount === 1) return Promise.resolve([mockServer]);
+                return Promise.resolve(existingItems);
+              });
+            return whereResult;
+          }),
+          limit: vi.fn().mockImplementation(() => {
+            if (selectCallCount === 1) return Promise.resolve([mockServer]);
+            return Promise.resolve(existingItems);
+          }),
+          returning: vi.fn().mockResolvedValue([]),
+        };
+        return chain as never;
+      });
+
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: mockLibraries,
+        items: serverItems,
+        totalCount: 2,
+      });
+
+      const results = await service.syncServer(mockServer.id);
+
+      expect(results[0]!.itemsRemoved).toBe(1);
       expect(db.delete).toHaveBeenCalled();
     });
   });

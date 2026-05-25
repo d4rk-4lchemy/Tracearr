@@ -12,6 +12,7 @@ import { sql } from 'drizzle-orm';
 import { locationStatsQuerySchema } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { resolveDateRange } from './utils.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
 
 interface LocationFilters {
   users: { id: string; username: string; identityName: string | null }[];
@@ -36,9 +37,19 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Invalid query parameters');
     }
 
-    const { period, startDate, endDate, serverUserId, serverId, mediaType } = query.data;
+    const {
+      period,
+      startDate,
+      endDate,
+      serverUserId,
+      serverId: legacyServerId,
+      serverIds: parsedServerIds,
+      mediaType,
+    } = query.data;
+    const rawServerIds = parsedServerIds as string[] | undefined;
     const dateRange = resolveDateRange(period, startDate, endDate);
     const authUser = request.user;
+    const resolvedServerIds = resolveServerIds(authUser, legacyServerId, rawServerIds);
 
     // Build WHERE conditions for main query (all qualified with 's.' for sessions table)
     const conditions: ReturnType<typeof sql>[] = [
@@ -54,21 +65,26 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
       conditions.push(sql`s.started_at < ${dateRange.end}`);
     }
 
-    // Apply server access restriction
-    if (authUser.role !== 'owner' && authUser.serverIds.length > 0) {
-      if (authUser.serverIds.length === 1) {
-        conditions.push(sql`s.server_id = ${authUser.serverIds[0]}`);
+    if (resolvedServerIds && resolvedServerIds.length === 0) {
+      return {
+        data: [],
+        summary: { totalStreams: 0, uniqueLocations: 0, topCity: null },
+        availableFilters: { users: [], servers: [], mediaTypes: [] },
+      };
+    }
+
+    // Apply resolved server filter
+    if (resolvedServerIds && resolvedServerIds.length > 0) {
+      if (resolvedServerIds.length === 1) {
+        conditions.push(sql`s.server_id = ${resolvedServerIds[0]}`);
       } else {
-        const serverIdList = authUser.serverIds.map((id: string) => sql`${id}`);
+        const serverIdList = resolvedServerIds.map((id: string) => sql`${id}`);
         conditions.push(sql`s.server_id IN (${sql.join(serverIdList, sql`, `)})`);
       }
     }
 
     if (serverUserId) {
       conditions.push(sql`s.server_user_id = ${serverUserId}`);
-    }
-    if (serverId) {
-      conditions.push(sql`s.server_id = ${serverId}`);
     }
     // If specific mediaType requested, filter to it; otherwise show all types
     if (mediaType) {
@@ -91,19 +107,18 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
     if (period === 'custom') {
       baseConditions.push(sql`s.started_at < ${dateRange.end}`);
     }
-    // Apply server access restriction for cascading filters (owners see all servers)
-    if (authUser.role !== 'owner' && authUser.serverIds.length > 0) {
-      if (authUser.serverIds.length === 1) {
-        baseConditions.push(sql`s.server_id = ${authUser.serverIds[0]}`);
+    // Apply resolved server filter for cascading filters
+    if (resolvedServerIds && resolvedServerIds.length > 0) {
+      if (resolvedServerIds.length === 1) {
+        baseConditions.push(sql`s.server_id = ${resolvedServerIds[0]}`);
       } else {
-        const serverIdList = authUser.serverIds.map((id: string) => sql`${id}`);
+        const serverIdList = resolvedServerIds.map((id: string) => sql`${id}`);
         baseConditions.push(sql`s.server_id IN (${sql.join(serverIdList, sql`, `)})`);
       }
     }
 
     // Users filter: apply server + mediaType filters (not user filter)
     const userFilterConditions = [...baseConditions];
-    if (serverId) userFilterConditions.push(sql`s.server_id = ${serverId}`);
     if (mediaType) {
       userFilterConditions.push(sql`s.media_type = ${mediaType}`);
     }
@@ -111,7 +126,9 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
 
     // Servers filter: apply user + mediaType filters (not server filter)
     const serverFilterConditions = [...baseConditions];
-    if (serverUserId) serverFilterConditions.push(sql`s.server_user_id = ${serverUserId}`);
+    if (serverUserId) {
+      serverFilterConditions.push(sql`s.server_user_id = ${serverUserId}`);
+    }
     if (mediaType) {
       serverFilterConditions.push(sql`s.media_type = ${mediaType}`);
     }
@@ -122,7 +139,6 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
     // so users can explicitly select 'track' to view music plays on the map
     const mediaFilterConditions = [...baseConditions];
     if (serverUserId) mediaFilterConditions.push(sql`s.server_user_id = ${serverUserId}`);
-    if (serverId) mediaFilterConditions.push(sql`s.server_id = ${serverId}`);
     const mediaFilterWhereClause = sql`WHERE ${sql.join(mediaFilterConditions, sql` AND `)}`;
 
     // Cascading filters are always fetched fresh (no caching since they depend on current selections)

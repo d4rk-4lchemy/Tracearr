@@ -39,6 +39,7 @@ export interface LocationStatsFilters {
   timeRange?: StatsTimeRange;
   serverUserId?: string;
   serverId?: string;
+  serverIds?: string[];
   mediaType?: 'movie' | 'episode' | 'track';
 }
 

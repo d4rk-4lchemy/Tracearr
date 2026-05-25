@@ -74,6 +74,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+type DispatcharrServerExtras = {
+  dispatcharrLiveHistoryThresholdSeconds?: number;
+};
+
 export function ServerSettings() {
   const { t } = useTranslation(['settings', 'common', 'notifications', 'pages']);
   const { data: serversData, isLoading, refetch } = useServers();
@@ -98,6 +102,8 @@ export function ServerSettings() {
   const [dispatcharrUsername, setDispatcharrUsername] = useState('');
   const [dispatcharrPassword, setDispatcharrPassword] = useState('');
   const [ignoreAnonymousStreams, setIgnoreAnonymousStreams] = useState(true);
+  const [dispatcharrLiveHistoryThresholdSeconds, setDispatcharrLiveHistoryThresholdSeconds] =
+    useState(30);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -194,6 +200,7 @@ export function ServerSettings() {
     setDispatcharrUsername('');
     setDispatcharrPassword('');
     setIgnoreAnonymousStreams(true);
+    setDispatcharrLiveHistoryThresholdSeconds(30);
     setConnectError(null);
     setServerType(defaultServerType as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr');
     setPlexDialogStep('loading');
@@ -326,6 +333,7 @@ export function ServerSettings() {
                 username: dispatcharrUsername,
                 password: dispatcharrPassword,
                 ignoreAnonymousStreams,
+                dispatcharrLiveHistoryThresholdSeconds,
               }
             : {
                 name: serverName,
@@ -333,6 +341,7 @@ export function ServerSettings() {
                 url: serverUrl,
                 token: apiKey,
                 ignoreAnonymousStreams,
+                dispatcharrLiveHistoryThresholdSeconds,
               };
 
         await api.servers.create({
@@ -789,24 +798,48 @@ export function ServerSettings() {
                   </div>
                 )}
                 {serverType === 'dispatcharr' && (
-                  <div className="flex items-start gap-3 rounded-md border p-3">
-                    <Checkbox
-                      id="dispatcharrIgnoreAnonymousStreams"
-                      checked={ignoreAnonymousStreams}
-                      onCheckedChange={(checked) => {
-                        setIgnoreAnonymousStreams(checked === true);
-                      }}
-                    />
-                    <div className="space-y-1">
-                      <Label
-                        htmlFor="dispatcharrIgnoreAnonymousStreams"
-                        className="cursor-pointer font-medium"
-                      >
-                        Ignore Anonymous streams
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="dispatcharrLiveHistoryThresholdSeconds">
+                        Live history threshold (seconds)
                       </Label>
-                      <p className="text-muted-foreground text-sm">
-                        When enabled, Dispatcharr streams reported as anonymous are ignored.
+                      <Input
+                        id="dispatcharrLiveHistoryThresholdSeconds"
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={dispatcharrLiveHistoryThresholdSeconds}
+                        onChange={(e) => {
+                          const value = Number.parseInt(e.target.value || '0', 10);
+                          setDispatcharrLiveHistoryThresholdSeconds(
+                            Number.isFinite(value) && value >= 0 ? value : 0
+                          );
+                        }}
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        Live TV sessions are saved to history only after this threshold. 0 means
+                        always save.
                       </p>
+                    </div>
+                    <div className="flex items-start gap-3 rounded-md border p-3">
+                      <Checkbox
+                        id="dispatcharrIgnoreAnonymousStreams"
+                        checked={ignoreAnonymousStreams}
+                        onCheckedChange={(checked) => {
+                          setIgnoreAnonymousStreams(checked === true);
+                        }}
+                      />
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="dispatcharrIgnoreAnonymousStreams"
+                          className="cursor-pointer font-medium"
+                        >
+                          Ignore Anonymous streams
+                        </Label>
+                        <p className="text-muted-foreground text-sm">
+                          When enabled, Dispatcharr streams reported as anonymous are ignored.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -865,7 +898,14 @@ export function ServerSettings() {
         onClose={() => {
           setEditServer(null);
         }}
-        onUpdate={(name, url, clientIdentifier, color, ignoreAnonymousStreamsValue) => {
+        onUpdate={(
+          name,
+          url,
+          clientIdentifier,
+          color,
+          ignoreAnonymousStreamsValue,
+          dispatcharrLiveHistoryThresholdSecondsValue
+        ) => {
           if (editServer) {
             updateServer.mutate(
               {
@@ -875,6 +915,8 @@ export function ServerSettings() {
                 clientIdentifier,
                 color,
                 ignoreAnonymousStreams: ignoreAnonymousStreamsValue,
+                dispatcharrLiveHistoryThresholdSeconds:
+                  dispatcharrLiveHistoryThresholdSecondsValue,
               },
               {
                 onSuccess: () => {
@@ -909,7 +951,8 @@ function EditServerDialog({
     url?: string,
     clientIdentifier?: string,
     color?: string | null,
-    ignoreAnonymousStreams?: boolean
+    ignoreAnonymousStreams?: boolean,
+    dispatcharrLiveHistoryThresholdSeconds?: number
   ) => void;
   isUpdating: boolean;
 }) {
@@ -918,6 +961,8 @@ function EditServerDialog({
   const [manualUrl, setManualUrl] = useState('');
   const [editColor, setEditColor] = useState('#3b82f6');
   const [editIgnoreAnonymousStreams, setEditIgnoreAnonymousStreams] = useState(true);
+  const [editDispatcharrLiveHistoryThresholdSeconds, setEditDispatcharrLiveHistoryThresholdSeconds] =
+    useState(30);
   const isPlexServer = server?.type === 'plex';
   const isDispatcharrServer = server?.type === 'dispatcharr';
 
@@ -932,6 +977,9 @@ function EditServerDialog({
       setEditName(server.name);
       setManualUrl(server.url);
       setEditIgnoreAnonymousStreams(server.ignoreAnonymousStreams ?? true);
+      setEditDispatcharrLiveHistoryThresholdSeconds(
+        (server as Server & DispatcharrServerExtras).dispatcharrLiveHistoryThresholdSeconds ?? 30
+      );
       const otherColors = servers.filter((s) => s.id !== server.id).map((s) => s.color);
       setEditColor(server.color ?? pickServerColor(server.type, otherColors));
     }
@@ -943,13 +991,20 @@ function EditServerDialog({
       isDispatcharrServer && editIgnoreAnonymousStreams !== (server?.ignoreAnonymousStreams ?? true)
         ? editIgnoreAnonymousStreams
         : undefined;
+    const dispatcharrLiveHistoryThresholdSecondsChanged =
+      isDispatcharrServer &&
+      editDispatcharrLiveHistoryThresholdSeconds !==
+        ((server as Server & DispatcharrServerExtras)?.dispatcharrLiveHistoryThresholdSeconds ?? 30)
+        ? editDispatcharrLiveHistoryThresholdSeconds
+        : undefined;
 
     onUpdate(
       editName !== server?.name ? editName : undefined,
       uri,
       clientIdentifier,
       colorChanged,
-      ignoreAnonymousStreamsChanged
+      ignoreAnonymousStreamsChanged,
+      dispatcharrLiveHistoryThresholdSecondsChanged
     );
   };
 
@@ -959,8 +1014,17 @@ function EditServerDialog({
   const hasIgnoreAnonymousStreamsChange = server
     ? isDispatcharrServer && editIgnoreAnonymousStreams !== (server.ignoreAnonymousStreams ?? true)
     : false;
+  const hasDispatcharrThresholdChange = server
+    ? isDispatcharrServer &&
+      editDispatcharrLiveHistoryThresholdSeconds !==
+        ((server as Server & DispatcharrServerExtras).dispatcharrLiveHistoryThresholdSeconds ?? 30)
+    : false;
   const canSave =
-    (hasNameChange || hasUrlChange || hasColorChange || hasIgnoreAnonymousStreamsChange) &&
+    (hasNameChange ||
+      hasUrlChange ||
+      hasColorChange ||
+      hasIgnoreAnonymousStreamsChange ||
+      hasDispatcharrThresholdChange) &&
     editName.trim().length > 0;
 
   const handleSave = () => {
@@ -969,7 +1033,8 @@ function EditServerDialog({
       hasUrlChange ? manualUrl.trim() : undefined,
       undefined,
       hasColorChange ? editColor : undefined,
-      hasIgnoreAnonymousStreamsChange ? editIgnoreAnonymousStreams : undefined
+      hasIgnoreAnonymousStreamsChange ? editIgnoreAnonymousStreams : undefined,
+      hasDispatcharrThresholdChange ? editDispatcharrLiveHistoryThresholdSeconds : undefined
     );
   };
 
@@ -1047,24 +1112,48 @@ function EditServerDialog({
           )}
 
           {isDispatcharrServer && (
-            <div className="flex items-start gap-3 rounded-md border p-3">
-              <Checkbox
-                id="edit-ignore-anonymous-streams"
-                checked={editIgnoreAnonymousStreams}
-                onCheckedChange={(checked) => {
-                  setEditIgnoreAnonymousStreams(checked === true);
-                }}
-              />
-              <div className="space-y-1">
-                <Label
-                  htmlFor="edit-ignore-anonymous-streams"
-                  className="cursor-pointer font-medium"
-                >
-                  Ignore Anonymous streams
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-dispatcharr-live-threshold">
+                  Live history threshold (seconds)
                 </Label>
-                <p className="text-muted-foreground text-sm">
-                  When enabled, Dispatcharr streams reported as anonymous are ignored.
+                <Input
+                  id="edit-dispatcharr-live-threshold"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={editDispatcharrLiveHistoryThresholdSeconds}
+                  onChange={(e) => {
+                    const value = Number.parseInt(e.target.value || '0', 10);
+                    setEditDispatcharrLiveHistoryThresholdSeconds(
+                      Number.isFinite(value) && value >= 0 ? value : 0
+                    );
+                  }}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Live TV sessions are saved to history only after this threshold. 0 means always
+                  save.
                 </p>
+              </div>
+              <div className="flex items-start gap-3 rounded-md border p-3">
+                <Checkbox
+                  id="edit-ignore-anonymous-streams"
+                  checked={editIgnoreAnonymousStreams}
+                  onCheckedChange={(checked) => {
+                    setEditIgnoreAnonymousStreams(checked === true);
+                  }}
+                />
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="edit-ignore-anonymous-streams"
+                    className="cursor-pointer font-medium"
+                  >
+                    Ignore Anonymous streams
+                  </Label>
+                  <p className="text-muted-foreground text-sm">
+                    When enabled, Dispatcharr streams reported as anonymous are ignored.
+                  </p>
+                </div>
               </div>
             </div>
           )}
