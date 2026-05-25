@@ -8,6 +8,7 @@ import type {
   MediaUser,
 } from '../types.js';
 import {
+  type DispatcharrResolvedOutputProfile,
   normalizeDispatcharrChannel,
   parseSessionsFromVodStats,
   parseChannelClients,
@@ -36,6 +37,15 @@ interface DispatcharrCredentialAuthCache {
 const CREDENTIALS_TOKEN_PREFIX = 'dispatcharr-credentials:';
 const TOKEN_REFRESH_SKEW_MS = 30_000;
 const DEFAULT_ACCESS_TOKEN_TTL_MS = 5 * 60 * 1000;
+const OUTPUT_PROFILE_CACHE_TTL_MS = 60_000;
+
+interface DispatcharrOutputProfileApiRecord {
+  id?: unknown;
+  name?: unknown;
+  command?: unknown;
+  parameters?: unknown;
+  is_active?: unknown;
+}
 
 function isJwtLike(token: string): boolean {
   return token.split('.').length === 3;
@@ -73,6 +83,10 @@ export class DispatcharrClient implements IMediaServerClient {
   public readonly serverType = 'dispatcharr' as const;
 
   private static credentialCache = new Map<string, DispatcharrCredentialAuthCache>();
+  private static outputProfileCache = new Map<
+    string,
+    { expiresAtMs: number; profilesById: Map<number, DispatcharrResolvedOutputProfile> }
+  >();
 
   private readonly baseUrl: string;
   private readonly token: string;
@@ -180,6 +194,7 @@ export class DispatcharrClient implements IMediaServerClient {
     userById?: Map<string, MediaUser>
   ): Promise<MediaSession[]> {
     const normalizedChannels = await this.buildNormalizedChannelsFromStatus(status);
+    const outputProfilesById = await this.getResolvedOutputProfilesForChannels(normalizedChannels);
     const resolvedUserMap = userById ?? (await this.getUserMap());
     const [logoPathByChannelId, currentProgramByChannelId] = await Promise.all([
       this.getLogoPathByChannelId(normalizedChannels.map((channel) => channel.channelId)),
@@ -193,7 +208,8 @@ export class DispatcharrClient implements IMediaServerClient {
     return this.buildSessionsFromNormalizedChannels(
       normalizedChannels,
       resolvedUserMap,
-      logoPathByChannelId
+      logoPathByChannelId,
+      outputProfilesById
     );
   }
 
@@ -231,10 +247,12 @@ export class DispatcharrClient implements IMediaServerClient {
   buildSessionsFromNormalizedChannels(
     channels: NormalizedDispatcharrChannel[],
     userById: Map<string, MediaUser>,
-    logoPathByChannelId?: Map<string, string>
+    logoPathByChannelId?: Map<string, string>,
+    outputProfilesById?: Map<number, DispatcharrResolvedOutputProfile>
   ): MediaSession[] {
     return parseSessionsFromChannels(channels, userById, logoPathByChannelId, {
       ignoreAnonymousStreams: this.ignoreAnonymousStreams,
+      outputProfilesById,
     });
   }
 
@@ -471,6 +489,142 @@ export class DispatcharrClient implements IMediaServerClient {
     }
   }
 
+  private async getResolvedOutputProfilesForChannels(
+    channels: NormalizedDispatcharrChannel[]
+  ): Promise<Map<number, DispatcharrResolvedOutputProfile>> {
+    for (const channel of channels) {
+      for (const client of channel.clients) {
+        const profileId =
+          typeof client.output_profile_id === 'number'
+            ? Math.round(client.output_profile_id)
+            : typeof client.output_profile_id === 'string' && client.output_profile_id.trim() !== ''
+              ? Math.round(Number(client.output_profile_id))
+              : NaN;
+        if (Number.isFinite(profileId) && profileId > 0) {
+          return this.getOutputProfilesById();
+        }
+      }
+    }
+
+    return new Map();
+  }
+
+  private async getOutputProfilesById(): Promise<Map<number, DispatcharrResolvedOutputProfile>> {
+    const cached = DispatcharrClient.outputProfileCache.get(this.baseUrl);
+    if (cached && cached.expiresAtMs > Date.now()) {
+      return cached.profilesById;
+    }
+
+    try {
+      const data = await fetchJson<unknown>(`${this.baseUrl}/api/core/outputprofiles/`, {
+        headers: await this.buildHeaders(),
+        service: 'dispatcharr',
+        timeout: 10000,
+      });
+      const profilesById = new Map<number, DispatcharrResolvedOutputProfile>();
+      for (const record of this.extractRecords(data)) {
+        const resolved = this.resolveOutputProfile(record);
+        if (resolved) profilesById.set(resolved.id, resolved);
+      }
+      DispatcharrClient.outputProfileCache.set(this.baseUrl, {
+        expiresAtMs: Date.now() + OUTPUT_PROFILE_CACHE_TTL_MS,
+        profilesById,
+      });
+      return profilesById;
+    } catch {
+      return new Map();
+    }
+  }
+
+  private resolveOutputProfile(
+    raw: Record<string, unknown>
+  ): DispatcharrResolvedOutputProfile | null {
+    const profile = raw as DispatcharrOutputProfileApiRecord;
+    const id = this.getOptionalInteger(profile.id);
+    if (id === undefined || id <= 0) return null;
+
+    const name = this.getOptionalString(profile.name);
+    const command = this.getOptionalString(profile.command)?.toLowerCase();
+    const parameters = this.getOptionalString(profile.parameters);
+    if (!parameters || command !== 'ffmpeg') {
+      return {
+        id,
+        name,
+        isKnown: false,
+        isTranscode: true,
+        videoDecision: 'transcode',
+        audioDecision: 'transcode',
+      };
+    }
+
+    const args = this.tokenizeShellArgs(parameters);
+    if (args.length === 0) {
+      return {
+        id,
+        name,
+        isKnown: false,
+        isTranscode: true,
+        videoDecision: 'transcode',
+        audioDecision: 'transcode',
+      };
+    }
+
+    const videoCodecArg = this.findLastArgValue(args, '-c:v', '-codec:v', '-vcodec');
+    const audioCodecArg = this.findLastArgValue(args, '-c:a', '-codec:a', '-acodec');
+    const outputFormatArg = this.findLastArgValue(args, '-f');
+    const videoBitrate = this.parseBitrateKbps(this.findLastArgValue(args, '-b:v'));
+    const audioBitrate = this.parseBitrateKbps(this.findLastArgValue(args, '-b:a'));
+    const channels = this.getOptionalInteger(this.findLastArgValue(args, '-ac'));
+    const frameRate = this.getOptionalString(this.findLastArgValue(args, '-r'));
+    const dimensions =
+      this.parseScaleFilter(this.findLastArgValue(args, '-vf')) ??
+      this.parseResolutionArg(this.findLastArgValue(args, '-s'));
+
+    const streamVideoCodec = this.normalizeCodec(videoCodecArg);
+    const streamAudioCodec = this.normalizeCodec(audioCodecArg);
+    const videoDecision = this.codecDecision(videoCodecArg);
+    const audioDecision = this.codecDecision(audioCodecArg);
+    const streamContainer = this.normalizeContainer(outputFormatArg);
+
+    const streamVideoDetails =
+      videoBitrate !== undefined ||
+      frameRate !== undefined ||
+      dimensions.width !== undefined ||
+      dimensions.height !== undefined
+        ? {
+            ...(videoBitrate !== undefined ? { bitrate: videoBitrate } : {}),
+            ...(frameRate !== undefined ? { framerate: frameRate } : {}),
+            ...(dimensions.width !== undefined ? { width: dimensions.width } : {}),
+            ...(dimensions.height !== undefined ? { height: dimensions.height } : {}),
+          }
+        : undefined;
+    const streamAudioDetails =
+      audioBitrate !== undefined || channels !== undefined
+        ? {
+            ...(audioBitrate !== undefined ? { bitrate: audioBitrate } : {}),
+            ...(channels !== undefined ? { channels } : {}),
+          }
+        : undefined;
+
+    return {
+      id,
+      name,
+      streamContainer,
+      bitrateKbps:
+        videoBitrate !== undefined || audioBitrate !== undefined
+          ? (videoBitrate ?? 0) + (audioBitrate ?? 0)
+          : undefined,
+      isKnown: true,
+      isTranscode: videoDecision === 'transcode' || audioDecision === 'transcode',
+      videoDecision,
+      audioDecision,
+      streamVideoCodec,
+      streamAudioCodec,
+      streamVideoDetails,
+      streamAudioDetails,
+    };
+  }
+
   private getCredentialCacheKey(credentials: DispatcharrCredentials): string {
     return `${this.baseUrl}|${credentials.username}`;
   }
@@ -604,5 +758,95 @@ export class DispatcharrClient implements IMediaServerClient {
       if (str) return str;
     }
     return undefined;
+  }
+
+  private getOptionalString(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : undefined;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    return undefined;
+  }
+
+  private getOptionalInteger(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.round(value);
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return Math.round(parsed);
+    }
+    return undefined;
+  }
+
+  private tokenizeShellArgs(input: string): string[] {
+    const tokens = input.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+    return tokens.map((token) => token.replace(/^['"]|['"]$/g, ''));
+  }
+
+  private findLastArgValue(args: string[], ...flags: string[]): string | undefined {
+    for (let index = args.length - 2; index >= 0; index -= 1) {
+      if (flags.includes(args[index] ?? '')) {
+        return args[index + 1];
+      }
+    }
+    return undefined;
+  }
+
+  private parseBitrateKbps(value: string | undefined): number | undefined {
+    if (!value) return undefined;
+    const match = value.trim().match(/^(\d+(?:\.\d+)?)([kKmMgG]?)$/);
+    if (!match) return undefined;
+    const amount = Number(match[1]);
+    if (!Number.isFinite(amount) || amount <= 0) return undefined;
+    const unit = match[2]?.toLowerCase() ?? '';
+    if (unit === 'g') return Math.round(amount * 1_000_000);
+    if (unit === 'm') return Math.round(amount * 1000);
+    return Math.round(amount);
+  }
+
+  private normalizeCodec(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized || normalized === 'copy') return undefined;
+    if (normalized.includes('264')) return 'H264';
+    if (normalized.includes('265') || normalized.includes('hevc')) return 'HEVC';
+    if (normalized.includes('av1')) return 'AV1';
+    if (normalized.includes('vp9')) return 'VP9';
+    if (normalized.includes('aac')) return 'AAC';
+    if (normalized.includes('ac3')) return 'AC3';
+    if (normalized.includes('eac3')) return 'EAC3';
+    if (normalized.includes('mp3')) return 'MP3';
+    if (normalized.includes('opus')) return 'OPUS';
+    return normalized.toUpperCase();
+  }
+
+  private codecDecision(value: string | undefined): string {
+    return value && value.trim().toLowerCase() !== 'copy' ? 'transcode' : 'directplay';
+  }
+
+  private normalizeContainer(value: string | undefined): string | undefined {
+    const normalized = value?.trim().toLowerCase();
+    if (!normalized) return undefined;
+    if (normalized === 'mp4' || normalized === 'fmp4') return 'FMP4';
+    if (normalized === 'mpegts' || normalized === 'ts') return 'MPEGTS';
+    return normalized.toUpperCase();
+  }
+
+  private parseResolutionArg(value: string | undefined): { width?: number; height?: number } {
+    const match = value?.trim().match(/^(\d{2,5})x(\d{2,5})$/);
+    if (!match) return {};
+    return { width: Number(match[1]), height: Number(match[2]) };
+  }
+
+  private parseScaleFilter(value: string | undefined): { width?: number; height?: number } | null {
+    if (!value) return null;
+    const match = value.match(/scale=(?:w=)?(-?\d{1,5})(?::|:h=)(-?\d{1,5})/i);
+    if (!match) return null;
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    return {
+      width: Number.isFinite(width) && width > 0 ? width : undefined,
+      height: Number.isFinite(height) && height > 0 ? height : undefined,
+    };
   }
 }

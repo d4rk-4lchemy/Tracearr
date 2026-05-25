@@ -11,6 +11,8 @@ function jsonResponse(data: unknown, init?: ResponseInit): Response {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  (DispatcharrClient as unknown as { credentialCache: Map<string, unknown> }).credentialCache.clear();
+  (DispatcharrClient as unknown as { outputProfileCache: Map<string, unknown> }).outputProfileCache.clear();
 });
 
 describe('DispatcharrClient', () => {
@@ -179,6 +181,127 @@ describe('DispatcharrClient', () => {
       'Anonymous',
       'Anonymous',
     ]);
+  });
+
+  it('fetches output profiles for v0.25.x profile-backed sessions and maps output details', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.['X-API-Key']).toBe('api-key');
+
+      if (url.endsWith('/api/accounts/users/')) {
+        return jsonResponse([{ id: 7, first_name: 'Valid', last_name: 'User', username: 'valid' }]);
+      }
+      if (url.endsWith('/proxy/ts/status')) {
+        return jsonResponse({
+          channels: [{ channel_id: 'channel-1', channel_name: 'News 24', client_count: 1 }],
+        });
+      }
+      if (url.endsWith('/proxy/vod/stats/')) {
+        return jsonResponse({ vod_connections: [] });
+      }
+      if (url.endsWith('/proxy/ts/status/channel-1')) {
+        return jsonResponse({
+          channel_id: 'channel-1',
+          channel_name: 'News 24',
+          ffmpeg_speed: 0.94,
+          video_codec: 'H264',
+          audio_codec: 'AC3',
+          clients: [
+            {
+              client_id: 'client-1',
+              user_id: '7',
+              ip_address: '198.51.100.10',
+              output_format: 'mpegts',
+              output_profile_id: 5,
+            },
+          ],
+        });
+      }
+      if (url.endsWith('/api/core/outputprofiles/')) {
+        return jsonResponse([
+          {
+            id: 5,
+            name: 'Web Player',
+            command: 'ffmpeg',
+            parameters: '-i pipe:0 -c:v copy -c:a aac -b:a 192k -ac 2 -f mpegts pipe:1',
+            is_active: true,
+          },
+        ]);
+      }
+      if (url.endsWith('/api/channels/channels/by-uuids/')) {
+        return jsonResponse([{ uuid: 'channel-1', logo_id: 'logo-123' }]);
+      }
+      if (url.endsWith('/api/epg/current-programs/')) {
+        return jsonResponse([{ channel_uuid: 'channel-1', title: 'Morning News' }]);
+      }
+
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
+    const sessions = await client.getSessions();
+
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.quality).toMatchObject({
+      isTranscode: true,
+      videoDecision: 'directplay',
+      audioDecision: 'transcode',
+      streamAudioCodec: 'AAC',
+      streamAudioDetails: { bitrate: 192, channels: 2 },
+    });
+    expect(sessions[0]?.quality.transcodeInfo).toMatchObject({
+      sourceContainer: 'MPEGTS',
+      streamContainer: 'MPEGTS',
+      reasons: ['Dispatcharr output profile: Web Player'],
+    });
+    expect(sessions[0]?.quality.transcodeInfo?.speed).toBeUndefined();
+  });
+
+  it('does not fetch output profiles when sessions do not use output_profile_id', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      const headers = init?.headers as Record<string, string> | undefined;
+      expect(headers?.['X-API-Key']).toBe('api-key');
+
+      if (url.endsWith('/api/accounts/users/')) {
+        return jsonResponse([{ id: 7, first_name: 'Valid', last_name: 'User', username: 'valid' }]);
+      }
+      if (url.endsWith('/proxy/ts/status')) {
+        return jsonResponse({
+          channels: [{ channel_id: 'channel-1', channel_name: 'News 24', client_count: 1 }],
+        });
+      }
+      if (url.endsWith('/proxy/vod/stats/')) {
+        return jsonResponse({ vod_connections: [] });
+      }
+      if (url.endsWith('/proxy/ts/status/channel-1')) {
+        return jsonResponse({
+          channel_id: 'channel-1',
+          channel_name: 'News 24',
+          ffmpeg_speed: 1.04,
+          clients: [{ client_id: 'client-1', user_id: '7', ip_address: '198.51.100.10' }],
+        });
+      }
+      if (url.endsWith('/api/channels/channels/by-uuids/')) {
+        return jsonResponse([{ uuid: 'channel-1', logo_id: 'logo-123' }]);
+      }
+      if (url.endsWith('/api/epg/current-programs/')) {
+        return jsonResponse([{ channel_uuid: 'channel-1', title: 'Morning News' }]);
+      }
+      if (url.endsWith('/api/core/outputprofiles/')) {
+        throw new Error('output profiles endpoint should not be called');
+      }
+
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
+    const sessions = await client.getSessions();
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(1.04);
   });
 
   it('returns live sessions when vod stats fetch fails', async () => {
