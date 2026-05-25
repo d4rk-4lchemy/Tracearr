@@ -117,11 +117,18 @@ describe('HistoryTable mobile layout protections', () => {
 
     const table = screen.getByRole('table');
     expect(table.className).toContain('w-full');
-    expect(table.getAttribute('style') ?? '').toContain('min-width: 1074px');
+    expect(table.getAttribute('style') ?? '').toContain('min-width: 1174px');
 
     const title = screen.getByText('Very Long Movie Name That Should Be Truncated On Mobile Layout');
     expect(title.className).toContain('truncate');
     expect(title.className).toContain('min-w-0');
-    expect(title.className).toContain('flex-1');
+    expect(title.className).toContain('shrink');
+
+    const contentHeader = screen.getByRole('columnheader', { name: 'Content' });
+    expect(contentHeader.getAttribute('style') ?? '').toContain('width: 300px');
+
+    const contentCell = title.closest('td');
+    expect(contentCell).not.toBeNull();
+    expect(contentCell?.getAttribute('style') ?? '').toContain('width: 300px');
   });
 });

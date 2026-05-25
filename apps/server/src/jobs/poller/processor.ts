@@ -534,31 +534,110 @@ async function processServerSessions(
             continue;
           }
 
-          const now = Date.now();
-          const pendingData = {
-            id: randomUUID(),
-            confirmation: {
-              rulesEvaluated: false,
-              confirmedPlayback: false,
-              firstSeenAt: now,
-              maxViewOffset: Math.max(0, processed.progressMs ?? 0),
-            },
-            processed,
-            server: { id: server.id, name: server.name, type: server.type },
-            serverUser: userDetail,
-            geo,
-            startedAt: now,
-            lastSeenAt: now,
-            currentState: processed.state as SessionState,
-            pausedDurationMs: 0,
-            lastPausedAt: processed.state === 'paused' ? now : null,
-          };
+          const cache = cacheService;
+          const createPendingResult = await cache.withSessionCreateLock(
+            server.id,
+            processed.sessionKey,
+            async () => {
+              const existingWithSameKey = await findActiveSession({
+                serverId: server.id,
+                sessionKey: processed.sessionKey,
+                ratingKey: processed.ratingKey,
+              });
 
-          await cacheService.setPendingSession(server.id, sessionKey, pendingData);
+              if (existingWithSameKey) {
+                cachedSessionKeys.add(sessionKey);
+                missedPollTracking.delete(sessionKey);
+                console.log(
+                  `[Poller] Recovering active session ${processed.sessionKey} into cache`
+                );
+                return { rediscovered: existingWithSameKey };
+              }
 
-          const activeSession = buildPendingActiveSession(pendingData);
-          newSessions.push(activeSession);
-          cachedSessionKeys.add(sessionKey);
+              const existingPending = await cache.getPendingSession(server.id, sessionKey);
+              if (existingPending) {
+                const { updatedData } = updatePendingSession(
+                  existingPending,
+                  processed.state,
+                  processed.progressMs,
+                  Date.now(),
+                  dispatcharrLiveConfirmThresholdMs
+                );
+                const pendingDataForCache = syncDispatcharrPendingProgress(
+                  updatedData,
+                  dispatcharrLiveConfirmThresholdMs
+                );
+                missedPollTracking.delete(sessionKey);
+                await cache.setPendingSession(server.id, sessionKey, pendingDataForCache);
+                return { pendingData: pendingDataForCache, wasCreated: false };
+              }
+
+              const now = Date.now();
+              const pendingData = {
+                id: randomUUID(),
+                confirmation: {
+                  rulesEvaluated: false,
+                  confirmedPlayback: false,
+                  firstSeenAt: now,
+                  maxViewOffset: Math.max(0, processed.progressMs ?? 0),
+                },
+                processed,
+                server: { id: server.id, name: server.name, type: server.type },
+                serverUser: userDetail,
+                geo,
+                startedAt: now,
+                lastSeenAt: now,
+                currentState: processed.state as SessionState,
+                pausedDurationMs: 0,
+                lastPausedAt: processed.state === 'paused' ? now : null,
+              };
+
+              await cache.setPendingSession(server.id, sessionKey, pendingData);
+              return { pendingData, wasCreated: true };
+            }
+          );
+
+          if (!createPendingResult) {
+            continue;
+          }
+
+          if ('pendingData' in createPendingResult && createPendingResult.pendingData) {
+            const activeSession = buildPendingActiveSession(createPendingResult.pendingData);
+            if (createPendingResult.wasCreated) {
+              newSessions.push(activeSession);
+            } else {
+              updatedSessions.push(activeSession);
+            }
+            cachedSessionKeys.add(sessionKey);
+            continue;
+          }
+
+          if ('rediscovered' in createPendingResult && createPendingResult.rediscovered) {
+            const existing = createPendingResult.rediscovered;
+            try {
+              await db
+                .update(sessions)
+                .set({ lastSeenAt: new Date() })
+                .where(eq(sessions.id, existing.id));
+              const activeSession = buildActiveSession({
+                session: existing,
+                processed,
+                user: userDetail,
+                geo,
+                server,
+                overrides: {
+                  state: processed.state,
+                  lastPausedAt: existing.lastPausedAt,
+                  pausedDurationMs: existing.pausedDurationMs ?? 0,
+                  watched: existing.watched ?? false,
+                },
+              });
+              updatedSessions.push(activeSession);
+            } catch (err) {
+              console.error(`[Poller] Failed to recover rediscovered session ${existing.id}:`, err);
+            }
+          }
+
           continue;
         }
 

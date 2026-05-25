@@ -34,6 +34,10 @@ const INCREMENTAL_CAP_RATIO = 0.3;
 
 let redisClient: Redis | null = null;
 
+function getPersistableItems(items: MediaLibraryItem[]): MediaLibraryItem[] {
+  return items.filter((item) => Boolean(item.ratingKey));
+}
+
 /**
  * Initialize the library sync service with a Redis client.
  * Required to enable incremental sync state persistence.
@@ -410,8 +414,10 @@ export class LibrarySyncService {
       // No more items to process
       if (items.length === 0) break;
 
-      // Track current keys for delta detection
-      for (const item of items) {
+      const persistableItems = getPersistableItems(items);
+
+      // Track only keys we actually persist for delta detection and snapshots
+      for (const item of persistableItems) {
         currentKeys.add(item.ratingKey);
         allItems.push(item);
       }
@@ -484,8 +490,10 @@ export class LibrarySyncService {
 
         if (episodes.length === 0) break;
 
-        // Track episode keys and add to allItems
-        for (const episode of episodes) {
+        const persistableEpisodes = getPersistableItems(episodes);
+
+        // Track only keys we actually persist for delta detection and snapshots
+        for (const episode of persistableEpisodes) {
           currentKeys.add(episode.ratingKey);
           allItems.push(episode);
         }
@@ -561,8 +569,10 @@ export class LibrarySyncService {
 
         if (tracks.length === 0) break;
 
-        // Track keys and add to allItems
-        for (const track of tracks) {
+        const persistableTracks = getPersistableItems(tracks);
+
+        // Track only keys we actually persist for delta detection and snapshots
+        for (const track of persistableTracks) {
           currentKeys.add(track.ratingKey);
           allItems.push(track);
         }

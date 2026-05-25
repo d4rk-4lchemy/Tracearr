@@ -200,6 +200,32 @@ function getProgress(session: SessionWithDetails): number {
   return Math.min(100, Math.round((progress / session.totalDurationMs) * 100));
 }
 
+const SELECTION_COLUMN_WIDTH = 40;
+
+const COLUMN_WIDTHS: Record<keyof ColumnVisibility, number> = {
+  date: 140,
+  user: 150,
+  content: 300,
+  platform: 120,
+  location: 130,
+  ip: 120,
+  quality: 110,
+  duration: 100,
+  progress: 100,
+};
+
+function getFixedColumnStyle(width: number): React.CSSProperties {
+  return {
+    width: `${width}px`,
+    minWidth: `${width}px`,
+    maxWidth: `${width}px`,
+  };
+}
+
+function getColumnStyle(column: keyof ColumnVisibility): React.CSSProperties {
+  return getFixedColumnStyle(COLUMN_WIDTHS[column]);
+}
+
 interface HistoryTableRowProps {
   session: SessionWithDetails;
   onClick?: () => void;
@@ -264,7 +290,7 @@ export const HistoryTableRow = memo(
         >
           {/* Selection checkbox */}
           {selectable && (
-            <TableCell className="w-10">
+            <TableCell style={getFixedColumnStyle(SELECTION_COLUMN_WIDTH)}>
               <Checkbox
                 checked={isSelected}
                 onCheckedChange={onSelect}
@@ -276,7 +302,7 @@ export const HistoryTableRow = memo(
 
           {/* Date/Time with State */}
           {columnVisibility.date && (
-            <TableCell className="w-[140px]">
+            <TableCell style={getColumnStyle('date')}>
               <div className="flex items-center gap-2">
                 <StateIcon state={session.state} />
                 <div>
@@ -293,7 +319,7 @@ export const HistoryTableRow = memo(
 
           {/* User */}
           {columnVisibility.user && (
-            <TableCell className="w-[150px]">
+            <TableCell style={getColumnStyle('user')}>
               <Link
                 to={`/users/${session.serverUserId}`}
                 onClick={(e) => e.stopPropagation()}
@@ -325,12 +351,12 @@ export const HistoryTableRow = memo(
 
           {/* Content */}
           {columnVisibility.content && (
-            <TableCell className="min-w-[200px] max-w-[300px] overflow-hidden">
+            <TableCell style={getColumnStyle('content')} className="overflow-hidden">
               <div className="flex min-w-0 items-center gap-2">
                 <MediaTypeIcon type={session.mediaType} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="block min-w-0 flex-1 truncate font-medium">{primary}</span>
+                  <div className="flex min-w-0 items-center justify-start gap-2">
+                    <span className="block min-w-0 shrink truncate font-medium">{primary}</span>
                     <EngagementTierBadge
                       progress={progress}
                       state={session.state}
@@ -347,7 +373,7 @@ export const HistoryTableRow = memo(
 
           {/* Platform/Device */}
           {columnVisibility.platform && (
-            <TableCell className="w-[120px]">
+            <TableCell style={getColumnStyle('platform')}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div>
@@ -373,7 +399,7 @@ export const HistoryTableRow = memo(
 
           {/* Location */}
           {columnVisibility.location && (
-            <TableCell className="w-[130px]">
+            <TableCell style={getColumnStyle('location')}>
               {session.geoCity || session.geoCountry ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -407,7 +433,7 @@ export const HistoryTableRow = memo(
 
           {/* IP Address */}
           {columnVisibility.ip && (
-            <TableCell className="w-[120px]">
+            <TableCell style={getColumnStyle('ip')}>
               <span className="text-muted-foreground font-mono text-xs">
                 {session.ipAddress || '—'}
               </span>
@@ -416,7 +442,7 @@ export const HistoryTableRow = memo(
 
           {/* Quality */}
           {columnVisibility.quality && (
-            <TableCell className="w-[110px]">
+            <TableCell style={getColumnStyle('quality')}>
               {(() => {
                 const isHwTranscode =
                   session.isTranscode &&
@@ -445,7 +471,7 @@ export const HistoryTableRow = memo(
 
           {/* Duration */}
           {columnVisibility.duration && (
-            <TableCell className="w-[100px]">
+            <TableCell style={getColumnStyle('duration')}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-1.5">
@@ -482,7 +508,7 @@ export const HistoryTableRow = memo(
 
           {/* Progress */}
           {columnVisibility.progress && (
-            <TableCell className="w-[100px]">
+            <TableCell style={getColumnStyle('progress')}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-2">
@@ -592,23 +618,11 @@ function getVisibleColumnCount(columnVisibility: ColumnVisibility): number {
 }
 
 function getMinTableWidth(columnVisibility: ColumnVisibility, selectable: boolean): number {
-  const widthByColumn: Record<keyof ColumnVisibility, number> = {
-    date: 140,
-    user: 150,
-    content: 200,
-    platform: 120,
-    location: 130,
-    ip: 120,
-    quality: 110,
-    duration: 100,
-    progress: 100,
-  };
-
   const visibleWidth = (Object.keys(columnVisibility) as Array<keyof ColumnVisibility>)
     .filter((column) => columnVisibility[column])
-    .reduce((sum, column) => sum + widthByColumn[column], 0);
+    .reduce((sum, column) => sum + COLUMN_WIDTHS[column], 0);
 
-  const selectionWidth = selectable ? 40 : 0;
+  const selectionWidth = selectable ? SELECTION_COLUMN_WIDTH : 0;
   const borderAndPaddingBuffer = 24;
 
   return visibleWidth + selectionWidth + borderAndPaddingBuffer;
@@ -705,16 +719,28 @@ export function HistoryTable({
             style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
           >
             <tr>
-              {selectable && <TableHead className="w-10" />}
-              {columnVisibility.date && <TableHead className="w-[140px]">Date</TableHead>}
-              {columnVisibility.user && <TableHead className="w-[150px]">User</TableHead>}
-              {columnVisibility.content && <TableHead className="w-[200px]">Content</TableHead>}
-              {columnVisibility.platform && <TableHead className="w-[120px]">Platform</TableHead>}
-              {columnVisibility.location && <TableHead className="w-[130px]">Location</TableHead>}
-              {columnVisibility.ip && <TableHead className="w-[120px]">IP Address</TableHead>}
-              {columnVisibility.quality && <TableHead className="w-[110px]">Quality</TableHead>}
-              {columnVisibility.duration && <TableHead className="w-[100px]">Duration</TableHead>}
-              {columnVisibility.progress && <TableHead className="w-[100px]">Progress</TableHead>}
+              {selectable && <TableHead style={getFixedColumnStyle(SELECTION_COLUMN_WIDTH)} />}
+              {columnVisibility.date && <TableHead style={getColumnStyle('date')}>Date</TableHead>}
+              {columnVisibility.user && <TableHead style={getColumnStyle('user')}>User</TableHead>}
+              {columnVisibility.content && (
+                <TableHead style={getColumnStyle('content')}>Content</TableHead>
+              )}
+              {columnVisibility.platform && (
+                <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
+              )}
+              {columnVisibility.location && (
+                <TableHead style={getColumnStyle('location')}>Location</TableHead>
+              )}
+              {columnVisibility.ip && <TableHead style={getColumnStyle('ip')}>IP Address</TableHead>}
+              {columnVisibility.quality && (
+                <TableHead style={getColumnStyle('quality')}>Quality</TableHead>
+              )}
+              {columnVisibility.duration && (
+                <TableHead style={getColumnStyle('duration')}>Duration</TableHead>
+              )}
+              {columnVisibility.progress && (
+                <TableHead style={getColumnStyle('progress')}>Progress</TableHead>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -740,16 +766,28 @@ export function HistoryTable({
             style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
           >
             <tr>
-              {selectable && <TableHead className="w-10" />}
-              {columnVisibility.date && <TableHead className="w-[140px]">Date</TableHead>}
-              {columnVisibility.user && <TableHead className="w-[150px]">User</TableHead>}
-              {columnVisibility.content && <TableHead className="w-[200px]">Content</TableHead>}
-              {columnVisibility.platform && <TableHead className="w-[120px]">Platform</TableHead>}
-              {columnVisibility.location && <TableHead className="w-[130px]">Location</TableHead>}
-              {columnVisibility.ip && <TableHead className="w-[120px]">IP Address</TableHead>}
-              {columnVisibility.quality && <TableHead className="w-[110px]">Quality</TableHead>}
-              {columnVisibility.duration && <TableHead className="w-[100px]">Duration</TableHead>}
-              {columnVisibility.progress && <TableHead className="w-[100px]">Progress</TableHead>}
+              {selectable && <TableHead style={getFixedColumnStyle(SELECTION_COLUMN_WIDTH)} />}
+              {columnVisibility.date && <TableHead style={getColumnStyle('date')}>Date</TableHead>}
+              {columnVisibility.user && <TableHead style={getColumnStyle('user')}>User</TableHead>}
+              {columnVisibility.content && (
+                <TableHead style={getColumnStyle('content')}>Content</TableHead>
+              )}
+              {columnVisibility.platform && (
+                <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
+              )}
+              {columnVisibility.location && (
+                <TableHead style={getColumnStyle('location')}>Location</TableHead>
+              )}
+              {columnVisibility.ip && <TableHead style={getColumnStyle('ip')}>IP Address</TableHead>}
+              {columnVisibility.quality && (
+                <TableHead style={getColumnStyle('quality')}>Quality</TableHead>
+              )}
+              {columnVisibility.duration && (
+                <TableHead style={getColumnStyle('duration')}>Duration</TableHead>
+              )}
+              {columnVisibility.progress && (
+                <TableHead style={getColumnStyle('progress')}>Progress</TableHead>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -781,7 +819,7 @@ export function HistoryTable({
         >
           <tr>
             {selectable && (
-              <TableHead className="w-10">
+              <TableHead style={getFixedColumnStyle(SELECTION_COLUMN_WIDTH)}>
                 <Checkbox
                   checked={selectAllMode || isAllVisibleSelected}
                   onCheckedChange={onSelectAllVisible}
@@ -790,7 +828,7 @@ export function HistoryTable({
               </TableHead>
             )}
             {columnVisibility.date && (
-              <TableHead className="w-[140px]">
+              <TableHead style={getColumnStyle('date')}>
                 <SortableHeader
                   column="startedAt"
                   label="Date"
@@ -800,9 +838,9 @@ export function HistoryTable({
                 />
               </TableHead>
             )}
-            {columnVisibility.user && <TableHead className="w-[150px]">User</TableHead>}
+            {columnVisibility.user && <TableHead style={getColumnStyle('user')}>User</TableHead>}
             {columnVisibility.content && (
-              <TableHead className="w-[200px]">
+              <TableHead style={getColumnStyle('content')}>
                 <SortableHeader
                   column="mediaTitle"
                   label="Content"
@@ -812,12 +850,18 @@ export function HistoryTable({
                 />
               </TableHead>
             )}
-            {columnVisibility.platform && <TableHead className="w-[120px]">Platform</TableHead>}
-            {columnVisibility.location && <TableHead className="w-[130px]">Location</TableHead>}
-            {columnVisibility.ip && <TableHead className="w-[120px]">IP Address</TableHead>}
-            {columnVisibility.quality && <TableHead className="w-[110px]">Quality</TableHead>}
+            {columnVisibility.platform && (
+              <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
+            )}
+            {columnVisibility.location && (
+              <TableHead style={getColumnStyle('location')}>Location</TableHead>
+            )}
+            {columnVisibility.ip && <TableHead style={getColumnStyle('ip')}>IP Address</TableHead>}
+            {columnVisibility.quality && (
+              <TableHead style={getColumnStyle('quality')}>Quality</TableHead>
+            )}
             {columnVisibility.duration && (
-              <TableHead className="w-[100px]">
+              <TableHead style={getColumnStyle('duration')}>
                 <SortableHeader
                   column="durationMs"
                   label="Duration"
@@ -827,7 +871,9 @@ export function HistoryTable({
                 />
               </TableHead>
             )}
-            {columnVisibility.progress && <TableHead className="w-[100px]">Progress</TableHead>}
+            {columnVisibility.progress && (
+              <TableHead style={getColumnStyle('progress')}>Progress</TableHead>
+            )}
           </tr>
         </thead>
         <tbody

@@ -115,6 +115,46 @@ describe('ServerSelector route persistence', () => {
     });
   });
 
+  it('restores saved multi-selection on an initial multi-select route load after servers hydrate', async () => {
+    const deselectAllExcept = vi.fn();
+    const setSelectedServers = vi.fn();
+    const servers = [makeServer('s1', 'One'), makeServer('s2', 'Two'), makeServer('s3', 'Three')];
+
+    localStorage.setItem('tracearr_dashboard_selected_servers', '["s1","s3"]');
+
+    useLocationMock.mockReturnValue({ pathname: '/history' });
+    useServerMock.mockReturnValue({
+      servers: [],
+      selectedServerIds: ['s2'],
+      isAllServersSelected: false,
+      toggleServer: vi.fn(),
+      setSelectedServers,
+      selectAllServers: vi.fn(),
+      deselectAllExcept,
+      isLoading: false,
+      isFetching: true,
+    });
+
+    const view = render(<ServerSelector />);
+
+    useServerMock.mockReturnValue({
+      servers,
+      selectedServerIds: ['s2'],
+      isAllServersSelected: false,
+      toggleServer: vi.fn(),
+      setSelectedServers,
+      selectAllServers: vi.fn(),
+      deselectAllExcept,
+      isLoading: false,
+      isFetching: false,
+    });
+    view.rerender(<ServerSelector />);
+
+    await waitFor(() => {
+      expect(setSelectedServers).toHaveBeenCalledWith(['s1', 's3']);
+    });
+  });
+
   it('remembers single non-dashboard selection as preferred fallback', async () => {
     useLocationMock.mockReturnValue({ pathname: '/users' });
     useServerMock.mockReturnValue({

@@ -32,6 +32,7 @@ export function ServerSelector() {
 
   // Preserve multi-select on Dashboard/Map/History while keeping other pages single-server only.
   const prevPathname = useRef(location.pathname);
+  const shouldRestoreMultiSelection = useRef(isMultiSelectRoute);
   useEffect(() => {
     const wasMultiRoute =
       prevPathname.current === '/' ||
@@ -55,21 +56,37 @@ export function ServerSelector() {
     }
 
     if (!wasMultiRoute && isNowMultiRoute) {
+      shouldRestoreMultiSelection.current = true;
+    }
+
+    if (isNowMultiRoute && shouldRestoreMultiSelection.current) {
+      if (servers.length === 0) return;
       try {
         const stored = localStorage.getItem(DASHBOARD_SELECTED_SERVERS_KEY);
-        if (!stored) return;
+        if (!stored) {
+          shouldRestoreMultiSelection.current = false;
+          return;
+        }
         const parsed = JSON.parse(stored) as string[];
-        if (!Array.isArray(parsed) || parsed.length < 2) return;
+        if (!Array.isArray(parsed) || parsed.length < 2) {
+          shouldRestoreMultiSelection.current = false;
+          return;
+        }
         const validIds = parsed.filter((id) => servers.some((s) => s.id === id));
-        if (validIds.length < 2) return;
+        if (validIds.length < 2) {
+          shouldRestoreMultiSelection.current = false;
+          return;
+        }
         const isSameSelection =
           validIds.length === selectedServerIds.length &&
           validIds.every((id, idx) => id === selectedServerIds[idx]);
         if (!isSameSelection) {
           setSelectedServers(validIds);
         }
+        shouldRestoreMultiSelection.current = false;
       } catch {
         // Ignore invalid localStorage payload
+        shouldRestoreMultiSelection.current = false;
       }
     }
   }, [location.pathname, selectedServerIds, servers, deselectAllExcept, setSelectedServers]);
