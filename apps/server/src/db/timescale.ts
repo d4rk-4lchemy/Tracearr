@@ -794,6 +794,41 @@ async function enableCompression(): Promise<void> {
   `);
 }
 
+export async function withSessionsCompressionPaused<T>(fn: () => Promise<T>): Promise<T> {
+  let paused = false;
+  try {
+    await db.execute(sql`SELECT remove_compression_policy('sessions', if_exists => true)`);
+    paused = true;
+    console.log('[TimescaleDB] Sessions compression policy paused');
+  } catch (err) {
+    console.warn(
+      '[TimescaleDB] Could not pause sessions compression policy, proceeding without pause:',
+      err
+    );
+  }
+
+  try {
+    return await fn();
+  } finally {
+    if (paused) {
+      try {
+        await db.execute(
+          sql`SELECT add_compression_policy('sessions', INTERVAL '7 days', if_not_exists => true)`
+        );
+        console.log('[TimescaleDB] Sessions compression policy restored');
+      } catch (err) {
+        // Leaving the policy off means old chunks never compress. Surface a recovery
+        // command so an operator can run it manually if this happens.
+        console.error(
+          '[TimescaleDB] CRITICAL: failed to restore sessions compression policy. ' +
+            "Run: SELECT add_compression_policy('sessions', INTERVAL '7 days', if_not_exists => true)",
+          err
+        );
+      }
+    }
+  }
+}
+
 /**
  * Options for refreshing continuous aggregates
  */
