@@ -202,6 +202,130 @@ describe('Dispatcharr parser', () => {
       expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(0.97);
     });
 
+    it('keeps legacy speed mapping when no per-client output modifiers exist', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'News HD',
+        ffmpeg_speed: '1.11',
+        clients: [{ client_id: 'client-1', user_id: '7', output_format: 'mpegts' }],
+      });
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(1.11);
+    });
+
+    it('maps fmp4 output format without profile as a container change and hides channel speed', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'News HD',
+        ffmpeg_speed: '0.88',
+        clients: [{ client_id: 'client-1', user_id: '7', output_format: 'fmp4' }],
+      });
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.quality.isTranscode).toBe(false);
+      expect(sessions[0]?.quality.videoDecision).toBe('directplay');
+      expect(sessions[0]?.quality.audioDecision).toBe('directplay');
+      expect(sessions[0]?.quality.transcodeInfo).toMatchObject({
+        sourceContainer: 'MPEGTS',
+        streamContainer: 'FMP4',
+        containerDecision: 'transcode',
+      });
+      expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(0.88);
+    });
+
+    it('maps recognized output profile details and hides channel speed for profile sessions', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'News HD',
+        ffmpeg_speed: '0.92',
+        audio_codec: 'AC3',
+        clients: [
+          {
+            client_id: 'client-1',
+            user_id: '7',
+            output_format: 'mpegts',
+            output_profile_id: 5,
+          },
+        ],
+      });
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]]),
+        undefined,
+        {
+          outputProfilesById: new Map([
+            [
+              5,
+              {
+                id: 5,
+                name: 'Web Player',
+                streamContainer: 'MPEGTS',
+                bitrateKbps: 4192,
+                isKnown: true,
+                isTranscode: true,
+                videoDecision: 'directplay',
+                audioDecision: 'transcode',
+                streamAudioCodec: 'AAC',
+                streamAudioDetails: { bitrate: 192, channels: 2 },
+              },
+            ],
+          ]),
+        }
+      );
+
+      expect(sessions[0]?.quality).toMatchObject({
+        bitrate: 4192,
+        isTranscode: true,
+        videoDecision: 'directplay',
+        audioDecision: 'transcode',
+        streamAudioCodec: 'AAC',
+        streamAudioDetails: { bitrate: 192, channels: 2 },
+      });
+      expect(sessions[0]?.quality.transcodeInfo).toMatchObject({
+        sourceContainer: 'MPEGTS',
+        streamContainer: 'MPEGTS',
+        reasons: ['Dispatcharr output profile: Web Player'],
+      });
+      expect(sessions[0]?.quality.transcodeInfo?.speed).toBeUndefined();
+    });
+
+    it('falls back conservatively when output profile details are unavailable', () => {
+      const normalized = normalizeDispatcharrChannel({
+        channel_id: 'channel-1',
+        channel_name: 'News HD',
+        ffmpeg_speed: '1.05',
+        clients: [
+          {
+            client_id: 'client-1',
+            user_id: '7',
+            output_format: 'mpegts',
+            output_profile_id: 99,
+          },
+        ],
+      });
+      const sessions = parseSessionsFromChannels(
+        normalized ? [normalized] : [],
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]?.quality.isTranscode).toBe(true);
+      expect(sessions[0]?.quality.videoDecision).toBe('transcode');
+      expect(sessions[0]?.quality.audioDecision).toBe('transcode');
+      expect(sessions[0]?.quality.transcodeInfo).toMatchObject({
+        sourceContainer: 'MPEGTS',
+        streamContainer: 'MPEGTS',
+        reasons: ['Dispatcharr output profile active'],
+      });
+      expect(sessions[0]?.quality.transcodeInfo?.speed).toBeUndefined();
+    });
+
     it('maps string audio_channels value "stereo" to 2 channels', () => {
       const normalized = normalizeDispatcharrChannel({
         channel_id: 'channel-1',

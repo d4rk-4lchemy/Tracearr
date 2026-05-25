@@ -10,6 +10,8 @@ export interface DispatcharrClientStatus {
   user_id?: unknown;
   avg_rate_KBps?: unknown;
   current_rate_KBps?: unknown;
+  output_format?: unknown;
+  output_profile_id?: unknown;
 }
 
 export interface DispatcharrChannelStatus {
@@ -46,6 +48,29 @@ export interface NormalizedDispatcharrChannel {
   resolution?: string;
   ffmpegSpeed?: number;
   clients: DispatcharrClientStatus[];
+}
+
+export interface DispatcharrResolvedOutputProfile {
+  id: number;
+  name?: string;
+  streamContainer?: string;
+  bitrateKbps?: number;
+  isKnown: boolean;
+  isTranscode: boolean;
+  videoDecision: string;
+  audioDecision: string;
+  streamVideoCodec?: string;
+  streamAudioCodec?: string;
+  streamVideoDetails?: {
+    bitrate?: number;
+    width?: number;
+    height?: number;
+    framerate?: string;
+  };
+  streamAudioDetails?: {
+    bitrate?: number;
+    channels?: number;
+  };
 }
 
 export interface DispatcharrStatusResponse {
@@ -104,6 +129,7 @@ export interface DispatcharrUserResponse {
 
 interface DispatcharrParserOptions {
   ignoreAnonymousStreams?: boolean;
+  outputProfilesById?: Map<number, DispatcharrResolvedOutputProfile>;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -322,6 +348,11 @@ function asOptionalNumber(value: unknown): number | undefined {
   return parsed > 0 ? parsed : undefined;
 }
 
+function asOptionalInteger(value: unknown): number | undefined {
+  const parsed = asOptionalNumber(value);
+  return parsed !== undefined ? Math.round(parsed) : undefined;
+}
+
 function mergeClients(
   primary: DispatcharrClientStatus[],
   secondary: DispatcharrClientStatus[]
@@ -392,6 +423,14 @@ function parseConnectedAtElapsedMs(connectedAt: unknown, nowMs: number): number 
   if (!Number.isFinite(connectedAtMs)) return 0;
 
   return Math.max(0, nowMs - connectedAtMs);
+}
+
+function normalizeOutputFormat(value: unknown): string | undefined {
+  const normalized = asString(value).trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === 'ts' || normalized === 'mpegts') return 'MPEGTS';
+  if (normalized === 'mp4' || normalized === 'fmp4') return 'FMP4';
+  return normalized.toUpperCase();
 }
 
 function estimateVodPositionSeconds(
@@ -605,11 +644,45 @@ export function parseSessionsFromChannels(
       if (shouldIgnoreAnonymousDispatcharrUser(user.username, options)) continue;
 
       const ipAddress = asString(client.ip_address).trim() || '0.0.0.0';
-      const bitrate = Math.round(channel.avgBitrateKbps ?? 0);
+      const clientOutputFormat = normalizeOutputFormat(client.output_format);
+      const outputProfileId = asOptionalInteger(client.output_profile_id);
+      const outputProfile =
+        outputProfileId !== undefined ? options?.outputProfilesById?.get(outputProfileId) : undefined;
       const streamProfile = (channel.streamProfile ?? '').toLowerCase();
-      const isTranscode = streamProfile.includes('transcod');
+      const fallbackIsTranscode = streamProfile.includes('transcod');
       const resolution = parseResolutionDimensions(channel.resolution);
-      const transcodeSpeed = channel.ffmpegSpeed;
+      const hasOutputProfile = outputProfileId !== undefined;
+      const transcodeSpeed = hasOutputProfile ? undefined : channel.ffmpegSpeed;
+      const inferredContainer = outputProfile?.streamContainer ?? clientOutputFormat;
+      const containerChanged = inferredContainer === 'FMP4';
+      const conservativeUnknownProfile = outputProfileId !== undefined && !outputProfile;
+      const videoDecision =
+        outputProfile?.videoDecision ??
+        (conservativeUnknownProfile ? 'transcode' : fallbackIsTranscode ? 'transcode' : 'directplay');
+      const audioDecision =
+        outputProfile?.audioDecision ??
+        (conservativeUnknownProfile ? 'transcode' : fallbackIsTranscode ? 'transcode' : 'directplay');
+      const isTranscode =
+        outputProfile?.isTranscode ??
+        (conservativeUnknownProfile ? true : fallbackIsTranscode);
+      const bitrate = Math.round(outputProfile?.bitrateKbps ?? channel.avgBitrateKbps ?? 0);
+      const transcodeReasons =
+        conservativeUnknownProfile
+          ? ['Dispatcharr output profile active']
+          : outputProfile
+            ? [`Dispatcharr output profile: ${outputProfile.name ?? outputProfile.id}`]
+            : undefined;
+      const transcodeInfo =
+        transcodeSpeed !== undefined ||
+        inferredContainer !== undefined ||
+        transcodeReasons !== undefined
+          ? {
+              ...(inferredContainer ? { sourceContainer: 'MPEGTS', streamContainer: inferredContainer } : {}),
+              ...(containerChanged ? { containerDecision: 'transcode' } : {}),
+              ...(transcodeSpeed !== undefined ? { speed: transcodeSpeed } : {}),
+              ...(transcodeReasons ? { reasons: transcodeReasons } : {}),
+            }
+          : undefined;
 
       sessions.push({
         sessionKey: `${channelId}:${clientId}`,
@@ -647,16 +720,19 @@ export function parseSessionsFromChannels(
         quality: {
           bitrate,
           isTranscode,
-          videoDecision: isTranscode ? 'transcode' : 'directplay',
-          audioDecision: isTranscode ? 'transcode' : 'directplay',
-          transcodeInfo:
-            transcodeSpeed !== undefined ? { speed: transcodeSpeed } : undefined,
+          videoDecision,
+          audioDecision,
+          transcodeInfo,
           videoResolution: resolution.normalized,
           videoWidth: resolution.width,
           videoHeight: resolution.height,
           sourceVideoCodec: channel.videoCodec,
           sourceAudioCodec: channel.audioCodec,
           sourceAudioChannels: channel.audioChannels,
+          streamVideoCodec: outputProfile?.streamVideoCodec,
+          streamAudioCodec: outputProfile?.streamAudioCodec,
+          streamVideoDetails: outputProfile?.streamVideoDetails,
+          streamAudioDetails: outputProfile?.streamAudioDetails,
           sourceVideoDetails: channel.sourceFps
             ? {
                 framerate: channel.sourceFps,
