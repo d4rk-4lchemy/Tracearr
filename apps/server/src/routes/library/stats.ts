@@ -36,6 +36,7 @@ interface LibraryStatsResponse {
   movieCount: number;
   episodeCount: number;
   showCount: number;
+  itemsAdded: number;
   qualityBreakdown: {
     count4k: number;
     count1080p: number;
@@ -44,6 +45,12 @@ interface LibraryStatsResponse {
   };
   asOf: string | null;
   byServer?: Record<string, LibraryStatsServerKpis>;
+}
+
+/** Window start for the "items added" count; null means count all time. */
+function periodStartDate(period: '7d' | '30d' | '90d' | '1y'): Date {
+  const days = period === '7d' ? 7 : period === '30d' ? 30 : period === '90d' ? 90 : 365;
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
 export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
@@ -62,7 +69,7 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { serverId, serverIds, libraryId, timezone } = query.data;
+      const { serverId, serverIds, libraryId, period, timezone } = query.data;
       const authUser = request.user;
       const tz = timezone ?? 'UTC';
 
@@ -72,9 +79,21 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
       // Optional library filter
       const libraryFilter = libraryId ? sql`AND li.library_id = ${libraryId}` : sql``;
 
-      // Build cache key - include sorted server IDs so order doesn't cause misses
+      // "Items added" is a deduped distinct-title count; window it by period (all-time when absent)
+      const windowStart = period && period !== 'all' ? periodStartDate(period) : null;
+      const realItem = sql`(li.file_size > 0 OR li.media_type IN ('show', 'season'))`;
+      const addedCondition = windowStart
+        ? sql`${realItem} AND li.created_at >= ${windowStart}`
+        : realItem;
+
+      // Build cache key - include sorted server IDs and period so order/window don't cause misses
       const serverCacheKey = resolvedIds !== undefined ? [...resolvedIds].sort().join(',') : 'all';
-      const cacheKey = buildLibraryCacheKey(REDIS_KEYS.LIBRARY_STATS, serverCacheKey, tz);
+      const cacheKey = buildLibraryCacheKey(
+        REDIS_KEYS.LIBRARY_STATS,
+        serverCacheKey,
+        period ?? 'all',
+        tz
+      );
       const fullCacheKey = libraryId ? `${cacheKey}:${libraryId}` : cacheKey;
 
       const cached = await app.redis.get(fullCacheKey);
@@ -99,6 +118,7 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
           COUNT(DISTINCT CASE WHEN li.media_type = 'movie' THEN ${matchKey} END)::int AS movie_count,
           COUNT(DISTINCT CASE WHEN li.media_type = 'episode' THEN ${matchKey} END)::int AS episode_count,
           COUNT(DISTINCT CASE WHEN li.media_type = 'show' THEN ${matchKey} END)::int AS show_count,
+          COUNT(DISTINCT CASE WHEN ${addedCondition} THEN ${matchKey} END)::int AS items_added,
           COUNT(CASE WHEN li.video_resolution = '4k' THEN 1 END)::int AS count_4k,
           COUNT(CASE WHEN li.video_resolution = '1080p' THEN 1 END)::int AS count_1080p,
           COUNT(CASE WHEN li.video_resolution = '720p' THEN 1 END)::int AS count_720p,
@@ -117,6 +137,7 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
             movie_count: number;
             episode_count: number;
             show_count: number;
+            items_added: number;
             count_4k: number;
             count_1080p: number;
             count_720p: number;
@@ -166,6 +187,7 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
         movieCount: row?.movie_count ?? 0,
         episodeCount: row?.episode_count ?? 0,
         showCount: row?.show_count ?? 0,
+        itemsAdded: row?.items_added ?? 0,
         qualityBreakdown: {
           count4k: row?.count_4k ?? 0,
           count1080p: row?.count_1080p ?? 0,

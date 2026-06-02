@@ -89,7 +89,6 @@ export function LibraryOverview() {
   const { value: timeRange, setValue: setTimeRange } = useTimeRange();
 
   const statusResult = useLibraryStatus(selectedServerIds);
-  const { data: stats, isLoading, isError, error, refetch } = useLibraryStats(selectedServerIds);
 
   // Map TimeRangePicker periods to API format
   const apiPeriod = useMemo(() => {
@@ -107,6 +106,14 @@ export function LibraryOverview() {
     }
   }, [timeRange.period]);
 
+  const {
+    data: stats,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useLibraryStats(selectedServerIds, null, apiPeriod);
+
   const growth = useLibraryGrowth(selectedServerIds, null, apiPeriod);
 
   // Aggregate multi-server growth before passing to chart; single-server is a no-op.
@@ -115,21 +122,8 @@ export function LibraryOverview() {
     return aggregateGrowthData(growth.data);
   }, [growth.data]);
 
-  // Calculate period changes from aggregated growth data
-  const periodChanges = useMemo(() => {
-    if (!aggregatedGrowth) {
-      return { movies: 0, episodes: 0, music: 0, total: 0 };
-    }
-
-    const sumAdditions = (series: GrowthDataPoint[] | undefined) =>
-      series?.reduce((sum, d) => sum + d.additions, 0) ?? 0;
-
-    const movies = sumAdditions(aggregatedGrowth.movies);
-    const episodes = sumAdditions(aggregatedGrowth.episodes);
-    const music = sumAdditions(aggregatedGrowth.music);
-
-    return { movies, episodes, music, total: movies + episodes + music };
-  }, [aggregatedGrowth]);
+  // Distinct titles added in the period, deduped across servers by the backend
+  const itemsAdded = stats?.itemsAdded ?? 0;
 
   // Period label for display
   const periodLabel = useMemo(() => {
@@ -218,7 +212,7 @@ export function LibraryOverview() {
 
   // Format period change for display
   const periodChangeLabel =
-    periodChanges.total > 0 ? `+${formatNumber(periodChanges.total)} ${periodLabel}` : undefined;
+    itemsAdded > 0 ? `+${formatNumber(itemsAdded)} ${periodLabel}` : undefined;
 
   return (
     <div className="space-y-6">
@@ -283,9 +277,9 @@ export function LibraryOverview() {
         <StatCard
           icon={TrendingUp}
           label={t('library.overview.added')}
-          value={`+${formatNumber(periodChanges.total)}`}
+          value={`+${formatNumber(itemsAdded)}`}
           subValue={periodLabel}
-          isLoading={growth.isLoading}
+          isLoading={isLoading}
         />
       </div>
 
