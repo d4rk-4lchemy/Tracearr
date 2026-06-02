@@ -829,7 +829,7 @@ class ApiClient {
       userId?: string;
       severity?: string;
       acknowledged?: boolean;
-      serverId?: string;
+      serverIds?: string[];
       orderBy?: string;
       orderDir?: 'asc' | 'desc';
     }) => {
@@ -840,7 +840,11 @@ class ApiClient {
       if (params?.severity) searchParams.set('severity', params.severity);
       if (params?.acknowledged !== undefined)
         searchParams.set('acknowledged', String(params.acknowledged));
-      if (params?.serverId) searchParams.set('serverId', params.serverId);
+      if (params?.serverIds?.length) {
+        for (const id of params.serverIds) {
+          searchParams.append('serverIds', id);
+        }
+      }
       if (params?.orderBy) searchParams.set('orderBy', params.orderBy);
       if (params?.orderDir) searchParams.set('orderDir', params.orderDir);
       return this.request<PaginatedResponse<ViolationWithDetails>>(
@@ -856,7 +860,7 @@ class ApiClient {
     bulkAcknowledge: (params: {
       ids?: string[];
       selectAll?: boolean;
-      filters?: { serverId?: string; severity?: string; acknowledged?: boolean };
+      filters?: { serverIds?: string[]; severity?: string; acknowledged?: boolean };
     }) =>
       this.request<{ success: boolean; acknowledged: number }>('/violations/bulk/acknowledge', {
         method: 'POST',
@@ -865,7 +869,7 @@ class ApiClient {
     bulkDismiss: (params: {
       ids?: string[];
       selectAll?: boolean;
-      filters?: { serverId?: string; severity?: string; acknowledged?: boolean };
+      filters?: { serverIds?: string[]; severity?: string; acknowledged?: boolean };
     }) =>
       this.request<{ success: boolean; dismissed: number }>('/violations/bulk', {
         method: 'DELETE',

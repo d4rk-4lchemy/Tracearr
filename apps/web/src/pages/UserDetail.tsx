@@ -238,7 +238,7 @@ export function UserDetail() {
     userId: id,
     page: violationsPage,
     pageSize,
-    serverId: selectedServerId ?? undefined,
+    serverIds: selectedServerId ? [selectedServerId] : undefined,
   });
   const needsPaginatedViolations = violationsPage > 1;
 

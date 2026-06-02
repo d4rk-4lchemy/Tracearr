@@ -35,6 +35,8 @@ import {
   useBulkDismissViolations,
 } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
+import { useServerColorMap } from '@/hooks/useServerColorMap';
+import { ServerColumnCell } from '@/components/server';
 import { useRowSelection } from '@/hooks/useRowSelection';
 
 import { ruleIcons } from '@/components/violations/ruleIcons';
@@ -59,7 +61,8 @@ export function Violations() {
   const [dismissId, setDismissId] = useState<string | null>(null);
   const [bulkDismissConfirmOpen, setBulkDismissConfirmOpen] = useState(false);
   const pageSize = 10;
-  const { selectedServerId } = useServer();
+  const { selectedServerIds, selectedServers, isMultiServer } = useServer();
+  const colorMap = useServerColorMap();
 
   // Convert sorting state to API params
   const orderBy = sorting[0]?.id ? columnToSortField[sorting[0].id] : undefined;
@@ -70,7 +73,7 @@ export function Violations() {
     pageSize,
     severity: severityFilter === 'all' ? undefined : severityFilter,
     acknowledged: acknowledgedFilter === 'all' ? undefined : acknowledgedFilter === 'acknowledged',
-    serverId: selectedServerId ?? undefined,
+    serverIds: selectedServerIds.length > 0 ? selectedServerIds : undefined,
     orderBy,
     orderDir,
   });
@@ -100,15 +103,15 @@ export function Violations() {
     totalCount: total,
   });
 
-  // Current filter params for bulk operations
+  // Current filter params for bulk operations — serverIds so "apply to all matching" respects multi-selection
   const currentFilters = useMemo(
     () => ({
-      serverId: selectedServerId ?? undefined,
+      serverIds: selectedServerIds.length > 0 ? selectedServerIds : undefined,
       severity: severityFilter === 'all' ? undefined : severityFilter,
       acknowledged:
         acknowledgedFilter === 'all' ? undefined : acknowledgedFilter === 'acknowledged',
     }),
-    [selectedServerId, severityFilter, acknowledgedFilter]
+    [selectedServerIds, severityFilter, acknowledgedFilter]
   );
 
   const handleAcknowledge = (id: string) => {
@@ -187,6 +190,21 @@ export function Violations() {
 
   const violationColumns: ColumnDef<ViolationWithDetails>[] = useMemo(
     () => [
+      ...(isMultiServer
+        ? [
+            {
+              id: 'server',
+              header: t('common:labels.server'),
+              cell: ({ row }: { row: { original: ViolationWithDetails } }) => {
+                const server =
+                  (row.original.server?.id
+                    ? selectedServers.find((s) => s.id === row.original.server!.id)
+                    : undefined) ?? row.original.server;
+                return server ? <ServerColumnCell server={server} /> : null;
+              },
+            } satisfies ColumnDef<ViolationWithDetails>,
+          ]
+        : []),
       {
         accessorKey: 'user',
         header: t('common:labels.user'),
@@ -311,7 +329,7 @@ export function Violations() {
         },
       },
     ],
-    [t, handleAcknowledge, acknowledgeViolation.isPending]
+    [t, handleAcknowledge, acknowledgeViolation.isPending, isMultiServer, selectedServers]
   );
 
   return (
@@ -436,6 +454,14 @@ export function Violations() {
               onPageSelect={togglePage}
               isPageSelected={isPageSelected(violations)}
               isPageIndeterminate={isPageIndeterminate(violations)}
+              getRowStyle={
+                isMultiServer
+                  ? (row) => {
+                      const color = row.server?.id ? (colorMap.get(row.server.id) ?? null) : null;
+                      return color ? { boxShadow: `inset 3px 0 0 0 ${color}` } : undefined;
+                    }
+                  : undefined
+              }
             />
           )}
         </CardContent>

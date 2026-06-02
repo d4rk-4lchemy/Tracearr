@@ -15,14 +15,15 @@ interface ViolationsParams {
   userId?: string;
   severity?: ViolationSeverity;
   acknowledged?: boolean;
-  serverId?: string;
+  serverIds?: string[];
   orderBy?: ViolationSortField;
   orderDir?: 'asc' | 'desc';
 }
 
 export function useViolations(params: ViolationsParams = {}) {
+  const serverIdsKey = params.serverIds?.length ? [...params.serverIds].sort().join(',') : 'all';
   return useQuery({
-    queryKey: ['violations', 'list', params],
+    queryKey: ['violations', 'list', { ...params, serverIds: serverIdsKey }],
     queryFn: () => api.violations.list(params),
     staleTime: 1000 * 30, // 30 seconds
   });
@@ -107,7 +108,7 @@ export interface BulkViolationParams {
   ids?: string[];
   selectAll?: boolean;
   filters?: {
-    serverId?: string;
+    serverIds?: string[];
     severity?: string;
     acknowledged?: boolean;
   };

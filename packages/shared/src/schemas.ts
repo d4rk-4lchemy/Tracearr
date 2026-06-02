@@ -583,6 +583,7 @@ export type ViolationSortField = z.infer<typeof violationSortFieldSchema>;
 
 export const violationQuerySchema = paginationSchema.extend({
   serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
   serverUserId: uuidSchema.optional(),
   ruleId: uuidSchema.optional(),
   severity: z.enum(['low', 'warning', 'high']).optional(),

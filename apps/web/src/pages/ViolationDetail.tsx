@@ -28,6 +28,8 @@ import { SeverityBadge } from '@/components/violations/SeverityBadge';
 import { ActionResultsList } from '@/components/violations/ActionResultsList';
 import { getAvatarUrl } from '@/components/users/utils';
 import { getCountryName, getMediaDisplay } from '@/lib/utils';
+import { ServerBadge } from '@/components/server';
+import { useServerColorMap } from '@/hooks/useServerColorMap';
 import {
   useViolation,
   useAcknowledgeViolation,
@@ -198,6 +200,7 @@ export function ViolationDetail() {
 
   const { data: violation, isLoading } = useViolation(id!);
   const { data: settings } = useSettings();
+  const serverColorMap = useServerColorMap();
   const unitSystem: UnitSystem = settings?.unitSystem ?? 'metric';
   const acknowledgeViolation = useAcknowledgeViolation();
   const dismissViolation = useDismissViolation();
@@ -518,8 +521,15 @@ export function ViolationDetail() {
                   {violation.user.identityName ?? violation.user.username}
                 </p>
                 <p className="text-muted-foreground truncate text-sm">@{violation.user.username}</p>
-                {violation.server?.name && (
-                  <p className="text-muted-foreground truncate text-xs">{violation.server.name}</p>
+                {violation.server && (
+                  <ServerBadge
+                    server={{
+                      ...violation.server,
+                      color: serverColorMap.get(violation.server.id) ?? null,
+                    }}
+                    variant="outlined"
+                    className="mt-1"
+                  />
                 )}
               </div>
             </Link>
