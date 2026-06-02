@@ -1958,7 +1958,7 @@ export interface TopTranscodingUsersResponse {
 // Daily bandwidth row
 export interface DailyBandwidthRow {
   date: string;
-  /** Server this row belongs to — required for per-server chart series */
+  /** Server this row belongs to - required for per-server chart series */
   serverId: string;
   sessions: number;
   /** Total data transferred in bytes */
@@ -1986,7 +1986,7 @@ export interface BandwidthTopUser {
   /** Avatar URL from server user */
   thumbUrl: string | null;
   serverUserId: string;
-  /** Server this row belongs to — same human on two servers = two rows */
+  /** Server this row belongs to - same human on two servers = two rows */
   serverId: string;
   /** Total data transferred in bytes */
   totalBytes: number;

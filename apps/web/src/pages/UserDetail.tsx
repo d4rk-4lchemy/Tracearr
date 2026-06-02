@@ -256,7 +256,7 @@ export function UserDetail() {
     ? (paginatedSessions?.data ?? [])
     : (fullData?.sessions.data ?? []);
 
-  // Map Session → SessionWithDetails for HistoryTable compatibility
+  // Map Session -> SessionWithDetails for HistoryTable compatibility
   const sessions: SessionWithDetails[] = useMemo(() => {
     if (!user) return [];
     const server = servers.find((s) => s.id === user.serverId);

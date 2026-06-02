@@ -120,7 +120,7 @@ export async function queryPlaysByDayOfWeek(params: {
 // ============================================================================
 
 /**
- * Play counts grouped by hour of day (0–23).
+ * Play counts grouped by hour of day (0-23).
  * Returns all 24 hours, filling missing hours with count 0.
  */
 export async function queryPlaysByHourOfDay(params: {
@@ -268,7 +268,7 @@ export interface PlatformRow {
 
 /**
  * Session counts grouped by client platform, sorted by count descending.
- * Does not apply engagement filtering — counts all sessions in the range.
+ * Does not apply engagement filtering - counts all sessions in the range.
  */
 export async function queryPlatforms(params: {
   rangeStart: Date | null;
@@ -334,7 +334,7 @@ export function computeQualityBreakdown(qualityRows: QualityRow[]): QualityBreak
 
 /**
  * Direct play / direct stream / transcode breakdown with percentages.
- * Does not apply engagement filtering — counts all sessions in the range.
+ * Does not apply engagement filtering - counts all sessions in the range.
  */
 export async function queryQualityBreakdown(params: {
   rangeStart: Date | null;

@@ -220,7 +220,7 @@ export const engagementRoutes: FastifyPluginAsync = async (app) => {
             (SELECT row_to_json(t) FROM summary_data t) AS summary
         `),
 
-      // Top shows — separate query (needs daily_intensity CTE)
+      // Top shows - separate query (needs daily_intensity CTE)
       db.execute(sql`
           WITH filtered_daily AS (
             SELECT * FROM daily_content_engagement

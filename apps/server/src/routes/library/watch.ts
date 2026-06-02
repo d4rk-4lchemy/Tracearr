@@ -9,7 +9,7 @@
  * - Last watched timestamp
  * - Summary with watched/unwatched ratio
  *
- * Multi-server dedup: titles are collapsed by COALESCE(imdb→tmdb→tvdb→normalized-title)
+ * Multi-server dedup: titles are collapsed by COALESCE(imdb->tmdb->tvdb->normalized-title)
  * so the same movie on two servers counts as ONE title in the summary KPIs and in the
  * Most Watched list. Watch events (plays, duration) are SUMMED across servers.
  *

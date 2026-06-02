@@ -103,7 +103,7 @@ export function Violations() {
     totalCount: total,
   });
 
-  // Current filter params for bulk operations — serverIds so "apply to all matching" respects multi-selection
+  // Current filter params for bulk operations - serverIds so "apply to all matching" respects multi-selection
   const currentFilters = useMemo(
     () => ({
       serverIds: selectedServerIds.length > 0 ? selectedServerIds : undefined,

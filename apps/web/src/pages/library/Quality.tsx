@@ -104,11 +104,11 @@ export function LibraryQuality() {
   }
 
   // Gate on empty/setup state:
-  // - Single-server: same as before — check the one server.
+  // - Single-server: same as before - check the one server.
   // - Multi-server: only show page-level empty state if EVERY selected server needs setup.
   const needsSetup = (() => {
     if (isMultiServer) {
-      // All servers need setup → show page-level empty state
+      // All servers need setup -> show page-level empty state
       return (
         serverIds.length > 0 &&
         serverIds.every((id) => {
@@ -140,7 +140,7 @@ export function LibraryQuality() {
     <div className="space-y-6">
       {header}
 
-      {/* Quality Evolution Chart — page-level media-type tabs + time range apply to all cards */}
+      {/* Quality Evolution Chart - page-level media-type tabs + time range apply to all cards */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

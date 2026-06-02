@@ -1660,7 +1660,7 @@ class ApiClient {
     disable: () =>
       this.request<TailscaleInfo>('/tailscale/disable', { method: 'POST', body: '{}' }),
     reset: () => this.request<TailscaleInfo>('/tailscale/reset', { method: 'POST', body: '{}' }),
-    // Exit node disabled — this will come back when we implement SOCKS proxy support
+    // Exit node disabled - this will come back when we implement SOCKS proxy support
     // setExitNode: (id: string | null) =>
     //   this.request<TailscaleInfo>('/tailscale/exit-node', {
     //     method: 'POST',

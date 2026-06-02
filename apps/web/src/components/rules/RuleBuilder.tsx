@@ -132,7 +132,7 @@ export function RuleBuilder({
   const [actions, setActions] = useState<RuleActions>(extractActions(initialRule));
   const [errors, setErrors] = useState<string[]>([]);
 
-  // Scope picker state — seed from existing rule, fall back to first available server
+  // Scope picker state - seed from existing rule, fall back to first available server
   const [scopeMode, setScopeMode] = useState<ScopeMode>(initialScopeMode);
   const [scopeServerId, setScopeServerId] = useState<string>(
     initialRule?.serverId ?? servers[0]?.id ?? ''
@@ -178,7 +178,7 @@ export function RuleBuilder({
   const handleSubmit = async () => {
     if (!validate()) return;
 
-    // Build base payload — serverId carries server-scope; user-scope adds serverUserId alongside null serverId
+    // Build base payload - serverId carries server-scope; user-scope adds serverUserId alongside null serverId
     const base = {
       name: name.trim(),
       description: description.trim() || null,

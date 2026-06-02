@@ -93,7 +93,7 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
    * GET /top-movies - Top movies by engagement metrics
    *
    * Returns movies sorted by plays, watch hours, viewers, or completion rate.
-   * Deduplicates across servers using external ID match key (imdb→tmdb→tvdb→title).
+   * Deduplicates across servers using external ID match key (imdb->tmdb->tvdb->title).
    * Each result includes serverIds[] for all servers that have/played this title.
    */
   app.get<{ Querystring: TopContentQueryInput }>(
@@ -143,7 +143,7 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
       const effectiveStartDate = await resolveStartDate(startDate);
       const offset = (page - 1) * pageSize;
 
-      // Movies don't have binge_score — fall back to total_plays
+      // Movies don't have binge_score - fall back to total_plays
       const sortColumnMap: Record<string, string> = {
         plays: 'total_plays',
         watch_hours: 'total_watch_hours',
@@ -157,7 +157,7 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
       // Inline the get_content_engagement logic with multi-server filter + dedup.
       //
       // Dedup approach for movies:
-      //   Join daily_content_engagement → library_items on (server_id, rating_key) to get
+      //   Join daily_content_engagement -> library_items on (server_id, rating_key) to get
       //   external IDs (imdb_id, tmdb_id, tvdb_id) then build a COALESCE match key identical
       //   to buildExternalIdMatchKey. Rows that share a match key (same movie on multiple
       //   servers) are collapsed into one row; play counts and watch time are summed across
@@ -416,7 +416,7 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
       // Dedup approach for shows:
       //   The daily_content_engagement view tracks episodes by (rating_key, server_user_id).
       //   The show identity lives in the show_title column (MAX(grandparent_title) from sessions).
-      //   We normalize show_title — LOWER + strip non-alphanumeric — as the dedup key, which
+      //   We normalize show_title - LOWER + strip non-alphanumeric - as the dedup key, which
       //   matches what buildExternalIdMatchKey uses for its title fallback. Shows that share the
       //   same normalized title across servers collapse into one row; episode views, watch hours
       //   and viewer counts are summed.

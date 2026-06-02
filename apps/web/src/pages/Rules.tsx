@@ -566,7 +566,7 @@ function getRuleScope(rule: Rule): 'global' | 'server' | 'user' {
   return 'global';
 }
 
-/** Small chip showing the rule's scope — rendered inline with the rule name row. */
+/** Small chip showing the rule's scope - rendered inline with the rule name row. */
 function RuleScopeChip({
   rule,
   servers,
@@ -592,7 +592,7 @@ function RuleScopeChip({
     return <ServerBadge server={server} variant="outlined" />;
   }
 
-  // user scope: resolve server from filterOptions.users → servers, fall back to user glyph
+  // user scope: resolve server from filterOptions.users -> servers, fall back to user glyph
   const userOption = filterOptions?.users.find((u) => u.id === rule.serverUserId);
   const server = userOption ? servers.find((s) => s.id === userOption.serverId) : undefined;
   const username = userOption?.username ?? userOption?.identityName;
@@ -832,7 +832,7 @@ export function Rules() {
 
   const unitSystem = settings?.unitSystem ?? 'metric';
 
-  // Scope filter — independent of the global server selector
+  // Scope filter - independent of the global server selector
   const [scopeFilter, setScopeFilter] = useState<ScopeFilterValue>('all');
 
   // V1 Classic rule dialog state (for editing legacy rules only)
@@ -852,7 +852,7 @@ export function Rules() {
   const updateRuleV2 = useUpdateRuleV2();
   const { data: rulesFilterOptions } = useRulesFilterOptions();
 
-  // Client-side scope filtering — does not touch the server selector
+  // Client-side scope filtering - does not touch the server selector
   const filteredRules = useMemo(() => {
     if (!rules) return [];
     if (scopeFilter === 'all') return rules;

@@ -233,7 +233,7 @@ function ServerResolutionCard({ serverId }: { serverId: string }) {
   );
 }
 
-/** Single-server layout — two side-by-side cards as the original design. */
+/** Single-server layout - two side-by-side cards as the original design. */
 function SingleServerResolutionSection({ serverId }: { serverId?: string | null }) {
   const resolution = useLibraryResolution(serverId);
 

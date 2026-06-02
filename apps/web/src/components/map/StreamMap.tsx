@@ -21,7 +21,7 @@ function hsl(h: number, s: number, l: number, a?: number): string {
 
 /**
  * Generate a heatmap gradient based on the accent hue
- * Transitions from transparent → accent color → white hotspots
+ * Transitions from transparent -> accent color -> white hotspots
  */
 function generateHeatmapGradient(hue: number): Record<number, string> {
   return {

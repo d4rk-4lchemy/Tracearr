@@ -912,7 +912,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     const { whereClause } = filterResult;
 
     // Unique Titles KPI uses cross-server dedup: join library_items to get external IDs
-    // (imdb→tmdb→tvdb→normalized-title) so the same title on Plex+Jellyfin counts once.
+    // (imdb->tmdb->tvdb->normalized-title) so the same title on Plex+Jellyfin counts once.
     // Sessions join library_items on (server_id, rating_key); sessions without a rating_key
     // or with no matching library_items row fall back to a normalized title key derived
     // directly from the session's media_title column.
@@ -986,7 +986,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     // Resolve effective server IDs (handles owner bypass + access intersection)
     const resolvedIds = resolveServerIds(authUser, serverId, rawServerIds);
     if (resolvedIds?.length === 0) {
-      // No accessible servers — return empty filter options
+      // No accessible servers - return empty filter options
       if (includeAllCountries) {
         const emptyRulesResponse: RulesFilterOptions = {
           platforms: [],

@@ -173,7 +173,7 @@ export function PlaysChart({
       };
     }
 
-    // Single-server rendering — unchanged from original
+    // Single-server rendering - unchanged from original
     return {
       chart: {
         type: 'area',

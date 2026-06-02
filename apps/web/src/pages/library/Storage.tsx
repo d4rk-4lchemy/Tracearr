@@ -33,7 +33,7 @@ export function LibraryStorage() {
   const { selectedServerIds, selectedServers, isMultiServer } = useServer();
   const { value: timeRange, setValue: setTimeRange } = useTimeRange();
 
-  // Check library status — fan out per server to detect which need setup
+  // Check library status - fan out per server to detect which need setup
   const statusResult = useLibraryStatus(selectedServerIds);
 
   // Pagination state for tables
@@ -66,7 +66,7 @@ export function LibraryStorage() {
     }
   }, [timeRange.period]);
 
-  // Fan out storage per server — storage endpoint is single-server only
+  // Fan out storage per server - storage endpoint is single-server only
   const storageMulti = useMultiServerQuery(selectedServerIds, (id) => ({
     queryKey: ['library', 'storage', id, undefined, apiPeriod],
     queryFn: () => api.library.storage(id, undefined, apiPeriod),
@@ -124,7 +124,7 @@ export function LibraryStorage() {
       ? `${singleStorageEntry?.data?.predictions.currentDataDays} ${t('library.storage.of')} ${singleStorageEntry?.data?.predictions.minDataDays} ${t('library.storage.days')}`
       : undefined;
 
-  // Combined cross-server duplicates — only relevant when multiple servers are selected
+  // Combined cross-server duplicates - only relevant when multiple servers are selected
   const duplicates = useLibraryDuplicates(
     selectedServerIds,
     duplicatesPage,
@@ -141,7 +141,7 @@ export function LibraryStorage() {
     (staleSummary.data?.summary.neverWatched.sizeBytes ?? 0) +
     (staleSummary.data?.summary.stale.sizeBytes ?? 0);
 
-  // Combined ROI — combined across servers via the backend
+  // Combined ROI - combined across servers via the backend
   const roi = useLibraryRoi(
     selectedServerIds,
     null,
@@ -237,7 +237,7 @@ export function LibraryStorage() {
           subValue={growthRateSubValue}
           isLoading={storageMulti.isLoading}
         />
-        {/* Duplicates KPI — only meaningful when multiple servers selected */}
+        {/* Duplicates KPI - only meaningful when multiple servers selected */}
         {selectedServerIds.length > 1 && (
           <StatCard
             icon={Copy}

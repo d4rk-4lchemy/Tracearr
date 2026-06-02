@@ -32,7 +32,7 @@ export function ServerSelector() {
     return null;
   }
 
-  // Only one server — show static label
+  // Only one server - show static label
   if (servers.length === 1) {
     const server = servers[0]!;
     return (

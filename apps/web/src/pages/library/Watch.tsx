@@ -83,7 +83,7 @@ export function LibraryWatch() {
   const { t } = useTranslation(['pages', 'common']);
   const { selectedServerIds, selectedServers, isMultiServer } = useServer();
 
-  // Watch data for KPIs — deduped across servers by the backend
+  // Watch data for KPIs - deduped across servers by the backend
   const watch = useLibraryWatch(selectedServerIds, null, 1, 20);
 
   // Completion data for single-server donut layout
@@ -104,7 +104,7 @@ export function LibraryWatch() {
     'episode'
   );
 
-  // Patterns data for hourly/monthly charts, peak times, binge shows — aggregated across servers
+  // Patterns data for hourly/monthly charts, peak times, binge shows - aggregated across servers
   const patterns = useLibraryPatterns(selectedServerIds, null, 12); // 12 weeks = ~3 months
 
   // Header component (used in all states)

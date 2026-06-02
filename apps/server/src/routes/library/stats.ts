@@ -4,7 +4,7 @@
  * GET /stats - Current library statistics from library_items
  *
  * Inventory KPIs (totalItems, movieCount, showCount, episodeCount, itemsAdded) are
- * COUNT(DISTINCT matchKey) — the COALESCE(imdb→tmdb→tvdb→title) key — so the same
+ * COUNT(DISTINCT matchKey) - the COALESCE(imdb->tmdb->tvdb->title) key - so the same
  * title on two servers counts once, not twice.
  *
  * Total storage is a plain SUM(file_size) because bytes on disk are physical: the
@@ -72,7 +72,7 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
       // Optional library filter
       const libraryFilter = libraryId ? sql`AND li.library_id = ${libraryId}` : sql``;
 
-      // Build cache key — include sorted server IDs so order doesn't cause misses
+      // Build cache key - include sorted server IDs so order doesn't cause misses
       const serverCacheKey = resolvedIds !== undefined ? [...resolvedIds].sort().join(',') : 'all';
       const cacheKey = buildLibraryCacheKey(REDIS_KEYS.LIBRARY_STATS, serverCacheKey, tz);
       const fullCacheKey = libraryId ? `${cacheKey}:${libraryId}` : cacheKey;
@@ -91,7 +91,7 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
       // Deduped inventory counts via COUNT(DISTINCT matchKey).
       // Items with no external ID fall back to a normalised title key so they still
       // dedupe across servers when the title is identical.
-      // Storage is SUM — physical bytes are never deduped.
+      // Storage is SUM - physical bytes are never deduped.
       const result = await db.execute(sql`
         SELECT
           COUNT(DISTINCT CASE WHEN li.file_size > 0 OR li.media_type IN ('show', 'season') THEN ${matchKey} END)::int AS total_items,
@@ -126,7 +126,7 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
         | undefined;
 
       // Per-server raw (non-deduped) counts so the frontend can show server breakdowns.
-      // Storage stays as SUM per server — still physical.
+      // Storage stays as SUM per server - still physical.
       const perServerResult = await db.execute(sql`
         SELECT
           li.server_id,

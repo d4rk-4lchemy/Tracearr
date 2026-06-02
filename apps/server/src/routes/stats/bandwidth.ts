@@ -67,7 +67,7 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
     let result;
 
     if (useAggregate) {
-      // Use the continuous aggregate — group by (day, server_id) for per-series rows
+      // Use the continuous aggregate - group by (day, server_id) for per-series rows
       const baseWhere = dateRange.start ? sql`WHERE day >= ${dateRange.start}` : sql`WHERE true`;
 
       result = await db.execute(sql`
@@ -90,7 +90,7 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
         ORDER BY day, server_id
       `);
     } else {
-      // Fallback to raw sessions — group by (date_trunc, server_id)
+      // Fallback to raw sessions - group by (date_trunc, server_id)
       const baseWhere = dateRange.start
         ? sql`WHERE started_at >= ${dateRange.start}`
         : sql`WHERE true`;
@@ -313,7 +313,7 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
 
     const totalBytes = Number(row.total_bytes ?? 0);
 
-    // Compute per-server KPI breakdown — one pass with GROUP BY server_id
+    // Compute per-server KPI breakdown - one pass with GROUP BY server_id
     const perServerResult = await db.execute(sql`
       SELECT
         server_id,

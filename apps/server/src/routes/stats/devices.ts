@@ -31,7 +31,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * each codec combination. Useful for identifying problematic device+codec
    * combinations that always transcode.
    *
-   * Aggregates across all selected servers — no per-row serverId.
+   * Aggregates across all selected servers - no per-row serverId.
    */
   app.get('/device-compatibility', { preHandler: [app.authenticate] }, async (request, reply) => {
     const query = deviceCompatibilitySchema.safeParse(request.query);
@@ -139,7 +139,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * Returns a pivoted matrix where rows are devices and columns are video codecs.
    * Each cell shows the direct play percentage for that device+codec combination.
    *
-   * Single-server only — frontend fans this out via useMultiServerQuery.
+   * Single-server only - frontend fans this out via useMultiServerQuery.
    */
   app.get(
     '/device-compatibility/matrix',
@@ -238,7 +238,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * Returns devices sorted by direct play rate, showing how "healthy" each device is.
    * Includes session counts for context.
    *
-   * Combined across selected servers — each row includes serverId so the
+   * Combined across selected servers - each row includes serverId so the
    * frontend can render a Server column.
    */
   app.get(
@@ -309,7 +309,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * Returns the device+codec combinations causing the most transcodes.
    * Sorted by transcode count to show biggest impact first.
    *
-   * Combined across selected servers — each row includes serverId so the
+   * Combined across selected servers - each row includes serverId so the
    * frontend can render a Server column.
    */
   app.get(
@@ -390,7 +390,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * Returns users sorted by transcode count, showing who is putting the most
    * load on the server for transcoding.
    *
-   * Combined across selected servers — each row includes serverId. The same
+   * Combined across selected servers - each row includes serverId. The same
    * human on two servers legitimately yields two rows (serverUserId is server-scoped).
    */
   app.get(

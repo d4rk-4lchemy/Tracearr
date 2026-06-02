@@ -120,7 +120,7 @@ export function useLibraryDuplicates(
 }
 
 /**
- * Fetch stale/unwatched content analysis — combined across all selected servers.
+ * Fetch stale/unwatched content analysis - combined across all selected servers.
  */
 export function useLibraryStale(
   serverIds: string[],
@@ -240,7 +240,7 @@ export function useLibraryPatterns(
 }
 
 /**
- * Fetch content ROI analysis — combined across all selected servers.
+ * Fetch content ROI analysis - combined across all selected servers.
  */
 export function useLibraryRoi(
   serverIds: string[],

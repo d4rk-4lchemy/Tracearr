@@ -7,11 +7,11 @@ import type { Server } from '@tracearr/shared';
  */
 export function parseChartDate(dateStr: string): number {
   if (dateStr.includes(' ')) {
-    // PostgreSQL timestamp: "2026-01-28 05:00:00+00" → "2026-01-28T05:00:00+00:00"
+    // PostgreSQL timestamp: "2026-01-28 05:00:00+00" -> "2026-01-28T05:00:00+00:00"
     const normalized = dateStr.replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
     return new Date(normalized).getTime();
   }
-  // Date-only: "2026-01-28" → local midnight
+  // Date-only: "2026-01-28" -> local midnight
   return new Date(dateStr + 'T00:00:00').getTime();
 }
 

@@ -86,7 +86,7 @@ export const libraryGrowthRoute: FastifyPluginAsync = async (app) => {
       // Optional library filter
       const libraryFilter = libraryId ? sql`AND lsd.library_id = ${libraryId}` : sql``;
 
-      // Build cache key — include sorted server IDs so order doesn't cause misses
+      // Build cache key - include sorted server IDs so order doesn't cause misses
       const serverCacheKey = resolvedIds !== undefined ? [...resolvedIds].sort().join(',') : 'all';
       const cacheKey = buildLibraryCacheKey(REDIS_KEYS.LIBRARY_GROWTH, serverCacheKey, period, tz);
       const fullCacheKey = libraryId ? `${cacheKey}:${libraryId}` : cacheKey;
@@ -180,7 +180,7 @@ export const libraryGrowthRoute: FastifyPluginAsync = async (app) => {
         music_adds: number;
       }>;
 
-      // Build separate arrays for each media type — include serverId on every point
+      // Build separate arrays for each media type - include serverId on every point
       const movies: GrowthDataPoint[] = [];
       const episodes: GrowthDataPoint[] = [];
       const music: GrowthDataPoint[] = [];

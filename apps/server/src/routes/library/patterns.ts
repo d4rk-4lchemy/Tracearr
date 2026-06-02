@@ -389,7 +389,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
         );
       }
 
-      // Summary query (always run) — aggregate across all accessible servers
+      // Summary query (always run) - aggregate across all accessible servers
       queries.push(
         (async () => {
           const summaryResult = await db.execute(sql`

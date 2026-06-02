@@ -27,7 +27,7 @@ function toChartData(breakdown: CodecBreakdown | undefined) {
   }));
 }
 
-/** Codec tabs content — shared by both single-server and per-server card renderers. */
+/** Codec tabs content - shared by both single-server and per-server card renderers. */
 function CodecTabsContent({ serverId }: { serverId: string | null | undefined }) {
   const [activeTab, setActiveTab] = useState<'video' | 'music'>('video');
   const codecs = useLibraryCodecs(serverId);
@@ -155,7 +155,7 @@ export function CodecDistributionSection({
     );
   }
 
-  // Single-server path — unchanged layout
+  // Single-server path - unchanged layout
   return (
     <Card>
       <CardHeader className="pb-2">
