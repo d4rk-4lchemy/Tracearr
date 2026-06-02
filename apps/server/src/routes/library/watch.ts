@@ -9,7 +9,10 @@
  * - Last watched timestamp
  * - Summary with watched/unwatched ratio
  *
- * Multi-server dedup: titles are collapsed by COALESCE(imdb->tmdb->tvdb->normalized-title)
+ * Single-server path: counts are per library_items row, no external-ID dedup —
+ * matches main branch behavior exactly.
+ *
+ * Multi-server path: titles are collapsed by COALESCE(imdb->tmdb->tvdb->normalized-title)
  * so the same movie on two servers counts as ONE title in the summary KPIs and in the
  * Most Watched list. Watch events (plays, duration) are SUMMED across servers.
  *
@@ -65,7 +68,31 @@ interface WatchResponse {
   pagination: { page: number; pageSize: number; total: number };
 }
 
-/** Raw row returned when items exist on the current page */
+/** Raw row returned when items exist on the current page — single-server path */
+interface RawSingleRow {
+  id: string;
+  server_id: string;
+  server_name: string;
+  library_id: string;
+  title: string;
+  media_type: string;
+  year: number | null;
+  file_size: string | null;
+  video_resolution: string | null;
+  added_at: string;
+  watch_count: string;
+  total_watch_ms: string;
+  last_watched_at: string | null;
+  // summary fields (same for all rows via cross join)
+  _total_items: string;
+  _watched_count: string;
+  _unwatched_count: string;
+  _total_watch_ms: string;
+  _avg_watches_per_item: string | null;
+  _completed_count: string;
+}
+
+/** Raw row returned when items exist on the current page — multi-server (deduped) path */
 interface RawCombinedRow {
   match_key: string | null;
   primary_id: string;
@@ -106,7 +133,7 @@ export const libraryWatchRoute: FastifyPluginAsync = async (app) => {
   /**
    * GET /watch - Library watch statistics
    *
-   * Returns per-title watch counts (deduped by external ID) with summary ratios.
+   * Returns per-title watch counts with summary ratios.
    * Supports filtering by server(s), library, media type, and watch count ranges.
    */
   app.get<{ Querystring: LibraryWatchQueryInput }>(
@@ -152,6 +179,10 @@ export const libraryWatchRoute: FastifyPluginAsync = async (app) => {
         return empty;
       }
 
+      // Single-server when the caller scoped to exactly one server;
+      // undefined (owner-all) is treated as multi so dedup applies.
+      const singleServer = resolvedIds?.length === 1;
+
       const serverFragment = buildMultiServerFragment(resolvedIds, 'li.server_id');
 
       // Build cache key incorporating serverIds so multi/single-server don't collide
@@ -191,171 +222,196 @@ export const libraryWatchRoute: FastifyPluginAsync = async (app) => {
 
       const offset = (page - 1) * pageSize;
 
-      // Compute the external-ID match key inline (mirrors buildExternalIdMatchKey).
-      // Each row in library_items may appear on multiple servers; we group by this key
-      // so the same title on Server A and Server B collapses into a single result row.
-      // Watch events (plays, duration) are summed; inventory counts are distinct.
-      const combinedResult = await db.execute(sql`
-        WITH item_watch_stats AS (
-          -- One row per library_item; attaches session aggregates
-          SELECT
-            li.id,
-            li.server_id,
-            s.name AS server_name,
-            li.library_id,
-            li.title,
-            li.media_type,
-            li.year,
-            li.file_size,
-            li.video_resolution,
-            li.created_at AS added_at,
-            -- External-ID match key for cross-server dedup
-            COALESCE(
-              CASE WHEN li.imdb_id IS NOT NULL AND li.imdb_id <> '' THEN 'imdb:' || li.imdb_id END,
-              CASE WHEN li.tmdb_id IS NOT NULL THEN 'tmdb:' || li.tmdb_id::text END,
-              CASE WHEN li.tvdb_id IS NOT NULL THEN 'tvdb:' || li.tvdb_id::text END,
-              NULLIF('title:' || LOWER(REGEXP_REPLACE(COALESCE(li.title, ''), '[^a-zA-Z0-9]', '', 'g')), 'title:')
-            ) AS match_key,
-            COUNT(sess.id) FILTER (WHERE sess.duration_ms >= 120000) AS watch_count,
-            COALESCE(SUM(sess.duration_ms) FILTER (WHERE sess.duration_ms >= 120000), 0) AS total_watch_ms,
-            MAX(sess.stopped_at) AS last_watched_at,
-            -- Completion signal: any session covering 85%+ of total_duration_ms
-            BOOL_OR(
-              sess.duration_ms IS NOT NULL
-              AND sess.total_duration_ms IS NOT NULL
-              AND sess.total_duration_ms > 0
-              AND (sess.duration_ms::float / sess.total_duration_ms) >= 0.85
-            ) AS has_completion
-          FROM library_items li
-          JOIN servers s ON li.server_id = s.id
-          LEFT JOIN sessions sess ON sess.rating_key = li.rating_key
-            AND sess.server_id = li.server_id
-          WHERE 1=1
-            ${serverFragment}
-            ${libraryFilter}
-            ${mediaTypeFilter}
-          GROUP BY li.id, li.server_id, s.name, li.library_id, li.title,
-                   li.media_type, li.year, li.file_size, li.video_resolution, li.created_at,
-                   li.imdb_id, li.tmdb_id, li.tvdb_id
-        ),
-        deduped_stats AS (
-          -- Collapse same title across servers into one row using match_key.
-          -- Plays and duration are SUMMED (events); inventory/completion are DISTINCT.
-          SELECT
-            match_key,
-            -- Pick the lexicographically smallest id/server to provide a stable primary row
-            MIN(id) AS primary_id,
-            MIN(server_id) AS primary_server_id,
-            MIN(server_name) AS primary_server_name,
-            MIN(library_id) AS primary_library_id,
-            MIN(title) AS title,
-            MIN(media_type) AS media_type,
-            MIN(year) AS year,
-            MAX(file_size) AS file_size,
-            MIN(video_resolution) AS video_resolution,
-            MIN(added_at::text) AS added_at,
-            -- Sum events across all copies of this title
-            SUM(watch_count) AS watch_count,
-            SUM(total_watch_ms) AS total_watch_ms,
-            MAX(last_watched_at::text) AS last_watched_at,
-            BOOL_OR(has_completion) AS has_completion,
-            -- Collect all server_ids that own a copy (for frontend color dots)
-            ARRAY_AGG(DISTINCT server_id ORDER BY server_id) AS server_ids_arr
-          FROM item_watch_stats
-          GROUP BY match_key
-        ),
-        filtered_items AS (
-          SELECT * FROM deduped_stats
-          WHERE 1=1
-            ${minWatchFilter}
-            ${maxWatchFilter}
-            ${unwatchedFilter}
-        ),
-        summary_stats AS (
-          SELECT
-            COUNT(*) AS total_items,
-            COUNT(*) FILTER (WHERE watch_count > 0) AS watched_count,
-            COUNT(*) FILTER (WHERE watch_count = 0) AS unwatched_count,
-            COALESCE(SUM(total_watch_ms), 0) AS total_watch_ms,
-            ROUND(AVG(watch_count)::numeric, 2) AS avg_watches_per_item,
-            COUNT(*) FILTER (WHERE has_completion) AS completed_count
-          FROM filtered_items
-        ),
-        paginated_items AS (
-          SELECT * FROM filtered_items
-          ORDER BY ${sortColumn} ${sortDir}
-          LIMIT ${pageSize} OFFSET ${offset}
-        )
-        SELECT
-          pi.match_key,
-          pi.primary_id,
-          pi.primary_server_id,
-          pi.primary_server_name,
-          pi.primary_library_id,
-          pi.title,
-          pi.media_type,
-          pi.year,
-          pi.file_size::text AS file_size,
-          pi.video_resolution,
-          pi.added_at,
-          pi.watch_count::text AS watch_count,
-          pi.total_watch_ms::text AS total_watch_ms,
-          pi.last_watched_at,
-          ARRAY_TO_STRING(pi.server_ids_arr, ',') AS server_ids,
-          ss.total_items::text AS _total_items,
-          ss.watched_count::text AS _watched_count,
-          ss.unwatched_count::text AS _unwatched_count,
-          ss.total_watch_ms::text AS _total_watch_ms,
-          ss.avg_watches_per_item::text AS _avg_watches_per_item,
-          ss.completed_count::text AS _completed_count
-        FROM paginated_items pi
-        CROSS JOIN summary_stats ss
-      `);
-
-      const rows = combinedResult.rows as unknown as RawCombinedRow[];
-
-      const items: WatchItem[] = rows.map((row) => ({
-        id: row.primary_id,
-        serverId: row.primary_server_id,
-        serverName: row.primary_server_name,
-        libraryId: row.primary_library_id,
-        title: row.title,
-        mediaType: row.media_type,
-        year: row.year,
-        fileSize: row.file_size ? parseInt(row.file_size, 10) : null,
-        resolution: row.video_resolution,
-        addedAt: row.added_at,
-        watchCount: parseInt(row.watch_count, 10),
-        totalWatchMs: parseInt(row.total_watch_ms, 10),
-        lastWatchedAt: row.last_watched_at,
-        serverIds: row.server_ids ? row.server_ids.split(',') : [row.primary_server_id],
-      }));
-
+      let items: WatchItem[];
       let totalItems: number;
       let watchedCount: number;
       let summary: WatchSummary;
 
-      if (rows.length > 0) {
-        const firstRow = rows[0]!;
-        totalItems = parseInt(firstRow._total_items, 10) || 0;
-        watchedCount = parseInt(firstRow._watched_count, 10) || 0;
-        const unwatchedCount = parseInt(firstRow._unwatched_count, 10) || 0;
-        summary = {
-          totalItems,
-          watchedCount,
-          unwatchedCount,
-          watchedPct: totalItems > 0 ? Math.round((watchedCount / totalItems) * 100 * 10) / 10 : 0,
-          totalWatchMs: parseInt(firstRow._total_watch_ms, 10) || 0,
-          avgWatchesPerItem: parseFloat(firstRow._avg_watches_per_item || '0'),
-          completedCount: parseInt(firstRow._completed_count, 10) || 0,
-        };
-      } else {
-        // No items on current page; run a minimal summary-only query
-        const summaryResult = await db.execute(sql`
+      if (singleServer) {
+        // Single-server path: per library_items row, no match_key dedup — matches main.
+        // item_watch_stats -> filtered_items -> summary_stats -> paginated_items
+        const combinedResult = await db.execute(sql`
           WITH item_watch_stats AS (
+            -- One row per library_item; attaches session aggregates
             SELECT
               li.id,
               li.server_id,
+              s.name AS server_name,
+              li.library_id,
+              li.title,
+              li.media_type,
+              li.year,
+              li.file_size,
+              li.video_resolution,
+              li.created_at AS added_at,
+              COUNT(sess.id) FILTER (WHERE sess.duration_ms >= 120000) AS watch_count,
+              COALESCE(SUM(sess.duration_ms) FILTER (WHERE sess.duration_ms >= 120000), 0) AS total_watch_ms,
+              MAX(sess.stopped_at) AS last_watched_at,
+              BOOL_OR(
+                sess.duration_ms IS NOT NULL
+                AND sess.total_duration_ms IS NOT NULL
+                AND sess.total_duration_ms > 0
+                AND (sess.duration_ms::float / sess.total_duration_ms) >= 0.85
+              ) AS has_completion
+            FROM library_items li
+            JOIN servers s ON li.server_id = s.id
+            LEFT JOIN sessions sess ON sess.rating_key = li.rating_key
+              AND sess.server_id = li.server_id
+            WHERE 1=1
+              ${serverFragment}
+              ${libraryFilter}
+              ${mediaTypeFilter}
+            GROUP BY li.id, li.server_id, s.name, li.library_id, li.title,
+                     li.media_type, li.year, li.file_size, li.video_resolution, li.created_at
+          ),
+          filtered_items AS (
+            SELECT * FROM item_watch_stats
+            WHERE 1=1
+              ${minWatchFilter}
+              ${maxWatchFilter}
+              ${unwatchedFilter}
+          ),
+          summary_stats AS (
+            SELECT
+              COUNT(*) AS total_items,
+              COUNT(*) FILTER (WHERE watch_count > 0) AS watched_count,
+              COUNT(*) FILTER (WHERE watch_count = 0) AS unwatched_count,
+              COALESCE(SUM(total_watch_ms), 0) AS total_watch_ms,
+              ROUND(AVG(watch_count)::numeric, 2) AS avg_watches_per_item,
+              COUNT(*) FILTER (WHERE has_completion) AS completed_count
+            FROM filtered_items
+          ),
+          paginated_items AS (
+            SELECT * FROM filtered_items
+            ORDER BY ${sortColumn} ${sortDir}
+            LIMIT ${pageSize} OFFSET ${offset}
+          )
+          SELECT
+            pi.id,
+            pi.server_id,
+            pi.server_name,
+            pi.library_id,
+            pi.title,
+            pi.media_type,
+            pi.year,
+            pi.file_size::text AS file_size,
+            pi.video_resolution,
+            pi.added_at::text AS added_at,
+            pi.watch_count::text AS watch_count,
+            pi.total_watch_ms::text AS total_watch_ms,
+            pi.last_watched_at::text AS last_watched_at,
+            ss.total_items::text AS _total_items,
+            ss.watched_count::text AS _watched_count,
+            ss.unwatched_count::text AS _unwatched_count,
+            ss.total_watch_ms::text AS _total_watch_ms,
+            ss.avg_watches_per_item::text AS _avg_watches_per_item,
+            ss.completed_count::text AS _completed_count
+          FROM paginated_items pi
+          CROSS JOIN summary_stats ss
+        `);
+
+        const rows = combinedResult.rows as unknown as RawSingleRow[];
+
+        items = rows.map((row) => ({
+          id: row.id,
+          serverId: row.server_id,
+          serverName: row.server_name,
+          libraryId: row.library_id,
+          title: row.title,
+          mediaType: row.media_type,
+          year: row.year,
+          fileSize: row.file_size ? parseInt(row.file_size, 10) : null,
+          resolution: row.video_resolution,
+          addedAt: row.added_at,
+          watchCount: parseInt(row.watch_count, 10),
+          totalWatchMs: parseInt(row.total_watch_ms, 10),
+          lastWatchedAt: row.last_watched_at,
+          // Single-server: the item's own server is the only server
+          serverIds: [row.server_id],
+        }));
+
+        if (rows.length > 0) {
+          const firstRow = rows[0]!;
+          totalItems = parseInt(firstRow._total_items, 10) || 0;
+          watchedCount = parseInt(firstRow._watched_count, 10) || 0;
+          const unwatchedCount = parseInt(firstRow._unwatched_count, 10) || 0;
+          summary = {
+            totalItems,
+            watchedCount,
+            unwatchedCount,
+            watchedPct:
+              totalItems > 0 ? Math.round((watchedCount / totalItems) * 100 * 10) / 10 : 0,
+            totalWatchMs: parseInt(firstRow._total_watch_ms, 10) || 0,
+            avgWatchesPerItem: parseFloat(firstRow._avg_watches_per_item || '0'),
+            completedCount: parseInt(firstRow._completed_count, 10) || 0,
+          };
+        } else {
+          // No items on current page; run a minimal summary-only query
+          const summaryResult = await db.execute(sql`
+            WITH item_watch_stats AS (
+              SELECT
+                li.id,
+                li.server_id,
+                COUNT(sess.id) FILTER (WHERE sess.duration_ms >= 120000) AS watch_count,
+                COALESCE(SUM(sess.duration_ms) FILTER (WHERE sess.duration_ms >= 120000), 0) AS total_watch_ms,
+                BOOL_OR(
+                  sess.duration_ms IS NOT NULL
+                  AND sess.total_duration_ms IS NOT NULL
+                  AND sess.total_duration_ms > 0
+                  AND (sess.duration_ms::float / sess.total_duration_ms) >= 0.85
+                ) AS has_completion
+              FROM library_items li
+              LEFT JOIN sessions sess ON sess.rating_key = li.rating_key AND sess.server_id = li.server_id
+              WHERE 1=1 ${serverFragment} ${libraryFilter} ${mediaTypeFilter}
+              GROUP BY li.id, li.server_id
+            ),
+            filtered AS (
+              SELECT * FROM item_watch_stats
+              WHERE 1=1 ${minWatchFilter} ${maxWatchFilter} ${unwatchedFilter}
+            )
+            SELECT
+              COUNT(*)::text AS total_items,
+              COUNT(*) FILTER (WHERE watch_count > 0)::text AS watched_count,
+              COUNT(*) FILTER (WHERE watch_count = 0)::text AS unwatched_count,
+              COALESCE(SUM(total_watch_ms), 0)::text AS total_watch_ms,
+              ROUND(AVG(watch_count)::numeric, 2)::text AS avg_watches_per_item,
+              COUNT(*) FILTER (WHERE has_completion)::text AS completed_count
+            FROM filtered
+          `);
+          const summaryRow = summaryResult.rows[0] as unknown as RawSummaryRow;
+          totalItems = parseInt(summaryRow.total_items, 10) || 0;
+          watchedCount = parseInt(summaryRow.watched_count, 10) || 0;
+          const unwatchedCount = parseInt(summaryRow.unwatched_count, 10) || 0;
+          summary = {
+            totalItems,
+            watchedCount,
+            unwatchedCount,
+            watchedPct:
+              totalItems > 0 ? Math.round((watchedCount / totalItems) * 100 * 10) / 10 : 0,
+            totalWatchMs: parseInt(summaryRow.total_watch_ms, 10) || 0,
+            avgWatchesPerItem: parseFloat(summaryRow.avg_watches_per_item || '0'),
+            completedCount: parseInt(summaryRow.completed_count, 10) || 0,
+          };
+        }
+      } else {
+        // Multi-server path: collapse same title across servers by match_key.
+        // Plays and duration are SUMMED; inventory/completion are DISTINCT.
+        // Compute the external-ID match key inline (mirrors buildExternalIdMatchKey).
+        const combinedResult = await db.execute(sql`
+          WITH item_watch_stats AS (
+            -- One row per library_item; attaches session aggregates
+            SELECT
+              li.id,
+              li.server_id,
+              s.name AS server_name,
+              li.library_id,
+              li.title,
+              li.media_type,
+              li.year,
+              li.file_size,
+              li.video_resolution,
+              li.created_at AS added_at,
+              -- External-ID match key for cross-server dedup
               COALESCE(
                 CASE WHEN li.imdb_id IS NOT NULL AND li.imdb_id <> '' THEN 'imdb:' || li.imdb_id END,
                 CASE WHEN li.tmdb_id IS NOT NULL THEN 'tmdb:' || li.tmdb_id::text END,
@@ -364,6 +420,8 @@ export const libraryWatchRoute: FastifyPluginAsync = async (app) => {
               ) AS match_key,
               COUNT(sess.id) FILTER (WHERE sess.duration_ms >= 120000) AS watch_count,
               COALESCE(SUM(sess.duration_ms) FILTER (WHERE sess.duration_ms >= 120000), 0) AS total_watch_ms,
+              MAX(sess.stopped_at) AS last_watched_at,
+              -- Completion signal: any session covering 85%+ of total_duration_ms
               BOOL_OR(
                 sess.duration_ms IS NOT NULL
                 AND sess.total_duration_ms IS NOT NULL
@@ -371,38 +429,181 @@ export const libraryWatchRoute: FastifyPluginAsync = async (app) => {
                 AND (sess.duration_ms::float / sess.total_duration_ms) >= 0.85
               ) AS has_completion
             FROM library_items li
-            LEFT JOIN sessions sess ON sess.rating_key = li.rating_key AND sess.server_id = li.server_id
-            WHERE 1=1 ${serverFragment} ${libraryFilter} ${mediaTypeFilter}
-            GROUP BY li.id, li.server_id, li.imdb_id, li.tmdb_id, li.tvdb_id, li.title
+            JOIN servers s ON li.server_id = s.id
+            LEFT JOIN sessions sess ON sess.rating_key = li.rating_key
+              AND sess.server_id = li.server_id
+            WHERE 1=1
+              ${serverFragment}
+              ${libraryFilter}
+              ${mediaTypeFilter}
+            GROUP BY li.id, li.server_id, s.name, li.library_id, li.title,
+                     li.media_type, li.year, li.file_size, li.video_resolution, li.created_at,
+                     li.imdb_id, li.tmdb_id, li.tvdb_id
           ),
-          deduped AS (
-            SELECT match_key, SUM(watch_count) AS watch_count, SUM(total_watch_ms) AS total_watch_ms,
-              BOOL_OR(has_completion) AS has_completion
-            FROM item_watch_stats GROUP BY match_key
+          deduped_stats AS (
+            -- Collapse same title across servers into one row using match_key.
+            -- Plays and duration are SUMMED (events); inventory/completion are DISTINCT.
+            SELECT
+              match_key,
+              -- Pick the lexicographically smallest id/server to provide a stable primary row
+              MIN(id) AS primary_id,
+              MIN(server_id) AS primary_server_id,
+              MIN(server_name) AS primary_server_name,
+              MIN(library_id) AS primary_library_id,
+              MIN(title) AS title,
+              MIN(media_type) AS media_type,
+              MIN(year) AS year,
+              MAX(file_size) AS file_size,
+              MIN(video_resolution) AS video_resolution,
+              MIN(added_at::text) AS added_at,
+              -- Sum events across all copies of this title
+              SUM(watch_count) AS watch_count,
+              SUM(total_watch_ms) AS total_watch_ms,
+              MAX(last_watched_at::text) AS last_watched_at,
+              BOOL_OR(has_completion) AS has_completion,
+              -- Collect all server_ids that own a copy (for frontend color dots)
+              ARRAY_AGG(DISTINCT server_id ORDER BY server_id) AS server_ids_arr
+            FROM item_watch_stats
+            GROUP BY match_key
           ),
-          filtered AS (SELECT * FROM deduped WHERE 1=1 ${minWatchFilter} ${maxWatchFilter} ${unwatchedFilter})
+          filtered_items AS (
+            SELECT * FROM deduped_stats
+            WHERE 1=1
+              ${minWatchFilter}
+              ${maxWatchFilter}
+              ${unwatchedFilter}
+          ),
+          summary_stats AS (
+            SELECT
+              COUNT(*) AS total_items,
+              COUNT(*) FILTER (WHERE watch_count > 0) AS watched_count,
+              COUNT(*) FILTER (WHERE watch_count = 0) AS unwatched_count,
+              COALESCE(SUM(total_watch_ms), 0) AS total_watch_ms,
+              ROUND(AVG(watch_count)::numeric, 2) AS avg_watches_per_item,
+              COUNT(*) FILTER (WHERE has_completion) AS completed_count
+            FROM filtered_items
+          ),
+          paginated_items AS (
+            SELECT * FROM filtered_items
+            ORDER BY ${sortColumn} ${sortDir}
+            LIMIT ${pageSize} OFFSET ${offset}
+          )
           SELECT
-            COUNT(*)::text AS total_items,
-            COUNT(*) FILTER (WHERE watch_count > 0)::text AS watched_count,
-            COUNT(*) FILTER (WHERE watch_count = 0)::text AS unwatched_count,
-            COALESCE(SUM(total_watch_ms), 0)::text AS total_watch_ms,
-            ROUND(AVG(watch_count)::numeric, 2)::text AS avg_watches_per_item,
-            COUNT(*) FILTER (WHERE has_completion)::text AS completed_count
-          FROM filtered
+            pi.match_key,
+            pi.primary_id,
+            pi.primary_server_id,
+            pi.primary_server_name,
+            pi.primary_library_id,
+            pi.title,
+            pi.media_type,
+            pi.year,
+            pi.file_size::text AS file_size,
+            pi.video_resolution,
+            pi.added_at,
+            pi.watch_count::text AS watch_count,
+            pi.total_watch_ms::text AS total_watch_ms,
+            pi.last_watched_at,
+            ARRAY_TO_STRING(pi.server_ids_arr, ',') AS server_ids,
+            ss.total_items::text AS _total_items,
+            ss.watched_count::text AS _watched_count,
+            ss.unwatched_count::text AS _unwatched_count,
+            ss.total_watch_ms::text AS _total_watch_ms,
+            ss.avg_watches_per_item::text AS _avg_watches_per_item,
+            ss.completed_count::text AS _completed_count
+          FROM paginated_items pi
+          CROSS JOIN summary_stats ss
         `);
-        const summaryRow = summaryResult.rows[0] as unknown as RawSummaryRow;
-        totalItems = parseInt(summaryRow.total_items, 10) || 0;
-        watchedCount = parseInt(summaryRow.watched_count, 10) || 0;
-        const unwatchedCount = parseInt(summaryRow.unwatched_count, 10) || 0;
-        summary = {
-          totalItems,
-          watchedCount,
-          unwatchedCount,
-          watchedPct: totalItems > 0 ? Math.round((watchedCount / totalItems) * 100 * 10) / 10 : 0,
-          totalWatchMs: parseInt(summaryRow.total_watch_ms, 10) || 0,
-          avgWatchesPerItem: parseFloat(summaryRow.avg_watches_per_item || '0'),
-          completedCount: parseInt(summaryRow.completed_count, 10) || 0,
-        };
+
+        const rows = combinedResult.rows as unknown as RawCombinedRow[];
+
+        items = rows.map((row) => ({
+          id: row.primary_id,
+          serverId: row.primary_server_id,
+          serverName: row.primary_server_name,
+          libraryId: row.primary_library_id,
+          title: row.title,
+          mediaType: row.media_type,
+          year: row.year,
+          fileSize: row.file_size ? parseInt(row.file_size, 10) : null,
+          resolution: row.video_resolution,
+          addedAt: row.added_at,
+          watchCount: parseInt(row.watch_count, 10),
+          totalWatchMs: parseInt(row.total_watch_ms, 10),
+          lastWatchedAt: row.last_watched_at,
+          serverIds: row.server_ids ? row.server_ids.split(',') : [row.primary_server_id],
+        }));
+
+        if (rows.length > 0) {
+          const firstRow = rows[0]!;
+          totalItems = parseInt(firstRow._total_items, 10) || 0;
+          watchedCount = parseInt(firstRow._watched_count, 10) || 0;
+          const unwatchedCount = parseInt(firstRow._unwatched_count, 10) || 0;
+          summary = {
+            totalItems,
+            watchedCount,
+            unwatchedCount,
+            watchedPct:
+              totalItems > 0 ? Math.round((watchedCount / totalItems) * 100 * 10) / 10 : 0,
+            totalWatchMs: parseInt(firstRow._total_watch_ms, 10) || 0,
+            avgWatchesPerItem: parseFloat(firstRow._avg_watches_per_item || '0'),
+            completedCount: parseInt(firstRow._completed_count, 10) || 0,
+          };
+        } else {
+          // No items on current page; run a minimal summary-only query
+          const summaryResult = await db.execute(sql`
+            WITH item_watch_stats AS (
+              SELECT
+                li.id,
+                li.server_id,
+                COALESCE(
+                  CASE WHEN li.imdb_id IS NOT NULL AND li.imdb_id <> '' THEN 'imdb:' || li.imdb_id END,
+                  CASE WHEN li.tmdb_id IS NOT NULL THEN 'tmdb:' || li.tmdb_id::text END,
+                  CASE WHEN li.tvdb_id IS NOT NULL THEN 'tvdb:' || li.tvdb_id::text END,
+                  NULLIF('title:' || LOWER(REGEXP_REPLACE(COALESCE(li.title, ''), '[^a-zA-Z0-9]', '', 'g')), 'title:')
+                ) AS match_key,
+                COUNT(sess.id) FILTER (WHERE sess.duration_ms >= 120000) AS watch_count,
+                COALESCE(SUM(sess.duration_ms) FILTER (WHERE sess.duration_ms >= 120000), 0) AS total_watch_ms,
+                BOOL_OR(
+                  sess.duration_ms IS NOT NULL
+                  AND sess.total_duration_ms IS NOT NULL
+                  AND sess.total_duration_ms > 0
+                  AND (sess.duration_ms::float / sess.total_duration_ms) >= 0.85
+                ) AS has_completion
+              FROM library_items li
+              LEFT JOIN sessions sess ON sess.rating_key = li.rating_key AND sess.server_id = li.server_id
+              WHERE 1=1 ${serverFragment} ${libraryFilter} ${mediaTypeFilter}
+              GROUP BY li.id, li.server_id, li.imdb_id, li.tmdb_id, li.tvdb_id, li.title
+            ),
+            deduped AS (
+              SELECT match_key, SUM(watch_count) AS watch_count, SUM(total_watch_ms) AS total_watch_ms,
+                BOOL_OR(has_completion) AS has_completion
+              FROM item_watch_stats GROUP BY match_key
+            ),
+            filtered AS (SELECT * FROM deduped WHERE 1=1 ${minWatchFilter} ${maxWatchFilter} ${unwatchedFilter})
+            SELECT
+              COUNT(*)::text AS total_items,
+              COUNT(*) FILTER (WHERE watch_count > 0)::text AS watched_count,
+              COUNT(*) FILTER (WHERE watch_count = 0)::text AS unwatched_count,
+              COALESCE(SUM(total_watch_ms), 0)::text AS total_watch_ms,
+              ROUND(AVG(watch_count)::numeric, 2)::text AS avg_watches_per_item,
+              COUNT(*) FILTER (WHERE has_completion)::text AS completed_count
+            FROM filtered
+          `);
+          const summaryRow = summaryResult.rows[0] as unknown as RawSummaryRow;
+          totalItems = parseInt(summaryRow.total_items, 10) || 0;
+          watchedCount = parseInt(summaryRow.watched_count, 10) || 0;
+          const unwatchedCount = parseInt(summaryRow.unwatched_count, 10) || 0;
+          summary = {
+            totalItems,
+            watchedCount,
+            unwatchedCount,
+            watchedPct:
+              totalItems > 0 ? Math.round((watchedCount / totalItems) * 100 * 10) / 10 : 0,
+            totalWatchMs: parseInt(summaryRow.total_watch_ms, 10) || 0,
+            avgWatchesPerItem: parseFloat(summaryRow.avg_watches_per_item || '0'),
+            completedCount: parseInt(summaryRow.completed_count, 10) || 0,
+          };
+        }
       }
 
       const response: WatchResponse = {
