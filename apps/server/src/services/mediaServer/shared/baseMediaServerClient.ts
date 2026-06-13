@@ -24,6 +24,10 @@ const CLIENT_VERSION = '1.0.0';
 const DEVICE_ID = 'tracearr-server';
 const DEVICE_NAME = 'Tracearr Server';
 
+export function buildJellyfinEmbyAuthHeader(token: string): string {
+  return `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}", Token="${token}"`;
+}
+
 /**
  * Activity log entry type - identical structure for Jellyfin and Emby
  */
@@ -109,7 +113,7 @@ export abstract class BaseMediaServerClient
    * Used by both Jellyfin and Emby (identical format)
    */
   protected buildAuthHeader(): string {
-    return `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}", Token="${this.apiKey}"`;
+    return buildJellyfinEmbyAuthHeader(this.apiKey);
   }
 
   /**
