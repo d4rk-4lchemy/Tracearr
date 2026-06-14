@@ -961,13 +961,13 @@ async function initializePostListen(app: FastifyInstance) {
     app.log.info('Session poller disabled in settings');
   }
 
-  // Start SSE connections for Plex servers (real-time updates)
+  // Start SSE connections for all media servers (real-time updates)
   try {
     // Clean up any orphaned pending sessions from previous server instance
     await cleanupOrphanedPendingSessions();
     startSSEProcessor(); // Subscribe to SSE events
     await sseManager.start(); // Start SSE connections
-    app.log.info('SSE connections started for Plex servers');
+    app.log.info('Real-time SSE connections started');
   } catch (err) {
     app.log.error({ err }, 'Failed to start SSE connections - falling back to polling');
   }
