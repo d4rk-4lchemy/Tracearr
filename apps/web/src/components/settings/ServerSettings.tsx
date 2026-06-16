@@ -35,6 +35,9 @@ import {
   GripVertical,
   Link2,
   Check,
+  Zap,
+  Radio,
+  Copy,
 } from 'lucide-react';
 import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
 import { format } from 'date-fns';
@@ -42,11 +45,12 @@ import { cn } from '@/lib/utils';
 import { api, tokenStorage } from '@/lib/api';
 import type { PlexDiscoveredServer } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
+import { useSocket } from '@/hooks/useSocket';
 import { toast } from 'sonner';
 import { PlexServerSelector } from '@/components/auth/PlexServerSelector';
 import { PlexAccountsManager } from '@/components/settings/PlexAccountsManager';
 import { SERVER_COLOR_PALETTE, pickServerColor } from '@tracearr/shared';
-import type { Server } from '@tracearr/shared';
+import type { Server, ServerConnectionStatus } from '@tracearr/shared';
 import {
   useServers,
   useDeleteServer,
@@ -82,6 +86,7 @@ export function ServerSettings() {
   const reorderServers = useReorderServers();
   const queryClient = useQueryClient();
   const { refetch: refetchUser, user } = useAuth();
+  const { serverConnectionStatuses } = useSocket();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editServer, setEditServer] = useState<Server | null>(null);
@@ -385,6 +390,7 @@ export function ServerSettings() {
                     <SortableServerCard
                       key={server.id}
                       server={server}
+                      connectionStatus={serverConnectionStatuses.get(server.id)}
                       onSync={() => {
                         handleSync(server.id);
                       }}
@@ -926,8 +932,109 @@ function EditServerDialog({
   );
 }
 
+function RealtimeSetupDialog({
+  server,
+  open,
+  onClose,
+}: {
+  server: Server;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation(['settings']);
+  const [copied, setCopied] = useState(false);
+  const repoUrl = t('servers.realtimeDialog.jellyfinRepoUrl');
+
+  const handleCopy = (text: string) => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t('servers.realtimeDialog.title')}</DialogTitle>
+          <DialogDescription>
+            {server.type === 'jellyfin'
+              ? t('servers.realtimeDialog.jellyfinDescription')
+              : t('servers.realtimeDialog.embyDescription')}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="text-muted-foreground space-y-3 text-sm">
+          {server.type === 'jellyfin' ? (
+            <>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>In your Jellyfin dashboard, go to Plugins → Repositories.</li>
+                <li>
+                  Add a repository named <strong>Tracearr</strong> with the URL below.
+                </li>
+                <li>Open the Catalog tab and install <strong>Tracearr SSE</strong>.</li>
+                <li>Restart Jellyfin — Tracearr will detect it automatically.</li>
+              </ol>
+              <div className="space-y-1">
+                <p className="text-foreground text-xs font-medium">
+                  {t('servers.realtimeDialog.repositoryUrl')}
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="bg-muted flex-1 truncate rounded px-2 py-1 text-xs">
+                    {repoUrl}
+                  </code>
+                  <button
+                    type="button"
+                    aria-label={t('servers.realtimeDialog.copyUrl')}
+                    className="hover:text-foreground shrink-0"
+                    onClick={() => handleCopy(repoUrl)}
+                  >
+                    {copied ? (
+                      <Check className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>
+                  Download the latest <strong>Tracearr.Sse.Emby</strong> release zip from the link
+                  below.
+                </li>
+                <li>Extract the plugin DLL into your Emby plugins folder.</li>
+                <li>Restart Emby — Tracearr will detect it automatically.</li>
+              </ol>
+              <a
+                href={t('servers.realtimeDialog.embyReleasesUrl')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary inline-flex items-center gap-1 hover:underline"
+              >
+                {t('servers.realtimeDialog.openReleases')}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </>
+          )}
+          <p className="text-xs">{t('servers.realtimeDialog.autoDetectNote')}</p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {t('servers.realtimeDialog.close')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SortableServerCard({
   server,
+  connectionStatus,
   onSync,
   onDelete,
   onEdit,
@@ -935,6 +1042,7 @@ function SortableServerCard({
   isDraggable,
 }: {
   server: Server;
+  connectionStatus?: ServerConnectionStatus;
   onSync: () => void;
   onDelete: () => void;
   onEdit: () => void;
@@ -942,6 +1050,7 @@ function SortableServerCard({
   isDraggable?: boolean;
 }) {
   const { t } = useTranslation(['settings', 'common', 'pages']);
+  const [showRealtimeDialog, setShowRealtimeDialog] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: server.id,
     disabled: !isDraggable,
@@ -1001,6 +1110,33 @@ function SortableServerCard({
             <p className="text-muted-foreground text-xs">
               {t('servers.added', { date: format(new Date(server.createdAt), 'MMM d, yyyy') })}
             </p>
+            {/* Connection status — only shown for Jellyfin and Emby */}
+            {server.type !== 'plex' && (
+              <div className="mt-1">
+                {!connectionStatus ? (
+                  <span className="text-muted-foreground text-xs">
+                    {t('servers.checkingConnection')}
+                  </span>
+                ) : connectionStatus.mode === 'realtime' ? (
+                  <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                    <Zap className="h-3 w-3 text-green-500" aria-hidden="true" />
+                    {t('servers.realtimeActive')}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-xs">
+                    <Radio className="text-muted-foreground h-3 w-3" aria-hidden="true" />
+                    <span className="text-muted-foreground">{t('servers.pollingMode')}</span>
+                    <button
+                      type="button"
+                      className="text-primary ml-1 hover:underline"
+                      onClick={() => setShowRealtimeDialog(true)}
+                    >
+                      {t('servers.setupRealtime')}
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1013,6 +1149,13 @@ function SortableServerCard({
           </Button>
         </div>
       </div>
+      {server.type !== 'plex' && (
+        <RealtimeSetupDialog
+          server={server}
+          open={showRealtimeDialog}
+          onClose={() => setShowRealtimeDialog(false)}
+        />
+      )}
     </div>
   );
 }

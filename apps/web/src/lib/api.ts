@@ -41,6 +41,7 @@ import type {
   ShowStatsResponse,
   MediaType,
   WebhookFormat,
+  ServerConnectionStatus,
   // New analytics types
   DeviceCompatibilityResponse,
   DeviceCompatibilityMatrix,
@@ -593,6 +594,12 @@ class ApiClient {
       const response = await this.request<{
         data: { serverId: string; serverName: string }[];
       }>('/servers/health');
+      return response.data;
+    },
+    connectionStatus: async () => {
+      const response = await this.request<{ data: ServerConnectionStatus[] }>(
+        '/servers/connection-status'
+      );
       return response.data;
     },
   };

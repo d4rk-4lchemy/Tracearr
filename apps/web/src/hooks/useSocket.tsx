@@ -24,6 +24,7 @@ import type {
   TautulliImportProgress,
   JellystatImportProgress,
   MaintenanceJobProgress,
+  ServerConnectionStatus,
 } from '@tracearr/shared';
 import { WS_EVENTS } from '@tracearr/shared';
 import { useAuth } from './useAuth';
@@ -47,6 +48,7 @@ interface SocketContextValue {
   subscribeSessions: () => void;
   unsubscribeSessions: () => void;
   unhealthyServers: UnhealthyServer[];
+  serverConnectionStatuses: Map<string, ServerConnectionStatus>;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
@@ -59,6 +61,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const [socket, setSocket] = useState<TypedSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [unhealthyServers, setUnhealthyServers] = useState<UnhealthyServer[]>([]);
+  const [serverConnectionStatuses, setServerConnectionStatuses] = useState<
+    Map<string, ServerConnectionStatus>
+  >(new Map());
 
   // Get channel routing for web toast preferences
   const { data: routingData } = useChannelRouting();
@@ -94,6 +99,25 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         // Ignore errors - health check is best-effort
+      });
+  }, [isAuthenticated]);
+
+  // Fetch initial connection statuses on authentication
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setServerConnectionStatuses(new Map());
+      return;
+    }
+
+    api.servers
+      .connectionStatus()
+      .then((statuses) => {
+        const map = new Map<string, ServerConnectionStatus>();
+        for (const s of statuses) map.set(s.serverId, s);
+        setServerConnectionStatuses(map);
+      })
+      .catch(() => {
+        // Best-effort, no impact on core functionality
       });
   }, [isAuthenticated]);
 
@@ -260,6 +284,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
     );
 
+    newSocket.on(
+      WS_EVENTS.SERVER_CONNECTION as 'server:connection',
+      (status: ServerConnectionStatus) => {
+        setServerConnectionStatuses((prev) => {
+          const next = new Map(prev);
+          next.set(status.serverId, status);
+          return next;
+        });
+      }
+    );
+
     // Library sync progress - invalidate library caches when sync completes
     newSocket.on(
       WS_EVENTS.LIBRARY_SYNC_PROGRESS as 'library:sync:progress',
@@ -365,8 +400,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       subscribeSessions,
       unsubscribeSessions,
       unhealthyServers,
+      serverConnectionStatuses,
     }),
-    [socket, isConnected, subscribeSessions, unsubscribeSessions, unhealthyServers]
+    [socket, isConnected, subscribeSessions, unsubscribeSessions, unhealthyServers, serverConnectionStatuses]
   );
 
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
