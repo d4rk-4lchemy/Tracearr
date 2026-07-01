@@ -465,10 +465,39 @@ export abstract class BaseMediaServerClient
   }
 
   /**
+   * Look up a live session's remote-control capability.
+   * Playback commands only take effect on clients that report SupportsMediaControl.
+   */
+  private async getSessionControlInfo(
+    sessionId: string
+  ): Promise<{ found: boolean; supportsMediaControl: boolean }> {
+    const sessions = await fetchJson<Array<Record<string, unknown>>>(`${this.baseUrl}/Sessions`, {
+      headers: this.buildHeaders(),
+      service: this.serverType,
+      timeout: 10000,
+    });
+
+    const match = Array.isArray(sessions) ? sessions.find((s) => s.Id === sessionId) : undefined;
+
+    if (!match) return { found: false, supportsMediaControl: false };
+    return { found: true, supportsMediaControl: match.SupportsMediaControl === true };
+  }
+
+  /**
    * Terminate a playback session
    * If a reason is provided, sends it as a message to the user first
    */
   async terminateSession(sessionId: string, reason?: string): Promise<boolean> {
+    // A Stop command is silently ignored by clients that aren't remote-controllable, so verify
+    // capability first rather than reporting a false success.
+    const control = await this.getSessionControlInfo(sessionId);
+    if (!control.found) {
+      throw new Error('Session not found (may have already ended)');
+    }
+    if (!control.supportsMediaControl) {
+      throw new Error('Client does not support remote control; stream cannot be terminated');
+    }
+
     // Send message to user before stopping (Emby/Jellyfin require separate API call)
     if (reason) {
       await this.sendMessage(sessionId, reason, 'Stream Terminated', 5000);
