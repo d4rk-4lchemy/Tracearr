@@ -187,7 +187,9 @@ describe('Local Auth Routes', () => {
         vi.mocked(getOwnerUser).mockResolvedValue({
           id: 'owner-123',
           username: 'owner',
+          displayUsername: null,
           email: 'owner@example.com',
+          emailVerified: false,
           role: 'owner',
           passwordHash: 'hash',
           createdAt: new Date(),
@@ -196,6 +198,9 @@ describe('Local Auth Routes', () => {
           plexAccountId: null,
           thumbnail: null,
           apiToken: null,
+          banned: null,
+          banReason: null,
+          banExpires: null,
           aggregateTrustScore: 100,
           totalViolations: 0,
         }); // Owner exists
@@ -312,7 +317,9 @@ describe('Local Auth Routes', () => {
       vi.mocked(getUserByEmail).mockResolvedValue({
         id: 'existing-123',
         username: 'existing',
+        displayUsername: null,
         email: 'test@example.com',
+        emailVerified: false,
         role: 'viewer',
         passwordHash: 'hash',
         createdAt: new Date(),
@@ -321,6 +328,9 @@ describe('Local Auth Routes', () => {
         plexAccountId: null,
         thumbnail: null,
         apiToken: null,
+        banned: null,
+        banReason: null,
+        banExpires: null,
         aggregateTrustScore: 100,
         totalViolations: 0,
       });

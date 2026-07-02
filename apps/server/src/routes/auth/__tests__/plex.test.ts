@@ -1044,7 +1044,9 @@ describe('Plex Auth Routes', () => {
     const existingOwner = {
       id: randomUUID(),
       username: 'owner',
+      displayUsername: null,
       email: 'owner@example.com',
+      emailVerified: false,
       role: 'owner' as const,
       plexAccountId: 'owner-plex-123',
       name: null,
@@ -1053,6 +1055,9 @@ describe('Plex Auth Routes', () => {
       thumbnail: null,
       passwordHash: null,
       apiToken: null,
+      banned: null,
+      banReason: null,
+      banExpires: null,
       aggregateTrustScore: 100,
       totalViolations: 0,
     };
@@ -1060,7 +1065,9 @@ describe('Plex Auth Routes', () => {
     const existingViewer = {
       id: randomUUID(),
       username: 'viewer',
+      displayUsername: null,
       email: 'viewer@example.com',
+      emailVerified: false,
       role: 'viewer' as const,
       plexAccountId: 'viewer-plex-456',
       name: null,
@@ -1069,6 +1076,9 @@ describe('Plex Auth Routes', () => {
       thumbnail: null,
       passwordHash: null,
       apiToken: null,
+      banned: null,
+      banReason: null,
+      banExpires: null,
       aggregateTrustScore: 100,
       totalViolations: 0,
     };

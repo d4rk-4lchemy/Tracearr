@@ -110,9 +110,12 @@ export const users = pgTable(
 
     // Identity
     username: varchar('username', { length: 100 }).notNull(), // Login identifier (unique)
+    // Non-normalized username shown in the UI; better-auth username plugin field.
+    displayUsername: varchar('display_username', { length: 100 }),
     name: varchar('name', { length: 255 }), // Display name (optional, defaults to null)
     thumbnail: text('thumbnail'), // Custom avatar (nullable)
     email: varchar('email', { length: 255 }), // For identity matching (nullable)
+    emailVerified: boolean('email_verified').notNull().default(false),
 
     // Authentication (nullable - not all users authenticate directly)
     passwordHash: text('password_hash'), // bcrypt hash for local login
@@ -128,6 +131,11 @@ export const users = pgTable(
       .notNull()
       .$type<'owner' | 'admin' | 'viewer' | 'member' | 'disabled' | 'pending'>()
       .default('member'),
+
+    // better-auth admin plugin fields
+    banned: boolean('banned'),
+    banReason: text('ban_reason'),
+    banExpires: timestamp('ban_expires', { withTimezone: true }),
 
     // Aggregated metrics (cached, updated by triggers)
     aggregateTrustScore: integer('aggregate_trust_score').notNull().default(100),
@@ -495,6 +503,8 @@ export const mobileSessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     refreshTokenHash: varchar('refresh_token_hash', { length: 64 }).notNull().unique(), // SHA-256
     previousRefreshTokenHash: varchar('previous_refresh_token_hash', { length: 64 }),
+    // Set for pairings created after the better-auth migration; null for legacy pairings
+    betterAuthSessionId: text('better_auth_session_id'),
     deviceName: varchar('device_name', { length: 100 }).notNull(),
     deviceId: varchar('device_id', { length: 100 }).notNull(),
     platform: varchar('platform', { length: 20 }).notNull().$type<'ios' | 'android'>(),
@@ -508,6 +518,7 @@ export const mobileSessions = pgTable(
     index('mobile_sessions_device_id_idx').on(table.deviceId),
     index('mobile_sessions_refresh_token_idx').on(table.refreshTokenHash),
     index('mobile_sessions_expo_push_token_idx').on(table.expoPushToken),
+    index('mobile_sessions_ba_session_idx').on(table.betterAuthSessionId),
   ]
 );
 
@@ -668,6 +679,67 @@ export const settings = pgTable('settings', {
   name: varchar('name', { length: 255 }).notNull().unique(),
   value: jsonb('value'),
 });
+
+// ============================================================================
+// Better Auth tables (session storage, login providers, verification tokens)
+// Field set matches better-auth 1.6.23 codegen for core + username + admin + bearer.
+// ============================================================================
+
+export const authSessions = pgTable(
+  'auth_sessions',
+  {
+    id: text('id').primaryKey(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    token: text('token').notNull().unique(),
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    impersonatedBy: text('impersonated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('auth_sessions_user_idx').on(table.userId)]
+);
+
+export const authAccounts = pgTable(
+  'auth_accounts',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    providerId: text('provider_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    idToken: text('id_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+    scope: text('scope'),
+    password: text('password'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('auth_accounts_user_idx').on(table.userId),
+    unique('auth_accounts_provider_account_unique').on(table.providerId, table.accountId),
+  ]
+);
+
+export const authVerifications = pgTable(
+  'auth_verifications',
+  {
+    id: text('id').primaryKey(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]
+);
 
 // ============================================================================
 // Relations
