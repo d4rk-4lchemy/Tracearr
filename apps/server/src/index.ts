@@ -11,6 +11,7 @@ import fastifyStatic from '@fastify/static';
 import { existsSync, readFileSync } from 'node:fs';
 import { gzipSync, createGzip } from 'node:zlib';
 import { Redis } from 'ioredis';
+import { fromNodeHeaders } from 'better-auth/node';
 import { API_BASE_PATH, REDIS_KEYS, WS_EVENTS } from '@tracearr/shared';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +44,7 @@ import type {
 
 import authPlugin, { loadJwtRevokeSettings } from './plugins/auth.js';
 import redisPlugin, { connectRedis } from './plugins/redis.js';
+import { getAuth, closeAuth } from './lib/auth.js';
 import { authRoutes } from './routes/auth/index.js';
 import { setupRoutes } from './routes/setup.js';
 import { serverRoutes } from './routes/servers.js';
@@ -373,6 +375,35 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
 
   // API routes — registered now but gated by the maintenance hook above
   await app.register(setupRoutes, { prefix: `${API_BASE_PATH}/setup` });
+
+  // Better Auth catch-all. Static legacy routes registered below win over this
+  // wildcard for their exact paths; everything else under /api/v1/auth is BA.
+  app.route({
+    method: ['GET', 'POST'],
+    url: `${API_BASE_PATH}/auth/*`,
+    config: { rateLimit: false },
+    async handler(request, reply) {
+      try {
+        const url = new URL(request.url, `http://${request.headers.host}`);
+        const headers = fromNodeHeaders(request.headers);
+        const req = new Request(url.toString(), {
+          method: request.method,
+          headers,
+          ...(request.body ? { body: JSON.stringify(request.body) } : {}),
+        });
+        const response = await getAuth().handler(req);
+        reply.status(response.status);
+        for (const [key, value] of response.headers) {
+          reply.header(key, value);
+        }
+        return await reply.send(response.body ? await response.text() : null);
+      } catch (error) {
+        request.log.error({ err: error }, 'better auth handler error');
+        return reply.status(500).send({ error: 'Internal authentication error' });
+      }
+    },
+  });
+
   await app.register(authRoutes, { prefix: `${API_BASE_PATH}/auth` });
   await app.register(serverRoutes, { prefix: `${API_BASE_PATH}/servers` });
   await app.register(userRoutes, { prefix: `${API_BASE_PATH}/users` });
@@ -461,6 +492,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
       clearInterval(mobileTokenCleanupInterval);
     }
     stopImageCacheCleanup();
+    await closeAuth();
     if (pubSubRedis) await pubSubRedis.quit();
     if (wsSubscriber) await wsSubscriber.quit();
     stopPoller();
