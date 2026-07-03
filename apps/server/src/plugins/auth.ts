@@ -11,6 +11,7 @@ import { REDIS_KEYS, CACHE_TTL } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { users, mobileSessions } from '../db/schema.js';
 import { getSetting } from '../services/settings.js';
+import { resolveBetterAuthUser } from '../lib/sessionResolver.js';
 
 // Module-level cache — populated at startup and refreshed after restore
 let _jwtRevokedBefore: number | null = null; // Unix timestamp (seconds)
@@ -69,26 +70,39 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     },
   });
 
-  // Authenticate decorator - verifies JWT
+  // Authenticate decorator - resolves a Better Auth session first, falling
+  // back to legacy JWT verification (the mobile shim)
   app.decorate('authenticate', async function (request: FastifyRequest, reply: FastifyReply) {
+    const baUser = await resolveBetterAuthUser(request);
+    if (baUser) {
+      request.user = baUser;
+      return;
+    }
     try {
       await request.jwtVerify();
       if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-        return reply.unauthorized('Session invalidated — please log in again');
+        return reply.unauthorized('Session invalidated. Please log in again');
       }
     } catch {
       reply.unauthorized('Invalid or expired token');
     }
   });
 
-  // Require owner role decorator
+  // Require owner role decorator - same dual-verify as authenticate, plus role check
   app.decorate('requireOwner', async function (request: FastifyRequest, reply: FastifyReply) {
+    const baUser = await resolveBetterAuthUser(request);
+    if (baUser) {
+      request.user = baUser;
+      if (baUser.role !== 'owner') {
+        return reply.forbidden('Owner access required');
+      }
+      return;
+    }
     try {
       await request.jwtVerify();
       if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-        return reply.unauthorized('Session invalidated — please log in again');
+        return reply.unauthorized('Session invalidated. Please log in again');
       }
-
       if (request.user.role !== 'owner') {
         reply.forbidden('Owner access required');
       }
