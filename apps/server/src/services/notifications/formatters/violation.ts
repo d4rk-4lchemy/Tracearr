@@ -98,10 +98,8 @@ function formatEvidenceForDiscord(
     for (const cond of matchedConditions) {
       const label = CONDITION_FIELD_LABELS[cond.field] ?? cond.field;
       const op = OPERATOR_LABELS[cond.operator] ?? cond.operator;
-      let actual = cond.actual !== null && cond.actual !== undefined ? String(cond.actual) : 'N/A';
-      if (cond.field === 'user_id' && userNames && typeof cond.actual === 'string') {
-        actual = userNames[cond.actual] ?? actual;
-      }
+      const actual =
+        cond.actual !== null && cond.actual !== undefined ? String(cond.actual) : 'N/A';
 
       let threshold: string;
       if (cond.field === 'user_id' && Array.isArray(cond.threshold) && userNames !== undefined) {

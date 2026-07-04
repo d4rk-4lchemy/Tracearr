@@ -678,11 +678,4 @@ describe('formatViolationDetailsForDiscord (user_id friendly names)', () => {
     expect(fields).toHaveLength(1);
     expect(fields[0]!.value).toContain('id-1,id-2');
   });
-
-  it('resolves the actual user_id value to a name when present in the map', () => {
-    const userNames = { 'id-1': 'Alice', 'id-2': 'Bob', 'id-other': 'Carol' };
-    const fields = formatViolationDetailsForDiscord(null, { evidence }, userNames);
-    expect(fields[0]!.value).toContain('Carol');
-    expect(fields[0]!.value).not.toContain('id-other');
-  });
 });

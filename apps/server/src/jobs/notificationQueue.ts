@@ -245,7 +245,7 @@ async function processRuleNotification(
 /**
  * Process a single notification job
  */
-async function processNotificationJob(job: Job<NotificationJobData>): Promise<void> {
+export async function processNotificationJob(job: Job<NotificationJobData>): Promise<void> {
   const { type, payload } = job.data;
 
   // Load current settings for each job (settings may change between enqueue and process)
@@ -288,19 +288,25 @@ async function processNotificationJob(job: Job<NotificationJobData>): Promise<vo
         const userIdSet = new Set<string>();
         for (const group of rawEvidence) {
           for (const cond of group.conditions) {
-            if (cond.field === 'user_id') {
-              if (typeof cond.actual === 'string') userIdSet.add(cond.actual);
-              if (Array.isArray(cond.threshold)) {
-                for (const id of cond.threshold) {
-                  if (typeof id === 'string') userIdSet.add(id);
-                }
+            // only threshold holds uuids; cond.actual is a display name, not an id
+            if (cond.field === 'user_id' && Array.isArray(cond.threshold)) {
+              for (const id of cond.threshold) {
+                if (typeof id === 'string') userIdSet.add(id);
               }
             }
           }
         }
         if (userIdSet.size > 0) {
-          const { getServerUserDisplayNames } = await import('../services/userService.js');
-          payload.userNames = await getServerUserDisplayNames([...userIdSet]);
+          try {
+            const { getServerUserDisplayNames } = await import('../services/userService.js');
+            payload.userNames = await getServerUserDisplayNames([...userIdSet]);
+          } catch (err) {
+            console.error(
+              'failed to resolve user display names for violation notification',
+              payload.id,
+              err
+            );
+          }
         }
       }
 

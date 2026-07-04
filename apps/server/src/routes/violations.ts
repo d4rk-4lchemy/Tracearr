@@ -850,19 +850,24 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       const userIdSet = new Set<string>();
       for (const group of enrichedViolation.evidence) {
         for (const cond of group.conditions) {
-          if (cond.field === 'user_id') {
-            if (Array.isArray(cond.threshold)) {
-              for (const id of cond.threshold) {
-                if (typeof id === 'string') userIdSet.add(id);
-              }
+          // only threshold holds uuids; cond.actual is a display name, not an id
+          if (cond.field === 'user_id' && Array.isArray(cond.threshold)) {
+            for (const id of cond.threshold) {
+              if (typeof id === 'string') userIdSet.add(id);
             }
-            if (typeof cond.actual === 'string') userIdSet.add(cond.actual);
           }
         }
       }
       if (userIdSet.size > 0) {
-        const userNames = await getServerUserDisplayNames([...userIdSet]);
-        return { ...enrichedViolation, userNames };
+        try {
+          const userNames = await getServerUserDisplayNames([...userIdSet]);
+          return { ...enrichedViolation, userNames };
+        } catch (err) {
+          request.log.error(
+            { err, violationId: id },
+            'failed to resolve user display names for violation detail'
+          );
+        }
       }
     }
 
