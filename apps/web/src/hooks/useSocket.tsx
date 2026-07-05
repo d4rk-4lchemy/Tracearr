@@ -64,8 +64,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     Map<string, ServerConnectionStatus>
   >(new Map());
 
-  // Get channel routing for web toast preferences
-  const { data: routingData } = useChannelRouting();
+  // Get channel routing for web toast preferences. Gated on auth - this
+  // provider mounts globally, and an unauthenticated fetch would 401 on the
+  // login page.
+  const { data: routingData } = useChannelRouting(isAuthenticated);
 
   // Build a ref to the routing map for access in event handlers
   const routingMapRef = useRef<Map<NotificationEventType, NotificationChannelRouting>>(new Map());

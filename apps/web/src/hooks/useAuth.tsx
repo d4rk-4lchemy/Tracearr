@@ -86,7 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Immediately clear auth data and redirect to login
       queryClient.setQueryData(['auth', 'me'], null);
       queryClient.clear();
-      window.location.href = `${BASE_URL}login`;
+      // Assigning location.href reloads even when the URL is unchanged, so a
+      // 401 fired while already on the login page would reload it forever.
+      if (window.location.pathname !== `${BASE_URL}login`) {
+        window.location.href = `${BASE_URL}login`;
+      }
     };
 
     window.addEventListener(AUTH_STATE_CHANGE_EVENT, handleAuthChange);

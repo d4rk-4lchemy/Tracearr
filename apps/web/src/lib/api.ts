@@ -246,11 +246,15 @@ class ApiClient {
     // A 401 means the session cookie is missing or expired - there's no token to
     // refresh anymore, so just clear the cached auth state and let the auth
     // context redirect to login. Skip this for auth endpoints where a 401/403
-    // is an expected response (e.g. bad login credentials) rather than a lost session.
+    // is an expected response (e.g. bad login credentials) rather than a lost
+    // session. /auth/me is the probe the auth context uses to decide whether a
+    // session exists at all, so its 401 while logged out is expected and must
+    // not fire the logout event (that reloads the login page in a loop).
     const noAuthClearPaths = [
       '/auth/login',
       '/auth/signup',
       '/auth/logout',
+      '/auth/me',
       '/auth/plex/check-pin',
       '/auth/callback',
     ];
