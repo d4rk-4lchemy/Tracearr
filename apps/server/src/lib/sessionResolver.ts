@@ -32,7 +32,15 @@ interface BetterAuthSessionResult {
 async function loadBetterAuthSession(headers: Headers): Promise<BetterAuthSessionResult | null> {
   let session;
   try {
-    session = await getAuth().api.getSession({ headers });
+    // Force fresh validation against the session store (DB/Redis) instead of
+    // trusting the signed cookie-cache blob. cookieCache (lib/auth.ts, 5m TTL)
+    // is fine for non-critical reads, but on the authorization path a revoked
+    // session (CLI reset, mobile revoke, admin ban) must stop passing auth
+    // immediately rather than lingering for up to the cache TTL.
+    session = await getAuth().api.getSession({
+      headers,
+      query: { disableCookieCache: true },
+    });
   } catch {
     return null; // fail closed on lookup errors
   }
