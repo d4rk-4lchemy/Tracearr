@@ -36,7 +36,8 @@
     "translations:fix": "pnpm --filter @tracearr/translations check -- --fix",
     "clean": "turbo clean && rm -rf node_modules",
     "prepare": "husky",
-    "reset-password": "pnpm --filter @tracearr/server reset-password"
+    "reset-password": "pnpm --filter @tracearr/server reset-password",
+    "cli": "pnpm --filter @tracearr/server cli"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",

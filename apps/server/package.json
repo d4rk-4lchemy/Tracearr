@@ -32,6 +32,7 @@
     "db:push": "drizzle-kit push --config=drizzle.config.cjs",
     "db:studio": "drizzle-kit studio --config=drizzle.config.cjs",
     "reset-password": "tsx scripts/reset-password.ts",
+    "cli": "tsx scripts/cli.ts",
     "backup": "tsx scripts/backup.ts"
   },
   "dependencies": {
