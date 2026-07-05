@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import {
@@ -44,6 +45,16 @@ function buildAuth(redis: Redis) {
         verification: schema.authVerifications,
       },
     }),
+    advanced: {
+      database: {
+        // users.id is a uuid column; the default id generator mints a nanoid
+        // that Postgres rejects (22P02). A function generateId keeps Better
+        // Auth minting the id in app code (unlike the "uuid" literal, which on
+        // pg defers to a DB default the text-id auth_ tables don't have) and
+        // emits a UUID valid for both the uuid and text id columns.
+        generateId: () => randomUUID(),
+      },
+    },
     emailAndPassword: {
       enabled: true,
       password: {

@@ -19,6 +19,7 @@ import type { AuthUser } from '@tracearr/shared';
 import { db } from '../../src/db/client.js';
 import { users, servers, serverUsers, mobileTokens, mobileSessions } from '../../src/db/schema.js';
 import { mobileRoutes } from '../../src/routes/mobile.js';
+import { getRedis } from '../../src/lib/redisShared.js';
 import { setSetting, getSetting } from '../../src/services/settings.js';
 
 // Constants (matching mobile.ts)
@@ -242,6 +243,14 @@ describe('Mobile Authentication Integration Tests', () => {
   });
 
   afterAll(async () => {
+    // Pairing mints real Better Auth sessions whose secondary-storage keys land
+    // in the shared test Redis. Clear them so the redis-prefix canary test does
+    // not flag these bare tracearr:ba:* keys as unprefixed leaks.
+    const redis = getRedis();
+    const baKeys = await redis.keys(`${process.env.REDIS_PREFIX ?? ''}tracearr:ba:*`);
+    if (baKeys.length > 0) {
+      await redis.del(...baKeys);
+    }
     await app.close();
   });
 
