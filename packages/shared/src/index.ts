@@ -16,6 +16,7 @@ export type {
   ViolationSummary,
   UserRole,
   AuthUser,
+  SetupStatus,
   UserLocation,
   UserDevice,
   // Session

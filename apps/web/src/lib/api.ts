@@ -39,6 +39,7 @@ import type {
   VersionInfo,
   EngagementStats,
   ShowStatsResponse,
+  SetupStatus,
   MediaType,
   WebhookFormat,
   ServerConnectionStatus,
@@ -158,17 +159,29 @@ export interface PlexServerInfo {
   connections: PlexServerConnection[];
 }
 
+// Minimal user echoed back by the Plex Better Auth plugin endpoints. The
+// session cookie itself carries the full session; this is just enough for
+// the login UI to know who signed in.
+export interface PlexAuthUser {
+  id: string;
+  username: string;
+  role: UserRole;
+}
+
 export interface PlexCheckPinResponse {
   authorized: boolean;
   message?: string;
-  // If returning user (auto-connect)
-  accessToken?: string;
-  refreshToken?: string;
-  user?: User;
+  // If returning user (or new user with no servers) - session cookie is already set
+  user?: PlexAuthUser;
   // If new user (needs server selection)
   needsServerSelection?: boolean;
   servers?: PlexDiscoveredServer[]; // Now includes reachability info
   tempToken?: string;
+}
+
+export interface PlexConnectResponse {
+  authorized: boolean;
+  user: PlexAuthUser;
 }
 
 // Token storage keys
@@ -276,15 +289,7 @@ class ApiClient {
 
   // Setup - check if Tracearr needs initial configuration
   setup = {
-    status: () =>
-      this.request<{
-        needsSetup: boolean;
-        requiresClaimCode: boolean;
-        hasServers: boolean;
-        hasJellyfinServers: boolean;
-        hasPasswordAuth: boolean;
-        primaryAuthMethod: 'jellyfin' | 'local';
-      }>('/setup/status'),
+    status: () => this.request<SetupStatus>('/setup/status'),
   };
 
   // Auth
@@ -315,44 +320,20 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
 
-    // Local account signup (email for login, username for display)
-    // claimCode is required if first-time setup with claim code enabled
-    signup: (data: { email: string; username: string; password: string; claimCode?: string }) =>
-      this.request<{ accessToken: string; refreshToken: string; user: User }>('/auth/signup', {
+    // Plex OAuth - Step 1: Get PIN (Better Auth plugin endpoint - sets no cookie yet)
+    initiatePlex: (forwardUrl?: string) =>
+      this.request<{ pinId: string; authUrl: string }>('/auth/plex/initiate', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ forwardUrl }),
       }),
 
-    // Local account login (uses email)
-    loginLocal: (data: { email: string; password: string }) =>
-      this.request<{ accessToken: string; refreshToken: string; user: User }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ type: 'local', ...data }),
-      }),
-
-    // Plex OAuth - Step 1: Get PIN
-    loginPlex: (forwardUrl?: string) =>
-      this.request<{ pinId: string; authUrl: string }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ type: 'plex', forwardUrl }),
-      }),
-
-    // Plex OAuth - Step 2: Check PIN and get servers
+    // Plex OAuth - Step 2: Check PIN. On success the session cookie is already
+    // set server-side; the response just tells the UI what happened.
     checkPlexPin: (data: { pinId: string; claimCode?: string }) =>
       this.request<PlexCheckPinResponse>('/auth/plex/check-pin', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-
-    // Jellyfin Admin Login - Authenticate with Jellyfin username/password
-    loginJellyfin: (data: { username: string; password: string }) =>
-      this.request<{ accessToken: string; refreshToken: string; user: User }>(
-        '/auth/jellyfin/login',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      ),
 
     // Plex OAuth - Step 3: Connect with selected server (only for setup)
     connectPlexServer: (data: {
@@ -362,13 +343,10 @@ class ApiClient {
       clientIdentifier?: string;
       claimCode?: string;
     }) =>
-      this.request<{ accessToken: string; refreshToken: string; user: User }>(
-        '/auth/plex/connect',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      ),
+      this.request<PlexConnectResponse>('/auth/plex/connect', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
 
     // Get available Plex servers (authenticated - for adding additional servers)
     getAvailablePlexServers: (accountId?: string) => {
