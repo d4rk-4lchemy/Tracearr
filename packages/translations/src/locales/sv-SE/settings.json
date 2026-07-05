@@ -3,9 +3,6 @@
     "allowGuestAccess": "Tillåt gäståtkomst",
     "allowGuestAccessDesc": "När den är inaktiverad, kan endast serverägaren logga in på Tracearr",
     "description": "Konfigurera vem som kan komma åt Tracearr",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Primär autentiseringsmetod",
-    "primaryAuthMethodDesc": "Välj vilken autentiseringsmetod som visas som standard på inloggningssidan",
     "singleOwnerNote": "Obs: När gäståtkomst är inaktiverad kan endast serverägaren logga in. Alla andra användare kommer att se ett meddelande \"Åtkomst nekad\".",
     "title": "Åtkomstkontroll"
   },
@@ -16,7 +13,6 @@
     "email": "E-post",
     "password": "Lösenord",
     "signInToAccount": "Logga in på ditt konto",
-    "useJellyfinAccount": "Använd istället Jellyfin konto",
     "useLocalAccount": "Använd lokalt konto istället"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Hjälp till att översätta Tracearr",
     "imperial": "Imperial (mi, mph)",
     "iosHttpWarning": "iOS kräver HTTPS för externa anslutningar. Konfigurera en omvänd proxy med SSL.",
-    "jellyfinAccount": "Jellyfin konto",
     "jellyfinPollingNote": "Jellyfin/Emby avfrågas vid intervallet ovan.",
     "language": "Språk",
     "languageDescription": "Välj önskat visningsspråk.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Jag fattar",
     "message": "Alla användare verkar använda samma IP-adress eller lokala nätverksIP-adresser. Detta kan påverka regelbaserad logik för plats eller IP-adresser."
-  },
-  "jellyfin": {
-    "password": "Jellyfin Lösenord",
-    "signInWithJellyfin": "Logga in med Jellyfin",
-    "username": "Jellyfin Användarnamn"
   },
   "jobs": {
     "backfill": "Återfyllning",

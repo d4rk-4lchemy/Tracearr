@@ -3,9 +3,6 @@
     "allowGuestAccess": "Salli Vieraiden Käyttö",
     "allowGuestAccessDesc": "Kun poistettu käytöstä, vain palvelimen omistaja voi kirjautua tracearr:iin",
     "description": "Määritä kuka voi käyttää Tracearria",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Ensisijainen Todennusmenetelmä",
-    "primaryAuthMethodDesc": "Valitse mikä tunnistautumismenetelmä on oletusarvoisesti näytetty kirjautumissivulla",
     "singleOwnerNote": "Huomautus: Kun vierailijoiden käyttö on poistettu käytöstä, vain palvelimen omistaja voi kirjautua sisään. Kaikki muut käyttäjät näkevät \"Pääsy estetty\" -viestin.",
     "title": "Käyttöoikeuksien Hallinta"
   },
@@ -16,7 +13,6 @@
     "email": "Sähköposti",
     "password": "Salasana",
     "signInToAccount": "Kirjaudu sisään tilillesi",
-    "useJellyfinAccount": "Käytä Jellyfin-tiliä sen sijaan",
     "useLocalAccount": "Käytä paikallista tiliä sen sijaan"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Auta kääntämään Tracearr",
     "imperial": "Imperiaalinen (mi, mph)",
     "iosHttpWarning": "iOS vaatii HTTPS ulkoisille yhteyksille. Määritä käänteinen välityspalvelin SSL.",
-    "jellyfinAccount": "Jellyfin Tili",
     "jellyfinPollingNote": "Jellyfin/Emby ovat haastateltuina edellä mainittuun aikaan.",
     "language": "Kieli",
     "languageDescription": "Valitse haluamasi näytön kieli.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Asia ymmärretty",
     "message": "Kaikki käyttäjät näyttävät käyttävän samaa IP-osoitetta tai paikallisia verkko-osoitteita. Tämä saattaa vaikuttaa sääntöpohjaiseen sijainti- tai IP-osoitteiden logiikkaan."
-  },
-  "jellyfin": {
-    "password": "Jellyfin Salasana",
-    "signInWithJellyfin": "Kirjaudu sisään Jellyfinillä",
-    "username": "Jellyfin Käyttäjätunnus"
   },
   "jobs": {
     "backfill": "Backfill",

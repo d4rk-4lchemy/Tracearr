@@ -3,9 +3,6 @@
     "allowGuestAccess": "Povolit přístup k hostům",
     "allowGuestAccessDesc": "Pokud je zakázáno, do Tracearr se může přihlásit pouze vlastník serveru",
     "description": "Konfigurace, kdo má přístup k Tracearru",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Metoda primárního ověření",
-    "primaryAuthMethodDesc": "Zvolte, která metoda ověřování je zobrazena ve výchozím nastavení na přihlašovací stránce",
     "singleOwnerNote": "Poznámka: Pokud je přístup hosta zakázán, může se přihlásit pouze majitel serveru. Všichni ostatní uživatelé uvidí zprávu \"Přístup odepřen\".",
     "title": "Kontrola přístupu"
   },
@@ -16,7 +13,6 @@
     "email": "E-mailová adresa",
     "password": "Heslo",
     "signInToAccount": "Přihlaste se ke svému účtu",
-    "useJellyfinAccount": "Místo toho použít Jellyfin účet",
     "useLocalAccount": "Místo toho použít místní účet"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Pomozte přeložit Tracearr",
     "imperial": "Imperiální (mi, mph)",
     "iosHttpWarning": "iOS vyžaduje HTTPS pro externí připojení. Nastavte reverzní proxy pomocí SSL.",
-    "jellyfinAccount": "Účet Jellyfin",
     "jellyfinPollingNote": "Jellyfin/Emby jsou dotazovány na výše uvedeném intervalu.",
     "language": "Jazyk",
     "languageDescription": "Vyberte preferovaný jazyk zobrazení.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Rozumím",
     "message": "Zdá se, že všichni uživatelé používají stejnou IP adresu nebo místní síťové IP adresy. To může ovlivnit logiku založenou na pravidlech pro umístění nebo IP adresy."
-  },
-  "jellyfin": {
-    "password": "Jellyfin heslo",
-    "signInWithJellyfin": "Přihlásit se pomocí Jellyfin",
-    "username": "Jellyfin uživatelské jméno"
   },
   "jobs": {
     "backfill": "Zpětné doplnění",

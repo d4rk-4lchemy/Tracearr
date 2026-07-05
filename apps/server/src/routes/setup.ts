@@ -32,10 +32,7 @@ export const setupRoutes: FastifyPluginAsync = async (app) => {
       db.select({ id: users.id }).from(users).where(isNotNull(users.passwordHash)).limit(1),
     ]);
 
-    const [primaryAuthMethod, localLoginEnabled] = await Promise.all([
-      getSetting('primaryAuthMethod'),
-      getSetting('localLoginEnabled'),
-    ]);
+    const localLoginEnabled = await getSetting('localLoginEnabled');
 
     const needsSetup = ownerList.length === 0;
 
@@ -45,7 +42,6 @@ export const setupRoutes: FastifyPluginAsync = async (app) => {
       hasServers: serverList.length > 0,
       hasJellyfinServers: jellyfinServerList.length > 0,
       hasPasswordAuth: passwordUserList.length > 0,
-      primaryAuthMethod,
       authMethods: {
         local: localLoginEnabled,
         plex: true,

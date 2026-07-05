@@ -3,9 +3,6 @@
     "allowGuestAccess": "Consenti Accesso Ospite",
     "allowGuestAccessDesc": "Se disabilitato, solo il proprietario del server può accedere a Tracearr",
     "description": "Configurare chi può accedere a Tracearr",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Metodo Di Autenticazione Primaria",
-    "primaryAuthMethodDesc": "Scegli quale metodo di autenticazione è mostrato per impostazione predefinita nella pagina di login",
     "singleOwnerNote": "Nota: Quando l'accesso ospite è disabilitato, solo il proprietario del server può accedere. Tutti gli altri utenti vedranno un messaggio \"Accesso negato\".",
     "title": "Controllo Accesso"
   },
@@ -16,7 +13,6 @@
     "email": "Email",
     "password": "Password",
     "signInToAccount": "Accedi al tuo account",
-    "useJellyfinAccount": "Usa invece l'account Jellyfin",
     "useLocalAccount": "Utilizza invece l'account locale"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Aiuta a tradurre Tracearr",
     "imperial": "Imperial (mi, mph)",
     "iosHttpWarning": "iOS richiede HTTPS per connessioni esterne. Impostare un proxy inverso con SSL.",
-    "jellyfinAccount": "Conto Jellyfin",
     "jellyfinPollingNote": "Jellyfin/Emby sono intervistati all'intervallo sopra indicato.",
     "language": "Lingua",
     "languageDescription": "Scegli la tua lingua di visualizzazione preferita.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Ho capito",
     "message": "Tutti gli utenti sembrano usare lo stesso indirizzo IP o IP di rete locale. Questo può influenzare la logica basata sulle regole per la posizione o gli indirizzi IP."
-  },
-  "jellyfin": {
-    "password": "Password Jellyfin",
-    "signInWithJellyfin": "Accedi con Jellyfin",
-    "username": "Nome Utente Jellyfin"
   },
   "jobs": {
     "backfill": "Riempimento",

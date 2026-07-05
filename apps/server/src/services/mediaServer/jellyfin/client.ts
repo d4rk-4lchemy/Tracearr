@@ -84,42 +84,6 @@ export class JellyfinClient extends BaseMediaServerClient {
   // ==========================================================================
 
   /**
-   * Authenticate with username/password
-   * Note: Jellyfin uses 'Pw' field for password
-   */
-  static async authenticate(
-    serverUrl: string,
-    username: string,
-    password: string
-  ): Promise<JellyfinAuthResult | null> {
-    const url = serverUrl.replace(/\/$/, '');
-    const authHeader = BaseMediaServerClient.buildStaticAuthHeader();
-
-    try {
-      const data = await fetchJson<Record<string, unknown>>(`${url}/Users/AuthenticateByName`, {
-        method: 'POST',
-        headers: {
-          Authorization: authHeader,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          Username: username,
-          Pw: password, // Jellyfin uses 'Pw', not 'Password'
-        }),
-        service: 'jellyfin',
-      });
-
-      return parseAuthResponse(data);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('401')) {
-        return null;
-      }
-      throw error;
-    }
-  }
-
-  /**
    * Error types for server admin verification
    */
   static readonly AdminVerifyError = {

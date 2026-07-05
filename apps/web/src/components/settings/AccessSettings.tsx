@@ -1,41 +1,17 @@
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Field, FieldGroup, FieldLabel, FieldDescription, FieldError } from '@/components/ui/field';
-import { AutosaveSwitchField, SaveStatusIndicator } from '@/components/ui/autosave-field';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Shield, KeyRound } from 'lucide-react';
-import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
-import { useAuth } from '@/hooks/useAuth';
+import { FieldGroup } from '@/components/ui/field';
+import { AutosaveSwitchField } from '@/components/ui/autosave-field';
+import { Shield } from 'lucide-react';
 import { useDebouncedSave } from '@/hooks/useDebouncedSave';
-import { useSettings, useServers } from '@/hooks/queries';
-import type { Server } from '@tracearr/shared';
+import { useSettings } from '@/hooks/queries';
 
 export function AccessSettings() {
   const { t } = useTranslation(['settings', 'common']);
-  const { data: settings, isLoading: settingsLoading } = useSettings();
-  const { data: serversData, isLoading: serversLoading } = useServers();
-  const { user } = useAuth();
+  const { data: settings, isLoading } = useSettings();
 
   const allowGuestAccessField = useDebouncedSave('allowGuestAccess', settings?.allowGuestAccess);
-  const primaryAuthMethodField = useDebouncedSave('primaryAuthMethod', settings?.primaryAuthMethod);
-
-  const isLoading = settingsLoading || serversLoading;
-  // Handle both array and wrapped response formats
-  const servers = Array.isArray(serversData)
-    ? serversData
-    : ((serversData as unknown as { data?: Server[] })?.data ?? []);
-  const hasJellyfinServer = servers.some((s) => s.type === 'jellyfin');
-  const hasLocalCredentials = user?.hasPassword ?? false;
-
-  const showAuthMethodSelector = hasLocalCredentials && hasJellyfinServer;
 
   if (isLoading) {
     return (
@@ -73,71 +49,6 @@ export function AccessSettings() {
             onRetry={allowGuestAccessField.retry}
             onReset={allowGuestAccessField.reset}
           />
-
-          {showAuthMethodSelector && (
-            <Field>
-              <div className="flex items-center justify-between">
-                <FieldLabel htmlFor="primaryAuthMethod">
-                  {t('accessControl.primaryAuthMethod')}
-                </FieldLabel>
-                <SaveStatusIndicator status={primaryAuthMethodField.status} />
-              </div>
-              <Select
-                value={primaryAuthMethodField.value ?? 'local'}
-                onValueChange={(value: 'jellyfin' | 'local') => {
-                  primaryAuthMethodField.setValue(value);
-                }}
-              >
-                <SelectTrigger
-                  id="primaryAuthMethod"
-                  className="w-full"
-                  aria-invalid={primaryAuthMethodField.status === 'error'}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="local">
-                    <div className="flex items-center gap-2">
-                      <KeyRound className="h-4 w-4" />
-                      <span>{t('general.localAccount')}</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="jellyfin">
-                    <div className="flex items-center gap-2">
-                      <MediaServerIcon type="jellyfin" className="h-4 w-4" />
-                      <span>{t('accessControl.jellyfinAdmin')}</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <FieldDescription>{t('accessControl.primaryAuthMethodDesc')}</FieldDescription>
-              {primaryAuthMethodField.status === 'error' && primaryAuthMethodField.errorMessage && (
-                <div className="flex items-center justify-between">
-                  <FieldError>{primaryAuthMethodField.errorMessage}</FieldError>
-                  <div className="flex gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={primaryAuthMethodField.retry}
-                      className="h-6 px-2 text-xs"
-                    >
-                      {t('common:actions.retry')}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={primaryAuthMethodField.reset}
-                      className="h-6 px-2 text-xs"
-                    >
-                      {t('common:actions.reset')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </Field>
-          )}
         </FieldGroup>
 
         <div className="bg-muted/50 rounded-lg p-4">

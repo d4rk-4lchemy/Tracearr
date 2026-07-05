@@ -3,9 +3,6 @@
     "allowGuestAccess": "Разрешить гостевой доступ",
     "allowGuestAccessDesc": "Когда отключено, только владелец сервера может войти в Tracearr",
     "description": "Настройте кто может получить доступ к Tracearr",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Метод первичной аутентификации",
-    "primaryAuthMethodDesc": "Выберите способ проверки подлинности по умолчанию на странице входа",
     "singleOwnerNote": "Примечание: Если гостевой доступ отключен, авторизоваться могут только владелец сервера. Все другие пользователи увидят сообщение \"Отказано в доступе\".",
     "title": "Контроль доступа"
   },
@@ -16,7 +13,6 @@
     "email": "Почта",
     "password": "Пароль",
     "signInToAccount": "Войдите в свою учетную запись",
-    "useJellyfinAccount": "Использовать учетную запись Jellyfin",
     "useLocalAccount": "Использовать локальную учетную запись"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Помогите перевести Tracearr",
     "imperial": "Имперская (mi, mph)",
     "iosHttpWarning": "iOS требует HTTPS для внешних подключений. Настройте обратный прокси с помощью SSL.",
-    "jellyfinAccount": "Учетная запись Jellyfin",
     "jellyfinPollingNote": "Jellyfin/Emby опрошены с интервалом выше.",
     "language": "Язык",
     "languageDescription": "Выберите предпочитаемый язык отображения.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Понятно",
     "message": "Кажется, все пользователи используют один и тот же IP адрес или локальный сетевой IP-адрес. Это может повлиять на логику, основанную на правилах для определения местоположения или IP-адресов."
-  },
-  "jellyfin": {
-    "password": "Пароль Jellyfin",
-    "signInWithJellyfin": "Войти через Jellyfin",
-    "username": "Имя пользователя Jellyfin"
   },
   "jobs": {
     "backfill": "Заполнение",

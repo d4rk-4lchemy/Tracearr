@@ -1,7 +1,6 @@
 /**
  * Jellyfin Authentication Routes
  *
- * POST /jellyfin/login - Login with Jellyfin username/password (checks all configured servers)
  * POST /jellyfin/connect-api-key - Connect a Jellyfin server with API key (requires authentication)
  */
 
@@ -14,13 +13,6 @@ import { JellyfinClient } from '../../services/mediaServer/index.js';
 // Token encryption removed - tokens now stored in plain text (DB is localhost-only)
 import { generateTokens } from './utils.js';
 import { syncServer } from '../../services/sync.js';
-import { getUserByUsername } from '../../services/userService.js';
-
-// Schema for Jellyfin login
-const jellyfinLoginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-});
 
 // Schema for API key connection
 const jellyfinConnectApiKeySchema = z.object({
@@ -30,80 +22,6 @@ const jellyfinConnectApiKeySchema = z.object({
 });
 
 export const jellyfinRoutes: FastifyPluginAsync = async (app) => {
-  /**
-   * POST /jellyfin/login - Login with Jellyfin username/password
-   *
-   * Checks all configured Jellyfin servers and authenticates if user is admin on any server.
-   * Creates a new user with 'admin' role if user doesn't exist.
-   */
-  app.post('/jellyfin/login', async (request, reply) => {
-    const body = jellyfinLoginSchema.safeParse(request.body);
-    if (!body.success) {
-      return reply.badRequest('Username and password are required');
-    }
-
-    const { username, password } = body.data;
-
-    try {
-      // Get all configured Jellyfin servers
-      const jellyfinServers = await db.select().from(servers).where(eq(servers.type, 'jellyfin'));
-
-      if (jellyfinServers.length === 0) {
-        return await reply.unauthorized(
-          'No Jellyfin servers configured. Please add a server first.'
-        );
-      }
-
-      // Try to authenticate with each server
-      for (const server of jellyfinServers) {
-        try {
-          const authResult = await JellyfinClient.authenticate(server.url, username, password);
-
-          if (authResult?.isAdmin) {
-            // User is admin on this server - proceed with login
-            app.log.info(
-              { username, serverId: server.id },
-              'Jellyfin admin authentication successful'
-            );
-
-            // Check if user already exists
-            const user = await getUserByUsername(username);
-
-            if (!user) {
-              // Only the owner (created via Plex or local signup) can log in
-              return await reply.forbidden(
-                'This Tracearr instance already has an owner. Only the owner can log in.'
-              );
-            }
-
-            if (user.role !== 'owner') {
-              return await reply.forbidden('Only the owner can log in to this Tracearr instance.');
-            }
-
-            // Generate and return tokens
-            return await generateTokens(app, user.id, user.username, user.role);
-          }
-        } catch (error) {
-          // Authentication failed on this server, try next one
-          app.log.debug(
-            { error, serverId: server.id, username },
-            'Jellyfin authentication failed on server'
-          );
-          continue;
-        }
-      }
-
-      // Authentication failed on all servers or user is not admin
-      app.log.warn({ username }, 'Jellyfin login failed: invalid credentials or not admin');
-      return await reply.unauthorized(
-        'Invalid username or password, or user is not an administrator on any configured Jellyfin server'
-      );
-    } catch (error) {
-      app.log.error({ err: error, username }, 'Jellyfin login error');
-      return await reply.internalServerError('Failed to authenticate with Jellyfin servers');
-    }
-  });
-
   /**
    * POST /jellyfin/connect-api-key - Connect a Jellyfin server with API key (requires authentication)
    */

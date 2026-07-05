@@ -69,7 +69,6 @@ const mockAllSettings: Settings = {
   externalUrl: 'https://tracearr.example.com',
   trustProxy: true,
   mobileEnabled: false,
-  primaryAuthMethod: 'local',
   tailscaleEnabled: false,
   tailscaleHostname: null,
   backupScheduleType: 'disabled',

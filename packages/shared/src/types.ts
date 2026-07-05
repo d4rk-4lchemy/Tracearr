@@ -152,7 +152,6 @@ export interface SetupStatus {
   hasServers: boolean;
   hasJellyfinServers: boolean;
   hasPasswordAuth: boolean;
-  primaryAuthMethod: 'jellyfin' | 'local';
   authMethods: {
     local: boolean;
     plex: boolean;
@@ -929,8 +928,6 @@ export interface Settings {
   trustProxy: boolean;
   // Mobile access
   mobileEnabled: boolean;
-  // Authentication settings
-  primaryAuthMethod: 'jellyfin' | 'local';
   // Tailscale VPN
   tailscaleEnabled: boolean;
   tailscaleHostname: string | null;

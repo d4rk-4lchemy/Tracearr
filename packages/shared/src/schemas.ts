@@ -720,8 +720,6 @@ export const updateSettingsSchema = z.object({
   // Network/access settings
   externalUrl: nullableUrlSchema.optional(),
   trustProxy: z.boolean().optional(),
-  // Authentication settings
-  primaryAuthMethod: z.enum(['jellyfin', 'local']).optional(),
   // Tailscale VPN
   tailscaleHostname: z
     .string()

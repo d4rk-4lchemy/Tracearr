@@ -3,9 +3,6 @@
     "allowGuestAccess": "Tillad Gæst Adgang",
     "allowGuestAccessDesc": "Når deaktiveret, kan kun serverejeren logge ind på Tracearr",
     "description": "Konfigurere, hvem der kan tilgå Tracearr",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Primær Godkendelsesmetode",
-    "primaryAuthMethodDesc": "Vælg hvilken godkendelsesmetode der vises som standard på login-siden",
     "singleOwnerNote": "Bemærk: Når gæsteadgang er deaktiveret, kan kun serverejeren logge ind. Alle andre brugere vil se en \"Adgang nægtet\" besked.",
     "title": "Adgangskontrol"
   },
@@ -16,7 +13,6 @@
     "email": "E-mail",
     "password": "Adgangskode",
     "signInToAccount": "Log ind på din konto",
-    "useJellyfinAccount": "Brug Jellyfin- konto i stedet",
     "useLocalAccount": "Brug i stedet lokal konto"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Hjælp med at oversætte Tracearr",
     "imperial": "Imperial (mi, mph)",
     "iosHttpWarning": "iOS kræver HTTPS til eksterne forbindelser. Opsæt en omvendt proxy med SSL.",
-    "jellyfinAccount": "Jellyfin Konto",
     "jellyfinPollingNote": "Jellyfin/Emby er pollet med ovenstående interval.",
     "language": "Sprog",
     "languageDescription": "Vælg dit foretrukne visningssprog.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Fik det",
     "message": "Alle brugere ser ud til at bruge den samme IP-adresse eller lokale netværks-IP'er. Dette kan påvirke regelbaseret logik for placering eller IP-adresser."
-  },
-  "jellyfin": {
-    "password": "Jellyfin Adgangskode",
-    "signInWithJellyfin": "Log ind med Jellyfin",
-    "username": "Jellyfin Brugernavn"
   },
   "jobs": {
     "backfill": "Backfill",

@@ -30,7 +30,6 @@ const PUBLIC_DEFAULTS: Settings = {
   externalUrl: null,
   trustProxy: false,
   mobileEnabled: false,
-  primaryAuthMethod: 'local',
   tailscaleEnabled: false,
   tailscaleHostname: null,
   // Backup settings

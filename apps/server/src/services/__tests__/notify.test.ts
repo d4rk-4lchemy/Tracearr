@@ -54,7 +54,6 @@ describe('NotificationManager', () => {
     externalUrl: null,
     trustProxy: false,
     mobileEnabled: false,
-    primaryAuthMethod: 'local',
     usePlexGeoip: false,
     tailscaleEnabled: false,
     tailscaleHostname: null,

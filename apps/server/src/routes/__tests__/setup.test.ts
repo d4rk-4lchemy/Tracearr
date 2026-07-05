@@ -33,8 +33,8 @@ import { setupRoutes } from '../setup.js';
  * 2. Jellyfin servers (where type = 'jellyfin')
  * 3. Owners (where role = 'owner')
  * 4. Password users (where passwordHash is not null)
- * Plus 2 settings queries (primaryAuthMethod, localLoginEnabled), which fall
- * through to defaults ('local', true) when unmocked.
+ * Plus 1 settings query (localLoginEnabled), which falls through to its
+ * default (true) when unmocked.
  */
 function mockDbSelectMultiple(results: unknown[][]) {
   let callIndex = 0;
@@ -105,7 +105,6 @@ describe('Setup Routes', () => {
         hasServers: true,
         hasJellyfinServers: false,
         hasPasswordAuth: false,
-        primaryAuthMethod: 'local',
         authMethods: {
           local: true,
           plex: true,
@@ -142,7 +141,6 @@ describe('Setup Routes', () => {
         hasServers: true,
         hasJellyfinServers: false,
         hasPasswordAuth: false,
-        primaryAuthMethod: 'local',
         authMethods: {
           local: true,
           plex: true,
@@ -176,7 +174,6 @@ describe('Setup Routes', () => {
         hasServers: true,
         hasJellyfinServers: true,
         hasPasswordAuth: true,
-        primaryAuthMethod: 'local',
         authMethods: {
           local: true,
           plex: true,
@@ -210,7 +207,6 @@ describe('Setup Routes', () => {
         hasServers: false,
         hasJellyfinServers: false,
         hasPasswordAuth: false,
-        primaryAuthMethod: 'local',
         authMethods: {
           local: true,
           plex: true,
@@ -244,7 +240,6 @@ describe('Setup Routes', () => {
         hasServers: false,
         hasJellyfinServers: false,
         hasPasswordAuth: true,
-        primaryAuthMethod: 'local',
         authMethods: {
           local: true,
           plex: true,
@@ -278,7 +273,6 @@ describe('Setup Routes', () => {
         hasServers: true,
         hasJellyfinServers: true,
         hasPasswordAuth: false,
-        primaryAuthMethod: 'local',
         authMethods: {
           local: true,
           plex: true,
@@ -312,7 +306,6 @@ describe('Setup Routes', () => {
         hasServers: false,
         hasJellyfinServers: false,
         hasPasswordAuth: false,
-        primaryAuthMethod: 'local',
         authMethods: {
           local: true,
           plex: true,
@@ -346,7 +339,6 @@ describe('Setup Routes', () => {
         hasServers: true,
         hasJellyfinServers: true,
         hasPasswordAuth: true,
-        primaryAuthMethod: 'local',
         authMethods: {
           local: true,
           plex: true,
