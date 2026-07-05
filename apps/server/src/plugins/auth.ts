@@ -12,7 +12,7 @@ import { db } from '../db/client.js';
 import { users, mobileSessions } from '../db/schema.js';
 import { getSetting } from '../services/settings.js';
 import { resolveBetterAuthUser } from '../lib/sessionResolver.js';
-import { requireBetterAuthSecret } from '../lib/env.js';
+import { requireBetterAuthSecret, isBetterAuthSecretDerived } from '../lib/env.js';
 import { hashSha256 } from '../utils/hash.js';
 
 // Module-level cache - populated at startup and refreshed after restore
@@ -65,6 +65,12 @@ const authPlugin: FastifyPluginAsync = async (app) => {
   // would otherwise surface as a 500 on every /api/v1/auth/* request instead
   // of a clear startup failure.
   requireBetterAuthSecret();
+
+  if (isBetterAuthSecretDerived()) {
+    app.log.info(
+      'BETTER_AUTH_SECRET is not set; deriving it from JWT_SECRET. Set BETTER_AUTH_SECRET explicitly to avoid relying on this derivation.'
+    );
+  }
 
   await app.register(jwt, {
     secret,

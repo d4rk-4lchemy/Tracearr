@@ -231,19 +231,46 @@ describe('auth decorators with better auth sessions', () => {
 });
 
 describe('auth plugin startup validation', () => {
-  const original = process.env.BETTER_AUTH_SECRET;
+  const originalBetterAuthSecret = process.env.BETTER_AUTH_SECRET;
+  const originalJwtSecret = process.env.JWT_SECRET;
 
   afterEach(() => {
-    if (original === undefined) delete process.env.BETTER_AUTH_SECRET;
-    else process.env.BETTER_AUTH_SECRET = original;
+    if (originalBetterAuthSecret === undefined) delete process.env.BETTER_AUTH_SECRET;
+    else process.env.BETTER_AUTH_SECRET = originalBetterAuthSecret;
+    if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalJwtSecret;
+    vi.resetModules();
   });
 
-  it('refuses to register when BETTER_AUTH_SECRET is missing', async () => {
+  it('refuses to register when neither BETTER_AUTH_SECRET nor JWT_SECRET is set', async () => {
     delete process.env.BETTER_AUTH_SECRET;
+    delete process.env.JWT_SECRET;
     const app = Fastify({ logger: false });
     await app.register(sensible);
     await app.register(cookie, { secret: 'test-cookie-secret' });
-    await expect(app.register(authPlugin).after()).rejects.toThrow('BETTER_AUTH_SECRET');
+    await expect(app.register(authPlugin).after()).rejects.toThrow('JWT_SECRET');
+    await app.close();
+  });
+
+  it('registers successfully by deriving the secret when only JWT_SECRET is set', async () => {
+    delete process.env.BETTER_AUTH_SECRET;
+    process.env.JWT_SECRET = 'test-jwt-secret-must-be-32-chars-min';
+
+    // env.ts memoizes its resolution at module scope, and the top-level
+    // `authPlugin` import above already resolved against setup.ts's explicit
+    // BETTER_AUTH_SECRET - reusing that import here would pass even if
+    // derivation were deleted entirely. Reset the module registry and
+    // re-import both the plugin and env.ts so registration actually
+    // exercises derivation, then assert the derived path ran.
+    vi.resetModules();
+    const { default: freshAuthPlugin } = await import('../../plugins/auth.js');
+    const { isBetterAuthSecretDerived } = await import('../../lib/env.js');
+
+    const app = Fastify({ logger: false });
+    await app.register(sensible);
+    await app.register(cookie, { secret: 'test-cookie-secret' });
+    await expect(app.register(freshAuthPlugin).after()).resolves.not.toThrow();
+    expect(isBetterAuthSecretDerived()).toBe(true);
     await app.close();
   });
 });
