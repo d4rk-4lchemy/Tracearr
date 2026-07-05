@@ -123,6 +123,12 @@ import {
   scheduleBackupJob,
   shutdownBackupQueue,
 } from './jobs/backupQueue.js';
+import {
+  initPlexTokenRefreshQueue,
+  startPlexTokenRefreshWorker,
+  schedulePlexTokenRefresh,
+  shutdownPlexTokenRefreshQueue,
+} from './jobs/plexTokenRefresh.js';
 import { initHeavyOpsLock } from './jobs/heavyOpsLock.js';
 import { initPushRateLimiter } from './services/pushRateLimiter.js';
 import { initializeV2Rules } from './services/rules/v2Integration.js';
@@ -507,6 +513,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     await shutdownVersionCheckQueue();
     await shutdownInactivityCheckQueue();
     await shutdownBackupQueue();
+    await shutdownPlexTokenRefreshQueue();
   });
 
   // Probe DB and Redis to decide if we can initialize services now
@@ -815,6 +822,17 @@ async function initializeServices(app: FastifyInstance) {
     // Don't throw - scheduled backups are non-critical
   }
 
+  // Initialize plex token refresh queue (renews strong-PIN JWT tokens before they expire)
+  try {
+    initPlexTokenRefreshQueue(redisUrl);
+    startPlexTokenRefreshWorker();
+    void schedulePlexTokenRefresh();
+    app.log.info('Plex token refresh queue initialized');
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize plex token refresh queue');
+    // Don't throw - legacy tokens don't need refreshing and login has its own fallback
+  }
+
   // Initialize poller with cache services
   initializePoller(cacheService, pubSubService);
 
@@ -1110,6 +1128,7 @@ async function start() {
         void shutdownVersionCheckQueue();
         void shutdownInactivityCheckQueue();
         void shutdownBackupQueue();
+        void shutdownPlexTokenRefreshQueue();
         void app.close().then(() => process.exit(0));
       });
     }
@@ -1145,6 +1164,7 @@ async function start() {
           shutdownVersionCheckQueue(),
           shutdownInactivityCheckQueue(),
           shutdownBackupQueue(),
+          shutdownPlexTokenRefreshQueue(),
         ]).catch((err) => {
           app.log.error({ err }, 'Error shutting down queues during maintenance');
         });

@@ -138,6 +138,9 @@ const authResult = {
   email: 'plex@example.com',
   thumb: 'https://plex.tv/thumb.png',
   token: 'plex-token-abc',
+  tokenKind: 'legacy' as const,
+  refreshToken: null,
+  expiresAt: null,
 };
 
 describe('plex better auth plugin', () => {
@@ -270,6 +273,9 @@ describe('plex better auth plugin', () => {
       email: 'newuser@example.com',
       thumb: 'https://plex.tv/thumb3.png',
       token: 'plex-token-new',
+      tokenKind: 'legacy' as const,
+      refreshToken: null,
+      expiresAt: null,
     };
 
     beforeEach(() => {

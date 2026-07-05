@@ -61,12 +61,31 @@ async function createPlexSession(ctx: PlexEndpointCtx, userId: string) {
   return { session, user };
 }
 
+interface PlexTokenMetadata {
+  token: string;
+  tokenKind: 'jwt' | 'legacy';
+  refreshToken: string | null;
+  expiresAt: Date | null;
+}
+
 /**
  * Ensure the auth_accounts plex row exists for this (user, plex.tv account).
  * The unique(provider_id, account_id) constraint means a re-login must not
  * surface a constraint violation, so this upserts.
+ *
+ * For strong-PIN JWT tokens, `refreshToken` and `accessTokenExpiresAt` are
+ * stored so the daily refresh job can renew them. Legacy tokens have no
+ * expiry, so those columns stay null and the row is just a long-lived token.
  */
-async function upsertPlexAuthAccount(userId: string, plexAccountId: string, plexToken: string) {
+async function upsertPlexAuthAccount(
+  userId: string,
+  plexAccountId: string,
+  tokenInfo: PlexTokenMetadata
+) {
+  const isJwt = tokenInfo.tokenKind === 'jwt';
+  const refreshToken = isJwt ? tokenInfo.refreshToken : null;
+  const accessTokenExpiresAt = isJwt ? tokenInfo.expiresAt : null;
+
   await db
     .insert(authAccounts)
     .values({
@@ -74,11 +93,21 @@ async function upsertPlexAuthAccount(userId: string, plexAccountId: string, plex
       accountId: plexAccountId,
       providerId: 'plex',
       userId,
-      accessToken: plexToken,
+      accessToken: tokenInfo.token,
+      refreshToken,
+      accessTokenExpiresAt,
     })
     .onConflictDoUpdate({
       target: [authAccounts.providerId, authAccounts.accountId],
-      set: { userId, accessToken: plexToken, updatedAt: new Date() },
+      // Intentional downgrade on relogin: a legacy re-login nulls out
+      // refreshToken/accessTokenExpiresAt, since a legacy token has neither.
+      set: {
+        userId,
+        accessToken: tokenInfo.token,
+        refreshToken,
+        accessTokenExpiresAt,
+        updatedAt: new Date(),
+      },
     });
 }
 
@@ -138,6 +167,12 @@ export const plexPlugin = () =>
                   });
                 }
 
+                // authResult.token may be a strong-PIN JWT (see PlexTokenMetadata).
+                // Only clients.plex.tv has been confirmed to accept a JWT here; PMS
+                // itself may reject a JWT in X-Plex-Token. Re-validate against a
+                // real PMS before the JWT branch can ever fire - today
+                // initiateOAuth never sends a JWK, so tokenKind is always 'legacy'
+                // and this mirror only ever carries a legacy token.
                 await db
                   .update(plexAccounts)
                   .set({
@@ -171,7 +206,7 @@ export const plexPlugin = () =>
                   })
                   .where(eq(users.id, user.id));
 
-                await upsertPlexAuthAccount(user.id, authResult.id, authResult.token);
+                await upsertPlexAuthAccount(user.id, authResult.id, authResult);
 
                 ctx.context.logger.info('Plex user login via plex_accounts', {
                   userId: user.id,
@@ -244,7 +279,7 @@ export const plexPlugin = () =>
                 })
                 .where(eq(users.id, user.id));
 
-              await upsertPlexAuthAccount(user.id, authResult.id, authResult.token);
+              await upsertPlexAuthAccount(user.id, authResult.id, authResult);
 
               ctx.context.logger.info('Returning Plex user login (legacy lookup, migrated)', {
                 userId: user.id,
@@ -272,6 +307,11 @@ export const plexPlugin = () =>
                 plexEmail: authResult.email,
                 plexThumb: authResult.thumb,
                 plexToken: authResult.token,
+                plexTokenKind: authResult.tokenKind,
+                plexRefreshToken: authResult.refreshToken,
+                plexTokenExpiresAt: authResult.expiresAt
+                  ? authResult.expiresAt.toISOString()
+                  : null,
               })
             );
 
@@ -333,7 +373,7 @@ export const plexPlugin = () =>
               allowLogin: true,
             });
 
-            await upsertPlexAuthAccount(newUser.id, authResult.id, authResult.token);
+            await upsertPlexAuthAccount(newUser.id, authResult.id, authResult);
 
             await getRedis().del(REDIS_KEYS.PLEX_TEMP_TOKEN(tempToken));
 
@@ -370,14 +410,24 @@ export const plexPlugin = () =>
             });
           }
 
-          const { plexAccountId, plexUsername, plexEmail, plexThumb, plexToken } = JSON.parse(
-            stored
-          ) as {
+          const {
+            plexAccountId,
+            plexUsername,
+            plexEmail,
+            plexThumb,
+            plexToken,
+            plexTokenKind,
+            plexRefreshToken,
+            plexTokenExpiresAt,
+          } = JSON.parse(stored) as {
             plexAccountId: string;
             plexUsername: string;
             plexEmail: string;
             plexThumb: string;
             plexToken: string;
+            plexTokenKind?: 'jwt' | 'legacy';
+            plexRefreshToken?: string | null;
+            plexTokenExpiresAt?: string | null;
           };
 
           try {
@@ -472,7 +522,12 @@ export const plexPlugin = () =>
               });
             }
 
-            await upsertPlexAuthAccount(newUser.id, plexAccountId, plexToken);
+            await upsertPlexAuthAccount(newUser.id, plexAccountId, {
+              token: plexToken,
+              tokenKind: plexTokenKind ?? 'legacy',
+              refreshToken: plexRefreshToken ?? null,
+              expiresAt: plexTokenExpiresAt ? new Date(plexTokenExpiresAt) : null,
+            });
 
             await db
               .update(servers)
