@@ -1,7 +1,7 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
-  <i>Current vesrion:</i> <b>1.4.28</b>
+  <i>Current vesrion:</i> <b>1.4.29</b>
 </p>
 
 > [!WARNING]  
@@ -24,8 +24,8 @@
 
 <p>
   <span style="font-size:20px;">
-    From versions >1.4.28, <b><i>latest</i></b> image will be changed from <b><span style="color:red">supervised</span></b> to <b><i><span style="color:green">standalone</span></i></b> image!<br>
-    If you are currently using <i><b>latest</b></i> tag or <i><b>no tag at all</b></i>, replace it with <i><b><span style="color:green">supervised</span></b></i>!
+    From versions >=1.4.29, <b><i>latest</i></b> image is changed from <b><span style="color:red">supervised</span></b> to <b><i><span style="color:green">standalone</span></i></b> image!<br>
+    If you are currently using version 1.4.28 or below and <i><b>latest</b></i> tag or <i><b>no tag at all</b></i>, replace it with <i><b><span style="color:green">supervised</span></b></i>!
   </span><br>
   <i>This to ensure that everyone can just replace the image path and use this as in-place replacement :)</i>
 </p>

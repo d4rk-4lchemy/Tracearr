@@ -27,7 +27,10 @@ import { registerService, unregisterService } from './serviceTracker.js';
 import { db } from '../db/client.js';
 import { servers } from '../db/schema.js';
 import { PlexEventSource } from './mediaServer/plex/eventSource.js';
-import { DispatcharrRealtimeConnector } from './mediaServer/dispatcharr/realtime.js';
+import {
+  DispatcharrRealtimeConnector,
+  type DispatcharrRealtimeStatus,
+} from './mediaServer/dispatcharr/realtime.js';
 import type { MediaSession } from './mediaServer/types.js';
 import {
   JellyfinEmbyEventSource,
@@ -428,6 +431,19 @@ export class SSEManager extends EventEmitter {
       connection.state = status.state;
       connection.inFallback = status.mode !== 'ws' || status.state === 'fallback';
 
+      const connectionStatus = this.buildDispatcharrConnectionStatus(status);
+      if (this.cacheService) {
+        this.cacheService
+          .setServerConnectionStatus(serverId, connectionStatus)
+          .catch((err: unknown) => {
+            console.error(
+              `[SSEManager] Failed to write connection status for ${serverName}:`,
+              err
+            );
+          });
+      }
+      broadcastToAll(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connectionStatus);
+
       this.emit('connection:status', {
         serverId: status.serverId,
         serverName: status.serverName,
@@ -467,7 +483,7 @@ export class SSEManager extends EventEmitter {
   private buildConnectionStatus(
     serverId: string,
     serverName: string,
-    serverType: 'plex' | 'jellyfin' | 'emby',
+    serverType: ServerConnectionStatus['serverType'],
     status: SSEConnectionStatus
   ): ServerConnectionStatus {
     const state = status.state;
@@ -480,6 +496,22 @@ export class SSEManager extends EventEmitter {
       lastEventAt: status.lastEventAt?.toISOString() ?? null,
       since: state === 'connected' ? (status.connectedAt?.toISOString() ?? null) : null,
       error: status.error,
+    };
+  }
+
+  private buildDispatcharrConnectionStatus(
+    status: DispatcharrRealtimeStatus
+  ): ServerConnectionStatus {
+    const isRealtime = status.mode === 'ws' && status.state === 'connected';
+    return {
+      serverId: status.serverId,
+      serverName: status.serverName,
+      serverType: 'dispatcharr',
+      mode: isRealtime ? 'realtime' : 'polling',
+      state: status.state,
+      lastEventAt: status.lastEventAt?.toISOString() ?? null,
+      since: isRealtime ? (status.connectedAt?.toISOString() ?? null) : null,
+      error: status.error ?? status.fallbackReason,
     };
   }
 
@@ -496,8 +528,23 @@ export class SSEManager extends EventEmitter {
     if (!this.cacheService) return;
 
     for (const connection of this.connections.values()) {
-      if (!connection.eventSource) continue;
+      if (connection.dispatcharrRealtime) {
+        const connectionStatus = this.buildDispatcharrConnectionStatus(
+          connection.dispatcharrRealtime.getStatus()
+        );
 
+        this.cacheService
+          .setServerConnectionStatus(connection.serverId, connectionStatus)
+          .catch((err: unknown) => {
+            console.error(
+              `[SSEManager] Failed to refresh connection status for ${connection.serverName}:`,
+              err
+            );
+          });
+        continue;
+      }
+
+      if (!connection.eventSource) continue;
       const status = connection.eventSource.getStatus();
       const connectionStatus = this.buildConnectionStatus(
         connection.serverId,
