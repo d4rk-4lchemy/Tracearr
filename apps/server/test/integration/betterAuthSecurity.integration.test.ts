@@ -148,15 +148,18 @@ describe('better auth security (integration)', () => {
   });
 
   afterAll(async () => {
-    // Pairing/rate-limit calls in these tests leave short-TTL Redis keys
-    // behind (tracearr:ba:*, tracearr:mobile:*, mobile_token_gen:*,
-    // tracearr:ratelimit:mobile:*) that would otherwise survive long enough
-    // for the redis-prefix canary test to flag them as unprefixed leaks.
+    // Pairing/rate-limit calls in these tests leave Redis keys behind
+    // (tracearr:ba:*, tracearr:mobile:*, tracearr:mobile_refresh:*,
+    // mobile_token_gen:*, tracearr:ratelimit:mobile:*) that would otherwise
+    // survive long enough for the redis-prefix canary test to flag them as
+    // unprefixed leaks. The mobile_refresh keys carry a 90-day TTL, so
+    // without this cleanup they poison the shared test Redis across runs.
     const redis = getRedis();
     const prefix = process.env.REDIS_PREFIX ?? '';
     const patterns = [
       `${prefix}tracearr:ba:*`,
       `${prefix}tracearr:mobile:*`,
+      `${prefix}tracearr:mobile_refresh:*`,
       `${prefix}mobile_token_gen:*`,
       `${prefix}tracearr:ratelimit:mobile:*`,
     ];
