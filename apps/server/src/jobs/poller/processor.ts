@@ -24,6 +24,7 @@ import { isMaintenance } from '../../serverState.js';
 import type { CacheService, PubSubService } from '../../services/cache.js';
 import { type GeoLocation } from '../../services/geoip.js';
 import { createMediaServerClient } from '../../services/mediaServer/index.js';
+import type { MediaSession } from '../../services/mediaServer/types.js';
 import { lookupGeoIP } from '../../services/plexGeoip.js';
 import { registerService, unregisterService } from '../../services/serviceTracker.js';
 import { sseManager } from '../../services/sseManager.js';
@@ -95,6 +96,23 @@ const missedPollTracking = new Map<string, ActiveSession>();
 
 // Last DB write time per session — for 30s periodic flush.
 const lastDbWriteMap = new Map<string, number>();
+
+export function mergeDispatcharrRealtimeSessions(
+  wsSessions: MediaSession[],
+  restSessions: MediaSession[]
+): MediaSession[] {
+  const liveFromRestBySessionKey = new Map(
+    restSessions
+      .filter((session) => session.media.type === 'live')
+      .map((session) => [session.sessionKey, session])
+  );
+  const liveFromWs = wsSessions
+    .filter((session) => session.media.type === 'live')
+    .map((session) => liveFromRestBySessionKey.get(session.sessionKey) ?? session);
+  const vodFromRest = restSessions.filter((session) => session.media.type !== 'live');
+
+  return [...liveFromWs, ...vodFromRest];
+}
 
 export function syncDispatcharrPendingProgress(
   pendingData: PendingSessionData,
@@ -292,9 +310,7 @@ async function processServerSessions(
         ? await (async () => {
             const wsSessions = sseManager.getDispatcharrLatestSessions(server.id) ?? [];
             const restSessions = await client.getSessions();
-            const liveFromWs = wsSessions.filter((session) => session.media.type === 'live');
-            const vodFromRest = restSessions.filter((session) => session.media.type !== 'live');
-            return [...liveFromWs, ...vodFromRest];
+            return mergeDispatcharrRealtimeSessions(wsSessions, restSessions);
           })()
         : await client.getSessions();
     const processedSessions = mediaSessions.map((s) => mapMediaSession(s, server.type));
@@ -1159,6 +1175,11 @@ async function processServerSessions(
         // Build base update payload
         const updatePayload: Partial<typeof sessions.$inferInsert> = {
           state: newState,
+          mediaTitle: processed.mediaTitle,
+          thumbPath: processed.thumbPath || null,
+          channelTitle: processed.channelTitle,
+          channelIdentifier: processed.channelIdentifier,
+          channelThumb: processed.channelThumb,
           quality: processed.quality,
           bitrate: processed.bitrate,
           progressMs: processed.progressMs || null,
