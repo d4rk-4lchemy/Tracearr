@@ -11,8 +11,8 @@ import fastifyStatic from '@fastify/static';
 import { existsSync, readFileSync } from 'node:fs';
 import { gzipSync, createGzip } from 'node:zlib';
 import { Redis } from 'ioredis';
-import { fromNodeHeaders } from 'better-auth/node';
 import { API_BASE_PATH, REDIS_KEYS, WS_EVENTS } from '@tracearr/shared';
+import { toWebRequest } from './lib/betterAuthRequest.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -391,14 +391,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     config: { rateLimit: false },
     async handler(request, reply) {
       try {
-        const url = new URL(request.url, `http://${request.headers.host}`);
-        const headers = fromNodeHeaders(request.headers);
-        const req = new Request(url.toString(), {
-          method: request.method,
-          headers,
-          ...(request.body ? { body: JSON.stringify(request.body) } : {}),
-        });
-        const response = await getAuth().handler(req);
+        const response = await getAuth().handler(toWebRequest(request));
         reply.status(response.status);
         for (const [key, value] of response.headers) {
           reply.header(key, value);
