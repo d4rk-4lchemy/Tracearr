@@ -21,6 +21,9 @@ import { createTestApp } from '../../test/helpers.js';
 vi.mock('../../lib/auth.js', () => ({
   getAuth: vi.fn(),
   closeAuth: vi.fn(),
+  // toWebRequest stamps this header on every forwarded request; the mock
+  // must carry the real wire value or headers.set(undefined, ...) throws.
+  CLIENT_IP_HEADER: 'x-tracearr-client-ip',
 }));
 
 import { getAuth } from '../../lib/auth.js';
