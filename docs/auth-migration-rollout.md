@@ -10,7 +10,7 @@ These items go at the top of the release notes, in this order.
    - `docker exec tracearr node apps/server/scripts/cli.ts reset-password` (works even when the account has no existing password), or
    - Plex login, when a Plex account is linked.
 2. **All web users must log in once after upgrading.** Legacy web sessions are not carried over.
-3. **Mobile devices idle for more than 30 days must re-pair.** Session expiry changed from the legacy fixed 90 days to a 30-day rolling window (any use within 30 days extends it). Actively used devices keep working without re-pairing.
+3. **Mobile devices paired after upgrading use a 30-day rolling session** (any use within 30 days extends it); a device idle for more than 30 days re-pairs. Devices paired before the upgrade keep working on their existing tokens until they are re-paired; nothing expires them at 30 days.
 
 ## Environment variables
 
@@ -55,7 +55,7 @@ The public docs live at `/home/cgallopo/dev/personal/tracearr-docs` (Next.js App
    - Add `BETTER_AUTH_SECRET` as an optional variable with the derivation note. For Kubernetes: the Helm chart's secret handles `JWT_SECRET`, `COOKIE_SECRET`, `DB_PASSWORD` only and has no `BETTER_AUTH_SECRET` key (`docker/helm/tracearr/values.yaml`, `templates/secret.yaml`), so chart installs rely on derivation; say so rather than inventing a chart value.
 
 4. `app/getting-started/first-server/page.mdx` (login methods page)
-   - `## Initial Setup` and `### Plex (Recommended)` stay accurate: Plex sign-in exists as Better Auth plugin endpoints `/api/v1/auth/plex/initiate`, `check-pin`, `connect` (verified live: initiate returned a real plex.tv PIN).
+   - `## Initial Setup` and `### Plex (Recommended)` stay accurate: Plex sign-in exists as Better Auth plugin endpoints `/api/v1/auth/plex/initiate`, `check-pin`, `connect` (initiate and check-pin verified live against plex.tv; `connect` UNVERIFIED live because it needs a human authorizing the PIN, covered by route tests).
    - Add OIDC: when `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, and `OIDC_CLIENT_SECRET` are set, the login page shows an SSO button labeled by `OIDC_PROVIDER_NAME` (`apps/server/src/routes/setup.ts`, `apps/web/src/pages/Login.tsx`).
    - `### Jellyfin` and `### Emby` stay accurate (create a local account, then connect the server via API key; `connect-api-key` was kept). Add an upgrade note: signing in to Tracearr with Jellyfin credentials was removed in this release; the old endpoint now returns 404 (verified live).
 
@@ -63,7 +63,7 @@ The public docs live at `/home/cgallopo/dev/personal/tracearr-docs` (Next.js App
    - Correct the pairing token expiry: the docs say 5 minutes; the actual value is 15 minutes (`TOKEN_EXPIRY_MINUTES = 15` in `apps/server/src/routes/mobile.ts`; verified live, `expiresAt` was 15 minutes after issue). Affects the callout after the QR steps and the "Invalid QR code" troubleshooting entry.
    - Device limit of 5 stays accurate (`MAX_PAIRED_DEVICES = 5`).
    - The `trr_mob_...` token prefix stays accurate (verified live on `/mobile/pair-token`).
-   - Add device session expiry: paired devices idle for more than 30 days must re-pair; the session is a 30-day rolling window extended by use (Better Auth `session.expiresIn` 30 days with daily `updateAge`, `apps/server/src/lib/auth.ts`). Previously sessions lasted a fixed 90 days.
+   - Add device session expiry, scoped by pairing date: devices paired after this release use a 30-day rolling window extended by use (Better Auth `session.expiresIn` 30 days with daily `updateAge`, `apps/server/src/lib/auth.ts`), so 30 idle days means re-pairing. Devices paired before this release stay on the legacy token shim, which refreshes on use with a database fallback and does not expire at 30 days (`apps/server/src/routes/mobile.ts` legacy refresh path); they keep working until re-paired.
 
 6. `app/faq/page.mdx` (password reset entry)
    - `apps/server/scripts/reset-password.ts` still exists, so the documented Docker and Proxmox commands keep working. Add the fuller admin recovery CLI: `docker exec tracearr node apps/server/scripts/cli.ts <command>` with commands `reset-password [username] [--generate]`, `set-username`, `set-email`, `list-users`, `enable-local-login` (`apps/server/scripts/cli.ts`; verified live: `list-users` printed the owner with its login methods against an upgraded database).
@@ -76,7 +76,11 @@ The public docs live at `/home/cgallopo/dev/personal/tracearr-docs` (Next.js App
 
 8. Release note (Jellyfin removal): the site has no changelog or release-notes page at all. Either add a release-notes section to `app/upgrading/page.mdx` or create a new page (plus `_meta.ts` and `app/sitemap.ts` entries). Use the release-notes draft above; the three items in that order, Jellyfin removal first.
 
-9. `app/upgrading/page.mdx`: add this release's upgrade callouts regardless of where the full notes land: run migrations before starting the new version, all web users log in once, devices idle more than 30 days re-pair, Jellyfin login removed with the recovery paths.
+9. `app/upgrading/page.mdx`: add this release's upgrade callouts regardless of where the full notes land: run migrations before starting the new version, all web users log in once, newly paired devices use a 30-day rolling session (pre-upgrade pairings keep working unchanged), Jellyfin login removed with the recovery paths.
+
+10. `app/getting-started/installation/supervised/page.mdx`: no content change required; confirm the "secrets are generated automatically on first boot" claim still holds (it does: the supervised entrypoint generates and persists `JWT_SECRET`, `docker/entrypoint-supervised.sh`, and `BETTER_AUTH_SECRET` derivation keeps those installs zero-config).
+
+11. `app/configuration/backup/page.mdx`: the post-restore sentence "sessions are invalidated, requiring users to re-login" remains true after the migration (sessions live in the database and Redis; a restore without the matching Redis state invalidates them). No change required beyond confirming wording.
 
 ## Post-release follow-ups (later cleanup release, do not ship now)
 
