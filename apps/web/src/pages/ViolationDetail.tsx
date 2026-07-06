@@ -17,6 +17,7 @@ import {
   CONDITION_FIELD_LABELS,
   OPERATOR_LABELS,
   formatConditionFieldValue,
+  formatUserList,
   type UnitSystem,
 } from '@tracearr/shared';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +29,8 @@ import { SeverityBadge } from '@/components/violations/SeverityBadge';
 import { ActionResultsList } from '@/components/violations/ActionResultsList';
 import { getAvatarUrl } from '@/components/users/utils';
 import { getCountryName, getMediaDisplay } from '@/lib/utils';
+import { ServerBadge } from '@/components/server';
+import { useServerColorMap } from '@/hooks/useServerColorMap';
 import {
   useViolation,
   useAcknowledgeViolation,
@@ -88,11 +91,13 @@ function ConditionEvidenceRow({
   const thresholdFormatted = formatConditionFieldValue(thresholdNum, condition.field, unitSystem);
   const unitSuffix = thresholdFormatted.unit ? ` ${thresholdFormatted.unit}` : '';
   const thresholdDisplay =
-    condition.field === 'user_id'
-      ? resolveValue(condition.threshold)
-      : thresholdFormatted.unit
-        ? String(thresholdFormatted.displayValue)
-        : String(condition.threshold);
+    condition.field === 'user_id' && Array.isArray(condition.threshold)
+      ? formatUserList(condition.threshold as string[], userIdToName ?? {})
+      : condition.field === 'user_id'
+        ? resolveValue(condition.threshold)
+        : thresholdFormatted.unit
+          ? String(thresholdFormatted.displayValue)
+          : String(condition.threshold);
 
   let actualDisplay: string;
   if (condition.actual !== null && condition.actual !== undefined) {
@@ -198,6 +203,7 @@ export function ViolationDetail() {
 
   const { data: violation, isLoading } = useViolation(id!);
   const { data: settings } = useSettings();
+  const serverColorMap = useServerColorMap();
   const unitSystem: UnitSystem = settings?.unitSystem ?? 'metric';
   const acknowledgeViolation = useAcknowledgeViolation();
   const dismissViolation = useDismissViolation();
@@ -374,6 +380,11 @@ export function ViolationDetail() {
 
   const userDisplayName = violation.user.identityName ?? violation.user.username;
 
+  const userIdToName: Record<string, string> = {
+    ...(violation.userNames ?? {}),
+    [violation.user.id]: userDisplayName,
+  };
+
   const rawDescription = getViolationDescription(violation, unitSystem);
   const description = rawDescription.split(violation.user.id).join(userDisplayName);
 
@@ -518,8 +529,15 @@ export function ViolationDetail() {
                   {violation.user.identityName ?? violation.user.username}
                 </p>
                 <p className="text-muted-foreground truncate text-sm">@{violation.user.username}</p>
-                {violation.server?.name && (
-                  <p className="text-muted-foreground truncate text-xs">{violation.server.name}</p>
+                {violation.server && (
+                  <ServerBadge
+                    server={{
+                      ...violation.server,
+                      color: serverColorMap.get(violation.server.id) ?? null,
+                    }}
+                    variant="outlined"
+                    className="mt-1"
+                  />
                 )}
               </div>
             </Link>
@@ -540,7 +558,7 @@ export function ViolationDetail() {
                 key={group.groupIndex}
                 group={group}
                 unitSystem={unitSystem}
-                userIdToName={{ [violation.user.id]: userDisplayName }}
+                userIdToName={userIdToName}
               />
             ))}
           </div>

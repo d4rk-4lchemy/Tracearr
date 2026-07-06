@@ -41,6 +41,7 @@ import type {
   ShowStatsResponse,
   MediaType,
   WebhookFormat,
+  ServerConnectionStatus,
   // New analytics types
   DeviceCompatibilityResponse,
   DeviceCompatibilityMatrix,
@@ -479,7 +480,12 @@ class ApiClient {
 
     // Test reachability of a custom Plex URL before save. Accepts either an
     // authenticated owner session or a Plex signup tempToken (for Login.tsx).
-    testPlexConnection: (data: { uri: string; accountId?: string; tempToken?: string }) =>
+    testPlexConnection: (data: {
+      uri: string;
+      accountId?: string;
+      tempToken?: string;
+      claimCode?: string;
+    }) =>
       this.request<{ connection: PlexDiscoveredConnection }>('/auth/plex/test-connection', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -612,6 +618,12 @@ class ApiClient {
       }>('/servers/health');
       return response.data;
     },
+    connectionStatus: async () => {
+      const response = await this.request<{ data: ServerConnectionStatus[] }>(
+        '/servers/connection-status'
+      );
+      return response.data;
+    },
   };
 
   // Users
@@ -678,16 +690,14 @@ class ApiClient {
      * Query history with cursor-based pagination and advanced filters.
      * Supports infinite scroll patterns with aggregate stats.
      */
-    history: (params: Partial<HistoryQueryInput> & { cursor?: string }) => {
+    history: (params: Partial<HistoryQueryInput> & { cursor?: string; serverIds?: string[] }) => {
       const searchParams = new URLSearchParams();
-      const multiServerParams = params as { serverIds?: string[] };
       if (params.cursor) searchParams.set('cursor', params.cursor);
       if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
       if (params.serverUserIds?.length)
         searchParams.set('serverUserIds', params.serverUserIds.join(','));
-      if (params.serverId) searchParams.set('serverId', params.serverId);
-      if (multiServerParams.serverIds?.length) {
-        for (const id of multiServerParams.serverIds) {
+      if (params.serverIds?.length) {
+        for (const id of params.serverIds) {
           searchParams.append('serverIds', id);
         }
       }
@@ -717,14 +727,14 @@ class ApiClient {
      * Get aggregate stats for history (total plays, watch time, unique users/content).
      * Called separately from history() so sorting changes don't refetch these stats.
      */
-    historyAggregates: (params: Partial<HistoryAggregatesQueryInput>) => {
+    historyAggregates: (
+      params: Partial<HistoryAggregatesQueryInput> & { serverIds?: string[] }
+    ) => {
       const searchParams = new URLSearchParams();
-      const multiServerParams = params as { serverIds?: string[] };
       if (params.serverUserIds?.length)
         searchParams.set('serverUserIds', params.serverUserIds.join(','));
-      if (params.serverId) searchParams.set('serverId', params.serverId);
-      if (multiServerParams.serverIds?.length) {
-        for (const id of multiServerParams.serverIds) {
+      if (params.serverIds?.length) {
+        for (const id of params.serverIds) {
           searchParams.append('serverIds', id);
         }
       }
@@ -754,14 +764,8 @@ class ApiClient {
      * Get available filter values for dropdowns on the History page.
      * Accepts optional date range to match history query filters.
      */
-    filterOptions: (params?: {
-      serverId?: string;
-      serverIds?: string[];
-      startDate?: Date;
-      endDate?: Date;
-    }) => {
+    filterOptions: (params?: { serverIds?: string[]; startDate?: Date; endDate?: Date }) => {
       const searchParams = new URLSearchParams();
-      if (params?.serverId) searchParams.set('serverId', params.serverId);
       if (params?.serverIds?.length) {
         for (const id of params.serverIds) {
           searchParams.append('serverIds', id);
@@ -854,7 +858,7 @@ class ApiClient {
       userId?: string;
       severity?: string;
       acknowledged?: boolean;
-      serverId?: string;
+      serverIds?: string[];
       orderBy?: string;
       orderDir?: 'asc' | 'desc';
     }) => {
@@ -865,7 +869,11 @@ class ApiClient {
       if (params?.severity) searchParams.set('severity', params.severity);
       if (params?.acknowledged !== undefined)
         searchParams.set('acknowledged', String(params.acknowledged));
-      if (params?.serverId) searchParams.set('serverId', params.serverId);
+      if (params?.serverIds?.length) {
+        for (const id of params.serverIds) {
+          searchParams.append('serverIds', id);
+        }
+      }
       if (params?.orderBy) searchParams.set('orderBy', params.orderBy);
       if (params?.orderDir) searchParams.set('orderDir', params.orderDir);
       return this.request<PaginatedResponse<ViolationWithDetails>>(
@@ -881,7 +889,7 @@ class ApiClient {
     bulkAcknowledge: (params: {
       ids?: string[];
       selectAll?: boolean;
-      filters?: { serverId?: string; severity?: string; acknowledged?: boolean };
+      filters?: { serverIds?: string[]; severity?: string; acknowledged?: boolean };
     }) =>
       this.request<{ success: boolean; acknowledged: number }>('/violations/bulk/acknowledge', {
         method: 'POST',
@@ -890,7 +898,7 @@ class ApiClient {
     bulkDismiss: (params: {
       ids?: string[];
       selectAll?: boolean;
-      filters?: { serverId?: string; severity?: string; acknowledged?: boolean };
+      filters?: { serverIds?: string[]; severity?: string; acknowledged?: boolean };
     }) =>
       this.request<{ success: boolean; dismissed: number }>('/violations/bulk', {
         method: 'DELETE',
@@ -911,6 +919,21 @@ class ApiClient {
     return params;
   }
 
+  // Variant that serializes repeatable serverIds (precedence over legacy serverId)
+  private buildStatsParamsMulti(timeRange?: StatsTimeRange, serverIds?: string[]): URLSearchParams {
+    const params = new URLSearchParams();
+    if (timeRange?.period) params.set('period', timeRange.period);
+    if (timeRange?.startDate) params.set('startDate', timeRange.startDate);
+    if (timeRange?.endDate) params.set('endDate', timeRange.endDate);
+    if (serverIds?.length) {
+      for (const id of serverIds) {
+        params.append('serverIds', id);
+      }
+    }
+    params.set('timezone', timeRange?.timezone ?? getBrowserTimezone());
+    return params;
+  }
+
   stats = {
     dashboard: (serverIds?: string[]) => {
       const params = new URLSearchParams();
@@ -923,8 +946,8 @@ class ApiClient {
       params.set('timezone', getBrowserTimezone());
       return this.request<DashboardStats>(`/stats/dashboard?${params.toString()}`);
     },
-    plays: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'week' }, serverId);
+    plays: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'week' }, serverIds);
       const response = await this.request<{ data: PlayStats[] }>(
         `/stats/plays?${params.toString()}`
       );
@@ -940,7 +963,6 @@ class ApiClient {
     locations: async (params?: {
       timeRange?: StatsTimeRange;
       serverUserId?: string;
-      serverId?: string;
       serverIds?: string[];
       mediaType?: 'movie' | 'episode' | 'track';
     }) => {
@@ -949,7 +971,6 @@ class ApiClient {
       if (params?.timeRange?.startDate) searchParams.set('startDate', params.timeRange.startDate);
       if (params?.timeRange?.endDate) searchParams.set('endDate', params.timeRange.endDate);
       if (params?.serverUserId) searchParams.set('serverUserId', params.serverUserId);
-      if (params?.serverId) searchParams.set('serverId', params.serverId);
       if (params?.serverIds?.length) {
         for (const id of params.serverIds) {
           searchParams.append('serverIds', id);
@@ -959,29 +980,29 @@ class ApiClient {
       const query = searchParams.toString();
       return this.request<LocationStatsResponse>(`/stats/locations${query ? `?${query}` : ''}`);
     },
-    playsByDayOfWeek: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    playsByDayOfWeek: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       const response = await this.request<{ data: { day: number; name: string; count: number }[] }>(
         `/stats/plays-by-dayofweek?${params.toString()}`
       );
       return response.data;
     },
-    playsByHourOfDay: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    playsByHourOfDay: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       const response = await this.request<{ data: { hour: number; count: number }[] }>(
         `/stats/plays-by-hourofday?${params.toString()}`
       );
       return response.data;
     },
-    platforms: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    platforms: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       const response = await this.request<{ data: { platform: string | null; count: number }[] }>(
         `/stats/platforms?${params.toString()}`
       );
       return response.data;
     },
-    quality: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    quality: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       return this.request<{
         directPlay: number;
         directStream: number;
@@ -1026,8 +1047,8 @@ class ApiClient {
       }>(`/stats/top-content?${params.toString()}`);
       return response;
     },
-    concurrent: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    concurrent: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       const response = await this.request<{
         data: {
           hour: string;
@@ -1041,10 +1062,10 @@ class ApiClient {
     },
     engagement: async (
       timeRange?: StatsTimeRange,
-      serverId?: string,
+      serverIds?: string[],
       options?: { mediaType?: MediaType; limit?: number }
     ) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'week' }, serverId);
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'week' }, serverIds);
       if (options?.mediaType) params.set('mediaType', options.mediaType);
       if (options?.limit) params.set('limit', String(options.limit));
       return this.request<EngagementStats>(`/stats/engagement?${params.toString()}`);
@@ -1064,13 +1085,18 @@ class ApiClient {
     },
 
     // Device compatibility stats
-    deviceCompatibility: async (timeRange?: StatsTimeRange, serverId?: string, minSessions = 5) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    deviceCompatibility: async (
+      timeRange?: StatsTimeRange,
+      serverIds?: string[],
+      minSessions = 5
+    ) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       params.set('minSessions', String(minSessions));
       return this.request<DeviceCompatibilityResponse>(
         `/stats/device-compatibility?${params.toString()}`
       );
     },
+    // Matrix is single-server only; fan-out in useDeviceCompatibilityMatrix calls this per id.
     deviceCompatibilityMatrix: async (
       timeRange?: StatsTimeRange,
       serverId?: string,
@@ -1082,20 +1108,20 @@ class ApiClient {
         `/stats/device-compatibility/matrix?${params.toString()}`
       );
     },
-    deviceHealth: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    deviceHealth: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       return this.request<DeviceHealthResponse>(
         `/stats/device-compatibility/health?${params.toString()}`
       );
     },
-    transcodeHotspots: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    transcodeHotspots: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       return this.request<TranscodeHotspotsResponse>(
         `/stats/device-compatibility/hotspots?${params.toString()}`
       );
     },
-    topTranscodingUsers: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    topTranscodingUsers: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       return this.request<TopTranscodingUsersResponse>(
         `/stats/device-compatibility/top-transcoding-users?${params.toString()}`
       );
@@ -1104,37 +1130,45 @@ class ApiClient {
     // Bandwidth stats
     bandwidthDaily: async (
       timeRange?: StatsTimeRange,
-      serverId?: string,
+      serverIds?: string[],
       serverUserId?: string
     ) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       if (serverUserId) params.set('serverUserId', serverUserId);
       return this.request<DailyBandwidthResponse>(`/stats/bandwidth/daily?${params.toString()}`);
     },
-    bandwidthTopUsers: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    bandwidthTopUsers: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       return this.request<BandwidthTopUsersResponse>(
         `/stats/bandwidth/top-users?${params.toString()}`
       );
     },
-    bandwidthSummary: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    bandwidthSummary: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       return this.request<BandwidthSummary>(`/stats/bandwidth/summary?${params.toString()}`);
     },
   };
 
   // Library statistics - data fetching for library analytics pages
   library = {
-    stats: (serverId?: string, libraryId?: string) => {
+    stats: (serverIds?: string[], libraryId?: string) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       if (libraryId) params.set('libraryId', libraryId);
       params.set('timezone', getBrowserTimezone());
       return this.request<LibraryStatsResponse>(`/library/stats?${params.toString()}`);
     },
-    growth: (serverId?: string, libraryId?: string, period: string = '30d') => {
+    growth: (serverIds?: string[], libraryId?: string, period: string = '30d') => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       if (libraryId) params.set('libraryId', libraryId);
       params.set('period', period);
       params.set('timezone', getBrowserTimezone());
@@ -1160,15 +1194,19 @@ class ApiClient {
       params.set('timezone', getBrowserTimezone());
       return this.request<LibraryStorageResponse>(`/library/storage?${params.toString()}`);
     },
-    duplicates: (serverId?: string, page: number = 1, pageSize: number = 20) => {
+    duplicates: (serverIds?: string[], page: number = 1, pageSize: number = 20) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       params.set('page', String(page));
       params.set('pageSize', String(pageSize));
       return this.request<DuplicatesResponse>(`/library/duplicates?${params.toString()}`);
     },
     stale: (
-      serverId?: string,
+      serverIds?: string[],
       libraryId?: string,
       staleDays: number = 90,
       category: 'all' | 'never_watched' | 'stale' = 'all',
@@ -1179,7 +1217,11 @@ class ApiClient {
       sortOrder: 'asc' | 'desc' = 'desc'
     ) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       if (libraryId) params.set('libraryId', libraryId);
       params.set('staleDays', String(staleDays));
       params.set('category', category);
@@ -1190,9 +1232,13 @@ class ApiClient {
       params.set('sortOrder', sortOrder);
       return this.request<StaleResponse>(`/library/stale?${params.toString()}`);
     },
-    watch: (serverId?: string, libraryId?: string, page: number = 1, pageSize: number = 20) => {
+    watch: (serverIds?: string[], libraryId?: string, page: number = 1, pageSize: number = 20) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       if (libraryId) params.set('libraryId', libraryId);
       params.set('page', String(page));
       params.set('pageSize', String(pageSize));
@@ -1215,16 +1261,20 @@ class ApiClient {
       if (mediaType) params.set('mediaType', mediaType);
       return this.request<CompletionResponse>(`/library/completion?${params.toString()}`);
     },
-    patterns: (serverId?: string, libraryId?: string, periodWeeks: number = 12) => {
+    patterns: (serverIds?: string[], libraryId?: string, periodWeeks: number = 12) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       if (libraryId) params.set('libraryId', libraryId);
       params.set('periodWeeks', String(periodWeeks));
       params.set('timezone', getBrowserTimezone());
       return this.request<PatternsResponse>(`/library/patterns?${params.toString()}`);
     },
     roi: (
-      serverId?: string,
+      serverIds?: string[],
       libraryId?: string,
       page: number = 1,
       pageSize: number = 20,
@@ -1233,7 +1283,11 @@ class ApiClient {
       sortOrder: 'asc' | 'desc' = 'asc'
     ) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       if (libraryId) params.set('libraryId', libraryId);
       params.set('page', String(page));
       params.set('pageSize', String(pageSize));
@@ -1244,7 +1298,7 @@ class ApiClient {
       return this.request<RoiResponse>(`/library/roi?${params.toString()}`);
     },
     topMovies: (
-      serverId?: string,
+      serverIds?: string[],
       period: string = '30d',
       sortBy: string = 'plays',
       sortOrder: string = 'desc',
@@ -1252,7 +1306,11 @@ class ApiClient {
       pageSize: number = 20
     ) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       params.set('period', period);
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
@@ -1261,7 +1319,7 @@ class ApiClient {
       return this.request<TopMoviesResponse>(`/library/top-movies?${params.toString()}`);
     },
     topShows: (
-      serverId?: string,
+      serverIds?: string[],
       period: string = '30d',
       sortBy: string = 'plays',
       sortOrder: string = 'desc',
@@ -1269,7 +1327,11 @@ class ApiClient {
       pageSize: number = 20
     ) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
+      if (serverIds?.length) {
+        for (const id of serverIds) {
+          params.append('serverIds', id);
+        }
+      }
       params.set('period', period);
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
@@ -1627,7 +1689,7 @@ class ApiClient {
     disable: () =>
       this.request<TailscaleInfo>('/tailscale/disable', { method: 'POST', body: '{}' }),
     reset: () => this.request<TailscaleInfo>('/tailscale/reset', { method: 'POST', body: '{}' }),
-    // Exit node disabled — this will come back when we implement SOCKS proxy support
+    // Exit node disabled - this will come back when we implement SOCKS proxy support
     // setExitNode: (id: string | null) =>
     //   this.request<TailscaleInfo>('/tailscale/exit-node', {
     //     method: 'POST',

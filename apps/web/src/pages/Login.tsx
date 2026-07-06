@@ -442,6 +442,9 @@ export function Login() {
                       const result = await api.auth.testPlexConnection({
                         uri,
                         tempToken: plexTempToken,
+                        ...(requiresClaimCode && claimCode.trim()
+                          ? { claimCode: claimCode.trim() }
+                          : {}),
                       });
                       return result.connection;
                     }

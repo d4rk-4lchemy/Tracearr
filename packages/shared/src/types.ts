@@ -543,6 +543,9 @@ export interface Condition {
     exclude_same_device?: boolean;
     // When true, only count sessions from different IPs.
     exclude_same_ip?: boolean;
+    // When set, only count sessions from these device types.
+    // Useful for: concurrent_streams (ignore phones/tablets when detecting sharing)
+    count_device_types?: DeviceType[];
   };
 }
 
@@ -707,6 +710,8 @@ export interface ViolationWithDetails extends Violation {
   actionResults?: ActionResult[];
   /** Condition evidence from V2 rule evaluation */
   evidence?: GroupEvidence[];
+  /** Display names for server-user IDs found in evidence conditions (detail endpoint only) */
+  userNames?: Record<string, string>;
 }
 
 // Stats types
@@ -722,6 +727,7 @@ export interface DashboardStats {
 export interface PlayStats {
   date: string;
   count: number;
+  serverId: string;
 }
 
 export interface UserStats {
@@ -750,6 +756,8 @@ export interface LocationStats {
   // Contextual data - populated based on filters
   users?: LocationUserInfo[]; // Top users at this location (when not filtering by userId)
   deviceCount?: number; // Unique devices from this location
+  // Per-server breakdown ordered by count DESC; servers[0] is the dominant server
+  servers?: { serverId: string; count: number }[];
 }
 
 export interface LocationStatsSummary {
@@ -1074,6 +1082,7 @@ export interface ServerToClientEvents {
   'version:update': (data: { current: string; latest: string; releaseUrl: string }) => void;
   'server:down': (data: { serverId: string; serverName: string }) => void;
   'server:up': (data: { serverId: string; serverName: string }) => void;
+  'server:connection': (status: ServerConnectionStatus) => void;
 }
 
 export interface ClientToServerEvents {
@@ -1408,7 +1417,8 @@ export type SSEConnectionState =
   | 'connected'
   | 'reconnecting'
   | 'disconnected'
-  | 'fallback';
+  | 'fallback'
+  | 'unsupported'; // Plugin not installed on this server
 
 // Plex SSE notification container (outer wrapper)
 export interface PlexSSENotification {
@@ -1497,6 +1507,19 @@ export interface SSEConnectionStatus {
   connectedAt: Date | null;
   lastEventAt: Date | null;
   reconnectAttempts: number;
+  error: string | null;
+}
+
+// Per-server connection status surfaced to clients
+// Covers all server types (plex/jellyfin/emby) with a unified shape
+export interface ServerConnectionStatus {
+  serverId: string;
+  serverName: string;
+  serverType: ServerType;
+  mode: 'realtime' | 'polling';
+  state: SSEConnectionState;
+  lastEventAt: string | null;
+  since: string | null;
   error: string | null;
 }
 
@@ -1898,6 +1921,7 @@ export interface DeviceCompatibilityMatrix {
 
 // Device health ranking row
 export interface DeviceHealthRow {
+  serverId: string;
   device: string;
   sessions: number;
   directPlayCount: number;
@@ -1912,6 +1936,7 @@ export interface DeviceHealthResponse {
 
 // Transcode hotspot row
 export interface TranscodeHotspotRow {
+  serverId: string;
   device: string;
   videoCodec: string;
   audioCodec: string;
@@ -1930,6 +1955,7 @@ export interface TranscodeHotspotsResponse {
 
 // Top transcoding user row
 export interface TopTranscodingUserRow {
+  serverId: string;
   serverUserId: string;
   username: string;
   identityName: string | null;
@@ -1954,6 +1980,8 @@ export interface TopTranscodingUsersResponse {
 // Daily bandwidth row
 export interface DailyBandwidthRow {
   date: string;
+  /** Server this row belongs to - required for per-server chart series */
+  serverId: string;
   sessions: number;
   /** Total data transferred in bytes */
   totalBytes: number;
@@ -1980,6 +2008,8 @@ export interface BandwidthTopUser {
   /** Avatar URL from server user */
   thumbUrl: string | null;
   serverUserId: string;
+  /** Server this row belongs to - same human on two servers = two rows */
+  serverId: string;
   /** Total data transferred in bytes */
   totalBytes: number;
   /** Total data transferred in GB (human-readable) */
@@ -1994,6 +2024,22 @@ export interface BandwidthTopUser {
 // Top bandwidth users response
 export interface BandwidthTopUsersResponse {
   data: BandwidthTopUser[];
+}
+
+// Per-server KPI slice used inside BandwidthSummary.byServer
+export interface BandwidthSummaryServerKpis {
+  totalSessions: number;
+  totalBytes: number;
+  totalGb: number;
+  avgBitrate: number;
+  peakBitrate: number;
+  minBitrate: number;
+  medianBitrate: number;
+  totalDurationMs: number;
+  uniqueUsers: number;
+  avgBitrateMbps: number;
+  peakBitrateMbps: number;
+  totalHours: number;
 }
 
 // Bandwidth summary
@@ -2012,11 +2058,22 @@ export interface BandwidthSummary {
   avgBitrateMbps: number;
   peakBitrateMbps: number;
   totalHours: number;
+  /** Per-server KPI breakdown keyed by server ID (present when multiple servers selected) */
+  byServer?: Record<string, BandwidthSummaryServerKpis>;
 }
 
 // =============================================================================
 // Library Statistics Types
 // =============================================================================
+
+// Per-server KPI slice used inside LibraryStatsResponse.byServer
+export interface LibraryStatsServerKpis {
+  totalItems: number;
+  totalSizeBytes: string;
+  movieCount: number;
+  episodeCount: number;
+  showCount: number;
+}
 
 // Library Stats Response (GET /library/stats)
 export interface LibraryStatsResponse {
@@ -2032,6 +2089,8 @@ export interface LibraryStatsResponse {
     countSd: number;
   };
   asOf: string | null;
+  /** Per-server KPI breakdown keyed by server ID (present when multiple servers are in scope) */
+  byServer?: Record<string, LibraryStatsServerKpis>;
 }
 
 // Library Growth Response (GET /library/growth)
@@ -2039,6 +2098,8 @@ export interface GrowthDataPoint {
   day: string;
   total: number;
   additions: number;
+  /** Server that produced this data point (present in multi-server responses) */
+  serverId: string;
 }
 
 export interface LibraryGrowthResponse {
@@ -2178,8 +2239,16 @@ export interface StaleResponse {
 }
 
 // Library Watch Statistics Response (GET /library/watch)
+
+/**
+ * A single "most watched" row returned by the watch endpoint.
+ * When multiple servers are in scope, the same title is collapsed
+ * into one row (deduped by external ID match key) and serverIds
+ * lists every server that has a copy of the title.
+ */
 export interface WatchItem {
   id: string;
+  /** Primary server for this title (lowest sort value when deduped across servers). */
   serverId: string;
   serverName: string;
   libraryId: string;
@@ -2189,18 +2258,27 @@ export interface WatchItem {
   fileSize: number | null;
   resolution: string | null;
   addedAt: string;
+  /** Total play count summed across all servers for this title. */
   watchCount: number;
+  /** Total watch duration summed across all servers for this title. */
   totalWatchMs: number;
   lastWatchedAt: string | null;
+  /** All server IDs that own a copy of this title (for per-title color dots). */
+  serverIds: string[];
 }
 
 export interface WatchSummary {
+  /** Distinct title count (deduped by external ID). */
   totalItems: number;
+  /** Distinct titles with at least one play (deduped by external ID). */
   watchedCount: number;
   unwatchedCount: number;
   watchedPct: number;
+  /** Sum of all watch durations across all servers. */
   totalWatchMs: number;
   avgWatchesPerItem: number;
+  /** Distinct titles fully completed (deduped by external ID), if available. */
+  completedCount: number;
 }
 
 export interface WatchResponse {
@@ -2280,9 +2358,16 @@ export type CompletionResponse =
     };
 
 // Library Watch Patterns Response (GET /library/patterns)
+
+/**
+ * A single binge-show row.
+ * When multiple servers are in scope, episodes of the same show across
+ * different servers are collapsed into one row (deduped by show matchKey).
+ */
 export interface BingeShow {
   showTitle: string;
-  serverId: string;
+  /** Server with the most episodes watched in this binge journey. */
+  primaryServerId: string;
   thumbPath: string | null;
   totalEpisodeWatches: number;
   consecutiveEpisodes: number;
@@ -2290,6 +2375,8 @@ export interface BingeShow {
   avgGapMinutes: number;
   bingeScore: number;
   maxEpisodesInOneDay: number;
+  /** All server IDs involved in this binge journey. */
+  serverIds: string[];
 }
 
 export interface HourlyDistribution {
@@ -2332,6 +2419,7 @@ export type ValueCategory = 'low_value' | 'moderate_value' | 'high_value';
 export interface RoiItem {
   id: string;
   serverId: string;
+  serverName: string;
   title: string;
   mediaType: string;
   year: number | null;
@@ -2378,6 +2466,8 @@ export interface TopMovie {
   year: number | null;
   thumbPath: string | null;
   serverId: string;
+  /** All server IDs that own a copy of this title (for per-title color dots). */
+  serverIds?: string[];
   totalPlays: number;
   totalWatchHours: number;
   uniqueViewers: number;
@@ -2400,6 +2490,8 @@ export interface TopShow {
   year: number | null;
   thumbPath: string | null;
   serverId: string;
+  /** All server IDs that own a copy of this title (for per-title color dots). */
+  serverIds?: string[];
   totalEpisodeViews: number;
   totalWatchHours: number;
   uniqueViewers: number;

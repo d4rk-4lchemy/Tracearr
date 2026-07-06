@@ -163,6 +163,7 @@ export type {
   PlexStatusNotification,
   PlexTranscodeNotification,
   SSEConnectionStatus,
+  ServerConnectionStatus,
   // Termination logs
   TerminationTrigger,
   TerminationLogWithDetails,
@@ -213,8 +214,10 @@ export type {
   DailyBandwidthResponse,
   BandwidthTopUser,
   BandwidthTopUsersResponse,
+  BandwidthSummaryServerKpis,
   BandwidthSummary,
   // Library statistics
+  LibraryStatsServerKpis,
   LibraryStatsResponse,
   GrowthDataPoint,
   LibraryGrowthResponse,
@@ -287,6 +290,7 @@ export {
   sessionQuerySchema,
   historyQuerySchema,
   historyAggregatesQuerySchema,
+  filterOptionsQuerySchema,
   sessionIdParamSchema,
   terminateSessionBodySchema,
   // Rule
@@ -362,6 +366,7 @@ export type {
   SessionQueryInput,
   HistoryQueryInput,
   HistoryAggregatesQueryInput,
+  FilterOptionsQueryInput,
   CreateRuleInput,
   UpdateRuleInput,
   // Rule V2 types
@@ -476,6 +481,7 @@ export {
   getViolationDetails,
   formatEvidenceDescription,
   formatEvidenceDetails,
+  formatUserList,
   CONDITION_FIELD_LABELS,
   OPERATOR_LABELS,
 } from './violations.js';

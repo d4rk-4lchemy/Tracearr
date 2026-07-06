@@ -1,0 +1,363 @@
+import { EventEmitter } from 'events';
+import { SSE_CONFIG, type SSEConnectionState } from '@tracearr/shared';
+import type { EventSourceFetchInit } from 'eventsource';
+
+// Plugin SSE endpoint paths per server type
+export const PLUGIN_SSE_PATH: Record<'jellyfin' | 'emby', string> = {
+  jellyfin: '/api/sse/events',
+  emby: '/emby/sse/events',
+};
+
+// The plugin sends a ping every 30s; allow 45s before assuming the stream died
+const PLUGIN_HEARTBEAT_TIMEOUT_MS = 45_000;
+
+// When the plugin is absent (404), re-probe every 3 minutes so a newly-installed
+// plugin gets picked up without a full server restart
+const UNSUPPORTED_REPROBE_MS = 3 * 60 * 1000;
+
+interface EventSourceMessage {
+  data: string;
+  lastEventId?: string;
+  origin?: string;
+}
+
+type EventSourceReadyState = 0 | 1 | 2;
+
+interface EventSourceInit {
+  withCredentials?: boolean;
+  fetch?: (input: string | URL, init: EventSourceFetchInit) => Promise<Response>;
+}
+
+interface EventSource {
+  readonly readyState: EventSourceReadyState;
+  readonly url: string;
+  onopen: ((this: EventSource, ev: Event) => void) | null;
+  onmessage: ((this: EventSource, ev: EventSourceMessage) => void) | null;
+  onerror: ((this: EventSource, ev: Event) => void) | null;
+  close(): void;
+  addEventListener(type: string, listener: (ev: EventSourceMessage) => void): void;
+  removeEventListener(type: string, listener: (ev: EventSourceMessage) => void): void;
+}
+
+let EventSourceClass: new (url: string, init?: EventSourceInit) => EventSource;
+
+export interface PluginSessionEvent {
+  sessionId: string;
+  itemId: string | null;
+  userId: string | null;
+  state: string;
+  positionTicks: number | null;
+}
+
+export interface JellyfinEmbyEventSourceEvents {
+  'session:event': PluginSessionEvent;
+  'connection:state': SSEConnectionState;
+  'connection:error': Error;
+}
+
+export class JellyfinEmbyEventSource extends EventEmitter {
+  private readonly serverId: string;
+  private readonly serverName: string;
+  private readonly baseUrl: string;
+  private readonly serverType: 'jellyfin' | 'emby';
+  private readonly token: string;
+
+  private eventSource: EventSource | null = null;
+  private state: SSEConnectionState = 'disconnected';
+  private reconnectAttempts = 0;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private connectionTimer: NodeJS.Timeout | null = null;
+  private connectedAt: Date | null = null;
+  private lastEventTime: Date | null = null;
+  private lastError: Error | null = null;
+
+  private openListener: ((e: Event) => void) | null = null;
+  private sessionEventListener: ((e: EventSourceMessage) => void) | null = null;
+  private pingListener: ((e: EventSourceMessage) => void) | null = null;
+  private errorListener: ((e: Event) => void) | null = null;
+
+  constructor(config: {
+    serverId: string;
+    serverName: string;
+    url: string;
+    serverType: 'jellyfin' | 'emby';
+    token: string;
+  }) {
+    super();
+    this.serverId = config.serverId;
+    this.serverName = config.serverName;
+    this.baseUrl = config.url.replace(/\/$/, '');
+    this.serverType = config.serverType;
+    this.token = config.token;
+  }
+
+  getState(): SSEConnectionState {
+    return this.state;
+  }
+
+  getStatus(): {
+    serverId: string;
+    serverName: string;
+    state: SSEConnectionState;
+    connectedAt: Date | null;
+    lastEventAt: Date | null;
+    reconnectAttempts: number;
+    error: string | null;
+  } {
+    return {
+      serverId: this.serverId,
+      serverName: this.serverName,
+      state: this.state,
+      connectedAt: this.connectedAt,
+      lastEventAt: this.lastEventTime,
+      reconnectAttempts: this.reconnectAttempts,
+      error: this.lastError?.message ?? null,
+    };
+  }
+
+  async connect(): Promise<void> {
+    if (!EventSourceClass) {
+      const module = await import('eventsource');
+      EventSourceClass = module.EventSource as unknown as typeof EventSourceClass;
+    }
+
+    if (this.state === 'connected' || this.state === 'connecting') {
+      return;
+    }
+
+    this.setState('connecting');
+    this.clearTimers();
+
+    const path = PLUGIN_SSE_PATH[this.serverType];
+    const url = `${this.baseUrl}${path}`;
+    const authHeaders = this.buildAuthHeaders();
+
+    console.log(`[PluginSSE] Connecting to ${this.serverName} at ${url}`);
+
+    try {
+      // eventsource v4 silently ignores the `headers` init option; use `fetch` to forward auth
+      this.eventSource = new EventSourceClass(url, {
+        fetch: (input, init) => {
+          const merged = new Headers(init.headers);
+          for (const [k, v] of Object.entries(authHeaders)) merged.set(k, v);
+          return fetch(input, { ...init, headers: merged });
+        },
+      });
+
+      this.startConnectionTimeout();
+
+      this.openListener = () => {
+        if (this.state !== 'connecting') return;
+        this.clearConnectionTimeout();
+        console.log(`[PluginSSE] Connected to ${this.serverName}`);
+        this.connectedAt = new Date();
+        this.setState('connected');
+        this.reconnectAttempts = 0;
+        this.lastError = null;
+        this.startHeartbeatMonitor();
+      };
+
+      const handleSessionEvent = (ev: EventSourceMessage) => {
+        this.lastEventTime = new Date();
+        this.resetHeartbeatMonitor();
+        if (!ev.data) return;
+        try {
+          const raw = JSON.parse(ev.data) as Record<string, unknown>;
+          const payload: PluginSessionEvent = {
+            sessionId: (raw.sessionId as string | undefined) ?? '',
+            itemId: (raw.itemId as string | undefined) ?? null,
+            userId: (raw.userId as string | undefined) ?? null,
+            state: (raw.state as string | undefined) ?? 'unknown',
+            positionTicks: (raw.positionTicks as number | undefined) ?? null,
+          };
+          this.emit('session:event', payload);
+        } catch {
+          // malformed payload — ignore, the trigger-poll approach doesn't need it
+        }
+      };
+
+      this.sessionEventListener = handleSessionEvent;
+      this.pingListener = () => {
+        this.lastEventTime = new Date();
+        this.resetHeartbeatMonitor();
+      };
+
+      this.errorListener = (ev: Event) => {
+        this.handleError(ev);
+      };
+
+      this.eventSource.onopen = this.openListener;
+      this.eventSource.onerror = this.errorListener;
+
+      for (const eventName of ['playing', 'progress', 'paused', 'stopped', 'session.start', 'session.end']) {
+        this.eventSource.addEventListener(eventName, this.sessionEventListener);
+      }
+      this.eventSource.addEventListener('ping', this.pingListener);
+    } catch (error) {
+      this.handleError(error as Error);
+    }
+  }
+
+  disconnect(): void {
+    console.log(`[PluginSSE] Disconnecting from ${this.serverName}`);
+    this.clearTimers();
+    this.cleanupEventSource();
+    this.setState('disconnected');
+    this.connectedAt = null;
+  }
+
+  private cleanupEventSource(): void {
+    if (!this.eventSource) return;
+
+    this.eventSource.onopen = null;
+    this.eventSource.onerror = null;
+
+    if (this.sessionEventListener) {
+      for (const eventName of ['playing', 'progress', 'paused', 'stopped', 'session.start', 'session.end']) {
+        this.eventSource.removeEventListener(eventName, this.sessionEventListener);
+      }
+    }
+    if (this.pingListener) {
+      this.eventSource.removeEventListener('ping', this.pingListener);
+    }
+
+    this.eventSource.close();
+    this.eventSource = null;
+    this.openListener = null;
+    this.sessionEventListener = null;
+    this.pingListener = null;
+    this.errorListener = null;
+  }
+
+  private handleError(error: unknown): void {
+    this.clearTimers();
+    this.cleanupEventSource();
+
+    let errorMessage = 'Connection error';
+    let statusCode: number | null = null;
+
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      // eventsource surfaces HTTP status in the message
+      const match = /\b(4\d{2}|5\d{2})\b/.exec(errorMessage);
+      if (match?.[1]) statusCode = parseInt(match[1], 10);
+    } else if (typeof error === 'object' && error !== null) {
+      const obj = error as Record<string, unknown>;
+      if ('message' in obj) errorMessage = String(obj.message);
+      // eventsource v4 ErrorEvent carries the HTTP status in `.code`, not `.status`
+      if (typeof obj.code === 'number') {
+        statusCode = obj.code;
+      } else if ('status' in obj) {
+        statusCode = Number(obj.status);
+      } else {
+        const match = /\b(4\d{2}|5\d{2})\b/.exec(errorMessage);
+        if (match?.[1]) statusCode = parseInt(match[1], 10);
+      }
+    }
+
+    this.lastError = error instanceof Error ? error : new Error(errorMessage);
+    this.emit('connection:error', this.lastError);
+
+    // 404 means the Tracearr SSE plugin is not installed — don't hammer reconnects
+    if (statusCode === 404) {
+      console.log(
+        `[PluginSSE] Plugin not found on ${this.serverName} (404), will re-probe in ${UNSUPPORTED_REPROBE_MS / 1000}s`
+      );
+      this.setState('unsupported');
+      this.reconnectTimer = setTimeout(() => {
+        if (this.state !== 'disconnected') {
+          console.log(`[PluginSSE] Re-probing ${this.serverName} for plugin`);
+          void this.connect();
+        }
+      }, UNSUPPORTED_REPROBE_MS);
+      return;
+    }
+
+    // 401/403 — auth issue, use standard reconnect but don't claim unsupported
+    if (statusCode === 401 || statusCode === 403) {
+      console.error(`[PluginSSE] Auth error on ${this.serverName}: ${errorMessage}`);
+      this.scheduleReconnect();
+      return;
+    }
+
+    // Stream drop or other error — reconnect with backoff
+    console.error(`[PluginSSE] Error on ${this.serverName}: ${errorMessage}`);
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectAttempts >= SSE_CONFIG.MAX_RETRIES) {
+      console.error(
+        `[PluginSSE] Max retries reached for ${this.serverName}, falling back to polling`
+      );
+      this.setState('fallback');
+      return;
+    }
+
+    this.setState('reconnecting');
+    this.reconnectAttempts++;
+
+    const baseDelay = Math.min(
+      SSE_CONFIG.INITIAL_RETRY_DELAY_MS *
+        Math.pow(SSE_CONFIG.RETRY_MULTIPLIER, this.reconnectAttempts - 1),
+      SSE_CONFIG.MAX_RETRY_DELAY_MS
+    );
+    const delay = baseDelay + Math.random() * 1000;
+
+    console.log(
+      `[PluginSSE] Reconnecting to ${this.serverName} in ${Math.round(delay)}ms (attempt ${this.reconnectAttempts}/${SSE_CONFIG.MAX_RETRIES})`
+    );
+
+    this.reconnectTimer = setTimeout(() => {
+      if (this.state === 'disconnected') return;
+      void this.connect();
+    }, delay);
+  }
+
+  private startHeartbeatMonitor(): void {
+    this.resetHeartbeatMonitor();
+  }
+
+  private resetHeartbeatMonitor(): void {
+    if (this.heartbeatTimer) clearTimeout(this.heartbeatTimer);
+    this.heartbeatTimer = setTimeout(() => {
+      if (this.state === 'disconnected') return;
+      console.warn(`[PluginSSE] Heartbeat timeout on ${this.serverName}, reconnecting`);
+      this.handleError(new Error('Heartbeat timeout'));
+    }, PLUGIN_HEARTBEAT_TIMEOUT_MS);
+  }
+
+  private clearTimers(): void {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    if (this.heartbeatTimer) { clearTimeout(this.heartbeatTimer); this.heartbeatTimer = null; }
+    this.clearConnectionTimeout();
+  }
+
+  private startConnectionTimeout(): void {
+    this.clearConnectionTimeout();
+    this.connectionTimer = setTimeout(() => {
+      if (this.state === 'disconnected') return;
+      console.warn(`[PluginSSE] Connection timeout on ${this.serverName}`);
+      this.handleError(new Error('Connection timeout'));
+    }, PLUGIN_HEARTBEAT_TIMEOUT_MS);
+  }
+
+  private clearConnectionTimeout(): void {
+    if (this.connectionTimer) { clearTimeout(this.connectionTimer); this.connectionTimer = null; }
+  }
+
+  private buildAuthHeaders(): Record<string, string> {
+    if (this.serverType === 'jellyfin') {
+      return { Authorization: `MediaBrowser Token="${this.token}"` };
+    }
+    return { 'X-Emby-Token': this.token };
+  }
+
+  private setState(state: SSEConnectionState): void {
+    if (this.state !== state) {
+      this.state = state;
+      this.emit('connection:state', state);
+    }
+  }
+}

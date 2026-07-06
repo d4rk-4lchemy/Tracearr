@@ -142,7 +142,7 @@ function MapCenterUpdater({ lat, lon }: { lat: number; lon: number }) {
   return null;
 }
 
-// Mini map component for session location — memoized to prevent remounts when
+// Mini map component for session location - memoized to prevent remounts when
 // parent re-renders while the sheet is open
 const MiniMap = memo(function MiniMap({ lat, lon }: { lat: number; lon: number }) {
   const { theme } = useTheme();
@@ -264,7 +264,7 @@ function SegmentTable({
   );
 }
 
-// Inner content component — keeps state hooks and derived values together
+// Inner content component - keeps state hooks and derived values together
 function SessionContent({ session }: { session: SessionWithDetails | ActiveSession }) {
   const [locationOpen, setLocationOpen] = useState(false);
   const [segmentsOpen, setSegmentsOpen] = useState(false);

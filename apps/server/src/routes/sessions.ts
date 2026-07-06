@@ -12,6 +12,7 @@ import {
   sessionQuerySchema,
   historyQuerySchema,
   historyAggregatesQuerySchema,
+  filterOptionsQuerySchema,
   sessionIdParamSchema,
   serverIdFilterSchema,
   terminateSessionBodySchema,
@@ -58,8 +59,8 @@ function buildHistoryFilterConditions(
 ): HistoryFilterResult {
   const {
     serverUserIds,
-    serverId: legacyServerId,
-    serverIds: parsedServerIds,
+    serverId,
+    serverIds: rawServerIds,
     state,
     mediaTypes,
     startDate,
@@ -77,19 +78,20 @@ function buildHistoryFilterConditions(
     watched,
     excludeShortSessions,
   } = params;
-  const rawServerIds = parsedServerIds as string[] | undefined;
 
   const conditions: ReturnType<typeof sql>[] = [];
-  const resolvedServerIds = resolveServerIds(authUser, legacyServerId, rawServerIds);
-  if (resolvedServerIds && resolvedServerIds.length === 0) {
-    return null; // No server access
+
+  // Resolve effective server IDs (handles owner bypass + access intersection)
+  const resolvedIds = resolveServerIds(authUser, serverId, rawServerIds, { strict: false });
+  if (resolvedIds?.length === 0) {
+    return null; // No accessible servers after intersection
   }
-  if (resolvedServerIds && resolvedServerIds.length > 0) {
-    if (resolvedServerIds.length === 1) {
-      conditions.push(sql`s.server_id = ${resolvedServerIds[0]}`);
+  if (resolvedIds !== undefined) {
+    if (resolvedIds.length === 1) {
+      conditions.push(sql`s.server_id = ${resolvedIds[0]}`);
     } else {
-      const serverIdList = resolvedServerIds.map((id: string) => sql`${id}`);
-      conditions.push(sql`s.server_id IN (${sql.join(serverIdList, sql`, `)})`);
+      const ids = resolvedIds.map((id) => sql`${id}`);
+      conditions.push(sql`s.server_id IN (${sql.join(ids, sql`, `)})`);
     }
   }
 
@@ -895,7 +897,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
 
     const authUser = request.user;
 
-    // Build WHERE clause using shared helper
+    // Build WHERE clause using shared helper (also enforces server access via resolveServerIds)
     const filterResult = buildHistoryFilterConditions(query.data, authUser);
     if (!filterResult) {
       // No server access - return empty result
@@ -909,14 +911,36 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     }
     const { whereClause } = filterResult;
 
-    // Get aggregates
+    // Unique Titles KPI. Single-server: COUNT(DISTINCT media_title), matching main exactly.
+    // Multi-server: dedupe by external-id match key (imdb->tmdb->tvdb->normalized-title) via a
+    // library_items join so the same title on two servers counts once; unmatched sessions fall
+    // back to a normalized title key from the session's media_title.
+    const resolvedIds = resolveServerIds(authUser, query.data.serverId, query.data.serverIds, {
+      strict: false,
+    });
+    const singleServer = resolvedIds?.length === 1;
+    const uniqueContentExpr = singleServer
+      ? sql`COUNT(DISTINCT s.media_title)`
+      : sql`COUNT(DISTINCT
+          COALESCE(
+            CASE WHEN li.imdb_id IS NOT NULL AND li.imdb_id <> '' THEN 'imdb:' || li.imdb_id END,
+            CASE WHEN li.tmdb_id IS NOT NULL THEN 'tmdb:' || li.tmdb_id::text END,
+            CASE WHEN li.tvdb_id IS NOT NULL THEN 'tvdb:' || li.tvdb_id::text END,
+            NULLIF('title:' || LOWER(REGEXP_REPLACE(COALESCE(s.media_title, ''), '[^a-zA-Z0-9]', '', 'g')), 'title:')
+          )
+        )`;
+    const libraryJoin = singleServer
+      ? sql``
+      : sql`LEFT JOIN library_items li ON li.server_id = s.server_id AND li.rating_key = s.rating_key`;
+
     const aggregateResult = await db.execute(sql`
       SELECT
         COUNT(DISTINCT COALESCE(s.reference_id, s.id))::int as play_count,
         COALESCE(SUM(s.duration_ms), 0)::bigint as total_watch_time_ms,
         COUNT(DISTINCT s.server_user_id)::int as unique_users,
-        COUNT(DISTINCT s.media_title)::int as unique_content
+        ${uniqueContentExpr}::int as unique_content
       FROM sessions s
+      ${libraryJoin}
       ${whereClause}
     `);
 
@@ -952,36 +976,24 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
    *                        countries with sessions (for history page).
    */
   app.get('/filter-options', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const query = request.query as {
-      serverId?: string;
-      serverIds?: string[] | string;
-      startDate?: string;
-      endDate?: string;
-      includeAllCountries?: string;
-    };
-    const rawServerIds = Array.isArray(query.serverIds)
-      ? query.serverIds
-      : query.serverIds
-        ? [query.serverIds]
-        : undefined;
-    const serverId = query.serverId;
-    const startDate = query.startDate ? new Date(query.startDate) : undefined;
-    const endDate = query.endDate ? new Date(query.endDate) : undefined;
-    const includeAllCountries = query.includeAllCountries === 'true';
+    const query = filterOptionsQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.badRequest('Invalid query parameters');
+    }
 
-    if (startDate && isNaN(startDate.getTime())) {
-      return reply.badRequest('Invalid startDate format. Use ISO 8601 format.');
-    }
-    if (endDate && isNaN(endDate.getTime())) {
-      return reply.badRequest('Invalid endDate format. Use ISO 8601 format.');
-    }
-    if (startDate && endDate && startDate > endDate) {
-      return reply.badRequest('startDate must be before endDate');
-    }
+    const {
+      serverId,
+      serverIds: rawServerIds,
+      startDate,
+      endDate,
+      includeAllCountries,
+    } = query.data;
 
     const authUser = request.user;
-    const resolvedServerIds = resolveServerIds(authUser, serverId, rawServerIds);
-    if (resolvedServerIds && resolvedServerIds.length === 0) {
+    // Resolve effective server IDs (handles owner bypass + access intersection)
+    const resolvedIds = resolveServerIds(authUser, serverId, rawServerIds, { strict: false });
+    if (resolvedIds?.length === 0) {
+      // No accessible servers - return empty filter options
       if (includeAllCountries) {
         const emptyRulesResponse: RulesFilterOptions = {
           platforms: [],
@@ -1001,7 +1013,6 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         countries: [],
         cities: [],
         users: [],
-        servers: [],
       };
       return emptyResponse;
     }
@@ -1010,8 +1021,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     const cacheService = getCacheService();
     const filterScopeHash = buildCacheFingerprint(
       {
-        serverId,
-        serverIds: resolvedServerIds,
+        resolvedIds: resolvedIds ? [...resolvedIds].sort() : null,
         startDate: startDate?.toISOString(),
         endDate: endDate?.toISOString(),
         includeAllCountries,
@@ -1025,13 +1035,13 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    // Build server access conditions
+    // Build server access conditions from resolved IDs
     const serverConditions: ReturnType<typeof sql>[] = [];
-    if (resolvedServerIds && resolvedServerIds.length > 0) {
-      if (resolvedServerIds.length === 1) {
-        serverConditions.push(sql`s.server_id = ${resolvedServerIds[0]}`);
+    if (resolvedIds !== undefined) {
+      if (resolvedIds.length === 1) {
+        serverConditions.push(sql`s.server_id = ${resolvedIds[0]}`);
       } else {
-        const serverIdList = resolvedServerIds.map((id: string) => sql`${id}`);
+        const serverIdList = resolvedIds.map((id) => sql`${id}`);
         serverConditions.push(sql`s.server_id IN (${sql.join(serverIdList, sql`, `)})`);
       }
     }
@@ -1244,7 +1254,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     const { serverId: legacyServerId, serverIds: rawServerIds } = query.success
       ? query.data
       : { serverId: undefined, serverIds: undefined };
-    const resolvedIds = resolveServerIds(authUser, legacyServerId, rawServerIds);
+    const resolvedIds = resolveServerIds(authUser, legacyServerId, rawServerIds, { strict: false });
 
     // Get active sessions from atomic SET-based cache
     const cacheService = getCacheService();
