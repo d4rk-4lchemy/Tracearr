@@ -450,6 +450,7 @@ export function buildCompositeKey(input: BuildCompositeKeyInput): string {
 export function shouldWriteToDb(
   existing: {
     state: string;
+    mediaTitle?: string | null;
     isTranscode: boolean;
     videoDecision: string | null;
     audioDecision: string | null;
@@ -459,6 +460,7 @@ export function shouldWriteToDb(
   },
   processed: {
     state: string;
+    mediaTitle?: string | null;
     isTranscode: boolean;
     videoDecision: string | null;
     audioDecision: string | null;
@@ -468,6 +470,9 @@ export function shouldWriteToDb(
   watchedThresholdReached = false
 ): boolean {
   if (existing.state !== processed.state) return true;
+  if (existing.mediaTitle !== undefined && existing.mediaTitle !== processed.mediaTitle) {
+    return true;
+  }
   if (existing.isTranscode !== processed.isTranscode) return true;
   if (existing.videoDecision !== processed.videoDecision) return true;
   if (existing.audioDecision !== processed.audioDecision) return true;

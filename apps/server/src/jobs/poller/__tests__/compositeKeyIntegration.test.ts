@@ -90,6 +90,7 @@ describe('JF/Emby session lifecycle integration', () => {
   describe('change detection', () => {
     const base = {
       state: 'playing',
+      mediaTitle: 'Original Program',
       isTranscode: false,
       videoDecision: 'direct play',
       audioDecision: 'direct play',
@@ -108,6 +109,10 @@ describe('JF/Emby session lifecycle integration', () => {
 
     it('forces write on transcode change', () => {
       expect(shouldWriteToDb(base, { ...base, isTranscode: true })).toBe(true);
+    });
+
+    it('forces write on live program title change', () => {
+      expect(shouldWriteToDb(base, { ...base, mediaTitle: 'Next Program' })).toBe(true);
     });
   });
 

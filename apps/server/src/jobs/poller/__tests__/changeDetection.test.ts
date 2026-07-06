@@ -3,6 +3,7 @@ import { shouldWriteToDb } from '../stateTracker.js';
 
 const baseExisting = {
   state: 'playing' as const,
+  mediaTitle: 'Original Program',
   isTranscode: false,
   videoDecision: 'direct play',
   audioDecision: 'direct play',
@@ -13,6 +14,7 @@ const baseExisting = {
 
 const baseProcessed = {
   state: 'playing' as const,
+  mediaTitle: 'Original Program',
   isTranscode: false,
   videoDecision: 'direct play',
   audioDecision: 'direct play',
@@ -67,6 +69,12 @@ describe('shouldWriteToDb', () => {
 
   it('returns true when source audio codec changes', () => {
     expect(shouldWriteToDb(baseExisting, { ...baseProcessed, sourceAudioCodec: 'eac3' })).toBe(
+      true
+    );
+  });
+
+  it('returns true when media title changes', () => {
+    expect(shouldWriteToDb(baseExisting, { ...baseProcessed, mediaTitle: 'Next Program' })).toBe(
       true
     );
   });
