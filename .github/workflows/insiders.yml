@@ -75,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [unit, services, routes, security]
+        group: [unit, services, routes, auth, security]
 
     steps:
       - name: Checkout

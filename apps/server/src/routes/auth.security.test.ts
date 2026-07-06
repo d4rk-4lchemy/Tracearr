@@ -2,27 +2,50 @@
  * Auth Security Tests
  *
  * Tests to ensure authentication and authorization cannot be bypassed.
- * Covers: token validation, privilege escalation, injection attacks.
+ * Covers: token validation and privilege escalation on the REAL production
+ * decorators from plugins/auth.ts (dual-verify: Better Auth session first,
+ * legacy JWT fallback). getAuth() is mocked to resolve no session, so every
+ * request below exercises the legacy-JWT fallback path of dual-verify - the
+ * exact edge cases (expired/tampered/wrong-secret/alg-none/garbage) that no
+ * live test enumerates. Live Better Auth security coverage runs in the
+ * integration suite (test/integration/betterAuthSecurity.integration.test.ts
+ * and betterAuthProxyOrigin.integration.test.ts).
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
+import sensible from '@fastify/sensible';
+import cookie from '@fastify/cookie';
+
+vi.mock('../lib/auth.js', () => ({
+  getAuth: vi.fn(),
+}));
+
+vi.mock('../db/client.js', () => ({
+  db: {
+    select: vi.fn(),
+  },
+}));
+
+import { getAuth } from '../lib/auth.js';
+import authPlugin from '../plugins/auth.js';
 import {
-  createTestApp,
   generateTestToken,
   createOwnerPayload,
   createViewerPayload,
   generateExpiredToken,
   generateTamperedToken,
   generateWrongSecretToken,
-  INJECTION_PAYLOADS,
 } from '../test/helpers.js';
 
 describe('Auth Security', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
-    app = await createTestApp();
+    app = Fastify({ logger: false });
+    await app.register(sensible);
+    await app.register(cookie, { secret: 'test-cookie-secret' });
+    await app.register(authPlugin);
 
     // Add a protected test route that requires authentication
     app.get('/test/protected', { preHandler: [app.authenticate] }, async (request) => {
@@ -34,13 +57,15 @@ describe('Auth Security', () => {
       return { user: request.user, message: 'owner access granted' };
     });
 
-    // Add a route that echoes back user input (for injection testing)
-    app.post('/test/echo', async (request) => {
-      const body = request.body as { input?: string };
-      return { received: body.input };
-    });
-
     await app.ready();
+  });
+
+  beforeEach(() => {
+    // No Better Auth session resolves for any request in this file, so the
+    // decorators fall through to the legacy JWT verification under test.
+    vi.mocked(getAuth).mockReturnValue({
+      api: { getSession: vi.fn().mockResolvedValue(null) },
+    } as unknown as ReturnType<typeof getAuth>);
   });
 
   afterAll(async () => {
@@ -236,92 +261,6 @@ describe('Auth Security', () => {
     });
   });
 
-  describe('Injection Prevention', () => {
-    it('should safely handle SQL injection payloads in input', async () => {
-      for (const payload of INJECTION_PAYLOADS.sqlInjection) {
-        const res = await app.inject({
-          method: 'POST',
-          url: '/test/echo',
-          payload: { input: payload },
-        });
-
-        // Server should not crash and should echo back the input safely
-        expect(res.statusCode).toBe(200);
-        const json = res.json();
-        // The payload should be treated as a string, not executed
-        expect(json.received).toBe(payload);
-      }
-    });
-
-    it('should safely handle XSS payloads in input', async () => {
-      for (const payload of INJECTION_PAYLOADS.xss) {
-        const res = await app.inject({
-          method: 'POST',
-          url: '/test/echo',
-          payload: { input: payload },
-        });
-
-        expect(res.statusCode).toBe(200);
-        // XSS prevention is mainly a frontend concern, but backend should not crash
-        expect(res.json().received).toBe(payload);
-      }
-    });
-
-    it('should safely handle path traversal payloads', async () => {
-      for (const payload of INJECTION_PAYLOADS.pathTraversal) {
-        const res = await app.inject({
-          method: 'POST',
-          url: '/test/echo',
-          payload: { input: payload },
-        });
-
-        expect(res.statusCode).toBe(200);
-      }
-    });
-
-    it('should handle extremely long input without crashing', async () => {
-      const longInput = 'A'.repeat(100000);
-
-      const res = await app.inject({
-        method: 'POST',
-        url: '/test/echo',
-        payload: { input: longInput },
-      });
-
-      // Should either accept or reject, but not crash
-      expect([200, 413, 400]).toContain(res.statusCode);
-    });
-
-    it('should handle null bytes in input', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/test/echo',
-        payload: { input: 'test\x00injection' },
-      });
-
-      expect(res.statusCode).toBe(200);
-    });
-
-    it('should handle unicode edge cases', async () => {
-      const unicodePayloads = [
-        '\u202E\u0041\u0042\u0043', // Right-to-left override
-        '\uFEFF\uFEFF\uFEFF', // BOM characters
-        '𝕳𝖊𝖑𝖑𝖔', // Mathematical symbols
-        '❤️💻🔒', // Emoji
-      ];
-
-      for (const payload of unicodePayloads) {
-        const res = await app.inject({
-          method: 'POST',
-          url: '/test/echo',
-          payload: { input: payload },
-        });
-
-        expect(res.statusCode).toBe(200);
-      }
-    });
-  });
-
   describe('Header Security', () => {
     it('should not expose sensitive info in error responses', async () => {
       const res = await app.inject({
@@ -336,44 +275,6 @@ describe('Auth Security', () => {
       expect(JSON.stringify(body)).not.toContain('at Object');
       expect(JSON.stringify(body)).not.toContain('.ts:');
       expect(JSON.stringify(body)).not.toContain('JWT_SECRET');
-    });
-
-    it('should handle missing Content-Type gracefully', async () => {
-      const res = await app.inject({
-        method: 'POST',
-        url: '/test/echo',
-        payload: '{"input":"test"}',
-        // No content-type header
-      });
-
-      // Should handle gracefully, not crash
-      expect([200, 400, 415]).toContain(res.statusCode);
-    });
-  });
-
-  describe('Token Expiration Edge Cases', () => {
-    it('should handle tokens that expire during request', async () => {
-      // Token with 1 second expiry
-      const shortLivedToken = generateTestToken(app, createOwnerPayload(), { expiresIn: '1s' });
-
-      // First request should work
-      const res1 = await app.inject({
-        method: 'GET',
-        url: '/test/protected',
-        headers: { Authorization: `Bearer ${shortLivedToken}` },
-      });
-      expect(res1.statusCode).toBe(200);
-
-      // Wait for expiry
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Second request should fail
-      const res2 = await app.inject({
-        method: 'GET',
-        url: '/test/protected',
-        headers: { Authorization: `Bearer ${shortLivedToken}` },
-      });
-      expect(res2.statusCode).toBe(401);
     });
   });
 });

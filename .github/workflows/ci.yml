@@ -69,7 +69,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [unit, services, routes, security]
+        group: [unit, services, routes, auth, security]
 
     steps:
       - name: Checkout
@@ -103,6 +103,48 @@ jobs:
 
       - name: Run ${{ matrix.group }} tests
         run: pnpm --filter @tracearr/server test:${{ matrix.group }}
+
+  # Web (frontend) unit tests - includes the auth client/hook suites
+  test-web:
+    name: Test (web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Cache Turborepo
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build dependencies (shared, translations)
+        run: pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/translations
+
+      - name: Run web tests
+        run: pnpm --filter @tracearr/web test
 
   # Integration tests require real database - run separately from unit tests
   test-integration:
@@ -331,7 +373,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [lint-and-typecheck, test, test-integration, test-coverage]
+    needs: [lint-and-typecheck, test, test-web, test-integration, test-coverage]
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
