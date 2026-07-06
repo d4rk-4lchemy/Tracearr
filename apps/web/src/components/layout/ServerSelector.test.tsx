@@ -1,14 +1,9 @@
 // @vitest-environment jsdom
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ServerSelector } from './ServerSelector';
 
-const useLocationMock = vi.fn();
 const useServerMock = vi.fn();
-
-vi.mock('react-router', () => ({
-  useLocation: () => useLocationMock(),
-}));
 
 vi.mock('@/hooks/useServer', () => ({
   useServer: () => useServerMock(),
@@ -21,11 +16,35 @@ vi.mock('@/components/ui/popover', () => ({
 }));
 
 vi.mock('@/components/ui/checkbox', () => ({
-  Checkbox: () => <input type="checkbox" readOnly />,
+  Checkbox: ({
+    checked,
+    onCheckedChange,
+  }: {
+    checked?: boolean;
+    onCheckedChange?: (checked: boolean) => void;
+  }) => (
+    <button
+      type="button"
+      aria-pressed={checked}
+      onClick={() => onCheckedChange?.(!checked)}
+    >
+      checkbox
+    </button>
+  ),
 }));
 
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
+  Button: ({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }) => (
+    <button type="button" onClick={onClick}>
+      {children}
+    </button>
+  ),
 }));
 
 vi.mock('@/components/ui/skeleton', () => ({
@@ -37,7 +56,6 @@ vi.mock('@/components/icons/MediaServerIcon', () => ({
 }));
 
 vi.mock('lucide-react', () => ({
-  Check: () => <span>check</span>,
   ChevronsUpDown: () => <span>chevrons</span>,
 }));
 
@@ -48,131 +66,140 @@ const makeServer = (id: string, name: string, type: 'jellyfin' | 'dispatcharr' =
   color: null,
 });
 
-describe('ServerSelector route persistence', () => {
+function buildUseServerValue(overrides: Record<string, unknown> = {}) {
+  return {
+    servers: [makeServer('s1', 'One'), makeServer('s2', 'Two')],
+    selectedServerIds: ['s1'],
+    selectedServers: [makeServer('s1', 'One')],
+    isMultiServer: false,
+    isAllServersSelected: false,
+    toggleServer: vi.fn(),
+    setSelectedServers: vi.fn(),
+    selectAllServers: vi.fn(),
+    deselectAllExcept: vi.fn(),
+    isLoading: false,
+    isFetching: false,
+    refetch: vi.fn(),
+    selectedServerId: 's1',
+    selectedServer: makeServer('s1', 'One'),
+    selectServer: vi.fn(),
+    ...overrides,
+  };
+}
+
+describe('ServerSelector', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
   });
 
-  it('stashes multi-selection and falls back to remembered single when leaving a multi-select route', async () => {
-    const deselectAllExcept = vi.fn();
-    const setSelectedServers = vi.fn();
-    const servers = [makeServer('s1', 'One'), makeServer('s2', 'Two')];
-
-    localStorage.setItem('tracearr_last_single_server', 's2');
-
-    useLocationMock.mockReturnValue({ pathname: '/' });
-    useServerMock.mockReturnValue({
-      servers,
-      selectedServerIds: ['s1', 's2'],
-      isAllServersSelected: true,
-      toggleServer: vi.fn(),
-      setSelectedServers,
-      selectAllServers: vi.fn(),
-      deselectAllExcept,
-      isLoading: false,
-      isFetching: false,
-    });
-
-    const view = render(<ServerSelector />);
-
-    useLocationMock.mockReturnValue({ pathname: '/users' });
-    view.rerender(<ServerSelector />);
-
-    await waitFor(() => {
-      expect(deselectAllExcept).toHaveBeenCalledWith('s2');
-    });
-    expect(localStorage.getItem('tracearr_dashboard_selected_servers')).toBe('["s1","s2"]');
-  });
-
-  it('restores saved multi-selection when entering a multi-select route', async () => {
-    const deselectAllExcept = vi.fn();
-    const setSelectedServers = vi.fn();
-    const servers = [makeServer('s1', 'One'), makeServer('s2', 'Two'), makeServer('s3', 'Three')];
-
-    localStorage.setItem('tracearr_dashboard_selected_servers', '["s1","s3"]');
-
-    useLocationMock.mockReturnValue({ pathname: '/users' });
-    useServerMock.mockReturnValue({
-      servers,
-      selectedServerIds: ['s1'],
-      isAllServersSelected: false,
-      toggleServer: vi.fn(),
-      setSelectedServers,
-      selectAllServers: vi.fn(),
-      deselectAllExcept,
-      isLoading: false,
-      isFetching: false,
-    });
-
-    const view = render(<ServerSelector />);
-
-    useLocationMock.mockReturnValue({ pathname: '/history' });
-    view.rerender(<ServerSelector />);
-
-    await waitFor(() => {
-      expect(setSelectedServers).toHaveBeenCalledWith(['s1', 's3']);
-    });
-  });
-
-  it('restores saved multi-selection on an initial multi-select route load after servers hydrate', async () => {
-    const deselectAllExcept = vi.fn();
-    const setSelectedServers = vi.fn();
-    const servers = [makeServer('s1', 'One'), makeServer('s2', 'Two'), makeServer('s3', 'Three')];
-
-    localStorage.setItem('tracearr_dashboard_selected_servers', '["s1","s3"]');
-
-    useLocationMock.mockReturnValue({ pathname: '/history' });
-    useServerMock.mockReturnValue({
-      servers: [],
-      selectedServerIds: ['s2'],
-      isAllServersSelected: false,
-      toggleServer: vi.fn(),
-      setSelectedServers,
-      selectAllServers: vi.fn(),
-      deselectAllExcept,
-      isLoading: false,
-      isFetching: true,
-    });
-
-    const view = render(<ServerSelector />);
-
-    useServerMock.mockReturnValue({
-      servers,
-      selectedServerIds: ['s2'],
-      isAllServersSelected: false,
-      toggleServer: vi.fn(),
-      setSelectedServers,
-      selectAllServers: vi.fn(),
-      deselectAllExcept,
-      isLoading: false,
-      isFetching: false,
-    });
-    view.rerender(<ServerSelector />);
-
-    await waitFor(() => {
-      expect(setSelectedServers).toHaveBeenCalledWith(['s1', 's3']);
-    });
-  });
-
-  it('remembers single non-dashboard selection as preferred fallback', async () => {
-    useLocationMock.mockReturnValue({ pathname: '/users' });
-    useServerMock.mockReturnValue({
-      servers: [makeServer('s1', 'One'), makeServer('s2', 'Two')],
-      selectedServerIds: ['s2'],
-      isAllServersSelected: false,
-      toggleServer: vi.fn(),
-      setSelectedServers: vi.fn(),
-      selectAllServers: vi.fn(),
-      deselectAllExcept: vi.fn(),
-      isLoading: false,
-      isFetching: false,
-    });
+  it('shows a loading skeleton while server data is loading', () => {
+    useServerMock.mockReturnValue(
+      buildUseServerValue({
+        servers: [],
+        selectedServers: [],
+        isLoading: true,
+      })
+    );
 
     render(<ServerSelector />);
 
-    await waitFor(() => {
-      expect(localStorage.getItem('tracearr_last_single_server')).toBe('s2');
-    });
+    expect(screen.getByText('loading')).toBeTruthy();
+  });
+
+  it('renders a static label when only one server is available', () => {
+    useServerMock.mockReturnValue(
+      buildUseServerValue({
+        servers: [makeServer('s1', 'Only Server', 'dispatcharr')],
+        selectedServerIds: ['s1'],
+        selectedServers: [makeServer('s1', 'Only Server', 'dispatcharr')],
+      })
+    );
+
+    render(<ServerSelector />);
+
+    expect(screen.getByText('Only Server')).toBeTruthy();
+    expect(screen.queryByText('All servers')).toBeNull();
+  });
+
+  it('shows the selected server name in the trigger for single selection', () => {
+    useServerMock.mockReturnValue(buildUseServerValue());
+
+    render(<ServerSelector />);
+
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[0]?.textContent).toContain('One');
+  });
+
+  it('shows the all-servers label when all servers are selected', () => {
+    const servers = [makeServer('s1', 'One'), makeServer('s2', 'Two')];
+
+    useServerMock.mockReturnValue(
+      buildUseServerValue({
+        servers,
+        selectedServerIds: ['s1', 's2'],
+        selectedServers: servers,
+        isMultiServer: true,
+        isAllServersSelected: true,
+        selectedServerId: null,
+        selectedServer: null,
+      })
+    );
+
+    render(<ServerSelector />);
+
+    expect(screen.getByText('All servers')).toBeTruthy();
+  });
+
+  it('calls selectAllServers from the action row when not all servers are selected', () => {
+    const selectAllServers = vi.fn();
+
+    useServerMock.mockReturnValue(
+      buildUseServerValue({
+        selectAllServers,
+      })
+    );
+
+    render(<ServerSelector />);
+    fireEvent.click(screen.getByText('Select all'));
+
+    expect(selectAllServers).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls deselectAllExcept with the first server when all servers are selected', () => {
+    const deselectAllExcept = vi.fn();
+    const servers = [makeServer('s1', 'One'), makeServer('s2', 'Two')];
+
+    useServerMock.mockReturnValue(
+      buildUseServerValue({
+        servers,
+        selectedServerIds: ['s1', 's2'],
+        selectedServers: servers,
+        isMultiServer: true,
+        isAllServersSelected: true,
+        deselectAllExcept,
+        selectedServerId: null,
+        selectedServer: null,
+      })
+    );
+
+    render(<ServerSelector />);
+    fireEvent.click(screen.getByText('Deselect all'));
+
+    expect(deselectAllExcept).toHaveBeenCalledWith('s1');
+  });
+
+  it('calls toggleServer when a server checkbox is toggled', () => {
+    const toggleServer = vi.fn();
+
+    useServerMock.mockReturnValue(
+      buildUseServerValue({
+        toggleServer,
+      })
+    );
+
+    render(<ServerSelector />);
+    fireEvent.click(screen.getAllByText('checkbox')[1]!);
+
+    expect(toggleServer).toHaveBeenCalledWith('s2');
   });
 });

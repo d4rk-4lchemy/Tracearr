@@ -43,6 +43,7 @@ interface MediaDisplayFields {
   seasonNumber?: number | null;
   episodeNumber?: number | null;
   year?: number | null;
+  channelTitle?: string | null;
   artistName?: string | null;
   albumName?: string | null;
 }
@@ -58,6 +59,13 @@ export function getMediaDisplay(media: MediaDisplayFields): {
   title: string;
   subtitle: string | null;
 } {
+  if (media.mediaType === 'live') {
+    return {
+      title: media.channelTitle?.trim() || (media.mediaTitle ?? ''),
+      subtitle: null,
+    };
+  }
+
   if (media.mediaType === 'episode' && media.grandparentTitle) {
     // TV Show episode
     const episodeInfo =

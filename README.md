@@ -1,7 +1,7 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
-  <i>Current vesrion:</i> <b>1.4.29</b>
+  <i>Current vesrion:</i> <b>1.4.30</b>
 </p>
 
 > [!WARNING]  
@@ -18,7 +18,7 @@
 - Fixed bad `Content` column in mobile view of `History` tab _(this has nothing to do with Dispatcharr, just annoying bug)._
 
 **Docker images:**
-- `darkalchemy2137/distracearr:latest` - supervised image (**default for ≤1.4.28**, after that it will be "standalone Tracearr")
+- `darkalchemy2137/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` - supervised image
 - `darkalchemy2137/distracearr:standalone` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 
