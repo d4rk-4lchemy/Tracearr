@@ -1,20 +1,20 @@
 /**
  * Better Auth catch-all mount tests
  *
- * Verifies the wildcard route added in index.ts (GET/POST /api/v1/auth/*)
- * forwards unmatched requests to the Better Auth handler while the legacy
- * static routes registered under the same prefix keep winning for their
- * exact paths.
+ * Verifies the wildcard route registered in index.ts (GET/POST
+ * /api/v1/auth/*) forwards unmatched requests to the Better Auth handler
+ * while the legacy static routes registered under the same prefix keep
+ * winning for their exact paths. The route handler under test is the REAL
+ * production one (createBetterAuthHandler from lib/betterAuthRequest.ts).
  *
  * No live Postgres/Redis is available in this environment, so getAuth() is
  * mocked here rather than exercising the real Better Auth + drizzle adapter
- * (that flow is covered separately once DB/Redis are available in CI).
+ * (that flow is covered by the integration suite).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { fromNodeHeaders } from 'better-auth/node';
 import { API_BASE_PATH } from '@tracearr/shared';
 import { createTestApp } from '../../test/helpers.js';
 
@@ -24,9 +24,10 @@ vi.mock('../../lib/auth.js', () => ({
 }));
 
 import { getAuth } from '../../lib/auth.js';
+import { createBetterAuthHandler } from '../../lib/betterAuthRequest.js';
 import { authRoutes } from '../auth/index.js';
 
-// Mirrors the mount added at index.ts (immediately before the authRoutes
+// Mirrors the mount in index.ts (immediately before the authRoutes
 // registration), scoped down to a minimal app so tests run without DB/Redis.
 // Built on the repo's createTestApp() helper since authRoutes' sub-plugins
 // (plex/jellyfin/emby) reference the app.authenticate decorator.
@@ -38,26 +39,7 @@ async function buildApp(): Promise<FastifyInstance> {
     method: ['GET', 'POST'],
     url: `${API_BASE_PATH}/auth/*`,
     config: { rateLimit: false },
-    async handler(request, reply) {
-      try {
-        const url = new URL(request.url, `http://${request.headers.host}`);
-        const headers = fromNodeHeaders(request.headers);
-        const req = new Request(url.toString(), {
-          method: request.method,
-          headers,
-          ...(request.body ? { body: JSON.stringify(request.body) } : {}),
-        });
-        const response = await getAuth().handler(req);
-        reply.status(response.status);
-        for (const [key, value] of response.headers) {
-          reply.header(key, value);
-        }
-        return await reply.send(response.body ? await response.text() : null);
-      } catch (error) {
-        request.log.error({ err: error }, 'better auth handler error');
-        return reply.status(500).send({ error: 'Internal authentication error' });
-      }
-    },
+    handler: createBetterAuthHandler(),
   });
 
   await app.register(authRoutes, { prefix: `${API_BASE_PATH}/auth` });

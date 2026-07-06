@@ -29,7 +29,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { API_BASE_PATH } from '@tracearr/shared';
 import { db } from '../../src/db/client.js';
 import { users, authAccounts, authSessions, authVerifications } from '../../src/db/schema.js';
-import { toWebRequest } from '../../src/lib/betterAuthRequest.js';
+import { createBetterAuthHandler } from '../../src/lib/betterAuthRequest.js';
 
 const HOST = 'tracearr.example.com';
 
@@ -60,14 +60,7 @@ beforeAll(async () => {
   app.route({
     method: ['GET', 'POST'],
     url: `${API_BASE_PATH}/auth/*`,
-    async handler(request, reply) {
-      const response = await originCheckAuth.handler(toWebRequest(request));
-      reply.status(response.status);
-      for (const [key, value] of response.headers) {
-        reply.header(key, value);
-      }
-      return await reply.send(response.body ? await response.text() : null);
-    },
+    handler: createBetterAuthHandler(() => originCheckAuth),
   });
   await app.ready();
 });

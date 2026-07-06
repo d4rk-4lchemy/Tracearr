@@ -1,5 +1,6 @@
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { fromNodeHeaders } from 'better-auth/node';
+import { getAuth } from './auth.js';
 
 /**
  * Adapts a Fastify request into a fetch Request for the Better Auth handler.
@@ -24,4 +25,32 @@ export function toWebRequest(request: FastifyRequest): Request {
     headers: fromNodeHeaders(request.headers),
     ...(request.body ? { body: JSON.stringify(request.body) } : {}),
   });
+}
+
+type BetterAuthHandlerSource = () => { handler: (request: Request) => Promise<Response> };
+
+/**
+ * Fastify handler for the Better Auth wildcard mount (GET/POST
+ * /api/v1/auth/*). index.ts registers it against the getAuth() singleton;
+ * test harnesses register this same function (optionally against a
+ * purpose-built auth instance) so they exercise this exact code path rather
+ * than a copy.
+ */
+export function createBetterAuthHandler(source: BetterAuthHandlerSource = getAuth) {
+  return async function betterAuthHandler(
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<FastifyReply> {
+    try {
+      const response = await source().handler(toWebRequest(request));
+      reply.status(response.status);
+      for (const [key, value] of response.headers) {
+        reply.header(key, value);
+      }
+      return await reply.send(response.body ? await response.text() : null);
+    } catch (error) {
+      request.log.error({ err: error }, 'better auth handler error');
+      return reply.status(500).send({ error: 'Internal authentication error' });
+    }
+  };
 }

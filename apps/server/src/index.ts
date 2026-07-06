@@ -12,7 +12,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { gzipSync, createGzip } from 'node:zlib';
 import { Redis } from 'ioredis';
 import { API_BASE_PATH, REDIS_KEYS, WS_EVENTS } from '@tracearr/shared';
-import { toWebRequest } from './lib/betterAuthRequest.js';
+import { createBetterAuthHandler } from './lib/betterAuthRequest.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -44,7 +44,7 @@ import type {
 
 import authPlugin, { loadJwtRevokeSettings } from './plugins/auth.js';
 import redisPlugin, { connectRedis } from './plugins/redis.js';
-import { getAuth, closeAuth } from './lib/auth.js';
+import { closeAuth } from './lib/auth.js';
 import { authRoutes } from './routes/auth/index.js';
 import { setupRoutes } from './routes/setup.js';
 import { serverRoutes } from './routes/servers.js';
@@ -389,19 +389,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     method: ['GET', 'POST'],
     url: `${API_BASE_PATH}/auth/*`,
     config: { rateLimit: false },
-    async handler(request, reply) {
-      try {
-        const response = await getAuth().handler(toWebRequest(request));
-        reply.status(response.status);
-        for (const [key, value] of response.headers) {
-          reply.header(key, value);
-        }
-        return await reply.send(response.body ? await response.text() : null);
-      } catch (error) {
-        request.log.error({ err: error }, 'better auth handler error');
-        return reply.status(500).send({ error: 'Internal authentication error' });
-      }
-    },
+    handler: createBetterAuthHandler(),
   });
 
   await app.register(authRoutes, { prefix: `${API_BASE_PATH}/auth` });

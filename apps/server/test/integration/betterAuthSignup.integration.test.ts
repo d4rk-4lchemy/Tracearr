@@ -13,19 +13,20 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import { fromNodeHeaders } from 'better-auth/node';
 import { API_BASE_PATH } from '@tracearr/shared';
 import { db } from '../../src/db/client.js';
 import { users } from '../../src/db/schema.js';
-import { getAuth, closeAuth } from '../../src/lib/auth.js';
+import { closeAuth } from '../../src/lib/auth.js';
+import { createBetterAuthHandler } from '../../src/lib/betterAuthRequest.js';
 import { getRedis } from '../../src/lib/redisShared.js';
 import { createTestApp } from '../../src/test/helpers.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Mounts the real Better Auth handler under the production auth prefix, mirroring
-// the wildcard route in index.ts. No Origin/cookie headers are sent from these
-// programmatic requests, so Better Auth's trusted-origin CSRF check does not fire.
+// Mounts the real Better Auth handler under the production auth prefix using
+// the production wildcard handler from index.ts. No Origin/cookie headers are
+// sent from these programmatic requests, so Better Auth's trusted-origin CSRF
+// check does not fire.
 async function buildApp(): Promise<FastifyInstance> {
   const app = await createTestApp();
   await app.register(rateLimit, { max: 1000, timeWindow: '1 minute' });
@@ -34,21 +35,7 @@ async function buildApp(): Promise<FastifyInstance> {
     method: ['GET', 'POST'],
     url: `${API_BASE_PATH}/auth/*`,
     config: { rateLimit: false },
-    async handler(request, reply) {
-      const url = new URL(request.url, `http://${request.headers.host}`);
-      const headers = fromNodeHeaders(request.headers);
-      const req = new Request(url.toString(), {
-        method: request.method,
-        headers,
-        ...(request.body ? { body: JSON.stringify(request.body) } : {}),
-      });
-      const response = await getAuth().handler(req);
-      reply.status(response.status);
-      for (const [key, value] of response.headers) {
-        reply.header(key, value);
-      }
-      return await reply.send(response.body ? await response.text() : null);
-    },
+    handler: createBetterAuthHandler(),
   });
 
   return app;

@@ -14,11 +14,11 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
-import { fromNodeHeaders } from 'better-auth/node';
 import { API_BASE_PATH } from '@tracearr/shared';
 import { db } from '../../src/db/client.js';
 import { authSessions } from '../../src/db/schema.js';
-import { getAuth, closeAuth } from '../../src/lib/auth.js';
+import { closeAuth } from '../../src/lib/auth.js';
+import { createBetterAuthHandler } from '../../src/lib/betterAuthRequest.js';
 import { getRedis } from '../../src/lib/redisShared.js';
 import { resolveBetterAuthUser } from '../../src/lib/sessionResolver.js';
 
@@ -38,21 +38,7 @@ async function buildApp(): Promise<FastifyInstance> {
   app.route({
     method: ['GET', 'POST'],
     url: `${API_BASE_PATH}/auth/*`,
-    async handler(request, reply) {
-      const url = new URL(request.url, `http://${request.headers.host}`);
-      const headers = fromNodeHeaders(request.headers);
-      const req = new Request(url.toString(), {
-        method: request.method,
-        headers,
-        ...(request.body ? { body: JSON.stringify(request.body) } : {}),
-      });
-      const response = await getAuth().handler(req);
-      reply.status(response.status);
-      for (const [key, value] of response.headers) {
-        reply.header(key, value);
-      }
-      return await reply.send(response.body ? await response.text() : null);
-    },
+    handler: createBetterAuthHandler(),
   });
 
   // Protected route guarded by the real authorization-path resolver.

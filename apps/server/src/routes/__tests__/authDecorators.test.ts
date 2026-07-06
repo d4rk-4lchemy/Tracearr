@@ -217,7 +217,7 @@ describe('auth decorators with better auth sessions', () => {
   });
 
   it('me reports hasPassword from the credential account row', async () => {
-    const app = await buildTestApp();
+    app = await buildTestApp();
     const cookie = await signUpOwner(app);
     const res = await app.inject({ method: 'GET', url: '/api/v1/auth/me', headers: { cookie } });
     expect(res.statusCode).toBe(200);

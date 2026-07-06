@@ -22,7 +22,6 @@ import sensible from '@fastify/sensible';
 import rateLimit from '@fastify/rate-limit';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { fromNodeHeaders } from 'better-auth/node';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { API_BASE_PATH } from '@tracearr/shared';
@@ -35,7 +34,8 @@ import {
   plexAccounts,
   mobileSessions,
 } from '../../src/db/schema.js';
-import { getAuth, closeAuth } from '../../src/lib/auth.js';
+import { closeAuth } from '../../src/lib/auth.js';
+import { createBetterAuthHandler } from '../../src/lib/betterAuthRequest.js';
 import { getRedis } from '../../src/lib/redisShared.js';
 import { setSetting } from '../../src/services/settings.js';
 import { hashPassword } from '../../src/utils/password.js';
@@ -72,27 +72,14 @@ async function buildApp(): Promise<FastifyInstance> {
   app.decorate('redis', getRedis());
   await app.register(authPlugin);
 
-  // Mirrors index.ts: the Better Auth wildcard, then the static legacy auth
-  // routes (which win over the wildcard for their exact paths), then mobile.
+  // Mirrors index.ts: the Better Auth wildcard (via the shared production
+  // handler), then the static legacy auth routes (which win over the wildcard
+  // for their exact paths), then mobile.
   app.route({
     method: ['GET', 'POST'],
     url: `${API_BASE_PATH}/auth/*`,
     config: { rateLimit: false },
-    async handler(request, reply) {
-      const url = new URL(request.url, `http://${request.headers.host}`);
-      const headers = fromNodeHeaders(request.headers);
-      const req = new Request(url.toString(), {
-        method: request.method,
-        headers,
-        ...(request.body ? { body: JSON.stringify(request.body) } : {}),
-      });
-      const response = await getAuth().handler(req);
-      reply.status(response.status);
-      for (const [key, value] of response.headers) {
-        reply.header(key, value);
-      }
-      return await reply.send(response.body ? await response.text() : null);
-    },
+    handler: createBetterAuthHandler(),
   });
   await app.register(authRoutes, { prefix: `${API_BASE_PATH}/auth` });
   await app.register(mobileRoutes, { prefix: `${API_BASE_PATH}/mobile` });
