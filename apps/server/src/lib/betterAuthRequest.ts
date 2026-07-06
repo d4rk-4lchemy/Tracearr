@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { fromNodeHeaders } from 'better-auth/node';
-import { getAuth } from './auth.js';
+import { getAuth, CLIENT_IP_HEADER } from './auth.js';
 
 /**
  * Adapts a Fastify request into a fetch Request for the Better Auth handler.
@@ -20,9 +20,20 @@ export function toWebRequest(request: FastifyRequest): Request {
   const proto = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
   const scheme = proto === 'https' || proto === 'http' ? proto : request.protocol;
   const url = new URL(request.url, `${scheme}://${request.headers.host}`);
+  const headers = fromNodeHeaders(request.headers);
+  // Better Auth trusts this header unconditionally for rate limiting and
+  // session.ipAddress, so it must be set (never appended) after the inbound
+  // headers are copied: an attacker-supplied copy cannot survive. Should
+  // request.ip ever be unavailable, dropping the header leaves Better Auth
+  // on its no-ip default (shared bucket), no worse than an unset header.
+  if (request.ip) {
+    headers.set(CLIENT_IP_HEADER, request.ip);
+  } else {
+    headers.delete(CLIENT_IP_HEADER);
+  }
   return new Request(url.toString(), {
     method: request.method,
-    headers: fromNodeHeaders(request.headers),
+    headers,
     ...(request.body ? { body: JSON.stringify(request.body) } : {}),
   });
 }

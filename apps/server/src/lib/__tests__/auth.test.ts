@@ -34,6 +34,15 @@ describe('getAuth construction', () => {
     expect(pluginIds).toEqual(['username', 'admin', 'bearer', 'plex']);
   });
 
+  it('resolves the client ip only from the shim-stamped header', () => {
+    const auth = getAuth();
+    expect(auth.options.advanced?.ipAddress?.ipAddressHeaders).toEqual(['x-tracearr-client-ip']);
+    // Sibling advanced option must survive the ipAddress addition: without a
+    // function generateId, Better Auth mints nanoids that the uuid users.id
+    // column rejects (22P02).
+    expect(auth.options.advanced?.database?.generateId).toBeTypeOf('function');
+  });
+
   it('constructs the real auth instance with OIDC configured, alongside the default plugins', async () => {
     process.env.OIDC_ISSUER_URL = 'https://auth.example.com';
     process.env.OIDC_CLIENT_ID = 'test-client';

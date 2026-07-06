@@ -28,6 +28,15 @@ const oidcEnv = {
 /** True only when all three required OIDC env vars are set. Config-gates the genericOAuth plugin. */
 export const oidcConfigured = !!(oidcEnv.issuer && oidcEnv.clientId && oidcEnv.clientSecret);
 
+/**
+ * The only header Better Auth reads the client IP from
+ * (advanced.ipAddress.ipAddressHeaders below). toWebRequest() in
+ * betterAuthRequest.ts stamps it from Fastify's trustProxy-resolved
+ * request.ip, overwriting any inbound copy so clients cannot pick their own
+ * rate-limit bucket or forge session.ipAddress.
+ */
+export const CLIENT_IP_HEADER = 'x-tracearr-client-ip';
+
 function buildAuth(redis: Redis) {
   const prefix = process.env.REDIS_PREFIX ?? '';
   const rkey = (k: string) => `${prefix}tracearr:ba:${k}`;
@@ -46,6 +55,9 @@ function buildAuth(redis: Redis) {
       },
     }),
     advanced: {
+      ipAddress: {
+        ipAddressHeaders: [CLIENT_IP_HEADER],
+      },
       database: {
         // users.id is a uuid column; the default id generator mints a nanoid
         // that Postgres rejects (22P02). A function generateId keeps Better
