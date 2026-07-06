@@ -337,6 +337,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.year,
           s.artist_name,
           s.album_name,
+          s.channel_title,
+          s.channel_identifier,
+          s.channel_thumb,
           s.thumb_path,
           s.reference_id,
           s.ip_address,
@@ -409,6 +412,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         year: number | null;
         artist_name: string | null;
         album_name: string | null;
+        channel_title: string | null;
+        channel_identifier: string | null;
+        channel_thumb: string | null;
         thumb_path: string | null;
         reference_id: string | null;
         ip_address: string | null;
@@ -470,6 +476,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       year: row.year,
       artistName: row.artist_name,
       albumName: row.album_name,
+      channelTitle: row.channel_title,
+      channelIdentifier: row.channel_identifier,
+      channelThumb: row.channel_thumb,
       thumbPath: row.thumb_path,
       startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
       stoppedAt: row.stopped_at ? new Date(row.stopped_at).toISOString() : null,
@@ -648,6 +657,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.year,
           s.artist_name,
           s.album_name,
+          s.channel_title,
+          s.channel_identifier,
+          s.channel_thumb,
           s.thumb_path,
           s.reference_id,
           s.ip_address,
@@ -751,6 +763,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         year: number | null;
         artist_name: string | null;
         album_name: string | null;
+        channel_title: string | null;
+        channel_identifier: string | null;
+        channel_thumb: string | null;
         thumb_path: string | null;
         reference_id: string | null;
         ip_address: string | null;
@@ -812,6 +827,9 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       year: row.year,
       artistName: row.artist_name,
       albumName: row.album_name,
+      channelTitle: row.channel_title,
+      channelIdentifier: row.channel_identifier,
+      channelThumb: row.channel_thumb,
       thumbPath: row.thumb_path,
       startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
       stoppedAt: row.stopped_at ? new Date(row.stopped_at).toISOString() : null,

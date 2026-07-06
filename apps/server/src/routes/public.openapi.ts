@@ -76,12 +76,19 @@ const UserInfo = z.object({
 });
 
 const MediaInfo = z.object({
-  mediaTitle: z.string().openapi({ example: 'Inception' }),
+  mediaTitle: z.string().openapi({
+    description: 'Primary media value. For Dispatcharr live TV this is the channel name.',
+    example: 'Inception',
+  }),
   mediaType: MediaTypeEnum,
   showTitle: z
     .string()
     .nullable()
-    .openapi({ description: 'Show name (episodes only)', example: 'Breaking Bad' }),
+    .optional()
+    .openapi({
+      description: 'Show name for episodes. Omitted for Dispatcharr live TV.',
+      example: 'Breaking Bad',
+    }),
   seasonNumber: z.number().int().nullable().openapi({ example: 5 }),
   episodeNumber: z.number().int().nullable().openapi({ example: 16 }),
   year: z.number().int().nullable().openapi({ example: 2010 }),
@@ -103,8 +110,8 @@ const MediaInfo = z.object({
     .int()
     .nullable()
     .openapi({ description: 'Disc number (music tracks only)', example: 1 }),
-  thumbPath: z.string().nullable().openapi({ description: 'Poster path' }),
-  posterUrl: z.string().nullable().openapi({ description: 'Proxied poster URL' }),
+  thumbPath: z.string().nullable().openapi({ description: 'Poster path or channel logo path' }),
+  posterUrl: z.string().nullable().openapi({ description: 'Proxied poster or channel logo URL' }),
 });
 
 const DeviceInfo = z.object({

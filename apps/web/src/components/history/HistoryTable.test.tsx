@@ -27,6 +27,10 @@ vi.mock('@tanstack/react-virtual', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useServerColorMap', () => ({
+  useServerColorMap: () => new Map(),
+}));
+
 function makeSession(overrides: Partial<SessionWithDetails> = {}): SessionWithDetails {
   return {
     id: 'session-1',
@@ -130,5 +134,57 @@ describe('HistoryTable mobile layout protections', () => {
     const contentCell = title.closest('td');
     expect(contentCell).not.toBeNull();
     expect(contentCell?.getAttribute('style') ?? '').toContain('width: 300px');
+  });
+});
+
+describe('HistoryTable live content display', () => {
+  it('shows the channel name only for live sessions', () => {
+    render(
+      <TooltipProvider>
+        <MemoryRouter>
+          <HistoryTable
+            sessions={[
+              makeSession({
+                mediaType: 'live',
+                mediaTitle: 'Evening Movie',
+                channelTitle: 'Classic Hits TV',
+                year: null,
+                server: {
+                  id: 'server-1',
+                  name: 'Dispatcharr',
+                  type: 'dispatcharr',
+                },
+              }),
+            ]}
+            columnVisibility={DEFAULT_COLUMN_VISIBILITY}
+          />
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText('Classic Hits TV')).toBeInTheDocument();
+    expect(screen.queryByText('Evening Movie')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the media title when a live session has no channel name', () => {
+    render(
+      <TooltipProvider>
+        <MemoryRouter>
+          <HistoryTable
+            sessions={[
+              makeSession({
+                mediaType: 'live',
+                mediaTitle: 'Fallback Channel',
+                channelTitle: null,
+                year: null,
+              }),
+            ]}
+            columnVisibility={DEFAULT_COLUMN_VISIBILITY}
+          />
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText('Fallback Channel')).toBeInTheDocument();
   });
 });
