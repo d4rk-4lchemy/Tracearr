@@ -24,6 +24,10 @@ const CLIENT_VERSION = '1.0.0';
 const DEVICE_ID = 'tracearr-server';
 const DEVICE_NAME = 'Tracearr Server';
 
+export function buildJellyfinEmbyAuthHeader(token: string): string {
+  return `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}", Token="${token}"`;
+}
+
 /**
  * Activity log entry type - identical structure for Jellyfin and Emby
  */
@@ -105,19 +109,20 @@ export abstract class BaseMediaServerClient
   // ==========================================================================
 
   /**
-   * Build X-Emby-Authorization header value
-   * Used by both Jellyfin and Emby (identical format)
+   * Build the MediaBrowser auth scheme value (identical format for Jellyfin and Emby)
    */
   protected buildAuthHeader(): string {
-    return `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}", Token="${this.apiKey}"`;
+    return buildJellyfinEmbyAuthHeader(this.apiKey);
   }
 
   /**
    * Build headers for API requests
    */
   protected buildHeaders(): Record<string, string> {
+    const authHeaderName =
+      this.serverType === 'jellyfin' ? 'Authorization' : 'X-Emby-Authorization';
     return {
-      'X-Emby-Authorization': this.buildAuthHeader(),
+      [authHeaderName]: this.buildAuthHeader(),
       ...jellyfinEmbyHeaders(),
     };
   }
@@ -460,10 +465,39 @@ export abstract class BaseMediaServerClient
   }
 
   /**
+   * Look up a live session's remote-control capability.
+   * Playback commands only take effect on clients that report SupportsMediaControl.
+   */
+  private async getSessionControlInfo(
+    sessionId: string
+  ): Promise<{ found: boolean; supportsMediaControl: boolean }> {
+    const sessions = await fetchJson<Array<Record<string, unknown>>>(`${this.baseUrl}/Sessions`, {
+      headers: this.buildHeaders(),
+      service: this.serverType,
+      timeout: 10000,
+    });
+
+    const match = Array.isArray(sessions) ? sessions.find((s) => s.Id === sessionId) : undefined;
+
+    if (!match) return { found: false, supportsMediaControl: false };
+    return { found: true, supportsMediaControl: match.SupportsMediaControl === true };
+  }
+
+  /**
    * Terminate a playback session
    * If a reason is provided, sends it as a message to the user first
    */
   async terminateSession(sessionId: string, reason?: string): Promise<boolean> {
+    // A Stop command is silently ignored by clients that aren't remote-controllable, so verify
+    // capability first rather than reporting a false success.
+    const control = await this.getSessionControlInfo(sessionId);
+    if (!control.found) {
+      throw new Error('Session not found (may have already ended)');
+    }
+    if (!control.supportsMediaControl) {
+      throw new Error('Client does not support remote control; stream cannot be terminated');
+    }
+
     // Send message to user before stopping (Emby/Jellyfin require separate API call)
     if (reason) {
       await this.sendMessage(sessionId, reason, 'Stream Terminated', 5000);

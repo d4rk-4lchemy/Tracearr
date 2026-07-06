@@ -80,9 +80,15 @@ interface ProxyResult {
 /**
  * Generate a cache key from the request parameters
  */
-function getCacheKey(serverId: string, imagePath: string, width: number, height: number): string {
+function getCacheKey(
+  serverId: string,
+  imagePath: string,
+  width: number,
+  height: number,
+  fit: 'cover' | 'inside'
+): string {
   const hash = createHash('sha256')
-    .update(`${serverId}:${imagePath}:${width}:${height}`)
+    .update(`${serverId}:${imagePath}:${width}:${height}:${fit}`)
     .digest('hex')
     .slice(0, 16);
   return `${hash}.webp`;
@@ -108,6 +114,25 @@ function getFallbackImage(type: FallbackType, _width: number, _height: number): 
 
   // Return the SVG resized to requested dimensions
   return Buffer.from(svg);
+}
+
+export function normalizeDispatcharrImagePath(
+  imagePath: string | null | undefined
+): string | null {
+  const trimmed = imagePath?.trim();
+  if (!trimmed) return null;
+
+  let path = trimmed;
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      path = `${parsed.pathname}${parsed.search}`;
+    } catch {
+      path = trimmed;
+    }
+  }
+
+  return path.startsWith('/') ? path : `/${path}`;
 }
 
 /**
@@ -183,8 +208,33 @@ export function stopImageCacheCleanup(): void {
 export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
   const { serverId, imagePath, width = 300, height = 450, fallback = 'poster' } = options;
 
-  // Check cache first
-  const cacheKey = getCacheKey(serverId, imagePath, width, height);
+  // Look up server
+  const [server] = await db.select().from(servers).where(eq(servers.id, serverId)).limit(1);
+
+  if (!server) {
+    // Return fallback for missing server
+    const fallbackSvg = getFallbackImage(fallback, width, height);
+    return {
+      data: fallbackSvg,
+      contentType: 'image/svg+xml',
+      cached: false,
+    };
+  }
+
+  const effectiveImagePath =
+    server.type === 'dispatcharr' ? normalizeDispatcharrImagePath(imagePath) : imagePath;
+
+  if (!effectiveImagePath) {
+    const fallbackSvg = getFallbackImage(fallback, width, height);
+    return {
+      data: fallbackSvg,
+      contentType: 'image/svg+xml',
+      cached: false,
+    };
+  }
+
+  const resizeFit = server.type === 'dispatcharr' ? 'inside' : 'cover';
+  const cacheKey = getCacheKey(serverId, effectiveImagePath, width, height, resizeFit);
   const cachePath = join(CACHE_DIR, cacheKey);
 
   if (existsSync(cachePath)) {
@@ -202,19 +252,6 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     }
   }
 
-  // Look up server
-  const [server] = await db.select().from(servers).where(eq(servers.id, serverId)).limit(1);
-
-  if (!server) {
-    // Return fallback for missing server
-    const fallbackSvg = getFallbackImage(fallback, width, height);
-    return {
-      data: fallbackSvg,
-      contentType: 'image/svg+xml',
-      cached: false,
-    };
-  }
-
   const token = server.token;
 
   // Build image URL based on server type
@@ -225,18 +262,21 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     // Plex image URLs are relative paths like /library/metadata/123/thumb/456
     // Need to append X-Plex-Token
     const baseUrl = server.url.replace(/\/$/, '');
-    const separator = imagePath.includes('?') ? '&' : '?';
-    imageUrl = `${baseUrl}${imagePath}${separator}X-Plex-Token=${token}`;
+    const separator = effectiveImagePath.includes('?') ? '&' : '?';
+    imageUrl = `${baseUrl}${effectiveImagePath}${separator}X-Plex-Token=${token}`;
     headers['Accept'] = 'image/*';
   } else if (server.type === 'dispatcharr') {
     const baseUrl = server.url.replace(/\/$/, '');
-    imageUrl = /^https?:\/\//i.test(imagePath) ? imagePath : `${baseUrl}${imagePath}`;
-    headers['Accept'] = 'image/*';
+    imageUrl = `${baseUrl}${effectiveImagePath}`;
   } else {
-    // Jellyfin - imagePath should include the full endpoint
+    // Jellyfin/Emby - imagePath should include the full endpoint
     const baseUrl = server.url.replace(/\/$/, '');
-    imageUrl = `${baseUrl}${imagePath}`;
-    headers['X-Emby-Token'] = token;
+    imageUrl = `${baseUrl}${effectiveImagePath}`;
+    if (server.type === 'jellyfin') {
+      headers['Authorization'] = `MediaBrowser Token="${token}"`;
+    } else {
+      headers['X-Emby-Token'] = token;
+    }
     headers['Accept'] = 'image/*';
   }
 
@@ -257,7 +297,7 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     // Resize and convert to WebP using sharp
     const resized = await sharp(imageBuffer)
       .resize(width, height, {
-        fit: 'cover',
+        fit: resizeFit,
         position: 'center',
       })
       .webp({ quality: 80 })

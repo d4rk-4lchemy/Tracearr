@@ -75,10 +75,15 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
     if (parsed.length > 0) filters.serverUserIds = parsed;
   }
 
-  const serverId = searchParams.get('serverId');
-  if (serverId) filters.serverId = serverId;
-  const serverIds = searchParams.getAll('serverIds').filter(Boolean);
-  if (serverIds.length > 0) filters.serverIds = serverIds;
+  // serverIds=a,b is the canonical param; legacy serverId=X is back-compat
+  const serverIdsParam = searchParams.get('serverIds');
+  if (serverIdsParam) {
+    const parsed = serverIdsParam.split(',').filter(Boolean);
+    if (parsed.length > 0) filters.serverIds = parsed;
+  } else {
+    const legacyServerId = searchParams.get('serverId');
+    if (legacyServerId) filters.serverIds = [legacyServerId];
+  }
 
   const mediaTypes = parseCommaSeparated(searchParams.get('mediaTypes'), [
     'movie',
@@ -153,12 +158,7 @@ function filtersToUrlParams(filters: HistoryFilters): URLSearchParams {
   const params = new URLSearchParams();
 
   if (filters.serverUserIds?.length) params.set('userIds', filters.serverUserIds.join(','));
-  if (filters.serverId) params.set('serverId', filters.serverId);
-  if (filters.serverIds?.length) {
-    for (const id of filters.serverIds) {
-      params.append('serverIds', id);
-    }
-  }
+  if (filters.serverIds?.length) params.set('serverIds', filters.serverIds.join(','));
   if (filters.mediaTypes?.length) params.set('mediaTypes', filters.mediaTypes.join(','));
   if (filters.state) params.set('state', filters.state);
   if (filters.transcodeDecisions?.length)
@@ -181,7 +181,7 @@ export function History() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selectedServerIds, selectedServers } = useServer();
+  const { selectedServerIds, isMultiServer } = useServer();
   const [selectedSession, setSelectedSession] = useState<SessionWithDetails | null>(null);
 
   // Deep-link: fetch session by ID from route param and auto-open sheet
@@ -199,8 +199,8 @@ export function History() {
   // Parse filters from URL on mount and when URL changes
   const filters = useMemo(() => {
     const parsed = parseFiltersFromUrl(searchParams);
-    // Apply selected servers from context if not explicitly provided in URL
-    if (!parsed.serverIds?.length && !parsed.serverId && selectedServerIds.length > 0) {
+    // Apply selected servers from context if not set in URL
+    if (!parsed.serverIds?.length && selectedServerIds.length > 0) {
       parsed.serverIds = selectedServerIds;
     }
     return parsed;
@@ -216,16 +216,10 @@ export function History() {
   const { data: aggregatesData, isLoading: aggregatesLoading } = useHistoryAggregates(dataFilters);
 
   const { data: filterOptions, isLoading: filterOptionsLoading } = useFilterOptions({
-    serverId: filters.serverId,
     serverIds: filters.serverIds,
     startDate: filters.startDate,
     endDate: filters.endDate,
   });
-
-  const serverColorMap = useMemo(
-    () => new Map(selectedServers.map((server) => [server.id, server.color ?? null])),
-    [selectedServers]
-  );
 
   // Flatten pages into single sessions array
   const sessions = useMemo(() => {
@@ -297,6 +291,7 @@ export function History() {
             isLoading={isLoading || filterOptionsLoading}
             columnVisibility={columnVisibility}
             onColumnVisibilityChange={handleColumnVisibilityChange}
+            isMultiServer={isMultiServer}
           />
         </CardContent>
       </Card>
@@ -315,8 +310,7 @@ export function History() {
             sortBy={filters.orderBy ?? 'startedAt'}
             sortDir={filters.orderDir ?? 'desc'}
             onSortChange={handleSortChange}
-            showServerColorBar={selectedServerIds.length > 1}
-            serverColorMap={serverColorMap}
+            isMultiServer={isMultiServer}
           />
         </CardContent>
       </Card>

@@ -236,7 +236,7 @@ export const historyQuerySchema = z.object({
   // User filter - supports multi-select (comma-separated UUIDs in query string)
   serverUserIds: commaSeparatedArray(uuidSchema),
 
-  // Server filter
+  // Server filter - serverIds takes precedence over serverId when both are provided
   serverId: uuidSchema.optional(),
   serverIds: serverIdsQuerySchema,
   state: z.enum(['playing', 'paused', 'stopped']).optional(),
@@ -282,6 +282,25 @@ export const historyAggregatesQuerySchema = historyQuerySchema.omit({
   orderBy: true,
   orderDir: true,
 });
+
+// Filter options query - scoping params for /sessions/filter-options dropdowns
+export const filterOptionsQuerySchema = z
+  .object({
+    serverId: uuidSchema.optional(),
+    serverIds: serverIdsQuerySchema,
+    startDate: z.coerce.date().optional(),
+    endDate: z.coerce.date().optional(),
+    includeAllCountries: booleanStringSchema.optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.startDate && data.endDate) {
+        return data.startDate <= data.endDate;
+      }
+      return true;
+    },
+    { message: 'startDate must be before endDate' }
+  );
 
 export const sessionIdParamSchema = z.object({
   id: uuidSchema,
@@ -461,6 +480,7 @@ export const conditionSchema = z.object({
       window_hours: z.number().int().positive().optional(),
       exclude_same_device: z.boolean().optional(),
       exclude_same_ip: z.boolean().optional(),
+      count_device_types: z.array(deviceTypeSchema).optional(),
     })
     .optional(),
 });
@@ -563,6 +583,7 @@ export const createRuleV2Schema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).nullable().optional(),
   serverId: uuidSchema.nullable().optional(),
+  serverUserId: uuidSchema.nullable().optional(),
   isActive: z.boolean().default(true),
   severity: violationSeveritySchema.default('warning'),
   conditions: ruleConditionsSchema,
@@ -573,6 +594,8 @@ export const createRuleV2Schema = z.object({
 export const updateRuleV2Schema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).nullable().optional(),
+  serverId: uuidSchema.nullable().optional(),
+  serverUserId: uuidSchema.nullable().optional(),
   isActive: z.boolean().optional(),
   severity: violationSeveritySchema.optional(),
   conditions: ruleConditionsSchema.optional(),
@@ -602,6 +625,7 @@ export type ViolationSortField = z.infer<typeof violationSortFieldSchema>;
 
 export const violationQuerySchema = paginationSchema.extend({
   serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
   serverUserId: uuidSchema.optional(),
   ruleId: uuidSchema.optional(),
   severity: z.enum(['low', 'warning', 'high']).optional(),
@@ -638,6 +662,7 @@ export const statsQuerySchema = z
     startDate: z.iso.datetime().optional(),
     endDate: z.iso.datetime().optional(),
     serverId: uuidSchema.optional(),
+    serverIds: serverIdsQuerySchema,
     timezone: timezoneSchema,
   })
   .refine(dateValidationRefinements.customPeriodRequiresDates.refinement, {
@@ -910,6 +935,7 @@ export const engagementQuerySchema = z
     startDate: z.iso.datetime().optional(),
     endDate: z.iso.datetime().optional(),
     serverId: uuidSchema.optional(),
+    serverIds: serverIdsQuerySchema,
     timezone: timezoneSchema,
     // Engagement-specific filters
     mediaType: mediaTypeSchema.optional(),
@@ -949,6 +975,7 @@ export const showsQuerySchema = z
 // Library stats query schema
 export const libraryStatsQuerySchema = z.object({
   serverId: z.uuid().optional(),
+  serverIds: serverIdsQuerySchema,
   libraryId: z.uuid().optional(),
   timezone: timezoneSchema,
 });
@@ -956,6 +983,7 @@ export const libraryStatsQuerySchema = z.object({
 // Library growth query schema (time-series)
 export const libraryGrowthQuerySchema = z.object({
   serverId: z.uuid().optional(),
+  serverIds: serverIdsQuerySchema,
   libraryId: z.uuid().optional(),
   period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
   timezone: timezoneSchema,
@@ -980,6 +1008,7 @@ export const libraryStorageQuerySchema = z.object({
 // Library duplicates query schema (cross-server duplicate detection)
 export const libraryDuplicatesQuerySchema = z.object({
   serverId: z.uuid().optional(), // Filter to show duplicates involving this server
+  serverIds: serverIdsQuerySchema, // Restrict detection to a subset of accessible servers
   mediaType: z.enum(['movie', 'episode', 'show']).optional(),
   minConfidence: z.coerce.number().min(0).max(100).default(70),
   includeFuzzy: booleanStringSchema.default(true), // Include fuzzy title matches
@@ -990,6 +1019,7 @@ export const libraryDuplicatesQuerySchema = z.object({
 // Library stale content query schema
 export const libraryStaleQuerySchema = z.object({
   serverId: z.uuid().optional(),
+  serverIds: serverIdsQuerySchema,
   libraryId: z.uuid().optional(),
   mediaType: z.enum(['movie', 'show', 'artist']).optional(),
   staleDays: z.coerce.number().int().min(1).default(90), // Configurable threshold
@@ -1004,6 +1034,7 @@ export const libraryStaleQuerySchema = z.object({
 // Library watch statistics query schema
 export const libraryWatchQuerySchema = z.object({
   serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
   libraryId: z.string().optional(),
   mediaType: z.enum(['movie', 'episode', 'show']).optional(),
   minWatchCount: z.coerce.number().int().min(0).optional(),
@@ -1018,6 +1049,7 @@ export const libraryWatchQuerySchema = z.object({
 // Library ROI (Return on Investment) query schema
 export const libraryRoiQuerySchema = z.object({
   serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
   libraryId: z.string().optional(),
   mediaType: z.enum(['movie', 'show', 'artist', 'all']).default('all'),
   // Filter by value category
@@ -1039,6 +1071,7 @@ export const libraryRoiQuerySchema = z.object({
 // Library watch patterns query schema (binge, peak times, seasonal)
 export const libraryPatternsQuerySchema = z.object({
   serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
   libraryId: z.string().optional(),
   // Time range for pattern analysis (default: 52 weeks per CONTEXT.md)
   periodWeeks: z.coerce.number().int().min(4).max(104).default(52),
@@ -1076,6 +1109,7 @@ export const libraryCompletionQuerySchema = z.object({
 // Library top content query schema (for top movies and top shows endpoints)
 export const topContentQuerySchema = z.object({
   serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
   period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
   sortBy: z
     .enum(['plays', 'watch_hours', 'viewers', 'completion_rate', 'binge_score'])
@@ -1109,6 +1143,7 @@ export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type SessionQueryInput = z.infer<typeof sessionQuerySchema>;
 export type HistoryQueryInput = z.infer<typeof historyQuerySchema>;
 export type HistoryAggregatesQueryInput = z.infer<typeof historyAggregatesQuerySchema>;
+export type FilterOptionsQueryInput = z.infer<typeof filterOptionsQuerySchema>;
 export type CreateRuleInput = z.infer<typeof createRuleSchema>;
 export type UpdateRuleInput = z.infer<typeof updateRuleSchema>;
 

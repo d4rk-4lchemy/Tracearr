@@ -6,6 +6,7 @@
  */
 
 import { fetchJson, fetchText, plexHeaders } from '../../../utils/http.js';
+import { assertSafeProbeUrl, SsrfBlockedError } from '../../../utils/ssrf.js';
 import type {
   IMediaServerClient,
   IMediaServerClientWithHistory,
@@ -88,7 +89,7 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
       // Deduplicate ratingKeys — multiple sessions may play different versions of the same item
       const uniqueRatingKeys = [...new Set(transcodingEntries.map((e) => e.ratingKey))];
       const metadataResults = await Promise.allSettled(
-        uniqueRatingKeys.map((ratingKey) => this.getMediaMetadata(ratingKey)),
+        uniqueRatingKeys.map((ratingKey) => this.getMediaMetadata(ratingKey))
       );
 
       const rawMetadataByRatingKey = new Map<string, unknown>();
@@ -559,6 +560,18 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
     serverUrl: string
   ): Promise<{ success: true } | { success: false; code: string; message: string }> {
     const url = serverUrl.replace(/\/$/, '');
+
+    try {
+      assertSafeProbeUrl(url);
+    } catch (err) {
+      const message = err instanceof SsrfBlockedError ? err.message : 'URL not permitted';
+      return {
+        success: false,
+        code: PlexClient.AdminVerifyError.CONNECTION_FAILED,
+        message,
+      };
+    }
+
     const headers = plexHeaders(token);
 
     // First verify basic server connectivity

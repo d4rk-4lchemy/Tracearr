@@ -37,6 +37,8 @@ import { formatDuration } from '@/lib/formatters';
 import { getAvatarUrl } from '@/components/users/utils';
 import type { SessionWithDetails, SessionState, MediaType, EngagementTier } from '@tracearr/shared';
 import type { ColumnVisibility } from './HistoryFilters';
+import { ServerColumnCell } from '@/components/server';
+import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { format } from 'date-fns';
 import { getTimeFormatString } from '@/lib/timeFormat';
 
@@ -138,8 +140,7 @@ interface Props {
   sortBy?: SortableColumn;
   sortDir?: SortDirection;
   onSortChange?: (column: SortableColumn) => void;
-  showServerColorBar?: boolean;
-  serverColorMap?: Map<string, string | null>;
+  isMultiServer?: boolean;
   // Selection props
   selectable?: boolean;
   selectedIds?: Set<string>;
@@ -206,6 +207,7 @@ const COLUMN_WIDTHS: Record<keyof ColumnVisibility, number> = {
   date: 140,
   user: 150,
   content: 300,
+  server: 140,
   platform: 120,
   location: 130,
   ip: 120,
@@ -230,22 +232,12 @@ interface HistoryTableRowProps {
   session: SessionWithDetails;
   onClick?: () => void;
   columnVisibility: ColumnVisibility;
+  isMultiServer?: boolean;
   selectable?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
-  showServerColorBar?: boolean;
-  serverColorMap?: Map<string, string | null>;
   style?: React.CSSProperties;
   'data-index'?: number;
-}
-
-function getDeterministicServerColor(serverId: string): string {
-  let hash = 0;
-  for (let i = 0; i < serverId.length; i += 1) {
-    hash = (hash * 31 + serverId.charCodeAt(i)) | 0;
-  }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 70%, 52%)`;
 }
 
 // Session row component with column visibility support
@@ -256,11 +248,10 @@ export const HistoryTableRow = memo(
         session,
         onClick,
         columnVisibility,
+        isMultiServer = false,
         selectable,
         isSelected,
         onSelect,
-        showServerColorBar,
-        serverColorMap,
         style,
         'data-index': dataIndex,
       },
@@ -268,19 +259,17 @@ export const HistoryTableRow = memo(
     ) => {
       const { title: primary, subtitle: secondary } = getMediaDisplay(session);
       const progress = getProgress(session);
+      const colorMap = useServerColorMap();
+      const serverColor = isMultiServer ? (colorMap.get(session.serverId) ?? null) : null;
+      const accentStyle = serverColor
+        ? { ...style, boxShadow: `inset 3px 0 0 0 ${serverColor}` }
+        : style;
 
       return (
         <TableRow
           ref={ref}
           data-index={dataIndex}
-          style={{
-            ...style,
-            borderLeftWidth: showServerColorBar ? '3px' : undefined,
-            borderLeftStyle: showServerColorBar ? 'solid' : undefined,
-            borderLeftColor: showServerColorBar
-              ? (serverColorMap?.get(session.serverId) ?? getDeterministicServerColor(session.serverId))
-              : undefined,
-          }}
+          style={accentStyle}
           className={cn(
             'cursor-pointer transition-colors',
             onClick && 'hover:bg-muted/50',
@@ -368,6 +357,13 @@ export const HistoryTableRow = memo(
                   )}
                 </div>
               </div>
+            </TableCell>
+          )}
+
+          {/* Server - only rendered in multi-server mode */}
+          {isMultiServer && columnVisibility.server && (
+            <TableCell className="w-[140px]">
+              <ServerColumnCell server={session.server} />
             </TableCell>
           )}
 
@@ -475,7 +471,7 @@ export const HistoryTableRow = memo(
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="flex items-center gap-1.5">
-                    <Clock className="text-muted-foreground h-3.5 w-3.5" />
+                    <Clock className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
                     <span className="text-sm">
                       {formatDuration(session.durationMs, { style: 'compact' })}
                     </span>
@@ -533,9 +529,11 @@ HistoryTableRow.displayName = 'HistoryTableRow';
 // Loading skeleton row with column visibility support
 function SkeletonRow({
   columnVisibility,
+  isMultiServer = false,
   selectable = false,
 }: {
   columnVisibility: ColumnVisibility;
+  isMultiServer?: boolean;
   selectable?: boolean;
 }) {
   return (
@@ -570,6 +568,11 @@ function SkeletonRow({
             <Skeleton className="h-4 w-36" />
             <Skeleton className="h-3 w-24" />
           </div>
+        </TableCell>
+      )}
+      {isMultiServer && columnVisibility.server && (
+        <TableCell>
+          <Skeleton className="h-5 w-24 rounded-full" />
         </TableCell>
       )}
       {columnVisibility.platform && (
@@ -613,13 +616,19 @@ function SkeletonRow({
 }
 
 // Count visible columns for empty state colspan
-function getVisibleColumnCount(columnVisibility: ColumnVisibility): number {
-  return Object.values(columnVisibility).filter(Boolean).length;
+function getVisibleColumnCount(columnVisibility: ColumnVisibility, isMultiServer: boolean): number {
+  return Object.entries(columnVisibility).filter(
+    ([key, visible]) => visible && (key !== 'server' || isMultiServer)
+  ).length;
 }
 
-function getMinTableWidth(columnVisibility: ColumnVisibility, selectable: boolean): number {
+function getMinTableWidth(
+  columnVisibility: ColumnVisibility,
+  selectable: boolean,
+  isMultiServer: boolean
+): number {
   const visibleWidth = (Object.keys(columnVisibility) as Array<keyof ColumnVisibility>)
-    .filter((column) => columnVisibility[column])
+    .filter((column) => columnVisibility[column] && (column !== 'server' || isMultiServer))
     .reduce((sum, column) => sum + COLUMN_WIDTHS[column], 0);
 
   const selectionWidth = selectable ? SELECTION_COLUMN_WIDTH : 0;
@@ -668,8 +677,7 @@ export function HistoryTable({
   sortBy,
   sortDir,
   onSortChange,
-  showServerColorBar = false,
-  serverColorMap,
+  isMultiServer = false,
   selectable = false,
   selectedIds,
   selectAllMode = false,
@@ -678,8 +686,9 @@ export function HistoryTable({
   isAllVisibleSelected = false,
   isAllVisibleIndeterminate: _isAllVisibleIndeterminate = false,
 }: Props) {
-  const visibleColumnCount = getVisibleColumnCount(columnVisibility) + (selectable ? 1 : 0);
-  const minTableWidth = getMinTableWidth(columnVisibility, selectable);
+  const visibleColumnCount =
+    getVisibleColumnCount(columnVisibility, isMultiServer) + (selectable ? 1 : 0);
+  const minTableWidth = getMinTableWidth(columnVisibility, selectable, isMultiServer);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const rowVirtualizer = useVirtualizer({
@@ -725,6 +734,9 @@ export function HistoryTable({
               {columnVisibility.content && (
                 <TableHead style={getColumnStyle('content')}>Content</TableHead>
               )}
+              {isMultiServer && columnVisibility.server && (
+                <TableHead style={getColumnStyle('server')}>Server</TableHead>
+              )}
               {columnVisibility.platform && (
                 <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
               )}
@@ -745,7 +757,12 @@ export function HistoryTable({
           </thead>
           <tbody>
             {Array.from({ length: 10 }).map((_, i) => (
-              <SkeletonRow key={i} columnVisibility={columnVisibility} selectable={selectable} />
+              <SkeletonRow
+                key={i}
+                columnVisibility={columnVisibility}
+                isMultiServer={isMultiServer}
+                selectable={selectable}
+              />
             ))}
           </tbody>
         </table>
@@ -771,6 +788,9 @@ export function HistoryTable({
               {columnVisibility.user && <TableHead style={getColumnStyle('user')}>User</TableHead>}
               {columnVisibility.content && (
                 <TableHead style={getColumnStyle('content')}>Content</TableHead>
+              )}
+              {isMultiServer && columnVisibility.server && (
+                <TableHead style={getColumnStyle('server')}>Server</TableHead>
               )}
               {columnVisibility.platform && (
                 <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
@@ -850,6 +870,9 @@ export function HistoryTable({
                 />
               </TableHead>
             )}
+            {isMultiServer && columnVisibility.server && (
+              <TableHead style={getColumnStyle('server')}>Server</TableHead>
+            )}
             {columnVisibility.platform && (
               <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
             )}
@@ -903,11 +926,10 @@ export function HistoryTable({
                 session={session}
                 onClick={onSessionClick ? () => onSessionClick(session) : undefined}
                 columnVisibility={columnVisibility}
+                isMultiServer={isMultiServer}
                 selectable={selectable}
                 isSelected={selectAllMode || (selectedIds?.has(session.id) ?? false)}
                 onSelect={onRowSelect ? () => onRowSelect(session) : undefined}
-                showServerColorBar={showServerColorBar}
-                serverColorMap={serverColorMap}
               />
             );
           })}
@@ -925,6 +947,7 @@ export function HistoryTable({
               <SkeletonRow
                 key={`loading-${i}`}
                 columnVisibility={columnVisibility}
+                isMultiServer={isMultiServer}
                 selectable={selectable}
               />
             ))}

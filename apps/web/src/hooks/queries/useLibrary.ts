@@ -9,6 +9,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api, getBrowserTimezone } from '@/lib/api';
+import { useMultiServerQuery } from '@/hooks/useMultiServerQuery';
+import type { MultiServerQueryResult } from '@/hooks/useMultiServerQuery';
 import type {
   LibraryStatsResponse,
   LibraryGrowthResponse,
@@ -30,30 +32,36 @@ import type {
 const LIBRARY_STALE_TIME = 1000 * 60 * 5;
 
 /**
- * Fetch current library statistics (item counts, size, quality breakdown)
+ * Fetch current library statistics (item counts, size, quality breakdown).
+ * Backend deduplicates item counts and sums storage across servers.
  */
-export function useLibraryStats(serverId?: string | null, libraryId?: string | null) {
+export function useLibraryStats(serverIds: string[], libraryId?: string | null) {
   const timezone = getBrowserTimezone();
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<LibraryStatsResponse>({
-    queryKey: ['library', 'stats', serverId, libraryId, timezone],
-    queryFn: () => api.library.stats(serverId ?? undefined, libraryId ?? undefined),
+    queryKey: ['library', 'stats', sortedIds, libraryId, timezone],
+    queryFn: () => api.library.stats(serverIds, libraryId ?? undefined),
     staleTime: LIBRARY_STALE_TIME,
+    enabled: serverIds.length > 0,
   });
 }
 
 /**
- * Fetch library growth timeline (additions/removals over time)
+ * Fetch library growth timeline (additions/removals over time).
+ * Each data point carries a serverId; Overview aggregates across servers before charting.
  */
 export function useLibraryGrowth(
-  serverId?: string | null,
+  serverIds: string[],
   libraryId?: string | null,
   period: string = '30d'
 ) {
   const timezone = getBrowserTimezone();
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<LibraryGrowthResponse>({
-    queryKey: ['library', 'growth', serverId, libraryId, period, timezone],
-    queryFn: () => api.library.growth(serverId ?? undefined, libraryId ?? undefined, period),
+    queryKey: ['library', 'growth', sortedIds, libraryId, period, timezone],
+    queryFn: () => api.library.growth(serverIds, libraryId ?? undefined, period),
     staleTime: LIBRARY_STALE_TIME,
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -64,13 +72,15 @@ export function useLibraryGrowth(
 export function useLibraryQuality(
   serverId?: string | null,
   period: string = '30d',
-  mediaType: 'all' | 'movies' | 'shows' = 'all'
+  mediaType: 'all' | 'movies' | 'shows' = 'all',
+  enabled: boolean = true
 ) {
   const timezone = getBrowserTimezone();
   return useQuery<LibraryQualityResponse>({
     queryKey: ['library', 'quality', serverId, period, mediaType, timezone],
     queryFn: () => api.library.quality(serverId ?? undefined, period, mediaType),
     staleTime: LIBRARY_STALE_TIME,
+    enabled,
   });
 }
 
@@ -92,27 +102,28 @@ export function useLibraryStorage(
 
 /**
  * Fetch cross-server duplicate detection results
- * @param enabled - Set to false to skip fetching (e.g., when only one server exists)
+ * @param enabled - Set to false to skip fetching (e.g., when only one server is selected)
  */
 export function useLibraryDuplicates(
-  serverId?: string | null,
+  serverIds: string[],
   page: number = 1,
   pageSize: number = 20,
   enabled: boolean = true
 ) {
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<DuplicatesResponse>({
-    queryKey: ['library', 'duplicates', serverId, page, pageSize],
-    queryFn: () => api.library.duplicates(serverId ?? undefined, page, pageSize),
+    queryKey: ['library', 'duplicates', sortedIds, page, pageSize],
+    queryFn: () => api.library.duplicates(serverIds, page, pageSize),
     staleTime: LIBRARY_STALE_TIME,
     enabled,
   });
 }
 
 /**
- * Fetch stale/unwatched content analysis
+ * Fetch stale/unwatched content analysis - combined across all selected servers.
  */
 export function useLibraryStale(
-  serverId?: string | null,
+  serverIds: string[],
   libraryId?: string | null,
   staleDays: number = 90,
   category: 'all' | 'never_watched' | 'stale' = 'all',
@@ -122,11 +133,12 @@ export function useLibraryStale(
   sortBy: 'size' | 'title' | 'days_stale' | 'added_at' = 'size',
   sortOrder: 'asc' | 'desc' = 'desc'
 ) {
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<StaleResponse>({
     queryKey: [
       'library',
       'stale',
-      serverId,
+      sortedIds,
       libraryId,
       staleDays,
       category,
@@ -138,7 +150,7 @@ export function useLibraryStale(
     ],
     queryFn: () =>
       api.library.stale(
-        serverId ?? undefined,
+        serverIds,
         libraryId ?? undefined,
         staleDays,
         category,
@@ -149,22 +161,27 @@ export function useLibraryStale(
         sortOrder
       ),
     staleTime: LIBRARY_STALE_TIME,
+    enabled: serverIds.length > 0,
   });
 }
 
 /**
- * Fetch per-item watch statistics
+ * Fetch per-item watch statistics across one or more servers.
+ * Summary counts (watchedCount, totalItems, completedCount) are deduped by the backend.
+ * totalWatchMs is summed. Items are deduped per title with serverIds[] attached.
  */
 export function useLibraryWatch(
-  serverId?: string | null,
+  serverIds: string[],
   libraryId?: string | null,
   page: number = 1,
   pageSize: number = 20
 ) {
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<WatchResponse>({
-    queryKey: ['library', 'watch', serverId, libraryId, page, pageSize],
-    queryFn: () => api.library.watch(serverId ?? undefined, libraryId ?? undefined, page, pageSize),
+    queryKey: ['library', 'watch', sortedIds, libraryId, page, pageSize],
+    queryFn: () => api.library.watch(serverIds, libraryId ?? undefined, page, pageSize),
     staleTime: LIBRARY_STALE_TIME,
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -190,6 +207,8 @@ export function useLibraryCompletion(
       pageSize,
       mediaType,
     ],
+    // Skip when no server is targeted (multi-server pages render per-server cards instead)
+    enabled: serverId != null,
     queryFn: () =>
       api.library.completion(
         serverId ?? undefined,
@@ -204,26 +223,29 @@ export function useLibraryCompletion(
 }
 
 /**
- * Fetch watch patterns analysis (binge shows, peak times, trends)
+ * Fetch watch patterns analysis (binge shows, peak times, trends) across one or more servers.
+ * Hourly/monthly/peak are aggregated by the backend. BingeShow rows are deduped by show.
  */
 export function useLibraryPatterns(
-  serverId?: string | null,
+  serverIds: string[],
   libraryId?: string | null,
   periodWeeks: number = 12
 ) {
   const timezone = getBrowserTimezone();
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<PatternsResponse>({
-    queryKey: ['library', 'patterns', serverId, libraryId, periodWeeks, timezone],
-    queryFn: () => api.library.patterns(serverId ?? undefined, libraryId ?? undefined, periodWeeks),
+    queryKey: ['library', 'patterns', sortedIds, libraryId, periodWeeks, timezone],
+    queryFn: () => api.library.patterns(serverIds, libraryId ?? undefined, periodWeeks),
     staleTime: LIBRARY_STALE_TIME,
+    enabled: serverIds.length > 0,
   });
 }
 
 /**
- * Fetch content ROI analysis (watch value per storage cost)
+ * Fetch content ROI analysis - combined across all selected servers.
  */
 export function useLibraryRoi(
-  serverId?: string | null,
+  serverIds: string[],
   libraryId?: string | null,
   page: number = 1,
   pageSize: number = 20,
@@ -232,11 +254,12 @@ export function useLibraryRoi(
   sortOrder: 'asc' | 'desc' = 'asc'
 ) {
   const timezone = getBrowserTimezone();
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<RoiResponse>({
     queryKey: [
       'library',
       'roi',
-      serverId,
+      sortedIds,
       libraryId,
       page,
       pageSize,
@@ -247,7 +270,7 @@ export function useLibraryRoi(
     ],
     queryFn: () =>
       api.library.roi(
-        serverId ?? undefined,
+        serverIds,
         libraryId ?? undefined,
         page,
         pageSize,
@@ -256,44 +279,47 @@ export function useLibraryRoi(
         sortOrder
       ),
     staleTime: LIBRARY_STALE_TIME,
+    enabled: serverIds.length > 0,
   });
 }
 
 /**
- * Fetch top movies by engagement metrics
+ * Fetch top movies by engagement metrics across one or more servers.
  */
 export function useTopMovies(
-  serverId?: string | null,
+  serverIds: string[],
   period: string = '30d',
   sortBy: string = 'plays',
   sortOrder: string = 'desc',
   page: number = 1,
   pageSize: number = 20
 ) {
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<TopMoviesResponse>({
-    queryKey: ['library', 'top-movies', serverId, period, sortBy, sortOrder, page, pageSize],
-    queryFn: () =>
-      api.library.topMovies(serverId ?? undefined, period, sortBy, sortOrder, page, pageSize),
+    queryKey: ['library', 'top-movies', sortedIds, period, sortBy, sortOrder, page, pageSize],
+    queryFn: () => api.library.topMovies(serverIds, period, sortBy, sortOrder, page, pageSize),
     staleTime: LIBRARY_STALE_TIME,
+    enabled: serverIds.length > 0,
   });
 }
 
 /**
- * Fetch top TV shows by engagement metrics
+ * Fetch top TV shows by engagement metrics across one or more servers.
  */
 export function useTopShows(
-  serverId?: string | null,
+  serverIds: string[],
   period: string = '30d',
   sortBy: string = 'plays',
   sortOrder: string = 'desc',
   page: number = 1,
   pageSize: number = 20
 ) {
+  const sortedIds = [...serverIds].sort().join(',');
   return useQuery<TopShowsResponse>({
-    queryKey: ['library', 'top-shows', serverId, period, sortBy, sortOrder, page, pageSize],
-    queryFn: () =>
-      api.library.topShows(serverId ?? undefined, period, sortBy, sortOrder, page, pageSize),
+    queryKey: ['library', 'top-shows', sortedIds, period, sortBy, sortOrder, page, pageSize],
+    queryFn: () => api.library.topShows(serverIds, period, sortBy, sortOrder, page, pageSize),
     staleTime: LIBRARY_STALE_TIME,
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -334,14 +360,15 @@ export interface LibraryStatusResponse {
 }
 
 /**
- * Fetch library sync and backfill status
- * Used to determine if library needs syncing or if snapshots need backfilling
+ * Fan-out library sync/backfill status across all selected servers.
+ * Returns a MultiServerQueryResult so callers can inspect per-server state.
  */
-export function useLibraryStatus(serverId?: string | null) {
-  return useQuery<LibraryStatusResponse>({
-    queryKey: ['library', 'status', serverId],
-    queryFn: () => api.library.status(serverId ?? undefined),
-    // Shorter stale time since this is used for real-time status checking
-    staleTime: 1000 * 30, // 30 seconds
-  });
+export function useLibraryStatus(
+  serverIds: string[]
+): MultiServerQueryResult<LibraryStatusResponse> {
+  return useMultiServerQuery<LibraryStatusResponse>(serverIds, (id) => ({
+    queryKey: ['library', 'status', id],
+    queryFn: () => api.library.status(id),
+    staleTime: 1000 * 30,
+  }));
 }

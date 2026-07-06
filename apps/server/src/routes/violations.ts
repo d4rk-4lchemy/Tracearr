@@ -21,7 +21,12 @@ import {
   users,
   ruleActionResults,
 } from '../db/schema.js';
-import { hasServerAccess } from '../utils/serverFiltering.js';
+import {
+  hasServerAccess,
+  resolveServerIds,
+  buildMultiServerCondition,
+} from '../utils/serverFiltering.js';
+import { getServerUserDisplayNames } from '../services/userService.js';
 
 /**
  * Build ORDER BY SQL clause for violations based on sort field and direction.
@@ -592,6 +597,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       page,
       pageSize,
       serverId,
+      serverIds,
       serverUserId,
       ruleId,
       severity,
@@ -605,37 +611,19 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
     const authUser = request.user;
     const offset = (page - 1) * pageSize;
 
-    // Validate server access if specific server requested
-    if (serverId && !hasServerAccess(authUser, serverId)) {
-      return reply.forbidden('You do not have access to this server');
-    }
+    const resolvedIds = resolveServerIds(authUser, serverId, serverIds, { strict: false });
 
     // Build conditions
     const conditions = [];
 
-    // Server filter - either specific server or user's accessible servers
-    if (serverId) {
-      // Specific server requested
-      conditions.push(eq(serverUsers.serverId, serverId));
-    } else if (authUser.role !== 'owner') {
-      // No specific server, filter by user's accessible servers
-      if (authUser.serverIds.length === 0) {
-        // No server access - return empty
-        return {
-          data: [],
-          page,
-          pageSize,
-          total: 0,
-          totalPages: 0,
-        };
-      } else if (authUser.serverIds.length === 1) {
-        const serverId = authUser.serverIds[0];
-        if (serverId) {
-          conditions.push(eq(serverUsers.serverId, serverId));
-        }
-      } else {
-        conditions.push(inArray(serverUsers.serverId, authUser.serverIds));
-      }
+    // Short-circuit when the user has no accessible servers in the requested set
+    if (resolvedIds?.length === 0) {
+      return { data: [], page, pageSize, total: 0, totalPages: 0 };
+    }
+
+    const serverCondition = buildMultiServerCondition(resolvedIds, serverUsers.serverId);
+    if (serverCondition) {
+      conditions.push(serverCondition);
     }
 
     if (serverUserId) {
@@ -720,15 +708,13 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
     // Need to use raw SQL for count with the same joins
     const countConditions = [];
 
-    // Server filter for count query
-    if (serverId) {
-      countConditions.push(sql`su.server_id = ${serverId}`);
-    } else if (authUser.role !== 'owner') {
-      if (authUser.serverIds.length === 1) {
-        countConditions.push(sql`su.server_id = ${authUser.serverIds[0]}`);
-      } else if (authUser.serverIds.length > 1) {
-        const serverIdList = authUser.serverIds.map((id: string) => sql`${id}`);
-        countConditions.push(sql`su.server_id IN (${sql.join(serverIdList, sql`, `)})`);
+    // Server filter for count query - mirrors the Drizzle filter above
+    if (resolvedIds !== undefined) {
+      if (resolvedIds.length === 1) {
+        countConditions.push(sql`su.server_id = ${resolvedIds[0]}`);
+      } else if (resolvedIds.length > 1) {
+        const ids = resolvedIds.map((id) => sql`${id}`);
+        countConditions.push(sql`su.server_id IN (${sql.join(ids, sql`, `)})`);
       }
     }
 
@@ -854,7 +840,38 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
 
     // Enrich with related sessions, user history, and action results
     const enriched = await enrichViolations([violation as ViolationRow]);
-    return enriched[0];
+    const enrichedViolation = enriched[0];
+    if (!enrichedViolation) {
+      return reply.notFound('Violation not found');
+    }
+
+    // Resolve display names for user_id array conditions (in/not_in) in evidence
+    if (enrichedViolation.evidence && enrichedViolation.evidence.length > 0) {
+      const userIdSet = new Set<string>();
+      for (const group of enrichedViolation.evidence) {
+        for (const cond of group.conditions) {
+          // only threshold holds uuids; cond.actual is a display name, not an id
+          if (cond.field === 'user_id' && Array.isArray(cond.threshold)) {
+            for (const id of cond.threshold) {
+              if (typeof id === 'string') userIdSet.add(id);
+            }
+          }
+        }
+      }
+      if (userIdSet.size > 0) {
+        try {
+          const userNames = await getServerUserDisplayNames([...userIdSet]);
+          return { ...enrichedViolation, userNames };
+        } catch (err) {
+          request.log.error(
+            { err, violationId: id },
+            'failed to resolve user display names for violation detail'
+          );
+        }
+      }
+    }
+
+    return enrichedViolation;
   });
 
   /**
@@ -1022,6 +1039,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       selectAll?: boolean;
       filters?: {
         serverId?: string;
+        serverIds?: string[];
         severity?: string;
         acknowledged?: boolean;
       };
@@ -1037,16 +1055,20 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       // Query for all violations matching filters
       const conditions = [];
 
-      if (body.filters.serverId) {
-        if (!hasServerAccess(authUser, body.filters.serverId)) {
-          return reply.forbidden('You do not have access to this server');
-        }
-        conditions.push(eq(serverUsers.serverId, body.filters.serverId));
-      } else if (authUser.role !== 'owner') {
-        if (authUser.serverIds.length === 0) {
-          return { success: true, acknowledged: 0 };
-        }
-        conditions.push(inArray(serverUsers.serverId, authUser.serverIds));
+      const bulkResolvedIds = resolveServerIds(
+        authUser,
+        body.filters.serverId,
+        body.filters.serverIds,
+        { strict: false }
+      );
+
+      if (bulkResolvedIds?.length === 0) {
+        return { success: true, acknowledged: 0 };
+      }
+
+      const bulkServerCondition = buildMultiServerCondition(bulkResolvedIds, serverUsers.serverId);
+      if (bulkServerCondition) {
+        conditions.push(bulkServerCondition);
       }
 
       if (body.filters.severity) {
@@ -1119,6 +1141,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       selectAll?: boolean;
       filters?: {
         serverId?: string;
+        serverIds?: string[];
         severity?: string;
         acknowledged?: boolean;
       };
@@ -1134,16 +1157,20 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       // Query for all violations matching filters
       const conditions = [];
 
-      if (body.filters.serverId) {
-        if (!hasServerAccess(authUser, body.filters.serverId)) {
-          return reply.forbidden('You do not have access to this server');
-        }
-        conditions.push(eq(serverUsers.serverId, body.filters.serverId));
-      } else if (authUser.role !== 'owner') {
-        if (authUser.serverIds.length === 0) {
-          return { success: true, dismissed: 0 };
-        }
-        conditions.push(inArray(serverUsers.serverId, authUser.serverIds));
+      const bulkResolvedIds = resolveServerIds(
+        authUser,
+        body.filters.serverId,
+        body.filters.serverIds,
+        { strict: false }
+      );
+
+      if (bulkResolvedIds?.length === 0) {
+        return { success: true, dismissed: 0 };
+      }
+
+      const bulkServerCondition = buildMultiServerCondition(bulkResolvedIds, serverUsers.serverId);
+      if (bulkServerCondition) {
+        conditions.push(bulkServerCondition);
       }
 
       if (body.filters.severity) {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type CSSProperties } from 'react';
 import {
   flexRender,
   getCoreRowModel,
@@ -56,6 +56,8 @@ interface DataTableProps<TData, TValue> {
   onPageSelect?: (rows: TData[]) => void;
   isPageSelected?: boolean;
   isPageIndeterminate?: boolean;
+  // Optional per-row inline style (e.g. server color accent)
+  getRowStyle?: (row: TData) => CSSProperties | undefined;
 }
 
 export function DataTable<TData, TValue>({
@@ -84,6 +86,7 @@ export function DataTable<TData, TValue>({
   onPageSelect,
   isPageSelected = false,
   isPageIndeterminate: _isPageIndeterminate = false,
+  getRowStyle,
 }: DataTableProps<TData, TValue>) {
   const [internalSorting, setInternalSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -253,6 +256,7 @@ export function DataTable<TData, TValue>({
                   <TableRow
                     key={row.id}
                     className={cn(onRowClick && 'cursor-pointer', isRowSelected && 'bg-muted/50')}
+                    style={getRowStyle?.(row.original)}
                     onClick={() => onRowClick?.(row.original)}
                   >
                     {row.getVisibleCells().map((cell) => (

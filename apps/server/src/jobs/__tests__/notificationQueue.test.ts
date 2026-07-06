@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import type { ViolationWithDetails } from '@tracearr/shared';
 
 // Create mocks using vi.hoisted
@@ -14,11 +15,15 @@ const {
   mockGetChannelRouting,
   mockNotificationManagerSendAll,
   mockPushNotificationServiceNotifyViolation,
+  mockNotifyViolation,
+  mockGetServerUserDisplayNames,
 } = vi.hoisted(() => ({
   mockGetNotificationSettings: vi.fn(),
   mockGetChannelRouting: vi.fn(),
   mockNotificationManagerSendAll: vi.fn().mockResolvedValue([]),
   mockPushNotificationServiceNotifyViolation: vi.fn().mockResolvedValue(undefined),
+  mockNotifyViolation: vi.fn().mockResolvedValue([]),
+  mockGetServerUserDisplayNames: vi.fn(),
 }));
 
 // Mock dependencies
@@ -33,8 +38,12 @@ vi.mock('../../routes/channelRouting.js', () => ({
 vi.mock('../../services/notifications/index.js', () => ({
   notificationManager: {
     sendAll: mockNotificationManagerSendAll,
-    notifyViolation: vi.fn().mockResolvedValue([]),
+    notifyViolation: mockNotifyViolation,
   },
+}));
+
+vi.mock('../../services/userService.js', () => ({
+  getServerUserDisplayNames: mockGetServerUserDisplayNames,
 }));
 
 vi.mock('../../services/pushNotification.js', () => ({
@@ -45,6 +54,10 @@ vi.mock('../../services/pushNotification.js', () => ({
 
 vi.mock('../../websocket/index.js', () => ({
   broadcastToAll: vi.fn(),
+}));
+
+vi.mock('../../serverState.js', () => ({
+  isMaintenance: vi.fn().mockReturnValue(false),
 }));
 
 // Mock BullMQ - we're testing the processor function directly
@@ -65,9 +78,7 @@ vi.mock('bullmq', () => ({
   })),
 }));
 
-// Import after mocking - we need to access the internals for testing
-// Since processNotificationJob is not exported, we'll test via enqueueNotification + worker
-// Actually, let's re-export it for testing or test the full flow
+import { processNotificationJob } from '../notificationQueue.js';
 
 describe('Notification Queue - Rule Notification Bypass', () => {
   const createMockSettings = () => ({
@@ -290,5 +301,115 @@ describe('Integration: Rule Notification Flow', () => {
     });
 
     // Note: 'email' is not implemented yet, but is a valid channel type
+  });
+});
+
+describe('processNotificationJob - user_id condition regression', () => {
+  const makeSettings = () => ({
+    discordWebhookUrl: 'https://discord.com/api/webhooks/123/abc',
+    customWebhookUrl: null,
+    webhookFormat: null,
+    ntfyTopic: null,
+    ntfyAuthToken: null,
+    pushoverUserKey: null,
+    pushoverApiToken: null,
+  });
+
+  const makeRouting = () => ({
+    discordEnabled: true,
+    webhookEnabled: false,
+    pushEnabled: false,
+    webToastEnabled: false,
+  });
+
+  const makeJob = (evidence: unknown[]) =>
+    ({
+      data: {
+        type: 'violation' as const,
+        payload: {
+          id: randomUUID(),
+          ruleId: randomUUID(),
+          serverUserId: randomUUID(),
+          sessionId: randomUUID(),
+          severity: 'warning',
+          data: { evidence },
+          acknowledgedAt: null,
+          createdAt: new Date(),
+          user: {
+            id: randomUUID(),
+            username: 'testuser',
+            serverId: randomUUID(),
+            thumbUrl: null,
+            identityName: null,
+          },
+          rule: { id: randomUUID(), name: 'Test Rule', type: null },
+        } as ViolationWithDetails,
+      },
+    }) as any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetNotificationSettings.mockResolvedValue(makeSettings());
+    mockGetChannelRouting.mockResolvedValue(makeRouting());
+    mockNotifyViolation.mockResolvedValue([]);
+  });
+
+  it('passes only threshold UUIDs (not actual username) to getServerUserDisplayNames', async () => {
+    const thresholdId1 = randomUUID();
+    const thresholdId2 = randomUUID();
+    mockGetServerUserDisplayNames.mockResolvedValue({
+      [thresholdId1]: 'Alice',
+      [thresholdId2]: 'Bob',
+    });
+
+    const job = makeJob([
+      {
+        groupIndex: 0,
+        matched: true,
+        conditions: [
+          {
+            field: 'user_id',
+            operator: 'not_in',
+            threshold: [thresholdId1, thresholdId2],
+            actual: 'bob',
+            matched: true,
+          },
+        ],
+      },
+    ]);
+
+    await processNotificationJob(job);
+
+    expect(mockGetServerUserDisplayNames).toHaveBeenCalledTimes(1);
+    const calledWith: string[] = mockGetServerUserDisplayNames.mock.calls[0]![0];
+    expect(calledWith).toContain(thresholdId1);
+    expect(calledWith).toContain(thresholdId2);
+    expect(calledWith).not.toContain('bob');
+  });
+
+  it('still calls notifyViolation when getServerUserDisplayNames throws', async () => {
+    mockGetServerUserDisplayNames.mockRejectedValue(
+      new Error('invalid input syntax for type uuid')
+    );
+
+    const job = makeJob([
+      {
+        groupIndex: 0,
+        matched: true,
+        conditions: [
+          {
+            field: 'user_id',
+            operator: 'not_in',
+            threshold: [randomUUID()],
+            actual: 'bob',
+            matched: true,
+          },
+        ],
+      },
+    ]);
+
+    await processNotificationJob(job);
+
+    expect(mockNotifyViolation).toHaveBeenCalledTimes(1);
   });
 });

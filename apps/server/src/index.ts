@@ -966,14 +966,14 @@ async function initializePostListen(app: FastifyInstance) {
     app.log.info('Session poller disabled in settings');
   }
 
-  // Start realtime upstream connections (Plex SSE + Dispatcharr WS)
+  // Start realtime upstream connections (Plex/Jellyfin/Emby SSE + Dispatcharr WS)
   try {
     // Clean up any orphaned pending sessions from previous server instance
     await cleanupOrphanedPendingSessions();
     startSSEProcessor(); // Subscribe to SSE events
     startDispatcharrRealtimeProcessor(); // Subscribe to Dispatcharr snapshot updates
     await sseManager.start(); // Start realtime connections
-    app.log.info('Realtime connections started for Plex SSE and Dispatcharr WS');
+    app.log.info('Realtime connections started for Plex/Jellyfin/Emby SSE and Dispatcharr WS');
   } catch (err) {
     app.log.error({ err }, 'Failed to start realtime connections - falling back to polling');
   }

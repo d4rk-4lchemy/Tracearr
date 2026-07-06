@@ -1,5 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const mocks = vi.hoisted(() => ({
+  sharpResize: vi.fn(),
+  sharpWebp: vi.fn(),
+  sharpToBuffer: vi.fn(),
+}));
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({
@@ -25,9 +31,9 @@ vi.mock('../../db/schema.js', () => ({
 
 vi.mock('sharp', () => ({
   default: vi.fn(() => ({
-    resize: vi.fn().mockReturnThis(),
-    webp: vi.fn().mockReturnThis(),
-    toBuffer: vi.fn().mockResolvedValue(Buffer.from('resized-image')),
+    resize: mocks.sharpResize.mockReturnThis(),
+    webp: mocks.sharpWebp.mockReturnThis(),
+    toBuffer: mocks.sharpToBuffer.mockResolvedValue(Buffer.from('resized-image')),
   })),
 }));
 
@@ -38,6 +44,7 @@ import { proxyImage, stopImageCacheCleanup } from '../imageProxy.js';
 
 describe('proxyImage', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({
       ok: true,
@@ -49,26 +56,36 @@ describe('proxyImage', () => {
     stopImageCacheCleanup();
   });
 
-  it('does not send auth headers for Dispatcharr relative image paths', async () => {
-    const imagePath = `/media/channels/1/logo.png?ts=${Date.now()}`;
+  it('fetches Dispatcharr relative image paths without auth and preserves aspect ratio', async () => {
+    const imagePath = `/api/channels/logos/4671/cache/?ts=${Date.now()}`;
 
-    await proxyImage({
+    const result = await proxyImage({
       serverId: 'server-1',
       imagePath,
+      width: 300,
+      height: 450,
     });
 
     expect(mockFetch).toHaveBeenCalledWith(
       `http://dispatcharr.local${imagePath}`,
       expect.objectContaining({
-        headers: {
-          Accept: 'image/*',
-        },
+        headers: {},
       })
     );
+    expect(mocks.sharpResize).toHaveBeenCalledWith(300, 450, {
+      fit: 'inside',
+      position: 'center',
+    });
+    expect(result).toEqual({
+      data: Buffer.from('resized-image'),
+      contentType: 'image/webp',
+      cached: false,
+    });
   });
 
-  it('does not send auth headers for Dispatcharr absolute image URLs', async () => {
-    const imageUrl = `https://cdn.example.com/channel-logo.png?ts=${Date.now()}`;
+  it('normalizes Dispatcharr absolute image URLs and fetches through the configured server URL', async () => {
+    const imagePath = `/api/channels/logos/4671/cache/?ts=${Date.now()}`;
+    const imageUrl = `https://dispatcharr.example.com${imagePath}#ignored`;
 
     await proxyImage({
       serverId: 'server-1',
@@ -76,12 +93,14 @@ describe('proxyImage', () => {
     });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      imageUrl,
+      `http://dispatcharr.local${imagePath}`,
       expect.objectContaining({
-        headers: {
-          Accept: 'image/*',
-        },
+        headers: {},
       })
     );
+    expect(mocks.sharpResize).toHaveBeenCalledWith(300, 450, {
+      fit: 'inside',
+      position: 'center',
+    });
   });
 });

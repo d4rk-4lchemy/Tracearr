@@ -25,6 +25,13 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+const { mockGetServerUserDisplayNames } = vi.hoisted(() => ({
+  mockGetServerUserDisplayNames: vi.fn(),
+}));
+vi.mock('../../services/userService.js', () => ({
+  getServerUserDisplayNames: mockGetServerUserDisplayNames,
+}));
+
 // Import the mocked db and the routes
 import { db } from '../../db/client.js';
 import { violationRoutes } from '../violations.js';
@@ -574,6 +581,92 @@ describe('Violation Routes', () => {
       expect(body.session.device).toBe('Safari');
       expect(body.session.product).toBe('Plex Web');
       expect(body.session.quality).toBe('4K');
+    });
+
+    it('passes only threshold UUIDs (not actual username) to getServerUserDisplayNames', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const violationId = randomUUID();
+      const thresholdId1 = randomUUID();
+      const thresholdId2 = randomUUID();
+      const testViolation = createTestViolation({
+        id: violationId,
+        data: {
+          evidence: [
+            {
+              groupIndex: 0,
+              matched: true,
+              conditions: [
+                {
+                  field: 'user_id',
+                  operator: 'not_in',
+                  threshold: [thresholdId1, thresholdId2],
+                  actual: 'bob',
+                  matched: true,
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      mockGetServerUserDisplayNames.mockResolvedValue({
+        [thresholdId1]: 'Alice',
+        [thresholdId2]: 'Bob',
+      });
+      setupSingleViolationMocks(mockDb, [testViolation]);
+
+      const response = await app.inject({ method: 'GET', url: `/violations/${violationId}` });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockGetServerUserDisplayNames).toHaveBeenCalledTimes(1);
+      const calledWith: string[] = mockGetServerUserDisplayNames.mock.calls[0]![0];
+      expect(calledWith).toContain(thresholdId1);
+      expect(calledWith).toContain(thresholdId2);
+      expect(calledWith).not.toContain('bob');
+
+      const body = response.json();
+      expect(body.userNames[thresholdId1]).toBe('Alice');
+      expect(body.userNames[thresholdId2]).toBe('Bob');
+    });
+
+    it('returns violation without 500 when getServerUserDisplayNames throws', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const violationId = randomUUID();
+      const testViolation = createTestViolation({
+        id: violationId,
+        data: {
+          evidence: [
+            {
+              groupIndex: 0,
+              matched: true,
+              conditions: [
+                {
+                  field: 'user_id',
+                  operator: 'not_in',
+                  threshold: [randomUUID()],
+                  actual: 'bob',
+                  matched: true,
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      mockGetServerUserDisplayNames.mockRejectedValue(
+        new Error('invalid input syntax for type uuid')
+      );
+      setupSingleViolationMocks(mockDb, [testViolation]);
+
+      const response = await app.inject({ method: 'GET', url: `/violations/${violationId}` });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.id).toBe(violationId);
     });
   });
 

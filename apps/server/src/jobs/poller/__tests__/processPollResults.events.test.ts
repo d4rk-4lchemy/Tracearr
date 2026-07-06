@@ -15,14 +15,12 @@ describe('processPollResults event semantics', () => {
 
     await processPollResults({
       newSessions: [],
-      stoppedKeys: new Set<string>(),
+      stoppedKeys: [],
       updatedSessions: [session],
       cachedSessions: [],
       cacheService: null,
       pubSubService: {
         publish,
-        subscribe: vi.fn(),
-        unsubscribe: vi.fn(),
       },
       enqueueNotification,
     });

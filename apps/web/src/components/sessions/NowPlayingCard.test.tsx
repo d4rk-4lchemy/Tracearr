@@ -8,6 +8,15 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { role: 'user' } }),
 }));
 
+vi.mock('@/hooks/useServer', () => ({
+  useServer: () => ({
+    isMultiServer: false,
+    selectedServers: [{ id: 'server-1', color: null }],
+    selectedServerIds: ['server-1'],
+    selectedServerId: 'server-1',
+  }),
+}));
+
 vi.mock('@/hooks/useEstimatedProgress', () => ({
   useEstimatedProgress: () => ({
     estimatedProgressMs: 60_000,
@@ -128,5 +137,26 @@ describe('NowPlayingCard ffmpeg speed display', () => {
 
     expect(screen.queryByText('1.25x')).toBeNull();
     expect(screen.getByText('--:--')).toBeTruthy();
+  });
+
+  it('proxies absolute Dispatcharr live channel logos for card artwork', () => {
+    const absoluteThumbUrl =
+      'https://dispatcharr.example.com/api/channels/logos/4671/cache/?ts=123#ignored';
+
+    const { container } = render(
+      <NowPlayingCard
+        session={makeSession({
+          thumbPath: absoluteThumbUrl,
+          server: { id: 'server-1', name: 'Dispatcharr', type: 'dispatcharr' },
+          mediaType: 'live',
+        })}
+      />
+    );
+
+    const poster = container.querySelector('img[alt="Dispatch News"]');
+    expect(poster).toBeTruthy();
+    expect(poster?.getAttribute('src')).toBe(
+      '/api/v1/images/proxy?server=server-1&url=https%3A%2F%2Fdispatcharr.example.com%2Fapi%2Fchannels%2Flogos%2F4671%2Fcache%2F%3Fts%3D123%23ignored&width=200&height=300'
+    );
   });
 });

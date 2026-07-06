@@ -64,6 +64,7 @@ export function UserDetail() {
       date: true,
       user: false,
       content: true,
+      server: false,
       platform: true,
       location: true,
       ip: false,
@@ -237,7 +238,7 @@ export function UserDetail() {
     userId: id,
     page: violationsPage,
     pageSize,
-    serverId: selectedServerId ?? undefined,
+    serverIds: selectedServerId ? [selectedServerId] : undefined,
   });
   const needsPaginatedViolations = violationsPage > 1;
 
@@ -255,7 +256,7 @@ export function UserDetail() {
     ? (paginatedSessions?.data ?? [])
     : (fullData?.sessions.data ?? []);
 
-  // Map Session → SessionWithDetails for HistoryTable compatibility
+  // Map Session -> SessionWithDetails for HistoryTable compatibility
   const sessions: SessionWithDetails[] = useMemo(() => {
     if (!user) return [];
     const server = servers.find((s) => s.id === user.serverId);

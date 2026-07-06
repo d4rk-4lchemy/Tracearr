@@ -78,6 +78,7 @@ export const WS_EVENTS = {
   VERSION_UPDATE: 'version:update',
   SERVER_DOWN: 'server:down',
   SERVER_UP: 'server:up',
+  SERVER_CONNECTION: 'server:connection',
 } as const;
 
 // Redis key prefix (set at startup via setRedisPrefix)
@@ -131,6 +132,7 @@ export const REDIS_KEYS = {
   SERVER_HEALTH: (serverId: string) => `${_redisPrefix}tracearr:servers:${serverId}:health`,
   SERVER_HEALTH_FAIL_COUNT: (serverId: string) =>
     `${_redisPrefix}tracearr:servers:${serverId}:health:fails`,
+  SERVER_CONNECTION: (serverId: string) => `${_redisPrefix}tracearr:servers:${serverId}:connection`,
   get PUBSUB_EVENTS() {
     return `${_redisPrefix}tracearr:events`;
   },
@@ -146,6 +148,10 @@ export const REDIS_KEYS = {
   // Version check cache
   get VERSION_LATEST() {
     return `${_redisPrefix}tracearr:version:latest`;
+  },
+  // Cooldown key to prevent hammering GitHub on restarts or retry storms
+  get VERSION_CHECK_COOLDOWN() {
+    return `${_redisPrefix}tracearr:version:check:cooldown`;
   },
   // Library statistics
   get LIBRARY_STATS() {
@@ -243,6 +249,7 @@ export const CACHE_TTL = {
   USER_SESSIONS: 3600,
   RATE_LIMIT: 900,
   SERVER_HEALTH: 600, // 10 minutes - servers marked unhealthy if no update
+  SERVER_CONNECTION: 600, // 10 minutes - live runtime state, not persisted to DB
   LOCATION_FILTERS: 300, // 5 minutes - filter options change infrequently
   VERSION_CHECK: 21600, // 6 hours - version check interval
   // Library statistics

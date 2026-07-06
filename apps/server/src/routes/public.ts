@@ -41,7 +41,11 @@ import { db } from '../db/client.js';
 import { rules, serverUsers, servers, sessions, users, violations } from '../db/schema.js';
 import { getCacheService } from '../services/cache.js';
 import { getDashboardStats } from '../services/dashboardStats.js';
-import { buildAvatarUrl, buildPosterUrl } from '../services/imageProxy.js';
+import {
+  buildAvatarUrl,
+  buildPosterUrl,
+  normalizeDispatcharrImagePath,
+} from '../services/imageProxy.js';
 import { terminateSession } from '../services/termination.js';
 import { getCurrentVersion } from '../utils/buildInfo.js';
 import { generateOpenAPIDocument } from './public.openapi.js';
@@ -72,6 +76,50 @@ function formatDisplayValues(data: StreamCodecData) {
     audioChannelsDisplay: formatAudioChannels(data.sourceAudioChannels),
     streamVideoCodecDisplay: data.streamVideoCodec ? formatMediaTech(data.streamVideoCodec) : null,
     streamAudioCodecDisplay: data.streamAudioCodec ? formatMediaTech(data.streamAudioCodec) : null,
+  };
+}
+
+interface PublicMediaFieldsInput {
+  serverId: string;
+  serverType?: string | null;
+  mediaType: string;
+  mediaTitle: string;
+  grandparentTitle: string | null;
+  thumbPath: string | null;
+  channelTitle?: string | null;
+  channelThumb?: string | null;
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (value && value.trim()) return value;
+  }
+  return null;
+}
+
+function buildPublicMediaFields(input: PublicMediaFieldsInput) {
+  const isLive = input.mediaType === 'live';
+  const isDispatcharrLive = isLive && input.serverType === 'dispatcharr';
+  const mediaTitle =
+    isDispatcharrLive
+      ? (firstNonEmpty(input.channelTitle, input.mediaTitle) ?? input.mediaTitle)
+      : input.mediaTitle;
+  const showTitle = isLive
+    ? firstNonEmpty(input.channelTitle, input.grandparentTitle)
+    : input.grandparentTitle;
+  const rawThumbPath = isLive
+    ? firstNonEmpty(input.channelThumb, input.thumbPath)
+    : input.thumbPath;
+  const thumbPath = isDispatcharrLive
+    ? normalizeDispatcharrImagePath(rawThumbPath)
+    : rawThumbPath;
+
+  return {
+    mediaTitle,
+    mediaType: input.mediaType,
+    ...(isDispatcharrLive ? {} : { showTitle }),
+    thumbPath,
+    posterUrl: buildPosterUrl(input.serverId, thumbPath),
   };
 }
 
@@ -339,9 +387,16 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
           username: session.user.identityName ?? session.user.username,
           userThumb: session.user.thumbUrl,
           userAvatarUrl: buildAvatarUrl(session.serverId, session.user.thumbUrl),
-          mediaTitle: session.mediaTitle,
-          mediaType: session.mediaType,
-          showTitle: session.grandparentTitle,
+          ...buildPublicMediaFields({
+            serverId: session.serverId,
+            serverType: session.server.type,
+            mediaType: session.mediaType,
+            mediaTitle: session.mediaTitle,
+            grandparentTitle: session.grandparentTitle,
+            thumbPath: session.thumbPath,
+            channelTitle: session.channelTitle,
+            channelThumb: session.channelThumb,
+          }),
           seasonNumber: session.seasonNumber,
           episodeNumber: session.episodeNumber,
           year: session.year,
@@ -349,8 +404,6 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
           albumName: session.albumName,
           trackNumber: session.trackNumber,
           discNumber: session.discNumber,
-          thumbPath: session.thumbPath,
-          posterUrl: buildPosterUrl(session.serverId, session.thumbPath),
           durationMs: session.totalDurationMs,
           state: session.state,
           progressMs: session.progressMs ?? 0,
@@ -730,6 +783,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         gs.state,
         s.server_id,
         sv.name as server_name,
+        sv.type as server_type,
         s.media_type,
         s.media_title,
         s.grandparent_title,
@@ -740,6 +794,8 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         s.album_name,
         s.track_number,
         s.disc_number,
+        s.channel_title,
+        s.channel_thumb,
         s.thumb_path,
         s.device,
         s.player_name,
@@ -789,6 +845,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         state: string;
         server_id: string;
         server_name: string;
+        server_type: string;
         media_type: string;
         media_title: string;
         grandparent_title: string | null;
@@ -799,6 +856,8 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         album_name: string | null;
         track_number: number | null;
         disc_number: number | null;
+        channel_title: string | null;
+        channel_thumb: string | null;
         thumb_path: string | null;
         device: string | null;
         player_name: string | null;
@@ -832,9 +891,16 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
       serverId: row.server_id,
       serverName: row.server_name,
       state: row.state,
-      mediaType: row.media_type,
-      mediaTitle: row.media_title,
-      showTitle: row.grandparent_title,
+      ...buildPublicMediaFields({
+        serverId: row.server_id,
+        serverType: row.server_type,
+        mediaType: row.media_type,
+        mediaTitle: row.media_title,
+        grandparentTitle: row.grandparent_title,
+        thumbPath: row.thumb_path,
+        channelTitle: row.channel_title,
+        channelThumb: row.channel_thumb,
+      }),
       seasonNumber: row.season_number,
       episodeNumber: row.episode_number,
       year: row.year,
@@ -842,8 +908,6 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
       albumName: row.album_name,
       trackNumber: row.track_number,
       discNumber: row.disc_number,
-      thumbPath: row.thumb_path,
-      posterUrl: buildPosterUrl(row.server_id, row.thumb_path),
       durationMs: row.duration_ms ? Number(row.duration_ms) : null,
       progressMs: row.progress_ms,
       totalDurationMs: row.total_duration_ms,

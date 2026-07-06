@@ -36,6 +36,12 @@ function getProgress(session: SessionWithDetails): number {
 
 // Get content title with proper formatting for different media types
 function getContentTitle(session: SessionWithDetails): { primary: string; secondary?: string } {
+  if (session.mediaType === 'live') {
+    return {
+      primary: session.channelTitle?.trim() || session.mediaTitle,
+    };
+  }
+
   if (session.mediaType === 'episode' && session.grandparentTitle) {
     const epNum =
       session.seasonNumber && session.episodeNumber

@@ -22,14 +22,14 @@ import { imageProxyUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/formatters';
 import { useEstimatedProgress } from '@/hooks/useEstimatedProgress';
 import { useAuth } from '@/hooks/useAuth';
+import { useServer } from '@/hooks/useServer';
+import { ServerColorAccent } from '@/components/server';
 import { TerminateSessionDialog } from './TerminateSessionDialog';
 import type { ActiveSession } from '@tracearr/shared';
 
 interface NowPlayingCardProps {
   session: ActiveSession;
   onClick?: () => void;
-  isMultiServer?: boolean;
-  serverColor?: string | null;
 }
 
 function getCardMediaDisplay(session: ActiveSession): { title: string; subtitle: string | null } {
@@ -94,14 +94,10 @@ function DeviceIcon({ session, className }: { session: ActiveSession; className?
   return <Monitor className={className} />;
 }
 
-export function NowPlayingCard({
-  session,
-  onClick,
-  isMultiServer,
-  serverColor,
-}: NowPlayingCardProps) {
+export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
   const { title, subtitle } = getCardMediaDisplay(session);
   const { user } = useAuth();
+  const { isMultiServer } = useServer();
   const [showTerminateDialog, setShowTerminateDialog] = useState(false);
 
   // Only admin/owner can terminate sessions, and session must support termination
@@ -135,179 +131,179 @@ export function NowPlayingCard({
       : null;
 
   return (
-    <div
-      className={cn(
-        'group animate-fade-in bg-card card-hover relative overflow-hidden rounded-xl border',
-        onClick && 'cursor-pointer'
-      )}
-      style={
-        isMultiServer && serverColor ? { boxShadow: `inset 3px 0 0 0 ${serverColor}` } : undefined
-      }
-      onClick={onClick}
-    >
-      {/* Background with poster blur */}
-      {posterUrl && (
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-20 blur-xl"
-          style={{ backgroundImage: `url(${posterUrl})` }}
-        />
-      )}
-
-      {/* Content */}
-      <div className="relative flex gap-4 p-4">
-        {/* Poster */}
-        <div className="bg-muted relative h-28 w-20 flex-shrink-0 overflow-hidden rounded-lg shadow-lg">
-          {posterUrl ? (
-            <img
-              src={posterUrl}
-              alt={title}
-              className={cn('h-full w-full', isSquareArt ? 'object-contain' : 'object-cover')}
-              loading="lazy"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <Server className="text-muted-foreground h-8 w-8" />
-            </div>
-          )}
-
-          {/* Play/Pause indicator overlay */}
+    <>
+      <ServerColorAccent
+        serverId={session.serverId}
+        onClick={onClick}
+        className={cn(
+          'group animate-fade-in bg-card card-hover relative overflow-hidden rounded-xl border',
+          onClick && 'cursor-pointer'
+        )}
+      >
+        {/* Background with poster blur */}
+        {posterUrl && (
           <div
-            className={cn(
-              'absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity',
-              isPaused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-            )}
-          >
-            {isPaused ? (
-              <Pause className="h-8 w-8 text-white" />
+            className="absolute inset-0 bg-cover bg-center opacity-20 blur-xl"
+            style={{ backgroundImage: `url(${posterUrl})` }}
+          />
+        )}
+
+        {/* Content */}
+        <div className="relative flex gap-4 p-4">
+          {/* Poster */}
+          <div className="bg-muted relative h-28 w-20 flex-shrink-0 overflow-hidden rounded-lg shadow-lg">
+            {posterUrl ? (
+              <img
+                src={posterUrl}
+                alt={title}
+                className={cn('h-full w-full', isSquareArt ? 'object-contain' : 'object-cover')}
+                loading="lazy"
+              />
             ) : (
-              <Play className="h-8 w-8 text-white" />
-            )}
-          </div>
-        </div>
-
-        {/* Info */}
-        <div className="flex min-w-0 flex-1 flex-col justify-between">
-          {/* Top row: User and badges */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <Avatar className="border-background h-7 w-7 shrink-0 border-2 shadow">
-                <AvatarImage src={avatarUrl} alt={session.user.username} />
-                <AvatarFallback className="text-xs">
-                  {session.user.username.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span
-                className="truncate text-sm font-medium"
-                title={session.user.identityName ?? session.user.username}
-              >
-                {session.user.identityName ?? session.user.username}
-              </span>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1.5">
-              {/* Quality badge - icon only with tooltip */}
-              {(() => {
-                const isHwTranscode =
-                  session.isTranscode &&
-                  !!(session.transcodeInfo?.hwEncoding || session.transcodeInfo?.hwDecoding);
-
-                const label = session.isTranscode
-                  ? isHwTranscode
-                    ? 'HW Transcode'
-                    : 'Transcode'
-                  : session.videoDecision === 'copy' || session.audioDecision === 'copy'
-                    ? 'Direct Stream'
-                    : 'Direct Play';
-
-                const icon = session.isTranscode ? (
-                  isHwTranscode ? (
-                    <Cpu className="h-3.5 w-3.5" />
-                  ) : (
-                    <Zap className="h-3.5 w-3.5" />
-                  )
-                ) : (
-                  <MonitorPlay className="h-3.5 w-3.5" />
-                );
-
-                return (
-                  <Badge
-                    variant={session.isTranscode ? 'warning' : 'success'}
-                    className="h-6 w-6 justify-center p-0"
-                    title={label}
-                  >
-                    {icon}
-                  </Badge>
-                );
-              })()}
-
-              {/* Device icon */}
-              <div className="bg-muted flex h-6 w-6 items-center justify-center rounded-md">
-                <DeviceIcon session={session} className="text-muted-foreground h-3.5 w-3.5" />
+              <div className="flex h-full w-full items-center justify-center">
+                <Server className="text-muted-foreground h-8 w-8" />
               </div>
+            )}
 
-              {/* Terminate button - admin/owner only */}
-              {canTerminate && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive h-6 w-6"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowTerminateDialog(true);
-                  }}
-                  title="Terminate stream"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+            {/* Play/Pause indicator overlay */}
+            <div
+              className={cn(
+                'absolute inset-0 flex items-center justify-center bg-black/50 transition-opacity',
+                isPaused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              )}
+            >
+              {isPaused ? (
+                <Pause className="h-8 w-8 text-white" />
+              ) : (
+                <Play className="h-8 w-8 text-white" />
               )}
             </div>
           </div>
 
-          {/* Middle: Title */}
-          <div className="mt-2">
-            <h3 className="truncate text-sm leading-tight font-semibold">{title}</h3>
-            {subtitle && (
-              <p className="text-muted-foreground mt-0.5 truncate text-xs">{subtitle}</p>
-            )}
-          </div>
+          {/* Info */}
+          <div className="flex min-w-0 flex-1 flex-col justify-between">
+            {/* Top row: User and badges */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <Avatar className="border-background h-7 w-7 shrink-0 border-2 shadow">
+                  <AvatarImage src={avatarUrl} alt={session.user.username} />
+                  <AvatarFallback className="text-xs">
+                    {session.user.username.slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span
+                  className="truncate text-sm font-medium"
+                  title={session.user.identityName ?? session.user.username}
+                >
+                  {session.user.identityName ?? session.user.username}
+                </span>
+              </div>
 
-          {/* Bottom: Progress */}
-          <div className="mt-3 space-y-1">
-            <Progress value={progressPercent} className="h-1.5" />
-            <div className="text-muted-foreground flex justify-between text-[10px]">
-              <span>{formatDuration(estimatedProgressMs)}</span>
-              <span>
-                {isPaused ? (
-                  <span className="font-medium text-yellow-500">Paused</span>
-                ) : dispatcharrLiveSpeed ? (
-                  dispatcharrLiveSpeed
-                ) : remaining ? (
-                  `-${formatDuration(remaining)}`
-                ) : (
-                  formatDuration(session.totalDurationMs)
+              <div className="flex shrink-0 items-center gap-1.5">
+                {/* Quality badge - icon only with tooltip */}
+                {(() => {
+                  const isHwTranscode =
+                    session.isTranscode &&
+                    !!(session.transcodeInfo?.hwEncoding || session.transcodeInfo?.hwDecoding);
+
+                  const label = session.isTranscode
+                    ? isHwTranscode
+                      ? 'HW Transcode'
+                      : 'Transcode'
+                    : session.videoDecision === 'copy' || session.audioDecision === 'copy'
+                      ? 'Direct Stream'
+                      : 'Direct Play';
+
+                  const icon = session.isTranscode ? (
+                    isHwTranscode ? (
+                      <Cpu className="h-3.5 w-3.5" />
+                    ) : (
+                      <Zap className="h-3.5 w-3.5" />
+                    )
+                  ) : (
+                    <MonitorPlay className="h-3.5 w-3.5" />
+                  );
+
+                  return (
+                    <Badge
+                      variant={session.isTranscode ? 'warning' : 'success'}
+                      className="h-6 w-6 justify-center p-0"
+                      title={label}
+                    >
+                      {icon}
+                    </Badge>
+                  );
+                })()}
+
+                {/* Device icon */}
+                <div className="bg-muted flex h-6 w-6 items-center justify-center rounded-md">
+                  <DeviceIcon session={session} className="text-muted-foreground h-3.5 w-3.5" />
+                </div>
+
+                {/* Terminate button - admin/owner only */}
+                {canTerminate && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive h-6 w-6"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowTerminateDialog(true);
+                    }}
+                    title="Terminate stream"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
                 )}
-              </span>
+              </div>
+            </div>
+
+            {/* Middle: Title */}
+            <div className="mt-2">
+              <h3 className="truncate text-sm leading-tight font-semibold">{title}</h3>
+              {subtitle && (
+                <p className="text-muted-foreground mt-0.5 truncate text-xs">{subtitle}</p>
+              )}
+            </div>
+
+            {/* Bottom: Progress */}
+            <div className="mt-3 space-y-1">
+              <Progress value={progressPercent} className="h-1.5" />
+              <div className="text-muted-foreground flex justify-between text-[10px]">
+                <span>{formatDuration(estimatedProgressMs)}</span>
+                <span>
+                  {isPaused ? (
+                    <span className="font-medium text-yellow-500">Paused</span>
+                  ) : dispatcharrLiveSpeed ? (
+                    dispatcharrLiveSpeed
+                  ) : remaining ? (
+                    `-${formatDuration(remaining)}`
+                  ) : (
+                    formatDuration(session.totalDurationMs)
+                  )}
+                </span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Location/Quality footer */}
-      <div className="bg-muted/50 text-muted-foreground relative flex items-center justify-between gap-2 border-t px-4 py-2 text-xs">
-        <span className="flex min-w-0 items-center gap-1.5">
-          {isMultiServer && session.server && (
-            <>
-              <span className="shrink-0">{session.server.name}</span>
-              <span className="text-muted-foreground/50">·</span>
-            </>
-          )}
-          <span className="truncate">
-            {formatLocationCompact(session.geoCity, session.geoRegion, session.geoCountry) ??
-              'Unknown location'}
+        {/* Location/Quality footer */}
+        <div className="bg-muted/50 text-muted-foreground relative flex items-center justify-between gap-2 border-t px-4 py-2 text-xs">
+          <span className="flex min-w-0 items-center gap-1.5">
+            {isMultiServer && session.server && (
+              <>
+                <span className="shrink-0">{session.server.name}</span>
+                <span className="text-muted-foreground/50">·</span>
+              </>
+            )}
+            <span className="truncate">
+              {formatLocationCompact(session.geoCity, session.geoRegion, session.geoCountry) ??
+                'Unknown location'}
+            </span>
           </span>
-        </span>
-        <span className="flex-shrink-0">{session.quality ?? 'Unknown quality'}</span>
-      </div>
+          <span className="flex-shrink-0">{session.quality ?? 'Unknown quality'}</span>
+        </div>
+      </ServerColorAccent>
 
       {/* Terminate confirmation dialog */}
       <TerminateSessionDialog
@@ -317,6 +313,6 @@ export function NowPlayingCard({
         mediaTitle={title}
         username={session.user.username}
       />
-    </div>
+    </>
   );
 }
