@@ -4,19 +4,17 @@
  * Orchestrates all auth-related routes and provides unified export.
  *
  * Auth Flow Options:
- * 1. Local signup: POST /signup → Create account with username/password
- * 2. Local login: POST /login (type=local) → Login with username/password
- * 3. Plex OAuth: POST /login (type=plex) → Login/signup with Plex
+ * - Better Auth handles local signup/login and Plex OAuth (mounted separately
+ *   in index.ts as the /auth/* wildcard).
+ * - POST /validate-claim-code → Stateless claim code check used during setup
  *
  * Server Connection (separate from auth):
  * - POST /plex/connect → Connect a Plex server after login
- * - POST /jellyfin/connect → Connect a Jellyfin server after login
- * - POST /emby/connect → Connect an Emby server after login
+ * - POST /jellyfin/connect-api-key → Connect a Jellyfin server after login
+ * - POST /emby/connect-api-key → Connect an Emby server after login
  *
  * Session Management:
  * - GET /me → Get current user info
- * - POST /refresh → Refresh access token
- * - POST /logout → Revoke refresh token
  */
 
 import type { FastifyPluginAsync } from 'fastify';
@@ -35,11 +33,3 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   await app.register(embyRoutes);
   await app.register(sessionRoutes);
 };
-
-// Re-export utilities for potential use by other modules
-export {
-  generateTokens,
-  generateRefreshToken,
-  hashRefreshToken,
-  getAllServerIds,
-} from './utils.js';

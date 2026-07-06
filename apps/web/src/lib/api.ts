@@ -315,7 +315,6 @@ class ApiClient {
         thumbUrl?: string | null;
         trustScore?: number;
       }>('/auth/me'),
-    logout: () => this.request<void>('/auth/logout', { method: 'POST' }),
 
     // Validate claim code (stateless check for immediate feedback)
     validateClaimCode: (data: { claimCode: string }) =>
@@ -426,19 +425,6 @@ class ApiClient {
         refreshToken: string;
         user: User;
       }>('/auth/emby/connect-api-key', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-
-    // Legacy callback (deprecated, kept for compatibility)
-    checkPlexCallback: (data: { pinId: string; serverUrl: string; serverName: string }) =>
-      this.request<{
-        authorized: boolean;
-        message?: string;
-        accessToken?: string;
-        refreshToken?: string;
-        user?: User;
-      }>('/auth/callback', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
