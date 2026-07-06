@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 /**
  * Tracearr Admin Recovery CLI
  *
@@ -6,7 +6,7 @@
  * UI login). Run via direct Docker/server access.
  *
  * Usage:
- *   docker exec tracearr node apps/server/scripts/cli.ts <command> [args]
+ *   docker exec tracearr node apps/server/dist/scripts/cli.js <command> [args]
  *   pnpm --filter @tracearr/server cli <command> [args]
  *
  * Commands:
@@ -26,7 +26,7 @@ import {
   listUsersCommand,
   enableLocalLoginCommand,
   shutdown,
-} from './lib/commands.js';
+} from './lib/commands.ts';
 
 const USAGE = `Tracearr Admin Recovery CLI
 

@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { eq, and, asc } from 'drizzle-orm';
-import { loadRuntime } from './bootstrap.js';
+import { loadRuntime } from './bootstrap.ts';
 
 export const {
   db,
@@ -137,7 +137,7 @@ export async function resetPasswordCommand(opts: {
   // fails partway it rolls back completely - the password stays unchanged
   // and the (still-intact) auth_sessions rows let a re-run rediscover the
   // same tokens, so redis.del just no-ops on them and the retry heals clean.
-  await db.transaction(async (tx) => {
+  await db.transaction(async (tx: typeof db) => {
     const [existing] = await tx
       .select({ id: authAccounts.id })
       .from(authAccounts)

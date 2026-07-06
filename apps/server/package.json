@@ -6,9 +6,9 @@
   "main": "./dist/index.js",
   "scripts": {
     "dev": "tsx watch --env-file=../../.env src/index.ts",
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.scripts.json",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json --noEmit",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "test": "vitest run",
@@ -31,8 +31,8 @@
     "db:migrate": "drizzle-kit migrate --config=drizzle.config.cjs",
     "db:push": "drizzle-kit push --config=drizzle.config.cjs",
     "db:studio": "drizzle-kit studio --config=drizzle.config.cjs",
-    "reset-password": "tsx scripts/reset-password.ts",
-    "cli": "tsx scripts/cli.ts",
+    "reset-password": "node dist/scripts/reset-password.js",
+    "cli": "node dist/scripts/cli.js",
     "backup": "tsx scripts/backup.ts"
   },
   "dependencies": {

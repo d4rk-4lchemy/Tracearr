@@ -2,13 +2,15 @@
  * Environment discovery + runtime module loading shared by the admin scripts
  * (cli.ts, reset-password.ts).
  *
- * Scripts ship as raw TypeScript inside the Docker image - there is no build
- * step for scripts/, so they run directly via `node` (production, against
- * the compiled dist/ output) or `tsx` (dev, against src/ directly). This
- * module resolves which one is available and dynamically imports the
- * runtime pieces scripts need from it, so a single implementation works in
- * both environments without a Docker copy-step change every time a script
- * touches a new module. KISS.
+ * The scripts are compiled into dist/scripts by the server build
+ * (tsconfig.scripts.json), so in production they run as plain compiled JS
+ * from dist/scripts/lib, exactly like the server itself. The raw TypeScript
+ * sources also still run: via tsx against src/ in dev, or via Node's type
+ * stripping against dist/ in the image (the historically documented
+ * `node apps/server/scripts/...` invocation). This module figures out where
+ * it is running from and dynamically imports the runtime pieces the scripts
+ * need, so a single implementation works everywhere without a Docker
+ * copy-step change every time a script touches a new module. KISS.
  */
 
 import dotenv from 'dotenv';
@@ -25,7 +27,8 @@ export function loadEnv(): void {
   if (process.env.DATABASE_URL) return;
 
   const envPaths = [
-    resolve(import.meta.dirname, '../../../../.env'), // docker and dev
+    resolve(import.meta.dirname, '../../../../.env'), // raw scripts/lib: docker and dev
+    resolve(import.meta.dirname, '../../../../../.env'), // compiled dist/scripts/lib: docker and dev
     '/data/tracearr/.env', // proxmox lxc
   ];
 
@@ -46,13 +49,15 @@ export function loadEnv(): void {
 }
 
 /**
- * Determine if we're in development (src files) or production (dist files).
- * this is just so we dont have to build the project for testing the scripts
- * or add extra copy steps to the Dockerfile. KISS.
+ * Locate the app runtime relative to where this file is running from:
+ * raw scripts/lib next to src/ (dev via tsx), compiled dist/scripts/lib
+ * inside dist/ (production), or raw scripts/lib next to a built dist/
+ * (running the shipped .ts sources directly via Node type stripping).
  */
 function basePath(): string {
-  const srcPath = resolve(import.meta.dirname, '../../src/db/client.ts');
-  return existsSync(srcPath) ? '../../src' : '../../dist';
+  if (existsSync(resolve(import.meta.dirname, '../../src/db/client.ts'))) return '../../src';
+  if (existsSync(resolve(import.meta.dirname, '../../db/client.js'))) return '../..';
+  return '../../dist';
 }
 
 /**

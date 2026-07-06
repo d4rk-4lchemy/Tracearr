@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 /**
  * Emergency Owner Password Reset Script
  *
@@ -9,12 +9,12 @@
  *
  * Usage:
  *   Interactive (prompts for password):
- *     docker exec -it tracearr node apps/server/scripts/reset-password.ts
+ *     docker exec -it tracearr node apps/server/dist/scripts/reset-password.js
  *
  *   With password argument (for automation):
- *     docker exec tracearr node apps/server/scripts/reset-password.ts "newPassword123"
+ *     docker exec tracearr node apps/server/dist/scripts/reset-password.js "newPassword123"
  *
- *   Local development (via pnpm):
+ *   Local development (via pnpm, after a build):
  *     pnpm reset-password
  *
  * For other recovery commands (set-username, set-email, list-users,
@@ -27,7 +27,7 @@
 
 import readline from 'readline';
 import { eq, asc } from 'drizzle-orm';
-import { db, users, resetPasswordCommand, shutdown } from './lib/commands.js';
+import { db, users, resetPasswordCommand, shutdown } from './lib/commands.ts';
 
 async function main() {
   console.log('\n═══════════════════════════════════════════════════');
