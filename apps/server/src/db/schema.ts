@@ -675,6 +675,39 @@ export const terminationLogs = pgTable(
   ]
 );
 
+// User merge audit trail. Records every identity merge so non-destructive
+// merges can be undone via split. sourceUserId has no FK because the merge
+// deletes that users row.
+export const userMergeAudits = pgTable(
+  'user_merge_audits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceUserId: uuid('source_user_id').notNull(),
+    targetUserId: uuid('target_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    actingUserId: uuid('acting_user_id').references(() => users.id, { onDelete: 'set null' }),
+    movedServerUserIds: jsonb('moved_server_user_ids').notNull().$type<string[]>(),
+    combinedServerUsers: jsonb('combined_server_users')
+      .notNull()
+      .$type<{ sourceServerUserId: string; targetServerUserId: string; serverId: string }[]>(),
+    wasSameServerCombine: boolean('was_same_server_combine').notNull().default(false),
+    sourceUserSnapshot: jsonb('source_user_snapshot').notNull().$type<{
+      username: string;
+      name: string | null;
+      email: string | null;
+      thumbnail: string | null;
+      role: string;
+    }>(),
+    undoneAt: timestamp('undone_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('user_merge_audits_target_idx').on(table.targetUserId),
+    index('user_merge_audits_created_at_idx').on(table.createdAt),
+  ]
+);
+
 // Unit system enum for display preferences
 export const unitSystemEnum = ['metric', 'imperial'] as const;
 
@@ -891,6 +924,17 @@ export const terminationLogsRelations = relations(terminationLogs, ({ one }) => 
   violation: one(violations, {
     fields: [terminationLogs.violationId],
     references: [violations.id],
+  }),
+}));
+
+export const userMergeAuditsRelations = relations(userMergeAudits, ({ one }) => ({
+  targetUser: one(users, {
+    fields: [userMergeAudits.targetUserId],
+    references: [users.id],
+  }),
+  actingUser: one(users, {
+    fields: [userMergeAudits.actingUserId],
+    references: [users.id],
   }),
 }));
 
