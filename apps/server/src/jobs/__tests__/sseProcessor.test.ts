@@ -69,6 +69,8 @@ vi.mock('../poller/stateTracker.js', () => ({
 vi.mock('../poller/database.js', () => ({
   getActiveRulesV2: vi.fn(),
   batchGetRecentUserSessions: vi.fn(),
+  mergeRecentSessionsForIdentity: (map: Map<string, unknown[]>, ids: string[]) =>
+    ids.flatMap((id) => map.get(id) ?? []),
 }));
 
 vi.mock('../poller/violations.js', () => ({

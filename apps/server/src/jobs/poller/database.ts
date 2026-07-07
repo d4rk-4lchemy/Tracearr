@@ -73,6 +73,77 @@ export async function batchGetRecentUserSessions(
 }
 
 /**
+ * Merge recent-session lists for a set of server_user ids belonging to one
+ * identity into a single deduplicated list (by session id), so windowed rule
+ * evaluators (unique_ips_in_window, unique_devices_in_window, travel_speed_kmh)
+ * see the identity's cross-server activity exactly once, never twice because
+ * a session surfaced under more than one of the given ids.
+ *
+ * @param recentSessionsMap - Map of serverUserId -> Session[] (as returned by batchGetRecentUserSessions)
+ * @param identityServerUserIds - server_user ids belonging to one identity
+ * @returns Combined, deduplicated Session[] across all the given ids
+ */
+export function mergeRecentSessionsForIdentity(
+  recentSessionsMap: Map<string, Session[]>,
+  identityServerUserIds: string[]
+): Session[] {
+  const seen = new Set<string>();
+  const combined: Session[] = [];
+  for (const id of identityServerUserIds) {
+    for (const s of recentSessionsMap.get(id) ?? []) {
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      combined.push(s);
+    }
+  }
+  return combined;
+}
+
+/**
+ * Widen recentSessionsMap in place so every server_user id belonging to a
+ * merged identity (an identityServerUserIdsMap entry with more than one id)
+ * maps to the combined, deduplicated recent-session list of ALL of that
+ * identity's server_user ids. Ids not present in identityServerUserIdsMap,
+ * and ids whose identity has only one server_user, are left untouched - this
+ * is what keeps sibling data from leaking into an unrelated server_user on
+ * the same server.
+ *
+ * Only issues one supplemental query per poll tick (for whichever sibling ids
+ * aren't already in recentSessionsMap), regardless of how many identities are
+ * merged, so the poller hot path stays batched.
+ *
+ * @param recentSessionsMap - Map of serverUserId -> Session[], mutated in place
+ * @param identityServerUserIdsMap - Map of identity userId -> that identity's server_user ids
+ */
+export async function widenRecentSessionsForMergedIdentities(
+  recentSessionsMap: Map<string, Session[]>,
+  identityServerUserIdsMap: Map<string, string[]>
+): Promise<void> {
+  const siblingIdsNeeded = new Set<string>();
+  for (const ids of identityServerUserIdsMap.values()) {
+    if (ids.length <= 1) continue;
+    for (const id of ids) {
+      if (!recentSessionsMap.has(id)) siblingIdsNeeded.add(id);
+    }
+  }
+
+  if (siblingIdsNeeded.size > 0) {
+    const supplemental = await batchGetRecentUserSessions([...siblingIdsNeeded]);
+    for (const [id, sessionsForId] of supplemental) {
+      recentSessionsMap.set(id, sessionsForId);
+    }
+  }
+
+  for (const ids of identityServerUserIdsMap.values()) {
+    if (ids.length <= 1) continue;
+    const combined = mergeRecentSessionsForIdentity(recentSessionsMap, ids);
+    for (const id of ids) {
+      recentSessionsMap.set(id, combined);
+    }
+  }
+}
+
+/**
  * Batch load the sibling server_user ids for a set of identities in a single
  * query (eliminates a per-session/per-poll-tick lookup for cross-server rule
  * aggregation on merged identities).

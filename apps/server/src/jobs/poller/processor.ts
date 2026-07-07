@@ -32,6 +32,7 @@ import {
   batchGetIdentityServerUserIds,
   batchGetRecentUserSessions,
   getActiveRulesV2,
+  widenRecentSessionsForMergedIdentities,
 } from './database.js';
 import { updatePendingSession } from './pendingConfirmation.js';
 import {
@@ -441,6 +442,23 @@ async function processServerSessions(
       activeRulesV2.length > 0
         ? await batchGetIdentityServerUserIds(identityUserIds)
         : new Map<string, string[]>();
+
+    // OPTIMIZATION: Widen recentSessionsMap for merged identities so the windowed
+    // rule evaluators (unique_ips_in_window, unique_devices_in_window,
+    // travel_speed_kmh) aggregate across every server the identity is merged
+    // into. Only identities with more than one server_user are touched - unmerged
+    // users (the overwhelming majority) see zero behavior change and zero extra
+    // query cost. Failure here falls back to the narrower per-server_user
+    // recentSessions already in the map (degraded detection, never a crash or a
+    // blocked poll cycle).
+    try {
+      await widenRecentSessionsForMergedIdentities(recentSessionsMap, identityServerUserIdsMap);
+    } catch (error) {
+      console.error(
+        '[Poller] Failed to widen recent sessions for merged identities, evaluating rules with per-server data only:',
+        error
+      );
+    }
 
     // Process each session
     for (let i = 0; i < processedSessions.length; i++) {

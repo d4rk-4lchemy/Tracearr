@@ -11,7 +11,11 @@
  * 4. Broadcast updates via WebSocket
  */
 
-import { SESSION_WRITE_RETRY, type PlexPlaySessionNotification } from '@tracearr/shared';
+import {
+  SESSION_WRITE_RETRY,
+  type PlexPlaySessionNotification,
+  type Session,
+} from '@tracearr/shared';
 import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db/client.js';
@@ -25,7 +29,11 @@ import { registerService, unregisterService } from '../services/serviceTracker.j
 import { sseManager } from '../services/sseManager.js';
 import { getIdentityServerUserIds } from '../services/userService.js';
 import { enqueueNotification } from './notificationQueue.js';
-import { batchGetRecentUserSessions, getActiveRulesV2 } from './poller/database.js';
+import {
+  batchGetRecentUserSessions,
+  getActiveRulesV2,
+  mergeRecentSessionsForIdentity,
+} from './poller/database.js';
 import { triggerReconciliationPoll } from './poller/index.js';
 import {
   buildActiveSession,
@@ -53,6 +61,51 @@ import { broadcastViolations } from './poller/violations.js';
 let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;
 let isRunning = false;
+
+/**
+ * Resolve the sibling server_user ids for an identity, for cross-server rule
+ * aggregation. Falls back to no siblings (single server_user behavior) if the
+ * lookup fails, so a transient DB error degrades detection instead of
+ * blocking this event.
+ */
+async function resolveIdentityServerUserIds(userId: string, context: string): Promise<string[]> {
+  try {
+    return await getIdentityServerUserIds(userId);
+  } catch (error) {
+    console.error(
+      `[SSEProcessor] Failed to resolve identity server users for ${userId} (${context}), ` +
+        'evaluating rules for this server only:',
+      error
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch recent sessions for windowed rule evaluation (unique_ips_in_window,
+ * unique_devices_in_window, travel_speed_kmh), widened to every server_user
+ * id of the same identity when merged (identityServerUserIds.length > 1).
+ * Falls back to this server_user's own recent sessions if the widened fetch
+ * fails, so a transient DB error degrades detection instead of blocking
+ * this event.
+ */
+async function fetchRecentSessionsForRules(
+  serverUserId: string,
+  identityServerUserIds: string[]
+): Promise<Session[]> {
+  const ids = identityServerUserIds.length > 1 ? identityServerUserIds : [serverUserId];
+  try {
+    const recentSessionsMap = await batchGetRecentUserSessions(ids);
+    return mergeRecentSessionsForIdentity(recentSessionsMap, ids);
+  } catch (error) {
+    console.error(
+      `[SSEProcessor] Failed to fetch recent sessions for ${serverUserId}, falling back to this server only:`,
+      error
+    );
+    const fallbackMap = await batchGetRecentUserSessions([serverUserId]);
+    return fallbackMap.get(serverUserId) ?? [];
+  }
+}
 
 // Server down notification threshold in milliseconds
 // Delay prevents false alarms from brief connection blips
@@ -915,9 +968,12 @@ async function handleMediaChange(
   }
 
   const activeRulesV2 = await getActiveRulesV2();
-  const recentSessions = await batchGetRecentUserSessions([serverUser.id]);
   const activeSessions = await cacheService.getAllActiveSessions();
-  const identityServerUserIds = await getIdentityServerUserIds(serverUser.userId);
+  const identityServerUserIds = await resolveIdentityServerUserIds(
+    serverUser.userId,
+    'media change'
+  );
+  const recentSessions = await fetchRecentSessionsForRules(serverUser.id, identityServerUserIds);
 
   const result = await handleMediaChangeAtomic({
     existingSession,
@@ -927,7 +983,7 @@ async function handleMediaChange(
     geo,
     activeRulesV2,
     activeSessions,
-    recentSessions: recentSessions.get(serverUser.id) ?? [],
+    recentSessions,
   });
 
   if (!result) {
@@ -1084,8 +1140,14 @@ async function updateExistingSession(
           const server = serverRows[0];
           if (server) {
             const activeSessions = await cacheService.getAllActiveSessions();
-            const recentSessions = await batchGetRecentUserSessions([serverUserDetail.id]);
-            const identityServerUserIds = await getIdentityServerUserIds(serverUserDetail.userId);
+            const identityServerUserIds = await resolveIdentityServerUserIds(
+              serverUserDetail.userId,
+              'transcode re-eval'
+            );
+            const recentSessions = await fetchRecentSessionsForRules(
+              serverUserDetail.id,
+              identityServerUserIds
+            );
 
             const violationResults = await reEvaluateRulesOnTranscodeChange({
               existingSession,
@@ -1094,7 +1156,7 @@ async function updateExistingSession(
               serverUser: { ...serverUserDetail, identityServerUserIds },
               activeRulesV2,
               activeSessions,
-              recentSessions: recentSessions.get(serverUserDetail.id) ?? [],
+              recentSessions,
             });
 
             if (violationResults.length > 0 && pubSubService) {
@@ -1145,8 +1207,14 @@ async function updateExistingSession(
           const server = serverRows[0];
           if (server) {
             const activeSessions = await cacheService.getAllActiveSessions();
-            const recentSessions = await batchGetRecentUserSessions([serverUserDetail.id]);
-            const identityServerUserIds = await getIdentityServerUserIds(serverUserDetail.userId);
+            const identityServerUserIds = await resolveIdentityServerUserIds(
+              serverUserDetail.userId,
+              'pause re-eval'
+            );
+            const recentSessions = await fetchRecentSessionsForRules(
+              serverUserDetail.id,
+              identityServerUserIds
+            );
 
             const violationResults = await reEvaluateRulesOnPauseState({
               existingSession,
@@ -1159,7 +1227,7 @@ async function updateExistingSession(
               serverUser: { ...serverUserDetail, identityServerUserIds },
               activeRulesV2,
               activeSessions,
-              recentSessions: recentSessions.get(serverUserDetail.id) ?? [],
+              recentSessions,
             });
 
             if (violationResults.length > 0 && pubSubService) {
@@ -1375,14 +1443,17 @@ async function confirmPendingSessionAndPersist(
     }
 
     const activeRulesV2 = await getActiveRulesV2();
-    const recentSessions = await batchGetRecentUserSessions([pendingData.serverUser.id]);
     const activeSessions = await cache.getAllActiveSessions();
+    const recentSessions = await fetchRecentSessionsForRules(
+      pendingData.serverUser.id,
+      pendingData.serverUser.identityServerUserIds
+    );
 
     return confirmAndPersistSession({
       pendingData,
       activeRulesV2,
       activeSessions,
-      recentSessions: recentSessions.get(pendingData.serverUser.id) ?? [],
+      recentSessions,
     });
   });
 
