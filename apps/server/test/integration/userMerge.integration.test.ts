@@ -27,11 +27,14 @@ import {
   sessions,
   rules,
   authAccounts,
+  authSessions,
   userMergeAudits,
 } from '../../src/db/schema.js';
 import {
   mergeUsers,
+  splitServerUser,
   MergeDirectionError,
+  MergeValidationError,
   SameServerCombineNotConfirmedError,
 } from '../../src/services/mergeService.js';
 
@@ -121,6 +124,16 @@ describe('mergeUsers', () => {
     await createTestServerUser({ userId: target.id, serverId: server.id });
     await createTestServerUser({ userId: source.id, serverId: server.id });
 
+    // A pre-existing Better Auth session for the source; a rejected merge
+    // must leave it untouched since the confirmation guard runs first.
+    const sourceAuthSessionId = randomUUID();
+    await db.insert(authSessions).values({
+      id: sourceAuthSessionId,
+      expiresAt: new Date(Date.now() + 60_000),
+      token: randomUUID(),
+      userId: source.id,
+    });
+
     await expect(mergeUsers(source.id, target.id, admin.id)).rejects.toBeInstanceOf(
       SameServerCombineNotConfirmedError
     );
@@ -128,6 +141,11 @@ describe('mergeUsers', () => {
     // Nothing changed
     const sourceRows = await db.select().from(users).where(eq(users.id, source.id));
     expect(sourceRows).toHaveLength(1);
+    const [survivingSession] = await db
+      .select()
+      .from(authSessions)
+      .where(eq(authSessions.id, sourceAuthSessionId));
+    expect(survivingSession).toBeDefined();
   });
 
   it('combines same-server accounts when confirmed: history repointed, primary metadata wins, source row deleted, counts recomputed', async () => {
@@ -316,5 +334,96 @@ describe('mergeUsers', () => {
     await expect(mergeUsers(user.id, user.id, admin.id)).rejects.toThrow(
       'cannot merge an identity into itself'
     );
+  });
+});
+
+describe('splitServerUser', () => {
+  it('detaches a merged server user back into a fresh identity using the audit snapshot', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const serverA = await createTestServer({ type: 'plex' });
+    const serverB = await createTestServer({ type: 'jellyfin' });
+    const target = await createTestUser({ role: 'member' });
+    const source = await createTestUser({
+      role: 'member',
+      username: 'dupe-bob',
+      email: 'dupe-bob@example.com',
+    });
+    await createTestServerUser({ userId: target.id, serverId: serverA.id });
+    const sourceSu = await createTestServerUser({ userId: source.id, serverId: serverB.id });
+    const sourceSession = await createTestSession({
+      serverId: serverB.id,
+      serverUserId: sourceSu.id,
+    });
+
+    const mergeResult = await mergeUsers(source.id, target.id, admin.id);
+
+    const splitResult = await splitServerUser(sourceSu.id, admin.id);
+
+    // Fresh identity restored from the audit snapshot, role never raised
+    const [restored] = await db.select().from(users).where(eq(users.id, splitResult.newUserId));
+    expect(restored?.username).toBe('dupe-bob');
+    expect(restored?.email).toBe('dupe-bob@example.com');
+    expect(restored?.role).toBe('member');
+
+    // Server user and its history follow the new identity
+    const [detachedSu] = await db.select().from(serverUsers).where(eq(serverUsers.id, sourceSu.id));
+    expect(detachedSu?.userId).toBe(splitResult.newUserId);
+    const [session] = await db.select().from(sessions).where(eq(sessions.id, sourceSession.id));
+    expect(session?.serverUserId).toBe(sourceSu.id);
+
+    // Audit marked as undone
+    const [audit] = await db
+      .select()
+      .from(userMergeAudits)
+      .where(eq(userMergeAudits.id, mergeResult.auditId));
+    expect(audit?.undoneAt).not.toBeNull();
+  });
+
+  it('falls back to server user fields when no audit record covers the server user', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const serverA = await createTestServer({ type: 'plex' });
+    const serverB = await createTestServer({ type: 'jellyfin' });
+    const identity = await createTestUser({ role: 'member' });
+    await createTestServerUser({ userId: identity.id, serverId: serverA.id });
+    const su = await createTestServerUser({
+      userId: identity.id,
+      serverId: serverB.id,
+      username: 'never-merged',
+      email: 'never-merged@example.com',
+    });
+
+    const result = await splitServerUser(su.id, admin.id);
+
+    const [restored] = await db.select().from(users).where(eq(users.id, result.newUserId));
+    expect(restored?.username).toBe('never-merged');
+    expect(restored?.email).toBe('never-merged@example.com');
+    expect(restored?.role).toBe('member');
+  });
+
+  it('refuses to split the only server account of an identity', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const server = await createTestServer({ type: 'plex' });
+    const identity = await createTestUser({ role: 'member' });
+    const su = await createTestServerUser({ userId: identity.id, serverId: server.id });
+
+    await expect(splitServerUser(su.id, admin.id)).rejects.toBeInstanceOf(MergeValidationError);
+  });
+
+  it('drops the email on the new identity when it is already taken', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const serverA = await createTestServer({ type: 'plex' });
+    const serverB = await createTestServer({ type: 'jellyfin' });
+    const identity = await createTestUser({ role: 'member', email: 'shared@example.com' });
+    await createTestServerUser({ userId: identity.id, serverId: serverA.id });
+    const su = await createTestServerUser({
+      userId: identity.id,
+      serverId: serverB.id,
+      email: 'shared@example.com',
+    });
+
+    const result = await splitServerUser(su.id, admin.id);
+
+    const [restored] = await db.select().from(users).where(eq(users.id, result.newUserId));
+    expect(restored?.email).toBeNull();
   });
 });

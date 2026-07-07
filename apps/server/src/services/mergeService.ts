@@ -6,9 +6,9 @@
  * accounts, record an audit row, and support split as the undo path.
  */
 
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { canLogin, type UserRole } from '@tracearr/shared';
-import type { UserMergeResult } from '@tracearr/shared';
+import type { ServerUserSplitResult, UserMergeResult } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import {
   users,
@@ -24,7 +24,7 @@ import {
   userMergeAudits,
 } from '../db/schema.js';
 import { getAuth } from '../lib/auth.js';
-import { UserNotFoundError } from './userService.js';
+import { ServerUserNotFoundError, UserNotFoundError } from './userService.js';
 
 export interface MergeIdentitySnapshot {
   id: string;
@@ -142,6 +142,9 @@ async function loadIdentitySnapshot(tx: Tx, userId: string): Promise<MergeIdenti
   };
 }
 
+// Intentionally inlines the recalculateAggregateTrustScore weighting from
+// userService.ts (plus totalViolations) rather than calling it, so the whole
+// recompute stays inside this transaction's connection.
 async function recomputeIdentityAggregates(tx: Tx, userId: string): Promise<void> {
   const [trust] = await tx
     .select({
@@ -306,16 +309,6 @@ export async function mergeUsers(
     const target = await loadIdentitySnapshot(tx, targetUserId);
     assertMergeDirection(source, target);
 
-    // The direction check above just proved the source owns zero auth_accounts
-    // rows. Revoke its Better Auth sessions before any destructive write so a
-    // ghost Redis session cannot keep working for up to 30 days after the
-    // source row is deleted (deleting the row by SQL clears the DB session
-    // rows via cascade but never touches the Redis secondary storage). This
-    // writes through Better Auth's own connection, not this transaction: if
-    // the transaction later aborts, the worst case is a revoked session for a
-    // user who could not log in anyway (safe direction, fail-closed).
-    await (await getAuth().$context).internalAdapter.deleteUserSessions(sourceUserId);
-
     const [sourceUser] = await tx.select().from(users).where(eq(users.id, sourceUserId)).limit(1);
 
     const sourceSus = await tx
@@ -334,6 +327,18 @@ export async function mergeUsers(
         'both identities have an account on the same server; combining them is irreversible and requires explicit confirmation'
       );
     }
+
+    // The direction check above already proved the source owns zero
+    // auth_accounts rows. Revoke its Better Auth sessions before the first
+    // destructive write below so a ghost Redis session cannot keep working
+    // for up to 30 days after the source row is deleted (deleting the row by
+    // SQL clears the DB session rows via cascade but never touches the Redis
+    // secondary storage). This writes through Better Auth's own connection,
+    // not this transaction: if the transaction later aborts, the worst case
+    // is a revoked session for a user who could not log in anyway (safe
+    // direction, fail-closed). It must stay after the confirmation guard
+    // above so a rejected merge leaves the source's sessions untouched.
+    await (await getAuth().$context).internalAdapter.deleteUserSessions(sourceUserId);
 
     for (const combine of plan.combines) {
       await combineServerUsers(tx, combine.sourceServerUserId, combine.targetServerUserId);
@@ -391,4 +396,113 @@ export async function mergeUsers(
   }
 
   return result;
+}
+
+export async function splitServerUser(
+  serverUserId: string,
+  actingUserId: string
+): Promise<ServerUserSplitResult> {
+  void actingUserId;
+
+  const result = await db.transaction(async (tx) => {
+    const [serverUser] = await tx
+      .select()
+      .from(serverUsers)
+      .where(eq(serverUsers.id, serverUserId))
+      .limit(1);
+    if (!serverUser) {
+      throw new ServerUserNotFoundError(serverUserId);
+    }
+
+    const siblings = await tx
+      .select({ id: serverUsers.id })
+      .from(serverUsers)
+      .where(eq(serverUsers.userId, serverUser.userId));
+    if (siblings.length < 2) {
+      throw new MergeValidationError('cannot split the only server account of an identity');
+    }
+
+    // Prefer the audit snapshot from the merge that moved this server user
+    const [audit] = await tx
+      .select()
+      .from(userMergeAudits)
+      .where(
+        and(
+          eq(userMergeAudits.targetUserId, serverUser.userId),
+          isNull(userMergeAudits.undoneAt),
+          sql`${userMergeAudits.movedServerUserIds} @> ${JSON.stringify([serverUserId])}::jsonb`
+        )
+      )
+      .orderBy(desc(userMergeAudits.createdAt))
+      .limit(1);
+
+    const identity = audit
+      ? audit.sourceUserSnapshot
+      : {
+          username: serverUser.username,
+          name: null as string | null,
+          email: serverUser.email,
+          thumbnail: serverUser.thumbUrl,
+          role: 'member',
+        };
+
+    let email = identity.email?.toLowerCase() ?? null;
+    if (email) {
+      const [emailTaken] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      if (emailTaken) {
+        email = null;
+      }
+    }
+
+    // Raw insert, not Better Auth's create-user path: user.create.before
+    // enforces single-owner/claim-code signup rules that would wrongly
+    // reject or mutate this restored identity, which is not a new signup.
+    // Role is always member on a split identity; splitting never grants login.
+    const [newUser] = await tx
+      .insert(users)
+      .values({
+        username: identity.username,
+        name: identity.name,
+        email,
+        thumbnail: identity.thumbnail,
+        role: 'member',
+      })
+      .returning();
+
+    const oldUserId = serverUser.userId;
+    await tx
+      .update(serverUsers)
+      .set({ userId: newUser!.id, updatedAt: new Date() })
+      .where(eq(serverUsers.id, serverUserId));
+
+    if (audit) {
+      await tx
+        .update(userMergeAudits)
+        .set({ undoneAt: new Date() })
+        .where(eq(userMergeAudits.id, audit.id));
+    }
+
+    await recomputeIdentityAggregates(tx, oldUserId);
+    await recomputeIdentityAggregates(tx, newUser!.id);
+
+    return { newUserId: newUser!.id, serverUserId, oldUserId };
+  });
+
+  // The old identity's aggregates changed above but any live session's
+  // cached Redis snapshot still holds the pre-split user object (the
+  // snapshot freezes the user at write time). Refresh it so a logged-in
+  // target does not keep stale identity data until the snapshot expires (up
+  // to 30 days). The new identity is skipped: it was just created and
+  // cannot have any sessions yet.
+  const authCtx = await getAuth().$context;
+  const freshOldUser = await authCtx.internalAdapter.findUserById(result.oldUserId);
+  if (freshOldUser) {
+    await authCtx.internalAdapter.refreshUserSessions(freshOldUser);
+  }
+
+  return { newUserId: result.newUserId, serverUserId: result.serverUserId };
 }
