@@ -6,13 +6,20 @@
  * accounts, record an audit row, and support split as the undo path.
  */
 
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { canLogin, type UserRole } from '@tracearr/shared';
-import type { ServerUserSplitResult, UserMergeResult } from '@tracearr/shared';
+import type {
+  MergeSuggestion,
+  MergeSuggestionIdentity,
+  ServerUserSplitResult,
+  UserMergeResult,
+} from '@tracearr/shared';
 import { db } from '../db/client.js';
 import {
   users,
   serverUsers,
+  servers,
   sessions,
   violations,
   rules,
@@ -505,4 +512,143 @@ export async function splitServerUser(
   }
 
   return { newUserId: result.newUserId, serverUserId: result.serverUserId };
+}
+
+// Matches server_users.email/username across identities, never users.email
+// (that column is already unique, so two identities can never share it).
+export async function getMergeSuggestions(): Promise<MergeSuggestion[]> {
+  const a = alias(serverUsers, 'su_a');
+  const b = alias(serverUsers, 'su_b');
+
+  const emailMatch = sql`${a.email} IS NOT NULL AND ${b.email} IS NOT NULL AND lower(${a.email}) = lower(${b.email})`;
+
+  const pairRows = await db
+    .selectDistinct({
+      userA: sql<string>`least(${a.userId}, ${b.userId})`,
+      userB: sql<string>`greatest(${a.userId}, ${b.userId})`,
+      matchType: sql<
+        'email' | 'username'
+      >`case when ${emailMatch} then 'email' else 'username' end`,
+      matchValue: sql<string>`case when ${emailMatch} then lower(${a.email}) else ${a.username} end`,
+    })
+    .from(a)
+    .innerJoin(
+      b,
+      and(
+        ne(a.userId, b.userId),
+        lt(a.id, b.id),
+        or(sql`${emailMatch}`, eq(a.username, b.username))
+      )
+    );
+
+  if (pairRows.length === 0) return [];
+
+  // One suggestion per identity pair; email matches outrank username matches
+  const pairKey = (row: (typeof pairRows)[number]) => `${row.userA}:${row.userB}`;
+  const bestByPair = new Map<string, (typeof pairRows)[number]>();
+  for (const row of pairRows) {
+    const existing = bestByPair.get(pairKey(row));
+    if (!existing || (existing.matchType === 'username' && row.matchType === 'email')) {
+      bestByPair.set(pairKey(row), row);
+    }
+  }
+
+  const userIds = [...new Set([...bestByPair.values()].flatMap((r) => [r.userA, r.userB]))];
+
+  const userRows = await db.select().from(users).where(inArray(users.id, userIds));
+  const userById = new Map(userRows.map((u) => [u.id, u]));
+
+  const suRows = await db
+    .select({
+      id: serverUsers.id,
+      userId: serverUsers.userId,
+      serverId: serverUsers.serverId,
+      serverName: servers.name,
+      username: serverUsers.username,
+      email: serverUsers.email,
+    })
+    .from(serverUsers)
+    .innerJoin(servers, eq(serverUsers.serverId, servers.id))
+    .where(inArray(serverUsers.userId, userIds));
+  const susByUser = new Map<string, typeof suRows>();
+  for (const su of suRows) {
+    const list = susByUser.get(su.userId) ?? [];
+    list.push(su);
+    susByUser.set(su.userId, list);
+  }
+
+  const plexCounts = await db
+    .select({ userId: plexAccounts.userId, count: sql<number>`count(*)::int` })
+    .from(plexAccounts)
+    .where(inArray(plexAccounts.userId, userIds))
+    .groupBy(plexAccounts.userId);
+  const plexCountByUser = new Map(plexCounts.map((r) => [r.userId, r.count]));
+
+  const authAccountCounts = await db
+    .select({ userId: authAccounts.userId, count: sql<number>`count(*)::int` })
+    .from(authAccounts)
+    .where(inArray(authAccounts.userId, userIds))
+    .groupBy(authAccounts.userId);
+  const authAccountCountByUser = new Map(authAccountCounts.map((r) => [r.userId, r.count]));
+
+  const toIdentity = (userId: string): MergeSuggestionIdentity | null => {
+    const user = userById.get(userId);
+    if (!user) return null;
+    const sus = susByUser.get(userId) ?? [];
+    return {
+      userId: user.id,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      loginCapable: isLoginCapable({
+        id: user.id,
+        role: user.role,
+        passwordHash: user.passwordHash,
+        plexAccountId: user.plexAccountId,
+        linkedPlexAccountCount: plexCountByUser.get(userId) ?? 0,
+        authAccountCount: authAccountCountByUser.get(userId) ?? 0,
+      }),
+      serverUsers: sus.map((su) => ({
+        id: su.id,
+        serverId: su.serverId,
+        serverName: su.serverName,
+        username: su.username,
+        email: su.email,
+      })),
+    };
+  };
+
+  const suggestions: MergeSuggestion[] = [];
+  for (const row of bestByPair.values()) {
+    const first = toIdentity(row.userA);
+    const second = toIdentity(row.userB);
+    if (!first || !second) continue;
+    // Both identities login-capable has no valid merge direction; nothing to suggest.
+    if (first.loginCapable && second.loginCapable) continue;
+
+    const firstServerIds = new Set(first.serverUsers.map((su) => su.serverId));
+    const wouldCombineSameServer = second.serverUsers.some((su) => firstServerIds.has(su.serverId));
+
+    suggestions.push({
+      matchType: row.matchType,
+      matchValue: row.matchValue,
+      users: [first, second],
+      requiredTargetUserId: first.loginCapable
+        ? first.userId
+        : second.loginCapable
+          ? second.userId
+          : null,
+      wouldCombineSameServer,
+    });
+  }
+
+  suggestions.sort((x, y) =>
+    x.matchType === y.matchType
+      ? x.matchValue.localeCompare(y.matchValue)
+      : x.matchType === 'email'
+        ? -1
+        : 1
+  );
+  return suggestions;
 }
