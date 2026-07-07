@@ -522,6 +522,12 @@ export async function getMergeSuggestions(): Promise<MergeSuggestion[]> {
 
   const emailMatch = sql`${a.email} IS NOT NULL AND ${b.email} IS NOT NULL AND lower(${a.email}) = lower(${b.email})`;
 
+  // No removedAt filter here on purpose: soft-removed server_users (accounts
+  // that no longer exist on the media server) still participate in matching.
+  // The primary case this feature exists for is merging an old removed
+  // account into its replacement on the same server, so excluding removed
+  // rows would hide exactly the suggestions we want to surface. The UI
+  // labels removed accounts to the reviewer.
   const pairRows = await db
     .selectDistinct({
       userA: sql<string>`least(${a.userId}, ${b.userId})`,
@@ -543,12 +549,17 @@ export async function getMergeSuggestions(): Promise<MergeSuggestion[]> {
 
   if (pairRows.length === 0) return [];
 
-  // One suggestion per identity pair; email matches outrank username matches
+  // One suggestion per identity pair; email matches outrank username matches.
+  // When two rows share the same matchType, the lexicographically smallest
+  // matchValue wins so the result never depends on unspecified SQL row order.
   const pairKey = (row: (typeof pairRows)[number]) => `${row.userA}:${row.userB}`;
   const bestByPair = new Map<string, (typeof pairRows)[number]>();
   for (const row of pairRows) {
     const existing = bestByPair.get(pairKey(row));
-    if (!existing || (existing.matchType === 'username' && row.matchType === 'email')) {
+    const rowIsBetterMatchType = existing?.matchType === 'username' && row.matchType === 'email';
+    const rowIsSmallerValue =
+      existing?.matchType === row.matchType && row.matchValue < existing.matchValue;
+    if (!existing || rowIsBetterMatchType || rowIsSmallerValue) {
       bestByPair.set(pairKey(row), row);
     }
   }

@@ -21,12 +21,12 @@ describe('getMergeSuggestions', () => {
     const serverB = await createTestServer({ type: 'jellyfin' });
     const userA = await createTestUser({ role: 'member' });
     const userB = await createTestUser({ role: 'member' });
-    await createTestServerUser({
+    const suA = await createTestServerUser({
       userId: userA.id,
       serverId: serverA.id,
       email: 'Bob@Example.com',
     });
-    await createTestServerUser({
+    const suB = await createTestServerUser({
       userId: userB.id,
       serverId: serverB.id,
       email: 'bob@example.com',
@@ -42,6 +42,43 @@ describe('getMergeSuggestions', () => {
     expect(ids).toEqual([userA.id, userB.id].sort());
     expect(match!.wouldCombineSameServer).toBe(false);
     expect(match!.requiredTargetUserId).toBeNull();
+
+    const sideA = match!.users.find((u) => u.userId === userA.id);
+    const sideB = match!.users.find((u) => u.userId === userB.id);
+    expect(sideA).toEqual({
+      userId: userA.id,
+      username: userA.username,
+      name: userA.name,
+      email: userA.email,
+      role: userA.role,
+      loginCapable: false,
+      serverUsers: [
+        {
+          id: suA.id,
+          serverId: serverA.id,
+          serverName: serverA.name,
+          username: suA.username,
+          email: suA.email,
+        },
+      ],
+    });
+    expect(sideB).toEqual({
+      userId: userB.id,
+      username: userB.username,
+      name: userB.name,
+      email: userB.email,
+      role: userB.role,
+      loginCapable: false,
+      serverUsers: [
+        {
+          id: suB.id,
+          serverId: serverB.id,
+          serverName: serverB.name,
+          username: suB.username,
+          email: suB.email,
+        },
+      ],
+    });
   });
 
   it('suggests exact-username matches and forces a login-capable side as target', async () => {
@@ -174,5 +211,74 @@ describe('getMergeSuggestions', () => {
     expect(match!.requiredTargetUserId).toBe(authedMember.id);
     const authedSide = match!.users.find((u) => u.userId === authedMember.id);
     expect(authedSide?.loginCapable).toBe(true);
+  });
+
+  it('includes a soft-removed server account matching a replacement on the same server', async () => {
+    const server = await createTestServer({ type: 'plex' });
+    const removedIdentity = await createTestUser({ role: 'member' });
+    const replacementIdentity = await createTestUser({ role: 'member' });
+    await createTestServerUser({
+      userId: removedIdentity.id,
+      serverId: server.id,
+      email: 'harry@example.com',
+      removedAt: new Date(),
+    });
+    await createTestServerUser({
+      userId: replacementIdentity.id,
+      serverId: server.id,
+      email: 'harry@example.com',
+    });
+
+    const suggestions = await getMergeSuggestions();
+    const match = suggestions.find((s) => s.matchValue === 'harry@example.com');
+
+    expect(match).toBeDefined();
+    const ids = match!.users.map((u) => u.userId).sort();
+    expect(ids).toEqual([removedIdentity.id, replacementIdentity.id].sort());
+    expect(match!.wouldCombineSameServer).toBe(true);
+  });
+
+  it('picks the lexicographically smallest matchValue when a pair shares two usernames', async () => {
+    const serverA1 = await createTestServer({ type: 'plex' });
+    const serverA2 = await createTestServer({ type: 'jellyfin' });
+    const serverB1 = await createTestServer({ type: 'plex' });
+    const serverB2 = await createTestServer({ type: 'jellyfin' });
+    const userA = await createTestUser({ role: 'member' });
+    const userB = await createTestUser({ role: 'member' });
+
+    await createTestServerUser({
+      userId: userA.id,
+      serverId: serverA1.id,
+      username: 'zzz-ida',
+      email: null,
+    });
+    await createTestServerUser({
+      userId: userA.id,
+      serverId: serverA2.id,
+      username: 'aaa-ida',
+      email: null,
+    });
+    await createTestServerUser({
+      userId: userB.id,
+      serverId: serverB1.id,
+      username: 'zzz-ida',
+      email: null,
+    });
+    await createTestServerUser({
+      userId: userB.id,
+      serverId: serverB2.id,
+      username: 'aaa-ida',
+      email: null,
+    });
+
+    const suggestions = await getMergeSuggestions();
+    const matches = suggestions.filter(
+      (s) =>
+        s.users.some((u) => u.userId === userA.id) && s.users.some((u) => u.userId === userB.id)
+    );
+
+    expect(matches).toHaveLength(1);
+    expect(matches[0]!.matchType).toBe('username');
+    expect(matches[0]!.matchValue).toBe('aaa-ida');
   });
 });
