@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { MERGE_SAME_SERVER_CONFIRMATION_REQUIRED } from '@tracearr/shared';
 import { api } from '@/lib/api';
 
 export function useUsers(params: { page?: number; pageSize?: number; serverId?: string } = {}) {
@@ -118,6 +119,60 @@ export function useBulkResetTrust() {
     },
     onError: (error: Error) => {
       toast.error(t('toast.error.trustScoresResetFailed'), { description: error.message });
+    },
+  });
+}
+
+export function useMergeSuggestions(enabled: boolean) {
+  return useQuery({
+    queryKey: ['users', 'merge-suggestions'],
+    queryFn: () => api.users.mergeSuggestions(),
+    enabled,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+}
+
+export function useMergeUsers() {
+  const { t } = useTranslation('notifications');
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: {
+      sourceUserId: string;
+      targetUserId: string;
+      confirmSameServerCombine?: boolean;
+    }) =>
+      api.users.merge(input.sourceUserId, {
+        targetUserId: input.targetUserId,
+        confirmSameServerCombine: input.confirmSameServerCombine,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success(t('toast.success.usersMerged.title'));
+    },
+    onError: (error: Error) => {
+      // The same-server sentinel isn't a failure - callers surface the destructive
+      // confirmation UI instead of a toast when they see this message.
+      if (error.message === MERGE_SAME_SERVER_CONFIRMATION_REQUIRED) {
+        return;
+      }
+      toast.error(t('toast.error.userMergeFailed'), { description: error.message });
+    },
+  });
+}
+
+export function useSplitServerUser() {
+  const { t } = useTranslation('notifications');
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { serverUserId: string }) => api.serverUsers.split(input.serverUserId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success(t('toast.success.serverUserSplit.title'));
+    },
+    onError: (error: Error) => {
+      toast.error(t('toast.error.serverUserSplitFailed'), { description: error.message });
     },
   });
 }

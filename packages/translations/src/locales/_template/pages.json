@@ -60,7 +60,25 @@
     "resetTrustScore": "Reset Trust Score",
     "resetTrustScoreTitle_one": "Reset Trust Score for {{count}} User",
     "resetTrustScoreTitle_other": "Reset Trust Score for {{count}} Users",
-    "resetTrustScoreConfirm": "Are you sure you want to reset the trust score to 100? This action cannot be undone."
+    "resetTrustScoreConfirm": "Are you sure you want to reset the trust score to 100? This action cannot be undone.",
+    "mergeUsers": "Merge users",
+    "mergeDialogTitle": "Merge users",
+    "mergeDialogDescription": "Every server account, session, and violation from the duplicate moves to the primary. The duplicate identity is deleted.",
+    "mergePickPrimary": "Choose the primary identity",
+    "mergePrimaryForced": "This account can log in, so it must stay the primary.",
+    "mergeSameServerWarningTitle": "This action is irreversible",
+    "mergeSameServerWarning": "Both identities already have an account on the same server. Merging will permanently combine their session history, violations, and trust score into a single account on that server. This cannot be undone, and splitting the account afterward will not restore the original two accounts.",
+    "mergeSameServerAcknowledge": "I understand the same-server history combine cannot be undone",
+    "mergeServerAccountRemoved": "Removed",
+    "mergeConfirm": "Merge",
+    "mergeSelectTwo": "Select exactly two users to merge",
+    "mergeSameIdentity": "These accounts already belong to the same user",
+    "suggestionsTitle": "Possible duplicate users",
+    "suggestionsDescription": "These identities look like the same person across servers. Review and merge them if they match.",
+    "suggestionsReview": "Review",
+    "suggestionsMatchEmail": "Same email",
+    "suggestionsMatchUsername": "Same username",
+    "suggestionsError": "Could not load merge suggestions"
   },
   "userDetail": {
     "backToUsers": "Back to Users",
@@ -77,7 +95,11 @@
     "byRule": "By / Rule",
     "manual": "Manual",
     "unknownRule": "Unknown rule",
-    "adjustTrustScore": "Adjust Trust Score"
+    "adjustTrustScore": "Adjust Trust Score",
+    "linkedAccounts": "Linked accounts",
+    "splitAccount": "Split into separate user",
+    "splitConfirmTitle": "Split server account",
+    "splitConfirmDescription": "Detach this server account into its own user. Its watch history and violations move with it."
   },
   "history": {
     "title": "History",

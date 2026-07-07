@@ -76,6 +76,10 @@ import type {
   BackupMetadata,
   BackupListItem,
   BackupScheduleType,
+  // Cross-server user merging types
+  UserMergeResult,
+  MergeSuggestion,
+  ServerUserSplitResult,
 } from '@tracearr/shared';
 
 // Re-export shared types needed by frontend components
@@ -557,6 +561,26 @@ class ApiClient {
       this.request<{ success: boolean; updated: number }>('/users/bulk/reset-trust', {
         method: 'POST',
         body: JSON.stringify({ ids }),
+      }),
+    merge: (
+      sourceUserId: string,
+      data: { targetUserId: string; confirmSameServerCombine?: boolean }
+    ) =>
+      this.request<UserMergeResult>(`/users/${sourceUserId}/merge`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    mergeSuggestions: async () => {
+      const response = await this.request<{ data: MergeSuggestion[] }>('/users/merge-suggestions');
+      return response.data;
+    },
+  };
+
+  // Server users (accounts on a specific media server)
+  serverUsers = {
+    split: (serverUserId: string) =>
+      this.request<ServerUserSplitResult>(`/server-users/${serverUserId}/split`, {
+        method: 'POST',
       }),
   };
 
