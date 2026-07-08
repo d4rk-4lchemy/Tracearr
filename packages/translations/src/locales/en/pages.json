@@ -101,7 +101,8 @@
     "linkedAccounts": "Linked accounts",
     "splitAccount": "Split into separate user",
     "splitConfirmTitle": "Split server account",
-    "splitConfirmDescription": "Detach this server account into its own user. Its watch history and violations move with it."
+    "splitConfirmDescription": "Detach this server account into its own user. Its watch history and violations move with it.",
+    "acrossAllServers": "Across all linked accounts:"
   },
   "history": {
     "title": "History",

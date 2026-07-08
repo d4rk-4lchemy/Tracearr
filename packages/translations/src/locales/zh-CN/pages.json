@@ -461,6 +461,7 @@
     "title": "终止流"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "调整信任分数",
     "backToUsers": "返回用户",
     "byRule": "按 / 规则",

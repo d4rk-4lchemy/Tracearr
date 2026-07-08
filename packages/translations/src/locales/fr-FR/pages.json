@@ -461,6 +461,7 @@
     "title": "Interrompre la lecture"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "Ajuster le score de confiance",
     "backToUsers": "Retour aux utilisateurs",
     "byRule": "Par / Règle",

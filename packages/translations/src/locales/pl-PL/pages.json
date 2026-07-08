@@ -461,6 +461,7 @@
     "title": "Zakończ transmisję"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "Dostosuj wynik zaufania",
     "backToUsers": "Powrót do użytkowników",
     "byRule": "Według / Reguły",

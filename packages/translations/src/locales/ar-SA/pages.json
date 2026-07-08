@@ -461,6 +461,7 @@
     "title": "إنهاء البث"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "ضبط نقاط الثقة",
     "backToUsers": "العودة إلى المستخدمين",
     "byRule": "بواسطة / قاعدة",

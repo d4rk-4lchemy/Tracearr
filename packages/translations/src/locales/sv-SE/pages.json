@@ -461,6 +461,7 @@
     "title": "Avsluta ström"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "Justera Trust-poäng",
     "backToUsers": "Tillbaka till användare",
     "byRule": "Av / Regel",

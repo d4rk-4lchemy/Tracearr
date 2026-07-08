@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
@@ -11,12 +12,16 @@ import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BulkActionsToolbar, type BulkAction } from '@/components/ui/bulk-actions-toolbar';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { User as UserIcon, Crown, Clock, Search, RotateCcw, UserX } from 'lucide-react';
+import { MergeUsersDialog, type MergeCandidate } from '@/components/users/MergeUsersDialog';
+import { MergeSuggestionsBanner } from '@/components/users/MergeSuggestionsBanner';
+import { User as UserIcon, Crown, Clock, Search, RotateCcw, UserX, Merge } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
-import type { ServerUserWithIdentity } from '@tracearr/shared';
-import { useUsers, useBulkResetTrust } from '@/hooks/queries';
+import type { ServerUserWithIdentity, MergeSuggestion } from '@tracearr/shared';
+import { MERGE_SAME_SERVER_CONFIRMATION_REQUIRED, canLogin } from '@tracearr/shared';
+import { useUsers, useBulkResetTrust, useMergeUsers } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
+import { useAuth } from '@/hooks/useAuth';
 import { useRowSelection } from '@/hooks/useRowSelection';
 
 export function Users() {
@@ -26,11 +31,21 @@ export function Users() {
   const [searchFilter, setSearchFilter] = useState('');
   const [page, setPage] = useState(1);
   const [resetTrustConfirmOpen, setResetTrustConfirmOpen] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeCandidates, setMergeCandidates] = useState<[MergeCandidate, MergeCandidate] | null>(
+    null
+  );
+  const [mergeRequiredTarget, setMergeRequiredTarget] = useState<string | null>(null);
+  const [mergeSameServerWarning, setMergeSameServerWarning] = useState(false);
+  const [mergeSameServerName, setMergeSameServerName] = useState<string | null>(null);
   const pageSize = 100;
   const { selectedServerId } = useServer();
+  const { user: authUser } = useAuth();
+  const isOwner = authUser?.role === 'owner';
 
   const { data, isLoading } = useUsers({ page, pageSize, serverId: selectedServerId ?? undefined });
   const bulkResetTrust = useBulkResetTrust();
+  const mergeUsersMutation = useMergeUsers();
 
   const users = data?.data ?? [];
   const total = data?.total ?? 0;
@@ -149,6 +164,72 @@ export function Users() {
     });
   };
 
+  const toMergeCandidate = (row: ServerUserWithIdentity): MergeCandidate => ({
+    userId: row.userId,
+    displayName: `${row.identityName ?? row.username} (${row.serverName})`,
+    username: row.username,
+    loginCapable: canLogin(row.role),
+    serverUsers: [],
+  });
+
+  // Merge requires exactly two specific rows, not the selectAll-matching-filters mode.
+  const mergeSelectedRows = selectAllMode ? [] : users.filter((u) => selectedIds.has(u.id));
+  const [mergeSelectedFirst, mergeSelectedSecond] = mergeSelectedRows;
+  const mergeSameIdentitySelected =
+    mergeSelectedRows.length === 2 && mergeSelectedFirst?.userId === mergeSelectedSecond?.userId;
+  const mergeActionDisabled = selectAllMode || selectedIds.size !== 2 || mergeSameIdentitySelected;
+  const mergeActionTitle = mergeSameIdentitySelected
+    ? t('pages:users.mergeSameIdentity')
+    : selectAllMode || selectedIds.size !== 2
+      ? t('pages:users.mergeSelectTwo')
+      : undefined;
+
+  const handleMergeConfirm = (input: {
+    sourceUserId: string;
+    targetUserId: string;
+    confirmSameServerCombine: boolean;
+  }) => {
+    mergeUsersMutation.mutate(input, {
+      onSuccess: () => {
+        clearSelection();
+        setMergeDialogOpen(false);
+      },
+      onError: (error) => {
+        // Sentinel from a same-server combine the client didn't predict - escalate
+        // to the destructive confirmation instead of a toast.
+        if (error.message === MERGE_SAME_SERVER_CONFIRMATION_REQUIRED) {
+          setMergeSameServerWarning(true);
+        }
+      },
+    });
+  };
+
+  const handleReviewSuggestion = (suggestion: MergeSuggestion) => {
+    const [firstUser, secondUser] = suggestion.users;
+    const toCandidate = (identity: MergeSuggestion['users'][number]): MergeCandidate => ({
+      userId: identity.userId,
+      displayName: identity.name ?? identity.username,
+      username: identity.username,
+      loginCapable: identity.loginCapable,
+      serverUsers: identity.serverUsers.map((su) => ({
+        id: su.id,
+        serverName: su.serverName,
+        removedAt: su.removedAt,
+      })),
+    });
+    const overlappingServerName = suggestion.wouldCombineSameServer
+      ? (firstUser.serverUsers.find((su) =>
+          secondUser.serverUsers.some((other) => other.serverId === su.serverId)
+        )?.serverName ?? null)
+      : null;
+
+    setMergeCandidates([toCandidate(firstUser), toCandidate(secondUser)]);
+    setMergeRequiredTarget(suggestion.requiredTargetUserId);
+    setMergeSameServerWarning(suggestion.wouldCombineSameServer);
+    setMergeSameServerName(overlappingServerName);
+    setMergeDialogOpen(true);
+  };
+
   const bulkActions: BulkAction[] = [
     {
       key: 'reset-trust',
@@ -158,6 +239,41 @@ export function Users() {
       onClick: () => setResetTrustConfirmOpen(true),
       isLoading: bulkResetTrust.isPending,
     },
+    ...(isOwner
+      ? [
+          {
+            key: 'merge',
+            label: t('pages:users.mergeUsers'),
+            icon: <Merge className="h-4 w-4" />,
+            variant: 'default' as const,
+            disabled: mergeActionDisabled,
+            title: mergeActionTitle,
+            onClick: () => {
+              if (mergeSelectedRows.length !== 2) {
+                toast.error(t('pages:users.mergeSelectTwo'));
+                return;
+              }
+              const [first, second] = mergeSelectedRows as [
+                ServerUserWithIdentity,
+                ServerUserWithIdentity,
+              ];
+              if (first.userId === second.userId) {
+                toast.error(t('pages:users.mergeSameIdentity'));
+                return;
+              }
+              const a = toMergeCandidate(first);
+              const b = toMergeCandidate(second);
+              const sameServer = first.serverId === second.serverId;
+              setMergeCandidates([a, b]);
+              setMergeRequiredTarget(a.loginCapable ? a.userId : b.loginCapable ? b.userId : null);
+              setMergeSameServerWarning(sameServer);
+              setMergeSameServerName(sameServer ? first.serverName : null);
+              setMergeDialogOpen(true);
+            },
+            isLoading: mergeUsersMutation.isPending,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -179,6 +295,8 @@ export function Users() {
           </p>
         </div>
       </div>
+
+      {isOwner && <MergeSuggestionsBanner onReview={handleReviewSuggestion} />}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -248,6 +366,31 @@ export function Users() {
         onConfirm={handleBulkResetTrust}
         isLoading={bulkResetTrust.isPending}
       />
+
+      {/* Merge Users Dialog */}
+      {mergeCandidates &&
+        (mergeSameServerWarning ? (
+          <MergeUsersDialog
+            open={mergeDialogOpen}
+            onOpenChange={setMergeDialogOpen}
+            candidates={mergeCandidates}
+            requiredTargetUserId={mergeRequiredTarget}
+            isLoading={mergeUsersMutation.isPending}
+            sameServerWarning
+            sameServerName={mergeSameServerName ?? ''}
+            onConfirm={handleMergeConfirm}
+          />
+        ) : (
+          <MergeUsersDialog
+            open={mergeDialogOpen}
+            onOpenChange={setMergeDialogOpen}
+            candidates={mergeCandidates}
+            requiredTargetUserId={mergeRequiredTarget}
+            isLoading={mergeUsersMutation.isPending}
+            sameServerWarning={false}
+            onConfirm={handleMergeConfirm}
+          />
+        ))}
     </div>
   );
 }

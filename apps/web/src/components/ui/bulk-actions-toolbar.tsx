@@ -17,6 +17,8 @@ export interface BulkAction {
   isLoading?: boolean;
   /** Whether the action is disabled */
   disabled?: boolean;
+  /** Tooltip shown when the action is disabled (or on hover generally) */
+  title?: string;
 }
 
 interface BulkActionsToolbarProps {
@@ -70,6 +72,7 @@ export function BulkActionsToolbar({
             size="sm"
             onClick={action.onClick}
             disabled={action.disabled || action.isLoading}
+            title={action.title}
           >
             {action.icon && <span className="mr-1.5">{action.icon}</span>}
             {action.isLoading ? 'Processing...' : action.label}

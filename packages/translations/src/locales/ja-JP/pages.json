@@ -461,6 +461,7 @@
     "title": "配信を終了"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "信頼スコアを調整",
     "backToUsers": "ユーザーに戻る",
     "byRule": "By / Rule",

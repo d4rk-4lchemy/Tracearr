@@ -461,6 +461,7 @@
     "title": "Avslutt strømmingen"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "Juster tillitssum",
     "backToUsers": "Tilbake til brukere",
     "byRule": "Av / Regel",

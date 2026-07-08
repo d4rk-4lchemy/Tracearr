@@ -461,6 +461,7 @@
     "title": "Завершити потік"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "Змінити показник довіри",
     "backToUsers": "Назад до користувачів",
     "byRule": "За правилом",

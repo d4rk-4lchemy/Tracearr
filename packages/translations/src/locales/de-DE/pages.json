@@ -461,6 +461,7 @@
     "title": "Stream beenden"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "Trust Punktzahl anpassen",
     "backToUsers": "Zurück zu den Benutzern",
     "byRule": "Bei / Regel",

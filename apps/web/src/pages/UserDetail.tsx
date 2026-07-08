@@ -18,6 +18,8 @@ import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { formatWatchTime } from '@/components/ui/stat-card';
 import {
   User as UserIcon,
   Crown,
@@ -28,6 +30,7 @@ import {
   XCircle,
   Bot,
   Pencil,
+  Split,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -37,7 +40,13 @@ import type {
   ViolationWithDetails,
   TerminationLogWithDetails,
 } from '@tracearr/shared';
-import { useUserFull, useUserSessions, useViolations, useUserTerminations } from '@/hooks/queries';
+import {
+  useUserFull,
+  useUserSessions,
+  useViolations,
+  useUserTerminations,
+  useSplitServerUser,
+} from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -53,10 +62,12 @@ export function UserDetail() {
   const [isEditNameOpen, setIsEditNameOpen] = useState(false);
   const [isEditTrustOpen, setIsEditTrustOpen] = useState(false);
   const [selectedSession, setSelectedSession] = useState<SessionWithDetails | null>(null);
+  const [splitTarget, setSplitTarget] = useState<{ id: string; username: string } | null>(null);
   const pageSize = 10;
   const { selectedServerId, servers } = useServer();
   const { user: authUser } = useAuth();
   const isOwner = authUser?.role === 'owner';
+  const splitMutation = useSplitServerUser();
 
   // Column visibility for the sessions HistoryTable (hide user since we're scoped to one)
   const sessionColumnVisibility: ColumnVisibility = useMemo(
@@ -248,6 +259,7 @@ export function UserDetail() {
 
   // Extract data from aggregate or paginated sources
   const user = fullData?.user;
+  const identity = fullData?.identity;
   const locations = fullData?.locations ?? [];
   const devices = fullData?.devices ?? [];
 
@@ -481,9 +493,49 @@ export function UserDetail() {
                 </div>
               </div>
             </div>
+            {identity && identity.serverUsers.length > 1 && (
+              <p className="text-muted-foreground mt-3 text-xs">
+                {t('pages:userDetail.acrossAllServers')}{' '}
+                {t('common:count.session', { count: identity.stats.totalSessions })} ·{' '}
+                {formatWatchTime(identity.stats.totalWatchTime)}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Linked Accounts */}
+      {identity && identity.serverUsers.length > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('pages:userDetail.linkedAccounts')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {identity.serverUsers.map((account) => (
+              <div
+                key={account.id}
+                className="flex items-center justify-between gap-4 rounded-md border p-3"
+              >
+                <div>
+                  <p className="font-medium">{account.username}</p>
+                  <p className="text-muted-foreground text-xs">{account.serverName}</p>
+                </div>
+                {isOwner && account.id !== user.id && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSplitTarget({ id: account.id, username: account.username })}
+                    disabled={splitMutation.isPending}
+                  >
+                    <Split className="mr-2 h-4 w-4" />
+                    {t('pages:userDetail.splitAccount')}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Locations and Devices */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -600,6 +652,23 @@ export function UserDetail() {
         open={!!selectedSession}
         onOpenChange={(open) => {
           if (!open) setSelectedSession(null);
+        }}
+      />
+
+      {/* Split Account Confirmation */}
+      <ConfirmDialog
+        open={splitTarget !== null}
+        onOpenChange={(open) => !open && setSplitTarget(null)}
+        title={t('pages:userDetail.splitConfirmTitle')}
+        description={t('pages:userDetail.splitConfirmDescription')}
+        confirmLabel={t('pages:userDetail.splitAccount')}
+        isLoading={splitMutation.isPending}
+        onConfirm={() => {
+          if (!splitTarget) return;
+          splitMutation.mutate(
+            { serverUserId: splitTarget.id },
+            { onSuccess: () => setSplitTarget(null) }
+          );
         }}
       />
     </div>

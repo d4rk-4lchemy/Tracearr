@@ -461,6 +461,7 @@
     "title": "Τερματισμός Ροής"
   },
   "userDetail": {
+    "acrossAllServers": "Across all linked accounts:",
     "adjustTrustScore": "Προσαρμογή Βαθμολογίας Εμπιστοσύνης",
     "backToUsers": "Πίσω στους χρήστες",
     "byRule": "Από / Κανόνα",
