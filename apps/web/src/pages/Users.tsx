@@ -14,6 +14,10 @@ import { BulkActionsToolbar, type BulkAction } from '@/components/ui/bulk-action
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { MergeUsersDialog, type MergeCandidate } from '@/components/users/MergeUsersDialog';
 import { MergeSuggestionsBanner } from '@/components/users/MergeSuggestionsBanner';
+import {
+  deriveMergeActionState,
+  findOverlappingServerName,
+} from '@/components/users/mergeSelection';
 import { User as UserIcon, Crown, Clock, Search, RotateCcw, UserX, Merge } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -174,15 +178,15 @@ export function Users() {
 
   // Merge requires exactly two specific rows, not the selectAll-matching-filters mode.
   const mergeSelectedRows = selectAllMode ? [] : users.filter((u) => selectedIds.has(u.id));
-  const [mergeSelectedFirst, mergeSelectedSecond] = mergeSelectedRows;
-  const mergeSameIdentitySelected =
-    mergeSelectedRows.length === 2 && mergeSelectedFirst?.userId === mergeSelectedSecond?.userId;
-  const mergeActionDisabled = selectAllMode || selectedIds.size !== 2 || mergeSameIdentitySelected;
-  const mergeActionTitle = mergeSameIdentitySelected
-    ? t('pages:users.mergeSameIdentity')
-    : selectAllMode || selectedIds.size !== 2
-      ? t('pages:users.mergeSelectTwo')
-      : undefined;
+  const mergeSelectionState = deriveMergeActionState(
+    mergeSelectedRows,
+    selectAllMode,
+    selectedIds.size
+  );
+  const mergeActionDisabled = mergeSelectionState.disabled;
+  const mergeActionTitle = mergeSelectionState.reasonKey
+    ? t(mergeSelectionState.reasonKey)
+    : undefined;
 
   const handleMergeConfirm = (input: {
     sourceUserId: string;
@@ -218,9 +222,7 @@ export function Users() {
       })),
     });
     const overlappingServerName = suggestion.wouldCombineSameServer
-      ? (firstUser.serverUsers.find((su) =>
-          secondUser.serverUsers.some((other) => other.serverId === su.serverId)
-        )?.serverName ?? null)
+      ? findOverlappingServerName(firstUser.serverUsers, secondUser.serverUsers)
       : null;
 
     setMergeCandidates([toCandidate(firstUser), toCandidate(secondUser)]);

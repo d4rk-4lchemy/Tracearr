@@ -520,17 +520,23 @@ export function UserDetail() {
                   <p className="font-medium">{account.username}</p>
                   <p className="text-muted-foreground text-xs">{account.serverName}</p>
                 </div>
-                {isOwner && account.id !== user.id && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSplitTarget({ id: account.id, username: account.username })}
-                    disabled={splitMutation.isPending}
-                  >
-                    <Split className="mr-2 h-4 w-4" />
-                    {t('pages:userDetail.splitAccount')}
-                  </Button>
-                )}
+                <div className="flex items-center gap-4">
+                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                    {t('common:count.session', { count: account.sessionCount })}
+                  </span>
+                  <TrustScoreBadge score={account.trustScore} />
+                  {isOwner && account.id !== user.id && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSplitTarget({ id: account.id, username: account.username })}
+                      disabled={splitMutation.isPending}
+                    >
+                      <Split className="mr-2 h-4 w-4" />
+                      {t('pages:userDetail.splitAccount')}
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </CardContent>
@@ -662,6 +668,7 @@ export function UserDetail() {
         title={t('pages:userDetail.splitConfirmTitle')}
         description={t('pages:userDetail.splitConfirmDescription')}
         confirmLabel={t('pages:userDetail.splitAccount')}
+        confirmLoadingLabel={t('pages:userDetail.splitConfirmLoading')}
         isLoading={splitMutation.isPending}
         onConfirm={() => {
           if (!splitTarget) return;

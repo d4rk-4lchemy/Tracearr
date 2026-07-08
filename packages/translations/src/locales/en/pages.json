@@ -75,6 +75,7 @@
     "mergeConfirm": "Merge",
     "mergeSelectTwo": "Select exactly two users to merge",
     "mergeSameIdentity": "These accounts already belong to the same user",
+    "mergeSelectAllActive": "Clear the select-all selection and pick exactly two users to merge",
     "suggestionsTitle": "Possible duplicate users",
     "suggestionsDescription": "These identities look like the same person across servers. Review and merge them if they match.",
     "suggestionsReview": "Review",
@@ -102,6 +103,7 @@
     "splitAccount": "Split into separate user",
     "splitConfirmTitle": "Split server account",
     "splitConfirmDescription": "Detach this server account into its own user. Its watch history and violations move with it.",
+    "splitConfirmLoading": "Splitting...",
     "acrossAllServers": "Across all linked accounts:"
   },
   "history": {

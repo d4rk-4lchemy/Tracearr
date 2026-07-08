@@ -54,7 +54,7 @@ export function MergeSuggestionsBanner({ onReview }: MergeSuggestionsBannerProps
                       identity.serverUsers.map((serverUser) => (
                         <Badge
                           key={serverUser.id}
-                          variant="outline"
+                          variant="secondary"
                           className={cn(
                             'gap-1 font-normal',
                             serverUser.removedAt && 'text-muted-foreground'
