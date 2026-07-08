@@ -282,6 +282,7 @@ export const NOTIFICATION_EVENTS = {
   TRUST_SCORE_CHANGED: 'trust_score_changed',
   SERVER_DOWN: 'server_down',
   SERVER_UP: 'server_up',
+  PLUGIN_UPDATE_AVAILABLE: 'plugin_update_available',
 } as const;
 
 // API version

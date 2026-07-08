@@ -475,6 +475,8 @@ describe('CacheService', () => {
         lastEventAt: '2024-01-01T00:00:00.000Z',
         since: '2024-01-01T00:00:00.000Z',
         error: null,
+        pluginVersion: null,
+        pluginUpdateAvailable: false,
       };
 
       await cache.setServerConnectionStatus('srv-1', status);
@@ -493,6 +495,8 @@ describe('CacheService', () => {
         lastEventAt: null,
         since: null,
         error: null,
+        pluginVersion: null,
+        pluginUpdateAvailable: false,
       };
 
       await cache.setServerConnectionStatus('srv-1', status);

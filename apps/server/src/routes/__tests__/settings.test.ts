@@ -77,6 +77,8 @@ const mockAllSettings: Settings = {
   backupScheduleDayOfWeek: 0,
   backupScheduleDayOfMonth: 1,
   backupRetentionCount: 7,
+  pluginUpdateCheckEnabled: true,
+  pluginManifestUrl: null,
 };
 
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {

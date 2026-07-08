@@ -33,6 +33,7 @@ import {
 } from './mediaServer/shared/jellyfinEmbyEventSource.js';
 import { broadcastToAll } from '../websocket/index.js';
 import { triggerServerPoll } from '../jobs/poller/index.js';
+import { compareVersions } from '../utils/pluginVersion.js';
 import type { CacheService, PubSubService } from './cache.js';
 
 // Events emitted by SSEManager for consumers
@@ -95,6 +96,7 @@ export class SSEManager extends EventEmitter {
   private reconciliationTimer: NodeJS.Timeout | null = null;
   private initialized = false;
   private pendingOperations = new Set<string>();
+  private latestPluginVersion: string | null = null;
 
   /**
    * Initialize the SSE manager with cache services
@@ -302,6 +304,30 @@ export class SSEManager extends EventEmitter {
   }
 
   /**
+   * Set the latest known plugin version (called by the update checker)
+   */
+  setLatestPluginVersion(v: string | null): void {
+    this.latestPluginVersion = v;
+  }
+
+  /**
+   * Get the latest known plugin version
+   */
+  getLatestPluginVersion(): string | null {
+    return this.latestPluginVersion;
+  }
+
+  /**
+   * Get the reported plugin version for a connected server, if any
+   */
+  getPluginVersion(serverId: string): string | null {
+    const connection = this.connections.get(serverId);
+    if (!connection?.eventSource) return null;
+    const status = connection.eventSource.getStatus() as { pluginVersion?: string | null };
+    return status.pluginVersion ?? null;
+  }
+
+  /**
    * Get list of servers that need polling (fallback mode or non-SSE-connected)
    * JF/Emby servers with active plugin SSE are NOT included — events drive them.
    * JF/Emby servers in unsupported/fallback state ARE included for normal polling.
@@ -362,6 +388,18 @@ export class SSEManager extends EventEmitter {
     status: SSEConnectionStatus
   ): ServerConnectionStatus {
     const state = status.state;
+    const pluginVersion = (status as { pluginVersion?: string | null }).pluginVersion ?? null;
+    const latest = this.latestPluginVersion;
+    // Null version on a connection that has been up >30s means a pre-hello plugin build
+    const connectedLongEnough =
+      state === 'connected' &&
+      status.connectedAt !== null &&
+      Date.now() - status.connectedAt.getTime() > 30_000;
+    const pluginUpdateAvailable =
+      serverType !== 'plex' &&
+      latest !== null &&
+      state === 'connected' &&
+      (pluginVersion === null ? connectedLongEnough : compareVersions(pluginVersion, latest) < 0);
     return {
       serverId,
       serverName,
@@ -371,6 +409,8 @@ export class SSEManager extends EventEmitter {
       lastEventAt: status.lastEventAt?.toISOString() ?? null,
       since: state === 'connected' ? (status.connectedAt?.toISOString() ?? null) : null,
       error: status.error,
+      pluginVersion,
+      pluginUpdateAvailable,
     };
   }
 

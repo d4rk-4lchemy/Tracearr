@@ -577,6 +577,7 @@ export const notificationEventTypeEnum = [
   'trust_score_changed',
   'server_down',
   'server_up',
+  'plugin_update_available',
 ] as const;
 
 // Notification channel routing configuration

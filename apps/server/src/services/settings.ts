@@ -39,6 +39,8 @@ const PUBLIC_DEFAULTS: Settings = {
   backupScheduleDayOfWeek: 0,
   backupScheduleDayOfMonth: 1,
   backupRetentionCount: 7,
+  pluginUpdateCheckEnabled: true,
+  pluginManifestUrl: null,
 };
 
 /**

@@ -925,6 +925,9 @@ export interface Settings {
   backupScheduleDayOfWeek: number;
   backupScheduleDayOfMonth: number;
   backupRetentionCount: number;
+  // Plugin update check
+  pluginUpdateCheckEnabled: boolean;
+  pluginManifestUrl: string | null;
 }
 
 // Tailscale integration
@@ -1316,7 +1319,8 @@ export type NotificationEventType =
   | 'new_device'
   | 'trust_score_changed'
   | 'server_down'
-  | 'server_up';
+  | 'server_up'
+  | 'plugin_update_available';
 
 // Notification preferences (per-device settings)
 export interface NotificationPreferences {
@@ -1506,6 +1510,7 @@ export interface SSEConnectionStatus {
   lastEventAt: Date | null;
   reconnectAttempts: number;
   error: string | null;
+  pluginVersion?: string | null;
 }
 
 // Per-server connection status surfaced to clients
@@ -1519,6 +1524,8 @@ export interface ServerConnectionStatus {
   lastEventAt: string | null;
   since: string | null;
   error: string | null;
+  pluginVersion: string | null;
+  pluginUpdateAvailable: boolean;
 }
 
 // =============================================================================
