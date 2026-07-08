@@ -1,18 +1,47 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MergeUsersDialog, type MergeCandidate } from './MergeUsersDialog';
+import {
+  MergeUsersDialog,
+  type MergeCandidate,
+  type MergeUsersDialogProps,
+} from './MergeUsersDialog';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 const candidates: [MergeCandidate, MergeCandidate] = [
-  { userId: 'user-a', displayName: 'Bob (Plex)', username: 'bob', loginCapable: false },
-  { userId: 'user-b', displayName: 'Bob (Jellyfin)', username: 'bob-jf', loginCapable: false },
+  {
+    userId: 'user-a',
+    displayName: 'Bob (Plex)',
+    username: 'bob',
+    loginCapable: false,
+    serverUsers: [],
+  },
+  {
+    userId: 'user-b',
+    displayName: 'Bob (Jellyfin)',
+    username: 'bob-jf',
+    loginCapable: false,
+    serverUsers: [],
+  },
 ];
 
-function renderDialog(overrides: Partial<Parameters<typeof MergeUsersDialog>[0]> = {}) {
+type PlainOverrides = Partial<
+  Omit<MergeUsersDialogProps, 'sameServerWarning' | 'sameServerName'>
+> & {
+  sameServerWarning?: false;
+  sameServerName?: string | null;
+};
+
+type SameServerOverrides = Partial<
+  Omit<MergeUsersDialogProps, 'sameServerWarning' | 'sameServerName'>
+> & {
+  sameServerName?: string;
+};
+
+function renderDialog(overrides: PlainOverrides = {}) {
   const onConfirm = vi.fn();
   render(
     <MergeUsersDialog
@@ -20,10 +49,28 @@ function renderDialog(overrides: Partial<Parameters<typeof MergeUsersDialog>[0]>
       onOpenChange={vi.fn()}
       candidates={candidates}
       requiredTargetUserId={null}
-      sameServerWarning={false}
-      sameServerName={null}
       onConfirm={onConfirm}
       isLoading={false}
+      sameServerWarning={false}
+      sameServerName={null}
+      {...overrides}
+    />
+  );
+  return { onConfirm };
+}
+
+function renderSameServerDialog(overrides: SameServerOverrides = {}) {
+  const onConfirm = vi.fn();
+  render(
+    <MergeUsersDialog
+      open
+      onOpenChange={vi.fn()}
+      candidates={candidates}
+      requiredTargetUserId={null}
+      onConfirm={onConfirm}
+      isLoading={false}
+      sameServerWarning={true}
+      sameServerName="Living Room Plex"
       {...overrides}
     />
   );
@@ -63,10 +110,7 @@ describe('MergeUsersDialog', () => {
   });
 
   it('requires a distinct alert-dialog acknowledgement before a same-server combine, naming the server', async () => {
-    const { onConfirm } = renderDialog({
-      sameServerWarning: true,
-      sameServerName: 'Living Room Plex',
-    });
+    const { onConfirm } = renderSameServerDialog({ sameServerName: 'Living Room Plex' });
 
     // The destructive confirmation is loud, explicit, and names the affected server.
     expect(screen.getByText('pages:users.mergeSameServerWarningTitle')).toBeInTheDocument();
@@ -92,6 +136,19 @@ describe('MergeUsersDialog', () => {
     });
   });
 
+  it('falls back to generic copy when the same-server name is a runtime-empty string', () => {
+    renderSameServerDialog({ sameServerName: '' });
+
+    expect(screen.getByText('pages:users.mergeSameServerFallbackName')).toBeInTheDocument();
+  });
+
+  it('renders exactly one dialog root in the same-server state', () => {
+    renderSameServerDialog();
+
+    expect(screen.getAllByRole('alertdialog')).toHaveLength(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('labels a removed server account as historical with a muted badge', () => {
     renderDialog({
       candidates: [
@@ -106,5 +163,68 @@ describe('MergeUsersDialog', () => {
     });
 
     expect(screen.getByText('pages:users.mergeServerAccountRemoved')).toBeInTheDocument();
+  });
+
+  it('disables the primary-picker radios and the acknowledgement checkbox while the merge mutation is pending', () => {
+    renderSameServerDialog({ isLoading: true });
+
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(2);
+    for (const radio of radios) {
+      expect(radio).toBeDisabled();
+    }
+
+    expect(
+      screen.getByRole('checkbox', { name: 'pages:users.mergeSameServerAcknowledge' })
+    ).toBeDisabled();
+  });
+
+  it('keeps the acknowledgement checked when a parent re-render passes a new candidates array reference', async () => {
+    const onConfirm = vi.fn();
+    const initialCandidates: [MergeCandidate, MergeCandidate] = [
+      { ...candidates[0] },
+      { ...candidates[1] },
+    ];
+
+    const { rerender } = render(
+      <MergeUsersDialog
+        open
+        onOpenChange={vi.fn()}
+        candidates={initialCandidates}
+        requiredTargetUserId={null}
+        onConfirm={onConfirm}
+        isLoading={false}
+        sameServerWarning={true}
+        sameServerName="Living Room Plex"
+      />
+    );
+
+    const acknowledgeCheckbox = screen.getByRole('checkbox', {
+      name: 'pages:users.mergeSameServerAcknowledge',
+    });
+    await userEvent.click(acknowledgeCheckbox);
+    expect(acknowledgeCheckbox).toBeChecked();
+
+    const sameCandidatesNewReference: [MergeCandidate, MergeCandidate] = [
+      { ...candidates[0] },
+      { ...candidates[1] },
+    ];
+
+    rerender(
+      <MergeUsersDialog
+        open
+        onOpenChange={vi.fn()}
+        candidates={sameCandidatesNewReference}
+        requiredTargetUserId={null}
+        onConfirm={onConfirm}
+        isLoading={false}
+        sameServerWarning={true}
+        sameServerName="Living Room Plex"
+      />
+    );
+
+    expect(
+      screen.getByRole('checkbox', { name: 'pages:users.mergeSameServerAcknowledge' })
+    ).toBeChecked();
   });
 });

@@ -490,6 +490,8 @@
     "mergePrimaryForced": "This account can log in, so it must stay the primary.",
     "mergeSameIdentity": "These accounts already belong to the same user",
     "mergeSameServerAcknowledge": "I understand the same-server history combine cannot be undone",
+    "mergeSameServerDialogDescription": "This merge permanently combines both accounts on the same server. It cannot be undone.",
+    "mergeSameServerFallbackName": "this server",
     "mergeSameServerWarning": "Both identities already have an account on the same server. Merging will permanently combine their session history, violations, and trust score into a single account on that server. This cannot be undone, and splitting the account afterward will not restore the original two accounts.",
     "mergeSameServerWarningTitle": "This action is irreversible",
     "mergeSelectTwo": "Select exactly two users to merge",

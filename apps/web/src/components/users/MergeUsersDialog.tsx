@@ -36,18 +36,14 @@ export interface MergeCandidate {
   displayName: string;
   username: string;
   loginCapable: boolean;
-  serverUsers?: MergeCandidateServerAccount[];
+  serverUsers: MergeCandidateServerAccount[];
 }
 
-export interface MergeUsersDialogProps {
+interface MergeUsersDialogBaseProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   candidates: [MergeCandidate, MergeCandidate];
   requiredTargetUserId: string | null;
-  /** Whether the two identities share an account on the same server, requiring a destructive confirmation. */
-  sameServerWarning: boolean;
-  /** Name of the server whose accounts will be fused, shown in the destructive confirmation. */
-  sameServerName: string | null;
   onConfirm: (input: {
     sourceUserId: string;
     targetUserId: string;
@@ -56,24 +52,33 @@ export interface MergeUsersDialogProps {
   isLoading: boolean;
 }
 
-export function MergeUsersDialog({
-  open,
-  onOpenChange,
-  candidates,
-  requiredTargetUserId,
-  sameServerWarning,
-  sameServerName,
-  onConfirm,
-  isLoading,
-}: MergeUsersDialogProps) {
+export type MergeUsersDialogProps = MergeUsersDialogBaseProps &
+  (
+    | {
+        /** The two identities share an account on the same server; requires a destructive confirmation. */
+        sameServerWarning: true;
+        /** Name of the server whose accounts will be fused, shown in the destructive confirmation. */
+        sameServerName: string;
+      }
+    | {
+        sameServerWarning: false;
+        sameServerName?: string | null;
+      }
+  );
+
+export function MergeUsersDialog(props: MergeUsersDialogProps) {
+  const { open, onOpenChange, candidates, requiredTargetUserId, onConfirm, isLoading } = props;
   const { t } = useTranslation(['pages', 'common']);
   const [targetUserId, setTargetUserId] = useState(requiredTargetUserId ?? candidates[0].userId);
   const [acknowledged, setAcknowledged] = useState(false);
 
+  const firstCandidateUserId = candidates[0].userId;
+  const secondCandidateUserId = candidates[1].userId;
+
   useEffect(() => {
-    setTargetUserId(requiredTargetUserId ?? candidates[0].userId);
+    setTargetUserId(requiredTargetUserId ?? firstCandidateUserId);
     setAcknowledged(false);
-  }, [open, requiredTargetUserId, candidates]);
+  }, [open, requiredTargetUserId, firstCandidateUserId, secondCandidateUserId]);
 
   const source = candidates.find((c) => c.userId !== targetUserId) ?? candidates[0];
 
@@ -90,7 +95,7 @@ export function MergeUsersDialog({
       <legend className="text-sm font-medium">{t('pages:users.mergePickPrimary')}</legend>
       {candidates.map((candidate) => {
         const forced = requiredTargetUserId !== null;
-        const disabled = forced && candidate.userId !== requiredTargetUserId;
+        const disabled = (forced && candidate.userId !== requiredTargetUserId) || isLoading;
         return (
           <label
             key={candidate.userId}
@@ -109,7 +114,7 @@ export function MergeUsersDialog({
             <span className="flex flex-col gap-1">
               <span className="font-medium">{candidate.displayName}</span>
               <span className="text-muted-foreground text-xs">@{candidate.username}</span>
-              {candidate.serverUsers && candidate.serverUsers.length > 0 && (
+              {candidate.serverUsers.length > 0 && (
                 <span className="flex flex-wrap gap-1 pt-1">
                   {candidate.serverUsers.map((serverUser) => (
                     <Badge
@@ -141,7 +146,12 @@ export function MergeUsersDialog({
   // The same-server combine is destructive and irreversible: render the whole
   // flow through AlertDialog so the confirmation matches the repo's
   // destructive-confirm pattern rather than a checkbox bolted onto a plain Dialog.
-  if (sameServerWarning) {
+  // Constraint: this branch must stay a single top-level modal root. Nesting a
+  // second Dialog/AlertDialog root here previously broke under Radix's
+  // aria-hide-others (both modals' content got marked aria-hidden); do not
+  // reintroduce a nested modal root to render this state.
+  if (props.sameServerWarning) {
+    const sameServerName = props.sameServerName || t('pages:users.mergeSameServerFallbackName');
     return (
       <AlertDialog open={open} onOpenChange={onOpenChange}>
         <AlertDialogContent>
@@ -151,7 +161,7 @@ export function MergeUsersDialog({
               {t('pages:users.mergeSameServerWarningTitle')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {t('pages:users.mergeDialogDescription')}
+              {t('pages:users.mergeSameServerDialogDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -159,11 +169,12 @@ export function MergeUsersDialog({
 
           <div className="border-destructive/50 bg-destructive/10 space-y-3 rounded-md border p-3">
             <p className="text-destructive text-sm">{t('pages:users.mergeSameServerWarning')}</p>
-            {sameServerName && <p className="text-sm font-semibold">{sameServerName}</p>}
+            <p className="text-sm font-semibold">{sameServerName}</p>
             <div className="flex items-center gap-2">
               <Checkbox
                 id="merge-same-server-ack"
                 checked={acknowledged}
+                disabled={isLoading}
                 onCheckedChange={(value) => setAcknowledged(value === true)}
               />
               <Label htmlFor="merge-same-server-ack" className="text-sm">
