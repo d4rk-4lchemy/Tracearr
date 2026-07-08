@@ -18,6 +18,8 @@ import {
   deriveMergeActionState,
   findOverlappingServerName,
 } from '@/components/users/mergeSelection';
+import { getMergedIdentityServers } from '@/components/users/identityServerPills';
+import { ServerColumnCell } from '@/components/server';
 import { User as UserIcon, Crown, Clock, Search, RotateCcw, UserX, Merge } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -64,6 +66,7 @@ export function Users() {
         cell: ({ row }) => {
           const user = row.original;
           const avatarUrl = getAvatarUrl(user.serverId, user.thumbUrl, 40);
+          const mergedServers = getMergedIdentityServers(user.identityServers);
           return (
             <div className="flex items-center gap-3">
               <div className="bg-muted flex h-10 w-10 items-center justify-center rounded-full">
@@ -101,6 +104,9 @@ export function Users() {
                       Removed
                     </span>
                   )}
+                  {mergedServers.map((server) => (
+                    <ServerColumnCell key={server.id} server={server} />
+                  ))}
                 </div>
                 <p className="text-muted-foreground text-xs">@{user.username}</p>
               </div>

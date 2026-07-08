@@ -13,6 +13,8 @@ import { HistoryTable } from '@/components/history/HistoryTable';
 import type { ColumnVisibility } from '@/components/history/HistoryFilters';
 import { SeverityBadge } from '@/components/violations/SeverityBadge';
 import { getAvatarUrl } from '@/components/users/utils';
+import { getMergedIdentityServers } from '@/components/users/identityServerPills';
+import { ServerColumnCell } from '@/components/server';
 import { getMediaDisplay } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
@@ -262,6 +264,9 @@ export function UserDetail() {
   const identity = fullData?.identity;
   const locations = fullData?.locations ?? [];
   const devices = fullData?.devices ?? [];
+  const headerMergedServers = getMergedIdentityServers(
+    identity?.serverUsers.map((account) => ({ id: account.serverId, name: account.serverName }))
+  );
 
   // Sessions: use paginated data if on page > 1, otherwise use aggregate
   const rawSessions = needsPaginatedSessions
@@ -372,6 +377,9 @@ export function UserDetail() {
           </Button>
         </Link>
         <h1 className="text-3xl font-bold">{user.identityName ?? user.username}</h1>
+        {headerMergedServers.map((server) => (
+          <ServerColumnCell key={server.id} server={server} />
+        ))}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -518,7 +526,7 @@ export function UserDetail() {
               >
                 <div>
                   <p className="font-medium">{account.username}</p>
-                  <p className="text-muted-foreground text-xs">{account.serverName}</p>
+                  <ServerColumnCell server={{ id: account.serverId, name: account.serverName }} />
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-muted-foreground text-xs whitespace-nowrap">

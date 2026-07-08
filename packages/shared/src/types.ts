@@ -87,6 +87,9 @@ export interface ServerUserWithIdentity extends ServerUser {
   serverName: string;
   identityName: string | null;
   role: UserRole; // From linked User identity
+  // The identity's server memberships, scoped to servers the caller can access.
+  // Length > 1 means this identity is merged across servers.
+  identityServers: { id: string; name: string }[];
 }
 
 // Server User detail with stats - returned by GET /users/:id

@@ -20,7 +20,7 @@ import {
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { serverUsers, sessions, servers, users } from '../../db/schema.js';
-import { hasServerAccess } from '../../utils/serverFiltering.js';
+import { hasServerAccess, buildServerAccessCondition } from '../../utils/serverFiltering.js';
 import { updateUser } from '../../services/userService.js';
 import { PLAY_COUNT } from '../../constants/index.js';
 
@@ -107,8 +107,49 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
 
     const total = countResult[0]?.count ?? 0;
 
+    // Batch-fetch each identity's server memberships in one query for the whole
+    // page, scoped to servers the caller can access (owners see all).
+    const pageUserIds = [...new Set(serverUserList.map((u) => u.userId))];
+    const identityServersByUserId = new Map<string, { id: string; name: string }[]>();
+    if (pageUserIds.length > 0) {
+      const identityServerAccessCondition = buildServerAccessCondition(
+        authUser,
+        serverUsers.serverId
+      );
+      const identityWhere = identityServerAccessCondition
+        ? and(inArray(serverUsers.userId, pageUserIds), identityServerAccessCondition)
+        : inArray(serverUsers.userId, pageUserIds);
+
+      const identityServerRows = await db
+        .selectDistinct({
+          userId: serverUsers.userId,
+          serverId: serverUsers.serverId,
+          serverName: servers.name,
+        })
+        .from(serverUsers)
+        .innerJoin(servers, eq(serverUsers.serverId, servers.id))
+        .where(identityWhere);
+
+      for (const row of identityServerRows) {
+        const existing = identityServersByUserId.get(row.userId);
+        const entry = { id: row.serverId, name: row.serverName };
+        if (existing) {
+          existing.push(entry);
+        } else {
+          identityServersByUserId.set(row.userId, [entry]);
+        }
+      }
+    }
+
+    const data = serverUserList.map((u) => ({
+      ...u,
+      identityServers: identityServersByUserId.get(u.userId) ?? [
+        { id: u.serverId, name: u.serverName },
+      ],
+    }));
+
     return {
-      data: serverUserList,
+      data,
       page,
       pageSize,
       total,

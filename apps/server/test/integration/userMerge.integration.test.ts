@@ -24,6 +24,7 @@ import {
 } from '@tracearr/test-utils/factories';
 import { db } from '../../src/db/client.js';
 import { fullRoutes } from '../../src/routes/users/full.js';
+import { listRoutes } from '../../src/routes/users/list.js';
 import {
   users,
   serverUsers,
@@ -545,5 +546,87 @@ describe('GET /users/:id/full identity aggregation', () => {
     expect(identitySuIds).toEqual([targetSu.id]);
     expect(body.identity.stats.totalSessions).toBe(1);
     expect(body.identity.stats.totalWatchTime).toBe(1000);
+  });
+});
+
+describe('GET /users identityServers', () => {
+  it('reports both servers for a merged identity, batched across the whole page', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const serverA = await createTestServer({ type: 'plex' });
+    const serverB = await createTestServer({ type: 'jellyfin' });
+    const target = await createTestUser({ role: 'member' });
+    const source = await createTestUser({ role: 'member' });
+    const targetSu = await createTestServerUser({ userId: target.id, serverId: serverA.id });
+    const sourceSu = await createTestServerUser({ userId: source.id, serverId: serverB.id });
+    const unrelatedIdentity = await createTestUser({ role: 'member' });
+    const unrelatedSu = await createTestServerUser({
+      userId: unrelatedIdentity.id,
+      serverId: serverA.id,
+    });
+
+    await mergeUsers(source.id, target.id, admin.id);
+
+    const app = Fastify({ logger: false });
+    await app.register(sensible);
+    app.decorate('authenticate', async (request: any) => {
+      request.user = { userId: admin.id, username: 'owner', role: 'owner', serverIds: [] };
+    });
+    await app.register(listRoutes, { prefix: '/users' });
+
+    const response = await app.inject({ method: 'GET', url: '/users?pageSize=100' });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const rows = body.data as { id: string; identityServers: { id: string; name: string }[] }[];
+
+    const mergedRow = rows.find((r) => r.id === targetSu.id);
+    const mergedServerIds = mergedRow?.identityServers.map((s) => s.id).sort();
+    expect(mergedServerIds).toEqual([serverA.id, serverB.id].sort());
+
+    // The other sibling row for the same identity reports the same set (no N+1
+    // per-row divergence - this comes from a single batched lookup).
+    const siblingRow = rows.find((r) => r.id === sourceSu.id);
+    const siblingServerIds = siblingRow?.identityServers.map((s) => s.id).sort();
+    expect(siblingServerIds).toEqual([serverA.id, serverB.id].sort());
+
+    // An unrelated, unmerged identity only reports its own single server.
+    const unrelatedRow = rows.find((r) => r.id === unrelatedSu.id);
+    expect(unrelatedRow?.identityServers.map((s) => s.id)).toEqual([serverA.id]);
+  });
+
+  it('scopes a merged identity sibling on an inaccessible server out of identityServers', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const serverA = await createTestServer({ type: 'plex' });
+    const serverB = await createTestServer({ type: 'jellyfin' });
+    const target = await createTestUser({ role: 'member' });
+    const source = await createTestUser({ role: 'member' });
+    const targetSu = await createTestServerUser({ userId: target.id, serverId: serverA.id });
+    await createTestServerUser({ userId: source.id, serverId: serverB.id });
+
+    await mergeUsers(source.id, target.id, admin.id);
+
+    const app = Fastify({ logger: false });
+    await app.register(sensible);
+    // Viewer scoped only to serverA - serverB (the merged-in sibling) is
+    // outside their access, so it must not leak into identityServers.
+    app.decorate('authenticate', async (request: any) => {
+      request.user = {
+        userId: randomUUID(),
+        username: 'viewer',
+        role: 'viewer',
+        serverIds: [serverA.id],
+      };
+    });
+    await app.register(listRoutes, { prefix: '/users' });
+
+    const response = await app.inject({ method: 'GET', url: '/users?pageSize=100' });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const rows = body.data as { id: string; identityServers: { id: string; name: string }[] }[];
+    const row = rows.find((r) => r.id === targetSu.id);
+    expect(row?.identityServers.map((s) => s.id)).toEqual([serverA.id]);
   });
 });
