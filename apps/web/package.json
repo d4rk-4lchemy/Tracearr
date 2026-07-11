@@ -66,7 +66,7 @@
     "react-router": "^7.15.0",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
-    "swagger-ui-react": "^5.32.5",
+    "swagger-ui-react": "^5.32.8",
     "tailwind-merge": "^3.5.0",
     "zod": "^4.4.3"
   },
