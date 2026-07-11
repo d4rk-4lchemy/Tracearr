@@ -136,7 +136,12 @@ import { initializeV2Rules } from './services/rules/v2Integration.js';
 import { processPushReceipts } from './services/pushNotification.js';
 import { cleanupMobileTokens } from './jobs/cleanupMobileTokens.js';
 import { db, checkDatabaseConnection, runMigrations } from './db/client.js';
-import { initTimescaleDB, getTimescaleStatus, updateTimescaleExtensions } from './db/timescale.js';
+import {
+  initTimescaleDB,
+  getTimescaleStatus,
+  updateTimescaleExtensions,
+  runAggregateBackfill,
+} from './db/timescale.js';
 import { eq } from 'drizzle-orm';
 import { servers } from './db/schema.js';
 import { initializeClaimCode } from './utils/claimCode.js';
@@ -176,6 +181,12 @@ let dbHealthInterval: ReturnType<typeof setInterval> | null = null;
 let redisCloseHandler: (() => void) | null = null;
 let redisReadyHandler: (() => void) | null = null;
 const DB_HEALTH_CHECK_MS = 10_000;
+
+/** Set by initializeServices() when initTimescaleDB() reports a historical
+ * aggregate backfill is still needed; consumed by initializePostListen() so
+ * the (potentially slow) backfill never blocks startup. */
+let pendingAggregateBackfill: { targetVersion: number } | null = null;
+let aggregateBackfillRunning = false;
 
 /** Cached timescale status — refreshed by the DB health interval. */
 let cachedTimescale: {
@@ -600,6 +611,13 @@ async function initializeServices(app: FastifyInstance) {
         'TimescaleDB extension not installed - running without time-series optimization'
       );
     }
+    if (tsResult.backfillPending) {
+      pendingAggregateBackfill = { targetVersion: tsResult.backfillPending.targetVersion };
+      app.log.warn(
+        `TimescaleDB aggregates need a historical backfill (target schema v${tsResult.backfillPending.targetVersion}). ` +
+          'Recent dashboards are available now; full history will backfill in the background after startup.'
+      );
+    }
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize TimescaleDB - continuing without optimization');
     // Don't throw - app can still work without TimescaleDB features
@@ -1020,6 +1038,23 @@ async function initializePostListen(app: FastifyInstance) {
   }
   if (networkSettings.externalUrl) {
     app.log.info(`External URL configured: ${networkSettings.externalUrl}`);
+  }
+
+  // Kick off any pending historical aggregate backfill now that the server is
+  // accepting traffic. Recent data is already available from the bounded
+  // refresh initTimescaleDB() did synchronously; this fills in older history
+  // in the background without blocking startup or the startup probe.
+  if (pendingAggregateBackfill && !aggregateBackfillRunning) {
+    const targetVersion = pendingAggregateBackfill.targetVersion;
+    pendingAggregateBackfill = null;
+    aggregateBackfillRunning = true;
+    void runAggregateBackfill(targetVersion)
+      .catch((err) => {
+        app.log.error({ err }, 'Aggregate backfill failed unexpectedly');
+      })
+      .finally(() => {
+        aggregateBackfillRunning = false;
+      });
   }
 }
 

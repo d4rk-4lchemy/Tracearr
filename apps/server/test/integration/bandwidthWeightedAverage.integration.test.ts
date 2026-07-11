@@ -12,12 +12,14 @@
 import { describe, it, expect } from 'vitest';
 import Fastify from 'fastify';
 import sensible from '@fastify/sensible';
+import { sql } from 'drizzle-orm';
 import {
   createTestUser,
   createTestServer,
   createTestServerUser,
   createTestSession,
 } from '@tracearr/test-utils/factories';
+import { db } from '../../src/db/client.js';
 import { bandwidthRoutes } from '../../src/routes/stats/bandwidth.js';
 
 function ownerAuth() {
@@ -59,6 +61,15 @@ describe('bandwidth weighted average consistency', () => {
         bitrate: 10_000,
       });
     }
+
+    // /bandwidth/daily and /bandwidth/summary read from the daily_bandwidth_by_user
+    // continuous aggregate, which only reflects these backdated 2024 sessions after
+    // an explicit refresh (real-time aggregation covers data newer than the
+    // aggregate's last refresh, not synthetic historical rows inserted after the
+    // fact) - same pattern as topShowsUniqueViewers.integration.test.ts.
+    await db.execute(
+      sql`CALL refresh_continuous_aggregate('daily_bandwidth_by_user'::regclass, NULL, NULL)`
+    );
 
     const app = await buildApp();
 
