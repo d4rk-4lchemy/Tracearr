@@ -4,6 +4,7 @@
  * Tests pure utility functions from routes/stats/utils.ts:
  * - resolveDateRange: Calculate date range based on period and optional custom dates
  * - getDateRange: (deprecated) Calculate start date based on period string
+ * - getStartOfDayInTimezone / getStartOfNextDayInTimezone: DST-safe local day boundaries
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -16,6 +17,7 @@ import {
   hasAggregates,
   hasHyperLogLog,
   getStartOfDayInTimezone,
+  getStartOfNextDayInTimezone,
 } from '../utils.js';
 
 // Mock the database module
@@ -430,5 +432,72 @@ describe('getStartOfDayInTimezone', () => {
     const result = getStartOfDayInTimezone('America/New_York');
     expect(result).toBeInstanceOf(Date);
     expect(result.getTime()).not.toBeNaN();
+  });
+
+  it('should return the correct start of day when "now" is after a spring-forward transition', () => {
+    // 2024-03-10 America/Los_Angeles: clocks skip 2am-3am PST->PDT at 10:00 UTC.
+    // "now" is after the transition, so a naive offset-of-now subtraction
+    // undercounts the hour that was still PST earlier that same local day.
+    vi.setSystemTime(new Date('2024-03-10T17:00:00Z'));
+    const result = getStartOfDayInTimezone('America/Los_Angeles');
+    // Midnight PST (still in effect at local midnight) = 08:00 UTC, not 07:00.
+    expect(result).toEqual(new Date('2024-03-10T08:00:00Z'));
+  });
+
+  it('should return the correct start of day when "now" is before a spring-forward transition', () => {
+    // Same transition day, but "now" is still before the 10:00 UTC changeover.
+    vi.setSystemTime(new Date('2024-03-10T09:00:00Z'));
+    const result = getStartOfDayInTimezone('America/Los_Angeles');
+    expect(result).toEqual(new Date('2024-03-10T08:00:00Z'));
+  });
+
+  it('should return the correct start of day when "now" is after a fall-back transition', () => {
+    // 2024-11-03 America/Los_Angeles: clocks repeat 1am-2am PDT->PST at 09:00 UTC.
+    // Local midnight that day is still PDT (the fall-back happens later that
+    // morning), so the correct start is 07:00 UTC even though "now" is PST.
+    vi.setSystemTime(new Date('2024-11-03T20:00:00Z'));
+    const result = getStartOfDayInTimezone('America/Los_Angeles');
+    expect(result).toEqual(new Date('2024-11-03T07:00:00Z'));
+  });
+});
+
+describe('getStartOfNextDayInTimezone', () => {
+  it('returns exactly 24 hours later on an ordinary (non-transition) day', () => {
+    const todayStart = new Date('2026-06-15T04:00:00.000Z'); // midnight EDT
+    const todayEnd = getStartOfNextDayInTimezone('America/New_York', todayStart);
+    expect(todayEnd.getTime() - todayStart.getTime()).toBe(24 * 60 * 60 * 1000);
+    expect(todayEnd.toISOString()).toBe('2026-06-16T04:00:00.000Z');
+  });
+
+  it('returns only 23 hours later across a spring-forward DST transition', () => {
+    // 2026-03-08 00:00 America/New_York is EST (UTC-5); clocks skip 2am-3am
+    // that night, so 2026-03-09 00:00 is EDT (UTC-4) - only 23 hours later.
+    const todayStart = new Date('2026-03-08T05:00:00.000Z');
+    const todayEnd = getStartOfNextDayInTimezone('America/New_York', todayStart);
+    expect(todayEnd.toISOString()).toBe('2026-03-09T04:00:00.000Z');
+    expect(todayEnd.getTime() - todayStart.getTime()).toBe(23 * 60 * 60 * 1000);
+  });
+
+  it('returns 25 hours later across a fall-back DST transition', () => {
+    // 2026-11-01 00:00 America/New_York is EDT (UTC-4); clocks fall back an
+    // hour that night, so 2026-11-02 00:00 is EST (UTC-5) - 25 hours later.
+    const todayStart = new Date('2026-11-01T04:00:00.000Z');
+    const todayEnd = getStartOfNextDayInTimezone('America/New_York', todayStart);
+    expect(todayEnd.toISOString()).toBe('2026-11-02T05:00:00.000Z');
+    expect(todayEnd.getTime() - todayStart.getTime()).toBe(25 * 60 * 60 * 1000);
+  });
+
+  it('handles a timezone with no DST (UTC)', () => {
+    const todayStart = new Date('2026-01-01T00:00:00.000Z');
+    const todayEnd = getStartOfNextDayInTimezone('UTC', todayStart);
+    expect(todayEnd.toISOString()).toBe('2026-01-02T00:00:00.000Z');
+  });
+
+  it('handles a fixed-offset timezone with a 30-minute offset (Asia/Kolkata)', () => {
+    // 2026-01-01 00:00 Asia/Kolkata (UTC+5:30) = 2025-12-31T18:30:00Z
+    const todayStart = new Date('2025-12-31T18:30:00.000Z');
+    const todayEnd = getStartOfNextDayInTimezone('Asia/Kolkata', todayStart);
+    expect(todayEnd.toISOString()).toBe('2026-01-01T18:30:00.000Z');
+    expect(todayEnd.getTime() - todayStart.getTime()).toBe(24 * 60 * 60 * 1000);
   });
 });
