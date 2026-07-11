@@ -220,6 +220,8 @@ function createPauseRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Kill After 15min Pause',
     description: null,
     serverId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'warning',
     isActive: true,
     conditions: {
@@ -240,6 +242,8 @@ function createTotalPauseRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Warn After 30min Total Pause',
     description: null,
     serverId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'warning',
     isActive: true,
     conditions: {
@@ -260,6 +264,8 @@ function createConcurrentStreamsRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Max 2 Concurrent Streams',
     description: null,
     serverId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'warning',
     isActive: true,
     conditions: {
@@ -280,6 +286,8 @@ function createTranscodeRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Block 4K Transcoding',
     description: null,
     serverId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'high',
     isActive: true,
     conditions: {
@@ -763,6 +771,8 @@ describe('reEvaluateRulesOnPauseState', () => {
         name: 'Pause + Concurrent',
         description: null,
         serverId: null,
+        userId: null,
+        enforceAcrossServers: false,
         severity: 'warning',
         isActive: true,
         conditions: {

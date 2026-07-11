@@ -874,6 +874,9 @@ export async function createSessionWithRulesAtomic(
               activeSessions: context.activeSessions.some((s) => s.id === context.session.id)
                 ? context.activeSessions
                 : [...context.activeSessions, context.session],
+              identityServerUserIds: rule.enforceAcrossServers
+                ? context.identityServerUserIds
+                : undefined,
             });
 
             // Check if the triggering session is in the kill list

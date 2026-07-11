@@ -115,16 +115,18 @@ describe('Rule Routes', () => {
         createTestRule({ name: 'Rule 2', serverUserId: randomUUID() }), // User-specific rule
       ];
 
-      // Mock the database chain (2 leftJoins: serverUsers and servers)
+      // Mock the database chain (3 leftJoins: serverUsers, servers, and users/identity)
       // Rule 1 is global (no serverUserId), Rule 2 is user-specific with serverId
       mockDb.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
             leftJoin: vi.fn().mockReturnValue({
-              orderBy: vi.fn().mockResolvedValue([
-                { ...testRules[0], username: null, serverId: null, serverName: null },
-                { ...testRules[1], username: 'testuser', serverId, serverName: 'Test Server' },
-              ]),
+              leftJoin: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue([
+                  { ...testRules[0], username: null, serverId: null, serverName: null },
+                  { ...testRules[1], username: 'testuser', serverId, serverName: 'Test Server' },
+                ]),
+              }),
             }),
           }),
         }),
@@ -147,20 +149,22 @@ describe('Rule Routes', () => {
       const globalRule = createTestRule({ name: 'Global Rule', serverUserId: null });
       const userRule = createTestRule({ name: 'User Rule', serverUserId: randomUUID() });
 
-      // Mock the database chain (2 leftJoins: serverUsers and servers)
+      // Mock the database chain (3 leftJoins: serverUsers, servers, and users/identity)
       mockDb.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
             leftJoin: vi.fn().mockReturnValue({
-              orderBy: vi.fn().mockResolvedValue([
-                { ...globalRule, username: null, serverId: null, serverName: null },
-                {
-                  ...userRule,
-                  username: 'someone',
-                  serverId: randomUUID(),
-                  serverName: 'Test Server',
-                },
-              ]),
+              leftJoin: vi.fn().mockReturnValue({
+                orderBy: vi.fn().mockResolvedValue([
+                  { ...globalRule, username: null, serverId: null, serverName: null },
+                  {
+                    ...userRule,
+                    username: 'someone',
+                    serverId: randomUUID(),
+                    serverName: 'Test Server',
+                  },
+                ]),
+              }),
             }),
           }),
         }),
@@ -341,12 +345,14 @@ describe('Rule Routes', () => {
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
             leftJoin: vi.fn().mockReturnValue({
-              where: vi.fn().mockReturnValue({
-                limit: vi
-                  .fn()
-                  .mockResolvedValue([
-                    { ...testRule, username: null, serverId: null, serverName: null },
-                  ]),
+              leftJoin: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                  limit: vi
+                    .fn()
+                    .mockResolvedValue([
+                      { ...testRule, username: null, serverId: null, serverName: null },
+                    ]),
+                }),
               }),
             }),
           }),
@@ -375,13 +381,15 @@ describe('Rule Routes', () => {
       const ownerUser = createOwnerUser();
       app = await buildTestApp(ownerUser);
 
-      // Mock rule query (2 leftJoins: serverUsers and servers)
+      // Mock rule query (3 leftJoins: serverUsers, servers, and users/identity)
       mockDb.select.mockReturnValue({
         from: vi.fn().mockReturnValue({
           leftJoin: vi.fn().mockReturnValue({
             leftJoin: vi.fn().mockReturnValue({
-              where: vi.fn().mockReturnValue({
-                limit: vi.fn().mockResolvedValue([]),
+              leftJoin: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue([]),
+                }),
               }),
             }),
           }),
@@ -568,6 +576,106 @@ describe('Rule Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
+    });
+  });
+
+  describe('PATCH /rules/:id/v2 scope mutual exclusivity', () => {
+    it('rejects a partial update that would leave two scopes set on the merged row', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const ruleId = randomUUID();
+      const existingServerId = randomUUID();
+
+      // Existing row is server-scoped; the request only sends userId, but
+      // merged with the stored serverId that's two scopes at once.
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([
+                {
+                  id: ruleId,
+                  serverId: existingServerId,
+                  serverUserId: null,
+                  userId: null,
+                  serverUserServerId: null,
+                  conditions: null,
+                },
+              ]),
+            }),
+          }),
+        }),
+      });
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/rules/${ruleId}/v2`,
+        payload: {
+          userId: randomUUID(),
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts a partial update that swaps scope by nulling the old one', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const ruleId = randomUUID();
+      const existingServerId = randomUUID();
+      const newUserId = randomUUID();
+
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([
+                {
+                  id: ruleId,
+                  serverId: existingServerId,
+                  serverUserId: null,
+                  userId: null,
+                  serverUserServerId: null,
+                  conditions: null,
+                },
+              ]),
+            }),
+          }),
+        }),
+      });
+
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              {
+                id: ruleId,
+                serverId: null,
+                serverUserId: null,
+                userId: newUserId,
+                conditions: null,
+              },
+            ]),
+          }),
+        }),
+      });
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/rules/${ruleId}/v2`,
+        payload: {
+          serverId: null,
+          userId: newUserId,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.userId).toBe(newUserId);
+      expect(body.serverId).toBeNull();
     });
   });
 

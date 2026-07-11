@@ -266,7 +266,7 @@ const executeKillStream: ActionExecutor = async (
   context: EvaluationContext,
   action: Action
 ): Promise<void> => {
-  const { session, server, serverUser, activeSessions } = context;
+  const { session, serverUser, activeSessions, rule, identityServerUserIds } = context;
   const typedAction = action as KillStreamAction;
   const delaySeconds = typedAction.delay_seconds ?? 0;
   const message = typedAction.message;
@@ -279,15 +279,28 @@ const executeKillStream: ActionExecutor = async (
     ? activeSessions
     : [...activeSessions, session];
 
+  // Detection vs action split: the rule already matched using identity-wide
+  // aggregation regardless of this flag (see belongsToIdentity in
+  // evaluators/index.ts). enforceAcrossServers only gates ACTION REACH here -
+  // whether termination follows the identity onto sibling-server sessions or
+  // stays on the triggering account.
   const sessionsToKill = resolveTargetSessions({
     target,
     triggeringSession: session,
     serverUserId: serverUser.id,
     activeSessions: sessionsForTargeting,
+    identityServerUserIds: rule.enforceAcrossServers ? identityServerUserIds : undefined,
   });
 
   for (const targetSession of sessionsToKill) {
-    await currentDeps.terminateSession(targetSession.id, server.id, delaySeconds, message);
+    // Use the target session's own serverId, not the triggering session's -
+    // with enforceAcrossServers, these can be different servers.
+    await currentDeps.terminateSession(
+      targetSession.id,
+      targetSession.serverId,
+      delaySeconds,
+      message
+    );
   }
 };
 
@@ -298,7 +311,7 @@ const executeMessageClient: ActionExecutor = async (
   context: EvaluationContext,
   action: Action
 ): Promise<void> => {
-  const { session, serverUser, activeSessions } = context;
+  const { session, serverUser, activeSessions, rule, identityServerUserIds } = context;
   const typedAction = action as MessageClientAction;
   const message = typedAction.message;
   const target = typedAction.target ?? 'triggering';
@@ -314,11 +327,14 @@ const executeMessageClient: ActionExecutor = async (
     ? activeSessions
     : [...activeSessions, session];
 
+  // Same detection-vs-action split as executeKillStream above: this flag
+  // gates action reach only, never whether the rule matched.
   const sessionsToMessage = resolveTargetSessions({
     target,
     triggeringSession: session,
     serverUserId: serverUser.id,
     activeSessions: sessionsForTargeting,
+    identityServerUserIds: rule.enforceAcrossServers ? identityServerUserIds : undefined,
   });
 
   for (const targetSession of sessionsToMessage) {

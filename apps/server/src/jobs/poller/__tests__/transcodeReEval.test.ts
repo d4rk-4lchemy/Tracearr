@@ -227,6 +227,8 @@ function createTranscodeRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Block 4K Transcoding',
     description: null,
     serverId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'high',
     isActive: true,
     conditions: {
@@ -250,6 +252,8 @@ function createConcurrentStreamsRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Max 2 Concurrent Streams',
     description: null,
     serverId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'warning',
     isActive: true,
     conditions: {
@@ -669,6 +673,8 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
             name: 'Geo Restriction',
             description: null,
             serverId: null,
+            userId: null,
+            enforceAcrossServers: false,
             severity: 'warning',
             isActive: true,
             conditions: {
@@ -703,6 +709,8 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
         name: 'Block Low Resolution Output',
         description: null,
         serverId: null,
+        userId: null,
+        enforceAcrossServers: false,
         severity: 'warning',
         isActive: true,
         conditions: {
@@ -734,6 +742,8 @@ describe('reEvaluateRulesOnTranscodeChange', () => {
         name: 'Detect Transcode Downgrade',
         description: null,
         serverId: null,
+        userId: null,
+        enforceAcrossServers: false,
         severity: 'warning',
         isActive: true,
         conditions: {

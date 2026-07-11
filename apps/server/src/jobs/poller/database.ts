@@ -238,6 +238,8 @@ export async function getActiveRulesV2(): Promise<RuleV2[]> {
     name: r.name,
     description: r.description,
     serverId: r.serverId,
+    userId: r.userId,
+    enforceAcrossServers: r.enforceAcrossServers,
     isActive: r.isActive,
     severity: (r.severity ?? 'warning') as ViolationSeverity,
     conditions: r.conditions as RuleConditions,

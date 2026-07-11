@@ -245,6 +245,11 @@ export function evaluateRules(
       continue;
     }
 
+    // Check identity (person) scope - applies to every server_user of that identity
+    if (rule.userId && rule.userId !== baseContext.serverUser.userId) {
+      continue;
+    }
+
     const context: EvaluationContext = {
       ...baseContext,
       rule,
@@ -401,6 +406,10 @@ export async function evaluateRulesAsync(
     }
 
     if (rule.serverId && rule.serverId !== baseContext.server.id) {
+      continue;
+    }
+
+    if (rule.userId && rule.userId !== baseContext.serverUser.userId) {
       continue;
     }
 

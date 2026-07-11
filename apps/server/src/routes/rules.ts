@@ -13,13 +13,15 @@ import {
   ruleIdParamSchema,
   createRuleV2Schema,
   updateRuleV2Schema,
+  hasAtMostOneScope,
+  RULE_SCOPE_ERROR_MESSAGE,
   bulkUpdateRulesSchema,
   bulkDeleteRulesSchema,
   bulkMigrateRulesSchema,
 } from '@tracearr/shared';
-import type { RuleConditions, RuleActions, ViolationSeverity } from '@tracearr/shared';
+import type { RuleConditions, RuleActions, ViolationSeverity, AuthUser } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { rules, serverUsers, violations, servers } from '../db/schema.js';
+import { rules, serverUsers, violations, servers, users } from '../db/schema.js';
 import { hasServerAccess } from '../utils/serverFiltering.js';
 import { scheduleInactivityChecks, hasInactivityCondition } from '../jobs/inactivityCheckQueue.js';
 import {
@@ -29,18 +31,52 @@ import {
   type LegacyRule,
 } from '../services/rules/migration.js';
 
+/**
+ * Batch resolve the server ids each given identity has an account on, so
+ * person-scoped rule access can be checked without a per-rule query.
+ */
+async function batchGetIdentityServerIds(userIds: string[]): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (userIds.length === 0) return map;
+
+  const rows = await db
+    .select({ userId: serverUsers.userId, serverId: serverUsers.serverId })
+    .from(serverUsers)
+    .where(inArray(serverUsers.userId, userIds));
+
+  for (const row of rows) {
+    const list = map.get(row.userId) ?? [];
+    list.push(row.serverId);
+    map.set(row.userId, list);
+  }
+  return map;
+}
+
+/**
+ * A person-scoped rule is visible if the caller has access to at least one
+ * server the identity has an account on. Owners always pass (hasServerAccess
+ * bypasses for them already).
+ */
+function hasIdentityAccess(authUser: AuthUser, identityServerIds: string[] | undefined): boolean {
+  if (authUser.role === 'owner') return true;
+  return (identityServerIds ?? []).some((serverId) => hasServerAccess(authUser, serverId));
+}
+
 export const ruleRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /rules - List all rules
    *
    * Rules can be:
-   * - Global (serverUserId = null) - applies to all servers, visible to all
-   * - User-specific (serverUserId set) - only visible if user has access to that server
+   * - Global (serverUserId = null, userId = null) - applies to all servers, visible to all
+   * - Server-specific (serverId set) - only visible if user has access to that server
+   * - Account-specific (serverUserId set) - only visible if user has access to that server
+   * - Person-specific (userId set) - only visible if user has access to any server the
+   *   identity has an account on
    */
   app.get('/', { preHandler: [app.authenticate] }, async (request) => {
     const authUser = request.user;
 
-    // Get all rules with server user and server information
+    // Get all rules with server user, server, and identity information
     const ruleList = await db
       .select({
         id: rules.id,
@@ -56,6 +92,9 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         // Scope
         serverId: rules.serverId,
         serverUserId: rules.serverUserId,
+        userId: rules.userId,
+        enforceAcrossServers: rules.enforceAcrossServers,
+        identityName: users.name,
         username: serverUsers.username,
         serverUserServerId: serverUsers.serverId,
         serverName: servers.name,
@@ -66,17 +105,25 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       .from(rules)
       .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
       .leftJoin(servers, or(eq(rules.serverId, servers.id), eq(serverUsers.serverId, servers.id)))
+      .leftJoin(users, eq(rules.userId, users.id))
       .orderBy(rules.name);
 
+    const personRuleUserIds = [
+      ...new Set(ruleList.filter((r) => r.userId).map((r) => r.userId as string)),
+    ];
+    const identityServerIdsMap = await batchGetIdentityServerIds(personRuleUserIds);
+
     // Filter rules by server access
-    // Global rules (no serverId and no serverUserId) are visible to all
-    // Server-scoped or user-specific rules require server access
+    // Global rules (no serverId, serverUserId, or userId) are visible to all
+    // Server-scoped, account-scoped, or person-scoped rules require server access
     const filteredRules = ruleList.filter((rule) => {
       // Global rule - visible to everyone
-      if (!rule.serverId && !rule.serverUserId) return true;
+      if (!rule.serverId && !rule.serverUserId && !rule.userId) return true;
       // Server-scoped rule - check server access
       if (rule.serverId) return hasServerAccess(authUser, rule.serverId);
-      // User-specific rule - check server access via server user
+      // Person-scoped rule - check access to any of the identity's servers
+      if (rule.userId) return hasIdentityAccess(authUser, identityServerIdsMap.get(rule.userId));
+      // Account-scoped rule - check server access via server user
       if (rule.serverUserServerId) return hasServerAccess(authUser, rule.serverUserServerId);
       return false;
     });
@@ -171,8 +218,18 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       return reply.forbidden('Only server owners can create rules');
     }
 
-    const { name, description, serverId, serverUserId, isActive, severity, conditions, actions } =
-      body.data;
+    const {
+      name,
+      description,
+      serverId,
+      serverUserId,
+      userId,
+      enforceAcrossServers,
+      isActive,
+      severity,
+      conditions,
+      actions,
+    } = body.data;
 
     // Verify serverId exists and user has access if provided
     if (serverId) {
@@ -209,6 +266,19 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    // Verify userId (identity) exists if provided
+    if (userId) {
+      const identityRows = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!identityRows[0]) {
+        return reply.notFound('User not found');
+      }
+    }
+
     // Create rule with V2 format
     const inserted = await db
       .insert(rules)
@@ -217,6 +287,8 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         description,
         serverId,
         serverUserId,
+        userId,
+        enforceAcrossServers,
         isActive,
         severity,
         conditions,
@@ -264,6 +336,9 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         // Scope
         serverId: rules.serverId,
         serverUserId: rules.serverUserId,
+        userId: rules.userId,
+        enforceAcrossServers: rules.enforceAcrossServers,
+        identityName: users.name,
         username: serverUsers.username,
         serverUserServerId: serverUsers.serverId,
         serverName: servers.name,
@@ -274,6 +349,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       .from(rules)
       .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
       .leftJoin(servers, or(eq(rules.serverId, servers.id), eq(serverUsers.serverId, servers.id)))
+      .leftJoin(users, eq(rules.userId, users.id))
       .where(eq(rules.id, id))
       .limit(1);
 
@@ -282,7 +358,13 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       return reply.notFound('Rule not found');
     }
 
-    // Check access for server-scoped or user-specific rules
+    // Check access for server-scoped, account-scoped, or person-scoped rules
+    if (rule.userId) {
+      const identityServerIdsMap = await batchGetIdentityServerIds([rule.userId]);
+      if (!hasIdentityAccess(authUser, identityServerIdsMap.get(rule.userId))) {
+        return reply.forbidden('You do not have access to this rule');
+      }
+    }
     const effectiveServerId = rule.serverId ?? rule.serverUserServerId;
     if (effectiveServerId && !hasServerAccess(authUser, effectiveServerId)) {
       return reply.forbidden('You do not have access to this rule');
@@ -416,6 +498,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         id: rules.id,
         serverId: rules.serverId,
         serverUserId: rules.serverUserId,
+        userId: rules.userId,
         serverUserServerId: serverUsers.serverId,
         conditions: rules.conditions,
       })
@@ -429,7 +512,13 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       return reply.notFound('Rule not found');
     }
 
-    // Check access for server-scoped or user-specific rules
+    // Check access for server-scoped, account-scoped, or person-scoped rules
+    if (existingRule.userId) {
+      const identityServerIdsMap = await batchGetIdentityServerIds([existingRule.userId]);
+      if (!hasIdentityAccess(authUser, identityServerIdsMap.get(existingRule.userId))) {
+        return reply.forbidden('You do not have access to this rule');
+      }
+    }
     const effectiveServerId = existingRule.serverId ?? existingRule.serverUserServerId;
     if (effectiveServerId && !hasServerAccess(authUser, effectiveServerId)) {
       return reply.forbidden('You do not have access to this rule');
@@ -437,12 +526,35 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
 
     const hadInactivity = hasInactivityCondition(existingRule.conditions);
 
+    // A partial update only sends the fields being changed, so the schema's
+    // hasAtMostOneScope refine only sees the payload. Validate the scope trio
+    // that will actually exist after merging with the stored row (payload
+    // value when present, including explicit null to clear it, else the
+    // existing value) - otherwise `{ userId }` against a server-scoped row
+    // would silently leave both scopes set.
+    const mergedServerId =
+      body.data.serverId !== undefined ? body.data.serverId : existingRule.serverId;
+    const mergedServerUserId =
+      body.data.serverUserId !== undefined ? body.data.serverUserId : existingRule.serverUserId;
+    const mergedUserId = body.data.userId !== undefined ? body.data.userId : existingRule.userId;
+    if (
+      !hasAtMostOneScope({
+        serverId: mergedServerId,
+        serverUserId: mergedServerUserId,
+        userId: mergedUserId,
+      })
+    ) {
+      return reply.badRequest(RULE_SCOPE_ERROR_MESSAGE);
+    }
+
     // Build update object
     const updateData: Partial<{
       name: string;
       description: string | null;
       serverId: string | null;
       serverUserId: string | null;
+      userId: string | null;
+      enforceAcrossServers: boolean;
       severity: ViolationSeverity;
       conditions: RuleConditions;
       actions: RuleActions;
@@ -466,6 +578,14 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
 
     if (body.data.serverUserId !== undefined) {
       updateData.serverUserId = body.data.serverUserId;
+    }
+
+    if (body.data.userId !== undefined) {
+      updateData.userId = body.data.userId;
+    }
+
+    if (body.data.enforceAcrossServers !== undefined) {
+      updateData.enforceAcrossServers = body.data.enforceAcrossServers;
     }
 
     if (body.data.severity !== undefined) {

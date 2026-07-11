@@ -163,6 +163,12 @@ function normalizePlatform(platform: string | null): Platform {
  * context.serverUser. Falls back to single server_user matching when
  * identityServerUserIds is absent, so unmerged users evaluate exactly as
  * before this identity-aware aggregation was added.
+ *
+ * Detection vs action split: this aggregation runs unconditionally and is
+ * NOT gated by rule.enforceAcrossServers - that flag only controls whether a
+ * MATCHED rule's actions (kill_stream, message_client) reach sessions beyond
+ * the triggering one, in executors/index.ts. Do not add an enforceAcrossServers
+ * check here; do not remove the gate there either.
  */
 function belongsToIdentity(context: EvaluationContext): (s: Session) => boolean {
   const ids = context.identityServerUserIds;
