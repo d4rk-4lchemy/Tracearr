@@ -124,6 +124,65 @@ describe('Plex Session Parser', () => {
       expect(session.episode?.showId).toBe('33333');
     });
 
+    it('should parse a Season 0 (Specials) episode with seasonNumber 0, not null', () => {
+      const rawSession = {
+        sessionKey: 'specials-1',
+        ratingKey: '99999',
+        title: 'Behind the Scenes',
+        type: 'episode',
+        duration: 600000,
+        viewOffset: 0,
+        grandparentTitle: 'Breaking Bad',
+        parentTitle: 'Specials',
+        parentIndex: 0,
+        index: 1,
+        User: { id: '2', title: 'Jane' },
+        Player: { title: 'TV', machineIdentifier: 'tv-uuid' },
+      };
+
+      const session = parseSession(rawSession);
+
+      expect(session.episode?.seasonNumber).toBe(0);
+      expect(session.episode?.episodeNumber).toBe(1);
+    });
+
+    it('should parse episode index 0 as episodeNumber 0, not null', () => {
+      const rawSession = {
+        sessionKey: 'episode-zero',
+        ratingKey: '88888',
+        title: 'Episode Zero',
+        type: 'episode',
+        grandparentTitle: 'Breaking Bad',
+        parentIndex: 1,
+        index: 0,
+        User: { id: '2', title: 'Jane' },
+        Player: { title: 'TV', machineIdentifier: 'tv-uuid' },
+      };
+
+      const session = parseSession(rawSession);
+
+      expect(session.episode?.seasonNumber).toBe(1);
+      expect(session.episode?.episodeNumber).toBe(0);
+    });
+
+    it('should parse a missing parentIndex as null, not 0', () => {
+      const rawSession = {
+        sessionKey: 'no-season',
+        ratingKey: '77777',
+        title: 'Mystery Episode',
+        type: 'episode',
+        grandparentTitle: 'Breaking Bad',
+        index: 3,
+        User: { id: '2', title: 'Jane' },
+        Player: { title: 'TV', machineIdentifier: 'tv-uuid' },
+      };
+
+      const session = parseSession(rawSession);
+
+      expect(session.episode?.seasonNumber).toBeNull();
+      expect(session.episode?.episodeNumber).toBe(3);
+    });
+
     it('should handle missing optional fields gracefully', () => {
       const rawSession = {
         sessionKey: 'minimal',

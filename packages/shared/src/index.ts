@@ -503,3 +503,6 @@ export {
   CONDITION_FIELD_LABELS,
   OPERATOR_LABELS,
 } from './violations.js';
+
+// Media display utilities
+export { formatEpisodeLabel, type FormatEpisodeLabelOptions } from './media.js';

@@ -822,8 +822,8 @@ export function parseSession(
     session.episode = {
       showTitle: parseString(item.grandparentTitle),
       showId: parseOptionalString(item.grandparentRatingKey),
-      seasonNumber: parseNumber(item.parentIndex),
-      episodeNumber: parseNumber(item.index),
+      seasonNumber: parseOptionalNumber(item.parentIndex) ?? null,
+      episodeNumber: parseOptionalNumber(item.index) ?? null,
       seasonName: parseOptionalString(item.parentTitle),
       showThumbPath: parseOptionalString(item.grandparentThumb),
     };

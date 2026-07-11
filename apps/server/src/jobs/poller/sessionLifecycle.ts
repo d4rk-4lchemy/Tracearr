@@ -110,8 +110,8 @@ export interface BuildActiveSessionInput {
     mediaType: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
     mediaTitle: string;
     grandparentTitle: string;
-    seasonNumber: number;
-    episodeNumber: number;
+    seasonNumber: number | null;
+    episodeNumber: number | null;
     year: number;
     thumbPath: string;
     ratingKey: string;
@@ -186,8 +186,8 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     mediaType: processed.mediaType,
     mediaTitle: processed.mediaTitle,
     grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.seasonNumber || null,
-    episodeNumber: processed.episodeNumber || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: processed.ratingKey || null,
@@ -289,8 +289,8 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     mediaType: processed.mediaType,
     mediaTitle: processed.mediaTitle,
     grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.seasonNumber || null,
-    episodeNumber: processed.episodeNumber || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: processed.ratingKey || null,
@@ -612,8 +612,8 @@ export async function createSessionWithRulesAtomic(
               mediaType: processed.mediaType,
               mediaTitle: processed.mediaTitle,
               grandparentTitle: processed.grandparentTitle || null,
-              seasonNumber: processed.seasonNumber || null,
-              episodeNumber: processed.episodeNumber || null,
+              seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+              episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
               year: processed.year || null,
               thumbPath: processed.thumbPath || null,
               startedAt: new Date(),
@@ -681,8 +681,8 @@ export async function createSessionWithRulesAtomic(
             mediaType: processed.mediaType,
             mediaTitle: processed.mediaTitle,
             grandparentTitle: processed.grandparentTitle || null,
-            seasonNumber: processed.seasonNumber || null,
-            episodeNumber: processed.episodeNumber || null,
+            seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+            episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
             year: processed.year || null,
             thumbPath: processed.thumbPath || null,
             ratingKey: processed.ratingKey || null,
@@ -1351,8 +1351,8 @@ export async function reEvaluateRulesOnTranscodeChange(
     mediaType: processed.mediaType,
     mediaTitle: processed.mediaTitle,
     grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.seasonNumber || null,
-    episodeNumber: processed.episodeNumber || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: existingSession.ratingKey,
@@ -1574,8 +1574,8 @@ export async function reEvaluateRulesOnPauseState(
     mediaType: processed.mediaType,
     mediaTitle: processed.mediaTitle,
     grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.seasonNumber || null,
-    episodeNumber: processed.episodeNumber || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: existingSession.ratingKey,

@@ -9,7 +9,7 @@
 import { Expo, type ExpoPushMessage, type ExpoPushTicket } from 'expo-server-sdk';
 import { eq, isNotNull } from 'drizzle-orm';
 import type { ViolationWithDetails, ActiveSession } from '@tracearr/shared';
-import { SEVERITY_LEVELS, getSeverityPriority } from '@tracearr/shared';
+import { SEVERITY_LEVELS, getSeverityPriority, formatEpisodeLabel } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { mobileSessions, notificationPreferences, serverUsers } from '../db/schema.js';
 import { getPushRateLimiter } from './pushRateLimiter.js';
@@ -46,9 +46,9 @@ function formatMediaTitle(session: ActiveSession): string {
 
   // For episodes, format as "Show - S01E05 Episode"
   if (mediaType === 'episode' && grandparentTitle) {
-    const seasonStr = seasonNumber != null ? String(seasonNumber).padStart(2, '0') : '00';
-    const episodeStr = episodeNumber != null ? String(episodeNumber).padStart(2, '0') : '00';
-    const episodeCode = `S${seasonStr}E${episodeStr}`;
+    // Fall back to 0 for a genuinely missing season/episode so the notification
+    // still shows a code (e.g. "S00E00") instead of dropping it entirely.
+    const episodeCode = formatEpisodeLabel(seasonNumber ?? 0, episodeNumber ?? 0) ?? 'S00E00';
 
     // If episode title is different from show title, include it
     if (mediaTitle && mediaTitle !== grandparentTitle) {

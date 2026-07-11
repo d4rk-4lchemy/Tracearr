@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getName as getCountryNameFromCode } from 'country-list';
-import type { MediaType } from '@tracearr/shared';
+import { formatEpisodeLabel, type MediaType } from '@tracearr/shared';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -25,7 +25,7 @@ export function getCountryName(code: string | null | undefined): string | null {
 export function formatLocationCompact(
   city: string | null | undefined,
   region: string | null | undefined,
-  country: string | null | undefined,
+  country: string | null | undefined
 ): string | null {
   const countryName = getCountryName(country);
   if (city && region) return `${city}, ${region}`;
@@ -61,9 +61,9 @@ export function getMediaDisplay(media: MediaDisplayFields): {
   if (media.mediaType === 'episode' && media.grandparentTitle) {
     // TV Show episode
     const episodeInfo =
-      media.seasonNumber && media.episodeNumber
-        ? `S${media.seasonNumber.toString().padStart(2, '0')} E${media.episodeNumber.toString().padStart(2, '0')}`
-        : '';
+      formatEpisodeLabel(media.seasonNumber, media.episodeNumber, {
+        spaced: true,
+      }) ?? '';
     return {
       title: media.grandparentTitle,
       subtitle: episodeInfo

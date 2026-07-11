@@ -110,10 +110,13 @@ export interface ProcessedSession extends StreamDetailFields {
   mediaType: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
   /** Show name (for episodes) */
   grandparentTitle: string;
-  /** Season number (for episodes) */
-  seasonNumber: number;
-  /** Episode number (for episodes) */
-  episodeNumber: number;
+  /**
+   * Season number (for episodes). Season 0 is Specials and is a valid value -
+   * null means the season is genuinely unknown/unavailable, never coerce one into the other.
+   */
+  seasonNumber: number | null;
+  /** Episode number (for episodes). Episode 0 is valid; null means unavailable. */
+  episodeNumber: number | null;
   /** Release year */
   year: number;
   /** Poster path */

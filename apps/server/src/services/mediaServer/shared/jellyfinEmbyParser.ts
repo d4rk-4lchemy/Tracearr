@@ -232,8 +232,8 @@ export function parseSessionCore(
     result.episode = {
       showTitle: parseString(nowPlaying.SeriesName),
       showId: seriesId,
-      seasonNumber: parseNumber(nowPlaying.ParentIndexNumber),
-      episodeNumber: parseNumber(nowPlaying.IndexNumber),
+      seasonNumber: parseOptionalNumber(nowPlaying.ParentIndexNumber) ?? null,
+      episodeNumber: parseOptionalNumber(nowPlaying.IndexNumber) ?? null,
       seasonName: parseOptionalString(nowPlaying.SeasonName),
       showThumbPath: seriesId ? buildItemImagePath(seriesId, seriesImageTag) : undefined,
     };
