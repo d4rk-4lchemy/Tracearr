@@ -7,7 +7,7 @@
  */
 
 import { alias } from 'drizzle-orm/pg-core';
-import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { canLogin, type UserRole } from '@tracearr/shared';
 import type {
   MergeSuggestion,
@@ -149,9 +149,9 @@ async function loadIdentitySnapshot(tx: Tx, userId: string): Promise<MergeIdenti
   };
 }
 
-// Intentionally inlines the recalculateAggregateTrustScore weighting from
-// userService.ts (plus totalViolations) rather than calling it, so the whole
-// recompute stays inside this transaction's connection.
+// Recomputes trust and totalViolations together in the same transaction. The trust
+// weighting matches recalculateAggregateTrustScore in userService.ts; it is inlined
+// here so both aggregates are derived and written in one pass alongside the violation count.
 async function recomputeIdentityAggregates(tx: Tx, userId: string): Promise<void> {
   const [trust] = await tx
     .select({
@@ -181,39 +181,112 @@ async function recomputeIdentityAggregates(tx: Tx, userId: string): Promise<void
     .where(eq(users.id, userId));
 }
 
+export interface MergedIdentityRowIds {
+  plexAccountIds: string[];
+  mobileSessionIds: string[];
+  mobileTokenIds: string[];
+}
+
 async function repointIdentityRows(
   tx: Tx,
   sourceUserId: string,
   targetUserId: string
-): Promise<void> {
-  await tx
+): Promise<MergedIdentityRowIds> {
+  // Ids are captured via .returning() so the audit row can record exactly
+  // which rows moved. Split uses that record to move them back onto the
+  // restored identity; it never has to guess which rows on the target
+  // originated from this source.
+  const movedPlexAccounts = await tx
     .update(plexAccounts)
     .set({ userId: targetUserId })
-    .where(eq(plexAccounts.userId, sourceUserId));
-  await tx
+    .where(eq(plexAccounts.userId, sourceUserId))
+    .returning({ id: plexAccounts.id });
+  const movedMobileSessions = await tx
     .update(mobileSessions)
     .set({ userId: targetUserId })
-    .where(eq(mobileSessions.userId, sourceUserId));
-  await tx
+    .where(eq(mobileSessions.userId, sourceUserId))
+    .returning({ id: mobileSessions.id });
+  const movedMobileTokens = await tx
     .update(mobileTokens)
     .set({ createdBy: targetUserId })
-    .where(eq(mobileTokens.createdBy, sourceUserId));
+    .where(eq(mobileTokens.createdBy, sourceUserId))
+    .returning({ id: mobileTokens.id });
   await tx
     .update(terminationLogs)
     .set({ triggeredByUserId: targetUserId })
     .where(eq(terminationLogs.triggeredByUserId, sourceUserId));
+  // Identity (person)-scoped rules move with the identity, same as the rows
+  // above, but are deliberately not tracked for split to reverse: unlike a
+  // per-server rule conflict, there is no other identity-scoped rule to
+  // compare names against here, so nothing is lost by leaving them on the
+  // target - the restored identity from a split just starts without them.
+  await tx
+    .update(rules)
+    .set({ userId: targetUserId, updatedAt: new Date() })
+    .where(eq(rules.userId, sourceUserId));
+  // terminationLogs.triggeredByUserId is deliberately not tracked for split to
+  // reverse: it records which admin manually triggered a termination, not an
+  // attribute of the terminated account, so there is no source-identity row to
+  // faithfully hand back. It stays on the target after both merge and split.
   // Better Auth login rows (auth_accounts / auth_sessions) are deliberately
   // never touched here. assertMergeDirection already proved the source owns
   // zero auth_accounts rows, so there is nothing to repoint; its sessions are
   // revoked (not moved) through internalAdapter in mergeUsers instead, since
   // Better Auth has no primitive to re-key a session onto another user.
+  return {
+    plexAccountIds: movedPlexAccounts.map((r) => r.id),
+    mobileSessionIds: movedMobileSessions.map((r) => r.id),
+    mobileTokenIds: movedMobileTokens.map((r) => r.id),
+  };
+}
+
+// Reverses repointIdentityRows for exactly the rows an audit recorded as
+// moved by this merge. Only rows still owned by fromUserId are touched, so a
+// second split of a multi-account merge (which matches the same audit) is a
+// harmless no-op for rows an earlier split in the same merge already claimed.
+async function repointIdentityRowsBack(
+  tx: Tx,
+  movedIds: MergedIdentityRowIds,
+  fromUserId: string,
+  toUserId: string
+): Promise<void> {
+  if (movedIds.plexAccountIds.length > 0) {
+    await tx
+      .update(plexAccounts)
+      .set({ userId: toUserId })
+      .where(
+        and(inArray(plexAccounts.id, movedIds.plexAccountIds), eq(plexAccounts.userId, fromUserId))
+      );
+  }
+  if (movedIds.mobileSessionIds.length > 0) {
+    await tx
+      .update(mobileSessions)
+      .set({ userId: toUserId })
+      .where(
+        and(
+          inArray(mobileSessions.id, movedIds.mobileSessionIds),
+          eq(mobileSessions.userId, fromUserId)
+        )
+      );
+  }
+  if (movedIds.mobileTokenIds.length > 0) {
+    await tx
+      .update(mobileTokens)
+      .set({ createdBy: toUserId })
+      .where(
+        and(
+          inArray(mobileTokens.id, movedIds.mobileTokenIds),
+          eq(mobileTokens.createdBy, fromUserId)
+        )
+      );
+  }
 }
 
 async function combineServerUsers(
   tx: Tx,
   sourceServerUserId: string,
   targetServerUserId: string
-): Promise<void> {
+): Promise<string[]> {
   const [sourceSu] = await tx
     .select()
     .from(serverUsers)
@@ -241,7 +314,9 @@ async function combineServerUsers(
     .set({ serverUserId: targetServerUserId })
     .where(eq(terminationLogs.serverUserId, sourceServerUserId));
 
-  // Per-user rule overrides: primary wins on name conflicts, the rest move over
+  // Per-user rule overrides: primary wins on name conflicts, the rest move over.
+  // Conflicting source rules are dropped rather than kept as duplicates; their
+  // names are returned so the caller can tell the admin what didn't survive.
   const targetRuleRows = await tx
     .select({ name: rules.name })
     .from(rules)
@@ -251,8 +326,10 @@ async function combineServerUsers(
     .select({ id: rules.id, name: rules.name })
     .from(rules)
     .where(eq(rules.serverUserId, sourceServerUserId));
+  const droppedRuleNames: string[] = [];
   for (const rule of sourceRuleRows) {
     if (targetRuleNames.has(rule.name)) {
+      droppedRuleNames.push(rule.name);
       await tx.delete(rules).where(eq(rules.id, rule.id));
     } else {
       await tx
@@ -295,6 +372,8 @@ async function combineServerUsers(
     .update(serverUsers)
     .set({ sessionCount: sessionCount?.count ?? 0, updatedAt: new Date() })
     .where(eq(serverUsers.id, targetServerUserId));
+
+  return droppedRuleNames;
 }
 
 export interface MergeUsersOptions {
@@ -347,8 +426,14 @@ export async function mergeUsers(
     // above so a rejected merge leaves the source's sessions untouched.
     await (await getAuth().$context).internalAdapter.deleteUserSessions(sourceUserId);
 
+    const droppedRuleNames: string[] = [];
     for (const combine of plan.combines) {
-      await combineServerUsers(tx, combine.sourceServerUserId, combine.targetServerUserId);
+      const dropped = await combineServerUsers(
+        tx,
+        combine.sourceServerUserId,
+        combine.targetServerUserId
+      );
+      droppedRuleNames.push(...dropped);
     }
 
     if (plan.repointServerUserIds.length > 0) {
@@ -358,8 +443,22 @@ export async function mergeUsers(
         .where(inArray(serverUsers.id, plan.repointServerUserIds));
     }
 
-    await repointIdentityRows(tx, sourceUserId, targetUserId);
+    const movedIdentityRowIds = await repointIdentityRows(tx, sourceUserId, targetUserId);
     await recomputeIdentityAggregates(tx, targetUserId);
+
+    // If this source was itself the target of an earlier merge, that earlier
+    // audit's targetUserId still points at it. user_merge_audits.targetUserId
+    // cascades on delete, so repoint it onto the new target before the source
+    // row is deleted below - otherwise the earlier merge's undo record is
+    // silently destroyed and that chain can never be split again. This must
+    // survive every merge in a chain, however long, so split stays possible
+    // all the way back to the original identity. actingUserId is left alone:
+    // it identifies the admin who ran that earlier merge, not an account
+    // being folded away by this one.
+    await tx
+      .update(userMergeAudits)
+      .set({ targetUserId })
+      .where(eq(userMergeAudits.targetUserId, sourceUserId));
 
     await tx.delete(users).where(eq(users.id, sourceUserId));
 
@@ -379,6 +478,7 @@ export async function mergeUsers(
           thumbnail: sourceUser!.thumbnail,
           role: sourceUser!.role,
         },
+        movedIdentityRowIds,
       })
       .returning();
 
@@ -388,6 +488,7 @@ export async function mergeUsers(
       movedServerUserIds: plan.repointServerUserIds,
       combinedServerUsers: plan.combines,
       wasSameServerCombine: plan.combines.length > 0,
+      droppedRuleNames,
     };
   });
 
@@ -429,7 +530,16 @@ export async function splitServerUser(
       throw new MergeValidationError('cannot split the only server account of an identity');
     }
 
-    // Prefer the audit snapshot from the merge that moved this server user
+    // Prefer the audit snapshot from the merge that moved this server user.
+    // Ordered oldest first, not newest: a chained merge (A into B, then B
+    // into C) leaves this account's id in both the A->B and B->C audits once
+    // Gap-1 repointing has retargeted the earlier one onto C, since B->C's
+    // own repoint list includes every account B already owned, including
+    // ones absorbed from A. The oldest matching audit is the one that
+    // actually moved this specific account away from its own identity, so it
+    // holds the snapshot this split should restore; a native account of B
+    // (never part of A) only ever appears in the newer B->C audit, so this
+    // still resolves correctly for it too.
     const [audit] = await tx
       .select()
       .from(userMergeAudits)
@@ -440,7 +550,7 @@ export async function splitServerUser(
           sql`${userMergeAudits.movedServerUserIds} @> ${JSON.stringify([serverUserId])}::jsonb`
         )
       )
-      .orderBy(desc(userMergeAudits.createdAt))
+      .orderBy(asc(userMergeAudits.createdAt))
       .limit(1);
 
     const identity = audit
@@ -487,10 +597,38 @@ export async function splitServerUser(
       .where(eq(serverUsers.id, serverUserId));
 
     if (audit) {
-      await tx
-        .update(userMergeAudits)
-        .set({ undoneAt: new Date() })
-        .where(eq(userMergeAudits.id, audit.id));
+      // Move exactly the plex_accounts / mobile_sessions / mobile_tokens rows
+      // this merge recorded as moved, back onto the restored identity. Older
+      // audits written before movedIdentityRowIds existed have it null, so
+      // this is a no-op for them - the fallback path's current behavior
+      // (those rows stay on the target) is preserved on purpose.
+      if (audit.movedIdentityRowIds) {
+        await repointIdentityRowsBack(tx, audit.movedIdentityRowIds, oldUserId, newUser!.id);
+      }
+
+      // A multi-account merge (movedServerUserIds has more than one entry)
+      // must stay usable for further splits until every account it moved has
+      // been split away. Marking it undone after only the first split would
+      // make the next split of the same merge miss the audit filter above
+      // and fall back to bare server_user fields, losing that account's
+      // identity snapshot. Derived from current ownership rather than a
+      // separate counter, so a later split via a different (older, chained)
+      // audit for one of these accounts still counts toward this check.
+      const [stillOwned] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(serverUsers)
+        .where(
+          and(
+            inArray(serverUsers.id, audit.movedServerUserIds),
+            eq(serverUsers.userId, audit.targetUserId)
+          )
+        );
+      if ((stillOwned?.count ?? 0) === 0) {
+        await tx
+          .update(userMergeAudits)
+          .set({ undoneAt: new Date() })
+          .where(eq(userMergeAudits.id, audit.id));
+      }
     }
 
     await recomputeIdentityAggregates(tx, oldUserId);
