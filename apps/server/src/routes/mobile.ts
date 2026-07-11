@@ -75,8 +75,11 @@ const MOBILE_TOKEN_PREFIX = 'trr_mob_';
 
 const MOBILE_REFRESH_TTL = 90 * 24 * 60 * 60; // 90 days
 
-// Old refresh token stays valid this long after rotation so clients can retry
-const REFRESH_TOKEN_GRACE_PERIOD = 30; // seconds
+// Old refresh token stays valid this long after rotation so clients can retry.
+// Must exceed the mobile client's refresh watchdog (35s) plus one retry cycle,
+// or a client that reconnects after that window gets force-logged-out instead
+// of silently recovering.
+const REFRESH_TOKEN_GRACE_PERIOD = 90; // seconds
 
 // Mobile JWT expiry
 const MOBILE_ACCESS_EXPIRY = '24h';
