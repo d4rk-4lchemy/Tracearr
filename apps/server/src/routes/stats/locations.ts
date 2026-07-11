@@ -12,12 +12,38 @@ import { sql } from 'drizzle-orm';
 import { locationStatsQuerySchema } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
 import { resolveDateRange } from './utils.js';
 
 interface LocationFilters {
-  users: { id: string; username: string; identityName: string | null }[];
+  users: {
+    id: string;
+    username: string;
+    identityName: string | null;
+    serverUserIds: string[];
+  }[];
   servers: { id: string; name: string }[];
   mediaTypes: ('movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown')[];
+}
+
+/**
+ * Build a WHERE fragment matching sessions for either the single-account
+ * (serverUserId) or multi-account (serverUserIds) person filter. The array
+ * form takes precedence so a merged person's full history can be filtered
+ * at once; the scalar form stays supported for existing callers.
+ */
+function buildUserFilterFragment(
+  serverUserId: string | undefined,
+  serverUserIds: string[] | undefined
+): ReturnType<typeof sql> | null {
+  if (serverUserIds && serverUserIds.length > 0) {
+    const ids = serverUserIds.map((id) => sql`${id}`);
+    return sql`s.server_user_id IN (${sql.join(ids, sql`, `)})`;
+  }
+  if (serverUserId) {
+    return sql`s.server_user_id = ${serverUserId}`;
+  }
+  return null;
 }
 
 export const locationsRoutes: FastifyPluginAsync = async (app) => {
@@ -27,7 +53,8 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
    * Supports filtering by:
    * - period: Time period (day, week, month, year, all, custom)
    * - startDate/endDate: For custom period
-   * - serverUserId: Filter to specific user
+   * - serverUserId: Filter to a specific account
+   * - serverUserIds: Filter to a person's full set of accounts (takes precedence)
    * - serverId: Legacy single-server filter (kept for back-compat)
    * - serverIds: Repeatable multi-server filter
    * - mediaType: Filter by movie/episode/track
@@ -43,6 +70,7 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
       startDate,
       endDate,
       serverUserId,
+      serverUserIds,
       serverId: legacyServerId,
       serverIds: rawServerIds,
       mediaType,
@@ -52,6 +80,10 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
 
     const resolvedIds = resolveServerIds(authUser, legacyServerId, rawServerIds, { strict: false });
     const serverFragment = buildMultiServerFragment(resolvedIds, 's.server_id');
+    const userFragment = buildUserFilterFragment(
+      serverUserId,
+      serverUserIds as string[] | undefined
+    );
 
     // Build WHERE conditions for main query (all qualified with 's.' for sessions table)
     const conditions: ReturnType<typeof sql>[] = [
@@ -67,8 +99,8 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
       conditions.push(sql`s.started_at < ${dateRange.end}`);
     }
 
-    if (serverUserId) {
-      conditions.push(sql`s.server_user_id = ${serverUserId}`);
+    if (userFragment) {
+      conditions.push(userFragment);
     }
     // If specific mediaType requested, filter to it; otherwise show all types
     if (mediaType) {
@@ -102,7 +134,7 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
 
     // Servers filter: apply user + mediaType filters (not server filter)
     const serverFilterConditions = [...baseConditions];
-    if (serverUserId) serverFilterConditions.push(sql`s.server_user_id = ${serverUserId}`);
+    if (userFragment) serverFilterConditions.push(userFragment);
     if (mediaType) {
       serverFilterConditions.push(sql`s.media_type = ${mediaType}`);
     }
@@ -112,7 +144,7 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
 
     // MediaType filter: apply user + server filters (not mediaType filter)
     const mediaFilterConditions = [...baseConditions];
-    if (serverUserId) mediaFilterConditions.push(sql`s.server_user_id = ${serverUserId}`);
+    if (userFragment) mediaFilterConditions.push(userFragment);
     const mediaFilterWhereClause = sql`WHERE ${sql.join(mediaFilterConditions, sql` AND `)} ${serverFragment}`;
 
     // Cascading filters are always fetched fresh (no caching since they depend on current selections)
@@ -202,16 +234,32 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
       // Query 2: Cascading filter options - each filter type uses conditions from OTHER active filters
       // Note: ORDER BY not allowed within UNION subqueries, sorting done in application code
       db.execute(sql`
-          SELECT 'user' as filter_type, su.id::text as id, su.username as name, u.name as identity_name
-          FROM sessions s
-          JOIN server_users su ON su.id = s.server_user_id
-          JOIN users u ON su.user_id = u.id
-          ${userFilterWhereClause}
-          GROUP BY su.id, su.username, u.name
+          SELECT
+            'user' as filter_type,
+            rep.id::text as id,
+            rep.username as name,
+            rep.identity_name as identity_name,
+            COALESCE(
+              (SELECT ARRAY_AGG(su2.id::text ORDER BY su2.id)
+               FROM server_users su2
+               WHERE su2.user_id = rep.user_id
+               ${buildMultiServerFragment(resolvedIds, 'su2.server_id')}
+              ),
+              ARRAY[rep.id::text]
+            ) AS server_user_ids
+          FROM (
+            SELECT DISTINCT ON (su.user_id) su.id, su.user_id, su.username, u.name as identity_name
+            FROM sessions s
+            JOIN server_users su ON su.id = s.server_user_id
+            JOIN users u ON su.user_id = u.id
+            ${userFilterWhereClause}
+            ORDER BY su.user_id, ${representativeAccountOrderSql('su')}
+          ) rep
 
           UNION ALL
 
-          SELECT 'server' as filter_type, sv.id::text as id, sv.name as name, NULL as identity_name
+          SELECT 'server' as filter_type, sv.id::text as id, sv.name as name, NULL as identity_name,
+            NULL::text[] as server_user_ids
           FROM sessions s
           JOIN servers sv ON sv.id = s.server_id
           ${serverFilterWhereClause}
@@ -219,7 +267,8 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
 
           UNION ALL
 
-          SELECT 'media' as filter_type, s.media_type as id, s.media_type as name, NULL as identity_name
+          SELECT 'media' as filter_type, s.media_type as id, s.media_type as name, NULL as identity_name,
+            NULL::text[] as server_user_ids
           FROM sessions s
           ${mediaFilterWhereClause} AND s.media_type IS NOT NULL
           GROUP BY s.media_type
@@ -233,11 +282,17 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
       id: string;
       name: string;
       identity_name: string | null;
+      server_user_ids: string[] | null;
     }[];
     availableFilters = {
       users: filters
         .filter((f) => f.filter_type === 'user')
-        .map((f) => ({ id: f.id, username: f.name, identityName: f.identity_name }))
+        .map((f) => ({
+          id: f.id,
+          username: f.name,
+          identityName: f.identity_name,
+          serverUserIds: f.server_user_ids ?? [f.id],
+        }))
         .sort((a, b) => (a.identityName ?? a.username).localeCompare(b.identityName ?? b.username)),
       servers: filters
         .filter((f) => f.filter_type === 'server')
@@ -278,8 +333,8 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
       lastActivity: row.last_activity,
       firstActivity: row.first_activity,
       deviceCount: row.device_count,
-      // Only include users array if NOT filtering by a specific user
-      users: serverUserId ? undefined : (row.user_info ?? []).slice(0, 5),
+      // Only include users array if NOT filtering by a specific user (or person)
+      users: userFragment ? undefined : (row.user_info ?? []).slice(0, 5),
       servers: row.servers ?? [],
     }));
 

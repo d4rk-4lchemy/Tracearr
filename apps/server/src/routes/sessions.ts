@@ -33,7 +33,12 @@ import countriesEn from 'i18n-iso-countries/langs/en.json' with { type: 'json' }
 countries.registerLocale(countriesEn);
 import { db } from '../db/client.js';
 import { sessions, serverUsers, servers, users } from '../db/schema.js';
-import { hasServerAccess, resolveServerIds } from '../utils/serverFiltering.js';
+import {
+  hasServerAccess,
+  resolveServerIds,
+  buildMultiServerFragment,
+} from '../utils/serverFiltering.js';
+import { representativeAccountOrderSql } from '../utils/representativeAccount.js';
 import { terminateSession } from '../services/termination.js';
 import { getCacheService } from '../services/cache.js';
 import { createHash } from 'node:crypto';
@@ -1121,37 +1126,43 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
             ORDER BY count DESC
             LIMIT 100
           `),
-      // Users - filtered to those with sessions matching current filter context
-      db.execute(
-        serverConditions.length > 0
-          ? sql`
-            SELECT
-              su.id,
-              su.username,
-              su.thumb_url,
-              su.server_id,
-              u.name as identity_name
-            FROM server_users su
-            LEFT JOIN users u ON u.id = su.user_id
-            WHERE su.id IN (
-              SELECT DISTINCT s.server_user_id
-              FROM sessions s
-              WHERE ${sql.join(serverConditions, sql` AND `)}
-            )
-            ORDER BY LOWER(COALESCE(u.name, su.username))
-          `
-          : sql`
-            SELECT
-              su.id,
-              su.username,
-              su.thumb_url,
-              su.server_id,
-              u.name as identity_name
-            FROM server_users su
-            LEFT JOIN users u ON u.id = su.user_id
-            ORDER BY LOWER(COALESCE(u.name, su.username))
-          `
-      ),
+      // Users - one row per identity (merged accounts collapse to a representative),
+      // filtered to identities with sessions matching current filter context.
+      db.execute(sql`
+        WITH representative AS (
+          SELECT DISTINCT ON (su.user_id) su.id, su.user_id
+          FROM server_users su
+          INNER JOIN users u ON u.id = su.user_id
+          WHERE true ${
+            serverConditions.length > 0
+              ? sql`AND su.id IN (
+                  SELECT DISTINCT s.server_user_id
+                  FROM sessions s
+                  WHERE ${sql.join(serverConditions, sql` AND `)}
+                )`
+              : sql``
+          }
+          ORDER BY su.user_id, ${representativeAccountOrderSql('su')}
+        )
+        SELECT
+          su.id,
+          su.username,
+          su.thumb_url,
+          su.server_id,
+          u.name as identity_name,
+          COALESCE(
+            (SELECT ARRAY_AGG(su2.id ORDER BY su2.id)
+             FROM server_users su2
+             WHERE su2.user_id = su.user_id
+             ${buildMultiServerFragment(resolvedIds, 'su2.server_id')}
+            ),
+            ARRAY[su.id]
+          ) AS server_user_ids
+        FROM representative rep
+        JOIN server_users su ON su.id = rep.id
+        LEFT JOIN users u ON u.id = su.user_id
+        ORDER BY LOWER(COALESCE(u.name, su.username))
+      `),
       // Servers (for rules builder)
       db.select({ id: servers.id, name: servers.name, type: servers.type }).from(servers),
     ]);
@@ -1164,6 +1175,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         thumb_url: string | null;
         server_id: string;
         identity_name: string | null;
+        server_user_ids: string[] | null;
       }[]
     ).map((row) => ({
       id: row.id,
@@ -1171,6 +1183,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       thumbUrl: row.thumb_url,
       serverId: row.server_id,
       identityName: row.identity_name,
+      serverUserIds: row.server_user_ids ?? [row.id],
     }));
 
     // Transform servers result

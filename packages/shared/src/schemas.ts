@@ -695,6 +695,9 @@ export const locationStatsQuerySchema = z
     startDate: z.iso.datetime().optional(),
     endDate: z.iso.datetime().optional(),
     serverUserId: uuidSchema.optional(),
+    // Additive multi-account filter: when set, takes precedence over serverUserId so a
+    // merged person's full history (all their server accounts) can be filtered at once.
+    serverUserIds: commaSeparatedArray(uuidSchema),
     serverId: uuidSchema.optional(),
     serverIds: serverIdsQuerySchema,
     mediaType: mediaTypeSchema.optional(),

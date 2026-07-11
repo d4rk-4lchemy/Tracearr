@@ -40,18 +40,23 @@ export function useUserStats(timeRange?: StatsTimeRange, serverId?: string | nul
 export interface LocationStatsFilters {
   timeRange?: StatsTimeRange;
   serverUserId?: string;
+  serverUserIds?: string[];
   serverIds?: string[];
   mediaType?: 'movie' | 'episode' | 'track';
 }
 
 export function useLocationStats(filters?: LocationStatsFilters) {
   const serverIdsKey = filters?.serverIds?.length ? [...filters.serverIds].sort().join(',') : 'all';
+  const serverUserIdsKey = filters?.serverUserIds?.length
+    ? [...filters.serverUserIds].sort().join(',')
+    : undefined;
   return useQuery({
     queryKey: [
       'stats',
       'locations',
       serverIdsKey,
       filters?.serverUserId,
+      serverUserIdsKey,
       filters?.mediaType,
       filters?.timeRange,
     ],

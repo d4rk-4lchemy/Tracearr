@@ -881,7 +881,12 @@ export interface LocationStatsSummary {
 }
 
 export interface LocationFilterOptions {
-  users: { id: string; username: string; identityName: string | null }[];
+  users: {
+    id: string;
+    username: string;
+    identityName: string | null;
+    serverUserIds: string[];
+  }[];
   servers: { id: string; name: string }[];
   mediaTypes: MediaType[];
 }
@@ -1303,6 +1308,8 @@ export interface UserFilterOption {
   thumbUrl: string | null;
   serverId: string;
   identityName: string | null;
+  /** All server account ids belonging to this person (identity), access-scoped. */
+  serverUserIds: string[];
 }
 
 /**
