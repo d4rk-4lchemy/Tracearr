@@ -1788,6 +1788,7 @@ export type MaintenanceJobType =
   | 'fix_imported_progress'
   | 'rebuild_timescale_views'
   | 'normalize_codecs'
+  | 'normalize_resolutions'
   | 'backfill_user_dates'
   | 'backfill_library_snapshots'
   | 'cleanup_old_chunks'
