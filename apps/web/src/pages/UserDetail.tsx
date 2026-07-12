@@ -22,8 +22,10 @@ import { SeverityBadge } from '@/components/violations/SeverityBadge';
 import { getAvatarUrl } from '@/components/users/utils';
 import { getMergedIdentityServers } from '@/components/users/identityServerPills';
 import { getUserDetailScope, applyUserDetailScope } from '@/components/users/userDetailScope';
+import { getPersonRemovedState } from '@/components/users/removedStatus';
+import { RemovedBadge } from '@/components/users/RemovedBadge';
 import { ServerColumnCell } from '@/components/server';
-import { getMediaDisplay } from '@/lib/utils';
+import { getMediaDisplay, cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -454,6 +456,12 @@ export function UserDetail() {
     );
   }
 
+  const removedBadgeState = isSpecificServerScope
+    ? user.removedAt
+      ? { removed: true as const, removedAt: user.removedAt }
+      : { removed: false as const }
+    : getPersonRemovedState(identity?.serverUsers);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-4">
@@ -481,8 +489,11 @@ export function UserDetail() {
               <SelectContent>
                 <SelectItem value="all">{t('pages:userDetail.allServers')}</SelectItem>
                 {identity?.serverUsers.map((account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    {account.serverName}
+                  <SelectItem key={account.id} value={account.id} textValue={account.serverName}>
+                    <span className="flex items-center gap-2">
+                      {account.serverName}
+                      {account.removedAt && <RemovedBadge removedAt={account.removedAt} />}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -515,8 +526,15 @@ export function UserDetail() {
               </div>
               <div className="flex flex-1 items-start justify-between gap-6">
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-semibold">{user.identityName ?? user.username}</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2
+                      className={cn(
+                        'text-xl font-semibold',
+                        removedBadgeState.removed && 'text-muted-foreground line-through'
+                      )}
+                    >
+                      {user.identityName ?? user.username}
+                    </h2>
                     {isOwner && (
                       <Button
                         variant="ghost"
@@ -531,6 +549,9 @@ export function UserDetail() {
                       <span title={t('common:labels.serverOwner')}>
                         <Crown className="h-5 w-5 text-yellow-500" />
                       </span>
+                    )}
+                    {removedBadgeState.removed && (
+                      <RemovedBadge removedAt={removedBadgeState.removedAt} />
                     )}
                   </div>
                   <p className="text-muted-foreground text-sm">@{user.username}</p>
@@ -667,7 +688,17 @@ export function UserDetail() {
                 className="flex items-center justify-between gap-4 rounded-md border p-3"
               >
                 <div>
-                  <p className="font-medium">{account.username}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p
+                      className={cn(
+                        'font-medium',
+                        account.removedAt && 'text-muted-foreground line-through'
+                      )}
+                    >
+                      {account.username}
+                    </p>
+                    {account.removedAt && <RemovedBadge removedAt={account.removedAt} />}
+                  </div>
                   <ServerColumnCell server={{ id: account.serverId, name: account.serverName }} />
                 </div>
                 <div className="flex items-center gap-4">
