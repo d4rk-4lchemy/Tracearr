@@ -67,7 +67,7 @@ interface Props {
   filters: HistoryFilters;
   onFiltersChange: (filters: HistoryFilters) => void;
   filterOptions?: HistoryFilterOptions;
-  isLoading?: boolean;
+  isFetching?: boolean;
   columnVisibility: ColumnVisibility;
   onColumnVisibilityChange: (visibility: ColumnVisibility) => void;
   isMultiServer?: boolean;
@@ -158,7 +158,7 @@ export function HistoryFiltersBar({
   filters,
   onFiltersChange,
   filterOptions,
-  isLoading,
+  isFetching,
   columnVisibility,
   onColumnVisibilityChange,
   isMultiServer = false,
@@ -651,7 +651,7 @@ export function HistoryFiltersBar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {isLoading && (
+        {isFetching && (
           <div className="text-muted-foreground flex items-center gap-2 text-xs">
             <div className="border-primary h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />
           </div>

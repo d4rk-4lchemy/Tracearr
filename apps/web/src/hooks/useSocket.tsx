@@ -55,6 +55,7 @@ const SocketContext = createContext<SocketContextValue | null>(null);
 // session:updated fires once per active session per poll tick; trailing-edge
 // throttle so a busy tick doesn't trigger a refetch per session.
 const SESSION_UPDATED_THROTTLE_MS = 2000;
+const SESSION_STOPPED_HISTORY_THROTTLE_MS = 5000;
 
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation(['notifications', 'common']);
@@ -76,6 +77,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   // Build a ref to the routing map for access in event handlers
   const routingMapRef = useRef<Map<NotificationEventType, NotificationChannelRouting>>(new Map());
   const sessionUpdatedThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionStoppedHistoryThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Update the ref when routing data changes
   useEffect(() => {
@@ -187,6 +189,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // Invalidate dashboard stats and session history (stopped session now has duration)
       void queryClient.invalidateQueries({ queryKey: ['stats', 'dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'list'] });
+
+      if (!sessionStoppedHistoryThrottleRef.current) {
+        sessionStoppedHistoryThrottleRef.current = setTimeout(() => {
+          sessionStoppedHistoryThrottleRef.current = null;
+          void queryClient.invalidateQueries({ queryKey: ['sessions', 'history'] });
+        }, SESSION_STOPPED_HISTORY_THROTTLE_MS);
+      }
 
       // Show toast if web notifications are enabled for stream_stopped
       if (isWebToastEnabled('stream_stopped')) {
@@ -360,6 +369,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       if (sessionUpdatedThrottleRef.current) {
         clearTimeout(sessionUpdatedThrottleRef.current);
         sessionUpdatedThrottleRef.current = null;
+      }
+      if (sessionStoppedHistoryThrottleRef.current) {
+        clearTimeout(sessionStoppedHistoryThrottleRef.current);
+        sessionStoppedHistoryThrottleRef.current = null;
       }
     };
   }, [isAuthenticated, isInMaintenance, queryClient, isWebToastEnabled]);

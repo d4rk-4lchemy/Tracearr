@@ -211,6 +211,7 @@ export function History() {
   const {
     data,
     isLoading,
+    isFetching,
     isError: sessionsIsError,
     error: sessionsError,
     refetch: refetchSessions,
@@ -225,6 +226,7 @@ export function History() {
   const {
     data: aggregatesData,
     isLoading: aggregatesLoading,
+    isFetching: aggregatesFetching,
     isError: aggregatesIsError,
     error: aggregatesError,
     refetch: refetchAggregates,
@@ -300,7 +302,12 @@ export function History() {
           onRetry={() => void refetchAggregates()}
         />
       ) : (
-        <HistoryAggregates aggregates={aggregates} total={total} isLoading={aggregatesLoading} />
+        <HistoryAggregates
+          aggregates={aggregates}
+          total={total}
+          isLoading={aggregatesLoading}
+          isFetching={aggregatesFetching}
+        />
       )}
 
       {/* Filters */}
@@ -310,7 +317,7 @@ export function History() {
             filters={filters}
             onFiltersChange={handleFiltersChange}
             filterOptions={filterOptions}
-            isLoading={isLoading || filterOptionsLoading}
+            isFetching={isFetching || filterOptionsLoading}
             columnVisibility={columnVisibility}
             onColumnVisibilityChange={handleColumnVisibilityChange}
             isMultiServer={isMultiServer}
@@ -331,6 +338,7 @@ export function History() {
             <HistoryTable
               sessions={sessions}
               isLoading={isLoading}
+              isFetching={isFetching}
               isFetchingNextPage={isFetchingNextPage}
               hasNextPage={hasNextPage}
               onLoadMore={() => void fetchNextPage()}

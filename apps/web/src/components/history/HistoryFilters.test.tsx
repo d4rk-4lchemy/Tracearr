@@ -32,18 +32,23 @@ const filterOptions: HistoryFilterOptions = {
   users: [mergedPerson, soloPerson],
 };
 
-function renderBar(filters: HistoryFilters, overrides: Partial<HistoryFilters> = {}) {
+function renderBar(
+  filters: HistoryFilters,
+  overrides: Partial<HistoryFilters> = {},
+  isFetching?: boolean
+) {
   const onFiltersChange = vi.fn();
-  render(
+  const view = render(
     <HistoryFiltersBar
       filters={{ ...filters, ...overrides }}
       onFiltersChange={onFiltersChange}
       filterOptions={filterOptions}
       columnVisibility={DEFAULT_COLUMN_VISIBILITY}
       onColumnVisibilityChange={vi.fn()}
+      isFetching={isFetching}
     />
   );
-  return { onFiltersChange };
+  return { onFiltersChange, container: view.container };
 }
 
 describe('HistoryFiltersBar', () => {
@@ -87,5 +92,17 @@ describe('HistoryFiltersBar', () => {
     expect(onFiltersChange).toHaveBeenCalledWith(
       expect.objectContaining({ serverUserIds: ['su-bob'] })
     );
+  });
+
+  it('shows the refresh indicator while a background fetch is in flight', () => {
+    const { container } = renderBar({}, {}, true);
+
+    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+  });
+
+  it('hides the refresh indicator once no fetch is in flight', () => {
+    const { container } = renderBar({}, {}, false);
+
+    expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
   });
 });

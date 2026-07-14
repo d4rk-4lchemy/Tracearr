@@ -8,6 +8,24 @@ import cookie from '@fastify/cookie';
 import sensible from '@fastify/sensible';
 import type { Redis } from 'ioredis';
 import type { AuthUser } from '@tracearr/shared';
+import type { SQL } from 'drizzle-orm';
+import { CasingCache } from 'drizzle-orm/casing';
+
+const sqlCasingCache = new CasingCache();
+
+// Renders a Drizzle sql`` fragment to SQL text + bound params for test assertions
+export function renderSql(
+  fragment: SQL,
+  escapeParam: (index: number) => string = (num) => `$${num + 1}`
+): { sql: string; params: unknown[] } {
+  return fragment.toQuery({
+    casing: sqlCasingCache,
+    escapeName: (n) => n,
+    escapeParam,
+    escapeString: (s) => `'${s}'`,
+    inlineParams: false,
+  });
+}
 
 // Mock Redis client for testing
 export function createMockRedis() {

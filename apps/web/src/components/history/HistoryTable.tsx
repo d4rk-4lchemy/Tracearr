@@ -132,6 +132,7 @@ export type SortDirection = 'asc' | 'desc';
 interface Props {
   sessions: SessionWithDetails[];
   isLoading?: boolean;
+  isFetching?: boolean;
   isFetchingNextPage?: boolean;
   hasNextPage?: boolean;
   onLoadMore?: () => void;
@@ -627,6 +628,7 @@ function SortableHeader({
 export function HistoryTable({
   sessions,
   isLoading,
+  isFetching,
   isFetchingNextPage,
   hasNextPage,
   onLoadMore,
@@ -676,7 +678,7 @@ export function HistoryTable({
   if (isLoading) {
     return (
       <div
-        className="scrollbar-thin relative overflow-auto"
+        className="relative scrollbar-thin overflow-auto"
         style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
       >
         <table className="w-full caption-bottom text-sm">
@@ -719,7 +721,7 @@ export function HistoryTable({
   if (sessions.length === 0) {
     return (
       <div
-        className="scrollbar-thin relative overflow-auto"
+        className="relative scrollbar-thin overflow-auto"
         style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
       >
         <table className="w-full caption-bottom text-sm">
@@ -762,7 +764,10 @@ export function HistoryTable({
   return (
     <div
       ref={scrollContainerRef}
-      className="scrollbar-thin relative overflow-auto"
+      className={cn(
+        'relative scrollbar-thin overflow-auto transition-opacity',
+        isFetching && !isLoading && 'opacity-60'
+      )}
       style={{ maxHeight: 'clamp(400px, 70vh, calc(100vh - 200px))' }}
     >
       <table className="w-full caption-bottom text-sm">
