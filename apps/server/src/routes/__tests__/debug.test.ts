@@ -30,8 +30,18 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+vi.mock('../../lib/auth.js', () => ({
+  getAuth: vi.fn(),
+}));
+
+vi.mock('../mobile.js', () => ({
+  revokeMobileDeviceSession: vi.fn(),
+}));
+
 // Import mocked db and routes
 import { db } from '../../db/client.js';
+import { getAuth } from '../../lib/auth.js';
+import { revokeMobileDeviceSession } from '../mobile.js';
 import { debugRoutes } from '../debug.js';
 
 /**
@@ -131,13 +141,32 @@ function mockDbSelectUsers(users: { id: string }[]) {
   } as never);
 }
 
+/**
+ * Create a mock for db.select().from() resolving directly (no .where()) -
+ * matches the auth_sessions and mobile_sessions reads in debug.ts.
+ */
+function mockDbSelectFrom(rows: unknown[]) {
+  vi.mocked(db.select).mockReturnValue({
+    from: vi.fn().mockResolvedValue(rows),
+  } as never);
+}
+
+/** Stubs getAuth().$context.internalAdapter.deleteSessions for the reset route. */
+function mockDeleteSessions(impl: (tokens: string[]) => Promise<void>) {
+  vi.mocked(getAuth).mockReturnValue({
+    $context: Promise.resolve({
+      internalAdapter: { deleteSessions: vi.fn(impl) },
+    }),
+  } as unknown as ReturnType<typeof getAuth>);
+}
+
 describe('Debug Routes', () => {
   let app: FastifyInstance;
   const ownerUser = createOwnerUser();
   const viewerUser = createViewerUser();
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     // Default execute mock — /debug/env calls db.execute(...).then() so it needs a promise
     vi.mocked(db.execute).mockResolvedValue({ rows: [] } as never);
   });
@@ -489,11 +518,68 @@ describe('Debug Routes', () => {
     });
   });
 
-  describe('POST /debug/reset', () => {
-    it('performs full factory reset', async () => {
+  describe('DELETE /debug/mobile', () => {
+    it('revokes each paired device before deleting sessions and tokens', async () => {
       app = await buildTestApp(ownerUser);
 
-      // Mock all delete operations
+      const sessionRows = [
+        { id: 's1', deviceId: 'device-aaa' },
+        { id: 's2', deviceId: 'device-bbb' },
+      ];
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockResolvedValue(sessionRows),
+      } as never);
+      vi.mocked(db.delete).mockReturnValue({
+        returning: vi.fn().mockResolvedValue(sessionRows),
+      } as never);
+      vi.mocked(revokeMobileDeviceSession).mockResolvedValue(undefined);
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/debug/mobile',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.success).toBe(true);
+      expect(revokeMobileDeviceSession).toHaveBeenCalledTimes(2);
+      expect(revokeMobileDeviceSession).toHaveBeenNthCalledWith(
+        1,
+        expect.anything(),
+        sessionRows[0]
+      );
+      expect(revokeMobileDeviceSession).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        sessionRows[1]
+      );
+    });
+
+    it('handles no paired devices', async () => {
+      app = await buildTestApp(ownerUser);
+
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockResolvedValue([]),
+      } as never);
+      vi.mocked(db.delete).mockReturnValue({
+        returning: vi.fn().mockResolvedValue([]),
+      } as never);
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/debug/mobile',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(revokeMobileDeviceSession).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /debug/reset', () => {
+    it('performs full factory reset when there are no existing sessions', async () => {
+      app = await buildTestApp(ownerUser);
+
+      mockDbSelectFrom([]);
       vi.mocked(db.delete).mockReturnValue(Promise.resolve() as never);
 
       const response = await app.inject({
@@ -505,11 +591,59 @@ describe('Debug Routes', () => {
       const body = response.json();
       expect(body.success).toBe(true);
       expect(body.message).toContain('Factory reset complete');
+      expect(getAuth).not.toHaveBeenCalled();
 
       // Verify delete was called 15 times (violations, terminationLogs, sessions, rules,
       // notificationChannelRouting, notificationPreferences, mobileSessions, mobileTokens,
       // librarySnapshots, libraryItems, serverUsers, servers, plexAccounts, users, settings)
       expect(db.delete).toHaveBeenCalledTimes(15);
+    });
+
+    it('revokes every Better Auth session before deleting any row (ghost cookie rejected after reset)', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const tokens = ['session-token-1', 'session-token-2', 'session-token-3'];
+      mockDbSelectFrom(tokens.map((token) => ({ token })));
+
+      const callOrder: string[] = [];
+      let revokedTokens: string[] = [];
+      mockDeleteSessions(async (t) => {
+        revokedTokens = t;
+        callOrder.push('deleteSessions');
+      });
+      vi.mocked(db.delete).mockImplementation(() => {
+        callOrder.push('delete');
+        return Promise.resolve() as never;
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/debug/reset',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().success).toBe(true);
+      expect(revokedTokens).toEqual(tokens);
+      expect(callOrder[0]).toBe('deleteSessions');
+      expect(callOrder.slice(1).every((step) => step === 'delete')).toBe(true);
+    });
+
+    it('fails closed and deletes nothing when session revocation cannot reach Redis', async () => {
+      app = await buildTestApp(ownerUser);
+
+      mockDbSelectFrom([{ token: 'session-token-1' }]);
+      mockDeleteSessions(async () => {
+        throw new Error('Redis is unreachable');
+      });
+      vi.mocked(db.delete).mockReturnValue(Promise.resolve() as never);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/debug/reset',
+      });
+
+      expect(response.statusCode).toBe(500);
+      expect(db.delete).not.toHaveBeenCalled();
     });
   });
 

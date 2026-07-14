@@ -46,6 +46,18 @@ vi.mock('../db/schema.js', async (importOriginal) => ({
   settings: { id: 'id' },
 }));
 
+vi.mock('../lib/auth.js', () => ({
+  getAuth: vi.fn().mockReturnValue({
+    $context: Promise.resolve({
+      internalAdapter: { deleteSessions: vi.fn().mockResolvedValue(undefined) },
+    }),
+  }),
+}));
+
+vi.mock('./mobile.js', () => ({
+  revokeMobileDeviceSession: vi.fn().mockResolvedValue(undefined),
+}));
+
 describe('Debug Routes Security', () => {
   let app: FastifyInstance;
 

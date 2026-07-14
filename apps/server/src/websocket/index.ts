@@ -245,19 +245,6 @@ export function disconnectMobileDevice(deviceId: string): void {
   }
 }
 
-/**
- * Force-disconnect all mobile sockets for a user.
- */
-export function disconnectAllMobileDevices(userId: string): void {
-  if (!io) return;
-  for (const [, socket] of io.sockets.sockets) {
-    const user = (socket.data as SocketData).user;
-    if (user?.mobile && user.userId === userId) {
-      socket.disconnect(true);
-    }
-  }
-}
-
 export function broadcastToAll<K extends keyof ServerToClientEvents>(
   event: K,
   ...args: Parameters<ServerToClientEvents[K]>

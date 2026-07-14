@@ -11,7 +11,12 @@ vi.mock('../../db/client.js', () => ({ db: { select: vi.fn() } }));
 
 import { getOwnerUser } from '../../services/userService.js';
 import { isClaimCodeEnabled, validateClaimCode } from '../../utils/claimCode.js';
-import { assertSignupAllowed, assertClaimCode, assertUserCanLogin } from '../authGuards.js';
+import {
+  assertSignupAllowed,
+  assertClaimCode,
+  assertUserCanLogin,
+  assertOAuthSignupClaimCode,
+} from '../authGuards.js';
 import { db } from '../../db/client.js';
 
 function mockDbSelectLimit(result: unknown[]) {
@@ -40,12 +45,12 @@ describe('assertClaimCode', () => {
   beforeEach(() => vi.mocked(isClaimCodeEnabled).mockReturnValue(true));
 
   it('rejects a missing claim code when claim codes are enabled', () => {
-    expect(() => assertClaimCode(undefined)).toThrowError();
+    expect(() => assertClaimCode(undefined)).toThrow();
   });
 
   it('rejects an invalid claim code', () => {
     vi.mocked(validateClaimCode).mockReturnValue(false);
-    expect(() => assertClaimCode('bad')).toThrowError();
+    expect(() => assertClaimCode('bad')).toThrow();
   });
 
   it('accepts a valid claim code', () => {
@@ -56,6 +61,44 @@ describe('assertClaimCode', () => {
   it('is a no-op when claim codes are disabled', () => {
     vi.mocked(isClaimCodeEnabled).mockReturnValue(false);
     expect(() => assertClaimCode(undefined)).not.toThrow();
+  });
+});
+
+describe('assertOAuthSignupClaimCode', () => {
+  it('is a no-op when an owner already exists, regardless of the code', async () => {
+    vi.mocked(getOwnerUser).mockResolvedValue({ id: 'u1', role: 'owner' } as never);
+    await expect(assertOAuthSignupClaimCode(undefined)).resolves.toBeUndefined();
+    expect(isClaimCodeEnabled).not.toHaveBeenCalled();
+  });
+
+  it('rejects an ownerless instance with no claim code when claim codes are enabled', async () => {
+    vi.mocked(getOwnerUser).mockResolvedValue(null);
+    vi.mocked(isClaimCodeEnabled).mockReturnValue(true);
+    await expect(assertOAuthSignupClaimCode(undefined)).rejects.toMatchObject({
+      status: 'FORBIDDEN',
+    });
+  });
+
+  it('rejects an ownerless instance with an invalid claim code', async () => {
+    vi.mocked(getOwnerUser).mockResolvedValue(null);
+    vi.mocked(isClaimCodeEnabled).mockReturnValue(true);
+    vi.mocked(validateClaimCode).mockReturnValue(false);
+    await expect(assertOAuthSignupClaimCode('wrong')).rejects.toMatchObject({
+      status: 'FORBIDDEN',
+    });
+  });
+
+  it('allows an ownerless instance with a valid claim code', async () => {
+    vi.mocked(getOwnerUser).mockResolvedValue(null);
+    vi.mocked(isClaimCodeEnabled).mockReturnValue(true);
+    vi.mocked(validateClaimCode).mockReturnValue(true);
+    await expect(assertOAuthSignupClaimCode('right')).resolves.toBeUndefined();
+  });
+
+  it('allows an ownerless instance with no code when claim codes are disabled', async () => {
+    vi.mocked(getOwnerUser).mockResolvedValue(null);
+    vi.mocked(isClaimCodeEnabled).mockReturnValue(false);
+    await expect(assertOAuthSignupClaimCode(undefined)).resolves.toBeUndefined();
   });
 });
 

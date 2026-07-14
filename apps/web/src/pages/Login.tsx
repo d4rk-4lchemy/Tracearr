@@ -350,6 +350,7 @@ export function Login() {
       providerId: 'oidc',
       callbackURL: '/',
       errorCallbackURL: `${BASE_URL}login`,
+      ...(requiresClaimCode && { additionalData: { claimCode: claimCode.trim() } }),
     });
 
     if (error) {

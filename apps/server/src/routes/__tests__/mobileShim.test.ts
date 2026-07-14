@@ -39,7 +39,6 @@ vi.mock('../../services/termination.js', () => ({
 
 vi.mock('../../websocket/index.js', () => ({
   disconnectMobileDevice: vi.fn(),
-  disconnectAllMobileDevices: vi.fn(),
 }));
 
 vi.mock('../../services/settings.js', () => ({

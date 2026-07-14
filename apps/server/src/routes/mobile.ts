@@ -22,6 +22,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { randomBytes } from 'crypto';
 import { eq, and, gt, isNull, or, sql } from 'drizzle-orm';
+import type { Redis } from 'ioredis';
 import { z } from 'zod';
 import type {
   MobileConfig,
@@ -49,7 +50,7 @@ import { terminateSession } from '../services/termination.js';
 import { getSetting, setSetting } from '../services/settings.js';
 import { hashSha256 } from '../utils/hash.js';
 import { hasServerAccess } from '../utils/serverFiltering.js';
-import { disconnectMobileDevice, disconnectAllMobileDevices } from '../websocket/index.js';
+import { disconnectMobileDevice } from '../websocket/index.js';
 
 // Rate limits for mobile auth endpoints
 const MOBILE_PAIR_MAX_ATTEMPTS = 5; // 5 attempts per 15 minutes
@@ -166,6 +167,26 @@ async function revokeBetterAuthSession(betterAuthSessionId: string | null): Prom
   }
 
   await db.delete(authSessions).where(eq(authSessions.id, betterAuthSessionId));
+}
+
+// Shared by the settings endpoints below and the owner-only debug wipe.
+export async function revokeMobileDeviceSession(
+  redis: Redis,
+  session: {
+    deviceId: string;
+    refreshTokenHash: string;
+    previousRefreshTokenHash: string | null;
+    betterAuthSessionId: string | null;
+  }
+): Promise<void> {
+  await redis.setex(
+    REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(session.deviceId),
+    MOBILE_BLACKLIST_TTL,
+    '1'
+  );
+  disconnectMobileDevice(session.deviceId);
+  await deleteSessionRefreshTokens(redis, session);
+  await revokeBetterAuthSession(session.betterAuthSessionId);
 }
 
 export const mobileRoutes: FastifyPluginAsync = async (app) => {
@@ -406,15 +427,8 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     // Revoke all mobile sessions with blacklisting and force-disconnect
     const sessionsRows = await db.select().from(mobileSessions);
     for (const session of sessionsRows) {
-      await app.redis.setex(
-        REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(session.deviceId),
-        MOBILE_BLACKLIST_TTL,
-        '1'
-      );
-      await deleteSessionRefreshTokens(app.redis, session);
-      await revokeBetterAuthSession(session.betterAuthSessionId);
+      await revokeMobileDeviceSession(app.redis, session);
     }
-    disconnectAllMobileDevices(authUser.userId);
     await db.delete(mobileSessions);
 
     // Delete all pending tokens
@@ -439,22 +453,9 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     const sessionsRows = await db.select().from(mobileSessions);
 
     for (const session of sessionsRows) {
-      // 1. Blacklist each device
-      await app.redis.setex(
-        REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(session.deviceId),
-        MOBILE_BLACKLIST_TTL,
-        '1'
-      );
-      await deleteSessionRefreshTokens(app.redis, session);
-
-      // 2. Kill the linked Better Auth session (BA-backed pairings)
-      await revokeBetterAuthSession(session.betterAuthSessionId);
+      await revokeMobileDeviceSession(app.redis, session);
     }
 
-    // 3. Force-disconnect all mobile sockets for this user
-    disconnectAllMobileDevices(authUser.userId);
-
-    // 4. Delete all sessions from DB
     await db.delete(mobileSessions);
 
     app.log.info(
@@ -496,23 +497,9 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
 
     const session = sessionRow[0]!;
 
-    // 1. Blacklist the device so existing JWTs are rejected
-    await app.redis.setex(
-      REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(session.deviceId),
-      MOBILE_BLACKLIST_TTL,
-      '1'
-    );
+    await revokeMobileDeviceSession(app.redis, session);
 
-    // 2. Force-disconnect any active WebSocket connections for this device
-    disconnectMobileDevice(session.deviceId);
-
-    // 3. Delete refresh tokens from Redis
-    await deleteSessionRefreshTokens(app.redis, session);
-
-    // 4. Kill the linked Better Auth session (BA-backed pairings)
-    await revokeBetterAuthSession(session.betterAuthSessionId);
-
-    // 5. Delete session from DB (notification_preferences cascade-deleted via FK)
+    // notification_preferences cascade-deleted via FK
     await db.delete(mobileSessions).where(eq(mobileSessions.id, id));
 
     app.log.info(

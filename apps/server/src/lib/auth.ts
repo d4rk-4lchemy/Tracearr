@@ -16,7 +16,12 @@ import * as schema from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { getSetting } from '../services/settings.js';
 import { requireBetterAuthSecret } from './env.js';
-import { assertSignupAllowed, assertClaimCode, assertUserCanLogin } from './authGuards.js';
+import {
+  assertSignupAllowed,
+  assertClaimCode,
+  assertUserCanLogin,
+  assertOAuthSignupClaimCode,
+} from './authGuards.js';
 import { getRedis, closeRedis } from './redisShared.js';
 import { plexPlugin } from './plexPlugin.js';
 
@@ -228,6 +233,10 @@ function buildAuth(redis: Redis) {
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path === '/sign-up/email') {
           assertClaimCode((ctx.body as { claimCode?: string } | undefined)?.claimCode);
+        }
+        if (ctx.path === '/sign-in/oauth2') {
+          const body = ctx.body as { additionalData?: { claimCode?: string } } | undefined;
+          await assertOAuthSignupClaimCode(body?.additionalData?.claimCode);
         }
         if (ctx.path === '/sign-in/email' || ctx.path === '/sign-in/username') {
           const localEnabled = await getSetting('localLoginEnabled');

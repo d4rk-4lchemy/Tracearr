@@ -24,6 +24,14 @@ export function assertClaimCode(claimCode: string | undefined): void {
   }
 }
 
+// /sign-in/oauth2 handles both first-time signup and returning login, so the
+// code is only required while the instance is ownerless.
+export async function assertOAuthSignupClaimCode(claimCode: string | undefined): Promise<void> {
+  const owner = await getOwnerUser();
+  if (owner) return;
+  assertClaimCode(claimCode);
+}
+
 export async function assertUserCanLogin(userId: string): Promise<void> {
   const [row] = await db
     .select({ role: users.role })

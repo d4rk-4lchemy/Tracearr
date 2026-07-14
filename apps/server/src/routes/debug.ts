@@ -34,6 +34,8 @@ import { invalidateRulesCache } from '../jobs/poller/database.js';
 import { getBackupQueueStats } from '../jobs/backupQueue.js';
 import { resetSettingsCache } from '../services/settings.js';
 import { getAllServices } from '../services/serviceTracker.js';
+import { getAuth } from '../lib/auth.js';
+import { revokeMobileDeviceSession } from './mobile.js';
 import {
   sessions,
   violations,
@@ -50,6 +52,7 @@ import {
   plexAccounts,
   libraryItems,
   librarySnapshots,
+  authSessions,
 } from '../db/schema.js';
 
 // Read a cgroup file, returning null if unavailable
@@ -556,6 +559,10 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
    * DELETE /debug/mobile - Delete all mobile pairing tokens and sessions
    */
   app.delete('/mobile', async () => {
+    const sessionRows = await db.select().from(mobileSessions);
+    for (const session of sessionRows) {
+      await revokeMobileDeviceSession(app.redis, session);
+    }
     const sessionsDeleted = await db.delete(mobileSessions).returning({ id: mobileSessions.id });
     const tokensDeleted = await db.delete(mobileTokens).returning({ id: mobileTokens.id });
     return {
@@ -569,6 +576,13 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
    * POST /debug/reset - Full factory reset (deletes everything including owner)
    */
   app.post('/reset', async () => {
+    // deleteSessions throws if Redis is unreachable, aborting before any delete runs.
+    const existingSessions = await db.select({ token: authSessions.token }).from(authSessions);
+    if (existingSessions.length > 0) {
+      const authCtx = await getAuth().$context;
+      await authCtx.internalAdapter.deleteSessions(existingSessions.map((s) => s.token));
+    }
+
     // Delete everything in order respecting FK constraints
     // Start with tables that have FK dependencies on other tables
     await db.delete(violations);

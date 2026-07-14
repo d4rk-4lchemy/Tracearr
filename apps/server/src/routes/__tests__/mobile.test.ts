@@ -45,7 +45,6 @@ vi.mock('../../services/termination.js', () => ({
 // Mock the websocket module
 vi.mock('../../websocket/index.js', () => ({
   disconnectMobileDevice: vi.fn(),
-  disconnectAllMobileDevices: vi.fn(),
 }));
 
 // Mock settings service (mobile.ts uses getSetting/setSetting)
@@ -65,7 +64,7 @@ import { db } from '../../db/client.js';
 import { getAuth } from '../../lib/auth.js';
 import { mobileRoutes } from '../mobile.js';
 import { terminateSession } from '../../services/termination.js';
-import { disconnectMobileDevice, disconnectAllMobileDevices } from '../../websocket/index.js';
+import { disconnectMobileDevice } from '../../websocket/index.js';
 import { getSetting, setSetting } from '../../services/settings.js';
 
 // Mock Redis
@@ -619,7 +618,15 @@ describe('Mobile Routes', () => {
         from: vi.fn().mockResolvedValue(mockSessions),
       } as never);
 
-      vi.mocked(db.delete).mockReturnValue(Promise.resolve() as never);
+      const callOrder: string[] = [];
+      mockRedis.setex.mockImplementation(async () => {
+        callOrder.push('revoke');
+        return 'OK';
+      });
+      vi.mocked(db.delete).mockImplementation(() => {
+        callOrder.push('delete');
+        return Promise.resolve() as never;
+      });
 
       mockRedis.del.mockResolvedValue(1);
 
@@ -632,8 +639,8 @@ describe('Mobile Routes', () => {
       const body = response.json();
       expect(body.success).toBe(true);
       expect(setSetting).toHaveBeenCalledWith('mobileEnabled', false);
-      expect(db.delete).toHaveBeenCalled();
       expect(mockRedis.del).toHaveBeenCalled();
+      expect(callOrder).toEqual(['revoke', 'delete', 'delete']);
     });
 
     it('rejects non-owner access with 403', async () => {
@@ -667,10 +674,17 @@ describe('Mobile Routes', () => {
         from: vi.fn().mockResolvedValue(mockSessions),
       } as never);
 
-      vi.mocked(db.delete).mockReturnValue(Promise.resolve() as never);
+      const callOrder: string[] = [];
+      mockRedis.setex.mockImplementation(async () => {
+        callOrder.push('revoke');
+        return 'OK';
+      });
+      vi.mocked(db.delete).mockImplementation(() => {
+        callOrder.push('delete');
+        return Promise.resolve() as never;
+      });
 
       mockRedis.del.mockResolvedValue(1);
-      mockRedis.setex.mockResolvedValue('OK');
 
       const response = await app.inject({
         method: 'DELETE',
@@ -684,7 +698,9 @@ describe('Mobile Routes', () => {
       // Blacklist + refresh token delete for each session
       expect(mockRedis.setex).toHaveBeenCalledTimes(2);
       expect(mockRedis.del).toHaveBeenCalledTimes(2);
-      expect(disconnectAllMobileDevices).toHaveBeenCalledWith(ownerUser.userId);
+      expect(disconnectMobileDevice).toHaveBeenCalledWith('device-aaa');
+      expect(disconnectMobileDevice).toHaveBeenCalledWith('device-bbb');
+      expect(callOrder).toEqual(['revoke', 'revoke', 'delete']);
     });
 
     it('handles empty sessions gracefully', async () => {
@@ -734,12 +750,17 @@ describe('Mobile Routes', () => {
         }),
       } as never);
 
-      vi.mocked(db.delete).mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
-      } as never);
+      const callOrder: string[] = [];
+      mockRedis.setex.mockImplementation(async () => {
+        callOrder.push('revoke');
+        return 'OK';
+      });
+      vi.mocked(db.delete).mockImplementation(() => {
+        callOrder.push('delete');
+        return { where: vi.fn().mockResolvedValue(undefined) } as never;
+      });
 
       mockRedis.del.mockResolvedValue(1);
-      mockRedis.setex.mockResolvedValue('OK');
 
       const response = await app.inject({
         method: 'DELETE',
@@ -749,6 +770,7 @@ describe('Mobile Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.success).toBe(true);
+      expect(callOrder).toEqual(['revoke', 'delete']);
       // Should blacklist the device
       expect(mockRedis.setex).toHaveBeenCalledWith(
         expect.stringContaining('mobile:blacklist:device-xyz'),

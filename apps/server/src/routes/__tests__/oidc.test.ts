@@ -7,6 +7,11 @@
  * construction); the shared single-owner signup gate is covered live in
  * test/integration/betterAuthSignup.integration.test.ts and
  * betterAuthSecurity.integration.test.ts.
+ *
+ * The OIDC claim-code gate (auth.ts hooks.before, '/sign-in/oauth2') delegates
+ * to authGuards.assertOAuthSignupClaimCode. Driving it through a real request
+ * would hit Better Auth's rate-limiter (needs live Redis, unavailable here),
+ * so this exercises that guard directly instead.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -114,6 +119,54 @@ describe('oidc gating', () => {
       });
 
       await app.close();
+    });
+  });
+
+  describe('OIDC signup claim-code gate (auth.ts hooks.before -> assertOAuthSignupClaimCode)', () => {
+    async function loadGuard() {
+      vi.doMock('../../services/userService.js', () => ({ getOwnerUser: vi.fn() }));
+      vi.doMock('../../utils/claimCode.js', () => ({
+        isClaimCodeEnabled: vi.fn(),
+        validateClaimCode: vi.fn(),
+      }));
+      const { getOwnerUser } = await import('../../services/userService.js');
+      const { isClaimCodeEnabled, validateClaimCode } = await import('../../utils/claimCode.js');
+      const { assertOAuthSignupClaimCode } = await import('../../lib/authGuards.js');
+      return {
+        assertOAuthSignupClaimCode,
+        getOwnerUser: vi.mocked(getOwnerUser),
+        isClaimCodeEnabled: vi.mocked(isClaimCodeEnabled),
+        validateClaimCode: vi.mocked(validateClaimCode),
+      };
+    }
+
+    it('rejects OIDC-initiated signup with no claim code on an ownerless instance with CLAIM_CODE set', async () => {
+      const guard = await loadGuard();
+      guard.getOwnerUser.mockResolvedValue(null);
+      guard.isClaimCodeEnabled.mockReturnValue(true);
+
+      await expect(guard.assertOAuthSignupClaimCode(undefined)).rejects.toMatchObject({
+        status: 'FORBIDDEN',
+      });
+    });
+
+    it('rejects OIDC-initiated signup with a wrong claim code on an ownerless instance', async () => {
+      const guard = await loadGuard();
+      guard.getOwnerUser.mockResolvedValue(null);
+      guard.isClaimCodeEnabled.mockReturnValue(true);
+      guard.validateClaimCode.mockReturnValue(false);
+
+      await expect(guard.assertOAuthSignupClaimCode('nope')).rejects.toMatchObject({
+        status: 'FORBIDDEN',
+      });
+    });
+
+    it('allows OIDC sign-in on an already-owned instance without a claim code', async () => {
+      const guard = await loadGuard();
+      guard.getOwnerUser.mockResolvedValue({ id: 'owner-id', role: 'owner' } as never);
+
+      await expect(guard.assertOAuthSignupClaimCode(undefined)).resolves.toBeUndefined();
+      expect(guard.isClaimCodeEnabled).not.toHaveBeenCalled();
     });
   });
 });
