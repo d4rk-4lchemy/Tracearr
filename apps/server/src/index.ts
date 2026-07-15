@@ -13,6 +13,7 @@ import { gzipSync, createGzip } from 'node:zlib';
 import { Redis } from 'ioredis';
 import { API_BASE_PATH, REDIS_KEYS, WS_EVENTS } from '@tracearr/shared';
 import { createBetterAuthHandler } from './lib/betterAuthRequest.js';
+import { getBasePath } from './lib/basePath.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -213,7 +214,7 @@ async function refreshTimescaleCache(): Promise<void> {
 }
 
 // basePath from env var — always known at startup, never changes at runtime.
-const BASE_PATH = process.env.BASE_PATH?.replace(/\/+$/, '').replace(/^\/?/, '/') || '';
+const BASE_PATH = getBasePath();
 
 // ============================================================================
 // Phase 1: Build the Fastify app (builds without DB/Redis, but fails fast if

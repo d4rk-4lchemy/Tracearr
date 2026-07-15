@@ -348,7 +348,7 @@ export function Login() {
 
     const { error } = await authClient.signIn.oauth2({
       providerId: 'oidc',
-      callbackURL: '/',
+      callbackURL: BASE_URL,
       errorCallbackURL: `${BASE_URL}login`,
       ...(requiresClaimCode && { additionalData: { claimCode: claimCode.trim() } }),
     });
