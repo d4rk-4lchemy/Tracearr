@@ -5,6 +5,7 @@
 
 import type { ActiveSession, DashboardStats, ServerConnectionStatus } from '@tracearr/shared';
 import { CACHE_TTL, REDIS_KEYS } from '@tracearr/shared';
+import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import type { PendingSessionData } from '../jobs/poller/types.js';
 
@@ -463,8 +464,9 @@ export function createCacheService(redis: Redis): CacheService {
       operation: () => Promise<T>
     ): Promise<T | null> {
       const lockKey = REDIS_KEYS.SESSION_LOCK(serverId, sessionKey);
+      const token = randomUUID();
 
-      const lockAcquired = await redis.set(lockKey, '1', 'EX', 15, 'NX');
+      const lockAcquired = await redis.set(lockKey, token, 'EX', 60, 'NX');
       if (!lockAcquired) {
         return null;
       }
@@ -472,7 +474,14 @@ export function createCacheService(redis: Redis): CacheService {
       try {
         return await operation();
       } finally {
-        await redis.del(lockKey);
+        // Compare-and-delete: releasing after expiry must not free a lock some
+        // other worker now holds.
+        await redis.eval(
+          `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`,
+          1,
+          lockKey,
+          token
+        );
       }
     },
 

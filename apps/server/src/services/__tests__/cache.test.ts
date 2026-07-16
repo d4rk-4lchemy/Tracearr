@@ -123,6 +123,25 @@ function createMockRedis(): Redis & {
       ttls.set(key, seconds);
       return 'OK';
     }),
+    // Only supports the `SET key value 'EX' seconds 'NX'` shape used by withSessionCreateLock.
+    set: vi.fn(async (key: string, value: string, ...rest: unknown[]) => {
+      const exIdx = rest.indexOf('EX');
+      const seconds = exIdx !== -1 ? (rest[exIdx + 1] as number) : undefined;
+      const nx = rest.includes('NX');
+      if (nx && store.has(key)) return null;
+      store.set(key, value);
+      if (seconds !== undefined) ttls.set(key, seconds);
+      return 'OK';
+    }),
+    // Simulates the compare-and-delete Lua script: only deletes when the
+    // stored value still matches the caller's token.
+    eval: vi.fn(async (_script: string, _numKeys: number, key: string, token: string) => {
+      if (store.get(key) === token) {
+        store.delete(key);
+        return 1;
+      }
+      return 0;
+    }),
     del: vi.fn(async (...keys: string[]) => {
       let count = 0;
       for (const key of keys) {
@@ -538,6 +557,70 @@ describe('CacheService', () => {
       expect(redis.scan).toHaveBeenCalledWith('0', 'MATCH', 'nonexistent:*', 'COUNT', 100);
       // del should not be called since no keys matched
       expect(redis.del).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('withSessionCreateLock', () => {
+    it('acquires the lock with a TTL of at least 60s', async () => {
+      await cache.withSessionCreateLock('server-1', 'session-key-1', async () => 'ok');
+
+      expect(redis.set).toHaveBeenCalledWith(
+        'session:lock:server-1:session-key-1',
+        expect.any(String),
+        'EX',
+        60,
+        'NX'
+      );
+      const setCall = (redis.set as any).mock.calls[0];
+      expect(setCall[3]).toBeGreaterThanOrEqual(60);
+    });
+
+    it("does not let holder A's release free holder B's lock after A's lock expired", async () => {
+      const lockKey = 'session:lock:server-1:session-key-1';
+
+      // Holder A acquires the lock.
+      await cache.withSessionCreateLock('server-1', 'session-key-1', async () => {
+        // Simulate the lock expiring mid-operation and holder B acquiring it
+        // with its own token, exactly like Redis would after the TTL elapses.
+        redis.store.delete(lockKey);
+        const secondAcquired = await redis.set(lockKey, 'holder-b-token', 'EX', 60, 'NX');
+        expect(secondAcquired).toBe('OK');
+        return 'a-result';
+      });
+
+      // Holder A's finally-block release must not have deleted holder B's lock.
+      expect(redis.store.get(lockKey)).toBe('holder-b-token');
+    });
+
+    it('returns null and skips the operation when the lock is already held', async () => {
+      const lockKey = 'session:lock:server-1:session-key-1';
+      redis.store.set(lockKey, 'existing-token');
+
+      const operation = vi.fn().mockResolvedValue('should-not-run');
+      const result = await cache.withSessionCreateLock('server-1', 'session-key-1', operation);
+
+      expect(result).toBeNull();
+      expect(operation).not.toHaveBeenCalled();
+    });
+
+    it('releases its own lock after the operation completes', async () => {
+      const lockKey = 'session:lock:server-1:session-key-1';
+
+      await cache.withSessionCreateLock('server-1', 'session-key-1', async () => 'ok');
+
+      expect(redis.store.has(lockKey)).toBe(false);
+    });
+
+    it('releases its own lock even when the operation throws', async () => {
+      const lockKey = 'session:lock:server-1:session-key-1';
+
+      await expect(
+        cache.withSessionCreateLock('server-1', 'session-key-1', async () => {
+          throw new Error('operation failed');
+        })
+      ).rejects.toThrow('operation failed');
+
+      expect(redis.store.has(lockKey)).toBe(false);
     });
   });
 

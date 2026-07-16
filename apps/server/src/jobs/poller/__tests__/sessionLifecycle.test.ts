@@ -84,7 +84,7 @@ function createMockSession(overrides: Partial<Session> = {}): Session {
 // ============================================================================
 
 describe('withSessionCreateLock', () => {
-  // Mock Redis for lock testing
+  // Mock Redis for lock testing: set/NX for acquire, eval for compare-and-delete release
   const createMockRedis = () => {
     const locks = new Map<string, string>();
 
@@ -112,6 +112,14 @@ describe('withSessionCreateLock', () => {
         locks.delete(key);
         return 1;
       }),
+      // Mirrors the Lua compare-and-delete: only deletes if the token still matches.
+      eval: vi.fn(async (_script: string, _numKeys: number, key: string, token: string) => {
+        if (locks.get(key) === token) {
+          locks.delete(key);
+          return 1;
+        }
+        return 0;
+      }),
       _locks: locks,
     };
   };
@@ -131,12 +139,18 @@ describe('withSessionCreateLock', () => {
     expect(operation).toHaveBeenCalledTimes(1);
     expect(mockRedis.set).toHaveBeenCalledWith(
       'session:lock:server-1:session-key-1',
-      '1',
+      expect.any(String),
       'EX',
-      15,
+      60,
       'NX'
     );
-    expect(mockRedis.del).toHaveBeenCalledWith('session:lock:server-1:session-key-1');
+    expect(mockRedis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'session:lock:server-1:session-key-1',
+      expect.any(String)
+    );
+    expect(mockRedis._locks.has('session:lock:server-1:session-key-1')).toBe(false);
   });
 
   it('should return null when lock is already held', async () => {
@@ -168,7 +182,7 @@ describe('withSessionCreateLock', () => {
     ).rejects.toThrow('DB error');
 
     // Lock should still be released
-    expect(mockRedis.del).toHaveBeenCalledWith('session:lock:server-1:session-key-1');
+    expect(mockRedis._locks.has('session:lock:server-1:session-key-1')).toBe(false);
   });
 
   it('should allow second caller to acquire lock after first releases', async () => {
@@ -198,6 +212,50 @@ describe('withSessionCreateLock', () => {
 
     expect(operation1).toHaveBeenCalledTimes(1);
     expect(operation2).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not release a lock a second worker now holds after the first holder expired', async () => {
+    const mockRedis = createMockRedis();
+    const lockKey = 'session:lock:server-1:session-key-1';
+
+    const { createCacheService } = await import('../../../services/cache.js');
+    const cacheService = createCacheService(mockRedis as never);
+
+    // Holder A acquires, then its lock expires (simulated by another worker
+    // overwriting the key directly, as Redis would after TTL elapses).
+    let capturedToken = '';
+    (mockRedis.set as any).mockImplementationOnce(
+      async (key: string, value: string, _mode: string, _ex: number, _nx: string) => {
+        capturedToken = value;
+        mockRedis._locks.set(key, value);
+        return 'OK';
+      }
+    );
+
+    const operation = vi.fn().mockImplementation(async () => {
+      // Simulate expiry: holder B acquires the now-expired key with its own token.
+      mockRedis._locks.set(lockKey, 'holder-b-token');
+      return { id: 'session-a' };
+    });
+
+    await cacheService.withSessionCreateLock('server-1', 'session-key-1', operation);
+
+    // Holder A's release must not have deleted holder B's lock.
+    expect(mockRedis._locks.get(lockKey)).toBe('holder-b-token');
+    expect(capturedToken).not.toBe('holder-b-token');
+  });
+
+  it('acquires the lock with a 60s TTL, not the old 15s TTL', async () => {
+    const mockRedis = createMockRedis();
+
+    const { createCacheService } = await import('../../../services/cache.js');
+    const cacheService = createCacheService(mockRedis as never);
+
+    await cacheService.withSessionCreateLock('server-1', 'session-key-1', async () => 'ok');
+
+    const [, , , ttl] = (mockRedis.set as any).mock.calls[0];
+    expect(ttl).toBe(60);
+    expect(ttl).toBeGreaterThanOrEqual(60);
   });
 });
 
