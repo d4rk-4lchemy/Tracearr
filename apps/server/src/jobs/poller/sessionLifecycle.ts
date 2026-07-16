@@ -365,6 +365,9 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
 
     // Termination capability
     canTerminate: server.type !== 'plex' || !!processed.plexSessionId,
+
+    // Unconfirmed; excludeUncountableSessions drops this from rule evaluation
+    pending: true,
   };
 }
 

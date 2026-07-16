@@ -34,6 +34,7 @@ const {
   mockBroadcastViolations,
   mockMapMediaSession,
   mockCreateMediaServerClient,
+  mockGetIdentityServerUserIds,
   mockDb,
 } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -52,6 +53,7 @@ const {
       serverName: data.server.name,
       sessionKey: data.processed.sessionKey,
       mediaTitle: data.processed.mediaTitle,
+      pending: true,
     })),
     mockIsPlaybackConfirmed: vi.fn().mockReturnValue(false),
     mockCreateInitialConfirmationState: vi.fn().mockReturnValue({
@@ -70,6 +72,7 @@ const {
     mockCreateMediaServerClient: vi.fn().mockReturnValue({
       getSessions: vi.fn().mockResolvedValue([]),
     }),
+    mockGetIdentityServerUserIds: vi.fn().mockResolvedValue([]),
     mockDb: {
       select: vi.fn().mockReturnValue({
         from: vi.fn().mockReturnValue({
@@ -120,6 +123,10 @@ vi.mock('../../services/plexGeoip.js', () => ({
 
 vi.mock('../../routes/settings.js', () => ({
   getGeoIPSettings: vi.fn().mockResolvedValue({ usePlexGeoip: false }),
+}));
+
+vi.mock('../../services/userService.js', () => ({
+  getIdentityServerUserIds: mockGetIdentityServerUserIds,
 }));
 
 vi.mock('../poller/index.js', () => ({
@@ -311,6 +318,74 @@ describe('SSE Processor - Pending Session Flow', () => {
   afterEach(() => {
     stopSSEProcessor();
     vi.useRealTimers();
+  });
+
+  describe('createNewSession - Pending Cache Entry', () => {
+    it('marks the cached ActiveSession as pending before confirmation', async () => {
+      const mockServerRow = {
+        id: 'server-123',
+        name: 'Test Server',
+        type: 'plex',
+        url: 'http://localhost:32400',
+        token: 'test-token',
+      };
+      const mockServerUserRow = {
+        id: 'server-user-123',
+        userId: 'identity-123',
+        username: 'testuser',
+        thumbUrl: null,
+        identityName: 'Test User',
+        trustScore: 100,
+        sessionCount: 10,
+        lastActivityAt: new Date(),
+        createdAt: new Date(),
+      };
+
+      // fetchFullSession: db.select().from(servers).where().limit()
+      mockDb.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([mockServerRow]),
+          }),
+        }),
+      });
+      // createNewSession: db.select({...}).from(serverUsers).innerJoin(users).where().limit()
+      mockDb.select.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([mockServerUserRow]),
+            }),
+          }),
+        }),
+      });
+
+      mockCreateMediaServerClient.mockReturnValueOnce({
+        getSessions: vi
+          .fn()
+          .mockResolvedValue([{ sessionKey: 'test-session-key', ratingKey: '12345' }]),
+      });
+      mockMapMediaSession.mockReturnValueOnce({
+        sessionKey: 'test-session-key',
+        ratingKey: '12345',
+        externalUserId: 'user-123',
+        ipAddress: '192.168.1.100',
+        mediaTitle: 'Test Movie',
+        state: 'playing',
+      });
+
+      mockSseManager.emit('plex:session:playing', {
+        serverId: 'server-123',
+        notification: { sessionKey: 'test-session-key', viewOffset: 0 },
+      });
+
+      await vi.waitFor(() => {
+        expect(mockCacheService.addActiveSession).toHaveBeenCalled();
+      });
+
+      const cachedSession = mockCacheService.addActiveSession.mock.calls[0]?.[0];
+      expect(cachedSession?.pending).toBe(true);
+    });
   });
 
   describe('handleStopped - Phantom Session Detection', () => {
@@ -626,6 +701,10 @@ describe('SSE Processor - Pending Session Flow', () => {
 
       // Should have updated the session in cache (same ID, just confirming status)
       expect(mockCacheService.updateActiveSession).toHaveBeenCalled();
+
+      // Confirmed sessions carry no pending flag, so rule evaluation counts them
+      const confirmedSession = mockCacheService.updateActiveSession.mock.calls[0]?.[0];
+      expect(confirmedSession?.pending).toBeUndefined();
     });
 
     it('keeps session pending when viewOffset below threshold', async () => {
