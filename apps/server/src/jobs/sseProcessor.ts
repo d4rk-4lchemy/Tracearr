@@ -1527,6 +1527,18 @@ async function confirmPendingSessionAndPersist(
   // must leave the pending entry in Redis for the next confirming caller instead
   // of losing the session with no DB row written.
   const result = await cache.withSessionCreateLock(serverId, sessionKey, async () => {
+    // A stop's phantom-discard runs without this lock, so it can delete the
+    // pending entry at any point up to here. Recheck before doing anything
+    // else: if it's gone, a discard already won and this confirm must not
+    // resurrect the session.
+    const stillPending = await cache.getPendingSession(serverId, sessionKey);
+    if (!stillPending) {
+      console.log(
+        `[SSEProcessor] Pending session ${sessionKey} was discarded before confirm reached the lock, skipping`
+      );
+      return null;
+    }
+
     // Double-check no active session was created while we were confirming
     const existingActive = await findActiveSession({
       serverId,

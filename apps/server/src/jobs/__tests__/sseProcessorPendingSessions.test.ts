@@ -419,7 +419,12 @@ describe('SSE Processor - Pending Session Flow', () => {
           initialViewOffset: 2000,
         },
       });
-      mockCacheService.getPendingSession.mockResolvedValueOnce(pendingSession);
+      // First call is handleStopped's own pending check, second is the
+      // in-lock recheck inside confirmPendingSessionAndPersist; both must
+      // see the entry still present for the persist to proceed.
+      mockCacheService.getPendingSession
+        .mockResolvedValueOnce(pendingSession)
+        .mockResolvedValueOnce(pendingSession);
 
       mockConfirmAndPersistSession.mockResolvedValueOnce({
         insertedSession: {
@@ -481,7 +486,12 @@ describe('SSE Processor - Pending Session Flow', () => {
           initialViewOffset: 2000,
         },
       });
-      mockCacheService.getPendingSession.mockResolvedValueOnce(pendingSession);
+      // First call is handleStopped's own pending check, second is the
+      // in-lock recheck inside confirmPendingSessionAndPersist; both see the
+      // entry present so the lock body reaches the existingActive check below.
+      mockCacheService.getPendingSession
+        .mockResolvedValueOnce(pendingSession)
+        .mockResolvedValueOnce(pendingSession);
 
       const concurrentRow = {
         id: 'concurrent-session-id',
@@ -490,9 +500,9 @@ describe('SSE Processor - Pending Session Flow', () => {
         serverUserId: 'server-user-123',
       };
 
-      // The race-check inside confirmPendingSessionAndPersist finds a row a
-      // concurrent caller already created, so the lock body returns null and
-      // confirmPendingSessionAndPersist resolves false without persisting.
+      // The existingActive check inside confirmPendingSessionAndPersist finds
+      // a row a concurrent caller already created, so the lock body returns
+      // null and confirmPendingSessionAndPersist resolves false without persisting.
       mockFindActiveSession.mockResolvedValueOnce(concurrentRow);
 
       // handleStopped must then fall through to the same lookup-and-stop
@@ -521,6 +531,49 @@ describe('SSE Processor - Pending Session Flow', () => {
 
       // The lock body bailed before ever reaching persistence.
       expect(mockConfirmAndPersistSession).not.toHaveBeenCalled();
+    });
+
+    it('aborts the confirm when a concurrent discard wins the race before the lock recheck', async () => {
+      const pendingSession = createMockPendingSession({
+        confirmation: {
+          confirmedPlayback: false,
+          firstSeenAt: Date.now(),
+          maxViewOffset: 20000,
+          initialViewOffset: 2000,
+        },
+      });
+      // First call is handleStopped's own pending check (entry still there).
+      // Second call is the in-lock recheck inside confirmPendingSessionAndPersist,
+      // by which point a concurrent phantom-discard has already deleted the entry.
+      mockCacheService.getPendingSession
+        .mockResolvedValueOnce(pendingSession)
+        .mockResolvedValueOnce(null);
+
+      mockSseManager.emit('plex:session:stopped', {
+        serverId: 'server-123',
+        notification: { sessionKey: 'test-session-key', viewOffset: 20000 },
+      });
+
+      await vi.waitFor(() => {
+        expect(mockCacheService.withSessionCreateLock).toHaveBeenCalled();
+      });
+
+      await vi.waitFor(() => {
+        expect(mockCacheService.getPendingSession).toHaveBeenCalledTimes(2);
+      });
+
+      // The lock body must bail on the recheck, before persisting or touching the cache.
+      expect(mockConfirmAndPersistSession).not.toHaveBeenCalled();
+      expect(mockCacheService.deletePendingSession).not.toHaveBeenCalled();
+      expect(mockCacheService.updateActiveSession).not.toHaveBeenCalled();
+      expect(mockCacheService.addActiveSession).not.toHaveBeenCalled();
+
+      // confirmPendingSessionAndPersist resolved false, so handleStopped falls
+      // through to the lookup-and-stop path just like the create-lock-race case.
+      expect(mockFindActiveSessionsAll).toHaveBeenCalledWith({
+        serverId: 'server-123',
+        sessionKey: 'test-session-key',
+      });
     });
 
     it('discards a pending session with < 15s of observed progress when stopped', async () => {
@@ -647,7 +700,11 @@ describe('SSE Processor - Pending Session Flow', () => {
   describe('handleProgress - Confirmation Threshold', () => {
     it('confirms pending session when viewOffset exceeds 30s threshold', async () => {
       const pendingSession = createMockPendingSession();
-      mockCacheService.getPendingSession.mockResolvedValueOnce(pendingSession);
+      // First call is handleProgress's own pending check, second is the
+      // in-lock recheck inside confirmPendingSessionAndPersist.
+      mockCacheService.getPendingSession
+        .mockResolvedValueOnce(pendingSession)
+        .mockResolvedValueOnce(pendingSession);
 
       // First call returns true (threshold exceeded)
       mockIsPlaybackConfirmed.mockReturnValueOnce(true);

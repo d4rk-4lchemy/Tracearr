@@ -296,13 +296,12 @@ async function resolvePendingSession(
     server.id,
     processed.sessionKey,
     async () => {
-      // Two checks, deliberately redundant: the SSE confirm path deletes the
-      // pending entry from inside its own lock, only after a successful
-      // persist (or after finding a row already created), so a contended lock
-      // never loses the pending data. The stillPending re-read catches SSE
-      // finishing first, since its delete happens before it releases the
-      // lock; the id-existence check catches the reverse order, where this
-      // path wins the lock and inserts the row before SSE gets a turn.
+      // Two checks, deliberately redundant. The stillPending re-read catches
+      // a concurrent SSE confirm or discard that already cleared the pending
+      // entry. The id-existence check guards this poller's own overlapping
+      // ticks: this key's pending delete happens only after the lock is
+      // released, so a second tick starting before that delete would
+      // otherwise insert a duplicate row for the same session.
       const stillPending = await cacheService.getPendingSession(server.id, pendingKey);
       if (!stillPending) return null;
 
