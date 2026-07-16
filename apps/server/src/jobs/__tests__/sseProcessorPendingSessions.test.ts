@@ -400,6 +400,58 @@ describe('SSE Processor - Pending Session Flow', () => {
       });
     });
 
+    it('stops the concurrently-persisted row when confirmPendingSessionAndPersist loses the create-lock race', async () => {
+      const pendingSession = createMockPendingSession({
+        confirmation: {
+          rulesEvaluated: false,
+          confirmedPlayback: false,
+          firstSeenAt: Date.now(),
+          maxViewOffset: 20000,
+          initialViewOffset: 2000,
+        },
+      });
+      mockCacheService.getPendingSession.mockResolvedValueOnce(pendingSession);
+
+      const concurrentRow = {
+        id: 'concurrent-session-id',
+        serverId: 'server-123',
+        sessionKey: 'test-session-key',
+        serverUserId: 'server-user-123',
+      };
+
+      // The race-check inside confirmPendingSessionAndPersist finds a row a
+      // concurrent caller already created, so the lock body returns null and
+      // confirmPendingSessionAndPersist resolves false without persisting.
+      mockFindActiveSession.mockResolvedValueOnce(concurrentRow);
+
+      // handleStopped must then fall through to the same lookup-and-stop
+      // path used for already-confirmed sessions, closing the row the
+      // concurrent caller created.
+      mockFindActiveSessionsAll.mockResolvedValueOnce([concurrentRow]);
+
+      mockSseManager.emit('plex:session:stopped', {
+        serverId: 'server-123',
+        notification: { sessionKey: 'test-session-key', viewOffset: 20000 },
+      });
+
+      await vi.waitFor(() => {
+        expect(mockFindActiveSessionsAll).toHaveBeenCalledWith({
+          serverId: 'server-123',
+          sessionKey: 'test-session-key',
+        });
+      });
+
+      await vi.waitFor(() => {
+        expect(mockStopSessionAtomic).toHaveBeenCalledWith({
+          session: concurrentRow,
+          stoppedAt: expect.any(Date),
+        });
+      });
+
+      // The lock body bailed before ever reaching persistence.
+      expect(mockConfirmAndPersistSession).not.toHaveBeenCalled();
+    });
+
     it('discards a pending session with < 15s of observed progress when stopped', async () => {
       const pendingSession = createMockPendingSession({
         confirmation: {

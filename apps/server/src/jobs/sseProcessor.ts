@@ -459,16 +459,19 @@ async function handleStopped(event: {
               ratingKey: pendingData.processed.ratingKey,
             });
             if (sessionRow) await stopSession(sessionRow);
+            return;
           }
+          // A concurrent caller won the create lock and persisted the row
+          // first; fall through to the lookup-and-stop below so that row
+          // still gets closed instead of lingering until the stale sweep.
+        } else {
+          await discardPendingSession(serverId, notification.sessionKey, pendingData);
+          console.log(
+            `[SSEProcessor] Discarded phantom session ${notification.sessionKey} (id: ${pendingData.id}) ` +
+              `(stopped before 30s confirmation)`
+          );
           return;
         }
-
-        await discardPendingSession(serverId, notification.sessionKey, pendingData);
-        console.log(
-          `[SSEProcessor] Discarded phantom session ${notification.sessionKey} (id: ${pendingData.id}) ` +
-            `(stopped before 30s confirmation)`
-        );
-        return;
       }
     }
 
