@@ -88,9 +88,6 @@ const pollGuard = { running: false };
 const sweepGuard = { running: false };
 const reconcileGuard = { running: false };
 
-// Per-server guards: sseManager's debounce timer can fire a new triggerServerPoll for a server while a slow previous call is still in flight.
-const serverPollGuards = new Map<string, { running: boolean }>();
-
 /** Test-and-set reentrancy guard: returns false (and skips) if a run is already in progress. */
 function acquireRunGuard(guard: { running: boolean }, label: string): boolean {
   if (guard.running) {
@@ -99,6 +96,33 @@ function acquireRunGuard(guard: { running: boolean }, label: string): boolean {
   }
   guard.running = true;
   return true;
+}
+
+// Per-server mutex around processServerSessions, shared by pollServers,
+// triggerServerPoll, and triggerReconciliationPoll. missedPollTracking below
+// is unsynchronized module state: two runs racing for the same server can
+// each observe the other's still-fresh grace-period entry and sweep it
+// immediately, collapsing the intended two-poll grace window into a single
+// miss. Holding this lock for a server's processServerSessions call (the
+// whole body, for triggerServerPoll) prevents that.
+//
+// Every caller SKIPS a server whose lock is already held; none queue or
+// coalesce. pollServers skips the busy server for that tick only, so a slow
+// server can't make ticks pile up. triggerServerPoll and
+// triggerReconciliationPoll drop the run for that server and rely on the
+// next SSE event or timer tick to catch up. The entry is deleted (not
+// flagged false) on release, so a server later removed from the DB leaves
+// nothing behind.
+const serverPollLocks = new Map<string, true>();
+
+function acquireServerLock(serverId: string): boolean {
+  if (serverPollLocks.has(serverId)) return false;
+  serverPollLocks.set(serverId, true);
+  return true;
+}
+
+function releaseServerLock(serverId: string): void {
+  serverPollLocks.delete(serverId);
 }
 
 const defaultConfig: PollerConfig = {
@@ -111,7 +135,10 @@ const defaultConfig: PollerConfig = {
 // been force-stopped by the stale session sweep. 7 days gives ample buffer.
 const ACTIVE_SESSION_CHUNK_BOUND_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Grace period tracking for session stop detection.
+// Grace period tracking for session stop detection. Reads and writes here
+// must happen only while holding serverPollLocks for the session's server -
+// this map is unsynchronized and a racing run for the same server would
+// otherwise sweep the other run's fresh entry immediately.
 // When a session disappears from a poll response, it enters a grace period
 // rather than being stopped immediately. This prevents data loss from transient
 // API failures (e.g., Emby/Jellyfin returning incomplete session data).
@@ -1479,59 +1506,70 @@ async function pollServers(): Promise<void> {
     for (const server of serversNeedingPoll) {
       const serverWithToken = server as ServerWithToken;
 
-      // Get previous health state for transition detection
-      const wasHealthy = cacheService ? await cacheService.getServerHealth(server.id) : null;
+      if (!acquireServerLock(server.id)) {
+        console.log(
+          `[Poller] Skipping ${server.name}, already being polled by another entry point`
+        );
+        continue;
+      }
 
-      const {
-        success,
-        newSessions,
-        stoppedSessionKeys,
-        updatedSessions,
-        watchedTransitionOccurred,
-      } = await processServerSessions(
-        serverWithToken,
-        activeRulesV2,
-        cachedSessionKeys,
-        cachedSessions
-      );
+      try {
+        // Get previous health state for transition detection
+        const wasHealthy = cacheService ? await cacheService.getServerHealth(server.id) : null;
 
-      // Track health state and notify on transitions (with consecutive-failure threshold)
-      if (cacheService) {
-        if (success) {
-          const wasDown = wasHealthy === false;
-          await cacheService.setServerHealth(server.id, true);
-          await cacheService.resetServerFailCount(server.id);
+        const {
+          success,
+          newSessions,
+          stoppedSessionKeys,
+          updatedSessions,
+          watchedTransitionOccurred,
+        } = await processServerSessions(
+          serverWithToken,
+          activeRulesV2,
+          cachedSessionKeys,
+          cachedSessions
+        );
 
-          if (wasDown) {
-            console.log(`[Poller] Server ${server.name} is back UP`);
-            await enqueueNotification({
-              type: 'server_up',
-              payload: { serverName: server.name, serverId: server.id },
-            });
-          }
-        } else {
-          const failCount = await cacheService.incrServerFailCount(server.id);
+        // Track health state and notify on transitions (with consecutive-failure threshold)
+        if (cacheService) {
+          if (success) {
+            const wasDown = wasHealthy === false;
+            await cacheService.setServerHealth(server.id, true);
+            await cacheService.resetServerFailCount(server.id);
 
-          if (failCount >= POLLER_CONFIG.DOWN_THRESHOLD) {
-            await cacheService.setServerHealth(server.id, false);
-
-            if (wasHealthy !== false) {
-              console.log(
-                `[Poller] Server ${server.name} is DOWN (${failCount} consecutive failures)`
-              );
+            if (wasDown) {
+              console.log(`[Poller] Server ${server.name} is back UP`);
               await enqueueNotification({
-                type: 'server_down',
+                type: 'server_up',
                 payload: { serverName: server.name, serverId: server.id },
               });
             }
+          } else {
+            const failCount = await cacheService.incrServerFailCount(server.id);
+
+            if (failCount >= POLLER_CONFIG.DOWN_THRESHOLD) {
+              await cacheService.setServerHealth(server.id, false);
+
+              if (wasHealthy !== false) {
+                console.log(
+                  `[Poller] Server ${server.name} is DOWN (${failCount} consecutive failures)`
+                );
+                await enqueueNotification({
+                  type: 'server_down',
+                  payload: { serverName: server.name, serverId: server.id },
+                });
+              }
+            }
           }
         }
-      }
 
-      allNewSessions.push(...newSessions);
-      allStoppedKeys.push(...stoppedSessionKeys);
-      allUpdatedSessions.push(...updatedSessions);
-      if (watchedTransitionOccurred) anyWatchedTransition = true;
+        allNewSessions.push(...newSessions);
+        allStoppedKeys.push(...stoppedSessionKeys);
+        allUpdatedSessions.push(...updatedSessions);
+        if (watchedTransitionOccurred) anyWatchedTransition = true;
+      } finally {
+        releaseServerLock(server.id);
+      }
     }
 
     await processPollResults({
@@ -1784,13 +1822,10 @@ export async function triggerPoll(): Promise<void> {
  */
 export async function triggerServerPoll(serverId: string): Promise<void> {
   if (isMaintenance()) return;
-
-  let guard = serverPollGuards.get(serverId);
-  if (!guard) {
-    guard = { running: false };
-    serverPollGuards.set(serverId, guard);
+  if (!acquireServerLock(serverId)) {
+    console.log(`[Poller] Skipping server poll for ${serverId}, already being processed`);
+    return;
   }
-  if (!acquireRunGuard(guard, `server poll for ${serverId}`)) return;
 
   try {
     const [server] = await db.select().from(servers).where(eq(servers.id, serverId));
@@ -1842,7 +1877,7 @@ export async function triggerServerPoll(serverId: string): Promise<void> {
       console.error(`[Poller] triggerServerPoll error for ${serverId}:`, error);
     }
   } finally {
-    guard.running = false;
+    releaseServerLock(serverId);
   }
 }
 
@@ -1906,17 +1941,29 @@ export async function triggerReconciliationPoll(): Promise<void> {
     // Process each SSE server and collect results
     for (const server of sseServers) {
       const serverWithToken = server as ServerWithToken;
-      const { newSessions, stoppedSessionKeys, updatedSessions, watchedTransitionOccurred } =
-        await processServerSessions(
-          serverWithToken,
-          activeRulesV2,
-          cachedSessionKeys,
-          cachedSessions
+
+      if (!acquireServerLock(server.id)) {
+        console.log(
+          `[Poller] Skipping reconciliation for ${server.name}, already being polled by another entry point`
         );
-      allNewSessions.push(...newSessions);
-      allStoppedKeys.push(...stoppedSessionKeys);
-      allUpdatedSessions.push(...updatedSessions);
-      if (watchedTransitionOccurred) anyWatchedTransition = true;
+        continue;
+      }
+
+      try {
+        const { newSessions, stoppedSessionKeys, updatedSessions, watchedTransitionOccurred } =
+          await processServerSessions(
+            serverWithToken,
+            activeRulesV2,
+            cachedSessionKeys,
+            cachedSessions
+          );
+        allNewSessions.push(...newSessions);
+        allStoppedKeys.push(...stoppedSessionKeys);
+        allUpdatedSessions.push(...updatedSessions);
+        if (watchedTransitionOccurred) anyWatchedTransition = true;
+      } finally {
+        releaseServerLock(server.id);
+      }
     }
 
     if (allNewSessions.length > 0 || allStoppedKeys.length > 0 || allUpdatedSessions.length > 0) {
