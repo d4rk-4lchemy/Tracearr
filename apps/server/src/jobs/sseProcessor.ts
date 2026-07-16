@@ -549,16 +549,32 @@ async function handleProgress(event: {
     }
 
     const watchedTransition = watched && !existingSession.watched;
+    let wasStoppedConcurrently = false;
     if (watchedTransition || shouldFlushDbWrite(existingSession.id, now.getTime())) {
-      await db
+      // Guarded by isNull(stoppedAt): a stop racing this write must not
+      // resurrect the session into the cache.
+      const updateResult = await db
         .update(sessions)
         .set({
           progressMs: notification.viewOffset,
           lastSeenAt: now, // Update for stale session detection
           watched,
         })
-        .where(eq(sessions.id, existingSession.id));
-      recordDbWrite(existingSession.id, now.getTime());
+        .where(and(eq(sessions.id, existingSession.id), isNull(sessions.stoppedAt)))
+        .returning({ id: sessions.id });
+
+      if (updateResult.length === 0) {
+        wasStoppedConcurrently = true;
+        console.log(
+          `[SSEProcessor] Session ${existingSession.id} already stopped, skipping progress resurrection`
+        );
+      } else {
+        recordDbWrite(existingSession.id, now.getTime());
+      }
+    }
+
+    if (wasStoppedConcurrently) {
+      return;
     }
 
     if (cacheService) {
@@ -1161,8 +1177,20 @@ async function updateExistingSession(
     Object.assign(updatePayload, pickStreamDetailFields(processed));
   }
 
-  // Update session in database
-  await db.update(sessions).set(updatePayload).where(eq(sessions.id, existingSession.id));
+  // Update session in database. Guarded by isNull(stoppedAt): a stop racing
+  // this write must not resurrect the session into the cache.
+  const updateResult = await db
+    .update(sessions)
+    .set(updatePayload)
+    .where(and(eq(sessions.id, existingSession.id), isNull(sessions.stoppedAt)))
+    .returning({ id: sessions.id });
+
+  if (updateResult.length === 0) {
+    console.log(
+      `[SSEProcessor] Session ${existingSession.id} already stopped, skipping resurrection`
+    );
+    return;
+  }
 
   // Re-evaluate transcode-related V2 rules when transcode state changes.
   // At session creation (especially via SSE), transcode state may not be known yet,

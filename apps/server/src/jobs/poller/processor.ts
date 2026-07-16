@@ -831,25 +831,35 @@ async function processServerSessions(
         if ('rediscovered' in createResult && createResult.rediscovered) {
           const existing = createResult.rediscovered;
           try {
-            // Update lastSeenAt so sweepStaleSessions doesn't kill it
-            await db
+            // Update lastSeenAt so sweepStaleSessions doesn't kill it.
+            // Guarded by isNull(stoppedAt): a stop racing this touch must not
+            // resurrect the session into the cache.
+            const touchResult = await db
               .update(sessions)
               .set({ lastSeenAt: new Date() })
-              .where(eq(sessions.id, existing.id));
-            const activeSession = buildActiveSession({
-              session: existing,
-              processed,
-              user: userDetail,
-              geo,
-              server,
-              overrides: {
-                state: processed.state,
-                lastPausedAt: existing.lastPausedAt,
-                pausedDurationMs: existing.pausedDurationMs ?? 0,
-                watched: existing.watched ?? false,
-              },
-            });
-            updatedSessions.push(activeSession);
+              .where(and(eq(sessions.id, existing.id), isNull(sessions.stoppedAt)))
+              .returning({ id: sessions.id });
+
+            if (touchResult.length === 0) {
+              console.log(
+                `[Poller] Rediscovered session ${existing.id} already stopped, skipping resurrection`
+              );
+            } else {
+              const activeSession = buildActiveSession({
+                session: existing,
+                processed,
+                user: userDetail,
+                geo,
+                server,
+                overrides: {
+                  state: processed.state,
+                  lastPausedAt: existing.lastPausedAt,
+                  pausedDurationMs: existing.pausedDurationMs ?? 0,
+                  watched: existing.watched ?? false,
+                },
+              });
+              updatedSessions.push(activeSession);
+            }
           } catch (err) {
             console.error(`[Poller] Failed to recover rediscovered session ${existing.id}:`, err);
           }
@@ -1264,9 +1274,28 @@ async function processServerSessions(
         const hasChanges = shouldWriteToDb(existingSession, processed, watchedThresholdReached);
         const flushElapsed = shouldFlushDbWrite(existingSession.id, now.getTime());
 
+        // Guarded by isNull(stoppedAt): a stop racing this write must not
+        // resurrect the session into updatedSessions/cache.
+        let wasStoppedConcurrently = false;
         if (hasChanges || flushElapsed) {
-          await db.update(sessions).set(updatePayload).where(eq(sessions.id, existingSession.id));
-          recordDbWrite(existingSession.id, now.getTime());
+          const updateResult = await db
+            .update(sessions)
+            .set(updatePayload)
+            .where(and(eq(sessions.id, existingSession.id), isNull(sessions.stoppedAt)))
+            .returning({ id: sessions.id });
+
+          if (updateResult.length === 0) {
+            wasStoppedConcurrently = true;
+            console.log(
+              `[Poller] Session ${existingSession.id} already stopped, skipping resurrection`
+            );
+          } else {
+            recordDbWrite(existingSession.id, now.getTime());
+          }
+        }
+
+        if (wasStoppedConcurrently) {
+          continue;
         }
 
         if (newState === 'paused' && activeRulesV2.length > 0) {

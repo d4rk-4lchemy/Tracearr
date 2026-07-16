@@ -148,8 +148,9 @@ const mockPubSubService = {
   subscribe: vi.fn(),
 };
 
-function setupDbUpdateMock() {
-  const whereFn = vi.fn().mockResolvedValue(undefined);
+function setupDbUpdateMock(returning: unknown[] = [{ id: mockExistingSession.id }]) {
+  const returningFn = vi.fn().mockResolvedValue(returning);
+  const whereFn = vi.fn().mockReturnValue({ returning: returningFn });
   const setFn = vi.fn().mockReturnValue({ where: whereFn });
   mockDb.update.mockReturnValue({ set: setFn });
   return setFn;
@@ -217,5 +218,23 @@ describe('SSE Processor - Progress Event DB Write Throttling', () => {
       'session:updated',
       expect.objectContaining({ watched: true })
     );
+  });
+
+  it('does not resurrect the session in cache when a stop races the progress write', async () => {
+    // Simulate an SSE stop landing between the batch read and this write:
+    // the update's liveness guard matches zero rows.
+    setupDbUpdateMock([]);
+
+    mockSseManager.emit('plex:session:progress', {
+      serverId: SERVER_ID,
+      notification: { sessionKey: mockExistingSession.sessionKey, viewOffset: 10_000 },
+    });
+    await vi.waitFor(() => {
+      expect(mockDb.update).toHaveBeenCalledTimes(1);
+    });
+    // Give the update's zero-row branch a chance to run before asserting the negative.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockCacheService.updateActiveSession).not.toHaveBeenCalled();
   });
 });
