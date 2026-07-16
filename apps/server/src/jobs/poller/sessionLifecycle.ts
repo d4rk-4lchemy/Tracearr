@@ -825,9 +825,15 @@ export async function createSessionWithRulesAtomic(
             identityName: serverUser.identityName,
           };
 
-          const activeSessionsWithNew = activeSessions.some((s) => s.id === session.id)
-            ? activeSessions
-            : [...activeSessions, session];
+          // The quality-change twin was stopped in STEP 1 but still sits in the
+          // caller's cache snapshot; counting it doubles this viewer.
+          const stoppedTwinId = qualityChange?.stoppedSession.id;
+          const countableSessions = stoppedTwinId
+            ? activeSessions.filter((s) => s.id !== stoppedTwinId)
+            : activeSessions;
+          const activeSessionsWithNew = countableSessions.some((s) => s.id === session.id)
+            ? countableSessions
+            : [...countableSessions, session];
 
           const baseContext: Omit<EvaluationContext, 'rule'> = {
             session,
@@ -1229,7 +1235,9 @@ export async function handleMediaChangeAtomic(
       serverUser,
       geo,
       activeRulesV2,
-      activeSessions,
+      // The old-media session was stopped above; the caller's snapshot
+      // predates that stop.
+      activeSessions: activeSessions.filter((s) => s.id !== existingSession.id),
       recentSessions,
     });
 
