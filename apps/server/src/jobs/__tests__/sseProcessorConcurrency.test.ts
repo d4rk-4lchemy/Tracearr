@@ -113,7 +113,6 @@ vi.mock('../poller/stateTracker.js', () => ({
   detectMediaChange: vi.fn().mockReturnValue(false),
   isPlaybackConfirmed: vi.fn().mockReturnValue(false),
   createInitialConfirmationState: vi.fn().mockReturnValue({
-    rulesEvaluated: false,
     confirmedPlayback: false,
     firstSeenAt: Date.now(),
     maxViewOffset: 0,

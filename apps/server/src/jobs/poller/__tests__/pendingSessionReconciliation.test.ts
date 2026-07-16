@@ -148,7 +148,6 @@ function createPendingSessionData(): PendingSessionData {
   return {
     id: 'pending-uuid-123',
     confirmation: {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: now - 31000,
       maxViewOffset: 31000,

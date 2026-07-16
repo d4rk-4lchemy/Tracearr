@@ -15,7 +15,6 @@ function createPendingSession(overrides: Partial<PendingSessionData> = {}): Pend
   return {
     id: 'test-uuid-123',
     confirmation: {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: now,
       maxViewOffset: 0,

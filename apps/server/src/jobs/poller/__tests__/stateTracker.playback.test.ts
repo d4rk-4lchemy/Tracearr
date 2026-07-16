@@ -8,7 +8,6 @@ import { PLAYBACK_CONFIRM_THRESHOLD_MS } from '../types.js';
 
 describe('isPlaybackConfirmed', () => {
   const baseState = {
-    rulesEvaluated: false,
     confirmedPlayback: false,
     firstSeenAt: Date.now(),
     maxViewOffset: 0,
@@ -86,7 +85,6 @@ describe('createInitialConfirmationState', () => {
     const now = Date.now();
     const state = createInitialConfirmationState(now);
     expect(state).toEqual({
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: now,
       maxViewOffset: 0,
@@ -98,7 +96,6 @@ describe('createInitialConfirmationState', () => {
 describe('updateConfirmationState', () => {
   it('updates maxViewOffset when higher', () => {
     const state = {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: Date.now(),
       maxViewOffset: 1000,
@@ -110,7 +107,6 @@ describe('updateConfirmationState', () => {
 
   it('does not decrease maxViewOffset', () => {
     const state = {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: Date.now(),
       maxViewOffset: 5000,
@@ -122,7 +118,6 @@ describe('updateConfirmationState', () => {
 
   it('sets initialViewOffset from the first observed offset', () => {
     const state = {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: Date.now(),
       maxViewOffset: 0,
@@ -134,7 +129,6 @@ describe('updateConfirmationState', () => {
 
   it('does not overwrite initialViewOffset once set', () => {
     const state = {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: Date.now(),
       maxViewOffset: 92_000,

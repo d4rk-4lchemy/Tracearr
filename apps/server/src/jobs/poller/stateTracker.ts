@@ -400,7 +400,6 @@ export function isPlaybackConfirmed(
  */
 export function createInitialConfirmationState(now: number): PlaybackConfirmationState {
   return {
-    rulesEvaluated: false,
     confirmedPlayback: false,
     firstSeenAt: now,
     maxViewOffset: 0,

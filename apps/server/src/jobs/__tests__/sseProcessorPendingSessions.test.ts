@@ -57,7 +57,6 @@ const {
     })),
     mockIsPlaybackConfirmed: vi.fn().mockReturnValue(false),
     mockCreateInitialConfirmationState: vi.fn().mockReturnValue({
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: Date.now(),
       maxViewOffset: 0,
@@ -213,7 +212,6 @@ function createMockPendingSession(overrides: Partial<PendingSessionData> = {}): 
   const baseSession = {
     id: randomUUID(),
     confirmation: {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: now,
       maxViewOffset: 0,
@@ -415,7 +413,6 @@ describe('SSE Processor - Pending Session Flow', () => {
     it('persists a pending session with >= 15s of observed progress instead of discarding it', async () => {
       const pendingSession = createMockPendingSession({
         confirmation: {
-          rulesEvaluated: false,
           confirmedPlayback: false,
           firstSeenAt: Date.now(),
           maxViewOffset: 20000,
@@ -478,7 +475,6 @@ describe('SSE Processor - Pending Session Flow', () => {
     it('stops the concurrently-persisted row when confirmPendingSessionAndPersist loses the create-lock race', async () => {
       const pendingSession = createMockPendingSession({
         confirmation: {
-          rulesEvaluated: false,
           confirmedPlayback: false,
           firstSeenAt: Date.now(),
           maxViewOffset: 20000,
@@ -530,7 +526,6 @@ describe('SSE Processor - Pending Session Flow', () => {
     it('discards a pending session with < 15s of observed progress when stopped', async () => {
       const pendingSession = createMockPendingSession({
         confirmation: {
-          rulesEvaluated: false,
           confirmedPlayback: false,
           firstSeenAt: Date.now(),
           maxViewOffset: 10000,

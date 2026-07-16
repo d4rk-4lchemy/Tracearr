@@ -243,8 +243,6 @@ export const PENDING_STOP_PERSIST_MIN_PROGRESS_MS = 15_000;
  * Tracking data for playback confirmation (stored in Redis session state)
  */
 export interface PlaybackConfirmationState {
-  /** Have rules been evaluated for this session? */
-  rulesEvaluated: boolean;
   /** Has playback been confirmed? */
   confirmedPlayback: boolean;
   /** Timestamp when session first appeared (for duration-based confirmation) */
