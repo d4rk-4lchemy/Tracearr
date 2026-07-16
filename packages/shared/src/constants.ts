@@ -263,7 +263,9 @@ export const REDIS_KEYS = {
 // Cache TTLs in seconds
 export const CACHE_TTL = {
   DASHBOARD_STATS: 60,
-  ACTIVE_SESSIONS: 30, // 30 seconds - lowered from 300
+  // Must exceed several SSE reconciliation intervals (30s): paused Plex sessions emit no events,
+  // and an expiring entry hides the session from the dashboard and from concurrent-stream limits.
+  ACTIVE_SESSIONS: 150,
   PENDING_SESSIONS: 300, // 5 minutes - pending sessions need longer TTL for pause scenarios
   USER_SESSIONS: 3600,
   RATE_LIMIT: 900,

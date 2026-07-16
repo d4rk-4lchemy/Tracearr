@@ -13,6 +13,7 @@
  * - Pub/sub message routing
  */
 
+import { CACHE_TTL, POLLING_INTERVALS } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -310,7 +311,7 @@ describe('CacheService', () => {
       expect(result).toEqual(sessions);
       expect(redis.setex).toHaveBeenCalledWith(
         'tracearr:sessions:active',
-        30, // CACHE_TTL.ACTIVE_SESSIONS
+        150, // CACHE_TTL.ACTIVE_SESSIONS
         expect.any(String)
       );
     });
@@ -820,6 +821,30 @@ describe('CacheService', () => {
 
     it('should not fail when no changes', async () => {
       await expect(cache.incrementalSyncActiveSessions([], [], [])).resolves.not.toThrow();
+    });
+
+    it('refreshes the TTL of a present-but-unchanged session', async () => {
+      // Paused Plex sessions emit no SSE events, so the reconciliation pass is the
+      // only thing keeping their cache entry alive. It passes every session in the
+      // poll response through the `updated` array regardless of whether anything
+      // changed, so that pass must still be a setex (not a no-op) for this session.
+      const session = createTestActiveSession('session-1');
+      await cache.addActiveSession(session);
+
+      const key = 'tracearr:sessions:session-1';
+      redis.ttls.set(key, 1); // simulate a nearly-expired entry
+
+      await cache.incrementalSyncActiveSessions([], [], [session]);
+
+      expect(redis.ttls.get(key)).toBe(CACHE_TTL.ACTIVE_SESSIONS);
+    });
+  });
+
+  describe('ACTIVE_SESSIONS TTL vs reconciliation interval', () => {
+    it('gives at least 4 reconciliation cycles of headroom before a present session could expire', () => {
+      const reconciliationIntervalSeconds = POLLING_INTERVALS.SSE_RECONCILIATION / 1000;
+
+      expect(CACHE_TTL.ACTIVE_SESSIONS).toBeGreaterThanOrEqual(4 * reconciliationIntervalSeconds);
     });
   });
 
