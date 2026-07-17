@@ -355,10 +355,12 @@ async function handlePlaying(event: {
 
     const { session, server } = result;
 
+    // Look up by sessionKey alone. Passing the incoming ratingKey would filter
+    // out the still-active old row on a real media change (same sessionKey, new
+    // ratingKey), leaving detectMediaChange below unreachable.
     const existingSession = await findActiveSession({
       serverId,
       sessionKey: notification.sessionKey,
-      ratingKey: session.ratingKey,
     });
 
     if (existingSession) {

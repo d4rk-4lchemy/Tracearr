@@ -1,9 +1,12 @@
 /**
  * SSE Processor Tests - Media Change Detection
  *
- * Tests that the SSE processor correctly detects when Plex reuses a sessionKey
- * with a different ratingKey (e.g., auto-play next episode) and atomically
- * stops the old session + creates a new one.
+ * A real Plex "play next episode" reuses the sessionKey with a new ratingKey.
+ * handlePlaying must derive the existing row by sessionKey alone and let the
+ * real detectMediaChange route it through handleMediaChangeAtomic. These use
+ * the real detectMediaChange and a faithful DB-shaped findActiveSession stub
+ * (null when a non-null incoming ratingKey does not match the row), so they
+ * fail against a build that still filters the lookup by the incoming ratingKey.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -24,7 +27,6 @@ const {
   mockFindActiveSession,
   mockHandleMediaChangeAtomic,
   mockBuildActiveSession,
-  mockDetectMediaChange,
   mockGetActiveRulesV2,
   mockBatchGetRecentUserSessions,
   mockBroadcastViolations,
@@ -41,7 +43,6 @@ const {
     mockFindActiveSession: vi.fn(),
     mockHandleMediaChangeAtomic: vi.fn(),
     mockBuildActiveSession: vi.fn(),
-    mockDetectMediaChange: vi.fn(),
     mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
     mockBatchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
     mockBroadcastViolations: vi.fn(),
@@ -97,19 +98,23 @@ vi.mock('../poller/sessionMapper.js', () => ({
   mapMediaSession: vi.fn((session: unknown) => session),
 }));
 
-vi.mock('../poller/stateTracker.js', () => ({
-  calculatePauseAccumulation: vi.fn(),
-  checkWatchCompletion: vi.fn(),
-  detectMediaChange: mockDetectMediaChange,
-  // Playback confirmation functions for delayed rule evaluation
-  isPlaybackConfirmed: vi.fn().mockReturnValue(false),
-  createInitialConfirmationState: vi.fn().mockReturnValue({
-    confirmedPlayback: false,
-    firstSeenAt: Date.now(),
-    maxViewOffset: 0,
-  }),
-  updateConfirmationState: vi.fn().mockImplementation((state) => state),
-}));
+// detectMediaChange is left real so the media-change decision is exercised, not
+// pre-forced. Only the pure-state helpers are stubbed.
+vi.mock('../poller/stateTracker.js', async () => {
+  const actual = await vi.importActual<typeof StateTrackerModule>('../poller/stateTracker.js');
+  return {
+    ...actual,
+    calculatePauseAccumulation: vi.fn(),
+    checkWatchCompletion: vi.fn(),
+    isPlaybackConfirmed: vi.fn().mockReturnValue(false),
+    createInitialConfirmationState: vi.fn().mockReturnValue({
+      confirmedPlayback: false,
+      firstSeenAt: Date.now(),
+      maxViewOffset: 0,
+    }),
+    updateConfirmationState: vi.fn().mockImplementation((state) => state),
+  };
+});
 
 vi.mock('../poller/database.js', () => ({
   getActiveRulesV2: mockGetActiveRulesV2,
@@ -147,6 +152,7 @@ vi.mock('../poller/sessionLifecycle.js', async () => {
 
 import { initializeSSEProcessor, startSSEProcessor, stopSSEProcessor } from '../sseProcessor.js';
 import type * as SessionLifecycleModule from '../poller/sessionLifecycle.js';
+import type * as StateTrackerModule from '../poller/stateTracker.js';
 
 // ============================================================================
 // Test fixtures
@@ -169,6 +175,7 @@ const mockExistingSession = {
   sessionKey: '42',
   ratingKey: '1001', // Episode 1
   state: 'playing' as const,
+  mediaType: 'episode' as const,
   startedAt: new Date('2026-01-01'),
   lastPausedAt: null,
   pausedDurationMs: 0,
@@ -278,6 +285,21 @@ const mockPubSubService = {
 // ============================================================================
 
 /**
+ * Faithful DB-shaped stub for findActiveSession: a same-sessionKey lookup
+ * returns the row; adding a non-null incoming ratingKey that differs from the
+ * row returns null (exactly what the real query does). handlePlaying passing
+ * the incoming ratingKey here is the bug under test.
+ */
+function stubFaithfulFindActiveSession(row: { ratingKey: string | null }) {
+  mockFindActiveSession.mockImplementation(async (identity: { ratingKey?: string | null }) => {
+    if (identity.ratingKey != null && identity.ratingKey !== row.ratingKey) {
+      return null;
+    }
+    return row;
+  });
+}
+
+/**
  * Set up mocks for fetchFullSession to return a valid session + server
  */
 function setupFetchFullSession(processed: Record<string, unknown> = mockProcessedSession) {
@@ -348,10 +370,9 @@ describe('SSE Processor - Media Change Detection', () => {
     clearDbWriteTracking('twin-session-1');
   });
 
-  it('should detect media change and stop old session + create new', async () => {
+  it('routes a real next-episode transition (same sessionKey, new ratingKey) through handleMediaChangeAtomic', async () => {
     setupServerUserQuery();
-    mockFindActiveSession.mockResolvedValue(mockExistingSession);
-    mockDetectMediaChange.mockReturnValue(true);
+    stubFaithfulFindActiveSession(mockExistingSession);
     mockHandleMediaChangeAtomic.mockResolvedValue({
       stoppedSession: {
         id: 'session-old',
@@ -368,10 +389,17 @@ describe('SSE Processor - Media Change Detection', () => {
       notification: { sessionKey: '42', viewOffset: 0 },
     });
 
-    // Allow async handlers to complete
     await vi.waitFor(() => {
       expect(mockHandleMediaChangeAtomic).toHaveBeenCalledTimes(1);
     });
+
+    const input = mockHandleMediaChangeAtomic.mock.calls[0]![0] as {
+      existingSession: { id: string; ratingKey: string };
+      processed: { ratingKey: string };
+    };
+    expect(input.existingSession.id).toBe('session-old');
+    expect(input.existingSession.ratingKey).toBe('1001');
+    expect(input.processed.ratingKey).toBe('1002');
 
     // Should have stopped old session in cache
     expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith('session-old');
@@ -393,29 +421,29 @@ describe('SSE Processor - Media Change Detection', () => {
     });
   });
 
-  it('should not trigger media change for same ratingKey', async () => {
-    setupFetchFullSession();
-    mockFindActiveSession.mockResolvedValue(mockExistingSession);
-    mockDetectMediaChange.mockReturnValue(false);
+  it('does not trigger media change for same ratingKey', async () => {
+    const sameKeyProcessed = { ...mockProcessedSession, ratingKey: '1001' };
+    setupFetchFullSession(sameKeyProcessed);
+    stubFaithfulFindActiveSession(mockExistingSession);
 
     mockSseManager.emit('plex:session:playing', {
       serverId: SERVER_ID,
       notification: { sessionKey: '42', viewOffset: 5000 },
     });
 
-    // Allow async handlers to complete
+    // updateExistingSession is reached and touches the stubbed pause helper;
+    // wait on the lookup so the handler has run past the decision point.
     await vi.waitFor(() => {
-      expect(mockDetectMediaChange).toHaveBeenCalledTimes(1);
+      expect(mockFindActiveSession).toHaveBeenCalled();
     });
 
     expect(mockHandleMediaChangeAtomic).not.toHaveBeenCalled();
   });
 
-  it('should handle null ratingKeys gracefully (no false positive)', async () => {
+  it('handles null ratingKeys gracefully (no false positive)', async () => {
     const sessionWithNullRating = { ...mockExistingSession, ratingKey: null };
     setupFetchFullSession({ ...mockProcessedSession, ratingKey: null });
-    mockFindActiveSession.mockResolvedValue(sessionWithNullRating);
-    mockDetectMediaChange.mockReturnValue(false); // detectMediaChange returns false for null keys
+    stubFaithfulFindActiveSession(sessionWithNullRating);
 
     mockSseManager.emit('plex:session:playing', {
       serverId: SERVER_ID,
@@ -423,16 +451,15 @@ describe('SSE Processor - Media Change Detection', () => {
     });
 
     await vi.waitFor(() => {
-      expect(mockDetectMediaChange).toHaveBeenCalledWith(null, null, undefined, undefined);
+      expect(mockFindActiveSession).toHaveBeenCalled();
     });
 
     expect(mockHandleMediaChangeAtomic).not.toHaveBeenCalled();
   });
 
-  it('should update cache and broadcast for both old and new sessions', async () => {
+  it('updates cache and broadcasts for both old and new sessions', async () => {
     setupServerUserQuery();
-    mockFindActiveSession.mockResolvedValue(mockExistingSession);
-    mockDetectMediaChange.mockReturnValue(true);
+    stubFaithfulFindActiveSession(mockExistingSession);
     mockHandleMediaChangeAtomic.mockResolvedValue({
       stoppedSession: {
         id: 'session-old',
@@ -465,14 +492,13 @@ describe('SSE Processor - Media Change Detection', () => {
     expect(stoppedIdx).toBeLessThan(startedIdx);
   });
 
-  it('should evaluate rules on the new session and broadcast violations', async () => {
+  it('evaluates rules on the new session and broadcasts violations', async () => {
     const mockViolations = [
       { type: 'concurrent_streams', ruleId: 'rule-1', sessionId: 'session-new' },
     ];
 
     setupServerUserQuery();
-    mockFindActiveSession.mockResolvedValue(mockExistingSession);
-    mockDetectMediaChange.mockReturnValue(true);
+    stubFaithfulFindActiveSession(mockExistingSession);
     mockHandleMediaChangeAtomic.mockResolvedValue({
       stoppedSession: {
         id: 'session-old',
@@ -500,10 +526,9 @@ describe('SSE Processor - Media Change Detection', () => {
     );
   });
 
-  it('should handle null result from handleMediaChangeAtomic (race condition)', async () => {
+  it('handles null result from handleMediaChangeAtomic (race condition)', async () => {
     setupServerUserQuery();
-    mockFindActiveSession.mockResolvedValue(mockExistingSession);
-    mockDetectMediaChange.mockReturnValue(true);
+    stubFaithfulFindActiveSession(mockExistingSession);
     mockHandleMediaChangeAtomic.mockResolvedValue(null);
 
     mockSseManager.emit('plex:session:playing', {
@@ -527,8 +552,7 @@ describe('SSE Processor - Media Change Detection', () => {
     expect(shouldFlushDbWrite(twinId, Date.now())).toBe(false);
 
     setupServerUserQuery();
-    mockFindActiveSession.mockResolvedValue(mockExistingSession);
-    mockDetectMediaChange.mockReturnValue(true);
+    stubFaithfulFindActiveSession(mockExistingSession);
     mockHandleMediaChangeAtomic.mockResolvedValue({
       stoppedSession: {
         id: 'session-old',

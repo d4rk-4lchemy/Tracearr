@@ -1087,12 +1087,14 @@ async function processServerSessions(
             }
           }
 
-          // Get existing ACTIVE session to check for state changes
+          // Get existing ACTIVE session to check for state changes. Plex: match
+          // by sessionKey alone (most recent active row). Filtering by the
+          // incoming ratingKey here would drop the still-active old row on a
+          // real media change (same sessionKey, new ratingKey) and leave the
+          // detectMediaChange branch below unreachable.
           const existingSession =
             server.type === 'plex'
-              ? ((plexActiveBatch.get(processed.sessionKey) ?? []).find(
-                  (r) => processed.ratingKey == null || r.ratingKey === processed.ratingKey
-                ) ?? null)
+              ? (plexActiveBatch.get(processed.sessionKey)?.[0] ?? null)
               : ((
                   compositeActiveBatch.get(`${userDetail.id}::${processed.ratingKey ?? ''}`) ?? []
                 ).find((r) =>
