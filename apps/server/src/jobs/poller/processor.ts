@@ -263,7 +263,6 @@ async function sweepGracePeriod(
       // dashboard before the grace period confirms the session really ended.
       if (cacheService) {
         await cacheService.removeActiveSession(snapshot.id);
-        await cacheService.removeUserSession(snapshot.serverUserId, snapshot.id);
       }
       if (pubSubService) {
         await pubSubService.publish('session:stopped', snapshot.id);
@@ -846,10 +845,6 @@ async function processServerSessions(
 
                 if (cacheService) {
                   await cacheService.removeActiveSession(stoppedSession.id);
-                  await cacheService.removeUserSession(
-                    stoppedSession.serverUserId,
-                    stoppedSession.id
-                  );
                 }
 
                 if (pubSubService) {
@@ -1184,10 +1179,6 @@ async function processServerSessions(
               clearDbWriteTracking(stoppedSession.id);
               if (cacheService) {
                 await cacheService.removeActiveSession(stoppedSession.id);
-                await cacheService.removeUserSession(
-                  stoppedSession.serverUserId,
-                  stoppedSession.id
-                );
               }
               if (pubSubService) {
                 await pubSubService.publish('session:stopped', stoppedSession.id);
@@ -1722,7 +1713,6 @@ export async function sweepStaleSessions(): Promise<number> {
 
       if (cacheService) {
         await cacheService.removeActiveSession(staleSession.id);
-        await cacheService.removeUserSession(staleSession.serverUserId, staleSession.id);
       }
 
       if (pubSubService) {

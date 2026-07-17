@@ -195,11 +195,15 @@ export async function cleanupOrphanedPendingSessions(): Promise<void> {
         // Remove from all caches
         await cacheService.deletePendingSession(serverId, sessionKey);
         await cacheService.removeActiveSession(pendingData.id);
-        await cacheService.removeUserSession(pendingData.serverUser.id, pendingData.id);
 
         console.log(
           `[SSEProcessor] Cleaned up orphaned session ${sessionKey} (${pendingData.processed.mediaTitle})`
         );
+      } else {
+        // Hash already expired: this member is a zombie left behind in
+        // PENDING_SESSION_IDS. deletePendingSession's del is a no-op here;
+        // its srem is what actually clears it.
+        await cacheService.deletePendingSession(serverId, sessionKey);
       }
     }
 
@@ -626,13 +630,21 @@ export async function sweepOrphanedPendingSessions(cache?: CacheService | null):
   const pendingKeys = await svc.getAllPendingSessionKeys();
   const now = Date.now();
   let sweptCount = 0;
+  let zombieCount = 0;
 
   for (const { serverId, sessionKey } of pendingKeys) {
     const pendingData = await svc.getPendingSession(serverId, sessionKey);
-    if (pendingData && now - pendingData.lastSeenAt > ORPHAN_THRESHOLD_MS) {
+    if (!pendingData) {
+      // Hash already expired: this member is a zombie left behind in
+      // PENDING_SESSION_IDS. deletePendingSession's del is a no-op here;
+      // its srem is what actually clears it.
+      await svc.deletePendingSession(serverId, sessionKey);
+      zombieCount++;
+      continue;
+    }
+    if (now - pendingData.lastSeenAt > ORPHAN_THRESHOLD_MS) {
       await svc.deletePendingSession(serverId, sessionKey);
       await svc.removeActiveSession(pendingData.id);
-      await svc.removeUserSession(pendingData.serverUser.id, pendingData.id);
 
       if (pubSubService) {
         await pubSubService.publish('session:stopped', pendingData.id);
@@ -640,6 +652,10 @@ export async function sweepOrphanedPendingSessions(cache?: CacheService | null):
 
       sweptCount++;
     }
+  }
+
+  if (zombieCount > 0) {
+    console.log(`[SSEProcessor] Cleared ${zombieCount} zombie pending-session set member(s)`);
   }
 
   if (sweptCount > 0) {
@@ -990,7 +1006,6 @@ async function createNewSession(
 
   // Add to active sessions cache so Now Playing shows it immediately
   await cache.addActiveSession(activeSession);
-  await cache.addUserSession(userDetail.id, activeSession.id);
 
   // Broadcast session:started immediately for real-time UI updates
   // Note: Rules are NOT evaluated yet - that happens after confirmation
@@ -1077,7 +1092,6 @@ async function handleMediaChange(
 
   // Update cache for stopped session
   await cacheService.removeActiveSession(stoppedSession.id);
-  await cacheService.removeUserSession(stoppedSession.serverUserId, stoppedSession.id);
 
   if (pubSubService) {
     await pubSubService.publish('session:stopped', stoppedSession.id);
@@ -1106,7 +1120,6 @@ async function handleMediaChange(
   });
 
   await cacheService.addActiveSession(activeSession);
-  await cacheService.addUserSession(serverUser.id, insertedSession.id);
 
   if (pubSubService) {
     await pubSubService.publish('session:started', activeSession);
@@ -1410,7 +1423,6 @@ async function discardPendingSession(
   // Clean up from all caches
   await cacheService.deletePendingSession(serverId, sessionKey);
   await cacheService.removeActiveSession(sessionId);
-  await cacheService.removeUserSession(pendingData.serverUser.id, sessionId);
 
   // Broadcast session:stopped so UI removes it
   if (pubSubService) {
@@ -1588,10 +1600,6 @@ async function confirmPendingSessionAndPersist(
   if (qualityChange) {
     clearDbWriteTracking(qualityChange.stoppedSession.id);
     await cache.removeActiveSession(qualityChange.stoppedSession.id);
-    await cache.removeUserSession(
-      qualityChange.stoppedSession.serverUserId,
-      qualityChange.stoppedSession.id
-    );
     if (pubSubService) {
       await pubSubService.publish('session:stopped', qualityChange.stoppedSession.id);
     }
@@ -1611,7 +1619,6 @@ async function confirmPendingSessionAndPersist(
   // publish it a second time.
   if (wasTerminatedByRule) {
     await cache.removeActiveSession(sessionId);
-    await cache.removeUserSession(pendingData.serverUser.id, sessionId);
 
     console.log(
       `[SSEProcessor] Confirmed session ${sessionId} was terminated by rule, removed from cache`
@@ -1669,7 +1676,6 @@ async function stopSession(existingSession: typeof sessions.$inferSelect): Promi
 
   if (cacheService) {
     await cacheService.removeActiveSession(existingSession.id);
-    await cacheService.removeUserSession(existingSession.serverUserId, existingSession.id);
   }
 
   if (pubSubService) {

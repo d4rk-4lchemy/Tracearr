@@ -1316,8 +1316,6 @@ export interface PollResultsInput {
       updatedSessions: ActiveSession[],
       watchedTransitionOccurred?: boolean
     ) => Promise<void>;
-    addUserSession: (userId: string, sessionId: string) => Promise<void>;
-    removeUserSession: (userId: string, sessionId: string) => Promise<void>;
   } | null;
   /** PubSub service for broadcasting */
   pubSubService: {
@@ -1374,19 +1372,6 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
       updatedSessions,
       watchedTransitionOccurred
     );
-
-    // Update user session sets for new sessions
-    for (const session of newSessions) {
-      await cacheService.addUserSession(session.serverUserId, session.id);
-    }
-
-    // Remove stopped sessions from user session sets
-    for (const key of stoppedKeys) {
-      const stoppedSession = findStoppedSession(key, cachedSessions);
-      if (stoppedSession) {
-        await cacheService.removeUserSession(stoppedSession.serverUserId, stoppedSession.id);
-      }
-    }
   }
 
   // Publish events via pub/sub

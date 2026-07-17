@@ -38,11 +38,6 @@ export interface CacheService {
   setSessionById(id: string, session: ActiveSession): Promise<void>;
   deleteSessionById(id: string): Promise<void>;
 
-  // User sessions
-  getUserSessions(userId: string): Promise<string[] | null>;
-  addUserSession(userId: string, sessionId: string): Promise<void>;
-  removeUserSession(userId: string, sessionId: string): Promise<void>;
-
   // Server health tracking
   getServerHealth(serverId: string): Promise<boolean | null>;
   setServerHealth(serverId: string, isHealthy: boolean): Promise<void>;
@@ -111,6 +106,17 @@ export interface CacheService {
 
   // Health check
   ping(): Promise<boolean>;
+}
+
+// Compare-and-delete: releasing a token-guarded lock after it expired must
+// not free a lock some other holder has since acquired.
+async function releaseLockIfHeld(redis: Redis, lockKey: string, token: string): Promise<void> {
+  await redis.eval(
+    `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`,
+    1,
+    lockKey,
+    token
+  );
 }
 
 export function createCacheService(redis: Redis): CacheService {
@@ -251,7 +257,6 @@ export function createCacheService(redis: Redis): CacheService {
       );
       // Refresh SET TTL to match session data TTL
       pipeline.expire(REDIS_KEYS.ACTIVE_SESSION_IDS, CACHE_TTL.ACTIVE_SESSIONS);
-      pipeline.expire(REDIS_KEYS.USER_SESSIONS(session.serverUserId), CACHE_TTL.USER_SESSIONS);
       const results = await pipeline.exec();
       if (!results || results.some(([err]) => err !== null)) {
         console.error('[Cache] updateActiveSession pipeline failed:', results);
@@ -388,23 +393,6 @@ export function createCacheService(redis: Redis): CacheService {
       await redis.del(REDIS_KEYS.SESSION_BY_ID(id));
     },
 
-    // User sessions (set of session IDs for a user)
-    async getUserSessions(userId: string): Promise<string[] | null> {
-      const data = await redis.smembers(REDIS_KEYS.USER_SESSIONS(userId));
-      if (!data || data.length === 0) return null;
-      return data;
-    },
-
-    async addUserSession(userId: string, sessionId: string): Promise<void> {
-      const key = REDIS_KEYS.USER_SESSIONS(userId);
-      await redis.sadd(key, sessionId);
-      await redis.expire(key, CACHE_TTL.USER_SESSIONS);
-    },
-
-    async removeUserSession(userId: string, sessionId: string): Promise<void> {
-      await redis.srem(REDIS_KEYS.USER_SESSIONS(userId), sessionId);
-    },
-
     // Server health tracking
     async getServerHealth(serverId: string): Promise<boolean | null> {
       const data = await redis.get(REDIS_KEYS.SERVER_HEALTH(serverId));
@@ -474,14 +462,7 @@ export function createCacheService(redis: Redis): CacheService {
       try {
         return await operation();
       } finally {
-        // Compare-and-delete: releasing after expiry must not free a lock some
-        // other worker now holds.
-        await redis.eval(
-          `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`,
-          1,
-          lockKey,
-          token
-        );
+        await releaseLockIfHeld(redis, lockKey, token);
       }
     },
 
@@ -598,13 +579,14 @@ export function createCacheService(redis: Redis): CacheService {
       stopData: { stoppedAt: number; forceStopped: boolean }
     ): Promise<void> {
       const key = REDIS_KEYS.SESSION_WRITE_RETRY(sessionId);
-      await redis.hset(key, {
-        attempts: '1',
-        stopData: JSON.stringify(stopData),
-      });
+      // hsetnx: a re-add for a session already queued must not reset its
+      // attempt count back to 1, or MAX_TOTAL_ATTEMPTS never triggers.
+      await redis.hsetnx(key, 'attempts', '1');
+      await redis.hset(key, 'stopData', JSON.stringify(stopData));
       await redis.sadd(REDIS_KEYS.SESSION_WRITE_RETRY_SET, sessionId);
       // Auto-expire after 1 hour (safety net)
       await redis.expire(key, 3600);
+      await redis.expire(REDIS_KEYS.SESSION_WRITE_RETRY_SET, 3600);
     },
 
     async getSessionWriteRetries(): Promise<
@@ -620,6 +602,10 @@ export function createCacheService(redis: Redis): CacheService {
         attempts: number;
         stopData: { stoppedAt: number; forceStopped: boolean };
       }> = [];
+      // Members whose hash already expired are zombies: srem them here so the
+      // set doesn't grow unbounded and cost one hgetall per zombie on every
+      // reconciliation pass forever.
+      const zombies: string[] = [];
 
       for (const sessionId of sessionIds) {
         const key = REDIS_KEYS.SESSION_WRITE_RETRY(sessionId);
@@ -630,8 +616,15 @@ export function createCacheService(redis: Redis): CacheService {
             attempts: parseInt(data.attempts, 10),
             stopData: JSON.parse(data.stopData) as { stoppedAt: number; forceStopped: boolean },
           });
+        } else {
+          zombies.push(sessionId);
         }
       }
+
+      if (zombies.length > 0) {
+        await redis.srem(REDIS_KEYS.SESSION_WRITE_RETRY_SET, ...zombies);
+      }
+
       return results;
     },
 
@@ -806,9 +799,10 @@ export async function atomicCacheUpdate<T>(
   getData: () => Promise<T>
 ): Promise<T> {
   const lockKey = `${key}:lock`;
+  const token = randomUUID();
 
   // Try to acquire lock (5 second expiry)
-  const lockAcquired = await redis.set(lockKey, '1', 'EX', 5, 'NX');
+  const lockAcquired = await redis.set(lockKey, token, 'EX', 5, 'NX');
 
   if (!lockAcquired) {
     // Another process is updating, wait and read cached value
@@ -826,7 +820,7 @@ export async function atomicCacheUpdate<T>(
     await redis.setex(key, ttl, JSON.stringify(data));
     return data;
   } finally {
-    await redis.del(lockKey);
+    await releaseLockIfHeld(redis, lockKey, token);
   }
 }
 

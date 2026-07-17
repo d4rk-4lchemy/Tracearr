@@ -94,7 +94,6 @@ describe('terminateSession', () => {
   // Mock services
   const mockCacheService = {
     removeActiveSession: vi.fn().mockResolvedValue(undefined),
-    removeUserSession: vi.fn().mockResolvedValue(undefined),
   };
 
   const mockPubSubService = {
@@ -145,10 +144,6 @@ describe('terminateSession', () => {
       });
 
       expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith(mockSession.id);
-      expect(mockCacheService.removeUserSession).toHaveBeenCalledWith(
-        mockSession.serverUserId,
-        mockSession.id
-      );
     });
 
     it('should broadcast session:stopped event on success', async () => {
@@ -255,10 +250,6 @@ describe('terminateSession', () => {
       });
 
       expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith(mockSession.id);
-      expect(mockCacheService.removeUserSession).toHaveBeenCalledWith(
-        mockSession.serverUserId,
-        mockSession.id
-      );
     });
 
     it('should still broadcast stop event when session already gone', async () => {
@@ -322,7 +313,6 @@ describe('terminateSession', () => {
       });
 
       expect(mockCacheService.removeActiveSession).not.toHaveBeenCalled();
-      expect(mockCacheService.removeUserSession).not.toHaveBeenCalled();
     });
 
     it('should NOT broadcast stop event on failure', async () => {

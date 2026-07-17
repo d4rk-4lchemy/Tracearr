@@ -9,7 +9,7 @@
  * - Get/set operations with mock Redis
  * - JSON parsing error handling
  * - Pattern-based invalidation
- * - Set operations for user sessions
+ * - Set operations for active sessions and the retry/pending queues
  * - Pub/sub message routing
  */
 
@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Import ACTUAL production functions - not local duplicates
 import {
+  atomicCacheUpdate,
   createCacheService,
   createPubSubService,
   getPubSubService,
@@ -30,10 +31,12 @@ import {
 function createMockRedis(): Redis & {
   store: Map<string, string>;
   sets: Map<string, Set<string>>;
+  hashes: Map<string, Map<string, string>>;
   ttls: Map<string, number>;
 } {
   const store = new Map<string, string>();
   const sets = new Map<string, Set<string>>();
+  const hashes = new Map<string, Map<string, string>>();
   const ttls = new Map<string, number>();
   const messageCallbacks: Array<(channel: string, message: string) => void> = [];
 
@@ -115,6 +118,7 @@ function createMockRedis(): Redis & {
   return {
     store,
     sets,
+    hashes,
     ttls,
     // String operations
     get: vi.fn(async (key: string) => store.get(key) ?? null),
@@ -145,7 +149,7 @@ function createMockRedis(): Redis & {
     del: vi.fn(async (...keys: string[]) => {
       let count = 0;
       for (const key of keys) {
-        if (store.delete(key) || sets.delete(key)) count++;
+        if (store.delete(key) || sets.delete(key) || hashes.delete(key)) count++;
       }
       return count;
     }),
@@ -199,7 +203,35 @@ function createMockRedis(): Redis & {
     }),
     expire: vi.fn(async (key: string, seconds: number) => {
       ttls.set(key, seconds);
-      return store.has(key) || sets.has(key) ? 1 : 0;
+      return store.has(key) || sets.has(key) || hashes.has(key) ? 1 : 0;
+    }),
+
+    // Hash operations
+    hset: vi.fn(async (key: string, field: string, value: string) => {
+      if (!hashes.has(key)) hashes.set(key, new Map());
+      const hash = hashes.get(key)!;
+      const isNew = !hash.has(field);
+      hash.set(field, value);
+      return isNew ? 1 : 0;
+    }),
+    hsetnx: vi.fn(async (key: string, field: string, value: string) => {
+      if (!hashes.has(key)) hashes.set(key, new Map());
+      const hash = hashes.get(key)!;
+      if (hash.has(field)) return 0;
+      hash.set(field, value);
+      return 1;
+    }),
+    hgetall: vi.fn(async (key: string) => {
+      const hash = hashes.get(key);
+      return hash ? Object.fromEntries(hash) : {};
+    }),
+    hincrby: vi.fn(async (key: string, field: string, increment: number) => {
+      if (!hashes.has(key)) hashes.set(key, new Map());
+      const hash = hashes.get(key)!;
+      const current = parseInt(hash.get(field) ?? '0', 10);
+      const next = current + increment;
+      hash.set(field, String(next));
+      return next;
     }),
 
     // Pipeline/transaction support
@@ -227,6 +259,7 @@ function createMockRedis(): Redis & {
   } as unknown as Redis & {
     store: Map<string, string>;
     sets: Map<string, Set<string>>;
+    hashes: Map<string, Map<string, string>>;
     ttls: Map<string, number>;
   };
 }
@@ -436,49 +469,6 @@ describe('CacheService', () => {
     });
   });
 
-  describe('getUserSessions / addUserSession / removeUserSession', () => {
-    it('should return null for user with no sessions', async () => {
-      const result = await cache.getUserSessions('user-123');
-
-      expect(result).toBeNull();
-    });
-
-    it('should add and retrieve user sessions', async () => {
-      await cache.addUserSession('user-123', 'session-1');
-      await cache.addUserSession('user-123', 'session-2');
-
-      const result = await cache.getUserSessions('user-123');
-
-      expect(result).toContain('session-1');
-      expect(result).toContain('session-2');
-      expect(result).toHaveLength(2);
-    });
-
-    it('should set expiration when adding session', async () => {
-      await cache.addUserSession('user-123', 'session-1');
-
-      expect(redis.expire).toHaveBeenCalledWith('tracearr:users:user-123:sessions', 3600);
-    });
-
-    it('should remove user session', async () => {
-      await cache.addUserSession('user-123', 'session-1');
-      await cache.addUserSession('user-123', 'session-2');
-
-      await cache.removeUserSession('user-123', 'session-1');
-
-      const result = await cache.getUserSessions('user-123');
-      expect(result).toEqual(['session-2']);
-    });
-
-    it('should not add duplicate session IDs', async () => {
-      await cache.addUserSession('user-123', 'session-1');
-      await cache.addUserSession('user-123', 'session-1');
-
-      const result = await cache.getUserSessions('user-123');
-      expect(result).toEqual(['session-1']);
-    });
-  });
-
   describe('getServerConnectionStatus / setServerConnectionStatus', () => {
     it('should return null when no status cached', async () => {
       const result = await cache.getServerConnectionStatus('srv-1');
@@ -621,6 +611,105 @@ describe('CacheService', () => {
       ).rejects.toThrow('operation failed');
 
       expect(redis.store.has(lockKey)).toBe(false);
+    });
+  });
+
+  describe('addSessionWriteRetry / getSessionWriteRetries / removeSessionWriteRetry', () => {
+    it('records a new retry with attempts starting at 1', async () => {
+      await cache.addSessionWriteRetry('session-1', { stoppedAt: 1000, forceStopped: false });
+
+      const retries = await cache.getSessionWriteRetries();
+
+      expect(retries).toEqual([
+        { sessionId: 'session-1', attempts: 1, stopData: { stoppedAt: 1000, forceStopped: false } },
+      ]);
+    });
+
+    it('preserves the attempt count across a re-add for the same session (hsetnx)', async () => {
+      await cache.addSessionWriteRetry('session-1', { stoppedAt: 1000, forceStopped: false });
+      await cache.incrementSessionWriteRetry('session-1');
+      await cache.incrementSessionWriteRetry('session-1');
+
+      // A later failed stop attempt for the same session re-adds it to the queue.
+      await cache.addSessionWriteRetry('session-1', { stoppedAt: 2000, forceStopped: true });
+
+      const retries = await cache.getSessionWriteRetries();
+
+      expect(retries).toEqual([
+        { sessionId: 'session-1', attempts: 3, stopData: { stoppedAt: 2000, forceStopped: true } },
+      ]);
+    });
+
+    it('sets a TTL on the retry set itself, not just the per-session hash', async () => {
+      await cache.addSessionWriteRetry('session-1', { stoppedAt: 1000, forceStopped: false });
+
+      expect(redis.ttls.get('tracearr:session:write-retry:pending')).toBe(3600);
+    });
+
+    it('srems a set member whose per-session hash already expired', async () => {
+      // Simulate a zombie: present in the SET but its hash TTL'd out separately.
+      redis.sets.set('tracearr:session:write-retry:pending', new Set(['zombie-session']));
+
+      const retries = await cache.getSessionWriteRetries();
+
+      expect(retries).toEqual([]);
+      const members = await redis.smembers('tracearr:session:write-retry:pending');
+      expect(members).not.toContain('zombie-session');
+    });
+
+    it('leaves live members in the set alongside a swept zombie', async () => {
+      await cache.addSessionWriteRetry('live-session', { stoppedAt: 1000, forceStopped: false });
+      await redis.sadd('tracearr:session:write-retry:pending', 'zombie-session');
+
+      const retries = await cache.getSessionWriteRetries();
+
+      expect(retries.map((r) => r.sessionId)).toEqual(['live-session']);
+      const members = await redis.smembers('tracearr:session:write-retry:pending');
+      expect(members).toEqual(['live-session']);
+    });
+
+    it('removes both the hash and the set member', async () => {
+      await cache.addSessionWriteRetry('session-1', { stoppedAt: 1000, forceStopped: false });
+
+      await cache.removeSessionWriteRetry('session-1');
+
+      const retries = await cache.getSessionWriteRetries();
+      expect(retries).toEqual([]);
+    });
+  });
+
+  describe('atomicCacheUpdate', () => {
+    it('caches and returns the computed data', async () => {
+      const result = await atomicCacheUpdate(redis, 'dashboard:stats', 60, async () => ({
+        value: 42,
+      }));
+
+      expect(result).toEqual({ value: 42 });
+      expect(JSON.parse(redis.store.get('dashboard:stats')!)).toEqual({ value: 42 });
+    });
+
+    it('releases its own lock after a successful update', async () => {
+      const lockKey = 'dashboard:stats:lock';
+
+      await atomicCacheUpdate(redis, 'dashboard:stats', 60, async () => ({ value: 1 }));
+
+      expect(redis.store.has(lockKey)).toBe(false);
+    });
+
+    it("does not let holder A's release free holder B's lock after A's lock expired", async () => {
+      const lockKey = 'dashboard:stats:lock';
+
+      await atomicCacheUpdate(redis, 'dashboard:stats', 60, async () => {
+        // Simulate the lock expiring mid-operation and holder B acquiring it
+        // with its own token, exactly like Redis would after the TTL elapses.
+        redis.store.delete(lockKey);
+        const secondAcquired = await redis.set(lockKey, 'holder-b-token', 'EX', 5, 'NX');
+        expect(secondAcquired).toBe('OK');
+        return { value: 'a-result' };
+      });
+
+      // Holder A's finally-block release must not have deleted holder B's lock.
+      expect(redis.store.get(lockKey)).toBe('holder-b-token');
     });
   });
 

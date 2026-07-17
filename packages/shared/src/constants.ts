@@ -138,7 +138,6 @@ export const REDIS_KEYS = {
   get PENDING_SESSION_IDS() {
     return `${_redisPrefix}tracearr:sessions:pending:ids`;
   },
-  USER_SESSIONS: (userId: string) => `${_redisPrefix}tracearr:users:${userId}:sessions`,
   get DASHBOARD_STATS() {
     return `${_redisPrefix}tracearr:stats:dashboard`;
   },
@@ -267,7 +266,6 @@ export const CACHE_TTL = {
   // and an expiring entry hides the session from the dashboard and from concurrent-stream limits.
   ACTIVE_SESSIONS: 150,
   PENDING_SESSIONS: 300, // 5 minutes - pending sessions need longer TTL for pause scenarios
-  USER_SESSIONS: 3600,
   RATE_LIMIT: 900,
   SERVER_HEALTH: 600, // 10 minutes - servers marked unhealthy if no update
   SERVER_CONNECTION: 600, // 10 minutes - live runtime state, not persisted to DB

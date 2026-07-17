@@ -241,8 +241,6 @@ const mockCacheService = {
   addActiveSession: vi.fn(),
   updateActiveSession: vi.fn(),
   removeActiveSession: vi.fn(),
-  addUserSession: vi.fn(),
-  removeUserSession: vi.fn(),
   withSessionCreateLock: vi.fn(),
   hasTerminationCooldown: vi.fn().mockResolvedValue(false),
   setTerminationCooldown: vi.fn(),
@@ -361,14 +359,12 @@ describe('SSE Processor - Media Change Detection', () => {
 
     // Should have stopped old session in cache
     expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith('session-old');
-    expect(mockCacheService.removeUserSession).toHaveBeenCalledWith('server-user-1', 'session-old');
 
     // Should have broadcast stop for old session
     expect(mockPubSubService.publish).toHaveBeenCalledWith('session:stopped', 'session-old');
 
     // Should have added new session to cache
     expect(mockCacheService.addActiveSession).toHaveBeenCalledWith(mockActiveSession);
-    expect(mockCacheService.addUserSession).toHaveBeenCalledWith('server-user-1', 'session-new');
 
     // Should have broadcast start for new session
     expect(mockPubSubService.publish).toHaveBeenCalledWith('session:started', mockActiveSession);
