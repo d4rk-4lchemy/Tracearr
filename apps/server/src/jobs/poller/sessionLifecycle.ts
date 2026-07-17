@@ -64,6 +64,12 @@ const TRANSACTION_TIMEOUT_MS = 10000; // P2-8: 10 second timeout for transaction
 // been force-stopped by the stale session sweep. 7 days gives ample buffer.
 const ACTIVE_SESSION_CHUNK_BOUND_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Bound for the STEP 2 resume-detection query below. A resumable session's
+// startedAt can precede the 24h stoppedAt resume window by up to its own
+// wall-clock duration (e.g. a live TV session kept alive for days by polling),
+// so the bound has to cover the resume window plus the max in-scope duration.
+const RESUME_CHUNK_BOUND_MS = ACTIVE_SESSION_CHUNK_BOUND_MS + TIME_MS.DAY;
+
 /**
  * Check if an error is a PostgreSQL serialization failure.
  * These occur when SERIALIZABLE transactions conflict.
@@ -688,10 +694,13 @@ export async function createSessionWithRulesAtomic(
   if (!referenceId && processed.ratingKey) {
     const oneDayAgo = new Date(Date.now() - TIME_MS.DAY);
     // Time bound reduces TimescaleDB chunk scanning (mirrors STEP 1 above).
-    // A session stopped within the last 24h (oneDayAgo, checked below) by
-    // definition started within the last 7 days (chunkBound), so this adds
-    // no false negatives.
-    const chunkBound = new Date(Date.now() - ACTIVE_SESSION_CHUNK_BOUND_MS);
+    // Uses RESUME_CHUNK_BOUND_MS, not ACTIVE_SESSION_CHUNK_BOUND_MS: covers any
+    // resumable session whose wall-clock duration is at most
+    // ACTIVE_SESSION_CHUNK_BOUND_MS. Only live TV channels and stuck sessions
+    // kept alive by polling can run longer than that; those rows lose resume
+    // chaining here, an accepted tradeoff, and they are already invisible to
+    // the stale sweep's own ACTIVE_SESSION_CHUNK_BOUND_MS bound.
+    const chunkBound = new Date(Date.now() - RESUME_CHUNK_BOUND_MS);
     const recentSameContent = await db
       .select()
       .from(sessions)

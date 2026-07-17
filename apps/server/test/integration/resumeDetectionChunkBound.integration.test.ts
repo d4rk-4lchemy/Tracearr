@@ -2,10 +2,14 @@
  * createSessionWithRulesAtomic's STEP 2 resume-detection query (sessionLifecycle.ts)
  * used to filter only on stopped_at, so every chunk of the started_at-partitioned
  * sessions hypertable got probed on every session create. Adding
- * gte(started_at, chunkBound) mirrors the bound STEP 1 already applies to its
- * active-session lookup. These tests pin the behavior the bound must not change:
- * a session stopped within the last 24h (and therefore started within the 7-day
- * chunk bound) still links as a resume.
+ * gte(started_at, chunkBound) reduces chunk scanning, but the bound must be wide
+ * enough to cover a session whose wall-clock duration exceeds the 24h resume
+ * window (e.g. a live TV session kept alive for days by polling), where
+ * startedAt is far older than stoppedAt. RESUME_CHUNK_BOUND_MS covers the
+ * resume window plus the max in-scope session duration (24h + 7d = 8 days).
+ * These tests pin: resumes still link within that 8-day bound, and a session
+ * that ran longer than the max in-scope duration loses resume chaining, an
+ * accepted tradeoff.
  *
  * Run with: pnpm --filter @tracearr/server test:integration -- resumeDetectionChunkBound
  */
@@ -147,6 +151,48 @@ describe('resume detection respects the TimescaleDB chunk bound without losing r
     const { insertedSession } = await createSessionWithRulesAtomic(input);
 
     expect(insertedSession.referenceId).toBe(previous.id);
+  });
+
+  it('links a resume when the previous session started 8 days minus a margin ago (long-running live session) and stopped 30 minutes ago', async () => {
+    const { server, serverUser } = await setupServerAndUser();
+    const ratingKey = `rk-${randomUUID()}`;
+
+    const previous = await createStoppedSession({
+      serverId: server.id,
+      serverUserId: serverUser.id,
+      ratingKey,
+      startedAt: new Date(Date.now() - (8 * 24 * 60 * 60 * 1000 - 60 * 60 * 1000)),
+      stoppedAt: new Date(Date.now() - 30 * 60 * 1000),
+      progressMs: 500_000,
+      watched: false,
+    });
+
+    const input = buildCreationInput({ ratingKey, progressMs: 900_000 }, server, serverUser);
+
+    const { insertedSession } = await createSessionWithRulesAtomic(input);
+
+    expect(insertedSession.referenceId).toBe(previous.id);
+  });
+
+  it('does not link when the previous session started 9 days ago (beyond the resume chunk bound), even though it stopped 30 minutes ago', async () => {
+    const { server, serverUser } = await setupServerAndUser();
+    const ratingKey = `rk-${randomUUID()}`;
+
+    await createStoppedSession({
+      serverId: server.id,
+      serverUserId: serverUser.id,
+      ratingKey,
+      startedAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000),
+      stoppedAt: new Date(Date.now() - 30 * 60 * 1000),
+      progressMs: 500_000,
+      watched: false,
+    });
+
+    const input = buildCreationInput({ ratingKey, progressMs: 900_000 }, server, serverUser);
+
+    const { insertedSession } = await createSessionWithRulesAtomic(input);
+
+    expect(insertedSession.referenceId).toBeNull();
   });
 
   it('does not link when the previous session stopped more than 24h ago', async () => {
