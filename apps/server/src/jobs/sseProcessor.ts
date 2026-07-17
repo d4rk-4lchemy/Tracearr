@@ -461,9 +461,15 @@ async function handleStopped(event: {
             if (sessionRow) await stopSession(sessionRow);
             return;
           }
-          // A concurrent caller won the create lock and persisted the row
-          // first; fall through to the lookup-and-stop below so that row
-          // still gets closed instead of lingering until the stale sweep.
+          // False here has three causes: the in-lock pending recheck found
+          // the entry already discarded (no row exists to close), the
+          // existingActive recheck found a row already persisted or the
+          // create lock was contended (a concurrent caller got there
+          // first), or a kill_stream rule terminated the session while
+          // confirming it (termination.ts already closed and broadcast
+          // it). Fall through to the lookup-and-stop below so a row from
+          // the concurrent-caller case still gets closed instead of
+          // lingering until the stale sweep.
         } else {
           await discardPendingSession(serverId, notification.sessionKey, pendingData);
           console.log(
@@ -1600,14 +1606,13 @@ async function confirmPendingSessionAndPersist(
     }
   }
 
-  // If terminated by rule, clean up the session from cache and broadcast stop
+  // If terminated by rule, clean up the session from cache. termination.ts
+  // already broadcast session:stopped for the kill, so this path must not
+  // publish it a second time.
   if (wasTerminatedByRule) {
     await cache.removeActiveSession(sessionId);
     await cache.removeUserSession(pendingData.serverUser.id, sessionId);
 
-    if (pubSubService) {
-      await pubSubService.publish('session:stopped', sessionId);
-    }
     console.log(
       `[SSEProcessor] Confirmed session ${sessionId} was terminated by rule, removed from cache`
     );

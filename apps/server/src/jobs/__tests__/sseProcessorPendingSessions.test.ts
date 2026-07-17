@@ -759,6 +759,58 @@ describe('SSE Processor - Pending Session Flow', () => {
       expect(confirmedSession?.pending).toBeUndefined();
     });
 
+    it('publishes session:stopped exactly once when a kill_stream rule terminates the session being confirmed', async () => {
+      const pendingSession = createMockPendingSession();
+      mockCacheService.getPendingSession
+        .mockResolvedValueOnce(pendingSession)
+        .mockResolvedValueOnce(pendingSession);
+
+      mockIsPlaybackConfirmed.mockReturnValueOnce(true);
+
+      // In production, confirmAndPersistSession runs the kill_stream action
+      // (via createSessionWithRulesAtomic's post-commit side effects) before
+      // returning, so termination.ts's own session:stopped publish has
+      // already fired by the time this resolves.
+      mockConfirmAndPersistSession.mockImplementationOnce(async () => {
+        await mockPubSubService.publish('session:stopped', pendingSession.id);
+        return {
+          insertedSession: {
+            id: pendingSession.id,
+            serverId: 'server-123',
+            serverUserId: 'server-user-123',
+            sessionKey: 'test-session-key',
+            startedAt: new Date(),
+            state: 'playing',
+          },
+          violationResults: [],
+          qualityChange: null,
+          referenceId: null,
+          wasTerminatedByRule: true,
+        };
+      });
+
+      mockSseManager.emit('plex:session:progress', {
+        serverId: 'server-123',
+        notification: { sessionKey: 'test-session-key', viewOffset: 35000 },
+      });
+
+      await vi.waitFor(() => {
+        expect(mockCacheService.deletePendingSession).toHaveBeenCalledWith(
+          'server-123',
+          'test-session-key'
+        );
+      });
+
+      await vi.waitFor(() => {
+        expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith(pendingSession.id);
+      });
+
+      const stoppedCalls = mockPubSubService.publish.mock.calls.filter(
+        ([event]) => event === 'session:stopped'
+      );
+      expect(stoppedCalls).toHaveLength(1);
+    });
+
     it('leaves the pending entry in Redis when the create lock is contended', async () => {
       const pendingSession = createMockPendingSession();
       mockCacheService.getPendingSession.mockResolvedValueOnce(pendingSession);
