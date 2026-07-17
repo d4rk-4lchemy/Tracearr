@@ -28,6 +28,7 @@ describe('sweepOrphanedPendingSessions', () => {
       }),
       deletePendingSession: vi.fn(),
       removeActiveSession: vi.fn(),
+      invalidateDashboardStatsCache: vi.fn(),
     } as unknown as CacheService;
 
     // Import and call sweepOrphanedPendingSessions
@@ -39,6 +40,11 @@ describe('sweepOrphanedPendingSessions', () => {
       'server-1',
       'new-session'
     );
+    expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith('session-id-old', {
+      skipDashboardInvalidation: true,
+    });
+    // One flush after the loop instead of one SCAN per removed session
+    expect(mockCacheService.invalidateDashboardStatsCache).toHaveBeenCalledOnce();
   });
 
   it('srems a set member whose per-session hash already expired', async () => {
@@ -59,6 +65,7 @@ describe('sweepOrphanedPendingSessions', () => {
       }),
       deletePendingSession: vi.fn(),
       removeActiveSession: vi.fn(),
+      invalidateDashboardStatsCache: vi.fn(),
     } as unknown as CacheService;
 
     const { sweepOrphanedPendingSessions } = await import('../sseProcessor.js');
@@ -71,5 +78,7 @@ describe('sweepOrphanedPendingSessions', () => {
       'zombie-session'
     );
     expect(mockCacheService.removeActiveSession).not.toHaveBeenCalled();
+    // Nothing was swept, so the deferred flush must not fire
+    expect(mockCacheService.invalidateDashboardStatsCache).not.toHaveBeenCalled();
   });
 });

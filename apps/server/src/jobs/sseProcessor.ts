@@ -180,8 +180,13 @@ export async function cleanupOrphanedPendingSessions(): Promise<void> {
     return;
   }
 
+  const cache = cacheService;
+  // Dashboard invalidation is deferred to one call after the loop (instead of
+  // one SCAN per removed session) - the flag must survive a mid-loop throw,
+  // hence the outer try/finally rather than folding this into the return path.
+  let dashboardStatsDirty = false;
   try {
-    const pendingKeys = await cacheService.getAllPendingSessionKeys();
+    const pendingKeys = await cache.getAllPendingSessionKeys();
 
     if (pendingKeys.length === 0) {
       console.log('[SSEProcessor] No orphaned pending sessions found');
@@ -191,11 +196,12 @@ export async function cleanupOrphanedPendingSessions(): Promise<void> {
     console.log(`[SSEProcessor] Cleaning up ${pendingKeys.length} orphaned pending session(s)`);
 
     for (const { serverId, sessionKey } of pendingKeys) {
-      const pendingData = await cacheService.getPendingSession(serverId, sessionKey);
+      const pendingData = await cache.getPendingSession(serverId, sessionKey);
       if (pendingData) {
         // Remove from all caches
-        await cacheService.deletePendingSession(serverId, sessionKey);
-        await cacheService.removeActiveSession(pendingData.id);
+        await cache.deletePendingSession(serverId, sessionKey);
+        await cache.removeActiveSession(pendingData.id, { skipDashboardInvalidation: true });
+        dashboardStatsDirty = true;
 
         console.log(
           `[SSEProcessor] Cleaned up orphaned session ${sessionKey} (${pendingData.processed.mediaTitle})`
@@ -204,13 +210,17 @@ export async function cleanupOrphanedPendingSessions(): Promise<void> {
         // Hash already expired: this member is a zombie left behind in
         // PENDING_SESSION_IDS. deletePendingSession's del is a no-op here;
         // its srem is what actually clears it.
-        await cacheService.deletePendingSession(serverId, sessionKey);
+        await cache.deletePendingSession(serverId, sessionKey);
       }
     }
 
     console.log('[SSEProcessor] Orphaned pending session cleanup complete');
   } catch (error) {
     console.error('[SSEProcessor] Error cleaning up orphaned pending sessions:', error);
+  } finally {
+    if (dashboardStatsDirty) {
+      await cache.invalidateDashboardStatsCache();
+    }
   }
 }
 
@@ -632,26 +642,37 @@ export async function sweepOrphanedPendingSessions(cache?: CacheService | null):
   const now = Date.now();
   let sweptCount = 0;
   let zombieCount = 0;
+  // Same deferred-invalidation shape as processor.ts's grace/stale sweeps:
+  // one flush after the loop instead of one SCAN per removed session. The
+  // flag must survive a mid-loop throw, hence the try/finally.
+  let dashboardStatsDirty = false;
 
-  for (const { serverId, sessionKey } of pendingKeys) {
-    const pendingData = await svc.getPendingSession(serverId, sessionKey);
-    if (!pendingData) {
-      // Hash already expired: this member is a zombie left behind in
-      // PENDING_SESSION_IDS. deletePendingSession's del is a no-op here;
-      // its srem is what actually clears it.
-      await svc.deletePendingSession(serverId, sessionKey);
-      zombieCount++;
-      continue;
-    }
-    if (now - pendingData.lastSeenAt > ORPHAN_THRESHOLD_MS) {
-      await svc.deletePendingSession(serverId, sessionKey);
-      await svc.removeActiveSession(pendingData.id);
-
-      if (pubSubService) {
-        await pubSubService.publish('session:stopped', pendingData.id);
+  try {
+    for (const { serverId, sessionKey } of pendingKeys) {
+      const pendingData = await svc.getPendingSession(serverId, sessionKey);
+      if (!pendingData) {
+        // Hash already expired: this member is a zombie left behind in
+        // PENDING_SESSION_IDS. deletePendingSession's del is a no-op here;
+        // its srem is what actually clears it.
+        await svc.deletePendingSession(serverId, sessionKey);
+        zombieCount++;
+        continue;
       }
+      if (now - pendingData.lastSeenAt > ORPHAN_THRESHOLD_MS) {
+        await svc.deletePendingSession(serverId, sessionKey);
+        await svc.removeActiveSession(pendingData.id, { skipDashboardInvalidation: true });
+        dashboardStatsDirty = true;
 
-      sweptCount++;
+        if (pubSubService) {
+          await pubSubService.publish('session:stopped', pendingData.id);
+        }
+
+        sweptCount++;
+      }
+    }
+  } finally {
+    if (dashboardStatsDirty) {
+      await svc.invalidateDashboardStatsCache();
     }
   }
 

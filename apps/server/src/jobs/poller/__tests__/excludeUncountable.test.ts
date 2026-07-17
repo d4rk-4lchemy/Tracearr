@@ -22,19 +22,19 @@ function session(overrides: Partial<ActiveSession>): ActiveSession {
 
 describe('excludeUncountableSessions', () => {
   it('drops grace-flagged sessions', () => {
-    const live = { ...session({}), id: 'live' };
-    const gone = { ...session({}), id: 'gone' };
+    const live = session({ id: 'live' });
+    const gone = session({ id: 'gone' });
     expect(excludeUncountableSessions([live, gone], new Set(['gone']))).toEqual([live]);
   });
 
   it('drops pending sessions', () => {
-    const confirmed = { ...session({}), id: 'c' };
-    const pending = { ...session({}), id: 'p', pending: true };
+    const confirmed = session({ id: 'c' });
+    const pending = session({ id: 'p', pending: true });
     expect(excludeUncountableSessions([confirmed, pending], new Set())).toEqual([confirmed]);
   });
 
   it('returns the same array when nothing is excluded', () => {
-    const a = { ...session({}), id: 'a' };
+    const a = session({ id: 'a' });
     const input = [a];
     expect(excludeUncountableSessions(input, new Set())).toBe(input);
   });

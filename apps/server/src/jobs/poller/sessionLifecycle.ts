@@ -1825,7 +1825,7 @@ export async function reEvaluateRulesOnPauseState(
         sql`SELECT pg_advisory_xact_lock(hashtext(${existingSession.id} || '::' || ${rule.id}))`
       );
 
-      // Dedup check — prevent duplicate violation for same session+rule
+      // Dedup check, prevents duplicate violation for same session+rule
       const existing = await tx
         .select({ id: violations.id })
         .from(violations)
@@ -1893,7 +1893,7 @@ export async function reEvaluateRulesOnPauseState(
 
       // Execute actions (e.g., kill_stream, send_notification) only when
       // a new violation was created. The dedup check returns null on subsequent
-      // polls — gating here prevents kill_stream from firing every poll cycle.
+      // polls, so gating here prevents kill_stream from firing every poll cycle.
       if (result.actions.length > 0) {
         const context: EvaluationContext = {
           ...baseContext,

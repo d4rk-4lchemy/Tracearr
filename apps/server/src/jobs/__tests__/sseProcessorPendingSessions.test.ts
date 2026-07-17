@@ -188,6 +188,7 @@ const mockCacheService = {
   addActiveSession: vi.fn(),
   updateActiveSession: vi.fn(),
   removeActiveSession: vi.fn(),
+  invalidateDashboardStatsCache: vi.fn(),
   addUserSession: vi.fn(),
   removeUserSession: vi.fn(),
   withSessionCreateLock: vi.fn().mockImplementation(async (_s, _k, op) => op()),
@@ -1031,8 +1032,14 @@ describe('SSE Processor - Pending Session Flow', () => {
 
       // Should have cleaned up both sessions
       expect(mockCacheService.deletePendingSession).toHaveBeenCalledTimes(2);
-      expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith('orphan-1');
-      expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith('orphan-2');
+      expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith('orphan-1', {
+        skipDashboardInvalidation: true,
+      });
+      expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith('orphan-2', {
+        skipDashboardInvalidation: true,
+      });
+      // One flush after the loop instead of one SCAN per removed session
+      expect(mockCacheService.invalidateDashboardStatsCache).toHaveBeenCalledOnce();
     });
 
     it('handles no orphaned sessions gracefully', async () => {
@@ -1042,6 +1049,7 @@ describe('SSE Processor - Pending Session Flow', () => {
 
       // Should not have tried to delete anything
       expect(mockCacheService.deletePendingSession).not.toHaveBeenCalled();
+      expect(mockCacheService.invalidateDashboardStatsCache).not.toHaveBeenCalled();
     });
   });
 });
