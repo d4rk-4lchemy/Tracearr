@@ -2,10 +2,17 @@
  * Poll Bookkeeping Tests (Task 13)
  *
  * pollServers recomputes serversNeedingPoll fresh every tick from
- * sseManager.isInFallback. Three bugs live at the top and bottom of that
+ * sseManager.isInFallback. Bugs lived at the top and bottom of that
  * function around that set:
  *  - missedPollTracking entries for servers no longer in serversNeedingPoll
- *    (deleted from the DB, or moved from fallback to SSE) are never pruned.
+ *    were pruned the same way whether the server moved to SSE coverage or
+ *    was deleted from the DB. SSE-reclaimed entries must drop silently (SSE
+ *    self-notifies), but deleted-server entries must fire the deferred stop
+ *    notification from the retained snapshot, since sessions.server_id is
+ *    ON DELETE CASCADE and no other path will ever send it.
+ *  - the early return when allServers is empty skipped both the adaptive
+ *    interval reset and the prune above it, so deleting the last server
+ *    left the 3s cadence running and any grace entries stuck forever.
  *  - the early return when serversNeedingPoll is empty skips the adaptive
  *    interval reset, so a previously-active 3s cadence never settles.
  *  - hasActiveSessions counts cachedSessions from every server, including
@@ -137,6 +144,10 @@ const activeSessionOnServer1 = {
   deviceId: 'device-1',
   ratingKey: 'rk-1',
   pending: false,
+  startedAt: new Date('2026-07-15T00:00:00.000Z'),
+  lastPausedAt: null,
+  pausedDurationMs: 0,
+  progressMs: null,
 } as unknown as ActiveSession;
 const activeSessionOnServer2 = {
   id: 'active-2-id',
@@ -146,6 +157,10 @@ const activeSessionOnServer2 = {
   deviceId: 'device-2',
   ratingKey: 'rk-2',
   pending: false,
+  startedAt: new Date('2026-07-15T00:00:00.000Z'),
+  lastPausedAt: null,
+  pausedDurationMs: 0,
+  progressMs: null,
 } as unknown as ActiveSession;
 
 let allServersRows: (typeof serverRow1)[] = [serverRow1];
@@ -244,7 +259,7 @@ describe('(a) missedPollTracking pruning for servers no longer polled', () => {
     expect(pubSubService.publish).not.toHaveBeenCalledWith('session:stopped', 'active-1-id');
   });
 
-  it('drops the grace-period entry silently when its server is removed from the DB', async () => {
+  it('fires the stop notification from the snapshot when its server is removed from the DB', async () => {
     allServersRows = [serverRow1, serverRow2];
     currentCachedSessions = [activeSessionOnServer1, activeSessionOnServer2];
     mockIsInFallback.mockReturnValue(true);
@@ -253,17 +268,21 @@ describe('(a) missedPollTracking pruning for servers no longer polled', () => {
     expect(gracePeriodSessionIds().has('active-1-id')).toBe(true);
     expect(gracePeriodSessionIds().has('active-2-id')).toBe(true);
 
-    // server-2 deleted; server-1 keeps being polled normally.
+    // server-2 deleted; server-1 keeps being polled normally. The row backing
+    // active-2-id is gone (cascade delete), so this is the only remaining
+    // chance to tell the user that session stopped.
     allServersRows = [serverRow1];
     currentCachedSessions = [activeSessionOnServer1];
     await triggerPoll();
 
     expect(gracePeriodSessionIds().has('active-2-id')).toBe(false);
-    expect(mockEnqueueNotification.mock.calls.some(([arg]) => arg.type === 'session_stopped')).toBe(
-      false
+    const stopNotification = mockEnqueueNotification.mock.calls.find(
+      ([arg]) => arg.type === 'session_stopped'
     );
-    expect(cacheService.removeActiveSession).not.toHaveBeenCalledWith('active-2-id');
-    expect(pubSubService.publish).not.toHaveBeenCalledWith('session:stopped', 'active-2-id');
+    expect(stopNotification).toBeDefined();
+    expect(stopNotification![0].payload.id).toBe('active-2-id');
+    expect(cacheService.removeActiveSession).toHaveBeenCalledWith('active-2-id');
+    expect(pubSubService.publish).toHaveBeenCalledWith('session:stopped', 'active-2-id');
   });
 });
 
@@ -340,5 +359,54 @@ describe('(c) hasActiveSessions only counts sessions on servers actually being p
       expect.any(Function),
       POLLING_INTERVALS.SESSIONS_IDLE
     );
+  });
+});
+
+describe('(d) allServers empty (last server deleted)', () => {
+  let setIntervalSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    setIntervalSpy = vi.spyOn(global, 'setInterval');
+  });
+
+  afterEach(() => {
+    setIntervalSpy.mockRestore();
+  });
+
+  it('resets cadence to idle and fires the stop notification when the last server is deleted', async () => {
+    allServersRows = [serverRow1];
+    currentCachedSessions = [activeSessionOnServer1];
+    mockIsInFallback.mockReturnValue(true);
+
+    startPoller();
+    await vi.waitFor(() =>
+      expect(setIntervalSpy).toHaveBeenCalledWith(
+        expect.any(Function),
+        POLLING_INTERVALS.SESSIONS_ACTIVE
+      )
+    );
+    expect(gracePeriodSessionIds().has('active-1-id')).toBe(true);
+
+    // Last server deleted: allServers comes back empty. The stale Redis
+    // entry for its session is still in cache (deleting a server doesn't
+    // clean that up), and the grace-period snapshot is the only place left
+    // that knows this session ever existed.
+    setIntervalSpy.mockClear();
+    allServersRows = [];
+
+    await triggerPoll();
+
+    expect(setIntervalSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      POLLING_INTERVALS.SESSIONS_IDLE
+    );
+    expect(gracePeriodSessionIds().has('active-1-id')).toBe(false);
+    const stopNotification = mockEnqueueNotification.mock.calls.find(
+      ([arg]) => arg.type === 'session_stopped'
+    );
+    expect(stopNotification).toBeDefined();
+    expect(stopNotification![0].payload.id).toBe('active-1-id');
+    expect(cacheService.removeActiveSession).toHaveBeenCalledWith('active-1-id');
+    expect(pubSubService.publish).toHaveBeenCalledWith('session:stopped', 'active-1-id');
   });
 });

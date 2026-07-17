@@ -58,6 +58,7 @@ import { mapMediaSession, pickStreamDetailFields } from './sessionMapper.js';
 import {
   buildCompositeKey,
   calculatePauseAccumulation,
+  calculateStopDuration,
   checkWatchCompletion,
   detectMediaChange,
   shouldForceStopStaleSession,
@@ -203,6 +204,27 @@ async function handleFirstMisses(
 }
 
 /**
+ * Send the deferred session_stopped notification for a confirmed grace-period
+ * stop. Shared by sweepGracePeriod (DB-confirmed stop) and
+ * pruneMissedPollTracking (server deleted, so there is no DB row left to
+ * confirm against - the notification comes from the retained snapshot alone).
+ */
+async function sendGracePeriodStopNotification(
+  key: string,
+  snapshot: ActiveSession,
+  durationMs: number | null
+): Promise<void> {
+  try {
+    await enqueueNotification({
+      type: 'session_stopped',
+      payload: { ...snapshot, durationMs },
+    });
+  } catch (notifErr) {
+    console.error(`[Poller] Failed to enqueue stop notification for ${key}:`, notifErr);
+  }
+}
+
+/**
  * Sweep grace period entries that were tracked in a PREVIOUS poll cycle.
  * For each entry still absent, confirm the stop in DB and send notification.
  * Failed entries stay in the map for retry on the next poll.
@@ -243,16 +265,7 @@ async function sweepGracePeriod(
           await cacheService.addSessionWriteRetry(session.id, retryData);
         }
         if (wasUpdated) {
-          if (snapshot) {
-            try {
-              await enqueueNotification({
-                type: 'session_stopped',
-                payload: { ...snapshot, durationMs },
-              });
-            } catch (notifErr) {
-              console.error(`[Poller] Failed to enqueue stop notification for ${key}:`, notifErr);
-            }
-          }
+          await sendGracePeriodStopNotification(key, snapshot, durationMs);
         }
       } else {
         console.log(`[Poller] Grace period: session for ${key} already stopped by another process`);
@@ -276,24 +289,57 @@ async function sweepGracePeriod(
 }
 
 /**
- * Drop grace-period entries for servers no longer in the current poll set:
- * deleted from the DB, or moved from fallback to active SSE coverage.
- * Entries are dropped silently instead of run through sweepGracePeriod,
- * since firing the deferred stop notification here could double-notify
- * once SSE independently detects the same stop for a server that just
- * exited fallback. A session that is genuinely gone is still caught by
- * sweepStaleSessions from DB state, which does not depend on this map.
+ * Reconcile grace-period entries for servers no longer in the current poll
+ * set. Two different reasons land a server here, and they need different
+ * handling:
+ *  - Moved from fallback to active SSE coverage: the server still exists,
+ *    and SSE self-notifies once it independently detects the same stop, so
+ *    the entry is dropped silently here to avoid double-notifying.
+ *  - Removed from the DB: sessions.server_id is ON DELETE CASCADE, so the
+ *    session row is already gone and no other path (sweepStaleSessions
+ *    included, since it also reads from that now-deleted row) will ever
+ *    send this stop's notification. There is nothing left to write to the
+ *    DB, but the notification still fires from the retained ActiveSession
+ *    snapshot, and the cache/pubsub entry is cleared the same way
+ *    sweepGracePeriod clears a DB-confirmed stop.
  * Runs unprotected by serverPollLocks: the entries pruned belong to servers
  * this tick will not touch, and sweepGracePeriod already tolerates a
  * missing snapshot if triggerServerPoll or triggerReconciliationPoll races
  * this delete for the same server.
  */
-function pruneMissedPollTracking(serversNeedingPoll: { id: string }[]): void {
+async function pruneMissedPollTracking(
+  serversNeedingPoll: { id: string }[],
+  allServers: { id: string }[]
+): Promise<void> {
   const pollableServerIds = new Set(serversNeedingPoll.map((server) => server.id));
+  const existingServerIds = new Set(allServers.map((server) => server.id));
+  const now = new Date();
+
   for (const [key, snapshot] of missedPollTracking) {
-    if (!pollableServerIds.has(snapshot.serverId)) {
+    if (pollableServerIds.has(snapshot.serverId)) continue;
+
+    if (existingServerIds.has(snapshot.serverId)) {
       missedPollTracking.delete(key);
+      continue;
     }
+
+    const { durationMs } = calculateStopDuration(
+      {
+        startedAt: snapshot.startedAt,
+        lastPausedAt: snapshot.lastPausedAt,
+        pausedDurationMs: snapshot.pausedDurationMs ?? 0,
+        progressMs: snapshot.progressMs,
+      },
+      now
+    );
+    await sendGracePeriodStopNotification(key, snapshot, durationMs);
+    if (cacheService) {
+      await cacheService.removeActiveSession(snapshot.id);
+    }
+    if (pubSubService) {
+      await pubSubService.publish('session:stopped', snapshot.id);
+    }
+    missedPollTracking.delete(key);
   }
 }
 
@@ -1506,10 +1552,6 @@ async function pollServers(): Promise<void> {
     // Get all connected servers
     const allServers = await db.select().from(servers);
 
-    if (allServers.length === 0) {
-      return;
-    }
-
     // Filter to only servers that need polling.
     // SSE-connected servers (Plex or JF/Emby with plugin) are handled by SSE events.
     // JF/Emby in unsupported/fallback state are covered by polling as normal.
@@ -1517,11 +1559,13 @@ async function pollServers(): Promise<void> {
 
     // Servers no longer in the poll set (removed from the DB, or moved to SSE
     // coverage) would otherwise keep their grace-period snapshot forever with
-    // no poll left to confirm or clear it.
-    pruneMissedPollTracking(serversNeedingPoll);
+    // no poll left to confirm or clear it. Runs even when allServers is empty,
+    // since that means every remaining entry belongs to a deleted server.
+    await pruneMissedPollTracking(serversNeedingPoll, allServers);
 
     if (serversNeedingPoll.length === 0) {
-      // Every server is handled by an active SSE connection, no polling needed.
+      // Nothing to poll: either every remaining server is handled by an
+      // active SSE connection, or there are no servers left at all.
       resetAdaptivePollInterval();
       return;
     }
