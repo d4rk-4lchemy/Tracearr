@@ -41,6 +41,10 @@ export interface ReverifyKillConditionParams {
   ruleId: string;
   /** Message to display to the user before termination (Plex only). */
   message?: string;
+  /** True when a prior attempt of this same BullMQ job already ran (and
+   *  failed after termination, e.g. storeActionResults threw). Narrows the
+   *  already-stopped idempotency check below to retries only. */
+  isRetry?: boolean;
 }
 
 export interface ReverifyKillConditionResult {
@@ -57,14 +61,28 @@ export interface ReverifyKillConditionResult {
 export async function reverifyKillCondition(
   params: ReverifyKillConditionParams
 ): Promise<ReverifyKillConditionResult> {
-  const { sessionId, serverId, ruleId, message } = params;
+  const { sessionId, serverId, ruleId, message, isRetry } = params;
 
   const sessionRow = await db.query.sessions.findFirst({
     where: eq(sessions.id, sessionId),
     with: { server: true, serverUser: true },
   });
 
-  if (!sessionRow || sessionRow.stoppedAt) {
+  if (!sessionRow) {
+    return { outcome: 'skipped_already_stopped' };
+  }
+
+  if (sessionRow.stoppedAt) {
+    // A retry only happens after a prior attempt of this exact job got past
+    // termination and then threw (e.g. storeActionResults failing) - forceStopped
+    // is already on the row we just fetched, so this costs no extra query and
+    // avoids relabeling that earlier success as skipped_already_stopped. It
+    // can't tell this job's kill apart from an unrelated forced stop (admin,
+    // stale sweep) landing in the same narrow retry window; that tradeoff is
+    // accepted given how rarely the two coincide within a few seconds.
+    if (isRetry && sessionRow.forceStopped) {
+      return { outcome: 'killed' };
+    }
     return { outcome: 'skipped_already_stopped' };
   }
 

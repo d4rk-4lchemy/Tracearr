@@ -575,6 +575,33 @@ describe('terminateSession', () => {
         })
       );
     });
+
+    it('leaves the session row untouched and skips the stop broadcast when the kill call fails', async () => {
+      const mockSession = createMockSession();
+      const ruleId = randomUUID();
+      const violationId = randomUUID();
+      mockSessionFindFirst.mockResolvedValue(mockSession);
+      mockMediaClient.terminateSession.mockRejectedValue(new Error('Media server unreachable'));
+      const insertChain = mockDbInsertChain();
+
+      const result = await terminateSession({
+        sessionId: mockSession.id,
+        trigger: 'rule',
+        ruleId,
+        violationId,
+        reason: 'Concurrent stream limit exceeded',
+      });
+
+      // The session is still actually playing - state must not be touched.
+      expect(db.update).not.toHaveBeenCalled();
+      // No session:stopped event for a session that never stopped.
+      expect(mockPubSubService.publish).not.toHaveBeenCalled();
+      // The termination attempt itself is recorded as failed.
+      expect(result.success).toBe(false);
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({ ruleId, violationId, success: false })
+      );
+    });
   });
 
   describe('termination reason', () => {

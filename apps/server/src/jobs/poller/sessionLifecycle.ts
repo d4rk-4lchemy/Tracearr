@@ -25,7 +25,6 @@ import {
   hasTranscodeConditions,
 } from '../../services/rules/engine.js';
 import { executeActions, type ActionResult } from '../../services/rules/executors/index.js';
-import { resolveTargetSessions } from '../../services/rules/executors/targeting.js';
 import type { EvaluationContext, EvaluationResult } from '../../services/rules/types.js';
 import { storeActionResults } from '../../services/rules/v2Integration.js';
 import { pickStreamDetailFields } from './sessionMapper.js';
@@ -557,6 +556,24 @@ export function buildRuleContextSessions(
 }
 
 /**
+ * Whether the triggering session had a kill job enqueued for it.
+ *
+ * Reflects enqueue, not execution: reverify can still abort the kill later
+ * (session already stopped, rule gone, condition cleared), so this is only
+ * ever a prediction that the session may die shortly, not a guarantee.
+ */
+export function wasTriggeringSessionTargetedForKill(
+  actionResults: ActionResult[],
+  triggeringSessionId: string
+): boolean {
+  return actionResults.some(
+    (result) =>
+      result.action.type === 'kill_stream' &&
+      result.enqueuedSessionIds?.includes(triggeringSessionId)
+  );
+}
+
+/**
  * Create a session with atomic rule evaluation and violation creation.
  * Handles quality change detection, resume tracking, and rule violations.
  */
@@ -959,28 +976,6 @@ export async function createSessionWithRulesAtomic(
       let wasTerminatedByRule = false;
 
       for (const { context, result, rule } of pendingSideEffects) {
-        // Before executing, check if any kill_stream action will target the triggering session
-        for (const action of result.actions) {
-          if (action.type === 'kill_stream') {
-            const sessionsToKill = resolveTargetSessions({
-              target: action.target ?? 'triggering',
-              triggeringSession: context.session,
-              serverUserId: context.serverUser.id,
-              // context.activeSessions is buildRuleContextSessions's output, which
-              // already guarantees context.session is present.
-              activeSessions: context.activeSessions,
-              identityServerUserIds: rule.enforceAcrossServers
-                ? context.identityServerUserIds
-                : undefined,
-            });
-
-            // Check if the triggering session is in the kill list
-            if (sessionsToKill.some((s) => s.id === insertedSession.id)) {
-              wasTerminatedByRule = true;
-            }
-          }
-        }
-
         // Find violation ID if one was created for this rule - kill_stream needs
         // it before executing so the kill queue can attribute its eventual
         // outcome (killed/skipped/failed) back to the right violation.
@@ -991,6 +986,14 @@ export async function createSessionWithRulesAtomic(
           { ...context, violationId },
           result.actions
         );
+
+        // A kill job was actually enqueued for the triggering session - not a
+        // prediction made before actions ran, so it stays accurate even if
+        // reverify later aborts the kill (the session just gets re-added on
+        // the next poll tick since it's still in the server's response).
+        if (wasTriggeringSessionTargetedForKill(actionResults, insertedSession.id)) {
+          wasTerminatedByRule = true;
+        }
 
         // Store results for UI
         await storeActionResults(violationId, result.ruleId, actionResults);

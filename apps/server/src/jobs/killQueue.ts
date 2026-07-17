@@ -11,7 +11,7 @@
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import { getRedisPrefix, type Action } from '@tracearr/shared';
-import type { ActionResult } from '../services/rules/executors/index.js';
+import { getActionExecutorDeps, type ActionResult } from '../services/rules/executors/index.js';
 import { isMaintenance } from '../serverState.js';
 import {
   reverifyKillCondition,
@@ -35,6 +35,12 @@ export interface KillJobData {
    * stale during the delay window before the job fires.
    */
   identityServerUserIds?: string[];
+  /** Rule's cooldown_minutes at match time; arms only when the outcome is 'killed'. */
+  cooldownMinutes?: number;
+  /** Triggering session's owner - cooldown keys off the account that matched
+   *  the rule, not necessarily the target session's owner (enforceAcrossServers
+   *  can target sibling-account sessions). */
+  triggeringServerUserId?: string;
 }
 
 let connectionOptions: ConnectionOptions | null = null;
@@ -138,9 +144,37 @@ function outcomeToActionResult(result: ReverifyKillConditionResult): ActionResul
  * still warranted, and persist the outcome against the originating violation.
  */
 export async function processKillJob(job: Job<KillJobData>): Promise<void> {
-  const { sessionId, serverId, ruleId, violationId, message } = job.data;
+  const {
+    sessionId,
+    serverId,
+    ruleId,
+    violationId,
+    message,
+    cooldownMinutes,
+    triggeringServerUserId,
+  } = job.data;
 
-  const result = await reverifyKillCondition({ sessionId, serverId, ruleId, message });
+  // attemptsMade counts completed failed attempts (0 on a job's first run), so
+  // > 0 means a prior run of this exact job already got past reverify - only
+  // relevant for the idempotency check inside reverifyKillCondition.
+  const isRetry = job.attemptsMade > 0;
+
+  const result = await reverifyKillCondition({ sessionId, serverId, ruleId, message, isRetry });
+
+  // Arm before storeActionResults so a cooldown write failure doesn't leave a
+  // 'killed' row on record without the cooldown actually active.
+  if (
+    result.outcome === 'killed' &&
+    cooldownMinutes &&
+    cooldownMinutes > 0 &&
+    triggeringServerUserId
+  ) {
+    await getActionExecutorDeps().setCooldown(
+      ruleId,
+      `${ruleId}:${triggeringServerUserId}`,
+      cooldownMinutes
+    );
+  }
 
   await storeActionResults(violationId, ruleId, [outcomeToActionResult(result)]);
 }

@@ -20,6 +20,9 @@ export interface ActionResult {
   message?: string;
   skipped?: boolean;
   skipReason?: string;
+  /** kill_stream only: target session ids actually handed to the kill queue.
+   *  Enqueue, not execution - reverify can still abort before terminating. */
+  enqueuedSessionIds?: string[];
 }
 
 /**
@@ -52,7 +55,11 @@ export interface ActionExecutorDeps {
     violationId: string | null,
     delay?: number,
     message?: string,
-    identityServerUserIds?: string[]
+    identityServerUserIds?: string[],
+    /** Rule's cooldown_minutes at match time, keyed to the triggering
+     *  account. Carried through so the kill worker can arm the cooldown
+     *  only once the kill actually executes, not at enqueue time. */
+    cooldown?: { minutes: number; triggeringServerUserId: string }
   ) => Promise<void>;
   sendClientMessage: (sessionId: string, message: string) => Promise<void>;
   checkCooldown: (ruleId: string, targetId: string, cooldownMinutes: number) => Promise<boolean>;
@@ -268,12 +275,21 @@ const executeResetTrust: ActionExecutor = async (context: EvaluationContext): Pr
 const executeKillStream: ActionExecutor = async (
   context: EvaluationContext,
   action: Action
-): Promise<void> => {
+): Promise<{ enqueuedSessionIds: string[] }> => {
   const { session, serverUser, activeSessions, rule, identityServerUserIds } = context;
   const typedAction = action as KillStreamAction;
   const delaySeconds = typedAction.delay_seconds ?? 0;
   const message = typedAction.message;
   const target = typedAction.target ?? 'triggering';
+  const cooldownMinutes = typedAction.cooldown_minutes;
+  // Cooldown arms once the kill worker reports the kill actually executed
+  // (see killQueue.ts), not here at enqueue time - an aborted kill must not
+  // start the cooldown. Keyed to the triggering account regardless of which
+  // target session ends up killed.
+  const cooldown =
+    cooldownMinutes && cooldownMinutes > 0
+      ? { minutes: cooldownMinutes, triggeringServerUserId: serverUser.id }
+      : undefined;
 
   // Include triggering session in activeSessions if not already present.
   // The triggering session may not be in the cache yet when rules are evaluated,
@@ -295,6 +311,7 @@ const executeKillStream: ActionExecutor = async (
     identityServerUserIds: rule.enforceAcrossServers ? identityServerUserIds : undefined,
   });
 
+  const enqueuedSessionIds: string[] = [];
   for (const targetSession of sessionsToKill) {
     // Use the target session's own serverId, not the triggering session's -
     // with enforceAcrossServers, these can be different servers. Each target
@@ -308,9 +325,13 @@ const executeKillStream: ActionExecutor = async (
       context.violationId ?? null,
       delaySeconds,
       message,
-      rule.enforceAcrossServers ? identityServerUserIds : undefined
+      rule.enforceAcrossServers ? identityServerUserIds : undefined,
+      cooldown
     );
+    enqueuedSessionIds.push(targetSession.id);
   }
+
+  return { enqueuedSessionIds };
 };
 
 /**
@@ -424,10 +445,12 @@ export async function executeAction(
 
   // Execute the action
   try {
-    await executor(context, action);
+    const executorResult = await executor(context, action);
 
-    // Set cooldown after successful execution
-    if (cooldownMinutes && cooldownMinutes > 0) {
+    // Set cooldown after successful execution. kill_stream is excluded: its
+    // cooldown arms later, once the queue reports the kill actually executed
+    // (see killQueue.ts) - an aborted kill must not start the cooldown.
+    if (cooldownMinutes && cooldownMinutes > 0 && action.type !== 'kill_stream') {
       const targetId = `${rule.id}:${serverUser.id}`;
       await currentDeps.setCooldown(rule.id, targetId, cooldownMinutes);
     }
@@ -441,6 +464,7 @@ export async function executeAction(
         success: true,
         skipped: true,
         skipReason: 'queued',
+        enqueuedSessionIds: executorResult?.enqueuedSessionIds ?? [],
       };
     }
 

@@ -37,7 +37,14 @@ export type ConditionEvaluator = (
   condition: Condition
 ) => EvaluatorResult | Promise<EvaluatorResult>;
 
-export type ActionExecutor = (context: EvaluationContext, action: Action) => void | Promise<void>;
+/** Non-void executors return which target session ids they successfully
+ *  handed to a downstream queue (currently kill_stream only). */
+export type ActionExecutorResult = { enqueuedSessionIds?: string[] } | void;
+
+export type ActionExecutor = (
+  context: EvaluationContext,
+  action: Action
+) => ActionExecutorResult | Promise<ActionExecutorResult>;
 
 export interface EvaluationResult {
   ruleId: string;

@@ -45,10 +45,14 @@ import {
   shutdownKillQueue,
   type KillJobData,
 } from '../killQueue.js';
+import {
+  setActionExecutorDeps,
+  resetActionExecutorDeps,
+} from '../../services/rules/executors/index.js';
 import type { Job } from 'bullmq';
 
-function makeJob(data: KillJobData): Job<KillJobData> {
-  return { data } as unknown as Job<KillJobData>;
+function makeJob(data: KillJobData, attemptsMade = 0): Job<KillJobData> {
+  return { data, attemptsMade } as unknown as Job<KillJobData>;
 }
 
 describe('killQueue', () => {
@@ -57,6 +61,7 @@ describe('killQueue', () => {
     mockQueueAdd.mockReset();
     await shutdownKillQueue();
     initKillQueue('redis://localhost:6379');
+    resetActionExecutorDeps();
   });
 
   describe('enqueueKill', () => {
@@ -234,10 +239,29 @@ describe('killQueue', () => {
         serverId: jobData.serverId,
         ruleId,
         message: 'bye',
+        isRetry: false,
       });
       expect(mockStoreActionResults).toHaveBeenCalledWith(violationId, ruleId, [
         expect.objectContaining({ success: true, skipped: false }),
       ]);
+    });
+
+    it('marks isRetry true when the job has a prior failed attempt', async () => {
+      mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
+
+      const ruleId = randomUUID();
+      const jobData: KillJobData = {
+        sessionId: randomUUID(),
+        serverId: randomUUID(),
+        ruleId,
+        violationId: null,
+      };
+
+      await processKillJob(makeJob(jobData, 1));
+
+      expect(mockReverifyKillCondition).toHaveBeenCalledWith(
+        expect.objectContaining({ isRetry: true })
+      );
     });
 
     it('stores each skipped outcome with the exact skipReason literal', async () => {
@@ -287,6 +311,129 @@ describe('killQueue', () => {
       );
 
       expect(mockStoreActionResults).toHaveBeenCalledWith(null, ruleId, expect.any(Array));
+    });
+
+    describe('cooldown arming', () => {
+      it('arms the rule cooldown when the kill executed', async () => {
+        mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
+        const setCooldown = vi.fn().mockResolvedValue(undefined);
+        setActionExecutorDeps({
+          logAudit: vi.fn(),
+          sendNotification: vi.fn(),
+          adjustUserTrust: vi.fn(),
+          setUserTrust: vi.fn(),
+          resetUserTrust: vi.fn(),
+          terminateSession: vi.fn(),
+          sendClientMessage: vi.fn(),
+          checkCooldown: vi.fn().mockResolvedValue(false),
+          setCooldown,
+          queueForConfirmation: vi.fn(),
+        });
+
+        const ruleId = randomUUID();
+        const triggeringServerUserId = randomUUID();
+
+        await processKillJob(
+          makeJob({
+            sessionId: randomUUID(),
+            serverId: randomUUID(),
+            ruleId,
+            violationId: randomUUID(),
+            cooldownMinutes: 10,
+            triggeringServerUserId,
+          })
+        );
+
+        expect(setCooldown).toHaveBeenCalledWith(ruleId, `${ruleId}:${triggeringServerUserId}`, 10);
+      });
+
+      it('does not arm the cooldown when the kill was aborted (skipped outcome)', async () => {
+        mockReverifyKillCondition.mockResolvedValue({ outcome: 'skipped_condition_cleared' });
+        const setCooldown = vi.fn().mockResolvedValue(undefined);
+        setActionExecutorDeps({
+          logAudit: vi.fn(),
+          sendNotification: vi.fn(),
+          adjustUserTrust: vi.fn(),
+          setUserTrust: vi.fn(),
+          resetUserTrust: vi.fn(),
+          terminateSession: vi.fn(),
+          sendClientMessage: vi.fn(),
+          checkCooldown: vi.fn().mockResolvedValue(false),
+          setCooldown,
+          queueForConfirmation: vi.fn(),
+        });
+
+        await processKillJob(
+          makeJob({
+            sessionId: randomUUID(),
+            serverId: randomUUID(),
+            ruleId: randomUUID(),
+            violationId: randomUUID(),
+            cooldownMinutes: 10,
+            triggeringServerUserId: randomUUID(),
+          })
+        );
+
+        expect(setCooldown).not.toHaveBeenCalled();
+      });
+
+      it('does not arm the cooldown when the kill failed', async () => {
+        mockReverifyKillCondition.mockResolvedValue({ outcome: 'failed', error: 'boom' });
+        const setCooldown = vi.fn().mockResolvedValue(undefined);
+        setActionExecutorDeps({
+          logAudit: vi.fn(),
+          sendNotification: vi.fn(),
+          adjustUserTrust: vi.fn(),
+          setUserTrust: vi.fn(),
+          resetUserTrust: vi.fn(),
+          terminateSession: vi.fn(),
+          sendClientMessage: vi.fn(),
+          checkCooldown: vi.fn().mockResolvedValue(false),
+          setCooldown,
+          queueForConfirmation: vi.fn(),
+        });
+
+        await processKillJob(
+          makeJob({
+            sessionId: randomUUID(),
+            serverId: randomUUID(),
+            ruleId: randomUUID(),
+            violationId: randomUUID(),
+            cooldownMinutes: 10,
+            triggeringServerUserId: randomUUID(),
+          })
+        );
+
+        expect(setCooldown).not.toHaveBeenCalled();
+      });
+
+      it('does not arm the cooldown when the action had no cooldown_minutes configured', async () => {
+        mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
+        const setCooldown = vi.fn().mockResolvedValue(undefined);
+        setActionExecutorDeps({
+          logAudit: vi.fn(),
+          sendNotification: vi.fn(),
+          adjustUserTrust: vi.fn(),
+          setUserTrust: vi.fn(),
+          resetUserTrust: vi.fn(),
+          terminateSession: vi.fn(),
+          sendClientMessage: vi.fn(),
+          checkCooldown: vi.fn().mockResolvedValue(false),
+          setCooldown,
+          queueForConfirmation: vi.fn(),
+        });
+
+        await processKillJob(
+          makeJob({
+            sessionId: randomUUID(),
+            serverId: randomUUID(),
+            ruleId: randomUUID(),
+            violationId: randomUUID(),
+          })
+        );
+
+        expect(setCooldown).not.toHaveBeenCalled();
+      });
     });
   });
 });

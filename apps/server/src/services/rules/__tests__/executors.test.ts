@@ -354,6 +354,7 @@ describe('Action Executor Registry', () => {
           success: true,
           skipped: true,
           skipReason: 'queued',
+          enqueuedSessionIds: [context.session.id],
         });
       });
 
@@ -371,6 +372,7 @@ describe('Action Executor Registry', () => {
           null,
           0,
           undefined,
+          undefined,
           undefined
         );
       });
@@ -387,6 +389,7 @@ describe('Action Executor Registry', () => {
           context.rule.id,
           null,
           30,
+          undefined,
           undefined,
           undefined
         );
@@ -409,6 +412,7 @@ describe('Action Executor Registry', () => {
           null,
           0,
           'You violated the concurrent streams policy',
+          undefined,
           undefined
         );
       });
@@ -430,7 +434,35 @@ describe('Action Executor Registry', () => {
           null,
           15,
           'Stream will be terminated in 15 seconds',
+          undefined,
           undefined
+        );
+      });
+
+      it('should not set cooldown at enqueue time - arming moves to the kill worker', async () => {
+        const context = createMockContext();
+        const action: KillStreamAction = { type: 'kill_stream', cooldown_minutes: 10 };
+
+        await executeAction(context, action);
+
+        expect(mockDeps.setCooldown).not.toHaveBeenCalled();
+      });
+
+      it('should carry cooldown_minutes and the triggering serverUserId through to terminateSession', async () => {
+        const context = createMockContext();
+        const action: KillStreamAction = { type: 'kill_stream', cooldown_minutes: 10 };
+
+        await executeAction(context, action);
+
+        expect(mockDeps.terminateSession).toHaveBeenCalledWith(
+          context.session.id,
+          context.server.id,
+          context.rule.id,
+          null,
+          0,
+          undefined,
+          undefined,
+          { minutes: 10, triggeringServerUserId: context.serverUser.id }
         );
       });
 
@@ -457,6 +489,7 @@ describe('Action Executor Registry', () => {
             context.rule.id,
             null,
             0,
+            undefined,
             undefined,
             undefined
           );
@@ -489,6 +522,7 @@ describe('Action Executor Registry', () => {
             context.rule.id,
             null,
             0,
+            undefined,
             undefined,
             undefined
           );
@@ -527,6 +561,7 @@ describe('Action Executor Registry', () => {
             null,
             0,
             undefined,
+            undefined,
             undefined
           );
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
@@ -535,6 +570,7 @@ describe('Action Executor Registry', () => {
             context.rule.id,
             null,
             0,
+            undefined,
             undefined,
             undefined
           );
@@ -561,6 +597,7 @@ describe('Action Executor Registry', () => {
             null,
             0,
             undefined,
+            undefined,
             undefined
           );
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
@@ -570,10 +607,12 @@ describe('Action Executor Registry', () => {
             null,
             0,
             undefined,
+            undefined,
             undefined
           );
           expect(mockDeps.terminateSession).not.toHaveBeenCalledWith(
             'other',
+            expect.anything(),
             expect.anything(),
             expect.anything(),
             expect.anything(),
@@ -594,7 +633,7 @@ describe('Action Executor Registry', () => {
           });
           const action: KillStreamAction = { type: 'kill_stream', target: 'all_user' };
 
-          await executeAction(context, action);
+          const result = await executeAction(context, action);
 
           const calledSessionIds = (
             mockDeps.terminateSession as ReturnType<typeof vi.fn>
@@ -604,6 +643,9 @@ describe('Action Executor Registry', () => {
           // the whole target set.
           expect(calledSessionIds).toEqual(['s1', 's2']);
           expect(new Set(calledSessionIds).size).toBe(2);
+          // wasTerminatedByRule derives from this, so every enqueued target
+          // (not just the triggering session) must be reported.
+          expect(result.enqueuedSessionIds).toEqual(['s1', 's2']);
         });
 
         it('should carry identityServerUserIds only when the rule enforces across servers', async () => {
@@ -626,7 +668,8 @@ describe('Action Executor Registry', () => {
             null,
             0,
             undefined,
-            ['user-1', 'user-1-sibling']
+            ['user-1', 'user-1-sibling'],
+            undefined
           );
         });
       });

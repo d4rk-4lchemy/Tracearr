@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { Session } from '@tracearr/shared';
+import type { ActionResult } from '../../../services/rules/executors/index.js';
 
 function createMockSession(overrides: Partial<Session> = {}): Session {
   return {
@@ -678,57 +679,77 @@ describe('Concurrent access handling', () => {
 // 6. Rule-Terminated Session Detection (Issue #357)
 // ============================================================================
 
-describe('wasTerminatedByRule detection logic (Issue #357)', () => {
-  // These tests verify the wasTerminatedByRule detection logic conceptually.
-  // The actual targeting logic is tested in services/rules/__tests__/targeting.test.ts
+describe('wasTriggeringSessionTargetedForKill (Issue #357)', () => {
+  // wasTerminatedByRule now reflects actual enqueue outcomes (ActionResult),
+  // not a target-resolution prediction made before actions execute - a queued
+  // kill can still be aborted by reverify.
 
-  it('should detect triggering session in kill list for target=triggering', () => {
-    const insertedSessionId = 'new-session-id';
-    const sessionsToKill = [{ id: 'new-session-id' }];
+  function killResult(enqueuedSessionIds: string[]): ActionResult {
+    return {
+      action: { type: 'kill_stream' },
+      success: true,
+      skipped: true,
+      skipReason: 'queued',
+      enqueuedSessionIds,
+    };
+  }
 
-    // This is the check performed in sessionLifecycle.ts
-    const wasTerminatedByRule = sessionsToKill.some((s) => s.id === insertedSessionId);
-    expect(wasTerminatedByRule).toBe(true);
+  it('is true when the triggering session was enqueued (target=triggering)', async () => {
+    const { wasTriggeringSessionTargetedForKill } = await import('../sessionLifecycle.js');
+
+    const result = wasTriggeringSessionTargetedForKill(
+      [killResult(['new-session-id'])],
+      'new-session-id'
+    );
+
+    expect(result).toBe(true);
   });
 
-  it('should NOT detect triggering session in kill list when target=oldest (different session)', () => {
-    const insertedSessionId = 'new-session-id';
-    const sessionsToKill = [{ id: 'oldest-session-id' }]; // Different session
+  it('is false when a different session was enqueued (target=oldest)', async () => {
+    const { wasTriggeringSessionTargetedForKill } = await import('../sessionLifecycle.js');
 
-    const wasTerminatedByRule = sessionsToKill.some((s) => s.id === insertedSessionId);
-    expect(wasTerminatedByRule).toBe(false);
+    const result = wasTriggeringSessionTargetedForKill(
+      [killResult(['oldest-session-id'])],
+      'new-session-id'
+    );
+
+    expect(result).toBe(false);
   });
 
-  it('should detect triggering session in kill list for target=all_except_one (newer session killed)', () => {
-    // Scenario: User has oldest session A, starts new session B
-    // Rule: all_except_one (keep oldest)
-    // Result: Session B (new, triggering) is killed, A survives
-    const insertedSessionId = 'session-B';
-    const sessionsToKill = [{ id: 'session-B' }]; // all_except_one kills newer sessions
+  it('is true when the triggering session is among several enqueued targets (all_user)', async () => {
+    const { wasTriggeringSessionTargetedForKill } = await import('../sessionLifecycle.js');
 
-    const wasTerminatedByRule = sessionsToKill.some((s) => s.id === insertedSessionId);
-    expect(wasTerminatedByRule).toBe(true);
+    const result = wasTriggeringSessionTargetedForKill(
+      [killResult(['old-session-1', 'old-session-2', 'new-session-id'])],
+      'new-session-id'
+    );
+
+    expect(result).toBe(true);
   });
 
-  it('should detect triggering session in kill list for target=all_user', () => {
-    // all_user kills ALL sessions including the triggering one
-    const insertedSessionId = 'new-session-id';
-    const sessionsToKill = [
-      { id: 'old-session-1' },
-      { id: 'old-session-2' },
-      { id: 'new-session-id' },
-    ];
+  it('is false when there are no action results', async () => {
+    const { wasTriggeringSessionTargetedForKill } = await import('../sessionLifecycle.js');
 
-    const wasTerminatedByRule = sessionsToKill.some((s) => s.id === insertedSessionId);
-    expect(wasTerminatedByRule).toBe(true);
+    const result = wasTriggeringSessionTargetedForKill([], 'session-id');
+
+    expect(result).toBe(false);
   });
 
-  it('should handle empty kill list gracefully', () => {
-    const insertedSessionId = 'session-id';
-    const sessionsToKill: { id: string }[] = [];
+  it('ignores non-kill_stream action results', async () => {
+    const { wasTriggeringSessionTargetedForKill } = await import('../sessionLifecycle.js');
 
-    const wasTerminatedByRule = sessionsToKill.some((s) => s.id === insertedSessionId);
-    expect(wasTerminatedByRule).toBe(false);
+    const notifyResult: ActionResult = { action: { type: 'notify', channels: [] }, success: true };
+    const result = wasTriggeringSessionTargetedForKill([notifyResult], 'session-id');
+
+    expect(result).toBe(false);
+  });
+
+  it('is false for a kill_stream result whose enqueue never happened (empty enqueuedSessionIds)', async () => {
+    const { wasTriggeringSessionTargetedForKill } = await import('../sessionLifecycle.js');
+
+    const result = wasTriggeringSessionTargetedForKill([killResult([])], 'session-id');
+
+    expect(result).toBe(false);
   });
 });
 

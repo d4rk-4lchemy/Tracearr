@@ -165,6 +165,58 @@ describe('reverifyKillCondition', () => {
     expect(mockTerminateSession).not.toHaveBeenCalled();
   });
 
+  it('returns skipped_already_stopped on a first attempt even when forceStopped is set (some other process stopped it)', async () => {
+    mockSessionFindFirst.mockResolvedValue(
+      makeSessionRow({ stoppedAt: new Date(), forceStopped: true })
+    );
+
+    const result = await reverifyKillCondition({
+      sessionId: randomUUID(),
+      serverId: randomUUID(),
+      ruleId: randomUUID(),
+      isRetry: false,
+    });
+
+    expect(result.outcome).toBe('skipped_already_stopped');
+    expect(mockTerminateSession).not.toHaveBeenCalled();
+  });
+
+  it('returns skipped_already_stopped on a retry when the session was not force-stopped (a natural stop, not our own kill)', async () => {
+    mockSessionFindFirst.mockResolvedValue(
+      makeSessionRow({ stoppedAt: new Date(), forceStopped: false })
+    );
+
+    const result = await reverifyKillCondition({
+      sessionId: randomUUID(),
+      serverId: randomUUID(),
+      ruleId: randomUUID(),
+      isRetry: true,
+    });
+
+    expect(result.outcome).toBe('skipped_already_stopped');
+    expect(mockTerminateSession).not.toHaveBeenCalled();
+  });
+
+  it('returns killed (not skipped_already_stopped) on a retry when forceStopped shows this job already terminated it', async () => {
+    mockSessionFindFirst.mockResolvedValue(
+      makeSessionRow({ stoppedAt: new Date(), forceStopped: true })
+    );
+
+    const result = await reverifyKillCondition({
+      sessionId: randomUUID(),
+      serverId: randomUUID(),
+      ruleId: randomUUID(),
+      isRetry: true,
+    });
+
+    // A BullMQ retry only happens after processKillJob threw post-termination
+    // (e.g. storeActionResults failing) - re-running reverify must not relabel
+    // that earlier success as skipped_already_stopped and re-terminate is
+    // neither attempted nor needed.
+    expect(result.outcome).toBe('killed');
+    expect(mockTerminateSession).not.toHaveBeenCalled();
+  });
+
   it('returns skipped_rule_gone when the rule no longer exists', async () => {
     mockSessionFindFirst.mockResolvedValue(makeSessionRow());
     mockRuleSelect(undefined);
