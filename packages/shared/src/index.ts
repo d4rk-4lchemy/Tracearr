@@ -16,8 +16,13 @@ export type {
   ViolationSummary,
   UserRole,
   AuthUser,
+  SetupStatus,
   UserLocation,
   UserDevice,
+  UserMergeResult,
+  ServerUserSplitResult,
+  MergeSuggestionIdentity,
+  MergeSuggestion,
   // Session
   SessionState,
   MediaType,
@@ -217,7 +222,6 @@ export type {
   BandwidthSummaryServerKpis,
   BandwidthSummary,
   // Library statistics
-  LibraryStatsServerKpis,
   LibraryStatsResponse,
   GrowthDataPoint,
   LibraryGrowthResponse,
@@ -286,6 +290,12 @@ export {
   updateUserSchema,
   updateUserIdentitySchema,
   userIdParamSchema,
+  identityScopeQuerySchema,
+  identityScopedPaginationSchema,
+  mergeUsersBodySchema,
+  mergeUserParamSchema,
+  splitServerUserParamSchema,
+  userSortFieldSchema,
   // Session
   sessionQuerySchema,
   historyQuerySchema,
@@ -307,6 +317,8 @@ export {
   // Rule V2
   createRuleV2Schema,
   updateRuleV2Schema,
+  hasAtMostOneScope,
+  RULE_SCOPE_ERROR_MESSAGE,
   // Bulk operations
   bulkUpdateRulesSchema,
   bulkDeleteRulesSchema,
@@ -342,6 +354,7 @@ export {
   showsQuerySchema,
   // Library stats
   libraryStatsQuerySchema,
+  libraryStatusQuerySchema,
   libraryGrowthQuerySchema,
   libraryQualityQuerySchema,
   libraryStorageQuerySchema,
@@ -363,6 +376,8 @@ export type {
   UpdateServerInput,
   UpdateUserInput,
   UpdateUserIdentityInput,
+  IdentityScopeQuery,
+  MergeUsersBody,
   SessionQueryInput,
   HistoryQueryInput,
   HistoryAggregatesQueryInput,
@@ -378,6 +393,7 @@ export type {
   BulkMigrateRulesInput,
   ViolationQueryInput,
   ViolationSortField,
+  UserSortField,
   ServerIdFilterInput,
   DashboardQueryInput,
   StatsQueryInput,
@@ -396,6 +412,7 @@ export type {
   ShowsQueryInput,
   // Library stats
   LibraryStatsQueryInput,
+  LibraryStatusQueryInput,
   LibraryGrowthQueryInput,
   LibraryQualityQueryInput,
   LibraryStorageQueryInput,
@@ -414,6 +431,7 @@ export type {
 export {
   RULE_DEFAULTS,
   RULE_DISPLAY_NAMES,
+  IDENTITY_AWARE_CONDITION_FIELDS,
   SEVERITY_LEVELS,
   getSeverityPriority,
   type SeverityPriority,
@@ -431,6 +449,7 @@ export {
   PAGINATION,
   GEOIP_CONFIG,
   TIME_MS,
+  MERGE_SAME_SERVER_CONFIRMATION_REQUIRED,
   SESSION_LIMITS,
   SESSION_WRITE_RETRY,
   SERVER_STATS_CONFIG,
@@ -466,7 +485,7 @@ export {
 } from './constants.js';
 
 // Role helper exports
-export { ROLE_PERMISSIONS, canLogin, hasMinRole, isOwner, isActive } from './types.js';
+export { ROLE_PERMISSIONS, LOGIN_ROLES, canLogin, hasMinRole, isOwner, isActive } from './types.js';
 
 // Session constants
 export { MEDIA_TYPES, DEFAULT_STREAM_DETAILS } from './types.js';
@@ -485,3 +504,16 @@ export {
   CONDITION_FIELD_LABELS,
   OPERATOR_LABELS,
 } from './violations.js';
+
+// Media display utilities
+export { formatEpisodeLabel, type FormatEpisodeLabelOptions } from './media.js';
+
+// Resolution classification
+export {
+  RESOLUTION_TIERS,
+  classifyByDimensions,
+  normalizeResolutionLabel,
+  resolutionTierRank,
+  normalizeResolution,
+  type ResolutionInput,
+} from './resolution.js';

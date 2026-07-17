@@ -53,6 +53,15 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
             'Converts all codec names to uppercase for consistency. ' +
             'Run this if you see duplicate codecs in the Compatibility Matrix (e.g., "h264" and "H264").',
         },
+        {
+          type: 'normalize_resolutions',
+          category: 'normalization',
+          name: 'Normalize Resolutions',
+          description:
+            'Recomputes resolution labels (4K, 1080p, 720p, etc) from stored video dimensions. ' +
+            'Run this if you see widescreen or 4:3 content mislabeled with the wrong quality tier, ' +
+            'especially on older Jellyfin/Emby history.',
+        },
         // Backfill jobs - fill in missing historical data
         {
           type: 'fix_imported_progress',
@@ -138,6 +147,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
         'rebuild_timescale_views',
         'full_aggregate_rebuild',
         'normalize_codecs',
+        'normalize_resolutions',
         'backfill_user_dates',
         'backfill_library_snapshots',
         'cleanup_old_chunks',

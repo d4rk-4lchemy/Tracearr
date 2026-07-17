@@ -139,6 +139,95 @@ export function createSessionParsingTests(
         expect(session!.episode?.seasonName).toBe('Season 1');
       });
 
+      it('should parse a Season 0 (Specials) episode with seasonNumber 0, not null', () => {
+        const rawSession = {
+          Id: 'session-specials',
+          UserId: 'user-1',
+          UserName: 'Jane',
+          DeviceName: 'iPhone',
+          DeviceId: 'iphone-123',
+          Client: clientName,
+          NowPlayingItem: {
+            Id: 'episode-specials',
+            Name: 'Behind the Scenes',
+            Type: 'Episode',
+            RunTimeTicks: 6000000000,
+            SeriesName: 'Breaking Bad',
+            ParentIndexNumber: 0,
+            IndexNumber: 1,
+          },
+          PlayState: {
+            PositionTicks: 0,
+            IsPaused: false,
+          },
+        };
+
+        const session = parsers.parseSession(rawSession);
+
+        expect(session).not.toBeNull();
+        expect(session!.episode?.seasonNumber).toBe(0);
+        expect(session!.episode?.episodeNumber).toBe(1);
+      });
+
+      it('should parse IndexNumber 0 as episodeNumber 0, not null', () => {
+        const rawSession = {
+          Id: 'session-episode-zero',
+          UserId: 'user-1',
+          UserName: 'Jane',
+          DeviceName: 'iPhone',
+          DeviceId: 'iphone-123',
+          Client: clientName,
+          NowPlayingItem: {
+            Id: 'episode-zero',
+            Name: 'Episode Zero',
+            Type: 'Episode',
+            RunTimeTicks: 6000000000,
+            SeriesName: 'Breaking Bad',
+            ParentIndexNumber: 1,
+            IndexNumber: 0,
+          },
+          PlayState: {
+            PositionTicks: 0,
+            IsPaused: false,
+          },
+        };
+
+        const session = parsers.parseSession(rawSession);
+
+        expect(session).not.toBeNull();
+        expect(session!.episode?.seasonNumber).toBe(1);
+        expect(session!.episode?.episodeNumber).toBe(0);
+      });
+
+      it('should parse a missing ParentIndexNumber as null, not 0', () => {
+        const rawSession = {
+          Id: 'session-no-season',
+          UserId: 'user-1',
+          UserName: 'Jane',
+          DeviceName: 'iPhone',
+          DeviceId: 'iphone-123',
+          Client: clientName,
+          NowPlayingItem: {
+            Id: 'episode-no-season',
+            Name: 'Mystery Episode',
+            Type: 'Episode',
+            RunTimeTicks: 6000000000,
+            SeriesName: 'Breaking Bad',
+            IndexNumber: 3,
+          },
+          PlayState: {
+            PositionTicks: 0,
+            IsPaused: false,
+          },
+        };
+
+        const session = parsers.parseSession(rawSession);
+
+        expect(session).not.toBeNull();
+        expect(session!.episode?.seasonNumber).toBeNull();
+        expect(session!.episode?.episodeNumber).toBe(3);
+      });
+
       it('should return null for session without NowPlayingItem', () => {
         const rawSession = {
           Id: 'session-idle',
@@ -214,9 +303,15 @@ export function createSessionParsingTests(
         expect(parsed[1]!.sessionKey).toBe('3');
       });
 
-      it('should return empty array for non-array input', () => {
-        expect(parsers.parseSessionsResponse(null as unknown as unknown[])).toEqual([]);
-        expect(parsers.parseSessionsResponse('not an array' as unknown as unknown[])).toEqual([]);
+      it('should throw for non-array (malformed) input', () => {
+        expect(() => parsers.parseSessionsResponse(null as unknown as unknown[])).toThrow();
+        expect(() =>
+          parsers.parseSessionsResponse('not an array' as unknown as unknown[])
+        ).toThrow();
+      });
+
+      it('should return empty array for an empty session list', () => {
+        expect(parsers.parseSessionsResponse([])).toEqual([]);
       });
     });
   });

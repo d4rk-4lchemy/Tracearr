@@ -23,6 +23,7 @@ describe('processPollResults event semantics', () => {
         publish,
       },
       enqueueNotification,
+      watchedTransitionOccurred: false,
     });
 
     expect(publish).toHaveBeenCalledWith('session:updated', session);

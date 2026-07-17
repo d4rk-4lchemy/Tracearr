@@ -9,7 +9,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { getActiveAggregateNames } from '../db/timescale.js';
@@ -30,8 +30,12 @@ import {
   getBuildDate,
 } from '../utils/buildInfo.js';
 import { getInactivityCheckQueueStats } from '../jobs/inactivityCheckQueue.js';
+import { invalidateRulesCache } from '../jobs/poller/database.js';
 import { getBackupQueueStats } from '../jobs/backupQueue.js';
+import { resetSettingsCache } from '../services/settings.js';
 import { getAllServices } from '../services/serviceTracker.js';
+import { getAuth } from '../lib/auth.js';
+import { revokeMobileDeviceSession } from './mobile.js';
 import {
   sessions,
   violations,
@@ -48,6 +52,7 @@ import {
   plexAccounts,
   libraryItems,
   librarySnapshots,
+  authSessions,
 } from '../db/schema.js';
 
 // Read a cgroup file, returning null if unavailable
@@ -515,6 +520,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
     // Delete violations first (FK constraint)
     await db.delete(violations);
     const deleted = await db.delete(rules).returning({ id: rules.id });
+    invalidateRulesCache();
     return {
       success: true,
       deleted: deleted.length,
@@ -553,6 +559,10 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
    * DELETE /debug/mobile - Delete all mobile pairing tokens and sessions
    */
   app.delete('/mobile', async () => {
+    const sessionRows = await db.select().from(mobileSessions);
+    for (const session of sessionRows) {
+      await revokeMobileDeviceSession(app.redis, session);
+    }
     const sessionsDeleted = await db.delete(mobileSessions).returning({ id: mobileSessions.id });
     const tokensDeleted = await db.delete(mobileTokens).returning({ id: mobileTokens.id });
     return {
@@ -566,6 +576,13 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
    * POST /debug/reset - Full factory reset (deletes everything including owner)
    */
   app.post('/reset', async () => {
+    // deleteSessions throws if Redis is unreachable, aborting before any delete runs.
+    const existingSessions = await db.select({ token: authSessions.token }).from(authSessions);
+    if (existingSessions.length > 0) {
+      const authCtx = await getAuth().$context;
+      await authCtx.internalAdapter.deleteSessions(existingSessions.map((s) => s.token));
+    }
+
     // Delete everything in order respecting FK constraints
     // Start with tables that have FK dependencies on other tables
     await db.delete(violations);
@@ -585,6 +602,9 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
 
     // Reset settings to defaults (KV store — just delete all rows; service uses defaults for missing keys)
     await db.delete(settings);
+
+    invalidateRulesCache();
+    resetSettingsCache();
 
     return {
       success: true,
@@ -734,7 +754,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
       // Create zip
       await new Promise<void>((resolve, reject) => {
         const output = createWriteStream(zipPath);
-        const archive = archiver('zip', { zlib: { level: 1 } });
+        const archive = new ZipArchive({ zlib: { level: 1 } });
         output.on('close', resolve);
         archive.on('error', reject);
         archive.pipe(output);

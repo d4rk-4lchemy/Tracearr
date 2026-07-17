@@ -141,6 +141,8 @@ vi.mock('../poller/stateTracker.js', () => ({
 vi.mock('../poller/database.js', () => ({
   getActiveRulesV2: mockGetActiveRulesV2,
   batchGetRecentUserSessions: mockBatchGetRecentUserSessions,
+  mergeRecentSessionsForIdentity: (map: Map<string, unknown[]>, ids: string[]) =>
+    ids.flatMap((id) => map.get(id) ?? []),
 }));
 
 vi.mock('../poller/violations.js', () => ({
@@ -262,6 +264,7 @@ function createMockPendingSession(overrides: Partial<PendingSessionData> = {}): 
     server: { id: 'server-123', name: 'Test Server', type: 'plex' },
     serverUser: {
       id: 'server-user-123',
+      userId: 'identity-123',
       username: 'testuser',
       thumbUrl: null,
       identityName: 'Test User',
@@ -269,6 +272,7 @@ function createMockPendingSession(overrides: Partial<PendingSessionData> = {}): 
       sessionCount: 10,
       lastActivityAt: new Date(),
       createdAt: new Date(),
+      identityServerUserIds: ['server-user-123'],
     },
     geo: {
       city: 'Los Angeles',

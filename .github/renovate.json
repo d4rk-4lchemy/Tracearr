@@ -29,6 +29,7 @@
   // Split patch and minor inside groups. Patches automerge, minors hit the dashboard.
   "separateMinorPatch": true,
 
+  "dependencyDashboard": true,
   "dependencyDashboardOSVVulnerabilitySummary": "unresolved",
   "dependencyDashboardLabels": ["dependencies"],
 
@@ -62,7 +63,7 @@
 
     // Postgres/TimescaleDB majors require a schema migration.
     {
-      "matchManagers": ["dockerfile", "docker-compose", "helm-values", "helmv3"],
+      "matchManagers": ["dockerfile", "docker-compose", "helm-values", "helmv3", "github-actions"],
       "matchPackageNames": ["postgres", "timescale/timescaledb", "timescale/timescaledb-ha"],
       "matchUpdateTypes": ["major"],
       "enabled": false,
@@ -345,9 +346,17 @@
       "groupName": "Lint and format"
     },
 
+    // @types that belong to a specific group above are excluded so this catch-all
+    // doesn't override them back out. * doesn't cross /, so exact names are needed.
     {
       "matchManagers": ["npm"],
-      "matchPackageNames": ["@types/*"],
+      "matchPackageNames": [
+        "@types/*",
+        "!@types/react",
+        "!@types/react-dom",
+        "!@types/pg",
+        "!@types/leaflet"
+      ],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "type definitions"
     },
@@ -407,20 +416,26 @@
 
     // ----- docker, compose, helm -----
 
-    // Bundle the Timescale image bump across Dockerfile, compose, and helm.
-    {
-      "matchManagers": ["dockerfile", "docker-compose", "helm-values", "helmv3"],
-      "matchPackageNames": ["postgres", "timescale/timescaledb", "timescale/timescaledb-ha"],
-      "matchUpdateTypes": ["minor", "patch"],
-      "groupName": "Postgres and TimescaleDB images",
-      "labels": ["dep-docker", "dep-database"]
-    },
-
+    // Generic base images. The Postgres/Timescale rule below runs after this and
+    // overrides those packages out into their own group, so this must stay first.
     {
       "matchManagers": ["dockerfile", "docker-compose"],
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "groupName": "Docker base images",
       "labels": ["dep-docker"]
+    },
+
+    // Postgres/Timescale bumps carry PG version and extension changes, so they
+    // get their own group and wait for dashboard approval before a PR opens.
+    // Digest-only rebuilds are gated too: these images never move without sign-off.
+    // github-actions is matched so CI service containers don't slip into other groups.
+    {
+      "matchManagers": ["dockerfile", "docker-compose", "helm-values", "helmv3", "github-actions"],
+      "matchPackageNames": ["postgres", "timescale/timescaledb", "timescale/timescaledb-ha"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "dependencyDashboardApproval": true,
+      "groupName": "Postgres and TimescaleDB images",
+      "labels": ["dep-docker", "dep-database"]
     },
 
     // ----- github actions -----
@@ -439,6 +454,14 @@
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "Helm chart",
       "labels": ["dep-deploy"]
+    },
+
+    // The chart's own image tracks .Chart.AppVersion by leaving tag empty —
+    // never let Renovate pin it to a frozen digest.
+    {
+      "matchManagers": ["helm-values"],
+      "matchPackageNames": ["ghcr.io/connorgallopo/tracearr"],
+      "enabled": false
     },
 
     // Assign and tag all majors.

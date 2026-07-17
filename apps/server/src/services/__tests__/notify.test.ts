@@ -54,7 +54,6 @@ describe('NotificationManager', () => {
     externalUrl: null,
     trustProxy: false,
     mobileEnabled: false,
-    primaryAuthMethod: 'local',
     usePlexGeoip: false,
     tailscaleEnabled: false,
     tailscaleHostname: null,
@@ -63,6 +62,8 @@ describe('NotificationManager', () => {
     backupScheduleDayOfWeek: 0,
     backupScheduleDayOfMonth: 1,
     backupRetentionCount: 7,
+    pluginUpdateCheckEnabled: true,
+    pluginManifestUrl: null,
     ...overrides,
   });
 

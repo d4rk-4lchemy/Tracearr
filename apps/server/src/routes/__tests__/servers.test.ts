@@ -308,7 +308,7 @@ describe('Server Routes', () => {
         id: 'plex-account-123',
         username: 'admin',
         isAdmin: true,
-      } as never);
+      });
 
       const newServer = {
         id: randomUUID(),

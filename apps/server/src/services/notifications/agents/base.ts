@@ -4,6 +4,7 @@
  * Provides common functionality and enforces the NotificationAgent interface.
  */
 
+import { formatEpisodeLabel } from '@tracearr/shared';
 import type {
   NotificationAgent,
   NotificationPayload,
@@ -51,9 +52,7 @@ export abstract class BaseAgent implements NotificationAgent {
   protected getMediaDisplay(session: ActiveSession): { title: string; subtitle: string | null } {
     if (session.mediaType === 'episode' && session.grandparentTitle) {
       const episodeInfo =
-        session.seasonNumber && session.episodeNumber
-          ? `S${session.seasonNumber.toString().padStart(2, '0')} E${session.episodeNumber.toString().padStart(2, '0')}`
-          : '';
+        formatEpisodeLabel(session.seasonNumber, session.episodeNumber, { spaced: true }) ?? '';
       return {
         title: session.grandparentTitle,
         subtitle: episodeInfo ? `${episodeInfo} · ${session.mediaTitle}` : session.mediaTitle,

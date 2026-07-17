@@ -17,6 +17,7 @@ function createPending(overrides: Partial<PendingSessionData> = {}): PendingSess
     server: { id: 'srv-1', name: 'Dispatcharr', type: 'dispatcharr' },
     serverUser: {
       id: 'su-1',
+      userId: 'user-1',
       username: 'user',
       thumbUrl: null,
       identityName: null,
@@ -24,6 +25,7 @@ function createPending(overrides: Partial<PendingSessionData> = {}): PendingSess
       sessionCount: 0,
       lastActivityAt: null,
       createdAt: new Date(),
+      identityServerUserIds: ['su-1'],
     },
     geo: {} as any,
     currentState: 'playing',

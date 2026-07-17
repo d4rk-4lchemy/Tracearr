@@ -560,7 +560,8 @@ function RuleDialog({
 // 'all' | 'global' | 'per_user' | <serverId string>
 type ScopeFilterValue = string;
 
-function getRuleScope(rule: Rule): 'global' | 'server' | 'user' {
+function getRuleScope(rule: Rule): 'global' | 'server' | 'user' | 'person' {
+  if (rule.userId) return 'person';
   if (rule.serverUserId) return 'user';
   if (rule.serverId) return 'server';
   return 'global';
@@ -590,6 +591,15 @@ function RuleScopeChip({
     const server = servers.find((s) => s.id === rule.serverId);
     if (!server) return null;
     return <ServerBadge server={server} variant="outlined" />;
+  }
+
+  if (scope === 'person') {
+    return (
+      <span className="text-muted-foreground bg-muted inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs">
+        <Users className="h-3 w-3 shrink-0" aria-hidden="true" />
+        {rule.identityName ?? 'Person'}
+      </span>
+    );
   }
 
   // user scope: resolve server from filterOptions.users -> servers, fall back to user glyph
@@ -718,6 +728,11 @@ function RuleCard({
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-semibold">{rule.name}</h3>
                 <RuleScopeChip rule={rule} servers={servers} filterOptions={filterOptions} />
+                {rule.enforceAcrossServers && (
+                  <span className="text-muted-foreground bg-muted inline-flex items-center rounded-full px-2 py-0.5 text-xs">
+                    Cross-server
+                  </span>
+                )}
                 {!rule.isActive && (
                   <span className="text-muted-foreground text-xs">
                     ({t('common:states.disabled')})

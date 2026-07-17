@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 import { StreamMap } from '@/components/map';
@@ -14,6 +14,7 @@ import { TimeRangePicker } from '@/components/ui/time-range-picker';
 import { Button } from '@/components/ui/button';
 import { X, Flame, CircleDot } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ErrorState } from '@/components/library/ErrorState';
 import { useLocationStats } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
@@ -39,11 +40,19 @@ export function Map() {
   // Parse filters from URL, use selected servers from context
   const filters = useMemo(() => {
     const serverUserId = searchParams.get('serverUserId');
+    // Additive: the full set of a merged person's account ids, captured at
+    // selection time so their whole history (not just the representative
+    // account) is filtered. Falls back to the single id for older links.
+    const serverUserIdsParam = searchParams.get('serverUserIds');
+    const serverUserIds = serverUserIdsParam
+      ? serverUserIdsParam.split(',').filter(Boolean)
+      : undefined;
     const mediaType = searchParams.get('mediaType') as 'movie' | 'episode' | 'track' | null;
     const viewMode = (searchParams.get('view') as 'heatmap' | 'circles') || 'heatmap';
 
     return {
       serverUserId: serverUserId || undefined,
+      serverUserIds,
       mediaType: mediaType || undefined,
       viewMode,
     };
@@ -58,6 +67,7 @@ export function Map() {
         endDate: timeRange.endDate?.toISOString(),
       },
       serverUserId: filters.serverUserId,
+      serverUserIds: filters.serverUserIds,
       serverIds: selectedServerIds.length ? selectedServerIds : undefined,
       mediaType: filters.mediaType,
     }),
@@ -67,14 +77,20 @@ export function Map() {
   const filterKey = useMemo(() => JSON.stringify(apiParams), [apiParams]);
 
   // Fetch data - includes available filter options based on current filters
-  const { data: locationData, isLoading: locationsLoading } = useLocationStats(apiParams);
+  const {
+    data: locationData,
+    isLoading: locationsLoading,
+    isError: locationsError,
+    error: locationsErrorObj,
+    refetch: refetchLocations,
+  } = useLocationStats(apiParams);
 
   const locations = locationData?.data ?? [];
   const summary = locationData?.summary;
   const availableFilters = locationData?.availableFilters;
 
   // Dynamic filter options from the response
-  const users = availableFilters?.users ?? [];
+  const users = useMemo(() => availableFilters?.users ?? [], [availableFilters]);
   const mediaTypes = availableFilters?.mediaTypes ?? [];
 
   // Get selected filter labels for display
@@ -90,6 +106,25 @@ export function Map() {
     [selectedServers]
   );
 
+  // If the selected person drops out of the option list (e.g. a server or media
+  // type change narrows the context so they no longer have matching activity),
+  // clear the stale selection instead of silently filtering on a vanished id.
+  useEffect(() => {
+    if (!filters.serverUserId || locationsLoading || !availableFilters) return;
+    if (users.some((u) => u.id === filters.serverUserId)) return;
+    const params = new URLSearchParams(searchParams);
+    params.delete('serverUserId');
+    params.delete('serverUserIds');
+    setSearchParams(params, { replace: true });
+  }, [
+    filters.serverUserId,
+    users,
+    locationsLoading,
+    availableFilters,
+    searchParams,
+    setSearchParams,
+  ]);
+
   // Update a single filter
   const setFilter = (key: string, value: string | null) => {
     const params = new URLSearchParams(searchParams);
@@ -97,6 +132,23 @@ export function Map() {
       params.set(key, value);
     } else {
       params.delete(key);
+    }
+    setSearchParams(params, { replace: true });
+  };
+
+  // Update the user filter - also captures the person's full account set so
+  // filtering covers a merged identity's history across every server, not
+  // just the representative account shown in the dropdown.
+  const setUserFilter = (value: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (value === '_all') {
+      params.delete('serverUserId');
+      params.delete('serverUserIds');
+    } else {
+      const person = users.find((u) => u.id === value);
+      params.set('serverUserId', value);
+      const ids = person?.serverUserIds?.length ? person.serverUserIds : [value];
+      params.set('serverUserIds', ids.join(','));
     }
     setSearchParams(params, { replace: true });
   };
@@ -139,10 +191,7 @@ export function Map() {
         <div className="bg-border h-4 w-px" />
 
         {/* User filter */}
-        <Select
-          value={filters.serverUserId ?? '_all'}
-          onValueChange={(v) => setFilter('serverUserId', v === '_all' ? null : v)}
-        >
+        <Select value={filters.serverUserId ?? '_all'} onValueChange={setUserFilter}>
           <SelectTrigger className="h-8 w-[140px] text-sm">
             <SelectValue placeholder={t('map.allUsers')} />
           </SelectTrigger>
@@ -238,17 +287,27 @@ export function Map() {
 
       {/* Map */}
       <div className="relative flex-1">
-        <StreamMap
-          locations={locations}
-          isLoading={locationsLoading}
-          viewMode={filters.viewMode}
-          filterKey={filterKey}
-          serverColorMap={serverColorMap}
-          serverNameMap={serverNameMap}
-          isMultiServer={isMultiServer}
-        />
-        {isMultiServer && hasData && filters.viewMode === 'circles' && (
-          <ServerLegend variant="floating" servers={selectedServers} />
+        {locationsError ? (
+          <ErrorState
+            title={t('common:errors.somethingWentWrong')}
+            message={locationsErrorObj?.message ?? t('common:errors.unexpectedError')}
+            onRetry={() => void refetchLocations()}
+          />
+        ) : (
+          <>
+            <StreamMap
+              locations={locations}
+              isLoading={locationsLoading}
+              viewMode={filters.viewMode}
+              filterKey={filterKey}
+              serverColorMap={serverColorMap}
+              serverNameMap={serverNameMap}
+              isMultiServer={isMultiServer}
+            />
+            {isMultiServer && hasData && filters.viewMode === 'circles' && (
+              <ServerLegend variant="floating" servers={selectedServers} />
+            )}
+          </>
         )}
       </div>
     </div>

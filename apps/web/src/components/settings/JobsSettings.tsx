@@ -28,6 +28,7 @@ import {
   HardDrive,
   Activity,
   ListTodo,
+  Monitor,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
@@ -94,6 +95,7 @@ const JOB_ICONS: Record<string, typeof Database> = {
   normalize_players: Database,
   normalize_countries: Globe,
   normalize_codecs: ArrowUpDown,
+  normalize_resolutions: Monitor,
   fix_imported_progress: RefreshCw,
   backfill_user_dates: Calendar,
   backfill_library_snapshots: Library,

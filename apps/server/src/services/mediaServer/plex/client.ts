@@ -507,6 +507,15 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
   /**
    * Check if OAuth PIN has been authorized
    * Returns auth result if authorized, null if still pending
+   *
+   * Also detects Plex's 2025 "strong" PIN variant, which returns a
+   * server-refreshable JWT instead of a long-lived legacy token. The exact
+   * response shape for that variant was not confirmed against Plex's
+   * authentication docs at implementation time (see forums.plex.tv
+   * "Authenticating with Plex", thread 609370), so `parseStrongJwtPin` is a
+   * conservative capability check: initiateOAuth does not request the
+   * JWK-based strong flow, so real responses never match this shape and
+   * this always falls back to the legacy `authToken` path below.
    */
   static async checkOAuthPin(pinId: string): Promise<{
     id: string;
@@ -514,21 +523,27 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
     email: string;
     thumb: string;
     token: string;
+    tokenKind: 'jwt' | 'legacy';
+    refreshToken: string | null;
+    expiresAt: Date | null;
   } | null> {
     const headers = plexHeaders();
 
-    const pin = await fetchJson<{ authToken: string | null }>(
-      `${PLEX_TV_BASE}/api/v2/pins/${pinId}`,
-      { headers, service: 'plex.tv' }
-    );
+    const pin = await fetchJson<StrongPinResponse>(`${PLEX_TV_BASE}/api/v2/pins/${pinId}`, {
+      headers,
+      service: 'plex.tv',
+    });
 
-    if (!pin.authToken) {
+    const strong = parseStrongJwtPin(pin);
+    const token = strong?.accessToken ?? pin.authToken;
+
+    if (!token) {
       return null;
     }
 
     // Fetch user info with the token
     const user = await fetchJson<Record<string, unknown>>(`${PLEX_TV_BASE}/api/v2/user`, {
-      headers: plexHeaders(pin.authToken),
+      headers: plexHeaders(token),
       service: 'plex.tv',
     });
 
@@ -537,8 +552,55 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
       username: String(user.username ?? ''),
       email: String(user.email ?? ''),
       thumb: String(user.thumb ?? ''),
-      token: pin.authToken,
+      token,
+      tokenKind: strong ? 'jwt' : 'legacy',
+      refreshToken: strong?.refreshToken ?? null,
+      expiresAt: strong?.expiresAt ?? null,
     };
+  }
+
+  /**
+   * Refresh a strong-PIN JWT access token server-side.
+   *
+   * Speculative like `parseStrongJwtPin` above: the refresh request/response
+   * shape is unconfirmed, so any unexpected response degrades to `null`
+   * rather than throwing. Callers must leave the existing token in place on
+   * a `null` result - refresh failures never lock a user out.
+   */
+  static async refreshStrongToken(refreshToken: string): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: Date;
+  } | null> {
+    try {
+      const data = await fetchJson<StrongJwtPayload>('https://clients.plex.tv/api/v2/auth/token', {
+        method: 'POST',
+        headers: {
+          ...plexHeaders(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ refresh_token: refreshToken }),
+        service: 'plex.tv',
+      });
+
+      // Some refresh flows don't rotate the refresh token on every call -
+      // fall back to the one we sent if the response doesn't include a new one.
+      const strong = parseStrongJwtPin({
+        ...data,
+        refreshToken: data.refreshToken ?? refreshToken,
+      });
+      if (!strong) {
+        return null;
+      }
+
+      return {
+        accessToken: strong.accessToken,
+        refreshToken: strong.refreshToken,
+        expiresAt: strong.expiresAt,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -712,4 +774,45 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
     // Owner always has access to all libraries
     return [owner, ...usersWithAccess];
   }
+}
+
+/** Shape of a GET /api/v2/pins/:id response, legacy fields plus speculative strong-JWT fields */
+interface StrongPinResponse extends StrongJwtPayload {
+  authToken: string | null;
+}
+
+/** Speculative strong-PIN JWT fields; unconfirmed against Plex's docs (see checkOAuthPin) */
+interface StrongJwtPayload {
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+}
+
+/**
+ * Capability check for the strong-PIN JWT variant. Returns null (legacy
+ * fallback) unless all three JWT fields are present and well-formed - a
+ * partial or malformed payload is treated the same as "not the JWT variant".
+ */
+function parseStrongJwtPin(
+  payload: StrongJwtPayload
+): { accessToken: string; refreshToken: string; expiresAt: Date } | null {
+  const { accessToken, refreshToken, expiresIn } = payload;
+
+  if (
+    typeof accessToken !== 'string' ||
+    !accessToken ||
+    typeof refreshToken !== 'string' ||
+    !refreshToken ||
+    typeof expiresIn !== 'number' ||
+    !Number.isFinite(expiresIn) ||
+    expiresIn <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresAt: new Date(Date.now() + expiresIn * 1000),
+  };
 }

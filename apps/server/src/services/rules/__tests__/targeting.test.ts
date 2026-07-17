@@ -196,13 +196,50 @@ describe('resolveTargetSessions', () => {
   describe('default behavior', () => {
     it('should default to triggering for undefined target', () => {
       const result = resolveTargetSessions({
-        target: undefined as unknown as 'triggering',
+        target: undefined,
         triggeringSession: middleSession,
         serverUserId: userId,
         activeSessions: allSessions,
       });
       expect(result).toHaveLength(1);
       expect(result[0]!.id).toBe('middle');
+    });
+  });
+
+  describe('identityServerUserIds (opt-in cross-server enforcement)', () => {
+    it('ignores sibling-account sessions when identityServerUserIds is absent (default off)', () => {
+      const result = resolveTargetSessions({
+        target: 'all_user',
+        triggeringSession: newestSession,
+        serverUserId: userId,
+        activeSessions: allSessions,
+      });
+      expect(result.every((s) => s.serverUserId === userId)).toBe(true);
+      expect(result.some((s) => s.id === 'other-user')).toBe(false);
+    });
+
+    it('includes sibling-account sessions when identityServerUserIds is set', () => {
+      const result = resolveTargetSessions({
+        target: 'all_user',
+        triggeringSession: newestSession,
+        serverUserId: userId,
+        activeSessions: allSessions,
+        identityServerUserIds: [userId, otherUserId],
+      });
+      expect(result.map((s) => s.id).sort()).toEqual(
+        ['middle', 'newest', 'oldest', 'other-user'].sort()
+      );
+    });
+
+    it('falls back to serverUserId matching when identityServerUserIds is an empty array', () => {
+      const result = resolveTargetSessions({
+        target: 'all_user',
+        triggeringSession: newestSession,
+        serverUserId: userId,
+        activeSessions: allSessions,
+        identityServerUserIds: [],
+      });
+      expect(result.every((s) => s.serverUserId === userId)).toBe(true);
     });
   });
 });

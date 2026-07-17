@@ -24,6 +24,7 @@ import {
   DispatcharrClient,
 } from '../services/mediaServer/index.js';
 import { syncServer } from '../services/sync.js';
+import { sseManager } from '../services/sseManager.js';
 import { getCacheService } from '../services/cache.js';
 import { enqueueLibrarySync } from '../jobs/librarySyncQueue.js';
 
@@ -241,6 +242,11 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         app.log.error({ err: error, serverId: server.id }, 'Auto-sync failed for new server');
       });
 
+    // Start realtime (SSE) connection in background
+    sseManager.refresh().catch((error: unknown) => {
+      app.log.error({ err: error, serverId: server.id }, 'SSE refresh failed for new server');
+    });
+
     return reply.status(201).send(server);
   });
 
@@ -413,6 +419,13 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
 
     if (newUrl !== undefined) {
       app.log.info({ serverId: id, oldUrl: server.url, newUrl }, 'Server URL updated');
+      // Existing SSE connection holds the old URL; drop it and let refresh re-add
+      sseManager
+        .removeServer(id)
+        .then(() => sseManager.refresh())
+        .catch((error: unknown) => {
+          app.log.error({ err: error, serverId: id }, 'SSE refresh failed after URL update');
+        });
     }
     if (newName !== undefined) {
       app.log.info({ serverId: id, oldName: server.name, newName }, 'Server name updated');
@@ -507,6 +520,11 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
 
     // Delete server (cascade will handle related records)
     await db.delete(servers).where(eq(servers.id, id));
+
+    // Tear down the server's SSE connection in background
+    sseManager.refresh().catch((error: unknown) => {
+      app.log.error({ err: error, serverId: id }, 'SSE refresh failed after server delete');
+    });
 
     return { success: true };
   });
@@ -815,6 +833,8 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         lastEventAt: null,
         since: null,
         error: null,
+        pluginVersion: null,
+        pluginUpdateAvailable: false,
       });
     }
 

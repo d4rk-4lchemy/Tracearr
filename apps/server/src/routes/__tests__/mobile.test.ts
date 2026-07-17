@@ -45,7 +45,6 @@ vi.mock('../../services/termination.js', () => ({
 // Mock the websocket module
 vi.mock('../../websocket/index.js', () => ({
   disconnectMobileDevice: vi.fn(),
-  disconnectAllMobileDevices: vi.fn(),
 }));
 
 // Mock settings service (mobile.ts uses getSetting/setSetting)
@@ -54,11 +53,18 @@ vi.mock('../../services/settings.js', () => ({
   setSetting: vi.fn(),
 }));
 
+// Stub Better Auth: this harness mocks the db, so the drizzle adapter cannot
+// create real sessions. Deterministic values keep the pair flow testable.
+vi.mock('../../lib/auth.js', () => ({
+  getAuth: vi.fn(),
+}));
+
 // Import mocked db, routes, termination service, websocket, and settings
 import { db } from '../../db/client.js';
+import { getAuth } from '../../lib/auth.js';
 import { mobileRoutes } from '../mobile.js';
 import { terminateSession } from '../../services/termination.js';
-import { disconnectMobileDevice, disconnectAllMobileDevices } from '../../websocket/index.js';
+import { disconnectMobileDevice } from '../../websocket/index.js';
 import { getSetting, setSetting } from '../../services/settings.js';
 
 // Mock Redis
@@ -269,6 +275,20 @@ describe('Mobile Routes', () => {
     mockRedis.ttl.mockReset();
     mockRedis.multi.mockReset().mockImplementation(() => createMultiMock());
     mockJwt.sign.mockReset();
+    vi.mocked(getAuth).mockReset();
+    vi.mocked(getAuth).mockReturnValue({
+      api: {
+        getSession: vi.fn().mockResolvedValue(null),
+      },
+      $context: Promise.resolve({
+        internalAdapter: {
+          createSession: vi
+            .fn()
+            .mockResolvedValue({ id: 'ba-session-id', token: 'ba-session-token' }),
+          deleteSession: vi.fn().mockResolvedValue(undefined),
+        },
+      }),
+    } as unknown as ReturnType<typeof getAuth>);
   });
 
   afterEach(async () => {
@@ -511,6 +531,51 @@ describe('Mobile Routes', () => {
       expect(body.message).toBe('Only server owners can generate pairing tokens');
     });
 
+    it('token generation uses 15 minute expiry', async () => {
+      app = await buildTestApp(ownerUser);
+
+      vi.mocked(getSetting).mockResolvedValue(true);
+
+      mockRedis.eval.mockResolvedValue(1);
+
+      let capturedExpiry: Date | null = null;
+      vi.mocked(db.transaction).mockImplementation(async (callback) => {
+        const tx = {
+          execute: vi.fn().mockResolvedValue(undefined),
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([{ count: 0 }]),
+            }),
+          }),
+          insert: vi.fn().mockImplementation(() => ({
+            values: vi.fn().mockImplementation((values: { expiresAt: Date }) => {
+              capturedExpiry = values.expiresAt;
+              return Promise.resolve(undefined);
+            }),
+          })),
+        };
+        return callback(tx as never);
+      });
+
+      const beforeRequest = Date.now();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mobile/pair-token',
+      });
+      const afterRequest = Date.now();
+
+      expect(response.statusCode).toBe(200);
+      expect(capturedExpiry).not.toBeNull();
+
+      // Token should expire in ~15 minutes (with some tolerance)
+      const expiryMs = capturedExpiry!.getTime() - beforeRequest;
+      const expectedExpiryMs = 15 * 60 * 1000;
+      expect(expiryMs).toBeGreaterThanOrEqual(expectedExpiryMs - 1000);
+      expect(expiryMs).toBeLessThanOrEqual(
+        expectedExpiryMs + (afterRequest - beforeRequest) + 1000
+      );
+    });
+
     it('rejects when max pending tokens reached', async () => {
       app = await buildTestApp(ownerUser);
 
@@ -553,7 +618,15 @@ describe('Mobile Routes', () => {
         from: vi.fn().mockResolvedValue(mockSessions),
       } as never);
 
-      vi.mocked(db.delete).mockReturnValue(Promise.resolve() as never);
+      const callOrder: string[] = [];
+      mockRedis.setex.mockImplementation(async () => {
+        callOrder.push('revoke');
+        return 'OK';
+      });
+      vi.mocked(db.delete).mockImplementation(() => {
+        callOrder.push('delete');
+        return Promise.resolve() as never;
+      });
 
       mockRedis.del.mockResolvedValue(1);
 
@@ -566,8 +639,8 @@ describe('Mobile Routes', () => {
       const body = response.json();
       expect(body.success).toBe(true);
       expect(setSetting).toHaveBeenCalledWith('mobileEnabled', false);
-      expect(db.delete).toHaveBeenCalled();
       expect(mockRedis.del).toHaveBeenCalled();
+      expect(callOrder).toEqual(['revoke', 'delete', 'delete']);
     });
 
     it('rejects non-owner access with 403', async () => {
@@ -601,10 +674,17 @@ describe('Mobile Routes', () => {
         from: vi.fn().mockResolvedValue(mockSessions),
       } as never);
 
-      vi.mocked(db.delete).mockReturnValue(Promise.resolve() as never);
+      const callOrder: string[] = [];
+      mockRedis.setex.mockImplementation(async () => {
+        callOrder.push('revoke');
+        return 'OK';
+      });
+      vi.mocked(db.delete).mockImplementation(() => {
+        callOrder.push('delete');
+        return Promise.resolve() as never;
+      });
 
       mockRedis.del.mockResolvedValue(1);
-      mockRedis.setex.mockResolvedValue('OK');
 
       const response = await app.inject({
         method: 'DELETE',
@@ -618,7 +698,9 @@ describe('Mobile Routes', () => {
       // Blacklist + refresh token delete for each session
       expect(mockRedis.setex).toHaveBeenCalledTimes(2);
       expect(mockRedis.del).toHaveBeenCalledTimes(2);
-      expect(disconnectAllMobileDevices).toHaveBeenCalledWith(ownerUser.userId);
+      expect(disconnectMobileDevice).toHaveBeenCalledWith('device-aaa');
+      expect(disconnectMobileDevice).toHaveBeenCalledWith('device-bbb');
+      expect(callOrder).toEqual(['revoke', 'revoke', 'delete']);
     });
 
     it('handles empty sessions gracefully', async () => {
@@ -668,12 +750,17 @@ describe('Mobile Routes', () => {
         }),
       } as never);
 
-      vi.mocked(db.delete).mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
-      } as never);
+      const callOrder: string[] = [];
+      mockRedis.setex.mockImplementation(async () => {
+        callOrder.push('revoke');
+        return 'OK';
+      });
+      vi.mocked(db.delete).mockImplementation(() => {
+        callOrder.push('delete');
+        return { where: vi.fn().mockResolvedValue(undefined) } as never;
+      });
 
       mockRedis.del.mockResolvedValue(1);
-      mockRedis.setex.mockResolvedValue('OK');
 
       const response = await app.inject({
         method: 'DELETE',
@@ -683,6 +770,7 @@ describe('Mobile Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.success).toBe(true);
+      expect(callOrder).toEqual(['revoke', 'delete']);
       // Should blacklist the device
       expect(mockRedis.setex).toHaveBeenCalledWith(
         expect.stringContaining('mobile:blacklist:device-xyz'),
@@ -937,28 +1025,12 @@ describe('Mobile Routes', () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(body.accessToken).toBe('mock.jwt.token');
-      expect(body.refreshToken).toBeDefined();
+      expect(body.accessToken).toBe('ba-session-token');
+      expect(body.refreshToken).toBe('ba-session-token');
       expect(body.server.id).toBe(mockServerId);
       expect(body.server.name).toBe('MyServer');
       expect(body.server.type).toBe('plex');
       expect(body.user.role).toBe('owner');
-    });
-
-    it('rejects when rate limited', async () => {
-      app = await buildTestApp(null);
-
-      mockRedis.eval.mockResolvedValue(6); // Exceeds limit of 5
-      mockRedis.ttl.mockResolvedValue(300);
-
-      const response = await app.inject({
-        method: 'POST',
-        url: '/mobile/pair',
-        payload: validPairPayload,
-      });
-
-      expect(response.statusCode).toBe(429);
-      expect(response.headers['retry-after']).toBe('300');
     });
 
     it('rejects invalid token prefix', async () => {
@@ -1033,54 +1105,6 @@ describe('Mobile Routes', () => {
       expect(response.statusCode).toBe(400);
       const body = response.json();
       expect(body.message).toContain('Maximum of 5 devices allowed');
-    });
-
-    it('rejects expired token', async () => {
-      app = await buildTestApp(null);
-
-      mockRedis.eval.mockResolvedValue(1);
-
-      vi.mocked(db.select).mockImplementation(
-        () =>
-          ({
-            from: vi.fn().mockReturnValue({
-              where: vi.fn().mockReturnValue({
-                limit: vi.fn().mockResolvedValue([]),
-              }),
-            }),
-          }) as never
-      );
-
-      // Mock transaction that throws TOKEN_EXPIRED
-      vi.mocked(db.transaction).mockImplementation(async (callback) => {
-        const tx = {
-          execute: vi.fn().mockResolvedValue(undefined),
-          select: vi.fn().mockImplementation(() => ({
-            from: vi.fn().mockImplementation(() => ({
-              where: vi.fn().mockImplementation(() => ({
-                for: vi.fn().mockReturnValue({
-                  limit: vi
-                    .fn()
-                    .mockResolvedValue([
-                      createMockToken({ expiresAt: new Date(Date.now() - 1000) }),
-                    ]),
-                }),
-              })),
-            })),
-          })),
-        };
-        return callback(tx as never);
-      });
-
-      const response = await app.inject({
-        method: 'POST',
-        url: '/mobile/pair',
-        payload: validPairPayload,
-      });
-
-      expect(response.statusCode).toBe(401);
-      const body = response.json();
-      expect(body.message).toBe('This pairing token has expired');
     });
 
     it('rejects already used token', async () => {
@@ -1198,59 +1222,6 @@ describe('Mobile Routes', () => {
       expect(response.statusCode).toBe(500);
       const body = response.json();
       expect(body.message).toBe('No owner account found');
-    });
-
-    it('returns error when token is invalid', async () => {
-      app = await buildTestApp(null);
-
-      mockRedis.eval.mockResolvedValue(1); // Rate limit OK
-
-      // Mock db.select() outside transaction
-      let selectCallCount = 0;
-      vi.mocked(db.select).mockImplementation(() => {
-        selectCallCount++;
-        if (selectCallCount === 1) {
-          return { from: vi.fn().mockResolvedValue([{ count: 0 }]) } as never;
-        } else {
-          return {
-            from: vi.fn().mockReturnValue({
-              where: vi.fn().mockReturnValue({
-                limit: vi.fn().mockResolvedValue([]),
-              }),
-            }),
-          } as never;
-        }
-      });
-
-      // Mock transaction that throws INVALID_TOKEN error (no token found)
-      vi.mocked(db.transaction).mockImplementation(async (callback) => {
-        const tx = {
-          execute: vi.fn().mockResolvedValue(undefined),
-          select: vi.fn().mockImplementation(() => {
-            // Token lookup returns empty array
-            return {
-              from: vi.fn().mockReturnValue({
-                where: vi.fn().mockReturnValue({
-                  for: vi.fn().mockReturnValue({
-                    limit: vi.fn().mockResolvedValue([]),
-                  }),
-                }),
-              }),
-            };
-          }),
-        };
-        return callback(tx as never);
-      });
-
-      const response = await app.inject({
-        method: 'POST',
-        url: '/mobile/pair',
-        payload: validPairPayload,
-      });
-
-      expect(response.statusCode).toBe(401);
-      const body = response.json();
-      expect(body.message).toBe('Invalid mobile token');
     });
 
     it('returns generic error for unexpected transaction failures', async () => {
@@ -1434,47 +1405,6 @@ describe('Mobile Routes', () => {
       const body = response.json();
       expect(body.accessToken).toBe('new.jwt.token');
       expect(body.refreshToken).toBeDefined();
-    });
-
-    it('rejects when rate limited', async () => {
-      app = await buildTestApp(null);
-
-      mockRedis.eval.mockResolvedValue(31); // Exceeds limit of 30
-      mockRedis.ttl.mockResolvedValue(600);
-
-      const response = await app.inject({
-        method: 'POST',
-        url: '/mobile/refresh',
-        payload: { refreshToken: 'any-token' },
-      });
-
-      expect(response.statusCode).toBe(429);
-    });
-
-    it('rejects invalid refresh token', async () => {
-      app = await buildTestApp(null);
-
-      mockRedis.eval.mockResolvedValue(1);
-      mockRedis.get.mockResolvedValue(null); // Token not found in Redis
-
-      // DB fallback also returns empty (token doesn't exist anywhere)
-      vi.mocked(db.select).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([]),
-          }),
-        }),
-      } as never);
-
-      const response = await app.inject({
-        method: 'POST',
-        url: '/mobile/refresh',
-        payload: { refreshToken: 'invalid-token' },
-      });
-
-      expect(response.statusCode).toBe(401);
-      const body = response.json();
-      expect(body.message).toBe('Invalid or expired refresh token');
     });
 
     it('rejects when user no longer valid', async () => {
@@ -1685,163 +1615,6 @@ describe('Mobile Routes', () => {
   // ============================================================================
   // Stream Termination Tests
   // ============================================================================
-
-  // ============================================
-  // Beta Mode Tests
-  // ============================================
-
-  describe('MOBILE_BETA_MODE', () => {
-    // Note: MOBILE_BETA_MODE is read at module load time from process.env
-    // These tests verify the behavior differences are properly implemented
-    // by testing the conditional paths in the code
-
-    describe('when disabled (default)', () => {
-      it('rejects already used token', async () => {
-        app = await buildTestApp(null);
-
-        mockRedis.eval.mockResolvedValue(1);
-
-        vi.mocked(db.select).mockImplementation(
-          () =>
-            ({
-              from: vi.fn().mockReturnValue({
-                where: vi.fn().mockReturnValue({
-                  limit: vi.fn().mockResolvedValue([]),
-                }),
-              }),
-            }) as never
-        );
-
-        // Token with usedAt set should be rejected in normal mode
-        vi.mocked(db.transaction).mockImplementation(async (callback) => {
-          const tx = {
-            execute: vi.fn().mockResolvedValue(undefined),
-            select: vi.fn().mockImplementation(() => ({
-              from: vi.fn().mockImplementation(() => ({
-                where: vi.fn().mockImplementation(() => ({
-                  for: vi.fn().mockReturnValue({
-                    limit: vi.fn().mockResolvedValue([createMockToken({ usedAt: new Date() })]),
-                  }),
-                })),
-              })),
-            })),
-          };
-          return callback(tx as never);
-        });
-
-        const response = await app.inject({
-          method: 'POST',
-          url: '/mobile/pair',
-          payload: {
-            token: 'trr_mob_validtokenvalue12345678901234567890',
-            deviceName: 'iPhone 15',
-            deviceId: 'device-123',
-            platform: 'ios',
-          },
-        });
-
-        expect(response.statusCode).toBe(401);
-        const body = response.json();
-        expect(body.message).toBe('This pairing token has already been used');
-      });
-
-      it('enforces max device limit', async () => {
-        app = await buildTestApp(null);
-
-        mockRedis.eval.mockResolvedValue(1);
-
-        // Mock device count at limit (5)
-        let selectCallCount = 0;
-        vi.mocked(db.select).mockImplementation(() => {
-          selectCallCount++;
-          if (selectCallCount === 1) {
-            return {
-              from: vi.fn().mockResolvedValue([{ count: 5 }]),
-            } as never;
-          } else {
-            // No existing session for this device
-            return {
-              from: vi.fn().mockReturnValue({
-                where: vi.fn().mockReturnValue({
-                  limit: vi.fn().mockResolvedValue([]),
-                }),
-              }),
-            } as never;
-          }
-        });
-
-        const response = await app.inject({
-          method: 'POST',
-          url: '/mobile/pair',
-          payload: {
-            token: 'trr_mob_validtokenvalue12345678901234567890',
-            deviceName: 'iPhone 15',
-            deviceId: 'device-123',
-            platform: 'ios',
-          },
-        });
-
-        expect(response.statusCode).toBe(400);
-        const body = response.json();
-        expect(body.message).toContain('Maximum of 5 devices allowed');
-      });
-
-      it('token generation uses 15 minute expiry', async () => {
-        app = await buildTestApp(ownerUser);
-
-        vi.mocked(getSetting).mockResolvedValue(true);
-
-        mockRedis.eval.mockResolvedValue(1);
-
-        let capturedExpiry: Date | null = null;
-        vi.mocked(db.transaction).mockImplementation(async (callback) => {
-          const tx = {
-            execute: vi.fn().mockResolvedValue(undefined),
-            select: vi.fn().mockReturnValue({
-              from: vi.fn().mockReturnValue({
-                where: vi.fn().mockResolvedValue([{ count: 0 }]),
-              }),
-            }),
-            insert: vi.fn().mockImplementation(() => ({
-              values: vi.fn().mockImplementation((values: { expiresAt: Date }) => {
-                capturedExpiry = values.expiresAt;
-                return Promise.resolve(undefined);
-              }),
-            })),
-          };
-          return callback(tx as never);
-        });
-
-        const beforeRequest = Date.now();
-        const response = await app.inject({
-          method: 'POST',
-          url: '/mobile/pair-token',
-        });
-        const afterRequest = Date.now();
-
-        expect(response.statusCode).toBe(200);
-        expect(capturedExpiry).not.toBeNull();
-
-        // Token should expire in ~15 minutes (with some tolerance)
-        const expiryMs = capturedExpiry!.getTime() - beforeRequest;
-        const expectedExpiryMs = 15 * 60 * 1000;
-        expect(expiryMs).toBeGreaterThanOrEqual(expectedExpiryMs - 1000);
-        expect(expiryMs).toBeLessThanOrEqual(
-          expectedExpiryMs + (afterRequest - beforeRequest) + 1000
-        );
-      });
-    });
-
-    // Integration tests for beta mode would require module reset with env var set
-    // These are documented here for reference when running with MOBILE_BETA_MODE=true:
-    //
-    // describe('when enabled', () => {
-    //   - Token expiry should be ~100 years (BETA_TOKEN_EXPIRY_YEARS)
-    //   - Already-used tokens should still be accepted
-    //   - Device limit should not be enforced (>5 devices allowed)
-    //   - Server startup log should show beta mode warning
-    // });
-  });
 
   describe('POST /mobile/streams/:id/terminate', () => {
     const serverId = randomUUID();

@@ -46,6 +46,18 @@ vi.mock('../db/schema.js', async (importOriginal) => ({
   settings: { id: 'id' },
 }));
 
+vi.mock('../lib/auth.js', () => ({
+  getAuth: vi.fn().mockReturnValue({
+    $context: Promise.resolve({
+      internalAdapter: { deleteSessions: vi.fn().mockResolvedValue(undefined) },
+    }),
+  }),
+}));
+
+vi.mock('./mobile.js', () => ({
+  revokeMobileDeviceSession: vi.fn().mockResolvedValue(undefined),
+}));
+
 describe('Debug Routes Security', () => {
   let app: FastifyInstance;
 
@@ -128,92 +140,9 @@ describe('Debug Routes Security', () => {
     );
   });
 
-  describe('Privilege Escalation Prevention', () => {
-    it('should not allow role manipulation to access debug routes', async () => {
-      // Start with a guest token
-      const guestPayload = createViewerPayload();
-      const guestToken = generateTestToken(app, guestPayload);
-
-      // Try to manipulate the token to have owner role
-      const parts = guestToken.split('.');
-      const payload = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString());
-      payload.role = 'owner'; // Try to escalate
-      const tamperedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
-      const tamperedToken = `${parts[0]}.${tamperedPayload}.${parts[2]}`;
-
-      const res = await app.inject({
-        method: 'GET',
-        url: '/api/v1/debug/stats',
-        headers: { Authorization: `Bearer ${tamperedToken}` },
-      });
-
-      // Should be rejected - either invalid token (401) or still guest (403)
-      expect([401, 403]).toContain(res.statusCode);
-    });
-
-    it('should not allow adding owner role to token claims', async () => {
-      // Create a token with an extra claim trying to grant owner
-      const payload = {
-        ...createViewerPayload(),
-        isOwner: true, // Extra claim that shouldn't work
-        admin: true, // Another attempt
-      };
-      const token = generateTestToken(app, payload);
-
-      const res = await app.inject({
-        method: 'GET',
-        url: '/api/v1/debug/stats',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      // Role is still 'guest', so should be forbidden
-      expect(res.statusCode).toBe(403);
-    });
-  });
-
-  describe('Expired Token Handling', () => {
-    it('should reject expired owner tokens on debug routes', async () => {
-      const ownerPayload = createOwnerPayload();
-      // Create a manually crafted expired token (signature will be invalid too)
-      const validToken = generateTestToken(app, ownerPayload);
-      const parts = validToken.split('.');
-      const payload = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString());
-      payload.exp = Math.floor(Date.now() / 1000) - 3600; // Expired 1 hour ago
-      const expiredPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
-      const expiredToken = `${parts[0]}.${expiredPayload}.${parts[2]}`;
-
-      const res = await app.inject({
-        method: 'GET',
-        url: '/api/v1/debug/stats',
-        headers: { Authorization: `Bearer ${expiredToken}` },
-      });
-
-      expect(res.statusCode).toBe(401);
-    });
-  });
-
-  describe('Invalid Token Formats', () => {
-    const invalidTokens = [
-      '',
-      'invalid',
-      'not.a.jwt',
-      'Bearer ',
-      'eyJhbGciOiJub25lIn0.eyJyb2xlIjoib3duZXIifQ.', // alg:none attack
-      'null',
-      'undefined',
-      '{"role":"owner"}',
-    ];
-
-    it.each(invalidTokens)('should reject invalid token format: %s', async (invalidToken) => {
-      const res = await app.inject({
-        method: 'GET',
-        url: '/api/v1/debug/stats',
-        headers: { Authorization: `Bearer ${invalidToken}` },
-      });
-
-      expect(res.statusCode).toBe(401);
-    });
-  });
+  // Token edge cases (expired/tampered/invalid formats) are covered against
+  // the REAL production decorators in auth.security.test.ts; this file's job
+  // is proving the debug routes are actually wired to those decorators.
 });
 
 describe('Debug Routes - Destructive Operation Safeguards', () => {
@@ -239,16 +168,14 @@ describe('Debug Routes - Destructive Operation Safeguards', () => {
       headers: { Authorization: `Bearer ${ownerToken}` },
     });
 
-    // Even if there's an error, check the format
-    if (res.statusCode === 200) {
-      const body = res.json();
-      const envString = JSON.stringify(body);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const envString = JSON.stringify(body);
 
-      // Should not contain actual secrets
-      expect(envString).not.toContain('password');
-      expect(envString).not.toMatch(/postgresql:\/\/[^:]+:[^@]+@/); // DB URL with password
-      expect(envString).not.toMatch(/redis:\/\/:[^@]+@/); // Redis URL with password
-    }
+    // Should not contain actual secrets
+    expect(envString).not.toContain('password');
+    expect(envString).not.toMatch(/postgresql:\/\/[^:]+:[^@]+@/); // DB URL with password
+    expect(envString).not.toMatch(/redis:\/\/:[^@]+@/); // Redis URL with password
   });
 
   it('should return structured stats without exposing internals', async () => {
@@ -258,18 +185,16 @@ describe('Debug Routes - Destructive Operation Safeguards', () => {
       headers: { Authorization: `Bearer ${ownerToken}` },
     });
 
-    // Check structure is correct even with mocked data
-    if (res.statusCode === 200) {
-      const body = res.json();
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
 
-      // Should have expected structure
-      expect(body).toHaveProperty('counts');
-      expect(body).toHaveProperty('database');
+    // Should have expected structure
+    expect(body).toHaveProperty('counts');
+    expect(body).toHaveProperty('database');
 
-      // Should not leak internal paths
-      const bodyString = JSON.stringify(body);
-      expect(bodyString).not.toContain('/Users/');
-      expect(bodyString).not.toContain('node_modules');
-    }
+    // Should not leak internal paths
+    const bodyString = JSON.stringify(body);
+    expect(bodyString).not.toContain('/Users/');
+    expect(bodyString).not.toContain('node_modules');
   });
 });

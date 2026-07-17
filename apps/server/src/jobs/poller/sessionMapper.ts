@@ -160,8 +160,8 @@ export function mapMediaSession(
     mediaType,
     // Enhanced media metadata
     grandparentTitle: session.episode?.showTitle ?? '',
-    seasonNumber: session.episode?.seasonNumber ?? 0,
-    episodeNumber: session.episode?.episodeNumber ?? 0,
+    seasonNumber: session.episode?.seasonNumber ?? null,
+    episodeNumber: session.episode?.episodeNumber ?? null,
     year: session.media.year ?? 0,
     thumbPath,
     // Live TV specific fields

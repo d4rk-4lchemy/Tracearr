@@ -10,7 +10,9 @@ import { eq, sql, and, isNull, isNotNull } from 'drizzle-orm';
 import { REDIS_KEYS } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { rules, serverUsers, sessions, ruleActionResults } from '../../db/schema.js';
+import { invalidateRulesCache } from '../../jobs/poller/database.js';
 import { rulesLogger } from '../../utils/logger.js';
+import { recalculateAggregateTrustScore } from '../userService.js';
 import {
   setActionExecutorDeps,
   type ActionExecutorDeps,
@@ -133,50 +135,75 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
     /**
      * Adjust user trust score by delta amount.
      * Clamps result to 0-100 using GREATEST/LEAST SQL functions.
+     *
+     * Despite the param name (kept for interface compatibility), this is a
+     * serverUserId - the account's identity rollup is recomputed in the same
+     * transaction so it never reflects a trust change that hasn't happened yet.
      */
-    adjustUserTrust: async (userId, delta) => {
-      await db
-        .update(serverUsers)
-        .set({
-          trustScore: sql`LEAST(100, GREATEST(0, ${serverUsers.trustScore} + ${delta}))`,
-          updatedAt: new Date(),
-        })
-        .where(eq(serverUsers.id, userId));
+    adjustUserTrust: async (serverUserId, delta) => {
+      await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(serverUsers)
+          .set({
+            trustScore: sql`LEAST(100, GREATEST(0, ${serverUsers.trustScore} + ${delta}))`,
+            updatedAt: new Date(),
+          })
+          .where(eq(serverUsers.id, serverUserId))
+          .returning({ userId: serverUsers.userId });
 
-      rulesLogger.debug(`Adjusted trust score by ${delta}`, { userId });
+        if (updated) {
+          await recalculateAggregateTrustScore(updated.userId, tx);
+        }
+      });
+
+      rulesLogger.debug(`Adjusted trust score by ${delta}`, { userId: serverUserId });
     },
 
     /**
      * Set user trust score to a specific value.
      * Clamps to 0-100 range.
      */
-    setUserTrust: async (userId, value) => {
+    setUserTrust: async (serverUserId, value) => {
       const clampedValue = Math.min(100, Math.max(0, value));
 
-      await db
-        .update(serverUsers)
-        .set({
-          trustScore: clampedValue,
-          updatedAt: new Date(),
-        })
-        .where(eq(serverUsers.id, userId));
+      await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(serverUsers)
+          .set({
+            trustScore: clampedValue,
+            updatedAt: new Date(),
+          })
+          .where(eq(serverUsers.id, serverUserId))
+          .returning({ userId: serverUsers.userId });
 
-      rulesLogger.debug(`Set trust score to ${clampedValue}`, { userId });
+        if (updated) {
+          await recalculateAggregateTrustScore(updated.userId, tx);
+        }
+      });
+
+      rulesLogger.debug(`Set trust score to ${clampedValue}`, { userId: serverUserId });
     },
 
     /**
      * Reset user trust score to baseline (100).
      */
-    resetUserTrust: async (userId) => {
-      await db
-        .update(serverUsers)
-        .set({
-          trustScore: 100,
-          updatedAt: new Date(),
-        })
-        .where(eq(serverUsers.id, userId));
+    resetUserTrust: async (serverUserId) => {
+      await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(serverUsers)
+          .set({
+            trustScore: 100,
+            updatedAt: new Date(),
+          })
+          .where(eq(serverUsers.id, serverUserId))
+          .returning({ userId: serverUsers.userId });
 
-      rulesLogger.debug('Reset trust score to 100', { userId });
+        if (updated) {
+          await recalculateAggregateTrustScore(updated.userId, tx);
+        }
+      });
+
+      rulesLogger.debug('Reset trust score to 100', { userId: serverUserId });
     },
 
     /**
@@ -379,6 +406,10 @@ export async function runV1ToV2Migration(): Promise<{
   rulesLogger.info(
     `V1 to V2 migration complete: ${migratedCount} migrated, ${errors.length} errors`
   );
+
+  if (migratedCount > 0) {
+    invalidateRulesCache();
+  }
 
   return { migratedCount, errors };
 }

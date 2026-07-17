@@ -326,10 +326,6 @@ describe('PlexClient Static Methods', () => {
 });
 
 describe('JellyfinClient Static Methods', () => {
-  it('should have authenticate static method', () => {
-    expect(typeof JellyfinClient.authenticate).toBe('function');
-  });
-
   it('should have verifyServerAdmin static method', () => {
     expect(typeof JellyfinClient.verifyServerAdmin).toBe('function');
   });

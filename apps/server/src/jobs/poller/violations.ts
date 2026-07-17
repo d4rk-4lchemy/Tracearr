@@ -285,22 +285,31 @@ export async function isDuplicateViolationInTransaction(
 /**
  * Check if a rule applies to a specific server user.
  *
- * Global rules (serverUserId=null) apply to all server users.
- * User-specific rules only apply to that server user.
+ * Global rules (serverUserId=null, userId=null) apply to all server users.
+ * Account-scoped rules (serverUserId set) only apply to that server user.
+ * Identity-scoped rules (userId set) apply to every server user belonging to
+ * that identity - pass the triggering server user's identity id so this can
+ * match it against the rule's userId.
  *
  * @param rule - Rule to check
  * @param serverUserId - Server user ID to check against
+ * @param identityUserId - Identity (users.id) the server user belongs to, when known
  * @returns true if the rule applies to this server user
  *
  * @example
  * doesRuleApplyToUser({ serverUserId: null }, 'su-123');       // true (global rule)
  * doesRuleApplyToUser({ serverUserId: 'su-123' }, 'su-123'); // true (user-specific)
  * doesRuleApplyToUser({ serverUserId: 'su-456' }, 'su-123'); // false (different user)
+ * doesRuleApplyToUser({ serverUserId: null, userId: 'u-1' }, 'su-123', 'u-1'); // true (person scope)
  */
 export function doesRuleApplyToUser(
-  rule: { serverUserId: string | null },
-  serverUserId: string
+  rule: { serverUserId: string | null; userId?: string | null },
+  serverUserId: string,
+  identityUserId?: string | null
 ): boolean {
+  if (rule.userId) {
+    return rule.userId === identityUserId;
+  }
   return rule.serverUserId === null || rule.serverUserId === serverUserId;
 }
 

@@ -45,4 +45,38 @@ describe('doesRuleApplyToUser', () => {
       expect(doesRuleApplyToUser(userRule, otherServerUserId)).toBe(false);
     });
   });
+
+  describe('identity (person)-scoped rules', () => {
+    it('applies to any server user whose identity matches userId', () => {
+      const identityId = randomUUID();
+      const personRule = { serverUserId: null, userId: identityId };
+
+      expect(doesRuleApplyToUser(personRule, randomUUID(), identityId)).toBe(true);
+    });
+
+    it('does not apply when the server user belongs to a different identity', () => {
+      const identityId = randomUUID();
+      const otherIdentityId = randomUUID();
+      const personRule = { serverUserId: null, userId: identityId };
+
+      expect(doesRuleApplyToUser(personRule, randomUUID(), otherIdentityId)).toBe(false);
+    });
+
+    it('does not apply when no identity is known for the server user', () => {
+      const identityId = randomUUID();
+      const personRule = { serverUserId: null, userId: identityId };
+
+      expect(doesRuleApplyToUser(personRule, randomUUID())).toBe(false);
+    });
+
+    it('takes priority over serverUserId when both happen to be set', () => {
+      const identityId = randomUUID();
+      const serverUserId = randomUUID();
+      const otherServerUserId = randomUUID();
+      const mixedRule = { serverUserId, userId: identityId };
+
+      // Different account, but same identity - still applies via userId.
+      expect(doesRuleApplyToUser(mixedRule, otherServerUserId, identityId)).toBe(true);
+    });
+  });
 });

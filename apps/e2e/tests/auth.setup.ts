@@ -5,7 +5,8 @@ const STORAGE_STATE_PATH = path.resolve(import.meta.dirname, '../.auth/user.json
 
 const E2E_USER = {
   email: 'e2e@tracearr.test',
-  displayName: 'E2E Owner',
+  name: 'E2E Owner',
+  username: 'e2eowner',
   password: 'TestPassword123!',
 };
 
@@ -38,13 +39,14 @@ setup('authenticate', async ({ page }) => {
 
   if (await createAccountButton.isVisible({ timeout: 2_000 }).catch(() => false)) {
     // First-time setup — sign up as the first owner
+    await page.locator('#name').fill(E2E_USER.name);
+    await page.locator('#username').fill(E2E_USER.username);
     await page.locator('#email').fill(E2E_USER.email);
-    await page.locator('#username').fill(E2E_USER.displayName);
     await page.locator('#password').fill(E2E_USER.password);
     await createAccountButton.click();
   } else {
     // Existing database — log in with credentials
-    await page.locator('#email').fill(E2E_USER.email);
+    await page.locator('#identifier').fill(E2E_USER.email);
     await page.locator('#password').fill(E2E_USER.password);
     await signInButton.click();
   }
@@ -52,6 +54,6 @@ setup('authenticate', async ({ page }) => {
   // Wait for redirect to dashboard (confirms auth succeeded)
   await expect(page).toHaveURL('/', { timeout: 15_000 });
 
-  // Save storage state (includes localStorage with JWT tokens)
+  // Save storage state (session is a cookie now, not a localStorage token)
   await page.context().storageState({ path: STORAGE_STATE_PATH });
 });

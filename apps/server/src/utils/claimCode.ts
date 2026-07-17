@@ -5,6 +5,9 @@
  * The claim code must be provided when creating the first owner account.
  */
 
+import { timingSafeEqual } from 'node:crypto';
+import { hashSha256 } from './hash.js';
+
 /**
  * The claim code for this instance
  * Set once during initialization, or null if claim code feature is disabled
@@ -108,7 +111,13 @@ export function validateClaimCode(providedCode: string | undefined | null): bool
   const normalizedProvided = providedCode.trim().toUpperCase().replace(/[\s-]/g, '');
   const normalizedStored = claimCode.replace(/[\s-]/g, '');
 
-  return normalizedProvided === normalizedStored;
+  // Hash first so both sides are fixed-length before the constant-time
+  // compare - timingSafeEqual throws on a length mismatch, which itself
+  // leaks the length of the real code via a direct === on unequal strings.
+  const providedHash = Buffer.from(hashSha256(normalizedProvided));
+  const storedHash = Buffer.from(hashSha256(normalizedStored));
+
+  return timingSafeEqual(providedHash, storedHash);
 }
 
 /**

@@ -39,7 +39,9 @@ export function useHistorySessions(filters: HistoryFilters = {}, pageSize = 50) 
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: 1000 * 30,
+    staleTime: 1000 * 60 * 2,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -51,6 +53,7 @@ export function useHistoryAggregates(filters: AggregateFilters = {}) {
     queryKey: ['sessions', 'history', 'aggregates', { ...filters, serverIds: serverIdsKey }],
     queryFn: () => api.sessions.historyAggregates(filters),
     staleTime: 1000 * 60,
+    placeholderData: (prev) => prev,
   });
 }
 

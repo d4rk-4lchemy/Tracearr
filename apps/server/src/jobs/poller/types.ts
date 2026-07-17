@@ -15,6 +15,7 @@ import type {
   StreamDetailFields,
 } from '@tracearr/shared';
 import type { sessions } from '../../db/schema.js';
+import type { CacheService, PubSubService } from '../../services/cache.js';
 import type { GeoLocation } from '../../services/geoip.js';
 import type { ViolationInsertResult } from './violations.js';
 
@@ -112,10 +113,13 @@ export interface ProcessedSession extends StreamDetailFields {
   mediaType: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
   /** Show name (for episodes) */
   grandparentTitle: string;
-  /** Season number (for episodes) */
-  seasonNumber: number;
-  /** Episode number (for episodes) */
-  episodeNumber: number;
+  /**
+   * Season number (for episodes). Season 0 is Specials and is a valid value -
+   * null means the season is genuinely unknown/unavailable, never coerce one into the other.
+   */
+  seasonNumber: number | null;
+  /** Episode number (for episodes). Episode 0 is valid; null means unavailable. */
+  episodeNumber: number | null;
   /** Release year */
   year: number;
   /** Poster path */
@@ -227,8 +231,12 @@ export interface SessionPauseData {
  */
 export const PLAYBACK_CONFIRM_THRESHOLD_MS = 30_000;
 
-/** Periodic DB flush for progress/lastSeenAt when no state changes. */
-export const DB_WRITE_FLUSH_INTERVAL_MS = 30_000;
+/**
+ * Periodic DB flush for progress/lastSeenAt when no state changes.
+ * Must stay well below STALE_SESSION_TIMEOUT_SECONDS (300s) including the
+ * dbWriteThrottle jitter, or the stale sweep will force-stop live sessions.
+ */
+export const DB_WRITE_FLUSH_INTERVAL_MS = 15_000;
 
 /**
  * Tracking data for playback confirmation (stored in Redis session state)
@@ -270,6 +278,8 @@ export interface PendingSessionData {
   /** Server user info (matches SessionCreationInput.serverUser) */
   serverUser: {
     id: string;
+    /** Identity (users.id) this server_user belongs to */
+    userId: string;
     username: string;
     thumbUrl: string | null;
     identityName: string | null;
@@ -277,6 +287,8 @@ export interface PendingSessionData {
     sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
+    /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
+    identityServerUserIds: string[];
   };
   /** GeoIP location data */
   geo: GeoLocation;
@@ -308,6 +320,8 @@ export interface ServerProcessingResult {
   stoppedSessionKeys: string[];
   /** Sessions that were updated (state change, progress, etc.) */
   updatedSessions: ActiveSession[];
+  /** Whether any session crossed the watched-completion threshold this tick */
+  watchedTransitionOccurred: boolean;
 }
 
 // ============================================================================
@@ -325,6 +339,8 @@ export interface SessionCreationInput {
   /** Server user info */
   serverUser: {
     id: string;
+    /** Identity (users.id) this server_user belongs to */
+    userId: string;
     username: string;
     thumbUrl: string | null;
     identityName: string | null;
@@ -332,6 +348,8 @@ export interface SessionCreationInput {
     sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
+    /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
+    identityServerUserIds: string[];
   };
   /** GeoIP location data */
   geo: GeoLocation;
@@ -385,6 +403,42 @@ export interface SessionCreationResult {
   wasTerminatedByRule: boolean;
 }
 
+// ============================================================================
+// Pending Session Resolution Types
+// ============================================================================
+
+/**
+ * Input for resolving a Redis-only pending session before a poll branch
+ * commits to treating a session as new. Shared by the isNew and not-new
+ * branches so both defer to the same pending session for a given key.
+ */
+export interface ResolvePendingSessionInput {
+  cacheService: CacheService;
+  pubSubService: PubSubService | null;
+  /** Server info */
+  server: { id: string; name: string; type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' };
+  /** Redis key for the pending session lookup (sessionKey for Plex, composite key otherwise) */
+  pendingKey: string;
+  /** Processed session data from media server */
+  processed: ProcessedSession;
+  /** Server user info (matches SessionCreationInput.serverUser) */
+  userDetail: SessionCreationInput['serverUser'];
+  /** Active V2 rules to evaluate on confirmation */
+  activeRulesV2: RuleV2[];
+  /** Active sessions for rule context (e.g., concurrent streams) */
+  activeSessions: ActiveSession[];
+  /** Recent sessions for rule evaluation context */
+  recentSessions: Session[];
+  usePlexGeoip: boolean;
+  dispatcharrLiveConfirmThresholdMs?: number | null;
+}
+
+/** Outcome of checking Redis for a pending session tracked under a given key. */
+export type PendingSessionOutcome =
+  | { status: 'not-pending' }
+  | { status: 'confirmed'; newSession: ActiveSession | null }
+  | { status: 'still-pending'; updatedSession: ActiveSession };
+
 /**
  * Input for stopping a session
  */
@@ -433,6 +487,8 @@ export interface MediaChangeInput {
   /** Server user info */
   serverUser: {
     id: string;
+    /** Identity (users.id) this server_user belongs to */
+    userId: string;
     username: string;
     thumbUrl: string | null;
     identityName: string | null;
@@ -440,6 +496,8 @@ export interface MediaChangeInput {
     sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
+    /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
+    identityServerUserIds: string[];
   };
   /** GeoIP location data */
   geo: GeoLocation;
@@ -486,6 +544,8 @@ export interface TranscodeReEvalInput {
   /** Server user info */
   serverUser: {
     id: string;
+    /** Identity (users.id) this server_user belongs to */
+    userId: string;
     username: string;
     thumbUrl: string | null;
     identityName: string | null;
@@ -493,6 +553,8 @@ export interface TranscodeReEvalInput {
     sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
+    /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
+    identityServerUserIds: string[];
   };
   /** Active V2 rules (will be filtered to transcode-related) */
   activeRulesV2: RuleV2[];
@@ -514,6 +576,8 @@ export interface PauseReEvalInput {
   /** Server user info */
   serverUser: {
     id: string;
+    /** Identity (users.id) this server_user belongs to */
+    userId: string;
     username: string;
     thumbUrl: string | null;
     identityName: string | null;
@@ -521,6 +585,8 @@ export interface PauseReEvalInput {
     sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
+    /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
+    identityServerUserIds: string[];
   };
   /** Active V2 rules (will be filtered to pause-related) */
   activeRulesV2: RuleV2[];

@@ -3,9 +3,6 @@
     "allowGuestAccess": "允许访客访问",
     "allowGuestAccessDesc": "禁用时，只有服务器所有者可以登录到 Tracearr",
     "description": "配置谁可以访问 Tracearr",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "主要认证方法",
-    "primaryAuthMethodDesc": "选择登录页面默认显示的身份验证方法",
     "singleOwnerNote": "注意：当访客访问被禁用时，只有服务器所有者可以登录。所有其他用户都会看到“访问被拒绝”的消息。",
     "title": "访问控制"
   },
@@ -16,7 +13,6 @@
     "email": "电子邮件",
     "password": "密码",
     "signInToAccount": "登录到您的帐户",
-    "useJellyfinAccount": "使用Jellyfin帐户",
     "useLocalAccount": "使用本地账户"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "帮助翻译 Tracearr",
     "imperial": "英制(mi, mph)",
     "iosHttpWarning": "iOS 需要外部连接的 HTTPS。使用 SSL 设置反向代理。",
-    "jellyfinAccount": "Jellyfin 帐户",
     "jellyfinPollingNote": "Jellyfin/Emby在上面的间隔时间被打分。",
     "language": "语言",
     "languageDescription": "选择您首选的显示语言。",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "知道了",
     "message": "所有用户似乎使用了相同的 IP 地址或本地网络 IP。这可能会影响到基于规则的位置或IP地址逻辑。"
-  },
-  "jellyfin": {
-    "password": "Jellyfin 密码",
-    "signInWithJellyfin": "使用 Jellyfin 登录",
-    "username": "Jellyfin 用户名"
   },
   "jobs": {
     "backfill": "回填表",
@@ -362,6 +352,8 @@
     "plexAccount": "Plex账户",
     "plexServerPlaceholder": "我的Plex服务器",
     "plexServerUrlPlaceholder": "http://192.168.1/100:32400",
+    "pluginUpdateAvailable": "Plugin update available",
+    "pluginVersion": "plugin v{{version}}",
     "pollingMode": "Polling",
     "realtimeActive": "Real-time updates active",
     "realtimeDialog": {
@@ -370,11 +362,14 @@
       "copyUrl": "Copy URL",
       "embyDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "embyReleasesUrl": "https://github.com/Tracearr/Media-Server-SSE/releases",
+      "embyUpdateDescription": "A newer plugin release is available. Download the latest release zip, replace the plugin DLL in your Emby plugins folder, and restart Emby.",
       "jellyfinDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "jellyfinRepoUrl": "https://raw.githubusercontent.com/Tracearr/Media-Server-SSE/main/manifest.json",
+      "jellyfinUpdateDescription": "A newer plugin release is available. Open your Jellyfin dashboard, go to Plugins, Catalog, and update Tracearr SSE, then restart Jellyfin.",
       "openReleases": "Open releases page",
       "repositoryUrl": "Repository URL",
-      "title": "Enable real-time updates"
+      "title": "Enable real-time updates",
+      "updateTitle": "Update the Tracearr SSE plugin"
     },
     "removeServer": "删除服务器",
     "removeServerConfirm": "您确定要删除此服务器吗？ 所有相关会话数据将被保留，但您将无法从此服务器监视新会话。",

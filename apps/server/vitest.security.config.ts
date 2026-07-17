@@ -4,11 +4,16 @@
  * Authentication and authorization tests:
  * - Token validation and bypass attempts
  * - Privilege escalation prevention
- * - Injection attack prevention
  * - Role-based access control
  *
  * These tests verify security behavior, not implementation coverage.
  * No coverage thresholds - security tests are pass/fail.
+ *
+ * NOTE: this suite runs without DB/Redis services, so it cannot drive live
+ * Better Auth flows. The live auth security gates are
+ * test/integration/betterAuthSecurity.integration.test.ts and
+ * test/integration/betterAuthProxyOrigin.integration.test.ts, executed by
+ * the test-integration CI job (which provides real Postgres/Redis).
  *
  * Run: pnpm test:security
  */

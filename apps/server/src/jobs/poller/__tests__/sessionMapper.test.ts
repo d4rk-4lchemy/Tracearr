@@ -105,6 +105,49 @@ describe('sessionMapper', () => {
         expect(result.episodeNumber).toBe(5);
       });
 
+      it('should preserve seasonNumber 0 (Specials), not coerce it to null or default it away', () => {
+        const session = createBaseMediaSession({
+          media: { title: 'Special Feature', type: 'episode', durationMs: 600000 },
+          episode: {
+            showTitle: 'Test Show',
+            seasonNumber: 0,
+            episodeNumber: 1,
+          },
+        });
+
+        const result = mapMediaSession(session, 'plex');
+
+        expect(result.seasonNumber).toBe(0);
+        expect(result.episodeNumber).toBe(1);
+      });
+
+      it('should preserve a missing seasonNumber as null, not default it to 0', () => {
+        const session = createBaseMediaSession({
+          media: { title: 'Mystery Episode', type: 'episode', durationMs: 1200000 },
+          episode: {
+            showTitle: 'Test Show',
+            seasonNumber: null,
+            episodeNumber: 3,
+          },
+        });
+
+        const result = mapMediaSession(session, 'jellyfin');
+
+        expect(result.seasonNumber).toBeNull();
+        expect(result.episodeNumber).toBe(3);
+      });
+
+      it('should default seasonNumber/episodeNumber to null for non-episode media (no episode metadata)', () => {
+        const session = createBaseMediaSession({
+          media: { title: 'Test Movie', type: 'movie', durationMs: 7200000 },
+        });
+
+        const result = mapMediaSession(session, 'plex');
+
+        expect(result.seasonNumber).toBeNull();
+        expect(result.episodeNumber).toBeNull();
+      });
+
       it('should map track type correctly', () => {
         const session = createBaseMediaSession({
           media: { title: 'Test Track', type: 'track', durationMs: 240000 },

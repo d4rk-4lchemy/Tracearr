@@ -5,17 +5,24 @@
 
 import { Play, Clock, Users, Film } from 'lucide-react';
 import { StatCard, formatWatchTime, formatNumber } from '@/components/ui/stat-card';
+import { cn } from '@/lib/utils';
 import type { HistoryAggregates as AggregatesType } from '@tracearr/shared';
 
 interface Props {
   aggregates?: AggregatesType;
   total?: number;
   isLoading?: boolean;
+  isFetching?: boolean;
 }
 
-export function HistoryAggregates({ aggregates, total, isLoading }: Props) {
+export function HistoryAggregates({ aggregates, total, isLoading, isFetching }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div
+      className={cn(
+        'grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-4',
+        isFetching && !isLoading && 'opacity-60'
+      )}
+    >
       <StatCard
         icon={Play}
         label="Total Plays"

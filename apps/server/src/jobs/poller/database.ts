@@ -18,7 +18,7 @@ import {
   type ViolationSeverity,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
-import { sessions, rules } from '../../db/schema.js';
+import { sessions, rules, serverUsers } from '../../db/schema.js';
 import { mapSessionRow } from './sessionMapper.js';
 
 // ============================================================================
@@ -72,6 +72,114 @@ export async function batchGetRecentUserSessions(
   return result;
 }
 
+/**
+ * Merge recent-session lists for a set of server_user ids belonging to one
+ * identity into a single deduplicated list (by session id), so windowed rule
+ * evaluators (unique_ips_in_window, unique_devices_in_window, travel_speed_kmh)
+ * see the identity's cross-server activity exactly once, never twice because
+ * a session surfaced under more than one of the given ids.
+ *
+ * @param recentSessionsMap - Map of serverUserId -> Session[] (as returned by batchGetRecentUserSessions)
+ * @param identityServerUserIds - server_user ids belonging to one identity
+ * @returns Combined, deduplicated Session[] across all the given ids
+ */
+export function mergeRecentSessionsForIdentity(
+  recentSessionsMap: Map<string, Session[]>,
+  identityServerUserIds: string[]
+): Session[] {
+  const seen = new Set<string>();
+  const combined: Session[] = [];
+  for (const id of identityServerUserIds) {
+    for (const s of recentSessionsMap.get(id) ?? []) {
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      combined.push(s);
+    }
+  }
+  return combined;
+}
+
+/**
+ * Widen recentSessionsMap in place so every server_user id belonging to a
+ * merged identity (an identityServerUserIdsMap entry with more than one id)
+ * maps to the combined, deduplicated recent-session list of ALL of that
+ * identity's server_user ids. Ids not present in identityServerUserIdsMap,
+ * and ids whose identity has only one server_user, are left untouched - this
+ * is what keeps sibling data from leaking into an unrelated server_user on
+ * the same server.
+ *
+ * Only issues one supplemental query per poll tick (for whichever sibling ids
+ * aren't already in recentSessionsMap), regardless of how many identities are
+ * merged, so the poller hot path stays batched.
+ *
+ * @param recentSessionsMap - Map of serverUserId -> Session[], mutated in place
+ * @param identityServerUserIdsMap - Map of identity userId -> that identity's server_user ids
+ */
+export async function widenRecentSessionsForMergedIdentities(
+  recentSessionsMap: Map<string, Session[]>,
+  identityServerUserIdsMap: Map<string, string[]>
+): Promise<void> {
+  const siblingIdsNeeded = new Set<string>();
+  for (const ids of identityServerUserIdsMap.values()) {
+    if (ids.length <= 1) continue;
+    for (const id of ids) {
+      if (!recentSessionsMap.has(id)) siblingIdsNeeded.add(id);
+    }
+  }
+
+  if (siblingIdsNeeded.size > 0) {
+    const supplemental = await batchGetRecentUserSessions([...siblingIdsNeeded]);
+    for (const [id, sessionsForId] of supplemental) {
+      recentSessionsMap.set(id, sessionsForId);
+    }
+  }
+
+  for (const ids of identityServerUserIdsMap.values()) {
+    if (ids.length <= 1) continue;
+    const combined = mergeRecentSessionsForIdentity(recentSessionsMap, ids);
+    for (const id of ids) {
+      recentSessionsMap.set(id, combined);
+    }
+  }
+}
+
+/**
+ * Batch load the sibling server_user ids for a set of identities in a single
+ * query (eliminates a per-session/per-poll-tick lookup for cross-server rule
+ * aggregation on merged identities).
+ *
+ * @param userIds - Array of identity (users.id) values to resolve
+ * @returns Map of userId -> server_user ids belonging to that identity
+ *
+ * @example
+ * const identityMap = await batchGetIdentityServerUserIds(['u-1', 'u-2']);
+ * const idsForUser1 = identityMap.get('u-1') ?? [];
+ */
+export async function batchGetIdentityServerUserIds(
+  userIds: string[]
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (userIds.length === 0) return result;
+
+  const uniqueUserIds = [...new Set(userIds)];
+  for (const userId of uniqueUserIds) {
+    result.set(userId, []);
+  }
+
+  const rows = await db
+    .select({ id: serverUsers.id, userId: serverUsers.userId })
+    .from(serverUsers)
+    .where(inArray(serverUsers.userId, uniqueUserIds));
+
+  for (const row of rows) {
+    const ids = result.get(row.userId) ?? [];
+    ids.push(row.id);
+    result.set(row.userId, ids);
+  }
+
+  return result;
+}
+
 // ============================================================================
 // Rule Loading
 // ============================================================================
@@ -107,6 +215,16 @@ export async function getActiveRules(): Promise<Rule[]> {
   }));
 }
 
+// TTL fallback for multi-instance deployments: another instance's invalidation isn't visible here, so a rule change can take up to this long to apply.
+const RULES_CACHE_TTL_MS = 10_000;
+
+let rulesCache: { data: RuleV2[]; expiresAt: number } | null = null;
+
+/** Invalidate the active V2 rules cache. Call from every rule create/update/delete/toggle path. */
+export function invalidateRulesCache(): void {
+  rulesCache = null;
+}
+
 /**
  * Get all active V2 rules (rules with conditions/actions defined).
  *
@@ -120,16 +238,24 @@ export async function getActiveRules(): Promise<Rule[]> {
  * // Evaluate session events against these rules
  */
 export async function getActiveRulesV2(): Promise<RuleV2[]> {
+  const now = Date.now();
+  if (rulesCache && rulesCache.expiresAt > now) {
+    return rulesCache.data;
+  }
+
   const activeRules = await db
     .select()
     .from(rules)
     .where(and(eq(rules.isActive, true), isNotNull(rules.conditions)));
 
-  return activeRules.map((r) => ({
+  const mapped = activeRules.map((r) => ({
     id: r.id,
     name: r.name,
     description: r.description,
     serverId: r.serverId,
+    serverUserId: r.serverUserId,
+    userId: r.userId,
+    enforceAcrossServers: r.enforceAcrossServers,
     isActive: r.isActive,
     severity: (r.severity ?? 'warning') as ViolationSeverity,
     conditions: r.conditions as RuleConditions,
@@ -137,4 +263,7 @@ export async function getActiveRulesV2(): Promise<RuleV2[]> {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   }));
+
+  rulesCache = { data: mapped, expiresAt: now + RULES_CACHE_TTL_MS };
+  return mapped;
 }

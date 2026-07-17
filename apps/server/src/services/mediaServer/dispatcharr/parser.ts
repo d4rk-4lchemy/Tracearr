@@ -229,7 +229,7 @@ export function parseStatusResponse(raw: unknown): DispatcharrChannelStatus[] {
       : [];
   return channels.flatMap((channel) => {
     const parsed = asRecord(channel);
-    return parsed ? [parsed as DispatcharrChannelStatus] : [];
+    return parsed ? [parsed] : [];
   });
 }
 
@@ -252,7 +252,7 @@ export function parseRealtimeChannelStatsPayload(
       const parsed = JSON.parse(rawStats) as unknown;
       const record = asRecord(parsed);
       if (!record) return null;
-      return record as DispatcharrStatusResponse;
+      return record;
     } catch {
       return null;
     }
@@ -260,7 +260,7 @@ export function parseRealtimeChannelStatsPayload(
 
   const record = asRecord(rawStats);
   if (!record) return null;
-  return record as DispatcharrStatusResponse;
+  return record;
 }
 
 export function parseRealtimeVodStatsPayload(raw: unknown): DispatcharrVodStatsResponse | null {
@@ -277,7 +277,7 @@ export function parseRealtimeVodStatsPayload(raw: unknown): DispatcharrVodStatsR
       const parsed = JSON.parse(rawStats) as unknown;
       const record = asRecord(parsed);
       if (!record) return null;
-      return record as DispatcharrVodStatsResponse;
+      return record;
     } catch {
       return null;
     }
@@ -285,7 +285,7 @@ export function parseRealtimeVodStatsPayload(raw: unknown): DispatcharrVodStatsR
 
   const record = asRecord(rawStats);
   if (!record) return null;
-  return record as DispatcharrVodStatsResponse;
+  return record;
 }
 
 export function parseVodStatsResponse(raw: unknown): DispatcharrVodStatsResponse {
@@ -339,7 +339,7 @@ export function parseChannelClients(raw: unknown): DispatcharrClientStatus[] {
   const clients = Array.isArray(channel?.clients) ? channel.clients : [];
   return clients.flatMap((client) => {
     const parsed = asRecord(client);
-    return parsed ? [parsed as DispatcharrClientStatus] : [];
+    return parsed ? [parsed] : [];
   });
 }
 
@@ -369,7 +369,7 @@ function mergeClients(
     if (!clientId) continue;
     if (seen.has(clientId)) continue;
     seen.add(clientId);
-    merged.push(record as DispatcharrClientStatus);
+    merged.push(record);
   }
 
   return merged;

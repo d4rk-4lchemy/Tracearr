@@ -15,7 +15,7 @@ import {
   type Session,
   type StreamDetailFields,
 } from '@tracearr/shared';
-import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { serverUsers, sessions, violations } from '../../db/schema.js';
 import type { GeoLocation } from '../../services/geoip.js';
@@ -110,8 +110,8 @@ export interface BuildActiveSessionInput {
     mediaType: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
     mediaTitle: string;
     grandparentTitle: string;
-    seasonNumber: number;
-    episodeNumber: number;
+    seasonNumber: number | null;
+    episodeNumber: number | null;
     year: number;
     thumbPath: string;
     ratingKey: string;
@@ -186,8 +186,8 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     mediaType: processed.mediaType,
     mediaTitle: processed.mediaTitle,
     grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.seasonNumber || null,
-    episodeNumber: processed.episodeNumber || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: processed.ratingKey || null,
@@ -283,14 +283,14 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     sessionKey: processed.sessionKey,
 
     // State
-    state: pendingData.currentState as 'playing' | 'paused',
+    state: pendingData.currentState,
 
     // Media metadata
     mediaType: processed.mediaType,
     mediaTitle: processed.mediaTitle,
     grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.seasonNumber || null,
-    episodeNumber: processed.episodeNumber || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: processed.ratingKey || null,
@@ -461,6 +461,73 @@ export async function findActiveSessionsAll(
     .where(and(...conditions));
 }
 
+function groupActiveSessionRow(
+  map: Map<string, (typeof sessions.$inferSelect)[]>,
+  key: string,
+  row: typeof sessions.$inferSelect
+): void {
+  const bucket = map.get(key);
+  if (bucket) bucket.push(row);
+  else map.set(key, [row]);
+}
+
+/** Batch equivalent of findActiveSession for a whole poll tick, grouped by sessionKey. */
+export async function batchFindActiveSessionsByKey(
+  serverId: string,
+  sessionKeys: string[]
+): Promise<Map<string, (typeof sessions.$inferSelect)[]>> {
+  const result = new Map<string, (typeof sessions.$inferSelect)[]>();
+  if (sessionKeys.length === 0) return result;
+
+  const chunkBound = new Date(Date.now() - ACTIVE_SESSION_CHUNK_BOUND_MS);
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.serverId, serverId),
+        inArray(sessions.sessionKey, [...new Set(sessionKeys)]),
+        isNull(sessions.stoppedAt),
+        gte(sessions.startedAt, chunkBound)
+      )
+    )
+    .orderBy(desc(sessions.startedAt));
+
+  for (const row of rows) groupActiveSessionRow(result, row.sessionKey, row);
+  return result;
+}
+
+/** Batch equivalent of findActiveSessionByComposite, grouped by serverUserId+ratingKey. */
+export async function batchFindActiveSessionsByComposite(
+  serverId: string,
+  identities: { serverUserId: string; ratingKey: string }[]
+): Promise<Map<string, (typeof sessions.$inferSelect)[]>> {
+  const result = new Map<string, (typeof sessions.$inferSelect)[]>();
+  if (identities.length === 0) return result;
+
+  const serverUserIds = [...new Set(identities.map((i) => i.serverUserId))];
+  const ratingKeys = [...new Set(identities.map((i) => i.ratingKey))];
+  const chunkBound = new Date(Date.now() - ACTIVE_SESSION_CHUNK_BOUND_MS);
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.serverId, serverId),
+        inArray(sessions.serverUserId, serverUserIds),
+        inArray(sessions.ratingKey, ratingKeys),
+        isNull(sessions.stoppedAt),
+        gte(sessions.startedAt, chunkBound)
+      )
+    )
+    .orderBy(desc(sessions.startedAt));
+
+  for (const row of rows) {
+    groupActiveSessionRow(result, `${row.serverUserId}::${row.ratingKey}`, row);
+  }
+  return result;
+}
+
 // ============================================================================
 // Session Creation
 // ============================================================================
@@ -612,8 +679,8 @@ export async function createSessionWithRulesAtomic(
               mediaType: processed.mediaType,
               mediaTitle: processed.mediaTitle,
               grandparentTitle: processed.grandparentTitle || null,
-              seasonNumber: processed.seasonNumber || null,
-              episodeNumber: processed.episodeNumber || null,
+              seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+              episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
               year: processed.year || null,
               thumbPath: processed.thumbPath || null,
               startedAt: new Date(),
@@ -681,8 +748,8 @@ export async function createSessionWithRulesAtomic(
             mediaType: processed.mediaType,
             mediaTitle: processed.mediaTitle,
             grandparentTitle: processed.grandparentTitle || null,
-            seasonNumber: processed.seasonNumber || null,
-            episodeNumber: processed.episodeNumber || null,
+            seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+            episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
             year: processed.year || null,
             thumbPath: processed.thumbPath || null,
             ratingKey: processed.ratingKey || null,
@@ -741,7 +808,7 @@ export async function createSessionWithRulesAtomic(
 
           const serverUserObj: ServerUser = {
             id: serverUser.id,
-            userId: '', // Not needed for rule evaluation
+            userId: serverUser.userId,
             serverId: server.id,
             externalId: '',
             username: serverUser.username,
@@ -768,6 +835,7 @@ export async function createSessionWithRulesAtomic(
             server: serverObj,
             activeSessions: activeSessionsWithNew,
             recentSessions,
+            identityServerUserIds: serverUser.identityServerUserIds,
           };
 
           // Evaluate V2 rules
@@ -873,6 +941,9 @@ export async function createSessionWithRulesAtomic(
               activeSessions: context.activeSessions.some((s) => s.id === context.session.id)
                 ? context.activeSessions
                 : [...context.activeSessions, context.session],
+              identityServerUserIds: rule.enforceAcrossServers
+                ? context.identityServerUserIds
+                : undefined,
             });
 
             // Check if the triggering session is in the kill list
@@ -1195,6 +1266,8 @@ export interface PollResultsInput {
   stoppedKeys: string[];
   /** Sessions that were updated */
   updatedSessions: ActiveSession[];
+  /** Whether any session crossed the watched-completion threshold this tick */
+  watchedTransitionOccurred: boolean;
   /** Cached sessions for looking up stopped session details */
   cachedSessions: ActiveSession[];
   /** Cache service for persistence */
@@ -1202,7 +1275,8 @@ export interface PollResultsInput {
     incrementalSyncActiveSessions: (
       newSessions: ActiveSession[],
       stoppedIds: string[],
-      updatedSessions: ActiveSession[]
+      updatedSessions: ActiveSession[],
+      watchedTransitionOccurred?: boolean
     ) => Promise<void>;
     addUserSession: (userId: string, sessionId: string) => Promise<void>;
     removeUserSession: (userId: string, sessionId: string) => Promise<void>;
@@ -1237,6 +1311,7 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     newSessions,
     stoppedKeys,
     updatedSessions,
+    watchedTransitionOccurred,
     cachedSessions,
     cacheService,
     pubSubService,
@@ -1258,7 +1333,8 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     await cacheService.incrementalSyncActiveSessions(
       newSessions,
       stoppedSessionIds,
-      updatedSessions
+      updatedSessions,
+      watchedTransitionOccurred
     );
 
     // Update user session sets for new sessions
@@ -1282,8 +1358,9 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
       await enqueueNotification({ type: 'session_started', payload: session });
     }
 
-    for (const session of updatedSessions) {
-      await pubSubService.publish('session:updated', session);
+    // No consumer reads the payload, so one tick's updates collapse to a single publish.
+    if (updatedSessions.length > 0) {
+      await pubSubService.publish('session:updated', updatedSessions[0]);
     }
 
     for (const key of stoppedKeys) {
@@ -1347,8 +1424,8 @@ export async function reEvaluateRulesOnTranscodeChange(
     mediaType: processed.mediaType,
     mediaTitle: processed.mediaTitle,
     grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.seasonNumber || null,
-    episodeNumber: processed.episodeNumber || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: existingSession.ratingKey,
@@ -1403,7 +1480,7 @@ export async function reEvaluateRulesOnTranscodeChange(
 
   const serverUserObj: ServerUser = {
     id: serverUser.id,
-    userId: '',
+    userId: serverUser.userId,
     serverId: server.id,
     externalId: '',
     username: serverUser.username,
@@ -1426,6 +1503,7 @@ export async function reEvaluateRulesOnTranscodeChange(
     server: serverObj,
     activeSessions,
     recentSessions,
+    identityServerUserIds: serverUser.identityServerUserIds,
   };
 
   // Evaluate only transcode-related rules
@@ -1569,8 +1647,8 @@ export async function reEvaluateRulesOnPauseState(
     mediaType: processed.mediaType,
     mediaTitle: processed.mediaTitle,
     grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.seasonNumber || null,
-    episodeNumber: processed.episodeNumber || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: existingSession.ratingKey,
@@ -1624,7 +1702,7 @@ export async function reEvaluateRulesOnPauseState(
 
   const serverUserObj: ServerUser = {
     id: serverUser.id,
-    userId: '',
+    userId: serverUser.userId,
     serverId: server.id,
     externalId: '',
     username: serverUser.username,
@@ -1647,6 +1725,7 @@ export async function reEvaluateRulesOnPauseState(
     server: serverObj,
     activeSessions,
     recentSessions,
+    identityServerUserIds: serverUser.identityServerUserIds,
   };
 
   // Evaluate only pause-related rules

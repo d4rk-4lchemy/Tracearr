@@ -143,6 +143,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
       fix_imported_progress: 'Fix Import Progress',
       rebuild_timescale_views: 'Rebuild Analytics',
       normalize_codecs: 'Normalize Codecs',
+      normalize_resolutions: 'Normalize Resolutions',
       backfill_user_dates: 'Backfill User Dates',
       backfill_library_snapshots: 'Generate Library History',
     };

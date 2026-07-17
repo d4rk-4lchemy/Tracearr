@@ -33,7 +33,12 @@ import countriesEn from 'i18n-iso-countries/langs/en.json' with { type: 'json' }
 countries.registerLocale(countriesEn);
 import { db } from '../db/client.js';
 import { sessions, serverUsers, servers, users } from '../db/schema.js';
-import { hasServerAccess, resolveServerIds } from '../utils/serverFiltering.js';
+import {
+  hasServerAccess,
+  resolveServerIds,
+  buildMultiServerFragment,
+} from '../utils/serverFiltering.js';
+import { representativeAccountOrderSql } from '../utils/representativeAccount.js';
 import { terminateSession } from '../services/termination.js';
 import { getCacheService } from '../services/cache.js';
 import { createHash } from 'node:crypto';
@@ -46,6 +51,14 @@ type HistoryFilterResult = {
   conditions: ReturnType<typeof sql>[];
   whereClause: ReturnType<typeof sql>;
 } | null;
+
+// Display-only bound for the segments breakdown below; core aggregation has no such cap.
+const CHAIN_WINDOW_DAYS = 30;
+const CHAIN_WINDOW_INTERVAL = sql.raw(`INTERVAL '${CHAIN_WINDOW_DAYS} days'`);
+
+function buildWhereClause(conditions: ReturnType<typeof sql>[]): ReturnType<typeof sql> {
+  return conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+}
 
 /**
  * Build WHERE clause conditions for history queries.
@@ -184,11 +197,7 @@ function buildHistoryFilterConditions(
   if (watched !== undefined) conditions.push(sql`s.watched = ${watched}`);
   if (excludeShortSessions) conditions.push(sql`s.short_session = false`);
 
-  // Build WHERE clause
-  const whereClause =
-    conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
-
-  return { conditions, whereClause };
+  return { conditions, whereClause: buildWhereClause(conditions) };
 }
 
 /**
@@ -563,13 +572,13 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
 
     const authUser = request.user;
 
-    // Build WHERE clause using shared helper
+    // Build WHERE conditions using shared helper
     const filterResult = buildHistoryFilterConditions(query.data, authUser);
     if (!filterResult) {
       // No server access - return empty result
       return { data: [], hasMore: false } satisfies HistorySessionResponse;
     }
-    const { whereClause } = filterResult;
+    const { conditions } = filterResult;
 
     // Cursor-based pagination - parse cursor (format: `${startedAt.getTime()}_${playId}`)
     let cursorTime: Date | null = null;
@@ -578,32 +587,63 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       const parts = cursor.split('_');
       const timeStr = parts[0];
       const id = parts.slice(1).join('_'); // Handle UUIDs with underscores
-      if (timeStr && id) {
-        cursorTime = new Date(parseInt(timeStr, 10));
-        cursorId = id;
+      const parsedTime = timeStr ? Number(timeStr) : NaN;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!timeStr || !id || !Number.isInteger(parsedTime) || !uuidRegex.test(id)) {
+        return reply.badRequest('Invalid cursor');
       }
+      cursorTime = new Date(parsedTime);
+      cursorId = id;
     }
 
-    // Build ORDER BY clause based on orderBy parameter
-    // Note: Cursor pagination is based on started_at, so for other columns we use
-    // started_at as secondary sort to maintain consistent pagination
-    const buildOrderClause = () => {
+    const buildOrderByExpr = () => {
       const dir = orderDir === 'desc' ? sql`DESC` : sql`ASC`;
+      const playIdTiebreak = sql`COALESCE(s.reference_id, s.id)::text`;
       switch (orderBy) {
         case 'durationMs':
-          return sql`ORDER BY SUM(COALESCE(s.duration_ms, 0)) ${dir}, MIN(s.started_at) DESC`;
+          return sql`SUM(COALESCE(s.duration_ms, 0)) ${dir}, MIN(s.started_at) DESC, ${playIdTiebreak} DESC`;
         case 'mediaTitle':
-          return sql`ORDER BY MIN(s.media_title) ${dir}, MIN(s.started_at) DESC`;
+          return sql`MIN(s.media_title) ${dir}, MIN(s.started_at) DESC, ${playIdTiebreak} DESC`;
         case 'startedAt':
         default:
-          return sql`ORDER BY MIN(s.started_at) ${dir}`;
+          return sql`MIN(s.started_at) ${dir}, ${playIdTiebreak} ${dir}`;
       }
     };
-    const orderClause = buildOrderClause();
+    const orderByExpr = buildOrderByExpr();
 
-    // Query grouped sessions with cursor pagination
+    const havingClause =
+      cursorTime && cursorId
+        ? orderDir === 'desc'
+          ? sql`HAVING (MIN(s.started_at), COALESCE(s.reference_id, s.id)::text) < (${cursorTime}, ${cursorId})`
+          : sql`HAVING (MIN(s.started_at), COALESCE(s.reference_id, s.id)::text) > (${cursorTime}, ${cursorId})`
+        : sql``;
+
+    // Full per-play aggregation is scoped to this page's play ids and to started_at at or
+    // after the page's earliest play (a segment can never start before its own play's start,
+    // so this lower bound never drops a segment that HEAD's unbounded aggregation would count).
+    const groupedConditions = [
+      ...conditions,
+      sql`COALESCE(s.reference_id, s.id) IN (SELECT play_id FROM history_page_ids)`,
+      sql`s.started_at >= (SELECT MIN(started_at) FROM history_page_ids)`,
+    ];
+
     const result = await db.execute(sql`
-        WITH grouped_sessions AS (
+        WITH history_page AS MATERIALIZED (
+          SELECT
+            COALESCE(s.reference_id, s.id) as play_id,
+            MIN(s.started_at) as started_at,
+            ROW_NUMBER() OVER (ORDER BY ${orderByExpr}) as rn
+          FROM sessions s
+          ${buildWhereClause(conditions)}
+          GROUP BY COALESCE(s.reference_id, s.id)
+          ${havingClause}
+          ORDER BY ${orderByExpr}
+          LIMIT ${pageSize + 1}
+        ),
+        history_page_ids AS MATERIALIZED (
+          SELECT play_id, started_at FROM history_page WHERE rn <= ${pageSize}
+        ),
+        grouped_sessions AS (
           SELECT
             COALESCE(s.reference_id, s.id) as play_id,
             MIN(s.started_at) as started_at,
@@ -617,17 +657,8 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
             (array_agg(s.id ORDER BY s.started_at))[1] as first_session_id,
             (array_agg(s.state ORDER BY s.started_at DESC))[1] as state
           FROM sessions s
-          ${whereClause}
+          ${buildWhereClause(groupedConditions)}
           GROUP BY COALESCE(s.reference_id, s.id)
-          ${
-            cursorTime && cursorId
-              ? orderDir === 'desc'
-                ? sql`HAVING (MIN(s.started_at), COALESCE(s.reference_id, s.id)::text) < (${cursorTime}, ${cursorId})`
-                : sql`HAVING (MIN(s.started_at), COALESCE(s.reference_id, s.id)::text) > (${cursorTime}, ${cursorId})`
-              : sql``
-          }
-          ${orderClause}
-          LIMIT ${pageSize + 1}
         )
         SELECT
           gs.play_id as id,
@@ -694,9 +725,11 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.stream_video_details,
           s.stream_audio_details,
           s.transcode_info,
-          s.subtitle_info
+          s.subtitle_info,
+          (SELECT count(*) FROM history_page)::int as page_candidate_count
         FROM grouped_sessions gs
-        JOIN sessions s ON s.id = gs.first_session_id
+        -- bounds the join for chunk pruning
+        JOIN sessions s ON s.id = gs.first_session_id AND s.started_at = gs.started_at
         JOIN server_users su ON su.id = s.server_user_id
         JOIN servers sv ON sv.id = s.server_id
         LEFT JOIN users u ON u.id = su.user_id
@@ -707,28 +740,25 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
             FROM sessions s2
             WHERE COALESCE(s2.reference_id, s2.id) = gs.play_id
               AND gs.segment_count > 1
-              AND s2.started_at >= gs.started_at - INTERVAL '30 days'
+              AND s2.started_at >= gs.started_at - ${CHAIN_WINDOW_INTERVAL}
             ORDER BY s2.started_at
             LIMIT 20
           ) sub
         ) lat ON true
-        ${
-          cursorTime && cursorId
-            ? orderDir === 'desc'
-              ? sql`WHERE (gs.started_at, gs.play_id::text) < (${cursorTime}, ${cursorId})`
-              : sql`WHERE (gs.started_at, gs.play_id::text) > (${cursorTime}, ${cursorId})`
-            : sql``
-        }
-        ORDER BY gs.started_at ${orderDir === 'desc' ? sql`DESC` : sql`ASC`}
+        ORDER BY gs.started_at ${orderDir === 'desc' ? sql`DESC` : sql`ASC`},
+          gs.play_id::text ${orderDir === 'desc' ? sql`DESC` : sql`ASC`}
       `);
 
-    // Check if there are more results (we fetched pageSize + 1)
-    const hasMore = result.rows.length > pageSize;
-    const resultRows = hasMore ? result.rows.slice(0, pageSize) : result.rows;
+    const firstRow = result.rows[0] as { page_candidate_count: number } | undefined;
+    const hasMore = firstRow ? Number(firstRow.page_candidate_count) > pageSize : false;
+
+    if (result.rows.length === 0) {
+      return { data: [], hasMore: false } satisfies HistorySessionResponse;
+    }
 
     // Transform results
     const sessionData = (
-      resultRows as {
+      result.rows as {
         id: string;
         started_at: Date;
         stopped_at: Date | null;
@@ -951,13 +981,17 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       ? sql``
       : sql`LEFT JOIN library_items li ON li.server_id = s.server_id AND li.rating_key = s.rating_key`;
 
+    // uniqueUsers is counted by identity (server_users.user_id), not by
+    // account, so a person merged across two servers in the filtered set
+    // counts once - consistent with unique_content's cross-server dedup.
     const aggregateResult = await db.execute(sql`
       SELECT
         COUNT(DISTINCT COALESCE(s.reference_id, s.id))::int as play_count,
         COALESCE(SUM(s.duration_ms), 0)::bigint as total_watch_time_ms,
-        COUNT(DISTINCT s.server_user_id)::int as unique_users,
+        COUNT(DISTINCT su_agg.user_id)::int as unique_users,
         ${uniqueContentExpr}::int as unique_content
       FROM sessions s
+      JOIN server_users su_agg ON su_agg.id = s.server_user_id
       ${libraryJoin}
       ${whereClause}
     `);
@@ -1134,37 +1168,43 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
             ORDER BY count DESC
             LIMIT 100
           `),
-      // Users - filtered to those with sessions matching current filter context
-      db.execute(
-        serverConditions.length > 0
-          ? sql`
-            SELECT
-              su.id,
-              su.username,
-              su.thumb_url,
-              su.server_id,
-              u.name as identity_name
-            FROM server_users su
-            LEFT JOIN users u ON u.id = su.user_id
-            WHERE su.id IN (
-              SELECT DISTINCT s.server_user_id
-              FROM sessions s
-              WHERE ${sql.join(serverConditions, sql` AND `)}
-            )
-            ORDER BY LOWER(COALESCE(u.name, su.username))
-          `
-          : sql`
-            SELECT
-              su.id,
-              su.username,
-              su.thumb_url,
-              su.server_id,
-              u.name as identity_name
-            FROM server_users su
-            LEFT JOIN users u ON u.id = su.user_id
-            ORDER BY LOWER(COALESCE(u.name, su.username))
-          `
-      ),
+      // Users - one row per identity (merged accounts collapse to a representative),
+      // filtered to identities with sessions matching current filter context.
+      db.execute(sql`
+        WITH representative AS (
+          SELECT DISTINCT ON (su.user_id) su.id, su.user_id
+          FROM server_users su
+          INNER JOIN users u ON u.id = su.user_id
+          WHERE true ${
+            serverConditions.length > 0
+              ? sql`AND su.id IN (
+                  SELECT DISTINCT s.server_user_id
+                  FROM sessions s
+                  WHERE ${sql.join(serverConditions, sql` AND `)}
+                )`
+              : sql``
+          }
+          ORDER BY su.user_id, ${representativeAccountOrderSql('su')}
+        )
+        SELECT
+          su.id,
+          su.username,
+          su.thumb_url,
+          su.server_id,
+          u.name as identity_name,
+          COALESCE(
+            (SELECT ARRAY_AGG(su2.id ORDER BY su2.id)
+             FROM server_users su2
+             WHERE su2.user_id = su.user_id
+             ${buildMultiServerFragment(resolvedIds, 'su2.server_id')}
+            ),
+            ARRAY[su.id]
+          ) AS server_user_ids
+        FROM representative rep
+        JOIN server_users su ON su.id = rep.id
+        LEFT JOIN users u ON u.id = su.user_id
+        ORDER BY LOWER(COALESCE(u.name, su.username))
+      `),
       // Servers (for rules builder)
       db.select({ id: servers.id, name: servers.name, type: servers.type }).from(servers),
     ]);
@@ -1177,6 +1217,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         thumb_url: string | null;
         server_id: string;
         identity_name: string | null;
+        server_user_ids: string[] | null;
       }[]
     ).map((row) => ({
       id: row.id,
@@ -1184,6 +1225,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       thumbUrl: row.thumb_url,
       serverId: row.server_id,
       identityName: row.identity_name,
+      serverUserIds: row.server_user_ids ?? [row.id],
     }));
 
     // Transform servers result

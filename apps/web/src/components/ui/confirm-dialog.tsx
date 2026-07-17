@@ -15,6 +15,8 @@ interface ConfirmDialogProps {
   title: string;
   description: string;
   confirmLabel?: string;
+  /** Explicit label to show while isLoading is true, overriding the default verb-transform */
+  confirmLoadingLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void;
   isLoading?: boolean;
@@ -27,6 +29,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = 'Confirm',
+  confirmLoadingLabel,
   cancelLabel = 'Cancel',
   onConfirm,
   isLoading = false,
@@ -50,7 +53,9 @@ export function ConfirmDialog({
                 : undefined
             }
           >
-            {isLoading ? `${confirmLabel.replace(/e$/, '')}ing...` : confirmLabel}
+            {isLoading
+              ? (confirmLoadingLabel ?? `${confirmLabel.replace(/e$/, '')}ing...`)
+              : confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

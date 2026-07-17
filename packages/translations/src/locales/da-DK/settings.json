@@ -3,9 +3,6 @@
     "allowGuestAccess": "Tillad Gæst Adgang",
     "allowGuestAccessDesc": "Når deaktiveret, kan kun serverejeren logge ind på Tracearr",
     "description": "Konfigurere, hvem der kan tilgå Tracearr",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Primær Godkendelsesmetode",
-    "primaryAuthMethodDesc": "Vælg hvilken godkendelsesmetode der vises som standard på login-siden",
     "singleOwnerNote": "Bemærk: Når gæsteadgang er deaktiveret, kan kun serverejeren logge ind. Alle andre brugere vil se en \"Adgang nægtet\" besked.",
     "title": "Adgangskontrol"
   },
@@ -16,7 +13,6 @@
     "email": "E-mail",
     "password": "Adgangskode",
     "signInToAccount": "Log ind på din konto",
-    "useJellyfinAccount": "Brug Jellyfin- konto i stedet",
     "useLocalAccount": "Brug i stedet lokal konto"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Hjælp med at oversætte Tracearr",
     "imperial": "Imperial (mi, mph)",
     "iosHttpWarning": "iOS kræver HTTPS til eksterne forbindelser. Opsæt en omvendt proxy med SSL.",
-    "jellyfinAccount": "Jellyfin Konto",
     "jellyfinPollingNote": "Jellyfin/Emby er pollet med ovenstående interval.",
     "language": "Sprog",
     "languageDescription": "Vælg dit foretrukne visningssprog.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Fik det",
     "message": "Alle brugere ser ud til at bruge den samme IP-adresse eller lokale netværks-IP'er. Dette kan påvirke regelbaseret logik for placering eller IP-adresser."
-  },
-  "jellyfin": {
-    "password": "Jellyfin Adgangskode",
-    "signInWithJellyfin": "Log ind med Jellyfin",
-    "username": "Jellyfin Brugernavn"
   },
   "jobs": {
     "backfill": "Backfill",
@@ -362,6 +352,8 @@
     "plexAccount": "Plex Konto",
     "plexServerPlaceholder": "Min Plex Server",
     "plexServerUrlPlaceholder": "http://192.168.1.100:32400",
+    "pluginUpdateAvailable": "Plugin update available",
+    "pluginVersion": "plugin v{{version}}",
     "pollingMode": "Polling",
     "realtimeActive": "Real-time updates active",
     "realtimeDialog": {
@@ -370,11 +362,14 @@
       "copyUrl": "Copy URL",
       "embyDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "embyReleasesUrl": "https://github.com/Tracearr/Media-Server-SSE/releases",
+      "embyUpdateDescription": "A newer plugin release is available. Download the latest release zip, replace the plugin DLL in your Emby plugins folder, and restart Emby.",
       "jellyfinDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "jellyfinRepoUrl": "https://raw.githubusercontent.com/Tracearr/Media-Server-SSE/main/manifest.json",
+      "jellyfinUpdateDescription": "A newer plugin release is available. Open your Jellyfin dashboard, go to Plugins, Catalog, and update Tracearr SSE, then restart Jellyfin.",
       "openReleases": "Open releases page",
       "repositoryUrl": "Repository URL",
-      "title": "Enable real-time updates"
+      "title": "Enable real-time updates",
+      "updateTitle": "Update the Tracearr SSE plugin"
     },
     "removeServer": "Fjern Server",
     "removeServerConfirm": "Er du sikker på, at du vil fjerne denne server? Alle tilknyttede sessionsdata vil blive bevaret, men du vil ikke kunne overvåge nye sessioner fra denne server.",

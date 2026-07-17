@@ -53,8 +53,12 @@ export interface MediaSession {
   episode?: {
     showTitle: string;
     showId?: string;
-    seasonNumber: number;
-    episodeNumber: number;
+    /**
+     * Season 0 (Specials) and episode 0 are valid values, distinct from a
+     * genuinely missing/unavailable number (null) - never coerce one into the other.
+     */
+    seasonNumber: number | null;
+    episodeNumber: number | null;
     /** Season name (e.g., "Season 1") */
     seasonName?: string;
     /** Show poster path */

@@ -23,7 +23,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, number> = {
 } as const;
 
 // Roles that can log into Tracearr
-const LOGIN_ROLES: UserRole[] = ['owner', 'admin', 'viewer'];
+export const LOGIN_ROLES: UserRole[] = ['owner', 'admin', 'viewer'];
 
 // Role helper functions
 export const canLogin = (role: UserRole): boolean => LOGIN_ROLES.includes(role);
@@ -89,6 +89,21 @@ export interface ServerUserWithIdentity extends ServerUser {
   serverName: string;
   identityName: string | null;
   role: UserRole; // From linked User identity
+  // The identity's server memberships, scoped to servers the caller can access.
+  // Length > 1 means this identity is merged across servers. serverUserId/removedAt
+  // describe the identity's account on that server.
+  // Only populated by the list endpoint; absent on detail endpoints (/users/:id, /full).
+  identityServers?: {
+    id: string;
+    name: string;
+    serverUserId?: string;
+    removedAt?: string | null;
+  }[];
+  // The person's overall trust score across all their server accounts
+  // (users.aggregateTrustScore), distinct from `trustScore` which is just
+  // this representative account's own score.
+  // Only populated by the list endpoint; absent on detail endpoints (/users/:id, /full).
+  identityTrustScore?: number;
 }
 
 // Server User detail with stats - returned by GET /users/:id
@@ -108,6 +123,8 @@ export interface ViolationSummary {
     type: string;
   };
   serverUserId: string;
+  serverId: string;
+  serverName: string;
   sessionId: string | null;
   mediaTitle: string | null;
   severity: string;
@@ -120,6 +137,23 @@ export interface ViolationSummary {
 // This aggregate response reduces 6 API calls to 1 for the UserDetail page
 export interface ServerUserFullDetail {
   user: ServerUserDetail;
+  identity: {
+    userId: string;
+    aggregateTrustScore: number;
+    totalViolations: number;
+    serverUsers: {
+      id: string;
+      serverId: string;
+      serverName: string;
+      serverType: string;
+      username: string;
+      thumbUrl: string | null;
+      trustScore: number;
+      sessionCount: number;
+      removedAt: Date | null;
+    }[];
+    stats: { totalSessions: number; totalWatchTime: number };
+  };
   sessions: {
     data: Session[];
     total: number;
@@ -146,6 +180,66 @@ export interface AuthUser {
   serverIds: string[];
   mobile?: boolean; // True for mobile app tokens
   deviceId?: string; // Device identifier for mobile tokens
+}
+
+export interface UserMergeResult {
+  targetUserId: string;
+  auditId: string;
+  movedServerUserIds: string[];
+  combinedServerUsers: {
+    sourceServerUserId: string;
+    targetServerUserId: string;
+    serverId: string;
+  }[];
+  wasSameServerCombine: boolean;
+  // Names of source-account rules dropped because the target already had a
+  // rule with the same name on a same-server combine (target's version wins).
+  // Empty when nothing conflicted.
+  droppedRuleNames: string[];
+}
+
+export interface ServerUserSplitResult {
+  newUserId: string;
+  serverUserId: string;
+}
+
+export interface MergeSuggestionIdentity {
+  userId: string;
+  username: string;
+  name: string | null;
+  email: string | null;
+  role: UserRole;
+  loginCapable: boolean;
+  serverUsers: {
+    id: string;
+    serverId: string;
+    serverName: string;
+    username: string;
+    email: string | null;
+    removedAt: string | null;
+  }[];
+}
+
+export interface MergeSuggestion {
+  matchType: 'email' | 'username';
+  matchValue: string;
+  users: [MergeSuggestionIdentity, MergeSuggestionIdentity];
+  requiredTargetUserId: string | null;
+  wouldCombineSameServer: boolean;
+}
+
+export interface SetupStatus {
+  needsSetup: boolean;
+  requiresClaimCode: boolean;
+  hasServers: boolean;
+  hasJellyfinServers: boolean;
+  hasPasswordAuth: boolean;
+  authMethods: {
+    local: boolean;
+    plex: boolean;
+    oidc: boolean;
+    oidcProviderName: string | null;
+  };
 }
 
 // Session types
@@ -275,6 +369,9 @@ export const DEFAULT_STREAM_DETAILS: StreamDetailFields = {
 export interface Session extends StreamDetailFields {
   id: string;
   serverId: string;
+  // Only populated by identity/multi-server-aware queries (e.g. the user
+  // detail endpoints); absent elsewhere.
+  serverName?: string;
   serverUserId: string;
   sessionKey: string;
   state: SessionState;
@@ -434,6 +531,15 @@ export interface Rule {
   conditions?: RuleConditions | null;
   actions?: RuleActions | null;
   serverId?: string | null;
+  // Identity (person) scope - applies to every server_user of this identity.
+  // At most one of serverId, serverUserId, userId is ever set.
+  userId?: string | null;
+  // Display name of the identity userId points at, joined in by the API.
+  identityName?: string | null;
+  // Opt-in: when true and the rule fired from an identity-aware evaluation,
+  // actions may target sessions across every server the identity has an
+  // account on instead of just the triggering account. Defaults to false.
+  enforceAcrossServers?: boolean;
   // Common fields
   serverUserId: string | null;
   isActive: boolean;
@@ -634,6 +740,12 @@ export interface RuleV2 {
   name: string;
   description: string | null;
   serverId: string | null;
+  // Account scope - applies only to this specific server_user.
+  serverUserId: string | null;
+  // Identity (person) scope - applies to every server_user of this identity.
+  userId: string | null;
+  // Opt-in cross-server enforcement; see the field of the same name on Rule.
+  enforceAcrossServers: boolean;
   isActive: boolean;
   severity: ViolationSeverity;
   conditions: RuleConditions;
@@ -697,6 +809,10 @@ export interface ViolationWithDetails extends Violation {
   rule: Pick<Rule, 'id' | 'name'> & { type: RuleType | null };
   user: Pick<ServerUser, 'id' | 'username' | 'thumbUrl' | 'serverId'> & {
     identityName: string | null;
+    // The person's identity id (users.id), for identity-level filtering.
+    // Always populated by GET /violations; optional here so websocket
+    // broadcast payloads built without a fresh identity lookup still type-check.
+    userId?: string;
   };
   server?: Pick<Server, 'id' | 'name' | 'type'>;
   session?: ViolationSessionInfo;
@@ -767,7 +883,12 @@ export interface LocationStatsSummary {
 }
 
 export interface LocationFilterOptions {
-  users: { id: string; username: string; identityName: string | null }[];
+  users: {
+    id: string;
+    username: string;
+    identityName: string | null;
+    serverUserIds: string[];
+  }[];
   servers: { id: string; name: string }[];
   mediaTypes: MediaType[];
 }
@@ -807,16 +928,23 @@ export interface QualityStats {
 }
 
 export interface TopUserStats {
+  /** Identity (person) id - plays/watch time are summed across all their accounts */
+  userId: string;
+  /** Representative account id, used for navigation (routes to /users/:id) */
   serverUserId: string;
   username: string;
   identityName: string | null;
   thumbUrl: string | null;
+  /** Representative account's server, used for avatar proxy */
   serverId: string | null;
+  /** Identity-level aggregate trust score, not the representative account's own score */
   trustScore: number;
   playCount: number;
   watchTimeHours: number;
   topMediaType: string | null; // "movie", "episode", etc.
   topContent: string | null; // Most watched show/movie name
+  /** Every server this identity has an account on, scoped to accessible servers */
+  identityServers?: { id: string; name: string }[];
 }
 
 export interface TopContentStats {
@@ -916,8 +1044,6 @@ export interface Settings {
   trustProxy: boolean;
   // Mobile access
   mobileEnabled: boolean;
-  // Authentication settings
-  primaryAuthMethod: 'jellyfin' | 'local';
   // Tailscale VPN
   tailscaleEnabled: boolean;
   tailscaleHostname: string | null;
@@ -927,16 +1053,14 @@ export interface Settings {
   backupScheduleDayOfWeek: number;
   backupScheduleDayOfMonth: number;
   backupRetentionCount: number;
+  // Plugin update check
+  pluginUpdateCheckEnabled: boolean;
+  pluginManifestUrl: string | null;
 }
 
 // Tailscale integration
 export type TailscaleStatus =
-  | 'disabled'
-  | 'starting'
-  | 'awaiting_auth'
-  | 'connected'
-  | 'error'
-  | 'stopping';
+  'disabled' | 'starting' | 'awaiting_auth' | 'connected' | 'error' | 'stopping';
 
 export interface TailscaleExitNode {
   id: string;
@@ -1181,6 +1305,8 @@ export interface UserFilterOption {
   thumbUrl: string | null;
   serverId: string;
   identityName: string | null;
+  /** All server account ids belonging to this person (identity), access-scoped. */
+  serverUserIds: string[];
 }
 
 /**
@@ -1318,7 +1444,8 @@ export type NotificationEventType =
   | 'new_device'
   | 'trust_score_changed'
   | 'server_down'
-  | 'server_up';
+  | 'server_up'
+  | 'plugin_update_available';
 
 // Notification preferences (per-device settings)
 export interface NotificationPreferences {
@@ -1413,12 +1540,7 @@ export interface PushNotificationPayload {
 
 // SSE connection states
 export type SSEConnectionState =
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'disconnected'
-  | 'fallback'
-  | 'unsupported'; // Plugin not installed on this server
+  'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'fallback' | 'unsupported'; // Plugin not installed on this server
 
 // Plex SSE notification container (outer wrapper)
 export interface PlexSSENotification {
@@ -1508,6 +1630,7 @@ export interface SSEConnectionStatus {
   lastEventAt: Date | null;
   reconnectAttempts: number;
   error: string | null;
+  pluginVersion?: string | null;
 }
 
 // Per-server connection status surfaced to clients
@@ -1521,6 +1644,8 @@ export interface ServerConnectionStatus {
   lastEventAt: string | null;
   since: string | null;
   error: string | null;
+  pluginVersion: string | null;
+  pluginUpdateAvailable: boolean;
 }
 
 // =============================================================================
@@ -1535,6 +1660,7 @@ export interface TerminationLogWithDetails {
   id: string;
   sessionId: string;
   serverId: string;
+  serverName: string | null; // Joined from servers table
   serverUserId: string;
   trigger: TerminationTrigger;
   triggeredByUserId: string | null;
@@ -1563,14 +1689,7 @@ export interface TerminationLogWithDetails {
 
 // Reachability error categorization for a tested Plex connection
 export type PlexConnectionErrorCode =
-  | 'timeout'
-  | 'dns'
-  | 'refused'
-  | 'unreachable'
-  | 'reset'
-  | 'tls'
-  | 'http'
-  | 'unknown';
+  'timeout' | 'dns' | 'refused' | 'unreachable' | 'reset' | 'tls' | 'http' | 'unknown';
 
 export interface PlexConnectionError {
   code: PlexConnectionErrorCode;
@@ -1654,6 +1773,7 @@ export type MaintenanceJobType =
   | 'fix_imported_progress'
   | 'rebuild_timescale_views'
   | 'normalize_codecs'
+  | 'normalize_resolutions'
   | 'backfill_user_dates'
   | 'backfill_library_snapshots'
   | 'cleanup_old_chunks'
@@ -1693,10 +1813,7 @@ export interface MaintenanceJobResult {
 // =============================================================================
 
 export type RunningTaskType =
-  | 'library_sync'
-  | 'tautulli_import'
-  | 'jellystat_import'
-  | 'maintenance';
+  'library_sync' | 'tautulli_import' | 'jellystat_import' | 'maintenance';
 
 export interface RunningTask {
   /** Unique task identifier */
@@ -2007,8 +2124,9 @@ export interface BandwidthTopUser {
   identityName: string | null;
   /** Avatar URL from server user */
   thumbUrl: string | null;
+  /** Representative account id, used for navigation (routes to /users/:id) */
   serverUserId: string;
-  /** Server this row belongs to - same human on two servers = two rows */
+  /** Representative account's server - a merged identity is one row, bytes summed across servers */
   serverId: string;
   /** Total data transferred in bytes */
   totalBytes: number;
@@ -2066,15 +2184,6 @@ export interface BandwidthSummary {
 // Library Statistics Types
 // =============================================================================
 
-// Per-server KPI slice used inside LibraryStatsResponse.byServer
-export interface LibraryStatsServerKpis {
-  totalItems: number;
-  totalSizeBytes: string;
-  movieCount: number;
-  episodeCount: number;
-  showCount: number;
-}
-
 // Library Stats Response (GET /library/stats)
 export interface LibraryStatsResponse {
   totalItems: number;
@@ -2089,8 +2198,6 @@ export interface LibraryStatsResponse {
     countSd: number;
   };
   asOf: string | null;
-  /** Per-server KPI breakdown keyed by server ID (present when multiple servers are in scope) */
-  byServer?: Record<string, LibraryStatsServerKpis>;
 }
 
 // Library Growth Response (GET /library/growth)

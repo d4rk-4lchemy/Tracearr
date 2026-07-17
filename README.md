@@ -1,11 +1,14 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
-  <i>Current vesrion:</i> <b>1.4.30</b>
+  <i>Current vesrion:</i> <b>1.5.0</b>
 </p>
 
 > [!WARNING]  
 > You can do "in-place" replacement of your current Tracearr instance.<br>But **CREATE A BACKUP FIRST**, as I don't guarantee 100% success rate, and **I don't care if you break your setup** ¯\\\_(ツ)_/¯
+
+> [!WARNING]  
+> When updating to **≥1.5.0** Jellyfin login **will no longer work!** You need to use your local Tracearr account, created when first launching the service.<br> If you don't remember your password and want to reset it, please execute:<br>`docker exec {distracearr_container_name} node apps/server/dist/scripts/reset-password.js '{new_password}'`
 
 **What's New:**
 - Support for Dispatcharr servers, with Login/Password (for WebSocket integration) or API Key auth,
@@ -14,7 +17,6 @@
 - You can kill Dispatcharr streams directly from Tracearr dashboard,
 - Live TV card is aligned to Dispatcharr needs, showing speed threshold, watchtime,
 - Stream details for Live TV shows bitrate, codecs and video resolution,
-- Fixed multi-server selection memory on Dashboard tab _(this has nothing to do with Dispatcharr, just annoying bug)._
 - Fixed bad `Content` column in mobile view of `History` tab _(this has nothing to do with Dispatcharr, just annoying bug)._
 
 **Docker images:**
@@ -22,23 +24,15 @@
 - `darkalchemy2137/distracearr:supervised` - supervised image
 - `darkalchemy2137/distracearr:standalone` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 
-<p>
-  <span style="font-size:20px;">
-    From versions >=1.4.29, <b><i>latest</i></b> image is changed from <b><span style="color:red">supervised</span></b> to <b><i><span style="color:green">standalone</span></i></b> image!<br>
-    If you are currently using version 1.4.28 or below and <i><b>latest</b></i> tag or <i><b>no tag at all</b></i>, replace it with <i><b><span style="color:green">supervised</span></b></i>!
-  </span><br>
-  <i>This to ensure that everyone can just replace the image path and use this as in-place replacement :)</i>
-</p>
-
 I tested it on **Supervised image**, so keep that in mind.
 You can also build your own Docker image.<br>
 Example docker build commands:
 ```bash
 # Regular Image
-docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=1.4.28  --build-arg APP_TAG=1.4.28  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=1.5.0  --build-arg APP_TAG=1.5.0  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 
 # Supervised Image
-docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=1.4.28  --build-arg APP_TAG=supervised-1.4.28  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=1.7.0  --build-arg APP_TAG=supervised-1.5.0  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 ```
 
 Example `docker-compose.yml` for **Supervised** image:

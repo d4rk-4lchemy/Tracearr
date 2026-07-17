@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus, Save, Loader2 } from 'lucide-react';
 import type {
-  Condition,
   ConditionGroup as ConditionGroupType,
   RuleConditions,
   RuleActions,
@@ -11,6 +10,7 @@ import type {
   UpdateRuleV2Input,
   RulesFilterOptions,
 } from '@tracearr/shared';
+import { IDENTITY_AWARE_CONDITION_FIELDS } from '@tracearr/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,12 +44,14 @@ interface RuleInput {
   isActive: boolean;
   serverId?: string | null;
   serverUserId?: string | null;
+  userId?: string | null;
+  enforceAcrossServers?: boolean;
   // V2 fields
   conditions?: RuleConditions | null;
   actions?: RuleActions | null;
 }
 
-type ScopeMode = 'global' | 'server' | 'user';
+type ScopeMode = 'global' | 'server' | 'user' | 'person';
 
 interface RuleBuilderProps {
   initialRule?: RuleInput;
@@ -68,7 +70,7 @@ function createDefaultConditionGroup(): ConditionGroupType {
         field: defaultField,
         operator: getDefaultOperatorForField(defaultField),
         value: getDefaultValueForField(defaultField),
-      } as Condition,
+      },
     ],
   };
 }
@@ -118,11 +120,13 @@ export function RuleBuilder({
   const { servers } = useServer();
 
   // Derive initial scope mode from existing rule fields
-  const initialScopeMode: ScopeMode = initialRule?.serverUserId
-    ? 'user'
-    : initialRule?.serverId
-      ? 'server'
-      : 'global';
+  const initialScopeMode: ScopeMode = initialRule?.userId
+    ? 'person'
+    : initialRule?.serverUserId
+      ? 'user'
+      : initialRule?.serverId
+        ? 'server'
+        : 'global';
 
   const [name, setName] = useState(initialRule?.name ?? '');
   const [description, setDescription] = useState(initialRule?.description ?? '');
@@ -140,6 +144,10 @@ export function RuleBuilder({
   const [scopeServerUserId, setScopeServerUserId] = useState<string>(
     initialRule?.serverUserId ?? ''
   );
+  const [scopeUserId, setScopeUserId] = useState<string>(initialRule?.userId ?? '');
+  const [enforceAcrossServers, setEnforceAcrossServers] = useState(
+    initialRule?.enforceAcrossServers ?? false
+  );
 
   const handleScopeServerChange = (serverId: string) => {
     setScopeServerId(serverId);
@@ -151,6 +159,23 @@ export function RuleBuilder({
     scopeMode === 'user' && scopeServerId ? { serverId: scopeServerId, pageSize: 100 } : {}
   );
   const userOptions = usersPage?.data ?? [];
+
+  // Fetch the identity-deduped user list (one row per person, every server)
+  // for person-scope mode - same list shape the merge account picker uses.
+  const { data: identitiesPage } = useUsers(scopeMode === 'person' ? { pageSize: 100 } : {});
+  const identityOptions = identitiesPage?.data ?? [];
+
+  // Cross-server enforcement is only meaningful for rules built entirely from
+  // identity-aware condition fields (see IDENTITY_AWARE_CONDITION_FIELDS).
+  const canEnforceAcrossServers = useMemo(
+    () =>
+      conditions.groups.some((group) =>
+        group.conditions.some((c) =>
+          (IDENTITY_AWARE_CONDITION_FIELDS as readonly string[]).includes(c.field)
+        )
+      ),
+    [conditions]
+  );
 
   // Validation
   const validate = (): boolean => {
@@ -178,8 +203,9 @@ export function RuleBuilder({
   const handleSubmit = async () => {
     if (!validate()) return;
 
-    // Build base payload - serverId carries server-scope; user-scope adds serverUserId alongside null serverId
-    const base = {
+    // Exactly one of serverId, serverUserId, userId carries the chosen scope; the
+    // other two stay null so the backend's mutual-exclusivity check passes.
+    const data: CreateRuleV2Input | UpdateRuleV2Input = {
       name: name.trim(),
       description: description.trim() || null,
       severity,
@@ -187,14 +213,10 @@ export function RuleBuilder({
       conditions,
       actions,
       serverId: scopeMode === 'server' && scopeServerId ? scopeServerId : null,
+      serverUserId: scopeMode === 'user' && scopeServerUserId ? scopeServerUserId : null,
+      userId: scopeMode === 'person' && scopeUserId ? scopeUserId : null,
+      enforceAcrossServers: canEnforceAcrossServers ? enforceAcrossServers : false,
     };
-
-    // serverUserId is not part of CreateRuleV2Input schema but the backend may forward it on the
-    // rules table; cast to allow the extra field rather than silently dropping user scope
-    const data =
-      scopeMode === 'user' && scopeServerUserId
-        ? ({ ...base, serverUserId: scopeServerUserId } as CreateRuleV2Input | UpdateRuleV2Input)
-        : (base as CreateRuleV2Input | UpdateRuleV2Input);
 
     await onSave(data);
   };
@@ -297,7 +319,7 @@ export function RuleBuilder({
       <div className="space-y-3">
         <Label>Scope</Label>
         <div className="flex flex-wrap gap-2">
-          {(['global', 'server', 'user'] as ScopeMode[]).map((mode) => (
+          {(['global', 'server', 'user', 'person'] as ScopeMode[]).map((mode) => (
             <button
               key={mode}
               type="button"
@@ -312,12 +334,14 @@ export function RuleBuilder({
                 ? 'Global'
                 : mode === 'server'
                   ? 'Specific server'
-                  : 'Specific user'}
+                  : mode === 'user'
+                    ? 'Specific account'
+                    : 'Person (all their servers)'}
             </button>
           ))}
         </div>
 
-        {scopeMode !== 'global' && servers.length > 0 && (
+        {(scopeMode === 'server' || scopeMode === 'user') && servers.length > 0 && (
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="scope-server" className="text-xs">
@@ -359,6 +383,47 @@ export function RuleBuilder({
                 </Select>
               </div>
             )}
+          </div>
+        )}
+
+        {scopeMode === 'person' && (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="scope-person" className="text-xs">
+                Person
+              </Label>
+              <Select value={scopeUserId} onValueChange={setScopeUserId}>
+                <SelectTrigger id="scope-person" className="w-[200px]">
+                  <SelectValue placeholder="Select person" />
+                </SelectTrigger>
+                <SelectContent>
+                  {identityOptions.map((u) => (
+                    <SelectItem key={u.userId} value={u.userId}>
+                      {u.identityName ?? u.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
+        {canEnforceAcrossServers && (
+          <div className="flex items-start gap-2 pt-1">
+            <Switch
+              id="enforce-across-servers"
+              checked={enforceAcrossServers}
+              onCheckedChange={setEnforceAcrossServers}
+            />
+            <div>
+              <Label htmlFor="enforce-across-servers" className="text-sm">
+                Enforce across servers
+              </Label>
+              <p className="text-muted-foreground text-xs">
+                When on, this rule can act on a person&apos;s sessions on any of their servers, not
+                just the one that triggered it. Off by default.
+              </p>
+            </div>
           </div>
         )}
       </div>

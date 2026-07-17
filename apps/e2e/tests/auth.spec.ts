@@ -28,7 +28,7 @@ test.describe('Authentication', () => {
     await page.goto('/login');
     await page.waitForSelector('form');
 
-    await page.locator('#email').fill('e2e@tracearr.test');
+    await page.locator('#identifier').fill('e2e@tracearr.test');
     await page.locator('#password').fill('TestPassword123!');
     await page.getByRole('button', { name: 'Sign In', exact: true }).click();
 
