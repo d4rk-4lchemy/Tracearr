@@ -36,6 +36,7 @@ import {
   extractMusicMetadata,
   extractStreamDetails,
 } from './jellyfinEmbyUtils.js';
+import { classifyByDimensions } from '@tracearr/shared';
 
 // ============================================================================
 // Stream Decisions Function Type
@@ -118,7 +119,12 @@ export function parseSessionsResponse(
   sessions: unknown[],
   parseSession: (session: Record<string, unknown>) => MediaSession | null
 ): MediaSession[] {
-  if (!Array.isArray(sessions)) return [];
+  // A valid "no sessions" response is an empty array. A non-array body means the
+  // response is malformed (proxy error page, wrong shape); throw so the caller
+  // treats it as a failed poll rather than "all sessions ended".
+  if (!Array.isArray(sessions)) {
+    throw new Error('Unexpected sessions response: expected an array');
+  }
 
   const results: MediaSession[] = [];
   for (const session of sessions) {
@@ -227,8 +233,8 @@ export function parseSessionCore(
     result.episode = {
       showTitle: parseString(nowPlaying.SeriesName),
       showId: seriesId,
-      seasonNumber: parseNumber(nowPlaying.ParentIndexNumber),
-      episodeNumber: parseNumber(nowPlaying.IndexNumber),
+      seasonNumber: parseOptionalNumber(nowPlaying.ParentIndexNumber) ?? null,
+      episodeNumber: parseOptionalNumber(nowPlaying.IndexNumber) ?? null,
       seasonName: parseOptionalString(nowPlaying.SeasonName),
       showThumbPath: seriesId ? buildItemImagePath(seriesId, seriesImageTag) : undefined,
     };
@@ -563,16 +569,15 @@ export function mapJellyfinType(
 }
 
 /**
- * Convert video dimensions to resolution string
+ * Convert video dimensions to a resolution string.
+ *
+ * Uses width OR height (whichever gives the higher tier) so 4:3 and other
+ * non-16:9 sources aren't misclassified from width alone.
  */
-export function getResolutionString(width?: number, _height?: number): string | undefined {
+export function getResolutionString(width?: number, height?: number): string | undefined {
   if (!width || width <= 0) return undefined;
 
-  if (width >= 3840) return '4k';
-  if (width >= 1920) return '1080p';
-  if (width >= 1280) return '720p';
-  if (width >= 720) return '480p';
-  return 'sd';
+  return classifyByDimensions(width, height)?.toLowerCase();
 }
 
 /**

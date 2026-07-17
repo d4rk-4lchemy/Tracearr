@@ -3,9 +3,6 @@
     "allowGuestAccess": "Επιτρέψτε Την Πρόσβαση Επισκέπτη",
     "allowGuestAccessDesc": "Όταν είναι απενεργοποιημένη, μόνο ο ιδιοκτήτης του διακομιστή μπορεί να συνδεθεί στο Tracearr",
     "description": "Ρύθμιση παραμέτρων που μπορούν να έχουν πρόσβαση στο Tracearr",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Κύρια Μέθοδος Ταυτοποίησης",
-    "primaryAuthMethodDesc": "Επιλέξτε ποια μέθοδος ελέγχου ταυτότητας εμφανίζεται από προεπιλογή στη σελίδα σύνδεσης",
     "singleOwnerNote": "Σημείωση: Όταν η πρόσβαση του επισκέπτη είναι απενεργοποιημένη, μόνο ο ιδιοκτήτης του διακομιστή μπορεί να εισέλθει. Όλοι οι άλλοι χρήστες θα δουν ένα μήνυμα \"Απαγορεύεται η πρόσβαση\".",
     "title": "Έλεγχος Πρόσβασης"
   },
@@ -16,7 +13,6 @@
     "email": "E-mail",
     "password": "Κωδικός",
     "signInToAccount": "Συνδεθείτε στο λογαριασμό σας",
-    "useJellyfinAccount": "Χρήση λογαριασμού Jellyfin αντί",
     "useLocalAccount": "Χρήση τοπικού λογαριασμού"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Βοηθήστε στη μετάφραση του Tracearr",
     "imperial": "Αυτοκρατορικό (mi, mph)",
     "iosHttpWarning": "Το iOS απαιτεί HTTPS για εξωτερικές συνδέσεις. Ρυθμίστε έναν αντίστροφο διαμεσολαβητή με SSL.",
-    "jellyfinAccount": "Λογαριασμός Jellyfin",
     "jellyfinPollingNote": "Η ζελυφίνη/Emby δημοσκοπείται στο παραπάνω διάστημα.",
     "language": "Γλώσσα",
     "languageDescription": "Επιλέξτε την προτιμώμενη γλώσσα εμφάνισης.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Το κατάλαβα",
     "message": "Όλοι οι χρήστες φαίνεται να χρησιμοποιούν την ίδια διεύθυνση IP ή IP τοπικού δικτύου. Αυτό μπορεί να επηρεάσει τη λογική βάσει κανόνων για την τοποθεσία ή τις διευθύνσεις IP."
-  },
-  "jellyfin": {
-    "password": "Κωδικός Πρόσβασης Jellyfin",
-    "signInWithJellyfin": "Σύνδεση με Jellyfin",
-    "username": "Όνομα Χρήστη Jellyfin"
   },
   "jobs": {
     "backfill": "Backfill",
@@ -362,6 +352,8 @@
     "plexAccount": "Λογαριασμός Plex",
     "plexServerPlaceholder": "Ο Διακομιστής Plex Μου",
     "plexServerUrlPlaceholder": "http://192.168.1.100:32400",
+    "pluginUpdateAvailable": "Plugin update available",
+    "pluginVersion": "plugin v{{version}}",
     "pollingMode": "Polling",
     "realtimeActive": "Real-time updates active",
     "realtimeDialog": {
@@ -370,11 +362,14 @@
       "copyUrl": "Copy URL",
       "embyDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "embyReleasesUrl": "https://github.com/Tracearr/Media-Server-SSE/releases",
+      "embyUpdateDescription": "A newer plugin release is available. Download the latest release zip, replace the plugin DLL in your Emby plugins folder, and restart Emby.",
       "jellyfinDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "jellyfinRepoUrl": "https://raw.githubusercontent.com/Tracearr/Media-Server-SSE/main/manifest.json",
+      "jellyfinUpdateDescription": "A newer plugin release is available. Open your Jellyfin dashboard, go to Plugins, Catalog, and update Tracearr SSE, then restart Jellyfin.",
       "openReleases": "Open releases page",
       "repositoryUrl": "Repository URL",
-      "title": "Enable real-time updates"
+      "title": "Enable real-time updates",
+      "updateTitle": "Update the Tracearr SSE plugin"
     },
     "removeServer": "Αφαίρεση Διακομιστή",
     "removeServerConfirm": "Είστε βέβαιοι ότι θέλετε να καταργήσετε αυτόν τον διακομιστή? Όλα τα συσχετιζόμενα δεδομένα συνεδρίας θα διατηρηθούν, αλλά δεν θα μπορείτε να παρακολουθείτε νέες συνεδρίες από αυτόν το διακομιστή.",

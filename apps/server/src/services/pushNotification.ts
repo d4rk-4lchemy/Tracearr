@@ -9,9 +9,9 @@
 import { Expo, type ExpoPushMessage, type ExpoPushTicket } from 'expo-server-sdk';
 import { eq, isNotNull } from 'drizzle-orm';
 import type { ViolationWithDetails, ActiveSession } from '@tracearr/shared';
-import { SEVERITY_LEVELS, getSeverityPriority } from '@tracearr/shared';
+import { SEVERITY_LEVELS, getSeverityPriority, formatEpisodeLabel } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { mobileSessions, notificationPreferences } from '../db/schema.js';
+import { mobileSessions, notificationPreferences, serverUsers } from '../db/schema.js';
 import { getPushRateLimiter } from './pushRateLimiter.js';
 import { quietHoursService, type NotificationSeverity } from './quietHours.js';
 import { pushEncryptionService } from './pushEncryption.js';
@@ -46,9 +46,9 @@ function formatMediaTitle(session: ActiveSession): string {
 
   // For episodes, format as "Show - S01E05 Episode"
   if (mediaType === 'episode' && grandparentTitle) {
-    const seasonStr = seasonNumber != null ? String(seasonNumber).padStart(2, '0') : '00';
-    const episodeStr = episodeNumber != null ? String(episodeNumber).padStart(2, '0') : '00';
-    const episodeCode = `S${seasonStr}E${episodeStr}`;
+    // Fall back to 0 for a genuinely missing season/episode so the notification
+    // still shows a code (e.g. "S00E00") instead of dropping it entirely.
+    const episodeCode = formatEpisodeLabel(seasonNumber ?? 0, episodeNumber ?? 0) ?? 'S00E00';
 
     // If episode title is different from show title, include it
     if (mediaTitle && mediaTitle !== grandparentTitle) {
@@ -144,6 +144,19 @@ function buildPushMessage(
   }
 
   return message;
+}
+
+/**
+ * Resolve the identity (users.id) that owns a server account, for push payloads
+ * that need to reference the person rather than just their account on one server.
+ */
+async function getIdentityUserId(serverUserId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ userId: serverUsers.userId })
+    .from(serverUsers)
+    .where(eq(serverUsers.id, serverUserId))
+    .limit(1);
+  return row?.userId ?? null;
 }
 
 /**
@@ -478,7 +491,7 @@ export class PushNotificationService {
     const sessions = await getSessionsWithPreferences();
     if (sessions.length === 0) return;
 
-    const severity = violation.severity as keyof typeof SEVERITY_LEVELS;
+    const severity = violation.severity;
     const severityNum = getSeverityPriority(severity);
 
     // Filter sessions based on preferences
@@ -517,7 +530,7 @@ export class PushNotificationService {
     // Apply quiet hours filtering (violations use severity for bypass)
     const activeSessions = applyQuietHours(
       rateLimitedSessions,
-      severity as NotificationSeverity,
+      severity,
       'violation'
     );
     if (activeSessions.length === 0) {
@@ -533,6 +546,11 @@ export class PushNotificationService {
     const serverId = violation.server?.id;
     const imageUrl = buildPushAvatarUrl(externalUrl, serverId, violation.user?.thumbUrl);
 
+    // The person's identity (users.id), for clients that want to group by
+    // person rather than by the single server account that triggered this.
+    const identityUserId =
+      violation.user.userId ?? (await getIdentityUserId(violation.serverUserId));
+
     const messages = activeSessions.map((session) =>
       buildPushMessage(session.expoPushToken, session.deviceSecret, {
         title: serverName,
@@ -541,7 +559,10 @@ export class PushNotificationService {
         data: {
           type: 'violation_detected',
           violationId: violation.id,
+          // Legacy alias: historically the server account id, kept for older mobile clients.
           userId: violation.serverUserId,
+          serverUserId: violation.serverUserId,
+          identityUserId,
           ruleType: violation.rule.type,
           severity: violation.severity,
           serverId: violation.server?.id,
@@ -601,6 +622,7 @@ export class PushNotificationService {
     // Get external URL for rich notification image
     const { externalUrl } = await getNetworkSettings();
     const imageUrl = buildPushPosterUrl(externalUrl, session.server?.id, session.thumbPath);
+    const identityUserId = await getIdentityUserId(session.serverUserId);
 
     const messages = activeSessions.map((s) =>
       buildPushMessage(s.expoPushToken, s.deviceSecret, {
@@ -610,7 +632,10 @@ export class PushNotificationService {
         data: {
           type: 'stream_started',
           sessionId: session.id,
+          // Legacy alias: historically the server account id, kept for older mobile clients.
           userId: session.serverUserId,
+          serverUserId: session.serverUserId,
+          identityUserId,
           mediaTitle: session.mediaTitle,
           mediaType: session.mediaType,
           serverId: session.server.id,
@@ -668,6 +693,7 @@ export class PushNotificationService {
     // Get external URL for rich notification image
     const { externalUrl } = await getNetworkSettings();
     const imageUrl = buildPushPosterUrl(externalUrl, session.server?.id, session.thumbPath);
+    const identityUserId = await getIdentityUserId(session.serverUserId);
 
     const messages = activeSessions.map((s) =>
       buildPushMessage(s.expoPushToken, s.deviceSecret, {
@@ -677,7 +703,10 @@ export class PushNotificationService {
         data: {
           type: 'stream_stopped',
           sessionId: session.id,
+          // Legacy alias: historically the server account id, kept for older mobile clients.
           userId: session.serverUserId,
+          serverUserId: session.serverUserId,
+          identityUserId,
           mediaTitle: session.mediaTitle,
           serverId: session.server.id,
         },

@@ -148,6 +148,13 @@ describe('Claim Code Utility', () => {
       it('rejects partially correct code', () => {
         expect(validateClaimCode('ABCD-EFGH-XXXX')).toBe(false);
       });
+
+      it('rejects a code of a different length without throwing', () => {
+        expect(() => validateClaimCode('SHORT')).not.toThrow();
+        expect(validateClaimCode('SHORT')).toBe(false);
+        expect(() => validateClaimCode('WAY-TOO-LONG-A-CODE-THAT-DOES-NOT-MATCH')).not.toThrow();
+        expect(validateClaimCode('WAY-TOO-LONG-A-CODE-THAT-DOES-NOT-MATCH')).toBe(false);
+      });
     });
 
     describe('when claim code is disabled', () => {

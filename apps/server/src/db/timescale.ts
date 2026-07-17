@@ -28,8 +28,11 @@ import { PRIMARY_MEDIA_TYPES_SQL_LITERAL } from '../constants/mediaTypes.js';
  * - 8: Fixed plays calculation in content_engagement_summary to align with 85% "watched"
  * - 9: Added max_progress_ms to daily_content_engagement for progress-based completion detection.
  *      Duration-based completion undercounted episodes/plays for users who skip intros/credits.
+ * - 10: Fixed top_shows_by_engagement.unique_viewers to count distinct people (server_users.user_id)
+ *       instead of distinct server accounts, so a merged person watching a show from two accounts
+ *       counts once - matching the date-filtered /shows path, which already counted by user_id.
  */
-const AGGREGATE_SCHEMA_VERSION = 9;
+export const AGGREGATE_SCHEMA_VERSION = 10;
 
 /** Config for a continuous aggregate view */
 interface AggregateDefinition {
@@ -528,6 +531,48 @@ async function setStoredSchemaVersion(version: number): Promise<void> {
   `);
 }
 
+const BACKFILL_MARKER_KEY = 'aggregate_backfill_pending';
+
+export interface AggregateBackfillMarker {
+  targetVersion: number;
+  startedAt: string;
+}
+
+/**
+ * Get the pending aggregate backfill marker, if any.
+ * Present when a version-mismatch DDL rebuild has run but the full historical
+ * refresh (safeFullRefreshAllAggregates) hasn't completed successfully yet.
+ */
+export async function getBackfillMarker(): Promise<AggregateBackfillMarker | null> {
+  try {
+    await ensureMetadataTable();
+    const result = await db.execute(sql`
+      SELECT value FROM timescale_metadata WHERE key = ${BACKFILL_MARKER_KEY}
+    `);
+    const value = (result.rows[0] as { value: string } | undefined)?.value;
+    if (!value) return null;
+    return JSON.parse(value) as AggregateBackfillMarker;
+  } catch {
+    return null;
+  }
+}
+
+async function setBackfillMarker(targetVersion: number): Promise<void> {
+  await ensureMetadataTable();
+  const marker: AggregateBackfillMarker = { targetVersion, startedAt: new Date().toISOString() };
+  await db.execute(sql`
+    INSERT INTO timescale_metadata (key, value, updated_at)
+    VALUES (${BACKFILL_MARKER_KEY}, ${JSON.stringify(marker)}, NOW())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `);
+}
+
+async function clearBackfillMarker(): Promise<void> {
+  await db.execute(sql`
+    DELETE FROM timescale_metadata WHERE key = ${BACKFILL_MARKER_KEY}
+  `);
+}
+
 /**
  * Convert sessions table to hypertable
  * This is idempotent - if_not_exists ensures it won't fail if already a hypertable
@@ -852,18 +897,15 @@ export interface RefreshAggregatesOptions {
 }
 
 /**
- * Manually refresh all continuous aggregates
- *
- * By default, uses time-bounded refresh (last 7 days) to avoid lock exhaustion.
- * For bulk imports/backfill, pass { fullRefresh: true } to refresh entire history.
- *
- * @param options - Refresh options (fullRefresh, startTime, endTime)
+ * Refresh a specific list of continuous aggregates over a time range.
+ * Shared by refreshAggregates (sessions hypertable) and
+ * refreshLibrarySnapshotAggregates (library_snapshots hypertable) - the two
+ * hypertables have disjoint aggregate lists, so callers pick which to refresh.
  */
-export async function refreshAggregates(options?: RefreshAggregatesOptions): Promise<void> {
-  const hasExtension = await isTimescaleInstalled();
-  if (!hasExtension) return;
-
-  const aggregates = await getContinuousAggregates();
+async function refreshAggregateList(
+  aggregates: string[],
+  options?: RefreshAggregatesOptions
+): Promise<void> {
   const fullRefresh = options?.fullRefresh ?? false;
 
   // Default time bounds: last 7 days to tomorrow
@@ -893,6 +935,39 @@ export async function refreshAggregates(options?: RefreshAggregatesOptions): Pro
       console.warn(`Failed to refresh aggregate ${aggregate}:`, err);
     }
   }
+}
+
+/**
+ * Manually refresh all continuous aggregates on the sessions hypertable.
+ *
+ * By default, uses time-bounded refresh (last 7 days) to avoid lock exhaustion.
+ * For bulk imports/backfill, pass { fullRefresh: true } to refresh entire history.
+ *
+ * @param options - Refresh options (fullRefresh, startTime, endTime)
+ */
+export async function refreshAggregates(options?: RefreshAggregatesOptions): Promise<void> {
+  const hasExtension = await isTimescaleInstalled();
+  if (!hasExtension) return;
+
+  const aggregates = await getContinuousAggregates();
+  await refreshAggregateList(aggregates, options);
+}
+
+/**
+ * Manually refresh all continuous aggregates on the library_snapshots
+ * hypertable (library_stats_daily, content_quality_daily). These are not
+ * covered by refreshAggregates, which only looks at the sessions hypertable.
+ *
+ * @param options - Refresh options (fullRefresh, startTime, endTime)
+ */
+export async function refreshLibrarySnapshotAggregates(
+  options?: RefreshAggregatesOptions
+): Promise<void> {
+  const hasExtension = await isTimescaleInstalled();
+  if (!hasExtension) return;
+
+  const aggregates = await getLibrarySnapshotAggregates();
+  await refreshAggregateList(aggregates, options);
 }
 
 /**
@@ -1103,6 +1178,168 @@ export async function safeFullRefreshAllAggregates(
   console.log('[TimescaleDB] Safe full refresh complete');
 }
 
+/** Options for runAggregateBackfill */
+export interface BackfillRunOptions {
+  /** Bounded retry attempts before giving up for this boot (default: 3) */
+  maxAttempts?: number;
+  /** Delay before the first retry; doubles after each failed attempt (default: 30s) */
+  initialDelayMs?: number;
+  /** Injectable for tests - avoids waiting on real timers */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injectable for tests - simulate refresh failures without touching real data */
+  refreshFn?: (options?: SafeRefreshOptions) => Promise<void>;
+}
+
+/**
+ * Advisory lock key gating the background historical aggregate backfill.
+ * Multi-instance deployments share one database, so without this, every
+ * replica that boots with a pending backfill marker would kick off the same
+ * expensive unbounded refresh concurrently. Value is arbitrary but must stay
+ * stable across releases (it's just a shared integer both sides agree on -
+ * changing it does not migrate or reset anything, it just stops matching
+ * a lock already held under the old key).
+ */
+const BACKFILL_ADVISORY_LOCK_KEY = 875_100_001;
+
+/**
+ * Try to acquire the session-scoped backfill advisory lock on a dedicated
+ * connection. Deliberately not the pooled `db` client: a pooled connection
+ * can be returned to the pool and reused by an unrelated query while this
+ * code still believes it holds the lock. Returns the holding client on
+ * success (caller must release it via releaseBackfillLock when done), or
+ * null if another session already holds the lock. Postgres also releases
+ * the lock automatically if this connection closes without an explicit
+ * unlock (crash, etc.), so a losing or crashing instance can never wedge it.
+ */
+async function tryAcquireBackfillLock(): Promise<pg.Client | null> {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  const result = await client.query('SELECT pg_try_advisory_lock($1) AS acquired', [
+    BACKFILL_ADVISORY_LOCK_KEY,
+  ]);
+  const acquired = (result.rows[0] as { acquired: boolean } | undefined)?.acquired ?? false;
+  if (!acquired) {
+    await client.end().catch(() => {
+      /* ignore cleanup errors */
+    });
+    return null;
+  }
+  return client;
+}
+
+async function releaseBackfillLock(client: pg.Client): Promise<void> {
+  try {
+    await client.query('SELECT pg_advisory_unlock($1)', [BACKFILL_ADVISORY_LOCK_KEY]);
+  } finally {
+    await client.end().catch(() => {
+      /* ignore cleanup errors */
+    });
+  }
+}
+
+/**
+ * Run the full historical aggregate backfill in the background, after the
+ * server has already started listening.
+ *
+ * Called once a startup version-mismatch DDL rebuild (see initTimescaleDB)
+ * has left the aggregates with only a bounded recent window populated. This
+ * runs the expensive unbounded refresh (safeFullRefreshAllAggregates) without
+ * blocking startup or the deploy platform's startup probe.
+ *
+ * Guarded by a Postgres session-scoped advisory lock (BACKFILL_ADVISORY_LOCK_KEY)
+ * so that in a multi-instance deployment only one replica actually runs the
+ * backfill at a time. A replica that fails to acquire the lock returns
+ * immediately (`skipped: true`) without touching the marker or the stored
+ * schema version - it will re-check the marker on its own next restart, same
+ * as today's already-implemented leftover-marker path in initTimescaleDB.
+ *
+ * On success, clears the backfill marker and stores the new schema version.
+ * On failure, retries with backoff up to maxAttempts; if every attempt fails,
+ * the marker is left in place (never cleared, never silently dropped) so the
+ * next server startup resumes the backfill via initTimescaleDB instead of
+ * leaving aggregates with partial history indefinitely.
+ *
+ * Caveat: "success" here means refreshFn resolved without throwing, not that
+ * every batch of every aggregate actually refreshed. The default refreshFn
+ * (safeFullRefreshAllAggregates -> safeFullRefreshAggregate) catches and
+ * warns on each failed batch internally rather than propagating it, so a run
+ * that reports success and clears the marker can still have silently skipped
+ * some batches. The retry loop below only re-runs on an outright refreshFn
+ * rejection (e.g. a dropped connection), never on a "successful" run that
+ * quietly lost some batches.
+ */
+export async function runAggregateBackfill(
+  targetVersion: number,
+  options: BackfillRunOptions = {}
+): Promise<{ success: boolean; attempts: number; skipped?: boolean }> {
+  const {
+    maxAttempts = 3,
+    initialDelayMs = 30_000,
+    sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+    refreshFn = safeFullRefreshAllAggregates,
+  } = options;
+
+  const lockClient = await tryAcquireBackfillLock();
+  if (!lockClient) {
+    console.log(
+      '[TimescaleDB] Another instance already holds the aggregate backfill lock - ' +
+        `skipping for this boot (schema v${targetVersion}). The marker is left in place; ` +
+        'this instance will re-check it on its own next restart.'
+    );
+    return { success: true, attempts: 0, skipped: true };
+  }
+
+  try {
+    let delay = initialDelayMs;
+    let lastLoggedBucket = -1;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log(
+          `[TimescaleDB] Starting historical aggregate backfill (attempt ${attempt}/${maxAttempts}) for schema v${targetVersion}...`
+        );
+        await refreshFn({
+          onProgress: (progress) => {
+            const bucket = Math.floor(progress.percentComplete / 20) * 20;
+            if (bucket !== lastLoggedBucket) {
+              lastLoggedBucket = bucket;
+              console.log(
+                `[TimescaleDB] Backfill progress: ${bucket}% (${progress.aggregate}, ` +
+                  `${progress.currentAggregateIndex + 1}/${progress.totalAggregates})`
+              );
+            }
+          },
+        });
+        await clearBackfillMarker();
+        await setStoredSchemaVersion(targetVersion);
+        console.log(
+          `[TimescaleDB] Historical aggregate backfill complete - schema version set to ${targetVersion}`
+        );
+        return { success: true, attempts: attempt };
+      } catch (err) {
+        const willRetry = attempt < maxAttempts;
+        console.error(
+          `[TimescaleDB] ERROR: Aggregate backfill attempt ${attempt}/${maxAttempts} failed. ` +
+            'Dashboards continue to show recent data only until this completes. ' +
+            (willRetry
+              ? `Retrying in ${Math.round(delay / 1000)}s.`
+              : 'Giving up for this boot - the pending marker is left in place and the ' +
+                'next server restart will resume the backfill automatically.'),
+          err
+        );
+        if (willRetry) {
+          await sleep(delay);
+          delay *= 2;
+        }
+      }
+    }
+
+    return { success: false, attempts: maxAttempts };
+  } finally {
+    await releaseBackfillLock(lockClient);
+  }
+}
+
 /**
  * Check if aggregates need a full rebuild (for fresh installs after import)
  * Returns true if aggregates are missing significant historical data
@@ -1244,6 +1481,12 @@ export async function initTimescaleDB(): Promise<{
   success: boolean;
   status: TimescaleStatus;
   actions: string[];
+  /**
+   * Set when a historical aggregate backfill still needs to run. The caller
+   * (index.ts) should invoke runAggregateBackfill(targetVersion) in the
+   * background after the server starts listening.
+   */
+  backfillPending?: AggregateBackfillMarker;
 }> {
   const actions: string[] = [];
 
@@ -1316,7 +1559,13 @@ export async function initTimescaleDB(): Promise<{
   }
 
   // Check and create continuous aggregates
-  const existingAggregates = await getContinuousAggregates();
+  // getContinuousAggregates() only covers the sessions hypertable; library_stats_daily
+  // and content_quality_daily live on library_snapshots, so include both here or they'd
+  // always show as "missing" below regardless of whether they actually exist.
+  const existingAggregates = [
+    ...(await getContinuousAggregates()),
+    ...(await getLibrarySnapshotAggregates()),
+  ];
 
   // IMPORTANT: Only include aggregates that are actively used
   // Old aggregates that are no longer needed are handled separately below
@@ -1374,16 +1623,61 @@ export async function initTimescaleDB(): Promise<{
   // recreate the dependent views (content_engagement_summary, etc.)
   const needsRebuild = storedVersion !== AGGREGATE_SCHEMA_VERSION && storedVersion > 0;
 
+  let backfillPending: AggregateBackfillMarker | undefined;
+
   if (needsRebuild) {
+    // Only the cheap DDL runs synchronously here (drop/recreate aggregate + view
+    // definitions, re-add refresh policies) plus a bounded refresh of the recent
+    // window - never the unbounded full-history rescan, which can take long enough
+    // to exceed a deploy platform's startup probe budget on large installs. The
+    // schema version is intentionally not stored until the background historical
+    // backfill (safeFullRefreshAllAggregates, via runAggregateBackfill in index.ts)
+    // actually completes, so a crash mid-backfill resumes on the next boot instead
+    // of leaving aggregates permanently short of history. Until backfill finishes,
+    // aggregate-backed stats show partial (recent) data only.
     actions.push(
-      `Schema version changed (${storedVersion} → ${AGGREGATE_SCHEMA_VERSION}) - rebuilding all aggregates`
+      `Schema version changed (${storedVersion} → ${AGGREGATE_SCHEMA_VERSION}) - recreating aggregate definitions`
     );
-    const rebuildResult = await rebuildTimescaleViews({ fullRefresh: true });
-    if (rebuildResult.success) {
-      await setStoredSchemaVersion(AGGREGATE_SCHEMA_VERSION);
-      actions.push('Successfully rebuilt all aggregates with full historical backfill');
-    } else {
-      actions.push(`Warning: Failed to rebuild aggregates: ${rebuildResult.message}`);
+    const ddlStart = Date.now();
+    try {
+      await rebuildAggregateDefinitions();
+      // Bounded refresh (~7 day window) so recently-viewed dashboards aren't empty
+      // while the background historical backfill runs. endTime is capped at the
+      // start of today (UTC, matching the aggregates' own `time_bucket('1 day', ...)`
+      // grouping) rather than "now" or "tomorrow": these aggregates use
+      // materialized_only=false, so real-time aggregation keeps today live by
+      // unioning raw sessions newer than the materialization watermark - but
+      // refreshing today's bucket at all, even partially, advances that watermark
+      // through it, hiding every session recorded afterward until the next
+      // scheduled policy tick. Stopping at yesterday's close leaves today on the
+      // real-time path and still materializes the rest of the window. The
+      // library_snapshots aggregates bucket daily the same way and also use
+      // materialized_only=false, so the same cap applies to them - otherwise
+      // library_stats_daily/content_quality_daily stay empty until the
+      // background backfill finishes even though the log below says recent
+      // data is available.
+      const startOfTodayUtc = new Date();
+      startOfTodayUtc.setUTCHours(0, 0, 0, 0);
+      await refreshAggregates({ endTime: startOfTodayUtc });
+      await refreshLibrarySnapshotAggregates({ endTime: startOfTodayUtc });
+      const ddlMs = Date.now() - ddlStart;
+      await setBackfillMarker(AGGREGATE_SCHEMA_VERSION);
+      backfillPending = {
+        targetVersion: AGGREGATE_SCHEMA_VERSION,
+        startedAt: new Date().toISOString(),
+      };
+      actions.push(
+        `Recreated aggregate definitions in ${ddlMs}ms with recent data available now; ` +
+          'full historical backfill scheduled in the background after startup'
+      );
+    } catch (err) {
+      console.error(
+        '[TimescaleDB] Failed to recreate aggregate definitions on schema version change:',
+        err
+      );
+      actions.push(
+        `Warning: Failed to recreate aggregate definitions: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   } else if (missingAggregates.length > 0) {
     await createContinuousAggregates();
@@ -1396,6 +1690,17 @@ export async function initTimescaleDB(): Promise<{
       await setStoredSchemaVersion(AGGREGATE_SCHEMA_VERSION);
     }
     actions.push('All continuous aggregates exist and up-to-date');
+
+    // A previous boot may have completed the DDL rebuild above but crashed or
+    // restarted before the background backfill finished - resume it instead
+    // of silently leaving aggregates with only partial history forever.
+    const existingMarker = await getBackfillMarker();
+    if (existingMarker) {
+      backfillPending = existingMarker;
+      actions.push(
+        `Found pending aggregate backfill from a previous startup (target v${existingMarker.targetVersion}) - resuming in background`
+      );
+    }
   }
 
   // Check and enable compression
@@ -1458,6 +1763,7 @@ export async function initTimescaleDB(): Promise<{
     success: true,
     status,
     actions,
+    backfillPending,
   };
 }
 
@@ -1688,7 +1994,9 @@ async function ensureEngagementViews(): Promise<void> {
       MAX(ses.year) AS year,
       SUM(ses.unique_episodes_watched) AS total_episode_views,
       SUM(ses.total_watch_hours) AS total_watch_hours,
-      COUNT(DISTINCT ses.server_user_id) AS unique_viewers,
+      -- Count distinct people, not distinct accounts: a merged identity watching
+      -- from two server accounts is one viewer.
+      COUNT(DISTINCT su.user_id) AS unique_viewers,
       SUM(ses.total_valid_sessions) AS total_valid_sessions,
       SUM(ses.total_all_sessions) AS total_all_sessions,
       ROUND(AVG(ses.unique_episodes_watched), 1) AS avg_episodes_per_viewer,
@@ -1718,6 +2026,7 @@ async function ensureEngagementViews(): Promise<void> {
         ),
       1) AS binge_score
     FROM show_engagement_summary ses
+    JOIN server_users su ON su.id = ses.server_user_id
     LEFT JOIN episode_continuity_stats ecs
       ON ses.server_user_id = ecs.server_user_id AND ses.show_title = ecs.show_title
     GROUP BY ses.show_title
@@ -1752,6 +2061,42 @@ async function ensureEngagementViews(): Promise<void> {
     FROM content_engagement_summary
     GROUP BY server_user_id
   `);
+}
+
+/**
+ * Drop and recreate all continuous aggregate definitions plus dependent
+ * engagement views (steps 1-4 of a full rebuild). This is DDL-only - no
+ * historical data is refreshed - so it completes in seconds even on large
+ * installs. Shared by rebuildTimescaleViews() and the startup version-mismatch
+ * path in initTimescaleDB(), which schedules the (potentially slow) historical
+ * refresh separately via runAggregateBackfill() after the server is listening.
+ */
+async function rebuildAggregateDefinitions(
+  report?: (step: number, message: string) => void
+): Promise<void> {
+  const definitions = getAggregateDefinitions();
+
+  // Step 1: Drop ALL existing continuous aggregates (CASCADE will drop dependent views)
+  report?.(1, 'Dropping all existing continuous aggregates...');
+  for (const def of definitions) {
+    await db.execute(sql.raw(`DROP MATERIALIZED VIEW IF EXISTS ${def.name} CASCADE`));
+  }
+
+  // Step 2: Recreate all continuous aggregates with current definitions
+  report?.(2, 'Creating continuous aggregates with updated definitions...');
+  for (const def of definitions) {
+    await createAggregate(def);
+  }
+
+  // Step 3: Add refresh policies for all aggregates
+  report?.(3, 'Setting up refresh policies...');
+  for (const def of definitions) {
+    await addRefreshPolicy(def);
+  }
+
+  // Step 4: Create all engagement views
+  report?.(4, 'Creating engagement views...');
+  await ensureEngagementViews();
 }
 
 /** Options for rebuildTimescaleViews */
@@ -1791,29 +2136,7 @@ export async function rebuildTimescaleViews(
   };
 
   try {
-    const definitions = getAggregateDefinitions();
-
-    // Step 1: Drop ALL existing continuous aggregates (CASCADE will drop dependent views)
-    report(1, 'Dropping all existing continuous aggregates...');
-    for (const def of definitions) {
-      await db.execute(sql.raw(`DROP MATERIALIZED VIEW IF EXISTS ${def.name} CASCADE`));
-    }
-
-    // Step 2: Recreate all continuous aggregates with current definitions
-    report(2, 'Creating continuous aggregates with updated definitions...');
-    for (const def of definitions) {
-      await createAggregate(def);
-    }
-
-    // Step 3: Add refresh policies for all aggregates
-    report(3, 'Setting up refresh policies...');
-    for (const def of definitions) {
-      await addRefreshPolicy(def);
-    }
-
-    // Step 4: Create all engagement views
-    report(4, 'Creating engagement views...');
-    await ensureEngagementViews();
+    await rebuildAggregateDefinitions(report);
 
     // Step 5: Optionally refresh historical data
     if (fullRefresh) {

@@ -39,6 +39,7 @@ import type {
   VersionInfo,
   EngagementStats,
   ShowStatsResponse,
+  SetupStatus,
   MediaType,
   WebhookFormat,
   ServerConnectionStatus,
@@ -75,6 +76,11 @@ import type {
   BackupMetadata,
   BackupListItem,
   BackupScheduleType,
+  // Cross-server user merging types
+  UserMergeResult,
+  MergeSuggestion,
+  ServerUserSplitResult,
+  UserSortField,
 } from '@tracearr/shared';
 
 // Re-export shared types needed by frontend components
@@ -90,6 +96,19 @@ import { API_BASE_PATH, getClientTimezone } from '@tracearr/shared';
 import { BASE_PATH } from '@/lib/basePath';
 export { BASE_PATH, BASE_URL, imageProxyUrl } from '@/lib/basePath';
 import { MAINTENANCE_EVENT } from '@/hooks/useMaintenanceMode';
+
+export interface LibraryStatusResponse {
+  isSynced: boolean;
+  isSyncRunning: boolean;
+  needsBackfill: boolean;
+  isBackfillRunning: boolean;
+  backfillState: 'active' | 'waiting' | 'delayed' | null;
+  itemCount: number;
+  snapshotCount: number;
+  earliestItemDate: string | null;
+  earliestSnapshotDate: string | null;
+  backfillDays: number | null;
+}
 
 // Stats time range parameters
 export interface StatsTimeRange {
@@ -158,17 +177,29 @@ export interface PlexServerInfo {
   connections: PlexServerConnection[];
 }
 
+// Minimal user echoed back by the Plex Better Auth plugin endpoints. The
+// session cookie itself carries the full session; this is just enough for
+// the login UI to know who signed in.
+export interface PlexAuthUser {
+  id: string;
+  username: string;
+  role: UserRole;
+}
+
 export interface PlexCheckPinResponse {
   authorized: boolean;
   message?: string;
-  // If returning user (auto-connect)
-  accessToken?: string;
-  refreshToken?: string;
-  user?: User;
+  // If returning user (or new user with no servers) - session cookie is already set
+  user?: PlexAuthUser;
   // If new user (needs server selection)
   needsServerSelection?: boolean;
   servers?: PlexDiscoveredServer[]; // Now includes reachability info
   tempToken?: string;
+}
+
+export interface PlexConnectResponse {
+  authorized: boolean;
+  user: PlexAuthUser;
 }
 
 // Token storage keys
@@ -202,74 +233,18 @@ export const tokenStorage = {
   },
 };
 
+// Base URL for the API itself, e.g. "/api/v1" (or "/tracearr/api/v1" behind a subpath).
+// Used by both ApiClient and authClient so they always target the same origin/basePath.
+export const API_BASE_URL = `${BASE_PATH}${API_BASE_PATH}`;
+
 class ApiClient {
   private baseUrl: string;
-  private isRefreshing = false;
-  private refreshPromise: Promise<boolean> | null = null;
 
-  constructor(baseUrl: string = `${BASE_PATH}${API_BASE_PATH}`) {
+  constructor(baseUrl: string = API_BASE_URL) {
     this.baseUrl = baseUrl;
   }
 
-  /**
-   * Attempt to refresh the access token using the refresh token
-   * Returns true if refresh succeeded, false otherwise
-   */
-  private async refreshAccessToken(): Promise<boolean> {
-    const refreshToken = tokenStorage.getRefreshToken();
-    if (!refreshToken) {
-      return false;
-    }
-
-    try {
-      const response = await fetch(`${this.baseUrl}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-
-      if (!response.ok) {
-        // Only clear tokens on explicit auth rejection (401/403)
-        // Don't clear on server errors (500, 502, 503) - server might be restarting
-        if (response.status === 401 || response.status === 403) {
-          tokenStorage.clearTokens();
-        }
-        return false;
-      }
-
-      const data = await response.json();
-      if (data.accessToken && data.refreshToken) {
-        tokenStorage.setTokens(data.accessToken, data.refreshToken);
-        return true;
-      }
-
-      return false;
-    } catch {
-      // Network error (server down, timeout, etc.)
-      // DON'T clear tokens - they might still be valid when server comes back
-      return false;
-    }
-  }
-
-  /**
-   * Handle token refresh with deduplication
-   * Multiple concurrent 401s will share the same refresh attempt
-   */
-  private async handleTokenRefresh(): Promise<boolean> {
-    if (this.isRefreshing) {
-      return this.refreshPromise!;
-    }
-
-    this.isRefreshing = true;
-    this.refreshPromise = this.refreshAccessToken().finally(() => {
-      this.isRefreshing = false;
-      this.refreshPromise = null;
-    });
-
-    return this.refreshPromise;
-  }
-
-  private async request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
+  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string>),
     };
@@ -280,37 +255,32 @@ class ApiClient {
       headers['Content-Type'] = 'application/json';
     }
 
-    // Add Authorization header if we have a token
-    const token = tokenStorage.getAccessToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...options,
       credentials: 'include',
       headers,
     });
 
-    // Handle 401 with automatic token refresh (skip for auth endpoints to avoid loops)
-    // Note: /auth/me is NOT in this list - it SHOULD trigger token refresh on 401
-    const noRetryPaths = [
+    // A 401 means the session cookie is missing or expired - there's no token to
+    // refresh anymore, so just clear the cached auth state and let the auth
+    // context redirect to login. Skip this for auth endpoints where a 401/403
+    // is an expected response (e.g. bad login credentials) rather than a lost
+    // session. /auth/me is the probe the auth context uses to decide whether a
+    // session exists at all, so its 401 while logged out is expected and must
+    // not fire the logout event (that reloads the login page in a loop).
+    const noAuthClearPaths = [
       '/auth/login',
       '/auth/signup',
-      '/auth/refresh',
       '/auth/logout',
+      '/auth/me',
       '/auth/plex/check-pin',
       '/auth/callback',
     ];
-    const shouldRetry = !noRetryPaths.some((p) => path.startsWith(p));
-    if (response.status === 401 && !isRetry && shouldRetry) {
-      const refreshed = await this.handleTokenRefresh();
-      if (refreshed) {
-        // Retry the original request with new token
-        return this.request<T>(path, options, true);
-      }
-      // Refresh failed - tokens already cleared by refreshAccessToken() if it was a real auth failure
-      // Don't clear here - might just be a network error (server restarting)
+    const shouldClearAuth = !noAuthClearPaths.some((p) => path.startsWith(p));
+    if (response.status === 401 && shouldClearAuth) {
+      window.dispatchEvent(
+        new CustomEvent(AUTH_STATE_CHANGE_EVENT, { detail: { type: 'logout' } })
+      );
     }
 
     // Detect maintenance mode (503 with maintenance flag)
@@ -341,15 +311,7 @@ class ApiClient {
 
   // Setup - check if Tracearr needs initial configuration
   setup = {
-    status: () =>
-      this.request<{
-        needsSetup: boolean;
-        requiresClaimCode: boolean;
-        hasServers: boolean;
-        hasJellyfinServers: boolean;
-        hasPasswordAuth: boolean;
-        primaryAuthMethod: 'jellyfin' | 'local';
-      }>('/setup/status'),
+    status: () => this.request<SetupStatus>('/setup/status'),
   };
 
   // Auth
@@ -371,7 +333,6 @@ class ApiClient {
         thumbUrl?: string | null;
         trustScore?: number;
       }>('/auth/me'),
-    logout: () => this.request<void>('/auth/logout', { method: 'POST' }),
 
     // Validate claim code (stateless check for immediate feedback)
     validateClaimCode: (data: { claimCode: string }) =>
@@ -380,44 +341,20 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
 
-    // Local account signup (email for login, username for display)
-    // claimCode is required if first-time setup with claim code enabled
-    signup: (data: { email: string; username: string; password: string; claimCode?: string }) =>
-      this.request<{ accessToken: string; refreshToken: string; user: User }>('/auth/signup', {
+    // Plex OAuth - Step 1: Get PIN (Better Auth plugin endpoint - sets no cookie yet)
+    initiatePlex: (forwardUrl?: string) =>
+      this.request<{ pinId: string; authUrl: string }>('/auth/plex/initiate', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ forwardUrl }),
       }),
 
-    // Local account login (uses email)
-    loginLocal: (data: { email: string; password: string }) =>
-      this.request<{ accessToken: string; refreshToken: string; user: User }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ type: 'local', ...data }),
-      }),
-
-    // Plex OAuth - Step 1: Get PIN
-    loginPlex: (forwardUrl?: string) =>
-      this.request<{ pinId: string; authUrl: string }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ type: 'plex', forwardUrl }),
-      }),
-
-    // Plex OAuth - Step 2: Check PIN and get servers
+    // Plex OAuth - Step 2: Check PIN. On success the session cookie is already
+    // set server-side; the response just tells the UI what happened.
     checkPlexPin: (data: { pinId: string; claimCode?: string }) =>
       this.request<PlexCheckPinResponse>('/auth/plex/check-pin', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-
-    // Jellyfin Admin Login - Authenticate with Jellyfin username/password
-    loginJellyfin: (data: { username: string; password: string }) =>
-      this.request<{ accessToken: string; refreshToken: string; user: User }>(
-        '/auth/jellyfin/login',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      ),
 
     // Plex OAuth - Step 3: Connect with selected server (only for setup)
     connectPlexServer: (data: {
@@ -427,13 +364,10 @@ class ApiClient {
       clientIdentifier?: string;
       claimCode?: string;
     }) =>
-      this.request<{ accessToken: string; refreshToken: string; user: User }>(
-        '/auth/plex/connect',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }
-      ),
+      this.request<PlexConnectResponse>('/auth/plex/connect', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
 
     // Get available Plex servers (authenticated - for adding additional servers)
     getAvailablePlexServers: (accountId?: string) => {
@@ -512,19 +446,6 @@ class ApiClient {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-
-    // Legacy callback (deprecated, kept for compatibility)
-    checkPlexCallback: (data: { pinId: string; serverUrl: string; serverName: string }) =>
-      this.request<{
-        authorized: boolean;
-        message?: string;
-        accessToken?: string;
-        refreshToken?: string;
-        user?: User;
-      }>('/auth/callback', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
   };
 
   // Servers
@@ -557,14 +478,7 @@ class ApiClient {
       this.request<Server>(`/servers/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(
-          Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) as {
-            name?: string;
-            url?: string;
-            clientIdentifier?: string;
-            ignoreAnonymousStreams?: boolean;
-            dispatcharrLiveHistoryThresholdSeconds?: number;
-            color?: string | null;
-          }
+          Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined))
         ),
       }),
     /** @deprecated Use servers.update(id, { url, clientIdentifier }) */
@@ -628,17 +542,39 @@ class ApiClient {
 
   // Users
   users = {
-    list: (params?: { page?: number; pageSize?: number; serverId?: string }) => {
+    list: (params?: {
+      page?: number;
+      pageSize?: number;
+      serverId?: string;
+      serverIds?: string[];
+      includeRemoved?: boolean;
+      search?: string;
+      orderBy?: UserSortField;
+      orderDir?: 'asc' | 'desc';
+    }) => {
       const searchParams = new URLSearchParams();
       if (params?.page) searchParams.set('page', String(params.page));
       if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
       if (params?.serverId) searchParams.set('serverId', params.serverId);
+      if (params?.serverIds?.length) {
+        for (const id of params.serverIds) {
+          searchParams.append('serverIds', id);
+        }
+      }
+      if (params?.includeRemoved) searchParams.set('includeRemoved', 'true');
+      if (params?.search) searchParams.set('search', params.search);
+      if (params?.orderBy) searchParams.set('orderBy', params.orderBy);
+      if (params?.orderDir) searchParams.set('orderDir', params.orderDir);
       return this.request<PaginatedResponse<ServerUserWithIdentity>>(
         `/users?${searchParams.toString()}`
       );
     },
     get: (id: string) => this.request<ServerUserDetail>(`/users/${id}`),
-    getFull: (id: string) => this.request<ServerUserFullDetail>(`/users/${id}/full`),
+    getFull: (id: string, params?: { scope?: 'identity' }) => {
+      const query = new URLSearchParams();
+      if (params?.scope) query.set('scope', params.scope);
+      return this.request<ServerUserFullDetail>(`/users/${id}/full?${query.toString()}`);
+    },
     update: (id: string, data: { trustScore?: number }) =>
       this.request<ServerUserWithIdentity>(`/users/${id}`, {
         method: 'PATCH',
@@ -649,28 +585,63 @@ class ApiClient {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
-    sessions: (id: string, params?: { page?: number; pageSize?: number }) => {
+    sessions: (id: string, params?: { page?: number; pageSize?: number; scope?: 'identity' }) => {
       const query = new URLSearchParams(params as Record<string, string>).toString();
       return this.request<PaginatedResponse<Session>>(`/users/${id}/sessions?${query}`);
     },
-    locations: async (id: string) => {
-      const response = await this.request<{ data: UserLocation[] }>(`/users/${id}/locations`);
+    locations: async (id: string, params?: { scope?: 'identity' }) => {
+      const query = new URLSearchParams();
+      if (params?.scope) query.set('scope', params.scope);
+      const response = await this.request<{ data: UserLocation[] }>(
+        `/users/${id}/locations?${query.toString()}`
+      );
       return response.data;
     },
-    devices: async (id: string) => {
-      const response = await this.request<{ data: UserDevice[] }>(`/users/${id}/devices`);
+    devices: async (id: string, params?: { scope?: 'identity' }) => {
+      const query = new URLSearchParams();
+      if (params?.scope) query.set('scope', params.scope);
+      const response = await this.request<{ data: UserDevice[] }>(
+        `/users/${id}/devices?${query.toString()}`
+      );
       return response.data;
     },
-    terminations: (id: string, params?: { page?: number; pageSize?: number }) => {
+    terminations: (
+      id: string,
+      params?: { page?: number; pageSize?: number; scope?: 'identity' }
+    ) => {
       const query = new URLSearchParams(params as Record<string, string>).toString();
       return this.request<PaginatedResponse<TerminationLogWithDetails>>(
         `/users/${id}/terminations?${query}`
       );
     },
-    bulkResetTrust: (ids: string[]) =>
+    bulkResetTrust: (params: {
+      ids?: string[];
+      selectAll?: boolean;
+      filters?: { serverId?: string; serverIds?: string[]; includeRemoved?: boolean };
+    }) =>
       this.request<{ success: boolean; updated: number }>('/users/bulk/reset-trust', {
         method: 'POST',
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify(params),
+      }),
+    merge: (
+      sourceUserId: string,
+      data: { targetUserId: string; confirmSameServerCombine?: boolean }
+    ) =>
+      this.request<UserMergeResult>(`/users/${sourceUserId}/merge`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    mergeSuggestions: async () => {
+      const response = await this.request<{ data: MergeSuggestion[] }>('/users/merge-suggestions');
+      return response.data;
+    },
+  };
+
+  // Server users (accounts on a specific media server)
+  serverUsers = {
+    split: (serverUserId: string) =>
+      this.request<ServerUserSplitResult>(`/server-users/${serverUserId}/split`, {
+        method: 'POST',
       }),
   };
 
@@ -855,7 +826,9 @@ class ApiClient {
     list: (params?: {
       page?: number;
       pageSize?: number;
+      serverUserId?: string;
       userId?: string;
+      userIds?: string[];
       severity?: string;
       acknowledged?: boolean;
       serverIds?: string[];
@@ -865,7 +838,13 @@ class ApiClient {
       const searchParams = new URLSearchParams();
       if (params?.page) searchParams.set('page', String(params.page));
       if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+      if (params?.serverUserId) searchParams.set('serverUserId', params.serverUserId);
       if (params?.userId) searchParams.set('userId', params.userId);
+      if (params?.userIds?.length) {
+        for (const id of params.userIds) {
+          searchParams.append('userIds', id);
+        }
+      }
       if (params?.severity) searchParams.set('severity', params.severity);
       if (params?.acknowledged !== undefined)
         searchParams.set('acknowledged', String(params.acknowledged));
@@ -889,7 +868,13 @@ class ApiClient {
     bulkAcknowledge: (params: {
       ids?: string[];
       selectAll?: boolean;
-      filters?: { serverIds?: string[]; severity?: string; acknowledged?: boolean };
+      filters?: {
+        serverIds?: string[];
+        severity?: string;
+        acknowledged?: boolean;
+        userId?: string;
+        userIds?: string[];
+      };
     }) =>
       this.request<{ success: boolean; acknowledged: number }>('/violations/bulk/acknowledge', {
         method: 'POST',
@@ -898,7 +883,13 @@ class ApiClient {
     bulkDismiss: (params: {
       ids?: string[];
       selectAll?: boolean;
-      filters?: { serverIds?: string[]; severity?: string; acknowledged?: boolean };
+      filters?: {
+        serverIds?: string[];
+        severity?: string;
+        acknowledged?: boolean;
+        userId?: string;
+        userIds?: string[];
+      };
     }) =>
       this.request<{ success: boolean; dismissed: number }>('/violations/bulk', {
         method: 'DELETE',
@@ -963,6 +954,7 @@ class ApiClient {
     locations: async (params?: {
       timeRange?: StatsTimeRange;
       serverUserId?: string;
+      serverUserIds?: string[];
       serverIds?: string[];
       mediaType?: 'movie' | 'episode' | 'track';
     }) => {
@@ -970,7 +962,11 @@ class ApiClient {
       if (params?.timeRange?.period) searchParams.set('period', params.timeRange.period);
       if (params?.timeRange?.startDate) searchParams.set('startDate', params.timeRange.startDate);
       if (params?.timeRange?.endDate) searchParams.set('endDate', params.timeRange.endDate);
-      if (params?.serverUserId) searchParams.set('serverUserId', params.serverUserId);
+      if (params?.serverUserIds?.length) {
+        searchParams.set('serverUserIds', params.serverUserIds.join(','));
+      } else if (params?.serverUserId) {
+        searchParams.set('serverUserId', params.serverUserId);
+      }
       if (params?.serverIds?.length) {
         for (const id of params.serverIds) {
           searchParams.append('serverIds', id);
@@ -1013,15 +1009,15 @@ class ApiClient {
         transcodePercent: number;
       }>(`/stats/quality?${params.toString()}`);
     },
-    topUsers: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    topUsers: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       const response = await this.request<{ data: TopUserStats[] }>(
         `/stats/top-users?${params.toString()}`
       );
       return response.data;
     },
-    topContent: async (timeRange?: StatsTimeRange, serverId?: string) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+    topContent: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       const response = await this.request<{
         movies: {
           title: string;
@@ -1072,13 +1068,13 @@ class ApiClient {
     },
     shows: async (
       timeRange?: StatsTimeRange,
-      serverId?: string,
+      serverIds?: string[],
       options?: {
         limit?: number;
         orderBy?: 'totalEpisodeViews' | 'totalWatchHours' | 'bingeScore' | 'uniqueViewers';
       }
     ) => {
-      const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
       if (options?.limit) params.set('limit', String(options.limit));
       if (options?.orderBy) params.set('orderBy', options.orderBy);
       return this.request<ShowStatsResponse>(`/stats/shows?${params.toString()}`);
@@ -1096,7 +1092,6 @@ class ApiClient {
         `/stats/device-compatibility?${params.toString()}`
       );
     },
-    // Matrix is single-server only; fan-out in useDeviceCompatibilityMatrix calls this per id.
     deviceCompatibilityMatrix: async (
       timeRange?: StatsTimeRange,
       serverId?: string,
@@ -1105,6 +1100,18 @@ class ApiClient {
       const params = this.buildStatsParams(timeRange ?? { period: 'month' }, serverId);
       params.set('minSessions', String(minSessions));
       return this.request<DeviceCompatibilityMatrix>(
+        `/stats/device-compatibility/matrix?${params.toString()}`
+      );
+    },
+    // Batches every selected server into one request, keyed by server id.
+    deviceCompatibilityMatrixMulti: async (
+      timeRange?: StatsTimeRange,
+      serverIds?: string[],
+      minSessions = 5
+    ) => {
+      const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
+      params.set('minSessions', String(minSessions));
+      return this.request<Record<string, DeviceCompatibilityMatrix>>(
         `/stats/device-compatibility/matrix?${params.toString()}`
       );
     },
@@ -1351,21 +1358,14 @@ class ApiClient {
       if (libraryId) params.set('libraryId', libraryId);
       return this.request<LibraryResolutionResponse>(`/library/resolution?${params.toString()}`);
     },
-    status: (serverId?: string) => {
+    status: (serverIds: string[]) => {
       const params = new URLSearchParams();
-      if (serverId) params.set('serverId', serverId);
-      return this.request<{
-        isSynced: boolean;
-        isSyncRunning: boolean;
-        needsBackfill: boolean;
-        isBackfillRunning: boolean;
-        backfillState: 'active' | 'waiting' | 'delayed' | null;
-        itemCount: number;
-        snapshotCount: number;
-        earliestItemDate: string | null;
-        earliestSnapshotDate: string | null;
-        backfillDays: number | null;
-      }>(`/library/status?${params.toString()}`);
+      for (const id of serverIds) {
+        params.append('serverIds', id);
+      }
+      return this.request<Record<string, LibraryStatusResponse>>(
+        `/library/status?${params.toString()}`
+      );
     },
   };
 

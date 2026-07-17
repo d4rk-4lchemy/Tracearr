@@ -30,7 +30,6 @@ const PUBLIC_DEFAULTS: Settings = {
   externalUrl: null,
   trustProxy: false,
   mobileEnabled: false,
-  primaryAuthMethod: 'local',
   tailscaleEnabled: false,
   tailscaleHostname: null,
   // Backup settings
@@ -39,6 +38,8 @@ const PUBLIC_DEFAULTS: Settings = {
   backupScheduleDayOfWeek: 0,
   backupScheduleDayOfMonth: 1,
   backupRetentionCount: 7,
+  pluginUpdateCheckEnabled: true,
+  pluginManifestUrl: null,
 };
 
 /**
@@ -48,6 +49,7 @@ const PUBLIC_DEFAULTS: Settings = {
 const INTERNAL_DEFAULTS = {
   tailscaleState: null as string | null,
   jwtRevokedBefore: null as string | null, // ISO 8601 — tokens issued before this timestamp are rejected
+  localLoginEnabled: true,
 };
 
 type InternalSettings = typeof INTERNAL_DEFAULTS;
@@ -59,19 +61,36 @@ type SettingKey = keyof SettingTypes;
 /** Combined defaults — single source of truth. When a key doesn't exist in the DB, these defaults are used. */
 const ALL_DEFAULTS: SettingTypes = { ...PUBLIC_DEFAULTS, ...INTERNAL_DEFAULTS };
 
+// TTL fallback for multi-instance deployments: another instance's write-through update isn't visible here, so a setting change can take up to this long to apply.
+const SETTINGS_CACHE_TTL_MS = 10_000;
+
+const settingsCache = new Map<SettingKey, { value: unknown; expiresAt: number }>();
+
+function cacheSetting<K extends SettingKey>(key: K, value: SettingTypes[K]): void {
+  settingsCache.set(key, { value, expiresAt: Date.now() + SETTINGS_CACHE_TTL_MS });
+}
+
+/** Clear the in-process settings cache. Used by the factory-reset debug route. */
+export function resetSettingsCache(): void {
+  settingsCache.clear();
+}
+
 /** Get a single setting value. Returns the stored value or the default. */
 export async function getSetting<K extends SettingKey>(key: K): Promise<SettingTypes[K]> {
+  const cached = settingsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value as SettingTypes[K];
+  }
+
   const rows = await db
     .select({ value: settings.value })
     .from(settings)
     .where(eq(settings.name, key))
     .limit(1);
 
-  if (rows.length === 0) {
-    return ALL_DEFAULTS[key];
-  }
-
-  return rows[0]!.value as SettingTypes[K];
+  const value = rows.length === 0 ? ALL_DEFAULTS[key] : (rows[0]!.value as SettingTypes[K]);
+  cacheSetting(key, value);
+  return value;
 }
 
 /** Get multiple settings by keys. Returns a Record with defaults applied for missing keys. */
@@ -98,7 +117,7 @@ const PUBLIC_KEYS = Object.keys(PUBLIC_DEFAULTS) as (keyof Settings)[];
 
 /** Get ALL settings as a typed Settings object (used by GET /settings). */
 export async function getAllSettings(): Promise<Settings> {
-  return getSettings(PUBLIC_KEYS) as Promise<Settings>;
+  return getSettings(PUBLIC_KEYS);
 }
 
 /** Upsert one or more settings. */
@@ -114,6 +133,10 @@ export async function setSettings(updates: Partial<SettingTypes>): Promise<void>
       });
     }
   });
+
+  for (const [name, value] of entries) {
+    cacheSetting(name as SettingKey, value);
+  }
 }
 
 /** Set a single setting. */
@@ -125,6 +148,7 @@ export async function setSetting<K extends SettingKey>(
     target: settings.name,
     set: { value },
   });
+  cacheSetting(key, value);
 }
 
 // ============================================================================

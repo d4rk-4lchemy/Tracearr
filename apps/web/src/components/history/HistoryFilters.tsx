@@ -67,7 +67,7 @@ interface Props {
   filters: HistoryFilters;
   onFiltersChange: (filters: HistoryFilters) => void;
   filterOptions?: HistoryFilterOptions;
-  isLoading?: boolean;
+  isFetching?: boolean;
   columnVisibility: ColumnVisibility;
   onColumnVisibilityChange: (visibility: ColumnVisibility) => void;
   isMultiServer?: boolean;
@@ -158,7 +158,7 @@ export function HistoryFiltersBar({
   filters,
   onFiltersChange,
   filterOptions,
-  isLoading,
+  isFetching,
   columnVisibility,
   onColumnVisibilityChange,
   isMultiServer = false,
@@ -198,10 +198,13 @@ export function HistoryFiltersBar({
     }[] = [];
 
     if (filters.serverUserIds?.length) {
-      const userNames = filters.serverUserIds.map((id) => {
-        const user = filterOptions?.users?.find((u) => u.id === id);
-        return user?.identityName || user?.username || 'Unknown';
-      });
+      // Match by any of the person's account ids, not just the representative id,
+      // so a merged person's chip shows one name instead of "Unknown".
+      const matchedUsers =
+        filterOptions?.users?.filter((u) =>
+          (u.serverUserIds ?? [u.id]).some((id) => filters.serverUserIds?.includes(id))
+        ) ?? [];
+      const userNames = matchedUsers.map((u) => u.identityName || u.username || 'Unknown');
       active.push({
         key: 'serverUserIds',
         label: 'Users',
@@ -384,7 +387,12 @@ export function HistoryFiltersBar({
                       </>
                     ) : null}
                     {sortedUsers.map((user) => {
-                      const isSelected = filters.serverUserIds?.includes(user.id) ?? false;
+                      // A person may have multiple server accounts (merged identity);
+                      // select/deselect all of them together so their full history shows.
+                      const personIds = user.serverUserIds ?? [user.id];
+                      const isSelected = personIds.some(
+                        (id) => filters.serverUserIds?.includes(id) ?? false
+                      );
                       return (
                         <DropdownMenuCheckboxItem
                           key={user.id}
@@ -392,8 +400,8 @@ export function HistoryFiltersBar({
                           onCheckedChange={(checked) => {
                             const current = filters.serverUserIds ?? [];
                             const updated = checked
-                              ? [...current, user.id]
-                              : current.filter((id) => id !== user.id);
+                              ? [...new Set([...current, ...personIds])]
+                              : current.filter((id) => !personIds.includes(id));
                             onFiltersChange({
                               ...filters,
                               serverUserIds: updated.length > 0 ? updated : undefined,
@@ -643,7 +651,7 @@ export function HistoryFiltersBar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {isLoading && (
+        {isFetching && (
           <div className="text-muted-foreground flex items-center gap-2 text-xs">
             <div className="border-primary h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />
           </div>

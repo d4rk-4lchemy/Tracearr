@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { ActiveSession, LocationStats } from '@tracearr/shared';
+import { formatEpisodeLabel, type ActiveSession, type LocationStats } from '@tracearr/shared';
 import { cn, formatLocationCompact } from '@/lib/utils';
 import { ActiveSessionBadge } from '@/components/sessions/ActiveSessionBadge';
 import { ServerLegend } from '@/components/server';
@@ -57,10 +57,7 @@ function formatMediaTitle(session: ActiveSession): { primary: string; secondary:
   const { mediaType, mediaTitle, grandparentTitle, seasonNumber, episodeNumber, year } = session;
 
   if (mediaType === 'episode' && grandparentTitle) {
-    const seasonEp =
-      seasonNumber && episodeNumber
-        ? `S${String(seasonNumber).padStart(2, '0')} E${String(episodeNumber).padStart(2, '0')}`
-        : null;
+    const seasonEp = formatEpisodeLabel(seasonNumber, episodeNumber, { spaced: true });
     return {
       primary: grandparentTitle,
       secondary: seasonEp ? `${seasonEp} · ${mediaTitle}` : mediaTitle,

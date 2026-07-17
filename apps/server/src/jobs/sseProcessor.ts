@@ -11,7 +11,11 @@
  * 4. Broadcast updates via WebSocket
  */
 
-import { SESSION_WRITE_RETRY, type PlexPlaySessionNotification } from '@tracearr/shared';
+import {
+  SESSION_WRITE_RETRY,
+  type PlexPlaySessionNotification,
+  type Session,
+} from '@tracearr/shared';
 import { and, eq, isNull } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db/client.js';
@@ -23,8 +27,18 @@ import { extractLiveUuid } from '../services/mediaServer/plex/plexUtils.js';
 import { lookupGeoIP } from '../services/plexGeoip.js';
 import { registerService, unregisterService } from '../services/serviceTracker.js';
 import { sseManager } from '../services/sseManager.js';
+import { getIdentityServerUserIds } from '../services/userService.js';
 import { enqueueNotification } from './notificationQueue.js';
-import { batchGetRecentUserSessions, getActiveRulesV2 } from './poller/database.js';
+import {
+  batchGetRecentUserSessions,
+  getActiveRulesV2,
+  mergeRecentSessionsForIdentity,
+} from './poller/database.js';
+import {
+  clearDbWriteTracking,
+  recordDbWrite,
+  shouldFlushDbWrite,
+} from './poller/dbWriteThrottle.js';
 import { triggerReconciliationPoll } from './poller/index.js';
 import {
   buildActiveSession,
@@ -52,6 +66,51 @@ import { broadcastViolations } from './poller/violations.js';
 let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;
 let isRunning = false;
+
+/**
+ * Resolve the sibling server_user ids for an identity, for cross-server rule
+ * aggregation. Falls back to no siblings (single server_user behavior) if the
+ * lookup fails, so a transient DB error degrades detection instead of
+ * blocking this event.
+ */
+async function resolveIdentityServerUserIds(userId: string, context: string): Promise<string[]> {
+  try {
+    return await getIdentityServerUserIds(userId);
+  } catch (error) {
+    console.error(
+      `[SSEProcessor] Failed to resolve identity server users for ${userId} (${context}), ` +
+        'evaluating rules for this server only:',
+      error
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch recent sessions for windowed rule evaluation (unique_ips_in_window,
+ * unique_devices_in_window, travel_speed_kmh), widened to every server_user
+ * id of the same identity when merged (identityServerUserIds.length > 1).
+ * Falls back to this server_user's own recent sessions if the widened fetch
+ * fails, so a transient DB error degrades detection instead of blocking
+ * this event.
+ */
+async function fetchRecentSessionsForRules(
+  serverUserId: string,
+  identityServerUserIds: string[]
+): Promise<Session[]> {
+  const ids = identityServerUserIds.length > 1 ? identityServerUserIds : [serverUserId];
+  try {
+    const recentSessionsMap = await batchGetRecentUserSessions(ids);
+    return mergeRecentSessionsForIdentity(recentSessionsMap, ids);
+  } catch (error) {
+    console.error(
+      `[SSEProcessor] Failed to fetch recent sessions for ${serverUserId}, falling back to this server only:`,
+      error
+    );
+    const fallbackMap = await batchGetRecentUserSessions([serverUserId]);
+    return fallbackMap.get(serverUserId) ?? [];
+  }
+}
 
 // Server down notification threshold in milliseconds
 // Delay prevents false alarms from brief connection blips
@@ -458,14 +517,18 @@ async function handleProgress(event: {
       );
     }
 
-    await db
-      .update(sessions)
-      .set({
-        progressMs: notification.viewOffset,
-        lastSeenAt: now, // Update for stale session detection
-        watched,
-      })
-      .where(eq(sessions.id, existingSession.id));
+    const watchedTransition = watched && !existingSession.watched;
+    if (watchedTransition || shouldFlushDbWrite(existingSession.id, now.getTime())) {
+      await db
+        .update(sessions)
+        .set({
+          progressMs: notification.viewOffset,
+          lastSeenAt: now, // Update for stale session detection
+          watched,
+        })
+        .where(eq(sessions.id, existingSession.id));
+      recordDbWrite(existingSession.id, now.getTime());
+    }
 
     if (cacheService) {
       const cached = await cacheService.getSessionById(existingSession.id);
@@ -475,7 +538,7 @@ async function handleProgress(event: {
         await cacheService.updateActiveSession(cached);
 
         // Only broadcast on watched status change (progress events are frequent)
-        if (watched && !existingSession.watched && pubSubService) {
+        if (watchedTransition && pubSubService) {
           await pubSubService.publish('session:updated', cached);
         }
       }
@@ -542,6 +605,7 @@ async function processSessionWriteRetries(): Promise<void> {
 
   for (const retry of retries) {
     if (retry.attempts >= SESSION_WRITE_RETRY.MAX_TOTAL_ATTEMPTS) {
+      clearDbWriteTracking(retry.sessionId);
       await cacheService.removeSessionWriteRetry(retry.sessionId);
       console.error(
         `[SSEProcessor] Max retry attempts (${SESSION_WRITE_RETRY.MAX_TOTAL_ATTEMPTS}) ` +
@@ -560,6 +624,7 @@ async function processSessionWriteRetries(): Promise<void> {
 
     if (!session) {
       // Session no longer exists or already stopped
+      clearDbWriteTracking(retry.sessionId);
       await cacheService.removeSessionWriteRetry(retry.sessionId);
       continue;
     }
@@ -630,6 +695,14 @@ function handleFallbackActivated(event: FallbackEvent): void {
 async function handleFallbackDeactivated(event: FallbackEvent): Promise<void> {
   const { serverId, serverName } = event;
 
+  // Re-sync sessions that may have started, stopped, or changed while SSE was
+  // disconnected. JF/Emby have no other catch-up path, so reconcile on reconnect
+  // rather than waiting for the next inbound event. Fire-and-forget so it never
+  // delays the server up/down notification handling below.
+  void Promise.resolve(triggerReconciliationPoll()).catch((error: unknown) =>
+    console.error(`[SSEProcessor] Reconciliation on reconnect failed for ${serverName}:`, error)
+  );
+
   // Check if there's a pending server_down notification to cancel
   const pending = pendingServerDownNotifications.get(serverId);
   if (pending) {
@@ -688,7 +761,7 @@ async function fetchFullSession(
     }
 
     const client = createMediaServerClient({
-      type: server.type as 'plex',
+      type: server.type,
       url: server.url,
       token: server.token,
       ignoreAnonymousStreams: server.ignoreAnonymousStreams,
@@ -702,7 +775,7 @@ async function fetchFullSession(
     }
 
     return {
-      session: mapMediaSession(targetSession, server.type as 'plex'),
+      session: mapMediaSession(targetSession, server.type),
       server,
     };
   } catch (error) {
@@ -746,6 +819,7 @@ async function createNewSession(
   const serverUserRows = await db
     .select({
       id: serverUsers.id,
+      userId: serverUsers.userId,
       username: serverUsers.username,
       thumbUrl: serverUsers.thumbUrl,
       identityName: users.name,
@@ -767,8 +841,11 @@ async function createNewSession(
     return;
   }
 
+  const identityServerUserIds = await getIdentityServerUserIds(serverUserFromDb.userId);
+
   const userDetail = {
     id: serverUserFromDb.id,
+    userId: serverUserFromDb.userId,
     username: serverUserFromDb.username,
     thumbUrl: serverUserFromDb.thumbUrl,
     identityName: serverUserFromDb.identityName,
@@ -776,6 +853,7 @@ async function createNewSession(
     sessionCount: serverUserFromDb.sessionCount,
     lastActivityAt: serverUserFromDb.lastActivityAt,
     createdAt: serverUserFromDb.createdAt,
+    identityServerUserIds,
   };
 
   // Get GeoIP location (uses Plex API if enabled, falls back to MaxMind)
@@ -787,27 +865,8 @@ async function createNewSession(
     return;
   }
 
-  // Check if there's already a pending session for this key
-  const existingPending = await cacheService.getPendingSession(serverId, processed.sessionKey);
-  if (existingPending) {
-    console.log(
-      `[SSEProcessor] Pending session already exists for ${processed.sessionKey}, skipping create`
-    );
-    return;
-  }
-
-  // Check if there's already a confirmed session in DB
-  const existingActive = await findActiveSession({
-    serverId,
-    sessionKey: processed.sessionKey,
-    ratingKey: processed.ratingKey,
-  });
-  if (existingActive) {
-    console.log(
-      `[SSEProcessor] Active session already exists for ${processed.sessionKey}, skipping create`
-    );
-    return;
-  }
+  const cache = cacheService;
+  const srv = server;
 
   const now = Date.now();
 
@@ -822,31 +881,64 @@ async function createNewSession(
     liveUuid: liveUuid ?? null,
   };
 
-  // Create pending session data
-  const pendingData: PendingSessionData = {
-    id: sessionId,
-    confirmation: createInitialConfirmationState(now),
-    processed: processedWithLiveUuid,
-    server: { id: server.id, name: server.name, type: server.type },
-    serverUser: userDetail,
-    geo,
-    startedAt: now,
-    lastSeenAt: now,
-    currentState: processedWithLiveUuid.state,
-    pausedDurationMs: 0,
-    lastPausedAt: processedWithLiveUuid.state === 'paused' ? now : null,
-  };
+  // Lock closes the check-then-act gap; only the re-checks and the dedup write live inside it.
+  const pendingData = await cache.withSessionCreateLock(
+    serverId,
+    processed.sessionKey,
+    async () => {
+      const existingPending = await cache.getPendingSession(serverId, processed.sessionKey);
+      if (existingPending) {
+        console.log(
+          `[SSEProcessor] Pending session already exists for ${processed.sessionKey}, skipping create`
+        );
+        return null;
+      }
 
-  // Store in Redis only (not DB yet)
-  await cacheService.setPendingSession(serverId, processed.sessionKey, pendingData);
+      const existingActive = await findActiveSession({
+        serverId,
+        sessionKey: processed.sessionKey,
+        ratingKey: processed.ratingKey,
+      });
+      if (existingActive) {
+        console.log(
+          `[SSEProcessor] Active session already exists for ${processed.sessionKey}, skipping create`
+        );
+        return null;
+      }
+
+      // Create pending session data
+      const data: PendingSessionData = {
+        id: sessionId,
+        confirmation: createInitialConfirmationState(now),
+        processed: processedWithLiveUuid,
+        server: { id: srv.id, name: srv.name, type: srv.type },
+        serverUser: userDetail,
+        geo,
+        startedAt: now,
+        lastSeenAt: now,
+        currentState: processedWithLiveUuid.state,
+        pausedDurationMs: 0,
+        lastPausedAt: processedWithLiveUuid.state === 'paused' ? now : null,
+      };
+
+      // Store in Redis only (not DB yet)
+      await cache.setPendingSession(serverId, processed.sessionKey, data);
+
+      return data;
+    }
+  );
+
+  if (!pendingData) {
+    return;
+  }
 
   // Build ActiveSession for immediate display in Now Playing dashboard
   // This ensures sessions appear immediately, not after 30s confirmation
   const activeSession = buildPendingActiveSession(pendingData);
 
   // Add to active sessions cache so Now Playing shows it immediately
-  await cacheService.addActiveSession(activeSession);
-  await cacheService.addUserSession(userDetail.id, activeSession.id);
+  await cache.addActiveSession(activeSession);
+  await cache.addUserSession(userDetail.id, activeSession.id);
 
   // Broadcast session:started immediately for real-time UI updates
   // Note: Rules are NOT evaluated yet - that happens after confirmation
@@ -872,6 +964,7 @@ async function handleMediaChange(
   const serverUserRows = await db
     .select({
       id: serverUsers.id,
+      userId: serverUsers.userId,
       username: serverUsers.username,
       thumbUrl: serverUsers.thumbUrl,
       identityName: users.name,
@@ -901,18 +994,22 @@ async function handleMediaChange(
   }
 
   const activeRulesV2 = await getActiveRulesV2();
-  const recentSessions = await batchGetRecentUserSessions([serverUser.id]);
   const activeSessions = await cacheService.getAllActiveSessions();
+  const identityServerUserIds = await resolveIdentityServerUserIds(
+    serverUser.userId,
+    'media change'
+  );
+  const recentSessions = await fetchRecentSessionsForRules(serverUser.id, identityServerUserIds);
 
   const result = await handleMediaChangeAtomic({
     existingSession,
     processed,
     server: { id: server.id, name: server.name, type: server.type },
-    serverUser,
+    serverUser: { ...serverUser, identityServerUserIds },
     geo,
     activeRulesV2,
     activeSessions,
-    recentSessions: recentSessions.get(serverUser.id) ?? [],
+    recentSessions,
   });
 
   if (!result) {
@@ -920,6 +1017,8 @@ async function handleMediaChange(
   }
 
   const { stoppedSession, insertedSession, violationResults, wasTerminatedByRule } = result;
+
+  clearDbWriteTracking(stoppedSession.id);
 
   // Update cache for stopped session
   await cacheService.removeActiveSession(stoppedSession.id);
@@ -1043,6 +1142,7 @@ async function updateExistingSession(
         const serverUserRows = await db
           .select({
             id: serverUsers.id,
+            userId: serverUsers.userId,
             username: serverUsers.username,
             thumbUrl: serverUsers.thumbUrl,
             identityName: users.name,
@@ -1068,16 +1168,23 @@ async function updateExistingSession(
           const server = serverRows[0];
           if (server) {
             const activeSessions = await cacheService.getAllActiveSessions();
-            const recentSessions = await batchGetRecentUserSessions([serverUserDetail.id]);
+            const identityServerUserIds = await resolveIdentityServerUserIds(
+              serverUserDetail.userId,
+              'transcode re-eval'
+            );
+            const recentSessions = await fetchRecentSessionsForRules(
+              serverUserDetail.id,
+              identityServerUserIds
+            );
 
             const violationResults = await reEvaluateRulesOnTranscodeChange({
               existingSession,
               processed,
               server: { id: server.id, name: server.name, type: server.type },
-              serverUser: serverUserDetail,
+              serverUser: { ...serverUserDetail, identityServerUserIds },
               activeRulesV2,
               activeSessions,
-              recentSessions: recentSessions.get(serverUserDetail.id) ?? [],
+              recentSessions,
             });
 
             if (violationResults.length > 0 && pubSubService) {
@@ -1103,6 +1210,7 @@ async function updateExistingSession(
         const serverUserRows = await db
           .select({
             id: serverUsers.id,
+            userId: serverUsers.userId,
             username: serverUsers.username,
             thumbUrl: serverUsers.thumbUrl,
             identityName: users.name,
@@ -1127,7 +1235,14 @@ async function updateExistingSession(
           const server = serverRows[0];
           if (server) {
             const activeSessions = await cacheService.getAllActiveSessions();
-            const recentSessions = await batchGetRecentUserSessions([serverUserDetail.id]);
+            const identityServerUserIds = await resolveIdentityServerUserIds(
+              serverUserDetail.userId,
+              'pause re-eval'
+            );
+            const recentSessions = await fetchRecentSessionsForRules(
+              serverUserDetail.id,
+              identityServerUserIds
+            );
 
             const violationResults = await reEvaluateRulesOnPauseState({
               existingSession,
@@ -1137,10 +1252,10 @@ async function updateExistingSession(
                 pausedDurationMs: pauseResult.pausedDurationMs,
               },
               server: { id: server.id, name: server.name, type: server.type },
-              serverUser: serverUserDetail,
+              serverUser: { ...serverUserDetail, identityServerUserIds },
               activeRulesV2,
               activeSessions,
-              recentSessions: recentSessions.get(serverUserDetail.id) ?? [],
+              recentSessions,
             });
 
             if (violationResults.length > 0 && pubSubService) {
@@ -1356,14 +1471,17 @@ async function confirmPendingSessionAndPersist(
     }
 
     const activeRulesV2 = await getActiveRulesV2();
-    const recentSessions = await batchGetRecentUserSessions([pendingData.serverUser.id]);
     const activeSessions = await cache.getAllActiveSessions();
+    const recentSessions = await fetchRecentSessionsForRules(
+      pendingData.serverUser.id,
+      pendingData.serverUser.identityServerUserIds
+    );
 
     return confirmAndPersistSession({
       pendingData,
       activeRulesV2,
       activeSessions,
-      recentSessions: recentSessions.get(pendingData.serverUser.id) ?? [],
+      recentSessions,
     });
   });
 
@@ -1375,6 +1493,7 @@ async function confirmPendingSessionAndPersist(
 
   // Handle quality change (rare but possible)
   if (qualityChange) {
+    clearDbWriteTracking(qualityChange.stoppedSession.id);
     await cache.removeActiveSession(qualityChange.stoppedSession.id);
     await cache.removeUserSession(
       qualityChange.stoppedSession.serverUserId,
@@ -1443,6 +1562,8 @@ async function stopSession(existingSession: typeof sessions.$inferSelect): Promi
     session: existingSession,
     stoppedAt: new Date(),
   });
+
+  clearDbWriteTracking(existingSession.id);
 
   if (needsRetry && retryData && cacheService) {
     await cacheService.addSessionWriteRetry(existingSession.id, retryData);

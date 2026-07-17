@@ -8,6 +8,24 @@ import cookie from '@fastify/cookie';
 import sensible from '@fastify/sensible';
 import type { Redis } from 'ioredis';
 import type { AuthUser } from '@tracearr/shared';
+import type { SQL } from 'drizzle-orm';
+import { CasingCache } from 'drizzle-orm/casing';
+
+const sqlCasingCache = new CasingCache();
+
+// Renders a Drizzle sql`` fragment to SQL text + bound params for test assertions
+export function renderSql(
+  fragment: SQL,
+  escapeParam: (index: number) => string = (num) => `$${num + 1}`
+): { sql: string; params: unknown[] } {
+  return fragment.toQuery({
+    casing: sqlCasingCache,
+    escapeName: (n) => n,
+    escapeParam,
+    escapeString: (s) => `'${s}'`,
+    inlineParams: false,
+  });
+}
 
 // Mock Redis client for testing
 export function createMockRedis() {
@@ -28,6 +46,7 @@ export function createMockRedis() {
       return 1;
     },
     ping: async () => 'PONG',
+    info: async () => 'redis_version:7.0.0',
     keys: async (pattern: string) => {
       const prefix = pattern.replace('*', '');
       return Array.from(store.keys()).filter((k) => k.startsWith(prefix));
@@ -54,7 +73,8 @@ export async function createTestApp(): Promise<FastifyInstance> {
   const mockRedis = createMockRedis();
   app.decorate('redis', mockRedis as unknown as Redis);
 
-  // Add authenticate decorator (same as production)
+  // Test stub, NOT the production dual-verify decorator (see plugins/auth.ts):
+  // verifies a legacy JWT only, with no Better Auth session resolution.
   app.decorate('authenticate', async function (request: any, reply: any) {
     try {
       await request.jwtVerify();
@@ -63,7 +83,7 @@ export async function createTestApp(): Promise<FastifyInstance> {
     }
   });
 
-  // Add requireOwner decorator (same as production)
+  // Test stub, NOT the production dual-verify decorator (see plugins/auth.ts).
   app.decorate('requireOwner', async function (request: any, reply: any) {
     try {
       await request.jwtVerify();

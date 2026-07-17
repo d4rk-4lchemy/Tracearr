@@ -31,6 +31,7 @@ import type {
   TranscodeInfo,
   SubtitleInfo,
 } from '@tracearr/shared';
+import { normalizeResolutionLabel } from '@tracearr/shared';
 import { calculateProgress } from '../shared/parserUtils.js';
 import { extractPlexLiveTvMetadata, extractPlexMusicMetadata } from './plexUtils.js';
 
@@ -524,7 +525,7 @@ function extractStreamDetails(
  */
 export function parseMediaMetadataResponse(
   data: unknown,
-  targetMediaId?: string,
+  targetMediaId?: string
 ): PlexOriginalMedia | null {
   const container = data as { MediaContainer?: { Metadata?: unknown[] } };
   const metadata = container?.MediaContainer?.Metadata;
@@ -822,8 +823,8 @@ export function parseSession(
     session.episode = {
       showTitle: parseString(item.grandparentTitle),
       showId: parseOptionalString(item.grandparentRatingKey),
-      seasonNumber: parseNumber(item.parentIndex),
-      episodeNumber: parseNumber(item.index),
+      seasonNumber: parseOptionalNumber(item.parentIndex) ?? null,
+      episodeNumber: parseOptionalNumber(item.index) ?? null,
       seasonName: parseOptionalString(item.parentTitle),
       showThumbPath: parseOptionalString(item.grandparentThumb),
     };
@@ -854,10 +855,17 @@ export function parseSession(
  */
 export function parseSessionsResponse(
   data: unknown,
-  originalMediaMap?: Map<string, PlexOriginalMedia>,
+  originalMediaMap?: Map<string, PlexOriginalMedia>
 ): MediaSession[] {
   const container = data as { MediaContainer?: { Metadata?: unknown[] } };
-  const metadata = container?.MediaContainer?.Metadata;
+  // A valid "no sessions" response has a MediaContainer with no Metadata array.
+  // A missing/invalid MediaContainer means the body is malformed (proxy error
+  // page, wrong shape); throw so the caller treats it as a failed poll rather
+  // than "all sessions ended".
+  if (container?.MediaContainer == null || typeof container.MediaContainer !== 'object') {
+    throw new Error('Unexpected Plex sessions response: missing MediaContainer');
+  }
+  const metadata = container.MediaContainer.Metadata;
   return parseArray(metadata, (item) => {
     const session = item as Record<string, unknown>;
     const ratingKey = parseString(session.ratingKey);
@@ -884,7 +892,7 @@ export function parseSessionsResponse(
  *   where `sessionMediaId` is the id of the Media element the session is playing
  */
 export function getTranscodingSessionRatingKeys(
-  data: unknown,
+  data: unknown
 ): Array<{ ratingKey: string; sessionMediaId: string | undefined }> {
   const container = data as { MediaContainer?: { Metadata?: unknown[] } };
   const metadata = container?.MediaContainer?.Metadata;
@@ -1453,18 +1461,8 @@ function parseExternalIds(guids: Array<{ id: string }> | undefined): {
  * Normalize to consistent format with 'p' suffix for numeric resolutions
  */
 function normalizeVideoResolution(resolution: string | undefined): string | undefined {
-  if (!resolution) return undefined;
-
-  const lower = resolution.toLowerCase();
-  if (lower === '4k' || lower === 'uhd') return '4k';
-  if (lower === 'sd') return 'sd';
-
-  // Add 'p' suffix if not present and is numeric
-  if (/^\d+$/.test(lower)) {
-    return `${lower}p`;
-  }
-
-  return lower;
+  const normalized = normalizeResolutionLabel(resolution);
+  return normalized ? normalized.toLowerCase() : undefined;
 }
 
 /**

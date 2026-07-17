@@ -3,9 +3,6 @@
     "allowGuestAccess": "Allow Guest Access",
     "allowGuestAccessDesc": "When disabled, only the server owner can log in to Tracearr",
     "description": "Configure who can access Tracearr",
-    "jellyfinAdmin": "Jellyfin Admin",
-    "primaryAuthMethod": "Primary Authentication Method",
-    "primaryAuthMethodDesc": "Choose which authentication method is shown by default on the login page",
     "singleOwnerNote": "Note: When guest access is disabled, only the server owner can sign in. All other users will see an \"Access Denied\" message.",
     "title": "Access Control"
   },
@@ -16,7 +13,6 @@
     "email": "Email",
     "password": "Password",
     "signInToAccount": "Sign in to your account",
-    "useJellyfinAccount": "Use Jellyfin account instead",
     "useLocalAccount": "Use local account instead"
   },
   "advanced": {
@@ -127,7 +123,6 @@
     "helpTranslate": "Ajudeu a traduir Tracearr",
     "imperial": "Imperial (mi, mph)",
     "iosHttpWarning": "iOS requires HTTPS for external connections. Set up a reverse proxy with SSL.",
-    "jellyfinAccount": "Compte Jellyfin",
     "jellyfinPollingNote": "Jellyfin/Emby are polled at the interval above.",
     "language": "Idioma",
     "languageDescription": "Trieu l'idioma de visualització preferit.",
@@ -225,11 +220,6 @@
   "ipWarning": {
     "acknowledge": "Got it",
     "message": "All users appear to be using the same IP address or local network IPs. This may affect rule-based logic for location or IP addresses."
-  },
-  "jellyfin": {
-    "password": "Jellyfin Password",
-    "signInWithJellyfin": "Sign in with Jellyfin",
-    "username": "Jellyfin Username"
   },
   "jobs": {
     "backfill": "Backfill",
@@ -362,6 +352,8 @@
     "plexAccount": "Plex Account",
     "plexServerPlaceholder": "My Plex Server",
     "plexServerUrlPlaceholder": "http://192.168.1.100:32400",
+    "pluginUpdateAvailable": "Plugin update available",
+    "pluginVersion": "plugin v{{version}}",
     "pollingMode": "Polling",
     "realtimeActive": "Real-time updates active",
     "realtimeDialog": {
@@ -370,11 +362,14 @@
       "copyUrl": "Copy URL",
       "embyDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "embyReleasesUrl": "https://github.com/Tracearr/Media-Server-SSE/releases",
+      "embyUpdateDescription": "A newer plugin release is available. Download the latest release zip, replace the plugin DLL in your Emby plugins folder, and restart Emby.",
       "jellyfinDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "jellyfinRepoUrl": "https://raw.githubusercontent.com/Tracearr/Media-Server-SSE/main/manifest.json",
+      "jellyfinUpdateDescription": "A newer plugin release is available. Open your Jellyfin dashboard, go to Plugins, Catalog, and update Tracearr SSE, then restart Jellyfin.",
       "openReleases": "Open releases page",
       "repositoryUrl": "Repository URL",
-      "title": "Enable real-time updates"
+      "title": "Enable real-time updates",
+      "updateTitle": "Update the Tracearr SSE plugin"
     },
     "removeServer": "Remove Server",
     "removeServerConfirm": "Are you sure you want to remove this server? All associated session data will be retained, but you won't be able to monitor new sessions from this server.",

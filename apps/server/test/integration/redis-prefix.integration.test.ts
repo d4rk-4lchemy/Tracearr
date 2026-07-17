@@ -28,13 +28,35 @@ describe('Redis Prefix Coverage', () => {
   let redis: Redis;
   let trackedKeys: Set<string>;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     // Set prefix for this test session
     setRedisPrefix(TEST_PREFIX);
 
-    // Connect to Redis (use test DB 15 to avoid conflicts)
-    const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6380/15';
+    // Connect to the shared test Redis. setup.integration.ts always pins
+    // REDIS_URL to the test stack (db 0), so every integration file shares
+    // this database; the fallback only matters when running the file outside
+    // the integration config.
+    const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6380';
     redis = new Redis(redisUrl);
+
+    // Clear historic residue matching the unprefixed patterns the final scan
+    // asserts about. Earlier test files clean up after themselves, but a
+    // long-lived test stack can still hold leaked keys from older runs, and
+    // those must not fail this test - its job is to catch unprefixed keys
+    // created by code running NOW, not archaeology.
+    const residuePatterns = [
+      'tracearr:*',
+      'session:*',
+      'rule:*',
+      'mobile_token_gen:*',
+      'refresh:*',
+    ];
+    for (const pattern of residuePatterns) {
+      const staleKeys = await redis.keys(pattern);
+      if (staleKeys.length > 0) {
+        await redis.del(...staleKeys);
+      }
+    }
 
     // Track all keys created during tests
     trackedKeys = new Set();

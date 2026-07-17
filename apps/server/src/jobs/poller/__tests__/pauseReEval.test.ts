@@ -220,6 +220,9 @@ function createPauseRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Kill After 15min Pause',
     description: null,
     serverId: null,
+    serverUserId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'warning',
     isActive: true,
     conditions: {
@@ -240,6 +243,9 @@ function createTotalPauseRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Warn After 30min Total Pause',
     description: null,
     serverId: null,
+    serverUserId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'warning',
     isActive: true,
     conditions: {
@@ -260,6 +266,9 @@ function createConcurrentStreamsRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Max 2 Concurrent Streams',
     description: null,
     serverId: null,
+    serverUserId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'warning',
     isActive: true,
     conditions: {
@@ -280,6 +289,9 @@ function createTranscodeRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Block 4K Transcoding',
     description: null,
     serverId: null,
+    serverUserId: null,
+    userId: null,
+    enforceAcrossServers: false,
     severity: 'high',
     isActive: true,
     conditions: {
@@ -307,6 +319,7 @@ function createDefaultInput(overrides: Partial<PauseReEvalInput> = {}): PauseReE
     server: { id: 'server-1', name: 'Test Plex', type: 'plex' },
     serverUser: {
       id: 'user-1',
+      userId: 'identity-1',
       username: 'testuser',
       thumbUrl: null,
       identityName: null,
@@ -314,6 +327,7 @@ function createDefaultInput(overrides: Partial<PauseReEvalInput> = {}): PauseReE
       sessionCount: 10,
       lastActivityAt: new Date(),
       createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
+      identityServerUserIds: ['user-1'],
     },
     activeRulesV2: [createPauseRule(), createConcurrentStreamsRule()],
     activeSessions: [],
@@ -761,6 +775,9 @@ describe('reEvaluateRulesOnPauseState', () => {
         name: 'Pause + Concurrent',
         description: null,
         serverId: null,
+        serverUserId: null,
+        userId: null,
+        enforceAcrossServers: false,
         severity: 'warning',
         isActive: true,
         conditions: {

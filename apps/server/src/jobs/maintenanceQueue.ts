@@ -25,7 +25,7 @@ import type {
   MaintenanceJobResult,
   MaintenanceJobType,
 } from '@tracearr/shared';
-import { WS_EVENTS } from '@tracearr/shared';
+import { WS_EVENTS, classifyByDimensions } from '@tracearr/shared';
 import { sql, isNotNull, or, and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { sessions, serverUsers } from '../db/schema.js';
@@ -60,6 +60,7 @@ function getMaintenanceJobDescription(type: MaintenanceJobType): string {
     fix_imported_progress: 'Progress fix',
     rebuild_timescale_views: 'TimescaleDB view rebuild',
     normalize_codecs: 'Codec normalization',
+    normalize_resolutions: 'Resolution normalization',
     backfill_user_dates: 'User dates backfill',
     backfill_library_snapshots: 'Library snapshots backfill',
     cleanup_old_chunks: 'Old chunks cleanup',
@@ -324,6 +325,8 @@ async function processMaintenanceJob(job: Job<MaintenanceJobData>): Promise<Main
       return processRebuildTimescaleViewsJob(job);
     case 'normalize_codecs':
       return processNormalizeCodecsJob(job);
+    case 'normalize_resolutions':
+      return processNormalizeResolutionsJob(job);
     case 'backfill_user_dates':
       return processBackfillUserDatesJob(job);
     case 'backfill_library_snapshots':
@@ -1284,6 +1287,199 @@ async function processNormalizeCodecsJob(
       errors: totalErrors,
       durationMs,
       message: `Normalized ${totalUpdated.toLocaleString()} codec values to uppercase`,
+    };
+  } catch (error) {
+    if (activeJobProgress) {
+      activeJobProgress.status = 'error';
+      activeJobProgress.message = error instanceof Error ? error.message : 'Unknown error';
+      await publishProgress();
+      activeJobProgress = null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Recompute session resolution labels from stored source dimensions
+ *
+ * Sessions ingested before the resolution classifier fix could have `quality`
+ * stamped wrong by the old strict width/height cutoffs (e.g. 1916x1036 landed
+ * on "720p" instead of "1080p") or by the Jellyfin/Emby width-only bug on
+ * non-16:9 content. source_video_width/source_video_height were always stored
+ * alongside the label, so this recomputes quality from those dimensions using
+ * the shared dimension ladder and updates only rows where the label changes.
+ *
+ * Rows with no source dimensions are left untouched - the stored label,
+ * whatever produced it, is the best information left for them.
+ *
+ * library_items has no raw width/height columns to recompute from (Plex sends
+ * its own correct label directly; Jellyfin/Emby library sync only ever stored
+ * the computed label). Those rows self-correct the next time a full library
+ * sync runs, now that jellyfinEmbyParser.ts uses the fixed classifier.
+ *
+ * Exported for direct integration testing (see normalizeResolutions.integration.test.ts).
+ */
+export async function processNormalizeResolutionsJob(
+  job: Job<MaintenanceJobData>
+): Promise<MaintenanceJobResult> {
+  const startTime = Date.now();
+  const pubSubService = getPubSubService();
+  const BATCH_SIZE = 500;
+  const BATCH_DELAY_MS = 50;
+
+  activeJobProgress = {
+    type: 'normalize_resolutions',
+    status: 'running',
+    totalRecords: 0,
+    processedRecords: 0,
+    updatedRecords: 0,
+    skippedRecords: 0,
+    errorRecords: 0,
+    message: 'Counting sessions with source dimensions...',
+    startedAt: new Date().toISOString(),
+  };
+
+  const publishProgress = async () => {
+    if (pubSubService && activeJobProgress) {
+      await pubSubService.publish(WS_EVENTS.MAINTENANCE_PROGRESS, activeJobProgress);
+    }
+  };
+
+  try {
+    const dimsCondition = and(
+      isNotNull(sessions.sourceVideoWidth),
+      isNotNull(sessions.sourceVideoHeight)
+    );
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sessions)
+      .where(dimsCondition);
+
+    const totalRecords = countResult?.count ?? 0;
+    activeJobProgress.totalRecords = totalRecords;
+    activeJobProgress.message = `Checking ${totalRecords.toLocaleString()} sessions with dimensions...`;
+    await publishProgress();
+
+    if (totalRecords === 0) {
+      activeJobProgress.status = 'complete';
+      activeJobProgress.message = 'No sessions with source dimensions to check';
+      activeJobProgress.completedAt = new Date().toISOString();
+      await publishProgress();
+      return {
+        success: true,
+        type: 'normalize_resolutions',
+        processed: 0,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+        durationMs: Date.now() - startTime,
+        message: 'No sessions with source dimensions to check',
+      };
+    }
+
+    let lastId = ''; // Cursor for pagination
+    let totalProcessed = 0;
+    let totalUpdated = 0;
+    let totalSkipped = 0;
+    let totalErrors = 0;
+
+    while (totalProcessed < totalRecords) {
+      const batch = await db
+        .select({
+          id: sessions.id,
+          quality: sessions.quality,
+          sourceVideoWidth: sessions.sourceVideoWidth,
+          sourceVideoHeight: sessions.sourceVideoHeight,
+        })
+        .from(sessions)
+        .where(lastId ? and(dimsCondition, sql`${sessions.id} > ${lastId}`) : dimsCondition)
+        .orderBy(sessions.id)
+        .limit(BATCH_SIZE);
+
+      // No more records to process
+      if (batch.length === 0) {
+        break;
+      }
+
+      // Update cursor to last record in batch
+      const lastRecord = batch[batch.length - 1];
+      if (lastRecord) lastId = lastRecord.id;
+
+      // Collect updates for batch processing
+      const updates: Array<{ id: string; quality: string }> = [];
+
+      for (const session of batch) {
+        try {
+          const recomputed = classifyByDimensions(
+            session.sourceVideoWidth,
+            session.sourceVideoHeight
+          );
+
+          if (recomputed && recomputed !== session.quality) {
+            updates.push({ id: session.id, quality: recomputed });
+          } else {
+            totalSkipped++;
+          }
+        } catch (error) {
+          console.error(`[Maintenance] Error processing session ${session.id}:`, error);
+          totalErrors++;
+        }
+      }
+
+      // Execute updates sequentially to avoid exhausting the connection pool
+      if (updates.length > 0) {
+        for (const update of updates) {
+          try {
+            await db
+              .update(sessions)
+              .set({ quality: update.quality })
+              .where(eq(sessions.id, update.id));
+            totalUpdated++;
+          } catch (error) {
+            console.error(`[Maintenance] Error updating session ${update.id}:`, error);
+            totalErrors++;
+          }
+        }
+      }
+
+      totalProcessed += batch.length;
+      activeJobProgress.processedRecords = totalProcessed;
+      activeJobProgress.updatedRecords = totalUpdated;
+      activeJobProgress.skippedRecords = totalSkipped;
+      activeJobProgress.errorRecords = totalErrors;
+      activeJobProgress.message = `Processed ${totalProcessed.toLocaleString()} of ${totalRecords.toLocaleString()} sessions...`;
+
+      const percent = Math.round((totalProcessed / totalRecords) * 100);
+      await job.updateProgress(percent);
+      await publishProgress();
+
+      // Extend locks - fails fast if lock is lost to avoid wasted work
+      await extendJobLock(job);
+      await extendHeavyOpsLock(job.id!);
+
+      if (totalProcessed < totalRecords) {
+        await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    }
+
+    const durationMs = Date.now() - startTime;
+    activeJobProgress.status = 'complete';
+    activeJobProgress.message = `Completed! Relabeled ${totalUpdated.toLocaleString()} sessions in ${Math.round(durationMs / 1000)}s`;
+    activeJobProgress.completedAt = new Date().toISOString();
+    await publishProgress();
+
+    activeJobProgress = null;
+
+    return {
+      success: true,
+      type: 'normalize_resolutions',
+      processed: totalRecords,
+      updated: totalUpdated,
+      skipped: totalSkipped,
+      errors: totalErrors,
+      durationMs,
+      message: `Relabeled ${totalUpdated.toLocaleString()} session resolutions`,
     };
   } catch (error) {
     if (activeJobProgress) {

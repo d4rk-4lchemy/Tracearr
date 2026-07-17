@@ -54,6 +54,9 @@ export {
   useUserDevices,
   useUserTerminations,
   useBulkResetTrust,
+  useMergeSuggestions,
+  useMergeUsers,
+  useSplitServerUser,
 } from './useUsers';
 
 // Rule hooks

@@ -4,11 +4,12 @@ import type { NotificationChannelRouting, NotificationEventType } from '@tracear
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 
-export function useChannelRouting() {
+export function useChannelRouting(enabled = true) {
   return useQuery({
     queryKey: ['channelRouting'],
     queryFn: api.channelRouting.getAll,
     staleTime: 1000 * 60 * 5, // 5 minutes
+    enabled,
   });
 }
 

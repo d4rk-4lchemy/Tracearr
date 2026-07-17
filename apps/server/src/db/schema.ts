@@ -114,9 +114,12 @@ export const users = pgTable(
 
     // Identity
     username: varchar('username', { length: 100 }).notNull(), // Login identifier (unique)
+    // Non-normalized username shown in the UI; better-auth username plugin field.
+    displayUsername: varchar('display_username', { length: 100 }),
     name: varchar('name', { length: 255 }), // Display name (optional, defaults to null)
     thumbnail: text('thumbnail'), // Custom avatar (nullable)
     email: varchar('email', { length: 255 }), // For identity matching (nullable)
+    emailVerified: boolean('email_verified').notNull().default(false),
 
     // Authentication (nullable - not all users authenticate directly)
     passwordHash: text('password_hash'), // bcrypt hash for local login
@@ -133,7 +136,13 @@ export const users = pgTable(
       .$type<'owner' | 'admin' | 'viewer' | 'member' | 'disabled' | 'pending'>()
       .default('member'),
 
-    // Aggregated metrics (cached, updated by triggers)
+    // better-auth admin plugin fields
+    banned: boolean('banned'),
+    banReason: text('ban_reason'),
+    banExpires: timestamp('ban_expires', { withTimezone: true }),
+
+    // Aggregated metrics (cached, recomputed in-app by recalculateAggregateTrustScore
+    // after every serverUsers.trustScore write - no database trigger exists)
     aggregateTrustScore: integer('aggregate_trust_score').notNull().default(100),
     totalViolations: integer('total_violations').notNull().default(0),
 
@@ -144,6 +153,11 @@ export const users = pgTable(
   (table) => [
     // Username is display name from media server (not unique across servers)
     index('users_username_idx').on(table.username),
+    // Login usernames must be case-insensitively unique; members keep sharing
+    // usernames freely (distinct humans on different servers can collide).
+    uniqueIndex('users_login_username_unique')
+      .on(sql`lower(${table.username})`)
+      .where(sql`role IN ('owner', 'admin', 'viewer')`),
     uniqueIndex('users_email_unique').on(table.email),
     index('users_plex_account_id_idx').on(table.plexAccountId),
     index('users_role_idx').on(table.role),
@@ -395,9 +409,16 @@ export const rules = pgTable(
     conditions: jsonb('conditions').$type<RuleConditions>(),
     actions: jsonb('actions').$type<RuleActions>(),
     severity: varchar('severity', { length: 20 }).notNull().default('warning'),
-    // Scope
+    // Scope - at most one of serverId, serverUserId, userId is ever set
+    // (enforced in the Zod schema/route validation, not a DB constraint - this
+    // table has no other CHECK constraints today).
     serverId: uuid('server_id').references(() => servers.id, { onDelete: 'cascade' }),
     serverUserId: uuid('server_user_id').references(() => serverUsers.id, { onDelete: 'cascade' }),
+    // Identity (person) scope: applies to every server_user of this identity.
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    // Opt-in cross-server enforcement for identity-aware rules. Defaults false
+    // so every existing rule keeps today's single-account behavior.
+    enforceAcrossServers: boolean('enforce_across_servers').notNull().default(false),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -406,6 +427,7 @@ export const rules = pgTable(
     index('rules_active_idx').on(table.isActive),
     index('rules_server_id_idx').on(table.serverId),
     index('rules_server_user_id_idx').on(table.serverUserId),
+    index('rules_user_id_idx').on(table.userId),
   ]
 );
 
@@ -499,6 +521,8 @@ export const mobileSessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     refreshTokenHash: varchar('refresh_token_hash', { length: 64 }).notNull().unique(), // SHA-256
     previousRefreshTokenHash: varchar('previous_refresh_token_hash', { length: 64 }),
+    // Set for pairings created after the better-auth migration; null for legacy pairings
+    betterAuthSessionId: text('better_auth_session_id'),
     deviceName: varchar('device_name', { length: 100 }).notNull(),
     deviceId: varchar('device_id', { length: 100 }).notNull(),
     platform: varchar('platform', { length: 20 }).notNull().$type<'ios' | 'android'>(),
@@ -512,6 +536,7 @@ export const mobileSessions = pgTable(
     index('mobile_sessions_device_id_idx').on(table.deviceId),
     index('mobile_sessions_refresh_token_idx').on(table.refreshTokenHash),
     index('mobile_sessions_expo_push_token_idx').on(table.expoPushToken),
+    index('mobile_sessions_ba_session_idx').on(table.betterAuthSessionId),
   ]
 );
 
@@ -581,6 +606,7 @@ export const notificationEventTypeEnum = [
   'trust_score_changed',
   'server_down',
   'server_up',
+  'plugin_update_available',
 ] as const;
 
 // Notification channel routing configuration
@@ -662,6 +688,49 @@ export const terminationLogs = pgTable(
   ]
 );
 
+// User merge audit trail. Records every identity merge so non-destructive
+// merges can be undone via split. sourceUserId has no FK because the merge
+// deletes that users row.
+export const userMergeAudits = pgTable(
+  'user_merge_audits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sourceUserId: uuid('source_user_id').notNull(),
+    targetUserId: uuid('target_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    actingUserId: uuid('acting_user_id').references(() => users.id, { onDelete: 'set null' }),
+    movedServerUserIds: jsonb('moved_server_user_ids').notNull().$type<string[]>(),
+    combinedServerUsers: jsonb('combined_server_users')
+      .notNull()
+      .$type<{ sourceServerUserId: string; targetServerUserId: string; serverId: string }[]>(),
+    wasSameServerCombine: boolean('was_same_server_combine').notNull().default(false),
+    sourceUserSnapshot: jsonb('source_user_snapshot').notNull().$type<{
+      username: string;
+      name: string | null;
+      email: string | null;
+      thumbnail: string | null;
+      role: string;
+    }>(),
+    // Which plex_accounts / mobile_sessions / mobile_tokens rows repointIdentityRows
+    // moved off the source identity during this merge, so a later split can move
+    // exactly those rows back onto the restored identity. Null on audit rows written
+    // before this column existed; split treats null the same as "nothing recorded"
+    // and leaves those rows on the target, matching the pre-existing behavior.
+    movedIdentityRowIds: jsonb('moved_identity_row_ids').$type<{
+      plexAccountIds: string[];
+      mobileSessionIds: string[];
+      mobileTokenIds: string[];
+    }>(),
+    undoneAt: timestamp('undone_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('user_merge_audits_target_idx').on(table.targetUserId),
+    index('user_merge_audits_created_at_idx').on(table.createdAt),
+  ]
+);
+
 // Unit system enum for display preferences
 export const unitSystemEnum = ['metric', 'imperial'] as const;
 
@@ -671,6 +740,67 @@ export const settings = pgTable('settings', {
   name: varchar('name', { length: 255 }).notNull().unique(),
   value: jsonb('value'),
 });
+
+// ============================================================================
+// Better Auth tables (session storage, login providers, verification tokens)
+// Field set matches better-auth 1.6.23 codegen for core + username + admin + bearer.
+// ============================================================================
+
+export const authSessions = pgTable(
+  'auth_sessions',
+  {
+    id: text('id').primaryKey(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    token: text('token').notNull().unique(),
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    impersonatedBy: text('impersonated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('auth_sessions_user_idx').on(table.userId)]
+);
+
+export const authAccounts = pgTable(
+  'auth_accounts',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    providerId: text('provider_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    idToken: text('id_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+    scope: text('scope'),
+    password: text('password'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('auth_accounts_user_idx').on(table.userId),
+    unique('auth_accounts_provider_account_unique').on(table.providerId, table.accountId),
+  ]
+);
+
+export const authVerifications = pgTable(
+  'auth_verifications',
+  {
+    id: text('id').primaryKey(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('auth_verifications_identifier_idx').on(table.identifier)]
+);
 
 // ============================================================================
 // Relations
@@ -817,6 +947,17 @@ export const terminationLogsRelations = relations(terminationLogs, ({ one }) => 
   violation: one(violations, {
     fields: [terminationLogs.violationId],
     references: [violations.id],
+  }),
+}));
+
+export const userMergeAuditsRelations = relations(userMergeAudits, ({ one }) => ({
+  targetUser: one(users, {
+    fields: [userMergeAudits.targetUserId],
+    references: [users.id],
+  }),
+  actingUser: one(users, {
+    fields: [userMergeAudits.actingUserId],
+    references: [users.id],
   }),
 }));
 

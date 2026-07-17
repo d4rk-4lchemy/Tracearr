@@ -22,7 +22,7 @@ import {
 } from '../serverFiltering.js';
 import { ForbiddenError } from '../errors.js';
 import type { Column } from 'drizzle-orm';
-import { CasingCache } from 'drizzle-orm/casing';
+import { renderSql } from '../../test/helpers.js';
 
 // Mock column for testing SQL condition builders
 const mockServerIdColumn = {
@@ -265,17 +265,8 @@ describe('buildServerFilterCondition', () => {
   });
 });
 
-const _casingCache = new CasingCache();
-
-// Renders a Drizzle sql`` fragment to a parameterized SQL string for assertion
 function toSqlString(fragment: ReturnType<typeof buildMultiServerFragment>): string {
-  return fragment.toQuery({
-    casing: _casingCache,
-    escapeName: (n) => n,
-    escapeParam: () => '?',
-    escapeString: (s) => `'${s}'`,
-    inlineParams: false,
-  }).sql;
+  return renderSql(fragment, () => '?').sql;
 }
 
 describe('buildMultiServerFragment', () => {

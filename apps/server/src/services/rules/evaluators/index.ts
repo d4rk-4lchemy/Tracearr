@@ -3,6 +3,7 @@ import type {
   ConditionField,
   DeviceType,
   Platform,
+  Session,
   TranscodingConditionValue,
   VideoResolution,
 } from '@tracearr/shared';
@@ -47,9 +48,14 @@ function calculateDistanceKm(
 /**
  * Get normalized resolution from dimensions using the standard normalizer.
  * Returns 'unknown' if dimensions are missing.
+ *
+ * The rule condition vocabulary (VideoResolution) tops out at "4K"; the
+ * shared classifier can now also return "1440p"/"8K", so fold those into
+ * "4K" here rather than widening the rule-facing enum.
  */
 function getResolution(width: number | null, height: number | null): VideoResolution {
   const result = normalizeResolution({ width: width ?? undefined, height: height ?? undefined });
+  if (result === '1440p' || result === '8K') return '4K';
   return (result as VideoResolution) ?? 'unknown';
 }
 
@@ -157,6 +163,27 @@ function normalizePlatform(platform: string | null): Platform {
   return 'unknown';
 }
 
+/**
+ * Build a filter predicate for sessions belonging to the same identity as
+ * context.serverUser. Falls back to single server_user matching when
+ * identityServerUserIds is absent, so unmerged users evaluate exactly as
+ * before this identity-aware aggregation was added.
+ *
+ * Detection vs action split: this aggregation runs unconditionally and is
+ * NOT gated by rule.enforceAcrossServers - that flag only controls whether a
+ * MATCHED rule's actions (kill_stream, message_client) reach sessions beyond
+ * the triggering one, in executors/index.ts. Do not add an enforceAcrossServers
+ * check here; do not remove the gate there either.
+ */
+function belongsToIdentity(context: EvaluationContext): (s: Session) => boolean {
+  const ids = context.identityServerUserIds;
+  if (ids && ids.length > 0) {
+    const idSet = new Set(ids);
+    return (s) => idSet.has(s.serverUserId);
+  }
+  return (s) => s.serverUserId === context.serverUser.id;
+}
+
 // ============================================================================
 // Session Behavior Evaluators
 // ============================================================================
@@ -165,13 +192,14 @@ const evaluateConcurrentStreams: ConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
-  const { session, activeSessions, serverUser } = context;
+  const { session, activeSessions } = context;
   const excludeSameDevice = condition.params?.exclude_same_device ?? true;
   const excludeSameIp = condition.params?.exclude_same_ip ?? false;
   const countDeviceTypes = condition.params?.count_device_types;
+  const isIdentitySession = belongsToIdentity(context);
 
   // Count active sessions for this user (INCLUDING current session)
-  let userActiveSessions = activeSessions.filter((s) => s.serverUserId === serverUser.id);
+  let userActiveSessions = activeSessions.filter(isIdentitySession);
 
   // When count_device_types is set, only count sessions from those device types.
   // Unlike the exclusions below, the triggering session is NOT exempt.
@@ -212,13 +240,12 @@ const evaluateActiveSessionDistanceKm: ConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
-  const { session, activeSessions, serverUser } = context;
+  const { session, activeSessions } = context;
   const excludeSameDevice = condition.params?.exclude_same_device ?? true;
+  const isIdentitySession = belongsToIdentity(context);
 
   // Get other active sessions for this user (excluding current session by reference)
-  let otherSessions = activeSessions.filter(
-    (s) => s.serverUserId === serverUser.id && s !== session
-  );
+  let otherSessions = activeSessions.filter((s) => isIdentitySession(s) && s !== session);
 
   // When exclude_same_device is true, only consider sessions from different devices.
   // Same device = same physical location, so distance comparison doesn't make sense.
@@ -266,12 +293,13 @@ const evaluateTravelSpeedKmh: ConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
-  const { session, recentSessions, serverUser } = context;
+  const { session, recentSessions } = context;
   const excludeSameDevice = condition.params?.exclude_same_device ?? true;
+  const isIdentitySession = belongsToIdentity(context);
 
   // Get previous sessions for this user (excluding current session by reference)
   let previousSessions = recentSessions
-    .filter((s) => s.serverUserId === serverUser.id && s !== session)
+    .filter((s) => isIdentitySession(s) && s !== session)
     .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
 
   // When exclude_same_device is true, only compare against sessions from different devices.
@@ -351,15 +379,16 @@ const evaluateUniqueIpsInWindow: ConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
-  const { session, recentSessions, serverUser } = context;
+  const { session, recentSessions } = context;
   const windowHours = condition.params?.window_hours ?? 24;
+  const isIdentitySession = belongsToIdentity(context);
 
   const windowMs = windowHours * 60 * 60 * 1000;
   const cutoff = new Date(new Date(session.startedAt).getTime() - windowMs);
 
   // Get sessions within the window for this user
   const sessionsInWindow = recentSessions.filter(
-    (s) => s.serverUserId === serverUser.id && new Date(s.startedAt) >= cutoff
+    (s) => isIdentitySession(s) && new Date(s.startedAt) >= cutoff
   );
 
   // Include the current session
@@ -381,15 +410,16 @@ const evaluateUniqueDevicesInWindow: ConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
-  const { session, recentSessions, serverUser } = context;
+  const { session, recentSessions } = context;
   const windowHours = condition.params?.window_hours ?? 24;
+  const isIdentitySession = belongsToIdentity(context);
 
   const windowMs = windowHours * 60 * 60 * 1000;
   const cutoff = new Date(new Date(session.startedAt).getTime() - windowMs);
 
   // Get sessions within the window for this user
   const sessionsInWindow = recentSessions.filter(
-    (s) => s.serverUserId === serverUser.id && new Date(s.startedAt) >= cutoff
+    (s) => isIdentitySession(s) && new Date(s.startedAt) >= cutoff
   );
 
   // Count unique devices (by deviceId, falling back to playerName)

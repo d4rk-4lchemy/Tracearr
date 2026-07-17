@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { SSE_CONFIG, type SSEConnectionState } from '@tracearr/shared';
 import type { EventSourceFetchInit } from 'eventsource';
+import { parseHelloPayload } from '../../../utils/pluginVersion.js';
 
 // Plugin SSE endpoint paths per server type
 export const PLUGIN_SSE_PATH: Record<'jellyfin' | 'emby', string> = {
@@ -8,12 +9,16 @@ export const PLUGIN_SSE_PATH: Record<'jellyfin' | 'emby', string> = {
   emby: '/emby/sse/events',
 };
 
-// The plugin sends a ping every 30s; allow 45s before assuming the stream died
-const PLUGIN_HEARTBEAT_TIMEOUT_MS = 45_000;
+// The plugin sends a ping every 30s; allow two missed pings before assuming the
+// stream died so a single dropped keep-alive doesn't force a needless reconnect
+const PLUGIN_HEARTBEAT_TIMEOUT_MS = 90_000;
 
 // When the plugin is absent (404), re-probe every 3 minutes so a newly-installed
 // plugin gets picked up without a full server restart
 const UNSUPPORTED_REPROBE_MS = 3 * 60 * 1000;
+
+// Re-probe cadence once the reconnect budget is spent; polling covers data meanwhile
+const FALLBACK_RETRY_MS = 3 * 60 * 1000;
 
 interface EventSourceMessage {
   data: string;
@@ -71,10 +76,12 @@ export class JellyfinEmbyEventSource extends EventEmitter {
   private connectedAt: Date | null = null;
   private lastEventTime: Date | null = null;
   private lastError: Error | null = null;
+  private pluginVersion: string | null = null;
 
   private openListener: ((e: Event) => void) | null = null;
   private sessionEventListener: ((e: EventSourceMessage) => void) | null = null;
   private pingListener: ((e: EventSourceMessage) => void) | null = null;
+  private helloListener: ((ev: EventSourceMessage) => void) | null = null;
   private errorListener: ((e: Event) => void) | null = null;
 
   constructor(config: {
@@ -104,6 +111,7 @@ export class JellyfinEmbyEventSource extends EventEmitter {
     lastEventAt: Date | null;
     reconnectAttempts: number;
     error: string | null;
+    pluginVersion: string | null;
   } {
     return {
       serverId: this.serverId,
@@ -113,6 +121,7 @@ export class JellyfinEmbyEventSource extends EventEmitter {
       lastEventAt: this.lastEventTime,
       reconnectAttempts: this.reconnectAttempts,
       error: this.lastError?.message ?? null,
+      pluginVersion: this.pluginVersion,
     };
   }
 
@@ -182,6 +191,15 @@ export class JellyfinEmbyEventSource extends EventEmitter {
         this.lastEventTime = new Date();
         this.resetHeartbeatMonitor();
       };
+      this.helloListener = (ev: EventSourceMessage) => {
+        this.lastEventTime = new Date();
+        this.resetHeartbeatMonitor();
+        const hello = ev.data ? parseHelloPayload(ev.data) : null;
+        if (hello) {
+          this.pluginVersion = hello.version;
+          console.log(`[PluginSSE] ${this.serverName} plugin version ${hello.version}`);
+        }
+      };
 
       this.errorListener = (ev: Event) => {
         this.handleError(ev);
@@ -189,13 +207,27 @@ export class JellyfinEmbyEventSource extends EventEmitter {
 
       this.eventSource.onopen = this.openListener;
       this.eventSource.onerror = this.errorListener;
+      // Reset the heartbeat on any unnamed data line too (not just named events),
+      // so keep-alives sent without an event name still count as liveness.
+      this.eventSource.onmessage = () => {
+        this.lastEventTime = new Date();
+        this.resetHeartbeatMonitor();
+      };
 
-      for (const eventName of ['playing', 'progress', 'paused', 'stopped', 'session.start', 'session.end']) {
+      for (const eventName of [
+        'playing',
+        'progress',
+        'paused',
+        'stopped',
+        'session.start',
+        'session.end',
+      ]) {
         this.eventSource.addEventListener(eventName, this.sessionEventListener);
       }
       this.eventSource.addEventListener('ping', this.pingListener);
+      this.eventSource.addEventListener('hello', this.helloListener);
     } catch (error) {
-      this.handleError(error as Error);
+      this.handleError(error);
     }
   }
 
@@ -207,19 +239,38 @@ export class JellyfinEmbyEventSource extends EventEmitter {
     this.connectedAt = null;
   }
 
+  retryFromFallback(): void {
+    if (this.state !== 'fallback') return;
+    console.log(`[PluginSSE] Poll reached ${this.serverName}, retrying SSE from fallback`);
+    this.clearTimers();
+    this.reconnectAttempts = 0;
+    void this.connect();
+  }
+
   private cleanupEventSource(): void {
     if (!this.eventSource) return;
 
     this.eventSource.onopen = null;
     this.eventSource.onerror = null;
+    this.eventSource.onmessage = null;
 
     if (this.sessionEventListener) {
-      for (const eventName of ['playing', 'progress', 'paused', 'stopped', 'session.start', 'session.end']) {
+      for (const eventName of [
+        'playing',
+        'progress',
+        'paused',
+        'stopped',
+        'session.start',
+        'session.end',
+      ]) {
         this.eventSource.removeEventListener(eventName, this.sessionEventListener);
       }
     }
     if (this.pingListener) {
       this.eventSource.removeEventListener('ping', this.pingListener);
+    }
+    if (this.helloListener) {
+      this.eventSource.removeEventListener('hello', this.helloListener);
     }
 
     this.eventSource.close();
@@ -227,7 +278,9 @@ export class JellyfinEmbyEventSource extends EventEmitter {
     this.openListener = null;
     this.sessionEventListener = null;
     this.pingListener = null;
+    this.helloListener = null;
     this.errorListener = null;
+    this.pluginVersion = null;
   }
 
   private handleError(error: unknown): void {
@@ -289,9 +342,16 @@ export class JellyfinEmbyEventSource extends EventEmitter {
   private scheduleReconnect(): void {
     if (this.reconnectAttempts >= SSE_CONFIG.MAX_RETRIES) {
       console.error(
-        `[PluginSSE] Max retries reached for ${this.serverName}, falling back to polling`
+        `[PluginSSE] Max retries reached for ${this.serverName}, falling back to polling, retrying in ${FALLBACK_RETRY_MS / 1000}s`
       );
       this.setState('fallback');
+      this.reconnectTimer = setTimeout(() => {
+        if (this.state !== 'disconnected') {
+          console.log(`[PluginSSE] Retrying SSE for ${this.serverName} from fallback`);
+          this.reconnectAttempts = 0;
+          void this.connect();
+        }
+      }, FALLBACK_RETRY_MS);
       return;
     }
 
@@ -329,8 +389,14 @@ export class JellyfinEmbyEventSource extends EventEmitter {
   }
 
   private clearTimers(): void {
-    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
-    if (this.heartbeatTimer) { clearTimeout(this.heartbeatTimer); this.heartbeatTimer = null; }
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.heartbeatTimer) {
+      clearTimeout(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     this.clearConnectionTimeout();
   }
 
@@ -344,7 +410,10 @@ export class JellyfinEmbyEventSource extends EventEmitter {
   }
 
   private clearConnectionTimeout(): void {
-    if (this.connectionTimer) { clearTimeout(this.connectionTimer); this.connectionTimer = null; }
+    if (this.connectionTimer) {
+      clearTimeout(this.connectionTimer);
+      this.connectionTimer = null;
+    }
   }
 
   private buildAuthHeaders(): Record<string, string> {

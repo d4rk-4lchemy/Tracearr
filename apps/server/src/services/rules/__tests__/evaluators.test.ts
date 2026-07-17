@@ -144,6 +144,9 @@ function createMockRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Test Rule',
     description: null,
     serverId: null,
+    serverUserId: null,
+    userId: null,
+    enforceAcrossServers: false,
     isActive: true,
     severity: 'warning',
     conditions: { groups: [] },
@@ -178,7 +181,7 @@ function createCondition(overrides: Partial<Condition>): Condition {
     operator: 'eq',
     value: 1,
     ...overrides,
-  } as Condition;
+  };
 }
 
 // Helper to extract matched result from evaluator (handles sync/async)
@@ -227,6 +230,11 @@ describe('Helper Functions', () => {
       expect(getResolution(null, null)).toBe('unknown');
       expect(getResolution(null, 1080)).toBe('1080p');
       expect(getResolution(1920, null)).toBe('1080p');
+    });
+
+    // regression: issue #798, 1440p folds up to 4K since VideoResolution has no 1440p tier
+    it('returns 4K for 1440p dimensions 2560x1440 (previously 1080p under the old ladder)', () => {
+      expect(getResolution(2560, 1440)).toBe('4K');
     });
   });
 
@@ -643,6 +651,56 @@ describe('Session Behavior Evaluators', () => {
       );
       expect(browserResult.matched).toBe(true);
       expect(browserResult.actual).toBe(2);
+    });
+
+    it('counts sessions from every server user of the identity when identityServerUserIds is provided', () => {
+      const server = createMockServer();
+      const serverUser = createMockServerUser({ serverId: server.id });
+      const session = createMockSession({ serverId: server.id, serverUserId: serverUser.id });
+      const siblingSession = createMockSession({
+        serverId: 'other-server',
+        serverUserId: 'sibling-server-user',
+        deviceId: 'other-device',
+      });
+      const context = createTestContext({
+        session,
+        serverUser,
+        server,
+        activeSessions: [session, siblingSession],
+        identityServerUserIds: [serverUser.id, 'sibling-server-user'],
+      });
+
+      const evaluator = evaluatorRegistry.concurrent_streams;
+      const result = evaluator(
+        context,
+        createCondition({ field: 'concurrent_streams', operator: 'eq', value: 2 })
+      );
+
+      expect(matched(result)).toBe(true);
+    });
+
+    it('falls back to single server user counting when identityServerUserIds is absent', () => {
+      const server = createMockServer();
+      const serverUser = createMockServerUser({ serverId: server.id });
+      const session = createMockSession({ serverId: server.id, serverUserId: serverUser.id });
+      const siblingSession = createMockSession({
+        serverId: 'other-server',
+        serverUserId: 'sibling-server-user',
+      });
+      const context = createTestContext({
+        session,
+        serverUser,
+        server,
+        activeSessions: [session, siblingSession],
+      });
+
+      const evaluator = evaluatorRegistry.concurrent_streams;
+      const result = evaluator(
+        context,
+        createCondition({ field: 'concurrent_streams', operator: 'eq', value: 1 })
+      );
+
+      expect(matched(result)).toBe(true);
     });
   });
 

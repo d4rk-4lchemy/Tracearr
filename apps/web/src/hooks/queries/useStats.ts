@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { MediaType, DeviceCompatibilityMatrix } from '@tracearr/shared';
 import { api, type StatsTimeRange, getBrowserTimezone } from '@/lib/api';
-import { useMultiServerQuery, type MultiServerQueryResult } from '@/hooks/useMultiServerQuery';
 
 // Re-export for backwards compatibility and convenience
 export type { StatsTimeRange };
@@ -40,18 +39,23 @@ export function useUserStats(timeRange?: StatsTimeRange, serverId?: string | nul
 export interface LocationStatsFilters {
   timeRange?: StatsTimeRange;
   serverUserId?: string;
+  serverUserIds?: string[];
   serverIds?: string[];
   mediaType?: 'movie' | 'episode' | 'track';
 }
 
 export function useLocationStats(filters?: LocationStatsFilters) {
   const serverIdsKey = filters?.serverIds?.length ? [...filters.serverIds].sort().join(',') : 'all';
+  const serverUserIdsKey = filters?.serverUserIds?.length
+    ? [...filters.serverUserIds].sort().join(',')
+    : undefined;
   return useQuery({
     queryKey: [
       'stats',
       'locations',
       serverIdsKey,
       filters?.serverUserId,
+      serverUserIdsKey,
       filters?.mediaType,
       filters?.timeRange,
     ],
@@ -100,18 +104,20 @@ export function useQualityStats(timeRange?: StatsTimeRange, serverIds?: string[]
   });
 }
 
-export function useTopUsers(timeRange?: StatsTimeRange, serverId?: string | null) {
+export function useTopUsers(timeRange?: StatsTimeRange, serverIds?: string[]) {
+  const serverIdsKey = serverIds?.length ? [...serverIds].sort().join(',') : 'all';
   return useQuery({
-    queryKey: ['stats', 'top-users', timeRange, serverId],
-    queryFn: () => api.stats.topUsers(timeRange ?? { period: 'month' }, serverId ?? undefined),
+    queryKey: ['stats', 'top-users', timeRange, serverIdsKey],
+    queryFn: () => api.stats.topUsers(timeRange ?? { period: 'month' }, serverIds),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
 
-export function useTopContent(timeRange?: StatsTimeRange, serverId?: string | null) {
+export function useTopContent(timeRange?: StatsTimeRange, serverIds?: string[]) {
+  const serverIdsKey = serverIds?.length ? [...serverIds].sort().join(',') : 'all';
   return useQuery({
-    queryKey: ['stats', 'top-content', timeRange, serverId],
-    queryFn: () => api.stats.topContent(timeRange ?? { period: 'month' }, serverId ?? undefined),
+    queryKey: ['stats', 'top-content', timeRange, serverIdsKey],
+    queryFn: () => api.stats.topContent(timeRange ?? { period: 'month' }, serverIds),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -150,13 +156,13 @@ export interface ShowStatsOptions {
 
 export function useShowStats(
   timeRange?: StatsTimeRange,
-  serverId?: string | null,
+  serverIds?: string[],
   options?: ShowStatsOptions
 ) {
+  const serverIdsKey = serverIds?.length ? [...serverIds].sort().join(',') : 'all';
   return useQuery({
-    queryKey: ['stats', 'shows', timeRange, serverId, options],
-    queryFn: () =>
-      api.stats.shows(timeRange ?? { period: 'month' }, serverId ?? undefined, options),
+    queryKey: ['stats', 'shows', timeRange, serverIdsKey, options],
+    queryFn: () => api.stats.shows(timeRange ?? { period: 'month' }, serverIds, options),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -176,18 +182,58 @@ export function useDeviceCompatibility(
   });
 }
 
-// Fan-out: calls the single-server matrix endpoint once per selected server.
+export interface DeviceMatrixFanOut {
+  byServer: Map<
+    string,
+    {
+      data?: DeviceCompatibilityMatrix;
+      isLoading: boolean;
+      error: Error | null;
+      refetch: () => Promise<unknown>;
+    }
+  >;
+  isLoading: boolean;
+  isFetching: boolean;
+  error: unknown;
+}
+
+/** Fetch the device compatibility matrix for every selected server in one request. */
 export function useDeviceCompatibilityMatrix(
   serverIds: string[],
   timeRange?: StatsTimeRange,
   minSessions = 5
-): MultiServerQueryResult<DeviceCompatibilityMatrix> {
-  return useMultiServerQuery(serverIds, (id) => ({
-    queryKey: ['stats', 'device-compatibility-matrix', id, timeRange, minSessions],
+): DeviceMatrixFanOut {
+  const serverIdsKey = serverIds.length ? [...serverIds].sort().join(',') : 'all';
+  const query = useQuery({
+    queryKey: ['stats', 'device-compatibility-matrix', serverIdsKey, timeRange, minSessions],
     queryFn: () =>
-      api.stats.deviceCompatibilityMatrix(timeRange ?? { period: 'month' }, id, minSessions),
+      api.stats.deviceCompatibilityMatrixMulti(
+        timeRange ?? { period: 'month' },
+        serverIds,
+        minSessions
+      ),
     staleTime: 1000 * 60 * 5,
-  }));
+    enabled: serverIds.length > 0,
+  });
+
+  const byServer = new Map(
+    serverIds.map((id) => [
+      id,
+      {
+        data: query.data?.[id],
+        isLoading: query.isLoading,
+        error: query.error,
+        refetch: query.refetch,
+      },
+    ])
+  );
+
+  return {
+    byServer,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    error: query.error,
+  };
 }
 
 export function useDeviceHealth(timeRange?: StatsTimeRange, serverIds?: string[]) {

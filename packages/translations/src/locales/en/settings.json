@@ -21,7 +21,6 @@
     "primaryAuth": "Primary Authentication Method",
     "localAccount": "Local Account",
     "plexAccount": "Plex Account",
-    "jellyfinAccount": "Jellyfin Account",
     "language": "Language",
     "languageDescription": "Choose your preferred display language.",
     "helpTranslate": "Help translate Tracearr",
@@ -122,10 +121,15 @@
     "pollingMode": "Polling",
     "setupRealtime": "Set up real-time updates",
     "checkingConnection": "Checking connection…",
+    "pluginVersion": "plugin v{{version}}",
+    "pluginUpdateAvailable": "Plugin update available",
     "realtimeDialog": {
       "title": "Enable real-time updates",
+      "updateTitle": "Update the Tracearr SSE plugin",
       "jellyfinDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
       "embyDescription": "Install the Tracearr SSE plugin to get instant session updates without waiting for the next poll.",
+      "jellyfinUpdateDescription": "A newer plugin release is available. Open your Jellyfin dashboard, go to Plugins, Catalog, and update Tracearr SSE, then restart Jellyfin.",
+      "embyUpdateDescription": "A newer plugin release is available. Download the latest release zip, replace the plugin DLL in your Emby plugins folder, and restart Emby.",
       "repositoryUrl": "Repository URL",
       "copyUrl": "Copy URL",
       "jellyfinRepoUrl": "https://raw.githubusercontent.com/Tracearr/Media-Server-SSE/main/manifest.json",
@@ -282,9 +286,6 @@
     "description": "Configure who can access Tracearr",
     "allowGuestAccess": "Allow Guest Access",
     "allowGuestAccessDesc": "When disabled, only the server owner can log in to Tracearr",
-    "primaryAuthMethod": "Primary Authentication Method",
-    "primaryAuthMethodDesc": "Choose which authentication method is shown by default on the login page",
-    "jellyfinAdmin": "Jellyfin Admin",
     "singleOwnerNote": "Note: When guest access is disabled, only the server owner can sign in. All other users will see an \"Access Denied\" message."
   },
   "import": {
@@ -356,11 +357,6 @@
     "selectServer": "Select Server",
     "chooseServer": "Choose which Plex Media Server to monitor"
   },
-  "jellyfin": {
-    "signInWithJellyfin": "Sign in with Jellyfin",
-    "username": "Jellyfin Username",
-    "password": "Jellyfin Password"
-  },
   "account": {
     "createAccount": "Create Account",
     "email": "Email",
@@ -368,8 +364,7 @@
     "displayName": "Display Name",
     "createYourAccount": "Create your account to get started",
     "signInToAccount": "Sign in to your account",
-    "useLocalAccount": "Use local account instead",
-    "useJellyfinAccount": "Use Jellyfin account instead"
+    "useLocalAccount": "Use local account instead"
   },
   "update": {
     "title": "Update Available",

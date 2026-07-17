@@ -425,15 +425,64 @@
     {
       "idx": 60,
       "version": "7",
-      "when": 1778161477947,
-      "tag": "0060_tricky_sally_floyd",
+      "when": 1783022727943,
+      "tag": "0060_amused_lila_cheney",
       "breakpoints": true
     },
     {
       "idx": 61,
       "version": "7",
+      "when": 1783023835436,
+      "tag": "0061_better_auth_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1783290986517,
+      "tag": "0062_drop_primary_auth_method_setting",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1783359263489,
+      "tag": "0063_long_maria_hill",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1783434720972,
+      "tag": "0064_groovy_skrulls",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1783710007805,
+      "tag": "0065_absent_omega_flight",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1783716244207,
+      "tag": "0066_ambiguous_texas_twister",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1778161477947,
+      "tag": "0067_tricky_sally_floyd",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
       "when": 1778499242919,
-      "tag": "0061_neat_makkari",
+      "tag": "0068_neat_makkari",
       "breakpoints": true
     }
   ]

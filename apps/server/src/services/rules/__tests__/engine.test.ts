@@ -134,6 +134,9 @@ function createMockRule(overrides: Partial<RuleV2> = {}): RuleV2 {
     name: 'Test Rule',
     description: null,
     serverId: null,
+    serverUserId: null,
+    userId: null,
+    enforceAcrossServers: false,
     isActive: true,
     severity: 'warning',
     conditions: { groups: [] },
@@ -495,7 +498,7 @@ describe('evaluateRule', () => {
                 {
                   field: 'user_id',
                   operator: 'not_in',
-                  value: excludedUserId as unknown as string[],
+                  value: excludedUserId,
                 },
               ],
             },
@@ -667,6 +670,121 @@ describe('evaluateRules', () => {
     expect(results).toHaveLength(2);
     expect(results.map((r) => r.ruleId).sort()).toEqual(['rule-1', 'rule-3']);
   });
+
+  it('respects person (identity) scope', () => {
+    const rules: RuleV2[] = [
+      createMockRule({
+        id: 'rule-person-a',
+        userId: 'identity-a',
+        conditions: { groups: [] },
+      }),
+      createMockRule({
+        id: 'rule-person-b',
+        userId: 'identity-b',
+        conditions: { groups: [] },
+      }),
+      createMockRule({
+        id: 'rule-global',
+        userId: null,
+        conditions: { groups: [] },
+      }),
+    ];
+
+    const server = createMockServer();
+    const serverUser = createMockServerUser({ serverId: server.id, userId: 'identity-a' });
+    const session = createMockSession({ serverId: server.id, serverUserId: serverUser.id });
+
+    const results = evaluateRules(
+      { session, serverUser, server, activeSessions: [session], recentSessions: [session] },
+      rules
+    );
+
+    expect(results.map((r) => r.ruleId).sort()).toEqual(['rule-global', 'rule-person-a']);
+  });
+
+  it('a person-scoped rule applies to a second server_user of the same identity', () => {
+    const rule = createMockRule({
+      id: 'rule-person-a',
+      userId: 'identity-a',
+      conditions: { groups: [] },
+    });
+
+    const serverA = createMockServer({ id: 'server-a' });
+    const serverB = createMockServer({ id: 'server-b' });
+    const serverUserOnA = createMockServerUser({
+      id: 'su-a',
+      serverId: serverA.id,
+      userId: 'identity-a',
+    });
+    const serverUserOnB = createMockServerUser({
+      id: 'su-b',
+      serverId: serverB.id,
+      userId: 'identity-a',
+    });
+    const sessionA = createMockSession({ serverId: serverA.id, serverUserId: serverUserOnA.id });
+    const sessionB = createMockSession({ serverId: serverB.id, serverUserId: serverUserOnB.id });
+
+    const resultsA = evaluateRules(
+      {
+        session: sessionA,
+        serverUser: serverUserOnA,
+        server: serverA,
+        activeSessions: [sessionA],
+        recentSessions: [sessionA],
+      },
+      [rule]
+    );
+    const resultsB = evaluateRules(
+      {
+        session: sessionB,
+        serverUser: serverUserOnB,
+        server: serverB,
+        activeSessions: [sessionB],
+        recentSessions: [sessionB],
+      },
+      [rule]
+    );
+
+    expect(resultsA.map((r) => r.ruleId)).toEqual(['rule-person-a']);
+    expect(resultsB.map((r) => r.ruleId)).toEqual(['rule-person-a']);
+  });
+
+  it('respects account scope', () => {
+    const server = createMockServer();
+    const targetAccount = createMockServerUser({
+      id: 'su-target',
+      serverId: server.id,
+      userId: 'identity-a',
+    });
+    const siblingAccount = createMockServerUser({
+      id: 'su-sibling',
+      serverId: server.id,
+      userId: 'identity-a',
+    });
+    const unrelatedAccount = createMockServerUser({
+      id: 'su-unrelated',
+      serverId: server.id,
+      userId: 'identity-b',
+    });
+
+    const rule = createMockRule({
+      id: 'rule-account',
+      serverUserId: targetAccount.id,
+      conditions: { groups: [] },
+    });
+
+    const evaluateFor = (serverUser: ReturnType<typeof createMockServerUser>) => {
+      const session = createMockSession({ serverId: server.id, serverUserId: serverUser.id });
+      return evaluateRules(
+        { session, serverUser, server, activeSessions: [session], recentSessions: [session] },
+        [rule]
+      );
+    };
+
+    expect(evaluateFor(targetAccount).map((r) => r.ruleId)).toEqual(['rule-account']);
+    expect(evaluateFor(siblingAccount)).toHaveLength(0);
+    expect(evaluateFor(unrelatedAccount)).toHaveLength(0);
+  });
 });
 
 describe('async evaluation', () => {
@@ -719,6 +837,43 @@ describe('async evaluation', () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]?.ruleId).toBe('rule-1');
+  });
+
+  it('evaluateRulesAsync respects account scope', async () => {
+    const server = createMockServer();
+    const targetAccount = createMockServerUser({
+      id: 'su-target',
+      serverId: server.id,
+      userId: 'identity-a',
+    });
+    const siblingAccount = createMockServerUser({
+      id: 'su-sibling',
+      serverId: server.id,
+      userId: 'identity-a',
+    });
+    const unrelatedAccount = createMockServerUser({
+      id: 'su-unrelated',
+      serverId: server.id,
+      userId: 'identity-b',
+    });
+
+    const rule = createMockRule({
+      id: 'rule-account',
+      serverUserId: targetAccount.id,
+      conditions: { groups: [] },
+    });
+
+    const evaluateFor = (serverUser: ReturnType<typeof createMockServerUser>) => {
+      const session = createMockSession({ serverId: server.id, serverUserId: serverUser.id });
+      return evaluateRulesAsync(
+        { session, serverUser, server, activeSessions: [session], recentSessions: [session] },
+        [rule]
+      );
+    };
+
+    expect((await evaluateFor(targetAccount)).map((r) => r.ruleId)).toEqual(['rule-account']);
+    expect(await evaluateFor(siblingAccount)).toHaveLength(0);
+    expect(await evaluateFor(unrelatedAccount)).toHaveLength(0);
   });
 });
 

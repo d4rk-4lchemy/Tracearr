@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 export interface BulkAction {
@@ -17,6 +18,8 @@ export interface BulkAction {
   isLoading?: boolean;
   /** Whether the action is disabled */
   disabled?: boolean;
+  /** Tooltip content shown on hover (e.g. explaining why the action is disabled) */
+  title?: string;
 }
 
 interface BulkActionsToolbarProps {
@@ -63,18 +66,38 @@ export function BulkActionsToolbar({
       <div className="bg-border h-6 w-px" />
 
       <div className="flex items-center gap-2">
-        {actions.map((action) => (
-          <Button
-            key={action.key}
-            variant={action.variant ?? 'secondary'}
-            size="sm"
-            onClick={action.onClick}
-            disabled={action.disabled || action.isLoading}
-          >
-            {action.icon && <span className="mr-1.5">{action.icon}</span>}
-            {action.isLoading ? 'Processing...' : action.label}
-          </Button>
-        ))}
+        {actions.map((action) => {
+          const button = (
+            <Button
+              variant={action.variant ?? 'secondary'}
+              size="sm"
+              onClick={action.onClick}
+              disabled={action.disabled || action.isLoading}
+            >
+              {action.icon && <span className="mr-1.5">{action.icon}</span>}
+              {action.isLoading ? 'Processing...' : action.label}
+            </Button>
+          );
+
+          if (!action.title) {
+            return <span key={action.key}>{button}</span>;
+          }
+
+          return (
+            <TooltipProvider key={action.key} delayDuration={100}>
+              <Tooltip>
+                {/* Disabled buttons swallow pointer events, so the trigger must be a
+                    non-disabled wrapper for the tooltip to be reachable on hover. */}
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="inline-flex">
+                    {button}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{action.title}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        })}
       </div>
 
       <div className="bg-border h-6 w-px" />

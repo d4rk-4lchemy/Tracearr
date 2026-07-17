@@ -69,6 +69,8 @@ vi.mock('../poller/stateTracker.js', () => ({
 vi.mock('../poller/database.js', () => ({
   getActiveRulesV2: vi.fn(),
   batchGetRecentUserSessions: vi.fn(),
+  mergeRecentSessionsForIdentity: (map: Map<string, unknown[]>, ids: string[]) =>
+    ids.flatMap((id) => map.get(id) ?? []),
 }));
 
 vi.mock('../poller/violations.js', () => ({
@@ -87,6 +89,7 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
 
 // Import after mocking
 import { initializeSSEProcessor, startSSEProcessor, stopSSEProcessor } from '../sseProcessor.js';
+import { triggerReconciliationPoll } from '../poller/index.js';
 
 // Mock cache and pubsub services
 const mockCacheService = {
@@ -272,6 +275,17 @@ describe('SSE Processor - Server Health Notifications', () => {
 
       // Should NOT send server_up since we never sent server_down
       expect(mockEnqueueNotification).not.toHaveBeenCalled();
+    });
+
+    it('should trigger a reconciliation poll on reconnect to catch missed sessions', async () => {
+      mockSseManager.emit('fallback:deactivated', {
+        serverId: 'server-1',
+        serverName: 'Test Server',
+      });
+
+      await vi.runAllTimersAsync();
+
+      expect(vi.mocked(triggerReconciliationPoll)).toHaveBeenCalled();
     });
   });
 

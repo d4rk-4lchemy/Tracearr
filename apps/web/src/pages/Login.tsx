@@ -1,40 +1,54 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Loader2, ExternalLink, User, KeyRound } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  Loader2,
+  ExternalLink,
+  User,
+  KeyRound,
+  LogIn,
+  AlertCircle,
+  AlertTriangle,
+} from 'lucide-react';
 import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
-import { api, tokenStorage, BASE_URL } from '@/lib/api';
-import type { PlexDiscoveredServer } from '@tracearr/shared';
+import { authClient } from '@/lib/authClient';
+import { api, BASE_URL } from '@/lib/api';
+import type { PlexDiscoveredServer, SetupStatus } from '@tracearr/shared';
 import { LogoIcon } from '@/components/brand/Logo';
 import { PlexServerSelector } from '@/components/auth/PlexServerSelector';
 
 // Plex brand color
 const PLEX_COLOR = 'bg-[#E5A00D] hover:bg-[#C88A0B]';
 
+const DEFAULT_AUTH_METHODS: SetupStatus['authMethods'] = {
+  local: true,
+  plex: true,
+  oidc: false,
+  oidcProviderName: null,
+};
+
 type AuthStep = 'claim-code-gate' | 'initial' | 'plex-waiting' | 'server-select';
 
 export function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const { t } = useTranslation(['pages', 'common', 'settings', 'notifications']);
-  const { isAuthenticated, isLoading: authLoading, refetch } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   // Setup status - default to false (Sign In mode) since most users are returning
   const [setupLoading, setSetupLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [requiresClaimCode, setRequiresClaimCode] = useState(false);
-  const [hasPasswordAuth, setHasPasswordAuth] = useState(false);
-  const [hasJellyfinServers, setHasJellyfinServers] = useState(false);
-
-  // Auth form state - which form to show (jellyfin or local)
-  // Default to Jellyfin if Jellyfin servers exist, otherwise default to local
-  const [showJellyfinForm, setShowJellyfinForm] = useState(true);
+  const [authMethods, setAuthMethods] = useState<SetupStatus['authMethods']>(DEFAULT_AUTH_METHODS);
 
   // Auth flow state
   const [authStep, setAuthStep] = useState<AuthStep>('initial');
@@ -44,20 +58,23 @@ export function Login() {
   const [connectingToServer, setConnectingToServer] = useState<string | null>(null);
   const [plexPopup, setPlexPopup] = useState<ReturnType<typeof window.open>>(null);
 
-  // Local auth state
-  const [localLoading, setLocalLoading] = useState(false);
-  const [username, setUsername] = useState('');
+  // Local auth form state (sign-in uses a single identifier field; sign-up
+  // collects a display name and a separate login username)
+  const [localPending, setLocalPending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [signupUsername, setSignupUsername] = useState('');
   const [email, setEmail] = useState('');
+
+  // OIDC state
+  const [oidcPending, setOidcPending] = useState(false);
+  const [oidcError, setOidcError] = useState<string | null>(null);
 
   // Claim code gate state
   const [claimCode, setClaimCode] = useState('');
   const [claimCodeLoading, setClaimCodeLoading] = useState(false);
-
-  // Jellyfin auth state
-  const [jellyfinLoading, setJellyfinLoading] = useState(false);
-  const [jellyfinUsername, setJellyfinUsername] = useState('');
-  const [jellyfinPassword, setJellyfinPassword] = useState('');
 
   // Check setup status on mount with retry logic for server restarts
   useEffect(() => {
@@ -73,10 +90,7 @@ export function Login() {
           const status = await api.setup.status();
           setNeedsSetup(status.needsSetup);
           setRequiresClaimCode(status.requiresClaimCode);
-          setHasPasswordAuth(status.hasPasswordAuth);
-          setHasJellyfinServers(status.hasJellyfinServers);
-          // Use the configured primary auth method
-          setShowJellyfinForm(status.primaryAuthMethod === 'jellyfin');
+          setAuthMethods(status.authMethods);
 
           // Set initial auth step based on setup requirements
           if (status.needsSetup && status.requiresClaimCode) {
@@ -98,6 +112,13 @@ export function Login() {
     }
     void checkSetup();
   }, []);
+
+  // Surface OIDC callback errors (redirected here as /login?error=<code>)
+  useEffect(() => {
+    if (searchParams.get('error')) {
+      setOidcError(t('pages:login.oidcError'));
+    }
+  }, [searchParams, t]);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -161,10 +182,9 @@ export function Login() {
         setPlexServers(result.servers);
         setPlexTempToken(result.tempToken);
         setAuthStep('server-select');
-      } else if (result.accessToken && result.refreshToken) {
-        // User authenticated (returning or no servers)
-        tokenStorage.setTokens(result.accessToken, result.refreshToken);
-        void refetch();
+      } else if (result.user) {
+        // User authenticated (returning or no servers) - session cookie is already set
+        await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
         toast.success(t('notifications:toast.success.loggedIn.title'), {
           description: t('notifications:toast.success.loggedIn.message'),
         });
@@ -189,12 +209,12 @@ export function Login() {
     try {
       // Pass callback URL so Plex redirects back to our domain after auth
       const callbackUrl = `${window.location.origin}${BASE_URL}auth/plex-callback`;
-      const result = await api.auth.loginPlex(callbackUrl);
+      const result = await api.auth.initiatePlex(callbackUrl);
       setPlexAuthUrl(result.authUrl);
 
       // Navigate popup to Plex auth
       if (popup && !popup.closed) {
-        popup.location.href = result.authUrl;
+        popup.location.assign(result.authUrl);
       }
 
       // Start polling
@@ -227,9 +247,8 @@ export function Login() {
         ...(requiresClaimCode && { claimCode: claimCode.trim() }),
       });
 
-      if (result.accessToken && result.refreshToken) {
-        tokenStorage.setTokens(result.accessToken, result.refreshToken);
-        await refetch();
+      if (result.authorized) {
+        await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
         toast.success(t('notifications:toast.success.loggedIn.title'), {
           description: t('pages:login.connectedTo', { name: serverName }),
         });
@@ -258,92 +277,85 @@ export function Login() {
     setConnectingToServer(null);
   };
 
-  // Handle local signup
-  const handleLocalSignup = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+  // Handle local sign-up (first-run owner account creation)
+  const handleSignUp = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLocalLoading(true);
+    setFormError(null);
+    setLocalPending(true);
 
     try {
-      const result = await api.auth.signup({
-        email: email.trim(),
-        username: username.trim(),
-        password,
-        ...(requiresClaimCode && { claimCode: claimCode.trim() }),
+      // signUp.email's typed client only accepts declared additionalFields;
+      // username and claimCode aren't declared there, so post through $fetch
+      // (the server's sign-up/email schema accepts arbitrary extra fields).
+      const { error } = await authClient.$fetch('/sign-up/email', {
+        method: 'POST',
+        body: {
+          name: name.trim(),
+          username: signupUsername.trim().toLowerCase(),
+          email: email.trim(),
+          password,
+          ...(requiresClaimCode && { claimCode: claimCode.trim() }),
+        },
       });
 
-      if (result.accessToken && result.refreshToken) {
-        tokenStorage.setTokens(result.accessToken, result.refreshToken);
-        void refetch();
-        toast.success(t('notifications:toast.success.loggedIn.title'), {
-          description: t('pages:login.accountCreated'),
-        });
-        void navigate('/');
+      if (error) {
+        setFormError(error.message ?? t('pages:login.createAccountFailed'));
+        return;
       }
-    } catch (error) {
-      toast.error(t('pages:login.signupFailed'), {
-        description: error instanceof Error ? error.message : t('pages:login.createAccountFailed'),
+
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+      toast.success(t('notifications:toast.success.loggedIn.title'), {
+        description: t('pages:login.accountCreated'),
       });
+      void navigate('/');
     } finally {
-      setLocalLoading(false);
+      setLocalPending(false);
     }
   };
 
-  // Handle local login
-  const handleLocalLogin = async (e: React.SyntheticEvent<HTMLFormElement>) => {
+  // Handle local sign-in - identifier can be an email or a username
+  const handleSignIn = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLocalLoading(true);
+    setFormError(null);
+    setLocalPending(true);
 
     try {
-      const result = await api.auth.loginLocal({
-        email: email.trim(),
-        password,
-      });
+      const trimmedIdentifier = identifier.trim();
+      const call = trimmedIdentifier.includes('@')
+        ? authClient.signIn.email({ email: trimmedIdentifier, password })
+        : authClient.signIn.username({ username: trimmedIdentifier.toLowerCase(), password });
+      const { error } = await call;
 
-      if (result.accessToken && result.refreshToken) {
-        tokenStorage.setTokens(result.accessToken, result.refreshToken);
-        void refetch();
-        toast.success(t('notifications:toast.success.loggedIn.title'), {
-          description: t('notifications:toast.success.loggedIn.message'),
-        });
-        void navigate('/');
+      if (error) {
+        setFormError(error.message ?? t('pages:login.invalidCredentials'));
+        return;
       }
-    } catch (error) {
-      toast.error(t('pages:login.loginFailed'), {
-        description: error instanceof Error ? error.message : t('pages:login.invalidCredentials'),
+
+      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+      toast.success(t('notifications:toast.success.loggedIn.title'), {
+        description: t('notifications:toast.success.loggedIn.message'),
       });
+      void navigate('/');
     } finally {
-      setLocalLoading(false);
+      setLocalPending(false);
     }
   };
 
-  // Handle Jellyfin login
-  const handleJellyfinLogin = async (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setJellyfinLoading(true);
+  // Handle OIDC sign-in - redirects the browser to the provider on success
+  const handleOidcLogin = async () => {
+    setOidcPending(true);
+    setOidcError(null);
 
-    try {
-      const result = await api.auth.loginJellyfin({
-        username: jellyfinUsername.trim(),
-        password: jellyfinPassword,
-      });
+    const { error } = await authClient.signIn.oauth2({
+      providerId: 'oidc',
+      callbackURL: '/',
+      errorCallbackURL: `${BASE_URL}login`,
+      ...(requiresClaimCode && { additionalData: { claimCode: claimCode.trim() } }),
+    });
 
-      if (result.accessToken && result.refreshToken) {
-        tokenStorage.setTokens(result.accessToken, result.refreshToken);
-        setJellyfinUsername('');
-        setJellyfinPassword('');
-        void refetch();
-        toast.success(t('notifications:toast.success.loggedIn.title'), {
-          description: t('notifications:toast.success.loggedIn.message'),
-        });
-        void navigate('/');
-      }
-    } catch (error) {
-      toast.error(t('pages:login.loginFailed'), {
-        description:
-          error instanceof Error ? error.message : t('pages:login.jellyfinInvalidCredentials'),
-      });
-    } finally {
-      setJellyfinLoading(false);
+    if (error) {
+      setOidcError(error.message ?? t('pages:login.oidcError'));
+      setOidcPending(false);
     }
   };
 
@@ -457,6 +469,8 @@ export function Login() {
     );
   }
 
+  const hasPrimaryMethods = authMethods.plex || authMethods.oidc;
+
   return (
     <div className="bg-background flex min-h-screen flex-col items-center justify-center p-4">
       <div className="mb-8 flex flex-col items-center text-center">
@@ -479,7 +493,13 @@ export function Login() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Plex OAuth Section */}
+          {oidcError && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>{oidcError}</AlertDescription>
+            </Alert>
+          )}
+
           {authStep === 'plex-waiting' ? (
             <div className="space-y-4">
               <div className="bg-muted/50 rounded-lg p-4 text-center">
@@ -507,14 +527,33 @@ export function Login() {
             </div>
           ) : (
             <>
-              {/* Plex Login Button - Always Available */}
-              <Button className={`w-full ${PLEX_COLOR} text-white`} onClick={handlePlexLogin}>
-                <MediaServerIcon type="plex" className="mr-2 h-4 w-4" />
-                {needsSetup ? t('settings:plex.signUpWithPlex') : t('settings:plex.signInWithPlex')}
-              </Button>
+              {authMethods.plex && (
+                <Button className={`w-full ${PLEX_COLOR} text-white`} onClick={handlePlexLogin}>
+                  <MediaServerIcon type="plex" className="mr-2 h-4 w-4" />
+                  {needsSetup
+                    ? t('settings:plex.signUpWithPlex')
+                    : t('settings:plex.signInWithPlex')}
+                </Button>
+              )}
 
-              {/* Divider between Plex and other auth methods */}
-              {(hasJellyfinServers || hasPasswordAuth || needsSetup) && (
+              {authMethods.oidc && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={oidcPending}
+                  onClick={handleOidcLogin}
+                >
+                  {oidcPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogIn className="mr-2 h-4 w-4" />
+                  )}
+                  {t('pages:login.continueWith', { provider: authMethods.oidcProviderName })}
+                </Button>
+              )}
+
+              {hasPrimaryMethods && (
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />
@@ -525,173 +564,133 @@ export function Login() {
                 </div>
               )}
 
-              {/* Conditional Auth Forms - Show only one at a time with transition */}
-              {(hasJellyfinServers || hasPasswordAuth || needsSetup) && (
-                <div className="relative min-h-[200px]">
-                  {/* Jellyfin Admin Login Form */}
-                  {showJellyfinForm && hasJellyfinServers && (
-                    <div
-                      key="jellyfin-form"
-                      className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300"
-                    >
-                      <form onSubmit={handleJellyfinLogin} className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="jellyfin-username">
-                            {t('settings:jellyfin.username')}
-                          </Label>
-                          <Input
-                            id="jellyfin-username"
-                            type="text"
-                            placeholder={t('pages:login.jellyfinUsernamePlaceholder')}
-                            value={jellyfinUsername}
-                            onChange={(e) => setJellyfinUsername(e.target.value)}
-                            required
-                            disabled={jellyfinLoading}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="jellyfin-password">
-                            {t('settings:jellyfin.password')}
-                          </Label>
-                          <Input
-                            id="jellyfin-password"
-                            type="password"
-                            placeholder={t('pages:login.jellyfinPasswordPlaceholder')}
-                            value={jellyfinPassword}
-                            onChange={(e) => setJellyfinPassword(e.target.value)}
-                            required
-                            disabled={jellyfinLoading}
-                          />
-                          <p className="text-muted-foreground text-xs">
-                            {t('pages:login.jellyfinAdminNote')}
-                          </p>
-                        </div>
-                        <Button type="submit" className="w-full" disabled={jellyfinLoading}>
-                          {jellyfinLoading ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <MediaServerIcon type="jellyfin" className="mr-2 h-4 w-4" />
-                          )}
-                          {t('settings:jellyfin.signInWithJellyfin')}
-                        </Button>
-                      </form>
-
-                      {/* Toggle button to switch to local auth */}
-                      {hasPasswordAuth && (
-                        <Button
-                          type="button"
-                          variant="link"
-                          className="text-muted-foreground hover:text-foreground mt-4 w-full text-sm transition-colors"
-                          onClick={() => setShowJellyfinForm(false)}
-                        >
-                          {t('settings:account.useLocalAccount')}
-                        </Button>
-                      )}
+              {authMethods.local ? (
+                needsSetup ? (
+                  <form onSubmit={handleSignUp} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">{t('settings:account.displayName')}</Label>
+                      <Input
+                        id="name"
+                        type="text"
+                        autoComplete="name"
+                        placeholder={t('pages:login.displayNamePlaceholder')}
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                        disabled={localPending}
+                      />
                     </div>
-                  )}
-
-                  {/* Local Auth Form */}
-                  {!showJellyfinForm && (hasPasswordAuth || needsSetup) && (
-                    <div
-                      key="local-form"
-                      className="animate-in fade-in-0 slide-in-from-bottom-2 duration-300"
-                    >
-                      {needsSetup ? (
-                        <form onSubmit={handleLocalSignup} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="email">{t('settings:account.email')}</Label>
-                            <Input
-                              id="email"
-                              type="email"
-                              placeholder={t('pages:login.emailPlaceholder')}
-                              value={email}
-                              onChange={(e) => setEmail(e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="username">{t('settings:account.displayName')}</Label>
-                            <Input
-                              id="username"
-                              type="text"
-                              placeholder={t('pages:login.displayNamePlaceholder')}
-                              value={username}
-                              onChange={(e) => setUsername(e.target.value)}
-                              required
-                              minLength={3}
-                              maxLength={50}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="password">{t('settings:account.password')}</Label>
-                            <Input
-                              id="password"
-                              type="password"
-                              placeholder={t('pages:login.passwordPlaceholder')}
-                              value={password}
-                              onChange={(e) => setPassword(e.target.value)}
-                              required
-                              minLength={8}
-                            />
-                          </div>
-                          <Button type="submit" className="w-full" disabled={localLoading}>
-                            {localLoading ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <User className="mr-2 h-4 w-4" />
-                            )}
-                            {t('settings:account.createAccount')}
-                          </Button>
-                        </form>
+                    <div className="space-y-2">
+                      <Label htmlFor="username">{t('pages:login.username')}</Label>
+                      <Input
+                        id="username"
+                        type="text"
+                        autoComplete="username"
+                        placeholder={t('pages:login.usernamePlaceholder')}
+                        value={signupUsername}
+                        onChange={(e) => setSignupUsername(e.target.value)}
+                        required
+                        minLength={3}
+                        maxLength={30}
+                        disabled={localPending}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">{t('settings:account.email')}</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        autoComplete="email"
+                        placeholder={t('pages:login.emailPlaceholder')}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        disabled={localPending}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="password">{t('settings:account.password')}</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder={t('pages:login.passwordPlaceholder')}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        minLength={8}
+                        disabled={localPending}
+                      />
+                    </div>
+                    {formError && (
+                      <p
+                        className="text-destructive flex items-center gap-1.5 text-sm"
+                        role="alert"
+                      >
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {formError}
+                      </p>
+                    )}
+                    <Button type="submit" className="w-full" disabled={localPending}>
+                      {localPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       ) : (
-                        <form onSubmit={handleLocalLogin} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="email">{t('settings:account.email')}</Label>
-                            <Input
-                              id="email"
-                              type="email"
-                              placeholder={t('pages:login.emailPlaceholder')}
-                              value={email}
-                              onChange={(e) => setEmail(e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="password">{t('settings:account.password')}</Label>
-                            <Input
-                              id="password"
-                              type="password"
-                              placeholder={t('pages:login.yourPasswordPlaceholder')}
-                              value={password}
-                              onChange={(e) => setPassword(e.target.value)}
-                              required
-                            />
-                          </div>
-                          <Button type="submit" className="w-full" disabled={localLoading}>
-                            {localLoading ? (
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <KeyRound className="mr-2 h-4 w-4" />
-                            )}
-                            {t('common:actions.signIn')}
-                          </Button>
-                        </form>
+                        <User className="mr-2 h-4 w-4" />
                       )}
-
-                      {/* Toggle button to switch to Jellyfin auth */}
-                      {hasJellyfinServers && (
-                        <Button
-                          type="button"
-                          variant="link"
-                          className="text-muted-foreground hover:text-foreground mt-4 w-full text-sm transition-colors"
-                          onClick={() => setShowJellyfinForm(true)}
-                        >
-                          {t('settings:account.useJellyfinAccount')}
-                        </Button>
-                      )}
+                      {t('settings:account.createAccount')}
+                    </Button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleSignIn} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="identifier">{t('pages:login.usernameOrEmail')}</Label>
+                      <Input
+                        id="identifier"
+                        type="text"
+                        autoComplete="username"
+                        placeholder={t('pages:login.identifierPlaceholder')}
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        required
+                        disabled={localPending}
+                      />
                     </div>
-                  )}
-                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="password">{t('settings:account.password')}</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        autoComplete="current-password"
+                        placeholder={t('pages:login.yourPasswordPlaceholder')}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        disabled={localPending}
+                      />
+                    </div>
+                    {formError && (
+                      <p
+                        className="text-destructive flex items-center gap-1.5 text-sm"
+                        role="alert"
+                      >
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        {formError}
+                      </p>
+                    )}
+                    <Button type="submit" className="w-full" disabled={localPending}>
+                      {localPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <KeyRound className="mr-2 h-4 w-4" />
+                      )}
+                      {t('common:actions.signIn')}
+                    </Button>
+                  </form>
+                )
+              ) : (
+                <p className="text-muted-foreground text-center text-sm">
+                  {t('pages:login.localDisabledHint')}
+                </p>
               )}
             </>
           )}

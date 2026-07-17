@@ -101,19 +101,19 @@ export function getDateRange(period: 'day' | 'week' | 'month' | 'year'): Date {
 // Timezone Utilities
 // ============================================================================
 
-/**
- * Get the start of "today" in a specific timezone, returned as a UTC Date.
- *
- * For example, if it's 2024-01-15 10:00 in America/Los_Angeles (UTC-8),
- * this returns 2024-01-15 08:00 UTC (which is midnight PST).
- *
- * @param tz - IANA timezone identifier (e.g., 'America/Los_Angeles')
- * @returns Date representing midnight in the specified timezone
- */
-export function getStartOfDayInTimezone(tz: string): Date {
-  const now = new Date();
+interface LocalDateTimeParts {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+}
 
-  // Get current date parts in target timezone
+/**
+ * Read an instant's wall-clock date/time in a given timezone.
+ */
+function getLocalDateTimeParts(tz: string, date: Date): LocalDateTimeParts {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     year: 'numeric',
@@ -125,16 +125,81 @@ export function getStartOfDayInTimezone(tz: string): Date {
     hour12: false,
   });
 
-  const parts = formatter.formatToParts(now);
-  const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
-  const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
-  const second = parseInt(parts.find((p) => p.type === 'second')?.value ?? '0', 10);
+  const parts = formatter.formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parseInt(parts.find((p) => p.type === type)?.value ?? '0', 10);
 
-  // Calculate milliseconds since midnight in the target timezone
-  const msSinceMidnight = (hour * 3600 + minute * 60 + second) * 1000;
+  return {
+    year: get('year'),
+    month: get('month'),
+    day: get('day'),
+    // Some ICU implementations format midnight as hour "24" with hour12: false.
+    hour: get('hour') % 24,
+    minute: get('minute'),
+    second: get('second'),
+  };
+}
 
-  // Subtract that from now to get midnight in UTC
-  return new Date(now.getTime() - msSinceMidnight);
+/**
+ * Resolve the UTC instant of local midnight for a given calendar day in a
+ * timezone. DST-safe: a naive "subtract time-of-day from now" approach is
+ * wrong whenever a DST transition falls between local midnight and the
+ * reference instant, because the elapsed wall-clock duration no longer
+ * equals the elapsed real duration on that day. This instead makes a first
+ * guess, checks what wall-clock instant that guess actually lands on in
+ * `tz`, and corrects by the discrepancy - which converges in at most two
+ * passes since real-world DST shifts are always a small, fixed number of
+ * hours.
+ */
+function zonedMidnightToUtc(tz: string, year: number, month: number, day: number): Date {
+  const targetUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0);
+  let guessMs = targetUtcMs;
+
+  for (let i = 0; i < 2; i++) {
+    const parts = getLocalDateTimeParts(tz, new Date(guessMs));
+    const guessAsUtcMs = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      parts.second
+    );
+    const diff = guessAsUtcMs - targetUtcMs;
+    if (diff === 0) break;
+    guessMs -= diff;
+  }
+
+  return new Date(guessMs);
+}
+
+/**
+ * Get the start of "today" in a specific timezone, returned as a UTC Date.
+ *
+ * For example, if it's 2024-01-15 10:00 in America/Los_Angeles (UTC-8),
+ * this returns 2024-01-15 08:00 UTC (which is midnight PST).
+ *
+ * @param tz - IANA timezone identifier (e.g., 'America/Los_Angeles')
+ * @returns Date representing midnight in the specified timezone
+ */
+export function getStartOfDayInTimezone(tz: string): Date {
+  const now = new Date();
+  const { year, month, day } = getLocalDateTimeParts(tz, now);
+  return zonedMidnightToUtc(tz, year, month, day);
+}
+
+/**
+ * Start of the local day AFTER `todayStart` (also midnight in `tz`), as a
+ * UTC Date. `todayStart` is assumed to already be local midnight (e.g. the
+ * output of getStartOfDayInTimezone) - its own local calendar date is used
+ * as the base, and the following day is resolved through the same DST-safe
+ * core so the interval is exactly 23/24/25 hours as the transition dictates,
+ * never a fixed 24-hour offset that can land before or after local midnight
+ * on a DST transition day.
+ */
+export function getStartOfNextDayInTimezone(tz: string, todayStart: Date): Date {
+  const { year, month, day } = getLocalDateTimeParts(tz, todayStart);
+  return zonedMidnightToUtc(tz, year, month, day + 1);
 }
 
 // ============================================================================

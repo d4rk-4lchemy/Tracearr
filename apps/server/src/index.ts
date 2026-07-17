@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { gzipSync, createGzip } from 'node:zlib';
 import { Redis } from 'ioredis';
 import { API_BASE_PATH, REDIS_KEYS, WS_EVENTS } from '@tracearr/shared';
+import { createBetterAuthHandler } from './lib/betterAuthRequest.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -43,10 +44,12 @@ import type {
 
 import authPlugin, { loadJwtRevokeSettings } from './plugins/auth.js';
 import redisPlugin, { connectRedis } from './plugins/redis.js';
+import { closeAuth } from './lib/auth.js';
 import { authRoutes } from './routes/auth/index.js';
 import { setupRoutes } from './routes/setup.js';
 import { serverRoutes } from './routes/servers.js';
 import { userRoutes } from './routes/users/index.js';
+import { serverUserRoutes } from './routes/serverUsers.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { ruleRoutes } from './routes/rules.js';
 import { violationRoutes } from './routes/violations.js';
@@ -88,6 +91,7 @@ import {
   startDispatcharrRealtimeProcessor,
   stopDispatcharrRealtimeProcessor,
 } from './jobs/dispatcharrRealtimeProcessor.js';
+import { startPluginUpdateChecker, stopPluginUpdateChecker } from './jobs/pluginUpdateChecker.js';
 import { initializeWebSocket, broadcastToSessions } from './websocket/index.js';
 import {
   initNotificationQueue,
@@ -124,13 +128,24 @@ import {
   scheduleBackupJob,
   shutdownBackupQueue,
 } from './jobs/backupQueue.js';
+import {
+  initPlexTokenRefreshQueue,
+  startPlexTokenRefreshWorker,
+  schedulePlexTokenRefresh,
+  shutdownPlexTokenRefreshQueue,
+} from './jobs/plexTokenRefresh.js';
 import { initHeavyOpsLock } from './jobs/heavyOpsLock.js';
 import { initPushRateLimiter } from './services/pushRateLimiter.js';
 import { initializeV2Rules } from './services/rules/v2Integration.js';
 import { processPushReceipts } from './services/pushNotification.js';
 import { cleanupMobileTokens } from './jobs/cleanupMobileTokens.js';
 import { db, checkDatabaseConnection, runMigrations } from './db/client.js';
-import { initTimescaleDB, getTimescaleStatus, updateTimescaleExtensions } from './db/timescale.js';
+import {
+  initTimescaleDB,
+  getTimescaleStatus,
+  updateTimescaleExtensions,
+  runAggregateBackfill,
+} from './db/timescale.js';
 import { eq } from 'drizzle-orm';
 import { servers } from './db/schema.js';
 import { initializeClaimCode } from './utils/claimCode.js';
@@ -171,6 +186,12 @@ let redisCloseHandler: (() => void) | null = null;
 let redisReadyHandler: (() => void) | null = null;
 const DB_HEALTH_CHECK_MS = 10_000;
 
+/** Set by initializeServices() when initTimescaleDB() reports a historical
+ * aggregate backfill is still needed; consumed by initializePostListen() so
+ * the (potentially slow) backfill never blocks startup. */
+let pendingAggregateBackfill: { targetVersion: number } | null = null;
+let aggregateBackfillRunning = false;
+
 /** Cached timescale status — refreshed by the DB health interval. */
 let cachedTimescale: {
   installed: boolean;
@@ -199,7 +220,8 @@ async function refreshTimescaleCache(): Promise<void> {
 const BASE_PATH = process.env.BASE_PATH?.replace(/\/+$/, '').replace(/^\/?/, '/') || '';
 
 // ============================================================================
-// Phase 1: Build the Fastify app (always succeeds, even without DB/Redis)
+// Phase 1: Build the Fastify app (builds without DB/Redis, but fails fast if
+// required secrets like BETTER_AUTH_SECRET are missing)
 // ============================================================================
 
 async function buildApp(options: { trustProxy?: boolean } = {}) {
@@ -376,9 +398,20 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
 
   // API routes — registered now but gated by the maintenance hook above
   await app.register(setupRoutes, { prefix: `${API_BASE_PATH}/setup` });
+
+  // Better Auth catch-all. Static legacy routes registered below win over this
+  // wildcard for their exact paths; everything else under /api/v1/auth is BA.
+  app.route({
+    method: ['GET', 'POST'],
+    url: `${API_BASE_PATH}/auth/*`,
+    config: { rateLimit: false },
+    handler: createBetterAuthHandler(),
+  });
+
   await app.register(authRoutes, { prefix: `${API_BASE_PATH}/auth` });
   await app.register(serverRoutes, { prefix: `${API_BASE_PATH}/servers` });
   await app.register(userRoutes, { prefix: `${API_BASE_PATH}/users` });
+  await app.register(serverUserRoutes, { prefix: `${API_BASE_PATH}/server-users` });
   await app.register(sessionRoutes, { prefix: `${API_BASE_PATH}/sessions` });
   await app.register(ruleRoutes, { prefix: `${API_BASE_PATH}/rules` });
   await app.register(violationRoutes, { prefix: `${API_BASE_PATH}/violations` });
@@ -464,6 +497,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
       clearInterval(mobileTokenCleanupInterval);
     }
     stopImageCacheCleanup();
+    await closeAuth();
     if (pubSubRedis) await pubSubRedis.quit();
     if (wsSubscriber) await wsSubscriber.quit();
     stopPoller();
@@ -471,6 +505,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     await tailscaleService.shutdown();
     stopSSEProcessor();
     stopDispatcharrRealtimeProcessor();
+    stopPluginUpdateChecker();
     await shutdownNotificationQueue();
     await shutdownImportQueue();
     await shutdownMaintenanceQueue();
@@ -478,6 +513,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     await shutdownVersionCheckQueue();
     await shutdownInactivityCheckQueue();
     await shutdownBackupQueue();
+    await shutdownPlexTokenRefreshQueue();
   });
 
   // Probe DB and Redis to decide if we can initialize services now
@@ -578,6 +614,13 @@ async function initializeServices(app: FastifyInstance) {
     } else if (!tsResult.status.extensionInstalled) {
       app.log.warn(
         'TimescaleDB extension not installed - running without time-series optimization'
+      );
+    }
+    if (tsResult.backfillPending) {
+      pendingAggregateBackfill = { targetVersion: tsResult.backfillPending.targetVersion };
+      app.log.warn(
+        `TimescaleDB aggregates need a historical backfill (target schema v${tsResult.backfillPending.targetVersion}). ` +
+          'Recent dashboards are available now; full history will backfill in the background after startup.'
       );
     }
   } catch (err) {
@@ -786,6 +829,17 @@ async function initializeServices(app: FastifyInstance) {
     // Don't throw - scheduled backups are non-critical
   }
 
+  // Initialize plex token refresh queue (renews strong-PIN JWT tokens before they expire)
+  try {
+    initPlexTokenRefreshQueue(redisUrl);
+    startPlexTokenRefreshWorker();
+    void schedulePlexTokenRefresh();
+    app.log.info('Plex token refresh queue initialized');
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize plex token refresh queue');
+    // Don't throw - legacy tokens don't need refreshing and login has its own fallback
+  }
+
   // Initialize poller with cache services
   initializePoller(cacheService, pubSubService);
 
@@ -971,6 +1025,7 @@ async function initializePostListen(app: FastifyInstance) {
     // Clean up any orphaned pending sessions from previous server instance
     await cleanupOrphanedPendingSessions();
     startSSEProcessor(); // Subscribe to SSE events
+    startPluginUpdateChecker();
     startDispatcharrRealtimeProcessor(); // Subscribe to Dispatcharr snapshot updates
     await sseManager.start(); // Start realtime connections
     app.log.info('Realtime connections started for Plex/Jellyfin/Emby SSE and Dispatcharr WS');
@@ -989,6 +1044,23 @@ async function initializePostListen(app: FastifyInstance) {
   }
   if (networkSettings.externalUrl) {
     app.log.info(`External URL configured: ${networkSettings.externalUrl}`);
+  }
+
+  // Kick off any pending historical aggregate backfill now that the server is
+  // accepting traffic. Recent data is already available from the bounded
+  // refresh initTimescaleDB() did synchronously; this fills in older history
+  // in the background without blocking startup or the startup probe.
+  if (pendingAggregateBackfill && !aggregateBackfillRunning) {
+    const targetVersion = pendingAggregateBackfill.targetVersion;
+    pendingAggregateBackfill = null;
+    aggregateBackfillRunning = true;
+    void runAggregateBackfill(targetVersion)
+      .catch((err) => {
+        app.log.error({ err }, 'Aggregate backfill failed unexpectedly');
+      })
+      .finally(() => {
+        aggregateBackfillRunning = false;
+      });
   }
 }
 
@@ -1081,6 +1153,7 @@ async function start() {
         void shutdownVersionCheckQueue();
         void shutdownInactivityCheckQueue();
         void shutdownBackupQueue();
+        void shutdownPlexTokenRefreshQueue();
         void app.close().then(() => process.exit(0));
       });
     }
@@ -1094,6 +1167,7 @@ async function start() {
         stopPoller();
         stopSSEProcessor();
         stopDispatcharrRealtimeProcessor();
+        stopPluginUpdateChecker();
         void sseManager.stop();
         void tailscaleService.shutdown();
 
@@ -1116,6 +1190,7 @@ async function start() {
           shutdownVersionCheckQueue(),
           shutdownInactivityCheckQueue(),
           shutdownBackupQueue(),
+          shutdownPlexTokenRefreshQueue(),
         ]).catch((err) => {
           app.log.error({ err }, 'Error shutting down queues during maintenance');
         });

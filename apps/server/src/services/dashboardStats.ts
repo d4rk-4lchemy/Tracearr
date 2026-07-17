@@ -5,11 +5,11 @@
  * Used by both internal dashboard route and public API stats/today endpoint.
  */
 
-import { sql, gte, and, inArray } from 'drizzle-orm';
+import { sql, gte, and, inArray, eq } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
 import { REDIS_KEYS, TIME_MS, type DashboardStats } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { sessions } from '../db/schema.js';
+import { sessions, serverUsers } from '../db/schema.js';
 import {
   playsCountSince,
   watchTimeSince,
@@ -18,7 +18,7 @@ import {
 } from '../db/prepared.js';
 import { buildMultiServerCondition, buildMultiServerFragment } from '../utils/serverFiltering.js';
 import { getCacheService } from './cache.js';
-import { getStartOfDayInTimezone } from '../routes/stats/utils.js';
+import { getStartOfDayInTimezone, getStartOfNextDayInTimezone } from '../routes/stats/utils.js';
 import { PRIMARY_MEDIA_TYPES, MEDIA_TYPE_SQL_FILTER } from '../constants/index.js';
 
 export interface GetDashboardStatsOptions {
@@ -89,6 +89,7 @@ async function computeDashboardStats(
   }
 
   const todayStart = getStartOfDayInTimezone(timezone);
+  const todayEnd = getStartOfNextDayInTimezone(timezone, todayStart);
   const last24h = new Date(Date.now() - TIME_MS.DAY);
 
   let todayPlays: number;
@@ -113,7 +114,7 @@ async function computeDashboardStats(
       db.execute(sql`
         SELECT COUNT(DISTINCT COALESCE(reference_id, id))::int as count
         FROM sessions
-        WHERE (started_at AT TIME ZONE ${timezone})::date = (NOW() AT TIME ZONE ${timezone})::date
+        WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
           AND duration_ms >= ${MIN_PLAY_DURATION_MS}
           ${MEDIA_TYPE_SQL_FILTER}
       `),
@@ -177,17 +178,20 @@ async function computeDashboardStats(
         )
         .then((r) => [{ count: (r.rows[0] as { count: number })?.count ?? 0 }]),
 
+      // Distinct identities (people), not accounts - a merged person with
+      // accounts on multiple selected servers counts once.
       db
         .select({
-          count: sql<number>`count(DISTINCT server_user_id)::int`,
+          count: sql<number>`count(DISTINCT ${serverUsers.userId})::int`,
         })
         .from(sessions)
+        .innerJoin(serverUsers, eq(sessions.serverUserId, serverUsers.id))
         .where(and(...buildSessionConditions(todayStart))),
 
       db.execute(sql`
         SELECT COUNT(DISTINCT COALESCE(reference_id, id))::int as count
         FROM sessions
-        WHERE (started_at AT TIME ZONE ${timezone})::date = (NOW() AT TIME ZONE ${timezone})::date
+        WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
           AND duration_ms >= ${MIN_PLAY_DURATION_MS}
           ${MEDIA_TYPE_SQL_FILTER}
         ${sessionServerFilter}

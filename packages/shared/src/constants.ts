@@ -2,6 +2,8 @@
  * Shared constants for Tracearr
  */
 
+import { classifyByDimensions, type ResolutionLabel } from './resolution.js';
+
 // Rule type definitions with default parameters
 export const RULE_DEFAULTS = {
   impossible_travel: {
@@ -43,6 +45,21 @@ export const RULE_DISPLAY_NAMES = {
   geo_restriction: 'Geo Restriction',
   account_inactivity: 'Account Inactivity',
 } as const;
+
+// Condition fields whose evaluators are identity-aware (see belongsToIdentity in
+// services/rules/evaluators/index.ts): they aggregate across every server_user id
+// belonging to the same identity when the evaluation context carries
+// identityServerUserIds. The UI (RuleBuilder) offers enforceAcrossServers as soon
+// as ANY condition on the rule uses a field from this set, not only when every
+// field does - one identity-aware condition is enough for cross-server action
+// reach to make sense for the rule as a whole.
+export const IDENTITY_AWARE_CONDITION_FIELDS = [
+  'concurrent_streams',
+  'active_session_distance_km',
+  'travel_speed_kmh',
+  'unique_ips_in_window',
+  'unique_devices_in_window',
+] as const;
 
 // Severity levels
 export const SEVERITY_LEVELS = {
@@ -239,6 +256,8 @@ export const REDIS_KEYS = {
   // Filter options caching
   FILTER_OPTIONS: (userId: string, scopeHash: string) =>
     `${_redisPrefix}tracearr:filter-options:${userId}:${scopeHash}`,
+  // v1 segment invalidates cached entries if the GeoLocation shape ever changes
+  PLEX_GEOIP: (ip: string) => `${_redisPrefix}tracearr:geoip:plex:v1:${ip}`,
 };
 
 // Cache TTLs in seconds
@@ -270,6 +289,9 @@ export const CACHE_TTL = {
   MOBILE_LAST_SEEN: 300, // 5 minutes - throttle for device activity updates
   // Filter options (dropdown values change infrequently)
   FILTER_OPTIONS: 120, // 2 minutes
+  PLEX_GEOIP: 86400,
+  // Fail-open: short negative cache keeps a down plex.tv from being hit every poll tick
+  PLEX_GEOIP_NEGATIVE: 600,
 } as const;
 
 // Notification event types (must match NotificationEventType in types.ts)
@@ -282,6 +304,7 @@ export const NOTIFICATION_EVENTS = {
   TRUST_SCORE_CHANGED: 'trust_score_changed',
   SERVER_DOWN: 'server_down',
   SERVER_UP: 'server_up',
+  PLUGIN_UPDATE_AVAILABLE: 'plugin_update_available',
 } as const;
 
 // API version
@@ -642,44 +665,12 @@ export function formatMediaTech(value: string | null | undefined): string {
   return MEDIA_TECH_DISPLAY[lower] ?? value.toUpperCase();
 }
 
-// Resolution tier values for comparison
-const RESOLUTION_TIERS = {
-  '8K': 6,
-  '4K': 5,
-  '1440p': 4,
-  '1080p': 3,
-  '720p': 2,
-  '480p': 1,
-  SD: 0,
-} as const;
-export type ResolutionLabel = keyof typeof RESOLUTION_TIERS;
-
-function getResolutionFromWidth(width: number): ResolutionLabel {
-  if (width >= 7680) return '8K';
-  if (width >= 3840) return '4K';
-  if (width >= 2560) return '1440p';
-  if (width >= 1920) return '1080p';
-  if (width >= 1280) return '720p';
-  if (width >= 854) return '480p';
-  return 'SD';
-}
-
-function getResolutionFromHeight(height: number): ResolutionLabel {
-  if (height >= 4320) return '8K';
-  if (height >= 2160) return '4K';
-  if (height >= 1440) return '1440p';
-  if (height >= 1080) return '1080p';
-  if (height >= 720) return '720p';
-  if (height >= 480) return '480p';
-  return 'SD';
-}
+export type { ResolutionLabel };
 
 /**
- * Get video resolution label from width and height.
- * Uses MAX of width-based and height-based logic to correctly classify all aspect ratios:
- * - Widescreen/cinemascope: 1920x800 → max(1080p, 720p) = 1080p
- * - 4:3 aspect ratio: 1440x1080 → max(720p, 1080p) = 1080p
- * - Standard 16:9: 1920x1080 → max(1080p, 1080p) = 1080p
+ * Get video resolution label from width and height. Thin re-export of the
+ * shared dimension ladder in resolution.ts - kept here so existing imports
+ * of `getResolutionLabel` from `@tracearr/shared` keep working.
  *
  * @param width - Video width in pixels
  * @param height - Video height in pixels
@@ -690,30 +681,12 @@ function getResolutionFromHeight(height: number): ResolutionLabel {
  * getResolutionLabel(3840, 2160) // "4K"
  * getResolutionLabel(2560, 1440) // "1440p"
  * getResolutionLabel(1920, 1080) // "1080p"
- * getResolutionLabel(1920, 800)  // "1080p" (cinemascope - width indicates quality)
+ * getResolutionLabel(1920, 800)  // "1080p" (widescreen - width indicates quality)
  * getResolutionLabel(1440, 1080) // "1080p" (4:3 - height indicates quality)
  * getResolutionLabel(1280, 720)  // "720p"
  * getResolutionLabel(null, 1080) // "1080p" (fallback to height)
  */
-export function getResolutionLabel(
-  width: number | null | undefined,
-  height: number | null | undefined
-): ResolutionLabel | null {
-  if (width && height) {
-    const widthRes = getResolutionFromWidth(width);
-    const heightRes = getResolutionFromHeight(height);
-    return RESOLUTION_TIERS[widthRes] >= RESOLUTION_TIERS[heightRes] ? widthRes : heightRes;
-  }
-  // Width-only
-  if (width) {
-    return getResolutionFromWidth(width);
-  }
-  // Height-only fallback
-  if (height) {
-    return getResolutionFromHeight(height);
-  }
-  return null;
-}
+export const getResolutionLabel = classifyByDimensions;
 
 /**
  * Format video resolution with dimensions and label for display.
@@ -826,6 +799,10 @@ export const BANDWIDTH_STATS_CONFIG = {
   // Data points to display (2 min * 1/s = 120 points)
   DATA_POINTS: 120,
 } as const;
+
+// Sentinel returned by the merge API when combining server users on the same
+// server needs an explicit confirmation flag before proceeding
+export const MERGE_SAME_SERVER_CONFIRMATION_REQUIRED = 'same_server_combine_requires_confirmation';
 
 // Session limits
 export const SESSION_LIMITS = {

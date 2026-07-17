@@ -124,6 +124,65 @@ describe('Plex Session Parser', () => {
       expect(session.episode?.showId).toBe('33333');
     });
 
+    it('should parse a Season 0 (Specials) episode with seasonNumber 0, not null', () => {
+      const rawSession = {
+        sessionKey: 'specials-1',
+        ratingKey: '99999',
+        title: 'Behind the Scenes',
+        type: 'episode',
+        duration: 600000,
+        viewOffset: 0,
+        grandparentTitle: 'Breaking Bad',
+        parentTitle: 'Specials',
+        parentIndex: 0,
+        index: 1,
+        User: { id: '2', title: 'Jane' },
+        Player: { title: 'TV', machineIdentifier: 'tv-uuid' },
+      };
+
+      const session = parseSession(rawSession);
+
+      expect(session.episode?.seasonNumber).toBe(0);
+      expect(session.episode?.episodeNumber).toBe(1);
+    });
+
+    it('should parse episode index 0 as episodeNumber 0, not null', () => {
+      const rawSession = {
+        sessionKey: 'episode-zero',
+        ratingKey: '88888',
+        title: 'Episode Zero',
+        type: 'episode',
+        grandparentTitle: 'Breaking Bad',
+        parentIndex: 1,
+        index: 0,
+        User: { id: '2', title: 'Jane' },
+        Player: { title: 'TV', machineIdentifier: 'tv-uuid' },
+      };
+
+      const session = parseSession(rawSession);
+
+      expect(session.episode?.seasonNumber).toBe(1);
+      expect(session.episode?.episodeNumber).toBe(0);
+    });
+
+    it('should parse a missing parentIndex as null, not 0', () => {
+      const rawSession = {
+        sessionKey: 'no-season',
+        ratingKey: '77777',
+        title: 'Mystery Episode',
+        type: 'episode',
+        grandparentTitle: 'Breaking Bad',
+        index: 3,
+        User: { id: '2', title: 'Jane' },
+        Player: { title: 'TV', machineIdentifier: 'tv-uuid' },
+      };
+
+      const session = parseSession(rawSession);
+
+      expect(session.episode?.seasonNumber).toBeNull();
+      expect(session.episode?.episodeNumber).toBe(3);
+    });
+
     it('should handle missing optional fields gracefully', () => {
       const rawSession = {
         sessionKey: 'minimal',
@@ -278,10 +337,13 @@ describe('Plex Session Parser', () => {
       expect(sessions[1]!.sessionKey).toBe('2');
     });
 
-    it('should return empty array for missing MediaContainer', () => {
-      expect(parseSessionsResponse({})).toEqual([]);
+    it('should return empty array when MediaContainer has no Metadata (no active sessions)', () => {
       expect(parseSessionsResponse({ MediaContainer: {} })).toEqual([]);
-      expect(parseSessionsResponse(null)).toEqual([]);
+    });
+
+    it('should throw for a malformed response missing MediaContainer', () => {
+      expect(() => parseSessionsResponse({})).toThrow();
+      expect(() => parseSessionsResponse(null)).toThrow();
     });
 
     it('should use composite key to resolve correct media version per session (issue #686)', () => {
@@ -872,11 +934,14 @@ describe('Plex Music Track Parser', () => {
 
 describe('Plex Parser Edge Cases', () => {
   it('should handle null/undefined inputs gracefully', () => {
-    expect(parseSessionsResponse(null)).toEqual([]);
-    expect(parseSessionsResponse(undefined)).toEqual([]);
     expect(parseUsersResponse(null)).toEqual([]);
     expect(parseLibrariesResponse(null)).toEqual([]);
     expect(parseWatchHistoryResponse(null)).toEqual([]);
+  });
+
+  it('should throw for malformed session responses', () => {
+    expect(() => parseSessionsResponse(null)).toThrow();
+    expect(() => parseSessionsResponse(undefined)).toThrow();
   });
 
   it('should handle media type conversion', () => {
@@ -1197,10 +1262,7 @@ describe('Plex Original Media Metadata Parser', () => {
             {
               ratingKey: '123',
               TranscodeSession: { videoDecision: 'transcode', audioDecision: 'copy' },
-              Media: [
-                { id: 456, selected: '1' },
-                { id: 789 },
-              ],
+              Media: [{ id: 456, selected: '1' }, { id: 789 }],
             },
             {
               ratingKey: '999',
