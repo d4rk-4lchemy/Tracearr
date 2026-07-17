@@ -22,7 +22,14 @@ import { storeActionResults } from '../services/rules/v2Integration.js';
 const QUEUE_NAME = 'kill-stream';
 
 export interface KillJobData {
-  sessionId: string;
+  /** Session actually terminated by this job. Each resolved target of a
+   *  multi-target match gets its own job keyed by this id. */
+  targetSessionId: string;
+  /** Session whose match produced this kill. reverify rebuilds the evaluation
+   *  context from THIS session (not the target) so the re-check reproduces the
+   *  match live evaluation made, even when the target is a sibling
+   *  session/server. Equals targetSessionId for target: 'triggering'. */
+  triggeringSessionId: string;
   serverId: string;
   ruleId: string;
   /** Violation the kill_stream match created; null when the match created no violation. */
@@ -145,7 +152,8 @@ function outcomeToActionResult(result: ReverifyKillConditionResult): ActionResul
  */
 export async function processKillJob(job: Job<KillJobData>): Promise<void> {
   const {
-    sessionId,
+    triggeringSessionId,
+    targetSessionId,
     serverId,
     ruleId,
     violationId,
@@ -159,7 +167,28 @@ export async function processKillJob(job: Job<KillJobData>): Promise<void> {
   // relevant for the idempotency check inside reverifyKillCondition.
   const isRetry = job.attemptsMade > 0;
 
-  const result = await reverifyKillCondition({ sessionId, serverId, ruleId, message, isRetry });
+  const result = await reverifyKillCondition({
+    triggeringSessionId,
+    targetSessionId,
+    serverId,
+    ruleId,
+    violationId,
+    message,
+    isRetry,
+  });
+
+  // A transient termination failure must consume the configured retries instead
+  // of completing the job. On any attempt but the last, re-throw WITHOUT storing
+  // so BullMQ retries and no failed row is written yet; on the final attempt,
+  // fall through and store exactly one 'failed' row so a permanently failing
+  // kill ends with a single record rather than one per attempt.
+  if (result.outcome === 'failed') {
+    const maxAttempts = job.opts.attempts ?? 1;
+    const isFinalAttempt = job.attemptsMade >= maxAttempts - 1;
+    if (!isFinalAttempt) {
+      throw new Error(result.error ?? 'Kill termination failed');
+    }
+  }
 
   // Arm before storeActionResults so a cooldown write failure doesn't leave a
   // 'killed' row on record without the cooldown actually active.
@@ -179,16 +208,33 @@ export async function processKillJob(job: Job<KillJobData>): Promise<void> {
   await storeActionResults(violationId, ruleId, [outcomeToActionResult(result)]);
 }
 
-function buildJobId(violationId: string | null, sessionId: string, ruleId: string): string {
-  // Without a violationId, two different rule matches on the same session
-  // would otherwise collide on `kill:null:<sessionId>` and dedupe each other.
-  if (violationId) return `kill:${violationId}:${sessionId}`;
-  return `kill:rule:${ruleId}:${sessionId}`;
+// Wall-clock bucket (ms) for the null-violation fallback jobId. Two enqueues in
+// the same bucket dedupe (the intended collapse of a match re-enqueued across
+// poll ticks within the sustain window); a later independent match on the same
+// rule+session lands in a new bucket and gets a distinct id, so it is not
+// swallowed by dedup against a still-retained completed job (removeOnComplete
+// keeps completed jobs up to 24h).
+const JOBID_BUCKET_MS = 10 * 60 * 1000;
+
+function buildJobId(
+  violationId: string | null,
+  targetSessionId: string,
+  ruleId: string,
+  nowMs: number
+): string {
+  // BullMQ rejects a custom jobId containing ':' unless it splits into exactly
+  // three segments, so every branch keeps exactly two colons and packs any
+  // extra keys with underscores. Ids (UUIDs) never contain ':'.
+  if (violationId) return `kill:${violationId}:${targetSessionId}`;
+  const bucket = Math.floor(nowMs / JOBID_BUCKET_MS);
+  return `kill:${targetSessionId}:rule_${ruleId}_${bucket}`;
 }
 
 /**
  * Enqueue a kill for delayed, re-verified termination.
- * Returns the job ID if enqueued, or undefined if deduplicated/dropped.
+ * Returns the job id when a job was created or already exists (BullMQ dedupes a
+ * repeat jobId server-side and returns the existing job), or undefined when the
+ * queue is not initialized and the kill was dropped.
  */
 export async function enqueueKill(
   data: KillJobData,
@@ -199,28 +245,14 @@ export async function enqueueKill(
     return undefined;
   }
 
-  const jobId = buildJobId(data.violationId, data.sessionId, data.ruleId);
+  const jobId = buildJobId(data.violationId, data.targetSessionId, data.ruleId, Date.now());
 
-  try {
-    const job = await killQueue.add('kill', data, {
-      jobId,
-      delay: Math.max(0, delaySeconds) * 1000,
-    });
+  const job = await killQueue.add('kill', data, {
+    jobId,
+    delay: Math.max(0, delaySeconds) * 1000,
+  });
 
-    return job.id;
-  } catch (error) {
-    if (error instanceof Error) {
-      const msg = error.message.toLowerCase();
-      const isDuplicateError =
-        msg.includes('job with id') || msg.includes('already exists') || msg.includes('duplicate');
-
-      if (isDuplicateError) {
-        console.debug(`[KillQueue] Deduplicated kill job (jobId: ${jobId})`);
-        return undefined;
-      }
-    }
-    throw error;
-  }
+  return job.id;
 }
 
 /**

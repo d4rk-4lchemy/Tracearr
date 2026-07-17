@@ -144,7 +144,8 @@ describe('reverifyKillCondition', () => {
     mockSessionFindFirst.mockResolvedValue(undefined);
 
     const result = await reverifyKillCondition({
-      sessionId: randomUUID(),
+      triggeringSessionId: randomUUID(),
+      targetSessionId: randomUUID(),
       serverId: randomUUID(),
       ruleId: randomUUID(),
     });
@@ -157,7 +158,8 @@ describe('reverifyKillCondition', () => {
     mockSessionFindFirst.mockResolvedValue(makeSessionRow({ stoppedAt: new Date() }));
 
     const result = await reverifyKillCondition({
-      sessionId: randomUUID(),
+      triggeringSessionId: randomUUID(),
+      targetSessionId: randomUUID(),
       serverId: randomUUID(),
       ruleId: randomUUID(),
     });
@@ -172,7 +174,8 @@ describe('reverifyKillCondition', () => {
     );
 
     const result = await reverifyKillCondition({
-      sessionId: randomUUID(),
+      triggeringSessionId: randomUUID(),
+      targetSessionId: randomUUID(),
       serverId: randomUUID(),
       ruleId: randomUUID(),
       isRetry: false,
@@ -188,7 +191,8 @@ describe('reverifyKillCondition', () => {
     );
 
     const result = await reverifyKillCondition({
-      sessionId: randomUUID(),
+      triggeringSessionId: randomUUID(),
+      targetSessionId: randomUUID(),
       serverId: randomUUID(),
       ruleId: randomUUID(),
       isRetry: true,
@@ -204,7 +208,8 @@ describe('reverifyKillCondition', () => {
     );
 
     const result = await reverifyKillCondition({
-      sessionId: randomUUID(),
+      triggeringSessionId: randomUUID(),
+      targetSessionId: randomUUID(),
       serverId: randomUUID(),
       ruleId: randomUUID(),
       isRetry: true,
@@ -223,7 +228,8 @@ describe('reverifyKillCondition', () => {
     mockRuleSelect(undefined);
 
     const result = await reverifyKillCondition({
-      sessionId: randomUUID(),
+      triggeringSessionId: randomUUID(),
+      targetSessionId: randomUUID(),
       serverId: randomUUID(),
       ruleId: randomUUID(),
     });
@@ -237,7 +243,8 @@ describe('reverifyKillCondition', () => {
     mockRuleSelect(makeRuleRow({ isActive: false }));
 
     const result = await reverifyKillCondition({
-      sessionId: randomUUID(),
+      triggeringSessionId: randomUUID(),
+      targetSessionId: randomUUID(),
       serverId: randomUUID(),
       ruleId: randomUUID(),
     });
@@ -261,7 +268,8 @@ describe('reverifyKillCondition', () => {
     ]);
 
     const result = await reverifyKillCondition({
-      sessionId: randomUUID(),
+      triggeringSessionId: randomUUID(),
+      targetSessionId: randomUUID(),
       serverId: randomUUID(),
       ruleId: ruleRow.id,
     });
@@ -291,7 +299,8 @@ describe('reverifyKillCondition', () => {
     });
 
     const result = await reverifyKillCondition({
-      sessionId: sessionRow.id,
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
       serverId: sessionRow.serverId,
       ruleId: ruleRow.id,
       message: 'Concurrent stream limit exceeded',
@@ -348,7 +357,8 @@ describe('reverifyKillCondition', () => {
     });
 
     await reverifyKillCondition({
-      sessionId: sessionRow.id,
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
       serverId: sessionRow.serverId,
       ruleId: ruleRow.id,
     });
@@ -392,7 +402,8 @@ describe('reverifyKillCondition', () => {
     });
 
     await reverifyKillCondition({
-      sessionId: sessionRow.id,
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
       serverId: sessionRow.serverId,
       ruleId: ruleRow.id,
     });
@@ -453,7 +464,8 @@ describe('reverifyKillCondition', () => {
     // live evaluation (which never gates this on enforceAcrossServers)
     // matched both accounts together.
     const result = await reverifyKillCondition({
-      sessionId: sessionRow.id,
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
       serverId: sessionRow.serverId,
       ruleId: ruleRow.id,
     });
@@ -510,7 +522,8 @@ describe('reverifyKillCondition', () => {
     // session is appended back into the evaluation context, concurrent_streams
     // sees a count of 1 against >= 2 and self-aborts.
     const result = await reverifyKillCondition({
-      sessionId: sessionRow.id,
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
       serverId: sessionRow.serverId,
       ruleId: ruleRow.id,
     });
@@ -522,6 +535,166 @@ describe('reverifyKillCondition', () => {
       ruleId: ruleRow.id,
       reason: undefined,
     });
+  });
+
+  it('R1/R2: evaluates against the TRIGGER context, so a scoped enforceAcrossServers kill of a sibling-server target does not self-abort', async () => {
+    const actualEngine = await vi.importActual<typeof EngineModule>('../engine.js');
+    mockEvaluateRulesAsync.mockImplementation(actualEngine.evaluateRulesAsync);
+
+    const triggerServerId = randomUUID();
+    const targetServerId = randomUUID();
+    const identityUserId = randomUUID();
+
+    const triggerRow = makeSessionRow({ serverId: triggerServerId });
+    triggerRow.server.id = triggerServerId;
+    triggerRow.serverUser.userId = identityUserId;
+    const targetRow = makeSessionRow({ serverId: targetServerId });
+    targetRow.server.id = targetServerId;
+    targetRow.serverUser.userId = identityUserId;
+
+    // target fetched first, trigger second
+    mockSessionFindFirst.mockResolvedValueOnce(targetRow).mockResolvedValueOnce(triggerRow);
+
+    const ruleRow = makeRuleRow({
+      enforceAcrossServers: true,
+      serverId: triggerServerId,
+      conditions: {
+        groups: [{ conditions: [{ field: 'concurrent_streams', operator: 'gte', value: 1 }] }],
+      },
+    });
+    mockRuleSelect(ruleRow);
+
+    mockBatchGetIdentityServerUserIds.mockResolvedValue(
+      new Map([[identityUserId, [triggerRow.serverUserId, targetRow.serverUserId]]])
+    );
+    // Both identity ids already present so the widen step has nothing to fetch
+    // (it would otherwise hit the real db.select).
+    mockBatchGetRecentUserSessions.mockResolvedValue(
+      new Map([
+        [triggerRow.serverUserId, []],
+        [targetRow.serverUserId, []],
+      ])
+    );
+    mockTerminateSession.mockResolvedValue({
+      success: true,
+      terminationLogId: randomUUID(),
+      outcome: 'terminated',
+    });
+
+    const result = await reverifyKillCondition({
+      triggeringSessionId: triggerRow.id,
+      targetSessionId: targetRow.id,
+      serverId: targetServerId,
+      ruleId: ruleRow.id,
+      violationId: null,
+    });
+
+    expect(result.outcome).toBe('killed');
+    expect(mockTerminateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: targetRow.id })
+    );
+  });
+
+  it('R3: does not self-compare the context session against its own recent-sessions row in travel_speed', async () => {
+    const actualEngine = await vi.importActual<typeof EngineModule>('../engine.js');
+    mockEvaluateRulesAsync.mockImplementation(actualEngine.evaluateRulesAsync);
+
+    const sessionRow = makeSessionRow({
+      deviceId: null,
+      geoLat: 40.7128,
+      geoLon: -74.006,
+      startedAt: new Date('2024-01-01T10:00:00Z'),
+    });
+    mockSessionFindFirst.mockResolvedValue(sessionRow);
+
+    const ruleRow = makeRuleRow({
+      conditions: {
+        groups: [
+          {
+            conditions: [
+              {
+                field: 'travel_speed_kmh',
+                operator: 'gte',
+                value: 1000,
+                params: { exclude_same_device: false },
+              },
+            ],
+          },
+        ],
+      },
+    });
+    mockRuleSelect(ruleRow);
+
+    // batchGetRecentUserSessions returns the session's OWN row (same id, same
+    // coords) alongside a genuinely distant earlier session. With the bug the
+    // own row is picked as "previous" (0 km, speed 0) and the rule clears.
+    const ownRow = {
+      id: sessionRow.id,
+      serverUserId: sessionRow.serverUserId,
+      deviceId: null,
+      geoLat: 40.7128,
+      geoLon: -74.006,
+      startedAt: new Date('2024-01-01T10:00:00Z'),
+    } as unknown as Session;
+    const distantEarlier = {
+      id: randomUUID(),
+      serverUserId: sessionRow.serverUserId,
+      deviceId: null,
+      geoLat: 51.5074,
+      geoLon: -0.1278,
+      startedAt: new Date('2024-01-01T09:00:00Z'),
+    } as unknown as Session;
+    mockBatchGetRecentUserSessions.mockResolvedValue(
+      new Map([[sessionRow.serverUserId, [ownRow, distantEarlier]]])
+    );
+    mockBatchGetIdentityServerUserIds.mockResolvedValue(new Map());
+    mockTerminateSession.mockResolvedValue({
+      success: true,
+      terminationLogId: randomUUID(),
+      outcome: 'terminated',
+    });
+
+    const result = await reverifyKillCondition({
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
+      serverId: sessionRow.serverId,
+      ruleId: ruleRow.id,
+      violationId: null,
+    });
+
+    expect(result.outcome).toBe('killed');
+  });
+
+  it('R6: threads violationId through to terminateSession', async () => {
+    const sessionRow = makeSessionRow();
+    mockSessionFindFirst.mockResolvedValue(sessionRow);
+    const ruleRow = makeRuleRow();
+    mockRuleSelect(ruleRow);
+    mockEvaluateRulesAsync.mockResolvedValue([
+      {
+        ruleId: ruleRow.id,
+        ruleName: ruleRow.name,
+        matched: true,
+        matchedGroups: [0],
+        actions: [],
+      },
+    ]);
+    mockTerminateSession.mockResolvedValue({
+      success: true,
+      terminationLogId: randomUUID(),
+      outcome: 'terminated',
+    });
+
+    const violationId = randomUUID();
+    await reverifyKillCondition({
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
+      serverId: sessionRow.serverId,
+      ruleId: ruleRow.id,
+      violationId,
+    });
+
+    expect(mockTerminateSession).toHaveBeenCalledWith(expect.objectContaining({ violationId }));
   });
 
   it('returns failed when termination reports failure', async () => {
@@ -546,7 +719,8 @@ describe('reverifyKillCondition', () => {
     });
 
     const result = await reverifyKillCondition({
-      sessionId: sessionRow.id,
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
       serverId: sessionRow.serverId,
       ruleId: ruleRow.id,
     });
@@ -572,7 +746,8 @@ describe('reverifyKillCondition', () => {
     mockTerminateSession.mockRejectedValue(new Error('boom'));
 
     const result = await reverifyKillCondition({
-      sessionId: sessionRow.id,
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
       serverId: sessionRow.serverId,
       ruleId: ruleRow.id,
     });

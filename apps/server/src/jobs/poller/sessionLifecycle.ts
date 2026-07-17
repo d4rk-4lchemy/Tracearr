@@ -1580,7 +1580,11 @@ export async function reEvaluateRulesOnTranscodeChange(
     session,
     serverUser: serverUserObj,
     server: serverObj,
-    activeSessions,
+    // Append the re-evaluated session to its own context. Callers pass the
+    // grace-filtered active list (excludeUncountableSessions), which drops this
+    // session while it is grace-flagged, so without the append a trigger is
+    // absent from its own re-eval context and self-undercounts (missed kill).
+    activeSessions: buildRuleContextSessions(activeSessions, session, null),
     recentSessions,
     identityServerUserIds: serverUser.identityServerUserIds,
   };
@@ -1806,7 +1810,11 @@ export async function reEvaluateRulesOnPauseState(
     session,
     serverUser: serverUserObj,
     server: serverObj,
-    activeSessions,
+    // Append the re-evaluated session to its own context. Callers pass the
+    // grace-filtered active list (excludeUncountableSessions), which drops this
+    // session while it is grace-flagged, so without the append a trigger is
+    // absent from its own re-eval context and self-undercounts (missed kill).
+    activeSessions: buildRuleContextSessions(activeSessions, session, null),
     recentSessions,
     identityServerUserIds: serverUser.identityServerUserIds,
   };

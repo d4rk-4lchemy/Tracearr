@@ -38,8 +38,10 @@ export type ConditionEvaluator = (
 ) => EvaluatorResult | Promise<EvaluatorResult>;
 
 /** Non-void executors return which target session ids they successfully
- *  handed to a downstream queue (currently kill_stream only). */
-export type ActionExecutorResult = { enqueuedSessionIds?: string[] } | void;
+ *  handed to a downstream queue (currently kill_stream only). queueFailure is
+ *  set when there were targets to kill but none reached the queue (queue down),
+ *  so the caller records the action as failed rather than queued. */
+export type ActionExecutorResult = { enqueuedSessionIds?: string[]; queueFailure?: boolean } | void;
 
 export type ActionExecutor = (
   context: EvaluationContext,

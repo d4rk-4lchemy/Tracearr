@@ -219,16 +219,18 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
       delay,
       message,
       identityServerUserIds,
-      cooldown
+      cooldown,
+      triggeringSessionId
     ) => {
       // Dynamic import to avoid circular dependency
       const { enqueueKill } = await import('../../jobs/killQueue.js');
 
       const delaySeconds = delay && delay > 0 ? delay : 0;
 
-      await enqueueKill(
+      const jobId = await enqueueKill(
         {
-          sessionId,
+          targetSessionId: sessionId,
+          triggeringSessionId: triggeringSessionId ?? sessionId,
           serverId,
           ruleId,
           violationId,
@@ -241,13 +243,17 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
       );
 
       rulesLogger.debug('Kill enqueued', {
-        sessionId,
+        targetSessionId: sessionId,
+        triggeringSessionId: triggeringSessionId ?? sessionId,
         serverId,
         ruleId,
         violationId,
         delaySeconds,
         identityServerUserIds,
+        jobId,
       });
+
+      return jobId;
     },
 
     /**

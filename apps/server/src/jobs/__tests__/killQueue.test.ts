@@ -48,11 +48,26 @@ import {
 import {
   setActionExecutorDeps,
   resetActionExecutorDeps,
+  type ActionExecutorDeps,
 } from '../../services/rules/executors/index.js';
 import type { Job } from 'bullmq';
 
-function makeJob(data: KillJobData, attemptsMade = 0): Job<KillJobData> {
-  return { data, attemptsMade } as unknown as Job<KillJobData>;
+function makeJob(data: KillJobData, attemptsMade = 0, attempts = 3): Job<KillJobData> {
+  return { data, attemptsMade, opts: { attempts } } as unknown as Job<KillJobData>;
+}
+
+/** A single-target (target: 'triggering') kill payload: trigger and target
+ *  are the same session. */
+function makeData(overrides: Partial<KillJobData> = {}): KillJobData {
+  const sessionId = randomUUID();
+  return {
+    targetSessionId: sessionId,
+    triggeringSessionId: sessionId,
+    serverId: randomUUID(),
+    ruleId: randomUUID(),
+    violationId: randomUUID(),
+    ...overrides,
+  };
 }
 
 describe('killQueue', () => {
@@ -68,12 +83,7 @@ describe('killQueue', () => {
     it('carries delay_seconds through as milliseconds', async () => {
       mockQueueAdd.mockResolvedValue({ id: 'job-1' });
 
-      const data: KillJobData = {
-        sessionId: randomUUID(),
-        serverId: randomUUID(),
-        ruleId: randomUUID(),
-        violationId: randomUUID(),
-      };
+      const data = makeData();
 
       await enqueueKill(data, 30);
 
@@ -86,98 +96,126 @@ describe('killQueue', () => {
     it('uses zero delay when delaySeconds is 0', async () => {
       mockQueueAdd.mockResolvedValue({ id: 'job-2' });
 
-      const data: KillJobData = {
-        sessionId: randomUUID(),
-        serverId: randomUUID(),
-        ruleId: randomUUID(),
-        violationId: null,
-      };
-
-      await enqueueKill(data, 0);
+      await enqueueKill(makeData({ violationId: null }), 0);
 
       const [, , opts] = mockQueueAdd.mock.calls[0]!;
       expect(opts.delay).toBe(0);
     });
 
-    it('builds jobId from violationId and sessionId for dedup', async () => {
+    it('returns undefined and does not enqueue when the queue is not initialized', async () => {
+      mockQueueAdd.mockResolvedValue({ id: 'job-x' });
+      await shutdownKillQueue();
+
+      const result = await enqueueKill(makeData(), 5);
+
+      expect(result).toBeUndefined();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
+    it('builds jobId from violationId and targetSessionId for dedup', async () => {
       mockQueueAdd.mockResolvedValue({ id: 'job-3' });
 
-      const sessionId = randomUUID();
+      const targetSessionId = randomUUID();
       const violationId = randomUUID();
 
       await enqueueKill(
-        { sessionId, serverId: randomUUID(), ruleId: randomUUID(), violationId },
+        makeData({ targetSessionId, triggeringSessionId: targetSessionId, violationId }),
         10
       );
 
       const [, , opts] = mockQueueAdd.mock.calls[0]!;
-      expect(opts.jobId).toBe(`kill:${violationId}:${sessionId}`);
+      expect(opts.jobId).toBe(`kill:${violationId}:${targetSessionId}`);
     });
 
-    it('builds jobId from ruleId and sessionId when violationId is null', async () => {
+    it('builds a colon-safe, time-bucketed fallback jobId when violationId is null', async () => {
       mockQueueAdd.mockResolvedValue({ id: 'job-3b' });
 
-      const sessionId = randomUUID();
+      const targetSessionId = randomUUID();
       const ruleId = randomUUID();
 
-      await enqueueKill({ sessionId, serverId: randomUUID(), ruleId, violationId: null }, 10);
+      await enqueueKill(
+        makeData({
+          targetSessionId,
+          triggeringSessionId: targetSessionId,
+          ruleId,
+          violationId: null,
+        }),
+        10
+      );
 
       const [, , opts] = mockQueueAdd.mock.calls[0]!;
-      expect(opts.jobId).toBe(`kill:rule:${ruleId}:${sessionId}`);
+      // BullMQ rejects a custom jobId with ':' unless it splits into exactly
+      // three segments, so the fallback keeps exactly two colons.
+      expect(opts.jobId.split(':')).toHaveLength(3);
+      expect(opts.jobId).toMatch(new RegExp(`^kill:${targetSessionId}:rule_${ruleId}_\\d+$`));
     });
 
-    it('gives distinct jobIds to distinct rules matching the same session when violationId is null', async () => {
+    it('gives distinct fallback jobIds to distinct rules matching the same session', async () => {
       mockQueueAdd.mockResolvedValue({ id: 'job-3c' });
 
-      const sessionId = randomUUID();
+      const targetSessionId = randomUUID();
       const ruleIdA = randomUUID();
       const ruleIdB = randomUUID();
 
       await enqueueKill(
-        { sessionId, serverId: randomUUID(), ruleId: ruleIdA, violationId: null },
+        makeData({
+          targetSessionId,
+          triggeringSessionId: targetSessionId,
+          ruleId: ruleIdA,
+          violationId: null,
+        }),
         10
       );
       await enqueueKill(
-        { sessionId, serverId: randomUUID(), ruleId: ruleIdB, violationId: null },
+        makeData({
+          targetSessionId,
+          triggeringSessionId: targetSessionId,
+          ruleId: ruleIdB,
+          violationId: null,
+        }),
         10
       );
 
       const jobIdA = mockQueueAdd.mock.calls[0]![2].jobId;
       const jobIdB = mockQueueAdd.mock.calls[1]![2].jobId;
       expect(jobIdA).not.toBe(jobIdB);
-      expect(jobIdA).toBe(`kill:rule:${ruleIdA}:${sessionId}`);
-      expect(jobIdB).toBe(`kill:rule:${ruleIdB}:${sessionId}`);
+      expect(jobIdA).toContain(`rule_${ruleIdA}_`);
+      expect(jobIdB).toContain(`rule_${ruleIdB}_`);
     });
 
-    it('gives distinct jobIds to each session when a multi-target match kills several sessions', async () => {
+    it('gives distinct jobIds to each target when a multi-target match kills several sessions', async () => {
       mockQueueAdd.mockResolvedValue({ id: 'job-3d' });
 
       const violationId = randomUUID();
       const ruleId = randomUUID();
-      const sessionIdA = randomUUID();
-      const sessionIdB = randomUUID();
+      const triggeringSessionId = randomUUID();
+      const targetA = randomUUID();
+      const targetB = randomUUID();
 
-      await enqueueKill({ sessionId: sessionIdA, serverId: randomUUID(), ruleId, violationId }, 0);
-      await enqueueKill({ sessionId: sessionIdB, serverId: randomUUID(), ruleId, violationId }, 0);
+      await enqueueKill(
+        makeData({ targetSessionId: targetA, triggeringSessionId, ruleId, violationId }),
+        0
+      );
+      await enqueueKill(
+        makeData({ targetSessionId: targetB, triggeringSessionId, ruleId, violationId }),
+        0
+      );
 
       expect(mockQueueAdd).toHaveBeenCalledTimes(2);
       const jobIdA = mockQueueAdd.mock.calls[0]![2].jobId;
       const jobIdB = mockQueueAdd.mock.calls[1]![2].jobId;
       expect(jobIdA).not.toBe(jobIdB);
-      expect(jobIdA).toBe(`kill:${violationId}:${sessionIdA}`);
-      expect(jobIdB).toBe(`kill:${violationId}:${sessionIdB}`);
+      expect(jobIdA).toBe(`kill:${violationId}:${targetA}`);
+      expect(jobIdB).toBe(`kill:${violationId}:${targetB}`);
     });
 
-    it('carries an identityServerUserIds snapshot through to the job payload', async () => {
+    it('carries the trigger, target, and identity snapshot through to the job payload', async () => {
       mockQueueAdd.mockResolvedValue({ id: 'job-3e' });
 
-      const data: KillJobData = {
-        sessionId: randomUUID(),
-        serverId: randomUUID(),
-        ruleId: randomUUID(),
-        violationId: randomUUID(),
+      const data = makeData({
+        triggeringSessionId: randomUUID(),
         identityServerUserIds: ['su-1', 'su-2'],
-      };
+      });
 
       await enqueueKill(data, 0);
 
@@ -185,36 +223,21 @@ describe('killQueue', () => {
       expect(jobData).toEqual(data);
     });
 
-    it('does not double-enqueue a duplicate jobId', async () => {
-      mockQueueAdd.mockRejectedValue(new Error('Job with id kill:abc:def already exists'));
+    it('returns the existing job id when BullMQ dedupes a repeat jobId server-side', async () => {
+      // BullMQ 5.x add() does not throw on a duplicate jobId; it returns the
+      // existing job. A deduped enqueue still means a job is queued, so
+      // enqueueKill returns its id rather than undefined.
+      mockQueueAdd.mockResolvedValue({ id: 'existing-job' });
 
-      const result = await enqueueKill(
-        {
-          sessionId: randomUUID(),
-          serverId: randomUUID(),
-          ruleId: randomUUID(),
-          violationId: randomUUID(),
-        },
-        5
-      );
+      const result = await enqueueKill(makeData(), 5);
 
-      expect(result).toBeUndefined();
+      expect(result).toBe('existing-job');
     });
 
     it('rethrows unexpected queue errors', async () => {
       mockQueueAdd.mockRejectedValue(new Error('redis connection lost'));
 
-      await expect(
-        enqueueKill(
-          {
-            sessionId: randomUUID(),
-            serverId: randomUUID(),
-            ruleId: randomUUID(),
-            violationId: randomUUID(),
-          },
-          5
-        )
-      ).rejects.toThrow('redis connection lost');
+      await expect(enqueueKill(makeData(), 5)).rejects.toThrow('redis connection lost');
     });
   });
 
@@ -222,26 +245,20 @@ describe('killQueue', () => {
     it('stores a killed outcome as a successful, non-skipped action result', async () => {
       mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
 
-      const violationId = randomUUID();
-      const ruleId = randomUUID();
-      const jobData: KillJobData = {
-        sessionId: randomUUID(),
-        serverId: randomUUID(),
-        ruleId,
-        violationId,
-        message: 'bye',
-      };
+      const data = makeData({ message: 'bye' });
 
-      await processKillJob(makeJob(jobData));
+      await processKillJob(makeJob(data));
 
       expect(mockReverifyKillCondition).toHaveBeenCalledWith({
-        sessionId: jobData.sessionId,
-        serverId: jobData.serverId,
-        ruleId,
+        triggeringSessionId: data.triggeringSessionId,
+        targetSessionId: data.targetSessionId,
+        serverId: data.serverId,
+        ruleId: data.ruleId,
+        violationId: data.violationId,
         message: 'bye',
         isRetry: false,
       });
-      expect(mockStoreActionResults).toHaveBeenCalledWith(violationId, ruleId, [
+      expect(mockStoreActionResults).toHaveBeenCalledWith(data.violationId, data.ruleId, [
         expect.objectContaining({ success: true, skipped: false }),
       ]);
     });
@@ -249,15 +266,7 @@ describe('killQueue', () => {
     it('marks isRetry true when the job has a prior failed attempt', async () => {
       mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
 
-      const ruleId = randomUUID();
-      const jobData: KillJobData = {
-        sessionId: randomUUID(),
-        serverId: randomUUID(),
-        ruleId,
-        violationId: null,
-      };
-
-      await processKillJob(makeJob(jobData, 1));
+      await processKillJob(makeJob(makeData({ violationId: null }), 1));
 
       expect(mockReverifyKillCondition).toHaveBeenCalledWith(
         expect.objectContaining({ isRetry: true })
@@ -273,30 +282,45 @@ describe('killQueue', () => {
         mockStoreActionResults.mockClear();
         mockReverifyKillCondition.mockResolvedValue({ outcome });
 
-        const violationId = randomUUID();
-        const ruleId = randomUUID();
+        const data = makeData();
 
-        await processKillJob(
-          makeJob({ sessionId: randomUUID(), serverId: randomUUID(), ruleId, violationId })
-        );
+        await processKillJob(makeJob(data));
 
-        expect(mockStoreActionResults).toHaveBeenCalledWith(violationId, ruleId, [
+        expect(mockStoreActionResults).toHaveBeenCalledWith(data.violationId, data.ruleId, [
           expect.objectContaining({ success: true, skipped: true, skipReason: outcome }),
         ]);
       }
     });
 
-    it('stores a failed outcome as unsuccessful', async () => {
+    it('stores a failed outcome as unsuccessful on the final attempt', async () => {
       mockReverifyKillCondition.mockResolvedValue({ outcome: 'failed', error: 'boom' });
 
-      const violationId = randomUUID();
-      const ruleId = randomUUID();
+      const data = makeData();
 
-      await processKillJob(
-        makeJob({ sessionId: randomUUID(), serverId: randomUUID(), ruleId, violationId })
-      );
+      await processKillJob(makeJob(data, 2, 3));
 
-      expect(mockStoreActionResults).toHaveBeenCalledWith(violationId, ruleId, [
+      expect(mockStoreActionResults).toHaveBeenCalledWith(data.violationId, data.ruleId, [
+        expect.objectContaining({ success: false }),
+      ]);
+    });
+
+    it('R4: throws without storing a result when a non-final attempt fails, so BullMQ retries', async () => {
+      mockReverifyKillCondition.mockResolvedValue({ outcome: 'failed', error: 'boom' });
+
+      await expect(processKillJob(makeJob(makeData(), 0, 3))).rejects.toThrow();
+
+      expect(mockStoreActionResults).not.toHaveBeenCalled();
+    });
+
+    it('R4: stores exactly one failed row and does not throw on the final attempt', async () => {
+      mockReverifyKillCondition.mockResolvedValue({ outcome: 'failed', error: 'boom' });
+
+      const data = makeData();
+
+      await expect(processKillJob(makeJob(data, 2, 3))).resolves.toBeUndefined();
+
+      expect(mockStoreActionResults).toHaveBeenCalledTimes(1);
+      expect(mockStoreActionResults).toHaveBeenCalledWith(data.violationId, data.ruleId, [
         expect.objectContaining({ success: false }),
       ]);
     });
@@ -304,44 +328,39 @@ describe('killQueue', () => {
     it('passes a null violationId through to storeActionResults unchanged', async () => {
       mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
 
-      const ruleId = randomUUID();
+      const data = makeData({ violationId: null });
 
-      await processKillJob(
-        makeJob({ sessionId: randomUUID(), serverId: randomUUID(), ruleId, violationId: null })
-      );
+      await processKillJob(makeJob(data));
 
-      expect(mockStoreActionResults).toHaveBeenCalledWith(null, ruleId, expect.any(Array));
+      expect(mockStoreActionResults).toHaveBeenCalledWith(null, data.ruleId, expect.any(Array));
     });
 
     describe('cooldown arming', () => {
-      it('arms the rule cooldown when the kill executed', async () => {
-        mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
-        const setCooldown = vi.fn().mockResolvedValue(undefined);
+      function depsWith(setCooldown: ActionExecutorDeps['setCooldown']) {
         setActionExecutorDeps({
           logAudit: vi.fn(),
           sendNotification: vi.fn(),
           adjustUserTrust: vi.fn(),
           setUserTrust: vi.fn(),
           resetUserTrust: vi.fn(),
-          terminateSession: vi.fn(),
+          terminateSession: vi.fn().mockResolvedValue(undefined),
           sendClientMessage: vi.fn(),
           checkCooldown: vi.fn().mockResolvedValue(false),
           setCooldown,
           queueForConfirmation: vi.fn(),
         });
+      }
+
+      it('arms the rule cooldown when the kill executed', async () => {
+        mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
+        const setCooldown = vi.fn().mockResolvedValue(undefined);
+        depsWith(setCooldown);
 
         const ruleId = randomUUID();
         const triggeringServerUserId = randomUUID();
 
         await processKillJob(
-          makeJob({
-            sessionId: randomUUID(),
-            serverId: randomUUID(),
-            ruleId,
-            violationId: randomUUID(),
-            cooldownMinutes: 10,
-            triggeringServerUserId,
-          })
+          makeJob(makeData({ ruleId, cooldownMinutes: 10, triggeringServerUserId }))
         );
 
         expect(setCooldown).toHaveBeenCalledWith(ruleId, `${ruleId}:${triggeringServerUserId}`, 10);
@@ -350,58 +369,22 @@ describe('killQueue', () => {
       it('does not arm the cooldown when the kill was aborted (skipped outcome)', async () => {
         mockReverifyKillCondition.mockResolvedValue({ outcome: 'skipped_condition_cleared' });
         const setCooldown = vi.fn().mockResolvedValue(undefined);
-        setActionExecutorDeps({
-          logAudit: vi.fn(),
-          sendNotification: vi.fn(),
-          adjustUserTrust: vi.fn(),
-          setUserTrust: vi.fn(),
-          resetUserTrust: vi.fn(),
-          terminateSession: vi.fn(),
-          sendClientMessage: vi.fn(),
-          checkCooldown: vi.fn().mockResolvedValue(false),
-          setCooldown,
-          queueForConfirmation: vi.fn(),
-        });
+        depsWith(setCooldown);
 
         await processKillJob(
-          makeJob({
-            sessionId: randomUUID(),
-            serverId: randomUUID(),
-            ruleId: randomUUID(),
-            violationId: randomUUID(),
-            cooldownMinutes: 10,
-            triggeringServerUserId: randomUUID(),
-          })
+          makeJob(makeData({ cooldownMinutes: 10, triggeringServerUserId: randomUUID() }))
         );
 
         expect(setCooldown).not.toHaveBeenCalled();
       });
 
-      it('does not arm the cooldown when the kill failed', async () => {
+      it('does not arm the cooldown when the kill failed on the final attempt', async () => {
         mockReverifyKillCondition.mockResolvedValue({ outcome: 'failed', error: 'boom' });
         const setCooldown = vi.fn().mockResolvedValue(undefined);
-        setActionExecutorDeps({
-          logAudit: vi.fn(),
-          sendNotification: vi.fn(),
-          adjustUserTrust: vi.fn(),
-          setUserTrust: vi.fn(),
-          resetUserTrust: vi.fn(),
-          terminateSession: vi.fn(),
-          sendClientMessage: vi.fn(),
-          checkCooldown: vi.fn().mockResolvedValue(false),
-          setCooldown,
-          queueForConfirmation: vi.fn(),
-        });
+        depsWith(setCooldown);
 
         await processKillJob(
-          makeJob({
-            sessionId: randomUUID(),
-            serverId: randomUUID(),
-            ruleId: randomUUID(),
-            violationId: randomUUID(),
-            cooldownMinutes: 10,
-            triggeringServerUserId: randomUUID(),
-          })
+          makeJob(makeData({ cooldownMinutes: 10, triggeringServerUserId: randomUUID() }), 2, 3)
         );
 
         expect(setCooldown).not.toHaveBeenCalled();
@@ -410,27 +393,9 @@ describe('killQueue', () => {
       it('does not arm the cooldown when the action had no cooldown_minutes configured', async () => {
         mockReverifyKillCondition.mockResolvedValue({ outcome: 'killed' });
         const setCooldown = vi.fn().mockResolvedValue(undefined);
-        setActionExecutorDeps({
-          logAudit: vi.fn(),
-          sendNotification: vi.fn(),
-          adjustUserTrust: vi.fn(),
-          setUserTrust: vi.fn(),
-          resetUserTrust: vi.fn(),
-          terminateSession: vi.fn(),
-          sendClientMessage: vi.fn(),
-          checkCooldown: vi.fn().mockResolvedValue(false),
-          setCooldown,
-          queueForConfirmation: vi.fn(),
-        });
+        depsWith(setCooldown);
 
-        await processKillJob(
-          makeJob({
-            sessionId: randomUUID(),
-            serverId: randomUUID(),
-            ruleId: randomUUID(),
-            violationId: randomUUID(),
-          })
-        );
+        await processKillJob(makeJob(makeData()));
 
         expect(setCooldown).not.toHaveBeenCalled();
       });

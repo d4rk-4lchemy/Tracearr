@@ -10,14 +10,25 @@
  * evaluateRulesAsync) so re-verification and live evaluation can never
  * disagree about what counts as an active session.
  *
- * The cache is not a faithful stand-in for "current state" for the
- * triggering session specifically: createSessionWithRulesAtomic skips
- * re-adding it to the cache once a kill job is enqueued for it
- * (wasTerminatedByRule), so at delay_seconds 0 this can run before any poll
- * tick rediscovers it. buildRuleContextSessions (shared with live
- * evaluation) appends sessionRow back in when the cache list doesn't already
- * carry its id, the same way it appends a freshly-inserted session in
- * createSessionWithRulesAtomic.
+ * A kill job carries two session ids. The TRIGGER is the session whose match
+ * produced the kill; its context (user, server, media, geo, identity,
+ * recentSessions) is what the rule matched on, so re-verification rebuilds the
+ * evaluation context from the trigger. The TARGET is the session actually
+ * terminated - for target: 'triggering' the two are the same, but multi-target
+ * (oldest/newest/all_*) and enforceAcrossServers kills point the target at a
+ * different session, possibly on another server or account, whose own context
+ * never matched the rule. Re-verifying against the target instead of the
+ * trigger loses those kills and, for serverId/serverUserId-scoped
+ * enforceAcrossServers rules, self-aborts every time on the scope check. The
+ * target still owns the already-stopped short-circuit and the termination call.
+ *
+ * The cache is not a faithful stand-in for "current state" for the triggering
+ * session specifically: createSessionWithRulesAtomic skips re-adding it to the
+ * cache once a kill job is enqueued for it (wasTerminatedByRule), so at
+ * delay_seconds 0 this can run before any poll tick rediscovers it.
+ * buildRuleContextSessions (shared with live evaluation) appends the context
+ * session back in when the cache list doesn't already carry its id, the same
+ * way it appends a freshly-inserted session in createSessionWithRulesAtomic.
  */
 
 import { eq } from 'drizzle-orm';
@@ -46,9 +57,19 @@ export type ReverifyOutcome =
   | 'failed';
 
 export interface ReverifyKillConditionParams {
-  sessionId: string;
+  /** Session whose match produced this kill. The evaluation context (session,
+   *  serverUser, server, identity, recentSessions) is rebuilt from THIS row so
+   *  the re-check reproduces the match live evaluation made. */
+  triggeringSessionId: string;
+  /** Session actually terminated. Equals triggeringSessionId for
+   *  target: 'triggering'; differs for oldest/newest/all_* and
+   *  enforceAcrossServers kills. */
+  targetSessionId: string;
   serverId: string;
   ruleId: string;
+  /** Violation the kill_stream match created; carried through to the
+   *  termination log so rule kills are attributed to their violation. */
+  violationId?: string | null;
   /** Message to display to the user before termination (Plex only). */
   message?: string;
   /** True when a prior attempt of this same BullMQ job already ran (and
@@ -71,18 +92,21 @@ export interface ReverifyKillConditionResult {
 export async function reverifyKillCondition(
   params: ReverifyKillConditionParams
 ): Promise<ReverifyKillConditionResult> {
-  const { sessionId, serverId, ruleId, message, isRetry } = params;
+  const { triggeringSessionId, targetSessionId, serverId, ruleId, violationId, message, isRetry } =
+    params;
 
-  const sessionRow = await db.query.sessions.findFirst({
-    where: eq(sessions.id, sessionId),
+  // The TARGET decides the already-stopped short-circuit and is the session we
+  // actually terminate.
+  const targetRow = await db.query.sessions.findFirst({
+    where: eq(sessions.id, targetSessionId),
     with: { server: true, serverUser: true },
   });
 
-  if (!sessionRow) {
+  if (!targetRow) {
     return { outcome: 'skipped_already_stopped' };
   }
 
-  if (sessionRow.stoppedAt) {
+  if (targetRow.stoppedAt) {
     // A retry only happens after a prior attempt of this exact job got past
     // termination and then threw (e.g. storeActionResults failing) - forceStopped
     // is already on the row we just fetched, so this costs no extra query and
@@ -90,7 +114,7 @@ export async function reverifyKillCondition(
     // can't tell this job's kill apart from an unrelated forced stop (admin,
     // stale sweep) landing in the same narrow retry window; that tradeoff is
     // accepted given how rarely the two coincide within a few seconds.
-    if (isRetry && sessionRow.forceStopped) {
+    if (isRetry && targetRow.forceStopped) {
       return { outcome: 'killed' };
     }
     return { outcome: 'skipped_already_stopped' };
@@ -103,24 +127,61 @@ export async function reverifyKillCondition(
 
   const rule = mapRuleRowToRuleV2(ruleRow);
 
+  // Evaluate against the TRIGGER's context, not the target's. The rule matched
+  // because of the triggering session (its user, server, media, geo, ...); a
+  // multi-target or enforceAcrossServers kill can point at a sibling session on
+  // another server/account whose own context never matched the rule (and whose
+  // server fails the rule's serverId scope), so re-verifying against the target
+  // would lose legitimate kills and, for scoped enforceAcrossServers rules,
+  // self-abort every time.
+  let contextSession = targetRow;
+  if (triggeringSessionId !== targetSessionId) {
+    const triggerRow = await db.query.sessions.findFirst({
+      where: eq(sessions.id, triggeringSessionId),
+      with: { server: true, serverUser: true },
+    });
+
+    if (triggerRow && !triggerRow.stoppedAt) {
+      contextSession = triggerRow;
+    } else if (rule.enforceAcrossServers) {
+      // The trigger ended during the delay window, so the as-at-trigger context
+      // is gone. For an identity-wide rule the target's own context is still
+      // coherent (detection aggregates across the whole identity regardless of
+      // which session is "session"), so fall back to it rather than lose the kill.
+      contextSession = targetRow;
+    } else {
+      // Non-identity rule with the trigger gone: the condition can no longer be
+      // evaluated as-at-trigger and the target's context never matched on its
+      // own, so abort instead of killing on a context that was never checked.
+      rulesLogger.info('Kill queue: trigger session gone, aborting kill', {
+        triggeringSessionId,
+        targetSessionId,
+        ruleId,
+      });
+      return { outcome: 'skipped_condition_cleared' };
+    }
+  }
+
   const cacheService = getCacheService();
   const cachedSessions = cacheService ? await cacheService.getAllActiveSessions() : [];
   const countableCachedSessions = excludeUncountableSessions(
     cachedSessions,
     gracePeriodSessionIds()
   );
-  // sessionRow is missing from countableCachedSessions exactly when this kill
-  // was enqueued for the triggering session (see module header) - append it
-  // back so conditions like concurrent_streams count the session being
-  // re-verified instead of undercounting it by one and self-aborting.
+  // contextSession is missing from countableCachedSessions exactly when this
+  // kill was enqueued for the triggering session (see module header) - append
+  // it back so conditions like concurrent_streams count it instead of
+  // undercounting by one and self-aborting. The target, if it is a different
+  // still-playing session, is appended too so it is counted as well.
   //
-  // KNOWN RESIDUAL: this only restores the triggering session. For
-  // target: 'oldest'/'all_except_one' a kill can also target some OTHER
-  // session that itself raced into existence after the last cache write; that
-  // session is not sessionRow, so this fix doesn't reach it and a delay-0
-  // re-check for those targets can still race rediscovery by milliseconds.
-  // Accepted follow-up, not fixed here.
-  const activeSessions = buildRuleContextSessions(countableCachedSessions, sessionRow, null);
+  // KNOWN RESIDUAL: only the trigger and this job's target are restored. A
+  // sibling target of the SAME multi-target match that itself raced into
+  // existence after the last cache write is neither of these, so a delay-0
+  // re-check can still undercount it by milliseconds. Accepted follow-up.
+  let activeSessions = buildRuleContextSessions(countableCachedSessions, contextSession, null);
+  if (targetRow.id !== contextSession.id && !activeSessions.some((s) => s.id === targetRow.id)) {
+    activeSessions = [...activeSessions, targetRow];
+  }
 
   // Identity aggregation runs unconditionally here, mirroring the live poller
   // (processor.ts) - detection-side identity counting is NOT gated by
@@ -132,13 +193,13 @@ export async function reverifyKillCondition(
   // trusting the identityServerUserIds snapshot the enqueue payload carries
   // from match time: identity membership (server merges/unmerges) can change
   // during the delay window between match and this re-check.
-  const identityMap = await batchGetIdentityServerUserIds([sessionRow.serverUser.userId]);
-  const identityServerUserIds = identityMap.get(sessionRow.serverUser.userId);
+  const identityMap = await batchGetIdentityServerUserIds([contextSession.serverUser.userId]);
+  const identityServerUserIds = identityMap.get(contextSession.serverUser.userId);
 
   const recentSessionsUserIds =
     identityServerUserIds && identityServerUserIds.length > 1
       ? identityServerUserIds
-      : [sessionRow.serverUserId];
+      : [contextSession.serverUserId];
   const recentSessionsMap = await batchGetRecentUserSessions(recentSessionsUserIds);
 
   // Widen recentSessions across the identity's server_user ids so windowed
@@ -149,16 +210,23 @@ export async function reverifyKillCondition(
   if (identityServerUserIds && identityServerUserIds.length > 1) {
     await widenRecentSessionsForMergedIdentities(
       recentSessionsMap,
-      new Map([[sessionRow.serverUser.userId, identityServerUserIds]])
+      new Map([[contextSession.serverUser.userId, identityServerUserIds]])
     );
   }
 
-  const recentSessions = recentSessionsMap.get(sessionRow.serverUserId) ?? [];
+  // The context session's own row is present in recentSessions by re-verify
+  // time (it has been persisted). The evaluators exclude the current session by
+  // object reference, not id, and contextSession is a different object than its
+  // recent-sessions row, so drop it by id here - otherwise travel_speed_kmh and
+  // friends compare the session against itself (0 km, speed 0) and clear.
+  const recentSessions = (recentSessionsMap.get(contextSession.serverUserId) ?? []).filter(
+    (s) => s.id !== contextSession.id
+  );
 
   const baseContext: Omit<EvaluationContext, 'rule'> = {
-    session: sessionRow,
-    serverUser: sessionRow.serverUser,
-    server: sessionRow.server,
+    session: contextSession,
+    serverUser: contextSession.serverUser,
+    server: contextSession.server,
     activeSessions,
     recentSessions,
     identityServerUserIds,
@@ -173,9 +241,10 @@ export async function reverifyKillCondition(
 
   try {
     const result = await terminateSession({
-      sessionId,
+      sessionId: targetSessionId,
       trigger: 'rule',
       ruleId,
+      violationId: violationId ?? undefined,
       reason: message,
     });
 
@@ -184,7 +253,8 @@ export async function reverifyKillCondition(
     }
 
     rulesLogger.info('Kill queue: terminated session after re-verification', {
-      sessionId,
+      triggeringSessionId,
+      targetSessionId,
       serverId,
       ruleId,
     });

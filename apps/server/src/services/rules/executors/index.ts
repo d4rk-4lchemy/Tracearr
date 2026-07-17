@@ -59,8 +59,15 @@ export interface ActionExecutorDeps {
     /** Rule's cooldown_minutes at match time, keyed to the triggering
      *  account. Carried through so the kill worker can arm the cooldown
      *  only once the kill actually executes, not at enqueue time. */
-    cooldown?: { minutes: number; triggeringServerUserId: string }
-  ) => Promise<void>;
+    cooldown?: { minutes: number; triggeringServerUserId: string },
+    /** The session that matched the rule. Carried alongside the target so the
+     *  kill worker re-verifies the condition against the trigger's context, not
+     *  the target's (which may be a sibling session/server for multi-target and
+     *  enforceAcrossServers kills). */
+    triggeringSessionId?: string
+    // Returns the kill queue job id when a job was created or already exists,
+    // or undefined when the enqueue was dropped (queue not initialized).
+  ) => Promise<string | undefined>;
   sendClientMessage: (sessionId: string, message: string) => Promise<void>;
   checkCooldown: (ruleId: string, targetId: string, cooldownMinutes: number) => Promise<boolean>;
   setCooldown: (ruleId: string, targetId: string, cooldownMinutes: number) => Promise<void>;
@@ -91,9 +98,7 @@ const noopDeps: ActionExecutorDeps = {
   resetUserTrust: async () => {
     /* no-op */
   },
-  terminateSession: async () => {
-    /* no-op */
-  },
+  terminateSession: async () => undefined,
   sendClientMessage: async () => {
     /* no-op */
   },
@@ -275,7 +280,7 @@ const executeResetTrust: ActionExecutor = async (context: EvaluationContext): Pr
 const executeKillStream: ActionExecutor = async (
   context: EvaluationContext,
   action: Action
-): Promise<{ enqueuedSessionIds: string[] }> => {
+): Promise<{ enqueuedSessionIds: string[]; queueFailure: boolean }> => {
   const { session, serverUser, activeSessions, rule, identityServerUserIds } = context;
   const typedAction = action as KillStreamAction;
   const delaySeconds = typedAction.delay_seconds ?? 0;
@@ -312,13 +317,16 @@ const executeKillStream: ActionExecutor = async (
   });
 
   const enqueuedSessionIds: string[] = [];
+  let anyDropped = false;
   for (const targetSession of sessionsToKill) {
     // Use the target session's own serverId, not the triggering session's -
     // with enforceAcrossServers, these can be different servers. Each target
     // session gets its own terminateSession call (and downstream its own kill
     // queue job, keyed by that session's id), so a multi-target match doesn't
-    // collapse into a single job that only kills one session.
-    await currentDeps.terminateSession(
+    // collapse into a single job that only kills one session. The triggering
+    // session id rides along so the worker re-verifies against the matching
+    // session's context, not the target's.
+    const jobId = await currentDeps.terminateSession(
       targetSession.id,
       targetSession.serverId,
       rule.id,
@@ -326,12 +334,20 @@ const executeKillStream: ActionExecutor = async (
       delaySeconds,
       message,
       rule.enforceAcrossServers ? identityServerUserIds : undefined,
-      cooldown
+      cooldown,
+      session.id
     );
-    enqueuedSessionIds.push(targetSession.id);
+    // Only record a target as enqueued when a job genuinely landed - a dropped
+    // enqueue (queue down) must not read as queued to wasTriggeringSessionTargetedForKill.
+    if (jobId) {
+      enqueuedSessionIds.push(targetSession.id);
+    } else {
+      anyDropped = true;
+    }
   }
 
-  return { enqueuedSessionIds };
+  const queueFailure = sessionsToKill.length > 0 && enqueuedSessionIds.length === 0 && anyDropped;
+  return { enqueuedSessionIds, queueFailure };
 };
 
 /**
@@ -458,13 +474,24 @@ export async function executeAction(
     // kill_stream only enqueues here; the kill worker's later insert
     // (killed/skipped_condition_cleared/failed) is the authoritative outcome,
     // so this interim row must read as skipped rather than a false success.
+    // When the queue was down and nothing enqueued, the kill never happened
+    // and no worker row will follow, so record it as failed here instead.
     if (action.type === 'kill_stream') {
+      const killResult = executorResult as
+        { enqueuedSessionIds?: string[]; queueFailure?: boolean } | undefined;
+      if (killResult?.queueFailure) {
+        return {
+          action,
+          success: false,
+          message: 'Kill queue unavailable, termination not enqueued',
+        };
+      }
       return {
         action,
         success: true,
         skipped: true,
         skipReason: 'queued',
-        enqueuedSessionIds: executorResult?.enqueuedSessionIds ?? [],
+        enqueuedSessionIds: killResult?.enqueuedSessionIds ?? [],
       };
     }
 

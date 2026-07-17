@@ -166,7 +166,7 @@ function createMockDeps(): ActionExecutorDeps {
     adjustUserTrust: vi.fn().mockResolvedValue(undefined),
     setUserTrust: vi.fn().mockResolvedValue(undefined),
     resetUserTrust: vi.fn().mockResolvedValue(undefined),
-    terminateSession: vi.fn().mockResolvedValue(undefined),
+    terminateSession: vi.fn().mockResolvedValue('kill-job-id'),
     sendClientMessage: vi.fn().mockResolvedValue(undefined),
     checkCooldown: vi.fn().mockResolvedValue(false),
     setCooldown: vi.fn().mockResolvedValue(undefined),
@@ -358,6 +358,19 @@ describe('Action Executor Registry', () => {
         });
       });
 
+      it('records the action as failed (not queued) when the queue drops every target', async () => {
+        (mockDeps.terminateSession as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+        const context = createMockContext();
+        const action: KillStreamAction = { type: 'kill_stream' };
+
+        const result = await executeAction(context, action);
+
+        // No job landed, so no worker row will follow: the interim row is the
+        // only record and must read as failed rather than queued.
+        expect(result.success).toBe(false);
+        expect(result.skipped).toBeFalsy();
+      });
+
       it('should terminate session silently when no message provided', async () => {
         const context = createMockContext();
         const action: KillStreamAction = { type: 'kill_stream' };
@@ -373,7 +386,8 @@ describe('Action Executor Registry', () => {
           0,
           undefined,
           undefined,
-          undefined
+          undefined,
+          context.session.id
         );
       });
 
@@ -391,7 +405,8 @@ describe('Action Executor Registry', () => {
           30,
           undefined,
           undefined,
-          undefined
+          undefined,
+          context.session.id
         );
       });
 
@@ -413,7 +428,8 @@ describe('Action Executor Registry', () => {
           0,
           'You violated the concurrent streams policy',
           undefined,
-          undefined
+          undefined,
+          context.session.id
         );
       });
 
@@ -435,7 +451,8 @@ describe('Action Executor Registry', () => {
           15,
           'Stream will be terminated in 15 seconds',
           undefined,
-          undefined
+          undefined,
+          context.session.id
         );
       });
 
@@ -462,7 +479,8 @@ describe('Action Executor Registry', () => {
           0,
           undefined,
           undefined,
-          { minutes: 10, triggeringServerUserId: context.serverUser.id }
+          { minutes: 10, triggeringServerUserId: context.serverUser.id },
+          context.session.id
         );
       });
 
@@ -491,11 +509,12 @@ describe('Action Executor Registry', () => {
             0,
             undefined,
             undefined,
-            undefined
+            undefined,
+            'triggering'
           );
         });
 
-        it('should terminate oldest session when target is oldest', async () => {
+        it('should terminate oldest session but re-verify against the triggering session', async () => {
           const oldestSession = createMockSession({
             id: 'oldest',
             serverUserId: 'user-1',
@@ -516,6 +535,8 @@ describe('Action Executor Registry', () => {
           await executeAction(context, action);
 
           expect(mockDeps.terminateSession).toHaveBeenCalledTimes(1);
+          // Target is the oldest session, but the trigger passed through is the
+          // session that matched (newest), so the worker re-verifies against it.
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             'oldest',
             context.server.id,
@@ -524,7 +545,8 @@ describe('Action Executor Registry', () => {
             0,
             undefined,
             undefined,
-            undefined
+            undefined,
+            'newest'
           );
         });
 
@@ -562,7 +584,8 @@ describe('Action Executor Registry', () => {
             0,
             undefined,
             undefined,
-            undefined
+            undefined,
+            's3'
           );
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             's3',
@@ -572,7 +595,8 @@ describe('Action Executor Registry', () => {
             0,
             undefined,
             undefined,
-            undefined
+            undefined,
+            's3'
           );
         });
 
@@ -598,7 +622,8 @@ describe('Action Executor Registry', () => {
             0,
             undefined,
             undefined,
-            undefined
+            undefined,
+            's1'
           );
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             's2',
@@ -608,10 +633,12 @@ describe('Action Executor Registry', () => {
             0,
             undefined,
             undefined,
-            undefined
+            undefined,
+            's1'
           );
           expect(mockDeps.terminateSession).not.toHaveBeenCalledWith(
             'other',
+            expect.anything(),
             expect.anything(),
             expect.anything(),
             expect.anything(),
@@ -669,7 +696,8 @@ describe('Action Executor Registry', () => {
             0,
             undefined,
             ['user-1', 'user-1-sibling'],
-            undefined
+            undefined,
+            's1'
           );
         });
       });
