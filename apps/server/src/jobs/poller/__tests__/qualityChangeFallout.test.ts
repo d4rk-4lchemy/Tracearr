@@ -27,6 +27,9 @@ const {
   mockStopSessionAtomic,
   mockCreateSessionWithRulesAtomic,
   mockHandleQualityChangeFallout,
+  mockHandleMediaChangeAtomic,
+  mockBatchFindActiveSessionsByKey,
+  mockDetectMediaChange,
   mockBuildActiveSession,
   mockProcessPollResults,
 } = vi.hoisted(() => ({
@@ -36,6 +39,9 @@ const {
   mockStopSessionAtomic: vi.fn(),
   mockCreateSessionWithRulesAtomic: vi.fn(),
   mockHandleQualityChangeFallout: vi.fn().mockResolvedValue(undefined),
+  mockHandleMediaChangeAtomic: vi.fn(),
+  mockBatchFindActiveSessionsByKey: vi.fn().mockResolvedValue(new Map()),
+  mockDetectMediaChange: vi.fn().mockReturnValue(false),
   mockBuildActiveSession: vi.fn(),
   mockProcessPollResults: vi.fn().mockResolvedValue(undefined),
 }));
@@ -95,19 +101,28 @@ vi.mock('../pendingConfirmation.js', () => ({
 
 vi.mock('../sessionLifecycle.js', () => ({
   batchFindActiveSessionsByComposite: vi.fn().mockResolvedValue(new Map()),
-  batchFindActiveSessionsByKey: vi.fn().mockResolvedValue(new Map()),
+  batchFindActiveSessionsByKey: (...args: unknown[]) => mockBatchFindActiveSessionsByKey(...args),
   buildActiveSession: (...args: unknown[]) => mockBuildActiveSession(...args),
   buildPendingActiveSession: vi.fn(),
   createSessionWithRulesAtomic: (...args: unknown[]) => mockCreateSessionWithRulesAtomic(...args),
   findActiveSession: (...args: unknown[]) => mockFindActiveSession(...args),
   findActiveSessionByComposite: vi.fn().mockResolvedValue(null),
-  handleMediaChangeAtomic: vi.fn(),
+  handleMediaChangeAtomic: (...args: unknown[]) => mockHandleMediaChangeAtomic(...args),
   handleQualityChangeFallout: (...args: unknown[]) => mockHandleQualityChangeFallout(...args),
   processPollResults: (...args: unknown[]) => mockProcessPollResults(...args),
   reEvaluateRulesOnPauseState: vi.fn(),
   reEvaluateRulesOnTranscodeChange: vi.fn(),
   stopSessionAtomic: (...args: unknown[]) => mockStopSessionAtomic(...args),
 }));
+
+vi.mock('../stateTracker.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../stateTracker.js')>();
+  return {
+    ...actual,
+    detectMediaChange: (...args: Parameters<typeof actual.detectMediaChange>) =>
+      mockDetectMediaChange(...args),
+  };
+});
 
 vi.mock('../violations.js', () => ({
   broadcastViolations: vi.fn(),
@@ -347,6 +362,79 @@ describe('quality-change fallout: stale-recovery path', () => {
       cacheService,
       pubSubService
     );
+  });
+});
+
+describe('quality-change fallout: media-change path', () => {
+  it('runs full fallout for the stopped twin and removes its cachedSessionKeys entry so it does not ride into the next grace-period sweep', async () => {
+    // Both the session that's mid media-change (sk-1) and its unrelated
+    // quality-change twin (twin-session-key) are already tracked in cache.
+    cacheService.getAllActiveSessions.mockResolvedValue([
+      {
+        id: 'existing-session-id',
+        serverId: 'server-1',
+        serverUserId: 'su-a',
+        sessionKey: 'sk-1',
+        deviceId: 'device-1',
+        ratingKey: 'rk-1',
+        pending: false,
+      },
+      {
+        id: 'twin-session-id',
+        serverId: 'server-1',
+        serverUserId: 'su-a',
+        sessionKey: 'twin-session-key',
+        deviceId: 'device-1',
+        ratingKey: 'rk-1',
+        pending: false,
+      },
+    ]);
+
+    // The row matched here doesn't need a genuinely different ratingKey -
+    // detectMediaChange is mocked below, same as the SSE-side equivalent test.
+    mockBatchFindActiveSessionsByKey.mockResolvedValue(
+      new Map([
+        [
+          'sk-1',
+          [
+            {
+              id: 'existing-session-id',
+              serverId: 'server-1',
+              serverUserId: 'su-a',
+              sessionKey: 'sk-1',
+              deviceId: 'device-1',
+              ratingKey: 'rk-1',
+            },
+          ],
+        ],
+      ])
+    );
+    mockDetectMediaChange.mockReturnValue(true);
+
+    mockCreateMediaServerClient.mockReturnValue({
+      getSessions: vi.fn().mockResolvedValue([createMockProcessedSession()]),
+    });
+    mockHandleMediaChangeAtomic.mockResolvedValue({
+      stoppedSession: { id: 'existing-session-id', serverUserId: 'su-a', sessionKey: 'sk-1' },
+      insertedSession: { id: 'new-session-id', sessionKey: 'sk-1' },
+      violationResults: [],
+      wasTerminatedByRule: false,
+      qualityChange: qualityChangeResult,
+    });
+    mockBuildActiveSession.mockReturnValue({ id: 'new-session-id', serverId: 'server-1' });
+
+    await triggerServerPoll('server-1');
+
+    expect(mockHandleQualityChangeFallout).toHaveBeenCalledWith(
+      qualityChangeResult,
+      cacheService,
+      pubSubService
+    );
+
+    // The twin never reappears in a poll response (it was already stopped),
+    // so if its cache key survives it rides handleFirstMisses straight into
+    // missedPollTracking on this very tick - a redundant stop cycle.
+    expect(gracePeriodSessionIds().has('twin-session-id')).toBe(false);
   });
 });
 

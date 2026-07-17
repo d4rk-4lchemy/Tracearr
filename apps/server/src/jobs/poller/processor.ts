@@ -1277,6 +1277,10 @@ async function processServerSessions(
 
               if (qualityChange) {
                 await handleQualityChangeFallout(qualityChange, cacheService, pubSubService);
+
+                // Media change is Plex-only, so the twin's cache key is always this plain form.
+                // Prevents the twin from riding into missedPollTracking as a first-miss.
+                cachedSessionKeys.delete(`${server.id}:${qualityChange.stoppedSession.sessionKey}`);
               }
 
               // Broadcast violations for new session
