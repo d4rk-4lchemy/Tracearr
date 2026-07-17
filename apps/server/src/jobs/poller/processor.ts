@@ -275,6 +275,28 @@ async function sweepGracePeriod(
   }
 }
 
+/**
+ * Drop grace-period entries for servers no longer in the current poll set:
+ * deleted from the DB, or moved from fallback to active SSE coverage.
+ * Entries are dropped silently instead of run through sweepGracePeriod,
+ * since firing the deferred stop notification here could double-notify
+ * once SSE independently detects the same stop for a server that just
+ * exited fallback. A session that is genuinely gone is still caught by
+ * sweepStaleSessions from DB state, which does not depend on this map.
+ * Runs unprotected by serverPollLocks: the entries pruned belong to servers
+ * this tick will not touch, and sweepGracePeriod already tolerates a
+ * missing snapshot if triggerServerPoll or triggerReconciliationPoll races
+ * this delete for the same server.
+ */
+function pruneMissedPollTracking(serversNeedingPoll: { id: string }[]): void {
+  const pollableServerIds = new Set(serversNeedingPoll.map((server) => server.id));
+  for (const [key, snapshot] of missedPollTracking) {
+    if (!pollableServerIds.has(snapshot.serverId)) {
+      missedPollTracking.delete(key);
+    }
+  }
+}
+
 // ============================================================================
 // Server Session Processing
 // ============================================================================
@@ -1448,6 +1470,24 @@ async function processServerSessions(
 // ============================================================================
 
 /**
+ * Collapse the adaptive interval back to idle cadence when nothing needs
+ * polling this tick. This is the only place that can do it when
+ * serversNeedingPoll is empty, since the normal adaptive-interval switch
+ * further down never runs on this early-return path: a previously active
+ * 3s interval would otherwise keep firing `select * from servers` every
+ * tick with no servers to poll.
+ */
+function resetAdaptivePollInterval(): void {
+  if (pollingInterval && currentPollIntervalMs !== POLLING_INTERVALS.SESSIONS_IDLE) {
+    clearInterval(pollingInterval);
+    pollingInterval = setInterval(() => void pollServers(), POLLING_INTERVALS.SESSIONS_IDLE);
+    currentPollIntervalMs = POLLING_INTERVALS.SESSIONS_IDLE;
+    console.log('[Poller] Adaptive: switched to idle (nothing to poll)');
+  }
+  previousPollHadSessions = false;
+}
+
+/**
  * Poll all connected servers for active sessions
  *
  * With SSE integration:
@@ -1475,8 +1515,14 @@ async function pollServers(): Promise<void> {
     // JF/Emby in unsupported/fallback state are covered by polling as normal.
     const serversNeedingPoll = allServers.filter((server) => sseManager.isInFallback(server.id));
 
+    // Servers no longer in the poll set (removed from the DB, or moved to SSE
+    // coverage) would otherwise keep their grace-period snapshot forever with
+    // no poll left to confirm or clear it.
+    pruneMissedPollTracking(serversNeedingPoll);
+
     if (serversNeedingPoll.length === 0) {
-      // Every server is handled by an active SSE connection, no polling needed
+      // Every server is handled by an active SSE connection, no polling needed.
+      resetAdaptivePollInterval();
       return;
     }
 
@@ -1599,11 +1645,18 @@ async function pollServers(): Promise<void> {
       );
     }
 
-    // Adaptive polling
+    // Adaptive polling. cachedSessions spans every server; scoping to servers
+    // actually polled this tick keeps an idle fallback server (and its 3s
+    // `select * from servers` tick) from being held active by an unrelated
+    // session that SSE, not this poller, is tracking on another server.
+    const polledServerIds = new Set(serversNeedingPoll.map((server) => server.id));
+    const cachedSessionsOnPolledServers = cachedSessions.filter((s) =>
+      polledServerIds.has(s.serverId)
+    );
     const hasActiveSessions =
       allNewSessions.length > 0 ||
       allUpdatedSessions.length > 0 ||
-      cachedSessions.length > allStoppedKeys.length;
+      cachedSessionsOnPolledServers.length > allStoppedKeys.length;
 
     if (hasActiveSessions !== previousPollHadSessions && pollingInterval) {
       const newInterval = hasActiveSessions
