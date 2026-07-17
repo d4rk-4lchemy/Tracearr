@@ -275,7 +275,7 @@ export class DispatcharrClient implements IMediaServerClient {
 
       const record: { next?: unknown } | null =
         data && typeof data === 'object' && !Array.isArray(data)
-          ? (data as { next?: unknown })
+          ? data
           : null;
       nextUrl = typeof record?.next === 'string' && record.next ? record.next : null;
     }
@@ -735,12 +735,12 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   private extractRecords(payload: unknown): Record<string, unknown>[] {
-    if (Array.isArray(payload)) return payload.filter(this.isRecord);
+    if (Array.isArray(payload)) return payload.filter((value) => this.isRecord(value));
     if (!this.isRecord(payload)) return [];
     const candidates = [payload.results, payload.data, payload.channels, payload.programs];
     for (const candidate of candidates) {
       if (Array.isArray(candidate)) {
-        return candidate.filter(this.isRecord);
+        return candidate.filter((value) => this.isRecord(value));
       }
     }
     return [payload];

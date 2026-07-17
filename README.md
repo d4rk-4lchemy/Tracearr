@@ -8,8 +8,7 @@
 > You can do "in-place" replacement of your current Tracearr instance.<br>But **CREATE A BACKUP FIRST**, as I don't guarantee 100% success rate, and **I don't care if you break your setup** ¯\\\_(ツ)_/¯
 
 > [!WARNING]  
-> When updating to 1.5.0 Jellyfin login **will no longer work!** You need to use your local Tracearr account, created when first launching the app.
-> If you don't remember your password and want to reset it, please execute `docker exec {distracearr_container_name} node apps/server/dist/scripts/reset-password.js '{new_password}'`.
+> When updating to **≥1.5.0** Jellyfin login **will no longer work!** You need to use your local Tracearr account, created when first launching the service.<br> If you don't remember your password and want to reset it, please execute:<br>`docker exec {distracearr_container_name} node apps/server/dist/scripts/reset-password.js '{new_password}'`
 
 **What's New:**
 - Support for Dispatcharr servers, with Login/Password (for WebSocket integration) or API Key auth,

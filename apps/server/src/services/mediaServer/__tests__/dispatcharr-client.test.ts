@@ -321,7 +321,7 @@ describe('DispatcharrClient', () => {
     vi.spyOn(client, 'getUserMap').mockResolvedValue(new Map());
     vi.spyOn(client, 'buildSessionsFromStatusSnapshot').mockResolvedValue(liveSessions as never);
     const buildVodSpy = vi.spyOn(client, 'buildSessionsFromVodStatsSnapshot');
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     await expect(client.getSessions()).resolves.toEqual(liveSessions);
     expect(buildVodSpy).not.toHaveBeenCalled();

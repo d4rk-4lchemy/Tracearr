@@ -92,7 +92,7 @@ interface PublicMediaFieldsInput {
 
 function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
   for (const value of values) {
-    if (value && value.trim()) return value;
+    if (value?.trim()) return value;
   }
   return null;
 }

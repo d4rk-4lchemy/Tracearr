@@ -79,9 +79,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-type DispatcharrServerExtras = {
+interface DispatcharrServerExtras {
   dispatcharrLiveHistoryThresholdSeconds?: number;
-};
+}
 
 export function ServerSettings() {
   const { t } = useTranslation(['settings', 'common', 'notifications', 'pages']);
@@ -200,7 +200,7 @@ export function ServerSettings() {
     setIgnoreAnonymousStreams(true);
     setDispatcharrLiveHistoryThresholdSeconds(30);
     setConnectError(null);
-    setServerType(defaultServerType as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr');
+    setServerType(defaultServerType);
     setPlexDialogStep('loading');
     setPlexServers([]);
     setConnectingPlexServer(null);

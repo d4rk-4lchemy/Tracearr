@@ -139,7 +139,7 @@ export class SSEManager extends EventEmitter {
         this.addServer(
           server.id,
           server.name,
-          server.type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
+          server.type,
           server.url,
           server.token,
           server.ignoreAnonymousStreams
@@ -365,7 +365,7 @@ export class SSEManager extends EventEmitter {
 
   isDispatcharrRealtimeHealthy(serverId: string): boolean {
     const connection = this.connections.get(serverId);
-    if (!connection || connection.serverType !== 'dispatcharr' || !connection.dispatcharrRealtime) {
+    if (connection?.serverType !== 'dispatcharr' || !connection.dispatcharrRealtime) {
       return false;
     }
     return connection.dispatcharrRealtime.getMode() === 'ws' && !connection.dispatcharrRealtime.isInFallback();
@@ -796,7 +796,7 @@ export class SSEManager extends EventEmitter {
           await this.addServer(
             server.id,
             server.name,
-            server.type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
+            server.type,
             server.url,
             server.token,
             server.ignoreAnonymousStreams

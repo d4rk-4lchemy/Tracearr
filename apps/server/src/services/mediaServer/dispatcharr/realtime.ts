@@ -33,13 +33,6 @@ export interface DispatcharrRealtimeStatus {
   error: string | null;
 }
 
-interface DispatcharrRealtimeEvents {
-  'snapshot:update': { serverId: string; sessions: MediaSession[] };
-  'connection:status': DispatcharrRealtimeStatus;
-  'fallback:activated': { serverId: string; serverName: string; reason: string };
-  'fallback:deactivated': { serverId: string; serverName: string };
-}
-
 interface WebSocketLike {
   onopen: ((this: WebSocketLike, ev: unknown) => void) | null;
   onmessage: ((this: WebSocketLike, ev: { data?: unknown }) => void) | null;

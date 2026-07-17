@@ -1962,7 +1962,7 @@ export async function triggerServerPoll(serverId: string): Promise<void> {
     const activeRulesV2 = await getActiveRulesV2();
     const { newSessions, stoppedSessionKeys, updatedSessions, watchedTransitionOccurred } =
       await processServerSessions(
-        server as ServerWithToken,
+        server,
         activeRulesV2,
         cachedSessionKeys,
         cachedSessions
