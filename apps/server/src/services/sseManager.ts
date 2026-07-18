@@ -124,7 +124,7 @@ export class SSEManager extends EventEmitter {
   }
 
   /**
-   * Start realtime connections for all configured servers.
+   * Start SSE connections for all servers
    */
   async start(): Promise<void> {
     if (!this.initialized) {
@@ -132,7 +132,8 @@ export class SSEManager extends EventEmitter {
     }
 
     const allServers = await db.select().from(servers);
-    console.log(`[SSEManager] Starting realtime manager for ${allServers.length} server(s)`);
+
+    console.log(`[SSEManager] Starting SSE for ${allServers.length} server(s)`);
 
     await Promise.all(
       allServers.map((server) =>
@@ -150,7 +151,7 @@ export class SSEManager extends EventEmitter {
     this.startReconciliation();
     registerService('sse-manager', {
       name: 'SSE Manager',
-      description: 'Manages realtime SSE and Dispatcharr WS connections',
+      description: 'Manages real-time SSE connections',
       intervalMs: POLLING_INTERVALS.SSE_RECONCILIATION,
     });
   }
@@ -219,51 +220,63 @@ export class SSEManager extends EventEmitter {
         connectedAt: null,
         lastEventAt: null,
       };
-      this.connections.set(serverId, connection);
 
-      if (serverType === 'plex') {
-        const eventSource = new PlexEventSource({
-          serverId,
-          serverName,
-          url,
-          token,
-        });
+      try {
+        if (serverType === 'plex') {
+          const eventSource = new PlexEventSource({
+            serverId,
+            serverName,
+            url,
+            token,
+          });
 
-        this.setupPlexEventHandlers(eventSource, serverId, serverName);
-        connection.eventSource = eventSource;
-        await eventSource.connect();
-      } else if (serverType === 'dispatcharr') {
-        const realtime = new DispatcharrRealtimeConnector({
-          serverId,
-          serverName,
-          url,
-          token,
-          ignoreAnonymousStreams,
-        });
+          this.setupPlexEventHandlers(eventSource, serverId, serverName);
+          connection.eventSource = eventSource;
+          await eventSource.connect();
+        } else if (serverType === 'dispatcharr') {
+          const realtime = new DispatcharrRealtimeConnector({
+            serverId,
+            serverName,
+            url,
+            token,
+            ignoreAnonymousStreams,
+          });
 
-        this.setupDispatcharrRealtimeHandlers(realtime, serverId, serverName);
-        connection.dispatcharrRealtime = realtime;
-        connection.inFallback = realtime.isInFallback();
-        connection.state = realtime.isInFallback() ? 'fallback' : 'connecting';
+          this.setupDispatcharrRealtimeHandlers(realtime, serverId, serverName);
+          connection.dispatcharrRealtime = realtime;
+          connection.inFallback = realtime.isInFallback();
+          connection.state = realtime.isInFallback() ? 'fallback' : 'connecting';
+          await realtime.connect();
+        } else {
+          // Jellyfin/Emby: attempt plugin SSE connection
+          const eventSource = new JellyfinEmbyEventSource({
+            serverId,
+            serverName,
+            url,
+            serverType,
+            token,
+          });
 
-        await realtime.connect();
-      } else {
-        // Jellyfin/Emby: attempt plugin SSE connection
-        const eventSource = new JellyfinEmbyEventSource({
-          serverId,
-          serverName,
-          url,
-          serverType,
-          token,
-        });
-
-        this.setupJellyfinEmbyEventHandlers(eventSource, serverId, serverName, serverType);
-        connection.eventSource = eventSource;
-        await eventSource.connect();
+          this.setupJellyfinEmbyEventHandlers(eventSource, serverId, serverName, serverType);
+          connection.eventSource = eventSource;
+          await eventSource.connect();
+        }
+      } catch (error) {
+        // connect() threw before the connection was tracked in this.connections,
+        // so removeServerInternal's cleanup path never sees it. Tear down the
+        // listeners and any partial connection here instead of leaking them.
+        if (connection.eventSource) {
+          connection.eventSource.removeAllListeners();
+          connection.eventSource.disconnect();
+        }
+        if (connection.dispatcharrRealtime) {
+          connection.dispatcharrRealtime.removeAllListeners();
+          connection.dispatcharrRealtime.disconnect();
+        }
+        throw error;
       }
-    } catch (error) {
-      this.connections.delete(serverId);
-      throw error;
+
+      this.connections.set(serverId, connection);
     } finally {
       this.pendingOperations.delete(serverId);
     }
@@ -310,6 +323,7 @@ export class SSEManager extends EventEmitter {
     }
 
     this.connections.delete(serverId);
+    this.lastNudgeAt.delete(serverId);
     console.log(`[SSEManager] Removed server ${connection.serverName}`);
   }
 
@@ -359,16 +373,16 @@ export class SSEManager extends EventEmitter {
 
   getDispatcharrLatestSessions(serverId: string): MediaSession[] | null {
     const connection = this.connections.get(serverId);
-    if (!connection?.dispatcharrRealtime) return null;
-    return connection.dispatcharrRealtime.getLatestSessions();
+    return connection?.dispatcharrRealtime?.getLatestSessions() ?? null;
   }
 
   isDispatcharrRealtimeHealthy(serverId: string): boolean {
     const connection = this.connections.get(serverId);
-    if (connection?.serverType !== 'dispatcharr' || !connection.dispatcharrRealtime) {
-      return false;
-    }
-    return connection.dispatcharrRealtime.getMode() === 'ws' && !connection.dispatcharrRealtime.isInFallback();
+    return (
+      connection?.serverType === 'dispatcharr' &&
+      connection.dispatcharrRealtime?.isConnected() === true &&
+      !connection.dispatcharrRealtime.isInFallback()
+    );
   }
 
   /**
@@ -412,7 +426,7 @@ export class SSEManager extends EventEmitter {
 
   /**
    * Get list of servers that need polling (fallback mode or non-SSE-connected)
-   * JF/Emby servers with active plugin SSE are NOT included — events drive them.
+   * JF/Emby servers with active plugin SSE are NOT included; events drive them.
    * JF/Emby servers in unsupported/fallback state ARE included for normal polling.
    */
   getServersNeedingPoll(): string[] {
@@ -460,66 +474,6 @@ export class SSEManager extends EventEmitter {
     });
   }
 
-  private setupDispatcharrRealtimeHandlers(
-    realtime: DispatcharrRealtimeConnector,
-    serverId: string,
-    serverName: string
-  ): void {
-    realtime.on('snapshot:update', ({ sessions }: { sessions: MediaSession[] }) => {
-      this.emit('dispatcharr:snapshot', { serverId, sessions });
-    });
-
-    realtime.on('connection:status', (status: DispatcharrRealtimeStatus) => {
-      const connection = this.connections.get(serverId);
-      if (!connection) return;
-      connection.state = status.state;
-      connection.inFallback = status.mode !== 'ws' || status.state === 'fallback';
-
-      const connectionStatus = this.buildDispatcharrConnectionStatus(status);
-      if (this.cacheService) {
-        this.cacheService
-          .setServerConnectionStatus(serverId, connectionStatus)
-          .catch((err: unknown) => {
-            console.error(
-              `[SSEManager] Failed to write connection status for ${serverName}:`,
-              err
-            );
-          });
-      }
-      broadcastToAll(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connectionStatus);
-
-      this.emit('connection:status', {
-        serverId: status.serverId,
-        serverName: status.serverName,
-        state: status.state,
-        connectedAt: status.connectedAt,
-        lastEventAt: status.lastEventAt,
-        reconnectAttempts: status.reconnectAttempts,
-        error: status.error,
-      });
-    });
-
-    realtime.on('fallback:activated', ({ reason }: { reason: string }) => {
-      const connection = this.connections.get(serverId);
-      if (connection) {
-        connection.inFallback = true;
-        connection.state = 'fallback';
-      }
-      console.warn(`[SSEManager] Dispatcharr ${serverName} entering fallback: ${reason}`);
-      this.emit('fallback:activated', { serverId, serverName });
-    });
-
-    realtime.on('fallback:deactivated', () => {
-      const connection = this.connections.get(serverId);
-      if (connection) {
-        connection.inFallback = false;
-        connection.state = 'connected';
-      }
-      console.info(`[SSEManager] Dispatcharr ${serverName} exited fallback`);
-      this.emit('fallback:deactivated', { serverId, serverName });
-    });
-  }
-
   /**
    * Build a ServerConnectionStatus from a live connection + SSEConnectionStatus snapshot.
    * mode='realtime' only when state==='connected'; everything else is 'polling'.
@@ -527,7 +481,7 @@ export class SSEManager extends EventEmitter {
   private buildConnectionStatus(
     serverId: string,
     serverName: string,
-    serverType: ServerConnectionStatus['serverType'],
+    serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
     status: SSEConnectionStatus
   ): ServerConnectionStatus {
     const state = status.state;
@@ -540,6 +494,7 @@ export class SSEManager extends EventEmitter {
       Date.now() - status.connectedAt.getTime() > 30_000;
     const pluginUpdateAvailable =
       serverType !== 'plex' &&
+      serverType !== 'dispatcharr' &&
       latest !== null &&
       state === 'connected' &&
       (pluginVersion === null ? connectedLongEnough : compareVersions(pluginVersion, latest) < 0);
@@ -557,24 +512,6 @@ export class SSEManager extends EventEmitter {
     };
   }
 
-  private buildDispatcharrConnectionStatus(
-    status: DispatcharrRealtimeStatus
-  ): ServerConnectionStatus {
-    const isRealtime = status.mode === 'ws' && status.state === 'connected';
-    return {
-      serverId: status.serverId,
-      serverName: status.serverName,
-      serverType: 'dispatcharr',
-      mode: isRealtime ? 'realtime' : 'polling',
-      state: status.state,
-      lastEventAt: status.lastEventAt?.toISOString() ?? null,
-      since: isRealtime ? (status.connectedAt?.toISOString() ?? null) : null,
-      error: status.error ?? status.fallbackReason,
-      pluginVersion: null,
-      pluginUpdateAvailable: false,
-    };
-  }
-
   /**
    * Re-write the current connection status for every active connection to Redis.
    * Called on the reconciliation interval (every 30s, well under the 600s TTL) so
@@ -588,24 +525,13 @@ export class SSEManager extends EventEmitter {
     if (!this.cacheService) return;
 
     for (const connection of this.connections.values()) {
-      if (connection.dispatcharrRealtime) {
-        const connectionStatus = this.buildDispatcharrConnectionStatus(
-          connection.dispatcharrRealtime.getStatus()
-        );
+      const status = connection.eventSource
+        ? connection.eventSource.getStatus()
+        : connection.dispatcharrRealtime
+          ? this.toSseStatus(connection.dispatcharrRealtime.getStatus())
+          : null;
+      if (!status) continue;
 
-        this.cacheService
-          .setServerConnectionStatus(connection.serverId, connectionStatus)
-          .catch((err: unknown) => {
-            console.error(
-              `[SSEManager] Failed to refresh connection status for ${connection.serverName}:`,
-              err
-            );
-          });
-        continue;
-      }
-
-      if (!connection.eventSource) continue;
-      const status = connection.eventSource.getStatus();
       const connectionStatus = this.buildConnectionStatus(
         connection.serverId,
         connection.serverName,
@@ -646,7 +572,7 @@ export class SSEManager extends EventEmitter {
 
       const connectionStatus = this.buildConnectionStatus(serverId, serverName, serverType, status);
 
-      // Persist to Redis and broadcast — fail-safe: errors here don't stop ingestion
+      // Persist to Redis and broadcast; fail-safe: errors here don't stop ingestion
       if (this.cacheService) {
         this.cacheService
           .setServerConnectionStatus(serverId, connectionStatus)
@@ -661,6 +587,56 @@ export class SSEManager extends EventEmitter {
     eventSource.on('connection:error', (error: Error) => {
       console.error(`[SSEManager] Plugin SSE error for ${serverName}:`, error.message);
     });
+  }
+
+  private setupDispatcharrRealtimeHandlers(
+    realtime: DispatcharrRealtimeConnector,
+    serverId: string,
+    serverName: string
+  ): void {
+    realtime.on('snapshot:update', ({ sessions }: { serverId: string; sessions: MediaSession[] }) => {
+      const connection = this.connections.get(serverId);
+      if (connection) connection.lastEventAt = new Date();
+      this.emit('dispatcharr:snapshot', { serverId, sessions });
+    });
+
+    realtime.on('connection:status', (status: DispatcharrRealtimeStatus) => {
+      const state = this.toSseStatus(status).state;
+      this.handleConnectionStateChange(serverId, serverName, state, this.toSseStatus(status));
+
+      const connectionStatus = this.buildConnectionStatus(
+        serverId,
+        serverName,
+        'dispatcharr',
+        this.toSseStatus(status)
+      );
+
+      if (this.cacheService) {
+        this.cacheService
+          .setServerConnectionStatus(serverId, connectionStatus)
+          .catch((err: unknown) => {
+            console.error(`[SSEManager] Failed to write connection status for ${serverName}:`, err);
+          });
+      }
+
+      broadcastToAll(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connectionStatus);
+    });
+
+    realtime.on('connection:error', (error: Error) => {
+      console.error(`[SSEManager] Dispatcharr websocket error for ${serverName}:`, error.message);
+    });
+  }
+
+  private toSseStatus(status: DispatcharrRealtimeStatus): SSEConnectionStatus {
+    return {
+      serverId: status.serverId,
+      serverName: status.serverName,
+      state: status.state,
+      connectedAt: status.connectedAt,
+      lastEventAt: status.lastEventAt,
+      reconnectAttempts: status.reconnectAttempts,
+      error: status.error,
+    };
   }
 
   /**
@@ -745,7 +721,7 @@ export class SSEManager extends EventEmitter {
 
     try {
       const connection = this.connections.get(serverId);
-      if (!connection) {
+      if (!connection?.eventSource && !connection?.dispatcharrRealtime) {
         return;
       }
 

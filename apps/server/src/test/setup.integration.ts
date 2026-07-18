@@ -21,12 +21,8 @@ import { dirname, resolve } from 'path';
 import { beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { installMatchers } from '@tracearr/test-utils/matchers';
 import { resetAllFactoryCounters } from '@tracearr/test-utils/factories';
-import {
-  resetExpoPushCounter,
-  resetMockMediaCounters,
-  resetSocketCounter,
-} from '@tracearr/test-utils/mocks';
-import { setupTestDb, closeTestPool, resetTestDb } from '@tracearr/test-utils';
+import { resetAllMocks } from '@tracearr/test-utils/mocks';
+import { setupIntegrationTests, resetDatabaseBeforeEach } from '@tracearr/test-utils/vitest.setup';
 
 // Set test environment variables BEFORE any database imports
 process.env.NODE_ENV = 'test';
@@ -38,7 +34,6 @@ process.env.DATABASE_URL =
 // Use port 6380 for test Redis to avoid conflicts with dev
 process.env.REDIS_URL = process.env.TEST_REDIS_URL || 'redis://localhost:6380';
 process.env.BETTER_AUTH_SECRET = 'test-better-auth-secret-32-chars!!';
-process.env.BETTER_AUTH_URL = 'http://localhost:3000';
 
 // Install custom vitest matchers from test-utils
 installMatchers();
@@ -65,10 +60,7 @@ beforeAll(async () => {
   process.env.TEST_INITIALIZED = 'true';
 
   // Set up database connection
-  await setupTestDb();
-  cleanup = async () => {
-    await closeTestPool();
-  };
+  cleanup = await setupIntegrationTests();
 
   // Run migrations (same as server startup)
   const { runMigrations } = await import('../db/client.js');
@@ -99,12 +91,10 @@ beforeAll(async () => {
 // Reset database and factories before each test for isolation
 beforeEach(async () => {
   resetAllFactoryCounters();
-  resetMockMediaCounters();
-  resetExpoPushCounter();
-  resetSocketCounter();
+  resetAllMocks();
 
   // Reset database to clean state
-  await resetTestDb();
+  await resetDatabaseBeforeEach();
 });
 
 afterAll(async () => {

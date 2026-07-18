@@ -88,8 +88,7 @@ export async function getSetting<K extends SettingKey>(key: K): Promise<SettingT
     .where(eq(settings.name, key))
     .limit(1);
 
-  const row = rows[0];
-  const value = row ? (row.value as SettingTypes[K]) : ALL_DEFAULTS[key];
+  const value = rows.length === 0 ? ALL_DEFAULTS[key] : (rows[0]!.value as SettingTypes[K]);
   cacheSetting(key, value);
   return value;
 }

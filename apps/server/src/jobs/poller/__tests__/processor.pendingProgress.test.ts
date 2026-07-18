@@ -8,10 +8,10 @@ function createPending(overrides: Partial<PendingSessionData> = {}): PendingSess
   return {
     id: 'pending-1',
     confirmation: {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: now,
       maxViewOffset: 0,
+      initialViewOffset: null,
     },
     processed: {} as any,
     server: { id: 'srv-1', name: 'Dispatcharr', type: 'dispatcharr' },
@@ -41,10 +41,10 @@ describe('syncDispatcharrPendingProgress', () => {
   it('copies maxViewOffset into processed.progressMs for pending Dispatcharr sessions', () => {
     const pending = createPending({
       confirmation: {
-        rulesEvaluated: false,
         confirmedPlayback: false,
         firstSeenAt: 1710600000000,
         maxViewOffset: 12000,
+        initialViewOffset: null,
       },
       processed: { progressMs: 0 } as any,
     });
@@ -56,10 +56,10 @@ describe('syncDispatcharrPendingProgress', () => {
   it('does not change progress for non-Dispatcharr threshold flow', () => {
     const pending = createPending({
       confirmation: {
-        rulesEvaluated: false,
         confirmedPlayback: false,
         firstSeenAt: 1710600000000,
         maxViewOffset: 12000,
+        initialViewOffset: null,
       },
       processed: { progressMs: 5000 } as any,
     });

@@ -111,6 +111,19 @@ export interface LibraryStatusResponse {
   backfillDays: number | null;
 }
 
+export interface LibraryStatusResponse {
+  isSynced: boolean;
+  isSyncRunning: boolean;
+  needsBackfill: boolean;
+  isBackfillRunning: boolean;
+  backfillState: 'active' | 'waiting' | 'delayed' | null;
+  itemCount: number;
+  snapshotCount: number;
+  earliestItemDate: string | null;
+  earliestSnapshotDate: string | null;
+  backfillDays: number | null;
+}
+
 // Stats time range parameters
 export interface StatsTimeRange {
   period: 'day' | 'week' | 'month' | 'year' | 'all' | 'custom';

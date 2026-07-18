@@ -122,8 +122,6 @@ describe('better auth security (integration)', () => {
   let app: FastifyInstance;
 
   beforeEach(async () => {
-    process.env.TRACEARR_SILENCE_BETTER_AUTH_LOGS = '1';
-    await closeAuth();
     app = await buildApp();
     // Rate-limit counters live in Redis and are NOT reset by the per-test DB
     // truncation, so clear anything from a previous test that could bleed
@@ -157,7 +155,6 @@ describe('better auth security (integration)', () => {
       if (keys.length > 0) await redis.del(...keys);
     }
     await closeAuth();
-    delete process.env.TRACEARR_SILENCE_BETTER_AUTH_LOGS;
   });
 
   it('session cookie is httpOnly and sameSite', async () => {
@@ -683,7 +680,6 @@ describe('better auth security (integration)', () => {
     const originCheckAuth = betterAuth({
       basePath: '/api/v1/auth',
       secret: 'test-better-auth-secret-32-chars!!',
-      logger: { disabled: true },
       trustedOrigins: [trustedOrigin],
       database: drizzleAdapter(db, {
         provider: 'pg',

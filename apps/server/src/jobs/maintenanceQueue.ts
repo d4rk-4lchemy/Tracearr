@@ -91,13 +91,6 @@ let maintenanceWorker: Worker<MaintenanceJobData> | null = null;
 // Track active job state
 let activeJobProgress: MaintenanceJobProgress | null = null;
 
-function requireJobId(job: Job<MaintenanceJobData>): string {
-  if (!job.id) {
-    throw new Error('Maintenance job is missing an id');
-  }
-  return job.id;
-}
-
 /**
  * Initialize the maintenance queue with Redis connection
  */
@@ -174,7 +167,7 @@ export function startMaintenanceWorker(): void {
           }
         }
       })
-      .catch((err: unknown) => {
+      .catch((err) => {
         console.warn('[Maintenance] Failed to check for stuck jobs:', err);
       });
   }
@@ -182,11 +175,10 @@ export function startMaintenanceWorker(): void {
   maintenanceWorker = new Worker<MaintenanceJobData>(
     QUEUE_NAME,
     async (job: Job<MaintenanceJobData>) => {
-      const jobId = requireJobId(job);
       const startTime = Date.now();
       const jobStartedAt = new Date().toISOString();
       const jobDescription = getMaintenanceJobDescription(job.data.type);
-      console.log(`[Maintenance] Starting job ${jobId} (${job.data.type})`);
+      console.log(`[Maintenance] Starting job ${job.id} (${job.data.type})`);
 
       // Initialize cached progress immediately so Running Tasks can show it
       activeJobProgress = {
@@ -209,7 +201,7 @@ export function startMaintenanceWorker(): void {
       let waitedMs = 0;
 
       while (
-        (lockHolder = await acquireHeavyOpsLock('maintenance', jobId, jobDescription)) !== null
+        (lockHolder = await acquireHeavyOpsLock('maintenance', job.id!, jobDescription)) !== null
       ) {
         // Update cached progress with waiting status
         activeJobProgress = {
@@ -235,7 +227,7 @@ export function startMaintenanceWorker(): void {
         }
 
         console.log(
-          `[Maintenance] Job ${jobId} waiting for ${lockHolder.jobType} job: ${lockHolder.description}`
+          `[Maintenance] Job ${job.id} waiting for ${lockHolder.jobType} job: ${lockHolder.description}`
         );
 
         // Extend BullMQ job lock while waiting
@@ -258,21 +250,21 @@ export function startMaintenanceWorker(): void {
       activeJobProgress.message = 'Acquired lock, starting...';
       activeJobProgress.waitingFor = undefined;
 
-      console.log(`[Maintenance] Job ${jobId} acquired heavy ops lock`);
+      console.log(`[Maintenance] Job ${job.id} acquired heavy ops lock`);
 
       try {
         const result = await processMaintenanceJob(job);
         const duration = Math.round((Date.now() - startTime) / 1000);
-        console.log(`[Maintenance] Job ${jobId} completed in ${duration}s:`, result);
+        console.log(`[Maintenance] Job ${job.id} completed in ${duration}s:`, result);
         return result;
       } catch (error) {
         const duration = Math.round((Date.now() - startTime) / 1000);
-        console.error(`[Maintenance] Job ${jobId} failed after ${duration}s:`, error);
+        console.error(`[Maintenance] Job ${job.id} failed after ${duration}s:`, error);
         throw error;
       } finally {
         // Always release the heavy ops lock
-        await releaseHeavyOpsLock(jobId);
-        console.log(`[Maintenance] Job ${jobId} released heavy ops lock`);
+        await releaseHeavyOpsLock(job.id!);
+        console.log(`[Maintenance] Job ${job.id} released heavy ops lock`);
       }
     },
     {
@@ -534,7 +526,7 @@ async function processNormalizePlayersJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       // Brief pause between batches to let other operations through
       if (totalProcessed < totalRecords) {
@@ -763,7 +755,7 @@ async function processNormalizeCountriesJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       if (totalProcessed < totalRecords) {
         await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
@@ -996,7 +988,7 @@ async function processFixImportedProgressJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       if (totalProcessed < totalRecords) {
         await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
@@ -1274,7 +1266,7 @@ async function processNormalizeCodecsJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
     }
 
     const durationMs = Date.now() - startTime;
@@ -1464,7 +1456,7 @@ export async function processNormalizeResolutionsJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       if (totalProcessed < totalRecords) {
         await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
@@ -1603,7 +1595,7 @@ async function processBackfillUserDatesJob(
 
     // Extend locks after first bulk update - these can take time on large databases
     await extendJobLock(job);
-    await extendHeavyOpsLock(requireJobId(job));
+    await extendHeavyOpsLock(job.id!);
 
     // Step 2: Update lastActivityAt to most recent session for all users with sessions
     // We update even if not NULL to ensure it's the most recent activity
@@ -1627,7 +1619,7 @@ async function processBackfillUserDatesJob(
 
     // Extend locks after second bulk update
     await extendJobLock(job);
-    await extendHeavyOpsLock(requireJobId(job));
+    await extendHeavyOpsLock(job.id!);
 
     const totalUpdated = joinedAtUpdated + lastActivityUpdated;
     const durationMs = Date.now() - startTime;
@@ -1711,7 +1703,7 @@ async function processBackfillLibrarySnapshotsJob(
 
     // Extend locks before initial scan - can be slow on large libraries
     await extendJobLock(job);
-    await extendHeavyOpsLock(requireJobId(job));
+    await extendHeavyOpsLock(job.id!);
 
     // Get all server+library combinations with their date ranges
     // Only consider items with valid file_size (consistent with INVALID_SNAPSHOT_CONDITION
@@ -1764,7 +1756,7 @@ async function processBackfillLibrarySnapshotsJob(
 
     // Extend locks before starting the long processing loop
     await extendJobLock(job);
-    await extendHeavyOpsLock(requireJobId(job));
+    await extendHeavyOpsLock(job.id!);
 
     let totalProcessed = 0;
     let totalSnapshotsCreated = 0;
@@ -1781,7 +1773,7 @@ async function processBackfillLibrarySnapshotsJob(
 
         // Extend locks before the pre-computation phase
         await extendJobLock(job);
-        await extendHeavyOpsLock(requireJobId(job));
+        await extendHeavyOpsLock(job.id!);
 
         // Wrap all temp table operations in a single transaction to ensure
         // the temp table is visible across all queries on the same connection
@@ -1903,7 +1895,7 @@ async function processBackfillLibrarySnapshotsJob(
 
           // Extend locks after pre-computation
           await extendJobLock(job);
-          await extendHeavyOpsLock(requireJobId(job));
+          await extendHeavyOpsLock(job.id!);
 
           // Batch INSERT from pre-computed temp table
           // Each batch is now a simple SELECT from the temp table
@@ -1920,7 +1912,7 @@ async function processBackfillLibrarySnapshotsJob(
 
             // Extend locks before each batch INSERT
             await extendJobLock(job);
-            await extendHeavyOpsLock(requireJobId(job));
+            await extendHeavyOpsLock(job.id!);
 
             // Simple INSERT from pre-computed data
             const result = await tx.execute(sql`
@@ -1968,7 +1960,7 @@ async function processBackfillLibrarySnapshotsJob(
 
             // Extend locks after each batch
             await extendJobLock(job);
-            await extendHeavyOpsLock(requireJobId(job));
+            await extendHeavyOpsLock(job.id!);
 
             // Move to next batch
             batchStart = new Date(batchEnd);
@@ -1992,7 +1984,7 @@ async function processBackfillLibrarySnapshotsJob(
 
         // Extend locks after each library as well
         await extendJobLock(job);
-        await extendHeavyOpsLock(requireJobId(job));
+        await extendHeavyOpsLock(job.id!);
       } catch (error) {
         console.error(
           `[Maintenance] Error processing library ${lib.server_id}/${lib.library_id}:`,
@@ -2282,7 +2274,7 @@ async function processCleanupOldChunksJob(
 
       // Extend locks after each batch - fails fast if lock is lost
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       // Move to next batch
       currentDate = new Date(batchEnd);

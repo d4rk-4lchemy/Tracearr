@@ -18,8 +18,7 @@ import type { ActiveSession } from '@tracearr/shared';
 
 export function Dashboard() {
   const { t } = useTranslation(['pages', 'common']);
-  const { selectedServerIds, selectedServers, isMultiServer } = useServer();
-  const selectedServerId = !isMultiServer ? (selectedServerIds[0] ?? null) : null;
+  const { selectedServerIds, selectedServers, isMultiServer, selectedServerId } = useServer();
   const {
     data: stats,
     isLoading: statsLoading,

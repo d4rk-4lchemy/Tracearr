@@ -66,6 +66,19 @@ export interface PluginUpdateContext {
 }
 
 /**
+ * Context provided with plugin update notifications
+ */
+export interface PluginUpdateContext {
+  type: 'plugin_update_available';
+  serverId: string;
+  serverName: string;
+  serverType: string;
+  installedVersion: string | null;
+  latestVersion: string;
+  downloadUrl: string;
+}
+
+/**
  * Context provided with new device notifications
  */
 export interface NewDeviceContext {

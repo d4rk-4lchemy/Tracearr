@@ -125,7 +125,7 @@ export function Violations() {
   });
   const personOptions = useMemo(() => personOptionsData?.data ?? [], [personOptionsData]);
 
-  const violations = useMemo(() => violationsData?.data ?? [], [violationsData]);
+  const violations = violationsData?.data ?? [];
   const totalPages = violationsData?.totalPages ?? 1;
   const total = violationsData?.total ?? 0;
 
@@ -204,12 +204,9 @@ export function Violations() {
     [clearSelection]
   );
 
-  const handleAcknowledge = useCallback(
-    (id: string) => {
-      acknowledgeViolation.mutate(id);
-    },
-    [acknowledgeViolation]
-  );
+  const handleAcknowledge = (id: string) => {
+    acknowledgeViolation.mutate(id);
+  };
 
   const handleDismiss = (id?: string) => {
     const violationId = id || dismissId;
@@ -289,10 +286,10 @@ export function Violations() {
               id: 'server',
               header: t('common:labels.server'),
               cell: ({ row }: { row: { original: ViolationWithDetails } }) => {
-                const rowServerId = row.original.server?.id;
                 const server =
-                  (rowServerId ? selectedServers.find((s) => s.id === rowServerId) : undefined) ??
-                  row.original.server;
+                  (row.original.server?.id
+                    ? selectedServers.find((s) => s.id === row.original.server!.id)
+                    : undefined) ?? row.original.server;
                 return server ? <ServerColumnCell server={server} /> : null;
               },
             } satisfies ColumnDef<ViolationWithDetails>,
@@ -623,7 +620,7 @@ export function Violations() {
         <CardContent>
           {isLoading ? (
             <div className="space-y-4">
-              {Array.from({ length: 5 }, (_, i) => (
+              {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex items-center gap-4">
                   <Skeleton className="h-10 w-10 rounded-full" />
                   <div className="space-y-2">

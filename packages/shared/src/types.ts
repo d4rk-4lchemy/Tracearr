@@ -435,6 +435,8 @@ export interface ActiveSession extends Session {
   server: Pick<Server, 'id' | 'name' | 'type'>;
   /** Whether this session can be terminated (some clients like Plexamp don't support termination) */
   canTerminate: boolean;
+  /** True while the session is an unconfirmed pending entry; absent once confirmed. */
+  pending?: boolean;
 }
 
 export interface SessionSegment {
@@ -708,6 +710,7 @@ export interface ResetTrustAction {
 
 export interface KillStreamAction {
   type: 'kill_stream';
+  /** Seconds to wait before killing. The kill only fires if the rule condition still holds after the wait; 0 (default) still re-checks once before killing. */
   delay_seconds?: number;
   require_confirmation?: boolean;
   cooldown_minutes?: number;

@@ -76,17 +76,16 @@ async function processSnapshot(serverId: string, sessions: MediaSession[]): Prom
   const cachedSessionKeys = buildCachedSessionKeys(cachedSessions, serverTypeMap);
   const activeRulesV2 = await getActiveRulesV2();
 
-  const { newSessions, stoppedSessionKeys, updatedSessions, watchedTransitionOccurred } =
-    await processServerSessions(
-      server,
-      activeRulesV2,
-      cachedSessionKeys,
-      cachedSessions,
-      {
-        mediaSessions: sessions,
-        immediateStops: true,
-      }
-    );
+  const {
+    newSessions,
+    stoppedSessionKeys,
+    updatedSessions,
+    watchedTransitionOccurred,
+    confirmedFromPendingIds,
+  } = await processServerSessions(server, activeRulesV2, cachedSessionKeys, cachedSessions, {
+    mediaSessions: sessions,
+    immediateStops: true,
+  });
 
   if (
     newSessions.length === 0 &&
@@ -105,6 +104,7 @@ async function processSnapshot(serverId: string, sessions: MediaSession[]): Prom
     cacheService,
     pubSubService,
     enqueueNotification,
+    confirmedFromPendingIds,
   });
 }
 
