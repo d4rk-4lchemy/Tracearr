@@ -17,6 +17,7 @@ const {
   mockBatchFindActiveSessionsByComposite,
   mockFindActiveSession,
   mockProcessPollResults,
+  mockStopSessionAtomic,
   mockDb,
   mockUpdateWhere,
 } = vi.hoisted(() => {
@@ -66,6 +67,12 @@ const {
     mockBatchFindActiveSessionsByComposite: vi.fn(),
     mockFindActiveSession: vi.fn().mockResolvedValue(null),
     mockProcessPollResults: vi.fn().mockResolvedValue(undefined),
+    mockStopSessionAtomic: vi.fn().mockResolvedValue({
+      wasUpdated: true,
+      durationMs: 60_000,
+      needsRetry: false,
+      retryData: null,
+    }),
     mockUpdateWhere: updateWhere,
     mockDb: {
       select: vi.fn((columns?: unknown) => ({
@@ -125,7 +132,7 @@ vi.mock('../sessionLifecycle.js', () => ({
   processPollResults: mockProcessPollResults,
   reEvaluateRulesOnPauseState: vi.fn(),
   reEvaluateRulesOnTranscodeChange: vi.fn(),
-  stopSessionAtomic: vi.fn(),
+  stopSessionAtomic: mockStopSessionAtomic,
 }));
 vi.mock('../sessionMapper.js', () => ({
   mapMediaSession: mockMapMediaSession,
@@ -133,7 +140,7 @@ vi.mock('../sessionMapper.js', () => ({
 }));
 vi.mock('../violations.js', () => ({ broadcastViolations: vi.fn() }));
 
-import { initializePoller, triggerServerPoll } from '../processor.js';
+import { initializePoller, processServerSessions, triggerServerPoll } from '../processor.js';
 import { reEvaluateRulesOnTranscodeChange } from '../sessionLifecycle.js';
 import { getActiveRulesV2 } from '../database.js';
 
@@ -295,6 +302,49 @@ describe('poller session update guard against stop races', () => {
 
     expect(mockDb.update).toHaveBeenCalledTimes(1);
     expect(reEvaluateRulesOnTranscodeChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Dispatcharr direct snapshot stops', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    initializePoller(
+      {
+        getPendingSession: vi.fn().mockResolvedValue(null),
+        addSessionWriteRetry: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Parameters<typeof initializePoller>[0],
+      { publish: vi.fn(), subscribe: vi.fn() } as unknown as Parameters<typeof initializePoller>[1]
+    );
+  });
+
+  it('returns stopped keys immediately when a WebSocket snapshot is empty', async () => {
+    const result = await processServerSessions(
+      {
+        id: 'dispatcharr-1',
+        name: 'Dispatcharr',
+        type: 'dispatcharr',
+        url: 'http://dispatcharr.local',
+        token: 'token',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      [],
+      new Set(['dispatcharr-1:server-user-1:device-1:1001']),
+      [
+        {
+          id: 'session-1',
+          serverId: 'dispatcharr-1',
+          serverUserId: 'server-user-1',
+          sessionKey: 'sess-key-1',
+          ratingKey: '1001',
+          deviceId: 'device-1',
+        } as never,
+      ],
+      { mediaSessions: [], immediateStops: true }
+    );
+
+    expect(result.stoppedSessionKeys).toEqual(['dispatcharr-1:sess-key-1']);
+    expect(mockStopSessionAtomic).toHaveBeenCalledTimes(1);
   });
 });
 

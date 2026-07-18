@@ -671,7 +671,20 @@ export async function processServerSessions(
       );
       const sTypeMap = new Map([[server.id, server.type]]);
       if (options.immediateStops) {
-        await stopMissingSessionsImmediately(cachedSessionKeys, currentSessionKeys, server, activeSessions);
+        const stoppedSessionKeys = await stopMissingSessionsImmediately(
+          cachedSessionKeys,
+          currentSessionKeys,
+          server,
+          activeSessions
+        );
+        return {
+          success: true,
+          newSessions: [],
+          stoppedSessionKeys,
+          updatedSessions: [],
+          watchedTransitionOccurred: false,
+          confirmedFromPendingIds: new Set(),
+        };
       } else {
         await handleFirstMisses(cachedSessionKeys, server.id, activeSessions, sTypeMap);
         await sweepGracePeriod(keysToSweep, server.id, sTypeMap);
@@ -1788,6 +1801,23 @@ export async function processServerSessions(
       [...missedPollTracking.keys()].filter((k) => k.startsWith(`${server.id}:`))
     );
     const sTypeMap = new Map([[server.id, server.type]]);
+    if (options.immediateStops) {
+      const stoppedSessionKeys = await stopMissingSessionsImmediately(
+        cachedSessionKeys,
+        currentSessionKeys,
+        server,
+        activeSessions
+      );
+      return {
+        success: true,
+        newSessions,
+        stoppedSessionKeys,
+        updatedSessions,
+        watchedTransitionOccurred,
+        confirmedFromPendingIds,
+      };
+    }
+
     await handleFirstMisses(
       [...cachedSessionKeys].filter(
         (k) => k.startsWith(`${server.id}:`) && !currentSessionKeys.has(k)
