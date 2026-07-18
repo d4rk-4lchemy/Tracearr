@@ -223,7 +223,17 @@ export async function cleanupOrphanedPendingSessions(): Promise<void> {
     console.error('[SSEProcessor] Error cleaning up orphaned pending sessions:', error);
   } finally {
     if (dashboardStatsDirty) {
-      await cache.invalidateDashboardStatsCache();
+      // Runs at startup before startSSEProcessor and sseManager.start. A bare
+      // throw here escapes to index.ts's catch and skips both, leaving SSE dead
+      // until restart. Degrade to a logged error instead.
+      try {
+        await cache.invalidateDashboardStatsCache();
+      } catch (error) {
+        console.error(
+          '[SSEProcessor] Error invalidating dashboard stats after orphan cleanup:',
+          error
+        );
+      }
     }
   }
 }
@@ -371,8 +381,10 @@ async function handlePlaying(event: {
     // reconciliation window a stale open row from one user can carry the same
     // sessionKey a different user's new play now uses. Only reuse the row when
     // its server user matches this event's user; otherwise treat it as no match
-    // so the stale row falls to its own cleanup and this play creates fresh
-    // under the correct user.
+    // so the stale row falls to its own cleanup and the create path below runs.
+    // createNewSession re-applies this same server-user match under its lock, so
+    // the foreign row is never reused and a fresh row is written under the
+    // correct user.
     let existingSession = existingRow;
     if (existingRow) {
       const incomingServerUserId = await getServerUserIdByExternalId(
@@ -1037,12 +1049,17 @@ async function createNewSession(
         return null;
       }
 
+      // Reject a row whose server user differs from this play. Plex reuses
+      // sessionKey counters across PMS restarts, so a stale open row from
+      // another user can carry this key; skipping create against it would leave
+      // this user untracked. Leave the foreign row for the stale-sweep and
+      // create fresh under the correct user.
       const existingActive = await findActiveSession({
         serverId,
         sessionKey: processed.sessionKey,
         ratingKey: processed.ratingKey,
       });
-      if (existingActive) {
+      if (existingActive?.serverUserId === userDetail.id) {
         console.log(
           `[SSEProcessor] Active session already exists for ${processed.sessionKey}, skipping create`
         );
@@ -1527,6 +1544,14 @@ async function discardPendingSession(
   // -elsewhere') or the confirm still holds the lock (null). Either way the
   // pending entry is not this discard's to remove. Close any persisted row
   // through the normal stop path instead of evicting a live session.
+  //
+  // Known residual (S2 ghost window): confirmPendingSessionAndPersist does its
+  // updateActiveSession/broadcast after releasing the create lock, so a confirm
+  // that just released can re-add the session to the cache moments after this
+  // stop closes it here. The row stays closed in the DB; the stale cache entry
+  // self-heals on the next reconciliation tick or its cache TTL. Left as-is
+  // because widening the lock to cover the post-persist cache write would hold
+  // it across broadcasts for every confirm.
   const persisted = await findActiveSessionsAll({ serverId, sessionKey });
   for (const row of persisted) {
     await stopSession(row);
@@ -1660,13 +1685,17 @@ async function confirmPendingSessionAndPersist(
       return null;
     }
 
-    // Double-check no active session was created while we were confirming
+    // Double-check no active session was created while we were confirming.
+    // Reject a row whose server user differs from this pending session: Plex
+    // reuses sessionKey counters across PMS restarts, so a stale open row from
+    // another user can carry this key. Bailing against it would drop this
+    // confirmed play; leave the foreign row for the stale-sweep and persist.
     const existingActive = await findActiveSession({
       serverId,
       sessionKey,
       ratingKey: pendingData.processed.ratingKey,
     });
-    if (existingActive) {
+    if (existingActive?.serverUserId === pendingData.serverUser.id) {
       console.log(`[SSEProcessor] Active session created while confirming ${sessionKey}, skipping`);
       await cache.deletePendingSession(serverId, sessionKey);
       return null;

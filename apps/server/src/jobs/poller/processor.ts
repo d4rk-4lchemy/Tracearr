@@ -353,6 +353,7 @@ async function pruneMissedPollTracking(
           lastPausedAt: snapshot.lastPausedAt,
           pausedDurationMs: snapshot.pausedDurationMs ?? 0,
           progressMs: snapshot.progressMs,
+          totalDurationMs: snapshot.totalDurationMs,
         },
         now
       );
@@ -434,7 +435,14 @@ async function resolvePendingSession(
         .from(sessions)
         .where(and(eq(sessions.id, updatedData.id), isNull(sessions.stoppedAt)))
         .limit(1);
-      if (existingById) return null;
+      if (existingById) {
+        // A concurrent caller already persisted this row. The pending entry is
+        // now stale and its delete lives on the createResult path below, which
+        // this early return skips - drop it here so the orphan sweep does not
+        // later phantom-stop the live row this pending id points at.
+        await cacheService.deletePendingSession(server.id, pendingKey);
+        return null;
+      }
 
       return createSessionWithRulesAtomic({
         processed,
@@ -869,13 +877,19 @@ async function processServerSessions(
                 }
               }
 
+              // Reject a row whose server user differs from this play before
+              // rediscovering it: Plex reuses sessionKey counters across PMS
+              // restarts, so a stale open row from another user can carry this
+              // key. Rediscovering it would touch its lastSeenAt (keeping it
+              // alive) and rebuild it under this user's identity. Leave it for
+              // the stale-sweep and create fresh under the correct user.
               const existingWithSameKey = await findActiveSession({
                 serverId: server.id,
                 sessionKey: processed.sessionKey,
                 ratingKey: processed.ratingKey,
               });
 
-              if (existingWithSameKey) {
+              if (existingWithSameKey?.serverUserId === userDetail.id) {
                 cachedSessionKeys.add(sessionKey);
                 // Clear any grace period tracking - session is confirmed active
                 missedPollTracking.delete(sessionKey);
@@ -1156,13 +1170,18 @@ async function processServerSessions(
               server.id,
               processed.sessionKey,
               async () => {
-                // Double-check inside lock - SSE might have created it
+                // Double-check inside lock - SSE might have created it. Reject a
+                // row whose server user differs from this play: Plex reuses
+                // sessionKey counters across PMS restarts, so a stale open row
+                // from another user can carry this key. Treating it as a match
+                // would skip creation and leave this user untracked; leave it
+                // for the stale-sweep and create fresh under the correct user.
                 const existingWithSameKey = await findActiveSession({
                   serverId: server.id,
                   sessionKey: processed.sessionKey,
                   ratingKey: processed.ratingKey,
                 });
-                if (existingWithSameKey) {
+                if (existingWithSameKey?.serverUserId === userDetail.id) {
                   cachedSessionKeys.add(sessionKey);
                   console.log(
                     `[Poller] Session created by SSE for ${processed.sessionKey}, skipping`
@@ -1287,9 +1306,12 @@ async function processServerSessions(
           }
 
           // Issue #57: Plex-only media change detection (e.g. "Play Next Episode").
+          // Normalize '' to null: a row stored during a metadata blip carries an
+          // empty ratingKey, which detectMediaChange would otherwise read as a
+          // real key and treat the arrival of the true key as a media change.
           if (
             server.type === 'plex' &&
-            detectMediaChange(existingSession.ratingKey, processed.ratingKey)
+            detectMediaChange(existingSession.ratingKey || null, processed.ratingKey || null)
           ) {
             const recentSessions = recentSessionsMap.get(serverUserId) ?? [];
 

@@ -381,4 +381,74 @@ describe('poller isNew branch defers to a pending session', () => {
     // is skipped entirely (same as the sibling "confirmed by other" path above).
     expect(mockProcessPollResults).not.toHaveBeenCalled();
   });
+
+  it('deletes the stale pending entry when the in-lock existingById check finds the row already persisted', async () => {
+    // Pending stays present through both reads, but a concurrent caller already
+    // wrote the row for this pre-generated id. The in-lock existingById check
+    // finds it and bails without creating a duplicate. The pending entry must
+    // still be dropped here, or the orphan sweep later phantom-stops the live
+    // row this pending id points at.
+    mockUpdatePendingSession.mockReturnValue({
+      updatedData: createPendingSessionData(),
+      isConfirmed: true,
+    });
+
+    const mockServerRow = {
+      id: 'server-1',
+      name: 'Test Server',
+      type: 'plex',
+      url: 'http://localhost:32400',
+      token: 'test-token',
+    };
+    const mockServerUserRow = {
+      id: 'server-user-1',
+      userId: 'identity-1',
+      serverId: 'server-1',
+      externalId: 'user-123',
+      username: 'alice',
+      email: null,
+      thumbUrl: null,
+      isServerAdmin: false,
+      trustScore: 100,
+      sessionCount: 5,
+      lastActivityAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      identityName: 'Alice',
+    };
+
+    // Override the DB so the in-lock existingById lookup (a columns query with
+    // no innerJoin) resolves a row for the pre-generated id.
+    mockDb.select.mockImplementation((columns?: unknown) => ({
+      from: vi.fn(() => {
+        if (columns === undefined) {
+          const s: Record<string, unknown> = {};
+          s.where = () => s;
+          s.limit = () => s;
+          s.then = (res: (v: unknown[]) => void, rej?: (e: unknown) => void) =>
+            Promise.resolve([mockServerRow]).then(res, rej);
+          return s;
+        }
+        const o: Record<string, unknown> = {};
+        o.where = () => o;
+        o.limit = () => o;
+        o.innerJoin = () => {
+          const j: Record<string, unknown> = {};
+          j.where = () => j;
+          j.limit = () => j;
+          j.then = (res: (v: unknown[]) => void, rej?: (e: unknown) => void) =>
+            Promise.resolve([mockServerUserRow]).then(res, rej);
+          return j;
+        };
+        o.then = (res: (v: unknown[]) => void, rej?: (e: unknown) => void) =>
+          Promise.resolve([{ id: 'pending-uuid-123' }]).then(res, rej);
+        return o;
+      }),
+    }));
+
+    await triggerServerPoll('server-1');
+
+    expect(mockCreateSessionWithRulesAtomic).not.toHaveBeenCalled();
+    expect(cacheService.deletePendingSession).toHaveBeenCalledWith('server-1', 'test-session-key');
+  });
 });

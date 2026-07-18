@@ -84,7 +84,14 @@ export function calculateStopDuration(
 
   // Cap duration at progressMs + 60s if pause tracking failed
   if (session.progressMs != null && session.progressMs > 0) {
-    const maxDurationMs = session.progressMs + 60000;
+    let maxDurationMs = session.progressMs + 60000;
+    // Corrupt progress metadata (progressMs past the media runtime) would push
+    // the cap above the real playback ceiling and let a bad duration through.
+    // Bound it by the runtime when we know it. Legitimate sessions, including
+    // rewatchers, never exceed totalDurationMs + 60s.
+    if (session.totalDurationMs != null && session.totalDurationMs > 0) {
+      maxDurationMs = Math.min(maxDurationMs, session.totalDurationMs + 60000);
+    }
     if (durationMs > maxDurationMs) {
       console.log(
         `[StateTracker] Duration capped: ${Math.round(durationMs / 1000)}s -> ${Math.round(maxDurationMs / 1000)}s (progress: ${Math.round(session.progressMs / 1000)}s)`

@@ -1081,6 +1081,183 @@ describe('SSE Processor - Pending Session Flow', () => {
     });
   });
 
+  describe('cross-user sessionKey reuse guard', () => {
+    const setupDbForCreate = () => {
+      const mockServer = {
+        id: 'server-123',
+        name: 'Test Server',
+        type: 'plex',
+        url: 'http://localhost:32400',
+        token: 'test-token',
+      };
+      const mockServerUserRow = {
+        id: 'server-user-123',
+        userId: 'identity-123',
+        username: 'testuser',
+        thumbUrl: null,
+        identityName: 'Test User',
+        trustScore: 100,
+        sessionCount: 10,
+        lastActivityAt: new Date(),
+        createdAt: new Date(),
+      };
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([mockServer]),
+          }),
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([mockServerUserRow]),
+            }),
+          }),
+        }),
+      });
+    };
+
+    it('createNewSession creates fresh when the in-lock row belongs to another user', async () => {
+      setupDbForCreate();
+      mockCreateMediaServerClient.mockReturnValueOnce({
+        getSessions: vi
+          .fn()
+          .mockResolvedValue([{ sessionKey: 'test-session-key', ratingKey: '12345' }]),
+      });
+      mockMapMediaSession.mockReturnValueOnce({
+        sessionKey: 'test-session-key',
+        ratingKey: '12345',
+        externalUserId: 'user-123',
+        ipAddress: '192.168.1.100',
+        mediaTitle: 'Test Movie',
+        state: 'playing',
+      });
+
+      // handlePlaying's own lookup finds nothing; the in-lock recheck inside
+      // createNewSession finds a stale open row that Plex reassigned this
+      // sessionKey to - but it belongs to a different server user.
+      mockFindActiveSession
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'stale-id', serverUserId: 'other-user' });
+
+      mockSseManager.emit('plex:session:playing', {
+        serverId: 'server-123',
+        notification: { sessionKey: 'test-session-key', viewOffset: 0 },
+      });
+
+      // The foreign row must not block creation - this user gets a fresh pending
+      // session instead of being silently dropped.
+      await vi.waitFor(() => {
+        expect(mockCacheService.setPendingSession).toHaveBeenCalled();
+      });
+      expect(mockCacheService.addActiveSession).toHaveBeenCalled();
+    });
+
+    it('createNewSession skips when the in-lock row belongs to the same user', async () => {
+      setupDbForCreate();
+      mockCreateMediaServerClient.mockReturnValueOnce({
+        getSessions: vi
+          .fn()
+          .mockResolvedValue([{ sessionKey: 'test-session-key', ratingKey: '12345' }]),
+      });
+      mockMapMediaSession.mockReturnValueOnce({
+        sessionKey: 'test-session-key',
+        ratingKey: '12345',
+        externalUserId: 'user-123',
+        ipAddress: '192.168.1.100',
+        mediaTitle: 'Test Movie',
+        state: 'playing',
+      });
+
+      mockFindActiveSession
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'same-id', serverUserId: 'server-user-123' });
+
+      mockSseManager.emit('plex:session:playing', {
+        serverId: 'server-123',
+        notification: { sessionKey: 'test-session-key', viewOffset: 0 },
+      });
+
+      await vi.waitFor(() => {
+        expect(mockFindActiveSession).toHaveBeenCalledTimes(2);
+      });
+      // Same-user row is a genuine duplicate: no second create.
+      expect(mockCacheService.setPendingSession).not.toHaveBeenCalled();
+      expect(mockCacheService.addActiveSession).not.toHaveBeenCalled();
+    });
+
+    it('confirmPendingSessionAndPersist persists when the in-lock row belongs to another user', async () => {
+      const pendingSession = createMockPendingSession();
+      mockCacheService.getPendingSession
+        .mockResolvedValueOnce(pendingSession)
+        .mockResolvedValueOnce(pendingSession);
+      mockIsPlaybackConfirmed.mockReturnValueOnce(true);
+
+      // The in-lock recheck finds a stale open row under a different user.
+      mockFindActiveSession.mockResolvedValueOnce({
+        id: 'stale-id',
+        serverUserId: 'other-user',
+      });
+
+      mockConfirmAndPersistSession.mockResolvedValueOnce({
+        insertedSession: {
+          id: pendingSession.id,
+          serverId: 'server-123',
+          serverUserId: 'server-user-123',
+          sessionKey: 'test-session-key',
+          startedAt: new Date(),
+          state: 'playing',
+        },
+        violationResults: [],
+        qualityChange: null,
+        referenceId: null,
+        wasTerminatedByRule: false,
+      });
+      mockBuildActiveSession.mockReturnValueOnce({
+        id: pendingSession.id,
+        serverId: 'server-123',
+        serverUserId: 'server-user-123',
+        sessionKey: 'test-session-key',
+      });
+
+      mockSseManager.emit('plex:session:progress', {
+        serverId: 'server-123',
+        notification: { sessionKey: 'test-session-key', viewOffset: 35000 },
+      });
+
+      // The foreign row must not abort the confirm - this play still persists.
+      await vi.waitFor(() => {
+        expect(mockConfirmAndPersistSession).toHaveBeenCalled();
+      });
+    });
+
+    it('confirmPendingSessionAndPersist bails when the in-lock row belongs to the same user', async () => {
+      const pendingSession = createMockPendingSession();
+      mockCacheService.getPendingSession
+        .mockResolvedValueOnce(pendingSession)
+        .mockResolvedValueOnce(pendingSession);
+      mockIsPlaybackConfirmed.mockReturnValueOnce(true);
+
+      mockFindActiveSession.mockResolvedValueOnce({
+        id: 'same-id',
+        serverUserId: 'server-user-123',
+      });
+
+      mockSseManager.emit('plex:session:progress', {
+        serverId: 'server-123',
+        notification: { sessionKey: 'test-session-key', viewOffset: 35000 },
+      });
+
+      // Same-user row means a concurrent caller already persisted: bail and drop
+      // the pending entry instead of double-persisting.
+      await vi.waitFor(() => {
+        expect(mockCacheService.deletePendingSession).toHaveBeenCalledWith(
+          'server-123',
+          'test-session-key'
+        );
+      });
+      expect(mockConfirmAndPersistSession).not.toHaveBeenCalled();
+    });
+  });
+
   describe('cleanupOrphanedPendingSessions', () => {
     it('cleans up all orphaned pending sessions on startup', async () => {
       const orphanedSession1 = createMockPendingSession({ id: 'orphan-1' });
@@ -1116,6 +1293,20 @@ describe('SSE Processor - Pending Session Flow', () => {
       // Should not have tried to delete anything
       expect(mockCacheService.deletePendingSession).not.toHaveBeenCalled();
       expect(mockCacheService.invalidateDashboardStatsCache).not.toHaveBeenCalled();
+    });
+
+    it('swallows a dashboard invalidation failure so startup keeps wiring up SSE', async () => {
+      const orphan = createMockPendingSession({ id: 'orphan-1' });
+      mockCacheService.getAllPendingSessionKeys.mockResolvedValueOnce([
+        { serverId: 'server-123', sessionKey: 'session-1' },
+      ]);
+      mockCacheService.getPendingSession.mockResolvedValueOnce(orphan);
+      mockCacheService.invalidateDashboardStatsCache.mockRejectedValueOnce(new Error('redis down'));
+
+      // This runs before startSSEProcessor and sseManager.start in index.ts. A
+      // rejected promise here would skip both and leave SSE dead until restart,
+      // so the failure must degrade to a logged error, not propagate.
+      await expect(cleanupOrphanedPendingSessions()).resolves.toBeUndefined();
     });
   });
 });

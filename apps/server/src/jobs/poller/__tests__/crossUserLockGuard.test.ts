@@ -1,12 +1,14 @@
 /**
- * Media-change reachability in the poller.
+ * Cross-user sessionKey reuse guards on the poller's in-lock create paths.
  *
- * A real Plex "play next episode" reuses the sessionKey with a new ratingKey.
- * processServerSessions must derive the existing row by sessionKey alone and
- * let the real detectMediaChange route it through handleMediaChangeAtomic.
- * These drive triggerPoll with the real detectMediaChange/buildCompositeKey
- * (stateTracker is not mocked) and a faithful DB-shaped batch lookup, so they
- * fail against a build that still filters the lookup by the incoming ratingKey.
+ * Plex resets sessionKey counters on PMS restart, so within the reconciliation
+ * window a stale open row from one user can carry the same sessionKey a
+ * different user's new play now uses. The poller's in-lock rechecks look up by
+ * sessionKey alone; without a server-user match they would reattach the stale
+ * row to the new user (rediscovery path) or skip creation entirely (stale-cache
+ * path), leaving the real play untracked. These drive triggerPoll with the
+ * create lock actually executing its callback and a foreign-user row returned
+ * from the in-lock findActiveSession.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,13 +17,19 @@ import type { CacheService, PubSubService } from '../../../services/cache.js';
 import type { ProcessedSession } from '../types.js';
 
 const mockDbSelect = vi.fn();
+const mockTouchReturning = vi.fn().mockResolvedValue([{ id: 'foreign-id' }]);
 const { mockCreateMediaServerClient, mockGetActiveRulesV2 } = vi.hoisted(() => ({
   mockCreateMediaServerClient: vi.fn(),
   mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../../db/client.js', () => ({
-  db: { select: (...args: unknown[]) => mockDbSelect(...args) },
+  db: {
+    select: (...args: unknown[]) => mockDbSelect(...args),
+    update: () => ({
+      set: () => ({ where: () => ({ returning: () => mockTouchReturning() }) }),
+    }),
+  },
 }));
 
 vi.mock('../../../db/schema.js', async (importOriginal) => {
@@ -57,9 +65,8 @@ vi.mock('../../../services/sseManager.js', () => ({
   },
 }));
 
-const mockEnqueueNotification = vi.fn();
 vi.mock('../../notificationQueue.js', () => ({
-  enqueueNotification: (...args: unknown[]) => mockEnqueueNotification(...args),
+  enqueueNotification: vi.fn(),
 }));
 
 vi.mock('../database.js', () => ({
@@ -74,16 +81,17 @@ vi.mock('../pendingConfirmation.js', () => ({
 }));
 
 const mockBatchFindActiveSessionsByKey = vi.fn();
-const mockHandleMediaChangeAtomic = vi.fn();
+const mockFindActiveSession = vi.fn();
 const mockCreateSessionWithRulesAtomic = vi.fn();
 const mockBuildActiveSession = vi.fn();
+const mockHandleMediaChangeAtomic = vi.fn();
 vi.mock('../sessionLifecycle.js', () => ({
   batchFindActiveSessionsByComposite: vi.fn().mockResolvedValue(new Map()),
   batchFindActiveSessionsByKey: (...args: unknown[]) => mockBatchFindActiveSessionsByKey(...args),
   buildActiveSession: (...args: unknown[]) => mockBuildActiveSession(...args),
   buildPendingActiveSession: vi.fn(),
   createSessionWithRulesAtomic: (...args: unknown[]) => mockCreateSessionWithRulesAtomic(...args),
-  findActiveSession: vi.fn().mockResolvedValue(null),
+  findActiveSession: (...args: unknown[]) => mockFindActiveSession(...args),
   findActiveSessionByComposite: vi.fn(),
   handleMediaChangeAtomic: (...args: unknown[]) => mockHandleMediaChangeAtomic(...args),
   handleQualityChangeFallout: vi.fn(),
@@ -108,15 +116,15 @@ import { initializePoller, stopPoller, triggerPoll } from '../processor.js';
 function createMockProcessedSession(overrides: Partial<ProcessedSession> = {}): ProcessedSession {
   return {
     sessionKey: 'sk-42',
-    ratingKey: 'rk-new',
+    ratingKey: 'rk-1',
     externalUserId: 'ext-1',
-    username: 'userA',
+    username: 'userB',
     userThumb: '',
-    mediaTitle: 'Episode 2',
-    mediaType: 'episode',
-    grandparentTitle: 'Test Show',
-    seasonNumber: 1,
-    episodeNumber: 2,
+    mediaTitle: 'Movie',
+    mediaType: 'movie',
+    grandparentTitle: '',
+    seasonNumber: null,
+    episodeNumber: null,
     year: 2024,
     thumbPath: '',
     channelTitle: null,
@@ -168,12 +176,13 @@ const serverRow = {
   updatedAt: new Date(),
 };
 
+// The incoming play resolves to server user su-B.
 const serverUserRow = {
-  id: 'su-1',
-  userId: 'identity-1',
+  id: 'su-B',
+  userId: 'identity-B',
   serverId: 'server-1',
   externalId: 'ext-1',
-  username: 'userA',
+  username: 'userB',
   email: null,
   thumbUrl: null,
   isServerAdmin: false,
@@ -182,19 +191,17 @@ const serverUserRow = {
   lastActivityAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
-  identityName: 'User A',
+  identityName: 'User B',
 };
 
-// The existing DB row: same sessionKey, the OLD ratingKey. A same-sessionKey
-// query returns it regardless of the incoming ratingKey - that is what
-// batchFindActiveSessionsByKey does in production (grouped by sessionKey, no
-// ratingKey predicate).
-const oldSessionRow = {
-  id: 'old-id',
+// A stale open DB row from a different user (su-A) that Plex reassigned this
+// sessionKey to after a PMS restart.
+const foreignRow = {
+  id: 'foreign-id',
   serverId: 'server-1',
-  serverUserId: 'su-1',
+  serverUserId: 'su-A',
   sessionKey: 'sk-42',
-  ratingKey: 'rk-old',
+  ratingKey: 'rk-1',
   deviceId: 'device-1',
   state: 'playing' as const,
   startedAt: new Date(Date.now() - 5 * 60 * 1000),
@@ -205,7 +212,7 @@ const oldSessionRow = {
   totalDurationMs: 7200000,
   progressMs: 3600000,
   ipAddress: '192.168.1.100',
-  mediaType: 'episode' as const,
+  mediaType: 'movie' as const,
   videoDecision: 'directplay',
   audioDecision: 'directplay',
   referenceId: null,
@@ -220,13 +227,13 @@ const oldSessionRow = {
   geoAsnOrganization: null,
 };
 
-const oldActiveSession = {
-  id: 'old-id',
+const foreignActiveSession = {
+  id: 'foreign-id',
   serverId: 'server-1',
-  serverUserId: 'su-1',
+  serverUserId: 'su-A',
   sessionKey: 'sk-42',
   deviceId: 'device-1',
-  ratingKey: 'rk-old',
+  ratingKey: 'rk-1',
   pending: false,
 } as unknown as ActiveSession;
 
@@ -237,15 +244,29 @@ mockDbSelect.mockImplementation(() => ({
       return { innerJoin: () => ({ where: () => Promise.resolve([serverUserRow]) }) };
     }
     if (table === sessionsTable) {
-      return { where: () => Promise.resolve([]) };
+      // Plex-only duplicate check (serverUserId + ratingKey): no row for su-B.
+      return { where: () => ({ limit: () => Promise.resolve([]) }) };
     }
     return Promise.resolve([]);
   },
 }));
 
-function createCacheService() {
+const createResultOk = {
+  insertedSession: {
+    id: 'new-id',
+    serverId: 'server-1',
+    serverUserId: 'su-B',
+    sessionKey: 'sk-42',
+    ratingKey: 'rk-1',
+  },
+  violationResults: [],
+  wasTerminatedByRule: false,
+  qualityChange: undefined,
+};
+
+function createCacheService(cachedActive: ActiveSession[]) {
   return {
-    getAllActiveSessions: vi.fn().mockResolvedValue([oldActiveSession]),
+    getAllActiveSessions: vi.fn().mockResolvedValue(cachedActive),
     getServerHealth: vi.fn().mockResolvedValue(true),
     setServerHealth: vi.fn().mockResolvedValue(undefined),
     resetServerFailCount: vi.fn().mockResolvedValue(undefined),
@@ -253,7 +274,8 @@ function createCacheService() {
     getPendingSession: vi.fn().mockResolvedValue(null),
     setPendingSession: vi.fn().mockResolvedValue(undefined),
     deletePendingSession: vi.fn().mockResolvedValue(undefined),
-    withSessionCreateLock: vi.fn().mockResolvedValue(undefined),
+    // Execute the create-lock callback so the in-lock rechecks actually run.
+    withSessionCreateLock: vi.fn().mockImplementation(async (_s, _k, op) => op()),
     removeActiveSession: vi.fn().mockResolvedValue(undefined),
     removeUserSession: vi.fn().mockResolvedValue(undefined),
     hasTerminationCooldown: vi.fn().mockResolvedValue(false),
@@ -263,98 +285,72 @@ function createCacheService() {
   };
 }
 
-let cacheService: ReturnType<typeof createCacheService>;
-
-describe('poller routes a real next-episode transition through the media-change path', () => {
+describe('poller in-lock cross-user sessionKey guards', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stopPoller();
     mockGetActiveRulesV2.mockResolvedValue([]);
-    mockBatchFindActiveSessionsByKey.mockResolvedValue(new Map([['sk-42', [oldSessionRow]]]));
     mockCreateMediaServerClient.mockReturnValue({
       getSessions: vi.fn().mockResolvedValue([createMockProcessedSession()]),
     });
+    mockCreateSessionWithRulesAtomic.mockResolvedValue(createResultOk);
     mockBuildActiveSession.mockReturnValue({ id: 'new-id' });
+    // In-lock recheck returns the stale row belonging to another user.
+    mockFindActiveSession.mockResolvedValue(foreignRow);
+  });
 
-    cacheService = createCacheService();
+  it('rediscovery path (isNew): creates fresh under the real user instead of reattaching the foreign row', async () => {
+    // Empty cache -> the incoming key reads as new, routing through the isNew
+    // create lock whose recheck finds the foreign row.
+    mockBatchFindActiveSessionsByKey.mockResolvedValue(new Map());
+    const cacheService = createCacheService([]);
     initializePoller(
       cacheService as unknown as CacheService,
       { publish: vi.fn().mockResolvedValue(undefined) } as unknown as PubSubService
     );
-  });
-
-  it('stops the old row and creates the next episode via handleMediaChangeAtomic', async () => {
-    mockHandleMediaChangeAtomic.mockResolvedValue({
-      stoppedSession: { id: 'old-id', serverUserId: 'su-1', sessionKey: 'sk-42' },
-      insertedSession: { id: 'new-id', ratingKey: 'rk-new' },
-      violationResults: [],
-      wasTerminatedByRule: false,
-      qualityChange: undefined,
-    });
 
     await triggerPoll();
 
-    expect(mockHandleMediaChangeAtomic).toHaveBeenCalledTimes(1);
-    const input = mockHandleMediaChangeAtomic.mock.calls[0]![0] as {
-      existingSession: { id: string; ratingKey: string };
-      processed: { ratingKey: string };
-    };
-    expect(input.existingSession.id).toBe('old-id');
-    expect(input.existingSession.ratingKey).toBe('rk-old');
-    expect(input.processed.ratingKey).toBe('rk-new');
-
-    expect(cacheService.removeActiveSession).toHaveBeenCalledWith('old-id');
+    expect(mockCreateSessionWithRulesAtomic).toHaveBeenCalledTimes(1);
+    // The foreign row is never rebuilt as this user's session.
+    for (const call of mockBuildActiveSession.mock.calls) {
+      const arg = call[0] as { session?: { id?: string } };
+      expect(arg.session?.id).not.toBe('foreign-id');
+    }
   });
 
-  it('does not fall into the stale-cache create branch for the transition', async () => {
-    mockHandleMediaChangeAtomic.mockResolvedValue({
-      stoppedSession: { id: 'old-id', serverUserId: 'su-1', sessionKey: 'sk-42' },
-      insertedSession: { id: 'new-id', ratingKey: 'rk-new' },
-      violationResults: [],
-      wasTerminatedByRule: false,
-      qualityChange: undefined,
-    });
+  it('stale-cache path: creates fresh under the real user instead of skipping on the foreign row', async () => {
+    // Foreign row is in the active cache under this sessionKey, so the key is
+    // "known" -> the else branch sees a cross-user batch row, nulls it, and
+    // drops into the stale-cache create lock whose recheck finds the foreign row.
+    mockBatchFindActiveSessionsByKey.mockResolvedValue(new Map([['sk-42', [foreignRow]]]));
+    const cacheService = createCacheService([foreignActiveSession]);
+    initializePoller(
+      cacheService as unknown as CacheService,
+      { publish: vi.fn().mockResolvedValue(undefined) } as unknown as PubSubService
+    );
 
     await triggerPoll();
 
-    expect(mockCreateSessionWithRulesAtomic).not.toHaveBeenCalled();
-  });
-
-  it('does not route a different user through media change when a stale row reuses the sessionKey', async () => {
-    // Plex resets sessionKey counters on PMS restart, so the batched lookup can
-    // return an open row that belongs to a different user than the current
-    // play. Matching by sessionKey alone would stop that user's row and
-    // reattribute the new play.
-    const staleUserRow = { ...oldSessionRow, serverUserId: 'su-STALE' };
-    mockBatchFindActiveSessionsByKey.mockResolvedValue(new Map([['sk-42', [staleUserRow]]]));
-
-    await triggerPoll();
-
+    expect(mockCreateSessionWithRulesAtomic).toHaveBeenCalledTimes(1);
     expect(mockHandleMediaChangeAtomic).not.toHaveBeenCalled();
-    expect(cacheService.removeActiveSession).not.toHaveBeenCalledWith('old-id');
   });
 
-  it('takes the normal update path (no media change) when the ratingKey is unchanged', async () => {
-    mockCreateMediaServerClient.mockReturnValue({
-      getSessions: vi.fn().mockResolvedValue([createMockProcessedSession({ ratingKey: 'rk-old' })]),
-    });
+  it('same-user in-lock row still short-circuits (isNew rediscovery)', async () => {
+    mockBatchFindActiveSessionsByKey.mockResolvedValue(new Map());
+    mockFindActiveSession.mockResolvedValue({ ...foreignRow, serverUserId: 'su-B' });
+    const cacheService = createCacheService([]);
+    initializePoller(
+      cacheService as unknown as CacheService,
+      { publish: vi.fn().mockResolvedValue(undefined) } as unknown as PubSubService
+    );
 
     await triggerPoll();
 
-    expect(mockHandleMediaChangeAtomic).not.toHaveBeenCalled();
+    // Genuine same-user recovery: no fresh create.
     expect(mockCreateSessionWithRulesAtomic).not.toHaveBeenCalled();
-  });
-
-  it('does not treat a stored empty-string ratingKey as a media change when the real key arrives', async () => {
-    // A row persisted during a metadata blip carries ratingKey ''. When the
-    // real key arrives detectMediaChange must see '' as absent (null), not as a
-    // distinct key, so it does not stop+recreate the session spuriously.
-    const blipRow = { ...oldSessionRow, ratingKey: '' };
-    mockBatchFindActiveSessionsByKey.mockResolvedValue(new Map([['sk-42', [blipRow]]]));
-
-    await triggerPoll();
-
-    expect(mockHandleMediaChangeAtomic).not.toHaveBeenCalled();
-    expect(mockCreateSessionWithRulesAtomic).not.toHaveBeenCalled();
+    expect(mockBuildActiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ session: expect.objectContaining({ id: 'foreign-id' }) })
+    );
   });
 });

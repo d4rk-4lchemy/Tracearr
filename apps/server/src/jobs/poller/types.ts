@@ -217,6 +217,8 @@ export interface SessionPauseData {
   pausedDurationMs: number;
   /** Playback position - used to cap duration when pause tracking fails */
   progressMs?: number | null;
+  /** Media runtime - bounds the progress-based cap against corrupt progress metadata */
+  totalDurationMs?: number | null;
 }
 
 // ============================================================================
