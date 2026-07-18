@@ -1429,6 +1429,10 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
 
   // Publish events via pub/sub
   if (pubSubService) {
+    const confirmedPendingSessions = confirmedFromPendingIds
+      ? newSessions.filter((session) => confirmedFromPendingIds.has(session.id))
+      : [];
+
     for (const session of newSessions) {
       // Sessions confirmed from a pending entry already got both of these
       // at pending create - re-sending here would double the SSE event and
@@ -1439,8 +1443,9 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     }
 
     // No consumer reads the payload, so one tick's updates collapse to a single publish.
-    if (updatedSessions.length > 0) {
-      await pubSubService.publish('session:updated', updatedSessions[0]);
+    const sessionToUpdate = updatedSessions[0] ?? confirmedPendingSessions[0];
+    if (sessionToUpdate) {
+      await pubSubService.publish('session:updated', sessionToUpdate);
     }
 
     for (const key of stoppedKeys) {

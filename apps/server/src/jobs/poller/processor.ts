@@ -1047,7 +1047,7 @@ export async function processServerSessions(
                   );
                   missedPollTracking.delete(sessionKey);
                   await cache.setPendingSession(server.id, sessionKey, pendingDataForCache);
-                  return { pendingData: pendingDataForCache };
+                  return { pendingData: pendingDataForCache, wasCreated: false };
                 }
 
                 const now = Date.now();
@@ -1071,7 +1071,7 @@ export async function processServerSessions(
                 };
 
                 await cache.setPendingSession(server.id, sessionKey, pendingData);
-                return { pendingData };
+                return { pendingData, wasCreated: true };
               }
             );
 
@@ -1079,7 +1079,13 @@ export async function processServerSessions(
               continue;
             }
             if ('pendingData' in createPendingResult && createPendingResult.pendingData) {
-              updatedSessions.push(buildPendingActiveSession(createPendingResult.pendingData));
+              const activeSession = buildPendingActiveSession(createPendingResult.pendingData);
+              if (createPendingResult.wasCreated) {
+                newSessions.push(activeSession);
+              } else {
+                updatedSessions.push(activeSession);
+              }
+              cachedSessionKeys.add(sessionKey);
               continue;
             }
           }
