@@ -16,7 +16,7 @@ import {
   type ViolationSeverity,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
-import { sessions, rules, serverUsers } from '../../db/schema.js';
+import { sessions, rules, serverUsers, terminationLogs } from '../../db/schema.js';
 import { mapSessionRow } from './sessionMapper.js';
 
 // ============================================================================
@@ -198,6 +198,32 @@ export async function getServerUserIdByExternalId(
     .limit(1);
 
   return rows[0]?.id ?? null;
+}
+
+/**
+ * Sessions already terminated (successfully) under a given violation.
+ *
+ * A multi-target kill_stream match fans out one job per target, all sharing the
+ * violation id. As each sibling job terminates its target, that session leaves
+ * the active-session cache. Re-verification of the still-pending siblings needs
+ * those already-killed sessions back in the count context: a session stopped BY
+ * THIS violation is action reach, not the condition clearing, so it must keep
+ * counting for its siblings instead of dropping the concurrent total below the
+ * threshold. Returns the mapped session rows so callers can fold them back into
+ * the evaluation context. Empty when the violation is null or nothing under it
+ * has been terminated yet.
+ */
+export async function getSessionsTerminatedByViolation(violationId: string): Promise<Session[]> {
+  const logRows = await db
+    .select({ sessionId: terminationLogs.sessionId })
+    .from(terminationLogs)
+    .where(and(eq(terminationLogs.violationId, violationId), eq(terminationLogs.success, true)));
+
+  const ids = [...new Set(logRows.map((r) => r.sessionId))];
+  if (ids.length === 0) return [];
+
+  const sessionRows = await db.select().from(sessions).where(inArray(sessions.id, ids));
+  return sessionRows.map(mapSessionRow);
 }
 
 // ============================================================================

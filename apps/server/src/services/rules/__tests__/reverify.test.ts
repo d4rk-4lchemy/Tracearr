@@ -28,6 +28,7 @@ vi.mock('../../../jobs/poller/database.js', async (importActual) => {
     ...actual,
     batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
     batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
+    getSessionsTerminatedByViolation: vi.fn().mockResolvedValue([]),
   };
 });
 
@@ -48,6 +49,7 @@ import type * as EngineModule from '../engine.js';
 import {
   batchGetIdentityServerUserIds,
   batchGetRecentUserSessions,
+  getSessionsTerminatedByViolation,
 } from '../../../jobs/poller/database.js';
 
 const mockSessionFindFirst = db.query.sessions.findFirst as ReturnType<typeof vi.fn>;
@@ -57,6 +59,7 @@ const mockEvaluateRulesAsync = vi.mocked(evaluateRulesAsync);
 const mockGetCacheService = vi.mocked(getCacheService);
 const mockBatchGetIdentityServerUserIds = vi.mocked(batchGetIdentityServerUserIds);
 const mockBatchGetRecentUserSessions = vi.mocked(batchGetRecentUserSessions);
+const mockGetSessionsTerminatedByViolation = vi.mocked(getSessionsTerminatedByViolation);
 
 function mockRuleSelect(ruleRow: Record<string, unknown> | undefined) {
   mockDbSelect.mockReturnValue({
@@ -754,5 +757,228 @@ describe('reverifyKillCondition', () => {
 
     expect(result.outcome).toBe('failed');
     expect(result.error).toBe('boom');
+  });
+
+  it('trigger-gone fallback: an enforceAcrossServers identity-wide rule falls back to the target and can still kill', async () => {
+    const targetRow = makeSessionRow();
+    // Trigger differs from target and is gone by fire time.
+    mockSessionFindFirst.mockResolvedValueOnce(targetRow).mockResolvedValueOnce(undefined);
+
+    // Global identity-wide rule (no serverId scope) - the target's own context
+    // is coherent, so the fallback proceeds to evaluation rather than aborting.
+    const ruleRow = makeRuleRow({ enforceAcrossServers: true, serverId: null });
+    mockRuleSelect(ruleRow);
+    mockEvaluateRulesAsync.mockResolvedValue([
+      {
+        ruleId: ruleRow.id,
+        ruleName: ruleRow.name,
+        matched: true,
+        matchedGroups: [0],
+        actions: [],
+      },
+    ]);
+    mockTerminateSession.mockResolvedValue({
+      success: true,
+      terminationLogId: randomUUID(),
+      outcome: 'terminated',
+    });
+
+    const result = await reverifyKillCondition({
+      triggeringSessionId: randomUUID(),
+      targetSessionId: targetRow.id,
+      serverId: targetRow.serverId,
+      ruleId: ruleRow.id,
+      violationId: null,
+    });
+
+    expect(result.outcome).toBe('killed');
+    expect(mockTerminateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: targetRow.id })
+    );
+  });
+
+  it('trigger-gone abort: a non-identity rule aborts as skipped_condition_cleared when the trigger is gone', async () => {
+    const targetRow = makeSessionRow();
+    mockSessionFindFirst.mockResolvedValueOnce(targetRow).mockResolvedValueOnce(undefined);
+
+    const ruleRow = makeRuleRow({ enforceAcrossServers: false });
+    mockRuleSelect(ruleRow);
+
+    const result = await reverifyKillCondition({
+      triggeringSessionId: randomUUID(),
+      targetSessionId: targetRow.id,
+      serverId: targetRow.serverId,
+      ruleId: ruleRow.id,
+      violationId: null,
+    });
+
+    expect(result.outcome).toBe('skipped_condition_cleared');
+    expect(mockTerminateSession).not.toHaveBeenCalled();
+  });
+
+  it('D3: trigger-gone fallback on a serverId-scoped enforceAcrossServers rule reports an unverifiable skipReason, not condition_cleared', async () => {
+    const triggerServerId = randomUUID();
+    const targetServerId = randomUUID();
+    const targetRow = makeSessionRow({ serverId: targetServerId });
+    targetRow.server.id = targetServerId;
+
+    // Trigger gone; target sits on a different server than the rule's scope.
+    mockSessionFindFirst.mockResolvedValueOnce(targetRow).mockResolvedValueOnce(undefined);
+
+    const ruleRow = makeRuleRow({ enforceAcrossServers: true, serverId: triggerServerId });
+    mockRuleSelect(ruleRow);
+
+    const result = await reverifyKillCondition({
+      triggeringSessionId: randomUUID(),
+      targetSessionId: targetRow.id,
+      serverId: targetServerId,
+      ruleId: ruleRow.id,
+      violationId: null,
+    });
+
+    // Outcome stays in the skipped family, but the persisted reason tells the
+    // truth: the cross-server condition could not be re-evaluated, it did not
+    // "clear". The engine scope check never even runs.
+    expect(result.outcome).toBe('skipped_condition_cleared');
+    expect(result.skipReason).toBe('trigger_gone_cross_server_unverifiable');
+    expect(mockEvaluateRulesAsync).not.toHaveBeenCalled();
+    expect(mockTerminateSession).not.toHaveBeenCalled();
+  });
+
+  it('D1 (i) trigger-first: a sibling kill still fires when the trigger was already stopped BY THIS violation', async () => {
+    const actualEngine = await vi.importActual<typeof EngineModule>('../engine.js');
+    mockEvaluateRulesAsync.mockImplementation(actualEngine.evaluateRulesAsync);
+
+    const serverUserId = randomUUID();
+    const userId = randomUUID();
+
+    // Trigger already force-stopped by an earlier sibling job of the same match.
+    const triggerRow = makeSessionRow({
+      deviceId: 'device-trigger',
+      stoppedAt: new Date(),
+      forceStopped: true,
+    });
+    triggerRow.serverUserId = serverUserId;
+    triggerRow.serverUser.id = serverUserId;
+    triggerRow.serverUser.userId = userId;
+
+    // Target is a different, still-playing session of the same user.
+    const targetRow = makeSessionRow({ deviceId: 'device-target' });
+    targetRow.serverUserId = serverUserId;
+    targetRow.serverUser.id = serverUserId;
+    targetRow.serverUser.userId = userId;
+
+    // reverify fetches the target first, then the trigger.
+    mockSessionFindFirst.mockResolvedValueOnce(targetRow).mockResolvedValueOnce(triggerRow);
+
+    const ruleRow = makeRuleRow({
+      enforceAcrossServers: false,
+      conditions: {
+        groups: [{ conditions: [{ field: 'concurrent_streams', operator: 'gte', value: 2 }] }],
+      },
+    });
+    mockRuleSelect(ruleRow);
+
+    // The termination log for this violation ties the trigger's stop to it.
+    mockGetSessionsTerminatedByViolation.mockResolvedValue([
+      {
+        id: triggerRow.id,
+        serverUserId,
+        deviceId: 'device-trigger',
+        ipAddress: '10.0.0.1',
+      } as unknown as Session,
+    ]);
+    mockBatchGetIdentityServerUserIds.mockResolvedValue(new Map());
+    mockBatchGetRecentUserSessions.mockResolvedValue(new Map());
+    mockGetCacheService.mockReturnValue({
+      getAllActiveSessions: vi.fn().mockResolvedValue([]),
+    } as never);
+    mockTerminateSession.mockResolvedValue({
+      success: true,
+      terminationLogId: randomUUID(),
+      outcome: 'terminated',
+    });
+
+    const result = await reverifyKillCondition({
+      triggeringSessionId: triggerRow.id,
+      targetSessionId: targetRow.id,
+      serverId: targetRow.serverId,
+      ruleId: ruleRow.id,
+      violationId: randomUUID(),
+    });
+
+    // Trigger (counted as still-present) plus the live target reach 2, so
+    // concurrent_streams >= 2 still holds and the sibling target is killed.
+    // Without the self-inflicted-stop handling this aborts as
+    // skipped_condition_cleared and the sibling survives.
+    expect(result.outcome).toBe('killed');
+    expect(mockTerminateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: targetRow.id })
+    );
+  });
+
+  it('D1 (ii) count-drop: a still-pending sibling kill fires even though an earlier sibling already left the cache', async () => {
+    const actualEngine = await vi.importActual<typeof EngineModule>('../engine.js');
+    mockEvaluateRulesAsync.mockImplementation(actualEngine.evaluateRulesAsync);
+
+    const serverUserId = randomUUID();
+    const userId = randomUUID();
+
+    // Trigger (S1) still playing; this job targets a third session (S3).
+    const triggerRow = makeSessionRow({ deviceId: 'device-1' });
+    triggerRow.serverUserId = serverUserId;
+    triggerRow.serverUser.id = serverUserId;
+    triggerRow.serverUser.userId = userId;
+
+    const targetRow = makeSessionRow({ deviceId: 'device-3' });
+    targetRow.serverUserId = serverUserId;
+    targetRow.serverUser.id = serverUserId;
+    targetRow.serverUser.userId = userId;
+
+    mockSessionFindFirst.mockResolvedValueOnce(targetRow).mockResolvedValueOnce(triggerRow);
+
+    const ruleRow = makeRuleRow({
+      enforceAcrossServers: false,
+      conditions: {
+        groups: [{ conditions: [{ field: 'concurrent_streams', operator: 'gte', value: 3 }] }],
+      },
+    });
+    mockRuleSelect(ruleRow);
+
+    // The second session (S2) was already killed by an earlier sibling job and
+    // has left the cache, so the cache now holds only S1 and S3.
+    const s2Id = randomUUID();
+    mockGetSessionsTerminatedByViolation.mockResolvedValue([
+      { id: s2Id, serverUserId, deviceId: 'device-2', ipAddress: '10.0.0.2' } as unknown as Session,
+    ]);
+    mockBatchGetIdentityServerUserIds.mockResolvedValue(new Map());
+    mockBatchGetRecentUserSessions.mockResolvedValue(new Map());
+    mockGetCacheService.mockReturnValue({
+      getAllActiveSessions: vi.fn().mockResolvedValue([
+        { id: triggerRow.id, serverUserId, deviceId: 'device-1', ipAddress: '10.0.0.1' },
+        { id: targetRow.id, serverUserId, deviceId: 'device-3', ipAddress: '10.0.0.3' },
+      ]),
+    } as never);
+    mockTerminateSession.mockResolvedValue({
+      success: true,
+      terminationLogId: randomUUID(),
+      outcome: 'terminated',
+    });
+
+    const result = await reverifyKillCondition({
+      triggeringSessionId: triggerRow.id,
+      targetSessionId: targetRow.id,
+      serverId: targetRow.serverId,
+      ruleId: ruleRow.id,
+      violationId: randomUUID(),
+    });
+
+    // Folding the already-killed S2 back into the count restores the total to 3,
+    // so concurrent_streams >= 3 still holds. Without it the cache shows only 2
+    // and this last sibling would wrongly survive as skipped_condition_cleared.
+    expect(result.outcome).toBe('killed');
+    expect(mockTerminateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: targetRow.id })
+    );
   });
 });

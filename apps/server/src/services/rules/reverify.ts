@@ -25,10 +25,24 @@
  * The cache is not a faithful stand-in for "current state" for the triggering
  * session specifically: createSessionWithRulesAtomic skips re-adding it to the
  * cache once a kill job is enqueued for it (wasTerminatedByRule), so at
- * delay_seconds 0 this can run before any poll tick rediscovers it.
- * buildRuleContextSessions (shared with live evaluation) appends the context
- * session back in when the cache list doesn't already carry its id, the same
- * way it appends a freshly-inserted session in createSessionWithRulesAtomic.
+ * delay_seconds 0 this can run before any poll tick rediscovers it. The context
+ * and target sessions are appended back into the count context only when
+ * genuinely uncached (absent from the RAW cache list), never when
+ * excludeUncountableSessions dropped them for being grace-flagged or pending -
+ * live evaluation would exclude those too, so resurrecting them here would
+ * count phantoms the live path never would.
+ *
+ * A multi-target match fans out one kill job per target, all sharing one
+ * violation id. A sibling stopped BY THIS violation is ACTION REACH, not the
+ * condition genuinely clearing, so it must not weaken the condition for its
+ * still-pending siblings. Two effects are undone: (a) when the trigger itself
+ * was the sibling stopped under this violation (its termination log carries the
+ * violation id and forceStopped is set), it is treated as still-present and the
+ * context is rebuilt as-at-trigger from its row rather than aborting; (b) every
+ * session terminated under this violation is folded back into the count context
+ * so a threshold like concurrent_streams does not drop below its limit as
+ * siblings die. A genuine trigger loss (user stopped it, no rule termination
+ * log tying the stop to this violation) still aborts.
  */
 
 import { eq } from 'drizzle-orm';
@@ -38,6 +52,7 @@ import { getCacheService } from '../cache.js';
 import {
   batchGetIdentityServerUserIds,
   batchGetRecentUserSessions,
+  getSessionsTerminatedByViolation,
   mapRuleRowToRuleV2,
   widenRecentSessionsForMergedIdentities,
 } from '../../jobs/poller/database.js';
@@ -81,6 +96,12 @@ export interface ReverifyKillConditionParams {
 export interface ReverifyKillConditionResult {
   outcome: ReverifyOutcome;
   error?: string;
+  /** More specific reason than the coarse outcome enum, persisted as the
+   *  action's skipReason when present. Used when a skipped_condition_cleared
+   *  outcome would otherwise misread the truth - e.g. a cross-server kill that
+   *  cannot be re-evaluated after the trigger is genuinely gone, which is "not
+   *  evaluable", not "condition cleared". */
+  skipReason?: string;
 }
 
 /**
@@ -127,6 +148,14 @@ export async function reverifyKillCondition(
 
   const rule = mapRuleRowToRuleV2(ruleRow);
 
+  // Sessions this same violation already terminated (see module header). Used
+  // both to tell a self-inflicted trigger stop apart from a genuine one and to
+  // keep the killed siblings counting when rebuilding the count context.
+  const violationTerminatedSessions = violationId
+    ? await getSessionsTerminatedByViolation(violationId)
+    : [];
+  const violationTerminatedIds = new Set(violationTerminatedSessions.map((s) => s.id));
+
   // Evaluate against the TRIGGER's context, not the target's. The rule matched
   // because of the triggering session (its user, server, media, geo, ...); a
   // multi-target or enforceAcrossServers kill can point at a sibling session on
@@ -143,11 +172,37 @@ export async function reverifyKillCondition(
 
     if (triggerRow && !triggerRow.stoppedAt) {
       contextSession = triggerRow;
+    } else if (triggerRow && triggerRow.forceStopped && violationTerminatedIds.has(triggerRow.id)) {
+      // The trigger IS stopped, but a sibling job of THIS same match killed it -
+      // its termination log carries this violation id and forceStopped is set.
+      // That stop is action reach, not the condition clearing, so evaluate
+      // as-at-trigger from its row (still coherent: id, user, server, geo, media
+      // are all on the row) rather than aborting as if the user walked away.
+      contextSession = triggerRow;
     } else if (rule.enforceAcrossServers) {
-      // The trigger ended during the delay window, so the as-at-trigger context
-      // is gone. For an identity-wide rule the target's own context is still
-      // coherent (detection aggregates across the whole identity regardless of
-      // which session is "session"), so fall back to it rather than lose the kill.
+      // The trigger genuinely ended during the delay window (no rule kill under
+      // this violation stopped it), so the as-at-trigger context is gone. For an
+      // identity-wide rule the target's own context is still coherent (detection
+      // aggregates across the whole identity regardless of which session is
+      // "session"), so fall back to it - UNLESS the rule is scoped to a specific
+      // server/account the target does not satisfy. Then the engine scope check
+      // would drop it and report skipped_condition_cleared, which reads as "the
+      // condition cleared" when the truth is "cannot re-evaluate cross-server
+      // after the trigger is gone". Say that plainly instead.
+      const targetOutOfScope =
+        (rule.serverId != null && rule.serverId !== targetRow.serverId) ||
+        (rule.serverUserId != null && rule.serverUserId !== targetRow.serverUserId);
+      if (targetOutOfScope) {
+        rulesLogger.info('Kill queue: trigger gone, target out of rule scope, cannot re-verify', {
+          triggeringSessionId,
+          targetSessionId,
+          ruleId,
+        });
+        return {
+          outcome: 'skipped_condition_cleared',
+          skipReason: 'trigger_gone_cross_server_unverifiable',
+        };
+      }
       contextSession = targetRow;
     } else {
       // Non-identity rule with the trigger gone: the condition can no longer be
@@ -171,16 +226,37 @@ export async function reverifyKillCondition(
   // contextSession is missing from countableCachedSessions exactly when this
   // kill was enqueued for the triggering session (see module header) - append
   // it back so conditions like concurrent_streams count it instead of
-  // undercounting by one and self-aborting. The target, if it is a different
-  // still-playing session, is appended too so it is counted as well.
-  //
-  // KNOWN RESIDUAL: only the trigger and this job's target are restored. A
-  // sibling target of the SAME multi-target match that itself raced into
-  // existence after the last cache write is neither of these, so a delay-0
-  // re-check can still undercount it by milliseconds. Accepted follow-up.
+  // undercounting by one and self-aborting. Append ONLY when it is genuinely
+  // uncached (absent from the RAW cache list). If it sits in the raw cache but
+  // excludeUncountableSessions dropped it (grace-flagged or pending), live
+  // evaluation would exclude it too, so trust the filter and leave it out.
+  const rawCacheIds = new Set(cachedSessions.map((s) => s.id));
   let activeSessions = buildRuleContextSessions(countableCachedSessions, contextSession, null);
-  if (targetRow.id !== contextSession.id && !activeSessions.some((s) => s.id === targetRow.id)) {
+  if (rawCacheIds.has(contextSession.id)) {
+    // Raw-cached: trust excludeUncountableSessions rather than the unconditional
+    // append above. If the filter dropped it (grace/pending), it stays out.
+    activeSessions = countableCachedSessions;
+  }
+  // The target, if it is a different still-playing session that is genuinely
+  // uncached, is counted too. Same grace/pending guard: a raw-cached target the
+  // filter dropped must stay dropped.
+  if (
+    targetRow.id !== contextSession.id &&
+    !rawCacheIds.has(targetRow.id) &&
+    !activeSessions.some((s) => s.id === targetRow.id)
+  ) {
     activeSessions = [...activeSessions, targetRow];
+  }
+  // Fold back the siblings this same violation already terminated: they left the
+  // cache as each sibling job killed its target, but a session stopped BY THIS
+  // violation is action reach, not the condition clearing, so it must keep
+  // counting for the still-pending siblings (see module header). Without this a
+  // threshold like concurrent_streams >= 3 drops below its limit as siblings die
+  // and the later jobs self-abort, killing only some of the matched sessions.
+  for (const terminated of violationTerminatedSessions) {
+    if (!activeSessions.some((s) => s.id === terminated.id)) {
+      activeSessions = [...activeSessions, terminated];
+    }
   }
 
   // Identity aggregation runs unconditionally here, mirroring the live poller

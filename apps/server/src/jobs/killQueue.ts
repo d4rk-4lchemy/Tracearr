@@ -143,7 +143,7 @@ function outcomeToActionResult(result: ReverifyKillConditionResult): ActionResul
   if (result.outcome === 'failed') {
     return { action, success: false, message: result.error ?? 'failed' };
   }
-  return { action, success: true, skipped: true, skipReason: result.outcome };
+  return { action, success: true, skipped: true, skipReason: result.skipReason ?? result.outcome };
 }
 
 /**
