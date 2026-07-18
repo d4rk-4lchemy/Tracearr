@@ -195,24 +195,29 @@ export class RuleEngine {
       return { violated: false, severity: 'low', data: {} };
     }
 
+    if (session.geoLat === null || session.geoLon === null) {
+      return { violated: false, severity: 'low', data: {} };
+    }
+
+    const currentGeoLat = session.geoLat;
+    const currentGeoLon = session.geoLon;
+
     // Find most recent session from same server user with different location
     const userSessions = this.filterByPrivateIp(recentSessions, params.excludePrivateIps).filter(
-      (s) =>
+      (s): s is Session & { geoLat: number; geoLon: number } =>
         s.serverUserId === session.serverUserId &&
         s.geoLat !== null &&
         s.geoLon !== null &&
-        session.geoLat !== null &&
-        session.geoLon !== null &&
         // Issue #67: Exclude same device - VPN switches on same device are not impossible travel
         !(session.deviceId && s.deviceId && session.deviceId === s.deviceId)
     );
 
     for (const prevSession of userSessions) {
       const distance = this.calculateDistance(
-        prevSession.geoLat!,
-        prevSession.geoLon!,
-        session.geoLat!,
-        session.geoLon!
+        prevSession.geoLat,
+        prevSession.geoLon,
+        currentGeoLat,
+        currentGeoLon
       );
 
       const timeDiffHours =
@@ -250,17 +255,22 @@ export class RuleEngine {
       return { violated: false, severity: 'low', data: {} };
     }
 
+    if (session.geoLat === null || session.geoLon === null) {
+      return { violated: false, severity: 'low', data: {} };
+    }
+
+    const currentGeoLat = session.geoLat;
+    const currentGeoLon = session.geoLon;
+
     // Check for active sessions from same server user at different locations
     const activeSessions = this.filterByPrivateIp(recentSessions, params.excludePrivateIps).filter(
-      (s) =>
+      (s): s is Session & { geoLat: number; geoLon: number } =>
         s.serverUserId === session.serverUserId &&
         s.state === 'playing' &&
         // Issue #67: Exclude stopped sessions (stoppedAt takes precedence over state)
         s.stoppedAt === null &&
         s.geoLat !== null &&
         s.geoLon !== null &&
-        session.geoLat !== null &&
-        session.geoLon !== null &&
         // Exclude sessions from the same device (likely stale session data)
         !(session.deviceId && s.deviceId && session.deviceId === s.deviceId)
     );
@@ -268,10 +278,10 @@ export class RuleEngine {
     // Find all sessions at different locations (distance > minDistanceKm)
     const conflictingSessions = activeSessions.filter((activeSession) => {
       const distance = this.calculateDistance(
-        activeSession.geoLat!,
-        activeSession.geoLon!,
-        session.geoLat!,
-        session.geoLon!
+        activeSession.geoLat,
+        activeSession.geoLon,
+        currentGeoLat,
+        currentGeoLon
       );
       return distance > params.minDistanceKm;
     });
@@ -280,13 +290,13 @@ export class RuleEngine {
       // Calculate max distance for reporting
       const maxDistance = Math.max(
         ...conflictingSessions.map((s) =>
-          this.calculateDistance(s.geoLat!, s.geoLon!, session.geoLat!, session.geoLon!)
+          this.calculateDistance(s.geoLat, s.geoLon, currentGeoLat, currentGeoLon)
         )
       );
 
       // Collect all unique locations (including triggering session)
       const allLocations = [
-        { lat: session.geoLat, lon: session.geoLon, sessionId: session.id },
+        { lat: currentGeoLat, lon: currentGeoLon, sessionId: session.id },
         ...conflictingSessions.map((s) => ({
           lat: s.geoLat,
           lon: s.geoLon,

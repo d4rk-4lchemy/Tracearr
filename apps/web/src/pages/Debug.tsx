@@ -45,6 +45,7 @@ import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
+import { getBrowserDocument, getBrowserWindow } from '@/lib/browser';
 
 interface DebugStats {
   counts: {
@@ -139,6 +140,8 @@ const formatBytes = (bytes: string | number) => {
 };
 
 export function Debug() {
+  const browserWindow = getBrowserWindow();
+  const browserDocument = getBrowserDocument();
   const { t } = useTranslation(['pages', 'common']);
   const queryClient = useQueryClient();
   const version = useVersion();
@@ -186,7 +189,7 @@ export function Debug() {
       // Factory reset: clear tokens and redirect to login
       if (variables.action === 'reset') {
         tokenStorage.clearTokens(true);
-        window.location.href = `${BASE_URL}login`;
+        browserWindow.location.href = `${BASE_URL}login`;
         return;
       }
       void queryClient.invalidateQueries();
@@ -194,7 +197,7 @@ export function Debug() {
   });
 
   const handleDelete = (action: string, description: string, isPost = false) => {
-    if (window.confirm(`${description}\n\nThis cannot be undone. Continue?`)) {
+    if (browserWindow.confirm(`${description}\n\nThis cannot be undone. Continue?`)) {
       deleteMutation.mutate({ action, isPost });
     }
   };
@@ -220,7 +223,7 @@ export function Debug() {
       const res = await debugRawFetch('/logs/download');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = browserDocument.createElement('a');
       a.href = url;
       const disposition = res.headers.get('Content-Disposition');
       a.download = disposition?.match(/filename="(.+)"/)?.[1] ?? 'tracearr-logs.zip';

@@ -10,7 +10,7 @@ const asyncStorageAdapter = {
 // Detect language (stored pref → device locale → English) and init i18next
 export const i18nReady = detectLanguage(asyncStorageAdapter)
   .then((language) => initI18n({ lng: language as SupportedLanguage }))
-  .catch((error) => {
+  .catch((error: unknown) => {
     console.error('[i18n] Failed to initialize, falling back to English:', error);
     return initI18n({ lng: 'en' });
   });

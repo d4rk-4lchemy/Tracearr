@@ -172,7 +172,7 @@ export function startImportWorker(): void {
           }
         }
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.warn('[Import] Failed to check for stuck jobs:', err);
       });
   }
@@ -186,7 +186,7 @@ export function startImportWorker(): void {
 
       // Initialize cached progress
       activeImportProgress = {
-        jobId: job.id!,
+        jobId: job.id ?? '',
         type: job.data.type,
         serverId: job.data.serverId,
         status: 'waiting',
@@ -201,10 +201,10 @@ export function startImportWorker(): void {
       const MAX_WAIT_MS = 4 * 60 * 60 * 1000; // Max 4 hours wait
       let waitedMs = 0;
 
-      while ((lockHolder = await acquireHeavyOpsLock('import', job.id!, jobDescription)) !== null) {
+      while ((lockHolder = await acquireHeavyOpsLock('import', job.id ?? '', jobDescription)) !== null) {
         // Update cached progress with waiting status
         activeImportProgress = {
-          jobId: job.id!,
+          jobId: job.id ?? '',
           type: job.data.type,
           serverId: job.data.serverId,
           status: 'waiting',
@@ -269,13 +269,13 @@ export function startImportWorker(): void {
         const duration = Math.round((Date.now() - startTime) / 1000);
         console.log(`[Import] Job ${job.id} completed in ${duration}s:`, result);
         return result;
-      } catch (error) {
+      } catch (error: unknown) {
         const duration = Math.round((Date.now() - startTime) / 1000);
         console.error(`[Import] Job ${job.id} failed after ${duration}s:`, error);
         throw error;
       } finally {
         // Always release the heavy ops lock and clear cached progress
-        await releaseHeavyOpsLock(job.id!);
+        await releaseHeavyOpsLock(job.id ?? '');
         activeImportProgress = null;
         console.log(`[Import] Job ${job.id} released heavy ops lock`);
       }
@@ -381,7 +381,7 @@ async function processTautulliImportJob(
 
     // Extend locks - fails fast if lock is lost to avoid wasted work on large imports
     await extendJobLock(job, 5 * 60 * 1000);
-    await extendHeavyOpsLock(job.id!);
+    await extendHeavyOpsLock(job.id ?? '');
 
     // Publish to WebSocket for UI
     if (pubSubService) {

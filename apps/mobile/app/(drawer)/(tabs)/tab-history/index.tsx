@@ -6,11 +6,12 @@ import { useState, useMemo, useCallback, useRef } from 'react';
 import { View, FlatList, RefreshControl, ActivityIndicator, Platform } from 'react-native';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useRouter, Stack } from 'expo-router';
-import { DrawerActions, useNavigation } from 'expo-router/react-navigation';
+import { DrawerActions } from '@react-navigation/native';
 import { Play } from 'lucide-react-native';
 import { api } from '@/lib/api';
+import { useAppNavigation } from '@/lib/navigation';
 import { useMediaServer } from '@/providers/MediaServerProvider';
-import { useUnacknowledgedAlertsCount } from '@/hooks';
+import { useUnacknowledgedAlertsCount } from '@/hooks/useUnacknowledgedAlertsCount';
 import { ACCENT_COLOR, colors } from '@/lib/theme';
 import { Text } from '@/components/ui/text';
 import {
@@ -51,7 +52,7 @@ function getDateRange(period: TimePeriod): { startDate: Date; endDate: Date } {
 export default function HistoryScreen() {
   const { t } = useTranslation(['mobile']);
   const router = useRouter();
-  const navigation = useNavigation();
+  const navigation = useAppNavigation();
   const { selectedServerId } = useMediaServer();
   const { hasAlerts, displayCount } = useUnacknowledgedAlertsCount();
   const filterSheetRef = useRef<FilterBottomSheetRef>(null);

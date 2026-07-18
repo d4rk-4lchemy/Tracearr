@@ -5,7 +5,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { Image } from 'expo-image';
 import { Text } from './text';
-import { getServerUrl } from '@/lib/api';
+import { useAuthStateStore } from '@/lib/authStateStore';
 
 interface UserAvatarProps {
   /** User's avatar URL (can be null) - either absolute URL or relative proxy path */
@@ -28,11 +28,10 @@ interface UserAvatarProps {
  */
 function buildAvatarUrl(
   thumbUrl: string,
+  serverUrl: string | null,
   serverId: string | null | undefined,
   size: number
 ): string | null {
-  const serverUrl = getServerUrl();
-
   // Already absolute URL (e.g., Plex avatars from plex.tv)
   if (thumbUrl.startsWith('http')) {
     return thumbUrl;
@@ -60,21 +59,21 @@ function buildAvatarUrl(
 }
 
 export function UserAvatar({ thumbUrl, serverId, username, size = 40 }: UserAvatarProps) {
+  const server = useAuthStateStore((state) => state.server);
   const initials = username.slice(0, 2).toUpperCase();
   const fontSize = Math.max(size * 0.4, 10);
   const borderRadius = size / 2;
+  const serverUrl = server?.url ?? null;
+  const imageUrl = thumbUrl ? buildAvatarUrl(thumbUrl, serverUrl, serverId, size) : null;
 
-  if (thumbUrl) {
-    const imageUrl = buildAvatarUrl(thumbUrl, serverId, size);
-    if (imageUrl) {
-      return (
-        <Image
-          source={{ uri: imageUrl }}
-          style={{ width: size, height: size, borderRadius }}
-          className="bg-surface"
-        />
-      );
-    }
+  if (imageUrl) {
+    return (
+      <Image
+        source={{ uri: imageUrl }}
+        style={{ width: size, height: size, borderRadius }}
+        className="bg-surface"
+      />
+    );
   }
 
   return (

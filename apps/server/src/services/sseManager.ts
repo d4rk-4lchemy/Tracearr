@@ -465,11 +465,11 @@ export class SSEManager extends EventEmitter {
     serverId: string,
     serverName: string
   ): void {
-    realtime.on('snapshot:update', ({ sessions }) => {
+    realtime.on('snapshot:update', ({ sessions }: { sessions: MediaSession[] }) => {
       this.emit('dispatcharr:snapshot', { serverId, sessions });
     });
 
-    realtime.on('connection:status', (status) => {
+    realtime.on('connection:status', (status: DispatcharrRealtimeStatus) => {
       const connection = this.connections.get(serverId);
       if (!connection) return;
       connection.state = status.state;
@@ -499,7 +499,7 @@ export class SSEManager extends EventEmitter {
       });
     });
 
-    realtime.on('fallback:activated', ({ reason }) => {
+    realtime.on('fallback:activated', ({ reason }: { reason: string }) => {
       const connection = this.connections.get(serverId);
       if (connection) {
         connection.inFallback = true;

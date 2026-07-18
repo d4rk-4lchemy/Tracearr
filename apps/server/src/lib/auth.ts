@@ -130,6 +130,7 @@ function buildAuth(redis: Redis) {
   return betterAuth({
     basePath: '/api/v1/auth',
     secret: requireBetterAuthSecret(),
+    logger: process.env.TRACEARR_SILENCE_BETTER_AUTH_LOGS === '1' ? { disabled: true } : undefined,
     trustedOrigins: trustedOriginsForRequest,
     database: withLoginScopedUsernameLookup(
       drizzleAdapter(db, {
@@ -262,9 +263,9 @@ function buildAuth(redis: Redis) {
               config: [
                 {
                   providerId: 'oidc',
-                  clientId: oidcEnv.clientId!,
-                  clientSecret: oidcEnv.clientSecret!,
-                  discoveryUrl: `${oidcEnv.issuer!.replace(/\/$/, '')}/.well-known/openid-configuration`,
+                  clientId: oidcEnv.clientId ?? '',
+                  clientSecret: oidcEnv.clientSecret ?? '',
+                  discoveryUrl: `${(oidcEnv.issuer ?? '').replace(/\/$/, '')}/.well-known/openid-configuration`,
                   scopes: ['openid', 'email', 'profile'],
                   pkce: true,
                 },

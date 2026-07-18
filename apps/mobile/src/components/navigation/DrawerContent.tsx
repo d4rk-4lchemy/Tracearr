@@ -2,20 +2,53 @@
  * Custom drawer content for the hamburger menu
  * Contains: Server Switcher, Settings link, User profile section at bottom
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Pressable, ActivityIndicator, ScrollView } from 'react-native';
 import type { DrawerContentComponentProps } from 'expo-router/build/react-navigation/drawer';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Settings, ChevronRight } from 'lucide-react-native';
-import { useQuery } from '@tanstack/react-query';
 import { Text } from '@/components/ui/text';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { ServerSelector } from '@/components/ServerSelector';
 import { useMediaServer } from '@/providers/MediaServerProvider';
-import { api } from '@/lib/api';
+import { getAccessToken, useAuthStateStore } from '@/lib/authStateStore';
 import { ACCENT_COLOR, colors, spacing, withAlpha } from '@/lib/theme';
 import { useTranslation } from '@tracearr/translations/mobile';
+
+interface MobileDrawerUser {
+  id: string;
+  username: string;
+  friendlyName: string;
+  thumbUrl: string | null;
+  email: string | null;
+  role: string;
+}
+
+async function fetchDrawerUser(): Promise<MobileDrawerUser> {
+  const server = useAuthStateStore.getState().server;
+  if (!server) {
+    throw new Error('No server configured');
+  }
+
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    throw new Error('No access token available');
+  }
+
+  const response = await fetch(`${server.url}/api/v1/mobile/me`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch mobile profile: ${response.status}`);
+  }
+
+  return (await response.json()) as MobileDrawerUser;
+}
 
 interface DrawerItemProps {
   icon: React.ReactNode;
@@ -72,11 +105,27 @@ export function DrawerContent(props: DrawerContentComponentProps) {
   }, [isDashboard, selectedServerIds, selectServer]);
 
   // Fetch current user profile
-  const { data: user, isLoading: userLoading } = useQuery({
-    queryKey: ['mobile', 'me'],
-    queryFn: () => api.me(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
+  const [user, setUser] = useState<MobileDrawerUser | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    void fetchDrawerUser().then((profile) => {
+        if (mounted) {
+          setUser(profile);
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setUserLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleSettingsPress = () => {
     props.navigation.closeDrawer();

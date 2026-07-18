@@ -6,6 +6,7 @@
 export type {
   // Server
   ServerType,
+  DispatcharrAuthMode,
   Server,
   // User
   User,

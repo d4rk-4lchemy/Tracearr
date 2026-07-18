@@ -75,6 +75,9 @@ export function useUpdateServer() {
       name,
       url,
       clientIdentifier,
+      token,
+      username,
+      password,
       ignoreAnonymousStreams,
       dispatcharrLiveHistoryThresholdSeconds,
       color,
@@ -83,6 +86,9 @@ export function useUpdateServer() {
       name?: string;
       url?: string;
       clientIdentifier?: string;
+      token?: string;
+      username?: string;
+      password?: string;
       ignoreAnonymousStreams?: boolean;
       dispatcharrLiveHistoryThresholdSeconds?: number;
       color?: string | null;
@@ -91,6 +97,9 @@ export function useUpdateServer() {
         name,
         url,
         clientIdentifier,
+        token,
+        username,
+        password,
         ignoreAnonymousStreams,
         dispatcharrLiveHistoryThresholdSeconds,
         color,

@@ -212,7 +212,11 @@ export const notificationPreferencesRoutes: FastifyPluginAsync = async (app) => 
       existing = inserted;
     }
 
-    const prefsId = existing[0]!.id;
+    const prefsRow = existing[0];
+    if (!prefsRow) {
+      return reply.internalServerError('Failed to create notification preferences');
+    }
+    const prefsId = prefsRow.id;
 
     // Build update object
     const updateData: Partial<typeof notificationPreferences.$inferInsert> = {

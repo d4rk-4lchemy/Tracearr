@@ -7,7 +7,7 @@
 
 import type { Redis } from 'ioredis';
 import { eq, sql, and, isNull, isNotNull } from 'drizzle-orm';
-import { REDIS_KEYS } from '@tracearr/shared';
+import { REDIS_KEYS, type ViolationWithDetails } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { rules, serverUsers, sessions, ruleActionResults } from '../../db/schema.js';
 import { invalidateRulesCache } from '../../jobs/poller/database.js';
@@ -19,6 +19,22 @@ import {
   type ActionResult,
 } from './executors/index.js';
 import { migrateRules, type LegacyRule } from './migration.js';
+
+function getString(data: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = data?.[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function canSendMessage(
+  client: unknown
+): client is { sendMessage: (sessionId: string, message: string, title: string, timeoutMs: number) => Promise<void> } {
+  return (
+    !!client &&
+    typeof client === 'object' &&
+    'sendMessage' in client &&
+    typeof client.sendMessage === 'function'
+  );
+}
 
 // ============================================================================
 // Action Result Storage
@@ -88,6 +104,37 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
     sendNotification: async (params) => {
       // Dynamic import to avoid circular dependencies
       const { enqueueNotification } = await import('../../jobs/notificationQueue.js');
+      const data = params.data;
+      const violationPayload: ViolationWithDetails = {
+        id: `rule-notify-${Date.now()}`,
+        ruleId: getString(data, 'ruleId') ?? '',
+        serverUserId: getString(data, 'serverUserId') ?? '',
+        sessionId: getString(data, 'sessionId') ?? null,
+        severity: 'low',
+        data: {
+          ruleNotification: true,
+          channels: params.channels,
+          customTitle: params.title,
+          customMessage: params.message,
+          ...(data ?? {}),
+        },
+        createdAt: new Date(),
+        acknowledgedAt: null,
+        rule: {
+          id: getString(data, 'ruleId') ?? '',
+          name: params.title,
+          type: null,
+        },
+        user: {
+          id: getString(data, 'serverUserId') ?? '',
+          username: getString(data, 'username') ?? 'System',
+          thumbUrl: null,
+          serverId: getString(data, 'serverId') ?? '',
+          identityName: getString(data, 'displayName') ?? 'System',
+          userId: getString(data, 'userId'),
+        },
+        session: undefined,
+      };
 
       rulesLogger.debug(`Sending notification to channels: ${params.channels.join(', ')}`, {
         title: params.title,
@@ -99,32 +146,7 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
       // handle routing based on global settings.
       await enqueueNotification({
         type: 'violation',
-        payload: {
-          id: `rule-notify-${Date.now()}`,
-          serverUserId: (params.data?.serverUserId as string) ?? '',
-          sessionId: (params.data?.sessionId as string) ?? null,
-          severity: 'info',
-          createdAt: new Date().toISOString(),
-          resolvedAt: null,
-          data: {
-            ruleNotification: true,
-            channels: params.channels,
-            customTitle: params.title,
-            customMessage: params.message,
-            ...params.data,
-          },
-          rule: {
-            id: (params.data?.ruleId as string) ?? '',
-            name: params.title,
-            type: 'custom',
-          },
-          session: null,
-          serverUser: {
-            id: (params.data?.serverUserId as string) ?? '',
-            username: (params.data?.username as string) ?? 'System',
-            displayName: (params.data?.displayName as string) ?? 'System',
-          },
-        } as any,
+        payload: violationPayload,
       });
 
       rulesLogger.info(`Notification enqueued: ${params.title}`, {
@@ -269,7 +291,7 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
       });
 
       // Jellyfin/Emby use sessionKey for API calls
-      if ('sendMessage' in client && typeof client.sendMessage === 'function') {
+      if (canSendMessage(client)) {
         await client.sendMessage(session.sessionKey, message, 'Tracearr', 10000);
         rulesLogger.debug('Client message sent', { sessionId, message });
       }

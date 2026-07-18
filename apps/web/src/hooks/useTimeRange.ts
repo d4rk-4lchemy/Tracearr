@@ -45,8 +45,12 @@ export function useTimeRange() {
           params.set('period', newValue.period);
 
           if (newValue.period === 'custom' && newValue.startDate && newValue.endDate) {
-            params.set('from', formatDateParam(newValue.startDate)!);
-            params.set('to', formatDateParam(newValue.endDate)!);
+            const from = formatDateParam(newValue.startDate);
+            const to = formatDateParam(newValue.endDate);
+            if (from && to) {
+              params.set('from', from);
+              params.set('to', to);
+            }
           } else {
             params.delete('from');
             params.delete('to');

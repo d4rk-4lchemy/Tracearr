@@ -871,7 +871,7 @@ export function parseSessionsResponse(
     const ratingKey = parseString(session.ratingKey);
 
     const mediaArray = session.Media as Array<Record<string, unknown>> | undefined;
-    const selectedMedia = findSelectedElement<Record<string, unknown>>(mediaArray);
+    const selectedMedia = findSelectedElement(mediaArray);
     const sessionMediaId = selectedMedia?.id != null ? String(selectedMedia.id) : undefined;
 
     const originalMedia =
@@ -912,7 +912,7 @@ export function getTranscodingSessionRatingKeys(
       const session = item as Record<string, unknown>;
       const ratingKey = parseString(session.ratingKey);
       const mediaArray = session.Media as Array<Record<string, unknown>> | undefined;
-      const selectedMedia = findSelectedElement<Record<string, unknown>>(mediaArray);
+      const selectedMedia = findSelectedElement(mediaArray);
       const sessionMediaId = selectedMedia?.id != null ? String(selectedMedia.id) : undefined;
       return { ratingKey, sessionMediaId };
     })

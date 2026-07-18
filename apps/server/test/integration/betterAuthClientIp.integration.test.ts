@@ -73,6 +73,8 @@ describe('better auth client ip forwarding (integration)', () => {
   let app: FastifyInstance;
 
   beforeAll(async () => {
+    process.env.TRACEARR_SILENCE_BETTER_AUTH_LOGS = '1';
+    await closeAuth();
     app = await buildApp();
   });
 
@@ -87,6 +89,7 @@ describe('better auth client ip forwarding (integration)', () => {
       await redis.del(...baKeys);
     }
     await closeAuth();
+    delete process.env.TRACEARR_SILENCE_BETTER_AUTH_LOGS;
   });
 
   it('records the proxy-forwarded client ip on the created session', async () => {

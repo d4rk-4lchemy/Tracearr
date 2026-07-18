@@ -10,14 +10,15 @@
 import { useMemo } from 'react';
 import { View, ScrollView, RefreshControl, Platform } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
-import { DrawerActions, useNavigation } from 'expo-router/react-navigation';
+import { DrawerActions } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Ionicons, { type IoniconsIconName } from '@react-native-vector-icons/ionicons';
 import { api } from '@/lib/api';
+import { useAppNavigation } from '@/lib/navigation';
 import { useMediaServer } from '@/providers/MediaServerProvider';
 import { useServerStatistics } from '@/hooks/useServerStatistics';
 import { useResponsive } from '@/hooks/useResponsive';
-import { useUnacknowledgedAlertsCount } from '@/hooks';
+import { useUnacknowledgedAlertsCount } from '@/hooks/useUnacknowledgedAlertsCount';
 import { StreamMap } from '@/components/map/StreamMap';
 import { NowPlayingCard } from '@/components/sessions';
 import { ServerResourceCard } from '@/components/server/ServerResourceCard';
@@ -25,6 +26,7 @@ import { Text } from '@/components/ui/text';
 import { Card } from '@/components/ui/card';
 import { colors, spacing, ACCENT_COLOR } from '@/lib/theme';
 import { useTranslation } from '@tracearr/translations/mobile';
+import type { ActiveSession } from '@tracearr/shared';
 
 /**
  * Compact stat pill for dashboard summary bar
@@ -64,7 +66,7 @@ function StatPill({
 export default function DashboardScreen() {
   const { t } = useTranslation(['mobile', 'pages', 'common']);
   const router = useRouter();
-  const navigation = useNavigation();
+  const navigation = useAppNavigation();
   const { servers, selectedServerIds, selectedServerId, selectedServer, isMultiServer } =
     useMediaServer();
   const { isTablet, columns, select } = useResponsive();
@@ -93,8 +95,9 @@ export default function DashboardScreen() {
     refetchInterval: 1000 * 60,
   });
 
-  const { data: activeSessions } = useQuery({
+  const { data: activeSessions } = useQuery<ActiveSession[]>({
     queryKey: ['sessions', 'active', sortedServerIds],
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
     queryFn: () => api.sessions.active(selectedServerIds),
     staleTime: 1000 * 5,
     refetchInterval: 1000 * 30,

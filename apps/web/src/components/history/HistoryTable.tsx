@@ -693,6 +693,7 @@ export function HistoryTable({
   const minTableWidth = getMinTableWidth(columnVisibility, selectable, isMultiServer);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual intentionally exposes imperative methods
   const rowVirtualizer = useVirtualizer({
     count: sessions.length,
     getScrollElement: () => scrollContainerRef.current,

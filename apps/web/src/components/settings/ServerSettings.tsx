@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -46,6 +46,8 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { api, tokenStorage } from '@/lib/api';
 import type { PlexDiscoveredServer } from '@/lib/api';
+import { getBrowserNavigator } from '@/lib/browser';
+import { getErrorMessage } from '@/lib/errors';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
 import { toast } from 'sonner';
@@ -80,8 +82,11 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 interface DispatcharrServerExtras {
+  dispatcharrAuthMode?: 'token' | 'credentials';
   dispatcharrLiveHistoryThresholdSeconds?: number;
 }
+
+const readInputValue = (event: ChangeEvent<HTMLInputElement>) => event.currentTarget.value;
 
 export function ServerSettings() {
   const { t } = useTranslation(['settings', 'common', 'notifications', 'pages']);
@@ -234,7 +239,7 @@ export function ServerSettings() {
         setPlexDialogStep('select-account');
       }
     } catch (error) {
-      setConnectError(error instanceof Error ? error.message : 'Failed to fetch Plex accounts');
+      setConnectError(getErrorMessage(error, 'Failed to fetch Plex accounts'));
       setPlexDialogStep('no-accounts');
     }
   };
@@ -260,7 +265,7 @@ export function ServerSettings() {
       setPlexServers(result.servers);
       setPlexDialogStep('select');
     } catch (error) {
-      setConnectError(error instanceof Error ? error.message : 'Failed to fetch Plex servers');
+      setConnectError(getErrorMessage(error, 'Failed to fetch Plex servers'));
       setPlexDialogStep('no-servers');
     }
   };
@@ -303,7 +308,7 @@ export function ServerSettings() {
       setShowAddDialog(false);
       resetAddForm();
     } catch (error) {
-      setConnectError(error instanceof Error ? error.message : 'Failed to connect Plex server');
+      setConnectError(getErrorMessage(error, 'Failed to connect Plex server'));
     } finally {
       setConnectingPlexServer(null);
     }
@@ -704,7 +709,7 @@ export function ServerSettings() {
                     placeholder={t('servers.serverUrlPlaceholder')}
                     value={serverUrl}
                     onChange={(e) => {
-                      setServerUrl(e.target.value);
+                      setServerUrl(readInputValue(e));
                     }}
                   />
                   <p className="text-muted-foreground text-xs">
@@ -722,7 +727,7 @@ export function ServerSettings() {
                     placeholder={t('servers.serverNamePlaceholder')}
                     value={serverName}
                     onChange={(e) => {
-                      setServerName(e.target.value);
+                      setServerName(readInputValue(e));
                     }}
                   />
                 </div>
@@ -762,7 +767,7 @@ export function ServerSettings() {
                         placeholder="admin"
                         value={dispatcharrUsername}
                         onChange={(e) => {
-                          setDispatcharrUsername(e.target.value);
+                          setDispatcharrUsername(readInputValue(e));
                         }}
                       />
                     </div>
@@ -774,7 +779,7 @@ export function ServerSettings() {
                         placeholder="Enter your password"
                         value={dispatcharrPassword}
                         onChange={(e) => {
-                          setDispatcharrPassword(e.target.value);
+                          setDispatcharrPassword(readInputValue(e));
                         }}
                       />
                       <p className="text-muted-foreground text-xs">
@@ -792,7 +797,7 @@ export function ServerSettings() {
                       placeholder={t('servers.apiKeyPlaceholder')}
                       value={apiKey}
                       onChange={(e) => {
-                        setApiKey(e.target.value);
+                          setApiKey(readInputValue(e));
                       }}
                     />
                     <p className="text-muted-foreground text-xs">
@@ -817,7 +822,7 @@ export function ServerSettings() {
                         step={1}
                         value={dispatcharrLiveHistoryThresholdSeconds}
                         onChange={(e) => {
-                          const value = Number.parseInt(e.target.value || '0', 10);
+                          const value = Number.parseInt(readInputValue(e) || '0', 10);
                           setDispatcharrLiveHistoryThresholdSeconds(
                             Number.isFinite(value) && value >= 0 ? value : 0
                           );
@@ -910,6 +915,9 @@ export function ServerSettings() {
           url,
           clientIdentifier,
           color,
+          token,
+          username,
+          password,
           ignoreAnonymousStreamsValue,
           dispatcharrLiveHistoryThresholdSecondsValue
         ) => {
@@ -921,6 +929,9 @@ export function ServerSettings() {
                 url,
                 clientIdentifier,
                 color,
+                token,
+                username,
+                password,
                 ignoreAnonymousStreams: ignoreAnonymousStreamsValue,
                 dispatcharrLiveHistoryThresholdSeconds:
                   dispatcharrLiveHistoryThresholdSecondsValue,
@@ -958,6 +969,9 @@ function EditServerDialog({
     url?: string,
     clientIdentifier?: string,
     color?: string | null,
+    token?: string,
+    username?: string,
+    password?: string,
     ignoreAnonymousStreams?: boolean,
     dispatcharrLiveHistoryThresholdSeconds?: number
   ) => void;
@@ -967,6 +981,12 @@ function EditServerDialog({
   const [editName, setEditName] = useState('');
   const [manualUrl, setManualUrl] = useState('');
   const [editColor, setEditColor] = useState('#3b82f6');
+  const [editDispatcharrAuthMode, setEditDispatcharrAuthMode] = useState<'token' | 'credentials'>(
+    'token'
+  );
+  const [editDispatcharrToken, setEditDispatcharrToken] = useState('');
+  const [editDispatcharrUsername, setEditDispatcharrUsername] = useState('');
+  const [editDispatcharrPassword, setEditDispatcharrPassword] = useState('');
   const [editIgnoreAnonymousStreams, setEditIgnoreAnonymousStreams] = useState(true);
   const [editDispatcharrLiveHistoryThresholdSeconds, setEditDispatcharrLiveHistoryThresholdSeconds] =
     useState(30);
@@ -983,6 +1003,12 @@ function EditServerDialog({
     if (server) {
       setEditName(server.name);
       setManualUrl(server.url);
+      setEditDispatcharrAuthMode(
+        (server as Server & DispatcharrServerExtras).dispatcharrAuthMode ?? 'token'
+      );
+      setEditDispatcharrToken('');
+      setEditDispatcharrUsername('');
+      setEditDispatcharrPassword('');
       setEditIgnoreAnonymousStreams(server.ignoreAnonymousStreams ?? true);
       setEditDispatcharrLiveHistoryThresholdSeconds(
         (server as Server & DispatcharrServerExtras).dispatcharrLiveHistoryThresholdSeconds ?? 30
@@ -1010,6 +1036,9 @@ function EditServerDialog({
       uri,
       clientIdentifier,
       colorChanged,
+      undefined,
+      undefined,
+      undefined,
       ignoreAnonymousStreamsChanged,
       dispatcharrLiveHistoryThresholdSecondsChanged
     );
@@ -1018,6 +1047,15 @@ function EditServerDialog({
   const hasNameChange = server ? editName.trim() !== server.name : false;
   const hasUrlChange = server ? manualUrl.trim() !== server.url : false;
   const hasColorChange = server ? editColor !== (server.color ?? '') : false;
+  const currentDispatcharrAuthMode =
+    isDispatcharrServer ? ((server as Server & DispatcharrServerExtras).dispatcharrAuthMode ?? 'token') : 'token';
+  const hasAuthModeChange =
+    isDispatcharrServer && editDispatcharrAuthMode !== currentDispatcharrAuthMode;
+  const hasCredentialValueChange =
+    isDispatcharrServer &&
+    ((editDispatcharrAuthMode === 'credentials' &&
+      (editDispatcharrUsername.trim().length > 0 || editDispatcharrPassword.length > 0)) ||
+      (editDispatcharrAuthMode === 'token' && editDispatcharrToken.trim().length > 0));
   const hasIgnoreAnonymousStreamsChange = server
     ? isDispatcharrServer && editIgnoreAnonymousStreams !== (server.ignoreAnonymousStreams ?? true)
     : false;
@@ -1026,20 +1064,45 @@ function EditServerDialog({
       editDispatcharrLiveHistoryThresholdSeconds !==
         ((server as Server & DispatcharrServerExtras).dispatcharrLiveHistoryThresholdSeconds ?? 30)
     : false;
+  const hasDispatcharrAuthChange = hasAuthModeChange || hasCredentialValueChange;
+  const hasValidDispatcharrAuthInput =
+    !isDispatcharrServer ||
+    (!hasDispatcharrAuthChange
+      ? true
+      : editDispatcharrAuthMode === 'credentials'
+        ? Boolean(editDispatcharrUsername.trim()) && Boolean(editDispatcharrPassword)
+        : Boolean(editDispatcharrToken.trim()));
   const canSave =
     (hasNameChange ||
       hasUrlChange ||
       hasColorChange ||
+      hasDispatcharrAuthChange ||
       hasIgnoreAnonymousStreamsChange ||
       hasDispatcharrThresholdChange) &&
+    hasValidDispatcharrAuthInput &&
     editName.trim().length > 0;
 
   const handleSave = () => {
+    const tokenUpdate =
+      isDispatcharrServer && hasDispatcharrAuthChange && editDispatcharrAuthMode === 'token'
+        ? editDispatcharrToken.trim()
+        : undefined;
+    const usernameUpdate =
+      isDispatcharrServer && hasDispatcharrAuthChange && editDispatcharrAuthMode === 'credentials'
+        ? editDispatcharrUsername.trim()
+        : undefined;
+    const passwordUpdate =
+      isDispatcharrServer && hasDispatcharrAuthChange && editDispatcharrAuthMode === 'credentials'
+        ? editDispatcharrPassword
+        : undefined;
     onUpdate(
       hasNameChange ? editName.trim() : undefined,
       hasUrlChange ? manualUrl.trim() : undefined,
       undefined,
       hasColorChange ? editColor : undefined,
+      tokenUpdate,
+      usernameUpdate,
+      passwordUpdate,
       hasIgnoreAnonymousStreamsChange ? editIgnoreAnonymousStreams : undefined,
       hasDispatcharrThresholdChange ? editDispatcharrLiveHistoryThresholdSeconds : undefined
     );
@@ -1061,7 +1124,7 @@ function EditServerDialog({
             <Input
               id="edit-name"
               value={editName}
-              onChange={(e) => setEditName(e.target.value)}
+              onChange={(e) => setEditName(readInputValue(e))}
               placeholder={t('servers.plexServerPlaceholder')}
               maxLength={100}
             />
@@ -1100,7 +1163,7 @@ function EditServerDialog({
                 <Input
                   id="edit-url"
                   value={manualUrl}
-                  onChange={(e) => setManualUrl(e.target.value)}
+                  onChange={(e) => setManualUrl(readInputValue(e))}
                   placeholder={t('servers.plexServerUrlPlaceholder')}
                 />
               )}
@@ -1112,7 +1175,7 @@ function EditServerDialog({
               <Input
                 id="edit-url"
                 value={manualUrl}
-                onChange={(e) => setManualUrl(e.target.value)}
+                onChange={(e) => setManualUrl(readInputValue(e))}
                 placeholder="http://192.168.1.100:8096"
               />
             </div>
@@ -1121,8 +1184,86 @@ function EditServerDialog({
           {isDispatcharrServer && (
             <div className="space-y-3">
               <div className="space-y-2">
+                <Label>{t('servers.dispatcharrAuthMode')}</Label>
+                <Select
+                  value={editDispatcharrAuthMode}
+                  onValueChange={(value) => {
+                    const mode = value as 'token' | 'credentials';
+                    setEditDispatcharrAuthMode(mode);
+                    setEditDispatcharrToken('');
+                    setEditDispatcharrUsername('');
+                    setEditDispatcharrPassword('');
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="token">{t('servers.dispatcharrAuthModeToken')}</SelectItem>
+                    <SelectItem value="credentials">
+                      {t('servers.dispatcharrAuthModeCredentials')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-muted-foreground text-xs">
+                  {editDispatcharrAuthMode === 'credentials'
+                    ? t('servers.dispatcharrCredentialsHelp')
+                    : t('servers.dispatcharrTokenHelp')}
+                </p>
+              </div>
+
+              {editDispatcharrAuthMode === 'credentials' ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-dispatcharr-username">
+                      {t('servers.dispatcharrUsername')}
+                    </Label>
+                    <Input
+                      id="edit-dispatcharr-username"
+                      value={editDispatcharrUsername}
+                      onChange={(e) => setEditDispatcharrUsername(readInputValue(e))}
+                      placeholder="admin"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-dispatcharr-password">
+                      {t('servers.dispatcharrPassword')}
+                    </Label>
+                    <Input
+                      id="edit-dispatcharr-password"
+                      type="password"
+                      value={editDispatcharrPassword}
+                      onChange={(e) => setEditDispatcharrPassword(readInputValue(e))}
+                      placeholder={t('servers.dispatcharrPasswordPlaceholder')}
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      {currentDispatcharrAuthMode === 'credentials'
+                        ? t('servers.dispatcharrCredentialsUnchangedHint')
+                        : t('servers.dispatcharrCredentialsSwitchHint')}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-dispatcharr-token">{t('common:labels.apiKey')}</Label>
+                  <Input
+                    id="edit-dispatcharr-token"
+                    type="password"
+                    value={editDispatcharrToken}
+                      onChange={(e) => setEditDispatcharrToken(readInputValue(e))}
+                    placeholder={t('servers.apiKeyPlaceholder')}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    {currentDispatcharrAuthMode === 'token'
+                      ? t('servers.dispatcharrTokenUnchangedHint')
+                      : t('servers.dispatcharrTokenSwitchHint')}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
                 <Label htmlFor="edit-dispatcharr-live-threshold">
-                  Live history threshold (seconds)
+                  {t('servers.dispatcharrLiveHistoryThreshold')}
                 </Label>
                 <Input
                   id="edit-dispatcharr-live-threshold"
@@ -1131,15 +1272,14 @@ function EditServerDialog({
                   step={1}
                   value={editDispatcharrLiveHistoryThresholdSeconds}
                   onChange={(e) => {
-                    const value = Number.parseInt(e.target.value || '0', 10);
+                    const value = Number.parseInt(readInputValue(e) || '0', 10);
                     setEditDispatcharrLiveHistoryThresholdSeconds(
                       Number.isFinite(value) && value >= 0 ? value : 0
                     );
                   }}
                 />
                 <p className="text-muted-foreground text-xs">
-                  Live TV sessions are saved to history only after this threshold. 0 means always
-                  save.
+                  {t('servers.dispatcharrLiveHistoryThresholdHelp')}
                 </p>
               </div>
               <div className="flex items-start gap-3 rounded-md border p-3">
@@ -1155,10 +1295,10 @@ function EditServerDialog({
                     htmlFor="edit-ignore-anonymous-streams"
                     className="cursor-pointer font-medium"
                   >
-                    Ignore Anonymous streams
+                    {t('servers.ignoreAnonymousStreams')}
                   </Label>
                   <p className="text-muted-foreground text-sm">
-                    When enabled, Dispatcharr streams reported as anonymous are ignored.
+                    {t('servers.ignoreAnonymousStreamsHelp')}
                   </p>
                 </div>
               </div>
@@ -1224,11 +1364,13 @@ function RealtimeSetupDialog({
   server,
   open,
   onClose,
+  onEditServer,
   mode = 'setup',
 }: {
   server: Server;
   open: boolean;
   onClose: () => void;
+  onEditServer: () => void;
   mode?: 'setup' | 'update';
 }) {
   const { t } = useTranslation(['settings']);
@@ -1236,7 +1378,7 @@ function RealtimeSetupDialog({
   const repoUrl = t('servers.realtimeDialog.jellyfinRepoUrl');
 
   const handleCopy = (text: string) => {
-    void navigator.clipboard.writeText(text).then(() => {
+    void getBrowserNavigator().clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -1247,12 +1389,16 @@ function RealtimeSetupDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {mode === 'update'
+            {server.type === 'dispatcharr'
+              ? t('servers.realtimeDialog.dispatcharrTitle')
+              : mode === 'update'
               ? t('servers.realtimeDialog.updateTitle')
               : t('servers.realtimeDialog.title')}
           </DialogTitle>
           <DialogDescription>
-            {server.type === 'jellyfin'
+            {server.type === 'dispatcharr'
+              ? t('servers.realtimeDialog.dispatcharrDescription')
+              : server.type === 'jellyfin'
               ? mode === 'update'
                 ? t('servers.realtimeDialog.jellyfinUpdateDescription')
                 : t('servers.realtimeDialog.jellyfinDescription')
@@ -1263,7 +1409,16 @@ function RealtimeSetupDialog({
         </DialogHeader>
 
         <div className="text-muted-foreground space-y-3 text-sm">
-          {server.type === 'jellyfin' ? (
+          {server.type === 'dispatcharr' ? (
+            <>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>{t('servers.realtimeDialog.dispatcharrStep1')}</li>
+                <li>{t('servers.realtimeDialog.dispatcharrStep2')}</li>
+                <li>{t('servers.realtimeDialog.dispatcharrStep3')}</li>
+              </ol>
+              <p className="text-xs">{t('servers.realtimeDialog.dispatcharrLegacyNote')}</p>
+            </>
+          ) : server.type === 'jellyfin' ? (
             <>
               <ol className="list-decimal space-y-2 pl-4">
                 <li>In your Jellyfin dashboard, go to Plugins → Repositories.</li>
@@ -1319,10 +1474,23 @@ function RealtimeSetupDialog({
               </a>
             </>
           )}
-          <p className="text-xs">{t('servers.realtimeDialog.autoDetectNote')}</p>
+          {server.type !== 'dispatcharr' && (
+            <p className="text-xs">{t('servers.realtimeDialog.autoDetectNote')}</p>
+          )}
         </div>
 
         <DialogFooter>
+          {server.type === 'dispatcharr' && (
+            <Button
+              type="button"
+              onClick={() => {
+                onClose();
+                onEditServer();
+              }}
+            >
+              {t('servers.realtimeDialog.editServer')}
+            </Button>
+          )}
           <Button variant="outline" onClick={onClose}>
             {t('servers.realtimeDialog.close')}
           </Button>
@@ -1476,6 +1644,7 @@ function SortableServerCard({
           server={server}
           open={showRealtimeDialog}
           onClose={() => setShowRealtimeDialog(false)}
+          onEditServer={() => onEdit()}
           mode={realtimeDialogMode}
         />
       )}

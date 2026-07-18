@@ -397,6 +397,9 @@ export async function mergeUsers(
     assertMergeDirection(source, target);
 
     const [sourceUser] = await tx.select().from(users).where(eq(users.id, sourceUserId)).limit(1);
+    if (!sourceUser) {
+      throw new Error(`Source user ${sourceUserId} disappeared before merge audit creation`);
+    }
 
     const sourceSus = await tx
       .select({ id: serverUsers.id, serverId: serverUsers.serverId })
@@ -473,19 +476,22 @@ export async function mergeUsers(
         combinedServerUsers: plan.combines,
         wasSameServerCombine: plan.combines.length > 0,
         sourceUserSnapshot: {
-          username: sourceUser!.username,
-          name: sourceUser!.name,
-          email: sourceUser!.email,
-          thumbnail: sourceUser!.thumbnail,
-          role: sourceUser!.role,
+          username: sourceUser.username,
+          name: sourceUser.name,
+          email: sourceUser.email,
+          thumbnail: sourceUser.thumbnail,
+          role: sourceUser.role,
         },
         movedIdentityRowIds,
       })
       .returning();
+    if (!audit) {
+      throw new Error('Merge audit insert returned no row');
+    }
 
     return {
       targetUserId,
-      auditId: audit!.id,
+      auditId: audit.id,
       movedServerUserIds: plan.repointServerUserIds,
       combinedServerUsers: plan.combines,
       wasSameServerCombine: plan.combines.length > 0,
@@ -592,11 +598,14 @@ export async function splitServerUser(
         role: 'member',
       })
       .returning();
+    if (!newUser) {
+      throw new Error('Split user insert returned no row');
+    }
 
     const oldUserId = serverUser.userId;
     await tx
       .update(serverUsers)
-      .set({ userId: newUser!.id, updatedAt: new Date() })
+      .set({ userId: newUser.id, updatedAt: new Date() })
       .where(eq(serverUsers.id, serverUserId));
 
     if (audit) {
@@ -606,7 +615,7 @@ export async function splitServerUser(
       // this is a no-op for them - the fallback path's current behavior
       // (those rows stay on the target) is preserved on purpose.
       if (audit.movedIdentityRowIds) {
-        await repointIdentityRowsBack(tx, audit.movedIdentityRowIds, oldUserId, newUser!.id);
+        await repointIdentityRowsBack(tx, audit.movedIdentityRowIds, oldUserId, newUser.id);
       }
 
       // A multi-account merge (movedServerUserIds has more than one entry)
@@ -635,9 +644,9 @@ export async function splitServerUser(
     }
 
     await recomputeIdentityAggregates(tx, oldUserId);
-    await recomputeIdentityAggregates(tx, newUser!.id);
+    await recomputeIdentityAggregates(tx, newUser.id);
 
-    return { newUserId: newUser!.id, serverUserId, oldUserId };
+    return { newUserId: newUser.id, serverUserId, oldUserId };
   });
 
   // The old identity's aggregates changed above but any live session's

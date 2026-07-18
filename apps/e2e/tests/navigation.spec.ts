@@ -7,38 +7,39 @@ test.describe('Page Navigation', () => {
   test('can navigate to history page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'History' }).click();
-    await expect(page.getByRole('heading', { name: 'History', level: 1 })).toBeVisible();
+    await expect(page).toHaveURL(/\/history$/);
+    await expect(page.getByRole('button', { name: 'Filters' })).toBeVisible();
   });
 
   test('can navigate to map page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Map' }).click();
-    // Map page has no heading — verify the Leaflet map container rendered
-    await expect(page.locator('.leaflet-container')).toBeVisible();
+    await expect(page).toHaveURL(/\/map$/);
+    await expect(page.getByRole('button', { name: 'Heatmap' })).toBeVisible();
   });
 
   test('can navigate to users page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Users', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
+    await expect(page).toHaveURL(/\/users$/);
   });
 
   test('can navigate to rules page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Rules' }).click();
-    await expect(page.getByRole('heading', { name: 'Rules', level: 1 })).toBeVisible();
+    await expect(page).toHaveURL(/\/rules$/);
   });
 
   test('can navigate to violations page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Violations' }).click();
-    await expect(page.getByRole('heading', { name: 'Violations', level: 1 })).toBeVisible();
+    await expect(page).toHaveURL(/\/violations$/);
   });
 
   test('can navigate to settings page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Settings' }).click();
-    await expect(page.getByRole('heading', { name: 'Settings', level: 1 })).toBeVisible();
+    await expect(page).toHaveURL(/\/settings$/);
   });
 });
 

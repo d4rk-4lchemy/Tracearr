@@ -131,11 +131,12 @@ export function UserDetail() {
   // Use the aggregate endpoint for initial load (1 request instead of 6).
   // Anchored on effectiveId: the URL's representative account by default, or
   // the specific sibling account the picker selected.
-  const { data: fullData, isLoading } = useUserFull(effectiveId!, { scope: identityScope });
+  const effectiveUserId = effectiveId ?? '';
+  const { data: fullData, isLoading } = useUserFull(effectiveUserId, { scope: identityScope });
 
   // Only fetch paginated data when user navigates beyond first page
   const { data: paginatedSessions, isLoading: paginatedSessionsLoading } = useUserSessions(
-    effectiveId!,
+    effectiveUserId,
     { page: sessionsPage, pageSize, scope: identityScope }
     // Only enable when on page > 1 (first page data comes from aggregate)
   );
@@ -154,8 +155,10 @@ export function UserDetail() {
   );
   const needsPaginatedViolations = violationsPage > 1;
 
-  const { data: paginatedTerminations, isLoading: paginatedTerminationsLoading } =
-    useUserTerminations(effectiveId!, { page: terminationsPage, pageSize, scope: identityScope });
+  const { data: paginatedTerminations, isLoading: paginatedTerminationsLoading } = useUserTerminations(
+    effectiveUserId,
+    { page: terminationsPage, pageSize, scope: identityScope }
+  );
   const needsPaginatedTerminations = terminationsPage > 1;
 
   // Extract data from aggregate or paginated sources
@@ -354,9 +357,10 @@ export function UserDetail() {
   }, [t, showServerColumns]);
 
   // Sessions: use paginated data if on page > 1, otherwise use aggregate
-  const rawSessions = needsPaginatedSessions
-    ? (paginatedSessions?.data ?? [])
-    : (fullData?.sessions.data ?? []);
+  const rawSessions = useMemo(
+    () => (needsPaginatedSessions ? paginatedSessions?.data ?? [] : fullData?.sessions.data ?? []),
+    [needsPaginatedSessions, paginatedSessions?.data, fullData?.sessions.data]
+  );
 
   // Map Session -> SessionWithDetails for HistoryTable compatibility. Each
   // session row already carries its own server, since an identity-scoped
@@ -427,7 +431,7 @@ export function UserDetail() {
           <Card>
             <CardContent className="pt-6">
               <div className="grid grid-cols-2 gap-4">
-                {[...Array(4)].map((_, i) => (
+                {Array.from({ length: 4 }, (_, i) => (
                   <Skeleton key={i} className="h-16" />
                 ))}
               </div>
@@ -835,7 +839,7 @@ export function UserDetail() {
       <EditUserNameDialog
         open={isEditNameOpen}
         onOpenChange={setIsEditNameOpen}
-        userId={id!}
+        userId={effectiveUserId}
         currentName={user.identityName}
         username={user.username}
       />

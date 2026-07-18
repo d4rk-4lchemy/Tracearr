@@ -133,7 +133,7 @@ export const createServerSchema = z
       const hasUserPass = Boolean(data.username?.trim()) && Boolean(data.password);
       if (!hasToken && !hasUserPass) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: 'Dispatcharr requires either token or username+password',
           path: ['token'],
         });
@@ -143,7 +143,7 @@ export const createServerSchema = z
 
     if (!data.token?.trim()) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: 'custom',
         message: 'Token is required',
         path: ['token'],
       });
@@ -168,6 +168,9 @@ export const updateServerSchema = z
     name: z.string().min(1).max(100).optional(),
     url: z.url().optional(),
     clientIdentifier: z.string().optional(),
+    token: z.string().min(1).optional(),
+    username: z.string().min(1).optional(),
+    password: z.string().min(1).optional(),
     ignoreAnonymousStreams: z.boolean().optional(),
     dispatcharrLiveHistoryThresholdSeconds: z.coerce.number().int().min(0).optional(),
     color: z
@@ -176,18 +179,48 @@ export const updateServerSchema = z
       .optional()
       .nullable(),
   })
-  .refine(
-    (data) =>
-      data.name !== undefined ||
-      data.url !== undefined ||
-      data.color !== undefined ||
-      data.ignoreAnonymousStreams !== undefined ||
-      data.dispatcharrLiveHistoryThresholdSeconds !== undefined,
-    {
-      message:
-        'At least one of name, url, color, ignoreAnonymousStreams, or dispatcharrLiveHistoryThresholdSeconds is required',
+  .superRefine((data, ctx) => {
+    const hasToken = data.token !== undefined;
+    const hasUsername = data.username !== undefined;
+    const hasPassword = data.password !== undefined;
+    const hasAuthFields = hasToken || hasUsername || hasPassword;
+
+    if (hasAuthFields) {
+      const hasCompleteToken = Boolean(data.token?.trim());
+      const hasCompleteCredentials = Boolean(data.username?.trim()) && Boolean(data.password);
+
+      if (hasCompleteToken && (hasUsername || hasPassword)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Dispatcharr update must use either token or username+password, not both',
+          path: ['token'],
+        });
+      } else if (!hasCompleteToken && !hasCompleteCredentials) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Dispatcharr update requires a complete token or username+password',
+          path: hasToken ? ['token'] : ['username'],
+        });
+      }
     }
-  );
+
+    if (
+      data.name === undefined &&
+      data.url === undefined &&
+      data.color === undefined &&
+      data.token === undefined &&
+      data.username === undefined &&
+      data.password === undefined &&
+      data.ignoreAnonymousStreams === undefined &&
+      data.dispatcharrLiveHistoryThresholdSeconds === undefined
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'At least one of name, url, color, token, username, password, ignoreAnonymousStreams, or dispatcharrLiveHistoryThresholdSeconds is required',
+      });
+    }
+  });
 
 // ============================================================================
 // User Schemas

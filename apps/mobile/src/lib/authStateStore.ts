@@ -321,6 +321,10 @@ export const useAuthStateStore = create<AuthState>()(
   )
 );
 
+export function getStoredServerUrl(): string | null {
+  return useAuthStateStore.getState().server?.url ?? null;
+}
+
 // Selectors for optimized subscriptions
 export const authSelectors = {
   server: (s: AuthState) => s.server,

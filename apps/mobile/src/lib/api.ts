@@ -36,6 +36,18 @@ import type {
 // Single API client instance (one server only)
 let apiClient: AxiosInstance | null = null;
 
+function getAxiosErrorMessage(error: AxiosError): string | undefined {
+  const responseData = error.response?.data;
+  if (!responseData || typeof responseData !== 'object') {
+    return undefined;
+  }
+
+  const data = responseData as { message?: unknown; error?: unknown };
+  if (typeof data.message === 'string') return data.message;
+  if (typeof data.error === 'string') return data.error;
+  return undefined;
+}
+
 /**
  * Get the API client, creating it if needed
  */
@@ -248,6 +260,46 @@ export function getServerUrl(): string | null {
   return useAuthStateStore.getState().server?.url ?? null;
 }
 
+export interface MobileMeProfile {
+  id: string;
+  username: string;
+  friendlyName: string;
+  thumbUrl: string | null;
+  email: string | null;
+  role: string;
+}
+
+export async function fetchMobileMe(): Promise<MobileMeProfile> {
+  const client = getApiClient();
+  const response = await client.get<MobileMeProfile>('/mobile/me');
+  return response.data;
+}
+
+export async function fetchNotificationPreferences(): Promise<NotificationPreferencesWithStatus> {
+  const client = getApiClient();
+  const response = await client.get<NotificationPreferencesWithStatus>('/notifications/preferences');
+  return response.data;
+}
+
+export async function updateNotificationPreferencesApi(
+  data: Partial<
+    Omit<NotificationPreferences, 'id' | 'mobileSessionId' | 'createdAt' | 'updatedAt'>
+  >
+): Promise<NotificationPreferences> {
+  const client = getApiClient();
+  const response = await client.patch<NotificationPreferences>('/notifications/preferences', data);
+  return response.data;
+}
+
+export async function sendTestNotificationApi(): Promise<{ success: boolean; message: string }> {
+  const client = getApiClient();
+  const response = await client.post<{ success: boolean; message: string }>(
+    '/notifications/test',
+    {}
+  );
+  return response.data;
+}
+
 /**
  * API methods organized by domain
  */
@@ -289,7 +341,7 @@ export const api = {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         // Extract server's error message if available
-        const serverMessage = error.response?.data?.message || error.response?.data?.error;
+        const serverMessage = getAxiosErrorMessage(error);
 
         if (serverMessage) {
           throw new Error(serverMessage);
@@ -332,24 +384,8 @@ export const api = {
   /**
    * Get current user's profile info
    */
-  me: async (): Promise<{
-    id: string;
-    username: string;
-    friendlyName: string;
-    thumbUrl: string | null;
-    email: string | null;
-    role: string;
-  }> => {
-    const client = getApiClient();
-    const response = await client.get<{
-      id: string;
-      username: string;
-      friendlyName: string;
-      thumbUrl: string | null;
-      email: string | null;
-      role: string;
-    }>('/mobile/me');
-    return response.data;
+  me: async (): Promise<MobileMeProfile> => {
+    return fetchMobileMe();
   },
 
   /**

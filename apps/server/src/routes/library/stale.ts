@@ -371,7 +371,10 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
       // Extract summary from first row (or fetch separately if no items)
       let summary: StaleSummary;
       if (rows.length > 0) {
-        const firstRow = rows[0]!;
+        const firstRow = rows[0];
+        if (!firstRow) {
+          throw new Error('Stale query returned inconsistent row set');
+        }
         summary = {
           neverWatched: {
             count: parseInt(firstRow._never_watched_count, 10) || 0,

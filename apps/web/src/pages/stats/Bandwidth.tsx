@@ -38,6 +38,10 @@ interface BandwidthChartProps {
   selectedServers?: Pick<Server, 'id' | 'name' | 'color'>[];
 }
 
+type SharedTooltipPoint = Highcharts.Point & {
+  points?: Highcharts.Point[];
+};
+
 function BandwidthChart({
   data,
   isLoading,
@@ -227,8 +231,9 @@ function BandwidthChart({
         },
         shared: true,
         formatter: function () {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const categoryValue = (this as any).points?.[0]?.point?.category as string | undefined;
+          const tooltipContext = this as SharedTooltipPoint;
+          const category = tooltipContext.points?.[0]?.category;
+          const categoryValue = typeof category === 'string' ? category : undefined;
           const date = categoryValue
             ? new Date(categoryValue.includes('T') ? categoryValue : categoryValue + 'T00:00:00')
             : null;
@@ -242,14 +247,15 @@ function BandwidthChart({
               : t('common:labels.unknown');
 
           let html = `<b>${dateStr}</b><br/>`;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (this as any).points?.forEach((point: any) => {
+          for (const point of tooltipContext.points ?? []) {
+            const pointValue = point.y ?? 0;
             const value =
               point.series.name === t('statsBandwidth.avgBitrate')
-                ? `${point.y.toFixed(1)} Mbps`
-                : point.y;
-            html += `<span style="color:${point.color}">●</span> ${point.series.name}: <b>${value}</b><br/>`;
-          });
+                ? `${pointValue.toFixed(1)} Mbps`
+                : pointValue;
+            const pointColor = point.color ?? point.series.color ?? 'currentColor';
+            html += `<span style="color:${String(pointColor)}">●</span> ${point.series.name}: <b>${value}</b><br/>`;
+          }
           return html;
         },
       },
@@ -318,7 +324,7 @@ export function StatsBandwidth() {
   const summary = useBandwidthSummary(apiParams, selectedServerIds);
 
   const summaryData = summary.data;
-  const users = topUsers.data?.data ?? [];
+  const users = useMemo(() => topUsers.data?.data ?? [], [topUsers.data]);
   const [dataSortDir, setDataSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Map from server id to the minimal server shape needed for ServerColumnCell

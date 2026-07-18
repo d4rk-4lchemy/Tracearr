@@ -516,7 +516,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
 
       seedIds = matching.map((u) => u.id);
     } else {
-      seedIds = body.ids!;
+      seedIds = body.ids ?? [];
     }
 
     if (seedIds.length === 0) {

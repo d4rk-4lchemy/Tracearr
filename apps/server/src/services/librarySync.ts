@@ -151,7 +151,10 @@ export class LibrarySyncService {
 
     // Sync each library
     for (let i = 0; i < libraries.length; i++) {
-      const library = libraries[i]!;
+      const library = libraries[i];
+      if (!library) {
+        continue;
+      }
 
       const result = await this.syncLibrary(
         serverId,
@@ -242,8 +245,12 @@ export class LibrarySyncService {
       !forceFullScan;
 
     if (isIncremental) {
+      const lastSyncedAt = syncState.lastSyncedAt;
+      if (!lastSyncedAt) {
+        throw new Error('Incremental sync requires lastSyncedAt');
+      }
       console.log(
-        `[LibrarySync] Incremental sync for ${libraryName}: last synced ${syncState.lastSyncedAt!.toISOString()}, ` +
+        `[LibrarySync] Incremental sync for ${libraryName}: last synced ${lastSyncedAt.toISOString()}, ` +
           `count ${syncState.lastItemCount} → ${totalCount}, cycle ${syncState.syncCycle + 1}/${FULL_SCAN_INTERVAL}`
       );
     } else {
@@ -281,9 +288,13 @@ export class LibrarySyncService {
     // =========================================================================
     if (isIncremental && client.getLibraryItemsSince) {
       try {
+        const lastSyncedAt = syncState.lastSyncedAt;
+        if (!lastSyncedAt) {
+          throw new Error('Incremental sync requires lastSyncedAt');
+        }
         const { items: newItems, totalCount: incrementalCount } = await client.getLibraryItemsSince(
           libraryId,
-          syncState.lastSyncedAt!
+          lastSyncedAt
         );
 
         // Check for new episodes/tracks independently — new episodes can arrive
@@ -293,7 +304,7 @@ export class LibrarySyncService {
           try {
             const { items: leaves } = await client.getLibraryLeavesSince(
               libraryId,
-              syncState.lastSyncedAt!
+              lastSyncedAt
             );
             newLeaves = leaves;
           } catch (leafErr) {
@@ -935,7 +946,7 @@ export class LibrarySyncService {
       }
 
       // File size
-      totalSize += item.fileSize!;
+      totalSize += item.fileSize ?? 0;
 
       // Media type counts
       switch (item.mediaType) {
@@ -1041,8 +1052,11 @@ export class LibrarySyncService {
         enrichmentComplete: 0,
       })
       .returning({ id: librarySnapshots.id });
+    if (!snapshot) {
+      throw new Error('Library snapshot insert returned no row');
+    }
 
-    return { id: snapshot!.id };
+    return { id: snapshot.id };
   }
 
   /**
@@ -1134,8 +1148,11 @@ export class LibrarySyncService {
         enrichmentComplete: latest.enrichmentComplete,
       })
       .returning({ id: librarySnapshots.id });
+    if (!copy) {
+      throw new Error('Library snapshot copy returned no row');
+    }
 
-    return { id: copy!.id };
+    return { id: copy.id };
   }
 
   /**

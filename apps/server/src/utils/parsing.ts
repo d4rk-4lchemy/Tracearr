@@ -248,7 +248,7 @@ export function parseFirstArrayElement<T>(
   defaultVal?: T
 ): T | undefined {
   if (!Array.isArray(val) || val.length === 0) return defaultVal;
-  const first = val[0];
+  const [first] = val as unknown[];
   if (first == null || typeof first !== 'object') return defaultVal;
   const value = (first as Record<string, unknown>)[key];
   return value !== undefined ? (value as T) : defaultVal;
@@ -266,22 +266,21 @@ export function parseFirstArrayElement<T>(
  * const media = findSelectedElement(item.Media); // Media with selected=1
  * const bitrate = media?.bitrate;
  */
-export function findSelectedElement<T extends Record<string, unknown>>(
-  arr: unknown
-): T | undefined {
+export function findSelectedElement(arr: unknown): Record<string, unknown> | undefined {
   if (!Array.isArray(arr) || arr.length === 0) return undefined;
+  const typedArr = arr as unknown[];
 
   // Find element with selected=1 (Plex uses number 1, not boolean true)
-  const selected = arr.find((item) => {
+  const selected = typedArr.find((item) => {
     if (item == null || typeof item !== 'object') return false;
     const sel = (item as Record<string, unknown>).selected;
     return sel === 1 || sel === '1' || sel === true;
   });
 
   // Fall back to first element if none explicitly selected
-  const result = selected ?? arr[0];
+  const result = selected ?? typedArr[0];
   if (result == null || typeof result !== 'object') return undefined;
-  return result as T;
+  return result as Record<string, unknown>;
 }
 
 /**
@@ -296,7 +295,7 @@ export function parseSelectedArrayElement<T>(
   key: string,
   defaultVal?: T
 ): T | undefined {
-  const selected = findSelectedElement<Record<string, unknown>>(val);
+  const selected = findSelectedElement(val);
   if (!selected) return defaultVal;
   const value = selected[key];
   return value !== undefined ? (value as T) : defaultVal;

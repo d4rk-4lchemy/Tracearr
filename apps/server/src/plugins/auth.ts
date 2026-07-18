@@ -94,10 +94,10 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     try {
       await request.jwtVerify();
       if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-        return reply.unauthorized('Session invalidated. Please log in again');
+        return await reply.unauthorized('Session invalidated. Please log in again');
       }
     } catch {
-      reply.unauthorized('Invalid or expired token');
+      return await reply.unauthorized('Invalid or expired token');
     }
   });
 
@@ -114,13 +114,13 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     try {
       await request.jwtVerify();
       if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-        return reply.unauthorized('Session invalidated. Please log in again');
+        return await reply.unauthorized('Session invalidated. Please log in again');
       }
       if (request.user.role !== 'owner') {
-        reply.forbidden('Owner access required');
+        return await reply.forbidden('Owner access required');
       }
     } catch {
-      reply.unauthorized('Invalid or expired token');
+      return await reply.unauthorized('Invalid or expired token');
     }
   });
 
@@ -140,12 +140,11 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     if (legacyVerified) {
       try {
         if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-          return reply.unauthorized('Session invalidated. Please log in again');
+          return await reply.unauthorized('Session invalidated. Please log in again');
         }
 
         if (!request.user.mobile) {
-          reply.forbidden('Mobile access token required');
-          return;
+          return await reply.forbidden('Mobile access token required');
         }
 
         // Check if this device's token has been blacklisted (session revoked)
@@ -154,8 +153,7 @@ const authPlugin: FastifyPluginAsync = async (app) => {
             REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(request.user.deviceId)
           );
           if (blacklisted) {
-            reply.unauthorized('Session has been revoked');
-            return;
+            return await reply.unauthorized('Session has been revoked');
           }
 
           // Throttled lastSeenAt update - at most once per CACHE_TTL.MOBILE_LAST_SEEN
@@ -170,7 +168,7 @@ const authPlugin: FastifyPluginAsync = async (app) => {
           }
         }
       } catch {
-        reply.unauthorized('Invalid or expired token');
+        return await reply.unauthorized('Invalid or expired token');
       }
       return;
     }
@@ -181,13 +179,13 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     try {
       const baUser = await resolveBetterAuthUser(request);
       if (!baUser) {
-        return reply.unauthorized('Invalid or expired token');
+        return await reply.unauthorized('Invalid or expired token');
       }
 
       const authHeader = request.headers.authorization ?? '';
       const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
       if (!token) {
-        return reply.unauthorized('Mobile access token required');
+        return await reply.unauthorized('Mobile access token required');
       }
 
       const [row] = await db
@@ -196,12 +194,12 @@ const authPlugin: FastifyPluginAsync = async (app) => {
         .where(eq(mobileSessions.refreshTokenHash, hashSha256(token)))
         .limit(1);
       if (!row) {
-        return reply.forbidden('Mobile access token required');
+        return await reply.forbidden('Mobile access token required');
       }
 
       const blacklisted = await app.redis.get(REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(row.deviceId));
       if (blacklisted) {
-        return reply.unauthorized('Session has been revoked');
+        return await reply.unauthorized('Session has been revoked');
       }
 
       const throttleKey = REDIS_KEYS.MOBILE_LAST_SEEN(row.deviceId);
@@ -216,7 +214,7 @@ const authPlugin: FastifyPluginAsync = async (app) => {
 
       request.user = { ...baUser, mobile: true, deviceId: row.deviceId };
     } catch {
-      reply.unauthorized('Invalid or expired token');
+      return await reply.unauthorized('Invalid or expired token');
     }
   });
 

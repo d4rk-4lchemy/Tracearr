@@ -364,7 +364,7 @@ export class TautulliService {
           throw new Error(`Tautulli API error: ${response.status} ${response.statusText}`);
         }
 
-        const json = await response.json();
+        const json: unknown = await response.json();
 
         // Validate response with Zod schema if provided
         if (schema) {

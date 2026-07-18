@@ -122,9 +122,7 @@ export function TopListChart({
           color: 'hsl(var(--popover-foreground))',
         },
         formatter: function () {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const point = (this as any).point;
-          const index = point?.index ?? 0;
+          const index = this.index ?? 0;
           const item = top10[index];
           if (!item) return '';
           let tooltip = `<b>${item.name}</b><br/>${valueLabel}: ${this.y?.toLocaleString()}`;

@@ -6,7 +6,7 @@
  */
 import { View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { DrawerActions, useNavigation } from 'expo-router/react-navigation';
+import { DrawerActions } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { Menu, Bell } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import { Text } from '@/components/ui/text';
 import { useMediaServer } from '@/providers/MediaServerProvider';
 import { api } from '@/lib/api';
 import { colors } from '@/lib/theme';
+import { useAppNavigation } from '@/lib/navigation';
 
 interface AppHeaderProps {
   title?: string;
@@ -22,7 +23,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ title, showServerName = true }: AppHeaderProps) {
   const router = useRouter();
-  const navigation = useNavigation();
+  const navigation = useAppNavigation();
   const insets = useSafeAreaInsets();
   const { selectedServer, selectedServerId } = useMediaServer();
 

@@ -13,14 +13,21 @@ export function getPersonRemovedState(
     return { removed: false };
   }
 
-  const removedDates = serverUsers.map((account) => account.removedAt);
-  if (removedDates.some((removedAt) => removedAt == null)) {
+  const removedDates = serverUsers
+    .map((account) => account.removedAt)
+    .filter((removedAt): removedAt is string | Date => removedAt != null);
+  if (removedDates.length !== serverUsers.length) {
     return { removed: false };
   }
 
-  const latest = removedDates.reduce<string | Date>(
-    (latest, removedAt) => (new Date(removedAt!) > new Date(latest) ? removedAt! : latest),
-    removedDates[0]!
+  const [firstRemovedAt, ...otherRemovedDates] = removedDates;
+  if (firstRemovedAt === undefined) {
+    return { removed: false };
+  }
+
+  const latest = otherRemovedDates.reduce<string | Date>(
+    (latest, removedAt) => (new Date(removedAt) > new Date(latest) ? removedAt : latest),
+    firstRemovedAt
   );
 
   return { removed: true, removedAt: latest };

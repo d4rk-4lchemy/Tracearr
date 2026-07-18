@@ -158,7 +158,7 @@ export function JobsSettings() {
     };
 
     void fetchJobs();
-  }, []);
+  }, [t]);
 
   // Fetch job history
   const fetchHistory = useCallback(async () => {
@@ -174,7 +174,7 @@ export function JobsSettings() {
 
   useEffect(() => {
     void fetchHistory();
-  }, []);
+  }, [fetchHistory]);
 
   // Fetch queue stats
   const fetchQueueStats = useCallback(async () => {
@@ -242,7 +242,7 @@ export function JobsSettings() {
     return () => {
       socket.off('maintenance:progress', handleProgress);
     };
-  }, [socket, fetchHistory, fetchQueueStats]);
+  }, [socket, fetchHistory, fetchQueueStats, t]);
 
   const handleStartJob = async (type: string, options?: Record<string, boolean>) => {
     setConfirmJob(null);
@@ -548,7 +548,7 @@ export function JobsSettings() {
         <CardContent>
           {isLoadingHistory ? (
             <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
+              {Array.from({ length: 3 }, (_, i) => (
                 <Skeleton key={i} className="h-14 w-full" />
               ))}
             </div>

@@ -170,6 +170,7 @@ export function DataTable<TData, TValue>({
     onRowSelect,
   ]);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table intentionally exposes imperative methods
   const table = useReactTable({
     data,
     columns: allColumns,

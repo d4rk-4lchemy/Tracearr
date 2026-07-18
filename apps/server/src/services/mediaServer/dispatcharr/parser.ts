@@ -208,10 +208,11 @@ export function parseUser(raw: unknown, options?: DispatcharrParserOptions): Med
 }
 
 export function parseUsersResponse(raw: unknown, options?: DispatcharrParserOptions): MediaUser[] {
+  const record = asRecord(raw);
   const source = Array.isArray(raw)
     ? raw
-    : Array.isArray(asRecord(raw)?.results)
-      ? (asRecord(raw)!.results as unknown[])
+    : Array.isArray(record?.results)
+      ? (record.results as unknown[])
       : [];
 
   return source.flatMap((entry) => {

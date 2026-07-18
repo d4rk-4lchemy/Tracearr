@@ -97,8 +97,11 @@ function getDeviceDisplayName(device: UserDevice): string {
   if (device.product) {
     parts.push(device.product);
   }
-  if (device.device && !parts.some((p) => p.toLowerCase().includes(device.device!.toLowerCase()))) {
-    parts.push(device.device);
+  if (device.device) {
+    const deviceName = device.device.toLowerCase();
+    if (!parts.some((p) => p.toLowerCase().includes(deviceName))) {
+      parts.push(device.device);
+    }
   }
 
   if (parts.length > 0) {
@@ -131,7 +134,7 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {[...Array(3)].map((_, i) => (
+            {Array.from({ length: 3 }, (_, i) => (
               <div key={i} className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-8 w-8 rounded-full" />

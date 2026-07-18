@@ -436,7 +436,7 @@ export interface ResolvePendingSessionInput {
 /** Outcome of checking Redis for a pending session tracked under a given key. */
 export type PendingSessionOutcome =
   | { status: 'not-pending' }
-  | { status: 'confirmed'; newSession: ActiveSession | null }
+  | { status: 'confirmed-existing'; updatedSession: ActiveSession | null }
   | { status: 'still-pending'; updatedSession: ActiveSession };
 
 /**

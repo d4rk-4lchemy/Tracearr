@@ -41,11 +41,7 @@ export default defineConfig({
     // singleFork: true ensures all tests share the same process
     fileParallelism: false,
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    singleFork: true,
     reporters: isCI ? ['default', 'github-actions'] : ['default'],
     // Coverage for integration tests
     coverage: {

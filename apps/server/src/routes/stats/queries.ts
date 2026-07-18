@@ -110,7 +110,7 @@ export async function queryPlaysByDayOfWeek(params: {
 
   return Array.from({ length: 7 }, (_, i) => ({
     day: i,
-    name: DAY_NAMES[i]!,
+    name: DAY_NAMES[i] ?? '',
     count: dayMap.get(i) ?? 0,
   }));
 }

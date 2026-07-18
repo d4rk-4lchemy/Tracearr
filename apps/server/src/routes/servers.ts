@@ -28,6 +28,92 @@ import { sseManager } from '../services/sseManager.js';
 import { getCacheService } from '../services/cache.js';
 import { enqueueLibrarySync } from '../jobs/librarySyncQueue.js';
 
+function getDispatcharrAuthMode(token?: string | null): 'token' | 'credentials' {
+  return token && DispatcharrClient.isCredentialToken(token) ? 'credentials' : 'token';
+}
+
+function normalizeDispatcharrAuth(input: {
+  type: string;
+  token?: string;
+  username?: string;
+  password?: string;
+}): string | undefined {
+  const { type, token, username, password } = input;
+  if (type !== 'dispatcharr') return token;
+  return !token && username && password
+    ? DispatcharrClient.encodeCredentialToken(username, password)
+    : token;
+}
+
+function getFirstRow<T>(rows: T[]): T | null {
+  return rows[0] ?? null;
+}
+
+async function verifyServerAccess(params: {
+  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+  token: string;
+  url: string;
+}): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      statusCode: number;
+      message: string;
+    }
+> {
+  const { type, token, url } = params;
+
+  if (type === 'plex') {
+    const adminCheck = await PlexClient.verifyServerAdmin(token, url);
+    if (!adminCheck.success) {
+      return {
+        ok: false,
+        statusCode:
+          adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED ? 503 : 403,
+        message: adminCheck.message,
+      };
+    }
+    return { ok: true };
+  }
+
+  if (type === 'jellyfin') {
+    const adminCheck = await JellyfinClient.verifyServerAdmin(token, url);
+    if (!adminCheck.success) {
+      return {
+        ok: false,
+        statusCode:
+          adminCheck.code === JellyfinClient.AdminVerifyError.CONNECTION_FAILED
+            ? 503
+            : adminCheck.code === JellyfinClient.AdminVerifyError.INVALID_KEY
+              ? 401
+              : 403,
+        message: adminCheck.message,
+      };
+    }
+    return { ok: true };
+  }
+
+  if (type === 'emby') {
+    const isAdmin = await EmbyClient.verifyServerAdmin(token, url);
+    return isAdmin
+      ? { ok: true }
+      : {
+          ok: false,
+          statusCode: 403,
+          message: 'Token does not have admin access to this Emby server',
+        };
+  }
+
+  const adminCheck = await DispatcharrClient.verifyServerAdmin(token, url);
+  return adminCheck.success
+    ? { ok: true }
+    : {
+        ok: false,
+        statusCode: 503,
+        message: adminCheck.message,
+      };
+}
+
 export const serverRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /servers - List connected servers
@@ -43,6 +129,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        token: servers.token,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         displayOrder: servers.displayOrder,
@@ -72,13 +159,20 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           .set({ color: newColor })
           .where(eq(servers.id, server.id))
           .execute()
-          .catch((err) =>
+          .catch((err: unknown) =>
             app.log.warn({ err, serverId: server.id }, 'Failed to backfill server color')
           );
       }
     }
 
-    return { data: serverList };
+    return {
+      data: serverList.map((server) => ({
+        ...server,
+        dispatcharrAuthMode:
+          server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
+        token: undefined,
+      })),
+    };
   });
 
   /**
@@ -116,10 +210,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Normalize auth payload (Dispatcharr can use API key/JWT token OR username+password)
-    const normalizedToken =
-      type === 'dispatcharr' && !token && username && password
-        ? DispatcharrClient.encodeCredentialToken(username, password)
-        : token;
+    const normalizedToken = normalizeDispatcharrAuth({ type, token, username, password });
 
     if (!normalizedToken) {
       return reply.badRequest('Missing authentication credentials');
@@ -130,16 +221,15 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
 
     // Verify the server connection
     try {
-      if (type === 'plex') {
-        const adminCheck = await PlexClient.verifyServerAdmin(normalizedToken, url);
-        if (!adminCheck.success) {
-          // Provide specific error based on failure type
-          if (adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED) {
-            return reply.serviceUnavailable(adminCheck.message);
-          }
-          return reply.forbidden(adminCheck.message);
-        }
+      const accessCheck = await verifyServerAccess({ type, token: normalizedToken, url });
+      if (!accessCheck.ok) {
+        if (accessCheck.statusCode === 503)
+          return await reply.serviceUnavailable(accessCheck.message);
+        if (accessCheck.statusCode === 401) return await reply.unauthorized(accessCheck.message);
+        return await reply.forbidden(accessCheck.message);
+      }
 
+      if (type === 'plex') {
         // Get the Plex account ID from the token and link to user's plex_accounts
         try {
           const accountInfo = await PlexClient.getAccountInfo(normalizedToken);
@@ -154,34 +244,13 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
             )
             .limit(1);
 
-          if (matchingAccount.length > 0) {
-            plexAccountId = matchingAccount[0]!.id;
+          const matchingAccountRow = getFirstRow(matchingAccount);
+          if (matchingAccountRow) {
+            plexAccountId = matchingAccountRow.id;
           }
         } catch {
           // Non-fatal: server will be orphaned but auto-repair can fix it later
           app.log.debug('Could not link Plex server to account at creation time');
-        }
-      } else if (type === 'jellyfin') {
-        const adminCheck = await JellyfinClient.verifyServerAdmin(normalizedToken, url);
-        if (!adminCheck.success) {
-          // Provide specific error based on failure type
-          if (adminCheck.code === JellyfinClient.AdminVerifyError.CONNECTION_FAILED) {
-            return reply.serviceUnavailable(adminCheck.message);
-          }
-          if (adminCheck.code === JellyfinClient.AdminVerifyError.INVALID_KEY) {
-            return reply.unauthorized(adminCheck.message);
-          }
-          return reply.forbidden(adminCheck.message);
-        }
-      } else if (type === 'emby') {
-        const isAdmin = await EmbyClient.verifyServerAdmin(normalizedToken, url);
-        if (!isAdmin) {
-          return reply.forbidden('Token does not have admin access to this Emby server');
-        }
-      } else if (type === 'dispatcharr') {
-        const adminCheck = await DispatcharrClient.verifyServerAdmin(normalizedToken, url);
-        if (!adminCheck.success) {
-          return reply.serviceUnavailable(adminCheck.message);
         }
       }
     } catch (error) {
@@ -214,6 +283,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        token: servers.token,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         color: servers.color,
@@ -238,7 +308,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           'Auto-sync completed for new server'
         );
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         app.log.error({ err: error, serverId: server.id }, 'Auto-sync failed for new server');
       });
 
@@ -247,7 +317,12 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       app.log.error({ err: error, serverId: server.id }, 'SSE refresh failed for new server');
     });
 
-    return reply.status(201).send(server);
+    return reply.status(201).send({
+      ...server,
+      dispatcharrAuthMode:
+        server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
+      token: undefined,
+    });
   });
 
   /**
@@ -275,6 +350,9 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       name: newName,
       url: bodyUrl,
       clientIdentifier,
+      token: newToken,
+      username: newUsername,
+      password: newPassword,
       ignoreAnonymousStreams: newIgnoreAnonymousStreams,
       dispatcharrLiveHistoryThresholdSeconds: newDispatcharrLiveHistoryThresholdSeconds,
       color: newColor,
@@ -295,15 +373,43 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.notFound('Server not found');
     }
 
+    const authChanged = newToken !== undefined || newUsername !== undefined || newPassword !== undefined;
+    if (authChanged && server.type !== 'dispatcharr') {
+      return reply.badRequest('Authentication updates are only supported for Dispatcharr servers');
+    }
+    const effectiveUrl = newUrl ?? server.url;
+    const normalizedToken =
+      authChanged && server.type === 'dispatcharr'
+        ? normalizeDispatcharrAuth({
+            type: server.type,
+            token: newToken,
+            username: newUsername,
+            password: newPassword,
+          })
+        : server.token;
+
+    if (authChanged && !normalizedToken) {
+      return reply.badRequest(
+        'Dispatcharr update requires a complete token or username+password'
+      );
+    }
+    const verifiedToken = normalizedToken ?? undefined;
+
     // If only name is being updated, no URL verification needed
     if (newUrl !== undefined) {
       // Don't update if URL is the same (and no name change, or name is same)
-      if (server.url === newUrl && (newName === undefined || server.name === newName)) {
+      if (
+        server.url === newUrl &&
+        (newName === undefined || server.name === newName) &&
+        !authChanged
+      ) {
         return {
           id: server.id,
           name: newName ?? server.name,
           type: server.type,
           url: server.url,
+          dispatcharrAuthMode:
+            server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
           ignoreAnonymousStreams: server.ignoreAnonymousStreams,
           dispatcharrLiveHistoryThresholdSeconds: server.dispatcharrLiveHistoryThresholdSeconds,
           createdAt: server.createdAt,
@@ -312,7 +418,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Only verify when the URL is actually changing
-      if (server.url !== newUrl) {
+      if (server.url !== newUrl || authChanged) {
         // For Plex servers: Validate machineIdentifier if provided
         if (server.type === 'plex' && clientIdentifier) {
           if (server.machineIdentifier && server.machineIdentifier !== clientIdentifier) {
@@ -323,63 +429,77 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           }
         }
 
-        // Verify the new URL works with the existing token
+        // Verify the new URL/auth combination works
         try {
-          if (server.type === 'plex') {
-            const adminCheck = await PlexClient.verifyServerAdmin(server.token, newUrl);
-            if (!adminCheck.success) {
-              if (adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED) {
-                return reply.serviceUnavailable(adminCheck.message);
-              }
-              return reply.forbidden(adminCheck.message);
-            }
-          } else if (server.type === 'jellyfin') {
-            const adminCheck = await JellyfinClient.verifyServerAdmin(server.token, newUrl);
-            if (!adminCheck.success) {
-              if (adminCheck.code === JellyfinClient.AdminVerifyError.CONNECTION_FAILED) {
-                return reply.serviceUnavailable(adminCheck.message);
-              }
-              if (adminCheck.code === JellyfinClient.AdminVerifyError.INVALID_KEY) {
-                return reply.unauthorized(adminCheck.message);
-              }
-              return reply.forbidden(adminCheck.message);
-            }
-          } else if (server.type === 'emby') {
-            const isAdmin = await EmbyClient.verifyServerAdmin(server.token, newUrl);
-            if (!isAdmin) {
-              return reply.forbidden('Token does not have admin access at this URL');
-            }
-          } else if (server.type === 'dispatcharr') {
-            const adminCheck = await DispatcharrClient.verifyServerAdmin(server.token, newUrl);
-            if (!adminCheck.success) {
-              return reply.serviceUnavailable(adminCheck.message);
-            }
+          const accessCheck = await verifyServerAccess({
+            type: server.type,
+            token: verifiedToken as string,
+            url: effectiveUrl,
+          });
+          if (!accessCheck.ok) {
+            if (accessCheck.statusCode === 503)
+              return await reply.serviceUnavailable(accessCheck.message);
+            if (accessCheck.statusCode === 401)
+              return await reply.unauthorized(accessCheck.message);
+            return await reply.forbidden(
+              server.type === 'emby' && accessCheck.message.includes('this Emby server')
+                ? 'Token does not have admin access at this URL'
+                : accessCheck.message
+            );
           }
         } catch (error) {
-          app.log.error({ err: error, serverId: id, newUrl }, 'Failed to verify new server URL');
+          app.log.error(
+            { err: error, serverId: id, newUrl: effectiveUrl },
+            'Failed to verify updated server configuration'
+          );
           return reply.badRequest(
-            'Failed to connect to server at new URL. Please verify the URL is correct.'
+            'Failed to connect to server with updated configuration. Please verify the settings.'
           );
         }
       }
-    } else if (newName !== undefined && server.name === newName) {
+    } else if (newName !== undefined && server.name === newName && !authChanged) {
       // Name-only update but name unchanged
       return {
         id: server.id,
         name: server.name,
         type: server.type,
         url: server.url,
+        dispatcharrAuthMode:
+          server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
         ignoreAnonymousStreams: server.ignoreAnonymousStreams,
         dispatcharrLiveHistoryThresholdSeconds: server.dispatcharrLiveHistoryThresholdSeconds,
         createdAt: server.createdAt,
         updatedAt: server.updatedAt,
       };
+    } else if (authChanged) {
+      try {
+        const accessCheck = await verifyServerAccess({
+          type: server.type,
+          token: verifiedToken as string,
+          url: effectiveUrl,
+        });
+        if (!accessCheck.ok) {
+          if (accessCheck.statusCode === 503)
+            return await reply.serviceUnavailable(accessCheck.message);
+          if (accessCheck.statusCode === 401) return await reply.unauthorized(accessCheck.message);
+          return await reply.forbidden(accessCheck.message);
+        }
+      } catch (error) {
+        app.log.error(
+          { err: error, serverId: id, url: effectiveUrl },
+          'Failed to verify updated server authentication'
+        );
+        return reply.badRequest(
+          'Failed to connect to server with updated configuration. Please verify the settings.'
+        );
+      }
     }
 
     // Build update object
     const updatePayload: {
       name?: string;
       url?: string;
+      token?: string;
       ignoreAnonymousStreams?: boolean;
       dispatcharrLiveHistoryThresholdSeconds?: number;
       color?: string | null;
@@ -387,6 +507,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     } = { updatedAt: new Date() };
     if (newName !== undefined) updatePayload.name = newName;
     if (newUrl !== undefined) updatePayload.url = newUrl;
+    if (authChanged) updatePayload.token = normalizedToken;
     if (newIgnoreAnonymousStreams !== undefined) {
       updatePayload.ignoreAnonymousStreams = newIgnoreAnonymousStreams;
     }
@@ -405,6 +526,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
         type: servers.type,
         url: servers.url,
+        token: servers.token,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         color: servers.color,
@@ -417,21 +539,34 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.internalServerError('Failed to update server');
     }
 
-    if (newUrl !== undefined) {
-      app.log.info({ serverId: id, oldUrl: server.url, newUrl }, 'Server URL updated');
-      // Existing SSE connection holds the old URL; drop it and let refresh re-add
+    if (newUrl !== undefined || authChanged) {
+      if (newUrl !== undefined) {
+        app.log.info({ serverId: id, oldUrl: server.url, newUrl }, 'Server URL updated');
+      }
+      if (authChanged) {
+        app.log.info({ serverId: id }, 'Server authentication updated');
+      }
+      // Existing SSE connection holds the old config; drop it and let refresh re-add
       sseManager
         .removeServer(id)
         .then(() => sseManager.refresh())
         .catch((error: unknown) => {
-          app.log.error({ err: error, serverId: id }, 'SSE refresh failed after URL update');
+          app.log.error(
+            { err: error, serverId: id },
+            'SSE refresh failed after server configuration update'
+          );
         });
     }
     if (newName !== undefined) {
       app.log.info({ serverId: id, oldName: server.name, newName }, 'Server name updated');
     }
 
-    return result;
+    return {
+      ...result,
+      dispatcharrAuthMode:
+        result.type === 'dispatcharr' ? getDispatcharrAuthMode(result.token) : undefined,
+      token: undefined,
+    };
   });
 
   /**
@@ -732,7 +867,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       const response = await fetch(imageUrl, { headers });
 
       if (!response.ok) {
-        return reply.notFound('Image not found');
+        return await reply.notFound('Image not found');
       }
 
       const contentType = response.headers.get('content-type') ?? 'image/jpeg';
@@ -740,7 +875,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
 
       reply.header('Content-Type', contentType);
       reply.header('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
-      return reply.send(Buffer.from(buffer));
+      return await reply.send(Buffer.from(buffer));
     } catch (error) {
       app.log.error({ err: error, serverId: id, imagePath }, 'Failed to fetch image from server');
       return reply.internalServerError('Failed to fetch image');

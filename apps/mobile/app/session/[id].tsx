@@ -42,7 +42,7 @@ import {
   X,
   Clapperboard,
 } from 'lucide-react-native';
-import { api, getServerUrl } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useMediaServer } from '@/providers/MediaServerProvider';
 import { useAuthStateStore } from '@/lib/authStateStore';
 import { colors, withAlpha, ACCENT_COLOR } from '@/lib/theme';
@@ -234,7 +234,7 @@ export default function SessionDetailScreen() {
   const { selectedServerId } = useMediaServer();
   const connectionState = useAuthStateStore((s) => s.connectionState);
   const isOffline = connectionState !== 'connected';
-  const serverUrl = getServerUrl();
+  const serverUrl = useAuthStateStore((s) => s.server?.url ?? null);
 
   // Terminate session state and mutation
   const [terminateModalVisible, setTerminateModalVisible] = useState(false);
@@ -261,6 +261,7 @@ export default function SessionDetailScreen() {
   };
 
   const handleConfirmTerminate = () => {
+    if (!id) return;
     terminateMutation.mutate({ sessionId: id, reason: terminateReason.trim() || undefined });
   };
 

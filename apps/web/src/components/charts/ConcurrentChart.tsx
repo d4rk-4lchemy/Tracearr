@@ -157,7 +157,7 @@ export function ConcurrentChart({
         {
           type: 'area',
           name: 'Direct Play',
-          data: data.map((d, i) => [timestamps[i]!, d.direct]),
+          data: data.map((d, i) => [timestamps[i] ?? 0, d.direct]),
           color: 'hsl(var(--chart-2))',
           fillColor: {
             linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
@@ -170,7 +170,7 @@ export function ConcurrentChart({
         {
           type: 'area',
           name: 'Direct Stream',
-          data: data.map((d, i) => [timestamps[i]!, d.directStream]),
+          data: data.map((d, i) => [timestamps[i] ?? 0, d.directStream]),
           color: 'hsl(210, 76%, 50%)',
           fillColor: {
             linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
@@ -183,7 +183,7 @@ export function ConcurrentChart({
         {
           type: 'area',
           name: 'Transcode',
-          data: data.map((d, i) => [timestamps[i]!, d.transcode]),
+          data: data.map((d, i) => [timestamps[i] ?? 0, d.transcode]),
           color: 'hsl(var(--chart-4))',
           fillColor: {
             linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },

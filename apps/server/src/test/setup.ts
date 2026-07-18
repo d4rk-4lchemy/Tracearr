@@ -12,7 +12,11 @@
 import { beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { installMatchers } from '@tracearr/test-utils/matchers';
 import { resetAllFactoryCounters } from '@tracearr/test-utils/factories';
-import { resetAllMocks } from '@tracearr/test-utils/mocks';
+import {
+  resetExpoPushCounter,
+  resetMockMediaCounters,
+  resetSocketCounter,
+} from '@tracearr/test-utils/mocks';
 
 // Set test environment variables
 process.env.NODE_ENV = 'test';
@@ -21,6 +25,7 @@ process.env.ENCRYPTION_KEY = 'test-encryption-key-32-chars!!!';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/tracearr_test';
 process.env.REDIS_URL = 'redis://localhost:6379';
 process.env.BETTER_AUTH_SECRET = 'test-better-auth-secret-32-chars!!';
+process.env.BETTER_AUTH_URL = 'http://localhost:3000';
 
 // Install custom vitest matchers from test-utils
 installMatchers();
@@ -41,7 +46,9 @@ beforeAll(() => {
 // Reset factories and mocks before each test for isolation
 beforeEach(() => {
   resetAllFactoryCounters();
-  resetAllMocks();
+  resetMockMediaCounters();
+  resetExpoPushCounter();
+  resetSocketCounter();
 });
 
 afterAll(() => {

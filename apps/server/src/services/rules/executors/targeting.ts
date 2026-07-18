@@ -35,10 +35,10 @@ export function resolveTargetSessions(input: TargetResolutionInput): Session[] {
       return [triggeringSession];
 
     case 'oldest':
-      return userSessions.length > 0 ? [userSessions[0]!] : [];
+      return userSessions[0] ? [userSessions[0]] : [];
 
     case 'newest':
-      return userSessions.length > 0 ? [userSessions[userSessions.length - 1]!] : [];
+      return userSessions.length > 0 ? [userSessions[userSessions.length - 1] as Session] : [];
 
     case 'all_except_one':
       return userSessions.slice(1);

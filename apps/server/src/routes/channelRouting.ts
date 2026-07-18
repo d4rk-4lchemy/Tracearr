@@ -147,7 +147,11 @@ export const channelRoutingRoutes: FastifyPluginAsync = async (app) => {
 
         routingId = inserted[0].id;
       } else {
-        routingId = existing[0]!.id;
+        const existingRow = existing[0];
+        if (!existingRow) {
+          return reply.internalServerError('Failed to load routing configuration');
+        }
+        routingId = existingRow.id;
 
         // Build update object
         const updateData: Partial<typeof notificationChannelRouting.$inferInsert> = {

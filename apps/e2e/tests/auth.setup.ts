@@ -1,5 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
 import path from 'path';
+import { waitForAuthForm } from './helpers/auth.js';
 
 const STORAGE_STATE_PATH = path.resolve(import.meta.dirname, '../.auth/user.json');
 
@@ -10,11 +11,14 @@ const E2E_USER = {
   password: 'TestPassword123!',
 };
 
+setup.setTimeout(120_000);
+
 setup('authenticate', async ({ page }) => {
   await page.goto('/login');
 
-  // Wait for setup status check to complete and form to render
-  await page.waitForSelector('form');
+  // The frontend can briefly show a startup screen while the backend finishes
+  // initializing DB/Redis-dependent services after the HTTP port is open.
+  await waitForAuthForm(page);
 
   // Handle claim code gate if present (only shown on first-time setup when CLAIM_CODE is configured)
   const claimCodeInput = page.locator('#gate-claimCode');

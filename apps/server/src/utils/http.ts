@@ -178,12 +178,12 @@ export async function fetchRaw(url: string, options: HttpRequestOptions = {}): P
  * Does NOT throw on non-2xx responses
  *
  * @example
- * const { ok, status, data } = await fetchWithStatus<User>('https://api.example.com/user');
+ * const { ok, status, data } = await fetchWithStatus('https://api.example.com/user');
  * if (!ok) {
  *   console.log('Request failed with status', status);
  * }
  */
-export async function fetchWithStatus<T>(
+export async function fetchWithStatus(
   url: string,
   options: HttpRequestOptions = {}
 ): Promise<{
@@ -191,7 +191,7 @@ export async function fetchWithStatus<T>(
   status: number;
   statusText: string;
   headers: Headers;
-  data: T | null;
+  data: unknown;
 }> {
   const { timeout, ...fetchOptions } = options;
 
@@ -200,10 +200,10 @@ export async function fetchWithStatus<T>(
     signal: timeout ? createTimeoutSignal(timeout) : undefined,
   });
 
-  let data: T | null = null;
+  let data: unknown = null;
   if (response.ok) {
     try {
-      data = (await response.json()) as T;
+      data = await response.json();
     } catch {
       // Response might not be JSON
     }

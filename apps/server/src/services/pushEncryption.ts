@@ -96,13 +96,13 @@ export class PushEncryptionService {
     payload: Record<string, unknown>,
     deviceSecret: string | null
   ): Record<string, unknown> | EncryptedPushPayload {
-    if (!shouldEncryptPush(deviceSecret)) {
+    if (!deviceSecret || !shouldEncryptPush(deviceSecret)) {
       // No encryption configured - return unencrypted (expected for devices without secrets)
       return payload;
     }
 
     // Encryption is required - do not silently fallback to unencrypted on failure
-    return encryptPushPayload(payload, deviceSecret!);
+    return encryptPushPayload(payload, deviceSecret);
   }
 
   /**

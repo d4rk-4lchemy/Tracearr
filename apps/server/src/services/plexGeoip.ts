@@ -29,7 +29,9 @@ function parseCoordinates(coordStr: string): { lat: number; lon: number } | null
   if (!coordStr) return null;
   const parts = coordStr.split(',').map((s) => parseFloat(s.trim()));
   if (parts.length !== 2 || parts.some(isNaN)) return null;
-  return { lat: parts[0]!, lon: parts[1]! };
+  const [lat, lon] = parts;
+  if (lat === undefined || lon === undefined) return null;
+  return { lat, lon };
 }
 
 /**

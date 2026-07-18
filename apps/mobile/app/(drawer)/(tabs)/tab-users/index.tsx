@@ -18,18 +18,19 @@ import {
 } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRouter, Stack } from 'expo-router';
-import { DrawerActions, useNavigation } from 'expo-router/react-navigation';
+import { DrawerActions } from '@react-navigation/native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import { formatDistanceToNow } from 'date-fns';
 import { api } from '@/lib/api';
 import { useMediaServer } from '@/providers/MediaServerProvider';
 import { useResponsive } from '@/hooks/useResponsive';
-import { useUnacknowledgedAlertsCount } from '@/hooks';
+import { useUnacknowledgedAlertsCount } from '@/hooks/useUnacknowledgedAlertsCount';
 import { Text } from '@/components/ui/text';
 import { Card } from '@/components/ui/card';
 import { UserAvatar } from '@/components/ui/user-avatar';
 import { cn } from '@/lib/utils';
 import { colors, spacing, borderRadius, ACCENT_COLOR } from '@/lib/theme';
+import { useAppNavigation } from '@/lib/navigation';
 import type { ServerUserWithIdentity } from '@tracearr/shared';
 import { useTranslation } from '@tracearr/translations/mobile';
 
@@ -122,7 +123,7 @@ function UserCard({
 export default function UsersScreen() {
   const { t } = useTranslation(['mobile', 'common']);
   const router = useRouter();
-  const navigation = useNavigation();
+  const navigation = useAppNavigation();
   const { selectedServerId } = useMediaServer();
   const { isTablet, select } = useResponsive();
   const { hasAlerts, displayCount } = useUnacknowledgedAlertsCount();
@@ -152,7 +153,7 @@ export default function UsersScreen() {
     });
 
   // Flatten all pages into single array
-  const allUsers = data?.pages.flatMap((page) => page.data) || [];
+  const allUsers = useMemo(() => data?.pages.flatMap((page) => page.data) ?? [], [data]);
   const total = data?.pages[0]?.total || 0;
 
   // Filter users based on search query (client-side for now)
