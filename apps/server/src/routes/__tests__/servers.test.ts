@@ -52,8 +52,9 @@ vi.mock('../../services/mediaServer/index.js', () => ({
   },
   DispatcharrClient: {
     verifyServerAdmin: vi.fn(),
+    isCredentialToken: vi.fn((token: string) => token.startsWith('dispatcharr-credentials:')),
     encodeCredentialToken: vi.fn((username: string, password: string) => {
-      return `encoded:${username}:${password}`;
+      return `dispatcharr-credentials:${username}:${password}`;
     }),
   },
 }));
@@ -72,6 +73,13 @@ vi.mock('../../jobs/librarySyncQueue.js', () => ({
   enqueueLibrarySync: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../../services/sseManager.js', () => ({
+  sseManager: {
+    refresh: vi.fn().mockResolvedValue(undefined),
+    removeServer: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 // Import mocked modules
 import { db } from '../../db/client.js';
 import {
@@ -80,6 +88,7 @@ import {
   EmbyClient,
   DispatcharrClient,
 } from '../../services/mediaServer/index.js';
+import { sseManager } from '../../services/sseManager.js';
 import { syncServer } from '../../services/sync.js';
 import { serverRoutes } from '../servers.js';
 
@@ -208,6 +217,7 @@ describe('Server Routes', () => {
           name: mockServer.name,
           type: mockServer.type,
           url: mockServer.url,
+          token: mockServer.token,
           ignoreAnonymousStreams: true,
           dispatcharrLiveHistoryThresholdSeconds: 30,
           displayOrder: 0,
@@ -244,6 +254,7 @@ describe('Server Routes', () => {
           name: 'Guest Server',
           type: 'jellyfin',
           url: 'http://localhost:8096',
+          token: 'guest-token',
           ignoreAnonymousStreams: true,
           dispatcharrLiveHistoryThresholdSeconds: 30,
           displayOrder: 0,
@@ -262,6 +273,58 @@ describe('Server Routes', () => {
       const body = response.json();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].id).toBe(guestServerId);
+    });
+
+    it('returns Dispatcharr auth mode based on stored token format', async () => {
+      app = await buildTestApp(ownerUser);
+
+      mockDbSelectWhere([
+        {
+          id: randomUUID(),
+          name: 'Dispatcharr Credentials',
+          type: 'dispatcharr',
+          url: 'http://dispatcharr.local:9191',
+          token: 'dispatcharr-credentials:abc123',
+          ignoreAnonymousStreams: true,
+          dispatcharrLiveHistoryThresholdSeconds: 30,
+          displayOrder: 0,
+          color: '#F97316',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: randomUUID(),
+          name: 'Dispatcharr Token',
+          type: 'dispatcharr',
+          url: 'http://dispatcharr-token.local:9191',
+          token: 'opaque-token',
+          ignoreAnonymousStreams: true,
+          dispatcharrLiveHistoryThresholdSeconds: 30,
+          displayOrder: 1,
+          color: '#F97316',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/servers',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'Dispatcharr Credentials',
+            dispatcharrAuthMode: 'credentials',
+          }),
+          expect.objectContaining({
+            name: 'Dispatcharr Token',
+            dispatcharrAuthMode: 'token',
+          }),
+        ])
+      );
     });
 
     it('returns empty array when guest has no server access', async () => {
@@ -480,6 +543,7 @@ describe('Server Routes', () => {
         name: 'Dispatcharr',
         type: 'dispatcharr',
         url: 'http://dispatcharr.local:9191',
+        token: 'dispatcharr-api-key',
         ignoreAnonymousStreams: false,
         dispatcharrLiveHistoryThresholdSeconds: 45,
         color: '#F97316',
@@ -521,6 +585,7 @@ describe('Server Routes', () => {
         'dispatcharr-api-key',
         'http://dispatcharr.local:9191'
       );
+      expect(response.json().dispatcharrAuthMode).toBe('token');
       expect(response.json().ignoreAnonymousStreams).toBe(false);
       expect(response.json().dispatcharrLiveHistoryThresholdSeconds).toBe(45);
     });
@@ -680,6 +745,7 @@ describe('Server Routes', () => {
         type: 'dispatcharr' as const,
         name: 'Dispatcharr',
         url: 'http://dispatcharr.local:9191',
+        token: 'opaque-token',
         ignoreAnonymousStreams: true,
         dispatcharrLiveHistoryThresholdSeconds: 30,
       };
@@ -706,6 +772,63 @@ describe('Server Routes', () => {
       expect(response.json().ignoreAnonymousStreams).toBe(false);
       expect(response.json().dispatcharrLiveHistoryThresholdSeconds).toBe(10);
       expect(db.update).toHaveBeenCalled();
+    });
+
+    it('updates Dispatcharr auth from token to credentials in place', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const dispatcharrServer = {
+        ...mockServer,
+        type: 'dispatcharr' as const,
+        name: 'Dispatcharr',
+        url: 'http://dispatcharr.local:9191',
+        token: 'opaque-token',
+        ignoreAnonymousStreams: true,
+        dispatcharrLiveHistoryThresholdSeconds: 30,
+      };
+
+      mockDbSelectLimit([dispatcharrServer]);
+      mockDbUpdateReturning([
+        {
+          ...dispatcharrServer,
+          token: 'dispatcharr-credentials:admin:secret',
+          updatedAt: new Date(),
+        },
+      ]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/servers/${dispatcharrServer.id}`,
+        payload: {
+          username: 'admin',
+          password: 'secret',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(DispatcharrClient.encodeCredentialToken).toHaveBeenCalledWith('admin', 'secret');
+      expect(DispatcharrClient.verifyServerAdmin).toHaveBeenCalledWith(
+        'dispatcharr-credentials:admin:secret',
+        'http://dispatcharr.local:9191'
+      );
+      expect(response.json().dispatcharrAuthMode).toBe('credentials');
+      expect(sseManager.removeServer).toHaveBeenCalledWith(dispatcharrServer.id);
+      expect(sseManager.refresh).toHaveBeenCalled();
+    });
+
+    it('rejects partial Dispatcharr auth updates', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/servers/${mockServer.id}`,
+        payload: {
+          username: 'admin',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().message).toContain('Dispatcharr update requires');
     });
 
     it('rejects non-owner with 403', async () => {

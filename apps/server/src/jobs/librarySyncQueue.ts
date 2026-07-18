@@ -360,7 +360,8 @@ export async function scheduleAutoSync(): Promise<void> {
   // Add repeatable job for each server with staggered cron times
   // Spreads DB, Redis, and API load across servers instead of firing all at once
   for (let i = 0; i < allServers.length; i++) {
-    const server = allServers[i]!;
+    const server = allServers[i];
+    if (!server) continue;
     const minuteOffset = (10 + i * 4) % 60; // Server 0 at :10, server 1 at :14, wraps at 60
 
     await librarySyncQueue.add(

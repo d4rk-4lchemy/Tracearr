@@ -449,7 +449,10 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
       let total: number;
 
       if (rows.length > 0) {
-        const firstRow = rows[0]!;
+        const firstRow = rows[0];
+        if (!firstRow) {
+          throw new Error('ROI query returned inconsistent row set');
+        }
         summary = {
           totalItems: parseInt(firstRow._total_items, 10) || 0,
           totalStorageGb: parseFloat(firstRow._total_storage_gb) || 0,

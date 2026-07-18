@@ -10,31 +10,35 @@ import { executeRawSql, closeTestPool } from './pool.js';
 /**
  * Tables to truncate in dependency order (leaf tables first)
  *
- * Order matters for CASCADE to work properly:
- * 1. violations (depends on rules, server_users, sessions)
- * 2. notification_preferences (depends on mobile_sessions)
- * 3. notification_channel_routing (standalone)
- * 4. mobile_sessions (depends on nothing)
- * 5. mobile_tokens (depends on users)
- * 6. sessions (depends on servers, server_users)
- * 7. rules (depends on server_users)
- * 8. server_users (depends on users, servers)
- * 9. servers (standalone)
- * 10. users (standalone)
- * 11. settings (standalone, key-value store)
+ * Keep this list broad. Integration tests share one migrated database across
+ * files, and partial cleanup lets state leak between suites through tables
+ * not touched by the original "core auth/session" subset. That is especially
+ * problematic for TimescaleDB metadata and library history, where leftover
+ * rows can make later tests look slow or flaky even when their own fixtures
+ * are small.
  */
 const TABLES_TO_TRUNCATE = [
   'violations',
+  'rule_action_results',
   'notification_preferences',
   'notification_channel_routing',
+  'termination_logs',
+  'user_merge_audits',
   'mobile_sessions',
   'mobile_tokens',
+  'auth_accounts',
+  'auth_sessions',
+  'auth_verifications',
+  'plex_accounts',
   'sessions',
+  'library_snapshots',
+  'library_items',
   'rules',
   'server_users',
   'servers',
   'users',
   'settings',
+  'timescale_metadata',
 ];
 
 /**

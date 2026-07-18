@@ -8,7 +8,12 @@
  * State machine: disabled → starting → awaiting_auth → connected → error
  */
 
-import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import {
+  spawn,
+  execFile,
+  type ChildProcess,
+  type ChildProcessByStdio,
+} from 'node:child_process';
 import {
   existsSync,
   readFileSync,
@@ -18,6 +23,7 @@ import {
   watch,
   type FSWatcher,
 } from 'node:fs';
+import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { registerService, unregisterService } from './serviceTracker.js';
 import { getSettings, setSettings, setSetting } from './settings.js';
@@ -402,10 +408,14 @@ class TailscaleService {
     ];
 
     return new Promise<void>((resolve, reject) => {
-      const proc = spawn(TAILSCALE_BIN, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: TAILSCALE_ENV,
-      });
+      const proc: ChildProcessByStdio<null, Readable, Readable> = spawn(
+        TAILSCALE_BIN,
+        args,
+        {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: TAILSCALE_ENV,
+        }
+      );
       this.upProcess = proc;
 
       let stdout = '';
@@ -445,18 +455,14 @@ class TailscaleService {
         }
       };
 
-      if (proc.stdout) {
-        proc.stdout.on('data', (chunk: Buffer) => {
-          stdout += chunk.toString();
-          tryParseOutput();
-        });
-      }
+      proc.stdout.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString();
+        tryParseOutput();
+      });
 
-      if (proc.stderr) {
-        proc.stderr.on('data', (chunk: Buffer) => {
-          stderr += chunk.toString();
-        });
-      }
+      proc.stderr.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
 
       proc.on('exit', (code) => {
         // If upProcess was already cleared, this is an intentional kill (e.g. killAll during restart)

@@ -96,6 +96,7 @@ import { API_BASE_PATH, getClientTimezone } from '@tracearr/shared';
 import { BASE_PATH } from '@/lib/basePath';
 export { BASE_PATH, BASE_URL, imageProxyUrl } from '@/lib/basePath';
 import { MAINTENANCE_EVENT } from '@/hooks/useMaintenanceMode';
+import { getBrowserWindow } from '@/lib/browser';
 
 export interface LibraryStatusResponse {
   isSynced: boolean;
@@ -222,11 +223,12 @@ export const tokenStorage = {
    * @param silent - If true, don't dispatch auth change event (used for intentional logout)
    */
   clearTokens: (silent = false) => {
+    const browserWindow = getBrowserWindow();
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     // Dispatch event so auth context can react immediately (unless silent)
     if (!silent) {
-      window.dispatchEvent(
+      browserWindow.dispatchEvent(
         new CustomEvent(AUTH_STATE_CHANGE_EVENT, { detail: { type: 'logout' } })
       );
     }
@@ -245,6 +247,7 @@ class ApiClient {
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const browserWindow = getBrowserWindow();
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string>),
     };
@@ -278,7 +281,7 @@ class ApiClient {
     ];
     const shouldClearAuth = !noAuthClearPaths.some((p) => path.startsWith(p));
     if (response.status === 401 && shouldClearAuth) {
-      window.dispatchEvent(
+      browserWindow.dispatchEvent(
         new CustomEvent(AUTH_STATE_CHANGE_EVENT, { detail: { type: 'logout' } })
       );
     }
@@ -287,7 +290,7 @@ class ApiClient {
     if (response.status === 503) {
       const errorBody = (await response.json().catch(() => ({}))) as Record<string, unknown>;
       if (errorBody.maintenance) {
-        window.dispatchEvent(new CustomEvent(MAINTENANCE_EVENT));
+        browserWindow.dispatchEvent(new CustomEvent(MAINTENANCE_EVENT));
         throw new Error('Server is in maintenance mode');
       }
       throw new Error(((errorBody.message ?? errorBody.error) as string) ?? 'Service Unavailable');
@@ -306,7 +309,7 @@ class ApiClient {
       return undefined as T;
     }
 
-    return response.json();
+    return (await response.json()) as T;
   }
 
   // Setup - check if Tracearr needs initial configuration
@@ -470,6 +473,9 @@ class ApiClient {
         name?: string;
         url?: string;
         clientIdentifier?: string;
+        token?: string;
+        username?: string;
+        password?: string;
         ignoreAnonymousStreams?: boolean;
         dispatcharrLiveHistoryThresholdSeconds?: number;
         color?: string | null;
@@ -1719,11 +1725,12 @@ class ApiClient {
     },
     list: () => this.request<BackupListItem[]>('/backup/list'),
     download: async (filename: string) => {
+      const browserWindow = getBrowserWindow();
       const { token } = await this.request<{ token: string }>(
         `/backup/download-token/${filename}`,
         { method: 'POST' }
       );
-      window.open(`${this.baseUrl}/backup/download/${filename}?token=${token}`, '_blank');
+      browserWindow.open(`${this.baseUrl}/backup/download/${filename}?token=${token}`, '_blank');
     },
     deleteBackup: (filename: string) =>
       this.request<{ success: boolean }>(`/backup/${filename}`, { method: 'DELETE' }),

@@ -165,7 +165,11 @@ export async function createUser(data: {
       role: data.role ?? 'member',
     })
     .returning();
-  return rows[0]!;
+  const row = rows[0];
+  if (!row) {
+    throw new Error('User insert returned no row');
+  }
+  return row;
 }
 
 /**
@@ -446,7 +450,11 @@ export async function createServerUser(data: {
       joinedAt: data.joinedAt ?? null,
     })
     .returning();
-  return rows[0]!;
+  const row = rows[0];
+  if (!row) {
+    throw new Error('Server user insert returned no row');
+  }
+  return row;
 }
 
 /**
@@ -588,9 +596,13 @@ export async function syncUserFromMediaServer(
         .set(updateData)
         .where(eq(serverUsers.id, existing.id))
         .returning();
+      const updatedServerUser = updated[0];
+      if (!updatedServerUser) {
+        throw new Error('Plex server user update returned no row');
+      }
 
       const user = await requireUserById(existing.userId);
-      return { serverUser: updated[0]!, user, created: false };
+      return { serverUser: updatedServerUser, user, created: false };
     }
 
     // Create new Plex user
@@ -622,7 +634,10 @@ export async function syncUserFromMediaServer(
             thumbnail: mediaUser.thumb ?? null,
           })
           .returning();
-        user = newUser!;
+        if (!newUser) {
+          throw new Error('Plex user insert returned no row');
+        }
+        user = newUser;
       }
 
       // Create server user with dual IDs for Plex
@@ -640,8 +655,11 @@ export async function syncUserFromMediaServer(
           joinedAt: mediaUser.joinedAt ?? null,
         })
         .returning();
+      if (!serverUser) {
+        throw new Error('Plex server user insert returned no row');
+      }
 
-      return { serverUser: serverUser!, user };
+      return { serverUser, user };
     });
 
     return { serverUser: result.serverUser, user: result.user, created: true };
@@ -691,7 +709,10 @@ export async function syncUserFromMediaServer(
           thumbnail: mediaUser.thumb ?? null,
         })
         .returning();
-      user = newUser!; // Insert always returns a row
+      if (!newUser) {
+        throw new Error('Media server user insert returned no row');
+      }
+      user = newUser;
     }
 
     // Create server user linked to user identity
@@ -708,8 +729,11 @@ export async function syncUserFromMediaServer(
         joinedAt: mediaUser.joinedAt ?? null,
       })
       .returning();
+    if (!serverUser) {
+      throw new Error('Media server server_user insert returned no row');
+    }
 
-    return { serverUser: serverUser!, user };
+    return { serverUser, user };
   });
 
   return { serverUser: result.serverUser, user: result.user, created: true };

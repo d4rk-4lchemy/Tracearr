@@ -293,7 +293,7 @@ describe('fetchWithStatus', () => {
       })
     );
 
-    const result = await fetchWithStatus<typeof responseData>('https://api.example.com/data');
+    const result = await fetchWithStatus('https://api.example.com/data');
 
     expect(result.ok).toBe(true);
     expect(result.status).toBe(200);

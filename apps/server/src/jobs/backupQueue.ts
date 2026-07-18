@@ -61,7 +61,7 @@ export function startBackupWorker(): void {
     async (job: Job) => {
       console.log(`[Backup] Starting scheduled backup job ${job.id}`);
 
-      const { filePath, metadata } = await createBackup(BACKUP_DIR, 'scheduled').catch((err) => {
+      const { filePath, metadata } = await createBackup(BACKUP_DIR, 'scheduled').catch((err: unknown) => {
         console.error(`[Backup] Backup failed: ${err instanceof Error ? err.message : err}`);
         throw err;
       });

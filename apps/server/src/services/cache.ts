@@ -214,7 +214,8 @@ export function createCacheService(redis: Redis): CacheService {
 
         for (let j = 0; j < data.length; j++) {
           const sessionData = data[j];
-          const sessionId = chunkIds[j]!;
+          const sessionId = chunkIds[j];
+          if (!sessionId) continue;
           if (sessionData) {
             try {
               sessions.push(JSON.parse(sessionData) as ActiveSession);
@@ -579,7 +580,7 @@ export function createCacheService(redis: Redis): CacheService {
       const members = await redis.smembers(REDIS_KEYS.PENDING_SESSION_IDS);
       return members.map((m) => {
         const [serverId, ...rest] = m.split(':');
-        return { serverId: serverId!, sessionKey: rest.join(':') };
+        return { serverId: serverId ?? '', sessionKey: rest.join(':') };
       });
     },
 

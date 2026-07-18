@@ -174,8 +174,8 @@ async function syncPlexUsers(
 }> {
   try {
     const plexUsers = await fetchPlexUsers(token, serverUrl);
-    return syncServerUsers(serverId, plexUsers, { isPlexServer: true });
-  } catch (err) {
+    return await syncServerUsers(serverId, plexUsers, { isPlexServer: true });
+  } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return {
       added: 0,
@@ -215,8 +215,8 @@ async function syncMediaServerUsers(
       ignoreAnonymousStreams,
     });
     const users = await client.getUsers();
-    return syncServerUsers(serverId, users); // isPlexServer defaults to false
-  } catch (err) {
+    return await syncServerUsers(serverId, users); // isPlexServer defaults to false
+  } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return {
       added: 0,

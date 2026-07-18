@@ -69,7 +69,7 @@ function loadFallbackState(): Promise<void> {
             usingAsyncStorageFallback = true;
           }
         }
-      } catch (error) {
+      } catch (error: unknown) {
         console.warn('[Storage] Failed to read fallback state flag:', error);
       }
     })();
@@ -83,7 +83,7 @@ function loadFallbackState(): Promise<void> {
 function enableAsyncStorageFallback(): void {
   if (!usingAsyncStorageFallback) {
     usingAsyncStorageFallback = true;
-    AsyncStorage.setItem(FALLBACK_FLAG_KEY, '1').catch((error) => {
+    AsyncStorage.setItem(FALLBACK_FLAG_KEY, '1').catch((error: unknown) => {
       console.warn('[Storage] Failed to persist fallback flag:', error);
     });
     console.warn('[Storage] SecureStore unavailable, using AsyncStorage fallback');

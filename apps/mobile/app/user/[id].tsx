@@ -16,7 +16,7 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, format } from 'date-fns';
 import {
@@ -38,7 +38,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { useEffect } from 'react';
-import { api, getServerUrl } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useMediaServer } from '@/providers/MediaServerProvider';
 import { useResponsive } from '@/hooks/useResponsive';
 import { Text } from '@/components/ui/text';
@@ -48,6 +48,8 @@ import { UserAvatar } from '@/components/ui/user-avatar';
 import { cn } from '@/lib/utils';
 import { colors, spacing, ACCENT_COLOR } from '@/lib/theme';
 import { SeverityBadge } from '@/components/violations/SeverityBadge';
+import { useAppNavigation } from '@/lib/navigation';
+import { getStoredServerUrl } from '@/lib/authStateStore';
 import type {
   Session,
   ViolationWithDetails,
@@ -219,10 +221,10 @@ function SessionCard({
   const MediaIcon = getMediaIcon(session.mediaType);
 
   // Build poster URL - need serverId and thumbPath
-  const hasPoster = serverUrl && session.thumbPath && session.serverId;
-  const posterUrl = hasPoster
-    ? `${serverUrl}/api/v1/images/proxy?server=${session.serverId}&url=${encodeURIComponent(session.thumbPath!)}&width=80&height=120`
-    : null;
+  const posterUrl =
+    serverUrl !== null && session.thumbPath !== null && session.serverId !== null
+      ? `${serverUrl}/api/v1/images/proxy?server=${session.serverId}&url=${encodeURIComponent(session.thumbPath)}&width=80&height=120`
+      : null;
 
   // Determine display state - show "Watched" for completed sessions that reached 80%+
   const getDisplayState = () => {
@@ -389,12 +391,12 @@ function TerminationCard({ termination }: { termination: TerminationLogWithDetai
 export default function UserDetailScreen() {
   const { t } = useTranslation(['mobile', 'common', 'pages', 'nav']);
   const { id } = useLocalSearchParams<{ id: string }>();
-  const navigation = useNavigation();
+  const navigation = useAppNavigation();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { selectedServerId } = useMediaServer();
   const { isTablet, select } = useResponsive();
-  const serverUrl = getServerUrl();
+  const serverUrl = getStoredServerUrl();
 
   // Responsive values
   const horizontalPadding = select({ base: spacing.md, md: spacing.lg, lg: spacing.xl });
@@ -418,7 +420,7 @@ export default function UserDetailScreen() {
       const displayName = user.identityName ?? user.username;
       navigation.setOptions({ title: displayName });
     }
-  }, [user?.identityName, user?.username, navigation]);
+  }, [navigation, user]);
 
   // Fetch user sessions
   const {

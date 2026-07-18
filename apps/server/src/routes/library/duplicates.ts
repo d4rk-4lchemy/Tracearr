@@ -355,8 +355,11 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
           if (!fuzzyGroupsMap.has(groupKey)) {
             fuzzyGroupsMap.set(groupKey, new Set());
           }
-          fuzzyGroupsMap.get(groupKey)!.add(fuzzy.item_a_id);
-          fuzzyGroupsMap.get(groupKey)!.add(fuzzy.item_b_id);
+          const group = fuzzyGroupsMap.get(groupKey);
+          if (group) {
+            group.add(fuzzy.item_a_id);
+            group.add(fuzzy.item_b_id);
+          }
         }
       }
 

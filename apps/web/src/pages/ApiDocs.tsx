@@ -15,12 +15,31 @@ import './ApiDocs.css';
 import { useApiKey } from '@/hooks/queries/useSettings';
 
 // Get the API base URL for fetching the OpenAPI spec
-const API_BASE = import.meta.env.VITE_API_URL || BASE_PATH;
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? BASE_PATH;
+
+interface SwaggerRequest {
+  headers?: Record<string, string>;
+}
+
+interface SwaggerSystem {
+  authActions?: {
+    authorize: (payload: Record<string, unknown>) => void;
+  };
+}
 
 export function ApiDocs() {
   const { t } = useTranslation('pages');
   const { data: apiKeyData, isLoading } = useApiKey();
   const token = apiKeyData?.token;
+  const requestInterceptor = (req: SwaggerRequest) => {
+    if (token) {
+      req.headers = {
+        ...(req.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      };
+    }
+    return req;
+  };
 
   // Show loading while fetching API key
   if (isLoading) {
@@ -49,13 +68,8 @@ export function ApiDocs() {
       </div>
       <SwaggerUI
         url={`${API_BASE}/api/v1/public/docs`}
-        requestInterceptor={(req) => {
-          if (token) {
-            req.headers['Authorization'] = `Bearer ${token}`;
-          }
-          return req;
-        }}
-        onComplete={(system) => {
+        requestInterceptor={requestInterceptor}
+        onComplete={(system: SwaggerSystem) => {
           if (token && system.authActions) {
             system.authActions.authorize({
               bearerAuth: {

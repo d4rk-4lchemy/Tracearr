@@ -283,7 +283,6 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
   const MediaIcon = mediaConfig.icon;
   const { title: primary, subtitle: secondary } = getMediaDisplay(session);
   const progress = getProgress(session);
-  const hasLocation = session.geoLat !== null && session.geoLon !== null;
   const geoCountryName = getCountryName(session.geoCountry);
   const geoCoordinates =
     session.geoLat !== null && session.geoLon !== null
@@ -485,7 +484,9 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
                 </span>
               </button>
             </CollapsibleTrigger>
-            {hasLocation && <MiniMap lat={session.geoLat!} lon={session.geoLon!} />}
+            {session.geoLat != null && session.geoLon != null && (
+              <MiniMap lat={session.geoLat} lon={session.geoLon} />
+            )}
             {locationString && (
               <div className="flex items-center gap-1.5 text-sm">
                 <Globe className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0" />

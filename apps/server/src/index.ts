@@ -88,6 +88,7 @@ import {
   cleanupOrphanedPendingSessions,
 } from './jobs/sseProcessor.js';
 import {
+  initializeDispatcharrRealtimeProcessor,
   startDispatcharrRealtimeProcessor,
   stopDispatcharrRealtimeProcessor,
 } from './jobs/dispatcharrRealtimeProcessor.js';
@@ -462,7 +463,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
       }
 
       // request.url is already stripped by rewriteUrl
-      const urlPath = request.url.split('?')[0]!;
+      const [urlPath = ''] = request.url.split('?');
 
       // Serve static files (paths with a file extension)
       if (urlPath !== '/' && /\.\w+$/.test(urlPath)) {
@@ -721,7 +722,7 @@ async function initializeServices(app: FastifyInstance) {
     startNotificationWorker();
     pushReceiptInterval = setInterval(
       () => {
-        processPushReceipts().catch((err) => {
+        processPushReceipts().catch((err: unknown) => {
           app.log.warn({ err }, 'Failed to process push receipts');
         });
       },
@@ -735,7 +736,7 @@ async function initializeServices(app: FastifyInstance) {
     // Cleanup expired/invalid mobile tokens every hour
     mobileTokenCleanupInterval = setInterval(
       () => {
-        cleanupMobileTokens().catch((err) => {
+        cleanupMobileTokens().catch((err: unknown) => {
           app.log.warn({ err }, 'Failed to cleanup mobile tokens');
         });
       },
@@ -782,7 +783,7 @@ async function initializeServices(app: FastifyInstance) {
     startLibrarySyncWorker();
     // Schedule auto-sync after a small delay to ensure all services are initialized
     setTimeout(() => {
-      scheduleAutoSync().catch((err) => {
+      scheduleAutoSync().catch((err: unknown) => {
         app.log.error({ err }, 'Failed to schedule library auto-sync');
       });
     }, 5000);
@@ -847,6 +848,7 @@ async function initializeServices(app: FastifyInstance) {
   try {
     await sseManager.initialize(cacheService, pubSubService);
     initializeSSEProcessor(cacheService, pubSubService);
+    initializeDispatcharrRealtimeProcessor(cacheService, pubSubService);
     app.log.info('SSE manager initialized');
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize SSE manager');
@@ -1055,7 +1057,7 @@ async function initializePostListen(app: FastifyInstance) {
     pendingAggregateBackfill = null;
     aggregateBackfillRunning = true;
     void runAggregateBackfill(targetVersion)
-      .catch((err) => {
+      .catch((err: unknown) => {
         app.log.error({ err }, 'Aggregate backfill failed unexpectedly');
       })
       .finally(() => {
@@ -1191,7 +1193,7 @@ async function start() {
           shutdownInactivityCheckQueue(),
           shutdownBackupQueue(),
           shutdownPlexTokenRefreshQueue(),
-        ]).catch((err) => {
+        ]).catch((err: unknown) => {
           app.log.error({ err }, 'Error shutting down queues during maintenance');
         });
 

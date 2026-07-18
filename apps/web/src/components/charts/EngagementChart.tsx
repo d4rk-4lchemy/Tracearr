@@ -218,8 +218,7 @@ export function PlaysVsSessionsChart({
           color: 'hsl(var(--popover-foreground))',
         },
         formatter: function () {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const label = (this as any).point?.category || this.x;
+          const label = this.category ?? this.x;
           return `<b>${label}</b>: ${this.y?.toLocaleString()}`;
         },
       },

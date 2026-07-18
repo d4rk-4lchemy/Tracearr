@@ -16,13 +16,18 @@ type GlassViewNativeProps = {
   children?: ReactNode;
 } & ViewProps;
 
+interface GlassModule {
+  GlassView: ComponentType<GlassViewNativeProps>;
+  isGlassEffectAPIAvailable: () => boolean;
+}
+
 // Conditional import - expo-glass-effect may not be available on all platforms
 let GlassViewComponent: ComponentType<GlassViewNativeProps> | null = null;
 let isGlassEffectAPIAvailable: (() => boolean) | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const glassModule = require('expo-glass-effect');
+  const glassModule = require('expo-glass-effect') as GlassModule;
   GlassViewComponent = glassModule.GlassView;
   isGlassEffectAPIAvailable = glassModule.isGlassEffectAPIAvailable;
 } catch {

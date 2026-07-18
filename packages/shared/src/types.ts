@@ -36,12 +36,14 @@ export const isActive = (role: UserRole): boolean => canLogin(role);
 
 // Server types
 export type ServerType = 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+export type DispatcharrAuthMode = 'token' | 'credentials';
 
 export interface Server {
   id: string;
   name: string;
   type: ServerType;
   url: string;
+  dispatcharrAuthMode?: DispatcharrAuthMode;
   ignoreAnonymousStreams?: boolean;
   dispatcharrLiveHistoryThresholdSeconds?: number;
   displayOrder?: number;

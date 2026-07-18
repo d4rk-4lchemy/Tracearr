@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { getBrowserDocument, getBrowserWindow } from '@/lib/browser';
 
 type Theme = 'dark' | 'light' | 'system';
 
@@ -48,11 +49,11 @@ export function ThemeProvider({
   ...props
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
+    () => (globalThis.localStorage.getItem(storageKey) as Theme) || defaultTheme
   );
 
   const [accentHue, setAccentHueState] = useState<number>(() => {
-    const stored = localStorage.getItem(accentStorageKey);
+    const stored = globalThis.localStorage.getItem(accentStorageKey);
     if (stored) {
       const parsed = parseInt(stored, 10);
       if (!isNaN(parsed) && parsed >= 0 && parsed < 360) {
@@ -64,11 +65,11 @@ export function ThemeProvider({
 
   // Apply theme class to root element
   useEffect(() => {
-    const root = window.document.documentElement;
+    const root = getBrowserDocument().documentElement;
     root.classList.remove('light', 'dark');
 
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+      const systemTheme = getBrowserWindow().matchMedia('(prefers-color-scheme: dark)').matches
         ? 'dark'
         : 'light';
       root.classList.add(systemTheme);
@@ -80,21 +81,21 @@ export function ThemeProvider({
 
   // Apply accent hue CSS variable to root element
   useEffect(() => {
-    const root = window.document.documentElement;
+    const root = getBrowserDocument().documentElement;
     root.style.setProperty('--accent-hue', String(accentHue));
   }, [accentHue]);
 
   const value = {
     theme,
     setTheme: (theme: Theme) => {
-      localStorage.setItem(storageKey, theme);
+      globalThis.localStorage.setItem(storageKey, theme);
       setTheme(theme);
     },
     accentHue,
     setAccentHue: (hue: number) => {
       // Normalize hue to 0-359 range
       const normalizedHue = ((hue % 360) + 360) % 360;
-      localStorage.setItem(accentStorageKey, String(normalizedHue));
+      globalThis.localStorage.setItem(accentStorageKey, String(normalizedHue));
       setAccentHueState(normalizedHue);
     },
   };

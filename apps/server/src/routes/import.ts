@@ -279,7 +279,8 @@ export const importRoutes: FastifyPluginAsync = async (app) => {
     const getFieldValue = (field: unknown): string | undefined => {
       if (!field) return undefined;
       // If it's an array, get the first element
-      const f = Array.isArray(field) ? field[0] : field;
+      const [first] = Array.isArray(field) ? (field as unknown[]) : [field];
+      const f = first;
       // Check if it's a field (not a file) with a value property
       if (f && typeof f === 'object' && 'value' in f) {
         return String(f.value);
@@ -319,7 +320,9 @@ export const importRoutes: FastifyPluginAsync = async (app) => {
     // Read file contents
     const chunks: Buffer[] = [];
     for await (const chunk of data.file) {
-      chunks.push(chunk);
+      if (Buffer.isBuffer(chunk)) {
+        chunks.push(chunk);
+      }
     }
     const backupJson = Buffer.concat(chunks).toString('utf-8');
 

@@ -256,6 +256,7 @@ export function useSelectedServerIds(): string[] {
  * @deprecated Use `useSelectedServerIds()` and the multi-server query pattern.
  */
 export function useSelectedServerId(): string | null {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- compatibility shim for callers still migrating
   const { selectedServerId } = useServer();
   return selectedServerId;
 }

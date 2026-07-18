@@ -1085,7 +1085,7 @@ export function Rules() {
 
       {isLoading ? (
         <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
+          {Array.from({ length: 3 }, (_, i) => (
             <Card key={i}>
               <CardContent className="pt-6">
                 <div className="flex items-start gap-4">

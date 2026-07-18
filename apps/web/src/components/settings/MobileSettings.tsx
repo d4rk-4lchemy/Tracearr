@@ -240,7 +240,7 @@ export function MobileSettings() {
     if (settings?.externalUrl) {
       return settings.externalUrl;
     }
-    let serverUrl: string = window.location.origin as string;
+    let serverUrl = window.location.origin;
     if (import.meta.env.DEV) {
       serverUrl = serverUrl.replace(':5173', ':3000');
     }

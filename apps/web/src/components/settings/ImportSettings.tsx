@@ -554,7 +554,7 @@ export function ImportSettings() {
     };
 
     void checkActiveImports();
-  }, [plexServers.length]);
+  }, [plexServers, t]);
 
   // Check for active Jellystat import on mount
   useEffect(() => {
@@ -593,7 +593,7 @@ export function ImportSettings() {
     };
 
     void checkActiveJellystatImports();
-  }, [jellyfinEmbyServers.length]);
+  }, [jellyfinEmbyServers, t]);
 
   // Listen for Tautulli import progress via WebSocket
   useEffect(() => {

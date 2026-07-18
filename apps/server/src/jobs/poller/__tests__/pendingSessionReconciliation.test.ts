@@ -248,7 +248,7 @@ describe('poller isNew branch defers to a pending session', () => {
     );
   });
 
-  it('confirms the pending session with preGeneratedId instead of creating a duplicate', async () => {
+  it('confirms the pending session with preGeneratedId as an update, not a new active session', async () => {
     mockUpdatePendingSession.mockReturnValue({
       updatedData: createPendingSessionData(),
       isConfirmed: true,
@@ -279,8 +279,10 @@ describe('poller isNew branch defers to a pending session', () => {
 
     expect(mockProcessPollResults).toHaveBeenCalledTimes(1);
     const call = mockProcessPollResults.mock.calls[0]?.[0];
-    expect(call.newSessions).toHaveLength(1);
-    expect(call.newSessions[0].id).toBe('pending-uuid-123');
+    expect(call.newSessions).toHaveLength(0);
+    expect(call.stoppedKeys).toHaveLength(0);
+    expect(call.updatedSessions).toHaveLength(1);
+    expect(call.updatedSessions[0].id).toBe('pending-uuid-123');
   });
 
   it('keeps the session pending and does not create anything when still below threshold', async () => {

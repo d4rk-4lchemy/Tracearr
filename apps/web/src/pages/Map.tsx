@@ -162,9 +162,12 @@ export function Map() {
   const clearFilters = () => {
     const params = new URLSearchParams();
     // Preserve time range params
-    if (searchParams.get('period')) params.set('period', searchParams.get('period')!);
-    if (searchParams.get('from')) params.set('from', searchParams.get('from')!);
-    if (searchParams.get('to')) params.set('to', searchParams.get('to')!);
+    const period = searchParams.get('period');
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
+    if (period) params.set('period', period);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
     setSearchParams(params, { replace: true });
   };
 

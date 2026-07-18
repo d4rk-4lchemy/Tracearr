@@ -9,12 +9,13 @@
 import { useState } from 'react';
 import { View, ScrollView, RefreshControl, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { DrawerActions, useNavigation } from 'expo-router/react-navigation';
+import { DrawerActions } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAppNavigation } from '@/lib/navigation';
 import { useMediaServer } from '@/providers/MediaServerProvider';
 import { useResponsive } from '@/hooks/useResponsive';
-import { useUnacknowledgedAlertsCount } from '@/hooks';
+import { useUnacknowledgedAlertsCount } from '@/hooks/useUnacknowledgedAlertsCount';
 import { spacing, ACCENT_COLOR } from '@/lib/theme';
 import { Text } from '@/components/ui/text';
 import { Card } from '@/components/ui/card';
@@ -28,6 +29,36 @@ import {
   QualityChart,
 } from '@/components/charts';
 import { useTranslation } from '@tracearr/translations/mobile';
+interface PlaysData {
+  data: { date: string; count: number }[];
+}
+interface DayOfWeekData {
+  data: { day: number; name: string; count: number }[];
+}
+interface HourOfDayData {
+  data: { hour: number; count: number }[];
+}
+interface PlatformData {
+  data: { platform: string; count: number }[];
+}
+interface QualityData {
+  directPlay: number;
+  directStream?: number;
+  transcode: number;
+  total: number;
+  directPlayPercent: number;
+  directStreamPercent?: number;
+  transcodePercent: number;
+}
+interface ConcurrentData {
+  data: {
+    hour: string;
+    total: number;
+    direct: number;
+    directStream?: number;
+    transcode: number;
+  }[];
+}
 
 function ChartSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -43,7 +74,7 @@ function ChartSection({ title, children }: { title: string; children: React.Reac
 export default function ActivityScreen() {
   const { t } = useTranslation(['mobile', 'common']);
   const router = useRouter();
-  const navigation = useNavigation();
+  const navigation = useAppNavigation();
   const [period, setPeriod] = useState<StatsPeriod>('month');
   const { selectedServerId } = useMediaServer();
   const { isTablet, select } = useResponsive();
@@ -60,32 +91,32 @@ export default function ActivityScreen() {
     data: playsData,
     refetch: refetchPlays,
     isRefetching: isRefetchingPlays,
-  } = useQuery({
+  } = useQuery<PlaysData>({
     queryKey: ['stats', 'plays', period, selectedServerId],
     queryFn: () => api.stats.plays({ period, serverId: selectedServerId ?? undefined }),
   });
 
-  const { data: dayOfWeekData, refetch: refetchDayOfWeek } = useQuery({
+  const { data: dayOfWeekData, refetch: refetchDayOfWeek } = useQuery<DayOfWeekData>({
     queryKey: ['stats', 'dayOfWeek', period, selectedServerId],
     queryFn: () => api.stats.playsByDayOfWeek({ period, serverId: selectedServerId ?? undefined }),
   });
 
-  const { data: hourOfDayData, refetch: refetchHourOfDay } = useQuery({
+  const { data: hourOfDayData, refetch: refetchHourOfDay } = useQuery<HourOfDayData>({
     queryKey: ['stats', 'hourOfDay', period, selectedServerId],
     queryFn: () => api.stats.playsByHourOfDay({ period, serverId: selectedServerId ?? undefined }),
   });
 
-  const { data: platformsData, refetch: refetchPlatforms } = useQuery({
+  const { data: platformsData, refetch: refetchPlatforms } = useQuery<PlatformData>({
     queryKey: ['stats', 'platforms', period, selectedServerId],
     queryFn: () => api.stats.platforms({ period, serverId: selectedServerId ?? undefined }),
   });
 
-  const { data: qualityData, refetch: refetchQuality } = useQuery({
+  const { data: qualityData, refetch: refetchQuality } = useQuery<QualityData>({
     queryKey: ['stats', 'quality', period, selectedServerId],
     queryFn: () => api.stats.quality({ period, serverId: selectedServerId ?? undefined }),
   });
 
-  const { data: concurrentData, refetch: refetchConcurrent } = useQuery({
+  const { data: concurrentData, refetch: refetchConcurrent } = useQuery<ConcurrentData>({
     queryKey: ['stats', 'concurrent', period, selectedServerId],
     queryFn: () => api.stats.concurrent({ period, serverId: selectedServerId ?? undefined }),
   });
@@ -105,6 +136,16 @@ export default function ActivityScreen() {
     month: t('common:periods.last30Days'),
     year: t('common:periods.lastYear'),
   };
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const playsChartData = playsData?.data ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const concurrentChartData = concurrentData?.data ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const dayOfWeekChartData = dayOfWeekData?.data ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const hourOfDayChartData = hourOfDayData?.data ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const platformChartData = platformsData?.data ?? [];
 
   return (
     <>
@@ -141,11 +182,13 @@ export default function ActivityScreen() {
           }}
         >
           <ChartSection title={t('mobile:activity.playsOverTime')}>
-            <PlaysChart data={playsData?.data || []} height={chartHeightLarge} />
+            {/* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */}
+            <PlaysChart data={playsChartData} height={chartHeightLarge} />
           </ChartSection>
 
           <ChartSection title={t('mobile:activity.concurrentStreams')}>
-            <ConcurrentChart data={concurrentData?.data || []} height={chartHeightLarge} />
+            {/* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */}
+            <ConcurrentChart data={concurrentChartData} height={chartHeightLarge} />
           </ChartSection>
         </View>
 
@@ -158,11 +201,13 @@ export default function ActivityScreen() {
           }}
         >
           <ChartSection title={t('common:periods.byDay')}>
-            <DayOfWeekChart data={dayOfWeekData?.data || []} height={chartHeightSmall} />
+            {/* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */}
+            <DayOfWeekChart data={dayOfWeekChartData} height={chartHeightSmall} />
           </ChartSection>
 
           <ChartSection title={t('common:periods.byHour')}>
-            <HourOfDayChart data={hourOfDayData?.data || []} height={chartHeightSmall} />
+            {/* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */}
+            <HourOfDayChart data={hourOfDayChartData} height={chartHeightSmall} />
           </ChartSection>
         </View>
 
@@ -174,7 +219,8 @@ export default function ActivityScreen() {
           }}
         >
           <ChartSection title={t('mobile:activity.platforms')}>
-            <PlatformChart data={platformsData?.data || []} height={chartHeightSmall} />
+            {/* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */}
+            <PlatformChart data={platformChartData} height={chartHeightSmall} />
           </ChartSection>
 
           <ChartSection title={t('mobile:activity.playbackQuality')}>

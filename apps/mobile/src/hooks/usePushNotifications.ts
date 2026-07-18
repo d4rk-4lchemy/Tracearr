@@ -371,11 +371,14 @@ export function usePushNotifications() {
   useEffect(() => {
     if (!server) return; // Only when authenticated
 
-    const subscription = Notifications.addPushTokenListener((tokenData) => {
-      console.log('Push token changed:', tokenData.data);
-      setExpoPushToken(tokenData.data);
-      void registerTokenWithServer(tokenData.data);
-    });
+    const subscription = Notifications.addPushTokenListener(
+      (tokenData: Notifications.DevicePushToken) => {
+        console.log('Push token changed:', tokenData.data);
+        const nextToken = String(tokenData.data);
+        setExpoPushToken(nextToken);
+        void registerTokenWithServer(nextToken);
+      }
+    );
 
     return () => subscription.remove();
   }, [server, registerTokenWithServer]);

@@ -755,7 +755,11 @@ export const SERVER_TYPE_BRAND_COLORS: Record<string, string> = {
 
 /** Pick best color for a server given its type and colors already used by other servers */
 export function pickServerColor(type: string, usedColors: (string | null | undefined)[]): string {
-  const used = new Set(usedColors.filter(Boolean).map((c) => c!.toLowerCase()));
+  const used = new Set(
+    usedColors
+      .filter((color): color is string => typeof color === 'string' && color.length > 0)
+      .map((color) => color.toLowerCase())
+  );
   const brand = SERVER_TYPE_BRAND_COLORS[type] ?? '#3B82F6';
   if (!used.has(brand.toLowerCase())) return brand;
   for (const preset of SERVER_COLOR_PALETTE) {

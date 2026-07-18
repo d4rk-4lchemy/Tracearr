@@ -78,6 +78,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const routingMapRef = useRef<Map<NotificationEventType, NotificationChannelRouting>>(new Map());
   const sessionUpdatedThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionStoppedHistoryThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const socketRef = useRef<TypedSocket | null>(null);
 
   // Update the ref when routing data changes
   useEffect(() => {
@@ -132,8 +133,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Don't connect WebSocket during maintenance mode — server hasn't initialized it yet
     if (!isAuthenticated || isInMaintenance) {
-      if (socket) {
-        socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
         setSocket(null);
         setIsConnected(false);
       }
@@ -362,9 +364,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    socketRef.current = newSocket;
     setSocket(newSocket);
 
     return () => {
+      socketRef.current = null;
       newSocket.disconnect();
       if (sessionUpdatedThrottleRef.current) {
         clearTimeout(sessionUpdatedThrottleRef.current);
@@ -375,7 +379,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         sessionStoppedHistoryThrottleRef.current = null;
       }
     };
-  }, [isAuthenticated, isInMaintenance, queryClient, isWebToastEnabled]);
+  }, [isAuthenticated, isInMaintenance, queryClient, isWebToastEnabled, t]);
 
   const subscribeSessions = useCallback(() => {
     if (socket && isConnected) {

@@ -63,7 +63,10 @@ function getOrCreateAgent(name: string): NotificationAgent | undefined {
 export function createAllAgents(): NotificationAgent[] {
   // Ensure all agents are created
   const names = ['discord', 'ntfy', 'gotify', 'apprise', 'pushover', 'json-webhook'];
-  return names.map((name) => getOrCreateAgent(name)!);
+  return names.flatMap((name) => {
+    const agent = getOrCreateAgent(name);
+    return agent ? [agent] : [];
+  });
 }
 
 /**

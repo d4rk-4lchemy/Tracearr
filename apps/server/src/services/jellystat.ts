@@ -41,6 +41,7 @@ import {
   createUserMapping,
   flushInsertBatch,
   queryExistingByExternalIds,
+  type ExistingSession,
   type TimeBounds,
 } from './import/index.js';
 import { EmbyClient } from './mediaServer/emby/client.js';
@@ -734,10 +735,10 @@ export async function importJellystatBackup(
             }
           : undefined;
 
-      const existingMap =
-        chunkIds.length > 0
-          ? await queryExistingByExternalIds(serverId, chunkIds, chunkTimeBounds)
-          : new Map();
+      let existingMap = new Map<string, ExistingSession>();
+      if (chunkIds.length > 0) {
+        existingMap = await queryExistingByExternalIds(serverId, chunkIds, chunkTimeBounds);
+      }
 
       const insertBatch: (typeof sessions.$inferInsert)[] = [];
       const updateBatch: Array<{ id: string; data: Partial<typeof sessions.$inferInsert> }> = [];
@@ -767,10 +768,12 @@ export async function importJellystatBackup(
             // Record exists - check if we should update stream details
             if (updateStreamDetails && !existingSession.sourceVideoCodec) {
               // Extract stream details from this activity
-              const activityAny = activity as Record<string, unknown>;
-              const mediaStreams = activityAny.MediaStreams as JellystatMediaStream[] | null;
+              const activityRecord = activity as Record<string, unknown>;
+              const mediaStreams = Array.isArray(activityRecord.MediaStreams)
+                ? (activityRecord.MediaStreams as JellystatMediaStream[])
+                : null;
               const transcodingInfoFull =
-                activityAny.TranscodingInfo as JellystatTranscodingInfoFull | null;
+                (activityRecord.TranscodingInfo as JellystatTranscodingInfoFull | null) ?? null;
 
               // Only update if backup has stream data
               if (mediaStreams && mediaStreams.length > 0) {

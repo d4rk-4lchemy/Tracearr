@@ -1,14 +1,15 @@
 import { View, Pressable, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { DrawerActions, useNavigation } from 'expo-router/react-navigation';
+import { DrawerActions } from '@react-navigation/native';
 import { Menu, Bell } from 'lucide-react-native';
-import { useUnacknowledgedAlertsCount } from '@/hooks';
+import { useUnacknowledgedAlertsCount } from '@/hooks/useUnacknowledgedAlertsCount';
 import { Text } from '@/components/ui/text';
 import { colors, spacing } from '@/lib/theme';
+import { useAppNavigation } from '@/lib/navigation';
 import { useTranslation } from '@tracearr/translations/mobile';
 
 function HeaderLeft() {
-  const navigation = useNavigation();
+  const navigation = useAppNavigation();
   return (
     <Pressable
       onPress={() => navigation.dispatch(DrawerActions.openDrawer())}

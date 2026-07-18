@@ -9,7 +9,13 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useMediaServer } from '@/providers/MediaServerProvider';
 
-export function useUnacknowledgedAlertsCount() {
+interface UnacknowledgedAlertsResult {
+  count: number;
+  hasAlerts: boolean;
+  displayCount: string;
+}
+
+export function useUnacknowledgedAlertsCount(): UnacknowledgedAlertsResult {
   const { selectedServerId } = useMediaServer();
 
   const { data } = useQuery({

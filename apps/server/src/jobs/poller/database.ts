@@ -11,6 +11,7 @@ import {
   SESSION_LIMITS,
   type Session,
   type Rule,
+  type RuleType,
   type RuleParams,
   type RuleV2,
   type RuleConditions,
@@ -206,7 +207,7 @@ export async function getActiveRules(): Promise<Rule[]> {
   return activeRules.map((r) => ({
     id: r.id,
     name: r.name,
-    type: r.type!,
+    type: r.type as RuleType,
     params: r.params as unknown as RuleParams,
     serverUserId: r.serverUserId,
     isActive: r.isActive,

@@ -202,7 +202,15 @@ export function TailscaleSettings() {
               </div>
               <div className="flex gap-2">
                 {status.authUrl && (
-                  <Button variant="default" onClick={() => window.open(status.authUrl!, '_blank')}>
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      const authUrl = status.authUrl;
+                      if (authUrl) {
+                        window.open(authUrl, '_blank');
+                      }
+                    }}
+                  >
                     <ExternalLink className="mr-2 h-4 w-4" />
                     {t('tailscale.authorize')}
                   </Button>

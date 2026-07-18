@@ -45,7 +45,9 @@ export const embyRoutes: FastifyPluginAsync = async (app) => {
       const isAdmin = await EmbyClient.verifyServerAdmin(apiKey, serverUrl);
 
       if (!isAdmin) {
-        return reply.forbidden('API key does not have administrator access to this Emby server');
+        return await reply.forbidden(
+          'API key does not have administrator access to this Emby server'
+        );
       }
 
       // Create or update server
@@ -67,7 +69,10 @@ export const embyRoutes: FastifyPluginAsync = async (app) => {
           .returning();
         server = inserted;
       } else {
-        const existingServer = server[0]!;
+        const existingServer = server[0];
+        if (!existingServer) {
+          throw new Error('Existing Emby server lookup returned no row');
+        }
         await db
           .update(servers)
           .set({
@@ -78,7 +83,11 @@ export const embyRoutes: FastifyPluginAsync = async (app) => {
           .where(eq(servers.id, existingServer.id));
       }
 
-      const serverId = server[0]!.id;
+      const currentServer = server[0];
+      if (!currentServer) {
+        throw new Error('Emby server insert/update returned no row');
+      }
+      const serverId = currentServer.id;
 
       app.log.info({ userId: authUser.userId, serverId }, 'Emby server connected via API key');
 
@@ -90,13 +99,13 @@ export const embyRoutes: FastifyPluginAsync = async (app) => {
             'Auto-sync completed for Emby server'
           );
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           app.log.error({ err: error, serverId }, 'Auto-sync failed for Emby server');
         });
 
       // Return updated tokens with new server access
-      return generateTokens(app, authUser.userId, authUser.username, authUser.role);
-    } catch (error) {
+      return await generateTokens(app, authUser.userId, authUser.username, authUser.role);
+    } catch (error: unknown) {
       app.log.error({ err: error }, 'Emby connect-api-key failed');
       return reply.internalServerError('Failed to connect Emby server');
     }

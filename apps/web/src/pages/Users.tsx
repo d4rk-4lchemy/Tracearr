@@ -413,7 +413,7 @@ export function Users() {
           )}
           {isLoading ? (
             <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
+              {Array.from({ length: 5 }, (_, i) => (
                 <div key={i} className="flex items-center gap-4">
                   <Skeleton className="h-10 w-10 rounded-full" />
                   <div className="space-y-2">

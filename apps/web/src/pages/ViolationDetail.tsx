@@ -201,7 +201,8 @@ export function ViolationDetail() {
   const navigate = useNavigate();
   const [dismissConfirmOpen, setDismissConfirmOpen] = useState(false);
 
-  const { data: violation, isLoading } = useViolation(id!);
+  const violationId = id ?? '';
+  const { data: violation, isLoading } = useViolation(violationId);
   const { data: settings } = useSettings();
   const serverColorMap = useServerColorMap();
   const unitSystem: UnitSystem = settings?.unitSystem ?? 'metric';

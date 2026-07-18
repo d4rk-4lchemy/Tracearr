@@ -34,7 +34,10 @@ export function ServerSelector() {
 
   // Only one server - show static label
   if (servers.length === 1) {
-    const server = servers[0]!;
+    const [server] = servers;
+    if (!server) {
+      return null;
+    }
     return (
       <div className="text-muted-foreground flex items-center gap-2 px-4 py-2 text-sm">
         <MediaServerIcon type={server.type} className="h-4 w-4" />
@@ -79,7 +82,10 @@ export function ServerSelector() {
             onClick={() => {
               if (isAllServersSelected) {
                 // Selection can't be empty, so collapse to the first server
-                deselectAllExcept(servers[0]!.id);
+                const firstServer = servers[0];
+                if (firstServer) {
+                  deselectAllExcept(firstServer.id);
+                }
               } else {
                 selectAllServers();
               }

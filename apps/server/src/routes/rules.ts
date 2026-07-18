@@ -19,7 +19,13 @@ import {
   bulkDeleteRulesSchema,
   bulkMigrateRulesSchema,
 } from '@tracearr/shared';
-import type { RuleConditions, RuleActions, ViolationSeverity, AuthUser } from '@tracearr/shared';
+import type {
+  RuleConditions,
+  RuleActions,
+  ViolationSeverity,
+  AuthUser,
+  RuleType,
+} from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { rules, serverUsers, violations, servers, users } from '../db/schema.js';
 import { hasServerAccess } from '../utils/serverFiltering.js';
@@ -848,7 +854,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       accessibleRules.map((r) => ({
         id: r.id,
         name: r.name,
-        type: r.type!,
+        type: r.type as RuleType,
         params: r.params as Record<string, unknown>,
         serverUserId: r.serverUserId,
         serverId: r.serverId,
@@ -932,7 +938,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       accessibleRules.map((r) => ({
         id: r.id,
         name: r.name,
-        type: r.type!,
+        type: r.type as RuleType,
         params: r.params as Record<string, unknown>,
         serverUserId: r.serverUserId,
         serverId: r.serverId,
@@ -1035,7 +1041,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     const migrated = convertLegacyRule({
       id: rule.id,
       name: rule.name,
-      type: rule.type!,
+      type: rule.type as RuleType,
       params: rule.params as Record<string, unknown>,
       serverUserId: rule.serverUserId,
       serverId: rule.serverId,

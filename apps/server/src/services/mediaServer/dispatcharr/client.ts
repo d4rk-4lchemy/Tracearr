@@ -62,8 +62,10 @@ function detectTokenMode(token: string): DispatcharrTokenMode {
 function decodeJwtExpiration(token: string): number | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
+  const payloadPart = parts[1];
+  if (!payloadPart) return null;
   try {
-    const payload = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString('utf8')) as {
+    const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8')) as {
       exp?: unknown;
     };
     const expSeconds =

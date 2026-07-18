@@ -36,6 +36,8 @@ npm-debug.log*
 pnpm-debug.log*
 .tmp/
 .plans/
+FORK_INFO.md
+AGENTS.md
 
 # Database (keep GeoLite2 database committed)
 data/*.mmdb

@@ -111,7 +111,7 @@ export const backupRoutes: FastifyPluginAsync = async (app) => {
       if (!result.valid || !result.metadata) {
         // Invalid — clean up
         unlinkSync(filePath);
-        return reply.badRequest(`Invalid backup: ${result.errors.join(', ')}`);
+        return await reply.badRequest(`Invalid backup: ${result.errors.join(', ')}`);
       }
 
       // Write sidecar metadata

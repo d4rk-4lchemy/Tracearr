@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { waitForAuthForm } from './helpers/auth.js';
 
 test.describe('Authentication', () => {
   test('redirects unauthenticated users to login', async ({ page }) => {
@@ -17,7 +18,7 @@ test.describe('Authentication', () => {
 
     await page.goto('/login');
 
-    await page.waitForSelector('form');
+    await waitForAuthForm(page);
     await expect(page.getByRole('button', { name: 'Sign In', exact: true })).toBeVisible();
   });
 
@@ -26,7 +27,7 @@ test.describe('Authentication', () => {
     await page.addInitScript(() => localStorage.clear());
 
     await page.goto('/login');
-    await page.waitForSelector('form');
+    await waitForAuthForm(page);
 
     await page.locator('#identifier').fill('e2e@tracearr.test');
     await page.locator('#password').fill('TestPassword123!');

@@ -331,7 +331,10 @@ export const libraryWatchRoute: FastifyPluginAsync = async (app) => {
         }));
 
         if (rows.length > 0) {
-          const firstRow = rows[0]!;
+          const firstRow = rows[0];
+          if (!firstRow) {
+            throw new Error('Single-server watch query returned inconsistent row set');
+          }
           totalItems = parseInt(firstRow._total_items, 10) || 0;
           watchedCount = parseInt(firstRow._watched_count, 10) || 0;
           const unwatchedCount = parseInt(firstRow._unwatched_count, 10) || 0;
@@ -535,7 +538,10 @@ export const libraryWatchRoute: FastifyPluginAsync = async (app) => {
         }));
 
         if (rows.length > 0) {
-          const firstRow = rows[0]!;
+          const firstRow = rows[0];
+          if (!firstRow) {
+            throw new Error('Combined watch query returned inconsistent row set');
+          }
           totalItems = parseInt(firstRow._total_items, 10) || 0;
           watchedCount = parseInt(firstRow._watched_count, 10) || 0;
           const unwatchedCount = parseInt(firstRow._unwatched_count, 10) || 0;
