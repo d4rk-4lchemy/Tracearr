@@ -111,7 +111,7 @@ function makeSession(overrides: Partial<ActiveSession> = {}): ActiveSession {
 }
 
 function getProgressTranslatePercent(container: HTMLElement): number | null {
-  const indicator = container.querySelector('[style*="translateX"]') as HTMLElement | null;
+  const indicator = container.querySelector<HTMLElement>('[style*="translateX"]');
   const transform = indicator?.style.transform ?? '';
   const match = transform.match(/translateX\(-([0-9.]+)%\)/);
   return match?.[1] ? Number(match[1]) : null;
@@ -179,7 +179,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
   });
 
   it('shows fixed start and end times for Dispatcharr catch-up cards', () => {
-    const { container } = render(
+    render(
       <NowPlayingCard
         session={makeSession({
           dispatcharrPlaybackKind: 'catchup',
