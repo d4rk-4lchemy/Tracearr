@@ -45,6 +45,15 @@ export interface MediaSession {
   /** Dispatcharr catch-up EPG programme end timestamp (ISO UTC) */
   dispatcharrCatchupEpgEndAt?: string;
 
+  /** Raw Dispatcharr catch-up URL timestamp. Backend-only; never expose it in ActiveSession. */
+  dispatcharrCatchupProgrammeStart?: string;
+
+  /** Provider epoch seconds for a byte-range catch-up seek. Backend-only. */
+  dispatcharrCatchupPositionAnchorAt?: number;
+
+  /** Provider byte-range seek position at position_anchor_at. Backend-only. */
+  dispatcharrCatchupPlaybackBaseSecs?: number;
+
   /** Media item identifier (ratingKey for Plex, itemId for Jellyfin) */
   mediaId: string;
 

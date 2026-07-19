@@ -86,6 +86,16 @@ export interface CacheService {
   deletePendingSession(serverId: string, sessionKey: string): Promise<void>;
   getAllPendingSessionKeys(): Promise<Array<{ serverId: string; sessionKey: string }>>;
 
+  /**
+   * Return the backend timestamp for the current Dispatcharr catch-up URL
+   * programme. It changes only when the raw programme_start value changes.
+   */
+  getOrSetDispatcharrCatchupProgrammeStartUpdatedAt(
+    identity: string,
+    programmeStart: string,
+    nowMs: number
+  ): Promise<number>;
+
   // Session write retry queue (for failed DB writes during session stop)
   addSessionWriteRetry(
     sessionId: string,
@@ -582,6 +592,39 @@ export function createCacheService(redis: Redis): CacheService {
         const [serverId, ...rest] = m.split(':');
         return { serverId: serverId ?? '', sessionKey: rest.join(':') };
       });
+    },
+
+    async getOrSetDispatcharrCatchupProgrammeStartUpdatedAt(
+      identity: string,
+      programmeStart: string,
+      nowMs: number
+    ): Promise<number> {
+      const key = REDIS_KEYS.DISPATCHARR_CATCHUP_PROGRAMME_START(identity);
+      const value = await redis.eval(
+        `
+          local existing = redis.call('GET', KEYS[1])
+          if existing then
+            local separator = string.find(existing, '\\n', 1, true)
+            if separator then
+              local existingProgrammeStart = string.sub(existing, 1, separator - 1)
+              if existingProgrammeStart == ARGV[1] then
+                redis.call('EXPIRE', KEYS[1], ARGV[3])
+                return string.sub(existing, separator + 1)
+              end
+            end
+          end
+          redis.call('SETEX', KEYS[1], ARGV[3], ARGV[1] .. '\\n' .. ARGV[2])
+          return ARGV[2]
+        `,
+        1,
+        key,
+        programmeStart,
+        String(nowMs),
+        String(CACHE_TTL.ACTIVE_SESSIONS)
+      );
+
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : nowMs;
     },
 
     // Session write retry queue methods

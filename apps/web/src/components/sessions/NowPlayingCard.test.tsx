@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { NowPlayingCard } from './NowPlayingCard';
 import type { ActiveSession } from '@tracearr/shared';
@@ -18,9 +18,12 @@ vi.mock('@/hooks/useServer', () => ({
 }));
 
 vi.mock('@/hooks/useEstimatedProgress', () => ({
-  useEstimatedProgress: () => ({
-    estimatedProgressMs: 60_000,
-    progressPercent: 10,
+  useEstimatedProgress: (session: ActiveSession) => ({
+    estimatedProgressMs: session.progressMs ?? 0,
+    progressPercent:
+      session.totalDurationMs && session.progressMs
+        ? (session.progressMs / session.totalDurationMs) * 100
+        : 0,
   }),
 }));
 
@@ -212,13 +215,10 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     );
 
     expect(screen.getAllByText('--:--')).toHaveLength(2);
-    expect(getProgressTranslatePercent(container)).toBe(100);
+    expect(getProgressTranslatePercent(container)).toBe(50);
   });
 
-  it('reanchors catch-up progress when programme_start changes', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-19T05:30:00.000Z'));
-
+  it('uses the backend progress after programme_start changes', () => {
     const { container, rerender } = render(
       <NowPlayingCard
         session={makeSession({
@@ -232,12 +232,6 @@ describe('NowPlayingCard ffmpeg speed display', () => {
       />
     );
 
-    act(() => {
-      vi.advanceTimersByTime(60_000);
-    });
-    expect(getProgressTranslatePercent(container)).toBeCloseTo(98.889, 2);
-
-    vi.setSystemTime(new Date('2026-07-19T05:31:00.000Z'));
     rerender(
       <NowPlayingCard
         session={makeSession({
@@ -252,13 +246,9 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     );
 
     expect(getProgressTranslatePercent(container)).toBe(50);
-    vi.useRealTimers();
   });
 
-  it('keeps local catch-up progress across refetches when programme_start is unchanged', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-07-19T05:30:00.000Z'));
-
+  it('keeps backend catch-up progress across refetches when programme_start is unchanged', () => {
     const initialProgressUpdatedAt = new Date('2026-07-19T05:30:00.000Z');
     const refetchProgressUpdatedAt = new Date('2026-07-19T05:31:00.000Z');
 
@@ -276,12 +266,6 @@ describe('NowPlayingCard ffmpeg speed display', () => {
       />
     );
 
-    act(() => {
-      vi.advanceTimersByTime(60_000);
-    });
-    expect(getProgressTranslatePercent(container)).toBeCloseTo(98.889, 2);
-
-    vi.setSystemTime(new Date('2026-07-19T05:31:00.000Z'));
     rerender(
       <NowPlayingCard
         session={makeSession({
@@ -290,20 +274,13 @@ describe('NowPlayingCard ffmpeg speed display', () => {
           dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
           dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
           totalDurationMs: 5_400_000,
-          progressMs: 0,
+          progressMs: 60_000,
           progressUpdatedAt: refetchProgressUpdatedAt,
         })}
       />
     );
 
     expect(getProgressTranslatePercent(container)).toBeCloseTo(98.889, 2);
-
-    act(() => {
-      vi.advanceTimersByTime(30_000);
-    });
-    expect(getProgressTranslatePercent(container)).toBeCloseTo(98.333, 2);
-
-    vi.useRealTimers();
   });
 
   it('shows ffmpeg speed for dispatcharr live streams', () => {
@@ -332,7 +309,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     );
 
     expect(screen.queryByText('1.25x')).toBeNull();
-    expect(screen.getByText('--:--')).toBeTruthy();
+    expect(screen.getAllByText('--:--')).toHaveLength(2);
   });
 
   it('proxies absolute Dispatcharr live channel logos for card artwork', () => {

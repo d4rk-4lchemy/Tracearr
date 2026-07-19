@@ -299,9 +299,7 @@ export function parseStatusResponse(raw: unknown): DispatcharrChannelStatus[] {
   });
 }
 
-export function parseRealtimeChannelStatsPayload(
-  raw: unknown
-): DispatcharrStatusResponse | null {
+export function parseRealtimeChannelStatsPayload(raw: unknown): DispatcharrStatusResponse | null {
   return parseRealtimeStatsPayload(raw, 'channel_stats');
 }
 
@@ -434,9 +432,11 @@ function mergeClients(
   return merged;
 }
 
-function parseResolutionDimensions(
-  resolution?: string
-): { width?: number; height?: number; normalized?: string } {
+function parseResolutionDimensions(resolution?: string): {
+  width?: number;
+  height?: number;
+  normalized?: string;
+} {
   const value = resolution?.trim();
   if (!value) return {};
 
@@ -523,9 +523,9 @@ function estimateVodPositionSeconds(
   return 0;
 }
 
-function flattenCatchupSessions(raw: unknown): Array<
-  DispatcharrCatchupSessionGroup & { connections: DispatcharrCatchupConnection[] }
-> {
+function flattenCatchupSessions(
+  raw: unknown
+): Array<DispatcharrCatchupSessionGroup & { connections: DispatcharrCatchupConnection[] }> {
   const stats = parseCatchupStatsResponse(raw);
   const groups = Array.isArray(stats.timeshift_sessions) ? stats.timeshift_sessions : [];
 
@@ -544,9 +544,12 @@ function flattenCatchupSessions(raw: unknown): Array<
   });
 }
 
-function buildCatchupProgrammeIdentity(programme: DispatcharrCatchupProgramme | null): string | null {
+function buildCatchupProgrammeIdentity(
+  programme: DispatcharrCatchupProgramme | null
+): string | null {
   if (!programme) return null;
-  const start = asOptionalString(programme.start_time) ?? asOptionalString(programme.programme_start);
+  const start =
+    asOptionalString(programme.start_time) ?? asOptionalString(programme.programme_start);
   return start ?? null;
 }
 
@@ -573,6 +576,13 @@ function normalizeUtcIso(value: unknown): string | undefined {
   return new Date(parsedMs).toISOString();
 }
 
+export function parseDispatcharrCatchupTimestampMs(value: unknown): number | null {
+  const normalized = normalizeUtcIso(value);
+  if (!normalized) return null;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function estimateCatchupPositionSeconds(
   session: DispatcharrCatchupSessionGroup,
   programme: DispatcharrCatchupProgramme | null,
@@ -584,10 +594,11 @@ function estimateCatchupPositionSeconds(
   const playbackBaseSecs = asOptionalNumber(session.playback_base_secs);
   const currentStartMs = Date.parse(asOptionalString(programme?.start_time) ?? '');
   const baseStartMs = Date.parse(asOptionalString(baseProgramme?.start_time) ?? '');
-  const rawProgrammeStartMs = Date.parse(asOptionalString(session.programme_start) ?? '');
+  const rawProgrammeStartMs = parseDispatcharrCatchupTimestampMs(session.programme_start);
 
   if (playbackBaseSecs !== undefined) {
-    const elapsedSinceAnchor = !paused && positionAnchorAt !== undefined ? nowSeconds - positionAnchorAt : 0;
+    const elapsedSinceAnchor =
+      !paused && positionAnchorAt !== undefined ? nowSeconds - positionAnchorAt : 0;
     let positionSecs = Math.max(0, playbackBaseSecs + Math.max(0, elapsedSinceAnchor));
 
     if (Number.isFinite(currentStartMs) && Number.isFinite(baseStartMs)) {
@@ -601,15 +612,16 @@ function estimateCatchupPositionSeconds(
     return positionSecs;
   }
 
-  if (
-    !Number.isFinite(currentStartMs) ||
-    !Number.isFinite(rawProgrammeStartMs)
-  ) {
+  if (!Number.isFinite(currentStartMs) || rawProgrammeStartMs === null) {
     return null;
   }
 
-  const elapsedSinceAnchor = !paused && positionAnchorAt !== undefined ? nowSeconds - positionAnchorAt : 0;
-  let positionSecs = Math.max(0, (rawProgrammeStartMs - currentStartMs) / 1000 + Math.max(0, elapsedSinceAnchor));
+  const elapsedSinceAnchor =
+    !paused && positionAnchorAt !== undefined ? nowSeconds - positionAnchorAt : 0;
+  let positionSecs = Math.max(
+    0,
+    (rawProgrammeStartMs - currentStartMs) / 1000 + Math.max(0, elapsedSinceAnchor)
+  );
   const durationSecs = asOptionalNumber(programme?.duration_secs);
   if (durationSecs !== undefined) {
     positionSecs = Math.min(positionSecs, durationSecs);
@@ -651,18 +663,28 @@ export function parseSessionsFromCatchupStats(
     const sessionKey = programmeIdentity
       ? `catchup:${sessionId}:${programmeIdentity}`
       : `catchup:${sessionId}:channel:${channelUuid || channelId}`;
-    const mediaId = programmeIdentity ? `${channelUuid}:${programmeIdentity}` : `catchup:${channelUuid}`;
+    const mediaId = programmeIdentity
+      ? `${channelUuid}:${programmeIdentity}`
+      : `catchup:${channelUuid}`;
     const mediaTitle = buildCatchupMediaTitle(programme);
     const fallbackTitle = mediaTitle || channelName;
     const durationSecs = asOptionalNumber(programme?.duration_secs);
-    const positionSecs = estimateCatchupPositionSeconds(group, programme, baseProgramme, nowSeconds);
+    const positionSecs = estimateCatchupPositionSeconds(
+      group,
+      programme,
+      baseProgramme,
+      nowSeconds
+    );
     const catchupAnchorAt = normalizeUtcIso(group.programme_start);
     const catchupEpgStartAt = normalizeUtcIso(programme?.start_time);
     const catchupEpgEndAt = normalizeUtcIso(programme?.end_time);
     const positionMs = positionSecs !== null ? Math.max(0, Math.round(positionSecs * 1000)) : 0;
-    const durationMs = durationSecs !== undefined ? Math.max(0, Math.round(durationSecs * 1000)) : 0;
+    const durationMs =
+      durationSecs !== undefined ? Math.max(0, Math.round(durationSecs * 1000)) : 0;
     const logoId = asOptionalString(group.logo_id);
-    const channelThumb = logoId ? `/api/channels/logos/${encodeURIComponent(logoId)}/cache/` : undefined;
+    const channelThumb = logoId
+      ? `/api/channels/logos/${encodeURIComponent(logoId)}/cache/`
+      : undefined;
     const sourceFps = asOptionalString(group.source_fps);
     const audioChannels = asOptionalInteger(group.audio_channels);
     const videoCodec = asOptionalString(group.video_codec);
@@ -691,6 +713,9 @@ export function parseSessionsFromCatchupStats(
         dispatcharrCatchupAnchorAt: catchupAnchorAt,
         dispatcharrCatchupEpgStartAt: catchupEpgStartAt,
         dispatcharrCatchupEpgEndAt: catchupEpgEndAt,
+        dispatcharrCatchupProgrammeStart: asOptionalString(group.programme_start),
+        dispatcharrCatchupPositionAnchorAt: asOptionalNumber(group.position_anchor_at),
+        dispatcharrCatchupPlaybackBaseSecs: asOptionalNumber(group.playback_base_secs),
         mediaId,
         user: {
           id: user.id,
@@ -880,11 +905,11 @@ export function normalizeDispatcharrChannel(
       asOptionalNumber(detail?.avg_bitrate),
     videoCodec: asOptionalString(base.video_codec) ?? asOptionalString(detail?.video_codec),
     audioCodec: asOptionalString(base.audio_codec) ?? asOptionalString(detail?.audio_codec),
-    audioChannels: parseAudioChannels(base.audio_channels) ?? parseAudioChannels(detail?.audio_channels),
+    audioChannels:
+      parseAudioChannels(base.audio_channels) ?? parseAudioChannels(detail?.audio_channels),
     sourceFps: asOptionalString(base.source_fps) ?? asOptionalString(detail?.source_fps),
     resolution: asOptionalString(base.resolution) ?? asOptionalString(detail?.resolution),
-    ffmpegSpeed:
-      asOptionalNumber(base.ffmpeg_speed) ?? asOptionalNumber(detail?.ffmpeg_speed),
+    ffmpegSpeed: asOptionalNumber(base.ffmpeg_speed) ?? asOptionalNumber(detail?.ffmpeg_speed),
     clients: mergeClients(parseChannelClients(detail), parseChannelClients(base)),
   };
 }
@@ -929,7 +954,9 @@ export function parseSessionsFromChannels(
       const clientOutputFormat = normalizeOutputFormat(client.output_format);
       const outputProfileId = asOptionalInteger(client.output_profile_id);
       const outputProfile =
-        outputProfileId !== undefined ? options?.outputProfilesById?.get(outputProfileId) : undefined;
+        outputProfileId !== undefined
+          ? options?.outputProfilesById?.get(outputProfileId)
+          : undefined;
       const streamProfile = (channel.streamProfile ?? '').toLowerCase();
       const fallbackIsTranscode = streamProfile.includes('transcod');
       const resolution = parseResolutionDimensions(channel.resolution);
@@ -940,26 +967,34 @@ export function parseSessionsFromChannels(
       const conservativeUnknownProfile = outputProfileId !== undefined && !outputProfile;
       const videoDecision =
         outputProfile?.videoDecision ??
-        (conservativeUnknownProfile ? 'transcode' : fallbackIsTranscode ? 'transcode' : 'directplay');
+        (conservativeUnknownProfile
+          ? 'transcode'
+          : fallbackIsTranscode
+            ? 'transcode'
+            : 'directplay');
       const audioDecision =
         outputProfile?.audioDecision ??
-        (conservativeUnknownProfile ? 'transcode' : fallbackIsTranscode ? 'transcode' : 'directplay');
+        (conservativeUnknownProfile
+          ? 'transcode'
+          : fallbackIsTranscode
+            ? 'transcode'
+            : 'directplay');
       const isTranscode =
-        outputProfile?.isTranscode ??
-        (conservativeUnknownProfile ? true : fallbackIsTranscode);
+        outputProfile?.isTranscode ?? (conservativeUnknownProfile ? true : fallbackIsTranscode);
       const bitrate = Math.round(outputProfile?.bitrateKbps ?? channel.avgBitrateKbps ?? 0);
-      const transcodeReasons =
-        conservativeUnknownProfile
-          ? ['Dispatcharr output profile active']
-          : outputProfile
-            ? [`Dispatcharr output profile: ${outputProfile.name ?? outputProfile.id}`]
-            : undefined;
+      const transcodeReasons = conservativeUnknownProfile
+        ? ['Dispatcharr output profile active']
+        : outputProfile
+          ? [`Dispatcharr output profile: ${outputProfile.name ?? outputProfile.id}`]
+          : undefined;
       const transcodeInfo =
         transcodeSpeed !== undefined ||
         inferredContainer !== undefined ||
         transcodeReasons !== undefined
           ? {
-              ...(inferredContainer ? { sourceContainer: 'MPEGTS', streamContainer: inferredContainer } : {}),
+              ...(inferredContainer
+                ? { sourceContainer: 'MPEGTS', streamContainer: inferredContainer }
+                : {}),
               ...(containerChanged ? { containerDecision: 'transcode' } : {}),
               ...(transcodeSpeed !== undefined ? { speed: transcodeSpeed } : {}),
               ...(transcodeReasons ? { reasons: transcodeReasons } : {}),

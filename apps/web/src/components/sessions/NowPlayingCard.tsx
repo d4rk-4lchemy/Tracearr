@@ -25,7 +25,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
 import { ServerColorAccent } from '@/components/server';
 import { TerminateSessionDialog } from './TerminateSessionDialog';
-import { useDispatcharrCatchupCardProgress } from './useDispatcharrCatchupCardProgress';
+import { formatDispatcharrCatchupClock } from './useDispatcharrCatchupCardProgress';
 import type { ActiveSession } from '@tracearr/shared';
 
 interface NowPlayingCardProps {
@@ -125,7 +125,6 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
     session.server.type === 'dispatcharr' &&
     session.mediaType === 'live' &&
     session.dispatcharrPlaybackKind === 'catchup';
-  const catchupProgress = useDispatcharrCatchupCardProgress(session);
 
   // Time remaining based on estimated progress
   const remaining =
@@ -150,7 +149,10 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
     session.transcodeInfo?.speed !== undefined
       ? `${session.transcodeInfo.speed.toFixed(2)}x`
       : null;
-  const displayedProgressPercent = isDispatcharrCatchup ? catchupProgress.progressPercent : progressPercent;
+  const catchupStartLabel = formatDispatcharrCatchupClock(
+    session.dispatcharrCatchupEpgStartAt ?? null
+  );
+  const catchupEndLabel = formatDispatcharrCatchupClock(session.dispatcharrCatchupEpgEndAt ?? null);
 
   return (
     <>
@@ -224,7 +226,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
               <div className="flex shrink-0 items-center gap-1.5">
                 {isDispatcharrCatchup && (
                   <div
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent bg-blue-500/15 p-0 text-xs font-semibold text-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 dark:text-blue-400"
+                    className="focus:ring-ring inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent bg-blue-500/15 p-0 text-xs font-semibold text-blue-600 transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none dark:text-blue-400"
                     title="Catch-up"
                     data-testid="catchup-badge"
                   >
@@ -304,16 +306,14 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
 
             {/* Bottom: Progress */}
             <div className="mt-3 space-y-1">
-              <Progress value={displayedProgressPercent} className="h-1.5" />
+              <Progress value={progressPercent} className="h-1.5" />
               <div className="text-muted-foreground flex justify-between text-[10px]">
                 <span>
-                  {isDispatcharrCatchup
-                    ? catchupProgress.startLabel
-                    : formatDuration(estimatedProgressMs)}
+                  {isDispatcharrCatchup ? catchupStartLabel : formatDuration(estimatedProgressMs)}
                 </span>
                 <span>
                   {isDispatcharrCatchup ? (
-                    catchupProgress.endLabel
+                    catchupEndLabel
                   ) : isPaused ? (
                     <span className="font-medium text-yellow-500">Paused</span>
                   ) : dispatcharrLiveSpeed ? (

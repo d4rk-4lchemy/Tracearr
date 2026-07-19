@@ -150,6 +150,7 @@ function createMockRedis(): Redis & {
     exists: vi.fn(async (key: string) => {
       return store.has(key) ? 1 : 0;
     }),
+    eval: vi.fn(async () => '0'),
 
     // Set operations
     smembers: vi.fn(async (key: string) => {
@@ -353,6 +354,28 @@ describe('CacheService', () => {
       const result = await cache.getActiveSessions();
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('Dispatcharr catch-up programme_start state', () => {
+    it('keeps its timestamp in private Redis state', async () => {
+      vi.mocked(redis.eval).mockResolvedValueOnce('1721367000000');
+
+      const timestamp = await cache.getOrSetDispatcharrCatchupProgrammeStartUpdatedAt(
+        'server-1:user-1:client-1:catchup:raw-1:programme-1',
+        '2026-07-19:05-30',
+        1721367005000
+      );
+
+      expect(timestamp).toBe(1721367000000);
+      expect(redis.eval).toHaveBeenCalledWith(
+        expect.stringContaining('existingProgrammeStart == ARGV[1]'),
+        1,
+        'tracearr:dispatcharr:catchup:programme-start:server-1:user-1:client-1:catchup:raw-1:programme-1',
+        '2026-07-19:05-30',
+        '1721367005000',
+        '30'
+      );
     });
   });
 

@@ -134,6 +134,12 @@ export const REDIS_KEYS = {
    */
   PENDING_SESSION: (serverId: string, sessionKey: string) =>
     `${_redisPrefix}tracearr:sessions:pending:${serverId}:${sessionKey}`,
+  /**
+   * Private Dispatcharr catch-up playhead state. This must never be returned
+   * with active-session data because it is implementation detail only.
+   */
+  DISPATCHARR_CATCHUP_PROGRAMME_START: (identity: string) =>
+    `${_redisPrefix}tracearr:dispatcharr:catchup:programme-start:${identity}`,
   /** Set of all pending session keys (serverId:sessionKey format) for enumeration */
   get PENDING_SESSION_IDS() {
     return `${_redisPrefix}tracearr:sessions:pending:ids`;
