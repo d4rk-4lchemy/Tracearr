@@ -84,6 +84,60 @@ export interface DispatcharrVodStatsResponse {
   timestamp?: unknown;
 }
 
+export interface DispatcharrCatchupStatsResponse {
+  timeshift_sessions?: unknown;
+  total_connections?: unknown;
+  timestamp?: unknown;
+}
+
+export interface DispatcharrCatchupSessionGroup {
+  session_id?: unknown;
+  stats_channel_id?: unknown;
+  channel_id?: unknown;
+  channel_uuid?: unknown;
+  channel_name?: unknown;
+  logo_id?: unknown;
+  programme_start?: unknown;
+  position_anchor_at?: unknown;
+  playback_base_secs?: unknown;
+  paused?: unknown;
+  resolution?: unknown;
+  source_fps?: unknown;
+  video_codec?: unknown;
+  audio_codec?: unknown;
+  audio_channels?: unknown;
+  stream_type?: unknown;
+  connection_count?: unknown;
+  connections?: unknown;
+}
+
+export interface DispatcharrCatchupConnection {
+  client_id?: unknown;
+  session_id?: unknown;
+  ip_address?: unknown;
+  user_agent?: unknown;
+  user_id?: unknown;
+  username?: unknown;
+  connected_at?: unknown;
+  duration?: unknown;
+  bytes_streamed?: unknown;
+  avg_bitrate_kbps?: unknown;
+  m3u_profile?: unknown;
+  m3u_profile_id?: unknown;
+}
+
+export interface DispatcharrCatchupProgramme {
+  session_id?: unknown;
+  channel_uuid?: unknown;
+  programme_start?: unknown;
+  title?: unknown;
+  sub_title?: unknown;
+  description?: unknown;
+  start_time?: unknown;
+  end_time?: unknown;
+  duration_secs?: unknown;
+}
+
 export interface DispatcharrVodConnectionGroup {
   content_type?: unknown;
   content_name?: unknown;
@@ -156,6 +210,17 @@ function asNumber(value: unknown): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return 0;
+}
+
+function asOptionalNumber(value: unknown): number | undefined {
+  const parsed = asNumber(value);
+  return Number.isFinite(parsed) && parsed !== 0 ? parsed : undefined;
+}
+
+function asBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  const normalized = asString(value).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
 }
 
 function isPrivateIp(ip: string): boolean {
@@ -237,56 +302,43 @@ export function parseStatusResponse(raw: unknown): DispatcharrChannelStatus[] {
 export function parseRealtimeChannelStatsPayload(
   raw: unknown
 ): DispatcharrStatusResponse | null {
-  const envelope = asRecord(raw);
-  if (!envelope) return null;
-
-  // Dispatcharr websocket messages typically use:
-  // { data: { type: "channel_stats", stats: "{\"channels\": [...], \"count\": N}" } }
-  // but we also tolerate direct { type: "channel_stats", stats: ... }.
-  const data = asRecord(envelope.data) ?? envelope;
-  const eventType = asString(data.type).trim();
-  if (eventType !== 'channel_stats') return null;
-
-  const rawStats = data.stats;
-  if (typeof rawStats === 'string') {
-    try {
-      const parsed = JSON.parse(rawStats) as unknown;
-      const record = asRecord(parsed);
-      if (!record) return null;
-      return record;
-    } catch {
-      return null;
-    }
-  }
-
-  const record = asRecord(rawStats);
-  if (!record) return null;
-  return record;
+  return parseRealtimeStatsPayload(raw, 'channel_stats');
 }
 
 export function parseRealtimeVodStatsPayload(raw: unknown): DispatcharrVodStatsResponse | null {
+  return parseRealtimeStatsPayload(raw, 'vod_stats');
+}
+
+export function parseRealtimeCatchupStatsPayload(
+  raw: unknown
+): DispatcharrCatchupStatsResponse | null {
+  return parseRealtimeStatsPayload(raw, 'timeshift_stats');
+}
+
+function parseRealtimeStatsPayload<T extends Record<string, unknown>>(
+  raw: unknown,
+  expectedType: string
+): T | null {
   const envelope = asRecord(raw);
   if (!envelope) return null;
 
   const data = asRecord(envelope.data) ?? envelope;
   const eventType = asString(data.type).trim();
-  if (eventType !== 'vod_stats') return null;
+  if (eventType !== expectedType) return null;
 
   const rawStats = data.stats;
   if (typeof rawStats === 'string') {
     try {
       const parsed = JSON.parse(rawStats) as unknown;
       const record = asRecord(parsed);
-      if (!record) return null;
-      return record;
+      return record as T | null;
     } catch {
       return null;
     }
   }
 
   const record = asRecord(rawStats);
-  if (!record) return null;
-  return record;
+  return record as T | null;
 }
 
 export function parseVodStatsResponse(raw: unknown): DispatcharrVodStatsResponse {
@@ -295,6 +347,17 @@ export function parseVodStatsResponse(raw: unknown): DispatcharrVodStatsResponse
 
   return {
     vod_connections: Array.isArray(record.vod_connections) ? record.vod_connections : [],
+    total_connections: record.total_connections,
+    timestamp: record.timestamp,
+  };
+}
+
+export function parseCatchupStatsResponse(raw: unknown): DispatcharrCatchupStatsResponse {
+  const record = asRecord(raw);
+  if (!record) return { timeshift_sessions: [] };
+
+  return {
+    timeshift_sessions: Array.isArray(record.timeshift_sessions) ? record.timeshift_sessions : [],
     total_connections: record.total_connections,
     timestamp: record.timestamp,
   };
@@ -342,11 +405,6 @@ export function parseChannelClients(raw: unknown): DispatcharrClientStatus[] {
     const parsed = asRecord(client);
     return parsed ? [parsed] : [];
   });
-}
-
-function asOptionalNumber(value: unknown): number | undefined {
-  const parsed = asNumber(value);
-  return parsed > 0 ? parsed : undefined;
 }
 
 function asOptionalInteger(value: unknown): number | undefined {
@@ -465,6 +523,226 @@ function estimateVodPositionSeconds(
   return 0;
 }
 
+function flattenCatchupSessions(raw: unknown): Array<
+  DispatcharrCatchupSessionGroup & { connections: DispatcharrCatchupConnection[] }
+> {
+  const stats = parseCatchupStatsResponse(raw);
+  const groups = Array.isArray(stats.timeshift_sessions) ? stats.timeshift_sessions : [];
+
+  return groups.flatMap((rawGroup) => {
+    const groupRecord = asRecord(rawGroup);
+    const group: DispatcharrCatchupSessionGroup | null = groupRecord;
+    if (!group) return [];
+    const connections = Array.isArray(group.connections)
+      ? group.connections.flatMap((rawConnection) => {
+          const connectionRecord = asRecord(rawConnection);
+          const connection: DispatcharrCatchupConnection | null = connectionRecord;
+          return connection ? [connection] : [];
+        })
+      : [];
+    return [{ ...group, connections }];
+  });
+}
+
+function buildCatchupProgrammeIdentity(programme: DispatcharrCatchupProgramme | null): string | null {
+  if (!programme) return null;
+  const start = asOptionalString(programme.start_time) ?? asOptionalString(programme.programme_start);
+  return start ?? null;
+}
+
+function buildCatchupMediaTitle(programme: DispatcharrCatchupProgramme | null): string {
+  if (!programme) return '';
+  const title = asOptionalString(programme.title) ?? '';
+  const subTitle = asOptionalString(programme.sub_title) ?? '';
+  return title && subTitle ? `${title} - ${subTitle}` : title;
+}
+
+function normalizeUtcIso(value: unknown): string | undefined {
+  const raw = asOptionalString(value);
+  if (!raw) return undefined;
+
+  const match = raw.match(
+    /^(?<date>\d{4}-\d{2}-\d{2}):(?<hour>\d{2})-(?<minute>\d{2})(?:[:-](?<second>\d{2}))?$/
+  );
+  const normalizedWallClock = match?.groups
+    ? `${match.groups.date}T${match.groups.hour}:${match.groups.minute}:${match.groups.second ?? '00'}Z`
+    : raw;
+
+  const parsedMs = Date.parse(normalizedWallClock);
+  if (!Number.isFinite(parsedMs)) return undefined;
+  return new Date(parsedMs).toISOString();
+}
+
+function estimateCatchupPositionSeconds(
+  session: DispatcharrCatchupSessionGroup,
+  programme: DispatcharrCatchupProgramme | null,
+  baseProgramme: DispatcharrCatchupProgramme | null,
+  nowSeconds: number
+): number | null {
+  const paused = asBoolean(session.paused);
+  const positionAnchorAt = asOptionalNumber(session.position_anchor_at);
+  const playbackBaseSecs = asOptionalNumber(session.playback_base_secs);
+  const currentStartMs = Date.parse(asOptionalString(programme?.start_time) ?? '');
+  const baseStartMs = Date.parse(asOptionalString(baseProgramme?.start_time) ?? '');
+  const rawProgrammeStartMs = Date.parse(asOptionalString(session.programme_start) ?? '');
+
+  if (playbackBaseSecs !== undefined) {
+    const elapsedSinceAnchor = !paused && positionAnchorAt !== undefined ? nowSeconds - positionAnchorAt : 0;
+    let positionSecs = Math.max(0, playbackBaseSecs + Math.max(0, elapsedSinceAnchor));
+
+    if (Number.isFinite(currentStartMs) && Number.isFinite(baseStartMs)) {
+      positionSecs += Math.max(0, (baseStartMs - currentStartMs) / 1000);
+    }
+
+    const durationSecs = asOptionalNumber(programme?.duration_secs);
+    if (durationSecs !== undefined) {
+      positionSecs = Math.min(positionSecs, durationSecs);
+    }
+    return positionSecs;
+  }
+
+  if (
+    !Number.isFinite(currentStartMs) ||
+    !Number.isFinite(rawProgrammeStartMs)
+  ) {
+    return null;
+  }
+
+  const elapsedSinceAnchor = !paused && positionAnchorAt !== undefined ? nowSeconds - positionAnchorAt : 0;
+  let positionSecs = Math.max(0, (rawProgrammeStartMs - currentStartMs) / 1000 + Math.max(0, elapsedSinceAnchor));
+  const durationSecs = asOptionalNumber(programme?.duration_secs);
+  if (durationSecs !== undefined) {
+    positionSecs = Math.min(positionSecs, durationSecs);
+  }
+  return positionSecs;
+}
+
+export function parseCatchupProgrammesResponse(raw: unknown): DispatcharrCatchupProgramme[] {
+  const record = asRecord(raw);
+  const source = Array.isArray(record?.sessions) ? record.sessions : Array.isArray(raw) ? raw : [];
+  return source.flatMap((entry) => {
+    const parsedRecord = asRecord(entry);
+    const parsed: DispatcharrCatchupProgramme | null = parsedRecord;
+    return parsed ? [parsed] : [];
+  });
+}
+
+export function parseSessionsFromCatchupStats(
+  raw: unknown,
+  userById: Map<string, MediaUser>,
+  programmesBySessionId?: Map<string, DispatcharrCatchupProgramme>,
+  baseProgrammesBySessionId?: Map<string, DispatcharrCatchupProgramme>,
+  options?: DispatcharrParserOptions
+): MediaSession[] {
+  const nowSeconds = Date.now() / 1000;
+  const ignoreAnonymousStreams = options?.ignoreAnonymousStreams !== false;
+  const sessions: MediaSession[] = [];
+
+  for (const group of flattenCatchupSessions(raw)) {
+    const sessionId = asString(group.session_id).trim();
+    const channelUuid = asString(group.channel_uuid).trim();
+    const channelId = asString(group.channel_id).trim();
+    const channelName = asString(group.channel_name).trim() || 'Catch-up';
+    if (!sessionId || !channelUuid) continue;
+
+    const programme = programmesBySessionId?.get(sessionId) ?? null;
+    const baseProgramme = baseProgrammesBySessionId?.get(sessionId) ?? null;
+    const programmeIdentity = buildCatchupProgrammeIdentity(programme);
+    const sessionKey = programmeIdentity
+      ? `catchup:${sessionId}:${programmeIdentity}`
+      : `catchup:${sessionId}:channel:${channelUuid || channelId}`;
+    const mediaId = programmeIdentity ? `${channelUuid}:${programmeIdentity}` : `catchup:${channelUuid}`;
+    const mediaTitle = buildCatchupMediaTitle(programme);
+    const fallbackTitle = mediaTitle || channelName;
+    const durationSecs = asOptionalNumber(programme?.duration_secs);
+    const positionSecs = estimateCatchupPositionSeconds(group, programme, baseProgramme, nowSeconds);
+    const catchupAnchorAt = normalizeUtcIso(group.programme_start);
+    const catchupEpgStartAt = normalizeUtcIso(programme?.start_time);
+    const catchupEpgEndAt = normalizeUtcIso(programme?.end_time);
+    const positionMs = positionSecs !== null ? Math.max(0, Math.round(positionSecs * 1000)) : 0;
+    const durationMs = durationSecs !== undefined ? Math.max(0, Math.round(durationSecs * 1000)) : 0;
+    const logoId = asOptionalString(group.logo_id);
+    const channelThumb = logoId ? `/api/channels/logos/${encodeURIComponent(logoId)}/cache/` : undefined;
+    const sourceFps = asOptionalString(group.source_fps);
+    const audioChannels = asOptionalInteger(group.audio_channels);
+    const videoCodec = asOptionalString(group.video_codec);
+    const audioCodec = asOptionalString(group.audio_codec);
+    const resolution = parseResolutionDimensions(asOptionalString(group.resolution));
+
+    for (const connection of group.connections) {
+      const clientId = asString(connection.client_id).trim() || sessionId;
+      const userId = asString(connection.user_id).trim();
+      if (!userId) continue;
+
+      const fallbackAnonymousUser =
+        !ignoreAnonymousStreams && userId === '0'
+          ? ({ id: userId, username: 'Anonymous', isAdmin: false } as MediaUser)
+          : null;
+      const user = userById.get(userId) ?? fallbackAnonymousUser;
+      if (!user) continue;
+      if (shouldIgnoreAnonymousDispatcharrUser(user.username, options)) continue;
+
+      const ipAddress = asString(connection.ip_address).trim() || '0.0.0.0';
+      sessions.push({
+        sessionKey,
+        terminationKey: sessionId,
+        dispatcharrPlaybackKind: 'catchup',
+        progressEstimated: true,
+        dispatcharrCatchupAnchorAt: catchupAnchorAt,
+        dispatcharrCatchupEpgStartAt: catchupEpgStartAt,
+        dispatcharrCatchupEpgEndAt: catchupEpgEndAt,
+        mediaId,
+        user: {
+          id: user.id,
+          username: user.username,
+          thumb: user.thumb,
+        },
+        media: {
+          title: fallbackTitle,
+          type: 'live',
+          durationMs,
+          thumbPath: channelThumb,
+        },
+        live: {
+          channelTitle: channelName,
+          channelIdentifier: channelUuid || channelId,
+          channelThumb,
+        },
+        playback: {
+          state: asBoolean(group.paused) ? 'paused' : 'playing',
+          positionMs,
+          progressPercent: durationMs > 0 ? calculateProgress(positionMs, durationMs) : 0,
+        },
+        player: {
+          name: asString(connection.user_agent).trim() || 'Dispatcharr Catch-up Client',
+          deviceId: clientId,
+          product: asOptionalString(connection.user_agent),
+          platform: 'Dispatcharr',
+        },
+        network: {
+          ipAddress,
+          isLocal: isPrivateIp(ipAddress),
+        },
+        quality: {
+          bitrate: Math.round(asNumber(connection.avg_bitrate_kbps)),
+          isTranscode: false,
+          videoDecision: 'directplay',
+          audioDecision: 'directplay',
+          videoResolution: resolution.normalized,
+          videoWidth: resolution.width,
+          videoHeight: resolution.height,
+          sourceVideoCodec: videoCodec,
+          sourceAudioCodec: audioCodec,
+          sourceAudioChannels: audioChannels,
+          sourceVideoDetails: sourceFps ? { framerate: sourceFps } : undefined,
+        },
+      });
+    }
+  }
+
+  return sessions;
+}
+
 export function parseSessionsFromVodStats(
   raw: unknown,
   userById: Map<string, MediaUser>,
@@ -517,6 +795,9 @@ export function parseSessionsFromVodStats(
 
     sessions.push({
       sessionKey: clientId,
+      terminationKey: clientId,
+      dispatcharrPlaybackKind: 'vod',
+      progressEstimated: false,
       mediaId,
       user: {
         id: user.id,
@@ -687,6 +968,9 @@ export function parseSessionsFromChannels(
 
       sessions.push({
         sessionKey: `${channelId}:${clientId}`,
+        terminationKey: `${channelId}:${clientId}`,
+        dispatcharrPlaybackKind: 'live',
+        progressEstimated: false,
         mediaId: channelId,
         user: {
           id: user.id,

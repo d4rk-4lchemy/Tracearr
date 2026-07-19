@@ -10,6 +10,9 @@ import type {
 import {
   type DispatcharrResolvedOutputProfile,
   normalizeDispatcharrChannel,
+  parseCatchupProgrammesResponse,
+  parseCatchupStatsResponse,
+  parseSessionsFromCatchupStats,
   parseSessionsFromVodStats,
   parseChannelClients,
   parseVodStatsResponse,
@@ -17,6 +20,8 @@ import {
   parseStatusResponse,
   parseUsersResponse,
   type DispatcharrChannelStatus,
+  type DispatcharrCatchupProgramme,
+  type DispatcharrCatchupStatsResponse,
   type DispatcharrVodStatsResponse,
   type NormalizedDispatcharrChannel,
 } from './parser.js';
@@ -148,9 +153,10 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   async getSessions(): Promise<MediaSession[]> {
-    const [statusResult, vodStatsResult, userByIdResult] = await Promise.allSettled([
+    const [statusResult, vodStatsResult, catchupStatsResult, userByIdResult] = await Promise.allSettled([
       this.getStatusSnapshot(),
       this.getVodStatsSnapshot(),
+      this.getCatchupStatsSnapshot(),
       this.getUserMap(),
     ]);
 
@@ -174,9 +180,23 @@ export class DispatcharrClient implements IMediaServerClient {
             }
           )
         : Promise.resolve(this.warnAndSkipVodSessions(vodStatsResult.reason));
+    const catchupSessionsPromise =
+      catchupStatsResult.status === 'fulfilled'
+        ? this.buildSessionsFromCatchupStatsSnapshot(
+            catchupStatsResult.value,
+            userByIdResult.value
+          ).catch((error: unknown) => {
+            this.warnCatchupStatsFailure(error);
+            return [];
+          })
+        : Promise.resolve(this.warnAndSkipCatchupSessions(catchupStatsResult.reason));
 
-    const [liveSessions, vodSessions] = await Promise.all([liveSessionsPromise, vodSessionsPromise]);
-    return [...liveSessions, ...vodSessions];
+    const [liveSessions, vodSessions, catchupSessions] = await Promise.all([
+      liveSessionsPromise,
+      vodSessionsPromise,
+      catchupSessionsPromise,
+    ]);
+    return [...liveSessions, ...vodSessions, ...catchupSessions];
   }
 
   private warnAndSkipVodSessions(error: unknown): MediaSession[] {
@@ -187,6 +207,18 @@ export class DispatcharrClient implements IMediaServerClient {
   private warnVodStatsFailure(error: unknown): void {
     console.warn(
       `Failed to fetch Dispatcharr VOD stats from ${this.baseUrl}; continuing with live sessions only`,
+      error
+    );
+  }
+
+  private warnAndSkipCatchupSessions(error: unknown): MediaSession[] {
+    this.warnCatchupStatsFailure(error);
+    return [];
+  }
+
+  private warnCatchupStatsFailure(error: unknown): void {
+    console.warn(
+      `Failed to fetch Dispatcharr catch-up stats from ${this.baseUrl}; continuing without catch-up sessions`,
       error
     );
   }
@@ -304,6 +336,31 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   async terminateSession(sessionId: string): Promise<boolean> {
+    if (sessionId.startsWith('catchup:')) {
+      const rawSessionId = sessionId.slice('catchup:'.length).trim();
+      if (!rawSessionId) throw new Error('Dispatcharr catch-up session id must not be empty');
+      const response = await fetch(`${this.baseUrl}/proxy/catchup/stop_client/`, {
+        method: 'POST',
+        headers: {
+          ...(await this.buildHeaders()),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ session_id: rawSessionId }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) throw new Error('Session not found (may have already ended)');
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Unauthorized to terminate Dispatcharr session');
+        }
+        throw new Error(
+          `Failed to terminate Dispatcharr catch-up session: ${response.status} ${response.statusText}`
+        );
+      }
+
+      return true;
+    }
+
     const separator = sessionId.indexOf(':');
     if (separator > 0 && separator < sessionId.length - 1) {
       const channelId = sessionId.slice(0, separator);
@@ -395,6 +452,27 @@ export class DispatcharrClient implements IMediaServerClient {
     return parseVodStatsResponse(data);
   }
 
+  async getCatchupStatsSnapshot(): Promise<DispatcharrCatchupStatsResponse> {
+    try {
+      const data = await fetchJson<unknown>(`${this.baseUrl}/proxy/stats/`, {
+        headers: await this.buildHeaders(),
+        service: 'dispatcharr',
+        timeout: 10000,
+      });
+      const record =
+        data && typeof data === 'object' && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : null;
+      return parseCatchupStatsResponse(record?.catchup ?? {});
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('404')) {
+        return { timeshift_sessions: [] };
+      }
+      throw error;
+    }
+  }
+
   async buildSessionsFromVodStatsSnapshot(
     stats: DispatcharrVodStatsResponse,
     userById?: Map<string, MediaUser>
@@ -403,6 +481,74 @@ export class DispatcharrClient implements IMediaServerClient {
     return parseSessionsFromVodStats(stats, resolvedUserMap, {
       ignoreAnonymousStreams: this.ignoreAnonymousStreams,
     });
+  }
+
+  async getCatchupProgrammes(
+    sessions: Array<{ session_id: string; channel_uuid: string; programme_start: string; position_secs?: number }>
+  ): Promise<Map<string, DispatcharrCatchupProgramme>> {
+    if (sessions.length === 0) return new Map();
+
+    const programmes = new Map<string, DispatcharrCatchupProgramme>();
+    for (let index = 0; index < sessions.length; index += 50) {
+      const chunk = sessions.slice(index, index + 50);
+      try {
+        const data = await fetchJson<unknown>(`${this.baseUrl}/proxy/catchup/programs/`, {
+          method: 'POST',
+          headers: {
+            ...(await this.buildHeaders()),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ sessions: chunk }),
+          service: 'dispatcharr',
+          timeout: 10000,
+        });
+        for (const programme of parseCatchupProgrammesResponse(data)) {
+          const sessionId = String(programme.session_id ?? '').trim();
+          if (sessionId) programmes.set(sessionId, programme);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('404')) return new Map();
+        throw error;
+      }
+    }
+
+    return programmes;
+  }
+
+  async buildSessionsFromCatchupStatsSnapshot(
+    stats: DispatcharrCatchupStatsResponse,
+    userById?: Map<string, MediaUser>
+  ): Promise<MediaSession[]> {
+    const resolvedUserMap = userById ?? (await this.getUserMap());
+    const groups = Array.isArray(stats.timeshift_sessions) ? stats.timeshift_sessions : [];
+    const programmeRequests = groups.flatMap((rawGroup) => {
+      const group = rawGroup && typeof rawGroup === 'object' ? (rawGroup as Record<string, unknown>) : null;
+      const sessionId = String(group?.session_id ?? '').trim();
+      const channelUuid = String(group?.channel_uuid ?? '').trim();
+      const programmeStart = String(group?.programme_start ?? '').trim();
+      if (!sessionId || !channelUuid || !programmeStart) return [];
+      return [
+        { session_id: sessionId, channel_uuid: channelUuid, programme_start: programmeStart },
+        { session_id: sessionId, channel_uuid: channelUuid, programme_start: programmeStart, position_secs: 0 },
+      ];
+    });
+    const programmeBySessionId = await this.getCatchupProgrammes(programmeRequests);
+    const baseProgrammeBySessionId = new Map<string, DispatcharrCatchupProgramme>();
+    for (const request of programmeRequests) {
+      if (request.position_secs !== 0) continue;
+      const programme = programmeBySessionId.get(request.session_id);
+      if (programme) baseProgrammeBySessionId.set(request.session_id, programme);
+    }
+    return parseSessionsFromCatchupStats(
+      stats,
+      resolvedUserMap,
+      programmeBySessionId,
+      baseProgrammeBySessionId,
+      {
+        ignoreAnonymousStreams: this.ignoreAnonymousStreams,
+      }
+    );
   }
 
   async getChannelStatus(channelId: string): Promise<DispatcharrChannelStatus | null> {

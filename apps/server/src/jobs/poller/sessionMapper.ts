@@ -181,6 +181,11 @@ export function mapMediaSession(
     platform,
     quality,
     isTranscode: session.quality.isTranscode,
+    dispatcharrPlaybackKind: session.dispatcharrPlaybackKind ?? null,
+    progressEstimated: session.progressEstimated === true,
+    dispatcharrCatchupAnchorAt: session.dispatcharrCatchupAnchorAt ?? null,
+    dispatcharrCatchupEpgStartAt: session.dispatcharrCatchupEpgStartAt ?? null,
+    dispatcharrCatchupEpgEndAt: session.dispatcharrCatchupEpgEndAt ?? null,
     videoDecision: session.quality.videoDecision,
     audioDecision: session.quality.audioDecision,
     bitrate: session.quality.bitrate,
@@ -209,7 +214,7 @@ export function mapMediaSession(
  * const sessionObjects = rows.map(mapSessionRow);
  */
 export function mapSessionRow(s: typeof sessions.$inferSelect): Session {
-  return {
+  const session: Session = {
     id: s.id,
     serverId: s.serverId,
     serverUserId: s.serverUserId,
@@ -250,6 +255,11 @@ export function mapSessionRow(s: typeof sessions.$inferSelect): Session {
     platform: s.platform,
     quality: s.quality,
     isTranscode: s.isTranscode,
+    dispatcharrPlaybackKind: s.dispatcharrPlaybackKind,
+    progressEstimated: s.progressEstimated,
+    dispatcharrCatchupAnchorAt: null,
+    dispatcharrCatchupEpgStartAt: null,
+    dispatcharrCatchupEpgEndAt: null,
     videoDecision: s.videoDecision,
     audioDecision: s.audioDecision,
     bitrate: s.bitrate,
@@ -265,4 +275,6 @@ export function mapSessionRow(s: typeof sessions.$inferSelect): Session {
     trackNumber: s.trackNumber,
     discNumber: s.discNumber,
   };
+
+  return session;
 }

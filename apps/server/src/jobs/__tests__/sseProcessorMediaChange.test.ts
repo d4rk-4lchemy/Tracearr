@@ -227,6 +227,7 @@ const mockActiveSession = {
   serverId: SERVER_ID,
   serverUserId: 'server-user-1',
   sessionKey: '42',
+  progressUpdatedAt: new Date(),
   ratingKey: '1002',
   state: 'playing',
   mediaTitle: 'Episode 2',

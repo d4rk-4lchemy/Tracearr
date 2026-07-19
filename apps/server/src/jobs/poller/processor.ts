@@ -133,17 +133,11 @@ export function mergeDispatcharrRealtimeSessions(
   wsSessions: MediaSession[],
   restSessions: MediaSession[]
 ): MediaSession[] {
-  const liveFromRestBySessionKey = new Map(
-    restSessions
-      .filter((session) => session.media.type === 'live')
-      .map((session) => [session.sessionKey, session])
-  );
-  const liveFromWs = wsSessions
-    .filter((session) => session.media.type === 'live')
-    .map((session) => liveFromRestBySessionKey.get(session.sessionKey) ?? session);
-  const vodFromRest = restSessions.filter((session) => session.media.type !== 'live');
-
-  return [...liveFromWs, ...vodFromRest];
+  const restBySessionKey = new Map(restSessions.map((session) => [session.sessionKey, session]));
+  const mergedRealtimeSessions = wsSessions.map((session) => restBySessionKey.get(session.sessionKey) ?? session);
+  const realtimeKeys = new Set(mergedRealtimeSessions.map((session) => session.sessionKey));
+  const fallbackRestSessions = restSessions.filter((session) => !realtimeKeys.has(session.sessionKey));
+  return [...mergedRealtimeSessions, ...fallbackRestSessions];
 }
 
 export function syncDispatcharrPendingProgress(

@@ -3,7 +3,9 @@ import {
   isAnonymousDispatcharrUserName,
   normalizeDispatcharrChannel,
   normalizeDispatcharrUserName,
+  parseRealtimeCatchupStatsPayload,
   parseRealtimeChannelStatsPayload,
+  parseSessionsFromCatchupStats,
   parseRealtimeVodStatsPayload,
   parseSessionsFromChannels,
   parseSessionsFromVodStats,
@@ -760,6 +762,136 @@ describe('Dispatcharr parser', () => {
 
       expect(sessions[0]?.playback.positionMs).toBe(0);
       expect(sessions[0]?.playback.progressPercent).toBe(0);
+    });
+
+    it('parses websocket timeshift_stats payload where stats is JSON string', () => {
+      const parsed = parseRealtimeCatchupStatsPayload({
+        data: {
+          type: 'timeshift_stats',
+          stats: JSON.stringify({
+            timeshift_sessions: [
+              {
+                session_id: 'catchup-1',
+                channel_uuid: 'channel-uuid-1',
+                programme_start: '2026-07-19:05-30',
+                connections: [],
+              },
+            ],
+          }),
+        },
+      });
+
+      expect(parsed).toMatchObject({
+        timeshift_sessions: [
+          {
+            session_id: 'catchup-1',
+            channel_uuid: 'channel-uuid-1',
+            programme_start: '2026-07-19:05-30',
+          },
+        ],
+      });
+    });
+
+    it('maps Dispatcharr catch-up anchor and EPG boundaries to runtime session fields', () => {
+      const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-19T05:30:00.000Z'));
+
+      try {
+        const sessions = parseSessionsFromCatchupStats(
+          {
+            timeshift_sessions: [
+              {
+                session_id: 'catchup-1',
+                channel_id: '101',
+                channel_uuid: 'channel-uuid-1',
+                channel_name: 'News Channel',
+                programme_start: '2026-07-19:05-30',
+                resolution: '1920x1080',
+                connections: [
+                  {
+                    client_id: 'client-1',
+                    user_id: '7',
+                    ip_address: '203.0.113.10',
+                    user_agent: 'TiviMate',
+                  },
+                ],
+              },
+            ],
+          },
+          new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]]),
+          new Map([
+            [
+              'catchup-1',
+              {
+                session_id: 'catchup-1',
+                channel_uuid: 'channel-uuid-1',
+                programme_start: '2026-07-19:05-30',
+                title: 'Morning News',
+                start_time: '2026-07-19T05:30:00+00:00',
+                end_time: '2026-07-19T07:00:00+00:00',
+                duration_secs: 5400,
+              },
+            ],
+          ]),
+          new Map([
+            [
+              'catchup-1',
+              {
+                session_id: 'catchup-1',
+                channel_uuid: 'channel-uuid-1',
+                programme_start: '2026-07-19:05-30',
+                title: 'Morning News',
+                start_time: '2026-07-19T05:30:00+00:00',
+                end_time: '2026-07-19T07:00:00+00:00',
+                duration_secs: 5400,
+              },
+            ],
+          ])
+        );
+
+        expect(sessions).toHaveLength(1);
+        expect(sessions[0]).toMatchObject({
+          dispatcharrPlaybackKind: 'catchup',
+          progressEstimated: true,
+          dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+          media: { type: 'live', title: 'Morning News', durationMs: 5_400_000 },
+          playback: { positionMs: 0, progressPercent: 0 },
+        });
+      } finally {
+        dateNowSpy.mockRestore();
+      }
+    });
+
+    it('keeps catch-up EPG boundary fields empty when programme enrichment is missing', () => {
+      const sessions = parseSessionsFromCatchupStats(
+        {
+          timeshift_sessions: [
+            {
+              session_id: 'catchup-1',
+              channel_id: '101',
+              channel_uuid: 'channel-uuid-1',
+              channel_name: 'News Channel',
+              programme_start: '2026-07-19:05-30',
+              connections: [
+                {
+                  client_id: 'client-1',
+                  user_id: '7',
+                  ip_address: '203.0.113.10',
+                  user_agent: 'TiviMate',
+                },
+              ],
+            },
+          ],
+        },
+        new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]])
+      );
+
+      expect(sessions[0]).toMatchObject({
+        dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
+      });
+      expect(sessions[0]?.dispatcharrCatchupEpgStartAt).toBeUndefined();
+      expect(sessions[0]?.dispatcharrCatchupEpgEndAt).toBeUndefined();
     });
   });
 });

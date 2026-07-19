@@ -31,6 +31,7 @@ function makeSession(id: string, overrides: Partial<ActiveSession> = {}): Active
     serverId: 'server-1',
     serverUserId: 'server-user-1',
     sessionKey: `key-${id}`,
+    progressUpdatedAt: new Date(),
     ...overrides,
   } as ActiveSession;
 }

@@ -484,6 +484,13 @@
       "when": 1778499242919,
       "tag": "0068_neat_makkari",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1784448000000,
+      "tag": "0069_steady_squadron_supreme",
+      "breakpoints": true
     }
   ]
 }
