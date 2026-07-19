@@ -113,7 +113,11 @@ export async function terminateSession(
   // For Plex: use plexSessionId (Session.id) which is different from sessionKey
   // For Jellyfin/Emby: use sessionKey directly
   const terminationSessionId =
-    session.server.type === 'plex' ? session.plexSessionId : session.sessionKey;
+    session.server.type === 'plex'
+      ? session.plexSessionId
+      : session.server.type === 'dispatcharr' && session.dispatcharrPlaybackKind === 'catchup'
+        ? `catchup:${session.sessionKey.split(':')[1] ?? ''}`
+        : session.sessionKey;
 
   if (!terminationSessionId) {
     const logEntries = await db

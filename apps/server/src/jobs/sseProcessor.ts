@@ -534,6 +534,7 @@ async function handleProgress(event: {
       const cached = await cacheService.getSessionById(existingSession.id);
       if (cached) {
         cached.progressMs = notification.viewOffset;
+        cached.progressUpdatedAt = now;
         cached.watched = watched;
         await cacheService.updateActiveSession(cached);
 

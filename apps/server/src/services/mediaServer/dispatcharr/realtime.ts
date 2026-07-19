@@ -3,10 +3,13 @@ import { SSE_CONFIG } from '@tracearr/shared';
 import { DispatcharrClient } from './client.js';
 import type { MediaSession, MediaUser } from '../types.js';
 import {
+  parseCatchupStatsResponse,
+  parseRealtimeCatchupStatsPayload,
   parseRealtimeChannelStatsPayload,
   parseRealtimeVodStatsPayload,
-  parseSessionsFromVodStats,
   parseStatusResponse,
+  parseSessionsFromVodStats,
+  type DispatcharrCatchupStatsResponse,
   type DispatcharrChannelStatus,
   type DispatcharrVodStatsResponse,
   type NormalizedDispatcharrChannel,
@@ -95,6 +98,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private manualDisconnect = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private catchupRefreshTimer: NodeJS.Timeout | null = null;
 
   private mode: DispatcharrRealtimeMode;
   private state: DispatcharrRealtimeState = 'disconnected';
@@ -108,6 +112,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private latestSessions: MediaSession[] = [];
   private latestLiveSessions: MediaSession[] = [];
   private latestVodSessions: MediaSession[] = [];
+  private latestCatchupSessions: MediaSession[] = [];
   private userCache = new Map<string, MediaUser>();
   private logoCache = new Map<string, string>();
   private programCache = new Map<string, string>();
@@ -185,6 +190,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.setState(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
+    this.clearCatchupRefreshTimer();
 
     try {
       const jwtToken = await this.client.getWebSocketToken();
@@ -246,6 +252,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.manualDisconnect = true;
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
+    this.clearCatchupRefreshTimer();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -279,18 +286,27 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     }
 
     const vodStatsPayload = parseRealtimeVodStatsPayload(parsed);
-    if (!vodStatsPayload) return;
+    if (vodStatsPayload) {
+      this.lastEventAt = new Date();
+      this.resetHeartbeat();
+      await this.applyVodStatsUpdate(vodStatsPayload);
+      return;
+    }
+
+    const catchupStatsPayload = parseRealtimeCatchupStatsPayload(parsed);
+    if (!catchupStatsPayload) return;
 
     this.lastEventAt = new Date();
     this.resetHeartbeat();
-    await this.applyVodStatsUpdate(vodStatsPayload);
+    await this.applyCatchupStatsUpdate(catchupStatsPayload);
   }
 
   private async bootstrapFromRest(): Promise<void> {
     try {
-      const [statusResult, vodResult] = await Promise.allSettled([
+      const [statusResult, vodResult, catchupResult] = await Promise.allSettled([
         this.client.getStatusSnapshot(),
         this.client.getVodStatsSnapshot(),
+        this.client.getCatchupStatsSnapshot(),
       ]);
 
       if (statusResult.status === 'fulfilled') {
@@ -307,6 +323,10 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       } else if (!this.lastError) {
         this.lastError =
           vodResult.reason instanceof Error ? vodResult.reason : new Error(String(vodResult.reason));
+      }
+
+      if (catchupResult.status === 'fulfilled') {
+        await this.applyCatchupStatsUpdate(catchupResult.value, true, false);
       }
 
       this.emitMergedSnapshot();
@@ -364,8 +384,49 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     else this.emitStatus();
   }
 
+  private async applyCatchupStatsUpdate(
+    catchupStats: DispatcharrCatchupStatsResponse,
+    forceUserRefresh = false,
+    emitSnapshot = true
+  ): Promise<void> {
+    const groups = Array.isArray(catchupStats.timeshift_sessions) ? catchupStats.timeshift_sessions : [];
+    const referencedUserIds = new Set<string>();
+    for (const rawGroup of groups) {
+      if (!isRecord(rawGroup)) continue;
+      const connections = Array.isArray(rawGroup.connections) ? rawGroup.connections : [];
+      for (const rawConnection of connections) {
+        if (!isRecord(rawConnection)) continue;
+        const rawUserId = rawConnection.user_id;
+        const userId =
+          typeof rawUserId === 'string'
+            ? rawUserId.trim()
+            : typeof rawUserId === 'number'
+              ? String(rawUserId)
+              : '';
+        if (userId) referencedUserIds.add(userId);
+      }
+    }
+
+    const missingUsers = [...referencedUserIds].filter((id) => !this.userCache.has(id));
+    if (forceUserRefresh || this.userCache.size === 0 || missingUsers.length > 0) {
+      this.userCache = await this.client.getUserMap();
+    }
+
+    this.latestCatchupSessions = await this.client.buildSessionsFromCatchupStatsSnapshot(
+      parseCatchupStatsResponse(catchupStats),
+      this.userCache
+    );
+    this.scheduleCatchupRefresh();
+    if (emitSnapshot) this.emitMergedSnapshot();
+    else this.emitStatus();
+  }
+
   private emitMergedSnapshot(): void {
-    this.latestSessions = [...this.latestLiveSessions, ...this.latestVodSessions];
+    this.latestSessions = [
+      ...this.latestLiveSessions,
+      ...this.latestVodSessions,
+      ...this.latestCatchupSessions,
+    ];
     this.emit('snapshot:update', { serverId: this.serverId, sessions: this.latestSessions });
     this.emitStatus();
   }
@@ -439,6 +500,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private activateFallback(reason: string): void {
     this.mode = 'rest-fallback';
     this.fallbackReason = reason;
+    this.clearCatchupRefreshTimer();
     this.setState('fallback');
     this.emit('fallback:activated', {
       serverId: this.serverId,
@@ -481,5 +543,29 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     if (!this.heartbeatTimer) return;
     clearTimeout(this.heartbeatTimer);
     this.heartbeatTimer = null;
+  }
+
+  private scheduleCatchupRefresh(): void {
+    this.clearCatchupRefreshTimer();
+    if (this.state !== 'connected' || this.latestCatchupSessions.length === 0) return;
+    this.catchupRefreshTimer = setTimeout(() => {
+      void this.refreshCatchupProgrammes();
+    }, 15_000);
+  }
+
+  private async refreshCatchupProgrammes(): Promise<void> {
+    if (this.state !== 'connected' || this.latestCatchupSessions.length === 0) return;
+    try {
+      const stats = await this.client.getCatchupStatsSnapshot();
+      await this.applyCatchupStatsUpdate(stats);
+    } catch (error) {
+      this.lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  private clearCatchupRefreshTimer(): void {
+    if (!this.catchupRefreshTimer) return;
+    clearTimeout(this.catchupRefreshTimer);
+    this.catchupRefreshTimer = null;
   }
 }

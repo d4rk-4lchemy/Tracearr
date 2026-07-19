@@ -323,6 +323,10 @@ export const sessions = pgTable(
     platform: varchar('platform', { length: 100 }),
     quality: varchar('quality', { length: 100 }),
     isTranscode: boolean('is_transcode').notNull().default(false),
+    dispatcharrPlaybackKind: varchar('dispatcharr_playback_kind', { length: 20 }).$type<
+      'live' | 'vod' | 'catchup' | null
+    >(),
+    progressEstimated: boolean('progress_estimated').notNull().default(false),
     // Transcode decisions: 'transcode' | 'copy' | 'directplay'
     // copy = direct stream (container remux), directplay = true direct play
     videoDecision: varchar('video_decision', { length: 50 }),

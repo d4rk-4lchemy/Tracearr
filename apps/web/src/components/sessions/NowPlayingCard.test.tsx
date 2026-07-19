@@ -18,9 +18,12 @@ vi.mock('@/hooks/useServer', () => ({
 }));
 
 vi.mock('@/hooks/useEstimatedProgress', () => ({
-  useEstimatedProgress: () => ({
-    estimatedProgressMs: 60_000,
-    progressPercent: 10,
+  useEstimatedProgress: (session: ActiveSession) => ({
+    estimatedProgressMs: session.progressMs ?? 0,
+    progressPercent:
+      session.totalDurationMs && session.progressMs
+        ? (session.progressMs / session.totalDurationMs) * 100
+        : 0,
   }),
 }));
 
@@ -49,6 +52,7 @@ function makeSession(overrides: Partial<ActiveSession> = {}): ActiveSession {
     durationMs: null,
     totalDurationMs: null,
     progressMs: null,
+    progressUpdatedAt: new Date(),
     lastPausedAt: null,
     pausedDurationMs: 0,
     referenceId: null,
@@ -109,7 +113,176 @@ function makeSession(overrides: Partial<ActiveSession> = {}): ActiveSession {
   };
 }
 
+function getProgressTranslatePercent(container: HTMLElement): number | null {
+  const indicator = container.querySelector<HTMLElement>('[style*="translateX"]');
+  const transform = indicator?.style.transform ?? '';
+  const match = transform.match(/translateX\(-([0-9.]+)%\)/);
+  return match?.[1] ? Number(match[1]) : null;
+}
+
 describe('NowPlayingCard ffmpeg speed display', () => {
+  it('shows a catch-up icon for Dispatcharr catch-up cards', () => {
+    const { container } = render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+        })}
+      />
+    );
+
+    expect(screen.getByTitle('Catch-up')).toBeTruthy();
+    expect(container.querySelector('[data-testid="catchup-badge"]')).toBeTruthy();
+  });
+
+  it('does not show a catch-up icon for Dispatcharr live sessions without catch-up', () => {
+    render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'live',
+        })}
+      />
+    );
+
+    expect(screen.queryByTitle('Catch-up')).toBeNull();
+  });
+
+  it('does not show a catch-up icon for non-Dispatcharr live sessions', () => {
+    render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          server: { id: 'server-2', name: 'Plex', type: 'plex' },
+        })}
+      />
+    );
+
+    expect(screen.queryByTitle('Catch-up')).toBeNull();
+  });
+
+  it('renders catch-up before quality and device badges', () => {
+    const { container } = render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+        })}
+      />
+    );
+
+    const badgeRow = container.querySelector('.flex.shrink-0.items-center.gap-1\\.5');
+    const badgeIds = Array.from(badgeRow?.children ?? []).map((child) =>
+      (child as HTMLElement).getAttribute('data-testid')
+    );
+
+    expect(badgeIds.slice(0, 3)).toEqual(['catchup-badge', 'quality-badge', 'device-badge']);
+
+    const catchupBadge = container.querySelector('[data-testid="catchup-badge"]');
+    expect(catchupBadge?.className).toContain('rounded-full');
+    expect(catchupBadge?.className).toContain('bg-blue-500/15');
+    expect(catchupBadge?.className).toContain('text-blue-600');
+  });
+
+  it('shows fixed start and end times for Dispatcharr catch-up cards', () => {
+    render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+          totalDurationMs: 5_400_000,
+          progressMs: 0,
+        })}
+      />
+    );
+
+    expect(screen.getByText('05:30')).toBeTruthy();
+    expect(screen.getByText('07:00')).toBeTruthy();
+    expect(screen.queryByText('1.03x')).toBeNull();
+  });
+
+  it('keeps catch-up progress empty when EPG data is missing', () => {
+    const { container } = render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupAnchorAt: '2026-07-19T06:15:00.000Z',
+          dispatcharrCatchupEpgStartAt: null,
+          dispatcharrCatchupEpgEndAt: null,
+          totalDurationMs: 5_400_000,
+          progressMs: 2_700_000,
+        })}
+      />
+    );
+
+    expect(screen.getAllByText('--:--')).toHaveLength(2);
+    expect(getProgressTranslatePercent(container)).toBe(50);
+  });
+
+  it('uses the backend progress after programme_start changes', () => {
+    const { container, rerender } = render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+          totalDurationMs: 5_400_000,
+          progressMs: 0,
+        })}
+      />
+    );
+
+    rerender(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupAnchorAt: '2026-07-19T06:15:00.000Z',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+          totalDurationMs: 5_400_000,
+          progressMs: 2_700_000,
+        })}
+      />
+    );
+
+    expect(getProgressTranslatePercent(container)).toBe(50);
+  });
+
+  it('keeps backend catch-up progress across refetches when programme_start is unchanged', () => {
+    const initialProgressUpdatedAt = new Date('2026-07-19T05:30:00.000Z');
+    const refetchProgressUpdatedAt = new Date('2026-07-19T05:31:00.000Z');
+
+    const { container, rerender } = render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+          totalDurationMs: 5_400_000,
+          progressMs: 0,
+          progressUpdatedAt: initialProgressUpdatedAt,
+        })}
+      />
+    );
+
+    rerender(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+          totalDurationMs: 5_400_000,
+          progressMs: 60_000,
+          progressUpdatedAt: refetchProgressUpdatedAt,
+        })}
+      />
+    );
+
+    expect(getProgressTranslatePercent(container)).toBeCloseTo(98.889, 2);
+  });
+
   it('shows ffmpeg speed for dispatcharr live streams', () => {
     render(
       <NowPlayingCard
@@ -136,7 +309,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     );
 
     expect(screen.queryByText('1.25x')).toBeNull();
-    expect(screen.getByText('--:--')).toBeTruthy();
+    expect(screen.getAllByText('--:--')).toHaveLength(2);
   });
 
   it('proxies absolute Dispatcharr live channel logos for card artwork', () => {

@@ -125,6 +125,11 @@ export interface BuildActiveSessionInput {
     platform: string;
     quality: string;
     isTranscode: boolean;
+    dispatcharrPlaybackKind: 'live' | 'vod' | 'catchup' | null;
+    progressEstimated: boolean;
+    dispatcharrCatchupAnchorAt?: string | null;
+    dispatcharrCatchupEpgStartAt?: string | null;
+    dispatcharrCatchupEpgEndAt?: string | null;
     videoDecision: string;
     audioDecision: string;
     bitrate: number;
@@ -171,8 +176,9 @@ export interface BuildActiveSessionInput {
  */
 export function buildActiveSession(input: BuildActiveSessionInput): ActiveSession {
   const { session, processed, user, geo, server, overrides } = input;
+  const progressUpdatedAt = new Date();
 
-  return {
+  const activeSession: ActiveSession = {
     // Core identifiers
     id: session.id,
     serverId: server.id,
@@ -203,6 +209,7 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     // Progress
     totalDurationMs: processed.totalDurationMs || null,
     progressMs: processed.progressMs || null,
+    progressUpdatedAt,
 
     // Pause tracking (can be overridden for updates)
     lastPausedAt:
@@ -238,6 +245,11 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     // Quality/transcode info
     quality: processed.quality,
     isTranscode: processed.isTranscode,
+    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
+    progressEstimated: processed.progressEstimated,
+    dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
+    dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
+    dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
     videoDecision: processed.videoDecision,
     audioDecision: processed.audioDecision,
     bitrate: processed.bitrate,
@@ -262,6 +274,8 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     // Termination capability - Plex requires Session.id, some clients (like Plexamp) don't provide it
     canTerminate: server.type !== 'plex' || !!processed.plexSessionId,
   };
+
+  return activeSession;
 }
 
 /**
@@ -274,6 +288,7 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
  */
 export function buildPendingActiveSession(pendingData: PendingSessionData): ActiveSession {
   const { processed, serverUser, geo, server } = pendingData;
+  const progressUpdatedAt = new Date();
 
   return {
     // Core identifiers - use pre-generated UUID (stable from creation to DB persistence)
@@ -306,6 +321,7 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     // Progress
     totalDurationMs: processed.totalDurationMs || null,
     progressMs: processed.progressMs || null,
+    progressUpdatedAt,
 
     // Pause tracking
     lastPausedAt: pendingData.lastPausedAt ? new Date(pendingData.lastPausedAt) : null,
@@ -337,6 +353,11 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     // Quality/transcode info
     quality: processed.quality,
     isTranscode: processed.isTranscode,
+    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
+    progressEstimated: processed.progressEstimated,
+    dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
+    dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
+    dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
     videoDecision: processed.videoDecision,
     audioDecision: processed.audioDecision,
     bitrate: processed.bitrate,
@@ -709,6 +730,8 @@ export async function createSessionWithRulesAtomic(
               platform: processed.platform,
               quality: processed.quality,
               isTranscode: processed.isTranscode,
+              dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
+              progressEstimated: processed.progressEstimated,
               videoDecision: processed.videoDecision,
               audioDecision: processed.audioDecision,
               bitrate: processed.bitrate,
@@ -739,7 +762,7 @@ export async function createSessionWithRulesAtomic(
             .where(eq(serverUsers.id, serverUser.id));
 
           // Build session object for rule evaluation (matches Session type)
-          const session: Session = {
+          const session = {
             id: inserted.id,
             serverId: server.id,
             serverUserId: serverUser.id,
@@ -780,6 +803,8 @@ export async function createSessionWithRulesAtomic(
             platform: processed.platform,
             quality: processed.quality,
             isTranscode: processed.isTranscode,
+            dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
+            progressEstimated: processed.progressEstimated,
             videoDecision: processed.videoDecision,
             audioDecision: processed.audioDecision,
             bitrate: processed.bitrate,
@@ -794,7 +819,7 @@ export async function createSessionWithRulesAtomic(
             albumName: processed.albumName,
             trackNumber: processed.trackNumber,
             discNumber: processed.discNumber,
-          };
+          } as Session;
 
           // Build V2 evaluation context
           const serverObj: Server = {

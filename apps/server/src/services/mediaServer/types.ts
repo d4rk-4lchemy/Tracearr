@@ -27,6 +27,33 @@ export interface MediaSession {
   /** Unique session identifier from media server */
   sessionKey: string;
 
+  /** Provider-specific identifier used for termination when different from sessionKey */
+  terminationKey?: string;
+
+  /** Dispatcharr playback classification for live/VOD/catch-up */
+  dispatcharrPlaybackKind?: 'live' | 'vod' | 'catchup';
+
+  /** True when progress is estimated rather than provider-authoritative */
+  progressEstimated?: boolean;
+
+  /** Dispatcharr catch-up anchor timestamp from provider stats (ISO UTC) */
+  dispatcharrCatchupAnchorAt?: string;
+
+  /** Dispatcharr catch-up EPG programme start timestamp (ISO UTC) */
+  dispatcharrCatchupEpgStartAt?: string;
+
+  /** Dispatcharr catch-up EPG programme end timestamp (ISO UTC) */
+  dispatcharrCatchupEpgEndAt?: string;
+
+  /** Raw Dispatcharr catch-up URL timestamp. Backend-only; never expose it in ActiveSession. */
+  dispatcharrCatchupProgrammeStart?: string;
+
+  /** Provider epoch seconds for a byte-range catch-up seek. Backend-only. */
+  dispatcharrCatchupPositionAnchorAt?: number;
+
+  /** Provider byte-range seek position at position_anchor_at. Backend-only. */
+  dispatcharrCatchupPlaybackBaseSecs?: number;
+
   /** Media item identifier (ratingKey for Plex, itemId for Jellyfin) */
   mediaId: string;
 

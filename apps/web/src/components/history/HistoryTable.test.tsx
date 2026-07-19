@@ -164,6 +164,10 @@ describe('HistoryTable live content display', () => {
 
     expect(screen.getByText('Classic Hits TV')).toBeInTheDocument();
     expect(screen.queryByText('Evening Movie')).not.toBeInTheDocument();
+    expect(screen.queryByText('Abandoned')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sampled')).not.toBeInTheDocument();
+    expect(screen.queryByText('Engaged')).not.toBeInTheDocument();
+    expect(screen.queryByText('Watched')).not.toBeInTheDocument();
   });
 
   it('falls back to the media title when a live session has no channel name', () => {
@@ -186,5 +190,38 @@ describe('HistoryTable live content display', () => {
     );
 
     expect(screen.getByText('Fallback Channel')).toBeInTheDocument();
+  });
+
+  it('does not render engagement badges for Dispatcharr catch-up history rows', () => {
+    render(
+      <TooltipProvider>
+        <MemoryRouter>
+          <HistoryTable
+            sessions={[
+              makeSession({
+                mediaType: 'live',
+                mediaTitle: 'Morning News',
+                channelTitle: 'News 24',
+                year: null,
+                totalDurationMs: 5_400_000,
+                progressMs: 4_900_000,
+                server: {
+                  id: 'server-1',
+                  name: 'Dispatcharr',
+                  type: 'dispatcharr',
+                },
+              }),
+            ]}
+            columnVisibility={DEFAULT_COLUMN_VISIBILITY}
+          />
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText('News 24')).toBeInTheDocument();
+    expect(screen.queryByText('Watched')).not.toBeInTheDocument();
+    expect(screen.queryByText('Engaged')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sampled')).not.toBeInTheDocument();
+    expect(screen.queryByText('Abandoned')).not.toBeInTheDocument();
   });
 });

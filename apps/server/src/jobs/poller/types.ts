@@ -164,6 +164,24 @@ export interface ProcessedSession extends StreamDetailFields {
   quality: string;
   /** Whether stream is transcoded */
   isTranscode: boolean;
+  /** Dispatcharr-specific playback kind */
+  dispatcharrPlaybackKind: 'live' | 'vod' | 'catchup' | null;
+  /** Whether the reported progress is estimated */
+  progressEstimated: boolean;
+  /** Dispatcharr catch-up anchor timestamp (ISO UTC) */
+  dispatcharrCatchupAnchorAt?: string | null;
+  /** Dispatcharr catch-up EPG start timestamp (ISO UTC) */
+  dispatcharrCatchupEpgStartAt?: string | null;
+  /** Dispatcharr catch-up EPG end timestamp (ISO UTC) */
+  dispatcharrCatchupEpgEndAt?: string | null;
+  /** Backend-only raw Dispatcharr catch-up URL timestamp. */
+  dispatcharrCatchupProgrammeStart?: string | null;
+  /** Backend-only provider epoch seconds for byte-range seek anchoring. */
+  dispatcharrCatchupPositionAnchorAt?: number | null;
+  /** Backend-only provider byte-range seek position at its anchor. */
+  dispatcharrCatchupPlaybackBaseSecs?: number | null;
+  /** Backend-only timestamp set only when programme_start changes. */
+  dispatcharrCatchupProgrammeStartUpdatedAt?: number | null;
   /** Video decision: 'directplay' | 'copy' | 'transcode' */
   videoDecision: string;
   /** Audio decision: 'directplay' | 'copy' | 'transcode' */

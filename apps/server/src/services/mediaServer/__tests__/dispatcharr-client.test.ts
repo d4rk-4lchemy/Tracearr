@@ -98,7 +98,7 @@ describe('DispatcharrClient', () => {
     const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
     const sessions = await client.getSessions();
 
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
     expect(sessions).toHaveLength(2);
     expect(sessions[0]?.sessionKey).toBe('channel-1:client-1');
     expect(sessions[0]?.user.username).toBe('Valid User');
@@ -172,7 +172,7 @@ describe('DispatcharrClient', () => {
 
     const [users, sessions] = await Promise.all([client.getUsers(), client.getSessions()]);
 
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
     expect(users.map((user) => user.username)).toEqual(['Valid User', 'Anonymous']);
     expect(sessions).toHaveLength(4);
     expect(sessions.map((session) => session.user.username)).toEqual([
@@ -242,7 +242,7 @@ describe('DispatcharrClient', () => {
     const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
     const sessions = await client.getSessions();
 
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(8);
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.quality).toMatchObject({
       isTranscode: true,
@@ -300,7 +300,7 @@ describe('DispatcharrClient', () => {
     const client = new DispatcharrClient({ url: 'http://dispatcharr.local/', token: 'api-key' });
     const sessions = await client.getSessions();
 
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
     expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(1.04);
   });
 
