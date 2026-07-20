@@ -237,26 +237,38 @@ async function getPgServerVersion(pgEnv: Record<string, string>): Promise<string
 }
 
 async function buildMetadata(pgEnv: Record<string, string>): Promise<BackupMetadata> {
-  // Read migration journal for migration info
-  const journalPaths = [
+  const readMigrationJournal = async (journalPaths: string[]) => {
+    let count = 0;
+    let latest = 'unknown';
+
+    for (const p of journalPaths) {
+      if (existsSync(p)) {
+        const journal = JSON.parse(await readFile(p, 'utf-8')) as {
+          entries: { idx: number; tag: string }[];
+        };
+        count = journal.entries.length;
+        const last = journal.entries[journal.entries.length - 1];
+        if (last) latest = last.tag;
+        break;
+      }
+    }
+
+    return { count, latest };
+  };
+
+  const upstreamMigrations = await readMigrationJournal([
     resolve(__dirname, '../../src/db/migrations/meta/_journal.json'),
     resolve(__dirname, '../src/db/migrations/meta/_journal.json'),
-  ];
+  ]);
+  const forkMigrations = await readMigrationJournal([
+    resolve(__dirname, '../../src/db/fork-migrations/meta/_journal.json'),
+    resolve(__dirname, '../src/db/fork-migrations/meta/_journal.json'),
+  ]);
 
-  let migrationCount = 0;
-  let latestMigration = 'unknown';
-
-  for (const p of journalPaths) {
-    if (existsSync(p)) {
-      const journal = JSON.parse(await readFile(p, 'utf-8')) as {
-        entries: { idx: number; tag: string }[];
-      };
-      migrationCount = journal.entries.length;
-      const last = journal.entries[journal.entries.length - 1];
-      if (last) latestMigration = last.tag;
-      break;
-    }
-  }
+  const migrationCount = upstreamMigrations.count;
+  const latestMigration = upstreamMigrations.latest;
+  const forkMigrationCount = forkMigrations.count;
+  const latestForkMigration = forkMigrations.latest;
 
   // Query table count and extension versions
   const tableCountResult = await execCommand(
@@ -321,6 +333,8 @@ async function buildMetadata(pgEnv: Record<string, string>): Promise<BackupMetad
       pgVersion,
       migrationCount,
       latestMigration,
+      forkMigrationCount,
+      latestForkMigration,
       tableCount,
       databaseSize,
       timescaleVersion,
