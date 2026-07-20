@@ -231,6 +231,8 @@ describe('rapid restarts while pending', () => {
 describe('change detection for DB writes', () => {
   const base = {
     state: 'playing',
+    mediaTitle: 'Original Program',
+    totalDurationMs: 5_400_000,
     isTranscode: false,
     videoDecision: 'direct play',
     audioDecision: 'direct play',
@@ -272,6 +274,14 @@ describe('change detection for DB writes', () => {
 
     it('source audio codec changes', () => {
       expect(shouldWriteToDb(base, { ...base, sourceAudioCodec: 'eac3' })).toBe(true);
+    });
+
+    it('media title changes', () => {
+      expect(shouldWriteToDb(base, { ...base, mediaTitle: 'Next Program' })).toBe(true);
+    });
+
+    it('total duration changes', () => {
+      expect(shouldWriteToDb(base, { ...base, totalDurationMs: 3_600_000 })).toBe(true);
     });
   });
 

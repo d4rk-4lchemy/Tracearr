@@ -562,7 +562,8 @@ async function resolvePendingSession(
     processed.state,
     processed.progressMs,
     Date.now(),
-    dispatcharrLiveConfirmThresholdMs ?? undefined
+    dispatcharrLiveConfirmThresholdMs ?? undefined,
+    processed
   );
   const pendingData = syncDispatcharrPendingProgress(
     updatedData,
@@ -1108,7 +1109,8 @@ export async function processServerSessions(
                     processed.state,
                     processed.progressMs,
                     Date.now(),
-                    dispatcharrLiveConfirmThresholdMs
+                    dispatcharrLiveConfirmThresholdMs,
+                    processed
                   );
                   const pendingDataForCache = syncDispatcharrPendingProgress(
                     updatedData,
@@ -1707,10 +1709,12 @@ export async function processServerSessions(
           const updatePayload: Partial<typeof sessions.$inferInsert> = {
             state: newState,
             mediaTitle: processed.mediaTitle,
+            ratingKey: processed.ratingKey ?? '',
             thumbPath: processed.thumbPath || null,
             channelTitle: processed.channelTitle,
             channelIdentifier: processed.channelIdentifier,
             channelThumb: processed.channelThumb,
+            totalDurationMs: processed.totalDurationMs || null,
             quality: processed.quality,
             bitrate: processed.bitrate,
             progressMs: processed.progressMs || null,

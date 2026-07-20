@@ -274,6 +274,34 @@ describe('poller session update guard against stop races', () => {
     expect(call.updatedSessions[0].id).toBe(EXISTING_SESSION_ID);
   });
 
+  it('writes refreshed media identity and timeline fields on normal updates', async () => {
+    mockUpdateWhere.mockResolvedValue([{ id: EXISTING_SESSION_ID }]);
+    mockMapMediaSession.mockReturnValue(
+      processedSession({
+        ratingKey: 'channel-1',
+        mediaTitle: 'Late News',
+        totalDurationMs: 3_600_000,
+      })
+    );
+    cacheService.getAllActiveSessions.mockResolvedValue([
+      { ...cachedActiveSession, ratingKey: 'channel-1' },
+    ]);
+    mockBatchFindActiveSessionsByComposite.mockResolvedValue(
+      new Map([[`server-user-1::channel-1`, [existingSessionRow({ ratingKey: 'channel-1' })]]])
+    );
+
+    await triggerServerPoll('server-1');
+
+    const setPayload = mockDb.update.mock.results
+      .map((result) => result.value?.set?.mock.calls[0]?.[0])
+      .find((payload) => payload?.mediaTitle === 'Late News');
+    expect(setPayload).toMatchObject({
+      ratingKey: 'channel-1',
+      mediaTitle: 'Late News',
+      totalDurationMs: 3_600_000,
+    });
+  });
+
   it('does not re-evaluate transcode rules when the update raced a concurrent stop', async () => {
     mockUpdateWhere.mockResolvedValue([]); // update raced a concurrent stop
     vi.mocked(getActiveRulesV2).mockResolvedValue([{ id: 'rule-1' }] as unknown as Awaited<

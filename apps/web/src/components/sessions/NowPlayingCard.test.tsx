@@ -262,6 +262,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     rerender(
       <NowPlayingCard
         session={makeSession({
+          mediaTitle: 'Late News',
           dispatcharrPlaybackKind: 'catchup',
           dispatcharrCatchupAnchorAt: '2026-07-19T06:15:00.000Z',
           dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
@@ -272,6 +273,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
       />
     );
 
+    expect(screen.getByText('Late News')).toBeTruthy();
     expect(getProgressTranslatePercent(container)).toBe(50);
   });
 

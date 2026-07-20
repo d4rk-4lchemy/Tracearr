@@ -544,15 +544,6 @@ function flattenCatchupSessions(
   });
 }
 
-function buildCatchupProgrammeIdentity(
-  programme: DispatcharrCatchupProgramme | null
-): string | null {
-  if (!programme) return null;
-  const start =
-    asOptionalString(programme.start_time) ?? asOptionalString(programme.programme_start);
-  return start ?? null;
-}
-
 function buildCatchupMediaTitle(programme: DispatcharrCatchupProgramme | null): string {
   if (!programme) return '';
   const title = asOptionalString(programme.title) ?? '';
@@ -659,13 +650,9 @@ export function parseSessionsFromCatchupStats(
 
     const programme = programmesBySessionId?.get(sessionId) ?? null;
     const baseProgramme = baseProgrammesBySessionId?.get(sessionId) ?? null;
-    const programmeIdentity = buildCatchupProgrammeIdentity(programme);
-    const sessionKey = programmeIdentity
-      ? `catchup:${sessionId}:${programmeIdentity}`
-      : `catchup:${sessionId}:channel:${channelUuid || channelId}`;
-    const mediaId = programmeIdentity
-      ? `${channelUuid}:${programmeIdentity}`
-      : `catchup:${channelUuid}`;
+    const channelIdentifier = channelUuid || channelId;
+    const sessionKey = `catchup:${sessionId}:${channelIdentifier}`;
+    const mediaId = channelIdentifier;
     const mediaTitle = buildCatchupMediaTitle(programme);
     const fallbackTitle = mediaTitle || channelName;
     const durationSecs = asOptionalNumber(programme?.duration_secs);

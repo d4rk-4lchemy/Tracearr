@@ -414,7 +414,7 @@ describe('CacheService', () => {
       vi.mocked(redis.eval).mockResolvedValueOnce('1721367000000');
 
       const timestamp = await cache.getOrSetDispatcharrCatchupProgrammeStartUpdatedAt(
-        'server-1:user-1:client-1:catchup:raw-1:programme-1',
+        'server-1:user-1:client-1:catchup:raw-1:channel-1',
         '2026-07-19:05-30',
         1721367005000
       );
@@ -423,7 +423,7 @@ describe('CacheService', () => {
       expect(redis.eval).toHaveBeenCalledWith(
         expect.stringContaining('existingProgrammeStart == ARGV[1]'),
         1,
-        'tracearr:dispatcharr:catchup:programme-start:server-1:user-1:client-1:catchup:raw-1:programme-1',
+        'tracearr:dispatcharr:catchup:programme-start:server-1:user-1:client-1:catchup:raw-1:channel-1',
         '2026-07-19:05-30',
         '1721367005000',
         String(CACHE_TTL.ACTIVE_SESSIONS)

@@ -458,6 +458,7 @@ export function shouldWriteToDb(
   existing: {
     state: string;
     mediaTitle?: string | null;
+    totalDurationMs?: number | null;
     isTranscode: boolean;
     videoDecision: string | null;
     audioDecision: string | null;
@@ -468,6 +469,7 @@ export function shouldWriteToDb(
   processed: {
     state: string;
     mediaTitle?: string | null;
+    totalDurationMs?: number | null;
     isTranscode: boolean;
     videoDecision: string | null;
     audioDecision: string | null;
@@ -478,6 +480,7 @@ export function shouldWriteToDb(
 ): boolean {
   if (existing.state !== processed.state) return true;
   if (existing.mediaTitle !== processed.mediaTitle) return true;
+  if ((existing.totalDurationMs ?? null) !== (processed.totalDurationMs ?? null)) return true;
   if (existing.isTranscode !== processed.isTranscode) return true;
   if (existing.videoDecision !== processed.videoDecision) return true;
   if (existing.audioDecision !== processed.audioDecision) return true;

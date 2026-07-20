@@ -53,6 +53,47 @@ describe('syncDispatcharrPendingProgress', () => {
     expect(updated.processed.progressMs).toBe(12000);
   });
 
+  it('keeps refreshed pending metadata while preserving max progress', () => {
+    const pending = createPending({
+      confirmation: {
+        confirmedPlayback: false,
+        firstSeenAt: 1710600000000,
+        maxViewOffset: 12000,
+        initialViewOffset: null,
+      },
+      processed: {
+        progressMs: 12000,
+        mediaTitle: 'Morning News',
+        totalDurationMs: 5_400_000,
+        dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
+        dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+      } as any,
+    });
+
+    const updated = syncDispatcharrPendingProgress(
+      {
+        ...pending,
+        processed: {
+          ...pending.processed,
+          progressMs: 1000,
+          mediaTitle: 'Late News',
+          totalDurationMs: 3_600_000,
+          dispatcharrCatchupEpgStartAt: '2026-07-19T07:00:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T08:00:00.000Z',
+        },
+      },
+      30000
+    );
+
+    expect(updated.processed).toMatchObject({
+      progressMs: 12000,
+      mediaTitle: 'Late News',
+      totalDurationMs: 3_600_000,
+      dispatcharrCatchupEpgStartAt: '2026-07-19T07:00:00.000Z',
+      dispatcharrCatchupEpgEndAt: '2026-07-19T08:00:00.000Z',
+    });
+  });
+
   it('does not change progress for non-Dispatcharr threshold flow', () => {
     const pending = createPending({
       confirmation: {

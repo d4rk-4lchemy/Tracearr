@@ -90,6 +90,25 @@ describe('updatePendingSession', () => {
     expect(updatedData.lastSeenAt).toBe(now);
   });
 
+  it('refreshes pending processed metadata when provided', () => {
+    const nextProcessed = {
+      mediaTitle: 'Late News',
+      totalDurationMs: 3_600_000,
+      progressMs: 42_000,
+    } as PendingSessionData['processed'];
+
+    const { updatedData } = updatePendingSession(
+      basePending,
+      'playing',
+      42000,
+      basePending.startedAt + 5000,
+      undefined,
+      nextProcessed
+    );
+
+    expect(updatedData.processed).toBe(nextProcessed);
+  });
+
   it('tracks pause accumulation across updates', () => {
     // First: play → pause
     const { updatedData: paused } = updatePendingSession(

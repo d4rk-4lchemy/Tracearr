@@ -537,6 +537,30 @@ describe('terminateSession', () => {
       // For Emby, should use sessionKey
       expect(mockMediaClient.terminateSession).toHaveBeenCalledWith('emby-session-key', undefined);
     });
+
+    it('should pass raw session_id for Dispatcharr catch-up sessions', async () => {
+      const mockSession = createMockSession({
+        server: {
+          type: 'dispatcharr',
+          url: 'http://dispatcharr.local',
+          token: 'dispatcharr-token',
+        },
+        dispatcharrPlaybackKind: 'catchup',
+        sessionKey: 'catchup:raw-session-1:channel-uuid-1',
+      });
+      mockSessionFindFirst.mockResolvedValue(mockSession);
+      mockMediaClient.terminateSession.mockResolvedValue(true);
+
+      await terminateSession({
+        sessionId: mockSession.id,
+        trigger: 'manual',
+      });
+
+      expect(mockMediaClient.terminateSession).toHaveBeenCalledWith(
+        'catchup:raw-session-1',
+        undefined
+      );
+    });
   });
 
   describe('rule-triggered termination', () => {
