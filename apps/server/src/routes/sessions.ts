@@ -368,6 +368,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.platform,
           s.quality,
           s.is_transcode,
+          s.dispatcharr_playback_kind,
           s.video_decision,
           s.audio_decision,
           s.bitrate,
@@ -443,6 +444,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         platform: string | null;
         quality: string | null;
         is_transcode: boolean | null;
+        dispatcharr_playback_kind: 'live' | 'vod' | 'catchup' | null;
         video_decision: string | null;
         audio_decision: string | null;
         bitrate: number | null;
@@ -515,6 +517,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       platform: row.platform,
       quality: row.quality,
       isTranscode: row.is_transcode,
+      dispatcharrPlaybackKind: row.dispatcharr_playback_kind,
       videoDecision: row.video_decision,
       audioDecision: row.audio_decision,
       bitrate: row.bitrate,
@@ -710,6 +713,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.platform,
           s.quality,
           s.is_transcode,
+          s.dispatcharr_playback_kind,
           s.video_decision,
           s.audio_decision,
           s.bitrate,
@@ -815,6 +819,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         platform: string | null;
         quality: string | null;
         is_transcode: boolean | null;
+        dispatcharr_playback_kind: 'live' | 'vod' | 'catchup' | null;
         video_decision: string | null;
         audio_decision: string | null;
         bitrate: number | null;
@@ -893,6 +898,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       platform: row.platform,
       quality: row.quality,
       isTranscode: row.is_transcode,
+      dispatcharrPlaybackKind: row.dispatcharr_playback_kind,
       videoDecision: row.video_decision,
       audioDecision: row.audio_decision,
       bitrate: row.bitrate,

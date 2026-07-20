@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from 'lucide-react-native';
 import { Text } from '@/components/ui/text';
+import { CatchupIcon } from '@/components/sessions/CatchupIcon';
 import { useImageUrl } from '@/hooks/useImageUrl';
 import { ACCENT_COLOR, colors } from '@/lib/theme';
 import { formatDuration, formatListTimestamp } from '@/lib/formatters';
@@ -154,6 +155,10 @@ export function HistoryRow({ session, onPress }: HistoryRowProps) {
   const displayName = session.user?.identityName ?? session.user?.username ?? 'Unknown';
   const title = getContentTitle(session);
   const progress = getProgress(session);
+  const isDispatcharrCatchup =
+    session.server.type === 'dispatcharr' &&
+    session.mediaType === 'live' &&
+    session.dispatcharrPlaybackKind === 'catchup';
 
   // Format date - show "Today 2:30 PM", "Yesterday 9:15 AM", or "Jan 12, 2:30 PM"
   const dateTimeStr = formatListTimestamp(session.startedAt);
@@ -228,6 +233,21 @@ export function HistoryRow({ session, onPress }: HistoryRowProps) {
               >
                 {title.primary}
               </Text>
+              {isDispatcharrCatchup && (
+                <View
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: colors.surface.dark,
+                  }}
+                  accessibilityLabel="Catch-up"
+                >
+                  <CatchupIcon size={12} color={colors.text.muted.dark} />
+                </View>
+              )}
             </View>
 
             {/* Secondary info (episode name, year, etc) */}
