@@ -2703,6 +2703,9 @@ export interface BackupMetadata {
     pgVersion: string;
     migrationCount: number;
     latestMigration: string;
+    /** Fork overlay migration metadata; absent from backups created before the overlay split. */
+    forkMigrationCount?: number;
+    latestForkMigration?: string;
     tableCount: number;
     databaseSize: number;
     timescaleVersion: string;

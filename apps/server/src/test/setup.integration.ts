@@ -16,8 +16,6 @@
  * - Migrations and TimescaleDB setup run automatically on first test run
  */
 
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
 import { beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { installMatchers } from '@tracearr/test-utils/matchers';
 import { resetAllFactoryCounters } from '@tracearr/test-utils/factories';
@@ -51,11 +49,6 @@ if (!process.env.DEBUG) {
 // Database cleanup function
 let cleanup: (() => Promise<void>) | null = null;
 
-// Get the migrations folder path (same as server index.ts uses)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const migrationsFolder = resolve(__dirname, '../db/migrations');
-
 beforeAll(async () => {
   process.env.TEST_INITIALIZED = 'true';
 
@@ -63,9 +56,12 @@ beforeAll(async () => {
   cleanup = await setupIntegrationTests();
 
   // Run migrations (same as server startup)
-  const { runMigrations } = await import('../db/client.js');
+  const [{ runMigrations }, { migrationFolders }] = await Promise.all([
+    import('../db/client.js'),
+    import('../db/migrationPaths.js'),
+  ]);
   try {
-    await runMigrations(migrationsFolder);
+    await runMigrations(migrationFolders);
   } catch (error) {
     // Migrations may have already been applied - that's OK
     if (error instanceof Error && !error.message.includes('already exists')) {

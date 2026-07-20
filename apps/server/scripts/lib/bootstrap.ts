@@ -69,17 +69,21 @@ export async function loadRuntime() {
   loadEnv();
   const base = basePath();
 
-  const [dbModule, schema, passwordModule, settingsModule, redisModule] = await Promise.all([
-    import(`${base}/db/client.js`),
-    import(`${base}/db/schema.js`),
-    import(`${base}/utils/password.js`),
-    import(`${base}/services/settings.js`),
-    import(`${base}/lib/redisShared.js`),
-  ]);
+  const [dbModule, migrationPathsModule, schema, passwordModule, settingsModule, redisModule] =
+    await Promise.all([
+      import(`${base}/db/client.js`),
+      import(`${base}/db/migrationPaths.js`),
+      import(`${base}/db/schema.js`),
+      import(`${base}/utils/password.js`),
+      import(`${base}/services/settings.js`),
+      import(`${base}/lib/redisShared.js`),
+    ]);
 
   return {
     db: dbModule.db,
     closeDatabase: dbModule.closeDatabase,
+    runMigrations: dbModule.runMigrations,
+    migrationFolders: migrationPathsModule.migrationFolders,
     users: schema.users,
     authAccounts: schema.authAccounts,
     authSessions: schema.authSessions,
