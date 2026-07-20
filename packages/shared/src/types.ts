@@ -416,6 +416,11 @@ export interface Session extends StreamDetailFields {
   platform: string | null;
   quality: string | null;
   isTranscode: boolean;
+  dispatcharrPlaybackKind?: 'live' | 'vod' | 'catchup' | null;
+  progressEstimated?: boolean;
+  dispatcharrCatchupAnchorAt?: string | null;
+  dispatcharrCatchupEpgStartAt?: string | null;
+  dispatcharrCatchupEpgEndAt?: string | null;
   videoDecision: string | null; // 'directplay' | 'copy' | 'transcode'
   audioDecision: string | null; // 'directplay' | 'copy' | 'transcode'
   bitrate: number | null;
@@ -431,6 +436,8 @@ export interface Session extends StreamDetailFields {
 }
 
 export interface ActiveSession extends Session {
+  /** Timestamp when progressMs was last sampled/refreshed on the server */
+  progressUpdatedAt: Date;
   user: Pick<ServerUser, 'id' | 'username' | 'thumbUrl'> & { identityName: string | null };
   server: Pick<Server, 'id' | 'name' | 'type'>;
   /** Whether this session can be terminated (some clients like Plexamp don't support termination) */

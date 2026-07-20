@@ -98,11 +98,14 @@ function EngagementTierBadge({
   progress,
   state,
   hasDuration,
+  mediaType,
 }: {
   progress: number;
   state: SessionState;
   hasDuration: boolean;
+  mediaType: MediaType;
 }) {
+  if (mediaType === 'live') return null;
   const tier = getEngagementTier(progress, hasDuration);
   if (tier === 'unknown' || state !== 'stopped') return null;
 
@@ -351,6 +354,7 @@ export const HistoryTableRow = memo(
                       progress={progress}
                       state={session.state}
                       hasDuration={!!session.totalDurationMs}
+                      mediaType={session.mediaType}
                     />
                   </div>
                   {secondary && (

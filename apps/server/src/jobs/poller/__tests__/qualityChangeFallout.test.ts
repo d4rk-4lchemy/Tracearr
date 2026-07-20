@@ -173,6 +173,8 @@ function createMockProcessedSession(overrides: Partial<ProcessedSession> = {}): 
     platform: 'Web',
     quality: '1080p',
     isTranscode: false,
+    dispatcharrPlaybackKind: null,
+    progressEstimated: false,
     videoDecision: 'directplay',
     audioDecision: 'directplay',
     bitrate: 20000,

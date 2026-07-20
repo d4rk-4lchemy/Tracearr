@@ -38,6 +38,7 @@ pnpm-debug.log*
 .plans/
 FORK_INFO.md
 AGENTS.md
+COMMON_REGRESSIONS.md
 MERGE_INSTRUCTION.md
 
 # Database (keep GeoLite2 database committed)

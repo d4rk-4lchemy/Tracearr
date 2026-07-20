@@ -23,6 +23,7 @@ import { isMaintenance } from '../../serverState.js';
 import type { CacheService, PubSubService } from '../../services/cache.js';
 import { type GeoLocation } from '../../services/geoip.js';
 import { createMediaServerClient } from '../../services/mediaServer/index.js';
+import { parseDispatcharrCatchupTimestampMs } from '../../services/mediaServer/dispatcharr/parser.js';
 import type { MediaSession } from '../../services/mediaServer/types.js';
 import { lookupGeoIP } from '../../services/plexGeoip.js';
 import { registerService, unregisterService } from '../../services/serviceTracker.js';
@@ -71,6 +72,7 @@ import {
 import type {
   PendingSessionOutcome,
   PollerConfig,
+  ProcessedSession,
   ResolvePendingSessionInput,
   ServerProcessingResult,
   ServerWithToken,
@@ -93,6 +95,50 @@ let currentPollIntervalMs: number = POLLING_INTERVALS.SESSIONS_IDLE;
 const pollGuard = { running: false };
 const sweepGuard = { running: false };
 const reconcileGuard = { running: false };
+
+function clampCatchupProgress(value: number, totalDurationMs: number): number {
+  const max = totalDurationMs > 0 ? totalDurationMs : Infinity;
+  return Math.min(Math.max(value, 0), max);
+}
+
+function materializeDispatcharrCatchupProgress(
+  processed: ProcessedSession,
+  nowMs: number,
+  pause: { lastPausedAt: Date | null; pausedDurationMs: number } = {
+    lastPausedAt: null,
+    pausedDurationMs: 0,
+  }
+): void {
+  if (processed.dispatcharrPlaybackKind !== 'catchup') return;
+
+  const programmeStartMs = parseDispatcharrCatchupTimestampMs(
+    processed.dispatcharrCatchupProgrammeStart
+  );
+  const epgStartMs = Date.parse(processed.dispatcharrCatchupEpgStartAt ?? '');
+  if (programmeStartMs === null || !Number.isFinite(epgStartMs)) return;
+
+  let progressMs: number;
+  const playbackBaseSecs = processed.dispatcharrCatchupPlaybackBaseSecs;
+  if (playbackBaseSecs !== null && playbackBaseSecs !== undefined) {
+    // The Dispatcharr parser already uses position_anchor_at and adjusts a
+    // byte-range seek when its effective programme has advanced.
+    return;
+  } else {
+    const programmeUpdatedAt = processed.dispatcharrCatchupProgrammeStartUpdatedAt;
+    if (!programmeUpdatedAt) return;
+
+    const ongoingPauseMs = pause.lastPausedAt
+      ? Math.max(0, nowMs - pause.lastPausedAt.getTime())
+      : 0;
+    const elapsedMs = Math.max(
+      0,
+      nowMs - programmeUpdatedAt - pause.pausedDurationMs - ongoingPauseMs
+    );
+    progressMs = programmeStartMs - epgStartMs + elapsedMs;
+  }
+
+  processed.progressMs = clampCatchupProgress(progressMs, processed.totalDurationMs);
+}
 
 /** Test-and-set reentrancy guard: returns false (and skips) if a run is already in progress. */
 function acquireRunGuard(guard: { running: boolean }, label: string): boolean {
@@ -163,17 +209,15 @@ export function mergeDispatcharrRealtimeSessions(
   wsSessions: MediaSession[],
   restSessions: MediaSession[]
 ): MediaSession[] {
-  const liveFromRestBySessionKey = new Map(
-    restSessions
-      .filter((session) => session.media.type === 'live')
-      .map((session) => [session.sessionKey, session])
+  const restBySessionKey = new Map(restSessions.map((session) => [session.sessionKey, session]));
+  const mergedRealtimeSessions = wsSessions.map(
+    (session) => restBySessionKey.get(session.sessionKey) ?? session
   );
-  const liveFromWs = wsSessions
-    .filter((session) => session.media.type === 'live')
-    .map((session) => liveFromRestBySessionKey.get(session.sessionKey) ?? session);
-  const vodFromRest = restSessions.filter((session) => session.media.type !== 'live');
-
-  return [...liveFromWs, ...vodFromRest];
+  const realtimeKeys = new Set(mergedRealtimeSessions.map((session) => session.sessionKey));
+  const fallbackRestSessions = restSessions.filter(
+    (session) => !realtimeKeys.has(session.sessionKey)
+  );
+  return [...mergedRealtimeSessions, ...fallbackRestSessions];
 }
 
 export function syncDispatcharrPendingProgress(
@@ -227,7 +271,8 @@ async function handleFirstMisses(
     if (missedPollTracking.has(cachedKey)) continue; // Already in grace period
 
     const cachedActiveSession = activeSessions.find((s) => {
-      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as 'plex' | 'jellyfin' | 'emby';
+      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as
+        'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
       return (
         buildCompositeKey({
           serverType: sType,
@@ -839,6 +884,30 @@ export async function processServerSessions(
           serverUserByExternalId.set(serverUserToCreate.externalId, serverUserWithIdentity);
         }
       }
+    }
+
+    // Preserve the provider URL anchor in backend state. It is intentionally
+    // private: clients receive only the materialized progressMs below.
+    const catchupObservedAt = Date.now();
+    for (let i = 0; i < processedSessions.length; i++) {
+      const processed = processedSessions[i];
+      const serverUserId = sessionServerUserIds[i];
+      if (
+        processed?.dispatcharrPlaybackKind !== 'catchup' ||
+        !processed.dispatcharrCatchupProgrammeStart
+      ) {
+        continue;
+      }
+
+      const identity = `${server.id}:${serverUserId ?? processed.externalUserId}:${processed.deviceId}:${processed.sessionKey}`;
+      processed.dispatcharrCatchupProgrammeStartUpdatedAt = cacheService
+        ? await cacheService.getOrSetDispatcharrCatchupProgrammeStartUpdatedAt(
+            identity,
+            processed.dispatcharrCatchupProgrammeStart,
+            catchupObservedAt
+          )
+        : catchupObservedAt;
+      materializeDispatcharrCatchupProgress(processed, catchupObservedAt);
     }
 
     // OPTIMIZATION: Batch load recent sessions for rule evaluation (new sessions only)
@@ -1610,6 +1679,17 @@ export async function processServerSessions(
           const newState = processed.state;
           const now = new Date();
 
+          const pauseResult = calculatePauseAccumulation(
+            previousState,
+            newState,
+            {
+              lastPausedAt: existingSession.lastPausedAt,
+              pausedDurationMs: existingSession.pausedDurationMs || 0,
+            },
+            now
+          );
+          materializeDispatcharrCatchupProgress(processed, now.getTime(), pauseResult);
+
           // Check if transcode state changed (e.g., user changed quality mid-stream)
           // If so, we need to update stream details which contain output dimensions
           const transcodeStateChanged =
@@ -1626,6 +1706,11 @@ export async function processServerSessions(
           // Build base update payload
           const updatePayload: Partial<typeof sessions.$inferInsert> = {
             state: newState,
+            mediaTitle: processed.mediaTitle,
+            thumbPath: processed.thumbPath || null,
+            channelTitle: processed.channelTitle,
+            channelIdentifier: processed.channelIdentifier,
+            channelThumb: processed.channelThumb,
             quality: processed.quality,
             bitrate: processed.bitrate,
             progressMs: processed.progressMs || null,
@@ -1645,15 +1730,6 @@ export async function processServerSessions(
             Object.assign(updatePayload, pickStreamDetailFields(processed));
           }
 
-          const pauseResult = calculatePauseAccumulation(
-            previousState,
-            newState,
-            {
-              lastPausedAt: existingSession.lastPausedAt,
-              pausedDurationMs: existingSession.pausedDurationMs || 0,
-            },
-            now
-          );
           updatePayload.lastPausedAt = pauseResult.lastPausedAt;
           updatePayload.pausedDurationMs = pauseResult.pausedDurationMs;
 
@@ -1787,10 +1863,10 @@ export async function processServerSessions(
           updatedSessions.push(activeSession);
         }
       } catch (error) {
-        console.error(
-          `[Poller] Failed to process session ${sessionKey} on ${server.name}, skipping:`,
-          error
-        );
+          console.error(
+            `[Poller] Failed to process session ${sessionKey} on ${server.name}, skipping:`,
+            error
+          );
       }
     }
 
@@ -2207,6 +2283,7 @@ export async function sweepStaleSessions(): Promise<number> {
             stoppedAt: now,
             user,
             server,
+            progressUpdatedAt: staleSession.lastSeenAt,
             canTerminate: server.type !== 'plex' || !!staleSession.plexSessionId,
           } as ActiveSession;
           await sendGracePeriodStopNotification(
