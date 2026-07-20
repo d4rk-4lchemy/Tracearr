@@ -74,6 +74,26 @@ export async function checkDatabaseConnection(): Promise<boolean> {
   }
 }
 
-export async function runMigrations(migrationsFolder: string): Promise<void> {
-  await migrate(db, { migrationsFolder });
+export interface MigrationFolders {
+  upstream: string;
+  fork: string;
+}
+
+const FORK_MIGRATIONS_SCHEMA = 'tracearr_fork';
+const FORK_MIGRATIONS_TABLE = '__drizzle_migrations';
+
+/**
+ * Apply the upstream Tracearr history and the fork-owned Dispatcharr overlay.
+ *
+ * The ledgers must remain separate: Drizzle decides whether to run a migration
+ * from the latest timestamp in one ledger, while the upstream and fork
+ * histories evolve independently.
+ */
+export async function runMigrations(folders: MigrationFolders): Promise<void> {
+  await migrate(db, { migrationsFolder: folders.upstream });
+  await migrate(db, {
+    migrationsFolder: folders.fork,
+    migrationsSchema: FORK_MIGRATIONS_SCHEMA,
+    migrationsTable: FORK_MIGRATIONS_TABLE,
+  });
 }

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1784571950000,
+      "tag": "0000_dispatcharr_ignore_anonymous_streams",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784571950001,
+      "tag": "0001_dispatcharr_live_history_threshold",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784571950002,
+      "tag": "0002_dispatcharr_catchup_metadata",
+      "breakpoints": true
+    }
+  ]
+}

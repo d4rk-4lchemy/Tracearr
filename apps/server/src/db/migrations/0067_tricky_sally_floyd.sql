@@ -1,1 +1,0 @@
-ALTER TABLE "servers" ADD COLUMN "ignore_anonymous_streams" boolean DEFAULT true NOT NULL;

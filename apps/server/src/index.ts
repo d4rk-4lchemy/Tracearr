@@ -30,8 +30,6 @@ await import('./utils/dnsCache.js');
 const GEOIP_DB_PATH = resolve(PROJECT_ROOT, 'data/GeoLite2-City.mmdb');
 const GEOASN_DB_PATH = resolve(PROJECT_ROOT, 'data/GeoLite2-ASN.mmdb');
 
-// Migrations path (relative to compiled output in production, source in dev)
-const MIGRATIONS_PATH = resolve(__dirname, '../src/db/migrations');
 import type {
   ActiveSession,
   ViolationWithDetails,
@@ -141,6 +139,7 @@ import { initializeV2Rules } from './services/rules/v2Integration.js';
 import { processPushReceipts } from './services/pushNotification.js';
 import { cleanupMobileTokens } from './jobs/cleanupMobileTokens.js';
 import { db, checkDatabaseConnection, runMigrations } from './db/client.js';
+import { migrationFolders } from './db/migrationPaths.js';
 import {
   initTimescaleDB,
   getTimescaleStatus,
@@ -585,7 +584,7 @@ async function initializeServices(app: FastifyInstance) {
   // Run database migrations
   try {
     app.log.info('Running database migrations...');
-    await runMigrations(MIGRATIONS_PATH);
+    await runMigrations(migrationFolders);
     app.log.info('Database migrations complete');
   } catch (err) {
     app.log.error({ err }, 'Failed to run database migrations');

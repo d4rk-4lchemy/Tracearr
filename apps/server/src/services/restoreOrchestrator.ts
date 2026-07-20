@@ -26,17 +26,12 @@ import {
 } from './backup.js';
 
 import { closeDatabase, recreatePool, runMigrations } from '../db/client.js';
+import { migrationFolders } from '../db/migrationPaths.js';
 import { setSetting, resetSettingsCache } from './settings.js';
 import { invalidateRulesCache } from '../jobs/poller/database.js';
 import { loadJwtRevokeSettings } from '../plugins/auth.js';
 import { initTimescaleDB } from '../db/timescale.js';
 import { closeAuth } from '../lib/auth.js';
-
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_PATH = resolve(__dirname, '../../src/db/migrations');
 
 let lastPhase: Exclude<RestorePhase, 'failed'> = 'creating_restore_point';
 
@@ -127,7 +122,7 @@ export async function orchestrateRestore(
     // Phase 4: Run migrations on restored database
     setPhase('running_migrations', 'Running database migrations...');
     await reinitDatabaseConsumers();
-    await runMigrations(MIGRATIONS_PATH);
+    await runMigrations(migrationFolders);
     app.log.info('Migrations complete on restored database');
 
     // Invalidate all existing JWTs — forces re-login after restore completes
