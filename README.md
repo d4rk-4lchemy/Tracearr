@@ -17,6 +17,7 @@
 - You can kill Dispatcharr streams directly from Tracearr dashboard,
 - Live TV card is aligned to Dispatcharr needs, showing speed threshold, watchtime,
 - Stream details for Live TV shows bitrate, codecs and video resolution,
+- Support for Catch-Up (Timeshift) sessions, with small badge and custom card,
 - Fixed bad `Content` column in mobile view of `History` tab _(this has nothing to do with Dispatcharr, just annoying bug)._
 
 **Docker images:**
@@ -51,7 +52,7 @@ tracearr:
     - /docker/distracearr/data:/data/tracearr
   restart: unless-stopped
   healthcheck:
-    test: ["CMD", "curl", "-f", "http://127.0.0.1:4567/health"]
+    test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
     interval: 30s
     timeout: 10s
     start_period: 60s
