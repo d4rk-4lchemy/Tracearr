@@ -696,7 +696,6 @@ export function parseSessionsFromCatchupStats(
         sessionKey,
         terminationKey: sessionId,
         dispatcharrPlaybackKind: 'catchup',
-        progressEstimated: true,
         dispatcharrCatchupAnchorAt: catchupAnchorAt,
         dispatcharrCatchupEpgStartAt: catchupEpgStartAt,
         dispatcharrCatchupEpgEndAt: catchupEpgEndAt,
@@ -809,7 +808,6 @@ export function parseSessionsFromVodStats(
       sessionKey: clientId,
       terminationKey: clientId,
       dispatcharrPlaybackKind: 'vod',
-      progressEstimated: false,
       mediaId,
       user: {
         id: user.id,
@@ -992,7 +990,6 @@ export function parseSessionsFromChannels(
         sessionKey: `${channelId}:${clientId}`,
         terminationKey: `${channelId}:${clientId}`,
         dispatcharrPlaybackKind: 'live',
-        progressEstimated: false,
         mediaId: channelId,
         user: {
           id: user.id,

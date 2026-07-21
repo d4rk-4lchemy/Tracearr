@@ -132,7 +132,6 @@ export interface BuildActiveSessionInput {
     quality: string;
     isTranscode: boolean;
     dispatcharrPlaybackKind: 'live' | 'vod' | 'catchup' | null;
-    progressEstimated: boolean;
     dispatcharrCatchupAnchorAt?: string | null;
     dispatcharrCatchupEpgStartAt?: string | null;
     dispatcharrCatchupEpgEndAt?: string | null;
@@ -252,7 +251,6 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     quality: processed.quality,
     isTranscode: processed.isTranscode,
     dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-    progressEstimated: processed.progressEstimated,
     dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
     dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
     dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
@@ -360,7 +358,6 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     quality: processed.quality,
     isTranscode: processed.isTranscode,
     dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-    progressEstimated: processed.progressEstimated,
     dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
     dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
     dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
@@ -816,7 +813,6 @@ export async function createSessionWithRulesAtomic(
               quality: processed.quality,
               isTranscode: processed.isTranscode,
               dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-              progressEstimated: processed.progressEstimated,
               videoDecision: processed.videoDecision,
               audioDecision: processed.audioDecision,
               bitrate: processed.bitrate,
@@ -889,7 +885,6 @@ export async function createSessionWithRulesAtomic(
             quality: processed.quality,
             isTranscode: processed.isTranscode,
             dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-            progressEstimated: processed.progressEstimated,
             videoDecision: processed.videoDecision,
             audioDecision: processed.audioDecision,
             bitrate: processed.bitrate,

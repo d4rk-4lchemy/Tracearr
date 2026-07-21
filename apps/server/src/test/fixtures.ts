@@ -147,7 +147,6 @@ export function createMockActiveSession(overrides: Partial<ActiveSession> = {}):
     quality: overrides.quality ?? '1080p',
     isTranscode: overrides.isTranscode ?? false,
     dispatcharrPlaybackKind: overrides.dispatcharrPlaybackKind ?? null,
-    progressEstimated: overrides.progressEstimated ?? false,
     dispatcharrCatchupAnchorAt: overrides.dispatcharrCatchupAnchorAt ?? null,
     dispatcharrCatchupEpgStartAt: overrides.dispatcharrCatchupEpgStartAt ?? null,
     dispatcharrCatchupEpgEndAt: overrides.dispatcharrCatchupEpgEndAt ?? null,

@@ -166,8 +166,6 @@ export interface ProcessedSession extends StreamDetailFields {
   isTranscode: boolean;
   /** Dispatcharr-specific playback kind */
   dispatcharrPlaybackKind: 'live' | 'vod' | 'catchup' | null;
-  /** Whether the reported progress is estimated */
-  progressEstimated: boolean;
   /** Dispatcharr catch-up anchor timestamp (ISO UTC) */
   dispatcharrCatchupAnchorAt?: string | null;
   /** Dispatcharr catch-up EPG start timestamp (ISO UTC) */

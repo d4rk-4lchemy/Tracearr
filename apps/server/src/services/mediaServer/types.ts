@@ -33,9 +33,6 @@ export interface MediaSession {
   /** Dispatcharr playback classification for live/VOD/catch-up */
   dispatcharrPlaybackKind?: 'live' | 'vod' | 'catchup';
 
-  /** True when progress is estimated rather than provider-authoritative */
-  progressEstimated?: boolean;
-
   /** Dispatcharr catch-up anchor timestamp from provider stats (ISO UTC) */
   dispatcharrCatchupAnchorAt?: string;
 

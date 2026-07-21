@@ -871,7 +871,6 @@ describe('Dispatcharr parser', () => {
         expect(sessions).toHaveLength(1);
         expect(sessions[0]).toMatchObject({
           dispatcharrPlaybackKind: 'catchup',
-          progressEstimated: true,
           dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
           dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
           dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',

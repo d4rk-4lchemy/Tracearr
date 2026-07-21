@@ -417,7 +417,6 @@ export interface Session extends StreamDetailFields {
   quality: string | null;
   isTranscode: boolean;
   dispatcharrPlaybackKind?: 'live' | 'vod' | 'catchup' | null;
-  progressEstimated?: boolean;
   dispatcharrCatchupAnchorAt?: string | null;
   dispatcharrCatchupEpgStartAt?: string | null;
   dispatcharrCatchupEpgEndAt?: string | null;
