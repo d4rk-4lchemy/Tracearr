@@ -127,7 +127,7 @@ export function Dashboard() {
             subValue={stats ? t('common:count.channel', { count: stats.tvChannels ?? 0 }) : undefined}
           />
           <StatCard
-            icon={Tv}
+            icon={Clock}
             label={t('dashboard.tvWatchTime')}
             value={`${stats?.tvWatchTimeHours ?? 0}h`}
             isLoading={statsLoading}
