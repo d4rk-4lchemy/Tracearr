@@ -13,8 +13,10 @@ test.describe('Dashboard', () => {
 
     // Stat cards
     await expect(page.getByText('Alerts')).toBeVisible();
-    await expect(page.getByText('Plays')).toBeVisible();
-    await expect(page.getByText('Watch Time')).toBeVisible();
+    await expect(page.getByText('VOD Plays')).toBeVisible();
+    await expect(page.getByText('VOD Watch Time')).toBeVisible();
+    await expect(page.getByText('TV Sessions')).toBeVisible();
+    await expect(page.getByText('TV Watch Time')).toBeVisible();
     await expect(page.getByText('Active Users')).toBeVisible();
 
     // "Now Playing" section header
