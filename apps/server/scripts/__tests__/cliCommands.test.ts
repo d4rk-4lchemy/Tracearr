@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { eq, and } from 'drizzle-orm';
+import { REDIS_KEYS } from '@tracearr/shared';
 import { resetTestDb } from '@tracearr/test-utils/db';
-import { createTestUser } from '@tracearr/test-utils/factories';
+import {
+  createTestServer,
+  createTestServerUser,
+  createTestSession,
+  createTestUser,
+} from '@tracearr/test-utils/factories';
 import { verifyPassword } from '../../src/utils/password.js';
+import { serverUsers, sessions } from '../../src/db/schema.js';
 import {
   db,
   users,
+  servers,
   authAccounts,
   authSessions,
   plexAccounts,
@@ -16,11 +24,14 @@ import {
   setEmailCommand,
   listUsersCommand,
   enableLocalLoginCommand,
+  listDispatcharrServers,
+  purgeDispatcharrCommand,
 } from '../lib/commands.js';
 
 describe('admin cli commands', () => {
   beforeEach(async () => {
     await resetTestDb();
+    await getRedis().flushall();
   });
 
   afterAll(async () => {
@@ -416,6 +427,121 @@ describe('admin cli commands', () => {
     it('flips the setting', async () => {
       await enableLocalLoginCommand();
       expect(await getSetting('localLoginEnabled')).toBe(true);
+    });
+  });
+
+  describe('purgeDispatcharrCommand', () => {
+    it('does nothing when there are no Dispatcharr servers', async () => {
+      await createTestServer({ type: 'plex', name: 'Plex' });
+
+      expect(await listDispatcharrServers()).toEqual([]);
+
+      const result = await purgeDispatcharrCommand();
+      expect(result).toEqual({ servers: [], redisWarning: null });
+
+      const remainingServers = await db.select().from(servers);
+      expect(remainingServers).toHaveLength(1);
+      expect(remainingServers[0]?.type).toBe('plex');
+    });
+
+    it('deletes Dispatcharr servers and cascaded database rows while preserving supported servers', async () => {
+      const user = await createTestUser({ role: 'owner', username: 'owner' });
+      const dispatcharr = await createTestServer({ type: 'dispatcharr', name: 'Dispatcharr' });
+      const plex = await createTestServer({ type: 'plex', name: 'Plex' });
+      const dispatcharrUser = await createTestServerUser({
+        userId: user.id,
+        serverId: dispatcharr.id,
+      });
+      const plexUser = await createTestServerUser({
+        userId: user.id,
+        serverId: plex.id,
+      });
+      await createTestSession({
+        serverId: dispatcharr.id,
+        serverUserId: dispatcharrUser.id,
+        sessionKey: 'dispatcharr-session',
+      });
+      await createTestSession({
+        serverId: plex.id,
+        serverUserId: plexUser.id,
+        sessionKey: 'plex-session',
+      });
+
+      const redis = getRedis();
+      const dispatcharrActiveId = crypto.randomUUID();
+      const plexActiveId = crypto.randomUUID();
+      await redis.sadd(REDIS_KEYS.ACTIVE_SESSION_IDS, dispatcharrActiveId, plexActiveId);
+      await redis.set(
+        REDIS_KEYS.SESSION_BY_ID(dispatcharrActiveId),
+        JSON.stringify({ id: dispatcharrActiveId, serverId: dispatcharr.id }),
+        'EX',
+        150
+      );
+      await redis.set(
+        REDIS_KEYS.SESSION_BY_ID(plexActiveId),
+        JSON.stringify({ id: plexActiveId, serverId: plex.id }),
+        'EX',
+        150
+      );
+      await redis.set(
+        REDIS_KEYS.ACTIVE_SESSIONS,
+        JSON.stringify([
+          { id: dispatcharrActiveId, serverId: dispatcharr.id },
+          { id: plexActiveId, serverId: plex.id },
+        ]),
+        'EX',
+        150
+      );
+      await redis.sadd(REDIS_KEYS.PENDING_SESSION_IDS, `${dispatcharr.id}:pending-1`);
+      await redis.set(REDIS_KEYS.PENDING_SESSION(dispatcharr.id, 'pending-1'), '{}', 'EX', 300);
+      await redis.set(REDIS_KEYS.SERVER_HEALTH(dispatcharr.id), 'true', 'EX', 600);
+
+      const result = await purgeDispatcharrCommand();
+
+      expect(result.redisWarning).toBeNull();
+      expect(result.servers).toEqual([
+        { id: dispatcharr.id, name: dispatcharr.name, url: dispatcharr.url },
+      ]);
+
+      expect(await db.select().from(servers).where(eq(servers.id, dispatcharr.id))).toHaveLength(0);
+      expect(await db.select().from(servers).where(eq(servers.id, plex.id))).toHaveLength(1);
+      expect(
+        await db.select().from(serverUsers).where(eq(serverUsers.serverId, dispatcharr.id))
+      ).toHaveLength(0);
+      expect(await db.select().from(serverUsers).where(eq(serverUsers.serverId, plex.id))).toHaveLength(
+        1
+      );
+      expect(await db.select().from(sessions).where(eq(sessions.serverId, dispatcharr.id))).toHaveLength(
+        0
+      );
+      expect(await db.select().from(sessions).where(eq(sessions.serverId, plex.id))).toHaveLength(1);
+
+      expect(await redis.smembers(REDIS_KEYS.ACTIVE_SESSION_IDS)).toEqual([plexActiveId]);
+      expect(await redis.get(REDIS_KEYS.SESSION_BY_ID(dispatcharrActiveId))).toBeNull();
+      expect(await redis.get(REDIS_KEYS.SESSION_BY_ID(plexActiveId))).not.toBeNull();
+      expect(await redis.get(REDIS_KEYS.PENDING_SESSION(dispatcharr.id, 'pending-1'))).toBeNull();
+      expect(await redis.smembers(REDIS_KEYS.PENDING_SESSION_IDS)).toEqual([]);
+      expect(await redis.get(REDIS_KEYS.SERVER_HEALTH(dispatcharr.id))).toBeNull();
+      expect(JSON.parse((await redis.get(REDIS_KEYS.ACTIVE_SESSIONS)) ?? '[]')).toEqual([
+        { id: plexActiveId, serverId: plex.id },
+      ]);
+    });
+
+    it('keeps the database purge committed when Redis cleanup fails', async () => {
+      const dispatcharr = await createTestServer({ type: 'dispatcharr', name: 'Dispatcharr' });
+      const redis = getRedis();
+      const smembersSpy = vi
+        .spyOn(redis, 'smembers')
+        .mockRejectedValueOnce(new Error('redis unavailable'));
+
+      const result = await purgeDispatcharrCommand();
+
+      smembersSpy.mockRestore();
+      expect(result.servers).toEqual([
+        { id: dispatcharr.id, name: dispatcharr.name, url: dispatcharr.url },
+      ]);
+      expect(result.redisWarning).toMatch(/redis unavailable/i);
+      expect(await db.select().from(servers).where(eq(servers.id, dispatcharr.id))).toHaveLength(0);
     });
   });
 });

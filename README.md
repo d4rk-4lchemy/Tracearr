@@ -10,6 +10,9 @@
 > [!WARNING]  
 > When updating to **≥1.5.0** Jellyfin login **will no longer work!** You need to use your local Tracearr account, created when first launching the service.<br> If you don't remember your password and want to reset it, please execute:<br>`docker exec {distracearr_container_name} node apps/server/dist/scripts/reset-password.js '{new_password}'`
 
+> [!NOTE] 
+> If you ever want to switch back from this fork to the official image, but you have already added a Dispatcharr server and stored data from its sessions, run the following command **while you are still using this forked image**.<br>`docker exec -it {distracearr_container_name} node apps/server/dist/scripts/purge-dispatcharr.js`<br>After running the command, you can stop this container and replace the image with the official one.
+
 **What's New:**
 - Support for Dispatcharr servers, with Login/Password (for WebSocket integration) or API Key auth,
 - Shows currently running Live TV streams, as well as VOD Movies or VOD Shows,
