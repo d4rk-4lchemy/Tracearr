@@ -170,7 +170,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 15 }] })
         .mockResolvedValueOnce({ rows: [{ count: 4 }] })
-        .mockResolvedValueOnce({ rows: [{ totalMs: 5400000 }] });
+        .mockResolvedValueOnce({ rows: [{ total_ms: 5400000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -220,7 +220,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 10 }] })
         .mockResolvedValueOnce({ rows: [{ count: 2 }] })
-        .mockResolvedValueOnce({ rows: [{ totalMs: 1800000 }] });
+        .mockResolvedValueOnce({ rows: [{ total_ms: 1800000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -256,7 +256,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 5 }] })
         .mockResolvedValueOnce({ rows: [{ count: 1 }] })
-        .mockResolvedValueOnce({ rows: [{ totalMs: 600000 }] });
+        .mockResolvedValueOnce({ rows: [{ total_ms: 600000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -288,7 +288,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 8 }] })
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-        .mockResolvedValueOnce({ rows: [{ totalMs: 0 }] });
+        .mockResolvedValueOnce({ rows: [{ total_ms: 0 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -318,7 +318,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-        .mockResolvedValueOnce({ rows: [{ totalMs: 0 }] });
+        .mockResolvedValueOnce({ rows: [{ total_ms: 0 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -353,7 +353,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
-        .mockResolvedValueOnce({ rows: [{ totalMs: 2000000 }] });
+        .mockResolvedValueOnce({ rows: [{ total_ms: 2000000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 

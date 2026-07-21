@@ -50,7 +50,7 @@ function buildLiveWatchTimeQuery(
   sessionServerFilter?: ReturnType<typeof sql>
 ) {
   return db.execute(sql`
-    SELECT COALESCE(SUM(live_plays.play_watch_ms), 0)::bigint as totalMs
+    SELECT COALESCE(SUM(live_plays.play_watch_ms), 0)::bigint as total_ms
     FROM (
       SELECT
         COALESCE(reference_id, id) as play_id,
@@ -168,7 +168,7 @@ async function computeDashboardStats(
       Math.round((Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     tvSessions = (tvSessionsResult.rows[0] as { count: number })?.count ?? 0;
     tvWatchTimeHours =
-      Math.round((Number((tvWatchTimeResult.rows[0] as { totalMs: number | string })?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
+      Math.round((Number((tvWatchTimeResult.rows[0] as { total_ms: number | string })?.total_ms ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     alertsLast24h = alertsResult[0]?.count ?? 0;
     activeUsersToday = activeUsersResult[0]?.count ?? 0;
   } else {
@@ -265,7 +265,7 @@ async function computeDashboardStats(
       Math.round((Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     tvSessions = (tvSessionsResult.rows[0] as { count: number })?.count ?? 0;
     tvWatchTimeHours =
-      Math.round((Number((tvWatchTimeResult.rows[0] as { totalMs: number | string })?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
+      Math.round((Number((tvWatchTimeResult.rows[0] as { total_ms: number | string })?.total_ms ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     alertsLast24h = alertsResult[0]?.count ?? 0;
     activeUsersToday = activeUsersResult[0]?.count ?? 0;
   }

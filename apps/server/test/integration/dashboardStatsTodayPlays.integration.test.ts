@@ -197,4 +197,27 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
     expect(stats.tvSessions).toBeGreaterThanOrEqual(1);
     expect(stats.tvWatchTimeHours).toBeGreaterThanOrEqual(1.5);
   });
+
+  it('reads the live watch time aggregate from the raw SQL alias shape used by postgres', async () => {
+    const timezone = 'UTC';
+    const todayStart = getStartOfDayInTimezone(timezone);
+
+    const server = await createTestServer({ type: 'dispatcharr' });
+    const user = await createTestUser();
+    const serverUser = await createTestServerUser({ serverId: server.id, userId: user.id });
+
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: serverUser.id,
+      mediaType: 'live',
+      startedAt: new Date(todayStart.getTime() + 30 * 60 * 1000),
+      stoppedAt: new Date(todayStart.getTime() + 120 * 60 * 1000),
+      durationMs: 90 * 60 * 1000,
+      pausedDurationMs: 0,
+      totalDurationMs: 0,
+    });
+
+    const stats = await getDashboardStats({ serverIds: [server.id], timezone });
+    expect(stats.tvWatchTimeHours).toBe(1.5);
+  });
 });
