@@ -106,4 +106,30 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
     const filteredStats = await getDashboardStats({ serverIds: [server.id], timezone });
     expect(filteredStats.todayPlays).toBe(expectedOldSemantics);
   });
+
+  it('keeps VOD metrics separate from TV metrics while counting live sessions in active users', async () => {
+    const timezone = 'UTC';
+    const todayStart = getStartOfDayInTimezone(timezone);
+
+    const server = await createTestServer({ type: 'dispatcharr' });
+    const user = await createTestUser();
+    const serverUser = await createTestServerUser({ serverId: server.id, userId: user.id });
+
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: serverUser.id,
+      mediaType: 'live',
+      startedAt: new Date(todayStart.getTime() + 10 * 60 * 1000),
+      durationMs: 30 * 60 * 1000,
+      totalDurationMs: 30 * 60 * 1000,
+    });
+
+    const stats = await getDashboardStats({ serverIds: [server.id], timezone });
+    expect(stats.todayPlays).toBe(0);
+    expect(stats.todaySessions).toBe(0);
+    expect(stats.watchTimeHours).toBe(0);
+    expect(stats.tvSessions).toBe(1);
+    expect(stats.tvWatchTimeHours).toBe(0.5);
+    expect(stats.activeUsersToday).toBe(1);
+  });
 });

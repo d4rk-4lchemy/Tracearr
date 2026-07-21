@@ -28,7 +28,11 @@
     "serverResources": "Recursos do servidor",
     "streamLocations": "Locais da transmissão",
     "streamsAppearHere": "Fluxos ativos irão aparecer aqui quando os usuários começam a assistir",
-    "watchTime": "Tempo de Observação"
+    "watchTime": "Tempo de Observação",
+    "vodPlays": "Reproduções",
+    "vodWatchTime": "Tempo de Observação",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Limpar cache da biblioteca",

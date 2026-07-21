@@ -28,7 +28,11 @@
     "serverResources": "Ресурсы сервера",
     "streamLocations": "Местоположение потока",
     "streamsAppearHere": "Активные потоки появятся здесь, когда пользователи начнут просматривать",
-    "watchTime": "Время просмотра"
+    "watchTime": "Время просмотра",
+    "vodPlays": "Играет",
+    "vodWatchTime": "Время просмотра",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Очистить кэш библиотеки",

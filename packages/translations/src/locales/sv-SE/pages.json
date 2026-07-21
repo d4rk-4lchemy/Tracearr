@@ -28,7 +28,11 @@
     "serverResources": "Server Resurser",
     "streamLocations": "Strömma platser",
     "streamsAppearHere": "Aktiva strömmar visas här när användare börjar titta på",
-    "watchTime": "Titta på tid"
+    "watchTime": "Titta på tid",
+    "vodPlays": "Pjäser",
+    "vodWatchTime": "Titta på tid",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Rensa bibliotekscache",

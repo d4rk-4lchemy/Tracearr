@@ -28,7 +28,11 @@
     "serverResources": "Resurse server",
     "streamLocations": "Locații stream",
     "streamsAppearHere": "Fluxurile active vor apărea aici atunci când utilizatorii încep să vizioneze",
-    "watchTime": "Timp de urmărire"
+    "watchTime": "Timp de urmărire",
+    "vodPlays": "Jocuri",
+    "vodWatchTime": "Timp de urmărire",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Curăță Cache Librărie",

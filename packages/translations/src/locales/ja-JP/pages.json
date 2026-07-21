@@ -28,7 +28,11 @@
     "serverResources": "サーバーリソース",
     "streamLocations": "ストリームの場所",
     "streamsAppearHere": "ユーザーが視聴を開始すると、アクティブなストリームがここに表示されます",
-    "watchTime": "ウォッチ時間"
+    "watchTime": "ウォッチ時間",
+    "vodPlays": "再生",
+    "vodWatchTime": "ウォッチ時間",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "ライブラリキャッシュをクリア",

@@ -91,7 +91,7 @@ export function Dashboard() {
           <Calendar className="text-primary h-5 w-5" />
           <h2 className="text-lg font-semibold">{t('common:time.today')}</h2>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           <StatCard
             icon={AlertTriangle}
             label={t('dashboard.alerts')}
@@ -101,7 +101,7 @@ export function Dashboard() {
           />
           <StatCard
             icon={Play}
-            label={t('dashboard.plays')}
+            label={t('dashboard.vodPlays')}
             value={stats?.todayPlays ?? 0}
             isLoading={statsLoading}
             href="/history"
@@ -113,8 +113,22 @@ export function Dashboard() {
           />
           <StatCard
             icon={Clock}
-            label={t('dashboard.watchTime')}
+            label={t('dashboard.vodWatchTime')}
             value={`${stats?.watchTimeHours ?? 0}h`}
+            isLoading={statsLoading}
+            href="/stats/activity"
+          />
+          <StatCard
+            icon={Tv}
+            label={t('dashboard.tvSessions')}
+            value={stats?.tvSessions ?? 0}
+            isLoading={statsLoading}
+            href="/history"
+          />
+          <StatCard
+            icon={Tv}
+            label={t('dashboard.tvWatchTime')}
+            value={`${stats?.tvWatchTimeHours ?? 0}h`}
             isLoading={statsLoading}
             href="/stats/activity"
           />

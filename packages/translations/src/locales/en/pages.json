@@ -41,8 +41,10 @@
   },
   "dashboard": {
     "alerts": "Alerts",
-    "plays": "Plays",
-    "watchTime": "Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
     "activeUsers": "Active Users",
     "nowPlaying": "Now Playing",
     "streamLocations": "Stream Locations",

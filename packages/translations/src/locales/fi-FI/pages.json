@@ -28,7 +28,11 @@
     "serverResources": "Palvelimen Resurssit",
     "streamLocations": "Virran Sijainnit",
     "streamsAppearHere": "Aktiiviset streamit näkyvät täällä, kun käyttäjät alkavat katsella",
-    "watchTime": "Kellon Aika"
+    "watchTime": "Kellon Aika",
+    "vodPlays": "Soittajat",
+    "vodWatchTime": "Kellon Aika",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Tyhjennä Kirjaston Välimuisti",

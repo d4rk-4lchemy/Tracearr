@@ -28,7 +28,11 @@
     "serverResources": "Zasoby Serwera",
     "streamLocations": "Lokalizacje transmisji",
     "streamsAppearHere": "Aktywne transmisje pojawią się tutaj, gdy użytkownicy zaczną oglądać",
-    "watchTime": "Czas Oglądania"
+    "watchTime": "Czas Oglądania",
+    "vodPlays": "Odtworzenia",
+    "vodWatchTime": "Czas Oglądania",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Usuń pamięć podręczną biblioteki",

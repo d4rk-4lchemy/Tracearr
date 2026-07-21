@@ -846,9 +846,11 @@ export interface DashboardStats {
   activeStreams: number;
   todayPlays: number; // Validated plays (sessions >= 2 min)
   todaySessions: number; // Raw session count (for comparison)
-  watchTimeHours: number;
+  watchTimeHours: number; // VOD watch time for movies/episodes only
+  tvSessions: number; // Raw TV session count for mediaType='live'
+  tvWatchTimeHours: number; // TV watch time for mediaType='live'
   alertsLast24h: number;
-  activeUsersToday: number;
+  activeUsersToday: number; // Distinct users across all media types
 }
 
 export interface PlayStats {

@@ -28,7 +28,11 @@
     "serverResources": "Ресурси сервера",
     "streamLocations": "Потокові місцезнаходження",
     "streamsAppearHere": "Активні потоки з'являться тут, коли користувачі почнуть перегляд",
-    "watchTime": "Час перегляду"
+    "watchTime": "Час перегляду",
+    "vodPlays": "Відтворюється",
+    "vodWatchTime": "Час перегляду",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Очистити кеш бібліотеки",

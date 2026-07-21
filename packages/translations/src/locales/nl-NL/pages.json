@@ -28,7 +28,11 @@
     "serverResources": "Serverbronnen",
     "streamLocations": "Streamlocaties",
     "streamsAppearHere": "Actieve streams zullen hier verschijnen wanneer gebruikers gaan kijken",
-    "watchTime": "Kijktijd"
+    "watchTime": "Kijktijd",
+    "vodPlays": "Weergaven",
+    "vodWatchTime": "Kijktijd",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Bibliotheekcache legen",

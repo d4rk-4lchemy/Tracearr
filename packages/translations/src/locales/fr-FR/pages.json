@@ -28,7 +28,11 @@
     "serverResources": "Ressources du serveur",
     "streamLocations": "Emplacements des lectures",
     "streamsAppearHere": "Les lectures actives apparaîtront ici lorsque les utilisateurs commenceront à regarder",
-    "watchTime": "Temps de visionnage"
+    "watchTime": "Temps de visionnage",
+    "vodPlays": "Lectures",
+    "vodWatchTime": "Temps de visionnage",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Vider le cache de la bibliothèque",

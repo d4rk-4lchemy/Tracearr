@@ -28,7 +28,11 @@
     "serverResources": "Πόροι Διακομιστή",
     "streamLocations": "Τοποθεσίες Ροής",
     "streamsAppearHere": "Οι ενεργές ροές θα εμφανιστούν εδώ όταν οι χρήστες αρχίσουν να παρακολουθούν",
-    "watchTime": "Ώρα Παρακολούθησης"
+    "watchTime": "Ώρα Παρακολούθησης",
+    "vodPlays": "Παίζει",
+    "vodWatchTime": "Ώρα Παρακολούθησης",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Εκκαθάριση Προσωρινής Αποθήκευσης Βιβλιοθήκης",

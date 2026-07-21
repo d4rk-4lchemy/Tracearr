@@ -49,7 +49,11 @@
     "serverResources": "Server Resources",
     "bandwidth": "Bandwidth",
     "noActiveStreams": "No active streams",
-    "streamsAppearHere": "Active streams will appear here when users start watching"
+    "streamsAppearHere": "Active streams will appear here when users start watching",
+    "vodPlays": "Plays",
+    "vodWatchTime": "Watch Time",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "users": {
     "title": "Users",

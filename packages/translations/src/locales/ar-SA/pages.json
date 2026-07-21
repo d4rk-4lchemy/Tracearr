@@ -28,7 +28,11 @@
     "serverResources": "موارد الخادم",
     "streamLocations": "مواقع البث",
     "streamsAppearHere": "ستظهر البث النشط هنا عندما يبدأ المستخدمون بمشاهدة",
-    "watchTime": "وقت المشاهدة"
+    "watchTime": "وقت المشاهدة",
+    "vodPlays": "مشغلات",
+    "vodWatchTime": "وقت المشاهدة",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "مسح ذاكرة التخزين المؤقت للمكتبة",

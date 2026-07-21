@@ -14,7 +14,7 @@ import {
   playsCountSince,
   watchTimeSince,
   violationsCountSince,
-  uniqueUsersSince,
+  uniqueUsersAllMediaSince,
 } from '../db/prepared.js';
 import { buildMultiServerCondition, buildMultiServerFragment } from '../utils/serverFiltering.js';
 import { getCacheService } from './cache.js';
@@ -32,6 +32,7 @@ export interface GetDashboardStatsOptions {
 
 const CACHE_TTL_SECONDS = 60;
 const MIN_PLAY_DURATION_MS = 120000;
+const LIVE_MEDIA_TYPE = 'live';
 
 /**
  * Get dashboard statistics with optional caching.
@@ -95,6 +96,8 @@ async function computeDashboardStats(
   let todayPlays: number;
   let todaySessions: number;
   let watchTimeHours: number;
+  let tvSessions: number;
+  let tvWatchTimeHours: number;
   let alertsLast24h: number;
   let activeUsersToday: number;
 
@@ -106,11 +109,13 @@ async function computeDashboardStats(
       alertsResult,
       activeUsersResult,
       validatedPlaysResult,
+      tvSessionsResult,
+      tvWatchTimeResult,
     ] = await Promise.all([
       playsCountSince.execute({ since: todayStart }),
       watchTimeSince.execute({ since: todayStart }),
       violationsCountSince.execute({ since: last24h }),
-      uniqueUsersSince.execute({ since: todayStart }),
+      uniqueUsersAllMediaSince.execute({ since: todayStart }),
       db.execute(sql`
         SELECT COUNT(DISTINCT COALESCE(reference_id, id))::int as count
         FROM sessions
@@ -118,23 +123,39 @@ async function computeDashboardStats(
           AND duration_ms >= ${MIN_PLAY_DURATION_MS}
           ${MEDIA_TYPE_SQL_FILTER}
       `),
+      db.execute(sql`
+        SELECT COUNT(DISTINCT COALESCE(reference_id, id))::int as count
+        FROM sessions
+        WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
+          AND media_type = ${LIVE_MEDIA_TYPE}
+      `),
+      db.execute(sql`
+        SELECT COALESCE(SUM(duration_ms), 0)::bigint as totalMs
+        FROM sessions
+        WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
+          AND media_type = ${LIVE_MEDIA_TYPE}
+      `),
     ]);
 
     todaySessions = todayPlaysResult[0]?.count ?? 0;
     todayPlays = (validatedPlaysResult.rows[0] as { count: number })?.count ?? 0;
     watchTimeHours =
       Math.round((Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
+    tvSessions = (tvSessionsResult.rows[0] as { count: number })?.count ?? 0;
+    tvWatchTimeHours =
+      Math.round((Number((tvWatchTimeResult.rows[0] as { totalMs: number | string })?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     alertsLast24h = alertsResult[0]?.count ?? 0;
     activeUsersToday = activeUsersResult[0]?.count ?? 0;
   } else {
     // Server filter - use dynamic queries
+    const serverCondition = buildMultiServerCondition(serverIds, sessions.serverId);
+
     const buildSessionConditions = (since: Date) => {
       const conditions = [
         gte(sessions.startedAt, since),
         inArray(sessions.mediaType, PRIMARY_MEDIA_TYPES),
       ];
 
-      const serverCondition = buildMultiServerCondition(serverIds, sessions.serverId);
       if (serverCondition) {
         conditions.push(serverCondition);
       }
@@ -151,6 +172,8 @@ async function computeDashboardStats(
       alertsResult,
       activeUsersResult,
       validatedPlaysResult,
+      tvSessionsResult,
+      tvWatchTimeResult,
     ] = await Promise.all([
       db
         .select({
@@ -186,7 +209,12 @@ async function computeDashboardStats(
         })
         .from(sessions)
         .innerJoin(serverUsers, eq(sessions.serverUserId, serverUsers.id))
-        .where(and(...buildSessionConditions(todayStart))),
+        .where(
+          and(
+            gte(sessions.startedAt, todayStart),
+            ...(serverCondition ? [serverCondition] : [])
+          )
+        ),
 
       db.execute(sql`
         SELECT COUNT(DISTINCT COALESCE(reference_id, id))::int as count
@@ -196,12 +224,29 @@ async function computeDashboardStats(
           ${MEDIA_TYPE_SQL_FILTER}
         ${sessionServerFilter}
       `),
+      db.execute(sql`
+        SELECT COUNT(DISTINCT COALESCE(reference_id, id))::int as count
+        FROM sessions
+        WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
+          AND media_type = ${LIVE_MEDIA_TYPE}
+        ${sessionServerFilter}
+      `),
+      db.execute(sql`
+        SELECT COALESCE(SUM(duration_ms), 0)::bigint as totalMs
+        FROM sessions
+        WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
+          AND media_type = ${LIVE_MEDIA_TYPE}
+        ${sessionServerFilter}
+      `),
     ]);
 
     todaySessions = todaySessionsResult[0]?.count ?? 0;
     todayPlays = (validatedPlaysResult.rows[0] as { count: number })?.count ?? 0;
     watchTimeHours =
       Math.round((Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
+    tvSessions = (tvSessionsResult.rows[0] as { count: number })?.count ?? 0;
+    tvWatchTimeHours =
+      Math.round((Number((tvWatchTimeResult.rows[0] as { totalMs: number | string })?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     alertsLast24h = alertsResult[0]?.count ?? 0;
     activeUsersToday = activeUsersResult[0]?.count ?? 0;
   }
@@ -211,6 +256,8 @@ async function computeDashboardStats(
     todayPlays,
     todaySessions,
     watchTimeHours,
+    tvSessions,
+    tvWatchTimeHours,
     alertsLast24h,
     activeUsersToday,
   };

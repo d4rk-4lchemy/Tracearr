@@ -159,7 +159,7 @@ export default function DashboardScreen() {
               <StatPill
                 icon="play-circle-outline"
                 value={stats.todayPlays}
-                unit={t('pages:dashboard.plays')}
+                unit={t('pages:dashboard.vodPlays')}
               />
               <StatPill
                 icon="time-outline"

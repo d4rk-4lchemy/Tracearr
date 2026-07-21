@@ -28,7 +28,11 @@
     "serverResources": "服务器资源",
     "streamLocations": "流媒体位置",
     "streamsAppearHere": "当用户开始观看时活跃的流将出现在这里",
-    "watchTime": "观看时长"
+    "watchTime": "观看时长",
+    "vodPlays": "播放",
+    "vodWatchTime": "观看时长",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Clear Library Cache",

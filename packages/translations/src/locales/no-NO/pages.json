@@ -28,7 +28,11 @@
     "serverResources": "Server ressurser",
     "streamLocations": "Steder i strømmen",
     "streamsAppearHere": "Aktive streamer vises her når brukere begynner å se",
-    "watchTime": "Klokke tid"
+    "watchTime": "Klokke tid",
+    "vodPlays": "Spillforsøk",
+    "vodWatchTime": "Klokke tid",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Tøm bibliotekets mellomlager",

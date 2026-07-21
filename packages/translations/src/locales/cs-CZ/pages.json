@@ -28,7 +28,11 @@
     "serverResources": "Zdroje serveru",
     "streamLocations": "Umístění streamu",
     "streamsAppearHere": "Aktivní streamy se zobrazí zde, když uživatelé začnou sledovat",
-    "watchTime": "Čas sledování"
+    "watchTime": "Čas sledování",
+    "vodPlays": "Hraje",
+    "vodWatchTime": "Čas sledování",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Vymazat mezipaměť knihovny",

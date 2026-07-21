@@ -28,7 +28,11 @@
     "serverResources": "Server Ressourcer",
     "streamLocations": "Stream Placeringer",
     "streamsAppearHere": "Aktive streams vises her, når brugerne begynder at se",
-    "watchTime": "Se Tid"
+    "watchTime": "Se Tid",
+    "vodPlays": "Afspil",
+    "vodWatchTime": "Se Tid",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time"
   },
   "debug": {
     "clearLibraryCache": "Ryd Biblioteks Cache",
