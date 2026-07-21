@@ -847,8 +847,9 @@ export interface DashboardStats {
   todayPlays: number; // Validated plays (sessions >= 2 min)
   todaySessions: number; // Raw session count (for comparison)
   watchTimeHours: number; // VOD watch time for movies/episodes only
-  tvSessions: number; // Raw TV session count for mediaType='live'
-  tvWatchTimeHours: number; // TV watch time for mediaType='live'
+  tvSessions: number; // Raw TV session count for mediaType='live' (includes catch-up)
+  tvChannels: number; // Unique TV channels for mediaType='live' (includes catch-up)
+  tvWatchTimeHours: number; // TV watch time for mediaType='live' (includes catch-up)
   alertsLast24h: number;
   activeUsersToday: number; // Distinct users across all media types
 }

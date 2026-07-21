@@ -93,7 +93,9 @@
     "usersUpdated_one": "Оновлено користувача {{count}}",
     "usersUpdated_other": "Оновлено користувачів {{count}}",
     "violation_one": "{{count}} порушення",
-    "violation_other": "{{count}} порушень"
+    "violation_other": "{{count}} порушень",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} день",

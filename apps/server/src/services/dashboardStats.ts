@@ -43,6 +43,9 @@ const LIVE_EFFECTIVE_WATCH_TIME_SQL = sql.raw(`
     )
   )
 `);
+const TV_CHANNEL_KEY_SQL = sql.raw(`
+  LOWER(BTRIM(COALESCE(NULLIF(channel_title, ''), NULLIF(media_title, ''))))
+`);
 
 function buildLiveWatchTimeQuery(
   todayStart: Date,
@@ -61,6 +64,21 @@ function buildLiveWatchTimeQuery(
         ${sessionServerFilter ?? sql``}
       GROUP BY COALESCE(reference_id, id)
     ) live_plays
+  `);
+}
+
+function buildTvChannelsQuery(
+  todayStart: Date,
+  todayEnd: Date,
+  sessionServerFilter?: ReturnType<typeof sql>
+) {
+  return db.execute(sql`
+    SELECT COUNT(DISTINCT ${TV_CHANNEL_KEY_SQL})::int as count
+    FROM sessions
+    WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
+      AND media_type = ${LIVE_MEDIA_TYPE}
+      AND ${TV_CHANNEL_KEY_SQL} <> ''
+      ${sessionServerFilter ?? sql``}
   `);
 }
 
@@ -127,6 +145,7 @@ async function computeDashboardStats(
   let todaySessions: number;
   let watchTimeHours: number;
   let tvSessions: number;
+  let tvChannels: number;
   let tvWatchTimeHours: number;
   let alertsLast24h: number;
   let activeUsersToday: number;
@@ -140,6 +159,7 @@ async function computeDashboardStats(
       activeUsersResult,
       validatedPlaysResult,
       tvSessionsResult,
+      tvChannelsResult,
       tvWatchTimeResult,
     ] = await Promise.all([
       playsCountSince.execute({ since: todayStart }),
@@ -159,6 +179,7 @@ async function computeDashboardStats(
         WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
           AND media_type = ${LIVE_MEDIA_TYPE}
       `),
+      buildTvChannelsQuery(todayStart, todayEnd),
       buildLiveWatchTimeQuery(todayStart, todayEnd),
     ]);
 
@@ -167,6 +188,7 @@ async function computeDashboardStats(
     watchTimeHours =
       Math.round((Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     tvSessions = (tvSessionsResult.rows[0] as { count: number })?.count ?? 0;
+    tvChannels = (tvChannelsResult.rows[0] as { count: number })?.count ?? 0;
     tvWatchTimeHours =
       Math.round((Number((tvWatchTimeResult.rows[0] as { total_ms: number | string })?.total_ms ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     alertsLast24h = alertsResult[0]?.count ?? 0;
@@ -198,6 +220,7 @@ async function computeDashboardStats(
       activeUsersResult,
       validatedPlaysResult,
       tvSessionsResult,
+      tvChannelsResult,
       tvWatchTimeResult,
     ] = await Promise.all([
       db
@@ -256,6 +279,7 @@ async function computeDashboardStats(
           AND media_type = ${LIVE_MEDIA_TYPE}
         ${sessionServerFilter}
       `),
+      buildTvChannelsQuery(todayStart, todayEnd, sessionServerFilter),
       buildLiveWatchTimeQuery(todayStart, todayEnd, sessionServerFilter),
     ]);
 
@@ -264,6 +288,7 @@ async function computeDashboardStats(
     watchTimeHours =
       Math.round((Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     tvSessions = (tvSessionsResult.rows[0] as { count: number })?.count ?? 0;
+    tvChannels = (tvChannelsResult.rows[0] as { count: number })?.count ?? 0;
     tvWatchTimeHours =
       Math.round((Number((tvWatchTimeResult.rows[0] as { total_ms: number | string })?.total_ms ?? 0) / (1000 * 60 * 60)) * 10) / 10;
     alertsLast24h = alertsResult[0]?.count ?? 0;
@@ -276,6 +301,7 @@ async function computeDashboardStats(
     todaySessions,
     watchTimeHours,
     tvSessions,
+    tvChannels,
     tvWatchTimeHours,
     alertsLast24h,
     activeUsersToday,

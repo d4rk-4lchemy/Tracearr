@@ -128,6 +128,7 @@ describe('Dashboard Stats Routes', () => {
         todaySessions: 30,
         watchTimeHours: 12.5,
         tvSessions: 11,
+        tvChannels: 7,
         tvWatchTimeHours: 6.5,
         alertsLast24h: 3,
         activeUsersToday: 8,
@@ -170,6 +171,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 15 }] })
         .mockResolvedValueOnce({ rows: [{ count: 4 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 3 }] })
         .mockResolvedValueOnce({ rows: [{ total_ms: 5400000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
@@ -184,6 +186,7 @@ describe('Dashboard Stats Routes', () => {
       expect(body.todayPlays).toBe(15);
       expect(body.watchTimeHours).toBe(5);
       expect(body.tvSessions).toBe(4);
+      expect(body.tvChannels).toBe(3);
       expect(body.tvWatchTimeHours).toBe(1.5);
       expect(body.alertsLast24h).toBe(2);
       expect(body.activeUsersToday).toBe(6);
@@ -220,6 +223,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 10 }] })
         .mockResolvedValueOnce({ rows: [{ count: 2 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
         .mockResolvedValueOnce({ rows: [{ total_ms: 1800000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
@@ -235,6 +239,7 @@ describe('Dashboard Stats Routes', () => {
       expect(body.todayPlays).toBe(10);
       expect(body.watchTimeHours).toBe(2);
       expect(body.tvSessions).toBe(2);
+      expect(body.tvChannels).toBe(1);
       expect(body.tvWatchTimeHours).toBe(0.5);
     });
 
@@ -255,6 +260,7 @@ describe('Dashboard Stats Routes', () => {
       vi.mocked(uniqueUsersAllMediaSince.execute).mockResolvedValue([{ count: 2 }]);
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 5 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
         .mockResolvedValueOnce({ rows: [{ count: 1 }] })
         .mockResolvedValueOnce({ rows: [{ total_ms: 600000 }] });
 
@@ -288,6 +294,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 8 }] })
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
         .mockResolvedValueOnce({ rows: [{ total_ms: 0 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
@@ -318,6 +325,7 @@ describe('Dashboard Stats Routes', () => {
       mockDbExecute
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
         .mockResolvedValueOnce({ rows: [{ total_ms: 0 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
@@ -332,6 +340,7 @@ describe('Dashboard Stats Routes', () => {
       expect(body.todayPlays).toBe(0);
       expect(body.watchTimeHours).toBe(0);
       expect(body.tvSessions).toBe(0);
+      expect(body.tvChannels).toBe(0);
       expect(body.tvWatchTimeHours).toBe(0);
       expect(body.alertsLast24h).toBe(0);
       expect(body.activeUsersToday).toBe(0);
@@ -351,6 +360,7 @@ describe('Dashboard Stats Routes', () => {
       vi.mocked(violationsCountSince.execute).mockResolvedValue([{ count: 0 }]);
       vi.mocked(uniqueUsersAllMediaSince.execute).mockResolvedValue([{ count: 0 }]);
       mockDbExecute
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
         .mockResolvedValueOnce({ rows: [{ count: 0 }] })
         .mockResolvedValueOnce({ rows: [{ total_ms: 2000000 }] });

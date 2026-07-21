@@ -124,6 +124,7 @@ export function Dashboard() {
             value={stats?.tvSessions ?? 0}
             isLoading={statsLoading}
             href="/history"
+            subValue={stats ? t('common:count.channel', { count: stats.tvChannels ?? 0 }) : undefined}
           />
           <StatCard
             icon={Tv}

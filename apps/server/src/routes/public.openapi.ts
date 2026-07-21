@@ -314,6 +314,10 @@ const StatsTodayResponse = z
       .number()
       .int()
       .openapi({ description: 'TV sessions today, including catch-up', example: 19 }),
+    tvChannels: z
+      .number()
+      .int()
+      .openapi({ description: 'Unique TV channels today, including catch-up', example: 12 }),
     tvWatchTimeHours: z
       .number()
       .openapi({ description: 'TV hours watched today, including catch-up', example: 4.2 }),

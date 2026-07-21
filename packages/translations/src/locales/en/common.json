@@ -256,7 +256,9 @@
     "location_one": "{{count}} location",
     "location_other": "{{count}} locations",
     "device_one": "{{count}} device",
-    "device_other": "{{count}} devices"
+    "device_other": "{{count}} devices",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "messages": {
     "noChangesDetected": "No changes detected"

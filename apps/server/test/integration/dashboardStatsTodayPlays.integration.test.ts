@@ -129,6 +129,7 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
     expect(stats.todaySessions).toBe(0);
     expect(stats.watchTimeHours).toBe(0);
     expect(stats.tvSessions).toBe(1);
+    expect(stats.tvChannels).toBe(1);
     expect(stats.tvWatchTimeHours).toBe(0.5);
     expect(stats.activeUsersToday).toBe(1);
   });
@@ -157,6 +158,7 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
 
     const stats = await getDashboardStats({ serverIds: [server.id], timezone });
     expect(stats.tvSessions).toBe(1);
+    expect(stats.tvChannels).toBe(1);
     expect(stats.tvWatchTimeHours).toBe(2);
   });
 
@@ -195,6 +197,7 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
 
     const stats = await getDashboardStats({ serverIds: undefined, timezone });
     expect(stats.tvSessions).toBeGreaterThanOrEqual(1);
+    expect(stats.tvChannels).toBeGreaterThanOrEqual(1);
     expect(stats.tvWatchTimeHours).toBeGreaterThanOrEqual(1.5);
   });
 
@@ -218,6 +221,88 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
     });
 
     const stats = await getDashboardStats({ serverIds: [server.id], timezone });
+    expect(stats.tvChannels).toBe(1);
     expect(stats.tvWatchTimeHours).toBe(1.5);
+  });
+
+  it('deduplicates TV channels across servers by trimmed case-insensitive channel title and prefers channelTitle over mediaTitle', async () => {
+    const timezone = 'UTC';
+    const todayStart = getStartOfDayInTimezone(timezone);
+
+    const dispatcharrServer = await createTestServer({ type: 'dispatcharr' });
+    const jellyfinServer = await createTestServer({ type: 'jellyfin' });
+    const userA = await createTestUser();
+    const userB = await createTestUser();
+    const dispatcharrUser = await createTestServerUser({
+      serverId: dispatcharrServer.id,
+      userId: userA.id,
+    });
+    const jellyfinUser = await createTestServerUser({
+      serverId: jellyfinServer.id,
+      userId: userB.id,
+    });
+
+    const catchupSession = await createTestSession({
+      serverId: dispatcharrServer.id,
+      serverUserId: dispatcharrUser.id,
+      mediaType: 'live',
+      mediaTitle: 'Morning News',
+      startedAt: new Date(todayStart.getTime() + 15 * 60 * 1000),
+      stoppedAt: new Date(todayStart.getTime() + 45 * 60 * 1000),
+      durationMs: 30 * 60 * 1000,
+      totalDurationMs: 30 * 60 * 1000,
+    });
+
+    const jellyfinLive = await createTestSession({
+      serverId: jellyfinServer.id,
+      serverUserId: jellyfinUser.id,
+      mediaType: 'live',
+      mediaTitle: 'NEWS 24',
+      startedAt: new Date(todayStart.getTime() + 60 * 60 * 1000),
+      stoppedAt: new Date(todayStart.getTime() + 90 * 60 * 1000),
+      durationMs: 30 * 60 * 1000,
+      totalDurationMs: 30 * 60 * 1000,
+    });
+
+    const secondChannel = await createTestSession({
+      serverId: dispatcharrServer.id,
+      serverUserId: dispatcharrUser.id,
+      mediaType: 'live',
+      mediaTitle: 'Sports Recap',
+      startedAt: new Date(todayStart.getTime() + 2 * 60 * 60 * 1000),
+      stoppedAt: new Date(todayStart.getTime() + 3 * 60 * 60 * 1000),
+      durationMs: 60 * 60 * 1000,
+      totalDurationMs: 60 * 60 * 1000,
+    });
+
+    await db.execute(sql`
+      UPDATE sessions
+      SET channel_title = ' News 24 ',
+          dispatcharr_playback_kind = 'catchup'
+      WHERE id = ${catchupSession.id}
+    `);
+
+    await db.execute(sql`
+      UPDATE sessions
+      SET channel_title = 'news 24'
+      WHERE id = ${jellyfinLive.id}
+    `);
+
+    await db.execute(sql`
+      UPDATE sessions
+      SET channel_title = 'Canal+ Sport 4'
+      WHERE id = ${secondChannel.id}
+    `);
+
+    const allServersStats = await getDashboardStats({ serverIds: undefined, timezone });
+    expect(allServersStats.tvSessions).toBeGreaterThanOrEqual(3);
+    expect(allServersStats.tvChannels).toBeGreaterThanOrEqual(2);
+
+    const filteredStats = await getDashboardStats({
+      serverIds: [dispatcharrServer.id, jellyfinServer.id],
+      timezone,
+    });
+    expect(filteredStats.tvSessions).toBe(3);
+    expect(filteredStats.tvChannels).toBe(2);
   });
 });

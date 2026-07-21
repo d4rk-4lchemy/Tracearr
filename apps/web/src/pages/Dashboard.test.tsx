@@ -118,6 +118,36 @@ describe('Dashboard', () => {
     expect(screen.getByText('dashboard.noActiveStreams')).toBeInTheDocument();
   });
 
+  it('shows TV channel count as the TV Sessions sublabel', () => {
+    mockUseDashboardStats.mockReturnValue({
+      data: {
+        activeStreams: 0,
+        todayPlays: 1,
+        todaySessions: 1,
+        watchTimeHours: 1,
+        tvSessions: 5,
+        tvChannels: 3,
+        tvWatchTimeHours: 2.5,
+        alertsLast24h: 0,
+        activeUsersToday: 2,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useDashboardStats>);
+    mockUseActiveSessions.mockReturnValue({
+      data: [],
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useActiveSessions>);
+
+    renderDashboard();
+
+    expect(screen.getByText(/common:count.channel/)).toBeInTheDocument();
+  });
+
   it('shows a page-level error state when the stats query fails, and retry refetches both queries', async () => {
     const refetchStats = vi.fn();
     const refetchSessions = vi.fn();

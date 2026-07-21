@@ -93,7 +93,9 @@
     "usersUpdated_one": "{{count}} käyttäjä päivitetty",
     "usersUpdated_other": "{{count}} käyttäjää päivitetty",
     "violation_one": "{{count}} rikkomusta",
-    "violation_other": "{{count}} rikkomusta"
+    "violation_other": "{{count}} rikkomusta",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} päivää",

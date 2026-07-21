@@ -93,7 +93,9 @@
     "usersUpdated_one": "{{count}} user updated",
     "usersUpdated_other": "{{count}} users updated",
     "violation_one": "انتهاك {{count}}",
-    "violation_other": "انتهاكات {{count}}"
+    "violation_other": "انتهاكات {{count}}",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} day",

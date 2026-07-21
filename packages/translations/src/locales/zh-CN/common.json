@@ -93,7 +93,9 @@
     "usersUpdated_one": "{{count}}用户已更新",
     "usersUpdated_other": "{{count}}用户已更新",
     "violation_one": "{{count}}违反",
-    "violation_other": "{{count}}违反"
+    "violation_other": "{{count}}违反",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} 天",

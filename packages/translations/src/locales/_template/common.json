@@ -241,7 +241,9 @@
     "library_one": "{{count}} library",
     "library_other": "{{count}} libraries",
     "error_one": "{{count}} error",
-    "error_other": "{{count}} errors"
+    "error_other": "{{count}} errors",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "messages": {
     "noChangesDetected": "No changes detected"
