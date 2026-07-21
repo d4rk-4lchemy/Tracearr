@@ -33,6 +33,16 @@ export interface GetDashboardStatsOptions {
 const CACHE_TTL_SECONDS = 60;
 const MIN_PLAY_DURATION_MS = 120000;
 const LIVE_MEDIA_TYPE = 'live';
+const LIVE_EFFECTIVE_WATCH_TIME_SQL = sql.raw(`
+  COALESCE(
+    NULLIF(duration_ms, 0),
+    GREATEST(
+      0,
+      FLOOR(EXTRACT(EPOCH FROM (COALESCE(stopped_at, NOW()) - started_at)) * 1000)::bigint
+      - COALESCE(paused_duration_ms, 0)
+    )
+  )
+`);
 
 /**
  * Get dashboard statistics with optional caching.
@@ -130,7 +140,7 @@ async function computeDashboardStats(
           AND media_type = ${LIVE_MEDIA_TYPE}
       `),
       db.execute(sql`
-        SELECT COALESCE(SUM(duration_ms), 0)::bigint as totalMs
+        SELECT COALESCE(SUM(${LIVE_EFFECTIVE_WATCH_TIME_SQL}), 0)::bigint as totalMs
         FROM sessions
         WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
           AND media_type = ${LIVE_MEDIA_TYPE}
@@ -232,7 +242,7 @@ async function computeDashboardStats(
         ${sessionServerFilter}
       `),
       db.execute(sql`
-        SELECT COALESCE(SUM(duration_ms), 0)::bigint as totalMs
+        SELECT COALESCE(SUM(${LIVE_EFFECTIVE_WATCH_TIME_SQL}), 0)::bigint as totalMs
         FROM sessions
         WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
           AND media_type = ${LIVE_MEDIA_TYPE}
