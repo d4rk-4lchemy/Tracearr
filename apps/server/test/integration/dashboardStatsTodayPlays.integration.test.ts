@@ -159,4 +159,42 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
     expect(stats.tvSessions).toBe(1);
     expect(stats.tvWatchTimeHours).toBe(2);
   });
+
+  it('matches history-style grouped live watch time in the all-servers branch', async () => {
+    const timezone = 'UTC';
+    const todayStart = getStartOfDayInTimezone(timezone);
+
+    const server = await createTestServer({ type: 'dispatcharr' });
+    const user = await createTestUser();
+    const serverUser = await createTestServerUser({ serverId: server.id, userId: user.id });
+    const referenceId = crypto.randomUUID();
+
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: serverUser.id,
+      referenceId,
+      mediaType: 'live',
+      startedAt: new Date(todayStart.getTime() + 60 * 60 * 1000),
+      stoppedAt: new Date(todayStart.getTime() + 90 * 60 * 1000),
+      durationMs: 30 * 60 * 1000,
+      pausedDurationMs: 0,
+      totalDurationMs: 0,
+    });
+
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: serverUser.id,
+      referenceId,
+      mediaType: 'live',
+      startedAt: new Date(todayStart.getTime() + 90 * 60 * 1000),
+      stoppedAt: new Date(todayStart.getTime() + 150 * 60 * 1000),
+      durationMs: null,
+      pausedDurationMs: 0,
+      totalDurationMs: 0,
+    });
+
+    const stats = await getDashboardStats({ serverIds: undefined, timezone });
+    expect(stats.tvSessions).toBeGreaterThanOrEqual(1);
+    expect(stats.tvWatchTimeHours).toBeGreaterThanOrEqual(1.5);
+  });
 });

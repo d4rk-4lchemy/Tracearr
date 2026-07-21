@@ -44,6 +44,26 @@ const LIVE_EFFECTIVE_WATCH_TIME_SQL = sql.raw(`
   )
 `);
 
+function buildLiveWatchTimeQuery(
+  todayStart: Date,
+  todayEnd: Date,
+  sessionServerFilter?: ReturnType<typeof sql>
+) {
+  return db.execute(sql`
+    SELECT COALESCE(SUM(live_plays.play_watch_ms), 0)::bigint as totalMs
+    FROM (
+      SELECT
+        COALESCE(reference_id, id) as play_id,
+        SUM(${LIVE_EFFECTIVE_WATCH_TIME_SQL})::bigint as play_watch_ms
+      FROM sessions
+      WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
+        AND media_type = ${LIVE_MEDIA_TYPE}
+        ${sessionServerFilter ?? sql``}
+      GROUP BY COALESCE(reference_id, id)
+    ) live_plays
+  `);
+}
+
 /**
  * Get dashboard statistics with optional caching.
  */
@@ -139,12 +159,7 @@ async function computeDashboardStats(
         WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
           AND media_type = ${LIVE_MEDIA_TYPE}
       `),
-      db.execute(sql`
-        SELECT COALESCE(SUM(${LIVE_EFFECTIVE_WATCH_TIME_SQL}), 0)::bigint as totalMs
-        FROM sessions
-        WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
-          AND media_type = ${LIVE_MEDIA_TYPE}
-      `),
+      buildLiveWatchTimeQuery(todayStart, todayEnd),
     ]);
 
     todaySessions = todayPlaysResult[0]?.count ?? 0;
@@ -241,13 +256,7 @@ async function computeDashboardStats(
           AND media_type = ${LIVE_MEDIA_TYPE}
         ${sessionServerFilter}
       `),
-      db.execute(sql`
-        SELECT COALESCE(SUM(${LIVE_EFFECTIVE_WATCH_TIME_SQL}), 0)::bigint as totalMs
-        FROM sessions
-        WHERE started_at >= ${todayStart} AND started_at < ${todayEnd}
-          AND media_type = ${LIVE_MEDIA_TYPE}
-        ${sessionServerFilter}
-      `),
+      buildLiveWatchTimeQuery(todayStart, todayEnd, sessionServerFilter),
     ]);
 
     todaySessions = todaySessionsResult[0]?.count ?? 0;
