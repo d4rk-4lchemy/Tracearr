@@ -13,6 +13,7 @@ import { gzipSync, createGzip } from 'node:zlib';
 import { Redis } from 'ioredis';
 import { API_BASE_PATH, REDIS_KEYS, WS_EVENTS } from '@tracearr/shared';
 import { createBetterAuthHandler } from './lib/betterAuthRequest.js';
+import { getBasePath } from './lib/basePath.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -97,6 +98,7 @@ import {
   startNotificationWorker,
   shutdownNotificationQueue,
 } from './jobs/notificationQueue.js';
+import { initKillQueue, startKillWorker, shutdownKillQueue } from './jobs/killQueue.js';
 import { initImportQueue, startImportWorker, shutdownImportQueue } from './jobs/importQueue.js';
 import {
   initMaintenanceQueue,
@@ -217,7 +219,7 @@ async function refreshTimescaleCache(): Promise<void> {
 }
 
 // basePath from env var — always known at startup, never changes at runtime.
-const BASE_PATH = process.env.BASE_PATH?.replace(/\/+$/, '').replace(/^\/?/, '/') || '';
+const BASE_PATH = getBasePath();
 
 // ============================================================================
 // Phase 1: Build the Fastify app (builds without DB/Redis, but fails fast if
@@ -462,7 +464,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
       }
 
       // request.url is already stripped by rewriteUrl
-      const [urlPath = ''] = request.url.split('?');
+      const urlPath = request.url.split('?')[0]!;
 
       // Serve static files (paths with a file extension)
       if (urlPath !== '/' && /\.\w+$/.test(urlPath)) {
@@ -507,6 +509,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     stopDispatcharrRealtimeProcessor();
     stopPluginUpdateChecker();
     await shutdownNotificationQueue();
+    await shutdownKillQueue();
     await shutdownImportQueue();
     await shutdownMaintenanceQueue();
     await shutdownLibrarySyncQueue();
@@ -719,9 +722,11 @@ async function initializeServices(app: FastifyInstance) {
   try {
     initNotificationQueue(redisUrl);
     startNotificationWorker();
+    initKillQueue(redisUrl);
+    startKillWorker();
     pushReceiptInterval = setInterval(
       () => {
-        processPushReceipts().catch((err: unknown) => {
+        processPushReceipts().catch((err) => {
           app.log.warn({ err }, 'Failed to process push receipts');
         });
       },
@@ -735,7 +740,7 @@ async function initializeServices(app: FastifyInstance) {
     // Cleanup expired/invalid mobile tokens every hour
     mobileTokenCleanupInterval = setInterval(
       () => {
-        cleanupMobileTokens().catch((err: unknown) => {
+        cleanupMobileTokens().catch((err) => {
           app.log.warn({ err }, 'Failed to cleanup mobile tokens');
         });
       },
@@ -782,7 +787,7 @@ async function initializeServices(app: FastifyInstance) {
     startLibrarySyncWorker();
     // Schedule auto-sync after a small delay to ensure all services are initialized
     setTimeout(() => {
-      scheduleAutoSync().catch((err: unknown) => {
+      scheduleAutoSync().catch((err) => {
         app.log.error({ err }, 'Failed to schedule library auto-sync');
       });
     }, 5000);
@@ -1021,17 +1026,17 @@ async function initializePostListen(app: FastifyInstance) {
     app.log.info('Session poller disabled in settings');
   }
 
-  // Start realtime upstream connections (Plex/Jellyfin/Emby SSE + Dispatcharr WS)
+  // Start SSE connections for all media servers (real-time updates)
   try {
     // Clean up any orphaned pending sessions from previous server instance
     await cleanupOrphanedPendingSessions();
     startSSEProcessor(); // Subscribe to SSE events
+    startDispatcharrRealtimeProcessor();
     startPluginUpdateChecker();
-    startDispatcharrRealtimeProcessor(); // Subscribe to Dispatcharr snapshot updates
-    await sseManager.start(); // Start realtime connections
-    app.log.info('Realtime connections started for Plex/Jellyfin/Emby SSE and Dispatcharr WS');
+    await sseManager.start(); // Start SSE connections
+    app.log.info('Real-time SSE connections started');
   } catch (err) {
-    app.log.error({ err }, 'Failed to start realtime connections - falling back to polling');
+    app.log.error({ err }, 'Failed to start SSE connections - falling back to polling');
   }
 
   // Log network settings status
@@ -1056,7 +1061,7 @@ async function initializePostListen(app: FastifyInstance) {
     pendingAggregateBackfill = null;
     aggregateBackfillRunning = true;
     void runAggregateBackfill(targetVersion)
-      .catch((err: unknown) => {
+      .catch((err) => {
         app.log.error({ err }, 'Aggregate backfill failed unexpectedly');
       })
       .finally(() => {
@@ -1149,6 +1154,7 @@ async function start() {
         stopPoller();
         void tailscaleService.shutdown();
         void shutdownNotificationQueue();
+        void shutdownKillQueue();
         void shutdownImportQueue();
         void shutdownLibrarySyncQueue();
         void shutdownVersionCheckQueue();
@@ -1185,6 +1191,7 @@ async function start() {
         // Shut down BullMQ workers/queues (closes their internal Redis connections)
         void Promise.all([
           shutdownNotificationQueue(),
+          shutdownKillQueue(),
           shutdownImportQueue(),
           shutdownMaintenanceQueue(),
           shutdownLibrarySyncQueue(),
@@ -1192,7 +1199,7 @@ async function start() {
           shutdownInactivityCheckQueue(),
           shutdownBackupQueue(),
           shutdownPlexTokenRefreshQueue(),
-        ]).catch((err: unknown) => {
+        ]).catch((err) => {
           app.log.error({ err }, 'Error shutting down queues during maintenance');
         });
 
@@ -1240,5 +1247,15 @@ async function start() {
     process.exit(1);
   }
 }
+
+// Last-resort safety net. Individual handlers (SSE processor, poller, queues)
+// already catch their own errors; this only catches rejections that slipped
+// every local boundary. It logs loudly and keeps the process alive so a single
+// transient Redis/Postgres blip on a background tick cannot take the server
+// down. Tradeoff: a genuinely fatal rejection no longer crashes the process, so
+// a latent bug can be masked - the loud log is the signal to investigate.
+process.on('unhandledRejection', (reason) => {
+  console.error('[Process] Unhandled promise rejection (kept alive):', reason);
+});
 
 void start();

@@ -11,6 +11,7 @@
   "include": [
     "scripts/cli.ts",
     "scripts/reset-password.ts",
+    "scripts/purge-dispatcharr.ts",
     "scripts/migrate.ts",
     "scripts/createForkMigration.ts",
     "scripts/unsupportedDbCommand.ts",

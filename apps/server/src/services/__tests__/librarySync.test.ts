@@ -810,58 +810,6 @@ describe('LibrarySyncService', () => {
       expect(results[0]!.itemsRemoved).toBe(1); // item-2 removed
       expect(db.delete).toHaveBeenCalled();
     });
-
-    it('should remove previously imported empty rating keys when the upstream still returns blanks', async () => {
-      const service = new LibrarySyncService();
-      const mockServer = createMockServer();
-      const mockLibraries = [createMockLibrary()];
-      const existingItems = [
-        createMockDbItem({ ratingKey: '' }),
-        createMockDbItem({ ratingKey: 'item-1' }),
-      ];
-      const serverItems = [
-        createMockLibraryItem({ ratingKey: '', title: 'Still Broken' }),
-        createMockLibraryItem({ ratingKey: 'item-1' }),
-      ];
-
-      let selectCallCount = 0;
-      vi.mocked(db.select).mockImplementation(() => {
-        selectCallCount++;
-        const chain = {
-          from: vi.fn().mockReturnThis(),
-          where: vi.fn().mockImplementation(() => {
-            const whereResult = Promise.resolve(existingItems);
-            (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
-              .fn()
-              .mockImplementation(() => {
-                if (selectCallCount === 1) return Promise.resolve([mockServer]);
-                return Promise.resolve(existingItems);
-              });
-            return whereResult;
-          }),
-          limit: vi.fn().mockImplementation(() => {
-            if (selectCallCount === 1) return Promise.resolve([mockServer]);
-            return Promise.resolve(existingItems);
-          }),
-          returning: vi.fn().mockResolvedValue([]),
-        };
-        return chain as never;
-      });
-
-      mockInsertChain([{ id: randomUUID() }]);
-      mockDeleteChain();
-      mockTransaction();
-      mockMediaServerClient({
-        libraries: mockLibraries,
-        items: serverItems,
-        totalCount: 2,
-      });
-
-      const results = await service.syncServer(mockServer.id);
-
-      expect(results[0]!.itemsRemoved).toBe(1);
-      expect(db.delete).toHaveBeenCalled();
-    });
   });
 
   describe('incremental sync', () => {

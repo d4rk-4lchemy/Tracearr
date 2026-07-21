@@ -7591,9 +7591,6 @@ packages:
     peerDependencies:
       pg: '>=8.0'
 
-  pg-protocol@1.13.0:
-    resolution: {integrity: sha512-zzdvXfS6v89r6v7OcFCHfHlyG/wvry1ALxZo4LqgUoy7W9xhBDMaqOuMiF3qEV45VqsN6rdlcehHrfDtlCPc8w==}
-
   pg-protocol@1.15.0:
     resolution: {integrity: sha512-cq9sECI5s0+uPUXjbz8ioyPJni6RzsRib0US67i5IoTZKw8fNeYlVE7u8F4dG7vEJJtc5wdD1K189lCCUwqWTQ==}
 
@@ -11428,7 +11425,7 @@ snapshots:
       '@jest/schemas': 29.6.3
       '@types/istanbul-lib-coverage': 2.0.6
       '@types/istanbul-reports': 3.0.4
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
       '@types/yargs': 17.0.35
       chalk: 4.1.2
 
@@ -13077,14 +13074,14 @@ snapshots:
 
   '@types/archiver@8.0.0':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
       '@types/readdir-glob': 1.1.5
 
   '@types/aria-query@5.0.4': {}
 
   '@types/bcrypt@6.0.0':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
 
   '@types/chai@5.2.3':
     dependencies:
@@ -13093,7 +13090,7 @@ snapshots:
 
   '@types/cors@2.8.19':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
 
   '@types/country-list@2.1.4': {}
 
@@ -13139,7 +13136,7 @@ snapshots:
   '@types/jsonwebtoken@9.0.10':
     dependencies:
       '@types/ms': 2.1.0
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
 
   '@types/leaflet@1.9.21':
     dependencies:
@@ -13154,11 +13151,12 @@ snapshots:
   '@types/node@25.6.2':
     dependencies:
       undici-types: 7.19.2
+    optional: true
 
   '@types/pg@8.20.0':
     dependencies:
-      '@types/node': 25.6.2
-      pg-protocol: 1.13.0
+      '@types/node': 24.13.3
+      pg-protocol: 1.15.0
       pg-types: 2.2.0
 
   '@types/prismjs@1.26.6': {}
@@ -13185,11 +13183,11 @@ snapshots:
 
   '@types/readdir-glob@1.1.5':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
     optional: true
 
   '@types/statuses@2.0.6':
@@ -13197,11 +13195,11 @@ snapshots:
 
   '@types/stream-chain@2.1.0':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
 
   '@types/stream-json@1.7.8':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
       '@types/stream-chain': 2.1.0
 
   '@types/swagger-ui-react@5.18.0':
@@ -13217,7 +13215,7 @@ snapshots:
 
   '@types/unzipper@0.10.11':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
 
   '@types/use-sync-external-store@0.0.6': {}
 
@@ -13225,7 +13223,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
 
   '@types/yargs-parser@21.0.3': {}
 
@@ -14073,7 +14071,7 @@ snapshots:
 
   chrome-launcher@0.15.2:
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 1.4.2
@@ -14082,7 +14080,7 @@ snapshots:
 
   chromium-edge-launcher@0.3.0:
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
       escape-string-regexp: 4.0.0
       is-wsl: 2.2.0
       lighthouse-logger: 1.4.2
@@ -14697,7 +14695,7 @@ snapshots:
   engine.io@6.6.9:
     dependencies:
       '@types/cors': 2.8.19
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
       '@types/ws': 8.18.1
       accepts: 1.3.8
       base64id: 2.0.0
@@ -16345,7 +16343,7 @@ snapshots:
   jest-util@29.7.0:
     dependencies:
       '@jest/types': 29.6.3
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
       chalk: 4.1.2
       ci-info: 3.9.0
       graceful-fs: 4.2.11
@@ -16362,7 +16360,7 @@ snapshots:
 
   jest-worker@29.7.0:
     dependencies:
-      '@types/node': 25.6.2
+      '@types/node': 24.13.3
       jest-util: 29.7.0
       merge-stream: 2.0.0
       supports-color: 8.1.1
@@ -17420,8 +17418,6 @@ snapshots:
   pg-pool@3.14.0(pg@8.22.0):
     dependencies:
       pg: 8.22.0
-
-  pg-protocol@1.13.0: {}
 
   pg-protocol@1.15.0: {}
 
@@ -19157,7 +19153,8 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici-types@7.19.2: {}
+  undici-types@7.19.2:
+    optional: true
 
   undici@7.28.0: {}
 

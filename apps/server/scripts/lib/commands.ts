@@ -9,11 +9,13 @@
 
 import { randomUUID } from 'node:crypto';
 import { eq, and, asc } from 'drizzle-orm';
+import { REDIS_KEYS } from '@tracearr/shared';
 import { loadRuntime } from './bootstrap.ts';
 
 export const {
   db,
   users,
+  servers,
   authAccounts,
   authSessions,
   plexAccounts,
@@ -282,4 +284,137 @@ export async function listUsersCommand(): Promise<UserSummary[]> {
 /** Re-enables local username/password login - recovery when an OIDC misconfig locks the UI. */
 export async function enableLocalLoginCommand(): Promise<void> {
   await setSetting('localLoginEnabled', true);
+}
+
+export interface PurgedDispatcharrServer {
+  id: string;
+  name: string;
+  url: string;
+}
+
+export interface PurgeDispatcharrResult {
+  servers: PurgedDispatcharrServer[];
+  redisWarning: string | null;
+}
+
+export async function listDispatcharrServers(): Promise<PurgedDispatcharrServer[]> {
+  return db
+    .select({ id: servers.id, name: servers.name, url: servers.url })
+    .from(servers)
+    .where(eq(servers.type, 'dispatcharr'))
+    .orderBy(asc(servers.createdAt));
+}
+
+async function scanRedisKeys(pattern: string): Promise<string[]> {
+  const redis = getRedis();
+  const keys: string[] = [];
+  let cursor = '0';
+
+  do {
+    const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+    cursor = nextCursor;
+    keys.push(...batch);
+  } while (cursor !== '0');
+
+  return keys;
+}
+
+async function cleanupDispatcharrRedis(serverIds: string[]): Promise<void> {
+  if (serverIds.length === 0) return;
+
+  const redis = getRedis();
+  const serverIdSet = new Set(serverIds);
+  const keysToDelete = new Set<string>([
+    ...serverIds.flatMap((serverId) => [
+      REDIS_KEYS.SERVER_HEALTH(serverId),
+      REDIS_KEYS.SERVER_HEALTH_FAIL_COUNT(serverId),
+      REDIS_KEYS.SERVER_CONNECTION(serverId),
+    ]),
+  ]);
+
+  const activeIds = (await redis.smembers(REDIS_KEYS.ACTIVE_SESSION_IDS)) as string[];
+  if (activeIds.length > 0) {
+    const sessionKeys = activeIds.map((id) => REDIS_KEYS.SESSION_BY_ID(id));
+    const sessionPayloads = await redis.mget(...sessionKeys);
+    const activeIdsToRemove: string[] = [];
+
+    for (let i = 0; i < activeIds.length; i++) {
+      const payload = sessionPayloads[i];
+      if (!payload) continue;
+      try {
+        const session = JSON.parse(payload) as { serverId?: string };
+        if (session.serverId && serverIdSet.has(session.serverId)) {
+          activeIdsToRemove.push(activeIds[i]!);
+          keysToDelete.add(sessionKeys[i]!);
+        }
+      } catch {
+        // Malformed cache entries are ignored; TTL will clear them.
+      }
+    }
+
+    if (activeIdsToRemove.length > 0) {
+      await redis.srem(REDIS_KEYS.ACTIVE_SESSION_IDS, ...activeIdsToRemove);
+    }
+  }
+
+  const legacyActiveSessions = await redis.get(REDIS_KEYS.ACTIVE_SESSIONS);
+  if (legacyActiveSessions) {
+    try {
+      const sessions = JSON.parse(legacyActiveSessions) as Array<{ serverId?: string }>;
+      const retained = sessions.filter((session) => !serverIdSet.has(session.serverId ?? ''));
+      if (retained.length > 0) {
+        await redis.set(REDIS_KEYS.ACTIVE_SESSIONS, JSON.stringify(retained), 'KEEPTTL');
+      } else {
+        keysToDelete.add(REDIS_KEYS.ACTIVE_SESSIONS);
+      }
+    } catch {
+      keysToDelete.add(REDIS_KEYS.ACTIVE_SESSIONS);
+    }
+  }
+
+  const pendingMembers = (await redis.smembers(REDIS_KEYS.PENDING_SESSION_IDS)) as string[];
+  const pendingMembersToRemove = pendingMembers.filter((member) => {
+    const [serverId] = member.split(':');
+    return serverIdSet.has(serverId ?? '');
+  });
+  for (const member of pendingMembersToRemove) {
+    const [serverId, ...sessionKeyParts] = member.split(':');
+    const sessionKey = sessionKeyParts.join(':');
+    if (serverId && sessionKey) {
+      keysToDelete.add(REDIS_KEYS.PENDING_SESSION(serverId, sessionKey));
+    }
+  }
+  if (pendingMembersToRemove.length > 0) {
+    await redis.srem(REDIS_KEYS.PENDING_SESSION_IDS, ...pendingMembersToRemove);
+  }
+
+  const dispatcharrKeys = await scanRedisKeys(
+    `${process.env.REDIS_PREFIX ?? ''}tracearr:dispatcharr:*`
+  );
+  for (const key of dispatcharrKeys) keysToDelete.add(key);
+
+  if (keysToDelete.size > 0) {
+    await redis.del(...keysToDelete);
+  }
+}
+
+export async function purgeDispatcharrCommand(): Promise<PurgeDispatcharrResult> {
+  const deletedServers = await db.transaction(async (tx: typeof db) =>
+    tx
+      .delete(servers)
+      .where(eq(servers.type, 'dispatcharr'))
+      .returning({ id: servers.id, name: servers.name, url: servers.url })
+  );
+
+  let redisWarning: string | null = null;
+  try {
+    await cleanupDispatcharrRedis(
+      (deletedServers as PurgedDispatcharrServer[]).map((server) => server.id)
+    );
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    redisWarning = `Redis cleanup failed after database purge: ${reason}`;
+  }
+
+  return { servers: deletedServers as PurgedDispatcharrServer[], redisWarning };
 }

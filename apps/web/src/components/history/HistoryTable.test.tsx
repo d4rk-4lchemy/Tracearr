@@ -205,6 +205,7 @@ describe('HistoryTable live content display', () => {
                 year: null,
                 totalDurationMs: 5_400_000,
                 progressMs: 4_900_000,
+                dispatcharrPlaybackKind: 'catchup',
                 server: {
                   id: 'server-1',
                   name: 'Dispatcharr',
@@ -223,5 +224,93 @@ describe('HistoryTable live content display', () => {
     expect(screen.queryByText('Engaged')).not.toBeInTheDocument();
     expect(screen.queryByText('Sampled')).not.toBeInTheDocument();
     expect(screen.queryByText('Abandoned')).not.toBeInTheDocument();
+  });
+
+  it('shows a catch-up icon for Dispatcharr catch-up history rows', () => {
+    const { container } = render(
+      <TooltipProvider>
+        <MemoryRouter>
+          <HistoryTable
+            sessions={[
+              makeSession({
+                mediaType: 'live',
+                mediaTitle: 'Morning News',
+                channelTitle: 'News 24',
+                year: null,
+                dispatcharrPlaybackKind: 'catchup',
+                server: {
+                  id: 'server-1',
+                  name: 'Dispatcharr',
+                  type: 'dispatcharr',
+                },
+              }),
+            ]}
+            columnVisibility={DEFAULT_COLUMN_VISIBILITY}
+          />
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText('News 24')).toBeInTheDocument();
+    expect(screen.getByTitle('Catch-up')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="history-catchup-badge"]')).toBeTruthy();
+  });
+
+  it('does not show a catch-up icon for normal Dispatcharr live history rows', () => {
+    const { container } = render(
+      <TooltipProvider>
+        <MemoryRouter>
+          <HistoryTable
+            sessions={[
+              makeSession({
+                mediaType: 'live',
+                mediaTitle: 'Evening Show',
+                channelTitle: 'Live Channel',
+                year: null,
+                dispatcharrPlaybackKind: 'live',
+                server: {
+                  id: 'server-1',
+                  name: 'Dispatcharr',
+                  type: 'dispatcharr',
+                },
+              }),
+            ]}
+            columnVisibility={DEFAULT_COLUMN_VISIBILITY}
+          />
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    expect(screen.queryByTitle('Catch-up')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-testid="history-catchup-badge"]')).toBeNull();
+  });
+
+  it('does not show a catch-up icon for non-Dispatcharr history rows', () => {
+    const { container } = render(
+      <TooltipProvider>
+        <MemoryRouter>
+          <HistoryTable
+            sessions={[
+              makeSession({
+                mediaType: 'live',
+                mediaTitle: 'Catch-up Looking Title',
+                channelTitle: 'Plex Live',
+                year: null,
+                dispatcharrPlaybackKind: 'catchup',
+                server: {
+                  id: 'server-1',
+                  name: 'Plex',
+                  type: 'plex',
+                },
+              }),
+            ]}
+            columnVisibility={DEFAULT_COLUMN_VISIBILITY}
+          />
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    expect(screen.queryByTitle('Catch-up')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-testid="history-catchup-badge"]')).toBeNull();
   });
 });

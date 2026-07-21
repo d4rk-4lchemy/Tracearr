@@ -922,6 +922,66 @@ describe('Dispatcharr parser', () => {
       }
     });
 
+    it('keeps catch-up identity stable when the displayed programme changes', () => {
+      const baseStats = {
+        timeshift_sessions: [
+          {
+            session_id: 'catchup-1',
+            channel_id: '101',
+            channel_uuid: 'channel-uuid-1',
+            channel_name: 'News Channel',
+            programme_start: '2026-07-19:05-30',
+            connections: [{ client_id: 'client-1', user_id: '7' }],
+          },
+        ],
+      };
+      const userById = new Map([['7', { id: '7', username: 'Valid User', isAdmin: false }]]);
+
+      const firstProgram = parseSessionsFromCatchupStats(
+        baseStats,
+        userById,
+        new Map([
+          [
+            'catchup-1',
+            {
+              session_id: 'catchup-1',
+              channel_uuid: 'channel-uuid-1',
+              title: 'Morning News',
+              start_time: '2026-07-19T05:30:00+00:00',
+              end_time: '2026-07-19T07:00:00+00:00',
+              duration_secs: 5400,
+            },
+          ],
+        ])
+      );
+      const nextProgram = parseSessionsFromCatchupStats(
+        baseStats,
+        userById,
+        new Map([
+          [
+            'catchup-1',
+            {
+              session_id: 'catchup-1',
+              channel_uuid: 'channel-uuid-1',
+              title: 'Late News',
+              start_time: '2026-07-19T07:00:00+00:00',
+              end_time: '2026-07-19T08:00:00+00:00',
+              duration_secs: 3600,
+            },
+          ],
+        ])
+      );
+
+      expect(firstProgram[0]?.sessionKey).toBe('catchup:catchup-1:channel-uuid-1');
+      expect(nextProgram[0]?.sessionKey).toBe(firstProgram[0]?.sessionKey);
+      expect(nextProgram[0]?.mediaId).toBe(firstProgram[0]?.mediaId);
+      expect(firstProgram[0]?.media.title).toBe('Morning News');
+      expect(nextProgram[0]?.media.title).toBe('Late News');
+      expect(nextProgram[0]?.media.durationMs).toBe(3_600_000);
+      expect(nextProgram[0]?.dispatcharrCatchupEpgStartAt).toBe('2026-07-19T07:00:00.000Z');
+      expect(nextProgram[0]?.dispatcharrCatchupEpgEndAt).toBe('2026-07-19T08:00:00.000Z');
+    });
+
     it('keeps catch-up EPG boundary fields empty when programme enrichment is missing', () => {
       const sessions = parseSessionsFromCatchupStats(
         {

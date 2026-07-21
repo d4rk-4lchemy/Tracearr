@@ -113,10 +113,6 @@ const updateMobileSessionSchema = z.object({
   deviceName: z.string().min(1).max(100),
 });
 
-function getFirstRow<T>(rows: T[]): T | null {
-  return rows[0] ?? null;
-}
-
 /**
  * Generate a new mobile access token
  */
@@ -499,10 +495,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
       return reply.notFound('Mobile session not found');
     }
 
-    const session = getFirstRow(sessionRow);
-    if (!session) {
-      return reply.notFound('Mobile session not found');
-    }
+    const session = sessionRow[0]!;
 
     await revokeMobileDeviceSession(app.redis, session);
 
@@ -672,10 +665,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
           throw new Error('INVALID_TOKEN');
         }
 
-        const tokenRow = getFirstRow(tokenRows);
-        if (!tokenRow) {
-          throw new Error('INVALID_TOKEN');
-        }
+        const tokenRow = tokenRows[0]!;
 
         // In beta mode, allow tokens to be reused
         if (tokenRow.usedAt && !isBetaMode()) {
@@ -693,10 +683,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
           throw new Error('NO_OWNER');
         }
 
-        const owner = getFirstRow(ownerRow);
-        if (!owner) {
-          throw new Error('NO_OWNER');
-        }
+        const owner = ownerRow[0]!;
 
         // Get all server IDs for the JWT
         const allServers = await tx
@@ -725,11 +712,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         // Create or update session
         if (existingSession.length > 0) {
           // Update existing session - save old hash for cleanup outside transaction
-          const currentSession = getFirstRow(existingSession);
-          if (!currentSession) {
-            throw new Error('SESSION_MISSING');
-          }
-          oldHash = currentSession.refreshTokenHash;
+          oldHash = existingSession[0]!.refreshTokenHash;
 
           await tx
             .update(mobileSessions)
@@ -743,7 +726,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
               lastSeenAt: new Date(),
               userId: owner.id,
             })
-            .where(eq(mobileSessions.id, currentSession.id));
+            .where(eq(mobileSessions.id, existingSession[0]!.id));
         } else {
           // Create new session - link to the owner user who generated the pairing token
           await tx.insert(mobileSessions).values({
@@ -775,7 +758,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
           serverType,
           serverIds,
           oldRefreshTokenHash: oldHash,
-          oldBetterAuthSessionId: getFirstRow(existingSession)?.betterAuthSessionId ?? null,
+          oldBetterAuthSessionId: existingSession[0]?.betterAuthSessionId ?? null,
         };
       });
     } catch (err) {
@@ -803,9 +786,6 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
       }
       if (message === 'NO_OWNER') {
         return reply.internalServerError('No owner account found');
-      }
-      if (message === 'SESSION_MISSING') {
-        return reply.internalServerError('Pairing session vanished during update');
       }
 
       app.log.error({ err }, 'Mobile pairing transaction failed');
@@ -915,10 +895,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         return reply.unauthorized('Invalid or expired refresh token');
       }
 
-      const session = getFirstRow(dbSession);
-      if (!session) {
-        return reply.unauthorized('Invalid or expired refresh token');
-      }
+      const session = dbSession[0]!;
       userId = session.userId;
       deviceId = session.deviceId;
 
@@ -945,11 +922,12 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
 
     // Verify user still exists and is owner
     const userRow = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    const user = getFirstRow(userRow);
-    if (user?.role !== 'owner') {
+    if (userRow.length === 0 || userRow[0]!.role !== 'owner') {
       await app.redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(refreshTokenHash));
       return reply.unauthorized('User no longer valid');
     }
+
+    const user = userRow[0]!;
 
     // Verify mobile session still exists
     const sessionRow = await db
@@ -966,13 +944,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     // Better Auth backed pairing: the token is the BA session token, so
     // verify it via getSession (which also extends the session per updateAge)
     // and return it unrotated in both fields.
-    const session = getFirstRow(sessionRow);
-    if (!session) {
-      await app.redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(refreshTokenHash));
-      return reply.unauthorized('Session has been revoked');
-    }
-
-    if (session.betterAuthSessionId) {
+    if (sessionRow[0]!.betterAuthSessionId) {
       let baSession = null;
       try {
         const headers = new Headers({ authorization: `Bearer ${refreshToken}` });
@@ -987,7 +959,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
       await db
         .update(mobileSessions)
         .set({ lastSeenAt: new Date() })
-        .where(eq(mobileSessions.id, session.id));
+        .where(eq(mobileSessions.id, sessionRow[0]!.id));
 
       return {
         accessToken: refreshToken,
@@ -1019,11 +991,11 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
     await db
       .update(mobileSessions)
       .set({
-        previousRefreshTokenHash: session.refreshTokenHash,
+        previousRefreshTokenHash: sessionRow[0]!.refreshTokenHash,
         refreshTokenHash: newRefreshTokenHash,
         lastSeenAt: new Date(),
       })
-      .where(eq(mobileSessions.id, session.id));
+      .where(eq(mobileSessions.id, sessionRow[0]!.id));
 
     // Rotate in Redis: set grace period TTL on old token
     await app.redis
@@ -1068,10 +1040,7 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
       return reply.notFound('User not found');
     }
 
-    const user = getFirstRow(userRow);
-    if (!user) {
-      return reply.notFound('User not found');
-    }
+    const user = userRow[0]!;
 
     return {
       id: user.id,

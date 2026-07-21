@@ -33,6 +33,7 @@
     "db:push": "tsx scripts/unsupportedDbCommand.ts db:push",
     "db:studio": "drizzle-kit studio --config=drizzle.config.cjs",
     "reset-password": "node dist/scripts/reset-password.js",
+    "purge-dispatcharr": "node dist/scripts/purge-dispatcharr.js",
     "cli": "node dist/scripts/cli.js",
     "backup": "tsx scripts/backup.ts"
   },

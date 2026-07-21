@@ -58,10 +58,10 @@ describe('updatePendingSession', () => {
   const basePending: PendingSessionData = {
     id: 'test-uuid',
     confirmation: {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: 1710600000000,
       maxViewOffset: 0,
+      initialViewOffset: null,
     },
     processed: {} as any,
     server: { id: 'srv-1', name: 'Test', type: 'jellyfin' },
@@ -88,6 +88,25 @@ describe('updatePendingSession', () => {
     const now = basePending.startedAt + 5000;
     const { updatedData } = updatePendingSession(basePending, 'playing', 5000, now);
     expect(updatedData.lastSeenAt).toBe(now);
+  });
+
+  it('refreshes pending processed metadata when provided', () => {
+    const nextProcessed = {
+      mediaTitle: 'Late News',
+      totalDurationMs: 3_600_000,
+      progressMs: 42_000,
+    } as PendingSessionData['processed'];
+
+    const { updatedData } = updatePendingSession(
+      basePending,
+      'playing',
+      42000,
+      basePending.startedAt + 5000,
+      undefined,
+      nextProcessed
+    );
+
+    expect(updatedData.processed).toBe(nextProcessed);
   });
 
   it('tracks pause accumulation across updates', () => {

@@ -48,7 +48,6 @@ const HOST = 'tracearr.example.com';
 const originCheckAuth = betterAuth({
   basePath: '/api/v1/auth',
   secret: 'test-better-auth-secret-32-chars!!',
-  logger: { disabled: true },
   trustedOrigins: trustedOriginsForRequest,
   database: drizzleAdapter(db, {
     provider: 'pg',

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setTimeFormat } from '@/lib/timeFormat';
 import { NowPlayingCard } from './NowPlayingCard';
 import type { ActiveSession } from '@tracearr/shared';
 
@@ -121,6 +122,10 @@ function getProgressTranslatePercent(container: HTMLElement): number | null {
 }
 
 describe('NowPlayingCard ffmpeg speed display', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   it('shows a catch-up icon for Dispatcharr catch-up cards', () => {
     const { container } = render(
       <NowPlayingCard
@@ -181,23 +186,45 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     expect(catchupBadge?.className).toContain('text-blue-600');
   });
 
-  it('shows fixed start and end times for Dispatcharr catch-up cards', () => {
+  it('shows 24-hour start and end times for Dispatcharr catch-up cards', () => {
+    setTimeFormat('24h');
+
     render(
       <NowPlayingCard
         session={makeSession({
           dispatcharrPlaybackKind: 'catchup',
-          dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
-          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
-          dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+          dispatcharrCatchupAnchorAt: '2026-07-19T13:30:00.000Z',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T13:30:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T15:00:00.000Z',
           totalDurationMs: 5_400_000,
           progressMs: 0,
         })}
       />
     );
 
-    expect(screen.getByText('05:30')).toBeTruthy();
-    expect(screen.getByText('07:00')).toBeTruthy();
+    expect(screen.getByText('13:30')).toBeTruthy();
+    expect(screen.getByText('15:00')).toBeTruthy();
     expect(screen.queryByText('1.03x')).toBeNull();
+  });
+
+  it('shows 12-hour start and end times for Dispatcharr catch-up cards', () => {
+    setTimeFormat('12h');
+
+    render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupAnchorAt: '2026-07-19T13:30:00.000Z',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T13:30:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T15:00:00.000Z',
+          totalDurationMs: 5_400_000,
+          progressMs: 0,
+        })}
+      />
+    );
+
+    expect(screen.getByText('1:30 PM')).toBeTruthy();
+    expect(screen.getByText('3:00 PM')).toBeTruthy();
   });
 
   it('keeps catch-up progress empty when EPG data is missing', () => {
@@ -235,6 +262,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     rerender(
       <NowPlayingCard
         session={makeSession({
+          mediaTitle: 'Late News',
           dispatcharrPlaybackKind: 'catchup',
           dispatcharrCatchupAnchorAt: '2026-07-19T06:15:00.000Z',
           dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
@@ -245,6 +273,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
       />
     );
 
+    expect(screen.getByText('Late News')).toBeTruthy();
     expect(getProgressTranslatePercent(container)).toBe(50);
   });
 
