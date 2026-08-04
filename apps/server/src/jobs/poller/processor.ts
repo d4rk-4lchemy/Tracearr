@@ -800,7 +800,10 @@ export async function processServerSessions(
       if (options.immediateStops) {
         const stoppedSessionKeys: string[] = [];
         for (const activeSession of activeSessions.filter((item) => item.serverId === server.id)) {
-          const result = await stopSessionAtomic({ session: activeSession, stoppedAt: new Date() });
+          const result = await stopSessionAtomic({
+            session: activeSession as unknown as typeof sessions.$inferSelect,
+            stoppedAt: new Date(),
+          });
           if (result.wasUpdated) stoppedSessionKeys.push(`${server.id}:${activeSession.sessionKey}`);
         }
         return {
