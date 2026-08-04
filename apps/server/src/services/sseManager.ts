@@ -63,6 +63,7 @@ interface ServerConnection {
   inFallback: boolean;
   connectedAt: Date | null;
   lastEventAt: Date | null;
+  pluginIssue?: ServerConnectionStatus['pluginIssue'];
 }
 
 // Per-server debounce timers to coalesce rapid plugin events before polling
@@ -509,6 +510,8 @@ export class SSEManager extends EventEmitter {
       error: status.error,
       pluginVersion,
       pluginUpdateAvailable,
+      pluginIssue:
+        state === 'unsupported' ? (this.connections.get(serverId)?.pluginIssue ?? null) : null,
     };
   }
 

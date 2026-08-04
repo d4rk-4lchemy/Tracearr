@@ -13,27 +13,32 @@ import {
   SESSION_LIMITS,
   type ActiveSession,
   type RuleV2,
+  type Session,
 } from '@tracearr/shared';
-import { randomUUID } from 'node:crypto';
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { db } from '../../db/client.js';
 import { servers, serverUsers, sessions, users } from '../../db/schema.js';
 import { getGeoIPSettings } from '../../routes/settings.js';
 import { isMaintenance } from '../../serverState.js';
+import { isLeader } from '../../services/leaderLease.js';
 import type { CacheService, PubSubService } from '../../services/cache.js';
 import { type GeoLocation } from '../../services/geoip.js';
 import { createMediaServerClient } from '../../services/mediaServer/index.js';
-import { parseDispatcharrCatchupTimestampMs } from '../../services/mediaServer/dispatcharr/parser.js';
 import type { MediaSession } from '../../services/mediaServer/types.js';
 import { lookupGeoIP } from '../../services/plexGeoip.js';
 import { registerService, unregisterService } from '../../services/serviceTracker.js';
+import { getWatchedThreshold } from '../../services/settings.js';
 import { sseManager } from '../../services/sseManager.js';
 
 import { enqueueNotification } from '../notificationQueue.js';
 import {
   batchGetIdentityServerUserIds,
+  batchGetLibraryItemIdentity,
   batchGetRecentUserSessions,
   getActiveRulesV2,
+  getCachedServers,
+  mergeRecentSessionsForIdentity,
   widenRecentSessionsForMergedIdentities,
 } from './database.js';
 import {
@@ -65,18 +70,19 @@ import {
   calculatePauseAccumulation,
   calculateStopDuration,
   checkWatchCompletion,
+  createInitialConfirmationState,
   detectMediaChange,
   shouldForceStopStaleSession,
   shouldWriteToDb,
 } from './stateTracker.js';
+import { PENDING_STOP_PERSIST_MIN_PROGRESS_MS } from './types.js';
 import type {
+  PendingSessionData,
   PendingSessionOutcome,
   PollerConfig,
-  ProcessedSession,
   ResolvePendingSessionInput,
   ServerProcessingResult,
   ServerWithToken,
-  PendingSessionData,
 } from './types.js';
 import { excludeUncountableSessions } from './utils.js';
 import { broadcastViolations } from './violations.js';
@@ -95,50 +101,6 @@ let currentPollIntervalMs: number = POLLING_INTERVALS.SESSIONS_IDLE;
 const pollGuard = { running: false };
 const sweepGuard = { running: false };
 const reconcileGuard = { running: false };
-
-function clampCatchupProgress(value: number, totalDurationMs: number): number {
-  const max = totalDurationMs > 0 ? totalDurationMs : Infinity;
-  return Math.min(Math.max(value, 0), max);
-}
-
-function materializeDispatcharrCatchupProgress(
-  processed: ProcessedSession,
-  nowMs: number,
-  pause: { lastPausedAt: Date | null; pausedDurationMs: number } = {
-    lastPausedAt: null,
-    pausedDurationMs: 0,
-  }
-): void {
-  if (processed.dispatcharrPlaybackKind !== 'catchup') return;
-
-  const programmeStartMs = parseDispatcharrCatchupTimestampMs(
-    processed.dispatcharrCatchupProgrammeStart
-  );
-  const epgStartMs = Date.parse(processed.dispatcharrCatchupEpgStartAt ?? '');
-  if (programmeStartMs === null || !Number.isFinite(epgStartMs)) return;
-
-  let progressMs: number;
-  const playbackBaseSecs = processed.dispatcharrCatchupPlaybackBaseSecs;
-  if (playbackBaseSecs !== null && playbackBaseSecs !== undefined) {
-    // The Dispatcharr parser already uses position_anchor_at and adjusts a
-    // byte-range seek when its effective programme has advanced.
-    return;
-  } else {
-    const programmeUpdatedAt = processed.dispatcharrCatchupProgrammeStartUpdatedAt;
-    if (!programmeUpdatedAt) return;
-
-    const ongoingPauseMs = pause.lastPausedAt
-      ? Math.max(0, nowMs - pause.lastPausedAt.getTime())
-      : 0;
-    const elapsedMs = Math.max(
-      0,
-      nowMs - programmeUpdatedAt - pause.pausedDurationMs - ongoingPauseMs
-    );
-    progressMs = programmeStartMs - epgStartMs + elapsedMs;
-  }
-
-  processed.progressMs = clampCatchupProgress(progressMs, processed.totalDurationMs);
-}
 
 /** Test-and-set reentrancy guard: returns false (and skips) if a run is already in progress. */
 function acquireRunGuard(guard: { running: boolean }, label: string): boolean {
@@ -173,6 +135,34 @@ function acquireServerLock(serverId: string): boolean {
   return true;
 }
 
+// Servers poll concurrently so tick wall time tracks the slowest server, not
+// the sum of every server's round trip. Per-server locks keep each iteration
+// independent; the result accumulators are only pushed to between awaits.
+const SERVER_POLL_CONCURRENCY = 5;
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      if (item === undefined) return;
+      try {
+        await fn(item);
+      } catch (error) {
+        // One item's failure degrades to that item only; a rejection here
+        // would detach the sibling workers mid-tick and skip result handling
+        // for servers that succeeded
+        console.error('[Poller] Server poll worker failed:', error);
+      }
+    }
+  });
+  await Promise.all(workers);
+}
+
 function releaseServerLock(serverId: string): void {
   serverPollLocks.delete(serverId);
 }
@@ -200,50 +190,7 @@ const ACTIVE_SESSION_CHUNK_BOUND_MS = 7 * 24 * 60 * 60 * 1000;
 // Key: `serverId:sessionKey`, Value: ActiveSession snapshot for notification on confirmed stop.
 const missedPollTracking = new Map<string, ActiveSession>();
 
-interface ServerSessionProcessingOptions {
-  mediaSessions?: MediaSession[];
-  immediateStops?: boolean;
-}
-
-export function mergeDispatcharrRealtimeSessions(
-  wsSessions: MediaSession[],
-  restSessions: MediaSession[]
-): MediaSession[] {
-  const restBySessionKey = new Map(restSessions.map((session) => [session.sessionKey, session]));
-  const mergedRealtimeSessions = wsSessions.map(
-    (session) => restBySessionKey.get(session.sessionKey) ?? session
-  );
-  const realtimeKeys = new Set(mergedRealtimeSessions.map((session) => session.sessionKey));
-  const fallbackRestSessions = restSessions.filter(
-    (session) => !realtimeKeys.has(session.sessionKey)
-  );
-  return [...mergedRealtimeSessions, ...fallbackRestSessions];
-}
-
-export function syncDispatcharrPendingProgress(
-  pendingData: PendingSessionData,
-  dispatcharrLiveConfirmThresholdMs: number | null
-): PendingSessionData {
-  if (dispatcharrLiveConfirmThresholdMs === null || dispatcharrLiveConfirmThresholdMs <= 0) {
-    return pendingData;
-  }
-
-  const maxViewOffset = Math.max(0, pendingData.confirmation.maxViewOffset || 0);
-  const existingProgress = Math.max(0, pendingData.processed.progressMs || 0);
-  const nextProgress = Math.max(existingProgress, maxViewOffset);
-
-  if (pendingData.processed.progressMs === nextProgress) {
-    return pendingData;
-  }
-
-  return {
-    ...pendingData,
-    processed: {
-      ...pendingData.processed,
-      progressMs: nextProgress,
-    },
-  };
-}
+const warnedMissingServerTypes = new Set<string>();
 
 /**
  * Ids of sessions with at least one confirmed missed poll. Rule evaluation
@@ -271,8 +218,7 @@ async function handleFirstMisses(
     if (missedPollTracking.has(cachedKey)) continue; // Already in grace period
 
     const cachedActiveSession = activeSessions.find((s) => {
-      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as
-        'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as 'plex' | 'jellyfin' | 'emby';
       return (
         buildCompositeKey({
           serverType: sType,
@@ -322,6 +268,163 @@ async function sendGracePeriodStopNotification(
 }
 
 /**
+ * Fetch recent sessions for windowed rule evaluation, widened to every
+ * server_user id of the same identity when merged. Mirrors sseProcessor's
+ * fetchRecentSessionsForRules so both confirm paths see identical history.
+ */
+async function fetchRecentSessionsForRules(
+  serverUserId: string,
+  identityServerUserIds: string[]
+): Promise<Session[]> {
+  const ids = identityServerUserIds.length > 1 ? identityServerUserIds : [serverUserId];
+  try {
+    const recentSessionsMap = await batchGetRecentUserSessions(ids);
+    return mergeRecentSessionsForIdentity(recentSessionsMap, ids);
+  } catch (error) {
+    console.error(
+      `[Poller] Failed to fetch recent sessions for ${serverUserId}, falling back to this server only:`,
+      error
+    );
+    const fallbackMap = await batchGetRecentUserSessions([serverUserId]);
+    return fallbackMap.get(serverUserId) ?? [];
+  }
+}
+
+/**
+ * Lazily backfill recentSessionsMap for a server user absent from the
+ * new-session batch (e.g. a pending session confirming on a later tick, so
+ * its key already reads as "not new"). Writes back into the map so repeat
+ * lookups for the same user in one tick cost one query, not N.
+ */
+async function getOrFetchRecentSessions(
+  recentSessionsMap: Map<string, Session[]>,
+  serverUserId: string | undefined
+): Promise<Session[]> {
+  if (!serverUserId) return [];
+  let recentSessions = recentSessionsMap.get(serverUserId);
+  if (!recentSessions) {
+    const recentForUser = await batchGetRecentUserSessions([serverUserId]);
+    recentSessions = recentForUser.get(serverUserId) ?? [];
+    recentSessionsMap.set(serverUserId, recentSessions);
+  }
+  return recentSessions;
+}
+
+/** A pending session that vanished pre-confirmation: mirrors sseProcessor's stop-before-confirm handling. */
+async function resolveVanishedPendingSession(
+  serverId: string,
+  serverType: string,
+  pendingKeySource: string
+): Promise<{ notify: boolean; durationMs: number | null }> {
+  if (!cacheService) return { notify: false, durationMs: null };
+  const cache = cacheService;
+  const pendingKey =
+    serverType === 'plex' ? pendingKeySource.slice(serverId.length + 1) : pendingKeySource;
+
+  const pendingData = await cache.getPendingSession(serverId, pendingKey);
+  if (!pendingData) {
+    return { notify: false, durationMs: null };
+  }
+
+  const { maxViewOffset, initialViewOffset } = pendingData.confirmation;
+  const progress = maxViewOffset - (initialViewOffset ?? maxViewOffset);
+
+  if (progress < PENDING_STOP_PERSIST_MIN_PROGRESS_MS) {
+    await cache.deletePendingSession(serverId, pendingKey);
+    console.log(
+      `[Poller] Discarded phantom pending session ${pendingKey} (id: ${pendingData.id}) ` +
+        `(vanished before confirmation)`
+    );
+    return { notify: false, durationMs: null };
+  }
+
+  const lockResult = await cache.withSessionCreateLock(
+    serverId,
+    pendingData.processed.sessionKey,
+    async () => {
+      // Same two-part recheck as resolvePendingSession's create lock: a
+      // concurrent SSE confirm/discard can have cleared the pending entry,
+      // or already persisted a row under this same pre-generated id.
+      const stillPending = await cache.getPendingSession(serverId, pendingKey);
+      if (!stillPending) {
+        console.log(
+          `[Poller] Vanished pending session ${pendingKey} was discarded before the sweep reached the lock, skipping`
+        );
+        return null;
+      }
+
+      const [existingById] = await db
+        .select({ id: sessions.id })
+        .from(sessions)
+        .where(and(eq(sessions.id, stillPending.id), isNull(sessions.stoppedAt)))
+        .limit(1);
+      if (existingById) {
+        await cache.deletePendingSession(serverId, pendingKey);
+        return null;
+      }
+
+      const activeRulesV2 = await getActiveRulesV2();
+      const activeSessions = excludeUncountableSessions(
+        await cache.getAllActiveSessions(),
+        gracePeriodSessionIds()
+      );
+      const recentSessions = await fetchRecentSessionsForRules(
+        stillPending.serverUser.id,
+        stillPending.serverUser.identityServerUserIds
+      );
+
+      const persisted = await confirmAndPersistSession({
+        pendingData: stillPending,
+        activeRulesV2,
+        activeSessions,
+        recentSessions,
+      });
+
+      await cache.deletePendingSession(serverId, pendingKey);
+      return persisted;
+    }
+  );
+
+  if (!lockResult) {
+    return { notify: false, durationMs: null };
+  }
+
+  if (lockResult.qualityChange) {
+    await handleQualityChangeFallout(lockResult.qualityChange, cache, pubSubService);
+  }
+  if (lockResult.violationResults.length > 0 && pubSubService) {
+    try {
+      await broadcastViolations(
+        lockResult.violationResults,
+        lockResult.insertedSession.id,
+        pubSubService
+      );
+    } catch (err) {
+      console.error('[Poller] Failed to broadcast violations for vanished pending session:', err);
+    }
+  }
+  if (lockResult.wasTerminatedByRule) {
+    return { notify: false, durationMs: null };
+  }
+
+  const stopResult = await stopSessionAtomic({
+    session: lockResult.insertedSession,
+    stoppedAt: new Date(pendingData.lastSeenAt),
+  });
+  clearDbWriteTracking(lockResult.insertedSession.id);
+  if (stopResult.needsRetry && stopResult.retryData) {
+    await cache.addSessionWriteRetry(lockResult.insertedSession.id, stopResult.retryData);
+  }
+
+  console.log(
+    `[Poller] Persisted vanished pending session ${lockResult.insertedSession.id} ` +
+      `(${Math.round(progress / 1000)}s progress before disappearing)`
+  );
+
+  return { notify: stopResult.wasUpdated, durationMs: stopResult.durationMs };
+}
+
+/**
  * Sweep grace period entries that were tracked in a PREVIOUS poll cycle.
  * For each entry still absent, confirm the stop in DB and send notification.
  * Failed entries stay in the map for retry on the next poll.
@@ -347,35 +450,64 @@ async function sweepGracePeriod(
           continue;
         }
 
-        const serverType = serverTypeMap.get(serverId);
-        const session =
-          serverType && serverType !== 'plex'
-            ? await findActiveSessionByComposite({
-                serverId,
-                serverUserId: snapshot.serverUserId,
-                deviceId: snapshot.deviceId || null,
-                ratingKey: snapshot.ratingKey ?? '',
-              })
-            : await findActiveSession({ serverId, sessionKey: snapshot.sessionKey });
-        if (session) {
-          // session.lastSeenAt is the last poll that confirmed this session
-          // alive - it vanished 1-2 polls before this sweep, so `new Date()`
-          // would bill the grace-period gap itself as watch time.
-          const { wasUpdated, durationMs, needsRetry, retryData } = await stopSessionAtomic({
-            session,
-            stoppedAt: session.lastSeenAt,
-          });
-          clearDbWriteTracking(session.id);
-          if (needsRetry && retryData && cacheService) {
-            await cacheService.addSessionWriteRetry(session.id, retryData);
+        // Pending sessions never wrote a DB row, so they resolve via Redis instead.
+        if (snapshot.pending) {
+          const pendingServerType = serverTypeMap.get(serverId);
+          if (!pendingServerType) {
+            if (!warnedMissingServerTypes.has(serverId)) {
+              warnedMissingServerTypes.add(serverId);
+              console.warn(
+                `[Poller] No server type known for ${serverId}, skipping vanished pending session ${key} until it resolves`
+              );
+            }
+            continue;
           }
-          if (wasUpdated) {
+
+          const { durationMs, notify } = await resolveVanishedPendingSession(
+            serverId,
+            pendingServerType,
+            key
+          );
+          if (notify) {
             await sendGracePeriodStopNotification(key, snapshot, durationMs);
           }
         } else {
-          console.log(
-            `[Poller] Grace period: session for ${key} already stopped by another process`
-          );
+          const serverType = serverTypeMap.get(serverId);
+          const session =
+            serverType && serverType !== 'plex'
+              ? await findActiveSessionByComposite({
+                  serverId,
+                  serverUserId: snapshot.serverUserId,
+                  deviceId: snapshot.deviceId || null,
+                  ratingKey: snapshot.ratingKey ?? '',
+                })
+              : await findActiveSession({
+                  serverId,
+                  sessionKey: snapshot.sessionKey,
+                  // Close only the tracked user's row: after a PMS restart the
+                  // same sessionKey can sit on another user's live row
+                  serverUserId: snapshot.serverUserId,
+                });
+          if (session) {
+            // session.lastSeenAt is the last poll that confirmed this session
+            // alive - it vanished 1-2 polls before this sweep, so `new Date()`
+            // would bill the grace-period gap itself as watch time.
+            const { wasUpdated, durationMs, needsRetry, retryData } = await stopSessionAtomic({
+              session,
+              stoppedAt: session.lastSeenAt,
+            });
+            clearDbWriteTracking(session.id);
+            if (needsRetry && retryData && cacheService) {
+              await cacheService.addSessionWriteRetry(session.id, retryData);
+            }
+            if (wasUpdated) {
+              await sendGracePeriodStopNotification(key, snapshot, durationMs);
+            }
+          } else {
+            console.log(
+              `[Poller] Grace period: session for ${key} already stopped by another process`
+            );
+          }
         }
 
         // Confirmed miss: now remove from cache and broadcast the stop. This was
@@ -470,62 +602,6 @@ async function pruneMissedPollTracking(
   }
 }
 
-async function stopMissingSessionsImmediately(
-  cachedSessionKeys: Set<string>,
-  currentSessionKeys: Set<string>,
-  server: ServerWithToken,
-  activeSessions: ActiveSession[]
-): Promise<string[]> {
-  const stoppedKeys: string[] = [];
-  if (!cacheService) return stoppedKeys;
-
-  for (const activeSession of activeSessions) {
-    if (activeSession.serverId !== server.id) continue;
-
-    const activeKey = buildCompositeKey({
-      serverType: server.type,
-      serverId: server.id,
-      externalUserId: activeSession.serverUserId,
-      deviceId: activeSession.deviceId ?? null,
-      ratingKey: activeSession.ratingKey ?? null,
-      sessionKey: activeSession.sessionKey,
-    });
-    if (!cachedSessionKeys.has(activeKey) || currentSessionKeys.has(activeKey)) continue;
-
-    const pending = await cacheService.getPendingSession(server.id, activeKey);
-    if (pending) {
-      await cacheService.deletePendingSession(server.id, activeKey);
-      stoppedKeys.push(`${server.id}:${activeSession.sessionKey}`);
-      continue;
-    }
-
-    const [session] = await db
-      .select()
-      .from(sessions)
-      .where(and(eq(sessions.id, activeSession.id), isNull(sessions.stoppedAt)))
-      .limit(1);
-
-    if (!session) {
-      stoppedKeys.push(`${server.id}:${activeSession.sessionKey}`);
-      continue;
-    }
-
-    const { needsRetry, retryData } = await stopSessionAtomic({
-      session,
-      stoppedAt: new Date(),
-    });
-    clearDbWriteTracking(session.id);
-    if (needsRetry && retryData) {
-      await cacheService.addSessionWriteRetry(session.id, retryData);
-    }
-
-    stoppedKeys.push(`${server.id}:${activeSession.sessionKey}`);
-    missedPollTracking.delete(activeKey);
-  }
-
-  return stoppedKeys;
-}
-
 // ============================================================================
 // Server Session Processing
 // ============================================================================
@@ -549,7 +625,6 @@ async function resolvePendingSession(
     activeSessions,
     recentSessions,
     usePlexGeoip,
-    dispatcharrLiveConfirmThresholdMs,
   } = params;
 
   const pendingSession = await cacheService.getPendingSession(server.id, pendingKey);
@@ -561,18 +636,12 @@ async function resolvePendingSession(
     pendingSession,
     processed.state,
     processed.progressMs,
-    Date.now(),
-    dispatcharrLiveConfirmThresholdMs ?? undefined,
-    processed
-  );
-  const pendingData = syncDispatcharrPendingProgress(
-    updatedData,
-    dispatcharrLiveConfirmThresholdMs ?? null
+    Date.now()
   );
 
   if (!isConfirmed) {
-    await cacheService.setPendingSession(server.id, pendingKey, pendingData);
-    return { status: 'still-pending', updatedSession: buildPendingActiveSession(pendingData) };
+    await cacheService.setPendingSession(server.id, pendingKey, updatedData);
+    return { status: 'still-pending', updatedSession: buildPendingActiveSession(updatedData) };
   }
 
   const geo: GeoLocation = await lookupGeoIP(processed.ipAddress, usePlexGeoip);
@@ -592,7 +661,7 @@ async function resolvePendingSession(
       const [existingById] = await db
         .select({ id: sessions.id })
         .from(sessions)
-        .where(and(eq(sessions.id, pendingData.id), isNull(sessions.stoppedAt)))
+        .where(and(eq(sessions.id, updatedData.id), isNull(sessions.stoppedAt)))
         .limit(1);
       if (existingById) {
         // A concurrent caller already persisted this row. The pending entry is
@@ -603,27 +672,14 @@ async function resolvePendingSession(
         return null;
       }
 
-      if (
-        dispatcharrLiveConfirmThresholdMs !== null &&
-        dispatcharrLiveConfirmThresholdMs !== undefined
-      ) {
-        return confirmAndPersistSession({
-          pendingData,
-          activeRulesV2,
-          activeSessions,
-          recentSessions,
-        });
-      }
-
-      return createSessionWithRulesAtomic({
-        processed: pendingData.processed,
-        server,
-        serverUser: userDetail,
-        geo,
+      // Fresh processed/server/serverUser/geo (this tick's poll data) win over
+      // updatedData's stale snapshot from pending creation; confirmAndPersistSession
+      // corrects startedAt/pausedDurationMs/progressMs from updatedData's own fields.
+      return confirmAndPersistSession({
+        pendingData: { ...updatedData, processed, server, serverUser: userDetail, geo },
         activeRulesV2,
         activeSessions,
         recentSessions,
-        preGeneratedId: pendingData.id,
       });
     }
   );
@@ -678,12 +734,34 @@ async function resolvePendingSession(
  * @param cachedSessionKeys - Set of currently cached session keys
  * @returns Processing results (new, updated, stopped sessions)
  */
+export function mergeDispatcharrRealtimeSessions(
+  realtimeSessions: MediaSession[],
+  restSessions: MediaSession[]
+): MediaSession[] {
+  const realtimeKeys = new Set(realtimeSessions.map((session) => session.sessionKey));
+  return [...realtimeSessions, ...restSessions.filter((session) => !realtimeKeys.has(session.sessionKey))];
+}
+
+export function syncDispatcharrPendingProgress(
+  pendingData: PendingSessionData,
+  dispatcharrLiveConfirmThresholdMs: number | null
+): PendingSessionData {
+  if (dispatcharrLiveConfirmThresholdMs === null || dispatcharrLiveConfirmThresholdMs <= 0) {
+    return pendingData;
+  }
+  const progressMs = Math.max(
+    pendingData.processed.progressMs,
+    pendingData.confirmation.maxViewOffset || 0
+  );
+  return { ...pendingData, processed: { ...pendingData.processed, progressMs } };
+}
+
 export async function processServerSessions(
   server: ServerWithToken,
   activeRulesV2: RuleV2[],
   cachedSessionKeys: Set<string>,
   activeSessions: ActiveSession[] = [],
-  options: ServerSessionProcessingOptions = {}
+  options: { mediaSessions?: MediaSession[]; immediateStops?: boolean } = {}
 ): Promise<ServerProcessingResult> {
   const newSessions: ActiveSession[] = [];
   const updatedSessions: ActiveSession[] = [];
@@ -693,19 +771,22 @@ export async function processServerSessions(
 
   // Get GeoIP settings once at the start
   const { usePlexGeoip } = await getGeoIPSettings();
+  // Watched thresholds fetched once per cycle rather than per session (settings cache is 10s anyway)
+  const watchedThresholds = {
+    movie: await getWatchedThreshold('movie'),
+    episode: await getWatchedThreshold('episode'),
+    track: await getWatchedThreshold('track'),
+  };
 
   try {
-    let mediaSessions = options.mediaSessions;
-    if (!mediaSessions) {
-      // Fetch sessions from server using unified adapter
-      const client = createMediaServerClient({
-        type: server.type,
-        url: server.url,
-        token: server.token,
-      });
-      mediaSessions = await client.getSessions();
-      sseManager.nudgeReconnect(server.id);
-    }
+    // Fetch sessions from server using unified adapter
+    const client = createMediaServerClient({
+      type: server.type,
+      url: server.url,
+      token: server.token,
+    });
+    const mediaSessions = options.mediaSessions ?? (await client.getSessions());
+    sseManager.nudgeReconnect(server.id);
 
     const processedSessions = mediaSessions.map((s) => mapMediaSession(s, server.type));
 
@@ -716,25 +797,8 @@ export async function processServerSessions(
         [...missedPollTracking.keys()].filter((k) => k.startsWith(`${server.id}:`))
       );
       const sTypeMap = new Map([[server.id, server.type]]);
-      if (options.immediateStops) {
-        const stoppedSessionKeys = await stopMissingSessionsImmediately(
-          cachedSessionKeys,
-          currentSessionKeys,
-          server,
-          activeSessions
-        );
-        return {
-          success: true,
-          newSessions: [],
-          stoppedSessionKeys,
-          updatedSessions: [],
-          watchedTransitionOccurred: false,
-          confirmedFromPendingIds: new Set(),
-        };
-      } else {
-        await handleFirstMisses(cachedSessionKeys, server.id, activeSessions, sTypeMap);
-        await sweepGracePeriod(keysToSweep, server.id, sTypeMap);
-      }
+      await handleFirstMisses(cachedSessionKeys, server.id, activeSessions, sTypeMap);
+      await sweepGracePeriod(keysToSweep, server.id, sTypeMap);
 
       // stoppedSessionKeys intentionally empty
       return {
@@ -762,7 +826,6 @@ export async function processServerSessions(
         thumbUrl: serverUsers.thumbUrl,
         isServerAdmin: serverUsers.isServerAdmin,
         trustScore: serverUsers.trustScore,
-        sessionCount: serverUsers.sessionCount,
         lastActivityAt: serverUsers.lastActivityAt,
         createdAt: serverUsers.createdAt,
         updatedAt: serverUsers.updatedAt,
@@ -887,30 +950,6 @@ export async function processServerSessions(
       }
     }
 
-    // Preserve the provider URL anchor in backend state. It is intentionally
-    // private: clients receive only the materialized progressMs below.
-    const catchupObservedAt = Date.now();
-    for (let i = 0; i < processedSessions.length; i++) {
-      const processed = processedSessions[i];
-      const serverUserId = sessionServerUserIds[i];
-      if (
-        processed?.dispatcharrPlaybackKind !== 'catchup' ||
-        !processed.dispatcharrCatchupProgrammeStart
-      ) {
-        continue;
-      }
-
-      const identity = `${server.id}:${serverUserId ?? processed.externalUserId}:${processed.deviceId}:${processed.sessionKey}`;
-      processed.dispatcharrCatchupProgrammeStartUpdatedAt = cacheService
-        ? await cacheService.getOrSetDispatcharrCatchupProgrammeStartUpdatedAt(
-            identity,
-            processed.dispatcharrCatchupProgrammeStart,
-            catchupObservedAt
-          )
-        : catchupObservedAt;
-      materializeDispatcharrCatchupProgress(processed, catchupObservedAt);
-    }
-
     // OPTIMIZATION: Batch load recent sessions for rule evaluation (new sessions only)
     // and batch the active-session lookup for already-tracked sessions.
     const serverUsersWithNewSessions = new Set<string>();
@@ -948,6 +987,15 @@ export async function processServerSessions(
         ? await batchFindActiveSessionsByComposite(server.id, compositeIdentitiesToCheck)
         : new Map<string, (typeof sessions.$inferSelect)[]>();
 
+    // One query per poll cycle resolves identity for every rating key; the insert path reads it off processed.
+    const identityRatingKeys = processedSessions
+      .map((p) => p.ratingKey)
+      .filter((k): k is string => Boolean(k));
+    const libraryItemIdentityMap = await batchGetLibraryItemIdentity(server.id, identityRatingKeys);
+    for (const p of processedSessions) {
+      p.identity = libraryItemIdentityMap.get(p.ratingKey) ?? null;
+    }
+
     // OPTIMIZATION: Batch load sibling server_user ids per identity for cross-server
     // rule aggregation on merged users. One query per poll tick covers every server
     // user in this batch, avoiding a per-session/per-tick lookup in the hot path.
@@ -976,8 +1024,12 @@ export async function processServerSessions(
     }
 
     // Concurrent-stream counting must not see sessions the system already
-    // considers probably stopped, or unconfirmed pendings.
-    const ruleEvalSessions = excludeUncountableSessions(activeSessions, gracePeriodSessionIds());
+    // considers probably stopped, or unconfirmed pendings. A copy (not the
+    // shared `activeSessions` passed in) so pending confirms appended below,
+    // during this server's pass, never leak into another server's tick.
+    const ruleEvalSessions = [
+      ...excludeUncountableSessions(activeSessions, gracePeriodSessionIds()),
+    ];
 
     // Process each session
     for (let i = 0; i < processedSessions.length; i++) {
@@ -1015,7 +1067,6 @@ export async function processServerSessions(
               thumbUrl: serverUserFromCache.thumbUrl,
               identityName: serverUserFromCache.identityName,
               trustScore: serverUserFromCache.trustScore,
-              sessionCount: serverUserFromCache.sessionCount,
               lastActivityAt: serverUserFromCache.lastActivityAt,
               createdAt: serverUserFromCache.createdAt,
               identityServerUserIds: identityServerUserIdsMap.get(serverUserFromCache.userId) ?? [
@@ -1032,17 +1083,12 @@ export async function processServerSessions(
               thumbUrl: null,
               identityName: null,
               trustScore: 100,
-              sessionCount: 0,
               lastActivityAt: null,
               createdAt: new Date(), // Brand new users genuinely have 0-day account age
               identityServerUserIds: [serverUserId],
             };
 
         const isNew = !cachedSessionKeys.has(sessionKey);
-        const dispatcharrLiveConfirmThresholdMs =
-          server.type === 'dispatcharr' && processed.mediaType === 'live'
-            ? Math.max(0, (server.dispatcharrLiveHistoryThresholdSeconds ?? 30) * 1000)
-            : null;
 
         if (isNew) {
           // Distributed lock prevents race condition with SSE
@@ -1050,12 +1096,11 @@ export async function processServerSessions(
             console.warn('[Poller] Cache service not available, skipping session creation');
             continue;
           }
-          const cache = cacheService;
 
           // cachedSessionKeys only tracks confirmed sessions, so an SSE-created pending one still reads as new.
           const pendingKey = server.type === 'plex' ? processed.sessionKey : sessionKey;
           const pendingOutcome = await resolvePendingSession({
-            cacheService: cache,
+            cacheService,
             pubSubService,
             server: { id: server.id, name: server.name, type: server.type },
             pendingKey,
@@ -1065,13 +1110,14 @@ export async function processServerSessions(
             activeSessions: ruleEvalSessions,
             recentSessions: recentSessionsMap.get(serverUserId) ?? [],
             usePlexGeoip,
-            dispatcharrLiveConfirmThresholdMs,
           });
 
           if (pendingOutcome.status === 'confirmed') {
             if (pendingOutcome.newSession) {
               newSessions.push(pendingOutcome.newSession);
               confirmedFromPendingIds.add(pendingOutcome.newSession.id);
+              // So a second pending confirming later in this same pass counts this one too.
+              ruleEvalSessions.push(pendingOutcome.newSession);
             }
             continue;
           }
@@ -1083,205 +1129,128 @@ export async function processServerSessions(
           // Get GeoIP location (uses Plex API if enabled, falls back to MaxMind)
           const geo: GeoLocation = await lookupGeoIP(processed.ipAddress, usePlexGeoip);
 
-          const recentSessions = recentSessionsMap.get(serverUserId) ?? [];
-
-          if (dispatcharrLiveConfirmThresholdMs !== null && dispatcharrLiveConfirmThresholdMs > 0) {
-            const createPendingResult = await cache.withSessionCreateLock(
-              server.id,
-              processed.sessionKey,
-              async () => {
-                const existingWithSameKey = await findActiveSession({
-                  serverId: server.id,
-                  sessionKey: processed.sessionKey,
-                  ratingKey: processed.ratingKey,
-                });
-
-                if (existingWithSameKey) {
-                  cachedSessionKeys.add(sessionKey);
-                  missedPollTracking.delete(sessionKey);
-                  return { rediscovered: existingWithSameKey };
-                }
-
-                const existingPending = await cache.getPendingSession(server.id, sessionKey);
-                if (existingPending) {
-                  const { updatedData } = updatePendingSession(
-                    existingPending,
-                    processed.state,
-                    processed.progressMs,
-                    Date.now(),
-                    dispatcharrLiveConfirmThresholdMs,
-                    processed
-                  );
-                  const pendingDataForCache = syncDispatcharrPendingProgress(
-                    updatedData,
-                    dispatcharrLiveConfirmThresholdMs
-                  );
-                  missedPollTracking.delete(sessionKey);
-                  await cache.setPendingSession(server.id, sessionKey, pendingDataForCache);
-                  return { pendingData: pendingDataForCache, wasCreated: false };
-                }
-
-                const now = Date.now();
-                const pendingData: PendingSessionData = {
-                  id: randomUUID(),
-                  confirmation: {
-                    confirmedPlayback: false,
-                    firstSeenAt: now,
-                    maxViewOffset: Math.max(0, processed.progressMs ?? 0),
-                    initialViewOffset: Math.max(0, processed.progressMs ?? 0),
-                  },
-                  processed,
-                  server: { id: server.id, name: server.name, type: server.type },
-                  serverUser: userDetail,
-                  geo,
-                  startedAt: now,
-                  lastSeenAt: now,
-                  currentState: processed.state,
-                  pausedDurationMs: 0,
-                  lastPausedAt: processed.state === 'paused' ? now : null,
-                };
-
-                await cache.setPendingSession(server.id, sessionKey, pendingData);
-                return { pendingData, wasCreated: true };
-              }
-            );
-
-            if (!createPendingResult) {
-              continue;
-            }
-            if ('pendingData' in createPendingResult && createPendingResult.pendingData) {
-              const activeSession = buildPendingActiveSession(createPendingResult.pendingData);
-              if (createPendingResult.wasCreated) {
-                newSessions.push(activeSession);
-              } else {
-                updatedSessions.push(activeSession);
-              }
-              cachedSessionKeys.add(sessionKey);
-              continue;
-            }
-          }
-
-          const createResult = await cache.withSessionCreateLock(
-            server.id,
-            processed.sessionKey,
-            async () => {
-              const stillPending = await cache.getPendingSession(server.id, pendingKey);
+          const createResult = await cacheService.withSessionCreateLock<
+            | { rediscovered: typeof sessions.$inferSelect }
+            | { pendingCreated: PendingSessionData }
+            | null
+          >(server.id, processed.sessionKey, async () => {
+            if (cacheService) {
+              const stillPending = await cacheService.getPendingSession(server.id, pendingKey);
               if (stillPending) {
                 console.log(
                   `[Poller] Pending session appeared for ${processed.sessionKey} while acquiring the create lock, deferring to next tick`
                 );
                 return null;
               }
-
-              // Reject a row whose server user differs from this play before
-              // rediscovering it: Plex reuses sessionKey counters across PMS
-              // restarts, so a stale open row from another user can carry this
-              // key. Rediscovering it would touch its lastSeenAt (keeping it
-              // alive) and rebuild it under this user's identity. Leave it for
-              // the stale-sweep and create fresh under the correct user.
-              const existingWithSameKey = await findActiveSession({
-                serverId: server.id,
-                sessionKey: processed.sessionKey,
-                ratingKey: processed.ratingKey,
-              });
-
-              if (existingWithSameKey?.serverUserId === userDetail.id) {
-                cachedSessionKeys.add(sessionKey);
-                // Clear any grace period tracking - session is confirmed active
-                missedPollTracking.delete(sessionKey);
-                console.log(
-                  `[Poller] Recovering active session ${processed.sessionKey} into cache`
-                );
-                // Return the existing session for cache recovery instead of null
-                return { rediscovered: existingWithSameKey };
-              }
-
-              // Check if this session was recently terminated (cooldown prevents re-creation)
-              if (processed.ratingKey) {
-                const hasCooldown =
-                  server.type === 'plex'
-                    ? await cache.hasTerminationCooldown(
-                        server.id,
-                        processed.sessionKey,
-                        processed.ratingKey
-                      )
-                    : await cache.hasTerminationCooldownComposite(
-                        server.id,
-                        userDetail.id,
-                        processed.deviceId || processed.sessionKey,
-                        processed.ratingKey
-                      );
-                if (hasCooldown) {
-                  console.log(
-                    `[Poller] Session ${processed.sessionKey} was recently terminated, skipping create`
-                  );
-                  return null;
-                }
-              }
-
-              // Duplicate check: Plex-only (JF/Emby use composite keys)
-              if (server.type === 'plex' && processed.ratingKey && userDetail?.id) {
-                const chunkBound = new Date(Date.now() - ACTIVE_SESSION_CHUNK_BOUND_MS);
-
-                const [existingForContent] = await db
-                  .select({ id: sessions.id, sessionKey: sessions.sessionKey })
-                  .from(sessions)
-                  .where(
-                    and(
-                      eq(sessions.serverUserId, userDetail.id),
-                      eq(sessions.ratingKey, processed.ratingKey),
-                      isNull(sessions.stoppedAt),
-                      gte(sessions.startedAt, chunkBound)
-                    )
-                  )
-                  .limit(1);
-
-                if (existingForContent) {
-                  console.log(
-                    `[Poller] Session_key ${processed.sessionKey} is new, but active session ${existingForContent.id} exists for same content (key: ${existingForContent.sessionKey}). Skipping duplicate.`
-                  );
-                  // Add both session keys to cache
-                  cachedSessionKeys.add(sessionKey);
-                  cachedSessionKeys.add(`${server.id}:${existingForContent.sessionKey}`);
-                  return null;
-                }
-              }
-
-              const result = await createSessionWithRulesAtomic({
-                processed,
-                server: { id: server.id, name: server.name, type: server.type },
-                serverUser: userDetail,
-                geo,
-                activeRulesV2,
-                activeSessions: ruleEvalSessions,
-                recentSessions,
-              });
-
-              if (result.qualityChange) {
-                const { stoppedSession } = result.qualityChange;
-                await handleQualityChangeFallout(result.qualityChange, cache, pubSubService);
-
-                // Prevent "stale" detection for this session
-                const stoppedKey = buildCompositeKey({
-                  serverType: server.type,
-                  serverId: server.id,
-                  externalUserId: stoppedSession.serverUserId,
-                  deviceId: stoppedSession.deviceId,
-                  ratingKey: stoppedSession.ratingKey,
-                  sessionKey: stoppedSession.sessionKey,
-                });
-                cachedSessionKeys.delete(stoppedKey);
-              }
-
-              return {
-                insertedSession: result.insertedSession,
-                violationResults: result.violationResults,
-                wasTerminatedByRule: result.wasTerminatedByRule,
-              };
             }
-          );
+
+            // Reject a row whose server user differs from this play before
+            // rediscovering it: Plex reuses sessionKey counters across PMS
+            // restarts, so a stale open row from another user can carry this
+            // key. Rediscovering it would touch its lastSeenAt (keeping it
+            // alive) and rebuild it under this user's identity. Leave it for
+            // the stale-sweep and create fresh under the correct user.
+            const existingWithSameKey = await findActiveSession({
+              serverId: server.id,
+              sessionKey: processed.sessionKey,
+              ratingKey: processed.ratingKey,
+            });
+
+            if (existingWithSameKey?.serverUserId === userDetail.id) {
+              cachedSessionKeys.add(sessionKey);
+              // Clear any grace period tracking - session is confirmed active
+              missedPollTracking.delete(sessionKey);
+              console.log(`[Poller] Recovering active session ${processed.sessionKey} into cache`);
+              // Return the existing session for cache recovery instead of null
+              return { rediscovered: existingWithSameKey };
+            }
+
+            // Check if this session was recently terminated (cooldown prevents re-creation)
+            if (cacheService && processed.ratingKey) {
+              const hasCooldown =
+                server.type === 'plex'
+                  ? await cacheService.hasTerminationCooldown(
+                      server.id,
+                      processed.sessionKey,
+                      processed.ratingKey
+                    )
+                  : await cacheService.hasTerminationCooldownComposite(
+                      server.id,
+                      userDetail.id,
+                      processed.deviceId || processed.sessionKey,
+                      processed.ratingKey
+                    );
+              if (hasCooldown) {
+                console.log(
+                  `[Poller] Session ${processed.sessionKey} was recently terminated, skipping create`
+                );
+                return null;
+              }
+            }
+
+            // Duplicate check: Plex-only (JF/Emby use composite keys)
+            if (server.type === 'plex' && processed.ratingKey && userDetail?.id) {
+              const chunkBound = new Date(Date.now() - ACTIVE_SESSION_CHUNK_BOUND_MS);
+
+              const [existingForContent] = await db
+                .select({ id: sessions.id, sessionKey: sessions.sessionKey })
+                .from(sessions)
+                .where(
+                  and(
+                    eq(sessions.serverUserId, userDetail.id),
+                    eq(sessions.ratingKey, processed.ratingKey),
+                    isNull(sessions.stoppedAt),
+                    gte(sessions.startedAt, chunkBound)
+                  )
+                )
+                .limit(1);
+
+              if (existingForContent) {
+                console.log(
+                  `[Poller] Session_key ${processed.sessionKey} is new, but active session ${existingForContent.id} exists for same content (key: ${existingForContent.sessionKey}). Skipping duplicate.`
+                );
+                // Add both session keys to cache
+                cachedSessionKeys.add(sessionKey);
+                cachedSessionKeys.add(`${server.id}:${existingForContent.sessionKey}`);
+                return null;
+              }
+            }
+
+            // Rules and the DB row wait for confirmation on a later tick, same as the SSE path.
+            if (!cacheService) {
+              return null;
+            }
+
+            const nowMs = Date.now();
+            const pendingData: PendingSessionData = {
+              id: randomUUID(),
+              confirmation: createInitialConfirmationState(nowMs),
+              processed,
+              server: { id: server.id, name: server.name, type: server.type },
+              serverUser: userDetail,
+              geo,
+              startedAt: nowMs,
+              lastSeenAt: nowMs,
+              currentState: processed.state,
+              pausedDurationMs: 0,
+              lastPausedAt: processed.state === 'paused' ? nowMs : null,
+            };
+
+            await cacheService.setPendingSession(server.id, pendingKey, pendingData);
+            return { pendingCreated: pendingData };
+          });
 
           if (!createResult) {
+            continue;
+          }
+
+          if ('pendingCreated' in createResult) {
+            const activeSession = buildPendingActiveSession(createResult.pendingCreated);
+            await cacheService.addActiveSession(activeSession);
+            if (pubSubService) {
+              await pubSubService.publish('session:started', activeSession);
+              await enqueueNotification({ type: 'session_started', payload: activeSession });
+            }
             continue;
           }
 
@@ -1332,43 +1301,6 @@ export async function processServerSessions(
             );
             continue;
           }
-
-          const { insertedSession, violationResults, wasTerminatedByRule } = createResult;
-
-          // The termination service already removed from cache (no-op since not added yet)
-          // and set cooldown, but we must not add it to newSessions
-          if (wasTerminatedByRule) {
-            console.log(
-              `[Poller] Session ${processed.sessionKey} was terminated by rule, skipping cache add`
-            );
-            // Still broadcast violations since they were created
-            try {
-              await broadcastViolations(violationResults, insertedSession.id, pubSubService);
-            } catch (err) {
-              console.error('[Poller] Failed to broadcast violations:', err);
-            }
-            continue;
-          }
-
-          const activeSession = buildActiveSession({
-            session: insertedSession,
-            processed,
-            user: userDetail,
-            geo,
-            server,
-          });
-
-          newSessions.push(activeSession);
-          recordDbWrite(insertedSession.id, Date.now());
-
-          // Broadcast violations AFTER transaction commits (outside transaction)
-          // Wrapped in try-catch to prevent broadcast failures from crashing the poller
-          try {
-            await broadcastViolations(violationResults, insertedSession.id, pubSubService);
-          } catch (err) {
-            console.error('[Poller] Failed to broadcast violations:', err);
-            // Violations are already persisted in DB, broadcast failure is non-fatal
-          }
         } else {
           // Pending session check (cache-first for JF/Emby, SSE for Plex)
           if (cacheService) {
@@ -1382,15 +1314,16 @@ export async function processServerSessions(
               userDetail,
               activeRulesV2,
               activeSessions: ruleEvalSessions,
-              recentSessions: recentSessionsMap.get(serverUserId) ?? [],
+              recentSessions: await getOrFetchRecentSessions(recentSessionsMap, serverUserId),
               usePlexGeoip,
-              dispatcharrLiveConfirmThresholdMs,
             });
 
             if (outcome.status === 'confirmed') {
               if (outcome.newSession) {
                 newSessions.push(outcome.newSession);
                 confirmedFromPendingIds.add(outcome.newSession.id);
+                // So a second pending confirming later in this same pass counts this one too.
+                ruleEvalSessions.push(outcome.newSession);
               }
               continue;
             }
@@ -1590,6 +1523,8 @@ export async function processServerSessions(
                 server,
               });
               newSessions.push(activeSession);
+              // So a second brand-new session created later in this same pass counts this one too.
+              ruleEvalSessions.push(activeSession);
               recordDbWrite(insertedSession.id, Date.now());
               cachedSessionKeys.add(sessionKey);
 
@@ -1610,7 +1545,7 @@ export async function processServerSessions(
             server.type === 'plex' &&
             detectMediaChange(existingSession.ratingKey || null, processed.ratingKey || null)
           ) {
-            const recentSessions = recentSessionsMap.get(serverUserId) ?? [];
+            const recentSessions = await getOrFetchRecentSessions(recentSessionsMap, serverUserId);
 
             const mediaChangeResult = await handleMediaChangeAtomic({
               existingSession,
@@ -1681,17 +1616,6 @@ export async function processServerSessions(
           const newState = processed.state;
           const now = new Date();
 
-          const pauseResult = calculatePauseAccumulation(
-            previousState,
-            newState,
-            {
-              lastPausedAt: existingSession.lastPausedAt,
-              pausedDurationMs: existingSession.pausedDurationMs || 0,
-            },
-            now
-          );
-          materializeDispatcharrCatchupProgress(processed, now.getTime(), pauseResult);
-
           // Check if transcode state changed (e.g., user changed quality mid-stream)
           // If so, we need to update stream details which contain output dimensions
           const transcodeStateChanged =
@@ -1708,13 +1632,6 @@ export async function processServerSessions(
           // Build base update payload
           const updatePayload: Partial<typeof sessions.$inferInsert> = {
             state: newState,
-            mediaTitle: processed.mediaTitle,
-            ratingKey: processed.ratingKey ?? '',
-            thumbPath: processed.thumbPath || null,
-            channelTitle: processed.channelTitle,
-            channelIdentifier: processed.channelIdentifier,
-            channelThumb: processed.channelThumb,
-            totalDurationMs: processed.totalDurationMs || null,
             quality: processed.quality,
             bitrate: processed.bitrate,
             progressMs: processed.progressMs || null,
@@ -1734,6 +1651,15 @@ export async function processServerSessions(
             Object.assign(updatePayload, pickStreamDetailFields(processed));
           }
 
+          const pauseResult = calculatePauseAccumulation(
+            previousState,
+            newState,
+            {
+              lastPausedAt: existingSession.lastPausedAt,
+              pausedDurationMs: existingSession.pausedDurationMs || 0,
+            },
+            now
+          );
           updatePayload.lastPausedAt = pauseResult.lastPausedAt;
           updatePayload.pausedDurationMs = pauseResult.pausedDurationMs;
 
@@ -1752,7 +1678,12 @@ export async function processServerSessions(
               checkWatchCompletion(
                 currentWatchTimeMs,
                 processed.progressMs,
-                processed.totalDurationMs
+                processed.totalDurationMs,
+                processed.mediaType === 'episode'
+                  ? watchedThresholds.episode
+                  : processed.mediaType === 'track'
+                    ? watchedThresholds.track
+                    : watchedThresholds.movie
               )
             ) {
               updatePayload.watched = true;
@@ -1798,7 +1729,10 @@ export async function processServerSessions(
             // so rules like "block 4K transcoding" need a second chance when transcode starts.
             if (activeRulesV2.length > 0) {
               try {
-                const recentSessions = recentSessionsMap.get(serverUserId) ?? [];
+                const recentSessions = await getOrFetchRecentSessions(
+                  recentSessionsMap,
+                  serverUserId
+                );
                 const violationResults = await reEvaluateRulesOnTranscodeChange({
                   existingSession,
                   processed,
@@ -1823,7 +1757,10 @@ export async function processServerSessions(
 
           if (newState === 'paused' && activeRulesV2.length > 0) {
             try {
-              const recentSessions = recentSessionsMap.get(serverUserId) ?? [];
+              const recentSessions = await getOrFetchRecentSessions(
+                recentSessionsMap,
+                serverUserId
+              );
               const violationResults = await reEvaluateRulesOnPauseState({
                 existingSession,
                 processed,
@@ -1867,10 +1804,10 @@ export async function processServerSessions(
           updatedSessions.push(activeSession);
         }
       } catch (error) {
-          console.error(
-            `[Poller] Failed to process session ${sessionKey} on ${server.name}, skipping:`,
-            error
-          );
+        console.error(
+          `[Poller] Failed to process session ${sessionKey} on ${server.name}, skipping:`,
+          error
+        );
       }
     }
 
@@ -1887,23 +1824,6 @@ export async function processServerSessions(
       [...missedPollTracking.keys()].filter((k) => k.startsWith(`${server.id}:`))
     );
     const sTypeMap = new Map([[server.id, server.type]]);
-    if (options.immediateStops) {
-      const stoppedSessionKeys = await stopMissingSessionsImmediately(
-        cachedSessionKeys,
-        currentSessionKeys,
-        server,
-        activeSessions
-      );
-      return {
-        success: true,
-        newSessions,
-        stoppedSessionKeys,
-        updatedSessions,
-        watchedTransitionOccurred,
-        confirmedFromPendingIds,
-      };
-    }
-
     await handleFirstMisses(
       [...cachedSessionKeys].filter(
         (k) => k.startsWith(`${server.id}:`) && !currentSessionKeys.has(k)
@@ -1976,7 +1896,7 @@ async function pollServers(): Promise<void> {
 
   try {
     // Get all connected servers
-    const allServers = await db.select().from(servers);
+    const allServers = await getCachedServers();
 
     // Filter to only servers that need polling.
     // SSE-connected servers (Plex or JF/Emby with plugin) are handled by SSE events.
@@ -2030,14 +1950,15 @@ async function pollServers(): Promise<void> {
     let anyWatchedTransition = false;
 
     // Process each server with health tracking
-    for (const server of serversNeedingPoll) {
+    const pollStartedAt = Date.now();
+    await runWithConcurrency(serversNeedingPoll, SERVER_POLL_CONCURRENCY, async (server) => {
       const serverWithToken = server as ServerWithToken;
 
       if (!acquireServerLock(server.id)) {
         console.log(
           `[Poller] Skipping ${server.name}, already being polled by another entry point`
         );
-        continue;
+        return;
       }
 
       try {
@@ -2099,6 +2020,14 @@ async function pollServers(): Promise<void> {
       } finally {
         releaseServerLock(server.id);
       }
+    });
+
+    const pollElapsedMs = Date.now() - pollStartedAt;
+    if (pollElapsedMs > currentPollIntervalMs) {
+      console.warn(
+        `[Poller] Tick took ${pollElapsedMs}ms against a ${currentPollIntervalMs}ms interval; ` +
+          `overlapping ticks are being dropped`
+      );
     }
 
     await processPollResults({
@@ -2147,10 +2076,8 @@ async function pollServers(): Promise<void> {
       }
     }
     previousPollHadSessions = hasActiveSessions;
-
-    // Sweep for stale sessions that haven't been seen in a while
-    // This catches sessions where server went down or SSE missed the stop event
-    await sweepStaleSessions();
+    // Stale sessions are swept on their own 60s interval (startPoller), not
+    // per tick: the stale timeout is 300s, so tick-rate sweeping buys nothing.
   } catch (error) {
     // Suppress DB errors during maintenance - the in-flight poll was already
     // running when the DB went down and stopPoller() can't abort an active await.
@@ -2287,9 +2214,8 @@ export async function sweepStaleSessions(): Promise<number> {
             stoppedAt: now,
             user,
             server,
-            progressUpdatedAt: staleSession.lastSeenAt,
             canTerminate: server.type !== 'plex' || !!staleSession.plexSessionId,
-          } as ActiveSession;
+          } as unknown as ActiveSession;
           await sendGracePeriodStopNotification(
             `${staleSession.serverId}:${staleSession.sessionKey}`,
             snapshot,
@@ -2413,6 +2339,9 @@ export async function triggerPoll(): Promise<void> {
  */
 export async function triggerServerPoll(serverId: string): Promise<void> {
   if (isMaintenance()) return;
+  // Plugin SSE events must only drive polls on the leaseholder; a follower
+  // that somehow holds a connection must not write sessions or run rules
+  if (!isLeader()) return;
   if (!acquireServerLock(serverId)) {
     console.log(`[Poller] Skipping server poll for ${serverId}, already being processed`);
     return;
@@ -2421,9 +2350,6 @@ export async function triggerServerPoll(serverId: string): Promise<void> {
   try {
     const [server] = await db.select().from(servers).where(eq(servers.id, serverId));
     if (!server) return;
-    if (server.type === 'dispatcharr' && sseManager.isDispatcharrRealtimeHealthy(server.id)) {
-      return;
-    }
 
     const cachedSessions = cacheService ? await cacheService.getAllActiveSessions() : [];
     const serverTypeMap = new Map([[server.id, server.type]]);
@@ -2452,7 +2378,12 @@ export async function triggerServerPoll(serverId: string): Promise<void> {
       updatedSessions,
       watchedTransitionOccurred,
       confirmedFromPendingIds,
-    } = await processServerSessions(server, activeRulesV2, cachedSessionKeys, cachedSessions);
+    } = await processServerSessions(
+      server as ServerWithToken,
+      activeRulesV2,
+      cachedSessionKeys,
+      cachedSessions
+    );
 
     if (newSessions.length > 0 || stoppedSessionKeys.length > 0 || updatedSessions.length > 0) {
       await processPollResults({
@@ -2492,10 +2423,8 @@ export async function triggerReconciliationPoll(): Promise<void> {
   try {
     // Get all servers with an active SSE connection (Plex or JF/Emby plugin).
     // Servers in fallback are already covered by the main poller.
-    const allServers = await db.select().from(servers);
-    const sseServers = allServers.filter(
-      (server) => server.type !== 'dispatcharr' && !sseManager.isInFallback(server.id)
-    );
+    const allServers = await getCachedServers();
+    const sseServers = allServers.filter((server) => !sseManager.isInFallback(server.id));
 
     if (sseServers.length === 0) {
       return;
@@ -2537,14 +2466,14 @@ export async function triggerReconciliationPoll(): Promise<void> {
     let anyWatchedTransition = false;
 
     // Process each SSE server and collect results
-    for (const server of sseServers) {
+    await runWithConcurrency(sseServers, SERVER_POLL_CONCURRENCY, async (server) => {
       const serverWithToken = server as ServerWithToken;
 
       if (!acquireServerLock(server.id)) {
         console.log(
           `[Poller] Skipping reconciliation for ${server.name}, already being polled by another entry point`
         );
-        continue;
+        return;
       }
 
       try {
@@ -2568,7 +2497,7 @@ export async function triggerReconciliationPoll(): Promise<void> {
       } finally {
         releaseServerLock(server.id);
       }
-    }
+    });
 
     if (allNewSessions.length > 0 || allStoppedKeys.length > 0 || allUpdatedSessions.length > 0) {
       await processPollResults({

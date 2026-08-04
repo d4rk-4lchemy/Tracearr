@@ -31,8 +31,20 @@ import { PRIMARY_MEDIA_TYPES_SQL_LITERAL } from '../constants/mediaTypes.js';
  * - 10: Fixed top_shows_by_engagement.unique_viewers to count distinct people (server_users.user_id)
  *       instead of distinct server accounts, so a merged person watching a show from two accounts
  *       counts once - matching the date-filtered /shows path, which already counted by user_id.
+ * - 11: Added media identity: media_id/show_media_id on daily_content_engagement and
+ *       content_engagement_summary, plus the user_media_plays_daily aggregate.
+ * - 12: Added any_watched to user_media_plays_daily and a show_media_id index.
+ * - 13: No aggregate definition change. Bumped to trigger a full historical
+ *       backfill after the episode->show linkage fix (media.show_media_id was
+ *       null for every episode, so user_media_plays_daily rows materialized
+ *       before the fix carry a null show_media_id baked in). The migration
+ *       repairs media/sessions, but only a full aggregate recompute picks up
+ *       the correction for rows outside the refresh policy's 7-day window.
+ * - 14: Added count_high_quality and version_count (multi-version rollups) to
+ *       library_stats_daily and content_quality_daily. Resolution buckets in
+ *       source snapshots are overlapping from this version on.
  */
-export const AGGREGATE_SCHEMA_VERSION = 10;
+export const AGGREGATE_SCHEMA_VERSION = 14;
 
 /** Config for a continuous aggregate view */
 interface AggregateDefinition {
@@ -74,6 +86,8 @@ function getAggregateDefinitions(): AggregateDefinition[] {
           MAX(total_duration_ms) AS content_duration_ms,
           MAX(thumb_path) AS thumb_path,
           MAX(server_id::text)::uuid AS server_id,
+          MAX(media_id::text)::uuid AS media_id,
+          MAX(show_media_id::text)::uuid AS show_media_id,
           MAX(season_number) AS season_number,
           MAX(episode_number) AS episode_number,
           MAX(year) AS year,
@@ -87,6 +101,35 @@ function getAggregateDefinitions(): AggregateDefinition[] {
           AND total_duration_ms > 0
           AND ${mediaFilter}
         GROUP BY day, server_user_id, rating_key
+        WITH NO DATA
+      `,
+      refreshPolicy: {
+        startOffset: '7 days',
+        endOffset: '1 hour',
+        scheduleInterval: '15 minutes',
+      },
+    },
+    {
+      // Identity-aware plays: one row per user-media-day actually watched
+      name: 'user_media_plays_daily',
+      sql: `
+        CREATE MATERIALIZED VIEW IF NOT EXISTS user_media_plays_daily
+        WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+        SELECT
+          time_bucket('1 day', started_at) AS day,
+          server_user_id,
+          server_id,
+          media_id,
+          MAX(show_media_id::text)::uuid AS show_media_id,
+          MAX(media_type) AS media_type,
+          COUNT(*) FILTER (WHERE reference_id IS NULL AND COALESCE(duration_ms, 0) >= 120000) AS plays,
+          SUM(CASE WHEN duration_ms >= 120000 THEN duration_ms ELSE 0 END) AS watched_ms,
+          MAX(progress_ms) AS max_progress_ms,
+          MAX(total_duration_ms) AS content_duration_ms,
+          BOOL_OR(watched) AS any_watched
+        FROM sessions
+        WHERE media_id IS NOT NULL
+        GROUP BY day, server_user_id, server_id, media_id
         WITH NO DATA
       `,
       refreshPolicy: {
@@ -145,7 +188,9 @@ function getAggregateDefinitions(): AggregateDefinition[] {
           MAX(count_4k) AS count_4k,
           MAX(count_1080p) AS count_1080p,
           MAX(count_720p) AS count_720p,
-          MAX(count_sd) AS count_sd
+          MAX(count_sd) AS count_sd,
+          MAX(count_high_quality) AS count_high_quality,
+          MAX(version_count) AS version_count
         FROM library_snapshots
         GROUP BY day, server_id, library_id
         WITH NO DATA
@@ -174,7 +219,9 @@ function getAggregateDefinitions(): AggregateDefinition[] {
           MAX(count_sd) AS count_sd,
           MAX(hevc_count) AS hevc_count,
           MAX(h264_count) AS h264_count,
-          MAX(av1_count) AS av1_count
+          MAX(av1_count) AS av1_count,
+          MAX(count_high_quality) AS count_high_quality,
+          MAX(version_count) AS version_count
         FROM library_snapshots
         GROUP BY day, server_id
         WITH NO DATA
@@ -357,6 +404,7 @@ async function dropRegularMaterializedViewIfExists(
     'daily_stats_summary',
     'hourly_concurrent_streams',
     'daily_content_engagement',
+    'user_media_plays_daily',
     'daily_bandwidth_by_user',
     'library_stats_daily',
     'content_quality_daily',
@@ -557,6 +605,15 @@ export async function getBackfillMarker(): Promise<AggregateBackfillMarker | nul
   }
 }
 
+// Resumable only if the marker already targets this exact version and every expected aggregate view is present; otherwise the views may still be shaped for the old version and need a real rebuild.
+export function shouldResumeBackfillInsteadOfRebuild(
+  marker: AggregateBackfillMarker | null,
+  targetVersion: number,
+  missingAggregateCount: number
+): boolean {
+  return marker !== null && marker.targetVersion === targetVersion && missingAggregateCount === 0;
+}
+
 async function setBackfillMarker(targetVersion: number): Promise<void> {
   await ensureMetadataTable();
   const marker: AggregateBackfillMarker = { targetVersion, startedAt: new Date().toISOString() };
@@ -628,10 +685,12 @@ async function convertToHypertable(): Promise<void> {
     `);
   }
 
-  // Convert to hypertable
+  // Convert to hypertable. 30-day chunks keep chunk fan-out low: at observed
+  // volumes even large installs stay well under a million rows per chunk, while
+  // the poller's 7-day-bounded lookups still exclude by time.
   await db.execute(sql`
     SELECT create_hypertable('sessions', 'started_at',
-      chunk_time_interval => INTERVAL '7 days',
+      chunk_time_interval => INTERVAL '30 days',
       migrate_data => true,
       if_not_exists => true
     )
@@ -687,6 +746,22 @@ async function createPartialIndexes(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_sessions_active_partial
     ON sessions (server_id, server_user_id, started_at DESC)
     WHERE state = 'playing'
+  `);
+
+  // Partial index for the stale-session sweep: open rows only, so the
+  // sweep's lastSeenAt filter never seq-scans the current 30-day chunk
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_sessions_open_last_seen
+    ON sessions (last_seen_at)
+    WHERE stopped_at IS NULL
+  `);
+
+  // Partial index for the daily violation retention purge: dismissed rows
+  // only, so the steady-state run never seq-scans the whole table
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_violations_dismissed_partial
+    ON violations (dismissed_at)
+    WHERE dismissed_at IS NOT NULL
   `);
 
   // Partial index for transcoded sessions (quality analysis)
@@ -839,7 +914,77 @@ async function enableCompression(): Promise<void> {
   `);
 }
 
-export async function withSessionsCompressionPaused<T>(fn: () => Promise<T>): Promise<T> {
+const COMPRESSION_POLICY_DEGRADED_KEY = 'sessions_compression_policy_degraded';
+
+async function markCompressionPolicyDegraded(reason: string): Promise<void> {
+  try {
+    await ensureMetadataTable();
+    await db.execute(sql`
+      INSERT INTO timescale_metadata (key, value, updated_at)
+      VALUES (${COMPRESSION_POLICY_DEGRADED_KEY}, ${reason}, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `);
+  } catch (err) {
+    console.error('[TimescaleDB] Failed to persist compression-policy-degraded flag:', err);
+  }
+}
+
+async function clearCompressionPolicyDegraded(): Promise<void> {
+  try {
+    await db.execute(
+      sql`DELETE FROM timescale_metadata WHERE key = ${COMPRESSION_POLICY_DEGRADED_KEY}`
+    );
+  } catch (err) {
+    console.warn('[TimescaleDB] Failed to clear compression-policy-degraded flag:', err);
+  }
+}
+
+/**
+ * Whether a previous restore of the sessions compression policy failed and
+ * hasn't self-healed yet. Persisted (not in-memory) so it survives a restart
+ * and stays visible to every instance in a multi-instance deployment.
+ */
+export async function isCompressionPolicyDegraded(): Promise<boolean> {
+  try {
+    await ensureMetadataTable();
+    const result = await db.execute(
+      sql`SELECT 1 FROM timescale_metadata WHERE key = ${COMPRESSION_POLICY_DEGRADED_KEY}`
+    );
+    return result.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function addSessionsCompressionPolicy(): Promise<void> {
+  await db.execute(
+    sql`SELECT add_compression_policy('sessions', INTERVAL '7 days', if_not_exists => true)`
+  );
+}
+
+/**
+ * Periodically re-checked (from the DB health check interval in index.ts) to
+ * retry restoring the sessions compression policy if a previous attempt left
+ * it degraded. Self-heals a transient failure (e.g. the DB was briefly
+ * unreachable right when withSessionsCompressionPaused tried to restore it)
+ * without needing an operator to run the recovery command by hand.
+ */
+export async function retryDegradedCompressionPolicy(): Promise<void> {
+  if (!(await isCompressionPolicyDegraded())) return;
+  try {
+    await addSessionsCompressionPolicy();
+    console.log('[TimescaleDB] Sessions compression policy self-healed on retry');
+    await clearCompressionPolicyDegraded();
+  } catch (err) {
+    console.warn('[TimescaleDB] Sessions compression policy still degraded, will retry:', err);
+  }
+}
+
+export async function withSessionsCompressionPaused<T>(
+  fn: () => Promise<T>,
+  /** Delay before the single retry attempt. Overridable in tests to avoid a real sleep. */
+  retryDelayMs = 5000
+): Promise<T> {
   let paused = false;
   try {
     await db.execute(sql`SELECT remove_compression_policy('sessions', if_exists => true)`);
@@ -857,18 +1002,31 @@ export async function withSessionsCompressionPaused<T>(fn: () => Promise<T>): Pr
   } finally {
     if (paused) {
       try {
-        await db.execute(
-          sql`SELECT add_compression_policy('sessions', INTERVAL '7 days', if_not_exists => true)`
-        );
+        await addSessionsCompressionPolicy();
         console.log('[TimescaleDB] Sessions compression policy restored');
       } catch (err) {
-        // Leaving the policy off means old chunks never compress. Surface a recovery
-        // command so an operator can run it manually if this happens.
-        console.error(
-          '[TimescaleDB] CRITICAL: failed to restore sessions compression policy. ' +
-            "Run: SELECT add_compression_policy('sessions', INTERVAL '7 days', if_not_exists => true)",
+        console.warn(
+          `[TimescaleDB] Failed to restore sessions compression policy, retrying once in ${retryDelayMs}ms:`,
           err
         );
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        try {
+          await addSessionsCompressionPolicy();
+          console.log('[TimescaleDB] Sessions compression policy restored on retry');
+        } catch (retryErr) {
+          // Leaving the policy off means old chunks never compress. Mark it degraded so
+          // retryDegradedCompressionPolicy (called from the DB health interval) keeps
+          // retrying in the background, and surface a recovery command in case an
+          // operator wants to run it by hand instead of waiting.
+          console.error(
+            '[TimescaleDB] CRITICAL: failed to restore sessions compression policy after a retry. ' +
+              "Run: SELECT add_compression_policy('sessions', INTERVAL '7 days', if_not_exists => true)",
+            retryErr
+          );
+          await markCompressionPolicyDegraded(
+            retryErr instanceof Error ? retryErr.message : String(retryErr)
+          );
+        }
       }
     }
   }
@@ -897,6 +1055,28 @@ export interface RefreshAggregatesOptions {
 }
 
 /**
+ * Coerces a refresh-window bound to a valid Date, falling back to the given
+ * default (and logging loudly) when the input is missing or unparseable.
+ * Some callers source these from raw db.execute results, which return
+ * timestamptz columns as strings rather than Date objects, so an invalid
+ * value here must not fail silently the way the coercion it replaces did.
+ */
+export function coerceRefreshBound(
+  value: Date | string | undefined,
+  fallback: Date,
+  label: string
+): Date {
+  const coerced = new Date(value ?? fallback);
+  if (Number.isNaN(coerced.getTime())) {
+    console.error(
+      `[TimescaleDB] Invalid ${label} for aggregate refresh (received: ${String(value)}), falling back to default`
+    );
+    return fallback;
+  }
+  return coerced;
+}
+
+/**
  * Refresh a specific list of continuous aggregates over a time range.
  * Shared by refreshAggregates (sessions hypertable) and
  * refreshLibrarySnapshotAggregates (library_snapshots hypertable) - the two
@@ -911,8 +1091,8 @@ async function refreshAggregateList(
   // Default time bounds: last 7 days to tomorrow
   const defaultStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const defaultEnd = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const startTime = options?.startTime ?? defaultStart;
-  const endTime = options?.endTime ?? defaultEnd;
+  const startTime = coerceRefreshBound(options?.startTime, defaultStart, 'startTime');
+  const endTime = coerceRefreshBound(options?.endTime, defaultEnd, 'endTime');
 
   for (const aggregate of aggregates) {
     try {
@@ -1011,7 +1191,7 @@ async function getDataDateRange(): Promise<{ earliest: Date | null; latest: Date
     SELECT
       LEAST(
         (SELECT MIN(started_at) FROM sessions),
-        (SELECT MIN(created_at) FROM library_items WHERE file_size > 0)
+        (SELECT MIN(created_at) FROM library_items WHERE file_size > 0 AND removed_at IS NULL)
       ) AS earliest,
       GREATEST(
         (SELECT MAX(started_at) FROM sessions),
@@ -1044,9 +1224,22 @@ export function getActiveAggregateNames(): string[] {
   return getAggregateDefinitions().map((def) => def.name);
 }
 
+/** A single batch that failed to refresh, identified by its aggregate and time range. */
+export interface FailedRefreshBatch {
+  aggregate: string;
+  startDate: string;
+  endDate: string;
+  error: unknown;
+}
+
 /**
  * Safely refresh a single aggregate using batched processing.
  * This prevents memory exhaustion by processing in small time windows.
+ *
+ * A batch failure doesn't stop the loop - it still attempts every remaining
+ * batch so a single bad range can't block the rest of history - but every
+ * failure is collected and returned so the caller can decide whether the run
+ * as a whole succeeded. Returns an empty array when every batch refreshed.
  *
  * @param aggregateName - Name of the aggregate to refresh
  * @param startDate - Start of date range
@@ -1058,7 +1251,7 @@ export async function safeFullRefreshAggregate(
   startDate: Date,
   endDate: Date,
   options: SafeRefreshOptions = {}
-): Promise<void> {
+): Promise<FailedRefreshBatch[]> {
   const { batchDays = 30, delayBetweenBatches = 2000, onProgress, signal } = options;
 
   const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
@@ -1067,6 +1260,7 @@ export async function safeFullRefreshAggregate(
 
   let currentBatch = 0;
   let batchStart = new Date(startDate);
+  const failedBatches: FailedRefreshBatch[] = [];
 
   console.log(
     `[TimescaleDB] Safe refresh ${aggregateName}: ${totalDays} days in ${totalBatches} batches`
@@ -1092,7 +1286,13 @@ export async function safeFullRefreshAggregate(
       );
     } catch (err) {
       console.warn(`[TimescaleDB] Batch refresh failed for ${aggregateName}:`, err);
-      // Continue to next batch rather than failing entirely
+      // Continue to next batch rather than failing entirely, but remember it happened.
+      failedBatches.push({
+        aggregate: aggregateName,
+        startDate: batchStart.toISOString(),
+        endDate: batchEnd.toISOString(),
+        error: err,
+      });
     }
 
     currentBatch++;
@@ -1118,6 +1318,8 @@ export async function safeFullRefreshAggregate(
       await new Promise((resolve) => setTimeout(resolve, delayBetweenBatches));
     }
   }
+
+  return failedBatches;
 }
 
 /**
@@ -1130,6 +1332,12 @@ export async function safeFullRefreshAggregate(
  * - 2-second delay between batches prevents lock exhaustion
  * - Progress tracking via callback
  * - Cancellable via AbortSignal
+ *
+ * Every aggregate and every batch is still attempted even if earlier ones
+ * failed. But if any batch failed, this throws after processing everything,
+ * naming every failed range, instead of resolving successfully - callers
+ * (runAggregateBackfill) rely on that to avoid marking a partial backfill as
+ * complete.
  *
  * @param options - Refresh options
  */
@@ -1150,6 +1358,8 @@ export async function safeFullRefreshAllAggregates(
     `[TimescaleDB] Safe full refresh: ${aggregates.length} aggregates from ${dateRange.earliest.toISOString()} to ${dateRange.latest.toISOString()}`
   );
 
+  const allFailedBatches: FailedRefreshBatch[] = [];
+
   for (let i = 0; i < aggregates.length; i++) {
     if (signal?.aborted) {
       throw new Error('Refresh cancelled');
@@ -1160,19 +1370,32 @@ export async function safeFullRefreshAllAggregates(
 
     console.log(`[TimescaleDB] Safe refresh ${i + 1}/${aggregates.length}: ${aggregate}`);
 
-    await safeFullRefreshAggregate(aggregate, dateRange.earliest, dateRange.latest, {
-      ...options,
-      onProgress: (progress) => {
-        onProgress?.({
-          ...progress,
-          totalAggregates: aggregates.length,
-          currentAggregateIndex: i,
-          percentComplete: Math.round(
-            ((i + progress.percentComplete / 100) / aggregates.length) * 100
-          ),
-        });
-      },
-    });
+    const failedBatches = await safeFullRefreshAggregate(
+      aggregate,
+      dateRange.earliest,
+      dateRange.latest,
+      {
+        ...options,
+        onProgress: (progress) => {
+          onProgress?.({
+            ...progress,
+            totalAggregates: aggregates.length,
+            currentAggregateIndex: i,
+            percentComplete: Math.round(
+              ((i + progress.percentComplete / 100) / aggregates.length) * 100
+            ),
+          });
+        },
+      }
+    );
+    allFailedBatches.push(...failedBatches);
+  }
+
+  if (allFailedBatches.length > 0) {
+    const ranges = allFailedBatches
+      .map((f) => `${f.aggregate} [${f.startDate} → ${f.endDate}]`)
+      .join(', ');
+    throw new Error(`Aggregate refresh had ${allFailedBatches.length} failed batch(es): ${ranges}`);
   }
 
   console.log('[TimescaleDB] Safe full refresh complete');
@@ -1259,14 +1482,13 @@ async function releaseBackfillLock(client: pg.Client): Promise<void> {
  * next server startup resumes the backfill via initTimescaleDB instead of
  * leaving aggregates with partial history indefinitely.
  *
- * Caveat: "success" here means refreshFn resolved without throwing, not that
- * every batch of every aggregate actually refreshed. The default refreshFn
- * (safeFullRefreshAllAggregates -> safeFullRefreshAggregate) catches and
- * warns on each failed batch internally rather than propagating it, so a run
- * that reports success and clears the marker can still have silently skipped
- * some batches. The retry loop below only re-runs on an outright refreshFn
- * rejection (e.g. a dropped connection), never on a "successful" run that
- * quietly lost some batches.
+ * "Success" here means every batch of every aggregate actually refreshed, not
+ * just that refreshFn resolved. The default refreshFn (safeFullRefreshAllAggregates
+ * -> safeFullRefreshAggregate) still attempts every remaining batch after a
+ * failure rather than aborting early, but it now throws (naming every failed
+ * range) if any batch failed, so a run that silently lost some batches counts
+ * as a failed attempt here - same retry-with-backoff and marker-preservation
+ * path as an outright rejection (e.g. a dropped connection).
  */
 export async function runAggregateBackfill(
   targetVersion: number,
@@ -1393,10 +1615,19 @@ export async function checkAggregateNeedsRebuild(): Promise<{
   }
 }
 
-/**
- * Get current TimescaleDB status
- */
-export async function getTimescaleStatus(): Promise<TimescaleStatus> {
+// The DB health interval calls getTimescaleStatus every 10s; without a cache
+// that fans out into four timescaledb_information catalog scans per tick. These
+// values only drift on chunk/aggregate topology changes (init, rebuild), which
+// invalidate the cache explicitly, so a 5-minute TTL is safe.
+const TIMESCALE_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
+let timescaleStatusCache: { value: TimescaleStatus; expiresAt: number } | null = null;
+
+/** Drop the cached TimescaleDB status. Call after DDL that changes topology. */
+export function invalidateTimescaleStatusCache(): void {
+  timescaleStatusCache = null;
+}
+
+async function computeTimescaleStatus(): Promise<TimescaleStatus> {
   const extensionInstalled = await isTimescaleInstalled();
 
   if (!extensionInstalled) {
@@ -1416,6 +1647,21 @@ export async function getTimescaleStatus(): Promise<TimescaleStatus> {
     continuousAggregates: await getContinuousAggregates(),
     chunkCount: await getChunkCount(),
   };
+}
+
+/**
+ * Get current TimescaleDB status. Cached in-process for 5 minutes; the catalog
+ * queries behind it are otherwise re-run on every DB health tick.
+ */
+export async function getTimescaleStatus(): Promise<TimescaleStatus> {
+  const now = Date.now();
+  if (timescaleStatusCache && timescaleStatusCache.expiresAt > now) {
+    return timescaleStatusCache.value;
+  }
+
+  const value = await computeTimescaleStatus();
+  timescaleStatusCache = { value, expiresAt: now + TIMESCALE_STATUS_CACHE_TTL_MS };
+  return value;
 }
 
 /**
@@ -1558,6 +1804,16 @@ export async function initTimescaleDB(): Promise<{
     actions.push('Sessions already a hypertable');
   }
 
+  // Widen the chunk interval for existing hypertables. Idempotent and applies
+  // only to chunks created after this point; existing chunks keep their size.
+  try {
+    await db.execute(sql`SELECT set_chunk_time_interval('sessions', INTERVAL '30 days')`);
+    actions.push('Set sessions chunk_time_interval to 30 days');
+  } catch (err) {
+    console.warn('[TimescaleDB] Failed to set sessions chunk_time_interval:', err);
+    actions.push('Chunk interval: could not set (non-fatal)');
+  }
+
   // Check and create continuous aggregates
   // getContinuousAggregates() only covers the sessions hypertable; library_stats_daily
   // and content_quality_daily live on library_snapshots, so include both here or they'd
@@ -1571,6 +1827,7 @@ export async function initTimescaleDB(): Promise<{
   // Old aggregates that are no longer needed are handled separately below
   const expectedAggregates = [
     'daily_content_engagement', // Engagement tracking system
+    'user_media_plays_daily', // Identity-aware plays aggregate
     'daily_bandwidth_by_user', // Bandwidth analytics
     'library_stats_daily', // Library statistics aggregate
     'content_quality_daily', // Quality/codec evolution tracking
@@ -1626,58 +1883,73 @@ export async function initTimescaleDB(): Promise<{
   let backfillPending: AggregateBackfillMarker | undefined;
 
   if (needsRebuild) {
-    // Only the cheap DDL runs synchronously here (drop/recreate aggregate + view
-    // definitions, re-add refresh policies) plus a bounded refresh of the recent
-    // window - never the unbounded full-history rescan, which can take long enough
-    // to exceed a deploy platform's startup probe budget on large installs. The
-    // schema version is intentionally not stored until the background historical
-    // backfill (safeFullRefreshAllAggregates, via runAggregateBackfill in index.ts)
-    // actually completes, so a crash mid-backfill resumes on the next boot instead
-    // of leaving aggregates permanently short of history. Until backfill finishes,
-    // aggregate-backed stats show partial (recent) data only.
-    actions.push(
-      `Schema version changed (${storedVersion} → ${AGGREGATE_SCHEMA_VERSION}) - recreating aggregate definitions`
+    const leftoverMarker = await getBackfillMarker();
+    const canResumeInsteadOfRebuild = shouldResumeBackfillInsteadOfRebuild(
+      leftoverMarker,
+      AGGREGATE_SCHEMA_VERSION,
+      missingAggregates.length
     );
-    const ddlStart = Date.now();
-    try {
-      await rebuildAggregateDefinitions();
-      // Bounded refresh (~7 day window) so recently-viewed dashboards aren't empty
-      // while the background historical backfill runs. endTime is capped at the
-      // start of today (UTC, matching the aggregates' own `time_bucket('1 day', ...)`
-      // grouping) rather than "now" or "tomorrow": these aggregates use
-      // materialized_only=false, so real-time aggregation keeps today live by
-      // unioning raw sessions newer than the materialization watermark - but
-      // refreshing today's bucket at all, even partially, advances that watermark
-      // through it, hiding every session recorded afterward until the next
-      // scheduled policy tick. Stopping at yesterday's close leaves today on the
-      // real-time path and still materializes the rest of the window. The
-      // library_snapshots aggregates bucket daily the same way and also use
-      // materialized_only=false, so the same cap applies to them - otherwise
-      // library_stats_daily/content_quality_daily stay empty until the
-      // background backfill finishes even though the log below says recent
-      // data is available.
-      const startOfTodayUtc = new Date();
-      startOfTodayUtc.setUTCHours(0, 0, 0, 0);
-      await refreshAggregates({ endTime: startOfTodayUtc });
-      await refreshLibrarySnapshotAggregates({ endTime: startOfTodayUtc });
-      const ddlMs = Date.now() - ddlStart;
-      await setBackfillMarker(AGGREGATE_SCHEMA_VERSION);
-      backfillPending = {
-        targetVersion: AGGREGATE_SCHEMA_VERSION,
-        startedAt: new Date().toISOString(),
-      };
+
+    if (canResumeInsteadOfRebuild && leftoverMarker) {
+      // Definitions were already rebuilt for this version; don't throw that materialized work away with another DROP CASCADE.
+      backfillPending = leftoverMarker;
       actions.push(
-        `Recreated aggregate definitions in ${ddlMs}ms with recent data available now; ` +
-          'full historical backfill scheduled in the background after startup'
+        `Schema version changed (${storedVersion} → ${AGGREGATE_SCHEMA_VERSION}) but definitions were already rebuilt for this version - resuming pending backfill instead of recreating`
       );
-    } catch (err) {
-      console.error(
-        '[TimescaleDB] Failed to recreate aggregate definitions on schema version change:',
-        err
-      );
+    } else {
+      // Only the cheap DDL runs synchronously here (drop/recreate aggregate + view
+      // definitions, re-add refresh policies) plus a bounded refresh of the recent
+      // window - never the unbounded full-history rescan, which can take long enough
+      // to exceed a deploy platform's startup probe budget on large installs. The
+      // schema version is intentionally not stored until the background historical
+      // backfill (safeFullRefreshAllAggregates, via runAggregateBackfill in index.ts)
+      // actually completes, so a crash mid-backfill resumes on the next boot instead
+      // of leaving aggregates permanently short of history. Until backfill finishes,
+      // aggregate-backed stats show partial (recent) data only.
       actions.push(
-        `Warning: Failed to recreate aggregate definitions: ${err instanceof Error ? err.message : String(err)}`
+        `Schema version changed (${storedVersion} → ${AGGREGATE_SCHEMA_VERSION}) - recreating aggregate definitions`
       );
+      const ddlStart = Date.now();
+      try {
+        await rebuildAggregateDefinitions();
+        // Bounded refresh (~7 day window) so recently-viewed dashboards aren't empty
+        // while the background historical backfill runs. endTime is capped at the
+        // start of today (UTC, matching the aggregates' own `time_bucket('1 day', ...)`
+        // grouping) rather than "now" or "tomorrow": these aggregates use
+        // materialized_only=false, so real-time aggregation keeps today live by
+        // unioning raw sessions newer than the materialization watermark - but
+        // refreshing today's bucket at all, even partially, advances that watermark
+        // through it, hiding every session recorded afterward until the next
+        // scheduled policy tick. Stopping at yesterday's close leaves today on the
+        // real-time path and still materializes the rest of the window. The
+        // library_snapshots aggregates bucket daily the same way and also use
+        // materialized_only=false, so the same cap applies to them - otherwise
+        // library_stats_daily/content_quality_daily stay empty until the
+        // background backfill finishes even though the log below says recent
+        // data is available.
+        const startOfTodayUtc = new Date();
+        startOfTodayUtc.setUTCHours(0, 0, 0, 0);
+        await refreshAggregates({ endTime: startOfTodayUtc });
+        await refreshLibrarySnapshotAggregates({ endTime: startOfTodayUtc });
+        const ddlMs = Date.now() - ddlStart;
+        await setBackfillMarker(AGGREGATE_SCHEMA_VERSION);
+        backfillPending = {
+          targetVersion: AGGREGATE_SCHEMA_VERSION,
+          startedAt: new Date().toISOString(),
+        };
+        actions.push(
+          `Recreated aggregate definitions in ${ddlMs}ms with recent data available now; ` +
+            'full historical backfill scheduled in the background after startup'
+        );
+      } catch (err) {
+        console.error(
+          '[TimescaleDB] Failed to recreate aggregate definitions on schema version change:',
+          err
+        );
+        actions.push(
+          `Warning: Failed to recreate aggregate definitions: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
     }
   } else if (missingAggregates.length > 0) {
     await createContinuousAggregates();
@@ -1737,6 +2009,17 @@ export async function initTimescaleDB(): Promise<{
     actions.push('Content indexes: some may already exist');
   }
 
+  // Must run unconditionally: the ensureEngagementViews call below is skipped when views exist
+  try {
+    if (await continuousAggregateExists('user_media_plays_daily')) {
+      await ensureUserMediaPlaysIndex();
+      actions.push('Ensured user media plays index');
+    }
+  } catch (err) {
+    console.warn('Failed to create user media plays index:', err);
+    actions.push('User media plays index: may already exist');
+  }
+
   // Ensure engagement views exist (fixes broken installs and fresh installs)
   // These views depend on daily_content_engagement continuous aggregate
   // Skip if all views already exist to avoid unnecessary DDL on every startup
@@ -1756,7 +2039,9 @@ export async function initTimescaleDB(): Promise<{
     actions.push('Engagement views: creation skipped (may need manual rebuild)');
   }
 
-  // Get final status
+  // Topology just changed (hypertable, chunk interval, aggregates, compression) -
+  // drop any stale cached status so the returned value reflects this run.
+  invalidateTimescaleStatusCache();
   const status = await getTimescaleStatus();
 
   return {
@@ -1770,6 +2055,7 @@ export async function initTimescaleDB(): Promise<{
 /** List of engagement views created by ensureEngagementViews() */
 const ENGAGEMENT_VIEWS = [
   'content_engagement_summary',
+  'media_plays_daily',
   'episode_continuity_stats',
   'daily_show_intensity',
   'show_engagement_summary',
@@ -1808,6 +2094,19 @@ async function engagementViewsExist(): Promise<boolean> {
  * 1. After rebuildTimescaleViews() recreates aggregates
  * 2. At the end of initTimescaleDB() to fix broken installs and ensure fresh installs have views
  */
+// media_id-leading composite for per-item watched probes; the cagg's default (media_id, day) can't serve it
+async function ensureUserMediaPlaysIndex(): Promise<void> {
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_user_media_plays_media_user
+    ON user_media_plays_daily (media_id, server_user_id)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS idx_user_media_plays_show_user
+    ON user_media_plays_daily (show_media_id, server_user_id)
+    WHERE show_media_id IS NOT NULL
+  `);
+}
+
 async function ensureEngagementViews(): Promise<void> {
   // Create content_engagement_summary view
   await db.execute(sql`
@@ -1821,6 +2120,8 @@ async function ensureEngagementViews(): Promise<void> {
       MAX(content_duration_ms) AS content_duration_ms,
       MAX(thumb_path) AS thumb_path,
       MAX(server_id::text)::uuid AS server_id,
+      MAX(media_id::text)::uuid AS media_id,
+      MAX(show_media_id::text)::uuid AS show_media_id,
       MAX(season_number) AS season_number,
       MAX(episode_number) AS episode_number,
       MAX(year) AS year,
@@ -1860,6 +2161,24 @@ async function ensureEngagementViews(): Promise<void> {
       END AS engagement_tier
     FROM daily_content_engagement
     GROUP BY server_user_id, rating_key
+  `);
+
+  await ensureUserMediaPlaysIndex();
+
+  // Per-media-day rollup of user_media_plays_daily with a distinct-user count
+  await db.execute(sql`
+    CREATE OR REPLACE VIEW media_plays_daily AS
+    SELECT
+      day,
+      server_id,
+      media_id,
+      MAX(show_media_id::text)::uuid AS show_media_id,
+      MAX(media_type) AS media_type,
+      SUM(plays) AS plays,
+      SUM(watched_ms) AS watched_ms,
+      COUNT(DISTINCT server_user_id) AS unique_users
+    FROM user_media_plays_daily
+    GROUP BY day, server_id, media_id
   `);
 
   // Create episode_continuity_stats view (for consecutive episode detection)
@@ -2146,6 +2465,8 @@ export async function rebuildTimescaleViews(
     } else {
       report(5, 'Skipping historical refresh - policies will catch up automatically');
     }
+
+    invalidateTimescaleStatusCache();
 
     return {
       success: true,

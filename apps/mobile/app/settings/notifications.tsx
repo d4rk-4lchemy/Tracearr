@@ -27,17 +27,11 @@ import { Text } from '@/components/ui/text';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import {
-  fetchNotificationPreferences,
-  sendTestNotificationApi,
-  updateNotificationPreferencesApi,
-} from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
+import { api } from '@/lib/api';
 import { useAuthStateStore } from '@/lib/authStateStore';
 import { colors, ACCENT_COLOR } from '@/lib/theme';
-import type {
-  NotificationPreferences,
-  NotificationPreferencesWithStatus,
-} from '@tracearr/shared';
+import type { NotificationPreferences } from '@tracearr/shared';
 import { useTranslation } from '@tracearr/translations/mobile';
 
 // Rule types for violation filtering with icons
@@ -54,16 +48,6 @@ const SEVERITY_OPTIONS: { value: string; label: string }[] = [
   { value: '1', label: 'All' },
   { value: '2', label: 'Warning+' },
   { value: '3', label: 'High Only' },
-];
-
-type NotificationPreferenceUpdate = Partial<
-  Omit<NotificationPreferences, 'id' | 'mobileSessionId' | 'createdAt' | 'updatedAt'>
->;
-type NotificationPreferencesQueryKey = ['notifications', 'preferences'];
-
-const notificationPreferencesQueryKey: NotificationPreferencesQueryKey = [
-  'notifications',
-  'preferences',
 ];
 
 function Divider() {
@@ -124,6 +108,7 @@ function SettingRow({
       <Switch
         value={value}
         onValueChange={onValueChange}
+        accessibilityLabel={label}
         disabled={disabled}
         trackColor={{ false: colors.switch.trackOff, true: colors.switch.trackOn }}
         thumbColor={value ? colors.switch.thumbOn : colors.switch.thumbOff}
@@ -225,49 +210,40 @@ export default function NotificationSettingsScreen() {
     data: preferences,
     isLoading,
     error,
-  } = useQuery<NotificationPreferencesWithStatus>({
-    queryKey: notificationPreferencesQueryKey,
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
-    queryFn: (): Promise<NotificationPreferencesWithStatus> => fetchNotificationPreferences(),
+  } = useQuery({
+    queryKey: queryKeys.notifications.preferences(),
+    queryFn: api.notifications.getPreferences,
     enabled: !!server, // Still need auth
   });
 
   // Update mutation with optimistic updates
-  const updateMutation = useMutation<
-    NotificationPreferences,
-    Error,
-    NotificationPreferenceUpdate,
-    { previousData?: NotificationPreferencesWithStatus }
-  >({
-    mutationFn: (newData: NotificationPreferenceUpdate): Promise<NotificationPreferences> =>
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
-      updateNotificationPreferencesApi(newData),
+  const updateMutation = useMutation({
+    mutationFn: api.notifications.updatePreferences,
     onMutate: async (newData) => {
-      await queryClient.cancelQueries({ queryKey: notificationPreferencesQueryKey });
-      const previousData = queryClient.getQueryData<NotificationPreferencesWithStatus>(
-        notificationPreferencesQueryKey
-      );
+      await queryClient.cancelQueries({ queryKey: queryKeys.notifications.preferences() });
+      const previousData = queryClient.getQueryData<NotificationPreferences>([
+        'notifications',
+        'preferences',
+      ]);
       queryClient.setQueryData(
-        notificationPreferencesQueryKey,
-        (old: NotificationPreferencesWithStatus | undefined) =>
-          old ? { ...old, ...newData } : old
+        ['notifications', 'preferences'],
+        (old: NotificationPreferences | undefined) => (old ? { ...old, ...newData } : old)
       );
       return { previousData };
     },
     onError: (_err, _newData, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(notificationPreferencesQueryKey, context.previousData);
+        queryClient.setQueryData(['notifications', 'preferences'], context.previousData);
       }
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: notificationPreferencesQueryKey });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.preferences() });
     },
   });
 
   // Test notification mutation
-  const testMutation = useMutation<{ success: boolean; message: string }>({
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call
-    mutationFn: (): Promise<{ success: boolean; message: string }> => sendTestNotificationApi(),
+  const testMutation = useMutation({
+    mutationFn: api.notifications.sendTest,
     onSuccess: (result) => {
       Alert.alert(result.success ? 'Test Sent' : 'Test Failed', result.message);
     },

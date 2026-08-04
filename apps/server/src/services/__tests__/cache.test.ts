@@ -509,6 +509,7 @@ describe('CacheService', () => {
         error: null,
         pluginVersion: null,
         pluginUpdateAvailable: false,
+        pluginIssue: null,
       };
 
       await cache.setServerConnectionStatus('srv-1', status);
@@ -529,6 +530,7 @@ describe('CacheService', () => {
         error: null,
         pluginVersion: null,
         pluginUpdateAvailable: false,
+        pluginIssue: null,
       };
 
       await cache.setServerConnectionStatus('srv-1', status);

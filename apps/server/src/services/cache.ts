@@ -39,6 +39,10 @@ export interface CacheService {
   setDashboardStats(stats: DashboardStats): Promise<void>;
   invalidateDashboardStatsCache(): Promise<void>;
 
+  // Public API v2 per-media stats/watchers (TTL-based, no active invalidation)
+  getMediaStats<T>(cacheKey: string): Promise<T | null>;
+  setMediaStats(cacheKey: string, value: unknown): Promise<void>;
+
   // Session by ID
   getSessionById(id: string): Promise<ActiveSession | null>;
   setSessionById(id: string, session: ActiveSession): Promise<void>;
@@ -87,11 +91,6 @@ export interface CacheService {
   setPendingSession(serverId: string, sessionKey: string, data: PendingSessionData): Promise<void>;
   deletePendingSession(serverId: string, sessionKey: string): Promise<void>;
   getAllPendingSessionKeys(): Promise<Array<{ serverId: string; sessionKey: string }>>;
-
-  /**
-   * Return the backend timestamp for the current Dispatcharr catch-up URL
-   * programme. It changes only when the raw programme_start value changes.
-   */
   getOrSetDispatcharrCatchupProgrammeStartUpdatedAt(
     identity: string,
     programmeStart: string,
@@ -242,8 +241,7 @@ export function createCacheService(redis: Redis): CacheService {
 
         for (let j = 0; j < data.length; j++) {
           const sessionData = data[j];
-          const sessionId = chunkIds[j];
-          if (!sessionId) continue;
+          const sessionId = chunkIds[j]!;
           if (sessionData) {
             try {
               sessions.push(JSON.parse(sessionData) as ActiveSession);
@@ -390,6 +388,24 @@ export function createCacheService(redis: Redis): CacheService {
 
     async invalidateDashboardStatsCache(): Promise<void> {
       await invalidateDashboardStats();
+    },
+
+    async getMediaStats<T>(cacheKey: string): Promise<T | null> {
+      const data = await redis.get(REDIS_KEYS.PUBLIC_MEDIA_STATS(cacheKey));
+      if (!data) return null;
+      try {
+        return JSON.parse(data) as T;
+      } catch {
+        return null;
+      }
+    },
+
+    async setMediaStats(cacheKey: string, value: unknown): Promise<void> {
+      await redis.setex(
+        REDIS_KEYS.PUBLIC_MEDIA_STATS(cacheKey),
+        CACHE_TTL.PUBLIC_MEDIA_STATS,
+        JSON.stringify(value)
+      );
     },
 
     // Session by ID
@@ -591,7 +607,7 @@ export function createCacheService(redis: Redis): CacheService {
       const members = await redis.smembers(REDIS_KEYS.PENDING_SESSION_IDS);
       return members.map((m) => {
         const [serverId, ...rest] = m.split(':');
-        return { serverId: serverId ?? '', sessionKey: rest.join(':') };
+        return { serverId: serverId!, sessionKey: rest.join(':') };
       });
     },
 
@@ -600,30 +616,25 @@ export function createCacheService(redis: Redis): CacheService {
       programmeStart: string,
       nowMs: number
     ): Promise<number> {
-      const key = REDIS_KEYS.DISPATCHARR_CATCHUP_PROGRAMME_START(identity);
       const value = await redis.eval(
         `
           local existing = redis.call('GET', KEYS[1])
           if existing then
-            local separator = string.find(existing, '\\n', 1, true)
-            if separator then
-              local existingProgrammeStart = string.sub(existing, 1, separator - 1)
-              if existingProgrammeStart == ARGV[1] then
-                redis.call('EXPIRE', KEYS[1], ARGV[3])
-                return string.sub(existing, separator + 1)
-              end
+            local separator = string.find(existing, '\n', 1, true)
+            if separator and string.sub(existing, 1, separator - 1) == ARGV[1] then
+              redis.call('EXPIRE', KEYS[1], ARGV[3])
+              return string.sub(existing, separator + 1)
             end
           end
-          redis.call('SETEX', KEYS[1], ARGV[3], ARGV[1] .. '\\n' .. ARGV[2])
+          redis.call('SETEX', KEYS[1], ARGV[3], ARGV[1] .. '\n' .. ARGV[2])
           return ARGV[2]
         `,
         1,
-        key,
+        REDIS_KEYS.DISPATCHARR_CATCHUP_PROGRAMME_START(identity),
         programmeStart,
         String(nowMs),
         String(CACHE_TTL.ACTIVE_SESSIONS)
       );
-
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : nowMs;
     },

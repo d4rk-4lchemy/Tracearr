@@ -103,6 +103,9 @@
     "apiDocs": "API Docs",
     "apiKeyDesc": "Toegang tot de Tracearr API voor externe integraties zoals Homarr, Home Assistant, enz.",
     "apiKeyReadAccess": "Uw API-sleutel geeft volledige leestoegang tot uw Tracear-gegevens.",
+    "apiRateLimit": "API Rate Limit",
+    "apiRateLimitDesc": "Maximum public API requests per minute per key. Restart required to apply.",
+    "apiRateLimitSuffix": "/min",
     "appearance": "Uiterlijk",
     "appearanceDesc": "Uiterlijk en feel van tracearr aanpassen",
     "application": "Applicatie",
@@ -133,6 +136,8 @@
     "plexAccount": "Plex-account",
     "plexSseNote": "Plex maakt gebruik van Server-Verzonden evenementen (SSE) voor bijkomende updates - geen enquête nodig.",
     "primaryAuth": "Primaire authenticatiemethode",
+    "publicApiSettings": "Public API",
+    "publicApiSettingsDesc": "Configure watch-completion thresholds and request limits for the public API",
     "regenerate": "Hergenereren",
     "regenerateApiKey": "API-sleutel opnieuw genereren?",
     "regenerateApiKeyDesc": "Dit zal je huidige API-sleutel ongeldig maken. Alle integraties die de oude sleutel gebruiken zullen niet meer werken.",
@@ -152,7 +157,14 @@
     "timezone": "Tijdzone",
     "title": "Algemene instellingen",
     "unitSystem": "Eenheidsstelsel",
-    "unitSystemDesc": "Kies hoe afstanden en snelheden worden weergegeven"
+    "unitSystemDesc": "Kies hoe afstanden en snelheden worden weergegeven",
+    "watchedThresholdMovie": "Movie Watched Threshold",
+    "watchedThresholdMovieDesc": "Percentage of a movie that must be watched before it's marked complete",
+    "watchedThresholdMusic": "Track Watched Threshold",
+    "watchedThresholdMusicDesc": "Percentage of a track that must be played before it's marked complete",
+    "watchedThresholdSuffix": "%",
+    "watchedThresholdTv": "TV Episode Watched Threshold",
+    "watchedThresholdTvDesc": "Percentage of an episode that must be watched before it's marked complete"
   },
   "import": {
     "apiKeyHelp": "Gevonden in Tautulli instellingen → Web Interface → API Key.",
@@ -371,9 +383,17 @@
     "pluginUpdateAvailable": "Plugin update available",
     "pluginVersion": "plugin v{{version}}",
     "pollingMode": "Polling",
+    "posterSource": {
+      "automatic": "Automatic (most recent)",
+      "description": "When a title is on more than one server, use this server's poster. If it doesn't have one, we'll fall back to the most recently added copy.",
+      "emptyHint": "Add a server to choose a preferred poster source.",
+      "label": "Preferred Poster Source",
+      "title": "Poster Preferences",
+      "titleDesc": "Choose which server's poster is shown when a title exists on more than one server"
+    },
     "realtimeActive": "Real-time updates active",
     "realtimeDialog": {
-      "autoDetectNote": "Once the plugin is running, Tracearr detects it automatically — no restart needed here.",
+      "autoDetectNote": "Restart Jellyfin or Emby after installing the plugin; the restart is required. Tracearr itself needs no restart and picks the plugin up automatically.",
       "close": "Close",
       "copyUrl": "Copy URL",
       "dispatcharrDescription": "Dispatcharr real-time updates require username/password authentication. API key mode stays on polling.",
@@ -392,7 +412,10 @@
       "openReleases": "Open releases page",
       "repositoryUrl": "Repository URL",
       "title": "Enable real-time updates",
-      "updateTitle": "Update the Tracearr SSE plugin"
+      "updateTitle": "Update the Tracearr SSE plugin",
+      "issueBlocked": "The server reports the plugin as installed and active, but Tracearr gets a 404 from its endpoint. A reverse proxy blocking the path is the usual cause.",
+      "issueRestartRequired": "The plugin is installed, but the media server needs a restart before it activates.",
+      "issueMalfunctioned": "The server reports the plugin failed to load. Updating the plugin or the media server usually clears this."
     },
     "removeServer": "Server verwijderen",
     "removeServerConfirm": "Weet je zeker dat je deze server wilt verwijderen? Alle bijbehorende sessiegegevens worden bewaard, maar je kunt geen nieuwe sessies vanaf deze server bijhouden.",
@@ -409,6 +432,7 @@
     "serverUrlHelpJellyfin": "De URL waar uw Jellyfin server toegankelijk is",
     "serverUrlPlaceholder": "http://192.168.1.100:8096",
     "setupRealtime": "Set up real-time updates",
+    "realtimeError": "Real-time error",
     "syncInterval": "Synchronisatie-interval",
     "testConnection": "Verbinding testen",
     "title": "Verbonden servers",

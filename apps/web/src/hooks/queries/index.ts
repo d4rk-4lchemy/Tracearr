@@ -152,3 +152,31 @@ export {
   type LibraryStatusResponse,
 } from './useLibrary';
 export type { MultiServerQueryResult } from '@/hooks/useMultiServerQuery';
+
+// Media browsing hooks
+export {
+  useCatalogWindow,
+  useCatalogLetters,
+  buildLetterOffsets,
+  activeLetterForItem,
+  activeLetterForRow,
+  pageIndicesForRange,
+  CATALOG_PAGE_SIZE,
+  useShelves,
+  useGenres,
+  useLibraries,
+  useMediaDetail,
+  useMediaStats,
+  useMediaWatchers,
+  useSeasonHeat,
+  useMediaPlatforms,
+  useMediaHistory,
+  findCachedMediaStub,
+  stableSerialize,
+  detailFromStub,
+  type CatalogSort,
+  type CatalogFilters,
+  type LetterOffset,
+  type MediaDetailStub,
+  type MediaDetailData,
+} from './useMediaBrowse';

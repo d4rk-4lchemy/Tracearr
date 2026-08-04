@@ -22,7 +22,6 @@ function createPending(overrides: Partial<PendingSessionData> = {}): PendingSess
       thumbUrl: null,
       identityName: null,
       trustScore: 100,
-      sessionCount: 0,
       lastActivityAt: null,
       createdAt: new Date(),
       identityServerUserIds: ['su-1'],

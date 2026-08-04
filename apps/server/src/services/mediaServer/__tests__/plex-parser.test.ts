@@ -25,6 +25,8 @@ import {
   parseMediaMetadataResponse,
   parseLibraryItemsResponse,
   getTranscodingSessionRatingKeys,
+  findStreamByType,
+  STREAM_TYPE,
   type PlexOriginalMedia,
 } from '../plex/parser.js';
 
@@ -261,6 +263,46 @@ describe('Plex Session Parser', () => {
 
       expect(session.quality.videoResolution).toBe('4k');
       expect(session.quality.bitrate).toBe(50000);
+    });
+
+    it('should use selected Media when the JSON API sends boolean selected', () => {
+      // The JSON API (Accept: application/json) returns selected as boolean
+      // true, not the string '1' the XML form uses
+      const rawSession = {
+        sessionKey: 'multi-version-bool',
+        ratingKey: '683',
+        type: 'movie',
+        User: { id: '1', title: 'User' },
+        Player: { title: 'TV', machineIdentifier: 'tv-1' },
+        Media: [
+          {
+            id: 3207,
+            videoResolution: '4k',
+            width: 3840,
+            height: 2160,
+            bitrate: 15512,
+            Part: [{ Stream: [{ streamType: 1, codec: 'hevc' }] }],
+          },
+          {
+            id: 98869,
+            videoResolution: '1080',
+            width: 1920,
+            height: 1080,
+            bitrate: 10000,
+            selected: true,
+            Part: [{ Stream: [{ streamType: 1, codec: 'h264' }] }],
+          },
+        ],
+      };
+
+      const session = parseSession(rawSession);
+
+      expect(session.quality.videoResolution).toBe('1080');
+      expect(session.quality.videoWidth).toBe(1920);
+      expect(session.quality.videoHeight).toBe(1080);
+      expect(session.quality.bitrate).toBe(10000);
+      expect(session.quality.sourceVideoCodec).toBe('H264');
+      expect(session.serverVersionKey).toBe('98869');
     });
 
     it('should fall back to local IP when no public IP available', () => {
@@ -1494,6 +1536,7 @@ describe('Plex Library Item Parser', () => {
               addedAt: 1609459200, // 2021-01-01
               guid: 'plex://movie/5d7768264de0ee001fcc87e0', // Internal ID - should be ignored
               Guid: [{ id: 'imdb://tt1375666' }, { id: 'tmdb://27205' }, { id: 'tvdb://12345' }],
+              thumb: '/library/metadata/12345/thumb/1700000000',
               Media: [
                 {
                   videoResolution: '4k',
@@ -1527,6 +1570,39 @@ describe('Plex Library Item Parser', () => {
       expect(item.fileSize).toBe(45000000000);
       expect(item.container).toBe('mkv');
       expect(item.filePath).toBe('/movies/Inception/Inception (2010).mkv');
+      expect(item.thumbPath).toBe('/library/metadata/12345/thumb/1700000000');
+    });
+
+    it('leaves thumbPath undefined when the item has no thumb', () => {
+      const response = {
+        MediaContainer: {
+          Metadata: [{ ratingKey: '1', title: 'No Poster', type: 'movie', addedAt: 1609459200 }],
+        },
+      };
+
+      const items = parseLibraryItemsResponse(response);
+
+      expect(items[0]!.thumbPath).toBeUndefined();
+    });
+
+    it('parses Genre tags into genres', () => {
+      const response = {
+        MediaContainer: {
+          Metadata: [
+            {
+              ratingKey: '1',
+              title: 'X',
+              type: 'movie',
+              addedAt: 1609459200,
+              Genre: [{ tag: 'Action' }, { tag: 'Crime' }],
+            },
+          ],
+        },
+      };
+
+      const items = parseLibraryItemsResponse(response);
+
+      expect(items[0]!.genres).toEqual(['Action', 'Crime']);
     });
 
     it('should normalize video resolution with p suffix', () => {
@@ -1563,6 +1639,49 @@ describe('Plex Library Item Parser', () => {
       expect(items[0]!.videoResolution).toBe('1080p');
       expect(items[1]!.videoResolution).toBe('720p');
       expect(items[2]!.videoResolution).toBe('sd');
+    });
+
+    it('normalizes videoDynamicRange from the Media element', () => {
+      const response = {
+        MediaContainer: {
+          Metadata: [
+            {
+              ratingKey: '1',
+              title: 'HDR10 Movie',
+              type: 'movie',
+              addedAt: 1609459200,
+              Media: [{ videoDynamicRange: 'HDR10' }],
+            },
+            {
+              ratingKey: '2',
+              title: 'Dolby Vision Movie',
+              type: 'movie',
+              addedAt: 1609459200,
+              Media: [{ videoDynamicRange: 'Dolby Vision' }],
+            },
+            {
+              ratingKey: '3',
+              title: 'SDR Movie',
+              type: 'movie',
+              addedAt: 1609459200,
+              Media: [{ videoDynamicRange: 'SDR' }],
+            },
+            {
+              ratingKey: '4',
+              title: 'No Media Element',
+              type: 'movie',
+              addedAt: 1609459200,
+            },
+          ],
+        },
+      };
+
+      const items = parseLibraryItemsResponse(response);
+
+      expect(items[0]!.videoDynamicRange).toBe('hdr10');
+      expect(items[1]!.videoDynamicRange).toBe('dolby vision');
+      expect(items[2]!.videoDynamicRange).toBe('sdr');
+      expect(items[3]!.videoDynamicRange).toBeUndefined();
     });
 
     it('should parse episode with show hierarchy', () => {
@@ -1753,5 +1872,138 @@ describe('Plex Library Item Parser', () => {
       expect(item.tmdbId).toBeUndefined(); // Invalid number parsed as NaN
       expect(item.tvdbId).toBeUndefined();
     });
+  });
+});
+
+describe('multi-version library items', () => {
+  const covenantResponse = () => ({
+    MediaContainer: {
+      Metadata: [
+        {
+          ratingKey: '683',
+          title: 'The Covenant',
+          type: 'movie',
+          addedAt: 1700000000,
+          Media: [
+            {
+              id: 3207,
+              videoResolution: '4k',
+              videoCodec: 'hevc',
+              audioCodec: 'eac3',
+              audioChannels: 6,
+              bitrate: 15512,
+              container: 'mkv',
+              Part: [{ size: 13330000000, file: '/data/a.mkv' }],
+            },
+            {
+              id: 98869,
+              videoResolution: '1080',
+              videoCodec: 'h264',
+              audioCodec: 'aac',
+              audioChannels: 2,
+              bitrate: 10000,
+              container: 'mkv',
+              Part: [
+                { size: 2000000000, file: '/data/b-cd1.mkv' },
+                { size: 2100000000, file: '/data/b-cd2.mkv' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  it('parses every Media child as a version, summing multi-part sizes', () => {
+    const [item] = parseLibraryItemsResponse(covenantResponse());
+
+    expect(item!.versions).toHaveLength(2);
+    expect(item!.versions![0]).toMatchObject({
+      serverVersionKey: '3207',
+      videoResolution: '4k',
+      videoCodec: 'HEVC',
+      bitrate: 15512,
+      fileSize: 13330000000,
+      partCount: 1,
+      filePath: '/data/a.mkv',
+    });
+    expect(item!.versions![1]).toMatchObject({
+      serverVersionKey: '98869',
+      videoResolution: '1080p',
+      fileSize: 4100000000,
+      partCount: 2,
+      filePath: '/data/b-cd1.mkv',
+    });
+  });
+
+  it('rolls up size as the sum and quality from the best version', () => {
+    const [item] = parseLibraryItemsResponse(covenantResponse());
+
+    expect(item!.fileSize).toBe(13330000000 + 4100000000);
+    expect(item!.videoResolution).toBe('4k');
+    expect(item!.videoCodec).toBe('HEVC');
+    expect(item!.audioChannels).toBe(6);
+    expect(item!.filePath).toBe('/data/a.mkv');
+    expect(item!.versionsFingerprint).toBeTruthy();
+  });
+
+  it('fingerprint is stable across Media order', () => {
+    const forward = parseLibraryItemsResponse(covenantResponse());
+    const response = covenantResponse();
+    response.MediaContainer.Metadata[0]!.Media.reverse();
+    const reversed = parseLibraryItemsResponse(response);
+
+    expect(forward[0]!.versionsFingerprint).toBe(reversed[0]!.versionsFingerprint);
+  });
+
+  it('containers with no Media produce an empty version list', () => {
+    const [item] = parseLibraryItemsResponse({
+      MediaContainer: {
+        Metadata: [{ ratingKey: '10', title: 'A Show', type: 'show', addedAt: 1700000000 }],
+      },
+    });
+
+    expect(item!.versions).toEqual([]);
+    expect(item!.fileSize).toBeUndefined();
+    expect(item!.versionsFingerprint).toBeTruthy();
+  });
+});
+
+describe('findStreamByType', () => {
+  it('picks the selected stream when the JSON API sends boolean selected', () => {
+    const part = {
+      Stream: [
+        { streamType: 2, codec: 'eac3', language: 'eng' },
+        { streamType: 2, codec: 'aac', language: 'jpn', selected: true },
+      ],
+    };
+
+    const result = findStreamByType(part, STREAM_TYPE.AUDIO);
+
+    expect(result?.codec).toBe('aac');
+    expect(result?.language).toBe('jpn');
+  });
+
+  it('picks the selected stream with string selected', () => {
+    const part = {
+      Stream: [
+        { streamType: 3, codec: 'srt', selected: '1' },
+        { streamType: 2, codec: 'eac3' },
+      ],
+    };
+
+    expect(findStreamByType(part, STREAM_TYPE.SUBTITLE)?.codec).toBe('srt');
+  });
+
+  it('falls back to the first matching stream when none are selected', () => {
+    const part = {
+      Stream: [
+        { streamType: 1, codec: 'hevc' },
+        { streamType: 2, codec: 'eac3' },
+        { streamType: 2, codec: 'aac' },
+      ],
+    };
+
+    expect(findStreamByType(part, STREAM_TYPE.AUDIO)?.codec).toBe('eac3');
   });
 });

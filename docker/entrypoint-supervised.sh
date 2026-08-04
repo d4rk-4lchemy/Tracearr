@@ -197,7 +197,7 @@ if [ ! -f /data/postgres/PG_VERSION ]; then
             warn "Initializing fresh database..."
             rm -rf /data/postgres/*
             chown -R postgres:postgres /data/postgres
-            gosu postgres /usr/lib/postgresql/15/bin/initdb -D /data/postgres
+            gosu postgres /usr/lib/postgresql/15/bin/initdb -D /data/postgres -E UTF8 --locale=C.UTF-8
             init_postgres_db
         fi
     else
@@ -210,7 +210,7 @@ if [ ! -f /data/postgres/PG_VERSION ]; then
             warn "Previous sessions will be invalidated (users will need to log in again)"
         fi
         chown -R postgres:postgres /data/postgres
-        gosu postgres /usr/lib/postgresql/15/bin/initdb -D /data/postgres
+        gosu postgres /usr/lib/postgresql/15/bin/initdb -D /data/postgres -E UTF8 --locale=C.UTF-8
         init_postgres_db
     fi
 else

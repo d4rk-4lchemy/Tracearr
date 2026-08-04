@@ -51,7 +51,6 @@ const {
     thumbUrl: null,
     isServerAdmin: false,
     trustScore: 100,
-    sessionCount: 5,
     lastActivityAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -78,7 +77,11 @@ const {
       select: vi.fn((columns?: unknown) => ({
         from: vi.fn(() => {
           if (columns === undefined) return chainResolving([mockServerRow]);
-          const obj: Record<string, unknown> = { where: () => obj, limit: () => obj };
+          const obj: Record<string, unknown> = {
+            where: () => obj,
+            orderBy: () => obj,
+            limit: () => obj,
+          };
           obj.innerJoin = () => chainResolving([mockServerUserRow]);
           obj.then = (resolve: (v: unknown[]) => void, reject?: (e: unknown) => void) =>
             Promise.resolve([]).then(resolve, reject);
@@ -93,6 +96,10 @@ const {
     },
   };
 });
+
+vi.mock('../../../services/leaderLease.js', () => ({
+  isLeader: () => true,
+}));
 
 vi.mock('../../../db/client.js', () => ({ db: mockDb }));
 vi.mock('../../../routes/settings.js', () => ({
@@ -117,6 +124,7 @@ vi.mock('../database.js', () => ({
   getActiveRulesV2: vi.fn().mockResolvedValue([]),
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
+  batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
   widenRecentSessionsForMergedIdentities: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../pendingConfirmation.js', () => ({ updatePendingSession: vi.fn() }));

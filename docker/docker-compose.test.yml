@@ -8,7 +8,7 @@ services:
     image: timescale/timescaledb:2.25.0-pg16@sha256:9e9f50161784dc57d3f547b89ded4af73553f9acb4677345ed05f45af7c7f664
     shm_size: 512mb  # Required for PostgreSQL shared memory (increase for large imports)
     # Increase lock table size for large imports (Tautulli imports with many TimescaleDB chunks)
-    command: postgres -c max_locks_per_transaction=4096 -c timescaledb.telemetry_level=off
+    command: postgres -c max_locks_per_transaction=4096 -c timescaledb.telemetry_level=off -c max_connections=200
     ports:
       - "5433:5432"  # Different port to avoid conflicts with dev
     environment:
@@ -26,6 +26,7 @@ services:
 
   redis-test:
     image: redis:8-alpine@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005
+    command: ["redis-server", "--databases", "32"]
     ports:
       - "6380:6379"  # Different port to avoid conflicts with dev
     volumes:

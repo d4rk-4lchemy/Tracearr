@@ -1,7 +1,7 @@
 /**
  * Core type definitions for Tracearr
  */
-import type { webhookFormatSchema, sessionTargetSchema } from './schemas.js';
+import type { webhookFormatSchema, sessionTargetSchema, statPeriodSchema } from './schemas.js';
 import type { z } from 'zod';
 
 // Re-export SessionTarget for use in action interfaces
@@ -77,7 +77,6 @@ export interface ServerUser {
   thumbUrl: string | null;
   isServerAdmin: boolean;
   trustScore: number;
-  sessionCount: number;
   joinedAt: Date | null;
   lastActivityAt: Date | null;
   removedAt: Date | null;
@@ -386,6 +385,14 @@ export interface Session extends StreamDetailFields {
   year: number | null; // Release year
   thumbPath: string | null; // Poster path (e.g., /library/metadata/123/thumb)
   ratingKey: string | null; // Plex/Jellyfin media identifier
+  serverVersionKey: string | null; // Which file/version was played (Plex Media.id, JF/Emby MediaSource id)
+  parentRatingKey: string | null;
+  grandparentRatingKey: string | null;
+  mediaId: string | null;
+  showMediaId: string | null;
+  imdbId: string | null;
+  tmdbId: number | null;
+  tvdbId: number | null;
   externalSessionId: string | null; // External reference for deduplication
   startedAt: Date;
   stoppedAt: Date | null;
@@ -593,7 +600,7 @@ export type DeviceClientField = 'device_type' | 'client_name' | 'platform';
 
 export type NetworkLocationField = 'is_local_network' | 'country' | 'ip_in_range';
 
-export type ScopeField = 'server_id' | 'library_id' | 'media_type';
+export type ScopeField = 'server_id' | 'media_type';
 
 export type ConditionField =
   | SessionBehaviorField
@@ -1070,6 +1077,16 @@ export interface Settings {
   // Plugin update check
   pluginUpdateCheckEnabled: boolean;
   pluginManifestUrl: string | null;
+  // Watch completion thresholds (percent, per media type)
+  watchedThresholdMovie: number;
+  watchedThresholdTv: number;
+  watchedThresholdMusic: number;
+  // Public API v2
+  publicApiRateLimitPerMinute: number;
+  // Media browsing: warm poster caches for a server after its library sync completes
+  imagePrecacheEnabled: boolean;
+  // Media browsing: server whose poster wins when a title exists on multiple servers, null = automatic (most recently added copy)
+  preferredPosterServerId: string | null;
 }
 
 // Tailscale integration
@@ -1565,6 +1582,7 @@ export interface PlexSSENotification {
     ActivityNotification?: PlexActivityNotification[];
     StatusNotification?: PlexStatusNotification[];
     TranscodeSession?: PlexTranscodeNotification[];
+    TimelineEntry?: PlexTimelineEntry[];
   };
 }
 
@@ -1579,6 +1597,20 @@ export interface PlexPlaySessionNotification {
   viewOffset: number;
   playQueueItemID: number;
   state: 'playing' | 'paused' | 'stopped' | 'buffering';
+}
+
+// Library item lifecycle notification (add/scan/delete), sent as 'timeline' events.
+// state: 0-4 are in-progress metadata processing steps, 5 = fully processed/added,
+// 9 = deleted. These values are inferred from community SSE consumers (Plex does
+// not document them); a wrong guess just means the event is ignored, not acted on.
+export interface PlexTimelineEntry {
+  identifier: string;
+  sectionID?: number;
+  itemID: number;
+  type: number;
+  title?: string;
+  state: number;
+  updatedAt?: number;
 }
 
 // Activity notification (library scans, etc.)
@@ -1647,6 +1679,12 @@ export interface SSEConnectionStatus {
   pluginVersion?: string | null;
 }
 
+// Diagnosis for an SSE endpoint that 404s, from the server's own plugin list:
+// 'missing' not installed; 'blocked' installed and active but the endpoint is
+// unreachable (usually a reverse proxy); 'restart_required' installed, server
+// restart pending; 'malfunctioned' failed to load; 'unknown' could not check.
+export type PluginIssue = 'missing' | 'blocked' | 'restart_required' | 'malfunctioned' | 'unknown';
+
 // Per-server connection status surfaced to clients
 // Covers all server types (plex/jellyfin/emby) with a unified shape
 export interface ServerConnectionStatus {
@@ -1660,6 +1698,8 @@ export interface ServerConnectionStatus {
   error: string | null;
   pluginVersion: string | null;
   pluginUpdateAvailable: boolean;
+  // Only set while state is 'unsupported'; null otherwise
+  pluginIssue: PluginIssue | null;
 }
 
 // =============================================================================
@@ -1792,7 +1832,8 @@ export type MaintenanceJobType =
   | 'backfill_library_snapshots'
   | 'cleanup_old_chunks'
   | 'full_aggregate_rebuild'
-  | 'repair_corrupted_chunks';
+  | 'repair_corrupted_chunks'
+  | 'backfill_session_identity';
 
 export type MaintenanceJobStatus = 'idle' | 'waiting' | 'running' | 'complete' | 'error';
 
@@ -2289,17 +2330,37 @@ export interface LibraryStorageResponse {
 }
 
 // Library Duplicates Response (GET /library/duplicates)
-export type MatchType = 'imdb' | 'tmdb' | 'tvdb' | 'fuzzy';
+/** 'version' groups are one title whose single library item carries several
+ * physical files; the others group distinct items (copies) by identity. */
+export type MatchType = 'imdb' | 'tmdb' | 'tvdb' | 'fuzzy' | 'version';
+
+/** One physical file of a duplicate item */
+export interface DuplicateItemVersion {
+  resolution: string | null;
+  videoCodec: string | null;
+  fileSize: number | null;
+  filePath: string | null;
+  /**
+   * The same physical file already listed elsewhere in the group (equal byte
+   * size, the codebase-wide mirror heuristic). Jellyfin merged-version
+   * libraries list every file under every library entry; mirrors keep the
+   * listing honest without counting the file twice.
+   */
+  isMirror?: boolean;
+}
 
 export interface DuplicateItem {
   id: string;
   serverId: string;
   serverName: string;
+  libraryId: string | null;
+  libraryName: string | null;
   title: string;
   year: number | null;
   mediaType: string;
   fileSize: number | null;
   resolution: string | null;
+  versions: DuplicateItemVersion[];
 }
 
 export interface DuplicateGroup {
@@ -2307,8 +2368,18 @@ export interface DuplicateGroup {
   matchType: MatchType;
   confidence: number;
   serverCount: number;
+  /** All copies live on one server (cross-library copies or one item's versions) */
+  sameServer: boolean;
   items: DuplicateItem[];
+  /**
+   * Distinct physical files in the group after mirror dedup. Optional only
+   * because responses cached before the field existed can still be served
+   * for up to an hour; the server always sets it.
+   */
+  uniqueFileCount?: number;
+  /** Mirror-deduped bytes: the same physical file (equal size) counts once */
   totalStorageBytes: number;
+  /** Bytes freed by keeping only the best-quality file */
   potentialSavingsBytes: number;
 }
 
@@ -2316,7 +2387,7 @@ export interface DuplicatesSummary {
   totalGroups: number;
   totalDuplicateItems: number;
   totalPotentialSavingsBytes: number;
-  byMatchType: { imdb: number; tmdb: number; tvdb: number; fuzzy: number };
+  byMatchType: { imdb: number; tmdb: number; tvdb: number; fuzzy: number; version: number };
 }
 
 export interface DuplicatesResponse {
@@ -2477,6 +2548,300 @@ export type CompletionResponse =
       summary: CompletionSummary;
       pagination: CompletionPaginationInfo;
     };
+
+export type WatchedState = 'watched' | 'partial' | 'unwatched';
+
+// Catalog browse endpoint (GET /library/catalog)
+
+export interface CatalogRowServerEntry {
+  serverId: string;
+  addedAt: string;
+  videoResolution: string | null;
+  fileSize: number | null;
+  /** Active physical files of this copy (1 for single-version titles) */
+  versionCount: number;
+}
+
+export interface CatalogRow {
+  mediaId: string;
+  mediaType: 'movie' | 'show';
+  title: string;
+  year: number | null;
+  genres: string[];
+  posterUrl: string | null;
+  posterVersion: string | null;
+  dominantColor: string | null;
+  servers: CatalogRowServerEntry[];
+  resolutionBest: string | null;
+  watchedState: WatchedState;
+  /** Same probe, scoped to the requesting admin's own identity instead of
+   * the anyone-grain lens - "have I personally watched this". */
+  watchedStateSelf: WatchedState;
+  plays: number;
+  viewers: number;
+}
+
+export interface CatalogResponseMeta {
+  /** Absolute row offset this window starts at, echoing the request. */
+  offset: number;
+  pageSize: number;
+  totalItems: number;
+  totalFileSize: number;
+}
+
+export interface CatalogResponse {
+  data: CatalogRow[];
+  meta: CatalogResponseMeta;
+}
+
+// Catalog letter index (GET /library/catalog/letters) - per-letter title
+// counts for the same filter set as the catalog page query, so the frontend
+// can derive letter -> cumulative row offset for the alphabet rail.
+// Fixed 27-entry set, '#' FIRST then A-Z, zero counts included, in that
+// order - the frontend needs a stable, complete key set to build offsets
+// without special-casing an absent letter. Buckets are collation ranges over
+// media.sort_title (article-stripped, so "The Matrix" counts under M): '#'
+// is everything sorting below 'a' (digit-leading and empty sort titles),
+// which is why it leads - those rows sit before every letter in the catalog
+// ordering, and a bucket ordered A-Z-then-# would compute wrong offsets.
+export interface CatalogLetterBucket {
+  /** '#' or 'A'..'Z'. */
+  letter: string;
+  count: number;
+}
+
+export interface CatalogLettersResponse {
+  letters: CatalogLetterBucket[];
+}
+
+// Shelves endpoint (GET /library/shelves) - windowed library command center:
+// four type-split shelves, a KPI strip, and a dead-weight (storage reclaim)
+// module. All-users aggregate (no per-viewer lens) so the whole payload is
+// cacheable verbatim per (scope, period).
+
+// Shelves are cached verbatim for every viewer (no per-viewer lens), so a
+// shelf row deliberately carries no self-watched state.
+export type ShelfRow = Omit<CatalogRow, 'plays' | 'viewers' | 'watchedStateSelf'>;
+
+/** Same period convention as statsQuerySchema/TimeRangeValue on the frontend. */
+export type ShelvesPeriod = z.infer<typeof statPeriodSchema>;
+
+export interface RecentlyAddedShelfRow extends ShelfRow {
+  /** Newly-tracked episode count for a show card; always null for movies. */
+  newEpisodes: number | null;
+}
+
+export interface MostPopularShelfRow extends ShelfRow {
+  plays: number;
+  viewers: number;
+  rank: number;
+}
+
+export interface DeadWeightRow extends ShelfRow {
+  fileBytes: number;
+  /** Null when the title's canonical media row has never had latest_added_at
+   * stamped (no active library copy has ever been synced). */
+  addedAt: string | null;
+}
+
+export interface ShelvesKpiWatchedInPeriod {
+  /** Distinct canonical titles (movies + shows) with >=1 play in the window. */
+  titlesTouched: number;
+  /** Total canonical titles (movies + shows) in scope, all-time. */
+  totalTitles: number;
+}
+
+export interface ShelvesKpiNewlyAdded {
+  /** Canonical titles (movies + shows) added within the window. */
+  count: number;
+  totalBytes: number;
+  /** Of the titles added in the window, how many have ever been played. */
+  playedCount: number;
+}
+
+export interface ShelvesKpiDeadWeight {
+  /** All-time never-watched canonical title count (not window-scoped). */
+  count: number;
+  totalBytes: number;
+}
+
+export interface ShelvesKpis {
+  watchedInPeriod: ShelvesKpiWatchedInPeriod;
+  /** Total watched time across the window, in seconds. */
+  hoursWatched: number;
+  newlyAdded: ShelvesKpiNewlyAdded;
+  /** Omitted when the request opts out via includeDeadWeight=false. */
+  deadWeight?: ShelvesKpiDeadWeight;
+}
+
+export interface ShelvesResponseMeta {
+  movies: number;
+  shows: number;
+  totalFileSize: number;
+}
+
+export interface ShelvesResponse {
+  period: ShelvesPeriod;
+  recentlyAddedMovies: RecentlyAddedShelfRow[];
+  recentlyAddedShows: RecentlyAddedShelfRow[];
+  mostPopularMovies: MostPopularShelfRow[];
+  mostPopularShows: MostPopularShelfRow[];
+  deadWeight?: DeadWeightRow[];
+  kpis: ShelvesKpis;
+  meta: ShelvesResponseMeta;
+}
+
+// Genres aggregate endpoint (GET /library/genres)
+
+export interface GenreRow {
+  genre: string;
+  itemCount: number;
+  plays: number;
+  watchTimeMs: number;
+}
+
+export interface GenresResponse {
+  data: GenreRow[];
+}
+
+// Media detail endpoints (GET /library/media/:id and sub-resources)
+
+/** One physical file of a library copy */
+export interface MediaVersionEntry {
+  resolution: string | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  dynamicRange: string | null;
+  container: string | null;
+  fileSize: number | null;
+}
+
+export interface MediaAvailabilityEntry {
+  serverId: string;
+  serverType: string;
+  libraryId: string;
+  /** Library display name, null until that server's library sync has recorded it. */
+  libraryName: string | null;
+  ratingKey: string;
+  addedAt: string;
+  removedAt: string | null;
+  videoResolution: string | null;
+  fileSize: number | null;
+  /** Show rows only: summed episode file bytes for this server+library; null for movies/episodes. */
+  episodeFileSize: number | null;
+  /** Show rows only: distinct episode resolutions ordered by frequency desc; null for movies/episodes. */
+  episodeResolutions: string[] | null;
+  /** Show rows only: active episode count for this server+library; null for movies/episodes. */
+  episodeCount: number | null;
+  /** Physical files of this copy, largest first. Empty for containers. */
+  versions: MediaVersionEntry[];
+}
+
+export interface MediaDetailResponse {
+  id: string;
+  mediaType: string;
+  title: string;
+  year: number | null;
+  imdbId: string | null;
+  tmdbId: number | null;
+  tvdbId: number | null;
+  genres: string[] | null;
+  showMediaId: string | null;
+  mergedIds: string[];
+  availability: MediaAvailabilityEntry[];
+  seasonCount: number | null;
+  episodeCount: number | null;
+}
+
+export interface MediaChildEntry {
+  id: string;
+  mediaType: 'season' | 'episode';
+  title: string;
+  seasonNumber: number | null;
+  episodeCount: number | null;
+  episodeNumber: number | null;
+  imdbId: string | null;
+  tmdbId: number | null;
+  tvdbId: number | null;
+  showMediaId: string | null;
+  genres: string[] | null;
+}
+
+export interface MediaChildrenResponse {
+  data: MediaChildEntry[];
+}
+
+export interface MediaStatsMeasures {
+  plays: number;
+  watchTimeMs: number;
+  uniqueUsers: number;
+}
+
+export interface MediaStatsWindow {
+  combined: MediaStatsMeasures;
+  perServer: (MediaStatsMeasures & { serverId: string; serverName: string | null })[];
+}
+
+export interface MediaStatsResponse {
+  mediaId: string;
+  mediaType: string;
+  windows: { all_time: MediaStatsWindow; last_30: MediaStatsWindow; last_7: MediaStatsWindow };
+}
+
+export interface MediaWatcherEntry {
+  user: {
+    serverUserId: string;
+    userId: string;
+    serverId: string;
+    username: string | null;
+    identityName: string | null;
+    /** Identity thumbnail when set, else the server account's avatar. */
+    thumb: string | null;
+  };
+  plays: number;
+  watchTimeMs: number;
+  completionPct: number | null;
+  lastWatchedDay: string | null;
+  distinctEpisodesWatched: number | null;
+}
+
+export interface MediaWatchersResponse {
+  mediaId: string;
+  mediaType: string;
+  window: 'all_time' | 'last_30' | 'last_7';
+  watchers: MediaWatcherEntry[];
+}
+
+export interface MediaPlatformBreakdownEntry {
+  platform: string | null;
+  player: string | null;
+  plays: number;
+  watchTimeMs: number;
+}
+
+export interface MediaPlatformBreakdownResponse {
+  data: MediaPlatformBreakdownEntry[];
+}
+
+export interface SeasonHeatEpisode {
+  episodeNumber: number | null;
+  watchedState: WatchedState;
+}
+
+export interface SeasonHeatSeason {
+  seasonNumber: number | null;
+  title: string;
+  year: number | null;
+  episodeCount: number;
+  watchedCount: number;
+  watchedPct: number;
+  episodes: SeasonHeatEpisode[];
+}
+
+export interface MediaSeasonHeatResponse {
+  mediaId: string;
+  seasons: SeasonHeatSeason[];
+}
 
 // Library Watch Patterns Response (GET /library/patterns)
 
@@ -2687,6 +3052,25 @@ export interface LibraryResolutionResponse {
   movies: ResolutionBreakdown;
   /** Resolution breakdown for TV episodes */
   tv: ResolutionBreakdown;
+}
+
+// ============================================================================
+// Library Options (catalog Library filter)
+// ============================================================================
+
+/** One server's library, for the catalog browse Library select. Grouped by
+ * server on the frontend when the account has more than one. */
+export interface LibraryOption {
+  serverId: string;
+  serverName: string;
+  libraryId: string;
+  name: string;
+  mediaType: string;
+}
+
+/** Response from /library/libraries endpoint */
+export interface LibrariesResponse {
+  data: LibraryOption[];
 }
 
 // ============================================================================

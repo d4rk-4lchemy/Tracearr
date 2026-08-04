@@ -7,27 +7,21 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import { useMediaServer } from '@/providers/MediaServerProvider';
 
-interface UnacknowledgedAlertsResult {
-  count: number;
-  hasAlerts: boolean;
-  displayCount: string;
-}
-
-export function useUnacknowledgedAlertsCount(): UnacknowledgedAlertsResult {
-  const { selectedServerId } = useMediaServer();
+export function useUnacknowledgedAlertsCount() {
+  const { scope } = useMediaServer();
 
   const { data } = useQuery({
-    queryKey: ['violations', 'unacknowledged-count', selectedServerId],
+    queryKey: queryKeys.violations.unacknowledgedCount(scope),
     queryFn: () =>
       api.violations.list({
-        serverId: selectedServerId ?? undefined,
+        scope,
         acknowledged: false,
         pageSize: 1, // We only need the total count
       }),
     staleTime: 1000 * 30, // 30 seconds
-    enabled: !!selectedServerId,
   });
 
   const count = data?.total ?? 0;

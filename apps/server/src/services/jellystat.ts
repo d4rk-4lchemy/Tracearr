@@ -28,6 +28,7 @@ import { db } from '../db/client.js';
 import { servers, sessions } from '../db/schema.js';
 import { checkAggregateNeedsRebuild, refreshAggregates } from '../db/timescale.js';
 import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
+import { batchGetLibraryItemIdentity, type SessionIdentity } from '../jobs/poller/database.js';
 import { sanitizeCodec } from '../utils/codecNormalizer.js';
 import { extractIpFromEndpoint } from '../utils/parsing.js';
 import { normalizeClient } from '../utils/platformNormalizer.js';
@@ -184,7 +185,8 @@ export function extractJellystatStreamDetails(
 
       // Build source video details JSONB
       const videoDetails: SourceVideoDetails = {};
-      if (videoStream.BitRate) videoDetails.bitrate = videoStream.BitRate;
+      // Jellystat reports bps; sessions store kbps like the live parsers
+      if (videoStream.BitRate) videoDetails.bitrate = Math.floor(videoStream.BitRate / 1000);
       if (videoStream.RealFrameRate || videoStream.AverageFrameRate) {
         videoDetails.framerate = String(videoStream.RealFrameRate ?? videoStream.AverageFrameRate);
       }
@@ -206,7 +208,7 @@ export function extractJellystatStreamDetails(
 
       // Build source audio details JSONB
       const audioDetails: SourceAudioDetails = {};
-      if (audioStream.BitRate) audioDetails.bitrate = audioStream.BitRate;
+      if (audioStream.BitRate) audioDetails.bitrate = Math.floor(audioStream.BitRate / 1000);
       if (audioStream.ChannelLayout) audioDetails.channelLayout = audioStream.ChannelLayout;
       if (audioStream.Language) audioDetails.language = audioStream.Language;
       if (audioStream.SampleRate) audioDetails.sampleRate = audioStream.SampleRate;
@@ -323,7 +325,8 @@ export function transformActivityToSession(
   serverId: string,
   serverUserId: string,
   geo: ReturnType<typeof geoipService.lookup>,
-  enrichment?: MediaEnrichment
+  enrichment?: MediaEnrichment,
+  identity?: SessionIdentity
 ): typeof sessions.$inferInsert {
   const durationSeconds =
     typeof activity.PlaybackDuration === 'string'
@@ -394,18 +397,14 @@ export function transformActivityToSession(
   const activityAny = activity as Record<string, unknown>;
   const mediaStreams = activityAny.MediaStreams as JellystatMediaStream[] | null | undefined;
   const transcodingInfoFull = activityAny.TranscodingInfo as
-    | JellystatTranscodingInfoFull
-    | null
-    | undefined;
+    JellystatTranscodingInfoFull | null | undefined;
   const streamDetails = extractJellystatStreamDetails(mediaStreams, transcodingInfoFull);
 
-  // Bitrate: prefer TranscodingInfo bitrate (in bps), convert to kbps
-  // Fall back to source video bitrate if no transcode bitrate
+  // Bitrate: prefer TranscodingInfo bitrate (in bps), convert to kbps.
+  // Fall back to source video bitrate, which extract already stores as kbps.
   const bitrate = transcodingInfoFull?.Bitrate
     ? Math.floor(transcodingInfoFull.Bitrate / 1000)
-    : streamDetails.sourceVideoDetails?.bitrate
-      ? Math.floor(streamDetails.sourceVideoDetails.bitrate / 1000)
-      : null;
+    : (streamDetails.sourceVideoDetails?.bitrate ?? null);
 
   return {
     serverId,
@@ -415,6 +414,13 @@ export function transformActivityToSession(
     ratingKey: activity.NowPlayingItemId,
     externalSessionId: activity.Id,
     referenceId: null,
+    parentRatingKey: identity?.parentRatingKey ?? null,
+    grandparentRatingKey: identity?.grandparentRatingKey ?? null,
+    mediaId: identity?.mediaId ?? null,
+    showMediaId: identity?.showMediaId ?? null,
+    imdbId: identity?.imdbId ?? null,
+    tmdbId: identity?.tmdbId ?? null,
+    tvdbId: identity?.tvdbId ?? null,
     state: 'stopped',
     mediaType,
     mediaTitle: activity.NowPlayingItemName,
@@ -740,6 +746,9 @@ export async function importJellystatBackup(
         existingMap = await queryExistingByExternalIds(serverId, chunkIds, chunkTimeBounds);
       }
 
+      const chunkRatingKeys = [...new Set(chunk.map((a) => a.NowPlayingItemId).filter(Boolean))];
+      const identityByRatingKey = await batchGetLibraryItemIdentity(serverId, chunkRatingKeys);
+
       const insertBatch: (typeof sessions.$inferInsert)[] = [];
       const updateBatch: Array<{ id: string; data: Partial<typeof sessions.$inferInsert> }> = [];
 
@@ -833,12 +842,14 @@ export async function importJellystatBackup(
             continue;
           }
 
+          const identity = identityByRatingKey.get(activity.NowPlayingItemId);
           const sessionData = transformActivityToSession(
             activity,
             serverId,
             serverUserId,
             geo,
-            enrichment
+            enrichment,
+            identity
           );
           insertBatch.push(sessionData);
 

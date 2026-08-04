@@ -80,6 +80,35 @@ describe('Jellyfin Parser - DirectStream Behavior', () => {
 });
 
 // ============================================================================
+// Jellyfin-Specific: Version Identity
+// ============================================================================
+
+describe('Jellyfin Parser - version identity', () => {
+  it('stamps serverVersionKey from PlayState.MediaSourceId', () => {
+    const session = parseSession({
+      Id: 'session-1',
+      NowPlayingItem: { Id: '1', Name: 'Test', Type: 'Movie' },
+      PlayState: {
+        IsPaused: false,
+        MediaSourceId: 'afae55612a42810f43ad292d9a910ff8',
+      },
+    });
+
+    expect(session!.serverVersionKey).toBe('afae55612a42810f43ad292d9a910ff8');
+  });
+
+  it('leaves serverVersionKey unset when PlayState omits MediaSourceId', () => {
+    const session = parseSession({
+      Id: 'session-1',
+      NowPlayingItem: { Id: '1', Name: 'Test', Type: 'Movie' },
+      PlayState: { IsPaused: false },
+    });
+
+    expect(session!.serverVersionKey).toBeUndefined();
+  });
+});
+
+// ============================================================================
 // Jellyfin-Specific: LastPausedDate Support
 // ============================================================================
 
