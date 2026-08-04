@@ -738,8 +738,13 @@ export function mergeDispatcharrRealtimeSessions(
   realtimeSessions: MediaSession[],
   restSessions: MediaSession[]
 ): MediaSession[] {
+  const restBySessionKey = new Map(restSessions.map((session) => [session.sessionKey, session]));
+  const mergedRealtime = realtimeSessions.map((session) => ({
+    ...session,
+    ...(restBySessionKey.get(session.sessionKey) ?? {}),
+  }));
   const realtimeKeys = new Set(realtimeSessions.map((session) => session.sessionKey));
-  return [...realtimeSessions, ...restSessions.filter((session) => !realtimeKeys.has(session.sessionKey))];
+  return [...mergedRealtime, ...restSessions.filter((session) => !realtimeKeys.has(session.sessionKey))];
 }
 
 export function syncDispatcharrPendingProgress(
@@ -792,6 +797,21 @@ export async function processServerSessions(
 
     // OPTIMIZATION: Early return if no active sessions from media server
     if (processedSessions.length === 0) {
+      if (options.immediateStops) {
+        const stoppedSessionKeys: string[] = [];
+        for (const activeSession of activeSessions.filter((item) => item.serverId === server.id)) {
+          const result = await stopSessionAtomic({ session: activeSession, stoppedAt: new Date() });
+          if (result.wasUpdated) stoppedSessionKeys.push(`${server.id}:${activeSession.sessionKey}`);
+        }
+        return {
+          success: true,
+          newSessions: [],
+          stoppedSessionKeys,
+          updatedSessions: [],
+          watchedTransitionOccurred: false,
+          confirmedFromPendingIds: new Set(),
+        };
+      }
       // Snapshot keys already in grace period BEFORE adding new entries
       const keysToSweep = new Set(
         [...missedPollTracking.keys()].filter((k) => k.startsWith(`${server.id}:`))
@@ -1632,6 +1652,9 @@ export async function processServerSessions(
           // Build base update payload
           const updatePayload: Partial<typeof sessions.$inferInsert> = {
             state: newState,
+            ratingKey: processed.ratingKey || null,
+            mediaTitle: processed.mediaTitle,
+            totalDurationMs: processed.totalDurationMs || null,
             quality: processed.quality,
             bitrate: processed.bitrate,
             progressMs: processed.progressMs || null,

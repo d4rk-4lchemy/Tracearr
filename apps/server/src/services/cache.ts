@@ -621,9 +621,12 @@ export function createCacheService(redis: Redis): CacheService {
           local existing = redis.call('GET', KEYS[1])
           if existing then
             local separator = string.find(existing, '\n', 1, true)
-            if separator and string.sub(existing, 1, separator - 1) == ARGV[1] then
-              redis.call('EXPIRE', KEYS[1], ARGV[3])
-              return string.sub(existing, separator + 1)
+            if separator then
+              local existingProgrammeStart = string.sub(existing, 1, separator - 1)
+              if existingProgrammeStart == ARGV[1] then
+                redis.call('EXPIRE', KEYS[1], ARGV[3])
+                return string.sub(existing, separator + 1)
+              end
             end
           end
           redis.call('SETEX', KEYS[1], ARGV[3], ARGV[1] .. '\n' .. ARGV[2])

@@ -415,7 +415,11 @@ export class SSEManager extends EventEmitter {
    */
   nudgeReconnect(serverId: string): void {
     const connection = this.connections.get(serverId);
-    if (!connection?.eventSource || connection.state !== 'fallback') return;
+    if (
+      !connection?.eventSource ||
+      (connection.state !== 'fallback' && connection.state !== 'unsupported')
+    )
+      return;
 
     const now = Date.now();
     const last = this.lastNudgeAt.get(serverId) ?? 0;
