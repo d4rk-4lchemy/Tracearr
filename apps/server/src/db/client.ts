@@ -4,6 +4,7 @@
 
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { sql } from 'drizzle-orm';
 import pg from 'pg';
 import * as schema from './schema.js';
 
@@ -31,6 +32,22 @@ function createPool(): pg.Pool {
   });
 
   return p;
+}
+
+/**
+ * Dedicated non-pooled client for sessions the pool can't hand out (advisory
+ * locks, ALTER EXTENSION, migrations). Always carries an error listener: a
+ * severed connection (postgres crash/restart) emits 'error' on an idle client,
+ * and an unhandled 'error' event kills the process. A query in flight when the
+ * connection drops rejects to its caller instead, listener or not.
+ * `context` names the owner in the log line.
+ */
+export function createRawPgClient(context: string): pg.Client {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  client.on('error', (err) => {
+    console.error(`[DB Client Error] (${context})`, err.message);
+  });
+  return client;
 }
 
 let pool = createPool();
@@ -83,6 +100,47 @@ const FORK_MIGRATIONS_SCHEMA = 'tracearr_fork';
 const FORK_MIGRATIONS_TABLE = '__drizzle_migrations';
 
 /**
+ * Before the fork ledger existed, this Dispatcharr migration lived in the
+ * upstream Drizzle ledger. Its timestamp is newer than upstream's media
+ * migration, so leaving it there causes Drizzle to skip the CREATE TABLE
+ * migration on upgrades from the old fork.
+ */
+const LEGACY_DISPATCHARR_MAIN_LEDGER_MIGRATION = {
+  createdAt: 1_784_448_000_000,
+  hash: '5bfdbcde0cfc9cf1fb3865ede5d15eed65270be8e486d03a309365fcb8bb4534',
+} as const;
+
+type MigrationLedgerExecutor = Pick<NodePgDatabase<typeof schema>, 'execute'>;
+
+/**
+ * Remove the one stale legacy-fork cursor which otherwise hides upstream's
+ * media migrations. The overlay re-applies its schema idempotently in its own
+ * ledger after upstream migrations complete.
+ */
+export async function repairLegacyForkMigrationLedger(
+  migrationDb: MigrationLedgerExecutor = db
+): Promise<boolean> {
+  const ledger = await migrationDb.execute(sql<{ ledger: string | null }>`
+    SELECT to_regclass('drizzle.__drizzle_migrations') AS ledger
+  `);
+
+  if (!(ledger.rows as Array<{ ledger: string | null }>)[0]?.ledger) return false;
+
+  const repaired = await migrationDb.execute(sql<{ repaired: boolean }>`
+    WITH removed AS (
+      DELETE FROM drizzle.__drizzle_migrations
+      WHERE created_at = ${LEGACY_DISPATCHARR_MAIN_LEDGER_MIGRATION.createdAt}
+        AND hash = ${LEGACY_DISPATCHARR_MAIN_LEDGER_MIGRATION.hash}
+        AND to_regclass('public.media') IS NULL
+      RETURNING 1
+    )
+    SELECT EXISTS (SELECT 1 FROM removed) AS repaired
+  `);
+
+  return (repaired.rows as Array<{ repaired: boolean }>)[0]?.repaired ?? false;
+}
+
+/**
  * Apply the upstream Tracearr history and the fork-owned Dispatcharr overlay.
  *
  * The ledgers must remain separate: Drizzle decides whether to run a migration
@@ -90,6 +148,11 @@ const FORK_MIGRATIONS_TABLE = '__drizzle_migrations';
  * histories evolve independently.
  */
 export async function runMigrations(folders: MigrationFolders): Promise<void> {
+  if (await repairLegacyForkMigrationLedger()) {
+    console.info(
+      '[Database] Removed the stale pre-fork-ledger Dispatcharr migration cursor before upstream migrations.'
+    );
+  }
   await migrate(db, { migrationsFolder: folders.upstream });
   await migrate(db, {
     migrationsFolder: folders.fork,

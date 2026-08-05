@@ -93,7 +93,9 @@
     "usersUpdated_one": "Usuário {{count}} atualizado",
     "usersUpdated_other": "Usuários {{count}} atualizados",
     "violation_one": "Violação do {{count}}",
-    "violation_other": "Violações de {{count}}"
+    "violation_other": "Violações de {{count}}",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "Dia {{count}}",

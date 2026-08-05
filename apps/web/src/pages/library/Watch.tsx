@@ -81,7 +81,14 @@ function ServerCompletionCard({ server }: ServerCompletionCardProps) {
 
 export function LibraryWatch() {
   const { t } = useTranslation(['pages', 'common']);
-  const { selectedServerIds, selectedServers, isMultiServer } = useServer();
+  const {
+    mediaLibraryServerIds,
+    mediaLibraryServers,
+    isLoading: serversLoading,
+  } = useServer();
+  const selectedServerIds = mediaLibraryServerIds;
+  const selectedServers = mediaLibraryServers;
+  const isMultiServer = selectedServerIds.length > 1;
 
   // Watch data for KPIs - deduped across servers by the backend
   const watch = useLibraryWatch(selectedServerIds, null, 1, 20);
@@ -134,6 +141,10 @@ export function LibraryWatch() {
         />
       </div>
     );
+  }
+
+  if (!serversLoading && selectedServerIds.length === 0) {
+    return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
   }
 
   // Show empty state if no watch data

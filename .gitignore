@@ -11,6 +11,9 @@ out
 # Turbo
 .turbo
 
+# ESLint
+.eslintcache
+
 # Environment
 .env
 .env.local
@@ -36,6 +39,8 @@ npm-debug.log*
 pnpm-debug.log*
 .tmp/
 .plans/
+
+# Markdown files
 FORK_INFO.md
 AGENTS.md
 COMMON_REGRESSIONS.md

@@ -52,7 +52,7 @@ export type { PollerConfig } from './types.js';
 // Pure Utility Functions (exported for testing)
 // ============================================================================
 
-export { isPrivateIP, formatQualityString } from './utils.js';
+export { isPrivateIP } from './utils.js';
 
 // ============================================================================
 // State Tracking Functions (exported for testing)
@@ -64,12 +64,6 @@ export {
   checkWatchCompletion,
   shouldGroupWithPreviousSession,
 } from './stateTracker.js';
-
-// ============================================================================
-// Rule/Violation Functions (exported for testing)
-// ============================================================================
-
-export { getTrustScorePenalty, doesRuleApplyToUser } from './violations.js';
 
 // ============================================================================
 // Session Lifecycle Functions (shared between Poller and SSE)

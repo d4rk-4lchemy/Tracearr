@@ -1,5 +1,8 @@
 /**
- * Pending session confirmation — shared between SSE and poller paths.
+ * Pending session confirmation for the poller path. SSE runs its own
+ * inline confirmation logic in sseProcessor.ts; both create pending entries
+ * with the same PendingSessionData shape, but the poller uses these helpers
+ * to advance/confirm them while SSE does not import this module.
  */
 
 import type { SessionState } from '@tracearr/shared';
@@ -34,7 +37,8 @@ export function updatePendingSession(
   newState: string,
   viewOffset: number | undefined,
   now: number,
-  confirmThresholdMs?: number
+  confirmThresholdMs?: number,
+  processed?: PendingSessionData['processed']
 ): { updatedData: PendingSessionData; isConfirmed: boolean } {
   const previousState = pendingData.currentState ?? 'playing';
 
@@ -58,6 +62,7 @@ export function updatePendingSession(
 
   const updatedData: PendingSessionData = {
     ...pendingData,
+    processed: processed ?? pendingData.processed,
     confirmation: confirmed
       ? { ...updatedConfirmation, confirmedPlayback: true }
       : updatedConfirmation,

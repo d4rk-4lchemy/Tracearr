@@ -21,8 +21,14 @@ import type {
   MediaUser,
   MediaLibrary,
   MediaLibraryItem,
+  MediaItemVersion,
   MediaWatchHistoryItem,
 } from '../types.js';
+import {
+  computeVersionsFingerprint,
+  pickBestVersion,
+  sumVersionSizes,
+} from '../shared/versionUtils.js';
 import type {
   SourceVideoDetails,
   SourceAudioDetails,
@@ -31,7 +37,7 @@ import type {
   TranscodeInfo,
   SubtitleInfo,
 } from '@tracearr/shared';
-import { normalizeResolutionLabel } from '@tracearr/shared';
+import { normalizeResolutionLabel, normalizeDynamicRange } from '@tracearr/shared';
 import { calculateProgress } from '../shared/parserUtils.js';
 import { extractPlexLiveTvMetadata, extractPlexMusicMetadata } from './plexUtils.js';
 
@@ -131,7 +137,9 @@ export function findStreamByType(
     if (!firstMatch) firstMatch = stream;
 
     // Prefer selected stream - return immediately if found
-    if (parseString(stream.selected) === '1') {
+    // (the JSON API sends boolean true; XML-derived payloads send 1 or '1')
+    const sel = stream.selected;
+    if (sel === 1 || sel === '1' || sel === true) {
       selectedMatch = stream;
       break; // Selected stream found, no need to continue
     }
@@ -442,11 +450,12 @@ function extractStreamDetails(
   transcodeSession: Record<string, unknown> | undefined
 ): StreamDetailsResult {
   // Find the selected media element (when multiple versions exist)
-  const selectedMedia = mediaArray?.find((m) => parseString(m.selected) === '1') ?? mediaArray?.[0];
+  const selectedMedia = findSelectedElement<Record<string, unknown>>(mediaArray);
 
-  // Get the first Part (most media has single part)
+  // The playing Part carries selected=1 in session payloads; single-part media
+  // falls back to the first
   const parts = selectedMedia?.Part as Array<Record<string, unknown>> | undefined;
-  const part = parts?.[0];
+  const part = findSelectedElement<Record<string, unknown>>(parts);
 
   // Find streams by type
   const videoStream = findStreamByType(part, STREAM_TYPE.VIDEO);
@@ -538,10 +547,9 @@ export function parseMediaMetadataResponse(
   // Match by media ID when provided, fall back to selected or first
   const selectedMedia =
     (targetMediaId ? mediaArray.find((m) => String(m.id) === targetMediaId) : undefined) ??
-    mediaArray.find((m) => parseString(m.selected) === '1') ??
-    mediaArray[0];
+    findSelectedElement<Record<string, unknown>>(mediaArray);
   const parts = selectedMedia?.Part as Array<Record<string, unknown>> | undefined;
-  const part = parts?.[0];
+  const part = findSelectedElement<Record<string, unknown>>(parts);
 
   const videoStream = findStreamByType(part, STREAM_TYPE.VIDEO);
   const audioStream = findStreamByType(part, STREAM_TYPE.AUDIO);
@@ -672,7 +680,7 @@ export function parseSession(
   const sessionInfo = (item.Session as Record<string, unknown>) ?? {};
   const transcodeSession = item.TranscodeSession as Record<string, unknown> | undefined;
   const mediaArray = item.Media as Array<Record<string, unknown>> | undefined;
-  const firstMedia = mediaArray?.[0];
+  const selectedMediaElement = findSelectedElement<Record<string, unknown>>(mediaArray);
 
   const durationMs = parseNumber(item.duration);
   const positionMs = parseNumber(item.viewOffset);
@@ -771,6 +779,8 @@ export function parseSession(
   const session: MediaSession = {
     sessionKey: parseString(item.sessionKey),
     mediaId: parseString(item.ratingKey),
+    serverVersionKey:
+      selectedMediaElement?.id != null ? String(selectedMediaElement.id) : undefined,
     user: {
       id: parseString(user.id),
       username: parseString(user.title),
@@ -832,7 +842,7 @@ export function parseSession(
 
   // Add Live TV metadata if this is a live stream
   if (mediaType === 'live') {
-    const liveTvMetadata = extractPlexLiveTvMetadata(item, firstMedia);
+    const liveTvMetadata = extractPlexLiveTvMetadata(item, selectedMediaElement);
     if (liveTvMetadata) {
       session.live = liveTvMetadata;
     }
@@ -1434,10 +1444,11 @@ function parseExternalIds(guids: Array<{ id: string }> | undefined): {
   imdbId?: string;
   tmdbId?: number;
   tvdbId?: number;
+  musicBrainzId?: string;
 } {
   if (!guids || !Array.isArray(guids)) return {};
 
-  const result: { imdbId?: string; tmdbId?: number; tvdbId?: number } = {};
+  const result: { imdbId?: string; tmdbId?: number; tvdbId?: number; musicBrainzId?: string } = {};
 
   for (const guid of guids) {
     const id = guid.id;
@@ -1449,10 +1460,18 @@ function parseExternalIds(guids: Array<{ id: string }> | undefined): {
     } else if (id?.startsWith('tvdb://')) {
       const parsed = parseInt(id.replace('tvdb://', ''), 10);
       if (!isNaN(parsed)) result.tvdbId = parsed;
+    } else if (id?.startsWith('mbid://')) {
+      result.musicBrainzId = id.replace('mbid://', '');
     }
   }
 
   return result;
+}
+
+function parseGenres(genre: Array<{ tag?: string }> | undefined): string[] | undefined {
+  if (!Array.isArray(genre)) return undefined;
+  const tags = genre.map((g) => g.tag).filter((t): t is string => !!t);
+  return tags.length > 0 ? tags : undefined;
 }
 
 /**
@@ -1499,9 +1518,33 @@ function mapPlexTypeToMediaType(
  */
 function parseLibraryItem(item: Record<string, unknown>): MediaLibraryItem {
   const mediaArray = item.Media as Array<Record<string, unknown>> | undefined;
-  const firstMedia = mediaArray?.[0];
-  const parts = firstMedia?.Part as Array<Record<string, unknown>> | undefined;
-  const firstPart = parts?.[0];
+  const versions: MediaItemVersion[] = [];
+  for (const [index, media] of (mediaArray ?? []).entries()) {
+    if (media == null || typeof media !== 'object') continue;
+    const parts = (media.Part as Array<Record<string, unknown>> | undefined) ?? [];
+    let versionSize: number | undefined;
+    for (const part of parts) {
+      const size = parseOptionalNumber(part?.size);
+      if (size != null) versionSize = (versionSize ?? 0) + size;
+    }
+    versions.push({
+      // Media.id is always present in practice; the index form only guards
+      // malformed payloads so a version is never silently dropped
+      serverVersionKey: media.id != null ? String(media.id) : `idx:${index}`,
+      videoResolution: normalizeVideoResolution(parseOptionalString(media.videoResolution)),
+      videoDynamicRange:
+        normalizeDynamicRange(parseOptionalString(media.videoDynamicRange)) ?? undefined,
+      videoCodec: parseOptionalString(media.videoCodec)?.toUpperCase(),
+      audioCodec: parseOptionalString(media.audioCodec)?.toUpperCase(),
+      audioChannels: parseOptionalNumber(media.audioChannels),
+      container: parseOptionalString(media.container)?.toLowerCase(),
+      bitrate: parseOptionalNumber(media.bitrate),
+      fileSize: versionSize,
+      partCount: Math.max(parts.length, 1),
+      filePath: parseOptionalString(parts[0]?.file),
+    });
+  }
+  const bestVersion = pickBestVersion(versions);
 
   // Parse external IDs from Guid array (NOT main guid attribute)
   const guids = item.Guid as Array<{ id: string }> | undefined;
@@ -1546,19 +1589,30 @@ function parseLibraryItem(item: Record<string, unknown>): MediaLibraryItem {
       return isNaN(d.getTime()) ? undefined : d;
     })(),
 
-    // Quality fields from Media array
-    videoResolution: normalizeVideoResolution(parseOptionalString(firstMedia?.videoResolution)),
-    videoCodec: parseOptionalString(firstMedia?.videoCodec)?.toUpperCase(),
-    audioCodec: parseOptionalString(firstMedia?.audioCodec)?.toUpperCase(),
-    audioChannels: parseOptionalNumber(firstMedia?.audioChannels),
-    fileSize: parseOptionalNumber(firstPart?.size),
-    container: parseOptionalString(firstMedia?.container),
+    // Quality rollups over the version list. Media.videoDynamicRange is
+    // Plex's own per-item HDR label ('SDR', 'HDR10', 'Dolby Vision', ...),
+    // distinct from the color-attribute-derived deriveDynamicRange() used for
+    // live session streams above.
+    videoResolution: bestVersion?.videoResolution,
+    videoDynamicRange: bestVersion?.videoDynamicRange,
+    videoCodec: bestVersion?.videoCodec,
+    audioCodec: bestVersion?.audioCodec,
+    audioChannels: bestVersion?.audioChannels,
+    fileSize: sumVersionSizes(versions),
+    container: bestVersion?.container,
+    versions,
+    versionsFingerprint: computeVersionsFingerprint(versions),
 
     // External IDs
     ...externalIds,
 
+    genres: parseGenres(item.Genre as Array<{ tag?: string }> | undefined),
+
     // File path (debug only)
-    filePath: parseOptionalString(firstPart?.file),
+    filePath: bestVersion?.filePath,
+
+    // Poster thumbnail path (browsing UI)
+    thumbPath: parseOptionalString(item.thumb),
   };
 
   // Hierarchy fields for episodes and tracks
@@ -1571,6 +1625,15 @@ function parseLibraryItem(item: Record<string, unknown>): MediaLibraryItem {
     if (result.mediaType === 'episode') {
       result.parentIndex = parseOptionalNumber(item.parentIndex); // season number
     }
+  } else if (result.mediaType === 'season') {
+    // For a season, parentRatingKey/parentTitle/parentIndex are the show's id/title/season number
+    result.parentTitle = parseOptionalString(item.parentTitle);
+    result.parentRatingKey = parseOptionalString(item.parentRatingKey);
+    result.parentIndex = parseOptionalNumber(item.index);
+  } else if (result.mediaType === 'album') {
+    // For an album, parentRatingKey/parentTitle are its own parent: the artist
+    result.parentTitle = parseOptionalString(item.parentTitle);
+    result.parentRatingKey = parseOptionalString(item.parentRatingKey);
   }
 
   return result;

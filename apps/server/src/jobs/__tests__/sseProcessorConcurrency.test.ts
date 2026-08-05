@@ -76,7 +76,6 @@ const {
                   thumbUrl: null,
                   identityName: 'Alice',
                   trustScore: 100,
-                  sessionCount: 5,
                   lastActivityAt: new Date(),
                   createdAt: new Date(),
                 },
@@ -113,7 +112,6 @@ vi.mock('../poller/stateTracker.js', () => ({
   detectMediaChange: vi.fn().mockReturnValue(false),
   isPlaybackConfirmed: vi.fn().mockReturnValue(false),
   createInitialConfirmationState: vi.fn().mockReturnValue({
-    rulesEvaluated: false,
     confirmedPlayback: false,
     firstSeenAt: Date.now(),
     maxViewOffset: 0,
@@ -121,7 +119,11 @@ vi.mock('../poller/stateTracker.js', () => ({
   updateConfirmationState: vi.fn().mockImplementation((state) => state),
 }));
 vi.mock('../poller/database.js', () => ({
+  getServerUserIdByExternalId: vi.fn(() => {
+    throw new Error('getServerUserIdByExternalId not configured in this test');
+  }),
   getActiveRulesV2: vi.fn().mockResolvedValue([]),
+  batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
   mergeRecentSessionsForIdentity: vi.fn().mockReturnValue([]),
 }));
@@ -138,6 +140,7 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   buildActiveSession: vi.fn(),
   buildPendingActiveSession: mockBuildPendingActiveSession,
   handleMediaChangeAtomic: vi.fn(),
+  handleQualityChangeFallout: vi.fn(),
   reEvaluateRulesOnPauseState: vi.fn(),
   reEvaluateRulesOnTranscodeChange: vi.fn(),
   confirmAndPersistSession: vi.fn(),

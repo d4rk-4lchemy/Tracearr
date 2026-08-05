@@ -20,9 +20,13 @@ class MockWebSocket {
   }
 }
 
-function nextSnapshot(connector: DispatcharrRealtimeConnector): Promise<{ sessions: unknown[] }> {
+function nextSnapshot(
+  connector: DispatcharrRealtimeConnector
+): Promise<{ sessions: unknown[]; authoritative?: boolean }> {
   return new Promise((resolve) => {
-    connector.once('snapshot:update', (payload) => resolve(payload as { sessions: unknown[] }));
+    connector.once('snapshot:update', (payload) =>
+      resolve(payload as { sessions: unknown[]; authoritative?: boolean })
+    );
   });
 }
 
@@ -135,6 +139,9 @@ describe('DispatcharrRealtimeConnector', () => {
         },
       ],
     });
+    vi.spyOn(DispatcharrClient.prototype, 'getCatchupStatsSnapshot').mockResolvedValue({
+      timeshift_sessions: [],
+    });
     vi.spyOn(DispatcharrClient.prototype, 'getUserMap').mockResolvedValue(
       new Map([['7', { id: '7', username: 'User Seven', isAdmin: false }]])
     );
@@ -177,5 +184,59 @@ describe('DispatcharrRealtimeConnector', () => {
     const snapshot = await snapshotPromise;
 
     expect(snapshot.sessions).toHaveLength(2);
+    expect(snapshot.authoritative).toBe(false);
+  });
+
+  it('does not publish a partial REST bootstrap as an authoritative session snapshot', async () => {
+    vi.spyOn(DispatcharrClient.prototype, 'getWebSocketToken').mockResolvedValue('jwt-token');
+    vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockRejectedValue(
+      new Error('status endpoint unavailable')
+    );
+    vi.spyOn(DispatcharrClient.prototype, 'getVodStatsSnapshot').mockResolvedValue({
+      vod_connections: [],
+    });
+    vi.spyOn(DispatcharrClient.prototype, 'getCatchupStatsSnapshot').mockResolvedValue({
+      timeshift_sessions: [],
+    });
+
+    const connector = new DispatcharrRealtimeConnector({
+      serverId: 'server-1',
+      serverName: 'Dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'a.b.c',
+    });
+    const snapshotListener = vi.fn();
+    connector.on('snapshot:update', snapshotListener);
+    const fallback = new Promise<void>((resolve) => {
+      connector.once('fallback:activated', () => resolve());
+    });
+
+    await connector.connect();
+    const ws = MockWebSocket.instances[0];
+    if (!ws) throw new Error('WebSocket was not created');
+    ws.onopen?.call(ws, {});
+
+    await fallback;
+    expect(snapshotListener).not.toHaveBeenCalled();
+    expect(connector.isInFallback()).toBe(true);
+    connector.disconnect();
+  });
+
+  it('keeps API-key authentication in REST polling mode without opening a WebSocket', async () => {
+    const connector = new DispatcharrRealtimeConnector({
+      serverId: 'server-1',
+      serverName: 'Dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'api-key',
+    });
+
+    await connector.connect();
+
+    expect(MockWebSocket.instances).toHaveLength(0);
+    expect(connector.isInFallback()).toBe(true);
+    expect(connector.getStatus()).toMatchObject({
+      mode: 'rest-only-api-key',
+      state: 'fallback',
+    });
   });
 });

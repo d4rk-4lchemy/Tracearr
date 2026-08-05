@@ -9,6 +9,7 @@ import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { servers } from '../../db/schema.js';
+import { invalidateServersCache } from '../../jobs/poller/database.js';
 import { JellyfinClient } from '../../services/mediaServer/index.js';
 // Token encryption removed - tokens now stored in plain text (DB is localhost-only)
 import { generateTokens } from './utils.js';
@@ -90,6 +91,7 @@ export const jellyfinRoutes: FastifyPluginAsync = async (app) => {
             })
             .where(eq(servers.id, existingServer.id));
         }
+        invalidateServersCache();
 
         const currentServer = server[0];
         if (!currentServer) {

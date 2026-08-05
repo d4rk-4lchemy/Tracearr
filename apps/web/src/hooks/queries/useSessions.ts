@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import '@tracearr/shared';
+import { serverScopeFromIds, serverScopeKey } from '@tracearr/shared';
 import { api } from '@/lib/api';
 
 interface SessionsParams {
@@ -21,7 +21,7 @@ export function useSessions(params: SessionsParams = {}) {
 }
 
 export function useActiveSessions(serverIds: string[]) {
-  const serverIdsKey = serverIds.length ? [...serverIds].sort().join(',') : 'all';
+  const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery({
     queryKey: ['sessions', 'active', serverIdsKey],
     queryFn: () => api.sessions.getActive(serverIds.length ? serverIds : undefined),

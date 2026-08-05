@@ -32,6 +32,7 @@ import { testServerConnections } from '../services/mediaServer/plex/connectionTe
 import { syncServer } from '../services/sync.js';
 import { getUserById, getUserByPlexAccountId } from '../services/userService.js';
 import { getRedis } from './redisShared.js';
+import { invalidateServersCache } from '../jobs/poller/database.js';
 import { assertSignupAllowed, assertClaimCode } from './authGuards.js';
 
 const PLEX_TEMP_TOKEN_TTL = 10 * 60; // 10 minutes for server selection
@@ -132,7 +133,7 @@ export const plexPlugin = () =>
             const authResult = await PlexClient.checkOAuthPin(pinId);
 
             if (!authResult) {
-              return await ctx.json({ authorized: false, message: 'PIN not yet authorized' });
+              return ctx.json({ authorized: false, message: 'PIN not yet authorized' });
             }
 
             // Priority 1: plex_accounts table (login-capable accounts only)
@@ -152,10 +153,7 @@ export const plexPlugin = () =>
               .limit(1);
 
             if (plexAccount.length > 0) {
-              const account = plexAccount[0];
-              if (!account) {
-                throw new Error('Plex account lookup returned no row');
-              }
+              const account = plexAccount[0]!;
               const user = await getUserById(account.userId);
 
               if (user) {
@@ -191,6 +189,7 @@ export const plexPlugin = () =>
                   .set({ token: authResult.token, updatedAt: new Date() })
                   .where(eq(servers.plexAccountId, account.id))
                   .returning({ id: servers.id, name: servers.name });
+                if (refreshed.length > 0) invalidateServersCache();
 
                 if (refreshed.length > 0) {
                   ctx.context.logger.info('Refreshed Plex token for linked servers', {
@@ -217,7 +216,7 @@ export const plexPlugin = () =>
                 });
 
                 const { user: sessionUser } = await createPlexSession(ctx, user.id);
-                return await ctx.json({
+                return ctx.json({
                   authorized: true,
                   user: { id: sessionUser.id, username: authResult.username, role: 'owner' },
                 });
@@ -289,7 +288,7 @@ export const plexPlugin = () =>
               });
 
               const { user: sessionUser } = await createPlexSession(ctx, user.id);
-              return await ctx.json({
+              return ctx.json({
                 authorized: true,
                 user: { id: sessionUser.id, username: authResult.username, role: 'owner' },
               });
@@ -340,7 +339,7 @@ export const plexPlugin = () =>
                 })
               );
 
-              return await ctx.json({
+              return ctx.json({
                 authorized: true,
                 needsServerSelection: true,
                 servers: testedServers,
@@ -386,11 +385,11 @@ export const plexPlugin = () =>
             });
 
             const { user: sessionUser } = await createPlexSession(ctx, newUser.id);
-            return await ctx.json({
+            return ctx.json({
               authorized: true,
               user: { id: sessionUser.id, username: newUser.username, role: 'owner' },
             });
-          } catch (error: unknown) {
+          } catch (error) {
             if (error instanceof APIError) throw error;
             ctx.context.logger.error('Plex check-pin failed', { err: error });
             throw new APIError('INTERNAL_SERVER_ERROR', {
@@ -472,10 +471,7 @@ export const plexPlugin = () =>
                 .returning();
               server = inserted;
             } else {
-              const existingServer = server[0];
-              if (!existingServer) {
-                throw new Error('Existing Plex server lookup returned no row');
-              }
+              const existingServer = server[0]!;
               await db
                 .update(servers)
                 .set({
@@ -487,12 +483,9 @@ export const plexPlugin = () =>
                 })
                 .where(eq(servers.id, existingServer.id));
             }
+            invalidateServersCache();
 
-            const currentServer = server[0];
-            if (!currentServer) {
-              throw new Error('Plex server insert/update returned no row');
-            }
-            const serverId = currentServer.id;
+            const serverId = server[0]!.id;
 
             const [newUser] = await db
               .insert(users)
@@ -543,6 +536,7 @@ export const plexPlugin = () =>
               .update(servers)
               .set({ plexAccountId: newPlexAccount.id })
               .where(eq(servers.id, serverId));
+            invalidateServersCache();
 
             await db.insert(serverUsers).values({
               userId: newUser.id,
@@ -572,7 +566,7 @@ export const plexPlugin = () =>
                   librariesSynced: result.librariesSynced,
                 });
               })
-              .catch((error: unknown) => {
+              .catch((error) => {
                 ctx.context.logger.error('Auto-sync failed for Plex server', {
                   err: error,
                   serverId,
@@ -580,11 +574,11 @@ export const plexPlugin = () =>
               });
 
             const { user: sessionUser } = await createPlexSession(ctx, newUser.id);
-            return await ctx.json({
+            return ctx.json({
               authorized: true,
               user: { id: sessionUser.id, username: newUser.username, role: 'owner' },
             });
-          } catch (error: unknown) {
+          } catch (error) {
             if (error instanceof APIError) throw error;
             ctx.context.logger.error('Plex connect failed', { err: error });
             throw new APIError('INTERNAL_SERVER_ERROR', {

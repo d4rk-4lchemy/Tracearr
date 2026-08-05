@@ -638,6 +638,7 @@ describe('Session Routes', () => {
         platform: null,
         quality: null,
         is_transcode: false,
+        dispatcharr_playback_kind: null,
         video_decision: null,
         audio_decision: null,
         bitrate: null,
@@ -679,6 +680,30 @@ describe('Session Routes', () => {
       expect(body.hasMore).toBe(false);
       expect(body.nextCursor).toBeUndefined();
       expect(mockDb.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns Dispatcharr playback kind for history rows', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      mockDb.execute.mockResolvedValueOnce({
+        rows: [
+          createMockHistoryRow({
+            server_type: 'dispatcharr',
+            media_type: 'live',
+            channel_title: 'Catch-up Channel',
+            dispatcharr_playback_kind: 'catchup',
+          }),
+        ],
+      });
+
+      const response = await app.inject({ method: 'GET', url: '/sessions/history' });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.data[0].server.type).toBe('dispatcharr');
+      expect(body.data[0].mediaType).toBe('live');
+      expect(body.data[0].dispatcharrPlaybackKind).toBe('catchup');
     });
 
     it('scopes the join-back to the page-id CTE and time-bounds it by the page minimum', async () => {

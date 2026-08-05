@@ -170,6 +170,24 @@ describe('Dispatcharr realtime processor', () => {
     );
   });
 
+  it('does not use immediate stops for a non-authoritative REST bootstrap snapshot', async () => {
+    mockSseManager.emit('dispatcharr:snapshot', {
+      serverId: 'dispatcharr-1',
+      sessions: [liveSession],
+      authoritative: false,
+    });
+
+    await vi.waitFor(() => {
+      expect(mockProcessServerSessions).toHaveBeenCalledWith(
+        server,
+        [],
+        expect.any(Set),
+        [],
+        { mediaSessions: [liveSession], immediateStops: false }
+      );
+    });
+  });
+
   it('skips snapshots when Dispatcharr realtime is not healthy', async () => {
     mockSseManager.isDispatcharrRealtimeHealthy.mockReturnValue(false);
 
@@ -195,5 +213,31 @@ describe('Dispatcharr realtime processor', () => {
     });
 
     expect(mockProcessPollResults).not.toHaveBeenCalled();
+  });
+
+  it('publishes stopped sessions from an empty Dispatcharr snapshot', async () => {
+    mockProcessServerSessions.mockResolvedValueOnce({
+      success: true,
+      newSessions: [],
+      stoppedSessionKeys: ['dispatcharr-1:channel-1:client-1'],
+      updatedSessions: [],
+      watchedTransitionOccurred: false,
+      confirmedFromPendingIds: new Set(),
+    });
+
+    mockSseManager.emit('dispatcharr:snapshot', {
+      serverId: 'dispatcharr-1',
+      sessions: [],
+    });
+
+    await vi.waitFor(() => {
+      expect(mockProcessPollResults).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newSessions: [],
+          stoppedKeys: ['dispatcharr-1:channel-1:client-1'],
+          updatedSessions: [],
+        })
+      );
+    });
   });
 });

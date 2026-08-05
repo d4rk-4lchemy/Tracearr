@@ -93,7 +93,9 @@
     "usersUpdated_one": "{{count}} utilizator actualizat",
     "usersUpdated_other": "{{count}} utilizatori actualizați",
     "violation_one": "{{count}} încălcare",
-    "violation_other": "{{count}} încălcări"
+    "violation_other": "{{count}} încălcări",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} day",

@@ -76,7 +76,9 @@ function createStatements() {
         count: sql<number>`count(*)::int`,
       })
       .from(violations)
-      .where(gte(violations.createdAt, sql.placeholder('since')))
+      .where(
+        and(gte(violations.createdAt, sql.placeholder('since')), isNull(violations.dismissedAt))
+      )
       .prepare('violations_count_since'),
 
     /**
@@ -101,6 +103,20 @@ function createStatements() {
       .prepare('unique_users_since'),
 
     /**
+     * Count unique active identities across all media types since a given date.
+     * Used for: Dashboard "Active Users" metric
+     * Called: Every dashboard page load
+     */
+    uniqueUsersAllMediaSince: db
+      .select({
+        count: sql<number>`count(DISTINCT ${serverUsers.userId})::int`,
+      })
+      .from(sessions)
+      .innerJoin(serverUsers, eq(sessions.serverUserId, serverUsers.id))
+      .where(gte(sessions.startedAt, sql.placeholder('since')))
+      .prepare('unique_users_all_media_since'),
+
+    /**
      * Count unacknowledged violations
      * Used for: Alert badge in navigation
      * Called: On app load and after acknowledgment
@@ -110,7 +126,7 @@ function createStatements() {
         count: sql<number>`count(*)::int`,
       })
       .from(violations)
-      .where(isNull(violations.acknowledgedAt))
+      .where(and(isNull(violations.acknowledgedAt), isNull(violations.dismissedAt)))
       .prepare('unacknowledged_violations_count'),
 
     // ========================================================================
@@ -330,7 +346,7 @@ function createStatements() {
     getUnackedViolations: db
       .select()
       .from(violations)
-      .where(isNull(violations.acknowledgedAt))
+      .where(and(isNull(violations.acknowledgedAt), isNull(violations.dismissedAt)))
       .orderBy(desc(violations.createdAt))
       .limit(sql.placeholder('limit'))
       .prepare('get_unacked_violations'),
@@ -362,6 +378,7 @@ export let playsCountSince: Statements['playsCountSince'];
 export let watchTimeSince: Statements['watchTimeSince'];
 export let violationsCountSince: Statements['violationsCountSince'];
 export let uniqueUsersSince: Statements['uniqueUsersSince'];
+export let uniqueUsersAllMediaSince: Statements['uniqueUsersAllMediaSince'];
 export let unacknowledgedViolationsCount: Statements['unacknowledgedViolationsCount'];
 export let serverUserByExternalId: Statements['serverUserByExternalId'];
 export let sessionByServerAndKey: Statements['sessionByServerAndKey'];
@@ -383,6 +400,7 @@ export function initPreparedStatements(): void {
   watchTimeSince = s.watchTimeSince;
   violationsCountSince = s.violationsCountSince;
   uniqueUsersSince = s.uniqueUsersSince;
+  uniqueUsersAllMediaSince = s.uniqueUsersAllMediaSince;
   unacknowledgedViolationsCount = s.unacknowledgedViolationsCount;
   serverUserByExternalId = s.serverUserByExternalId;
   sessionByServerAndKey = s.sessionByServerAndKey;

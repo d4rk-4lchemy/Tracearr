@@ -27,6 +27,9 @@ vi.mock('../../db/prepared.js', () => ({
   uniqueUsersSince: {
     execute: vi.fn(),
   },
+  uniqueUsersAllMediaSince: {
+    execute: vi.fn(),
+  },
 }));
 
 // Mock cache service - need to provide getAllActiveSessions for active stream count
@@ -60,7 +63,7 @@ import {
   playsCountSince,
   watchTimeSince,
   violationsCountSince,
-  uniqueUsersSince,
+  uniqueUsersAllMediaSince,
 } from '../../db/prepared.js';
 import { dashboardRoutes } from '../stats/dashboard.js';
 
@@ -124,6 +127,9 @@ describe('Dashboard Stats Routes', () => {
         todayPlays: 25,
         todaySessions: 30,
         watchTimeHours: 12.5,
+        tvSessions: 11,
+        tvChannels: 7,
+        tvWatchTimeHours: 6.5,
         alertsLast24h: 3,
         activeUsersToday: 8,
       };
@@ -161,8 +167,12 @@ describe('Dashboard Stats Routes', () => {
       vi.mocked(playsCountSince.execute).mockResolvedValue([{ count: 15 }]);
       vi.mocked(watchTimeSince.execute).mockResolvedValue([{ totalMs: 18000000 }]); // 5 hours
       vi.mocked(violationsCountSince.execute).mockResolvedValue([{ count: 2 }]);
-      vi.mocked(uniqueUsersSince.execute).mockResolvedValue([{ count: 6 }]);
-      mockDbExecute.mockResolvedValueOnce({ rows: [{ count: 15 }] }); // Engagement validated plays
+      vi.mocked(uniqueUsersAllMediaSince.execute).mockResolvedValue([{ count: 6 }]);
+      mockDbExecute
+        .mockResolvedValueOnce({ rows: [{ count: 15 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 4 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 3 }] })
+        .mockResolvedValueOnce({ rows: [{ total_ms: 5400000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -175,6 +185,9 @@ describe('Dashboard Stats Routes', () => {
       const body = JSON.parse(response.body);
       expect(body.todayPlays).toBe(15);
       expect(body.watchTimeHours).toBe(5);
+      expect(body.tvSessions).toBe(4);
+      expect(body.tvChannels).toBe(3);
+      expect(body.tvWatchTimeHours).toBe(1.5);
       expect(body.alertsLast24h).toBe(2);
       expect(body.activeUsersToday).toBe(6);
       expect(body.activeStreams).toBe(0);
@@ -206,8 +219,12 @@ describe('Dashboard Stats Routes', () => {
       vi.mocked(playsCountSince.execute).mockResolvedValue([{ count: 10 }]);
       vi.mocked(watchTimeSince.execute).mockResolvedValue([{ totalMs: 7200000 }]); // 2 hours
       vi.mocked(violationsCountSince.execute).mockResolvedValue([{ count: 0 }]);
-      vi.mocked(uniqueUsersSince.execute).mockResolvedValue([{ count: 3 }]);
-      mockDbExecute.mockResolvedValueOnce({ rows: [{ count: 10 }] }); // Engagement validated plays
+      vi.mocked(uniqueUsersAllMediaSince.execute).mockResolvedValue([{ count: 3 }]);
+      mockDbExecute
+        .mockResolvedValueOnce({ rows: [{ count: 10 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 2 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ total_ms: 1800000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -221,6 +238,9 @@ describe('Dashboard Stats Routes', () => {
       expect(body.activeStreams).toBe(3);
       expect(body.todayPlays).toBe(10);
       expect(body.watchTimeHours).toBe(2);
+      expect(body.tvSessions).toBe(2);
+      expect(body.tvChannels).toBe(1);
+      expect(body.tvWatchTimeHours).toBe(0.5);
     });
 
     it('should handle invalid JSON in dashboard cache gracefully', async () => {
@@ -237,8 +257,12 @@ describe('Dashboard Stats Routes', () => {
       vi.mocked(playsCountSince.execute).mockResolvedValue([{ count: 5 }]);
       vi.mocked(watchTimeSince.execute).mockResolvedValue([{ totalMs: 3600000 }]);
       vi.mocked(violationsCountSince.execute).mockResolvedValue([{ count: 1 }]);
-      vi.mocked(uniqueUsersSince.execute).mockResolvedValue([{ count: 2 }]);
-      mockDbExecute.mockResolvedValueOnce({ rows: [{ count: 5 }] }); // Engagement validated plays
+      vi.mocked(uniqueUsersAllMediaSince.execute).mockResolvedValue([{ count: 2 }]);
+      mockDbExecute
+        .mockResolvedValueOnce({ rows: [{ count: 5 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
+        .mockResolvedValueOnce({ rows: [{ total_ms: 600000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -266,8 +290,12 @@ describe('Dashboard Stats Routes', () => {
       vi.mocked(playsCountSince.execute).mockResolvedValue([{ count: 8 }]);
       vi.mocked(watchTimeSince.execute).mockResolvedValue([{ totalMs: 0 }]);
       vi.mocked(violationsCountSince.execute).mockResolvedValue([{ count: 0 }]);
-      vi.mocked(uniqueUsersSince.execute).mockResolvedValue([{ count: 4 }]);
-      mockDbExecute.mockResolvedValueOnce({ rows: [{ count: 8 }] }); // Engagement validated plays
+      vi.mocked(uniqueUsersAllMediaSince.execute).mockResolvedValue([{ count: 4 }]);
+      mockDbExecute
+        .mockResolvedValueOnce({ rows: [{ count: 8 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ total_ms: 0 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -293,8 +321,12 @@ describe('Dashboard Stats Routes', () => {
       vi.mocked(playsCountSince.execute).mockResolvedValue([]);
       vi.mocked(watchTimeSince.execute).mockResolvedValue([]);
       vi.mocked(violationsCountSince.execute).mockResolvedValue([]);
-      vi.mocked(uniqueUsersSince.execute).mockResolvedValue([]);
-      mockDbExecute.mockResolvedValueOnce({ rows: [{ count: 0 }] }); // Engagement validated plays
+      vi.mocked(uniqueUsersAllMediaSince.execute).mockResolvedValue([]);
+      mockDbExecute
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ total_ms: 0 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -307,6 +339,9 @@ describe('Dashboard Stats Routes', () => {
       const body = JSON.parse(response.body);
       expect(body.todayPlays).toBe(0);
       expect(body.watchTimeHours).toBe(0);
+      expect(body.tvSessions).toBe(0);
+      expect(body.tvChannels).toBe(0);
+      expect(body.tvWatchTimeHours).toBe(0);
       expect(body.alertsLast24h).toBe(0);
       expect(body.activeUsersToday).toBe(0);
     });
@@ -323,8 +358,12 @@ describe('Dashboard Stats Routes', () => {
       vi.mocked(playsCountSince.execute).mockResolvedValue([{ count: 0 }]);
       vi.mocked(watchTimeSince.execute).mockResolvedValue([{ totalMs: 20000000 }]);
       vi.mocked(violationsCountSince.execute).mockResolvedValue([{ count: 0 }]);
-      vi.mocked(uniqueUsersSince.execute).mockResolvedValue([{ count: 0 }]);
-      mockDbExecute.mockResolvedValueOnce({ rows: [{ count: 0 }] }); // Engagement validated plays
+      vi.mocked(uniqueUsersAllMediaSince.execute).mockResolvedValue([{ count: 0 }]);
+      mockDbExecute
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ count: 0 }] })
+        .mockResolvedValueOnce({ rows: [{ total_ms: 2000000 }] });
 
       app = await buildTestApp(ownerUser, redisMock);
 
@@ -336,6 +375,7 @@ describe('Dashboard Stats Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.watchTimeHours).toBe(5.6);
+      expect(body.tvWatchTimeHours).toBe(0.6);
     });
 
     it('should return empty stats when non-owner requests server not in access list', async () => {

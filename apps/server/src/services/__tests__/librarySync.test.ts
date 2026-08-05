@@ -9,8 +9,9 @@
  * - Progress reporting
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import type * as TimescaleModule from '../../db/timescale.js';
 
 // Mock the database
 vi.mock('../../db/client.js', () => ({
@@ -18,6 +19,7 @@ vi.mock('../../db/client.js', () => ({
     select: vi.fn(),
     selectDistinct: vi.fn(),
     insert: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
     transaction: vi.fn(),
     execute: vi.fn().mockResolvedValue(undefined),
@@ -29,10 +31,45 @@ vi.mock('../mediaServer/index.js', () => ({
   createMediaServerClient: vi.fn(),
 }));
 
+vi.mock('../library/mediaResolutionService.js', () => ({
+  resolveMediaBatch: vi.fn().mockResolvedValue(new Map()),
+  reconcileMediaDuplicates: vi.fn().mockResolvedValue(0),
+}));
+
+vi.mock('../../jobs/sessionIdentityBackfill.js', () => ({
+  backfillSessionIdentityBatch: vi.fn().mockResolvedValue({ updated: 0, oldest: null }),
+  hasStampableSessionsBefore: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../../jobs/maintenanceQueue.js', () => ({
+  maybeEnqueueMaintenanceJob: vi.fn().mockResolvedValue(null),
+}));
+
+// Only the compression-horizon probe is stubbed; the aggregate refresh paths stay
+// real so the db.execute assertions below still measure refresh behavior rather
+// than this one extra catalog read at the tail of every sync.
+vi.mock('../../db/timescale.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof TimescaleModule>()),
+  getSessionsCompressionHorizon: vi.fn().mockResolvedValue(null),
+}));
+
 // Import after mocking
 import { db } from '../../db/client.js';
+import { renderSql } from '../../test/helpers.js';
+import { libraries as librariesTable } from '../../db/schema.js';
 import { createMediaServerClient } from '../mediaServer/index.js';
-import { LibrarySyncService, initLibrarySyncRedis } from '../librarySync.js';
+import { reconcileMediaDuplicates, resolveMediaBatch } from '../library/mediaResolutionService.js';
+import {
+  backfillSessionIdentityBatch,
+  hasStampableSessionsBefore,
+} from '../../jobs/sessionIdentityBackfill.js';
+import { maybeEnqueueMaintenanceJob } from '../../jobs/maintenanceQueue.js';
+import { getSessionsCompressionHorizon } from '../../db/timescale.js';
+import {
+  LibrarySyncService,
+  initLibrarySyncRedis,
+  _resetAutoBackfillThrottleForTests,
+} from '../librarySync.js';
 import type { MediaLibraryItem } from '../mediaServer/types.js';
 import type { LibrarySyncProgress } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
@@ -106,6 +143,7 @@ function createMockDbItem(overrides: Record<string, unknown> = {}) {
 function mockSelectChain(result: unknown[]) {
   const chain = {
     from: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(result),
     returning: vi.fn().mockResolvedValue(result),
@@ -124,26 +162,72 @@ function mockInsertChain(result: unknown[] = []) {
   return chain;
 }
 
-function mockDeleteChain() {
+function mockDeleteChain(returningRows: unknown[] = []) {
+  // Awaitable directly AND chains .returning() - cleanupOrphanedLibraries uses .returning() to count removed rows.
+  const whereResult = Object.assign(Promise.resolve(undefined), {
+    returning: vi.fn().mockResolvedValue(returningRows),
+  });
   const chain = {
-    where: vi.fn().mockResolvedValue(undefined),
+    where: vi.fn().mockReturnValue(whereResult),
   };
   vi.mocked(db.delete).mockReturnValue(chain as never);
   return chain;
 }
 
+function mockUpdateChain(returningRows: unknown[] = []) {
+  const chain = {
+    set: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue(returningRows),
+  };
+  vi.mocked(db.update).mockReturnValue(chain as never);
+  return chain;
+}
+
+/** The item tombstone + version cascade run inside one transaction. */
+function mockTombstoneTransaction(returningRows: unknown[] = []) {
+  const updateChain = {
+    set: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue(returningRows),
+  };
+  const tx = {
+    update: vi.fn().mockReturnValue(updateChain),
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
+  };
+  vi.mocked(db.transaction).mockImplementation(async (callback: any) => callback(tx));
+  return { tx, updateChain };
+}
+
 function mockTransaction() {
-  // Create a mock tx object with insert chain
+  // Create a mock tx object with insert chain. The item upsert chains
+  // .returning(); an empty result means "no rows changed" so the version
+  // diff is skipped (its real behavior is covered by the integration tier).
   const insertChain = {
     values: vi.fn().mockReturnThis(),
-    onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+    onConflictDoUpdate: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue([]),
   };
   const deleteChain = {
     where: vi.fn().mockResolvedValue(undefined),
   };
+  const updateChain = {
+    set: vi.fn().mockReturnThis(),
+    // Awaitable directly AND chains .returning() - the version tombstone
+    // cascade path uses .returning(), reconcile's tombstone awaits .where()
+    where: vi.fn().mockImplementation(function (this: unknown) {
+      const result = Promise.resolve(undefined) as Promise<undefined> & {
+        returning: ReturnType<typeof vi.fn>;
+      };
+      result.returning = vi.fn().mockResolvedValue([]);
+      return result;
+    }),
+  };
   const tx = {
     insert: vi.fn().mockReturnValue(insertChain),
     delete: vi.fn().mockReturnValue(deleteChain),
+    update: vi.fn().mockReturnValue(updateChain),
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
   };
   // Transaction executes the callback with tx and returns its result
 
@@ -192,10 +276,17 @@ function mockMediaServerClient(options: {
       items: options.leavesSince ?? [],
       totalCount: options.leavesCountSince ?? options.leavesSince?.length ?? 0,
     }),
+    // Undefined by default (JF/Emby never implement this) - assign a vi.fn() per test to opt in.
+    getLibrarySeasons: undefined as
+      | undefined
+      | ((
+          libraryId: string,
+          opts?: { offset?: number; limit?: number }
+        ) => Promise<{ items: MediaLibraryItem[]; totalCount: number; rawCount?: number }>),
     serverType: 'plex' as const,
     getSessions: vi.fn(),
     getUsers: vi.fn(),
-    testConnection: vi.fn(),
+    testConnection: vi.fn().mockResolvedValue(true),
     terminateSession: vi.fn(),
   };
   vi.mocked(createMediaServerClient).mockReturnValue(client);
@@ -220,6 +311,7 @@ function setupSelectForIncrementalTest(mockServer: ReturnType<typeof createMockS
     selectCallCount++;
     const chain = {
       from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
       where: vi.fn().mockImplementation(() => {
         const whereResult = Promise.resolve([]);
         (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
@@ -228,6 +320,10 @@ function setupSelectForIncrementalTest(mockServer: ReturnType<typeof createMockS
             if (selectCallCount === 1) return Promise.resolve([mockServer]);
             return Promise.resolve([]);
           });
+        // copyLastSnapshot's "find the most recent snapshot" query chains .orderBy().limit() instead.
+        (whereResult as typeof whereResult & { orderBy: typeof vi.fn }).orderBy = vi
+          .fn()
+          .mockReturnValue({ limit: vi.fn().mockResolvedValue([]) });
         return whereResult;
       }),
       limit: vi.fn().mockImplementation(() => {
@@ -244,6 +340,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: no orphaned libraries (selectDistinct returns matching current libraries)
   mockSelectDistinctChain([[], []]);
+  // The auto-handoff throttles are module-level, so a test that probes or
+  // enqueues would otherwise gate the next one for hours. Reset keeps the
+  // order-dependence out of it.
+  _resetAutoBackfillThrottleForTests();
+});
+
+// clearAllMocks only clears call history, not implementations - restore db.execute so a test's override can't leak into the next.
+afterEach(() => {
+  vi.mocked(db.execute).mockResolvedValue(undefined as never);
 });
 
 // ============================================================================
@@ -281,6 +386,7 @@ describe('LibrarySyncService', () => {
         // and also for getServer (.limit())
         const chain = {
           from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockImplementation(() => {
             // For getPreviousItemKeys, resolves via implicit await on .where()
             const whereResult = Promise.resolve([]);
@@ -327,6 +433,294 @@ describe('LibrarySyncService', () => {
       );
     });
 
+    it('continues past a failed session-identity backfill and still reconciles media duplicates', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const mockLibraries = [createMockLibrary({ id: '1', name: 'Movies' })];
+      const mockItems = [createMockLibraryItem({ ratingKey: 'item-1' })];
+
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
+          where: vi.fn().mockImplementation(() => {
+            const whereResult = Promise.resolve([]);
+            (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
+              .fn()
+              .mockImplementation(() => {
+                if (selectCallCount === 1) return Promise.resolve([mockServer]);
+                return Promise.resolve([]);
+              });
+            return whereResult;
+          }),
+          limit: vi.fn().mockImplementation(() => {
+            if (selectCallCount === 1) return Promise.resolve([mockServer]);
+            return Promise.resolve([]);
+          }),
+          returning: vi.fn().mockResolvedValue([]),
+        };
+        return chain as never;
+      });
+
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: mockLibraries,
+        items: mockItems,
+        totalCount: 1,
+      });
+
+      vi.mocked(backfillSessionIdentityBatch).mockRejectedValueOnce(
+        new Error('tuple decompression limit exceeded by operation')
+      );
+
+      const results = await service.syncServer(mockServer.id);
+
+      // Item upserts already succeeded and must not be undone by the backfill failure.
+      expect(results).toHaveLength(1);
+      expect(reconcileMediaDuplicates).toHaveBeenCalledTimes(1);
+    });
+
+    it('hands compressed history to the maintenance walk when the probe finds work below the horizon', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+        totalCount: 1,
+      });
+
+      const horizon = new Date('2026-07-01T00:00:00.000Z');
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(horizon);
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValueOnce(true);
+
+      await service.syncServer(mockServer.id);
+
+      expect(hasStampableSessionsBefore).toHaveBeenCalledWith(horizon);
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledWith(
+        'backfill_session_identity',
+        'system'
+      );
+    });
+
+    it('stops re-probing after an enqueue, so a walk dying on one bad chunk cannot loop', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const runSync = async () => {
+        setupSelectForIncrementalTest(mockServer);
+        mockSelectDistinctChain([[], []]);
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+          totalCount: 1,
+        });
+        await service.syncServer(mockServer.id);
+      };
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(true);
+      vi.mocked(maybeEnqueueMaintenanceJob).mockResolvedValue('maintenance-job-1');
+
+      await runSync();
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
+
+      // The walk it just queued can fail on a bad chunk and leave the probe
+      // answering true forever. Both syncs add items, so only the enqueue
+      // floor can be what stops the second one.
+      await runSync();
+      expect(hasStampableSessionsBefore).toHaveBeenCalledTimes(1);
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(null);
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(false);
+      vi.mocked(maybeEnqueueMaintenanceJob).mockResolvedValue(null);
+    });
+
+    it('keeps probing when the enqueue never succeeds, so the floor never arms', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const runSync = async () => {
+        setupSelectForIncrementalTest(mockServer);
+        mockSelectDistinctChain([[], []]);
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+          totalCount: 1,
+        });
+        await service.syncServer(mockServer.id);
+      };
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(true);
+      // The queue is already full, or the job fails to enqueue for some other
+      // reason - maybeEnqueueMaintenanceJob returns null on every call.
+      vi.mocked(maybeEnqueueMaintenanceJob).mockResolvedValue(null);
+
+      await runSync();
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
+
+      // The floor is only meant to arm on a successful enqueue. Since it
+      // never succeeded, the second sync must still probe and still try.
+      await runSync();
+      expect(hasStampableSessionsBefore).toHaveBeenCalledTimes(2);
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(2);
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(null);
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(false);
+    });
+
+    it('probes at most once a day on syncs that add no items', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const runSync = async () => {
+        setupSelectForIncrementalTest(mockServer);
+        mockSelectDistinctChain([[], []]);
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          items: [],
+          totalCount: 0,
+        });
+        await service.syncServer(mockServer.id);
+      };
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(false);
+
+      // A false probe decompress-scans every compressed chunk below the
+      // horizon, and event syncs fire twice a minute. Nothing new landed in
+      // the library on the second sync, so nothing can have flipped the
+      // answer - the daily allowance is what keeps that off the hot path.
+      await runSync();
+      await runSync();
+
+      expect(hasStampableSessionsBefore).toHaveBeenCalledTimes(1);
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(null);
+    });
+
+    it('skips the probe entirely and runs an unwindowed batch when nothing is compressed', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+        totalCount: 1,
+      });
+
+      // Default mock already resolves null, but pin it here - this test is
+      // about what a null horizon does, not about the default.
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(null);
+
+      await service.syncServer(mockServer.id);
+
+      // No compressed chunks means no history the sync tail can't reach, so
+      // the expensive probe must not run at all.
+      expect(hasStampableSessionsBefore).not.toHaveBeenCalled();
+      expect(maybeEnqueueMaintenanceJob).not.toHaveBeenCalled();
+      expect(backfillSessionIdentityBatch).toHaveBeenCalledWith(10000, undefined);
+    });
+
+    it('leaves the maintenance queue alone when nothing is left below the horizon', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+        totalCount: 1,
+      });
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValueOnce(false);
+
+      await service.syncServer(mockServer.id);
+
+      expect(maybeEnqueueMaintenanceJob).not.toHaveBeenCalled();
+    });
+
+    it('does not truncate a full scan when a page is all extras', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const mockLibraries = [createMockLibrary({ id: '1', name: 'Movies' })];
+      const realItem = createMockLibraryItem({ ratingKey: 'item-real' });
+
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
+          where: vi.fn().mockImplementation(() => {
+            const whereResult = Promise.resolve([]);
+            (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
+              .fn()
+              .mockImplementation(() => {
+                if (selectCallCount === 1) return Promise.resolve([mockServer]);
+                return Promise.resolve([]);
+              });
+            return whereResult;
+          }),
+          limit: vi.fn().mockImplementation(() => {
+            if (selectCallCount === 1) return Promise.resolve([mockServer]);
+            return Promise.resolve([]);
+          }),
+          returning: vi.fn().mockResolvedValue([]),
+        };
+        return chain as never;
+      });
+
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      const client = mockMediaServerClient({ libraries: mockLibraries, totalCount: 300 });
+      // Page at offset 0 is entirely extras: the server returns a full page (rawCount
+      // = page size 200) but it parses down to zero items, which must not end the scan early.
+      client.getLibraryItems = vi.fn().mockImplementation((_libraryId: string, opts?: unknown) => {
+        const { offset } = (opts ?? {}) as { offset?: number; limit?: number };
+        if (offset === 200) {
+          return Promise.resolve({ items: [realItem], totalCount: 300, rawCount: 100 });
+        }
+        return Promise.resolve({ items: [], totalCount: 300, rawCount: 200 });
+      });
+
+      const results = await service.syncServer(mockServer.id);
+
+      expect(client.getLibraryItems).toHaveBeenCalledTimes(3); // count probe + 2 pages
+      expect(results[0]!.itemsProcessed).toBe(1);
+      expect(results[0]!.itemsAdded).toBe(1);
+    });
+
     it('should skip photo libraries during sync', async () => {
       const service = new LibrarySyncService();
       const mockServer = createMockServer();
@@ -342,6 +736,7 @@ describe('LibrarySyncService', () => {
         selectCallCount++;
         const chain = {
           from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockImplementation(() => {
             const whereResult = Promise.resolve([]);
             (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
@@ -390,6 +785,7 @@ describe('LibrarySyncService', () => {
         selectCallCount++;
         const chain = {
           from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockImplementation(() => {
             const whereResult = Promise.resolve([]);
             (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
@@ -474,6 +870,7 @@ describe('LibrarySyncService', () => {
         tmdbId: 12345,
         tvdbId: 67890,
         filePath: '/movies/test.mkv',
+        thumbPath: '/library/metadata/test-key/thumb',
       });
 
       const { insertChain } = mockTransaction();
@@ -496,8 +893,26 @@ describe('LibrarySyncService', () => {
           tmdbId: 12345,
           tvdbId: 67890,
           filePath: '/movies/test.mkv',
+          thumbPath: '/library/metadata/test-key/thumb',
         }),
       ]);
+    });
+
+    it('carries thumbPath into the conflict update but never touches dominantColor', async () => {
+      const service = new LibrarySyncService();
+      const serverId = randomUUID();
+      const libraryId = '1';
+      const item = createMockLibraryItem({ ratingKey: 'poster-key', thumbPath: '/thumb/1' });
+
+      const { insertChain } = mockTransaction();
+
+      await service.upsertItems(serverId, libraryId, [item]);
+
+      const conflictArgs = insertChain.onConflictDoUpdate.mock.calls[0]![0] as {
+        set: Record<string, unknown>;
+      };
+      expect(conflictArgs.set).toHaveProperty('thumbPath');
+      expect(conflictArgs.set).not.toHaveProperty('dominantColor');
     });
 
     it('should collapse duplicate ratingKeys, keeping the last occurrence', async () => {
@@ -570,6 +985,8 @@ describe('LibrarySyncService', () => {
       const snapshotId = randomUUID();
       const items = [createMockLibraryItem(), createMockLibraryItem(), createMockLibraryItem()];
 
+      // Self-contained: don't rely on a leftover db.select mock from a previous test.
+      mockSelectChain([]);
       const insertChain = mockInsertChain([{ id: snapshotId }]);
 
       const result = await service.createSnapshot(serverId, libraryId, items);
@@ -597,6 +1014,7 @@ describe('LibrarySyncService', () => {
         createMockLibraryItem({ videoResolution: '480p', videoCodec: 'h264' }),
       ];
 
+      mockSelectChain([]);
       const insertChain = mockInsertChain([{ id: randomUUID() }]);
 
       await service.createSnapshot(serverId, libraryId, items);
@@ -609,6 +1027,57 @@ describe('LibrarySyncService', () => {
           countSd: 1,
           hevcCount: 2,
           h264Count: 3,
+          countHighQuality: 3,
+        })
+      );
+    });
+
+    it('counts a multi-version title in every bucket it has a version in', async () => {
+      const service = new LibrarySyncService();
+      const serverId = randomUUID();
+      const libraryId = '1';
+      const items = [
+        createMockLibraryItem({
+          videoResolution: '4k',
+          videoCodec: 'HEVC',
+          fileSize: 17_430_000_000,
+          versions: [
+            {
+              serverVersionKey: '3207',
+              videoResolution: '4k',
+              videoCodec: 'HEVC',
+              partCount: 1,
+              fileSize: 13_330_000_000,
+            },
+            {
+              serverVersionKey: '98869',
+              videoResolution: '1080p',
+              videoCodec: 'H264',
+              partCount: 1,
+              fileSize: 4_100_000_000,
+            },
+          ],
+        }),
+        createMockLibraryItem({ videoResolution: '720p', videoCodec: 'h264' }),
+      ];
+
+      mockSelectChain([]);
+      const insertChain = mockInsertChain([{ id: randomUUID() }]);
+
+      await service.createSnapshot(serverId, libraryId, items);
+
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // The two-version title lands in BOTH 4k and 1080p; buckets overlap
+          count4k: 1,
+          count1080p: 1,
+          count720p: 1,
+          countSd: 0,
+          hevcCount: 1,
+          h264Count: 2,
+          countHighQuality: 1,
+          versionCount: 3,
+          itemCount: 2,
         })
       );
     });
@@ -623,6 +1092,7 @@ describe('LibrarySyncService', () => {
         createMockLibraryItem({ fileSize: undefined }),
       ];
 
+      mockSelectChain([]);
       const insertChain = mockInsertChain([{ id: randomUUID() }]);
 
       await service.createSnapshot(serverId, libraryId, items);
@@ -646,6 +1116,7 @@ describe('LibrarySyncService', () => {
         createMockLibraryItem({ mediaType: 'track' }),
       ];
 
+      mockSelectChain([]);
       const insertChain = mockInsertChain([{ id: randomUUID() }]);
 
       await service.createSnapshot(serverId, libraryId, items);
@@ -661,19 +1132,39 @@ describe('LibrarySyncService', () => {
     });
   });
 
+  describe('unreachable server preflight', () => {
+    it('fails fast without touching libraries or sync state when the server is unreachable', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      mockSelectChain([mockServer]);
+      const client = mockMediaServerClient({ libraries: [createMockLibrary()], items: [] });
+      client.testConnection = vi.fn().mockResolvedValue(false);
+
+      // Server-level failures throw to the queue's failed handler, same as
+      // a getLibraries error - the point is failing in one 10s preflight
+      // without touching a single library fetch
+      await expect(service.syncServer(mockServer.id)).rejects.toThrow('unreachable');
+      expect(client.getLibraries).not.toHaveBeenCalled();
+      expect(client.getLibraryItems).not.toHaveBeenCalled();
+    });
+  });
+
   describe('markItemsRemoved', () => {
-    it('should delete items from database', async () => {
+    it('should tombstone items in the database', async () => {
       const service = new LibrarySyncService();
       const serverId = randomUUID();
       const libraryId = '1';
       const ratingKeys = ['key-1', 'key-2', 'key-3'];
 
-      const deleteChain = mockDeleteChain();
+      const { tx, updateChain } = mockTombstoneTransaction();
 
       await service.markItemsRemoved(serverId, libraryId, ratingKeys);
 
-      expect(db.delete).toHaveBeenCalled();
-      expect(deleteChain.where).toHaveBeenCalled();
+      expect(tx.update).toHaveBeenCalled();
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({ removedAt: expect.any(Date) })
+      );
+      expect(updateChain.where).toHaveBeenCalled();
     });
 
     it('should handle empty ratingKeys array', async () => {
@@ -683,22 +1174,57 @@ describe('LibrarySyncService', () => {
 
       await service.markItemsRemoved(serverId, libraryId, []);
 
-      expect(db.delete).not.toHaveBeenCalled();
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
-    it('should batch delete for large arrays', async () => {
+    it('should batch updates for large arrays', async () => {
       const service = new LibrarySyncService();
       const serverId = randomUUID();
       const libraryId = '1';
       // Create 250 keys (should result in 3 batches of 100)
       const ratingKeys = Array.from({ length: 250 }, (_, i) => `key-${i}`);
 
-      mockDeleteChain();
+      mockTombstoneTransaction();
 
       await service.markItemsRemoved(serverId, libraryId, ratingKeys);
 
       // Should be called 3 times (batches of 100, 100, 50)
-      expect(db.delete).toHaveBeenCalledTimes(3);
+      expect(db.transaction).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('tombstoneItemsByRatingKey', () => {
+    it('tombstones items by server + rating key without a libraryId', async () => {
+      const service = new LibrarySyncService();
+      const serverId = randomUUID();
+
+      const { tx, updateChain } = mockTombstoneTransaction();
+
+      await service.tombstoneItemsByRatingKey(serverId, ['rk-1', 'rk-2']);
+
+      expect(tx.update).toHaveBeenCalled();
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({ removedAt: expect.any(Date) })
+      );
+      expect(updateChain.where).toHaveBeenCalled();
+    });
+
+    it('handles an empty ratingKeys array as a no-op', async () => {
+      const service = new LibrarySyncService();
+      await service.tombstoneItemsByRatingKey(randomUUID(), []);
+
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('batches updates for large arrays', async () => {
+      const service = new LibrarySyncService();
+      const ratingKeys = Array.from({ length: 250 }, (_, i) => `key-${i}`);
+
+      mockTombstoneTransaction();
+
+      await service.tombstoneItemsByRatingKey(randomUUID(), ratingKeys);
+
+      expect(db.transaction).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -721,6 +1247,7 @@ describe('LibrarySyncService', () => {
         selectCallCount++;
         const chain = {
           from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockImplementation(() => {
             // For getPreviousItemKeys - returns existing items via implicit await
             const whereResult = Promise.resolve(existingItems);
@@ -777,6 +1304,7 @@ describe('LibrarySyncService', () => {
         selectCallCount++;
         const chain = {
           from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockImplementation(() => {
             const whereResult = Promise.resolve(existingItems);
             (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
@@ -798,6 +1326,7 @@ describe('LibrarySyncService', () => {
 
       mockInsertChain([{ id: randomUUID() }]);
       mockDeleteChain();
+      mockUpdateChain();
       mockTransaction();
       mockMediaServerClient({
         libraries: mockLibraries,
@@ -808,59 +1337,7 @@ describe('LibrarySyncService', () => {
       const results = await service.syncServer(mockServer.id);
 
       expect(results[0]!.itemsRemoved).toBe(1); // item-2 removed
-      expect(db.delete).toHaveBeenCalled();
-    });
-
-    it('should remove previously imported empty rating keys when the upstream still returns blanks', async () => {
-      const service = new LibrarySyncService();
-      const mockServer = createMockServer();
-      const mockLibraries = [createMockLibrary()];
-      const existingItems = [
-        createMockDbItem({ ratingKey: '' }),
-        createMockDbItem({ ratingKey: 'item-1' }),
-      ];
-      const serverItems = [
-        createMockLibraryItem({ ratingKey: '', title: 'Still Broken' }),
-        createMockLibraryItem({ ratingKey: 'item-1' }),
-      ];
-
-      let selectCallCount = 0;
-      vi.mocked(db.select).mockImplementation(() => {
-        selectCallCount++;
-        const chain = {
-          from: vi.fn().mockReturnThis(),
-          where: vi.fn().mockImplementation(() => {
-            const whereResult = Promise.resolve(existingItems);
-            (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
-              .fn()
-              .mockImplementation(() => {
-                if (selectCallCount === 1) return Promise.resolve([mockServer]);
-                return Promise.resolve(existingItems);
-              });
-            return whereResult;
-          }),
-          limit: vi.fn().mockImplementation(() => {
-            if (selectCallCount === 1) return Promise.resolve([mockServer]);
-            return Promise.resolve(existingItems);
-          }),
-          returning: vi.fn().mockResolvedValue([]),
-        };
-        return chain as never;
-      });
-
-      mockInsertChain([{ id: randomUUID() }]);
-      mockDeleteChain();
-      mockTransaction();
-      mockMediaServerClient({
-        libraries: mockLibraries,
-        items: serverItems,
-        totalCount: 2,
-      });
-
-      const results = await service.syncServer(mockServer.id);
-
-      expect(results[0]!.itemsRemoved).toBe(1);
-      expect(db.delete).toHaveBeenCalled();
+      expect(db.transaction).toHaveBeenCalled();
     });
   });
 
@@ -895,7 +1372,7 @@ describe('LibrarySyncService', () => {
       await service.syncServer(serverId);
 
       // Full scan uses getLibraryItems (not getLibraryItemsSince) for the batch loop
-      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 100 });
+      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
       expect(client.getLibraryItemsSince).not.toHaveBeenCalled();
     });
 
@@ -925,8 +1402,215 @@ describe('LibrarySyncService', () => {
       const service = new LibrarySyncService();
       await service.syncServer(serverId);
 
-      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 100 });
+      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
       expect(client.getLibraryItemsSince).not.toHaveBeenCalled();
+    });
+
+    it('escalates to full scan when local active count drifts past the server total', async () => {
+      const mockServer = createMockServer({ id: serverId });
+      const mockItems = [createMockLibraryItem({ ratingKey: 'item-1' })];
+      const mockRedis = createMockRedis({
+        get: vi
+          .fn()
+          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString()) // lastSyncedAt
+          .mockResolvedValueOnce('10'), // lastItemCount
+      });
+      initLibrarySyncRedis(mockRedis);
+
+      setupSelectForIncrementalTest(mockServer);
+      // Server still reports 10, but the DB has 20 active rows - a same-cycle
+      // remove+add that incremental sync alone would never surface.
+      vi.mocked(db.execute).mockResolvedValueOnce({ rows: [{ count: 20 }] } as never);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+
+      const client = mockMediaServerClient({
+        libraries: [createMockLibrary()],
+        items: mockItems,
+        totalCount: 10,
+      });
+
+      const service = new LibrarySyncService();
+      await service.syncServer(serverId);
+
+      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
+      expect(client.getLibraryItemsSince).not.toHaveBeenCalled();
+    });
+
+    it('escalates to full scan when an incremental sync finds no changes but the local active count is still below the server total (wrong tombstone)', async () => {
+      const mockServer = createMockServer({ id: serverId });
+      const mockItems = [createMockLibraryItem({ ratingKey: 'item-1' })];
+      const mockRedis = createMockRedis({
+        get: vi
+          .fn()
+          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString()) // lastSyncedAt
+          .mockResolvedValueOnce('20'), // lastItemCount
+      });
+      initLibrarySyncRedis(mockRedis);
+
+      setupSelectForIncrementalTest(mockServer);
+      // A wrong tombstone: only 10 active rows remain locally, before and after the sync.
+      vi.mocked(db.execute).mockResolvedValue({ rows: [{ count: 10 }] } as never);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+
+      const client = mockMediaServerClient({
+        libraries: [createMockLibrary()],
+        items: mockItems,
+        totalCount: 20,
+      });
+
+      const service = new LibrarySyncService();
+      await service.syncServer(serverId);
+
+      // Incremental is attempted first, since the undercount alone doesn't block it.
+      expect(client.getLibraryItemsSince).toHaveBeenCalledWith('1', expect.any(Date));
+      // The still-short post-sync count escalates to a full scan in the same run.
+      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
+    });
+
+    it('never escalates a music library, even with a local active count far below the server total', async () => {
+      const mockServer = createMockServer({ id: serverId });
+      const mockRedis = createMockRedis({
+        get: vi
+          .fn()
+          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString()) // lastSyncedAt
+          .mockResolvedValueOnce('20'), // lastItemCount
+      });
+      initLibrarySyncRedis(mockRedis);
+
+      setupSelectForIncrementalTest(mockServer);
+      // Same gap as the wrong-tombstone case above, but for music this must never escalate.
+      vi.mocked(db.execute).mockResolvedValue({ rows: [{ count: 5 }] } as never);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+
+      const client = mockMediaServerClient({
+        libraries: [createMockLibrary({ type: 'artist' })],
+        totalCount: 20,
+      });
+
+      const service = new LibrarySyncService();
+      await service.syncServer(serverId);
+
+      // Stays on the incremental "no changes" fast path - never escalates.
+      expect(client.getLibraryItemsSince).toHaveBeenCalledWith('1', expect.any(Date));
+      expect(client.getLibraryItems).not.toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
+    });
+
+    it('counts only top-level items for the mismatch check, never episodes or tracks', async () => {
+      // A TV library's server total counts shows only; local episodes share
+      // the library_id and must not inflate the local side of the check or
+      // every sync of a non-flat library would escalate to a full scan.
+      const service = new LibrarySyncService();
+      const countQueries: string[] = [];
+      vi.mocked(db.execute).mockImplementationOnce(((query: unknown) => {
+        const text = renderSql(query as never).sql.replace(/\s+/g, ' ');
+        if (text.includes('count(*)') && text.includes('library_items')) {
+          countQueries.push(text);
+          return Promise.resolve({ rows: [{ count: 5 }] });
+        }
+        return Promise.resolve({ rows: [] });
+      }) as never);
+
+      await (
+        service as unknown as {
+          getActiveItemCount: (serverId: string, libraryId: string) => Promise<number>;
+        }
+      ).getActiveItemCount('server-1', 'lib-1');
+
+      expect(countQueries).toHaveLength(1);
+      expect(countQueries[0]).toContain("media_type NOT IN ('episode', 'track', 'season')");
+      expect(countQueries[0]).toContain('removed_at IS NULL');
+    });
+
+    it('stays on the incremental path when local active count matches the server total', async () => {
+      const mockServer = createMockServer({ id: serverId });
+      const newItem = createMockLibraryItem({ ratingKey: 'new-item' });
+      const mockRedis = createMockRedis({
+        get: vi
+          .fn()
+          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString())
+          .mockResolvedValueOnce('5'),
+      });
+      initLibrarySyncRedis(mockRedis);
+
+      setupSelectForIncrementalTest(mockServer);
+      // Growth: pre-sync count (5) trails the server total (6), the incremental sync catches it up.
+      vi.mocked(db.execute)
+        .mockResolvedValueOnce({ rows: [{ count: 5 }] } as never)
+        .mockResolvedValueOnce({ rows: [{ count: 6 }] } as never)
+        // Fallback: rebuildSnapshotFromDb's aggregate query
+        .mockResolvedValue({
+          rows: [
+            {
+              item_count: 6,
+              total_size: '5000000000',
+              movie_count: 6,
+              episode_count: 0,
+              season_count: 0,
+              show_count: 0,
+              music_count: 0,
+              count_4k: 0,
+              count_1080p: 6,
+              count_720p: 0,
+              count_sd: 0,
+              count_high_quality: 6,
+              hevc_count: 0,
+              h264_count: 6,
+              av1_count: 0,
+              version_count: 6,
+            },
+          ],
+        } as never);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+
+      const client = mockMediaServerClient({
+        libraries: [createMockLibrary()],
+        items: [],
+        totalCount: 6,
+        itemsSince: [newItem],
+        totalCountSince: 1,
+      });
+
+      const service = new LibrarySyncService();
+      await service.syncServer(serverId);
+
+      expect(client.getLibraryItemsSince).toHaveBeenCalledWith('1', expect.any(Date));
+      expect(client.getLibraryItems).not.toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
+    });
+
+    it('does not run the count-mismatch check on a manual trigger', async () => {
+      const mockServer = createMockServer({ id: serverId });
+      const mockItems = [createMockLibraryItem({ ratingKey: 'item-1' })];
+      const mockRedis = createMockRedis({
+        get: vi
+          .fn()
+          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString())
+          .mockResolvedValueOnce('1'),
+      });
+      initLibrarySyncRedis(mockRedis);
+
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+
+      mockMediaServerClient({
+        libraries: [createMockLibrary()],
+        items: mockItems,
+        totalCount: 1,
+      });
+
+      const service = new LibrarySyncService();
+      await service.syncServer(serverId, undefined, 'manual');
+
+      expect(db.execute).not.toHaveBeenCalled();
     });
 
     it('does full scan when triggeredBy is manual', async () => {
@@ -955,7 +1639,7 @@ describe('LibrarySyncService', () => {
       const service = new LibrarySyncService();
       await service.syncServer(serverId, undefined, 'manual');
 
-      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 100 });
+      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
       expect(client.getLibraryItemsSince).not.toHaveBeenCalled();
     });
 
@@ -978,6 +1662,7 @@ describe('LibrarySyncService', () => {
         selectCallCount++;
         const chain = {
           from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockImplementation(() => {
             if (selectCallCount === 2) {
               const itemsResult = Promise.resolve([
@@ -1019,6 +1704,33 @@ describe('LibrarySyncService', () => {
       vi.mocked(db.insert).mockReturnValue(insertChain as never);
       mockDeleteChain();
       mockTransaction();
+      // Growth: pre-sync count (5) trails the server total (6), the incremental sync catches it up.
+      vi.mocked(db.execute)
+        .mockResolvedValueOnce({ rows: [{ count: 5 }] } as never)
+        .mockResolvedValueOnce({ rows: [{ count: 6 }] } as never)
+        // Fallback: rebuildSnapshotFromDb's aggregate query
+        .mockResolvedValue({
+          rows: [
+            {
+              item_count: 6,
+              total_size: '5000000000',
+              movie_count: 6,
+              episode_count: 0,
+              season_count: 0,
+              show_count: 0,
+              music_count: 0,
+              count_4k: 0,
+              count_1080p: 6,
+              count_720p: 0,
+              count_sd: 0,
+              count_high_quality: 6,
+              hevc_count: 0,
+              h264_count: 6,
+              av1_count: 0,
+              version_count: 6,
+            },
+          ],
+        } as never);
 
       const client = mockMediaServerClient({
         libraries: [createMockLibrary()],
@@ -1050,6 +1762,8 @@ describe('LibrarySyncService', () => {
       initLibrarySyncRedis(mockRedis);
 
       setupSelectForIncrementalTest(mockServer);
+      // Local active count matches the server total, both before and after.
+      vi.mocked(db.execute).mockResolvedValue({ rows: [{ count: 5 }] } as never);
       mockInsertChain([]);
       mockDeleteChain();
       mockTransaction();
@@ -1088,6 +1802,8 @@ describe('LibrarySyncService', () => {
       initLibrarySyncRedis(mockRedis);
 
       setupSelectForIncrementalTest(mockServer);
+      // New episodes don't change the top-level active count.
+      vi.mocked(db.execute).mockResolvedValue({ rows: [{ count: 5 }] } as never);
       mockInsertChain([{ id: randomUUID() }]);
       mockDeleteChain();
       mockTransaction();
@@ -1137,7 +1853,7 @@ describe('LibrarySyncService', () => {
       const results = await service.syncServer(serverId);
 
       // Should fall back to full scan
-      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 100 });
+      expect(client.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
       expect(results[0]!.itemsProcessed).toBe(1);
     });
 
@@ -1179,6 +1895,128 @@ describe('LibrarySyncService', () => {
     });
   });
 
+  describe('season sync (Plex full scan)', () => {
+    it('fetches seasons for a TV library via getLibrarySeasons and includes them in media resolution', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const mockLibraries = [createMockLibrary({ id: '2', name: 'TV Shows', type: 'show' })];
+      const showItem = createMockLibraryItem({
+        ratingKey: 'show-1',
+        title: 'Severance',
+        mediaType: 'show',
+        fileSize: undefined,
+      });
+      const seasonItem = createMockLibraryItem({
+        ratingKey: 'season-1',
+        title: 'Season 1',
+        mediaType: 'season',
+        fileSize: undefined,
+        parentRatingKey: 'show-1',
+        parentIndex: 1,
+      });
+
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
+          where: vi.fn().mockImplementation(() => {
+            const whereResult = Promise.resolve([]);
+            (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
+              .fn()
+              .mockImplementation(() => {
+                if (selectCallCount === 1) return Promise.resolve([mockServer]);
+                return Promise.resolve([]);
+              });
+            return whereResult;
+          }),
+          limit: vi.fn().mockImplementation(() => {
+            if (selectCallCount === 1) return Promise.resolve([mockServer]);
+            return Promise.resolve([]);
+          }),
+          returning: vi.fn().mockResolvedValue([]),
+        };
+        return chain as never;
+      });
+
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      const client = mockMediaServerClient({
+        libraries: mockLibraries,
+        items: [showItem],
+        totalCount: 1,
+      });
+      client.getLibrarySeasons = vi.fn().mockResolvedValue({
+        items: [seasonItem],
+        totalCount: 1,
+      });
+
+      await service.syncServer(mockServer.id);
+
+      expect(client.getLibrarySeasons).toHaveBeenCalled();
+
+      const resolveCalls = vi.mocked(resolveMediaBatch).mock.calls;
+      const seasonBatchCall = resolveCalls.find((call) =>
+        call[0].some((i) => i.mediaType === 'season')
+      );
+      expect(seasonBatchCall).toBeDefined();
+      const seasonInput = seasonBatchCall![0].find((i) => i.mediaType === 'season');
+      expect(seasonInput).toMatchObject({
+        ratingKey: 'season-1',
+        parentRatingKey: 'show-1',
+        seasonNumber: 1,
+      });
+    });
+
+    it('does not call getLibrarySeasons for a library with no shows', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const mockLibraries = [createMockLibrary({ id: '1', name: 'Movies' })];
+      const movieItem = createMockLibraryItem({ ratingKey: 'movie-1', mediaType: 'movie' });
+
+      let selectCallCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCallCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
+          where: vi.fn().mockImplementation(() => {
+            const whereResult = Promise.resolve([]);
+            (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
+              .fn()
+              .mockImplementation(() => {
+                if (selectCallCount === 1) return Promise.resolve([mockServer]);
+                return Promise.resolve([]);
+              });
+            return whereResult;
+          }),
+          limit: vi.fn().mockImplementation(() => {
+            if (selectCallCount === 1) return Promise.resolve([mockServer]);
+            return Promise.resolve([]);
+          }),
+          returning: vi.fn().mockResolvedValue([]),
+        };
+        return chain as never;
+      });
+
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      const client = mockMediaServerClient({
+        libraries: mockLibraries,
+        items: [movieItem],
+        totalCount: 1,
+      });
+      client.getLibrarySeasons = vi.fn().mockResolvedValue({ items: [], totalCount: 0 });
+
+      await service.syncServer(mockServer.id);
+
+      expect(client.getLibrarySeasons).not.toHaveBeenCalled();
+    });
+  });
+
   describe('orphaned library cleanup', () => {
     function setupSyncWithOrphans(options: {
       server: ReturnType<typeof createMockServer>;
@@ -1186,12 +2024,14 @@ describe('LibrarySyncService', () => {
       items: MediaLibraryItem[];
       itemLibraryIds: { libraryId: string }[];
       snapshotLibraryIds: { libraryId: string }[];
+      orphanReturningRows?: unknown[];
     }) {
       let selectCallCount = 0;
       vi.mocked(db.select).mockImplementation(() => {
         selectCallCount++;
         const chain = {
           from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
           where: vi.fn().mockImplementation(() => {
             const whereResult = Promise.resolve([]);
             (whereResult as typeof whereResult & { limit: typeof vi.fn }).limit = vi
@@ -1213,13 +2053,22 @@ describe('LibrarySyncService', () => {
 
       mockSelectDistinctChain([options.itemLibraryIds, options.snapshotLibraryIds]);
       mockInsertChain([{ id: randomUUID() }]);
-      mockDeleteChain();
+      mockDeleteChain(options.orphanReturningRows ?? []);
       mockTransaction();
       mockMediaServerClient({
         libraries: options.libraries,
         items: options.items,
         totalCount: options.items.length,
       });
+    }
+
+    /** Filters out the per-library shortfall COUNT query so these tests only count aggregate-refresh calls. */
+    function countAggregateRefreshCalls(): number {
+      return vi
+        .mocked(db.execute)
+        .mock.calls.filter(([query]) =>
+          renderSql(query as never).sql.includes('refresh_continuous_aggregate')
+        ).length;
     }
 
     it('should not clean up when no orphaned libraries exist', async () => {
@@ -1242,8 +2091,7 @@ describe('LibrarySyncService', () => {
       await service.syncServer(mockServer.id);
 
       // Delete should only be called for normal syncLibrary operations, not for orphan cleanup
-      // Verify execute was NOT called (no aggregate refresh)
-      expect(db.execute).not.toHaveBeenCalled();
+      expect(countAggregateRefreshCalls()).toBe(0);
     });
 
     it('should clean up orphaned library items and snapshots', async () => {
@@ -1264,7 +2112,29 @@ describe('LibrarySyncService', () => {
       const deleteCalls = vi.mocked(db.delete).mock.calls;
       expect(deleteCalls.length).toBeGreaterThanOrEqual(2);
 
-      expect(db.execute).toHaveBeenCalledTimes(2);
+      expect(countAggregateRefreshCalls()).toBe(2);
+    });
+
+    it('surfaces orphan-cleanup removals as a synthetic result so removal-only syncs still invalidate caches', async () => {
+      const mockServer = createMockServer();
+      const libraries = [createMockLibrary({ id: 'lib-2', name: 'New Movies' })];
+
+      setupSyncWithOrphans({
+        server: mockServer,
+        libraries,
+        items: [createMockLibraryItem()],
+        itemLibraryIds: [{ libraryId: 'lib-1' }, { libraryId: 'lib-2' }],
+        snapshotLibraryIds: [{ libraryId: 'lib-1' }, { libraryId: 'lib-2' }],
+        orphanReturningRows: [{ id: 'orphan-item-1' }, { id: 'orphan-item-2' }],
+      });
+
+      const service = new LibrarySyncService();
+      const results = await service.syncServer(mockServer.id);
+
+      const cleanupResult = results.find((r) => r.libraryId === 'orphan-cleanup');
+      expect(cleanupResult).toBeDefined();
+      expect(cleanupResult!.itemsRemoved).toBe(2);
+      expect(cleanupResult!.itemsProcessed).toBe(0);
     });
 
     it('should clean up multiple orphaned libraries', async () => {
@@ -1292,7 +2162,7 @@ describe('LibrarySyncService', () => {
       expect(deleteCalls.length).toBeGreaterThanOrEqual(4);
 
       // Aggregate refresh should be called
-      expect(db.execute).toHaveBeenCalledTimes(2);
+      expect(countAggregateRefreshCalls()).toBe(2);
     });
 
     it('should skip aggregate refresh when only items are orphaned (no snapshots)', async () => {
@@ -1314,8 +2184,8 @@ describe('LibrarySyncService', () => {
       // Delete should be called for orphan cleanup
       expect(db.delete).toHaveBeenCalled();
 
-      // Execute should NOT be called (no orphaned snapshots = no aggregate refresh)
-      expect(db.execute).not.toHaveBeenCalled();
+      // No orphaned snapshots = no aggregate refresh
+      expect(countAggregateRefreshCalls()).toBe(0);
     });
 
     it('should not fail sync when aggregate refresh throws', async () => {
@@ -1364,7 +2234,6 @@ describe('LibrarySyncService', () => {
       const service = new LibrarySyncService();
       await service.syncServer(mockServer.id);
 
-
       expect((db as any).selectDistinct).not.toHaveBeenCalled();
       // No aggregate refresh either
       expect(db.execute).not.toHaveBeenCalled();
@@ -1392,13 +2261,18 @@ describe('LibrarySyncService', () => {
       let deleteCallCount = 0;
       vi.mocked(db.delete).mockImplementation(() => {
         deleteCallCount++;
+        const callIndex = deleteCallCount;
         return {
           where: vi.fn().mockImplementation(() => {
             // Fail on the very first orphan delete (lib-1 items)
-            if (deleteCallCount === 1) {
-              return Promise.reject(new Error('cannot delete from compressed chunk'));
-            }
-            return Promise.resolve(undefined);
+            const settled =
+              callIndex === 1
+                ? Promise.reject(new Error('cannot delete from compressed chunk'))
+                : Promise.resolve(undefined);
+            // Awaitable directly AND chains .returning(), matching mockDeleteChain above.
+            return Object.assign(settled, {
+              returning: vi.fn().mockImplementation(() => settled.then(() => [])),
+            });
           }),
         } as never;
       });
@@ -1420,6 +2294,76 @@ describe('LibrarySyncService', () => {
       expect(deleteCallCount).toBeGreaterThan(1);
 
       warnSpy.mockRestore();
+    });
+  });
+
+  describe('library name sync', () => {
+    it('upserts name and media type for every reported library', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const mockLibraries = [
+        createMockLibrary({ id: 'lib-1', name: 'Movies', type: 'movie' }),
+        createMockLibrary({ id: 'lib-2', name: '4K Movies', type: 'movie' }),
+      ];
+
+      setupSelectForIncrementalTest(mockServer);
+      mockSelectDistinctChain([[], []]);
+      const insertChain = mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({ libraries: mockLibraries, items: [], totalCount: 0 });
+
+      await service.syncServer(mockServer.id);
+
+      const insertCallIndex = vi
+        .mocked(db.insert)
+        .mock.calls.findIndex(([table]) => table === librariesTable);
+      expect(insertCallIndex).toBeGreaterThanOrEqual(0);
+      expect(insertChain.values).toHaveBeenNthCalledWith(insertCallIndex + 1, [
+        { serverId: mockServer.id, libraryId: 'lib-1', name: 'Movies', mediaType: 'movie' },
+        { serverId: mockServer.id, libraryId: 'lib-2', name: '4K Movies', mediaType: 'movie' },
+      ]);
+    });
+
+    it('deletes libraries the server no longer reports', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const mockLibraries = [createMockLibrary({ id: 'lib-1', name: 'Movies', type: 'movie' })];
+
+      setupSelectForIncrementalTest(mockServer);
+      mockSelectDistinctChain([[], []]);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({ libraries: mockLibraries, items: [], totalCount: 0 });
+
+      await service.syncServer(mockServer.id);
+
+      const deleteCallIndex = vi
+        .mocked(db.delete)
+        .mock.calls.findIndex(([table]) => table === librariesTable);
+      expect(deleteCallIndex).toBeGreaterThanOrEqual(0);
+    });
+
+    it('skips upsert and delete when the server reports zero libraries', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+
+      setupSelectForIncrementalTest(mockServer);
+      mockSelectDistinctChain([[], []]);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({ libraries: [], items: [], totalCount: 0 });
+
+      await service.syncServer(mockServer.id);
+
+      expect(vi.mocked(db.insert).mock.calls.some(([table]) => table === librariesTable)).toBe(
+        false
+      );
+      expect(vi.mocked(db.delete).mock.calls.some(([table]) => table === librariesTable)).toBe(
+        false
+      );
     });
   });
 });

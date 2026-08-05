@@ -8,7 +8,6 @@ import { SocketProvider } from '@/hooks/useSocket';
 import { MaintenanceProvider } from '@/hooks/useMaintenanceMode';
 import { ThemeProvider } from '@/components/theme-provider';
 import { BASE_URL } from '@/lib/basePath';
-import '@/lib/highcharts';
 import { sweepLegacyTokens } from '@/lib/legacyTokenSweep';
 import { App } from './App';
 import { i18nReady } from './i18n';

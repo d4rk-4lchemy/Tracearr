@@ -5,6 +5,7 @@
  * These functions have no side effects and are easily testable.
  */
 
+import type { ActiveSession } from '@tracearr/shared';
 import { normalizeClient } from '../../utils/platformNormalizer.js';
 
 export const parseJellyfinClient = normalizeClient;
@@ -48,32 +49,24 @@ export function isPrivateIP(ip: string): boolean {
 }
 
 // ============================================================================
-// Formatting Utilities
+// Rule Evaluation Session Filtering
 // ============================================================================
 
 /**
- * Format quality string from bitrate and transcoding info
- *
- * @param transcodeBitrate - Transcoded bitrate in bps (0 if not transcoding)
- * @param sourceBitrate - Original source bitrate in bps
- * @param isTranscoding - Whether the stream is being transcoded
- * @returns Formatted quality string (e.g., "12 Mbps", "Transcoding", "Direct")
- *
- * @example
- * formatQualityString(12000000, 20000000, true);  // "12 Mbps"
- * formatQualityString(0, 0, true);                 // "Transcoding"
- * formatQualityString(0, 0, false);                // "Direct"
+ * Drops sessions rule evaluation must not count: grace-flagged ones (at
+ * least one confirmed missed poll, the system's own signal that the stream
+ * probably stopped) and unconfirmed pending ones. Counting either makes
+ * concurrent-stream rules fire on phantoms, e.g. killing the stream a user
+ * just switched to. Sessions missing for the first time in the current tick
+ * are not flagged yet and still count, which keeps one anomalous poll from
+ * distorting detection. Returns the input array untouched when nothing is
+ * excluded so hot-path callers avoid a copy.
  */
-export function formatQualityString(
-  transcodeBitrate: number,
-  sourceBitrate: number,
-  isTranscoding: boolean
-): string {
-  const bitrate = transcodeBitrate || sourceBitrate;
-  if (bitrate > 0) {
-    const mbps = bitrate / 1000000;
-    const formatted = mbps % 1 === 0 ? mbps.toFixed(0) : mbps.toFixed(1);
-    return `${formatted} Mbps`;
-  }
-  return isTranscoding ? 'Transcoding' : 'Direct';
+export function excludeUncountableSessions(
+  sessions: ActiveSession[],
+  graceSessionIds: Set<string>
+): ActiveSession[] {
+  const needsFilter = sessions.some((s) => s.pending || graceSessionIds.has(s.id));
+  if (!needsFilter) return sessions;
+  return sessions.filter((s) => !s.pending && !graceSessionIds.has(s.id));
 }

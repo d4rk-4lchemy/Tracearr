@@ -85,6 +85,7 @@ export async function loadRuntime() {
     runMigrations: dbModule.runMigrations,
     migrationFolders: migrationPathsModule.migrationFolders,
     users: schema.users,
+    servers: schema.servers,
     authAccounts: schema.authAccounts,
     authSessions: schema.authSessions,
     plexAccounts: schema.plexAccounts,

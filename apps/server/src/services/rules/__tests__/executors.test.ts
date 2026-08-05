@@ -39,6 +39,14 @@ function createMockSession(overrides: Partial<Session> = {}): Session {
     year: 2024,
     thumbPath: null,
     ratingKey: '12345',
+    serverVersionKey: null,
+    parentRatingKey: null,
+    grandparentRatingKey: null,
+    mediaId: null,
+    showMediaId: null,
+    imdbId: null,
+    tmdbId: null,
+    tvdbId: null,
     externalSessionId: null,
     startedAt: new Date(),
     stoppedAt: null,
@@ -117,7 +125,6 @@ function createMockServerUser(overrides: Partial<ServerUser> = {}): ServerUser {
     thumbUrl: null,
     isServerAdmin: false,
     trustScore: 100,
-    sessionCount: 10,
     joinedAt: new Date(),
     lastActivityAt: new Date(),
     removedAt: null,
@@ -166,7 +173,7 @@ function createMockDeps(): ActionExecutorDeps {
     adjustUserTrust: vi.fn().mockResolvedValue(undefined),
     setUserTrust: vi.fn().mockResolvedValue(undefined),
     resetUserTrust: vi.fn().mockResolvedValue(undefined),
-    terminateSession: vi.fn().mockResolvedValue(undefined),
+    terminateSession: vi.fn().mockResolvedValue('kill-job-id'),
     sendClientMessage: vi.fn().mockResolvedValue(undefined),
     checkCooldown: vi.fn().mockResolvedValue(false),
     setCooldown: vi.fn().mockResolvedValue(undefined),
@@ -280,8 +287,29 @@ describe('Action Executor Registry', () => {
           data: expect.objectContaining({
             ruleId: context.rule.id,
             sessionId: context.session.id,
+            serverUserId: context.serverUser.id,
+            username: context.serverUser.username,
+            displayName: context.serverUser.username,
           }),
         });
+      });
+
+      it('prefers the identity name over the account username for display', async () => {
+        const context = createMockContext();
+        context.serverUser.identityName = 'Alice Smith';
+        const action: NotifyAction = { type: 'notify', channels: ['discord'] };
+
+        const result = await executeAction(context, action);
+
+        expect(result.success).toBe(true);
+        expect(mockDeps.sendNotification).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              username: context.serverUser.username,
+              displayName: 'Alice Smith',
+            }),
+          })
+        );
       });
 
       it('should not send notification if no channels specified', async () => {
@@ -341,6 +369,36 @@ describe('Action Executor Registry', () => {
     });
 
     describe('kill_stream', () => {
+      it('should record the interim result as queued, not a false success', async () => {
+        const context = createMockContext();
+        const action: KillStreamAction = { type: 'kill_stream' };
+
+        const result = await executeAction(context, action);
+
+        // The kill worker inserts the authoritative outcome (killed/skipped_*/failed)
+        // later; this interim row must not claim success/skipped:false.
+        expect(result).toEqual({
+          action,
+          success: true,
+          skipped: true,
+          skipReason: 'queued',
+          enqueuedSessionIds: [context.session.id],
+        });
+      });
+
+      it('records the action as failed (not queued) when the queue drops every target', async () => {
+        (mockDeps.terminateSession as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+        const context = createMockContext();
+        const action: KillStreamAction = { type: 'kill_stream' };
+
+        const result = await executeAction(context, action);
+
+        // No job landed, so no worker row will follow: the interim row is the
+        // only record and must read as failed rather than queued.
+        expect(result.success).toBe(false);
+        expect(result.skipped).toBeFalsy();
+      });
+
       it('should terminate session silently when no message provided', async () => {
         const context = createMockContext();
         const action: KillStreamAction = { type: 'kill_stream' };
@@ -351,8 +409,13 @@ describe('Action Executor Registry', () => {
         expect(mockDeps.terminateSession).toHaveBeenCalledWith(
           context.session.id,
           context.server.id,
+          context.rule.id,
+          null,
           0,
-          undefined
+          undefined,
+          undefined,
+          undefined,
+          context.session.id
         );
       });
 
@@ -365,8 +428,13 @@ describe('Action Executor Registry', () => {
         expect(mockDeps.terminateSession).toHaveBeenCalledWith(
           context.session.id,
           context.server.id,
+          context.rule.id,
+          null,
           30,
-          undefined
+          undefined,
+          undefined,
+          undefined,
+          context.session.id
         );
       });
 
@@ -383,8 +451,13 @@ describe('Action Executor Registry', () => {
         expect(mockDeps.terminateSession).toHaveBeenCalledWith(
           context.session.id,
           context.server.id,
+          context.rule.id,
+          null,
           0,
-          'You violated the concurrent streams policy'
+          'You violated the concurrent streams policy',
+          undefined,
+          undefined,
+          context.session.id
         );
       });
 
@@ -401,8 +474,41 @@ describe('Action Executor Registry', () => {
         expect(mockDeps.terminateSession).toHaveBeenCalledWith(
           context.session.id,
           context.server.id,
+          context.rule.id,
+          null,
           15,
-          'Stream will be terminated in 15 seconds'
+          'Stream will be terminated in 15 seconds',
+          undefined,
+          undefined,
+          context.session.id
+        );
+      });
+
+      it('should not set cooldown at enqueue time - arming moves to the kill worker', async () => {
+        const context = createMockContext();
+        const action: KillStreamAction = { type: 'kill_stream', cooldown_minutes: 10 };
+
+        await executeAction(context, action);
+
+        expect(mockDeps.setCooldown).not.toHaveBeenCalled();
+      });
+
+      it('should carry cooldown_minutes and the triggering serverUserId through to terminateSession', async () => {
+        const context = createMockContext();
+        const action: KillStreamAction = { type: 'kill_stream', cooldown_minutes: 10 };
+
+        await executeAction(context, action);
+
+        expect(mockDeps.terminateSession).toHaveBeenCalledWith(
+          context.session.id,
+          context.server.id,
+          context.rule.id,
+          null,
+          0,
+          undefined,
+          undefined,
+          { minutes: 10, triggeringServerUserId: context.serverUser.id },
+          context.session.id
         );
       });
 
@@ -426,12 +532,17 @@ describe('Action Executor Registry', () => {
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             'triggering',
             context.server.id,
+            context.rule.id,
+            null,
             0,
-            undefined
+            undefined,
+            undefined,
+            undefined,
+            'triggering'
           );
         });
 
-        it('should terminate oldest session when target is oldest', async () => {
+        it('should terminate oldest session but re-verify against the triggering session', async () => {
           const oldestSession = createMockSession({
             id: 'oldest',
             serverUserId: 'user-1',
@@ -452,11 +563,18 @@ describe('Action Executor Registry', () => {
           await executeAction(context, action);
 
           expect(mockDeps.terminateSession).toHaveBeenCalledTimes(1);
+          // Target is the oldest session, but the trigger passed through is the
+          // session that matched (newest), so the worker re-verifies against it.
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             'oldest',
             context.server.id,
+            context.rule.id,
+            null,
             0,
-            undefined
+            undefined,
+            undefined,
+            undefined,
+            'newest'
           );
         });
 
@@ -489,14 +607,24 @@ describe('Action Executor Registry', () => {
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             's2',
             context.server.id,
+            context.rule.id,
+            null,
             0,
-            undefined
+            undefined,
+            undefined,
+            undefined,
+            's3'
           );
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             's3',
             context.server.id,
+            context.rule.id,
+            null,
             0,
-            undefined
+            undefined,
+            undefined,
+            undefined,
+            's3'
           );
         });
 
@@ -517,20 +645,87 @@ describe('Action Executor Registry', () => {
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             's1',
             context.server.id,
+            context.rule.id,
+            null,
             0,
-            undefined
+            undefined,
+            undefined,
+            undefined,
+            's1'
           );
           expect(mockDeps.terminateSession).toHaveBeenCalledWith(
             's2',
             context.server.id,
+            context.rule.id,
+            null,
             0,
-            undefined
+            undefined,
+            undefined,
+            undefined,
+            's1'
           );
           expect(mockDeps.terminateSession).not.toHaveBeenCalledWith(
             'other',
             expect.anything(),
             expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
+            expect.anything(),
             expect.anything()
+          );
+        });
+
+        it('should give each target its own terminateSession call keyed by that session id', async () => {
+          const session1 = createMockSession({ id: 's1', serverUserId: 'user-1' });
+          const session2 = createMockSession({ id: 's2', serverUserId: 'user-1' });
+          const context = createMockContext({
+            session: session1,
+            serverUser: createMockServerUser({ id: 'user-1' }),
+            activeSessions: [session1, session2],
+            violationId: 'violation-1',
+          });
+          const action: KillStreamAction = { type: 'kill_stream', target: 'all_user' };
+
+          const result = await executeAction(context, action);
+
+          const calledSessionIds = (
+            mockDeps.terminateSession as ReturnType<typeof vi.fn>
+          ).mock.calls.map((call) => call[0]);
+          // Multi-target: each resolved session is its own terminateSession call
+          // (and, downstream, its own kill queue job) rather than one call for
+          // the whole target set.
+          expect(calledSessionIds).toEqual(['s1', 's2']);
+          expect(new Set(calledSessionIds).size).toBe(2);
+          // wasTerminatedByRule derives from this, so every enqueued target
+          // (not just the triggering session) must be reported.
+          expect(result.enqueuedSessionIds).toEqual(['s1', 's2']);
+        });
+
+        it('should carry identityServerUserIds only when the rule enforces across servers', async () => {
+          const session1 = createMockSession({ id: 's1', serverUserId: 'user-1' });
+          const crossServerContext = createMockContext({
+            session: session1,
+            serverUser: createMockServerUser({ id: 'user-1' }),
+            activeSessions: [session1],
+            rule: createMockRule({ enforceAcrossServers: true }),
+            identityServerUserIds: ['user-1', 'user-1-sibling'],
+          });
+          const action: KillStreamAction = { type: 'kill_stream' };
+
+          await executeAction(crossServerContext, action);
+
+          expect(mockDeps.terminateSession).toHaveBeenCalledWith(
+            's1',
+            crossServerContext.server.id,
+            crossServerContext.rule.id,
+            null,
+            0,
+            undefined,
+            ['user-1', 'user-1-sibling'],
+            undefined,
+            's1'
           );
         });
       });
@@ -614,6 +809,57 @@ describe('Action Executor Registry', () => {
         await executeAction(context, action);
 
         expect(mockDeps.checkCooldown).not.toHaveBeenCalled();
+      });
+
+      it('scopes cooldown keys per action type so a notify cooldown cannot suppress kill_stream', async () => {
+        (mockDeps.checkCooldown as ReturnType<typeof vi.fn>).mockImplementation(
+          (_ruleId: string, targetId: string) => targetId.endsWith(':notify')
+        );
+        const context = createMockContext();
+        const actions: Action[] = [
+          { type: 'notify', channels: ['discord'], cooldown_minutes: 5 },
+          { type: 'kill_stream', cooldown_minutes: 10 },
+        ];
+
+        const results = await executeActions(context, actions);
+
+        expect(results[0]?.skipped).toBe(true);
+        expect(results[0]?.skipReason).toContain('cooldown');
+        expect(mockDeps.checkCooldown).toHaveBeenCalledWith(
+          context.rule.id,
+          `${context.rule.id}:${context.serverUser.id}:notify`,
+          5
+        );
+        expect(mockDeps.checkCooldown).toHaveBeenCalledWith(
+          context.rule.id,
+          `${context.rule.id}:${context.serverUser.id}:kill_stream`,
+          10
+        );
+        expect(mockDeps.terminateSession).toHaveBeenCalledWith(
+          context.session.id,
+          context.server.id,
+          context.rule.id,
+          null,
+          0,
+          undefined,
+          undefined,
+          { minutes: 10, triggeringServerUserId: context.serverUser.id },
+          context.session.id
+        );
+      });
+
+      it('arms the cooldown key with the action type', async () => {
+        (mockDeps.checkCooldown as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+        const context = createMockContext();
+        const action: NotifyAction = { type: 'notify', channels: ['discord'], cooldown_minutes: 5 };
+
+        await executeAction(context, action);
+
+        expect(mockDeps.setCooldown).toHaveBeenCalledWith(
+          context.rule.id,
+          `${context.rule.id}:${context.serverUser.id}:notify`,
+          5
+        );
       });
     });
 

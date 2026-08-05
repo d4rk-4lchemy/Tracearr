@@ -11,7 +11,11 @@ vi.mock('../../db/client.js', () => ({
     insert: vi.fn(),
     delete: vi.fn(),
     transaction: vi.fn(),
-    execute: vi.fn().mockResolvedValue(undefined),
+    // getActiveItemCount's count-mismatch check reads this. Every test here
+    // uses totalCount: 100, so match it - otherwise the (correct) bidirectional
+    // mismatch check reads a local count of 0 against a server total of 100 and
+    // forces a full scan the incremental-path tests don't expect.
+    execute: vi.fn().mockResolvedValue({ rows: [{ count: 100 }] }),
   },
 }));
 
@@ -21,6 +25,15 @@ vi.mock('../../jobs/heavyOpsLock.js', () => ({
 
 vi.mock('../mediaServer/index.js', () => ({
   createMediaServerClient: vi.fn(),
+}));
+
+vi.mock('../../jobs/sessionIdentityBackfill.js', () => ({
+  backfillSessionIdentityBatch: vi.fn().mockResolvedValue({ updated: 0, oldest: null }),
+}));
+
+vi.mock('../library/mediaResolutionService.js', () => ({
+  resolveMediaBatch: vi.fn().mockResolvedValue(new Map()),
+  reconcileMediaDuplicates: vi.fn().mockResolvedValue(0),
 }));
 
 import type { Redis } from 'ioredis';
@@ -139,7 +152,7 @@ function makeMockClient(opts: { totalCount?: number; itemsSinceCount?: number } 
     getLibraryLeaves: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
     getSessions: vi.fn(),
     getUsers: vi.fn(),
-    testConnection: vi.fn(),
+    testConnection: vi.fn().mockResolvedValue(true),
     terminateSession: vi.fn(),
   };
 }
@@ -212,5 +225,75 @@ describe('LibrarySyncService full-scan cycle', () => {
     await service.syncServer('srv-1', undefined, 'manual');
 
     expect(client.getLibraryItemsSince).not.toHaveBeenCalled();
+  });
+});
+
+describe('undercount escalation memory (accepted shortfall)', () => {
+  let service: LibrarySyncService;
+  let mockRedis: Redis;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = new LibrarySyncService();
+    mockRedis = makeMockRedis();
+    initLibrarySyncRedis(mockRedis);
+    setupDbSelectMocks(TEST_SERVER);
+  });
+
+  it('escalates once for a structural gap, records the shortfall, then stays incremental on the same gap', async () => {
+    const client1 = makeMockClient({ totalCount: 100, itemsSinceCount: 0 });
+    mockCreateClient.mockReturnValue(client1);
+
+    await mockRedis.set(
+      'tracearr:library:sync:last:srv-1:1',
+      new Date(Date.now() - 3600000).toISOString()
+    );
+    await mockRedis.set('tracearr:library:sync:count:srv-1:1', '100');
+    await mockRedis.set('tracearr:library:sync:cycle:srv-1:1', '1');
+
+    // Structural gap: local active count sits 5 below the server total, before and after the sync.
+    vi.mocked(db.execute).mockResolvedValue({ rows: [{ count: 95 }] } as never);
+
+    await service.syncServer('srv-1', undefined, 'scheduled');
+
+    // No accepted shortfall yet, so the gap (5) exceeds tolerance (3) and escalates to a full scan.
+    expect(client1.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
+
+    // Second sync: same structural gap, nothing new - must stay incremental.
+    setupDbSelectMocks(TEST_SERVER);
+    const client2 = makeMockClient({ totalCount: 100, itemsSinceCount: 0 });
+    mockCreateClient.mockReturnValue(client2);
+
+    await service.syncServer('srv-1', undefined, 'scheduled');
+
+    expect(client2.getLibraryItemsSince).toHaveBeenCalled();
+    expect(client2.getLibraryItems).not.toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
+  });
+
+  it('still escalates when a new wrong tombstone widens the gap beyond the accepted shortfall', async () => {
+    const client1 = makeMockClient({ totalCount: 100, itemsSinceCount: 0 });
+    mockCreateClient.mockReturnValue(client1);
+
+    await mockRedis.set(
+      'tracearr:library:sync:last:srv-1:1',
+      new Date(Date.now() - 3600000).toISOString()
+    );
+    await mockRedis.set('tracearr:library:sync:count:srv-1:1', '100');
+    await mockRedis.set('tracearr:library:sync:cycle:srv-1:1', '1');
+
+    vi.mocked(db.execute).mockResolvedValue({ rows: [{ count: 95 }] } as never);
+    await service.syncServer('srv-1', undefined, 'scheduled');
+    expect(client1.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
+
+    // Second sync: a NEW wrong tombstone widens the gap to 10 - beyond the accepted shortfall (5) plus tolerance.
+    setupDbSelectMocks(TEST_SERVER);
+    const client2 = makeMockClient({ totalCount: 100, itemsSinceCount: 0 });
+    mockCreateClient.mockReturnValue(client2);
+    vi.mocked(db.execute).mockResolvedValue({ rows: [{ count: 90 }] } as never);
+
+    await service.syncServer('srv-1', undefined, 'scheduled');
+
+    expect(client2.getLibraryItemsSince).toHaveBeenCalled();
+    expect(client2.getLibraryItems).toHaveBeenCalledWith('1', { offset: 0, limit: 200 });
   });
 });

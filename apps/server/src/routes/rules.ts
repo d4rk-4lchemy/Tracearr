@@ -15,17 +15,13 @@ import {
   updateRuleV2Schema,
   hasAtMostOneScope,
   RULE_SCOPE_ERROR_MESSAGE,
+  scopeAllowsCrossServerEnforcement,
+  RULE_CROSS_SERVER_ENFORCEMENT_ERROR_MESSAGE,
   bulkUpdateRulesSchema,
   bulkDeleteRulesSchema,
   bulkMigrateRulesSchema,
 } from '@tracearr/shared';
-import type {
-  RuleConditions,
-  RuleActions,
-  ViolationSeverity,
-  AuthUser,
-  RuleType,
-} from '@tracearr/shared';
+import type { RuleConditions, RuleActions, ViolationSeverity, AuthUser } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { rules, serverUsers, violations, servers, users } from '../db/schema.js';
 import { hasServerAccess } from '../utils/serverFiltering.js';
@@ -62,6 +58,15 @@ async function batchGetIdentityServerIds(userIds: string[]): Promise<Map<string,
 function hasIdentityAccess(authUser: AuthUser, identityServerIds: string[] | undefined): boolean {
   if (authUser.role === 'owner') return true;
   return (identityServerIds ?? []).some((serverId) => hasServerAccess(authUser, serverId));
+}
+
+// safeParse errors serialize as a JSON issue array; surface the first issue
+// as a sentence the rule editor can show directly.
+function firstIssueMessage(error: { issues: { path: PropertyKey[]; message: string }[] }): string {
+  const issue = error.issues[0];
+  if (!issue) return 'validation failed';
+  const path = issue.path.join('.');
+  return path ? `${path}: ${issue.message}` : issue.message;
 }
 
 export const ruleRoutes: FastifyPluginAsync = async (app) => {
@@ -212,7 +217,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
   app.post('/v2', { preHandler: [app.authenticate] }, async (request, reply) => {
     const body = createRuleV2Schema.safeParse(request.body);
     if (!body.success) {
-      return reply.badRequest(`Invalid request body: ${body.error.message}`);
+      return reply.badRequest(`Invalid request body: ${firstIssueMessage(body.error)}`);
     }
 
     const authUser = request.user;
@@ -380,7 +385,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     const violationCount = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(violations)
-      .where(eq(violations.ruleId, id));
+      .where(and(eq(violations.ruleId, id), isNull(violations.dismissedAt)));
 
     return {
       ...rule,
@@ -489,7 +494,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
 
     const body = updateRuleV2Schema.safeParse(request.body);
     if (!body.success) {
-      return reply.badRequest(`Invalid request body: ${body.error.message}`);
+      return reply.badRequest(`Invalid request body: ${firstIssueMessage(body.error)}`);
     }
 
     const { id } = params.data;
@@ -509,6 +514,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
         userId: rules.userId,
         serverUserServerId: serverUsers.serverId,
         conditions: rules.conditions,
+        enforceAcrossServers: rules.enforceAcrossServers,
       })
       .from(rules)
       .leftJoin(serverUsers, eq(rules.serverUserId, serverUsers.id))
@@ -553,6 +559,18 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       })
     ) {
       return reply.badRequest(RULE_SCOPE_ERROR_MESSAGE);
+    }
+    const mergedEnforceAcrossServers =
+      body.data.enforceAcrossServers !== undefined
+        ? body.data.enforceAcrossServers
+        : existingRule.enforceAcrossServers;
+    if (
+      !scopeAllowsCrossServerEnforcement({
+        serverId: mergedServerId,
+        enforceAcrossServers: mergedEnforceAcrossServers,
+      })
+    ) {
+      return reply.badRequest(RULE_CROSS_SERVER_ENFORCEMENT_ERROR_MESSAGE);
     }
 
     // Build update object
@@ -854,7 +872,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       accessibleRules.map((r) => ({
         id: r.id,
         name: r.name,
-        type: r.type as RuleType,
+        type: r.type!,
         params: r.params as Record<string, unknown>,
         serverUserId: r.serverUserId,
         serverId: r.serverId,
@@ -938,7 +956,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
       accessibleRules.map((r) => ({
         id: r.id,
         name: r.name,
-        type: r.type as RuleType,
+        type: r.type!,
         params: r.params as Record<string, unknown>,
         serverUserId: r.serverUserId,
         serverId: r.serverId,
@@ -1041,7 +1059,7 @@ export const ruleRoutes: FastifyPluginAsync = async (app) => {
     const migrated = convertLegacyRule({
       id: rule.id,
       name: rule.name,
-      type: rule.type as RuleType,
+      type: rule.type!,
       params: rule.params as Record<string, unknown>,
       serverUserId: rule.serverUserId,
       serverId: rule.serverId,

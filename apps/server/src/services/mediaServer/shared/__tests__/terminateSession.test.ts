@@ -53,6 +53,17 @@ describe('BaseMediaServerClient.terminateSession control-capability guard', () =
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it('stops an Emby session that only reports SupportsRemoteControl (no SupportsMediaControl key)', async () => {
+    withSessions([{ Id: 'sess1', SupportsRemoteControl: true }]);
+
+    await expect(makeClient().terminateSession('sess1')).resolves.toBe(true);
+
+    const stopped = mockFetch.mock.calls.some(([url]) =>
+      String(url).includes('/Sessions/sess1/Playing/Stop')
+    );
+    expect(stopped).toBe(true);
+  });
+
   it('throws "not found" when the session is no longer active', async () => {
     withSessions([{ Id: 'someone-else', SupportsMediaControl: true }]);
 
@@ -70,5 +81,20 @@ describe('BaseMediaServerClient.terminateSession control-capability guard', () =
     const stopIdx = urls.findIndex((u) => u.includes('/Sessions/sess1/Playing/Stop'));
     expect(messageIdx).toBeGreaterThanOrEqual(0);
     expect(stopIdx).toBeGreaterThan(messageIdx);
+  });
+
+  it('bounds both the message and Stop calls with an AbortSignal, so an unresponsive server cannot hang the kill worker', async () => {
+    withSessions([{ Id: 'sess1', SupportsMediaControl: true }]);
+
+    await makeClient().terminateSession('sess1', 'Concurrent stream limit');
+
+    const [, messageOpts] = mockFetch.mock.calls.find(([url]) =>
+      String(url).includes('/Sessions/sess1/Message')
+    )!;
+    const [, stopOpts] = mockFetch.mock.calls.find(([url]) =>
+      String(url).includes('/Sessions/sess1/Playing/Stop')
+    )!;
+    expect(messageOpts.signal).toBeInstanceOf(AbortSignal);
+    expect(stopOpts.signal).toBeInstanceOf(AbortSignal);
   });
 });

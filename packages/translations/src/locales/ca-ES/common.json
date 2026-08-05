@@ -93,7 +93,9 @@
     "usersUpdated_one": "{{count}} usuari actualitzat",
     "usersUpdated_other": "{{count}} usuaris actualitzats",
     "violation_one": "{{count}} incompliment",
-    "violation_other": "{{count}} incompliments"
+    "violation_other": "{{count}} incompliments",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} dia",

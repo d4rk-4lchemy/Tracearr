@@ -64,8 +64,6 @@ describe('restore pool recovery (integration)', () => {
   let app: FastifyInstance;
 
   beforeEach(async () => {
-    process.env.TRACEARR_SILENCE_BETTER_AUTH_LOGS = '1';
-    await closeAuth();
     app = await buildApp();
     await clearRedisPattern(`${process.env.REDIS_PREFIX ?? ''}tracearr:ba:*sign-in*`);
     await clearRedisPattern(`${process.env.REDIS_PREFIX ?? ''}tracearr:ba:*sign-up*`);
@@ -80,7 +78,6 @@ describe('restore pool recovery (integration)', () => {
     const keys = await redis.keys(`${process.env.REDIS_PREFIX ?? ''}tracearr:ba:*`);
     if (keys.length > 0) await redis.del(...keys);
     await closeAuth();
-    delete process.env.TRACEARR_SILENCE_BETTER_AUTH_LOGS;
   });
 
   it('login works again after a successful-restore-style pool teardown and reinit', async () => {

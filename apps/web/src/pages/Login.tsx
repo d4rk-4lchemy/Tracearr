@@ -1,4 +1,4 @@
-import { useState, useEffect, type ChangeEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,8 +21,6 @@ import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { authClient } from '@/lib/authClient';
 import { api, BASE_URL } from '@/lib/api';
-import { getBrowserWindow } from '@/lib/browser';
-import { getErrorMessage } from '@/lib/errors';
 import type { PlexDiscoveredServer, SetupStatus } from '@tracearr/shared';
 import { LogoIcon } from '@/components/brand/Logo';
 import { PlexServerSelector } from '@/components/auth/PlexServerSelector';
@@ -40,7 +38,6 @@ const DEFAULT_AUTH_METHODS: SetupStatus['authMethods'] = {
 type AuthStep = 'claim-code-gate' | 'initial' | 'plex-waiting' | 'server-select';
 
 export function Login() {
-  const browserWindow = getBrowserWindow();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -59,7 +56,7 @@ export function Login() {
   const [plexServers, setPlexServers] = useState<PlexDiscoveredServer[]>([]);
   const [plexTempToken, setPlexTempToken] = useState<string | null>(null);
   const [connectingToServer, setConnectingToServer] = useState<string | null>(null);
-  const [plexPopup, setPlexPopup] = useState<Window | null>(null);
+  const [plexPopup, setPlexPopup] = useState<ReturnType<typeof window.open>>(null);
 
   // Local auth form state (sign-in uses a single identifier field; sign-up
   // collects a display name and a separate login username)
@@ -78,30 +75,6 @@ export function Login() {
   // Claim code gate state
   const [claimCode, setClaimCode] = useState('');
   const [claimCodeLoading, setClaimCodeLoading] = useState(false);
-
-  const handleClaimCodeChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setClaimCode(event.currentTarget.value.toUpperCase());
-  };
-
-  const handleNameChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setName(event.currentTarget.value);
-  };
-
-  const handleSignupUsernameChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setSignupUsername(event.currentTarget.value);
-  };
-
-  const handleEmailChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setEmail(event.currentTarget.value);
-  };
-
-  const handlePasswordChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setPassword(event.currentTarget.value);
-  };
-
-  const handleIdentifierChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setIdentifier(event.currentTarget.value);
-  };
 
   // Check setup status on mount with retry logic for server restarts
   useEffect(() => {
@@ -177,7 +150,9 @@ export function Login() {
     } catch (error) {
       toast.error(t('notifications:toast.error.invalidClaimCode.title'), {
         description:
-          getErrorMessage(error, t('notifications:toast.error.invalidClaimCode.message')),
+          error instanceof Error
+            ? error.message
+            : t('notifications:toast.error.invalidClaimCode.message'),
       });
     } finally {
       setClaimCodeLoading(false);
@@ -218,7 +193,7 @@ export function Login() {
     } catch (error) {
       resetPlexAuth();
       toast.error(t('notifications:toast.error.authFailed'), {
-        description: getErrorMessage(error, t('pages:login.plexAuthFailed')),
+        description: error instanceof Error ? error.message : t('pages:login.plexAuthFailed'),
       });
     }
   };
@@ -228,12 +203,12 @@ export function Login() {
     setAuthStep('plex-waiting');
 
     // Open popup to blank page first (same origin) - helps with cross-origin close
-    const popup = browserWindow.open('about:blank', 'plex_auth', 'width=600,height=700,popup=yes');
+    const popup = window.open('about:blank', 'plex_auth', 'width=600,height=700,popup=yes');
     setPlexPopup(popup);
 
     try {
       // Pass callback URL so Plex redirects back to our domain after auth
-      const callbackUrl = `${browserWindow.location.origin}${BASE_URL}auth/plex-callback`;
+      const callbackUrl = `${window.location.origin}${BASE_URL}auth/plex-callback`;
       const result = await api.auth.initiatePlex(callbackUrl);
       setPlexAuthUrl(result.authUrl);
 
@@ -248,7 +223,7 @@ export function Login() {
       closePlexPopup();
       setAuthStep('initial');
       toast.error(t('common:errors.generic'), {
-        description: getErrorMessage(error, t('pages:login.plexStartFailed')),
+        description: error instanceof Error ? error.message : t('pages:login.plexStartFailed'),
       });
     }
   };
@@ -373,7 +348,7 @@ export function Login() {
 
     const { error } = await authClient.signIn.oauth2({
       providerId: 'oidc',
-      callbackURL: '/',
+      callbackURL: BASE_URL,
       errorCallbackURL: `${BASE_URL}login`,
       ...(requiresClaimCode && { additionalData: { claimCode: claimCode.trim() } }),
     });
@@ -424,7 +399,7 @@ export function Login() {
                   type="text"
                   placeholder=""
                   value={claimCode}
-                  onChange={handleClaimCodeChange}
+                  onChange={(e) => setClaimCode(e.target.value.toUpperCase())}
                   required
                   disabled={claimCodeLoading}
                   className="font-mono text-lg tracking-wider"
@@ -538,7 +513,7 @@ export function Login() {
                     type="button"
                     variant="link"
                     size="sm"
-                    onClick={() => browserWindow.open(plexAuthUrl, '_blank')}
+                    onClick={() => window.open(plexAuthUrl, '_blank')}
                     className="mt-2 h-auto gap-1 p-0"
                   >
                     <ExternalLink className="h-3 w-3" />
@@ -600,7 +575,7 @@ export function Login() {
                         autoComplete="name"
                         placeholder={t('pages:login.displayNamePlaceholder')}
                         value={name}
-                        onChange={handleNameChange}
+                        onChange={(e) => setName(e.target.value)}
                         required
                         disabled={localPending}
                       />
@@ -613,7 +588,7 @@ export function Login() {
                         autoComplete="username"
                         placeholder={t('pages:login.usernamePlaceholder')}
                         value={signupUsername}
-                        onChange={handleSignupUsernameChange}
+                        onChange={(e) => setSignupUsername(e.target.value)}
                         required
                         minLength={3}
                         maxLength={30}
@@ -628,7 +603,7 @@ export function Login() {
                         autoComplete="email"
                         placeholder={t('pages:login.emailPlaceholder')}
                         value={email}
-                        onChange={handleEmailChange}
+                        onChange={(e) => setEmail(e.target.value)}
                         required
                         disabled={localPending}
                       />
@@ -641,7 +616,7 @@ export function Login() {
                         autoComplete="new-password"
                         placeholder={t('pages:login.passwordPlaceholder')}
                         value={password}
-                        onChange={handlePasswordChange}
+                        onChange={(e) => setPassword(e.target.value)}
                         required
                         minLength={8}
                         disabled={localPending}
@@ -675,7 +650,7 @@ export function Login() {
                         autoComplete="username"
                         placeholder={t('pages:login.identifierPlaceholder')}
                         value={identifier}
-                        onChange={handleIdentifierChange}
+                        onChange={(e) => setIdentifier(e.target.value)}
                         required
                         disabled={localPending}
                       />
@@ -688,7 +663,7 @@ export function Login() {
                         autoComplete="current-password"
                         placeholder={t('pages:login.yourPasswordPlaceholder')}
                         value={password}
-                        onChange={handlePasswordChange}
+                        onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={localPending}
                       />

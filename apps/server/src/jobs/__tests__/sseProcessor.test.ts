@@ -58,7 +58,6 @@ vi.mock('../poller/stateTracker.js', () => ({
   // Playback confirmation functions for delayed rule evaluation
   isPlaybackConfirmed: vi.fn().mockReturnValue(false),
   createInitialConfirmationState: vi.fn().mockReturnValue({
-    rulesEvaluated: false,
     confirmedPlayback: false,
     firstSeenAt: Date.now(),
     maxViewOffset: 0,
@@ -67,7 +66,11 @@ vi.mock('../poller/stateTracker.js', () => ({
 }));
 
 vi.mock('../poller/database.js', () => ({
+  getServerUserIdByExternalId: vi.fn(() => {
+    throw new Error('getServerUserIdByExternalId not configured in this test');
+  }),
   getActiveRulesV2: vi.fn(),
+  batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn(),
   mergeRecentSessionsForIdentity: (map: Map<string, unknown[]>, ids: string[]) =>
     ids.flatMap((id) => map.get(id) ?? []),
@@ -83,6 +86,7 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   findActiveSessionsAll: vi.fn(),
   buildActiveSession: vi.fn(),
   handleMediaChangeAtomic: vi.fn(),
+  handleQualityChangeFallout: vi.fn(),
   reEvaluateRulesOnTranscodeChange: vi.fn(),
   confirmAndPersistSession: vi.fn(),
 }));

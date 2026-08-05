@@ -7,34 +7,18 @@
 
 import type { Redis } from 'ioredis';
 import { eq, sql, and, isNull, isNotNull } from 'drizzle-orm';
-import { REDIS_KEYS, type ViolationWithDetails } from '@tracearr/shared';
+import { REDIS_KEYS } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { rules, serverUsers, sessions, ruleActionResults } from '../../db/schema.js';
 import { invalidateRulesCache } from '../../jobs/poller/database.js';
 import { rulesLogger } from '../../utils/logger.js';
-import { recalculateAggregateTrustScore } from '../userService.js';
+import { recomputeIdentityAggregates } from '../userService.js';
 import {
   setActionExecutorDeps,
   type ActionExecutorDeps,
   type ActionResult,
 } from './executors/index.js';
 import { migrateRules, type LegacyRule } from './migration.js';
-
-function getString(data: Record<string, unknown> | undefined, key: string): string | undefined {
-  const value = data?.[key];
-  return typeof value === 'string' ? value : undefined;
-}
-
-function canSendMessage(
-  client: unknown
-): client is { sendMessage: (sessionId: string, message: string, title: string, timeoutMs: number) => Promise<void> } {
-  return (
-    !!client &&
-    typeof client === 'object' &&
-    'sendMessage' in client &&
-    typeof client.sendMessage === 'function'
-  );
-}
 
 // ============================================================================
 // Action Result Storage
@@ -104,37 +88,6 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
     sendNotification: async (params) => {
       // Dynamic import to avoid circular dependencies
       const { enqueueNotification } = await import('../../jobs/notificationQueue.js');
-      const data = params.data;
-      const violationPayload: ViolationWithDetails = {
-        id: `rule-notify-${Date.now()}`,
-        ruleId: getString(data, 'ruleId') ?? '',
-        serverUserId: getString(data, 'serverUserId') ?? '',
-        sessionId: getString(data, 'sessionId') ?? null,
-        severity: 'low',
-        data: {
-          ruleNotification: true,
-          channels: params.channels,
-          customTitle: params.title,
-          customMessage: params.message,
-          ...(data ?? {}),
-        },
-        createdAt: new Date(),
-        acknowledgedAt: null,
-        rule: {
-          id: getString(data, 'ruleId') ?? '',
-          name: params.title,
-          type: null,
-        },
-        user: {
-          id: getString(data, 'serverUserId') ?? '',
-          username: getString(data, 'username') ?? 'System',
-          thumbUrl: null,
-          serverId: getString(data, 'serverId') ?? '',
-          identityName: getString(data, 'displayName') ?? 'System',
-          userId: getString(data, 'userId'),
-        },
-        session: undefined,
-      };
 
       rulesLogger.debug(`Sending notification to channels: ${params.channels.join(', ')}`, {
         title: params.title,
@@ -144,9 +97,43 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
       // Violations are auto-created on rule match. For standalone notify actions,
       // we create a minimal violation-like payload. The notification worker will
       // handle routing based on global settings.
+      // serverUserId and rule.id feed the queue's dedupe key; user feeds the
+      // channel formatters. All three must carry real values or every rule
+      // notification collapses into one dedupe bucket attributed to "System".
+      const serverUserId = (params.data?.serverUserId as string) ?? '';
+      const username = (params.data?.username as string) ?? 'System';
+      const displayName = (params.data?.displayName as string) ?? username;
+
       await enqueueNotification({
         type: 'violation',
-        payload: violationPayload,
+        payload: {
+          id: `rule-notify-${Date.now()}`,
+          serverUserId,
+          sessionId: (params.data?.sessionId as string) ?? null,
+          severity: 'info',
+          createdAt: new Date().toISOString(),
+          resolvedAt: null,
+          data: {
+            ruleNotification: true,
+            channels: params.channels,
+            customTitle: params.title,
+            customMessage: params.message,
+            ...params.data,
+          },
+          rule: {
+            id: (params.data?.ruleId as string) ?? '',
+            name: params.title,
+            type: null,
+          },
+          session: null,
+          user: {
+            id: serverUserId,
+            username,
+            identityName: displayName,
+            thumbUrl: (params.data?.userThumbUrl as string | null) ?? null,
+            serverId: (params.data?.serverId as string) ?? '',
+          },
+        } as any,
       });
 
       rulesLogger.info(`Notification enqueued: ${params.title}`, {
@@ -174,7 +161,7 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
           .returning({ userId: serverUsers.userId });
 
         if (updated) {
-          await recalculateAggregateTrustScore(updated.userId, tx);
+          await recomputeIdentityAggregates(updated.userId, tx);
         }
       });
 
@@ -199,7 +186,7 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
           .returning({ userId: serverUsers.userId });
 
         if (updated) {
-          await recalculateAggregateTrustScore(updated.userId, tx);
+          await recomputeIdentityAggregates(updated.userId, tx);
         }
       });
 
@@ -221,7 +208,7 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
           .returning({ userId: serverUsers.userId });
 
         if (updated) {
-          await recalculateAggregateTrustScore(updated.userId, tx);
+          await recomputeIdentityAggregates(updated.userId, tx);
         }
       });
 
@@ -229,32 +216,53 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
     },
 
     /**
-     * Terminate a session using the termination service.
+     * Enqueue termination through the kill queue rather than terminating inline.
+     * delay_seconds becomes the sustain window: the worker waits, re-verifies
+     * the match against current state, and only then calls termination.ts.
      */
-    terminateSession: async (sessionId, serverId, delay, message) => {
+    terminateSession: async (
+      sessionId,
+      serverId,
+      ruleId,
+      violationId,
+      delay,
+      message,
+      identityServerUserIds,
+      cooldown,
+      triggeringSessionId
+    ) => {
       // Dynamic import to avoid circular dependency
-      const { terminateSession: terminate } = await import('../termination.js');
+      const { enqueueKill } = await import('../../jobs/killQueue.js');
 
-      // If there's a delay, we'd need to schedule this. For now, execute immediately.
-      // A future enhancement could use BullMQ delayed jobs.
-      if (delay && delay > 0) {
-        rulesLogger.debug(`Termination delayed by ${delay}s (executing immediately for now)`, {
-          sessionId,
-          delay,
-        });
-      }
+      const delaySeconds = delay && delay > 0 ? delay : 0;
 
-      const result = await terminate({
-        sessionId,
-        trigger: 'rule',
-        reason: message,
+      const jobId = await enqueueKill(
+        {
+          targetSessionId: sessionId,
+          triggeringSessionId: triggeringSessionId ?? sessionId,
+          serverId,
+          ruleId,
+          violationId,
+          message,
+          identityServerUserIds,
+          cooldownMinutes: cooldown?.minutes,
+          triggeringServerUserId: cooldown?.triggeringServerUserId,
+        },
+        delaySeconds
+      );
+
+      rulesLogger.debug('Kill enqueued', {
+        targetSessionId: sessionId,
+        triggeringSessionId: triggeringSessionId ?? sessionId,
+        serverId,
+        ruleId,
+        violationId,
+        delaySeconds,
+        identityServerUserIds,
+        jobId,
       });
 
-      if (!result.success) {
-        throw new Error(result.error ?? 'Failed to terminate session');
-      }
-
-      rulesLogger.info('Session terminated', { sessionId, serverId, message });
+      return jobId;
     },
 
     /**
@@ -287,11 +295,10 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
         type: session.server.type,
         url: session.server.url,
         token: session.server.token,
-        ignoreAnonymousStreams: session.server.ignoreAnonymousStreams,
       });
 
       // Jellyfin/Emby use sessionKey for API calls
-      if (canSendMessage(client)) {
+      if ('sendMessage' in client && typeof client.sendMessage === 'function') {
         await client.sendMessage(session.sessionKey, message, 'Tracearr', 10000);
         rulesLogger.debug('Client message sent', { sessionId, message });
       }

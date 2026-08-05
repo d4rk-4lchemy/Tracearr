@@ -23,7 +23,7 @@
     "build": "tsc && node scripts/copy-locales.js",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
+    "lint": "eslint src/ --cache --cache-location .eslintcache --cache-strategy content",
     "lint:fix": "eslint src/ --fix",
     "clean": "rm -rf dist .turbo",
     "check": "tsx scripts/check-translations.ts"

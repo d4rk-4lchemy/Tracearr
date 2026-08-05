@@ -15,6 +15,7 @@ import type {
   StreamDetailFields,
 } from '@tracearr/shared';
 import type { sessions } from '../../db/schema.js';
+import type { SessionIdentity as MediaItemIdentity } from './database.js';
 import type { CacheService, PubSubService } from '../../services/cache.js';
 import type { GeoLocation } from '../../services/geoip.js';
 import type { ViolationInsertResult } from './violations.js';
@@ -61,6 +62,8 @@ export interface SessionIdentity {
   sessionKey: string;
   /** When provided, validates the session has this ratingKey */
   ratingKey?: string | null;
+  /** When provided, only matches a row owned by this server user */
+  serverUserId?: string | null;
 }
 
 /** JF/Emby session identity: user+device+content (stable across session.Id changes). */
@@ -97,6 +100,8 @@ export interface ProcessedSession extends StreamDetailFields {
   plexSessionId?: string;
   /** Media item identifier (ratingKey for Plex, itemId for Jellyfin) */
   ratingKey: string;
+  /** Identifier of the file/version being played, when the server reports one */
+  serverVersionKey?: string | null;
 
   // User identification from media server
   /** External user ID from Plex/Jellyfin for lookup */
@@ -165,9 +170,7 @@ export interface ProcessedSession extends StreamDetailFields {
   /** Whether stream is transcoded */
   isTranscode: boolean;
   /** Dispatcharr-specific playback kind */
-  dispatcharrPlaybackKind: 'live' | 'vod' | 'catchup' | null;
-  /** Whether the reported progress is estimated */
-  progressEstimated: boolean;
+  dispatcharrPlaybackKind?: 'live' | 'vod' | 'catchup' | null;
   /** Dispatcharr catch-up anchor timestamp (ISO UTC) */
   dispatcharrCatchupAnchorAt?: string | null;
   /** Dispatcharr catch-up EPG start timestamp (ISO UTC) */
@@ -202,6 +205,9 @@ export interface ProcessedSession extends StreamDetailFields {
    * More accurate than tracking pause transitions via polling.
    */
   lastPausedDate?: Date;
+
+  /** Canonical media identity resolved from library_items, stamped at session insert. */
+  identity?: MediaItemIdentity | null;
 }
 
 // ============================================================================
@@ -237,6 +243,8 @@ export interface SessionPauseData {
   pausedDurationMs: number;
   /** Playback position - used to cap duration when pause tracking fails */
   progressMs?: number | null;
+  /** Media runtime - bounds the progress-based cap against corrupt progress metadata */
+  totalDurationMs?: number | null;
 }
 
 // ============================================================================
@@ -256,18 +264,21 @@ export const PLAYBACK_CONFIRM_THRESHOLD_MS = 30_000;
  */
 export const DB_WRITE_FLUSH_INTERVAL_MS = 15_000;
 
+/** A pending session that dies unconfirmed still persists when it showed this much real progress. */
+export const PENDING_STOP_PERSIST_MIN_PROGRESS_MS = 15_000;
+
 /**
  * Tracking data for playback confirmation (stored in Redis session state)
  */
 export interface PlaybackConfirmationState {
-  /** Have rules been evaluated for this session? */
-  rulesEvaluated: boolean;
   /** Has playback been confirmed? */
   confirmedPlayback: boolean;
   /** Timestamp when session first appeared (for duration-based confirmation) */
   firstSeenAt: number;
   /** Highest viewOffset seen (tracks max progress) */
   maxViewOffset: number;
+  /** First observed viewOffset; progress is measured relative to this, not absolute position. */
+  initialViewOffset: number | null;
 }
 
 /**
@@ -302,7 +313,6 @@ export interface PendingSessionData {
     thumbUrl: string | null;
     identityName: string | null;
     trustScore: number;
-    sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
     /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
@@ -340,6 +350,12 @@ export interface ServerProcessingResult {
   updatedSessions: ActiveSession[];
   /** Whether any session crossed the watched-completion threshold this tick */
   watchedTransitionOccurred: boolean;
+  /**
+   * IDs (subset of newSessions) that were confirmed from a pending entry.
+   * The pending create already published session:started, so processPollResults
+   * must not publish it again for these.
+   */
+  confirmedFromPendingIds: Set<string>;
 }
 
 // ============================================================================
@@ -363,7 +379,6 @@ export interface SessionCreationInput {
     thumbUrl: string | null;
     identityName: string | null;
     trustScore: number;
-    sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
     /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
@@ -454,7 +469,7 @@ export interface ResolvePendingSessionInput {
 /** Outcome of checking Redis for a pending session tracked under a given key. */
 export type PendingSessionOutcome =
   | { status: 'not-pending' }
-  | { status: 'confirmed-existing'; updatedSession: ActiveSession | null }
+  | { status: 'confirmed'; newSession: ActiveSession | null }
   | { status: 'still-pending'; updatedSession: ActiveSession };
 
 /**
@@ -511,7 +526,6 @@ export interface MediaChangeInput {
     thumbUrl: string | null;
     identityName: string | null;
     trustScore: number;
-    sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
     /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
@@ -542,6 +556,8 @@ export interface MediaChangeResult {
   /** Violations created during session creation */
   violationResults: ViolationInsertResult[];
   wasTerminatedByRule: boolean;
+  /** Set when the new session's content was already tracked as another un-stopped session for this user+device; that twin was stopped and must be run through handleQualityChangeFallout */
+  qualityChange: QualityChangeResult | null;
 }
 
 // ============================================================================
@@ -568,7 +584,6 @@ export interface TranscodeReEvalInput {
     thumbUrl: string | null;
     identityName: string | null;
     trustScore: number;
-    sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
     /** All server_user ids belonging to the same identity, for cross-server rule aggregation */
@@ -600,7 +615,6 @@ export interface PauseReEvalInput {
     thumbUrl: string | null;
     identityName: string | null;
     trustScore: number;
-    sessionCount: number;
     lastActivityAt: Date | null;
     createdAt: Date;
     /** All server_user ids belonging to the same identity, for cross-server rule aggregation */

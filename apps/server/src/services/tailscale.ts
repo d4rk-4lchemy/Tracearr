@@ -26,6 +26,7 @@ import {
 import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { registerService, unregisterService } from './serviceTracker.js';
+import { getBasePath } from '../lib/basePath.js';
 import { getSettings, setSettings, setSetting } from './settings.js';
 import type { TailscaleStatus, TailscaleInfo, TailscaleExitNode } from '@tracearr/shared';
 
@@ -40,7 +41,6 @@ const MAX_RESTART_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 2_000;
 const BACKOFF_CAP_MS = 60_000;
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
-const BASE_PATH = process.env.BASE_PATH?.replace(/\/+$/, '').replace(/^\/?/, '/') || '';
 
 /** Minimal env for tailscale child processes — avoids leaking NODE/app env vars like PORT */
 const TAILSCALE_ENV: Record<string, string> = {
@@ -85,7 +85,7 @@ class TailscaleService {
       dnsName: this.dnsName,
       tailnetName: this.tailnetName,
       tailnetIp: this.tailnetIp,
-      tailnetUrl: this.dnsName ? `http://${this.dnsName}:${PORT}${BASE_PATH}/` : null,
+      tailnetUrl: this.dnsName ? `http://${this.dnsName}:${PORT}${getBasePath()}/` : null,
       exitNodes: this.exitNodes,
       error: this.status === 'error' ? this.error : null,
       available: this.isAvailable(),

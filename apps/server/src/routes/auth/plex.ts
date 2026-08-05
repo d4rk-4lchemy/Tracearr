@@ -25,6 +25,7 @@ import {
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { servers, serverUsers, plexAccounts } from '../../db/schema.js';
+import { invalidateServersCache } from '../../jobs/poller/database.js';
 import { PlexClient } from '../../services/mediaServer/index.js';
 import {
   testSingleConnection,
@@ -57,10 +58,6 @@ const plexTestConnectionSchema = z.object({
   tempToken: z.string().optional(), // Set during signup before the user has a Tracearr account
   claimCode: z.string().optional(),
 });
-
-function getFirstRow<T>(rows: T[]): T | null {
-  return rows[0] ?? null;
-}
 
 export const plexRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -105,11 +102,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
         if (account.length === 0) {
           return reply.notFound('Plex account not found');
         }
-        const accountRow = getFirstRow(account);
-        if (!accountRow) {
-          return reply.notFound('Plex account not found');
-        }
-        plexToken = accountRow.plexToken;
+        plexToken = account[0]!.plexToken;
       } else {
         // Legacy fallback: use first Plex server's token
         const existingPlexServers = await db
@@ -129,17 +122,9 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
           if (userAccounts.length === 0) {
             return { servers: [], hasPlexToken: false };
           }
-          const userAccount = getFirstRow(userAccounts);
-          if (!userAccount) {
-            return { servers: [], hasPlexToken: false };
-          }
-          plexToken = userAccount.plexToken;
+          plexToken = userAccounts[0]!.plexToken;
         } else {
-          const existingPlexServer = getFirstRow(existingPlexServers);
-          if (!existingPlexServer) {
-            return { servers: [], hasPlexToken: false };
-          }
-          plexToken = existingPlexServer.token;
+          plexToken = existingPlexServers[0]!.token;
         }
       }
 
@@ -229,10 +214,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
         return reply.notFound('Server not found');
       }
 
-      const existingServer = getFirstRow(serverRows);
-      if (!existingServer) {
-        return reply.notFound('Server not found');
-      }
+      const existingServer = serverRows[0]!;
 
       // Fetch servers from plex.tv
       let plexServers;
@@ -361,11 +343,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
           if (account.length === 0) {
             return reply.notFound('Plex account not found');
           }
-          const accountRow = getFirstRow(account);
-          if (!accountRow) {
-            return reply.notFound('Plex account not found');
-          }
-          plexToken = accountRow.plexToken;
+          plexToken = account[0]!.plexToken;
         } else {
           const existingPlexServers = await db
             .select({ token: servers.token })
@@ -373,11 +351,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
             .where(eq(servers.type, 'plex'))
             .limit(1);
           if (existingPlexServers.length > 0) {
-            const existingPlexServer = getFirstRow(existingPlexServers);
-            if (!existingPlexServer) {
-              return reply.badRequest('No Plex accounts available to authenticate the test');
-            }
-            plexToken = existingPlexServer.token;
+            plexToken = existingPlexServers[0]!.token;
           } else {
             const userAccounts = await db
               .select({ plexToken: plexAccounts.plexToken })
@@ -387,11 +361,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
             if (userAccounts.length === 0) {
               return reply.badRequest('No Plex accounts available to authenticate the test');
             }
-            const userAccount = getFirstRow(userAccounts);
-            if (!userAccount) {
-              return reply.badRequest('No Plex accounts available to authenticate the test');
-            }
-            plexToken = userAccount.plexToken;
+            plexToken = userAccounts[0]!.plexToken;
           }
         }
       }
@@ -468,13 +438,9 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
       if (account.length === 0) {
         return reply.notFound('Plex account not found');
       }
-      const accountRow = getFirstRow(account);
-      if (!accountRow) {
-        return reply.notFound('Plex account not found');
-      }
-      plexToken = accountRow.plexToken;
-      plexAccountId = accountRow.id;
-      plexTvAccountId = accountRow.plexAccountId;
+      plexToken = account[0]!.plexToken;
+      plexAccountId = account[0]!.id;
+      plexTvAccountId = account[0]!.plexAccountId;
     } else {
       // Legacy fallback: use first Plex server's token and account linkage
       const existingPlexServer = await db
@@ -498,21 +464,13 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
         if (userAccounts.length === 0) {
           return reply.badRequest('No Plex accounts linked. Please link your Plex account first.');
         }
-        const userAccount = getFirstRow(userAccounts);
-        if (!userAccount) {
-          return reply.badRequest('No Plex accounts linked. Please link your Plex account first.');
-        }
-        plexToken = userAccount.plexToken;
-        plexAccountId = userAccount.id;
-        plexTvAccountId = userAccount.plexAccountId;
+        plexToken = userAccounts[0]!.plexToken;
+        plexAccountId = userAccounts[0]!.id;
+        plexTvAccountId = userAccounts[0]!.plexAccountId;
       } else {
-        const existingServer = getFirstRow(existingPlexServer);
-        if (!existingServer) {
-          return reply.badRequest('No Plex accounts linked. Please link your Plex account first.');
-        }
-        plexToken = existingServer.token;
+        plexToken = existingPlexServer[0]!.token;
         // Also inherit the plexAccountId from the existing server if available
-        plexAccountId = existingServer.plexAccountId ?? undefined;
+        plexAccountId = existingPlexServer[0]!.plexAccountId ?? undefined;
         // Get the plex.tv ID from the linked plex_account
         if (plexAccountId) {
           const linkedAccount = await db
@@ -553,9 +511,9 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
       if (!adminCheck.success) {
         // Provide specific error based on failure type
         if (adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED) {
-          return await reply.serviceUnavailable(adminCheck.message);
+          return reply.serviceUnavailable(adminCheck.message);
         }
-        return await reply.forbidden(adminCheck.message);
+        return reply.forbidden(adminCheck.message);
       }
 
       // Create server record
@@ -570,9 +528,10 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
           plexAccountId: plexAccountId, // Link to plex_account if available
         })
         .returning();
+      invalidateServersCache();
 
       if (!newServer) {
-        return await reply.internalServerError('Failed to create server');
+        return reply.internalServerError('Failed to create server');
       }
 
       // Create owner's serverUser for this server
@@ -599,7 +558,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
           { userId: user.id, serverId: newServer.id, externalId: ownerLocalId },
           'Created owner serverUser for new Plex server'
         );
-      } catch (err: unknown) {
+      } catch (err) {
         // Log but don't fail - sync will create the serverUser later if needed
         app.log.warn(
           { error: err, serverId: newServer.id },
@@ -621,7 +580,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
             'Auto-sync completed for new Plex server'
           );
         })
-        .catch((error: unknown) => {
+        .catch((error) => {
           app.log.error(
             { err: error, serverId: newServer.id },
             'Auto-sync failed for new Plex server'
@@ -697,6 +656,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
                 .update(servers)
                 .set({ plexAccountId: matchingAccount.id })
                 .where(eq(servers.id, server.id));
+              invalidateServersCache();
               app.log.info(
                 { serverId: server.id, accountId: matchingAccount.id },
                 'Auto-linked orphaned Plex server to account'
@@ -782,7 +742,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
         const authResult = await PlexClient.checkOAuthPin(pin);
 
         if (!authResult) {
-          return await reply.badRequest('PIN not yet authorized or expired');
+          return reply.badRequest('PIN not yet authorized or expired');
         }
 
         // Check if this Plex account is already linked to ANY user
@@ -793,11 +753,10 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
           .limit(1);
 
         if (existingAccount.length > 0) {
-          const existingAccountRow = getFirstRow(existingAccount);
-          if (existingAccountRow?.userId === user.id) {
-            return await reply.conflict('This Plex account is already linked to your account');
+          if (existingAccount[0]!.userId === user.id) {
+            return reply.conflict('This Plex account is already linked to your account');
           }
-          return await reply.conflict('This Plex account is linked to another Tracearr user');
+          return reply.conflict('This Plex account is linked to another Tracearr user');
         }
 
         // Create the plex_account entry
@@ -815,7 +774,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
           .returning();
 
         if (!newAccount) {
-          return await reply.internalServerError('Failed to link Plex account');
+          return reply.internalServerError('Failed to link Plex account');
         }
 
         app.log.info(

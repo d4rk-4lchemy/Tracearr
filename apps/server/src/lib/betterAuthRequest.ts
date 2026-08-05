@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { fromNodeHeaders } from 'better-auth/node';
 import { getAuth, CLIENT_IP_HEADER } from './auth.js';
+import { getBasePath } from './basePath.js';
 
 function firstForwardedValue(header: string | string[] | undefined): string | undefined {
   return (Array.isArray(header) ? header[0] : header)?.split(',')[0]?.trim();
@@ -36,7 +37,12 @@ export function deriveScheme(request: FastifyRequest): string {
  */
 export function toWebRequest(request: FastifyRequest): Request {
   const host = firstForwardedValue(request.headers['x-forwarded-host']) || request.headers.host;
-  const url = new URL(request.url, `${deriveScheme(request)}://${host}`);
+  // request.url is post-rewriteUrl, so BASE_PATH is already stripped whether
+  // or not the inbound request carried it. Re-prefixing restores the
+  // canonical external path, which has to match the basePath configured in
+  // lib/auth.ts: Better Auth routes against that path and derives the OIDC
+  // redirect_uri from it.
+  const url = new URL(`${getBasePath()}${request.url}`, `${deriveScheme(request)}://${host}`);
   const headers = fromNodeHeaders(request.headers);
   // Better Auth trusts this header unconditionally for rate limiting and
   // session.ipAddress, so it must be set (never appended) after the inbound

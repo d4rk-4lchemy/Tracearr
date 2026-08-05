@@ -353,11 +353,11 @@ export const FIELD_DEFINITIONS: Record<ConditionField, FieldDefinition> = {
   ip_in_range: {
     field: 'ip_in_range',
     label: 'IP Range',
-    description: 'IP address in CIDR range',
+    description: 'IP address in CIDR range (IPv4 or IPv6)',
     category: 'network_location',
     operators: EQUALITY_OPERATORS,
     valueType: 'cidr',
-    placeholder: 'e.g., 192.168.1.0/24',
+    placeholder: 'e.g., 192.168.1.0/24 or 2001:db8:abcd:7800::/64',
   },
 
   // Scope
@@ -369,16 +369,6 @@ export const FIELD_DEFINITIONS: Record<ConditionField, FieldDefinition> = {
     operators: [...EQUALITY_OPERATORS, ...ARRAY_OPERATORS],
     valueType: 'multi-select',
     placeholder: 'Select servers...',
-  },
-  library_id: {
-    field: 'library_id',
-    label: 'Library',
-    description: 'Specific library',
-    category: 'scope',
-    operators: [...EQUALITY_OPERATORS, ...ARRAY_OPERATORS],
-    valueType: 'multi-select',
-    placeholder: 'Select libraries...',
-    hidden: true, // TODO: Backend doesn't support library_id yet
   },
   media_type: {
     field: 'media_type',

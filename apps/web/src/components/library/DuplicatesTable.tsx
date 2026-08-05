@@ -105,12 +105,22 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
                           </div>
                         </TableCell>
                         <TableCell>
-                          <MatchTypeBadge
-                            matchType={group.matchType}
-                            confidence={group.confidence}
-                          />
+                          <div className="flex items-center gap-2">
+                            <MatchTypeBadge
+                              matchType={group.matchType}
+                              confidence={group.confidence}
+                            />
+                            {group.sameServer && <Badge variant="secondary">Same server</Badge>}
+                          </div>
                         </TableCell>
-                        <TableCell className="text-right">{group.items.length}</TableCell>
+                        <TableCell className="text-right">
+                          {/* Fallback covers responses cached before uniqueFileCount existed */}
+                          {group.uniqueFileCount ??
+                            group.items.reduce(
+                              (count, item) => count + Math.max(item.versions.length, 1),
+                              0
+                            )}
+                        </TableCell>
                         <TableCell className="text-right">
                           {formatBytes(group.potentialSavingsBytes)}
                         </TableCell>
@@ -122,19 +132,45 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
                           <div className="bg-muted/30 border-b px-4 py-3">
                             <div className="space-y-2">
                               {group.items.map((item) => (
-                                <div
-                                  key={item.id}
-                                  className="flex items-center justify-between gap-4 text-sm"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <Badge variant="outline">{item.serverName}</Badge>
+                                <div key={item.id} className="space-y-1">
+                                  <div className="flex items-center justify-between gap-4 text-sm">
+                                    <div className="flex items-center gap-3">
+                                      <Badge variant="outline">{item.serverName}</Badge>
+                                      {item.libraryName && (
+                                        <Badge variant="secondary">{item.libraryName}</Badge>
+                                      )}
+                                      <span className="text-muted-foreground">
+                                        {formatMediaTech(item.resolution)}
+                                      </span>
+                                    </div>
                                     <span className="text-muted-foreground">
-                                      {formatMediaTech(item.resolution)}
+                                      {formatBytes(item.fileSize)}
                                     </span>
                                   </div>
-                                  <span className="text-muted-foreground">
-                                    {formatBytes(item.fileSize)}
-                                  </span>
+                                  {item.versions.length > 1 &&
+                                    item.versions.map((version, index) => (
+                                      <div
+                                        key={`${item.id}-v${index}`}
+                                        className="text-muted-foreground flex items-center justify-between gap-4 pl-6 text-xs"
+                                      >
+                                        <span className="flex items-center gap-2">
+                                          {[
+                                            version.resolution
+                                              ? formatMediaTech(version.resolution)
+                                              : null,
+                                            version.videoCodec,
+                                          ]
+                                            .filter(Boolean)
+                                            .join(' · ') || '—'}
+                                          {version.isMirror && (
+                                            <Badge variant="outline" className="text-[10px]">
+                                              Mirror
+                                            </Badge>
+                                          )}
+                                        </span>
+                                        <span>{formatBytes(version.fileSize)}</span>
+                                      </div>
+                                    ))}
                                 </div>
                               ))}
                             </div>

@@ -24,6 +24,7 @@ import {
 } from './authGuards.js';
 import { getRedis, closeRedis } from './redisShared.js';
 import { plexPlugin } from './plexPlugin.js';
+import { betterAuthBasePath } from './basePath.js';
 
 const oidcEnv = {
   issuer: process.env.OIDC_ISSUER_URL,
@@ -128,9 +129,10 @@ function buildAuth(redis: Redis) {
   const rkey = (k: string) => `${prefix}tracearr:ba:${k}`;
 
   return betterAuth({
-    basePath: '/api/v1/auth',
+    // Better Auth builds its baseURL, and from it the OIDC redirect_uri, as
+    // request origin plus this path, so it must include BASE_PATH.
+    basePath: betterAuthBasePath(),
     secret: requireBetterAuthSecret(),
-    logger: process.env.TRACEARR_SILENCE_BETTER_AUTH_LOGS === '1' ? { disabled: true } : undefined,
     trustedOrigins: trustedOriginsForRequest,
     database: withLoginScopedUsernameLookup(
       drizzleAdapter(db, {
@@ -263,9 +265,9 @@ function buildAuth(redis: Redis) {
               config: [
                 {
                   providerId: 'oidc',
-                  clientId: oidcEnv.clientId ?? '',
-                  clientSecret: oidcEnv.clientSecret ?? '',
-                  discoveryUrl: `${(oidcEnv.issuer ?? '').replace(/\/$/, '')}/.well-known/openid-configuration`,
+                  clientId: oidcEnv.clientId!,
+                  clientSecret: oidcEnv.clientSecret!,
+                  discoveryUrl: `${oidcEnv.issuer!.replace(/\/$/, '')}/.well-known/openid-configuration`,
                   scopes: ['openid', 'email', 'profile'],
                   pkce: true,
                 },

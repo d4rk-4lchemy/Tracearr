@@ -6,6 +6,12 @@ ARG APP_VERSION=0.0.0
 ARG APP_TAG=
 ARG APP_COMMIT=
 ARG APP_BUILD_DATE=
+ARG APP_UPSTREAM_VERSION=${APP_VERSION}
+ARG APP_FORK_REVISION=
+ARG APP_FORK_VERSION=
+ARG APP_FORK_RELEASE_TAG=
+ARG APP_FORK_REPO=d4rk-4lchemy/Tracearr
+ARG APP_IMAGE_REPO=darkalchemy2137/distracearr
 
 RUN corepack enable && corepack prepare pnpm@11.11.0 --activate
 
@@ -37,6 +43,12 @@ ARG APP_VERSION=0.0.0
 ARG APP_TAG=
 ARG APP_COMMIT=
 ARG APP_BUILD_DATE=
+ARG APP_UPSTREAM_VERSION=${APP_VERSION}
+ARG APP_FORK_REVISION=
+ARG APP_FORK_VERSION=
+ARG APP_FORK_RELEASE_TAG=
+ARG APP_FORK_REPO=d4rk-4lchemy/Tracearr
+ARG APP_IMAGE_REPO=darkalchemy2137/distracearr
 
 RUN corepack enable && corepack prepare pnpm@11.11.0 --activate
 
@@ -49,8 +61,8 @@ ARG CACHE_BUST
 # Write build info to JSON file - can't be overridden by compose ENV vars
 
 RUN echo "Build: ${APP_VERSION} (${APP_COMMIT}) - ${CACHE_BUST:-nocache}" && \
-    printf '{"version":"%s","tag":"%s","commit":"%s","buildDate":"%s"}\n' \
-      "${APP_VERSION}" "${APP_TAG}" "${APP_COMMIT}" "${APP_BUILD_DATE}" > /app/.build-info.json
+    printf '{"version":"%s","tag":"%s","commit":"%s","buildDate":"%s","upstreamVersion":"%s","forkRevision":"%s","forkVersion":"%s","forkReleaseTag":"%s","forkRepo":"%s","imageRepo":"%s"}\n' \
+      "${APP_VERSION}" "${APP_TAG}" "${APP_COMMIT}" "${APP_BUILD_DATE}" "${APP_UPSTREAM_VERSION}" "${APP_FORK_REVISION}" "${APP_FORK_VERSION}" "${APP_FORK_RELEASE_TAG}" "${APP_FORK_REPO}" "${APP_IMAGE_REPO}" > /app/.build-info.json
 
 # Set runtime environment variables
 ENV NODE_ENV=production
@@ -58,6 +70,12 @@ ENV APP_VERSION=${APP_VERSION}
 ENV APP_TAG=${APP_TAG}
 ENV APP_COMMIT=${APP_COMMIT}
 ENV APP_BUILD_DATE=${APP_BUILD_DATE}
+ENV APP_UPSTREAM_VERSION=${APP_UPSTREAM_VERSION}
+ENV APP_FORK_REVISION=${APP_FORK_REVISION}
+ENV APP_FORK_VERSION=${APP_FORK_VERSION}
+ENV APP_FORK_RELEASE_TAG=${APP_FORK_RELEASE_TAG}
+ENV APP_FORK_REPO=${APP_FORK_REPO}
+ENV APP_IMAGE_REPO=${APP_IMAGE_REPO}
 
 # Copy package files for production install
 COPY --from=builder /app/package.json ./

@@ -53,7 +53,7 @@ function validateDateOrder(data: { startDate?: string; endDate?: string }) {
 }
 
 /** Standard date validation refinements for stats queries */
-const dateValidationRefinements = {
+export const dateValidationRefinements = {
   customPeriodRequiresDates: {
     refinement: requireDatesForCustomPeriod,
     message: 'Custom period requires startDate and endDate',
@@ -78,6 +78,17 @@ export const serverIdsQuerySchema = z
 export const userIdsQuerySchema = z
   .union([uuidSchema.transform((id) => [id]), z.array(uuidSchema)])
   .optional();
+
+// `${serverId}:${libraryId}` composite key for the catalog Library filter -
+// a library id is only unique within its own server, so the filter has to
+// pin both.
+export const libraryKeySchema = z.string().refine((value) => {
+  const separator = value.indexOf(':');
+  if (separator === -1) return false;
+  const serverId = value.slice(0, separator);
+  const libraryId = value.slice(separator + 1);
+  return uuidSchema.safeParse(serverId).success && libraryId.length >= 1 && libraryId.length <= 100;
+}, 'Invalid library key');
 export const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(20),
@@ -486,7 +497,7 @@ export const deviceClientFieldSchema = z.enum(['device_type', 'client_name', 'pl
 
 export const networkLocationFieldSchema = z.enum(['is_local_network', 'country', 'ip_in_range']);
 
-export const scopeFieldSchema = z.enum(['server_id', 'library_id', 'media_type']);
+export const scopeFieldSchema = z.enum(['server_id', 'media_type']);
 
 export const conditionFieldSchema = z.union([
   sessionBehaviorFieldSchema,
@@ -538,7 +549,15 @@ export const conditionSchema = z.object({
   value: conditionValueSchema,
   params: z
     .object({
-      window_hours: z.number().int().positive().optional(),
+      // The history fetch sizes itself from the largest active window; 168h
+      // (7 days) bounds that fetch and matches the sessions hypertable's
+      // compression boundary.
+      window_hours: z
+        .number()
+        .int()
+        .positive()
+        .max(168, 'Window cannot exceed 168 hours (7 days)')
+        .optional(),
       exclude_same_device: z.boolean().optional(),
       exclude_same_ip: z.boolean().optional(),
       count_device_types: z.array(deviceTypeSchema).optional(),
@@ -551,10 +570,36 @@ export const conditionGroupSchema = z.object({
   conditions: z.array(conditionSchema).min(1),
 });
 
+/**
+ * Condition fields evaluable for a dormant account outside a playback
+ * session. Rules containing inactive_days run in the hourly inactivity
+ * worker, where no session exists, so they may only use these fields.
+ */
+export const INACTIVITY_COMPATIBLE_FIELDS = [
+  'inactive_days',
+  'server_id',
+  'user_id',
+  'trust_score',
+  'account_age_days',
+] as const;
+
+function inactivityFieldsCompatible(conditions: {
+  groups: { conditions: { field: string }[] }[];
+}): boolean {
+  const all = conditions.groups.flatMap((g) => g.conditions);
+  if (!all.some((c) => c.field === 'inactive_days')) return true;
+  return all.every((c) => (INACTIVITY_COMPATIBLE_FIELDS as readonly string[]).includes(c.field));
+}
+
 // Rule conditions (AND logic between groups)
-export const ruleConditionsSchema = z.object({
-  groups: z.array(conditionGroupSchema).min(1),
-});
+export const ruleConditionsSchema = z
+  .object({
+    groups: z.array(conditionGroupSchema).min(1),
+  })
+  .refine(inactivityFieldsCompatible, {
+    message:
+      'inactive_days rules run outside a playback session, so they can only be combined with server, user, trust score, or account age conditions',
+  });
 
 // Action types
 export const actionTypeSchema = z.enum([
@@ -607,6 +652,7 @@ export type SessionTarget = z.infer<typeof sessionTargetSchema>;
 
 export const killStreamActionSchema = z.object({
   type: z.literal('kill_stream'),
+  /** Seconds to wait before killing. The kill only fires if the rule condition still holds after the wait; 0 (default) still re-checks once before killing. */
   delay_seconds: z.number().int().min(0).max(300).optional(),
   require_confirmation: z.boolean().optional(),
   cooldown_minutes: z.number().int().nonnegative().optional(),
@@ -655,6 +701,22 @@ const scopeRefinement = {
   message: RULE_SCOPE_ERROR_MESSAGE,
 } as const;
 
+// A server-scoped rule detects on that server's sessions only; enforcing its
+// actions across every server would kill sessions the rule cannot see.
+export function scopeAllowsCrossServerEnforcement(data: {
+  serverId?: string | null;
+  enforceAcrossServers?: boolean;
+}) {
+  return !(data.serverId != null && data.enforceAcrossServers === true);
+}
+
+export const RULE_CROSS_SERVER_ENFORCEMENT_ERROR_MESSAGE =
+  'A server-scoped rule cannot enforce actions across all servers';
+
+const crossServerEnforcementRefinement = {
+  message: RULE_CROSS_SERVER_ENFORCEMENT_ERROR_MESSAGE,
+} as const;
+
 // Create rule V2 schema
 export const createRuleV2Schema = z
   .object({
@@ -669,7 +731,8 @@ export const createRuleV2Schema = z
     conditions: ruleConditionsSchema,
     actions: ruleActionsSchema,
   })
-  .refine(hasAtMostOneScope, scopeRefinement);
+  .refine(hasAtMostOneScope, scopeRefinement)
+  .refine(scopeAllowsCrossServerEnforcement, crossServerEnforcementRefinement);
 
 // Update rule V2 schema
 export const updateRuleV2Schema = z
@@ -685,7 +748,8 @@ export const updateRuleV2Schema = z
     conditions: ruleConditionsSchema.optional(),
     actions: ruleActionsSchema.optional(),
   })
-  .refine(hasAtMostOneScope, scopeRefinement);
+  .refine(hasAtMostOneScope, scopeRefinement)
+  .refine(scopeAllowsCrossServerEnforcement, crossServerEnforcementRefinement);
 
 // Bulk operations schemas
 export const bulkUpdateRulesSchema = z.object({
@@ -867,6 +931,16 @@ export const updateSettingsSchema = z.object({
   backupScheduleDayOfWeek: z.number().int().min(0).max(6).optional(),
   backupScheduleDayOfMonth: z.number().int().min(1).max(31).optional(),
   backupRetentionCount: z.number().int().min(1).max(30).optional(),
+  // Watch completion thresholds (percent, per media type)
+  watchedThresholdMovie: z.number().int().min(1).max(100).optional(),
+  watchedThresholdTv: z.number().int().min(1).max(100).optional(),
+  watchedThresholdMusic: z.number().int().min(1).max(100).optional(),
+  // Public API v2
+  publicApiRateLimitPerMinute: z.number().int().min(1).optional(),
+  // Media browsing: warm poster caches for a server after its library sync completes
+  imagePrecacheEnabled: z.boolean().optional(),
+  // Media browsing: server whose poster wins when a title exists on multiple servers
+  preferredPosterServerId: z.string().uuid().nullable().optional(),
 });
 
 // ============================================================================
@@ -1079,13 +1153,19 @@ export const libraryStatusQuerySchema = z.object({
 });
 
 // Library growth query schema (time-series)
-export const libraryGrowthQuerySchema = z.object({
-  serverId: z.uuid().optional(),
-  serverIds: serverIdsQuerySchema,
-  libraryId: z.uuid().optional(),
-  period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
-  timezone: timezoneSchema,
-});
+export const libraryGrowthQuerySchema = z
+  .object({
+    serverId: z.uuid().optional(),
+    serverIds: serverIdsQuerySchema,
+    libraryId: z.uuid().optional(),
+    period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
+    startDate: z.iso.datetime().optional(),
+    endDate: z.iso.datetime().optional(),
+    timezone: timezoneSchema,
+  })
+  .refine(dateValidationRefinements.startBeforeEnd.refinement, {
+    message: dateValidationRefinements.startBeforeEnd.message,
+  });
 
 // Library quality evolution query schema
 export const libraryQualityQuerySchema = z.object({
@@ -1217,6 +1297,24 @@ export const topContentQuerySchema = z.object({
   pageSize: z.coerce.number().int().positive().max(50).default(20),
 });
 
+// Library shelves query schema (windowed recently-added/most-popular/dead-weight
+// command center) - same day/week/month/year/all/custom period convention as
+// statsQuerySchema, matching the frontend's TimeRangePicker/TimeRangeValue shape.
+export const shelvesQuerySchema = z
+  .object({
+    period: statPeriodSchema.default('month'),
+    startDate: z.iso.datetime().optional(),
+    endDate: z.iso.datetime().optional(),
+    serverIds: serverIdsQuerySchema,
+    includeDeadWeight: booleanStringSchema.default(true),
+  })
+  .refine(dateValidationRefinements.customPeriodRequiresDates.refinement, {
+    message: dateValidationRefinements.customPeriodRequiresDates.message,
+  })
+  .refine(dateValidationRefinements.startBeforeEnd.refinement, {
+    message: dateValidationRefinements.startBeforeEnd.message,
+  });
+
 // ============================================================================
 // Type Exports
 // ============================================================================
@@ -1233,6 +1331,7 @@ export type LibraryRoiQueryInput = z.infer<typeof libraryRoiQuerySchema>;
 export type LibraryPatternsQueryInput = z.infer<typeof libraryPatternsQuerySchema>;
 export type LibraryCompletionQueryInput = z.infer<typeof libraryCompletionQuerySchema>;
 export type TopContentQueryInput = z.infer<typeof topContentQuerySchema>;
+export type ShelvesQueryInput = z.infer<typeof shelvesQuerySchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CallbackInput = z.infer<typeof callbackSchema>;
 export type CreateServerInput = z.infer<typeof createServerSchema>;

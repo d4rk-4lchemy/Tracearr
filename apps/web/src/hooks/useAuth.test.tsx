@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -13,49 +13,37 @@ vi.mock('@/lib/authClient', () => ({
   authClient: { signOut: vi.fn().mockResolvedValue(undefined) },
 }));
 
-vi.mock('@/lib/browser', () => ({
-  getBrowserWindow: vi.fn(),
-}));
-
 import { api, AUTH_STATE_CHANGE_EVENT, BASE_URL } from '@/lib/api';
 import { authClient } from '@/lib/authClient';
-import { getBrowserWindow } from '@/lib/browser';
 import { AuthProvider, useAuth } from './useAuth';
 
 const mockMe = vi.mocked(api.auth.me);
 const mockSignOut = vi.mocked(authClient.signOut);
-const mockGetBrowserWindow = vi.mocked(getBrowserWindow);
+
+const originalLocation = window.location;
 
 /** jsdom doesn't support real navigation, so href assignment is tracked via a spy setter. */
 function mockLocation(pathname: string) {
   const setHref = vi.fn();
-  const listeners = new Map<string, EventListener>();
-  const browserWindow = {
-    location: {
-      pathname,
-      get href() {
+  const location = Object.create(originalLocation) as Location;
+  Object.defineProperties(location, {
+    pathname: { value: pathname, configurable: true },
+    href: {
+      get() {
         return pathname;
       },
-      set href(value: string) {
+      set(value: string) {
         setHref(value);
       },
+      configurable: true,
     },
-    addEventListener: vi.fn((event: string, listener: EventListenerOrEventListenerObject) => {
-      if (typeof listener === 'function') {
-        listeners.set(event, listener);
-      }
-    }),
-    removeEventListener: vi.fn((event: string) => {
-      listeners.delete(event);
-    }),
-    dispatchEvent: vi.fn((event: Event) => {
-      const listener = listeners.get(event.type);
-      listener?.(event);
-      return true;
-    }),
-  } as unknown as Window;
+  });
 
-  mockGetBrowserWindow.mockReturnValue(browserWindow);
+  Object.defineProperty(window, 'location', {
+    value: location,
+    writable: true,
+    configurable: true,
+  });
   return setHref;
 }
 
@@ -74,7 +62,14 @@ function wrapper() {
 describe('useAuth', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetBrowserWindow.mockReturnValue(window);
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    });
   });
 
   it('exposes the frozen { user, isLoading, isAuthenticated, logout, refetch } shape', async () => {
@@ -145,7 +140,7 @@ describe('useAuth', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     act(() => {
-      mockGetBrowserWindow().dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
+      window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
     });
 
     expect(setHref).not.toHaveBeenCalled();
@@ -159,7 +154,7 @@ describe('useAuth', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     act(() => {
-      mockGetBrowserWindow().dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
+      window.dispatchEvent(new Event(AUTH_STATE_CHANGE_EVENT));
     });
 
     expect(setHref).toHaveBeenCalledWith(`${BASE_URL}login`);

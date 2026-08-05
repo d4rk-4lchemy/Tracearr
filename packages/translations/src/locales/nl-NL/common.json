@@ -93,7 +93,9 @@
     "usersUpdated_one": "{{count}} gebruiker bijgewerkt",
     "usersUpdated_other": "{{count}} gebruikers bijgewerkt",
     "violation_one": "{{count}} overtreding",
-    "violation_other": "{{count}} overtredingen"
+    "violation_other": "{{count}} overtredingen",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} dag",

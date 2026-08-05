@@ -15,10 +15,10 @@ function createPendingSession(overrides: Partial<PendingSessionData> = {}): Pend
   return {
     id: 'test-uuid-123',
     confirmation: {
-      rulesEvaluated: false,
       confirmedPlayback: false,
       firstSeenAt: now,
       maxViewOffset: 0,
+      initialViewOffset: null,
     },
     processed: {} as any,
     server: { id: 'srv-1', name: 'Test JF', type: 'jellyfin' },
@@ -29,7 +29,6 @@ function createPendingSession(overrides: Partial<PendingSessionData> = {}): Pend
       thumbUrl: null,
       identityName: null,
       trustScore: 100,
-      sessionCount: 0,
       lastActivityAt: null,
       createdAt: new Date(),
       identityServerUserIds: ['su-1'],
@@ -231,6 +230,8 @@ describe('rapid restarts while pending', () => {
 describe('change detection for DB writes', () => {
   const base = {
     state: 'playing',
+    mediaTitle: 'Original Program',
+    totalDurationMs: 5_400_000,
     isTranscode: false,
     videoDecision: 'direct play',
     audioDecision: 'direct play',
@@ -272,6 +273,14 @@ describe('change detection for DB writes', () => {
 
     it('source audio codec changes', () => {
       expect(shouldWriteToDb(base, { ...base, sourceAudioCodec: 'eac3' })).toBe(true);
+    });
+
+    it('media title changes', () => {
+      expect(shouldWriteToDb(base, { ...base, mediaTitle: 'Next Program' })).toBe(true);
+    });
+
+    it('total duration changes', () => {
+      expect(shouldWriteToDb(base, { ...base, totalDurationMs: 3_600_000 })).toBe(true);
     });
   });
 

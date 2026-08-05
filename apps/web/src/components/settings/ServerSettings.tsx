@@ -40,16 +40,17 @@ import {
   Radio,
   Copy,
   ArrowUpCircle,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { api, tokenStorage } from '@/lib/api';
 import type { PlexDiscoveredServer } from '@/lib/api';
-import { getBrowserNavigator } from '@/lib/browser';
-import { getErrorMessage } from '@/lib/errors';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
+import { useDebouncedSave } from '@/hooks/useDebouncedSave';
+import { AutosaveSelectField } from '@/components/ui/autosave-field';
 import { toast } from 'sonner';
 import { PlexServerSelector } from '@/components/auth/PlexServerSelector';
 import { PlexAccountsManager } from '@/components/settings/PlexAccountsManager';
@@ -62,6 +63,7 @@ import {
   useUpdateServer,
   usePlexServerConnections,
   useReorderServers,
+  useSettings,
 } from '@/hooks/queries';
 import {
   DndContext,
@@ -101,20 +103,15 @@ export function ServerSettings() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editServer, setEditServer] = useState<Server | null>(null);
-  const [serverType, setServerType] = useState<'plex' | 'jellyfin' | 'emby' | 'dispatcharr'>(
-    'plex'
-  );
+  const [serverType, setServerType] = useState<'plex' | 'jellyfin' | 'emby' | 'dispatcharr'>('plex');
   const [serverUrl, setServerUrl] = useState('');
   const [serverName, setServerName] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [dispatcharrAuthMode, setDispatcharrAuthMode] = useState<'token' | 'credentials'>(
-    'credentials'
-  );
+  const [dispatcharrAuthMode, setDispatcharrAuthMode] = useState<'token' | 'credentials'>('credentials');
   const [dispatcharrUsername, setDispatcharrUsername] = useState('');
   const [dispatcharrPassword, setDispatcharrPassword] = useState('');
   const [ignoreAnonymousStreams, setIgnoreAnonymousStreams] = useState(true);
-  const [dispatcharrLiveHistoryThresholdSeconds, setDispatcharrLiveHistoryThresholdSeconds] =
-    useState(30);
+  const [dispatcharrLiveHistoryThresholdSeconds, setDispatcharrLiveHistoryThresholdSeconds] = useState(30);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -239,7 +236,7 @@ export function ServerSettings() {
         setPlexDialogStep('select-account');
       }
     } catch (error) {
-      setConnectError(getErrorMessage(error, 'Failed to fetch Plex accounts'));
+      setConnectError(error instanceof Error ? error.message : 'Failed to fetch Plex accounts');
       setPlexDialogStep('no-accounts');
     }
   };
@@ -265,7 +262,7 @@ export function ServerSettings() {
       setPlexServers(result.servers);
       setPlexDialogStep('select');
     } catch (error) {
-      setConnectError(getErrorMessage(error, 'Failed to fetch Plex servers'));
+      setConnectError(error instanceof Error ? error.message : 'Failed to fetch Plex servers');
       setPlexDialogStep('no-servers');
     }
   };
@@ -308,7 +305,7 @@ export function ServerSettings() {
       setShowAddDialog(false);
       resetAddForm();
     } catch (error) {
-      setConnectError(getErrorMessage(error, 'Failed to connect Plex server'));
+      setConnectError(error instanceof Error ? error.message : 'Failed to connect Plex server');
     } finally {
       setConnectingPlexServer(null);
     }
@@ -355,9 +352,7 @@ export function ServerSettings() {
                 dispatcharrLiveHistoryThresholdSeconds,
               };
 
-        await api.servers.create({
-          ...payload,
-        });
+        await api.servers.create(payload);
         await refetchUser();
       } else {
         const connectFn =
@@ -473,6 +468,9 @@ export function ServerSettings() {
           )}
         </CardContent>
       </Card>
+
+      {/* Poster source preference - Only for owners */}
+      <PosterSourceCard servers={servers} isOwner={user?.role === 'owner'} />
 
       {/* Plex Accounts Management - Only for owners */}
       {user?.role === 'owner' && (
@@ -708,9 +706,7 @@ export function ServerSettings() {
                     id="serverUrl"
                     placeholder={t('servers.serverUrlPlaceholder')}
                     value={serverUrl}
-                    onChange={(e) => {
-                      setServerUrl(readInputValue(e));
-                    }}
+                    onChange={(e) => setServerUrl(readInputValue(e))}
                   />
                   <p className="text-muted-foreground text-xs">
                     {serverType === 'jellyfin'
@@ -726,9 +722,7 @@ export function ServerSettings() {
                     id="serverName"
                     placeholder={t('servers.serverNamePlaceholder')}
                     value={serverName}
-                    onChange={(e) => {
-                      setServerName(readInputValue(e));
-                    }}
+                    onChange={(e) => setServerName(readInputValue(e))}
                   />
                 </div>
                 {serverType === 'dispatcharr' && (
@@ -766,9 +760,7 @@ export function ServerSettings() {
                         id="dispatcharrUsername"
                         placeholder="admin"
                         value={dispatcharrUsername}
-                        onChange={(e) => {
-                          setDispatcharrUsername(readInputValue(e));
-                        }}
+                        onChange={(e) => setDispatcharrUsername(readInputValue(e))}
                       />
                     </div>
                     <div className="space-y-2">
@@ -778,14 +770,8 @@ export function ServerSettings() {
                         type="password"
                         placeholder="Enter your password"
                         value={dispatcharrPassword}
-                        onChange={(e) => {
-                          setDispatcharrPassword(readInputValue(e));
-                        }}
+                        onChange={(e) => setDispatcharrPassword(readInputValue(e))}
                       />
-                      <p className="text-muted-foreground text-xs">
-                        Tracearr will authenticate against Dispatcharr and manage JWT tokens
-                        automatically.
-                      </p>
                     </div>
                   </>
                 ) : (
@@ -796,16 +782,14 @@ export function ServerSettings() {
                       type="password"
                       placeholder={t('servers.apiKeyPlaceholder')}
                       value={apiKey}
-                      onChange={(e) => {
-                          setApiKey(readInputValue(e));
-                      }}
+                      onChange={(e) => setApiKey(readInputValue(e))}
                     />
                     <p className="text-muted-foreground text-xs">
                       {serverType === 'jellyfin'
                         ? t('servers.apiKeyHelpJellyfin')
                         : serverType === 'emby'
                           ? t('servers.apiKeyHelpEmby')
-                          : 'Dispatcharr API key or JWT bearer token. API keys are sent as X-API-Key.'}
+                          : 'Dispatcharr API key or JWT bearer token.'}
                     </p>
                   </div>
                 )}
@@ -828,18 +812,12 @@ export function ServerSettings() {
                           );
                         }}
                       />
-                      <p className="text-muted-foreground text-xs">
-                        Live TV sessions are saved to history only after this threshold. 0 means
-                        always save.
-                      </p>
                     </div>
                     <div className="flex items-start gap-3 rounded-md border p-3">
                       <Checkbox
                         id="dispatcharrIgnoreAnonymousStreams"
                         checked={ignoreAnonymousStreams}
-                        onCheckedChange={(checked) => {
-                          setIgnoreAnonymousStreams(checked === true);
-                        }}
+                        onCheckedChange={(checked) => setIgnoreAnonymousStreams(checked === true)}
                       />
                       <div className="space-y-1">
                         <Label
@@ -950,6 +928,68 @@ export function ServerSettings() {
   );
 }
 
+const AUTOMATIC_POSTER_SOURCE = 'auto';
+
+/**
+ * Poster source preference: which server's poster wins when the same title
+ * exists on more than one server. "Automatic" (null server id) keeps
+ * today's behavior of using the most recently added copy.
+ */
+export function PosterSourceCard({ servers, isOwner }: { servers: Server[]; isOwner: boolean }) {
+  const { t } = useTranslation(['settings']);
+  const { data: settings, isLoading: isLoadingSettings } = useSettings();
+  const preferredPosterField = useDebouncedSave(
+    'preferredPosterServerId',
+    settings?.preferredPosterServerId
+  );
+
+  if (!isOwner) return null;
+
+  const hasServers = servers.length > 0;
+  const selectValue = preferredPosterField.value || AUTOMATIC_POSTER_SOURCE;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ImageIcon className="h-5 w-5" />
+          {t('servers.posterSource.title')}
+        </CardTitle>
+        <CardDescription>{t('servers.posterSource.titleDesc')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoadingSettings ? (
+          <Skeleton className="h-10 w-full max-w-xs" />
+        ) : (
+          <AutosaveSelectField
+            id="preferredPosterServerId"
+            label={t('servers.posterSource.label')}
+            description={
+              hasServers
+                ? t('servers.posterSource.description')
+                : t('servers.posterSource.emptyHint')
+            }
+            value={selectValue}
+            onChange={(v) => {
+              preferredPosterField.setValue(v === AUTOMATIC_POSTER_SOURCE ? null : v);
+            }}
+            options={[
+              { value: AUTOMATIC_POSTER_SOURCE, label: t('servers.posterSource.automatic') },
+              ...servers.map((server) => ({ value: server.id, label: server.name })),
+            ]}
+            disabled={!hasServers}
+            status={preferredPosterField.status}
+            errorMessage={preferredPosterField.errorMessage}
+            onRetry={preferredPosterField.retry}
+            onReset={preferredPosterField.reset}
+            className="max-w-xs"
+          />
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
  * Edit Server Dialog
  * Name and/or URL. For Plex servers: shows PlexServerSelector for URL; for Jellyfin/Emby: simple URL input.
@@ -981,9 +1021,7 @@ function EditServerDialog({
   const [editName, setEditName] = useState('');
   const [manualUrl, setManualUrl] = useState('');
   const [editColor, setEditColor] = useState('#3b82f6');
-  const [editDispatcharrAuthMode, setEditDispatcharrAuthMode] = useState<'token' | 'credentials'>(
-    'token'
-  );
+  const [editDispatcharrAuthMode, setEditDispatcharrAuthMode] = useState<'token' | 'credentials'>('token');
   const [editDispatcharrToken, setEditDispatcharrToken] = useState('');
   const [editDispatcharrUsername, setEditDispatcharrUsername] = useState('');
   const [editDispatcharrPassword, setEditDispatcharrPassword] = useState('');
@@ -1024,13 +1062,12 @@ function EditServerDialog({
       isDispatcharrServer && editIgnoreAnonymousStreams !== (server?.ignoreAnonymousStreams ?? true)
         ? editIgnoreAnonymousStreams
         : undefined;
-    const dispatcharrLiveHistoryThresholdSecondsChanged =
+    const thresholdChanged =
       isDispatcharrServer &&
       editDispatcharrLiveHistoryThresholdSeconds !==
         ((server as Server & DispatcharrServerExtras)?.dispatcharrLiveHistoryThresholdSeconds ?? 30)
         ? editDispatcharrLiveHistoryThresholdSeconds
         : undefined;
-
     onUpdate(
       editName !== server?.name ? editName : undefined,
       uri,
@@ -1040,7 +1077,7 @@ function EditServerDialog({
       undefined,
       undefined,
       ignoreAnonymousStreamsChanged,
-      dispatcharrLiveHistoryThresholdSecondsChanged
+      thresholdChanged
     );
   };
 
@@ -1048,51 +1085,47 @@ function EditServerDialog({
   const hasUrlChange = server ? manualUrl.trim() !== server.url : false;
   const hasColorChange = server ? editColor !== (server.color ?? '') : false;
   const currentDispatcharrAuthMode =
-    isDispatcharrServer ? ((server as Server & DispatcharrServerExtras).dispatcharrAuthMode ?? 'token') : 'token';
-  const hasAuthModeChange =
-    isDispatcharrServer && editDispatcharrAuthMode !== currentDispatcharrAuthMode;
+    isDispatcharrServer ? (server as Server & DispatcharrServerExtras).dispatcharrAuthMode ?? 'token' : 'token';
+  const hasAuthModeChange = isDispatcharrServer && editDispatcharrAuthMode !== currentDispatcharrAuthMode;
   const hasCredentialValueChange =
     isDispatcharrServer &&
     ((editDispatcharrAuthMode === 'credentials' &&
       (editDispatcharrUsername.trim().length > 0 || editDispatcharrPassword.length > 0)) ||
       (editDispatcharrAuthMode === 'token' && editDispatcharrToken.trim().length > 0));
-  const hasIgnoreAnonymousStreamsChange = server
-    ? isDispatcharrServer && editIgnoreAnonymousStreams !== (server.ignoreAnonymousStreams ?? true)
-    : false;
-  const hasDispatcharrThresholdChange = server
-    ? isDispatcharrServer &&
-      editDispatcharrLiveHistoryThresholdSeconds !==
-        ((server as Server & DispatcharrServerExtras).dispatcharrLiveHistoryThresholdSeconds ?? 30)
-    : false;
-  const hasDispatcharrAuthChange = hasAuthModeChange || hasCredentialValueChange;
-  const hasValidDispatcharrAuthInput =
+  const hasIgnoreAnonymousStreamsChange =
+    isDispatcharrServer && editIgnoreAnonymousStreams !== (server?.ignoreAnonymousStreams ?? true);
+  const hasThresholdChange =
+    isDispatcharrServer &&
+    editDispatcharrLiveHistoryThresholdSeconds !==
+      ((server as Server & DispatcharrServerExtras)?.dispatcharrLiveHistoryThresholdSeconds ?? 30);
+  const hasAuthChange = hasAuthModeChange || hasCredentialValueChange;
+  const hasValidAuthInput =
     !isDispatcharrServer ||
-    (!hasDispatcharrAuthChange
-      ? true
-      : editDispatcharrAuthMode === 'credentials'
+    (!hasAuthChange ||
+      (editDispatcharrAuthMode === 'credentials'
         ? Boolean(editDispatcharrUsername.trim()) && Boolean(editDispatcharrPassword)
-        : Boolean(editDispatcharrToken.trim()));
+        : Boolean(editDispatcharrToken.trim())));
   const canSave =
     (hasNameChange ||
       hasUrlChange ||
       hasColorChange ||
-      hasDispatcharrAuthChange ||
+      hasAuthChange ||
       hasIgnoreAnonymousStreamsChange ||
-      hasDispatcharrThresholdChange) &&
-    hasValidDispatcharrAuthInput &&
+      hasThresholdChange) &&
+    hasValidAuthInput &&
     editName.trim().length > 0;
 
   const handleSave = () => {
     const tokenUpdate =
-      isDispatcharrServer && hasDispatcharrAuthChange && editDispatcharrAuthMode === 'token'
+      isDispatcharrServer && hasAuthChange && editDispatcharrAuthMode === 'token'
         ? editDispatcharrToken.trim()
         : undefined;
     const usernameUpdate =
-      isDispatcharrServer && hasDispatcharrAuthChange && editDispatcharrAuthMode === 'credentials'
+      isDispatcharrServer && hasAuthChange && editDispatcharrAuthMode === 'credentials'
         ? editDispatcharrUsername.trim()
         : undefined;
     const passwordUpdate =
-      isDispatcharrServer && hasDispatcharrAuthChange && editDispatcharrAuthMode === 'credentials'
+      isDispatcharrServer && hasAuthChange && editDispatcharrAuthMode === 'credentials'
         ? editDispatcharrPassword
         : undefined;
     onUpdate(
@@ -1104,7 +1137,7 @@ function EditServerDialog({
       usernameUpdate,
       passwordUpdate,
       hasIgnoreAnonymousStreamsChange ? editIgnoreAnonymousStreams : undefined,
-      hasDispatcharrThresholdChange ? editDispatcharrLiveHistoryThresholdSeconds : undefined
+      hasThresholdChange ? editDispatcharrLiveHistoryThresholdSeconds : undefined
     );
   };
 
@@ -1124,7 +1157,7 @@ function EditServerDialog({
             <Input
               id="edit-name"
               value={editName}
-              onChange={(e) => setEditName(readInputValue(e))}
+              onChange={(e) => setEditName(e.target.value)}
               placeholder={t('servers.plexServerPlaceholder')}
               maxLength={100}
             />
@@ -1163,7 +1196,7 @@ function EditServerDialog({
                 <Input
                   id="edit-url"
                   value={manualUrl}
-                  onChange={(e) => setManualUrl(readInputValue(e))}
+                  onChange={(e) => setManualUrl(e.target.value)}
                   placeholder={t('servers.plexServerUrlPlaceholder')}
                 />
               )}
@@ -1175,7 +1208,7 @@ function EditServerDialog({
               <Input
                 id="edit-url"
                 value={manualUrl}
-                onChange={(e) => setManualUrl(readInputValue(e))}
+                onChange={(e) => setManualUrl(e.target.value)}
                 placeholder="http://192.168.1.100:8096"
               />
             </div>
@@ -1184,7 +1217,7 @@ function EditServerDialog({
           {isDispatcharrServer && (
             <div className="space-y-3">
               <div className="space-y-2">
-                <Label>{t('servers.dispatcharrAuthMode')}</Label>
+                <Label>Authentication</Label>
                 <Select
                   value={editDispatcharrAuthMode}
                   onValueChange={(value) => {
@@ -1199,16 +1232,14 @@ function EditServerDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="token">{t('servers.dispatcharrAuthModeToken')}</SelectItem>
-                    <SelectItem value="credentials">
-                      {t('servers.dispatcharrAuthModeCredentials')}
-                    </SelectItem>
+                    <SelectItem value="token">API Key / JWT Token</SelectItem>
+                    <SelectItem value="credentials">Username + Password</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
                   {editDispatcharrAuthMode === 'credentials'
-                    ? t('servers.dispatcharrCredentialsHelp')
-                    : t('servers.dispatcharrTokenHelp')}
+                    ? 'Username/password keeps WebSocket real-time updates active.'
+                    : 'Token mode uses REST polling unless the token supports WebSocket auth.'}
                 </p>
               </div>
 
@@ -1216,7 +1247,7 @@ function EditServerDialog({
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="edit-dispatcharr-username">
-                      {t('servers.dispatcharrUsername')}
+                      Username
                     </Label>
                     <Input
                       id="edit-dispatcharr-username"
@@ -1227,43 +1258,43 @@ function EditServerDialog({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-dispatcharr-password">
-                      {t('servers.dispatcharrPassword')}
+                      Password
                     </Label>
                     <Input
                       id="edit-dispatcharr-password"
                       type="password"
                       value={editDispatcharrPassword}
                       onChange={(e) => setEditDispatcharrPassword(readInputValue(e))}
-                      placeholder={t('servers.dispatcharrPasswordPlaceholder')}
+                      placeholder="Enter your password"
                     />
                     <p className="text-muted-foreground text-xs">
                       {currentDispatcharrAuthMode === 'credentials'
-                        ? t('servers.dispatcharrCredentialsUnchangedHint')
-                        : t('servers.dispatcharrCredentialsSwitchHint')}
+                        ? 'Leave blank to keep the current credentials unchanged.'
+                        : 'Enter both fields to switch this server to username/password auth.'}
                     </p>
                   </div>
                 </>
               ) : (
                 <div className="space-y-2">
-                  <Label htmlFor="edit-dispatcharr-token">{t('common:labels.apiKey')}</Label>
+                  <Label htmlFor="edit-dispatcharr-token">API Key / JWT Token</Label>
                   <Input
                     id="edit-dispatcharr-token"
                     type="password"
                     value={editDispatcharrToken}
-                      onChange={(e) => setEditDispatcharrToken(readInputValue(e))}
+                    onChange={(e) => setEditDispatcharrToken(readInputValue(e))}
                     placeholder={t('servers.apiKeyPlaceholder')}
                   />
                   <p className="text-muted-foreground text-xs">
                     {currentDispatcharrAuthMode === 'token'
-                      ? t('servers.dispatcharrTokenUnchangedHint')
-                      : t('servers.dispatcharrTokenSwitchHint')}
+                      ? 'Leave blank to keep the current token unchanged.'
+                      : 'Enter a replacement token to switch this server to token auth.'}
                   </p>
                 </div>
               )}
 
               <div className="space-y-2">
                 <Label htmlFor="edit-dispatcharr-live-threshold">
-                  {t('servers.dispatcharrLiveHistoryThreshold')}
+                  Live history threshold (seconds)
                 </Label>
                 <Input
                   id="edit-dispatcharr-live-threshold"
@@ -1279,26 +1310,21 @@ function EditServerDialog({
                   }}
                 />
                 <p className="text-muted-foreground text-xs">
-                  {t('servers.dispatcharrLiveHistoryThresholdHelp')}
+                  Live TV sessions are saved after this threshold. 0 means always save.
                 </p>
               </div>
               <div className="flex items-start gap-3 rounded-md border p-3">
                 <Checkbox
                   id="edit-ignore-anonymous-streams"
                   checked={editIgnoreAnonymousStreams}
-                  onCheckedChange={(checked) => {
-                    setEditIgnoreAnonymousStreams(checked === true);
-                  }}
+                  onCheckedChange={(checked) => setEditIgnoreAnonymousStreams(checked === true)}
                 />
                 <div className="space-y-1">
-                  <Label
-                    htmlFor="edit-ignore-anonymous-streams"
-                    className="cursor-pointer font-medium"
-                  >
-                    {t('servers.ignoreAnonymousStreams')}
+                  <Label htmlFor="edit-ignore-anonymous-streams" className="cursor-pointer font-medium">
+                    Ignore Anonymous streams
                   </Label>
                   <p className="text-muted-foreground text-sm">
-                    {t('servers.ignoreAnonymousStreamsHelp')}
+                    Ignore streams reported as anonymous by Dispatcharr.
                   </p>
                 </div>
               </div>
@@ -1364,21 +1390,30 @@ function RealtimeSetupDialog({
   server,
   open,
   onClose,
-  onEditServer,
   mode = 'setup',
+  connectionStatus,
 }: {
   server: Server;
   open: boolean;
   onClose: () => void;
-  onEditServer: () => void;
   mode?: 'setup' | 'update';
+  connectionStatus?: ServerConnectionStatus;
 }) {
   const { t } = useTranslation(['settings']);
   const [copied, setCopied] = useState(false);
   const repoUrl = t('servers.realtimeDialog.jellyfinRepoUrl');
 
+  const issueMessage =
+    connectionStatus?.pluginIssue === 'blocked'
+      ? t('servers.realtimeDialog.issueBlocked')
+      : connectionStatus?.pluginIssue === 'restart_required'
+        ? t('servers.realtimeDialog.issueRestartRequired')
+        : connectionStatus?.pluginIssue === 'malfunctioned'
+          ? t('servers.realtimeDialog.issueMalfunctioned')
+          : null;
+
   const handleCopy = (text: string) => {
-    void getBrowserNavigator().clipboard.writeText(text).then(() => {
+    void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -1389,16 +1424,12 @@ function RealtimeSetupDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {server.type === 'dispatcharr'
-              ? t('servers.realtimeDialog.dispatcharrTitle')
-              : mode === 'update'
+            {mode === 'update'
               ? t('servers.realtimeDialog.updateTitle')
               : t('servers.realtimeDialog.title')}
           </DialogTitle>
           <DialogDescription>
-            {server.type === 'dispatcharr'
-              ? t('servers.realtimeDialog.dispatcharrDescription')
-              : server.type === 'jellyfin'
+            {server.type === 'jellyfin'
               ? mode === 'update'
                 ? t('servers.realtimeDialog.jellyfinUpdateDescription')
                 : t('servers.realtimeDialog.jellyfinDescription')
@@ -1409,16 +1440,23 @@ function RealtimeSetupDialog({
         </DialogHeader>
 
         <div className="text-muted-foreground space-y-3 text-sm">
-          {server.type === 'dispatcharr' ? (
-            <>
-              <ol className="list-decimal space-y-2 pl-4">
-                <li>{t('servers.realtimeDialog.dispatcharrStep1')}</li>
-                <li>{t('servers.realtimeDialog.dispatcharrStep2')}</li>
-                <li>{t('servers.realtimeDialog.dispatcharrStep3')}</li>
-              </ol>
-              <p className="text-xs">{t('servers.realtimeDialog.dispatcharrLegacyNote')}</p>
-            </>
-          ) : server.type === 'jellyfin' ? (
+          {issueMessage && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+              <p className="text-foreground flex items-start gap-2">
+                <AlertTriangle
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500"
+                  aria-hidden="true"
+                />
+                {issueMessage}
+              </p>
+              {connectionStatus?.error && (
+                <code className="text-muted-foreground mt-2 block truncate pl-5">
+                  {connectionStatus.error}
+                </code>
+              )}
+            </div>
+          )}
+          {server.type === 'jellyfin' ? (
             <>
               <ol className="list-decimal space-y-2 pl-4">
                 <li>In your Jellyfin dashboard, go to Plugins → Repositories.</li>
@@ -1474,23 +1512,10 @@ function RealtimeSetupDialog({
               </a>
             </>
           )}
-          {server.type !== 'dispatcharr' && (
-            <p className="text-xs">{t('servers.realtimeDialog.autoDetectNote')}</p>
-          )}
+          <p className="text-xs">{t('servers.realtimeDialog.autoDetectNote')}</p>
         </div>
 
         <DialogFooter>
-          {server.type === 'dispatcharr' && (
-            <Button
-              type="button"
-              onClick={() => {
-                onClose();
-                onEditServer();
-              }}
-            >
-              {t('servers.realtimeDialog.editServer')}
-            </Button>
-          )}
           <Button variant="outline" onClick={onClose}>
             {t('servers.realtimeDialog.close')}
           </Button>
@@ -1591,6 +1616,20 @@ function SortableServerCard({
                     <Zap className="h-3 w-3 text-green-500" aria-hidden="true" />
                     {t('servers.realtimeActive')}
                   </span>
+                ) : connectionStatus.pluginIssue === 'blocked' ||
+                  connectionStatus.pluginIssue === 'restart_required' ||
+                  connectionStatus.pluginIssue === 'malfunctioned' ? (
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-xs text-amber-500 hover:underline"
+                    onClick={() => {
+                      setRealtimeDialogMode('setup');
+                      setShowRealtimeDialog(true);
+                    }}
+                  >
+                    <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                    {t('servers.realtimeError')}
+                  </button>
                 ) : (
                   <span className="flex items-center gap-1 text-xs">
                     <Radio className="text-muted-foreground h-3 w-3" aria-hidden="true" />
@@ -1644,8 +1683,8 @@ function SortableServerCard({
           server={server}
           open={showRealtimeDialog}
           onClose={() => setShowRealtimeDialog(false)}
-          onEditServer={() => onEdit()}
           mode={realtimeDialogMode}
+          connectionStatus={connectionStatus}
         />
       )}
     </div>

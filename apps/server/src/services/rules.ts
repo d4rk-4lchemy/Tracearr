@@ -17,44 +17,9 @@ import type {
 } from '@tracearr/shared';
 import { GEOIP_CONFIG, TIME_MS } from '@tracearr/shared';
 import { geoipService } from './geoip.js';
-import countries from 'i18n-iso-countries';
-import countriesEn from 'i18n-iso-countries/langs/en.json' with { type: 'json' };
+import { toNetworkKey } from '../utils/ip.js';
+import { LOCAL_NETWORK_COUNTRY, normalizeToCountryCode } from '../utils/country.js';
 import { EXCLUDED_MEDIA_TYPES_SET } from '../constants/index.js';
-
-// Register English locale for country name lookups
-countries.registerLocale(countriesEn);
-
-/** Constant for local network country value - must match geoip service */
-const LOCAL_NETWORK_COUNTRY = 'Local Network';
-
-/**
- * Normalize a country value to ISO 3166-1 alpha-2 code.
- * Handles both country names ("Italy") and codes ("IT").
- * Returns null if the country cannot be normalized.
- */
-function normalizeToCountryCode(country: string): string | null {
-  if (!country || country === LOCAL_NETWORK_COUNTRY) {
-    return null;
-  }
-
-  // If it's already a 2-letter code, validate and return uppercase
-  if (country.length === 2) {
-    const upper = country.toUpperCase();
-    // Verify it's a valid country code
-    if (countries.getName(upper, 'en')) {
-      return upper;
-    }
-  }
-
-  // Try to convert country name to code
-  const code = countries.getAlpha2Code(country, 'en');
-  if (code) {
-    return code;
-  }
-
-  // Fallback: return the original value uppercase (might be a valid code)
-  return country.length === 2 ? country.toUpperCase() : null;
-}
 
 export interface RuleEvaluationResult {
   violated: boolean;
@@ -340,7 +305,11 @@ export class RuleEngine {
     }
 
     let uniqueSources: Set<string>;
-    const uniqueIps = new Set<string>();
+    const ipsByNetwork = new Map<string, string>();
+    const addIp = (ip: string) => {
+      const key = toNetworkKey(ip);
+      if (!ipsByNetwork.has(key)) ipsByNetwork.set(key, ip);
+    };
 
     if (params.groupByDevice) {
       // Group by deviceId - each device counts as 1 source regardless of IP changes
@@ -351,18 +320,19 @@ export class RuleEngine {
           continue;
         }
 
-        const sourceKey = s.deviceId ?? `ip:${s.ipAddress}`;
+        const networkKey = toNetworkKey(s.ipAddress);
+        const sourceKey = s.deviceId ?? `ip:${networkKey}`;
         uniqueSources.add(sourceKey);
-        uniqueIps.add(s.ipAddress);
+        addIp(s.ipAddress);
       }
     } else {
       const allIps = allSessions.map((s) => s.ipAddress);
       const filteredIps = this.filterPrivateIps(allIps, params.excludePrivateIps);
 
       for (const ip of filteredIps) {
-        uniqueIps.add(ip);
+        addIp(ip);
       }
-      uniqueSources = uniqueIps;
+      uniqueSources = new Set(ipsByNetwork.keys());
     }
 
     if (uniqueSources.size > params.maxIps) {
@@ -373,7 +343,7 @@ export class RuleEngine {
           uniqueIpCount: uniqueSources.size,
           maxAllowedIps: params.maxIps,
           windowHours: params.windowHours,
-          ips: Array.from(uniqueIps),
+          ips: Array.from(ipsByNetwork.values()),
           ...(params.groupByDevice && { groupedByDevice: true }),
         },
       };

@@ -134,17 +134,12 @@ export const REDIS_KEYS = {
    */
   PENDING_SESSION: (serverId: string, sessionKey: string) =>
     `${_redisPrefix}tracearr:sessions:pending:${serverId}:${sessionKey}`,
-  /**
-   * Private Dispatcharr catch-up playhead state. This must never be returned
-   * with active-session data because it is implementation detail only.
-   */
   DISPATCHARR_CATCHUP_PROGRAMME_START: (identity: string) =>
     `${_redisPrefix}tracearr:dispatcharr:catchup:programme-start:${identity}`,
   /** Set of all pending session keys (serverId:sessionKey format) for enumeration */
   get PENDING_SESSION_IDS() {
     return `${_redisPrefix}tracearr:sessions:pending:ids`;
   },
-  USER_SESSIONS: (userId: string) => `${_redisPrefix}tracearr:users:${userId}:sessions`,
   get DASHBOARD_STATS() {
     return `${_redisPrefix}tracearr:stats:dashboard`;
   },
@@ -168,38 +163,48 @@ export const REDIS_KEYS = {
     const serverHash = serverIds.length > 0 ? serverIds.slice().sort().join(',') : 'all';
     return `${_redisPrefix}tracearr:filters:locations:${userId}:${serverHash}`;
   },
-  // Version check cache
+  // Version check caches (kept separate so fork and upstream failures/expiry do
+  // not hide one another).
+  get VERSION_LATEST_FORK() {
+    return `${_redisPrefix}tracearr:version:latest:fork`;
+  },
+  get VERSION_LATEST_UPSTREAM() {
+    return `${_redisPrefix}tracearr:version:latest:upstream`;
+  },
+  /** @deprecated Use the source-specific keys above. */
   get VERSION_LATEST() {
-    return `${_redisPrefix}tracearr:version:latest`;
+    return `${_redisPrefix}tracearr:version:latest:upstream`;
   },
   // Cooldown key to prevent hammering GitHub on restarts or retry storms
   get VERSION_CHECK_COOLDOWN() {
     return `${_redisPrefix}tracearr:version:check:cooldown`;
   },
-  // Library statistics
+  // Library statistics. The :v2 suffix marks the multi-version payload
+  // change (version-summed sizes, overlapping buckets); old keys expire via
+  // TTL. Bump again whenever a cached payload's meaning shifts.
   get LIBRARY_STATS() {
-    return `${_redisPrefix}tracearr:library:stats`;
+    return `${_redisPrefix}tracearr:library:stats:v2`;
   },
   get LIBRARY_GROWTH() {
     return `${_redisPrefix}tracearr:library:growth`;
   },
   get LIBRARY_QUALITY() {
-    return `${_redisPrefix}tracearr:library:quality`;
+    return `${_redisPrefix}tracearr:library:quality:v2`;
   },
   get LIBRARY_STALE() {
-    return `${_redisPrefix}tracearr:library:stale`;
+    return `${_redisPrefix}tracearr:library:stale:v2`;
   },
   get LIBRARY_DUPLICATES() {
-    return `${_redisPrefix}tracearr:library:duplicates`;
+    return `${_redisPrefix}tracearr:library:duplicates:v2`;
   },
   get LIBRARY_STORAGE() {
-    return `${_redisPrefix}tracearr:library:storage`;
+    return `${_redisPrefix}tracearr:library:storage:v2`;
   },
   get LIBRARY_WATCH() {
-    return `${_redisPrefix}tracearr:library:watch`;
+    return `${_redisPrefix}tracearr:library:watch:v2`;
   },
   get LIBRARY_ROI() {
-    return `${_redisPrefix}tracearr:library:roi`;
+    return `${_redisPrefix}tracearr:library:roi:v2`;
   },
   get LIBRARY_PATTERNS() {
     return `${_redisPrefix}tracearr:library:patterns`;
@@ -214,11 +219,42 @@ export const REDIS_KEYS = {
     return `${_redisPrefix}tracearr:library:top-shows`;
   },
   get LIBRARY_CODECS() {
-    return `${_redisPrefix}tracearr:library:codecs`;
+    return `${_redisPrefix}tracearr:library:codecs:v2`;
   },
   get LIBRARY_RESOLUTION() {
-    return `${_redisPrefix}tracearr:library:resolution`;
+    return `${_redisPrefix}tracearr:library:resolution:v2`;
   },
+  get LIBRARY_SHELVES() {
+    return `${_redisPrefix}tracearr:library:shelves`;
+  },
+  get LIBRARY_GENRES() {
+    return `${_redisPrefix}tracearr:library:genres`;
+  },
+  get LIBRARY_CATALOG_LETTERS() {
+    return `${_redisPrefix}tracearr:library:catalog-letters:v2`;
+  },
+  get LIBRARY_LIBRARIES() {
+    return `${_redisPrefix}tracearr:library:libraries`;
+  },
+  // Watched-filtered ordered candidate list shared by /catalog and
+  // /catalog/letters (see getWatchedCandidates in catalog.ts)
+  get LIBRARY_CATALOG_WATCHED() {
+    return `${_redisPrefix}tracearr:library:catalog-watched:v2`;
+  },
+  // Catalog COUNT + total file size per filter set - O(catalog) to compute,
+  // so it must never run once per scroll page
+  get LIBRARY_CATALOG_TOTALS() {
+    return `${_redisPrefix}tracearr:library:catalog-totals:v2`;
+  },
+  // Single-flight compute lock for a cold cache miss (see
+  // withComputeSingleFlight in routes/library/utils.ts), shared by /shelves
+  // and the catalog watched-candidates compute. cacheKey already carries the
+  // prefix, so this only appends the lock segment.
+  LIBRARY_SINGLE_FLIGHT_LOCK: (cacheKey: string) => `${cacheKey}:lock`,
+  // Internal media detail responses (id/segment/scope composed by the caller);
+  // distinct from PUBLIC_MEDIA_STATS, which backs the public API v2 namespace
+  LIBRARY_MEDIA_DETAIL: (cacheKey: string) =>
+    `${_redisPrefix}tracearr:library:media-detail:v2:${cacheKey}`,
   // Library sync state
   LIBRARY_SYNC_LAST: (serverId: string, libraryId: string) =>
     `${_redisPrefix}tracearr:library:sync:last:${serverId}:${libraryId}`,
@@ -226,6 +262,15 @@ export const REDIS_KEYS = {
     `${_redisPrefix}tracearr:library:sync:count:${serverId}:${libraryId}`,
   LIBRARY_SYNC_CYCLE: (serverId: string, libraryId: string) =>
     `${_redisPrefix}tracearr:library:sync:cycle:${serverId}:${libraryId}`,
+  // Accepted structural shortfall from the last full scan - see COUNT_MISMATCH_* in librarySync.ts
+  LIBRARY_SYNC_SHORTFALL: (serverId: string, libraryId: string) =>
+    `${_redisPrefix}tracearr:library:sync:shortfall:${serverId}:${libraryId}`,
+  // Image precache watermark state (per server, not per library - the precache
+  // job walks library_items scoped only by server)
+  LIBRARY_PRECACHE_WATERMARK: (serverId: string) =>
+    `${_redisPrefix}tracearr:library:precache:watermark:${serverId}`,
+  LIBRARY_PRECACHE_LAST_FULL: (serverId: string) =>
+    `${_redisPrefix}tracearr:library:precache:last-full:${serverId}`,
   // Auth tokens
   REFRESH_TOKEN: (hash: string) => `${_redisPrefix}tracearr:refresh:${hash}`,
   PLEX_TEMP_TOKEN: (token: string) => `${_redisPrefix}tracearr:plex_temp:${token}`,
@@ -264,14 +309,19 @@ export const REDIS_KEYS = {
     `${_redisPrefix}tracearr:filter-options:${userId}:${scopeHash}`,
   // v1 segment invalidates cached entries if the GeoLocation shape ever changes
   PLEX_GEOIP: (ip: string) => `${_redisPrefix}tracearr:geoip:plex:v1:${ip}`,
+  // Public API v2 per-media stats/watchers responses
+  PUBLIC_MEDIA_STATS: (cacheKey: string) =>
+    `${_redisPrefix}tracearr:public:media-stats:${cacheKey}`,
 };
 
 // Cache TTLs in seconds
 export const CACHE_TTL = {
   DASHBOARD_STATS: 60,
-  ACTIVE_SESSIONS: 30, // 30 seconds - lowered from 300
+  PUBLIC_MEDIA_STATS: 60,
+  // Must exceed several SSE reconciliation intervals (30s): paused Plex sessions emit no events,
+  // and an expiring entry hides the session from the dashboard and from concurrent-stream limits.
+  ACTIVE_SESSIONS: 150,
   PENDING_SESSIONS: 300, // 5 minutes - pending sessions need longer TTL for pause scenarios
-  USER_SESSIONS: 3600,
   RATE_LIMIT: 900,
   SERVER_HEALTH: 600, // 10 minutes - servers marked unhealthy if no update
   SERVER_CONNECTION: 600, // 10 minutes - live runtime state, not persisted to DB
@@ -292,6 +342,11 @@ export const CACHE_TTL = {
   LIBRARY_TOP_SHOWS: 300, // 5 minutes
   LIBRARY_CODECS: 300, // 5 minutes
   LIBRARY_RESOLUTION: 300, // 5 minutes
+  LIBRARY_SHELVES: 300, // 5 minutes
+  LIBRARY_GENRES: 3600, // 1 hour
+  LIBRARY_CATALOG_LETTERS: 300, // 5 minutes, matches LIBRARY_SHELVES freshness
+  LIBRARY_LIBRARIES: 300, // 5 minutes - library list changes only on sync
+  LIBRARY_MEDIA_DETAIL: 60, // 1 minute, matches PUBLIC_MEDIA_STATS freshness
   MOBILE_LAST_SEEN: 300, // 5 minutes - throttle for device activity updates
   // Filter options (dropdown values change infrequently)
   FILTER_OPTIONS: 120, // 2 minutes
@@ -314,8 +369,17 @@ export const NOTIFICATION_EVENTS = {
 } as const;
 
 // API version
+/**
+ * server_version_key of the placeholder version rows the multi-version
+ * migration seeds from flat library_items columns. Never surfaced as a real
+ * version and hard-deleted (not tombstoned) when observed versions replace it.
+ */
+export const LEGACY_VERSION_SENTINEL = 'legacy:1';
+
 export const API_VERSION = 'v1';
 export const API_BASE_PATH = `/api/${API_VERSION}`;
+export const API_VERSION_V2 = 'v2';
+export const API_V2_BASE_PATH = `/api/${API_VERSION_V2}`;
 
 // JWT configuration
 export const JWT_CONFIG = {
@@ -744,28 +808,24 @@ export function formatAudioChannels(channels: number | null | undefined): string
 
 // Server color palette (40-60% HSL lightness, visible on both dark and light backgrounds)
 export const SERVER_COLOR_PALETTE = [
-  { hex: '#E5A00D', label: 'Gold' }, // Plex brand
-  { hex: '#AA5CC3', label: 'Purple' }, // Jellyfin brand
-  { hex: '#52B54B', label: 'Green' }, // Emby brand
-  { hex: '#14B8A6', label: 'Teal' }, // Dispatcharr brand
+  { hex: '#F4A825', label: 'Gold' }, // Plex brand
+  { hex: '#895FDD', label: 'Purple' }, // Jellyfin brand
+  { hex: '#39C668', label: 'Green' }, // Emby brand
   { hex: '#3B82F6', label: 'Blue' },
   { hex: '#EF4444', label: 'Red' },
+  { hex: '#14B8A6', label: 'Teal' },
 ] as const;
 
 export const SERVER_TYPE_BRAND_COLORS: Record<string, string> = {
-  plex: '#E5A00D',
-  jellyfin: '#AA5CC3',
-  emby: '#52B54B',
+  plex: '#F4A825',
+  jellyfin: '#895FDD',
+  emby: '#39C668',
   dispatcharr: '#14B8A6',
 };
 
 /** Pick best color for a server given its type and colors already used by other servers */
 export function pickServerColor(type: string, usedColors: (string | null | undefined)[]): string {
-  const used = new Set(
-    usedColors
-      .filter((color): color is string => typeof color === 'string' && color.length > 0)
-      .map((color) => color.toLowerCase())
-  );
+  const used = new Set(usedColors.filter(Boolean).map((c) => c!.toLowerCase()));
   const brand = SERVER_TYPE_BRAND_COLORS[type] ?? '#3B82F6';
   if (!used.has(brand.toLowerCase())) return brand;
   for (const preset of SERVER_COLOR_PALETTE) {

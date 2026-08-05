@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AuthUser } from '@tracearr/shared';
 import { api, AUTH_STATE_CHANGE_EVENT, BASE_URL } from '@/lib/api';
 import { authClient } from '@/lib/authClient';
-import { getBrowserWindow } from '@/lib/browser';
 
 interface UserProfile extends AuthUser {
   email: string | null;
@@ -83,20 +82,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Listen for auth state changes (e.g., session cookie rejected by the API)
   useEffect(() => {
-    const browserWindow = getBrowserWindow();
     const handleAuthChange = () => {
       // Immediately clear auth data and redirect to login
       queryClient.setQueryData(['auth', 'me'], null);
       queryClient.clear();
       // Assigning location.href reloads even when the URL is unchanged, so a
       // 401 fired while already on the login page would reload it forever.
-      if (browserWindow.location.pathname !== `${BASE_URL}login`) {
-        browserWindow.location.href = `${BASE_URL}login`;
+      if (window.location.pathname !== `${BASE_URL}login`) {
+        window.location.href = `${BASE_URL}login`;
       }
     };
 
-    browserWindow.addEventListener(AUTH_STATE_CHANGE_EVENT, handleAuthChange);
-    return () => browserWindow.removeEventListener(AUTH_STATE_CHANGE_EVENT, handleAuthChange);
+    window.addEventListener(AUTH_STATE_CHANGE_EVENT, handleAuthChange);
+    return () => window.removeEventListener(AUTH_STATE_CHANGE_EVENT, handleAuthChange);
   }, [queryClient]);
 
   const logout = useCallback(async () => {
@@ -132,11 +130,10 @@ export function useRequireAuth(): AuthContextValue {
   const auth = useAuth();
 
   useEffect(() => {
-    const browserWindow = getBrowserWindow();
     // Only triggers once the /me query has resolved with no session
     // (never logged in, session expired, or explicitly logged out)
     if (!auth.isAuthenticated) {
-      browserWindow.location.href = `${BASE_URL}login`;
+      window.location.href = `${BASE_URL}login`;
     }
   }, [auth.isAuthenticated]);
 

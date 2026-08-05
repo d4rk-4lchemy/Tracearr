@@ -168,8 +168,10 @@ export type {
   PlexActivityNotification,
   PlexStatusNotification,
   PlexTranscodeNotification,
+  PlexTimelineEntry,
   SSEConnectionStatus,
   ServerConnectionStatus,
+  PluginIssue,
   // Termination logs
   TerminationTrigger,
   TerminationLogWithDetails,
@@ -233,6 +235,7 @@ export type {
   LibraryStorageResponse,
   MatchType,
   DuplicateItem,
+  DuplicateItemVersion,
   DuplicateGroup,
   DuplicatesSummary,
   DuplicatesResponse,
@@ -250,6 +253,41 @@ export type {
   CompletionSummary,
   CompletionPaginationInfo,
   CompletionResponse,
+  WatchedState,
+  CatalogRowServerEntry,
+  CatalogRow,
+  CatalogResponseMeta,
+  CatalogResponse,
+  CatalogLetterBucket,
+  CatalogLettersResponse,
+  ShelfRow,
+  RecentlyAddedShelfRow,
+  MostPopularShelfRow,
+  DeadWeightRow,
+  ShelvesKpiWatchedInPeriod,
+  ShelvesKpiNewlyAdded,
+  ShelvesKpiDeadWeight,
+  ShelvesKpis,
+  ShelvesResponseMeta,
+  ShelvesResponse,
+  ShelvesPeriod,
+  GenreRow,
+  GenresResponse,
+  MediaVersionEntry,
+  MediaAvailabilityEntry,
+  MediaDetailResponse,
+  MediaChildEntry,
+  MediaChildrenResponse,
+  MediaStatsMeasures,
+  MediaStatsWindow,
+  MediaStatsResponse,
+  MediaWatcherEntry,
+  MediaWatchersResponse,
+  MediaPlatformBreakdownEntry,
+  MediaPlatformBreakdownResponse,
+  SeasonHeatEpisode,
+  SeasonHeatSeason,
+  MediaSeasonHeatResponse,
   BingeShow,
   HourlyDistribution,
   MonthlyTrend,
@@ -271,12 +309,16 @@ export type {
   ResolutionEntry,
   ResolutionBreakdown,
   LibraryResolutionResponse,
+  LibraryOption,
+  LibrariesResponse,
 } from './types.js';
 
 // Schema exports
 export {
   // Common
   uuidSchema,
+  serverIdsQuerySchema,
+  libraryKeySchema,
   paginationSchema,
   booleanStringSchema,
   // Auth
@@ -318,8 +360,12 @@ export {
   // Rule V2
   createRuleV2Schema,
   updateRuleV2Schema,
+  ruleConditionsSchema,
   hasAtMostOneScope,
   RULE_SCOPE_ERROR_MESSAGE,
+  scopeAllowsCrossServerEnforcement,
+  RULE_CROSS_SERVER_ENFORCEMENT_ERROR_MESSAGE,
+  INACTIVITY_COMPATIBLE_FIELDS,
   // Bulk operations
   bulkUpdateRulesSchema,
   bulkDeleteRulesSchema,
@@ -332,6 +378,8 @@ export {
   serverIdFilterSchema,
   dashboardQuerySchema,
   timezoneSchema,
+  statPeriodSchema,
+  dateValidationRefinements,
   statsQuerySchema,
   locationStatsQuerySchema,
   // Settings
@@ -366,6 +414,7 @@ export {
   libraryPatternsQuerySchema,
   libraryCompletionQuerySchema,
   topContentQuerySchema,
+  shelvesQuerySchema,
 } from './schemas.js';
 
 // Schema input type exports
@@ -397,6 +446,7 @@ export type {
   UserSortField,
   ServerIdFilterInput,
   DashboardQueryInput,
+  StatPeriod,
   StatsQueryInput,
   LocationStatsQueryInput,
   UpdateSettingsInput,
@@ -424,6 +474,7 @@ export type {
   LibraryPatternsQueryInput,
   LibraryCompletionQueryInput,
   TopContentQueryInput,
+  ShelvesQueryInput,
   // Session target type
   SessionTarget,
 } from './schemas.js';
@@ -444,6 +495,8 @@ export {
   NOTIFICATION_EVENTS,
   API_VERSION,
   API_BASE_PATH,
+  API_VERSION_V2,
+  API_V2_BASE_PATH,
   JWT_CONFIG,
   POLLING_INTERVALS,
   POLLER_CONFIG,
@@ -483,6 +536,8 @@ export {
   // Timezone utilities
   getClientTimezone,
   isValidTimezone,
+  // Multi-version media
+  LEGACY_VERSION_SENTINEL,
 } from './constants.js';
 
 // Role helper exports
@@ -490,6 +545,7 @@ export { ROLE_PERMISSIONS, LOGIN_ROLES, canLogin, hasMinRole, isOwner, isActive 
 
 // Session constants
 export { MEDIA_TYPES, DEFAULT_STREAM_DETAILS } from './types.js';
+export { SERVER_CAPABILITIES, supportsMediaLibrary } from './serverCapabilities.js';
 
 // Backup constants
 export { RESTORE_PHASES } from './types.js';
@@ -509,12 +565,37 @@ export {
 // Media display utilities
 export { formatEpisodeLabel, type FormatEpisodeLabelOptions } from './media.js';
 
+// Alphabet rail letters
+export { LETTER_RAIL_ALPHABET } from './catalogLetters.js';
+
 // Resolution classification
 export {
   RESOLUTION_TIERS,
   classifyByDimensions,
   normalizeResolutionLabel,
   resolutionTierRank,
+  resolutionBucket,
+  resolutionBucketSpellings,
+  resolutionAboveSdSpellings,
+  resolutionSpellingRanks,
   normalizeResolution,
   type ResolutionInput,
+  type ResolutionBucket,
 } from './resolution.js';
+
+// Dynamic range (HDR/SDR) classification
+export {
+  DYNAMIC_RANGE_SDR_TOKEN,
+  DYNAMIC_RANGE_TOKENS,
+  normalizeDynamicRange,
+  type DynamicRangeToken,
+} from './dynamicRange.js';
+
+// Server-scope selection (cache-key and query-param builders)
+export {
+  ALL_SERVERS,
+  serverScopeFromIds,
+  serverScopeKey,
+  serverScopeParamEntries,
+  type ServerScope,
+} from './serverScope.js';

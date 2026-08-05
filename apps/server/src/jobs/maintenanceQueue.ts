@@ -10,14 +10,16 @@
  * - normalize_players: Normalize player/device/platform names in historical sessions
  */
 
-import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
+import { randomUUID } from 'node:crypto';
+import { Queue, Worker, UnrecoverableError, type Job, type ConnectionOptions } from 'bullmq';
 import { isMaintenance } from '../serverState.js';
 import { getRedisPrefix } from '@tracearr/shared';
-import { extendJobLock } from './lockUtils.js';
+import { extendJobLock, MAINTENANCE_LOCK_DURATION_MS } from './lockUtils.js';
 import {
   acquireHeavyOpsLock,
   releaseHeavyOpsLock,
   extendHeavyOpsLock,
+  startHeavyOpsLockHeartbeat,
   type HeavyOpsLockHolder,
 } from './heavyOpsLock.js';
 import type {
@@ -25,20 +27,29 @@ import type {
   MaintenanceJobResult,
   MaintenanceJobType,
 } from '@tracearr/shared';
-import { WS_EVENTS, classifyByDimensions } from '@tracearr/shared';
+import { WS_EVENTS, classifyByDimensions, RESOLUTION_TIERS } from '@tracearr/shared';
 import { sql, isNotNull, or, and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { sessions, serverUsers } from '../db/schema.js';
 import { normalizeClient, normalizePlatformName } from '../utils/platformNormalizer.js';
+import { resolutionBucketPredicate, resolutionRankSql } from '../utils/resolutionBuckets.js';
 import { getCacheService, getPubSubService } from '../services/cache.js';
 import {
   rebuildTimescaleViews,
   safeFullRefreshAllAggregates,
+  safeFullRefreshAggregate,
+  getTimescaleStatus,
+  withSessionsCompressionPaused,
+  invalidateTimescaleStatusCache,
+  getCompressedSessionChunkRanges,
   type AggregateRefreshProgress,
+  type FailedRefreshBatch,
 } from '../db/timescale.js';
+import { runSessionIdentityBackfillWalk } from './sessionIdentityBackfill.js';
 import {
   INVALID_SNAPSHOT_CONDITION,
   VALID_LIBRARY_ITEM_CONDITION,
+  validLibraryItemCondition,
 } from '../utils/snapshotValidation.js';
 import countries from 'i18n-iso-countries';
 import countriesEn from 'i18n-iso-countries/langs/en.json' with { type: 'json' };
@@ -66,6 +77,7 @@ function getMaintenanceJobDescription(type: MaintenanceJobType): string {
     cleanup_old_chunks: 'Old chunks cleanup',
     full_aggregate_rebuild: 'Full aggregate rebuild',
     repair_corrupted_chunks: 'Corrupted chunks repair',
+    backfill_session_identity: 'Media identity backfill',
   };
   return descriptions[type] || type;
 }
@@ -90,13 +102,6 @@ let maintenanceWorker: Worker<MaintenanceJobData> | null = null;
 
 // Track active job state
 let activeJobProgress: MaintenanceJobProgress | null = null;
-
-function requireJobId(job: Job<MaintenanceJobData>): string {
-  if (!job.id) {
-    throw new Error('Maintenance job is missing an id');
-  }
-  return job.id;
-}
 
 /**
  * Initialize the maintenance queue with Redis connection
@@ -134,6 +139,17 @@ export function initMaintenanceQueue(redisUrl: string): void {
 
 /**
  * Start the maintenance worker to process queued jobs
+ *
+ * Recovery of jobs orphaned by a crash or restart is BullMQ's native
+ * stalled-job detection (lockDuration expiry, swept every stalledInterval,
+ * poison-capped by maxStalledCount below) - not a custom pass here. Three
+ * previous attempts at boot-time custom recovery (reclaim-on-boot, a
+ * multi-instance mutex around it, a recovery-attempt cap) each fixed one bug
+ * and introduced a subtler one: multi-instance double-processing, a TOCTOU
+ * race between reading a lock and acting on it, and an async recovery call
+ * blocking `app.listen()` on BullMQ's connection retry. Do not re-add
+ * custom recovery here - see lockUtils.ts and heavyOpsLock.ts for the
+ * concurrency fixes that make relying on native stalled detection safe.
  */
 export function startMaintenanceWorker(): void {
   if (!connectionOptions) {
@@ -147,46 +163,13 @@ export function startMaintenanceWorker(): void {
 
   const bullPrefix = `${getRedisPrefix()}bull`;
 
-  // Recover any stuck jobs from a previous crash before starting the worker
-  // If the server restarted, any "active" job is orphaned (worker died)
-  if (maintenanceQueue) {
-    maintenanceQueue
-      .getJobs(['active'])
-      .then(async (stuckJobs) => {
-        if (stuckJobs.length > 0) {
-          console.log(
-            `[Maintenance] Found ${stuckJobs.length} stuck job(s) from previous run, recovering...`
-          );
-          for (const job of stuckJobs) {
-            try {
-              // Move back to waiting so the new worker can pick it up
-              await job.retry('failed');
-              console.log(`[Maintenance] Recovered stuck job ${job.id} - moved to waiting`);
-            } catch (err) {
-              // If moveToWaiting fails, try removing and re-adding
-              console.warn(`[Maintenance] Failed to recover job ${job.id}, removing:`, err);
-              try {
-                await job.remove();
-              } catch {
-                // Job might have already been handled
-              }
-            }
-          }
-        }
-      })
-      .catch((err: unknown) => {
-        console.warn('[Maintenance] Failed to check for stuck jobs:', err);
-      });
-  }
-
   maintenanceWorker = new Worker<MaintenanceJobData>(
     QUEUE_NAME,
     async (job: Job<MaintenanceJobData>) => {
-      const jobId = requireJobId(job);
       const startTime = Date.now();
       const jobStartedAt = new Date().toISOString();
       const jobDescription = getMaintenanceJobDescription(job.data.type);
-      console.log(`[Maintenance] Starting job ${jobId} (${job.data.type})`);
+      console.log(`[Maintenance] Starting job ${job.id} (${job.data.type})`);
 
       // Initialize cached progress immediately so Running Tasks can show it
       activeJobProgress = {
@@ -202,6 +185,9 @@ export function startMaintenanceWorker(): void {
       };
 
       // Acquire heavy operations lock (waits if another heavy op is running)
+      // One token for this whole processor invocation - see heavyOpsLock.ts
+      // for why job.id alone can't prove ownership across concurrent runs.
+      const runToken = randomUUID();
       let lockHolder: HeavyOpsLockHolder | null;
       const pubSubService = getPubSubService();
       const WAIT_INTERVAL_MS = 5000; // Check every 5 seconds
@@ -209,7 +195,12 @@ export function startMaintenanceWorker(): void {
       let waitedMs = 0;
 
       while (
-        (lockHolder = await acquireHeavyOpsLock('maintenance', jobId, jobDescription)) !== null
+        (lockHolder = await acquireHeavyOpsLock(
+          'maintenance',
+          job.id!,
+          jobDescription,
+          runToken
+        )) !== null
       ) {
         // Update cached progress with waiting status
         activeJobProgress = {
@@ -235,7 +226,7 @@ export function startMaintenanceWorker(): void {
         }
 
         console.log(
-          `[Maintenance] Job ${jobId} waiting for ${lockHolder.jobType} job: ${lockHolder.description}`
+          `[Maintenance] Job ${job.id} waiting for ${lockHolder.jobType} job: ${lockHolder.description}`
         );
 
         // Extend BullMQ job lock while waiting
@@ -258,28 +249,39 @@ export function startMaintenanceWorker(): void {
       activeJobProgress.message = 'Acquired lock, starting...';
       activeJobProgress.waitingFor = undefined;
 
-      console.log(`[Maintenance] Job ${jobId} acquired heavy ops lock`);
+      console.log(`[Maintenance] Job ${job.id} acquired heavy ops lock`);
 
+      // Backstop renewal - some batch loops below don't call extendHeavyOpsLock on every iteration.
+      const stopHeartbeat = startHeavyOpsLockHeartbeat(job.id!, runToken);
       try {
         const result = await processMaintenanceJob(job);
         const duration = Math.round((Date.now() - startTime) / 1000);
-        console.log(`[Maintenance] Job ${jobId} completed in ${duration}s:`, result);
+        console.log(`[Maintenance] Job ${job.id} completed in ${duration}s:`, result);
         return result;
       } catch (error) {
         const duration = Math.round((Date.now() - startTime) / 1000);
-        console.error(`[Maintenance] Job ${jobId} failed after ${duration}s:`, error);
+        console.error(`[Maintenance] Job ${job.id} failed after ${duration}s:`, error);
         throw error;
       } finally {
+        stopHeartbeat();
         // Always release the heavy ops lock
-        await releaseHeavyOpsLock(jobId);
-        console.log(`[Maintenance] Job ${jobId} released heavy ops lock`);
+        await releaseHeavyOpsLock(job.id!);
+        console.log(`[Maintenance] Job ${job.id} released heavy ops lock`);
       }
     },
     {
       connection: connectionOptions,
       prefix: bullPrefix,
       concurrency: 1, // Only 1 maintenance job at a time
-      lockDuration: 60 * 60 * 1000, // 1 hour - maintenance jobs can be long-running
+      // BullMQ's native stalled detection is THE recovery mechanism for jobs
+      // orphaned by a crash or restart - do not re-add custom recovery (see
+      // the comment on startMaintenanceWorker above). A job's lock key
+      // expires after lockDuration with nobody renewing it, gets swept every
+      // stalledInterval, and is poison-capped by maxStalledCount before
+      // failing out for good. Net recovery latency after a hard crash is
+      // ~2.5-5 minutes (time since the last lock renewal before lockDuration
+      // expiry) plus up to 30s for the next stalledInterval sweep.
+      lockDuration: MAINTENANCE_LOCK_DURATION_MS, // 5 minutes - batch loops extend it well before expiry
       stalledInterval: 30 * 1000, // Check for stalled jobs every 30 seconds
       maxStalledCount: 2, // Retry stalled jobs up to 2 times before failing
     }
@@ -345,6 +347,8 @@ async function processMaintenanceJob(job: Job<MaintenanceJobData>): Promise<Main
       return processFullAggregateRebuildJob(job);
     case 'repair_corrupted_chunks':
       return processRepairCorruptedChunksJob(job);
+    case 'backfill_session_identity':
+      return processBackfillSessionIdentityJob(job);
     default:
       throw new Error(`Unknown maintenance job type: ${job.data.type}`);
   }
@@ -534,7 +538,7 @@ async function processNormalizePlayersJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       // Brief pause between batches to let other operations through
       if (totalProcessed < totalRecords) {
@@ -763,7 +767,7 @@ async function processNormalizeCountriesJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       if (totalProcessed < totalRecords) {
         await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
@@ -996,7 +1000,7 @@ async function processFixImportedProgressJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       if (totalProcessed < totalRecords) {
         await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
@@ -1038,7 +1042,7 @@ async function processFixImportedProgressJob(
  * Drops and recreates all engagement tracking views to fix broken views
  * or apply updated view definitions after an upgrade.
  */
-async function processRebuildTimescaleViewsJob(
+export async function processRebuildTimescaleViewsJob(
   job: Job<MaintenanceJobData>
 ): Promise<MaintenanceJobResult> {
   const startTime = Date.now();
@@ -1072,6 +1076,11 @@ async function processRebuildTimescaleViewsJob(
     let lastLockExtension = Date.now();
     const LOCK_EXTENSION_INTERVAL = 60 * 1000; // Extend lock every 60 seconds
 
+    // progressCallback is synchronous, so a lock-loss rejection from
+    // extendJobLock can't be awaited in place - capture its message here and
+    // rethrow once the rebuild call returns.
+    let lockLostMessage: string | null = null;
+
     // Call the rebuild function with options
     const result = await rebuildTimescaleViews({
       fullRefresh,
@@ -1089,11 +1098,19 @@ async function processRebuildTimescaleViewsJob(
 
         // Extend lock periodically to prevent stalled job detection
         if (Date.now() - lastLockExtension > LOCK_EXTENSION_INTERVAL) {
-          void extendJobLock(job);
+          extendJobLock(job).catch((err: unknown) => {
+            lockLostMessage = err instanceof Error ? err.message : String(err);
+          });
           lastLockExtension = Date.now();
         }
       },
     });
+
+    // Fail-closed: a rebuild that lost its lock must surface as a failed
+    // job, not a silent success.
+    if (lockLostMessage) {
+      throw new Error(lockLostMessage);
+    }
 
     const durationMs = Date.now() - startTime;
 
@@ -1126,24 +1143,162 @@ async function processRebuildTimescaleViewsJob(
         durationMs,
         message: result.message,
       };
-    } else {
+    }
+
+    // Fail-closed: a rebuild failure must surface as a failed job, not a
+    // silent success, matching every other handler in this file.
+    activeJobProgress.status = 'error';
+    activeJobProgress.errorRecords = 1;
+    activeJobProgress.message = result.message;
+    await publishProgress();
+    activeJobProgress = null;
+    throw new Error(result.message);
+  } catch (error) {
+    if (activeJobProgress) {
       activeJobProgress.status = 'error';
-      activeJobProgress.errorRecords = 1;
-      activeJobProgress.message = result.message;
+      activeJobProgress.message = error instanceof Error ? error.message : 'Unknown error';
       await publishProgress();
       activeJobProgress = null;
-
-      return {
-        success: false,
-        type: 'rebuild_timescale_views',
-        processed: 0,
-        updated: 0,
-        skipped: 0,
-        errors: 1,
-        durationMs,
-        message: result.message,
-      };
     }
+    throw error;
+  }
+}
+
+/**
+ * Backfill canonical media identity onto historical sessions.
+ *
+ * Walks sessions in batches, copying media_id and provider ids from
+ * library_items keyed on (server_id, rating_key). Runs with sessions
+ * compression paused so old chunks stay writable, then refreshes the
+ * continuous aggregates over the touched time range in batches at the end.
+ */
+async function processBackfillSessionIdentityJob(
+  job: Job<MaintenanceJobData>
+): Promise<MaintenanceJobResult> {
+  const startTime = Date.now();
+  const pubSubService = getPubSubService();
+  const BATCH = 5000;
+  const LOCK_EXTENSION_INTERVAL = 60 * 1000;
+
+  activeJobProgress = {
+    type: 'backfill_session_identity',
+    status: 'running',
+    totalRecords: 0,
+    processedRecords: 0,
+    updatedRecords: 0,
+    skippedRecords: 0,
+    errorRecords: 0,
+    message: 'Backfilling media identity onto history sessions...',
+    startedAt: new Date().toISOString(),
+  };
+
+  const publishProgress = async () => {
+    if (pubSubService && activeJobProgress) {
+      await pubSubService.publish(WS_EVENTS.MAINTENANCE_PROGRESS, activeJobProgress);
+    }
+  };
+
+  try {
+    await publishProgress();
+
+    let lastLockExtension = Date.now();
+
+    // Ordering is load-bearing: the chunk list must be read AFTER compression is
+    // paused, or a chunk compressed in between would land in pass 1's unbounded window.
+    const { total, earliest, failedRanges } = await withSessionsCompressionPaused(() =>
+      runSessionIdentityBackfillWalk({
+        batchSize: BATCH,
+        getCompressedRanges: getCompressedSessionChunkRanges,
+        onBatch: async (runningTotal) => {
+          if (activeJobProgress) {
+            activeJobProgress.processedRecords = runningTotal;
+            activeJobProgress.updatedRecords = runningTotal;
+            activeJobProgress.message = `Stamped identity onto ${runningTotal.toLocaleString()} sessions...`;
+            await publishProgress();
+          }
+          await job.updateProgress(runningTotal);
+          if (Date.now() - lastLockExtension > LOCK_EXTENSION_INTERVAL) {
+            await extendJobLock(job);
+            lastLockExtension = Date.now();
+          }
+        },
+      })
+    );
+
+    const allFailures = [...failedRanges];
+
+    if (earliest) {
+      // A full-history walk hands back a multi-year window, so refresh it in
+      // batches rather than one CALL per aggregate that would outlive the job
+      // lock. safeFullRefreshAggregate's onProgress is sync-typed, so a
+      // lock-loss rejection can't be awaited in place - capture it and rethrow
+      // once the loop returns (same shape as processRebuildTimescaleViewsJob).
+      let lockLostMessage: string | null = null;
+      const refreshEnd = new Date();
+      // Catalog-driven, not the static aggregate list: getTimescaleStatus reads
+      // the continuous-aggregate catalog filtered to the sessions hypertable, so
+      // this skips cleanly on plain postgres and never refreshes aggregates that
+      // don't exist or belong to library_snapshots (the job only writes sessions
+      // rows). It's the same call the stats routes and the health tick gate on.
+      const timescale = await getTimescaleStatus();
+      const aggregates = timescale.extensionInstalled ? timescale.continuousAggregates : [];
+      const refreshFailures: FailedRefreshBatch[] = [];
+
+      for (const aggregate of aggregates) {
+        // Bail the moment the lock is gone - refreshing the remaining aggregates
+        // would be minutes of work another worker may already be redoing.
+        if (lockLostMessage) break;
+        const failures = await safeFullRefreshAggregate(aggregate, earliest, refreshEnd, {
+          onProgress: () => {
+            if (Date.now() - lastLockExtension > LOCK_EXTENSION_INTERVAL) {
+              extendJobLock(job).catch((err: unknown) => {
+                lockLostMessage = err instanceof Error ? err.message : String(err);
+              });
+              lastLockExtension = Date.now();
+            }
+          },
+        });
+        refreshFailures.push(...failures);
+      }
+
+      if (lockLostMessage) {
+        throw new Error(lockLostMessage);
+      }
+      allFailures.push(
+        ...refreshFailures.map((f) => `refresh ${f.aggregate} [${f.startDate} → ${f.endDate}]`)
+      );
+    }
+
+    // Fail-closed like every other handler in this file: skipped ranges and
+    // failed refresh batches must surface as a failed job, but only after the
+    // successful ranges' work (including the refresh above) has landed.
+    if (allFailures.length > 0) {
+      const shown = allFailures.slice(0, 5).join(', ');
+      const more = allFailures.length > 5 ? ` … and ${allFailures.length - 5} more` : '';
+      throw new Error(
+        `Identity backfill skipped ${allFailures.length} range(s)/refresh batch(es): ${shown}${more}`
+      );
+    }
+
+    const durationMs = Date.now() - startTime;
+    if (activeJobProgress) {
+      activeJobProgress.status = 'complete';
+      activeJobProgress.message = `Completed! Stamped identity onto ${total.toLocaleString()} sessions in ${Math.round(durationMs / 1000)}s`;
+      activeJobProgress.completedAt = new Date().toISOString();
+      await publishProgress();
+      activeJobProgress = null;
+    }
+
+    return {
+      success: true,
+      type: 'backfill_session_identity',
+      processed: total,
+      updated: total,
+      skipped: 0,
+      errors: 0,
+      durationMs,
+      message: `Stamped identity onto ${total} sessions`,
+    };
   } catch (error) {
     if (activeJobProgress) {
       activeJobProgress.status = 'error';
@@ -1274,7 +1429,7 @@ async function processNormalizeCodecsJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
     }
 
     const durationMs = Date.now() - startTime;
@@ -1464,7 +1619,7 @@ export async function processNormalizeResolutionsJob(
 
       // Extend locks - fails fast if lock is lost to avoid wasted work
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       if (totalProcessed < totalRecords) {
         await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
@@ -1603,7 +1758,7 @@ async function processBackfillUserDatesJob(
 
     // Extend locks after first bulk update - these can take time on large databases
     await extendJobLock(job);
-    await extendHeavyOpsLock(requireJobId(job));
+    await extendHeavyOpsLock(job.id!);
 
     // Step 2: Update lastActivityAt to most recent session for all users with sessions
     // We update even if not NULL to ensure it's the most recent activity
@@ -1627,7 +1782,7 @@ async function processBackfillUserDatesJob(
 
     // Extend locks after second bulk update
     await extendJobLock(job);
-    await extendHeavyOpsLock(requireJobId(job));
+    await extendHeavyOpsLock(job.id!);
 
     const totalUpdated = joinedAtUpdated + lastActivityUpdated;
     const durationMs = Date.now() - startTime;
@@ -1675,8 +1830,13 @@ async function processBackfillUserDatesJob(
  *
  * This maintains batch INSERTs for lock management while eliminating redundant
  * cumulative recalculations that previously made each batch scan the entire history.
+ *
+ * Exported for direct integration testing (see maintenanceQueueRecovery.integration.test.ts) -
+ * calling it directly, rather than through the queue, lets a test run two
+ * invocations genuinely concurrently instead of serialized by the worker's
+ * concurrency: 1 setting.
  */
-async function processBackfillLibrarySnapshotsJob(
+export async function processBackfillLibrarySnapshotsJob(
   job: Job<MaintenanceJobData>
 ): Promise<MaintenanceJobResult> {
   const startTime = Date.now();
@@ -1686,6 +1846,7 @@ async function processBackfillLibrarySnapshotsJob(
   // TimescaleDB hypertables create locks per chunk, so large date ranges
   // spanning many chunks can hit max_locks_per_transaction limits
   const BATCH_SIZE_DAYS = 90;
+  const HIGH_QUALITY_RANK = RESOLUTION_TIERS['1080p'];
 
   // Initialize progress
   activeJobProgress = {
@@ -1711,7 +1872,7 @@ async function processBackfillLibrarySnapshotsJob(
 
     // Extend locks before initial scan - can be slow on large libraries
     await extendJobLock(job);
-    await extendHeavyOpsLock(requireJobId(job));
+    await extendHeavyOpsLock(job.id!);
 
     // Get all server+library combinations with their date ranges
     // Only consider items with valid file_size (consistent with INVALID_SNAPSHOT_CONDITION
@@ -1727,6 +1888,7 @@ async function processBackfillLibrarySnapshotsJob(
         COUNT(*) AS item_count
       FROM library_items
       WHERE created_at IS NOT NULL
+        AND removed_at IS NULL
         AND ${VALID_LIBRARY_ITEM_CONDITION}
       GROUP BY server_id, library_id
     `);
@@ -1764,7 +1926,7 @@ async function processBackfillLibrarySnapshotsJob(
 
     // Extend locks before starting the long processing loop
     await extendJobLock(job);
-    await extendHeavyOpsLock(requireJobId(job));
+    await extendHeavyOpsLock(job.id!);
 
     let totalProcessed = 0;
     let totalSnapshotsCreated = 0;
@@ -1781,7 +1943,7 @@ async function processBackfillLibrarySnapshotsJob(
 
         // Extend locks before the pre-computation phase
         await extendJobLock(job);
-        await extendHeavyOpsLock(requireJobId(job));
+        await extendHeavyOpsLock(job.id!);
 
         // Wrap all temp table operations in a single transaction to ensure
         // the temp table is visible across all queries on the same connection
@@ -1805,7 +1967,9 @@ async function processBackfillLibrarySnapshotsJob(
               count_sd int,
               hevc_count int,
               h264_count int,
-              av1_count int
+              av1_count int,
+              count_high_quality int,
+              version_count int
             )
           `);
 
@@ -1813,10 +1977,38 @@ async function processBackfillLibrarySnapshotsJob(
           // This replaces the O(n²) approach where each batch rescanned the entire history
           await tx.execute(sql`
             INSERT INTO backfill_cumulative
-            WITH daily_additions AS (
-              -- Single scan: Get per-day additions with all metrics for entire library
+            WITH item_rollup AS (
+              -- One row per item with per-version bucket membership. Buckets
+              -- are overlapping (a 4K+1080p title lands in both), matching
+              -- the live snapshot writer. Versions are dated by the item's
+              -- created_at: late-added versions are misdated, an accepted
+              -- limit of reconstruction.
               SELECT
-                DATE(created_at) AS day,
+                li.id,
+                DATE(li.created_at) AS day,
+                li.file_size,
+                li.media_type,
+                BOOL_OR(${resolutionBucketPredicate('v.video_resolution', '4k')}) AS has_4k,
+                BOOL_OR(${resolutionBucketPredicate('v.video_resolution', '1080p')}) AS has_1080p,
+                BOOL_OR(${resolutionBucketPredicate('v.video_resolution', '720p')}) AS has_720p,
+                BOOL_OR(${resolutionBucketPredicate('v.video_resolution', 'sd')}) AS has_sd,
+                BOOL_OR(${resolutionRankSql('v.video_resolution')} >= ${HIGH_QUALITY_RANK}) AS high_quality,
+                BOOL_OR(v.video_codec IN ('hevc', 'h265', 'x265', 'HEVC', 'H265', 'X265')) AS has_hevc,
+                BOOL_OR(v.video_codec IN ('h264', 'avc', 'x264', 'H264', 'AVC', 'X264')) AS has_h264,
+                BOOL_OR(v.video_codec IN ('av1', 'AV1')) AS has_av1,
+                COUNT(v.id) AS version_cnt
+              FROM library_items li
+              LEFT JOIN library_item_versions v
+                ON v.library_item_id = li.id AND v.removed_at IS NULL
+              WHERE li.server_id = ${lib.server_id}::uuid
+                AND li.library_id = ${lib.library_id}
+                AND li.removed_at IS NULL
+                AND ${validLibraryItemCondition('li')}
+              GROUP BY li.id
+            ),
+            daily_additions AS (
+              SELECT
+                day,
                 COUNT(*) AS items,
                 SUM(file_size) AS size,
                 COUNT(*) FILTER (WHERE media_type = 'movie') AS movies,
@@ -1824,20 +2016,17 @@ async function processBackfillLibrarySnapshotsJob(
                 COUNT(*) FILTER (WHERE media_type = 'season') AS seasons,
                 COUNT(*) FILTER (WHERE media_type = 'show') AS shows,
                 COUNT(*) FILTER (WHERE media_type IN ('artist', 'album', 'track')) AS music,
-                COUNT(*) FILTER (WHERE video_resolution = '4k') AS c4k,
-                COUNT(*) FILTER (WHERE video_resolution = '1080p') AS c1080p,
-                COUNT(*) FILTER (WHERE video_resolution = '720p') AS c720p,
-                COUNT(*) FILTER (WHERE video_resolution IN ('480p', 'sd')
-                                  OR (video_resolution IS NOT NULL
-                                      AND video_resolution NOT IN ('4k', '1080p', '720p'))) AS csd,
-                COUNT(*) FILTER (WHERE video_codec IN ('hevc', 'h265', 'x265', 'HEVC', 'H265', 'X265')) AS hevc,
-                COUNT(*) FILTER (WHERE video_codec IN ('h264', 'avc', 'x264', 'H264', 'AVC', 'X264')) AS h264,
-                COUNT(*) FILTER (WHERE video_codec IN ('av1', 'AV1')) AS av1
-              FROM library_items
-              WHERE server_id = ${lib.server_id}::uuid
-                AND library_id = ${lib.library_id}
-                AND ${VALID_LIBRARY_ITEM_CONDITION}
-              GROUP BY DATE(created_at)
+                COUNT(*) FILTER (WHERE has_4k) AS c4k,
+                COUNT(*) FILTER (WHERE has_1080p) AS c1080p,
+                COUNT(*) FILTER (WHERE has_720p) AS c720p,
+                COUNT(*) FILTER (WHERE has_sd) AS csd,
+                COUNT(*) FILTER (WHERE has_hevc) AS hevc,
+                COUNT(*) FILTER (WHERE has_h264) AS h264,
+                COUNT(*) FILTER (WHERE has_av1) AS av1,
+                COUNT(*) FILTER (WHERE high_quality) AS chq,
+                SUM(version_cnt) AS vcnt
+              FROM item_rollup
+              GROUP BY day
             ),
             date_range AS (
               -- Generate complete date series from first item to today
@@ -1855,7 +2044,8 @@ async function processBackfillLibrarySnapshotsJob(
                 COALESCE(da.c4k, 0) AS c4k, COALESCE(da.c1080p, 0) AS c1080p,
                 COALESCE(da.c720p, 0) AS c720p, COALESCE(da.csd, 0) AS csd,
                 COALESCE(da.hevc, 0) AS hevc, COALESCE(da.h264, 0) AS h264,
-                COALESCE(da.av1, 0) AS av1
+                COALESCE(da.av1, 0) AS av1,
+                COALESCE(da.chq, 0) AS chq, COALESCE(da.vcnt, 0) AS vcnt
               FROM date_range dr
               LEFT JOIN daily_additions da ON da.day = dr.day
             ),
@@ -1876,7 +2066,9 @@ async function processBackfillLibrarySnapshotsJob(
                 SUM(csd) OVER w AS count_sd,
                 SUM(hevc) OVER w AS hevc_count,
                 SUM(h264) OVER w AS h264_count,
-                SUM(av1) OVER w AS av1_count
+                SUM(av1) OVER w AS av1_count,
+                SUM(chq) OVER w AS count_high_quality,
+                SUM(vcnt) OVER w AS version_count
               FROM filled f
               WINDOW w AS (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
             )
@@ -1895,7 +2087,9 @@ async function processBackfillLibrarySnapshotsJob(
               count_sd::int,
               hevc_count::int,
               h264_count::int,
-              av1_count::int
+              av1_count::int,
+              count_high_quality::int,
+              version_count::int
             FROM cumulative
             -- Only include days with actual content (prevents empty leading snapshots)
             WHERE item_count > 0 AND total_size > 0
@@ -1903,7 +2097,7 @@ async function processBackfillLibrarySnapshotsJob(
 
           // Extend locks after pre-computation
           await extendJobLock(job);
-          await extendHeavyOpsLock(requireJobId(job));
+          await extendHeavyOpsLock(job.id!);
 
           // Batch INSERT from pre-computed temp table
           // Each batch is now a simple SELECT from the temp table
@@ -1920,7 +2114,7 @@ async function processBackfillLibrarySnapshotsJob(
 
             // Extend locks before each batch INSERT
             await extendJobLock(job);
-            await extendHeavyOpsLock(requireJobId(job));
+            await extendHeavyOpsLock(job.id!);
 
             // Simple INSERT from pre-computed data
             const result = await tx.execute(sql`
@@ -1930,6 +2124,7 @@ async function processBackfillLibrarySnapshotsJob(
                 movie_count, episode_count, season_count, show_count, music_count,
                 count_4k, count_1080p, count_720p, count_sd,
                 hevc_count, h264_count, av1_count,
+                count_high_quality, version_count,
                 enrichment_pending, enrichment_complete
               )
               SELECT
@@ -1950,25 +2145,25 @@ async function processBackfillLibrarySnapshotsJob(
                 bc.hevc_count,
                 bc.h264_count,
                 bc.av1_count,
+                bc.count_high_quality,
+                bc.version_count,
                 0,  -- enrichment_pending: all historical items already enriched
                 bc.item_count  -- enrichment_complete
               FROM backfill_cumulative bc
               WHERE bc.day >= ${batchStartStr}::date
                 AND bc.day <= ${batchEndStr}::date
-                -- Skip days that already have snapshots (idempotent)
-                AND NOT EXISTS (
-                  SELECT 1 FROM library_snapshots ls
-                  WHERE ls.server_id = ${lib.server_id}::uuid
-                    AND ls.library_id = ${lib.library_id}
-                    AND DATE(ls.snapshot_time) = bc.day
-                )
+              -- Idempotent and safe under concurrent runs: the unique index on
+              -- (server_id, library_id, snapshot_time) makes this atomic at the
+              -- database level, unlike the old WHERE NOT EXISTS check/insert
+              -- which raced a concurrent run between its own check and insert.
+              ON CONFLICT (server_id, library_id, snapshot_time) DO NOTHING
             `);
 
             librarySnapshotsCreated += Number(result.rowCount ?? 0);
 
             // Extend locks after each batch
             await extendJobLock(job);
-            await extendHeavyOpsLock(requireJobId(job));
+            await extendHeavyOpsLock(job.id!);
 
             // Move to next batch
             batchStart = new Date(batchEnd);
@@ -1992,7 +2187,7 @@ async function processBackfillLibrarySnapshotsJob(
 
         // Extend locks after each library as well
         await extendJobLock(job);
-        await extendHeavyOpsLock(requireJobId(job));
+        await extendHeavyOpsLock(job.id!);
       } catch (error) {
         console.error(
           `[Maintenance] Error processing library ${lib.server_id}/${lib.library_id}:`,
@@ -2126,6 +2321,75 @@ async function processBackfillLibrarySnapshotsJob(
  * Uses batched approach to avoid exhausting PostgreSQL's lock table.
  *
  */
+/**
+ * Drop sessions chunks that hold zero rows and are strictly older than the
+ * compression window. Empty chunks still get seq-scanned by chain-grouping
+ * history queries, so removing them cuts chunk fan-out. Conservative by
+ * construction: the 7-day floor (matching the compression policy) never
+ * touches the newest chunks still receiving writes.
+ */
+export async function dropEmptySessionsChunks(
+  job: Job<MaintenanceJobData>
+): Promise<{ dropped: number; errors: number }> {
+  let dropped = 0;
+  let errors = 0;
+
+  const candidates = await db.execute(sql`
+    SELECT chunk_schema, chunk_name, range_start, range_end
+    FROM timescaledb_information.chunks
+    WHERE hypertable_name = 'sessions'
+      AND range_end < NOW() - INTERVAL '7 days'
+    ORDER BY range_start
+  `);
+
+  const rows = candidates.rows as {
+    chunk_schema: string;
+    chunk_name: string;
+    range_start: string;
+    range_end: string;
+  }[];
+
+  const identRe = /^[a-zA-Z0-9_]+$/;
+
+  for (const chunk of rows) {
+    if (!identRe.test(chunk.chunk_schema) || !identRe.test(chunk.chunk_name)) {
+      errors++;
+      continue;
+    }
+    const chunkRel = `"${chunk.chunk_schema}"."${chunk.chunk_name}"`;
+
+    try {
+      // Lock, recheck, and drop in one transaction: an import racing this job
+      // could otherwise insert into the chunk between the count and the drop.
+      const outcome = await db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+        await tx.execute(sql.raw(`LOCK TABLE ${chunkRel} IN ACCESS EXCLUSIVE MODE`));
+        const countResult = await tx.execute(sql.raw(`SELECT count(*)::int AS c FROM ${chunkRel}`));
+        if (((countResult.rows[0] as { c: number })?.c ?? 0) > 0) return 'kept' as const;
+        await tx.execute(sql`
+          SELECT drop_chunks(
+            'sessions',
+            older_than => ${chunk.range_end}::timestamptz,
+            newer_than => ${chunk.range_start}::timestamptz
+          )
+        `);
+        return 'dropped' as const;
+      });
+      if (outcome === 'dropped') dropped++;
+    } catch (err) {
+      console.error('[Maintenance] Failed to drop empty sessions chunk:', err);
+      errors++;
+    }
+
+    await extendJobLock(job);
+    await extendHeavyOpsLock(job.id!);
+  }
+
+  if (dropped > 0) invalidateTimescaleStatusCache();
+
+  return { dropped, errors };
+}
+
 async function processCleanupOldChunksJob(
   job: Job<MaintenanceJobData>
 ): Promise<MaintenanceJobResult> {
@@ -2160,6 +2424,11 @@ async function processCleanupOldChunksJob(
   try {
     await publishProgress();
 
+    // First pass: drop empty sessions chunks (independent of library retention).
+    activeJobProgress.message = 'Dropping empty session chunks...';
+    await publishProgress();
+    const emptySessions = await dropEmptySessionsChunks(job);
+
     // Get count of chunks older than retention period
     const countResult = await db.execute(sql`
       SELECT COUNT(*) as count
@@ -2171,21 +2440,29 @@ async function processCleanupOldChunksJob(
     const totalChunks = Number((countResult.rows[0] as { count: string })?.count ?? 0);
 
     if (totalChunks === 0) {
-      activeJobProgress.status = 'complete';
-      activeJobProgress.message = 'No old chunks to clean up';
+      const allFailed = emptySessions.errors > 0 && emptySessions.dropped === 0;
+      const message = allFailed
+        ? `Failed to drop empty session chunks (${emptySessions.errors} errors); no old library chunks to clean up`
+        : emptySessions.dropped > 0
+          ? `Dropped ${emptySessions.dropped} empty session chunk(s); no old library chunks to clean up${emptySessions.errors > 0 ? ` (${emptySessions.errors} errors)` : ''}`
+          : 'No old chunks to clean up';
+      activeJobProgress.status = allFailed ? 'error' : 'complete';
+      activeJobProgress.updatedRecords = emptySessions.dropped;
+      activeJobProgress.errorRecords = emptySessions.errors;
+      activeJobProgress.message = message;
       activeJobProgress.completedAt = new Date().toISOString();
       await publishProgress();
       activeJobProgress = null;
 
       return {
-        success: true,
+        success: !allFailed,
         type: 'cleanup_old_chunks',
-        processed: 0,
-        updated: 0,
+        processed: emptySessions.dropped,
+        updated: emptySessions.dropped,
         skipped: 0,
-        errors: 0,
+        errors: emptySessions.errors,
         durationMs: Date.now() - startTime,
-        message: 'No old chunks to clean up',
+        message,
       };
     }
 
@@ -2282,7 +2559,7 @@ async function processCleanupOldChunksJob(
 
       // Extend locks after each batch - fails fast if lock is lost
       await extendJobLock(job);
-      await extendHeavyOpsLock(requireJobId(job));
+      await extendHeavyOpsLock(job.id!);
 
       // Move to next batch
       currentDate = new Date(batchEnd);
@@ -2292,22 +2569,24 @@ async function processCleanupOldChunksJob(
     }
 
     const durationMs = Date.now() - startTime;
-    activeJobProgress.status = totalErrors > 0 && totalDropped === 0 ? 'error' : 'complete';
-    activeJobProgress.message = `Completed! Dropped ${totalDropped} chunks in ${Math.round(durationMs / 1000)}s${totalErrors > 0 ? ` (${totalErrors} errors)` : ''}`;
+    const combinedDropped = totalDropped + emptySessions.dropped;
+    const combinedErrors = totalErrors + emptySessions.errors;
+    activeJobProgress.status = combinedErrors > 0 && combinedDropped === 0 ? 'error' : 'complete';
+    activeJobProgress.message = `Completed! Dropped ${combinedDropped} chunks in ${Math.round(durationMs / 1000)}s${combinedErrors > 0 ? ` (${combinedErrors} errors)` : ''}`;
     activeJobProgress.completedAt = new Date().toISOString();
     await publishProgress();
 
     activeJobProgress = null;
 
     return {
-      success: totalErrors === 0 || totalDropped > 0,
+      success: combinedErrors === 0 || combinedDropped > 0,
       type: 'cleanup_old_chunks',
-      processed: totalChunks,
-      updated: totalDropped,
+      processed: totalChunks + emptySessions.dropped,
+      updated: combinedDropped,
       skipped: 0,
-      errors: totalErrors,
+      errors: combinedErrors,
       durationMs,
-      message: `Dropped ${totalDropped} old chunks${totalErrors > 0 ? ` with ${totalErrors} errors` : ''}`,
+      message: `Dropped ${combinedDropped} old chunks${combinedErrors > 0 ? ` with ${combinedErrors} errors` : ''}`,
     };
   } catch (error) {
     if (activeJobProgress) {
@@ -2458,21 +2737,23 @@ export async function getAllActiveMaintenanceJobs(): Promise<
 }
 
 /**
- * Enqueue a new maintenance job
+ * Enqueue unless a maintenance job is already pending - the queue is
+ * deliberately single-flight. Returns null when busy (or when the queue isn't
+ * up), for automated callers that treat "already covered" as success.
  */
-export async function enqueueMaintenanceJob(
+export async function maybeEnqueueMaintenanceJob(
   type: MaintenanceJobType,
   userId: string,
   options?: MaintenanceJobData['options']
-): Promise<string> {
+): Promise<string | null> {
   if (!maintenanceQueue) {
-    throw new Error('Maintenance queue not initialized');
+    return null;
   }
 
   // Check for existing active job
   const activeJobs = await maintenanceQueue.getJobs(['active', 'waiting', 'delayed']);
   if (activeJobs.length > 0) {
-    throw new Error('A maintenance job is already in progress');
+    return null;
   }
 
   // Use a deterministic job ID to prevent race conditions
@@ -2492,6 +2773,25 @@ export async function enqueueMaintenanceJob(
 
   const jobId = job.id ?? newJobId;
   console.log(`[Maintenance] Enqueued job ${jobId} (${type})`);
+  return jobId;
+}
+
+/**
+ * Enqueue a new maintenance job
+ */
+export async function enqueueMaintenanceJob(
+  type: MaintenanceJobType,
+  userId: string,
+  options?: MaintenanceJobData['options']
+): Promise<string> {
+  if (!maintenanceQueue) {
+    throw new Error('Maintenance queue not initialized');
+  }
+
+  const jobId = await maybeEnqueueMaintenanceJob(type, userId, options);
+  if (!jobId) {
+    throw new Error('A maintenance job is already in progress');
+  }
   return jobId;
 }
 
@@ -2541,11 +2841,14 @@ export async function clearStuckMaintenanceJobs(): Promise<{ cleared: number }> 
 
   let cleared = 0;
 
-  // Handle active jobs - must move to failed first (can't remove active jobs directly)
+  // Handle active jobs - must move to failed first (can't remove active jobs directly).
+  // The second argument is the lock token, not a label - '0' is BullMQ's
+  // lock-bypass token, and UnrecoverableError forces the move to failed even
+  // though the job's own attempts haven't been exhausted yet.
   const activeJobs = await maintenanceQueue.getJobs(['active']);
   for (const job of activeJobs) {
     try {
-      await job.moveToFailed(new Error('Manually cleared by admin'), 'manual-clear');
+      await job.moveToFailed(new UnrecoverableError('Manually cleared by admin'), '0');
       cleared++;
     } catch {
       // Try remove as fallback

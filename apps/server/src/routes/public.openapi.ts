@@ -306,10 +306,26 @@ const StatsTodayResponse = z
     todayPlays: z
       .number()
       .int()
-      .openapi({ description: 'Validated plays (>= 2 min)', example: 47 }),
-    watchTimeHours: z.number().openapi({ description: 'Hours watched today', example: 12.5 }),
+      .openapi({ description: 'Validated VOD plays (>= 2 min)', example: 47 }),
+    watchTimeHours: z
+      .number()
+      .openapi({ description: 'VOD hours watched today', example: 12.5 }),
+    tvSessions: z
+      .number()
+      .int()
+      .openapi({ description: 'TV sessions today, including catch-up', example: 19 }),
+    tvChannels: z
+      .number()
+      .int()
+      .openapi({ description: 'Unique TV channels today, including catch-up', example: 12 }),
+    tvWatchTimeHours: z
+      .number()
+      .openapi({ description: 'TV hours watched today, including catch-up', example: 4.2 }),
     alertsLast24h: z.number().int().openapi({ example: 3 }),
-    activeUsersToday: z.number().int().openapi({ example: 8 }),
+    activeUsersToday: z
+      .number()
+      .int()
+      .openapi({ description: 'Distinct users active today across all media types', example: 8 }),
     timestamp: z.iso.datetime(),
   })
   .openapi('StatsTodayResponse');
@@ -337,7 +353,7 @@ registry.registerPath({
   tags: ['Public API'],
   summary: "Today's dashboard statistics",
   description:
-    'Dashboard metrics for "today" in the specified timezone. Includes active streams, validated plays (>= 2 min), watch time, alerts, and active users.',
+    'Dashboard metrics for "today" in the specified timezone. Includes active streams, VOD plays/watch time, TV sessions/watch time, alerts, and all-media active users.',
   security: [{ bearerAuth: [] }],
   request: { query: StatsTodayQuery },
   responses: {
@@ -802,6 +818,8 @@ export function generateOpenAPIDocument(): unknown {
       version: '1.0.0',
       description: `
 External API for third-party integrations.
+
+Available in Tracearr 1.4.6 and later.
 
 ## Authentication
 

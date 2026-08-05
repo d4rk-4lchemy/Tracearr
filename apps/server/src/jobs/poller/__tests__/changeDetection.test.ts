@@ -4,6 +4,7 @@ import { shouldWriteToDb } from '../stateTracker.js';
 const baseExisting = {
   state: 'playing' as const,
   mediaTitle: 'Original Program',
+  totalDurationMs: 5_400_000,
   isTranscode: false,
   videoDecision: 'direct play',
   audioDecision: 'direct play',
@@ -15,6 +16,7 @@ const baseExisting = {
 const baseProcessed = {
   state: 'playing' as const,
   mediaTitle: 'Original Program',
+  totalDurationMs: 5_400_000,
   isTranscode: false,
   videoDecision: 'direct play',
   audioDecision: 'direct play',
@@ -75,6 +77,12 @@ describe('shouldWriteToDb', () => {
 
   it('returns true when media title changes', () => {
     expect(shouldWriteToDb(baseExisting, { ...baseProcessed, mediaTitle: 'Next Program' })).toBe(
+      true
+    );
+  });
+
+  it('returns true when total duration changes', () => {
+    expect(shouldWriteToDb(baseExisting, { ...baseProcessed, totalDurationMs: 3_600_000 })).toBe(
       true
     );
   });

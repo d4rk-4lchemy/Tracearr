@@ -13,8 +13,10 @@ test.describe('Dashboard', () => {
 
     // Stat cards
     await expect(page.getByText('Alerts')).toBeVisible();
-    await expect(page.getByText('Plays')).toBeVisible();
-    await expect(page.getByText('Watch Time')).toBeVisible();
+    await expect(page.getByText('VOD Plays')).toBeVisible();
+    await expect(page.getByText('VOD Watch Time')).toBeVisible();
+    await expect(page.getByText('TV Sessions')).toBeVisible();
+    await expect(page.getByText('TV Watch Time')).toBeVisible();
     await expect(page.getByText('Active Users')).toBeVisible();
 
     // "Now Playing" section header
@@ -30,7 +32,7 @@ test.describe('Dashboard', () => {
     await expect(page.getByRole('link', { name: 'Map' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'History' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Stats' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Library' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Media' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Performance' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Users', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Rules' })).toBeVisible();

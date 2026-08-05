@@ -5,8 +5,29 @@
 
 import type { ActiveSession, DashboardStats, ServerConnectionStatus } from '@tracearr/shared';
 import { CACHE_TTL, REDIS_KEYS } from '@tracearr/shared';
+import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import type { PendingSessionData } from '../jobs/poller/types.js';
+
+/**
+ * Active sessions are JSON-serialized before entering Redis, so their Date
+ * fields return as ISO strings. Keep the cache boundary type-correct for all
+ * consumers, especially lifecycle operations which require Date#getTime().
+ */
+function hydrateActiveSession(session: ActiveSession): ActiveSession {
+  const asDate = (value: Date | string | null | undefined): Date | null | undefined => {
+    if (value === null || value === undefined || value instanceof Date) return value;
+    return new Date(value);
+  };
+
+  return {
+    ...session,
+    startedAt: asDate(session.startedAt) as Date,
+    stoppedAt: asDate(session.stoppedAt) as Date | null,
+    lastPausedAt: asDate(session.lastPausedAt) as Date | null,
+    progressUpdatedAt: asDate(session.progressUpdatedAt) as Date,
+  };
+}
 
 export interface CacheService {
   // Active sessions (legacy - JSON array, deprecated)
@@ -15,7 +36,13 @@ export interface CacheService {
 
   // Active sessions (atomic SET-based operations)
   addActiveSession(session: ActiveSession): Promise<void>;
-  removeActiveSession(sessionId: string): Promise<void>;
+  // skipDashboardInvalidation: for callers removing many sessions in one wave
+  // (grace/stale sweeps) - they invalidate once after the loop instead of
+  // paying a SCAN per removal.
+  removeActiveSession(
+    sessionId: string,
+    opts?: { skipDashboardInvalidation?: boolean }
+  ): Promise<void>;
   getActiveSessionIds(): Promise<string[]>;
   getAllActiveSessions(): Promise<ActiveSession[]>;
   updateActiveSession(session: ActiveSession): Promise<void>;
@@ -32,15 +59,14 @@ export interface CacheService {
   setDashboardStats(stats: DashboardStats): Promise<void>;
   invalidateDashboardStatsCache(): Promise<void>;
 
+  // Public API v2 per-media stats/watchers (TTL-based, no active invalidation)
+  getMediaStats<T>(cacheKey: string): Promise<T | null>;
+  setMediaStats(cacheKey: string, value: unknown): Promise<void>;
+
   // Session by ID
   getSessionById(id: string): Promise<ActiveSession | null>;
   setSessionById(id: string, session: ActiveSession): Promise<void>;
   deleteSessionById(id: string): Promise<void>;
-
-  // User sessions
-  getUserSessions(userId: string): Promise<string[] | null>;
-  addUserSession(userId: string, sessionId: string): Promise<void>;
-  removeUserSession(userId: string, sessionId: string): Promise<void>;
 
   // Server health tracking
   getServerHealth(serverId: string): Promise<boolean | null>;
@@ -85,11 +111,6 @@ export interface CacheService {
   setPendingSession(serverId: string, sessionKey: string, data: PendingSessionData): Promise<void>;
   deletePendingSession(serverId: string, sessionKey: string): Promise<void>;
   getAllPendingSessionKeys(): Promise<Array<{ serverId: string; sessionKey: string }>>;
-
-  /**
-   * Return the backend timestamp for the current Dispatcharr catch-up URL
-   * programme. It changes only when the raw programme_start value changes.
-   */
   getOrSetDispatcharrCatchupProgrammeStartUpdatedAt(
     identity: string,
     programmeStart: string,
@@ -120,6 +141,17 @@ export interface CacheService {
 
   // Health check
   ping(): Promise<boolean>;
+}
+
+// Compare-and-delete: releasing a token-guarded lock after it expired must
+// not free a lock some other holder has since acquired.
+async function releaseLockIfHeld(redis: Redis, lockKey: string, token: string): Promise<void> {
+  await redis.eval(
+    `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0`,
+    1,
+    lockKey,
+    token
+  );
 }
 
 export function createCacheService(redis: Redis): CacheService {
@@ -153,7 +185,7 @@ export function createCacheService(redis: Redis): CacheService {
       const data = await redis.get(REDIS_KEYS.ACTIVE_SESSIONS);
       if (!data) return null;
       try {
-        return JSON.parse(data) as ActiveSession[];
+        return (JSON.parse(data) as ActiveSession[]).map(hydrateActiveSession);
       } catch {
         return null;
       }
@@ -190,7 +222,10 @@ export function createCacheService(redis: Redis): CacheService {
       await invalidateDashboardStats();
     },
 
-    async removeActiveSession(sessionId: string): Promise<void> {
+    async removeActiveSession(
+      sessionId: string,
+      opts?: { skipDashboardInvalidation?: boolean }
+    ): Promise<void> {
       const pipeline = redis.multi();
       // Remove from active sessions SET (atomic)
       pipeline.srem(REDIS_KEYS.ACTIVE_SESSION_IDS, sessionId);
@@ -200,8 +235,10 @@ export function createCacheService(redis: Redis): CacheService {
       if (!results || results.some(([err]) => err !== null)) {
         console.error('[Cache] removeActiveSession pipeline failed:', results);
       }
-      // Invalidate dashboard stats (uses pattern matching for timezone-specific keys)
-      await invalidateDashboardStats();
+      if (!opts?.skipDashboardInvalidation) {
+        // Invalidate dashboard stats (uses pattern matching for timezone-specific keys)
+        await invalidateDashboardStats();
+      }
     },
 
     async getActiveSessionIds(): Promise<string[]> {
@@ -224,11 +261,10 @@ export function createCacheService(redis: Redis): CacheService {
 
         for (let j = 0; j < data.length; j++) {
           const sessionData = data[j];
-          const sessionId = chunkIds[j];
-          if (!sessionId) continue;
+          const sessionId = chunkIds[j]!;
           if (sessionData) {
             try {
-              sessions.push(JSON.parse(sessionData) as ActiveSession);
+              sessions.push(hydrateActiveSession(JSON.parse(sessionData) as ActiveSession));
             } catch {
               staleIds.push(sessionId);
             }
@@ -261,7 +297,6 @@ export function createCacheService(redis: Redis): CacheService {
       );
       // Refresh SET TTL to match session data TTL
       pipeline.expire(REDIS_KEYS.ACTIVE_SESSION_IDS, CACHE_TTL.ACTIVE_SESSIONS);
-      pipeline.expire(REDIS_KEYS.USER_SESSIONS(session.serverUserId), CACHE_TTL.USER_SESSIONS);
       const results = await pipeline.exec();
       if (!results || results.some(([err]) => err !== null)) {
         console.error('[Cache] updateActiveSession pipeline failed:', results);
@@ -375,12 +410,30 @@ export function createCacheService(redis: Redis): CacheService {
       await invalidateDashboardStats();
     },
 
+    async getMediaStats<T>(cacheKey: string): Promise<T | null> {
+      const data = await redis.get(REDIS_KEYS.PUBLIC_MEDIA_STATS(cacheKey));
+      if (!data) return null;
+      try {
+        return JSON.parse(data) as T;
+      } catch {
+        return null;
+      }
+    },
+
+    async setMediaStats(cacheKey: string, value: unknown): Promise<void> {
+      await redis.setex(
+        REDIS_KEYS.PUBLIC_MEDIA_STATS(cacheKey),
+        CACHE_TTL.PUBLIC_MEDIA_STATS,
+        JSON.stringify(value)
+      );
+    },
+
     // Session by ID
     async getSessionById(id: string): Promise<ActiveSession | null> {
       const data = await redis.get(REDIS_KEYS.SESSION_BY_ID(id));
       if (!data) return null;
       try {
-        return JSON.parse(data) as ActiveSession;
+        return hydrateActiveSession(JSON.parse(data) as ActiveSession);
       } catch {
         return null;
       }
@@ -396,23 +449,6 @@ export function createCacheService(redis: Redis): CacheService {
 
     async deleteSessionById(id: string): Promise<void> {
       await redis.del(REDIS_KEYS.SESSION_BY_ID(id));
-    },
-
-    // User sessions (set of session IDs for a user)
-    async getUserSessions(userId: string): Promise<string[] | null> {
-      const data = await redis.smembers(REDIS_KEYS.USER_SESSIONS(userId));
-      if (!data || data.length === 0) return null;
-      return data;
-    },
-
-    async addUserSession(userId: string, sessionId: string): Promise<void> {
-      const key = REDIS_KEYS.USER_SESSIONS(userId);
-      await redis.sadd(key, sessionId);
-      await redis.expire(key, CACHE_TTL.USER_SESSIONS);
-    },
-
-    async removeUserSession(userId: string, sessionId: string): Promise<void> {
-      await redis.srem(REDIS_KEYS.USER_SESSIONS(userId), sessionId);
     },
 
     // Server health tracking
@@ -474,8 +510,9 @@ export function createCacheService(redis: Redis): CacheService {
       operation: () => Promise<T>
     ): Promise<T | null> {
       const lockKey = REDIS_KEYS.SESSION_LOCK(serverId, sessionKey);
+      const token = randomUUID();
 
-      const lockAcquired = await redis.set(lockKey, '1', 'EX', 15, 'NX');
+      const lockAcquired = await redis.set(lockKey, token, 'EX', 60, 'NX');
       if (!lockAcquired) {
         return null;
       }
@@ -483,7 +520,7 @@ export function createCacheService(redis: Redis): CacheService {
       try {
         return await operation();
       } finally {
-        await redis.del(lockKey);
+        await releaseLockIfHeld(redis, lockKey, token);
       }
     },
 
@@ -590,7 +627,7 @@ export function createCacheService(redis: Redis): CacheService {
       const members = await redis.smembers(REDIS_KEYS.PENDING_SESSION_IDS);
       return members.map((m) => {
         const [serverId, ...rest] = m.split(':');
-        return { serverId: serverId ?? '', sessionKey: rest.join(':') };
+        return { serverId: serverId!, sessionKey: rest.join(':') };
       });
     },
 
@@ -599,12 +636,11 @@ export function createCacheService(redis: Redis): CacheService {
       programmeStart: string,
       nowMs: number
     ): Promise<number> {
-      const key = REDIS_KEYS.DISPATCHARR_CATCHUP_PROGRAMME_START(identity);
       const value = await redis.eval(
         `
           local existing = redis.call('GET', KEYS[1])
           if existing then
-            local separator = string.find(existing, '\\n', 1, true)
+            local separator = string.find(existing, '\n', 1, true)
             if separator then
               local existingProgrammeStart = string.sub(existing, 1, separator - 1)
               if existingProgrammeStart == ARGV[1] then
@@ -613,16 +649,15 @@ export function createCacheService(redis: Redis): CacheService {
               end
             end
           end
-          redis.call('SETEX', KEYS[1], ARGV[3], ARGV[1] .. '\\n' .. ARGV[2])
+          redis.call('SETEX', KEYS[1], ARGV[3], ARGV[1] .. '\n' .. ARGV[2])
           return ARGV[2]
         `,
         1,
-        key,
+        REDIS_KEYS.DISPATCHARR_CATCHUP_PROGRAMME_START(identity),
         programmeStart,
         String(nowMs),
         String(CACHE_TTL.ACTIVE_SESSIONS)
       );
-
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : nowMs;
     },
@@ -633,13 +668,14 @@ export function createCacheService(redis: Redis): CacheService {
       stopData: { stoppedAt: number; forceStopped: boolean }
     ): Promise<void> {
       const key = REDIS_KEYS.SESSION_WRITE_RETRY(sessionId);
-      await redis.hset(key, {
-        attempts: '1',
-        stopData: JSON.stringify(stopData),
-      });
+      // hsetnx: a re-add for a session already queued must not reset its
+      // attempt count back to 1, or MAX_TOTAL_ATTEMPTS never triggers.
+      await redis.hsetnx(key, 'attempts', '1');
+      await redis.hset(key, 'stopData', JSON.stringify(stopData));
       await redis.sadd(REDIS_KEYS.SESSION_WRITE_RETRY_SET, sessionId);
       // Auto-expire after 1 hour (safety net)
       await redis.expire(key, 3600);
+      await redis.expire(REDIS_KEYS.SESSION_WRITE_RETRY_SET, 3600);
     },
 
     async getSessionWriteRetries(): Promise<
@@ -655,6 +691,10 @@ export function createCacheService(redis: Redis): CacheService {
         attempts: number;
         stopData: { stoppedAt: number; forceStopped: boolean };
       }> = [];
+      // Members whose hash already expired are zombies: srem them here so the
+      // set doesn't grow unbounded and cost one hgetall per zombie on every
+      // reconciliation pass forever.
+      const zombies: string[] = [];
 
       for (const sessionId of sessionIds) {
         const key = REDIS_KEYS.SESSION_WRITE_RETRY(sessionId);
@@ -665,8 +705,15 @@ export function createCacheService(redis: Redis): CacheService {
             attempts: parseInt(data.attempts, 10),
             stopData: JSON.parse(data.stopData) as { stoppedAt: number; forceStopped: boolean },
           });
+        } else {
+          zombies.push(sessionId);
         }
       }
+
+      if (zombies.length > 0) {
+        await redis.srem(REDIS_KEYS.SESSION_WRITE_RETRY_SET, ...zombies);
+      }
+
       return results;
     },
 
@@ -841,9 +888,10 @@ export async function atomicCacheUpdate<T>(
   getData: () => Promise<T>
 ): Promise<T> {
   const lockKey = `${key}:lock`;
+  const token = randomUUID();
 
   // Try to acquire lock (5 second expiry)
-  const lockAcquired = await redis.set(lockKey, '1', 'EX', 5, 'NX');
+  const lockAcquired = await redis.set(lockKey, token, 'EX', 5, 'NX');
 
   if (!lockAcquired) {
     // Another process is updating, wait and read cached value
@@ -861,7 +909,7 @@ export async function atomicCacheUpdate<T>(
     await redis.setex(key, ttl, JSON.stringify(data));
     return data;
   } finally {
-    await redis.del(lockKey);
+    await releaseLockIfHeld(redis, lockKey, token);
   }
 }
 

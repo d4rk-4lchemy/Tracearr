@@ -17,8 +17,13 @@ import {
   type LibraryStorageQueryInput,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
-import { validateServerAccess } from '../../utils/serverFiltering.js';
-import { buildLibraryCacheKey } from './utils.js';
+import { getSetting } from '../../services/settings.js';
+import {
+  validateServerAccess,
+  resolveServerIds,
+  buildMultiServerFragment,
+} from '../../utils/serverFiltering.js';
+import { buildLibraryCacheKey, dedupedStorageBytesSql } from './utils.js';
 
 // ============================================================================
 // Linear Regression Implementation
@@ -195,8 +200,17 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
         }
       }
 
+      const resolvedIds = resolveServerIds(authUser, serverId, undefined, { strict: false });
+      const serverCacheSegment =
+        resolvedIds !== undefined ? resolvedIds.slice().sort().join(',') : 'all';
+
       // Build cache key with all varying params
-      const cacheKey = buildLibraryCacheKey(REDIS_KEYS.LIBRARY_STORAGE, serverId, period, tz);
+      const cacheKey = buildLibraryCacheKey(
+        REDIS_KEYS.LIBRARY_STORAGE,
+        serverCacheSegment,
+        period,
+        tz
+      );
       const fullCacheKey = libraryId ? `${cacheKey}:${libraryId}` : cacheKey;
 
       // Try cache first
@@ -214,14 +228,7 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
       const endDate = new Date();
 
       // Build server filter for library_stats_daily
-      const serverFilter = serverId
-        ? sql`AND lsd.server_id = ${serverId}::uuid`
-        : authUser.serverIds?.length
-          ? sql`AND lsd.server_id IN (${sql.join(
-              authUser.serverIds.map((id: string) => sql`${id}::uuid`),
-              sql`, `
-            )})`
-          : sql``;
+      const serverFilter = buildMultiServerFragment(resolvedIds, 'lsd.server_id');
 
       // Optional library filter
       const libraryFilter = libraryId ? sql`AND lsd.library_id = ${libraryId}` : sql``;
@@ -315,19 +322,41 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
       // Total items comes from the latest snapshot's cumulative total
       const totalItems = latestRow?.total_items ?? 0;
 
+      // Headline total is mirror-deduped live (#478): per-library snapshot
+      // sums double-count the same file indexed by several libraries. The
+      // trend series above keeps per-library truth; history cannot be
+      // deduped retroactively.
+      const dedupedResult = await db.execute(sql`
+        SELECT ${dedupedStorageBytesSql(
+          buildMultiServerFragment(resolvedIds, 'li.server_id'),
+          libraryId ? sql`AND li.library_id = ${libraryId}` : sql``
+        )}::bigint AS total
+      `);
+      const dedupedBytes = (dedupedResult.rows[0] as { total: string } | undefined)?.total;
+
       const current = {
-        totalSizeBytes: latestRow?.total_size_bytes ?? '0',
+        totalSizeBytes: dedupedBytes ?? latestRow?.total_size_bytes ?? '0',
         totalItems,
         lastUpdated: latestRow?.day ?? null,
       };
 
       // Calculate growth rate using linear regression
-      // Use actual day offsets from first data point to handle gaps correctly
-      const firstRow = rows[0];
+      // Use actual day offsets from first data point to handle gaps correctly.
+      // Fit only points from after the multi-version changeover when the
+      // stamp falls inside the window: the one-time storage correction would
+      // otherwise read as growth and distort every prediction until it aged
+      // out. The displayed history keeps the full range.
+      const versionsStamp = await getSetting('mediaVersionsBackfilledAt');
+      const stampMs = versionsStamp ? new Date(versionsStamp).getTime() : null;
+      const fitRows =
+        stampMs !== null && rows.some((row) => new Date(row.day).getTime() < stampMs)
+          ? rows.filter((row) => new Date(row.day).getTime() >= stampMs)
+          : rows;
+      const firstRow = fitRows[0];
       const firstDate = firstRow ? new Date(firstRow.day).getTime() : 0;
       const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-      const dataPoints: DataPoint[] = rows.map((row) => ({
+      const dataPoints: DataPoint[] = fitRows.map((row) => ({
         x: Math.round((new Date(row.day).getTime() - firstDate) / MS_PER_DAY),
         y: Number(row.total_size_bytes),
       }));

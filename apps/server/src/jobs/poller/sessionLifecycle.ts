@@ -15,7 +15,7 @@ import {
   type Session,
   type StreamDetailFields,
 } from '@tracearr/shared';
-import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { serverUsers, sessions, violations } from '../../db/schema.js';
 import type { GeoLocation } from '../../services/geoip.js';
@@ -25,15 +25,18 @@ import {
   hasTranscodeConditions,
 } from '../../services/rules/engine.js';
 import { executeActions, type ActionResult } from '../../services/rules/executors/index.js';
-import { resolveTargetSessions } from '../../services/rules/executors/targeting.js';
 import type { EvaluationContext, EvaluationResult } from '../../services/rules/types.js';
 import { storeActionResults } from '../../services/rules/v2Integration.js';
+import { getWatchedThreshold } from '../../services/settings.js';
+import { recomputeIdentityAggregatesForServerUser } from '../../services/userService.js';
+import { clearDbWriteTracking } from './dbWriteThrottle.js';
 import { pickStreamDetailFields } from './sessionMapper.js';
 import {
   calculateStopDuration,
   checkWatchCompletion,
   shouldRecordSession,
 } from './stateTracker.js';
+import type { SessionIdentity as MediaItemIdentity } from './database.js';
 import type {
   CompositeSessionIdentity,
   MediaChangeInput,
@@ -63,6 +66,12 @@ const TRANSACTION_TIMEOUT_MS = 10000; // P2-8: 10 second timeout for transaction
 // Active sessions should only exist in recent chunks - anything older would have
 // been force-stopped by the stale session sweep. 7 days gives ample buffer.
 const ACTIVE_SESSION_CHUNK_BOUND_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Bound for the STEP 2 resume-detection query below. A resumable session's
+// startedAt can precede the 24h stoppedAt resume window by up to its own
+// wall-clock duration (e.g. a live TV session kept alive for days by polling),
+// so the bound has to cover the resume window plus the max in-scope duration.
+const RESUME_CHUNK_BOUND_MS = ACTIVE_SESSION_CHUNK_BOUND_MS + TIME_MS.DAY;
 
 /**
  * Check if an error is a PostgreSQL serialization failure.
@@ -117,6 +126,7 @@ export interface BuildActiveSessionInput {
     ratingKey: string;
     totalDurationMs: number;
     progressMs: number;
+    serverVersionKey?: string | null;
     ipAddress: string;
     playerName: string;
     deviceId: string;
@@ -125,8 +135,7 @@ export interface BuildActiveSessionInput {
     platform: string;
     quality: string;
     isTranscode: boolean;
-    dispatcharrPlaybackKind: 'live' | 'vod' | 'catchup' | null;
-    progressEstimated: boolean;
+    dispatcharrPlaybackKind?: 'live' | 'vod' | 'catchup' | null;
     dispatcharrCatchupAnchorAt?: string | null;
     dispatcharrCatchupEpgStartAt?: string | null;
     dispatcharrCatchupEpgEndAt?: string | null;
@@ -142,6 +151,8 @@ export interface BuildActiveSessionInput {
     albumName: string | null;
     trackNumber: number | null;
     discNumber: number | null;
+    /** Canonical media identity resolved from library_items, stamped at session insert. */
+    identity?: MediaItemIdentity | null;
   };
 
   /** Server user info */
@@ -197,6 +208,14 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: processed.ratingKey || null,
+    serverVersionKey: processed.serverVersionKey ?? null,
+    parentRatingKey: processed.identity?.parentRatingKey ?? null,
+    grandparentRatingKey: processed.identity?.grandparentRatingKey ?? null,
+    mediaId: processed.identity?.mediaId ?? null,
+    showMediaId: processed.identity?.showMediaId ?? null,
+    imdbId: processed.identity?.imdbId ?? null,
+    tmdbId: processed.identity?.tmdbId ?? null,
+    tvdbId: processed.identity?.tvdbId ?? null,
 
     // External session ID (for Plex API calls)
     externalSessionId: session.externalSessionId ?? null,
@@ -246,7 +265,6 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     quality: processed.quality,
     isTranscode: processed.isTranscode,
     dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-    progressEstimated: processed.progressEstimated,
     dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
     dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
     dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
@@ -309,6 +327,14 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: processed.ratingKey || null,
+    serverVersionKey: processed.serverVersionKey ?? null,
+    parentRatingKey: processed.identity?.parentRatingKey ?? null,
+    grandparentRatingKey: processed.identity?.grandparentRatingKey ?? null,
+    mediaId: processed.identity?.mediaId ?? null,
+    showMediaId: processed.identity?.showMediaId ?? null,
+    imdbId: processed.identity?.imdbId ?? null,
+    tmdbId: processed.identity?.tmdbId ?? null,
+    tvdbId: processed.identity?.tvdbId ?? null,
 
     // External session ID (for Plex API calls)
     externalSessionId: processed.plexSessionId ?? null,
@@ -354,7 +380,6 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     quality: processed.quality,
     isTranscode: processed.isTranscode,
     dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-    progressEstimated: processed.progressEstimated,
     dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
     dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
     dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
@@ -386,6 +411,9 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
 
     // Termination capability
     canTerminate: server.type !== 'plex' || !!processed.plexSessionId,
+
+    // Unconfirmed; excludeUncountableSessions drops this from rule evaluation
+    pending: true,
   };
 }
 
@@ -400,7 +428,7 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
 export async function findActiveSession(
   identity: SessionIdentity
 ): Promise<typeof sessions.$inferSelect | null> {
-  const { serverId, sessionKey, ratingKey } = identity;
+  const { serverId, sessionKey, ratingKey, serverUserId } = identity;
   // Time bound reduces TimescaleDB chunk scanning (only recent chunks can have active sessions)
   const chunkBound = new Date(Date.now() - ACTIVE_SESSION_CHUNK_BOUND_MS);
 
@@ -417,10 +445,18 @@ export async function findActiveSession(
     conditions.push(eq(sessions.ratingKey, ratingKey));
   }
 
+  if (serverUserId != null) {
+    conditions.push(eq(sessions.serverUserId, serverUserId));
+  }
+
+  // Newest first: after a PMS restart a stale open row can share this
+  // sessionKey with a fresh one, and an unordered limit(1) could latch the
+  // stale row forever
   const rows = await db
     .select()
     .from(sessions)
     .where(and(...conditions))
+    .orderBy(desc(sessions.startedAt))
     .limit(1);
 
   return rows[0] || null;
@@ -554,6 +590,68 @@ export async function batchFindActiveSessionsByComposite(
 // ============================================================================
 
 /**
+ * Build the session list used for rule evaluation context.
+ *
+ * Excludes stoppedTwinId (the quality-change twin stopped earlier in the
+ * same operation but still present in the caller's cache snapshot) and
+ * appends triggeringSession unless a session with that id is already
+ * present.
+ */
+export function buildRuleContextSessions(
+  activeSessions: Session[],
+  triggeringSession: Session,
+  stoppedTwinId: string | null | undefined
+): Session[] {
+  const countableSessions = stoppedTwinId
+    ? activeSessions.filter((s) => s.id !== stoppedTwinId)
+    : activeSessions;
+  return countableSessions.some((s) => s.id === triggeringSession.id)
+    ? countableSessions
+    : [...countableSessions, triggeringSession];
+}
+
+/**
+ * Whether the triggering session had a kill job enqueued for it.
+ *
+ * Reflects enqueue, not execution: reverify can still abort the kill later
+ * (session already stopped, rule gone, condition cleared), so this is only
+ * ever a prediction that the session may die shortly, not a guarantee.
+ */
+export function wasTriggeringSessionTargetedForKill(
+  actionResults: ActionResult[],
+  triggeringSessionId: string
+): boolean {
+  return actionResults.some(
+    (result) =>
+      result.action.type === 'kill_stream' &&
+      result.enqueuedSessionIds?.includes(triggeringSessionId)
+  );
+}
+
+/**
+ * Clean up the twin stopped by createSessionWithRulesAtomic's quality-change
+ * detection (STEP 1): clear its DB-write throttle tracking, remove it from
+ * the active-session cache, and publish its stop. Every caller of
+ * createSessionWithRulesAtomic/confirmAndPersistSession that can receive a
+ * non-null `qualityChange` must run this, or the twin lingers in the cache
+ * until TTL with a stale throttle entry and no stop broadcast.
+ */
+export async function handleQualityChangeFallout(
+  qualityChange: QualityChangeResult,
+  cacheService: { removeActiveSession: (sessionId: string) => Promise<void> } | null,
+  pubSubService: { publish: (event: string, data: unknown) => Promise<void> } | null
+): Promise<void> {
+  const { stoppedSession } = qualityChange;
+  clearDbWriteTracking(stoppedSession.id);
+  if (cacheService) {
+    await cacheService.removeActiveSession(stoppedSession.id);
+  }
+  if (pubSubService) {
+    await pubSubService.publish('session:stopped', stoppedSession.id);
+  }
+}
+
+/**
  * Create a session with atomic rule evaluation and violation creation.
  * Handles quality change detection, resume tracking, and rule violations.
  */
@@ -643,6 +741,14 @@ export async function createSessionWithRulesAtomic(
   // STEP 2: Check for resume tracking (recently stopped session with same content)
   if (!referenceId && processed.ratingKey) {
     const oneDayAgo = new Date(Date.now() - TIME_MS.DAY);
+    // Time bound reduces TimescaleDB chunk scanning (mirrors STEP 1 above).
+    // Uses RESUME_CHUNK_BOUND_MS, not ACTIVE_SESSION_CHUNK_BOUND_MS: covers any
+    // resumable session whose wall-clock duration is at most
+    // ACTIVE_SESSION_CHUNK_BOUND_MS. Only live TV channels and stuck sessions
+    // kept alive by polling can run longer than that; those rows lose resume
+    // chaining here, an accepted tradeoff, and they are already invisible to
+    // the stale sweep's own ACTIVE_SESSION_CHUNK_BOUND_MS bound.
+    const chunkBound = new Date(Date.now() - RESUME_CHUNK_BOUND_MS);
     const recentSameContent = await db
       .select()
       .from(sessions)
@@ -651,6 +757,7 @@ export async function createSessionWithRulesAtomic(
           eq(sessions.serverUserId, serverUser.id),
           eq(sessions.ratingKey, processed.ratingKey),
           gte(sessions.stoppedAt, oneDayAgo),
+          gte(sessions.startedAt, chunkBound),
           eq(sessions.watched, false)
         )
       )
@@ -695,7 +802,20 @@ export async function createSessionWithRulesAtomic(
               serverUserId: serverUser.id,
               sessionKey: processed.sessionKey,
               plexSessionId: processed.plexSessionId || null,
-              ratingKey: processed.ratingKey || null,
+              // Store '' rather than null for an absent media id. Every composite
+              // lookup (batchFindActiveSessionsByComposite, findActiveSessionByComposite)
+              // and buildCompositeKey coerce a missing ratingKey to '', so storing
+              // null here would make each tick's dedup miss the row it wrote last
+              // tick and insert a duplicate until the stale sweep.
+              ratingKey: processed.ratingKey ?? '',
+              serverVersionKey: processed.serverVersionKey ?? null,
+              parentRatingKey: processed.identity?.parentRatingKey ?? null,
+              grandparentRatingKey: processed.identity?.grandparentRatingKey ?? null,
+              mediaId: processed.identity?.mediaId ?? null,
+              showMediaId: processed.identity?.showMediaId ?? null,
+              imdbId: processed.identity?.imdbId ?? null,
+              tmdbId: processed.identity?.tmdbId ?? null,
+              tvdbId: processed.identity?.tvdbId ?? null,
               state: processed.state,
               mediaType: processed.mediaType,
               mediaTitle: processed.mediaTitle,
@@ -731,7 +851,6 @@ export async function createSessionWithRulesAtomic(
               quality: processed.quality,
               isTranscode: processed.isTranscode,
               dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-              progressEstimated: processed.progressEstimated,
               videoDecision: processed.videoDecision,
               audioDecision: processed.audioDecision,
               bitrate: processed.bitrate,
@@ -776,6 +895,14 @@ export async function createSessionWithRulesAtomic(
             year: processed.year || null,
             thumbPath: processed.thumbPath || null,
             ratingKey: processed.ratingKey || null,
+            serverVersionKey: processed.serverVersionKey ?? null,
+            parentRatingKey: processed.identity?.parentRatingKey ?? null,
+            grandparentRatingKey: processed.identity?.grandparentRatingKey ?? null,
+            mediaId: processed.identity?.mediaId ?? null,
+            showMediaId: processed.identity?.showMediaId ?? null,
+            imdbId: processed.identity?.imdbId ?? null,
+            tmdbId: processed.identity?.tmdbId ?? null,
+            tvdbId: processed.identity?.tvdbId ?? null,
             externalSessionId: null,
             startedAt: inserted.startedAt,
             stoppedAt: null,
@@ -804,7 +931,6 @@ export async function createSessionWithRulesAtomic(
             quality: processed.quality,
             isTranscode: processed.isTranscode,
             dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-            progressEstimated: processed.progressEstimated,
             videoDecision: processed.videoDecision,
             audioDecision: processed.audioDecision,
             bitrate: processed.bitrate,
@@ -841,7 +967,6 @@ export async function createSessionWithRulesAtomic(
             thumbUrl: serverUser.thumbUrl,
             isServerAdmin: false,
             trustScore: serverUser.trustScore,
-            sessionCount: serverUser.sessionCount,
             joinedAt: null,
             lastActivityAt: serverUser.lastActivityAt,
             createdAt: serverUser.createdAt,
@@ -850,9 +975,13 @@ export async function createSessionWithRulesAtomic(
             identityName: serverUser.identityName,
           };
 
-          const activeSessionsWithNew = activeSessions.some((s) => s.id === session.id)
-            ? activeSessions
-            : [...activeSessions, session];
+          // The quality-change twin was stopped in STEP 1 but still sits in the
+          // caller's cache snapshot; counting it doubles this viewer.
+          const activeSessionsWithNew = buildRuleContextSessions(
+            activeSessions,
+            session,
+            qualityChange?.stoppedSession.id
+          );
 
           const baseContext: Omit<EvaluationContext, 'rule'> = {
             session,
@@ -920,6 +1049,8 @@ export async function createSessionWithRulesAtomic(
               const violation = insertedViolations[0];
 
               if (violation) {
+                await recomputeIdentityAggregatesForServerUser(serverUser.id, tx);
+
                 // Create rule info for ViolationInsertResult (V2 rules don't have type)
                 const ruleInfo = {
                   id: rule.id,
@@ -956,33 +1087,24 @@ export async function createSessionWithRulesAtomic(
       let wasTerminatedByRule = false;
 
       for (const { context, result, rule } of pendingSideEffects) {
-        // Before executing, check if any kill_stream action will target the triggering session
-        for (const action of result.actions) {
-          if (action.type === 'kill_stream') {
-            const sessionsToKill = resolveTargetSessions({
-              target: action.target ?? 'triggering',
-              triggeringSession: context.session,
-              serverUserId: context.serverUser.id,
-              activeSessions: context.activeSessions.some((s) => s.id === context.session.id)
-                ? context.activeSessions
-                : [...context.activeSessions, context.session],
-              identityServerUserIds: rule.enforceAcrossServers
-                ? context.identityServerUserIds
-                : undefined,
-            });
-
-            // Check if the triggering session is in the kill list
-            if (sessionsToKill.some((s) => s.id === insertedSession.id)) {
-              wasTerminatedByRule = true;
-            }
-          }
-        }
-
-        const actionResults: ActionResult[] = await executeActions(context, result.actions);
-
-        // Find violation ID if one was created for this rule
+        // Find violation ID if one was created for this rule - kill_stream needs
+        // it before executing so the kill queue can attribute its eventual
+        // outcome (killed/skipped/failed) back to the right violation.
         const violationId =
           violationResults.find((v) => v.rule.id === rule.id)?.violation.id ?? null;
+
+        const actionResults: ActionResult[] = await executeActions(
+          { ...context, violationId },
+          result.actions
+        );
+
+        // A kill job was actually enqueued for the triggering session - not a
+        // prediction made before actions ran, so it stays accurate even if
+        // reverify later aborts the kill (the session just gets re-added on
+        // the next poll tick since it's still in the server's response).
+        if (wasTriggeringSessionTargetedForKill(actionResults, insertedSession.id)) {
+          wasTerminatedByRule = true;
+        }
 
         // Store results for UI
         await storeActionResults(violationId, result.ruleId, actionResults);
@@ -1133,6 +1255,7 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
       lastPausedAt: session.lastPausedAt,
       pausedDurationMs: session.pausedDurationMs ?? 0,
       progressMs: session.progressMs,
+      totalDurationMs: session.totalDurationMs,
     },
     stoppedAt
   );
@@ -1142,7 +1265,12 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
   const watched = preserveWatched
     ? session.watched
     : session.watched ||
-      checkWatchCompletion(durationMs, session.progressMs, session.totalDurationMs);
+      checkWatchCompletion(
+        durationMs,
+        session.progressMs,
+        session.totalDurationMs,
+        await getWatchedThreshold(session.mediaType)
+      );
 
   const shortSession = !shouldRecordSession(durationMs);
 
@@ -1247,14 +1375,16 @@ export async function handleMediaChangeAtomic(
   }
 
   // STEP 2: Create new session for the new media
-  const { insertedSession, violationResults, wasTerminatedByRule } =
+  const { insertedSession, violationResults, wasTerminatedByRule, qualityChange } =
     await createSessionWithRulesAtomic({
       processed,
       server,
       serverUser,
       geo,
       activeRulesV2,
-      activeSessions,
+      // The old-media session was stopped above; the caller's snapshot
+      // predates that stop.
+      activeSessions: activeSessions.filter((s) => s.id !== existingSession.id),
       recentSessions,
     });
 
@@ -1267,6 +1397,7 @@ export async function handleMediaChangeAtomic(
     insertedSession,
     violationResults,
     wasTerminatedByRule,
+    qualityChange,
   };
 }
 
@@ -1303,8 +1434,6 @@ export interface PollResultsInput {
       updatedSessions: ActiveSession[],
       watchedTransitionOccurred?: boolean
     ) => Promise<void>;
-    addUserSession: (userId: string, sessionId: string) => Promise<void>;
-    removeUserSession: (userId: string, sessionId: string) => Promise<void>;
   } | null;
   /** PubSub service for broadcasting */
   pubSubService: {
@@ -1312,6 +1441,12 @@ export interface PollResultsInput {
   } | null;
   /** Notification enqueue function */
   enqueueNotification: (notification: PollNotification) => Promise<unknown>;
+  /**
+   * IDs (subset of newSessions) confirmed from a pending entry rather than
+   * created fresh. The pending create already published session:started and
+   * enqueued session_started, so both are skipped here for these ids.
+   */
+  confirmedFromPendingIds?: Set<string>;
 }
 
 /**
@@ -1341,6 +1476,7 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     cacheService,
     pubSubService,
     enqueueNotification,
+    confirmedFromPendingIds,
   } = input;
 
   // Extract stopped session IDs from the key format "serverId:sessionKey"
@@ -1361,31 +1497,27 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
       updatedSessions,
       watchedTransitionOccurred
     );
-
-    // Update user session sets for new sessions
-    for (const session of newSessions) {
-      await cacheService.addUserSession(session.serverUserId, session.id);
-    }
-
-    // Remove stopped sessions from user session sets
-    for (const key of stoppedKeys) {
-      const stoppedSession = findStoppedSession(key, cachedSessions);
-      if (stoppedSession) {
-        await cacheService.removeUserSession(stoppedSession.serverUserId, stoppedSession.id);
-      }
-    }
   }
 
   // Publish events via pub/sub
   if (pubSubService) {
+    const confirmedPendingSessions = confirmedFromPendingIds
+      ? newSessions.filter((session) => confirmedFromPendingIds.has(session.id))
+      : [];
+
     for (const session of newSessions) {
+      // Sessions confirmed from a pending entry already got both of these
+      // at pending create - re-sending here would double the SSE event and
+      // the user-facing notification.
+      if (confirmedFromPendingIds?.has(session.id)) continue;
       await pubSubService.publish('session:started', session);
       await enqueueNotification({ type: 'session_started', payload: session });
     }
 
     // No consumer reads the payload, so one tick's updates collapse to a single publish.
-    if (updatedSessions.length > 0) {
-      await pubSubService.publish('session:updated', updatedSessions[0]);
+    const sessionToUpdate = updatedSessions[0] ?? confirmedPendingSessions[0];
+    if (sessionToUpdate) {
+      await pubSubService.publish('session:updated', sessionToUpdate);
     }
 
     for (const key of stoppedKeys) {
@@ -1454,6 +1586,14 @@ export async function reEvaluateRulesOnTranscodeChange(
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: existingSession.ratingKey,
+    serverVersionKey: existingSession.serverVersionKey,
+    parentRatingKey: existingSession.parentRatingKey,
+    grandparentRatingKey: existingSession.grandparentRatingKey,
+    mediaId: existingSession.mediaId,
+    showMediaId: existingSession.showMediaId,
+    imdbId: existingSession.imdbId,
+    tmdbId: existingSession.tmdbId,
+    tvdbId: existingSession.tvdbId,
     startedAt: existingSession.startedAt,
     stoppedAt: null,
     durationMs: null,
@@ -1513,7 +1653,6 @@ export async function reEvaluateRulesOnTranscodeChange(
     thumbUrl: serverUser.thumbUrl,
     isServerAdmin: false,
     trustScore: serverUser.trustScore,
-    sessionCount: serverUser.sessionCount,
     joinedAt: null,
     lastActivityAt: serverUser.lastActivityAt,
     createdAt: serverUser.createdAt,
@@ -1526,7 +1665,11 @@ export async function reEvaluateRulesOnTranscodeChange(
     session,
     serverUser: serverUserObj,
     server: serverObj,
-    activeSessions,
+    // Append the re-evaluated session to its own context. Callers pass the
+    // grace-filtered active list (excludeUncountableSessions), which drops this
+    // session while it is grace-flagged, so without the append a trigger is
+    // absent from its own re-eval context and self-undercounts (missed kill).
+    activeSessions: buildRuleContextSessions(activeSessions, session, null),
     recentSessions,
     identityServerUserIds: serverUser.identityServerUserIds,
   };
@@ -1557,7 +1700,10 @@ export async function reEvaluateRulesOnTranscodeChange(
         sql`SELECT pg_advisory_xact_lock(hashtext(${existingSession.id} || '::' || ${rule.id}))`
       );
 
-      // Dedup check (now race-free under advisory lock)
+      // Dedup check (now race-free under advisory lock). A dismissed row
+      // blocks re-creation regardless of whether it was acknowledged first:
+      // dismiss means "false positive", and re-detecting the same
+      // session+rule would re-run its actions.
       const existing = await tx
         .select({ id: violations.id })
         .from(violations)
@@ -1565,7 +1711,7 @@ export async function reEvaluateRulesOnTranscodeChange(
           and(
             eq(violations.ruleId, rule.id),
             eq(violations.sessionId, existingSession.id),
-            isNull(violations.acknowledgedAt)
+            or(isNull(violations.acknowledgedAt), isNotNull(violations.dismissedAt))
           )
         )
         .limit(1);
@@ -1607,6 +1753,7 @@ export async function reEvaluateRulesOnTranscodeChange(
       const violation = insertedViolations[0];
       if (!violation) return null;
 
+      await recomputeIdentityAggregatesForServerUser(serverUser.id, tx);
       return violation;
     });
 
@@ -1627,7 +1774,11 @@ export async function reEvaluateRulesOnTranscodeChange(
       // a new violation was created. Gating here prevents actions from firing
       // on subsequent re-evaluations where the dedup check returns null.
       if (result.actions.length > 0) {
-        const context: EvaluationContext = { ...baseContext, rule };
+        const context: EvaluationContext = {
+          ...baseContext,
+          rule,
+          violationId: violationResult.id,
+        };
         const actionResults: ActionResult[] = await executeActions(context, result.actions);
         await storeActionResults(violationResult.id, result.ruleId, actionResults);
       }
@@ -1677,6 +1828,14 @@ export async function reEvaluateRulesOnPauseState(
     year: processed.year || null,
     thumbPath: processed.thumbPath || null,
     ratingKey: existingSession.ratingKey,
+    serverVersionKey: existingSession.serverVersionKey,
+    parentRatingKey: existingSession.parentRatingKey,
+    grandparentRatingKey: existingSession.grandparentRatingKey,
+    mediaId: existingSession.mediaId,
+    showMediaId: existingSession.showMediaId,
+    imdbId: existingSession.imdbId,
+    tmdbId: existingSession.tmdbId,
+    tvdbId: existingSession.tvdbId,
     startedAt: existingSession.startedAt,
     stoppedAt: null,
     durationMs: null,
@@ -1735,7 +1894,6 @@ export async function reEvaluateRulesOnPauseState(
     thumbUrl: serverUser.thumbUrl,
     isServerAdmin: false,
     trustScore: serverUser.trustScore,
-    sessionCount: serverUser.sessionCount,
     joinedAt: null,
     lastActivityAt: serverUser.lastActivityAt,
     createdAt: serverUser.createdAt,
@@ -1748,7 +1906,11 @@ export async function reEvaluateRulesOnPauseState(
     session,
     serverUser: serverUserObj,
     server: serverObj,
-    activeSessions,
+    // Append the re-evaluated session to its own context. Callers pass the
+    // grace-filtered active list (excludeUncountableSessions), which drops this
+    // session while it is grace-flagged, so without the append a trigger is
+    // absent from its own re-eval context and self-undercounts (missed kill).
+    activeSessions: buildRuleContextSessions(activeSessions, session, null),
     recentSessions,
     identityServerUserIds: serverUser.identityServerUserIds,
   };
@@ -1772,7 +1934,9 @@ export async function reEvaluateRulesOnPauseState(
         sql`SELECT pg_advisory_xact_lock(hashtext(${existingSession.id} || '::' || ${rule.id}))`
       );
 
-      // Dedup check — prevent duplicate violation for same session+rule
+      // Dedup check, prevents duplicate violation for same session+rule.
+      // Dismissed rows block regardless of acknowledgement, same as the
+      // advisory-lock path above.
       const existing = await tx
         .select({ id: violations.id })
         .from(violations)
@@ -1780,7 +1944,7 @@ export async function reEvaluateRulesOnPauseState(
           and(
             eq(violations.ruleId, rule.id),
             eq(violations.sessionId, existingSession.id),
-            isNull(violations.acknowledgedAt)
+            or(isNull(violations.acknowledgedAt), isNotNull(violations.dismissedAt))
           )
         )
         .limit(1);
@@ -1822,6 +1986,7 @@ export async function reEvaluateRulesOnPauseState(
       const violation = insertedViolations[0];
       if (!violation) return null;
 
+      await recomputeIdentityAggregatesForServerUser(serverUser.id, tx);
       return violation;
     });
 
@@ -1840,9 +2005,13 @@ export async function reEvaluateRulesOnPauseState(
 
       // Execute actions (e.g., kill_stream, send_notification) only when
       // a new violation was created. The dedup check returns null on subsequent
-      // polls — gating here prevents kill_stream from firing every poll cycle.
+      // polls, so gating here prevents kill_stream from firing every poll cycle.
       if (result.actions.length > 0) {
-        const context: EvaluationContext = { ...baseContext, rule };
+        const context: EvaluationContext = {
+          ...baseContext,
+          rule,
+          violationId: violationResult.id,
+        };
         const actionResults: ActionResult[] = await executeActions(context, result.actions);
         await storeActionResults(violationResult.id, result.ruleId, actionResults);
       }

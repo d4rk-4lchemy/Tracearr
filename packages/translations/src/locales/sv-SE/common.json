@@ -93,7 +93,9 @@
     "usersUpdated_one": "{{count}} användare uppdaterad",
     "usersUpdated_other": "{{count}} användare uppdaterade",
     "violation_one": "{{count}} brott",
-    "violation_other": "{{count}} överträdelser"
+    "violation_other": "{{count}} överträdelser",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} dag",

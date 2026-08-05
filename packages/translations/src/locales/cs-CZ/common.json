@@ -93,7 +93,9 @@
     "usersUpdated_one": "{{count}} uživatel aktualizován",
     "usersUpdated_other": "{{count}} uživatelé aktualizováni",
     "violation_one": "Porušení {{count}}",
-    "violation_other": "{{count}} porušení"
+    "violation_other": "{{count}} porušení",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "duration": {
     "day_one": "{{count}} den",

@@ -36,9 +36,7 @@ function buildDeviceMatrix(rows: MatrixDeviceRow[], codecs: string[]): DeviceCom
     if (!deviceMap.has(row.device_type)) {
       deviceMap.set(row.device_type, { device: row.device_type, codecs: {} });
     }
-    const device = deviceMap.get(row.device_type);
-    if (!device) continue;
-    device.codecs[row.video_codec] = {
+    deviceMap.get(row.device_type)!.codecs[row.video_codec] = {
       sessions: row.session_count,
       directPct: row.direct_pct,
     };

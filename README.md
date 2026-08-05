@@ -1,7 +1,7 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
-  <i>Current vesrion:</i> <b>1.5.0</b>
+  <i>Current vesrion:</i> <b>2.0.0</b>
 </p>
 
 > [!WARNING]  
@@ -10,6 +10,9 @@
 > [!WARNING]  
 > When updating to **≥1.5.0** Jellyfin login **will no longer work!** You need to use your local Tracearr account, created when first launching the service.<br> If you don't remember your password and want to reset it, please execute:<br>`docker exec {distracearr_container_name} node apps/server/dist/scripts/reset-password.js '{new_password}'`
 
+> [!NOTE] 
+> If you ever want to switch back from this fork to the official image, but you have already added a Dispatcharr server and stored data from its sessions, run the following command **while you are still using this forked image**.<br>`docker exec -it {distracearr_container_name} node apps/server/dist/scripts/purge-dispatcharr.js`<br>After running the command, you can stop this container and replace the image with the official one.
+
 **What's New:**
 - Support for Dispatcharr servers, with Login/Password (for WebSocket integration) or API Key auth,
 - Shows currently running Live TV streams, as well as VOD Movies or VOD Shows,
@@ -17,6 +20,7 @@
 - You can kill Dispatcharr streams directly from Tracearr dashboard,
 - Live TV card is aligned to Dispatcharr needs, showing speed threshold, watchtime,
 - Stream details for Live TV shows bitrate, codecs and video resolution,
+- Support for Catch-Up (Timeshift) sessions, with small badge and custom card,
 - Fixed bad `Content` column in mobile view of `History` tab _(this has nothing to do with Dispatcharr, just annoying bug)._
 
 **Docker images:**
@@ -29,10 +33,10 @@ You can also build your own Docker image.<br>
 Example docker build commands:
 ```bash
 # Regular Image
-docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=1.5.0  --build-arg APP_TAG=1.5.0  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=2.0.0  --build-arg APP_TAG=2.0.0 --build-arg APP_UPSTREAM_VERSION=2.0.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.0.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 
 # Supervised Image
-docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=1.5.0  --build-arg APP_TAG=supervised-1.5.0  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=2.0.0  --build-arg APP_TAG=supervised-2.0.0 --build-arg APP_UPSTREAM_VERSION=2.0.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.0.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 ```
 
 Example `docker-compose.yml` for **Supervised** image:
@@ -51,7 +55,7 @@ tracearr:
     - /docker/distracearr/data:/data/tracearr
   restart: unless-stopped
   healthcheck:
-    test: ["CMD", "curl", "-f", "http://127.0.0.1:4567/health"]
+    test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
     interval: 30s
     timeout: 10s
     start_period: 60s
@@ -119,7 +123,7 @@ Tracearr is a monitoring platform for **Plex**, **Jellyfin**, and **Emby**. Trac
 
 **Real-Time Alerts** — Discord webhooks and custom notifications fire instantly when rules trigger.
 
-**Public API** — Read-only REST API for third-party integrations. Generate an API key in Settings, then explore endpoints at `/api-docs` (Swagger UI). Works with Homarr, Home Assistant, or anything that speaks HTTP.
+**Public API** — Read-only REST API for third-party integrations. Generate an API key in Settings, then browse the [API reference](https://docs.tracearr.com/api) or the interactive docs built into your instance.
 
 **Bulk Actions** — Multi-select operations across tables. Acknowledge or dismiss violations in bulk, reset trust scores, enable/disable rules, delete session history.
 

@@ -38,6 +38,7 @@ import { getAvatarUrl } from '@/components/users/utils';
 import type { SessionWithDetails, SessionState, MediaType, EngagementTier } from '@tracearr/shared';
 import type { ColumnVisibility } from './HistoryFilters';
 import { ServerColumnCell } from '@/components/server';
+import { CatchupIcon } from '@/components/sessions/CatchupIcon';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { format } from 'date-fns';
 import { getTimeFormatString } from '@/lib/timeFormat';
@@ -268,6 +269,10 @@ export const HistoryTableRow = memo(
       const accentStyle = serverColor
         ? { ...style, boxShadow: `inset 3px 0 0 0 ${serverColor}` }
         : style;
+      const isDispatcharrCatchup =
+        session.server.type === 'dispatcharr' &&
+        session.mediaType === 'live' &&
+        session.dispatcharrPlaybackKind === 'catchup';
 
       return (
         <TableRow
@@ -350,6 +355,15 @@ export const HistoryTableRow = memo(
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center justify-start gap-2">
                     <span className="block min-w-0 shrink truncate font-medium">{primary}</span>
+                    {isDispatcharrCatchup && (
+                      <span
+                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                        title="Catch-up"
+                        data-testid="history-catchup-badge"
+                      >
+                        <CatchupIcon className="h-3 w-3" />
+                      </span>
+                    )}
                     <EngagementTierBadge
                       progress={progress}
                       state={session.state}

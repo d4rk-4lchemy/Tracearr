@@ -16,7 +16,11 @@
   "apiDocs": {
     "apiKeyAutoLoaded": "Αυτόματη φόρτωση κλειδιού API",
     "backToSettings": "Πίσω στις Ρυθμίσεις",
-    "noApiKey": "Δεν δημιουργήθηκε κλειδί API - δημιουργήστε ένα στις Ρυθμίσεις για να δοκιμάσετε τα τελικά σημεία"
+    "noApiKey": "Δεν δημιουργήθηκε κλειδί API - δημιουργήστε ένα στις Ρυθμίσεις για να δοκιμάσετε τα τελικά σημεία",
+    "specLoadError": "Failed to load the API specification. Check your API key and try again.",
+    "versionSwitcherLabel": "API documentation version",
+    "versionV1": "API v1",
+    "versionV2": "API v2"
   },
   "dashboard": {
     "activeUsers": "Ενεργοί Χρήστες",
@@ -28,6 +32,10 @@
     "serverResources": "Πόροι Διακομιστή",
     "streamLocations": "Τοποθεσίες Ροής",
     "streamsAppearHere": "Οι ενεργές ροές θα εμφανιστούν εδώ όταν οι χρήστες αρχίσουν να παρακολουθούν",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "Παίζει",
+    "vodWatchTime": "Ώρα Παρακολούθησης",
     "watchTime": "Ώρα Παρακολούθησης"
   },
   "debug": {
@@ -117,6 +125,56 @@
   },
   "library": {
     "description": "Κορυφαίες ταινίες και εκπομπές στο διακομιστή σας",
+    "emptyState": {
+      "backfillAvailable": {
+        "bodyGeneric": "Generate historical snapshots to see library trends over time.",
+        "bodyWithDays": "Your library has {{days}} days of history. Generate snapshots to see trends in charts.",
+        "syncRunningBody": "Historical data generation will start automatically once the sync completes.",
+        "syncRunningTitle": "Library sync in progress...",
+        "title": "Historical data available"
+      },
+      "backfillRunning": {
+        "fallbackBody": "Creating snapshots from library history. This may take a few minutes.",
+        "progress": "{{processed}} of {{total}} libraries",
+        "snapshotsSuffix": " ({{count}} snapshots)",
+        "title": "Generating historical data..."
+      },
+      "checkingStatus": "Checking library status...",
+      "generateHistory": "Generate History",
+      "multiServer": {
+        "body": "Sync the servers below to see combined library statistics.",
+        "needsBackfillIntro": "These servers are synced but have no historical data yet:",
+        "title": "Some libraries need attention"
+      },
+      "noMedia": {
+        "body": "This library is synced but doesn't have any movies or shows in it yet.",
+        "title": "No movies or shows yet"
+      },
+      "notSynced": {
+        "body": "Library statistics will appear here once the library has been synced. This typically happens automatically every hour.",
+        "title": "Library not synced yet"
+      },
+      "notSyncedShort": "Not synced yet",
+      "starting": "Starting...",
+      "syncInProgress": {
+        "body": "Library statistics will appear once the sync completes. This may take a few minutes depending on library size.",
+        "title": "Library sync in progress..."
+      },
+      "syncNow": "Sync Now",
+      "syncing": "Syncing...",
+      "toast": {
+        "backfillCompleteTitle": "Backfill complete",
+        "backfillErrorTitle": "Backfill failed",
+        "backfillFailedTitle": "Failed to start backfill",
+        "backfillStartedDesc": "Historical snapshots are being generated.",
+        "backfillStartedTitle": "Backfill started",
+        "genericRetry": "Please try again.",
+        "noServerSelected": "No server selected",
+        "syncFailedTitle": "Failed to start sync",
+        "syncStartedDesc": "This may take a few minutes depending on library size.",
+        "syncStartedTitle": "Library sync started"
+      }
+    },
     "noMoviePlays": "Δεν παίζει ταινία σε αυτή την περίοδο",
     "noShowPlays": "Καμία τηλεοπτική εκπομπή δεν παίζει σε αυτή την περίοδο",
     "overview": {
@@ -126,6 +184,7 @@
       "failedToLoadDesc": "Δεν ήταν δυνατή η λήψη δεδομένων βιβλιοθήκης. Παρακαλώ προσπαθήστε ξανά.",
       "lastUpdated": "Τελευταία ενημέρωση:",
       "libraryGrowth": "Ανάπτυξη Βιβλιοθήκης",
+      "serversNeedSync": "These servers need to sync:",
       "shows": "παραστάσεις",
       "thisMonth": "αυτό το μήνα",
       "thisPeriod": "αυτή την περίοδο",
@@ -152,6 +211,8 @@
       "days": "ημέρες",
       "description": "Χρήση αποθήκευσης, προβλέψεις και βελτιστοποίηση",
       "duplicates": "Διπλότυπα",
+      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
+      "duplicatesTitle": "Duplicates",
       "failedToLoad": "Αποτυχία φόρτωσης δεδομένων αποθήκευσης",
       "failedToLoadDesc": "Δεν ήταν δυνατή η λήψη δεδομένων αποθήκευσης. Παρακαλώ προσπαθήστε ξανά.",
       "groups": "ομάδες",
@@ -172,6 +233,12 @@
     "title": "Βιβλιοθήκη",
     "topMovies": "Κορυφαίες Ταινίες",
     "topShows": "Κορυφαίες Τηλεοπτικές Δείξεις",
+    "versionsBackfill": {
+      "action": "Sync now",
+      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
+      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
+      "syncStarted": "Library sync started."
+    },
     "watch": {
       "avgPerItem": "avg ανά αντικείμενο",
       "bingeHighlights": "Στιγμιότυπα Binge",
@@ -236,6 +303,12 @@
     "yourPasswordPlaceholder": "Ο κωδικός σας"
   },
   "maintenance": {
+    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded.",
+    "initStep": {
+      "migrations": "Applying database migrations",
+      "services": "Starting services",
+      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)"
+    },
     "interruptionDescription": "Μία ή περισσότερες υπηρεσίες παρασκηνίου δεν είναι διαθέσιμες. Αυτή η σελίδα θα ανανεωθεί αυτόματα όταν αποκατασταθεί η συνδεσιμότητα.",
     "interruptionTitle": "Διακοπή υπηρεσίας",
     "restoreFailed": "Η επαναφορά απέτυχε",
@@ -261,6 +334,302 @@
     "heatmap": "Χάρτης Θερμότητας",
     "locations": "τοποθεσίες",
     "streams": "ροές"
+  },
+  "media": {
+    "detail": {
+      "breadcrumb": {
+        "ariaLabel": "Breadcrumb"
+      },
+      "copies": {
+        "columns": {
+          "added": "Added",
+          "episodes": "Episodes",
+          "library": "Library",
+          "quality": "Quality",
+          "server": "Server",
+          "size": "Size"
+        },
+        "loadError": "Couldn't load copies",
+        "title": "Copies",
+        "unknownLibrary": "Unknown library",
+        "versionLabel": "File {{index}}"
+      },
+      "hero": {
+        "actions": {
+          "fullHistory": "Full history",
+          "openOnServer": "Open on server"
+        },
+        "availability": {
+          "added": "added {{date}}",
+          "removed": "removed {{date}}"
+        },
+        "loadError": "Couldn't load this title",
+        "meta": {
+          "episodes_one": "{{count}} episode",
+          "episodes_other": "{{count}} episodes",
+          "seasons_one": "{{count}} season",
+          "seasons_other": "{{count}} seasons"
+        },
+        "removedEverywhere": {
+          "caption": "No longer available on any connected server"
+        }
+      },
+      "history": {
+        "columns": {
+          "content": "Content",
+          "date": "Date",
+          "duration": "Duration",
+          "server": "Server",
+          "user": "User"
+        },
+        "empty": "No plays recorded yet",
+        "loadError": "Couldn't load history",
+        "notWatched": "Not finished",
+        "title": "History",
+        "watched": "Watched"
+      },
+      "kpis": {
+        "ariaLabel": "Watch statistics",
+        "completion": {
+          "detail": "{{finished}} of {{total}} finished every episode",
+          "detailMovie": "{{finished}} of {{total}} watched to completion",
+          "label": "Avg completion"
+        },
+        "completionLoadError": "Couldn't load completion",
+        "loadError": "Couldn't load watch statistics",
+        "plays": {
+          "caption": "resume chains, short sessions excluded",
+          "label": "Plays, all time"
+        },
+        "viewers": {
+          "detail": "across all servers",
+          "label": "Viewers"
+        },
+        "watchTime": {
+          "detail": "+{{hours}}h in the last 30 days",
+          "label": "Watch time"
+        }
+      },
+      "notFound": {
+        "backLink": "Back to Media",
+        "message": "This title doesn't exist or you don't have access to it.",
+        "title": "Media not found"
+      },
+      "platforms": {
+        "columns": {
+          "platform": "Platform",
+          "plays": "Plays",
+          "watchTime": "Watch time"
+        },
+        "empty": "No platform data yet",
+        "loadError": "Couldn't load platform breakdown",
+        "title": "Platforms",
+        "unknown": "Unknown"
+      },
+      "seasons": {
+        "empty": "No season data yet",
+        "episodeCount_one": "{{count}} episode",
+        "episodeCount_other": "{{count}} episodes",
+        "episodeLabel": {
+          "partial": "{{code}}: partially watched",
+          "unwatched": "{{code}}: unwatched",
+          "watched": "{{code}}: watched"
+        },
+        "loadError": "Couldn't load season data",
+        "stripSummary": "{{season}}: {{percent}}% watched",
+        "title": "Seasons",
+        "watchedPct": "{{percent}}% watched"
+      },
+      "title": "Λεπτομέρειες Πολυμέσων",
+      "watchers": {
+        "columns": {
+          "completion": "Completion",
+          "episodes": "Episodes",
+          "lastWatched": "Last watched",
+          "plays": "Plays",
+          "user": "User"
+        },
+        "completionLabel": "{{percent}}% complete",
+        "empty": "No one has watched this yet.",
+        "lastWatchedAgo": "{{age}} ago",
+        "loadError": "Couldn't load watchers",
+        "title": "Watchers"
+      }
+    },
+    "genres": {
+      "chart": {
+        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below.",
+        "itemCount_one": "{{count}} title",
+        "itemCount_other": "{{count}} titles",
+        "title": "Plays by genre",
+        "valueLabel": "Plays"
+      },
+      "empty": {
+        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes.",
+        "title": "No genres captured yet"
+      },
+      "loadError": "Couldn't load genres",
+      "subtitle": "Plays and watch time by genre, across every server in view.",
+      "table": {
+        "browseMovies": "Browse {{genre}} movies",
+        "browseShows": "Browse {{genre}} shows",
+        "columns": {
+          "genre": "Genre",
+          "items": "Items",
+          "plays": "Plays",
+          "watchTime": "Watch time"
+        },
+        "title": "Genre breakdown"
+      },
+      "title": "Είδη"
+    },
+    "grid": {
+      "clearJumpAction": "Clear",
+      "emptyAnchored": "Nothing at or after \"{{letter}}\" under these filters",
+      "emptyFilter": "No titles match these filters",
+      "emptySearch": "No titles match \"{{query}}\"",
+      "loadError": "Couldn't load the catalog",
+      "loaderError": "Couldn't load more titles",
+      "retry": "Retry",
+      "scrubber": {
+        "current": "Letter {{letter}}",
+        "label": "Jump to letter"
+      },
+      "showAll": "Show all",
+      "showingFrom": "Showing from {{letter}}",
+      "toolbar": {
+        "ariaLabel": "Filters and sort",
+        "count": "{{loaded}} of {{total}} titles · {{size}}",
+        "countTotal_one": "{{count}} title · {{size}}",
+        "countTotal_other": "{{count}} titles · {{size}}",
+        "done": "Done",
+        "filtersLabel": "Filters",
+        "filtersSheetTitle": "Filters",
+        "genreAll": "Any genre",
+        "genreLabel": "Genre",
+        "hdrAll": "Any",
+        "hdrChip": "HDR",
+        "hdrLabel": "Dynamic range",
+        "hdrOnly": "HDR only",
+        "libraryAll": "Any library",
+        "libraryLabel": "Library",
+        "moviesToggle": "Movies",
+        "removeFilter": "Remove {{label}} filter",
+        "resolutionAll": "Any resolution",
+        "resolutionLabel": "Resolution",
+        "searchLabel": "Search titles",
+        "searchPlaceholder": "Search titles…",
+        "serverAll": "Any server",
+        "serverLabel": "Server",
+        "showsToggle": "Shows",
+        "sizeChipAtLeast": "≥ {{min}} GB",
+        "sizeChipAtMost": "≤ {{max}} GB",
+        "sizeChipRange": "{{min}}–{{max}} GB",
+        "sizeGbMaxLabel": "Max size (GB)",
+        "sizeGbMinLabel": "Min size (GB)",
+        "sort": {
+          "added": "Recently added",
+          "plays": "Plays",
+          "title": "Title A–Z",
+          "viewers": "Viewers",
+          "watch_time": "Watch time",
+          "year": "Year"
+        },
+        "sortLabel": "Sort",
+        "typeLabel": "Media type",
+        "unwatchedByLens": "Unwatched by {{name}}",
+        "watched": {
+          "all": "All",
+          "partial": "Partially watched",
+          "unwatched": "Unwatched",
+          "watched": "Watched"
+        },
+        "watchedLabel": "Watched",
+        "yearFromLabel": "From year",
+        "yearToLabel": "To year"
+      }
+    },
+    "landing": {
+      "card": {
+        "addedAgo": "προστέθηκε {{date}}",
+        "addedCompactAgo": "added {{age}} ago",
+        "newEpisodesChip": "{{count}} new",
+        "newEpisodes_one": "{{count}} νέο επεισόδιο",
+        "newEpisodes_other": "{{count}} νέα επεισόδια"
+      },
+      "deadWeight": {
+        "columns": {
+          "added": "Added",
+          "poster": "Poster",
+          "servers": "Servers",
+          "size": "Size",
+          "title": "Title"
+        },
+        "empty": "Nothing to reclaim - everything in your library has been watched",
+        "summary": "{{count}} never-watched titles · {{size}}",
+        "title": "Dead Weight",
+        "viewAll": "View all",
+        "viewAllTooltip": "Coming soon"
+      },
+      "lens": {
+        "allUsers": "Όλοι οι χρήστες",
+        "label": "Προβολή ως"
+      },
+      "loadError": "Couldn't load your media library",
+      "shelves": {
+        "captionMostPopular": {
+          "all": "all time",
+          "custom": "selected date range",
+          "day": "today",
+          "month": "last 30 days",
+          "week": "last 7 days",
+          "year": "last 12 months"
+        },
+        "captionRecentlyAdded": "deduped across servers",
+        "emptyMostPopular": "No plays in this period",
+        "emptyRecentlyAdded": "Nothing added in this period",
+        "mostPopularMovies": "Most Popular Movies",
+        "mostPopularShows": "Most Popular Shows",
+        "recentlyAddedMovies": "Recently Added Movies",
+        "recentlyAddedShows": "Recently Added Shows"
+      },
+      "title": "Πολυμέσα"
+    },
+    "movies": {
+      "title": "Ταινίες"
+    },
+    "noLibraryServers": "No media library available.",
+    "posterCard": {
+      "addedLabel": "Προστέθηκε {{date}}",
+      "moreServers": "+{{count}} more",
+      "onServers": "Στο {{servers}}",
+      "playsCompact_one": "{{compact}} play",
+      "playsCompact_other": "{{compact}} plays",
+      "plays_one": "{{count}} αναπαραγωγή",
+      "plays_other": "{{count}} αναπαραγωγές",
+      "rankChip": "#{{rank}}",
+      "rankSuffix": ", θέση {{rank}}",
+      "tileLabel": {
+        "added": "προστέθηκε",
+        "plays": "αναπαραγωγές",
+        "resolution": "resolution",
+        "viewers": "θεατές"
+      },
+      "versionsChip": "{{count}}×",
+      "versions_one": "{{count}} version",
+      "versions_other": "{{count}} versions",
+      "viewers_one": "{{count}} θεατής",
+      "viewers_other": "{{count}} θεατές",
+      "watchedState": {
+        "partial": "Μερικώς παρακολουθημένο",
+        "watched": "Παρακολουθήθηκε",
+        "watchedByOthers": "Watched by others",
+        "watchedByYou": "Watched by you"
+      }
+    },
+    "shows": {
+      "title": "Σειρές"
+    }
   },
   "notFound": {
     "description": "Η σελίδα που ψάχνετε δεν υπάρχει ή έχει μετακινηθεί.",
@@ -326,6 +695,7 @@
     "months": "Μήνες",
     "noRulesConfigured": "Δεν έχουν ρυθμιστεί κανόνες",
     "none": "Κανένα",
+    "recordsOnly": "Records violations only",
     "ruleName": "Όνομα Κανόνα",
     "ruleNamePlaceholder": "π.χ., Concurrent Stream Limit",
     "ruleType": "Τύπος Κανόνα",

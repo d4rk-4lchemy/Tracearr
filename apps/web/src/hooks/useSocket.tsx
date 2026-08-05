@@ -240,7 +240,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     newSocket.on(
       WS_EVENTS.VERSION_UPDATE,
-      (data: { current: string; latest: string; releaseUrl: string }) => {
+      (data: { current: string; latest: string; releaseUrl: string; kind: 'fork-update' }) => {
+        if (data.kind !== 'fork-update') return;
         // Invalidate version query to refresh update status
         void queryClient.invalidateQueries({ queryKey: ['version'] });
 
@@ -302,6 +303,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       if (progress.status === 'complete' || progress.status === 'error') {
         // Invalidate all library queries to refresh storage and stale content
         void queryClient.invalidateQueries({ queryKey: ['library'] });
+        void queryClient.invalidateQueries({ queryKey: ['media'] });
       }
     });
 
@@ -333,6 +335,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
           case 'rebuild_timescale_views':
             // Rebuilding views affects all chart/stats data
             void queryClient.invalidateQueries({ queryKey: ['library'] });
+            void queryClient.invalidateQueries({ queryKey: ['media'] });
             void queryClient.invalidateQueries({ queryKey: ['stats'] });
             void queryClient.invalidateQueries({ queryKey: ['sessions'] });
             break;
@@ -341,6 +344,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
             // These affect session/playback data
             void queryClient.invalidateQueries({ queryKey: ['sessions'] });
             void queryClient.invalidateQueries({ queryKey: ['library'] });
+            void queryClient.invalidateQueries({ queryKey: ['media'] });
             break;
           case 'normalize_countries':
             // Affects geographic data in sessions

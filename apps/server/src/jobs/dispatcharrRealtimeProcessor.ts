@@ -16,9 +16,14 @@ let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;
 let isRunning = false;
 
-const serverGuards = new Map<string, { running: boolean; pending: MediaSession[] | null }>();
+interface PendingSnapshot {
+  sessions: MediaSession[];
+  authoritative: boolean;
+}
 
-function getGuard(serverId: string): { running: boolean; pending: MediaSession[] | null } {
+const serverGuards = new Map<string, { running: boolean; pending: PendingSnapshot | null }>();
+
+function getGuard(serverId: string): { running: boolean; pending: PendingSnapshot | null } {
   let guard = serverGuards.get(serverId);
   if (!guard) {
     guard = { running: false, pending: null };
@@ -57,7 +62,11 @@ export function initializeDispatcharrRealtimeProcessor(
   pubSubService = pubSub;
 }
 
-async function processSnapshot(serverId: string, sessions: MediaSession[]): Promise<void> {
+async function processSnapshot(
+  serverId: string,
+  sessions: MediaSession[],
+  authoritative: boolean
+): Promise<void> {
   if (!cacheService || !pubSubService) {
     console.warn('[DispatcharrRealtimeProcessor] Not initialized, skipping snapshot');
     return;
@@ -76,17 +85,16 @@ async function processSnapshot(serverId: string, sessions: MediaSession[]): Prom
   const cachedSessionKeys = buildCachedSessionKeys(cachedSessions, serverTypeMap);
   const activeRulesV2 = await getActiveRulesV2();
 
-  const { newSessions, stoppedSessionKeys, updatedSessions, watchedTransitionOccurred } =
-    await processServerSessions(
-      server,
-      activeRulesV2,
-      cachedSessionKeys,
-      cachedSessions,
-      {
-        mediaSessions: sessions,
-        immediateStops: true,
-      }
-    );
+  const {
+    newSessions,
+    stoppedSessionKeys,
+    updatedSessions,
+    watchedTransitionOccurred,
+    confirmedFromPendingIds,
+  } = await processServerSessions(server, activeRulesV2, cachedSessionKeys, cachedSessions, {
+    mediaSessions: sessions,
+    immediateStops: authoritative,
+  });
 
   if (
     newSessions.length === 0 &&
@@ -105,25 +113,29 @@ async function processSnapshot(serverId: string, sessions: MediaSession[]): Prom
     cacheService,
     pubSubService,
     enqueueNotification,
+    confirmedFromPendingIds,
   });
 }
 
-async function drainSnapshots(serverId: string, firstSessions: MediaSession[]): Promise<void> {
+async function drainSnapshots(
+  serverId: string,
+  firstSnapshot: PendingSnapshot
+): Promise<void> {
   const guard = getGuard(serverId);
   if (guard.running) {
-    guard.pending = firstSessions;
+    guard.pending = firstSnapshot;
     return;
   }
 
   guard.running = true;
-  let sessionsToProcess: MediaSession[] | null = firstSessions;
+  let snapshotToProcess: PendingSnapshot | null = firstSnapshot;
 
   try {
-    while (sessionsToProcess) {
-      const current = sessionsToProcess;
-      sessionsToProcess = null;
-      await processSnapshot(serverId, current);
-      sessionsToProcess = guard.pending;
+    while (snapshotToProcess) {
+      const current = snapshotToProcess;
+      snapshotToProcess = null;
+      await processSnapshot(serverId, current.sessions, current.authoritative);
+      snapshotToProcess = guard.pending;
       guard.pending = null;
     }
   } catch (error) {
@@ -137,8 +149,16 @@ async function drainSnapshots(serverId: string, firstSessions: MediaSession[]): 
 }
 
 const wrappedHandlers = {
-  snapshot: ({ serverId, sessions }: { serverId: string; sessions: MediaSession[] }) => {
-    void drainSnapshots(serverId, sessions);
+  snapshot: ({
+    serverId,
+    sessions,
+    authoritative = true,
+  }: {
+    serverId: string;
+    sessions: MediaSession[];
+    authoritative?: boolean;
+  }) => {
+    void drainSnapshots(serverId, { sessions, authoritative });
   },
 };
 
