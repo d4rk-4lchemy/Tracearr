@@ -47,7 +47,11 @@ export interface SSEManagerEvents {
   'plex:session:paused': { serverId: string; notification: PlexPlaySessionNotification };
   'plex:session:stopped': { serverId: string; notification: PlexPlaySessionNotification };
   'plex:session:progress': { serverId: string; notification: PlexPlaySessionNotification };
-  'dispatcharr:snapshot': { serverId: string; sessions: MediaSession[] };
+  'dispatcharr:snapshot': {
+    serverId: string;
+    sessions: MediaSession[];
+    authoritative?: boolean;
+  };
   'connection:status': SSEConnectionStatus;
   'fallback:activated': { serverId: string; serverName: string };
   'fallback:deactivated': { serverId: string; serverName: string };
@@ -601,11 +605,21 @@ export class SSEManager extends EventEmitter {
     serverId: string,
     serverName: string
   ): void {
-    realtime.on('snapshot:update', ({ sessions }: { serverId: string; sessions: MediaSession[] }) => {
-      const connection = this.connections.get(serverId);
-      if (connection) connection.lastEventAt = new Date();
-      this.emit('dispatcharr:snapshot', { serverId, sessions });
-    });
+    realtime.on(
+      'snapshot:update',
+      ({
+        sessions,
+        authoritative,
+      }: {
+        serverId: string;
+        sessions: MediaSession[];
+        authoritative?: boolean;
+      }) => {
+        const connection = this.connections.get(serverId);
+        if (connection) connection.lastEventAt = new Date();
+        this.emit('dispatcharr:snapshot', { serverId, sessions, authoritative });
+      }
+    );
 
     realtime.on('connection:status', (status: DispatcharrRealtimeStatus) => {
       const state = this.toSseStatus(status).state;

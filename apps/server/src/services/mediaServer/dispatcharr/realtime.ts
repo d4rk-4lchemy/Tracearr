@@ -117,6 +117,10 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private logoCache = new Map<string, string>();
   private programCache = new Map<string, string>();
   private lastProgramSetKey = '';
+  // REST bootstrap, websocket updates, and the catch-up refresh all mutate the
+  // same merged snapshot. Keep them ordered so a slower, older response cannot
+  // overwrite a newer websocket state.
+  private updateQueue: Promise<void> = Promise.resolve();
 
   constructor(config: {
     serverId: string;
@@ -155,7 +159,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   }
 
   isInFallback(): boolean {
-    return this.mode !== 'ws' || this.state === 'fallback';
+    return this.mode !== 'ws' || this.state !== 'connected';
   }
 
   getLatestSessions(): MediaSession[] {
@@ -220,14 +224,14 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
         if (wasInFallback) {
           this.emit('fallback:deactivated', { serverId: this.serverId, serverName: this.serverName });
         }
-        void this.bootstrapFromRest();
+        this.enqueueUpdate(() => this.bootstrapFromRest());
         this.resetHeartbeat();
       };
 
       ws.onmessage = (event) => {
         const text = typeof event.data === 'string' ? event.data : '';
         if (!text) return;
-        void this.handleMessage(text);
+        this.enqueueUpdate(() => this.handleMessage(text));
       };
 
       ws.onerror = () => {
@@ -246,6 +250,15 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       this.lastError = error instanceof Error ? error : new Error(String(error));
       this.scheduleReconnect();
     }
+  }
+
+  private enqueueUpdate(update: () => Promise<void>): void {
+    this.updateQueue = this.updateQueue
+      .catch(() => undefined)
+      .then(update)
+      .catch((error: unknown) => {
+        this.lastError = error instanceof Error ? error : new Error(String(error));
+      });
   }
 
   disconnect(): void {
@@ -309,27 +322,41 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
         this.client.getCatchupStatsSnapshot(),
       ]);
 
+      // A merged snapshot is authoritative only when every source is present.
+      // Publishing an empty placeholder for a failed endpoint would make the
+      // processor immediately stop otherwise healthy sessions in that category.
+      if (
+        statusResult.status !== 'fulfilled' ||
+        vodResult.status !== 'fulfilled' ||
+        catchupResult.status !== 'fulfilled'
+      ) {
+        const failedResult = [statusResult, vodResult, catchupResult].find(
+          (result) => result.status === 'rejected'
+        );
+        this.lastError =
+          failedResult?.status === 'rejected' && failedResult.reason instanceof Error
+            ? failedResult.reason
+            : new Error('Dispatcharr REST bootstrap returned an incomplete snapshot');
+        this.activateFallback('Dispatcharr REST bootstrap returned an incomplete snapshot');
+        this.scheduleReconnect();
+        return;
+      }
+
       if (statusResult.status === 'fulfilled') {
         await this.applyLiveStatusUpdate(statusResult.value, true, false);
-      } else {
-        this.lastError =
-          statusResult.reason instanceof Error
-            ? statusResult.reason
-            : new Error(String(statusResult.reason));
       }
 
       if (vodResult.status === 'fulfilled') {
         await this.applyVodStatsUpdate(vodResult.value, true, false);
-      } else if (!this.lastError) {
-        this.lastError =
-          vodResult.reason instanceof Error ? vodResult.reason : new Error(String(vodResult.reason));
       }
 
       if (catchupResult.status === 'fulfilled') {
         await this.applyCatchupStatsUpdate(catchupResult.value, true, false);
       }
 
-      this.emitMergedSnapshot();
+      // Bootstrap data can be older than the cache. It may seed/update active
+      // sessions, but only a websocket update may immediately stop one.
+      this.emitMergedSnapshot(false);
       this.lastBootstrapAt = new Date();
       this.emitStatus();
     } catch (error) {
@@ -421,13 +448,17 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     else this.emitStatus();
   }
 
-  private emitMergedSnapshot(): void {
+  private emitMergedSnapshot(authoritative = true): void {
     this.latestSessions = [
       ...this.latestLiveSessions,
       ...this.latestVodSessions,
       ...this.latestCatchupSessions,
     ];
-    this.emit('snapshot:update', { serverId: this.serverId, sessions: this.latestSessions });
+    this.emit('snapshot:update', {
+      serverId: this.serverId,
+      sessions: this.latestSessions,
+      authoritative,
+    });
     this.emitStatus();
   }
 
@@ -549,7 +580,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.clearCatchupRefreshTimer();
     if (this.state !== 'connected' || this.latestCatchupSessions.length === 0) return;
     this.catchupRefreshTimer = setTimeout(() => {
-      void this.refreshCatchupProgrammes();
+      this.enqueueUpdate(() => this.refreshCatchupProgrammes());
     }, 15_000);
   }
 

@@ -170,6 +170,24 @@ describe('Dispatcharr realtime processor', () => {
     );
   });
 
+  it('does not use immediate stops for a non-authoritative REST bootstrap snapshot', async () => {
+    mockSseManager.emit('dispatcharr:snapshot', {
+      serverId: 'dispatcharr-1',
+      sessions: [liveSession],
+      authoritative: false,
+    });
+
+    await vi.waitFor(() => {
+      expect(mockProcessServerSessions).toHaveBeenCalledWith(
+        server,
+        [],
+        expect.any(Set),
+        [],
+        { mediaSessions: [liveSession], immediateStops: false }
+      );
+    });
+  });
+
   it('skips snapshots when Dispatcharr realtime is not healthy', async () => {
     mockSseManager.isDispatcharrRealtimeHealthy.mockReturnValue(false);
 
