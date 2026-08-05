@@ -344,6 +344,10 @@ describe('poller session update guard against stop races', () => {
 describe('Dispatcharr direct snapshot stops', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMapMediaSession.mockReturnValue(processedSession());
+    mockBatchFindActiveSessionsByComposite.mockResolvedValue(
+      new Map([[`server-user-1::1001`, [existingSessionRow()]]])
+    );
     initializePoller(
       {
         getPendingSession: vi.fn().mockResolvedValue(null),
@@ -381,6 +385,50 @@ describe('Dispatcharr direct snapshot stops', () => {
 
     expect(result.stoppedSessionKeys).toEqual(['dispatcharr-1:sess-key-1']);
     expect(mockStopSessionAtomic).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops only the session absent from a non-empty WebSocket snapshot', async () => {
+    const result = await processServerSessions(
+      {
+        id: 'dispatcharr-1',
+        name: 'Dispatcharr',
+        type: 'dispatcharr',
+        url: 'http://dispatcharr.local',
+        token: 'token',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      [],
+      new Set([
+        'dispatcharr-1:server-user-1:device-1:1001',
+        'dispatcharr-1:server-user-2:device-2:1002',
+      ]),
+      [
+        {
+          id: 'session-1',
+          serverId: 'dispatcharr-1',
+          serverUserId: 'server-user-1',
+          sessionKey: 'sess-key-1',
+          ratingKey: '1001',
+          deviceId: 'device-1',
+        } as never,
+        {
+          id: 'session-2',
+          serverId: 'dispatcharr-1',
+          serverUserId: 'server-user-2',
+          sessionKey: 'sess-key-2',
+          ratingKey: '1002',
+          deviceId: 'device-2',
+        } as never,
+      ],
+      { mediaSessions: [{} as never], immediateStops: true }
+    );
+
+    expect(result.stoppedSessionKeys).toEqual(['dispatcharr-1:sess-key-2']);
+    expect(mockStopSessionAtomic).toHaveBeenCalledTimes(1);
+    expect(mockStopSessionAtomic).toHaveBeenCalledWith(
+      expect.objectContaining({ session: expect.objectContaining({ id: 'session-2' }) })
+    );
   });
 });
 

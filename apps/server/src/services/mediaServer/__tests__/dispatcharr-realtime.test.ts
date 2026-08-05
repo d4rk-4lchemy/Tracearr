@@ -178,4 +178,22 @@ describe('DispatcharrRealtimeConnector', () => {
 
     expect(snapshot.sessions).toHaveLength(2);
   });
+
+  it('keeps API-key authentication in REST polling mode without opening a WebSocket', async () => {
+    const connector = new DispatcharrRealtimeConnector({
+      serverId: 'server-1',
+      serverName: 'Dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'api-key',
+    });
+
+    await connector.connect();
+
+    expect(MockWebSocket.instances).toHaveLength(0);
+    expect(connector.isInFallback()).toBe(true);
+    expect(connector.getStatus()).toMatchObject({
+      mode: 'rest-only-api-key',
+      state: 'fallback',
+    });
+  });
 });

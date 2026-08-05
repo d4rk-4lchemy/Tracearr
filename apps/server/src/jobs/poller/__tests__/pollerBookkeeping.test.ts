@@ -170,7 +170,9 @@ const activeSessionOnServer2 = {
   progressMs: null,
 } as unknown as ActiveSession;
 
-let allServersRows: (typeof serverRow1)[] = [serverRow1];
+let allServersRows: Array<Omit<typeof serverRow1, 'type'> & { type: 'plex' | 'dispatcharr' }> = [
+  serverRow1,
+];
 let currentCachedSessions: ActiveSession[] = [];
 
 mockDbSelect.mockImplementation((_cols?: unknown) => ({
@@ -246,6 +248,16 @@ afterEach(() => {
 });
 
 describe('(a) missedPollTracking pruning for servers no longer polled', () => {
+  it('does not reconciliation-poll a healthy Dispatcharr WebSocket server', async () => {
+    allServersRows = [{ ...serverRow1, type: 'dispatcharr', name: 'Dispatcharr' }];
+    mockIsInFallback.mockReturnValue(false);
+
+    await triggerReconciliationPoll();
+
+    expect(mockCreateMediaServerClient).not.toHaveBeenCalled();
+    expect(mockGetActiveRulesV2).not.toHaveBeenCalled();
+  });
+
   it('leaves the grace-period entry for reconciliation when its server exits fallback to SSE', async () => {
     allServersRows = [serverRow1];
     currentCachedSessions = [activeSessionOnServer1];

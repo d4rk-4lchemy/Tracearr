@@ -761,6 +761,61 @@ export function syncDispatcharrPendingProgress(
   return { ...pendingData, processed: { ...pendingData.processed, progressMs } };
 }
 
+/**
+ * Dispatcharr WebSocket updates are authoritative snapshots. Unlike a REST
+ * poll, an entry absent from one of those snapshots is a confirmed stop and
+ * must not wait for the generic two-poll grace period.
+ */
+async function stopMissingSessionsImmediately(
+  cachedSessionKeys: Set<string>,
+  currentSessionKeys: Set<string>,
+  server: ServerWithToken,
+  activeSessions: ActiveSession[]
+): Promise<string[]> {
+  const stoppedKeys: string[] = [];
+
+  for (const activeSession of activeSessions) {
+    if (activeSession.serverId !== server.id) continue;
+
+    const activeKey = buildCompositeKey({
+      serverType: server.type,
+      serverId: server.id,
+      externalUserId: activeSession.serverUserId,
+      deviceId: activeSession.deviceId ?? null,
+      ratingKey: activeSession.ratingKey ?? null,
+      sessionKey: activeSession.sessionKey,
+    });
+    if (!cachedSessionKeys.has(activeKey) || currentSessionKeys.has(activeKey)) continue;
+
+    const cache = cacheService;
+    if (cache) {
+      const pending = await cache.getPendingSession(server.id, activeKey);
+      if (pending) {
+        await cache.deletePendingSession(server.id, activeKey);
+        stoppedKeys.push(`${server.id}:${activeSession.sessionKey}`);
+        missedPollTracking.delete(activeKey);
+        continue;
+      }
+    }
+
+    const result = await stopSessionAtomic({
+      session: activeSession as unknown as typeof sessions.$inferSelect,
+      stoppedAt: new Date(),
+    });
+    if (!result.wasUpdated) continue;
+
+    clearDbWriteTracking(activeSession.id);
+    if (result.needsRetry && result.retryData && cache) {
+      await cache.addSessionWriteRetry(activeSession.id, result.retryData);
+    }
+
+    stoppedKeys.push(`${server.id}:${activeSession.sessionKey}`);
+    missedPollTracking.delete(activeKey);
+  }
+
+  return stoppedKeys;
+}
+
 export async function processServerSessions(
   server: ServerWithToken,
   activeRulesV2: RuleV2[],
@@ -798,18 +853,15 @@ export async function processServerSessions(
     // OPTIMIZATION: Early return if no active sessions from media server
     if (processedSessions.length === 0) {
       if (options.immediateStops) {
-        const stoppedSessionKeys: string[] = [];
-        for (const activeSession of activeSessions.filter((item) => item.serverId === server.id)) {
-          const result = await stopSessionAtomic({
-            session: activeSession as unknown as typeof sessions.$inferSelect,
-            stoppedAt: new Date(),
-          });
-          if (result.wasUpdated) stoppedSessionKeys.push(`${server.id}:${activeSession.sessionKey}`);
-        }
         return {
           success: true,
           newSessions: [],
-          stoppedSessionKeys,
+          stoppedSessionKeys: await stopMissingSessionsImmediately(
+            cachedSessionKeys,
+            currentSessionKeys,
+            server,
+            activeSessions
+          ),
           updatedSessions: [],
           watchedTransitionOccurred: false,
           confirmedFromPendingIds: new Set(),
@@ -1850,6 +1902,21 @@ export async function processServerSessions(
       [...missedPollTracking.keys()].filter((k) => k.startsWith(`${server.id}:`))
     );
     const sTypeMap = new Map([[server.id, server.type]]);
+    if (options.immediateStops) {
+      return {
+        success: true,
+        newSessions,
+        stoppedSessionKeys: await stopMissingSessionsImmediately(
+          cachedSessionKeys,
+          currentSessionKeys,
+          server,
+          activeSessions
+        ),
+        updatedSessions,
+        watchedTransitionOccurred,
+        confirmedFromPendingIds,
+      };
+    }
     await handleFirstMisses(
       [...cachedSessionKeys].filter(
         (k) => k.startsWith(`${server.id}:`) && !currentSessionKeys.has(k)
@@ -2376,6 +2443,11 @@ export async function triggerServerPoll(serverId: string): Promise<void> {
   try {
     const [server] = await db.select().from(servers).where(eq(servers.id, serverId));
     if (!server) return;
+    // Dispatcharr has its own authoritative WebSocket snapshot processor.
+    // Do not race it with a generic REST poll while realtime is healthy.
+    if (server.type === 'dispatcharr' && sseManager.isDispatcharrRealtimeHealthy(server.id)) {
+      return;
+    }
 
     const cachedSessions = cacheService ? await cacheService.getAllActiveSessions() : [];
     const serverTypeMap = new Map([[server.id, server.type]]);
@@ -2447,10 +2519,13 @@ export async function triggerReconciliationPoll(): Promise<void> {
   if (!acquireRunGuard(reconcileGuard, 'reconciliation poll')) return;
 
   try {
-    // Get all servers with an active SSE connection (Plex or JF/Emby plugin).
-    // Servers in fallback are already covered by the main poller.
+    // Dispatcharr has an authoritative WebSocket snapshot processor. Generic
+    // reconciliation is only for Plex/Jellyfin/Emby; Dispatcharr in fallback
+    // is already covered by the main REST poller.
     const allServers = await getCachedServers();
-    const sseServers = allServers.filter((server) => !sseManager.isInFallback(server.id));
+    const sseServers = allServers.filter(
+      (server) => server.type !== 'dispatcharr' && !sseManager.isInFallback(server.id)
+    );
 
     if (sseServers.length === 0) {
       return;
