@@ -48,17 +48,23 @@ describe('dropEmptySessionsChunks', () => {
     const user = await createTestUser();
     const account = await createTestServerUser({ serverId: server.id, userId: user.id });
 
+    // Chunks are epoch-aligned 30-day windows, so a session N days ago lands
+    // in a chunk whose range_end can be as recent as N-30 days ago. Seeds at
+    // 30/60 days made the first chunk's range_end dip inside the 7-day "old"
+    // filter whenever "now" fell early in its own chunk window - a calendar
+    // flake. 100/140 days keeps both range_ends >=70 days old on any date,
+    // and 40 days of separation guarantees two distinct chunks.
     const emptied = await createTestSession({
       serverId: server.id,
       serverUserId: account.id,
       state: 'stopped',
-      startedAt: new Date(Date.now() - 30 * 86_400_000),
+      startedAt: new Date(Date.now() - 100 * 86_400_000),
     });
     await createTestSession({
       serverId: server.id,
       serverUserId: account.id,
       state: 'stopped',
-      startedAt: new Date(Date.now() - 60 * 86_400_000),
+      startedAt: new Date(Date.now() - 140 * 86_400_000),
     });
     await db.execute(sql`DELETE FROM sessions WHERE id = ${emptied.id}`);
 
@@ -71,10 +77,10 @@ describe('dropEmptySessionsChunks', () => {
     expect(result.dropped).toBeGreaterThanOrEqual(1);
     expect(await oldSessionChunkCount()).toBe(before - result.dropped);
 
-    // The populated 60-day-old chunk survives with its row intact
+    // The populated 140-day-old chunk survives with its row intact
     const kept = await db.execute(sql`
       SELECT COUNT(*)::int AS c FROM sessions
-      WHERE started_at < NOW() - INTERVAL '50 days'
+      WHERE started_at < NOW() - INTERVAL '120 days'
     `);
     expect((kept.rows[0] as { c: number }).c).toBe(1);
   });

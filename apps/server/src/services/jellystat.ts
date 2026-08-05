@@ -26,7 +26,11 @@ import { jellystatBackupSchema } from '@tracearr/shared';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { servers, sessions } from '../db/schema.js';
-import { checkAggregateNeedsRebuild, refreshAggregates } from '../db/timescale.js';
+import {
+  checkAggregateNeedsRebuild,
+  refreshAggregates,
+  uncapDecompressionForTx,
+} from '../db/timescale.js';
 import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
 import { batchGetLibraryItemIdentity, type SessionIdentity } from '../jobs/poller/database.js';
 import { sanitizeCodec } from '../utils/codecNormalizer.js';
@@ -889,6 +893,12 @@ export async function importJellystatBackup(
       // Batch update existing records with stream details
       if (updateBatch.length > 0) {
         await db.transaction(async (tx) => {
+          // Every UPDATE here shares one transaction, so the decompression cap
+          // accumulates across the whole batch, and `WHERE id = ?` matches no
+          // segmentby column - each row decompresses its segment. Imports ran
+          // uncapped before the cap came back globally; keep that, scoped to
+          // this transaction.
+          await uncapDecompressionForTx(tx);
           for (const update of updateBatch) {
             await tx.update(sessions).set(update.data).where(eq(sessions.id, update.id));
           }

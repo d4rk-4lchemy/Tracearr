@@ -16,7 +16,7 @@ interface FakeClient {
 function createFakeClient(overrides: Partial<FakeClient> = {}): FakeClient {
   return {
     connect: vi.fn().mockResolvedValue(undefined),
-    query: vi.fn().mockResolvedValue({ rows: [] }),
+    query: vi.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
     end: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -123,5 +123,36 @@ describe('runMigrationsGuarded', () => {
 
     expect(client.end).toHaveBeenCalledTimes(1);
     expect(migrateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('runMigrationsGuarded decompression cap', () => {
+  beforeEach(() => {
+    migrateMock.mockReset();
+    migrateMock.mockResolvedValue(undefined);
+  });
+
+  it('lifts the decompression cap for the migration session when the GUC exists', async () => {
+    const client = createFakeClient({
+      query: vi.fn().mockImplementation((q: string) => {
+        if (typeof q === 'string' && q.includes('pg_settings')) {
+          return Promise.resolve({ rows: [{ '?column?': 1 }], rowCount: 1 });
+        }
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }),
+    });
+
+    await runMigrationsGuarded('/tmp/migrations', { createClient: () => client as never });
+
+    const queries = client.query.mock.calls.map((c) => c[0]);
+    expect(queries).toContain('SET timescaledb.max_tuples_decompressed_per_dml_transaction = 0');
+  });
+
+  it('skips the SET when the GUC does not exist (plain postgres)', async () => {
+    const client = createFakeClient(); // default query mock: rows: [], rowCount: 0
+    await runMigrationsGuarded('/tmp/migrations', { createClient: () => client as never });
+    const queries = client.query.mock.calls.map((c) => c[0]);
+    // The pg_settings probe itself names the GUC, so assert on the SET form.
+    expect(queries.some((q) => String(q).startsWith('SET timescaledb.'))).toBe(false);
   });
 });

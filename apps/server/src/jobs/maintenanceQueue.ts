@@ -37,12 +37,15 @@ import { getCacheService, getPubSubService } from '../services/cache.js';
 import {
   rebuildTimescaleViews,
   safeFullRefreshAllAggregates,
-  refreshAggregates,
+  safeFullRefreshAggregate,
+  getTimescaleStatus,
   withSessionsCompressionPaused,
   invalidateTimescaleStatusCache,
+  getCompressedSessionChunkRanges,
   type AggregateRefreshProgress,
+  type FailedRefreshBatch,
 } from '../db/timescale.js';
-import { backfillSessionIdentityBatch } from './sessionIdentityBackfill.js';
+import { runSessionIdentityBackfillWalk } from './sessionIdentityBackfill.js';
 import {
   INVALID_SNAPSHOT_CONDITION,
   VALID_LIBRARY_ITEM_CONDITION,
@@ -1167,7 +1170,7 @@ export async function processRebuildTimescaleViewsJob(
  * Walks sessions in batches, copying media_id and provider ids from
  * library_items keyed on (server_id, rating_key). Runs with sessions
  * compression paused so old chunks stay writable, then refreshes the
- * continuous aggregates over the touched time range once at the end.
+ * continuous aggregates over the touched time range in batches at the end.
  */
 async function processBackfillSessionIdentityJob(
   job: Job<MaintenanceJobData>
@@ -1198,34 +1201,84 @@ async function processBackfillSessionIdentityJob(
   try {
     await publishProgress();
 
-    let total = 0;
-    let earliest: Date | null = null;
     let lastLockExtension = Date.now();
 
-    await withSessionsCompressionPaused(async () => {
-      for (;;) {
-        const { updated, oldest } = await backfillSessionIdentityBatch(BATCH);
-        total += updated;
-        if (oldest && (!earliest || oldest < earliest)) earliest = oldest;
+    // Ordering is load-bearing: the chunk list must be read AFTER compression is
+    // paused, or a chunk compressed in between would land in pass 1's unbounded window.
+    const { total, earliest, failedRanges } = await withSessionsCompressionPaused(() =>
+      runSessionIdentityBackfillWalk({
+        batchSize: BATCH,
+        getCompressedRanges: getCompressedSessionChunkRanges,
+        onBatch: async (runningTotal) => {
+          if (activeJobProgress) {
+            activeJobProgress.processedRecords = runningTotal;
+            activeJobProgress.updatedRecords = runningTotal;
+            activeJobProgress.message = `Stamped identity onto ${runningTotal.toLocaleString()} sessions...`;
+            await publishProgress();
+          }
+          await job.updateProgress(runningTotal);
+          if (Date.now() - lastLockExtension > LOCK_EXTENSION_INTERVAL) {
+            await extendJobLock(job);
+            lastLockExtension = Date.now();
+          }
+        },
+      })
+    );
 
-        if (activeJobProgress) {
-          activeJobProgress.processedRecords = total;
-          activeJobProgress.updatedRecords = total;
-          activeJobProgress.message = `Stamped identity onto ${total.toLocaleString()} sessions...`;
-          await publishProgress();
-        }
-        await job.updateProgress(total);
+    const allFailures = [...failedRanges];
 
-        if (Date.now() - lastLockExtension > LOCK_EXTENSION_INTERVAL) {
-          await extendJobLock(job);
-          lastLockExtension = Date.now();
-        }
+    if (earliest) {
+      // A full-history walk hands back a multi-year window, so refresh it in
+      // batches rather than one CALL per aggregate that would outlive the job
+      // lock. safeFullRefreshAggregate's onProgress is sync-typed, so a
+      // lock-loss rejection can't be awaited in place - capture it and rethrow
+      // once the loop returns (same shape as processRebuildTimescaleViewsJob).
+      let lockLostMessage: string | null = null;
+      const refreshEnd = new Date();
+      // Catalog-driven, not the static aggregate list: getTimescaleStatus reads
+      // the continuous-aggregate catalog filtered to the sessions hypertable, so
+      // this skips cleanly on plain postgres and never refreshes aggregates that
+      // don't exist or belong to library_snapshots (the job only writes sessions
+      // rows). It's the same call the stats routes and the health tick gate on.
+      const timescale = await getTimescaleStatus();
+      const aggregates = timescale.extensionInstalled ? timescale.continuousAggregates : [];
+      const refreshFailures: FailedRefreshBatch[] = [];
 
-        if (updated < BATCH) break;
+      for (const aggregate of aggregates) {
+        // Bail the moment the lock is gone - refreshing the remaining aggregates
+        // would be minutes of work another worker may already be redoing.
+        if (lockLostMessage) break;
+        const failures = await safeFullRefreshAggregate(aggregate, earliest, refreshEnd, {
+          onProgress: () => {
+            if (Date.now() - lastLockExtension > LOCK_EXTENSION_INTERVAL) {
+              extendJobLock(job).catch((err: unknown) => {
+                lockLostMessage = err instanceof Error ? err.message : String(err);
+              });
+              lastLockExtension = Date.now();
+            }
+          },
+        });
+        refreshFailures.push(...failures);
       }
-    });
 
-    if (earliest) await refreshAggregates({ startTime: earliest, endTime: new Date() });
+      if (lockLostMessage) {
+        throw new Error(lockLostMessage);
+      }
+      allFailures.push(
+        ...refreshFailures.map((f) => `refresh ${f.aggregate} [${f.startDate} → ${f.endDate}]`)
+      );
+    }
+
+    // Fail-closed like every other handler in this file: skipped ranges and
+    // failed refresh batches must surface as a failed job, but only after the
+    // successful ranges' work (including the refresh above) has landed.
+    if (allFailures.length > 0) {
+      const shown = allFailures.slice(0, 5).join(', ');
+      const more = allFailures.length > 5 ? ` … and ${allFailures.length - 5} more` : '';
+      throw new Error(
+        `Identity backfill skipped ${allFailures.length} range(s)/refresh batch(es): ${shown}${more}`
+      );
+    }
 
     const durationMs = Date.now() - startTime;
     if (activeJobProgress) {
@@ -2684,21 +2737,23 @@ export async function getAllActiveMaintenanceJobs(): Promise<
 }
 
 /**
- * Enqueue a new maintenance job
+ * Enqueue unless a maintenance job is already pending - the queue is
+ * deliberately single-flight. Returns null when busy (or when the queue isn't
+ * up), for automated callers that treat "already covered" as success.
  */
-export async function enqueueMaintenanceJob(
+export async function maybeEnqueueMaintenanceJob(
   type: MaintenanceJobType,
   userId: string,
   options?: MaintenanceJobData['options']
-): Promise<string> {
+): Promise<string | null> {
   if (!maintenanceQueue) {
-    throw new Error('Maintenance queue not initialized');
+    return null;
   }
 
   // Check for existing active job
   const activeJobs = await maintenanceQueue.getJobs(['active', 'waiting', 'delayed']);
   if (activeJobs.length > 0) {
-    throw new Error('A maintenance job is already in progress');
+    return null;
   }
 
   // Use a deterministic job ID to prevent race conditions
@@ -2718,6 +2773,25 @@ export async function enqueueMaintenanceJob(
 
   const jobId = job.id ?? newJobId;
   console.log(`[Maintenance] Enqueued job ${jobId} (${type})`);
+  return jobId;
+}
+
+/**
+ * Enqueue a new maintenance job
+ */
+export async function enqueueMaintenanceJob(
+  type: MaintenanceJobType,
+  userId: string,
+  options?: MaintenanceJobData['options']
+): Promise<string> {
+  if (!maintenanceQueue) {
+    throw new Error('Maintenance queue not initialized');
+  }
+
+  const jobId = await maybeEnqueueMaintenanceJob(type, userId, options);
+  if (!jobId) {
+    throw new Error('A maintenance job is already in progress');
+  }
   return jobId;
 }
 

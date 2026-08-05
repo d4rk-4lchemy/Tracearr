@@ -5,9 +5,9 @@
  * It runs on every server startup and is idempotent - safe to run multiple times.
  */
 
-import { db, recreatePool } from './client.js';
-import { sql } from 'drizzle-orm';
-import pg from 'pg';
+import { createRawPgClient, db, recreatePool } from './client.js';
+import { sql, type SQL } from 'drizzle-orm';
+import type pg from 'pg';
 import { PRIMARY_MEDIA_TYPES_SQL_LITERAL } from '../constants/mediaTypes.js';
 
 /**
@@ -1032,6 +1032,87 @@ export async function withSessionsCompressionPaused<T>(
   }
 }
 
+export interface ChunkTimeRange {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Time ranges of compressed sessions chunks, newest first. Empty when
+ * TimescaleDB is absent or nothing is compressed yet. Callers window DML to
+ * one range at a time so tuple decompression per transaction stays bounded
+ * by a single chunk's segments.
+ */
+export async function getCompressedSessionChunkRanges(): Promise<ChunkTimeRange[]> {
+  if (!(await isTimescaleInstalled())) return [];
+  const result = await db.execute(sql`
+    SELECT range_start, range_end
+    FROM timescaledb_information.chunks
+    WHERE hypertable_name = 'sessions' AND is_compressed = true
+    ORDER BY range_end DESC
+  `);
+  // node-postgres parses timestamptz to Date, but a raw execute can hand back
+  // either depending on the driver path - new Date() accepts both.
+  return (result.rows as Array<{ range_start: string | Date; range_end: string | Date }>).map(
+    (r) => ({
+      start: new Date(r.range_start),
+      end: new Date(r.range_end),
+    })
+  );
+}
+
+/**
+ * started_at bound above which no sessions chunk is compressed - null when
+ * nothing is compressed (or TimescaleDB is absent). Convenience for one-shot
+ * callers that only need the boundary, not the per-chunk ranges.
+ */
+export async function getSessionsCompressionHorizon(): Promise<Date | null> {
+  if (!(await isTimescaleInstalled())) return null;
+  const result = await db.execute(sql`
+    SELECT max(range_end) AS horizon
+    FROM timescaledb_information.chunks
+    WHERE hypertable_name = 'sessions' AND is_compressed = true
+  `);
+  const horizon = (result.rows[0] as { horizon: string | Date | null } | undefined)?.horizon;
+  return horizon ? new Date(horizon) : null;
+}
+
+export const MAX_TUPLES_DECOMPRESSED_GUC =
+  'timescaledb.max_tuples_decompressed_per_dml_transaction';
+
+/**
+ * Lift the per-transaction decompression cap inside one drizzle transaction.
+ * SET LOCAL dies with the transaction, so nothing leaks back to the pool.
+ * The GUC only exists when the timescaledb extension is loaded; on plain
+ * postgres this is a no-op. The global-unlimited version of this setting is
+ * what let runtime DML OOM postgres - callers get it per-transaction only.
+ */
+export async function uncapDecompressionForTx(tx: {
+  execute: (query: SQL) => Promise<{ rows: unknown[] }>;
+}): Promise<void> {
+  const guc = await tx.execute(
+    sql`SELECT 1 FROM pg_settings WHERE name = ${MAX_TUPLES_DECOMPRESSED_GUC}`
+  );
+  if (guc.rows.length > 0) {
+    await tx.execute(sql.raw(`SET LOCAL ${MAX_TUPLES_DECOMPRESSED_GUC} = 0`));
+  }
+}
+
+/**
+ * Session-scoped variant for dedicated non-pooled clients (migrations): plain
+ * SET, which dies with the connection. Never use on a pooled connection - an
+ * uncapped session returned to the pool keeps the cap off for whoever gets it
+ * next; pooled callers use uncapDecompressionForTx (SET LOCAL) instead.
+ */
+export async function uncapDecompressionForSession(client: pg.Client): Promise<void> {
+  const guc = await client.query('SELECT 1 FROM pg_settings WHERE name = $1', [
+    MAX_TUPLES_DECOMPRESSED_GUC,
+  ]);
+  if ((guc.rowCount ?? 0) > 0) {
+    await client.query(`SET ${MAX_TUPLES_DECOMPRESSED_GUC} = 0`);
+  }
+}
+
 /**
  * Options for refreshing continuous aggregates
  */
@@ -1044,12 +1125,18 @@ export interface RefreshAggregatesOptions {
   fullRefresh?: boolean;
   /**
    * Start of time range to refresh. Only used if fullRefresh is false.
+   * Floored to the containing UTC day, since the aggregates bucket daily.
    * Default: 7 days ago
    */
   startTime?: Date;
   /**
-   * End of time range to refresh. Only used if fullRefresh is false.
-   * Default: now + 1 day (to include today's data)
+   * End of time range to refresh. Floored to the containing UTC day; a window
+   * that collapses to zero width is skipped. The DEFAULT (now + 1 day) floors
+   * to tomorrow midnight, deliberately spanning today's in-flight bucket -
+   * import flows accept that watermark advance. Callers that must not
+   * materialize today's bucket pass an explicit end (see initTimescaleDB's
+   * startOfTodayUtc cap).
+   * Default: now + 1 day
    */
   endTime?: Date;
 }
@@ -1076,6 +1163,33 @@ export function coerceRefreshBound(
   return coerced;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Floor to the UTC-midnight bucket boundary. Every managed continuous
+ * aggregate buckets by UTC day, and refresh_continuous_aggregate rejects
+ * windows narrower than one bucket ("refresh window too small") - so refresh
+ * bounds are floored to whole UTC days, and a window that collapses to zero
+ * width is skipped by callers: its sub-day tail is served by real-time
+ * aggregation and must NOT be materialized (see the refresh-policy comment
+ * below re advancing the watermark through today's bucket).
+ */
+export function floorToUtcDay(d: Date): Date {
+  return new Date(Math.floor(d.getTime() / DAY_MS) * DAY_MS);
+}
+
+/**
+ * Align a refresh window to whole UTC-day buckets, flooring both ends.
+ * Returns null when nothing bucket-complete remains to refresh - callers
+ * skip the refresh entirely (real-time aggregation covers the tail).
+ */
+export function alignRefreshWindow(start: Date, end: Date): { start: Date; end: Date } | null {
+  const alignedStart = floorToUtcDay(start);
+  const alignedEnd = floorToUtcDay(end);
+  if (alignedEnd.getTime() <= alignedStart.getTime()) return null;
+  return { start: alignedStart, end: alignedEnd };
+}
+
 /**
  * Refresh a specific list of continuous aggregates over a time range.
  * Shared by refreshAggregates (sessions hypertable) and
@@ -1089,25 +1203,34 @@ async function refreshAggregateList(
   const fullRefresh = options?.fullRefresh ?? false;
 
   // Default time bounds: last 7 days to tomorrow
-  const defaultStart = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const defaultEnd = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const defaultStart = new Date(Date.now() - 7 * DAY_MS);
+  const defaultEnd = new Date(Date.now() + DAY_MS);
   const startTime = coerceRefreshBound(options?.startTime, defaultStart, 'startTime');
   const endTime = coerceRefreshBound(options?.endTime, defaultEnd, 'endTime');
 
+  // A full refresh passes NULL bounds, so it needs no window at all.
+  const window = fullRefresh ? null : alignRefreshWindow(startTime, endTime);
+  if (!fullRefresh && !window) {
+    console.log(
+      `[TimescaleDB] Refresh window ${startTime.toISOString()} → ${endTime.toISOString()} has no complete UTC-day bucket - skipping, real-time aggregation covers it`
+    );
+    return;
+  }
+
   for (const aggregate of aggregates) {
     try {
-      if (fullRefresh) {
+      if (window) {
+        // Time-bounded refresh - only scans relevant chunks (default)
+        // Must use explicit timestamptz cast - CALL statements don't infer parameter types
+        const startStr = window.start.toISOString();
+        const endStr = window.end.toISOString();
+        await db.execute(
+          sql`CALL refresh_continuous_aggregate(${aggregate}::regclass, ${startStr}::timestamptz, ${endStr}::timestamptz)`
+        );
+      } else {
         // Full refresh - scans all chunks (expensive, use for backfill)
         await db.execute(
           sql`CALL refresh_continuous_aggregate(${aggregate}::regclass, NULL, NULL)`
-        );
-      } else {
-        // Time-bounded refresh - only scans relevant chunks (default)
-        // Must use explicit timestamptz cast - CALL statements don't infer parameter types
-        const startStr = startTime.toISOString();
-        const endStr = endTime.toISOString();
-        await db.execute(
-          sql`CALL refresh_continuous_aggregate(${aggregate}::regclass, ${startStr}::timestamptz, ${endStr}::timestamptz)`
         );
       }
     } catch (err) {
@@ -1254,26 +1377,35 @@ export async function safeFullRefreshAggregate(
 ): Promise<FailedRefreshBatch[]> {
   const { batchDays = 30, delayBetweenBatches = 2000, onProgress, signal } = options;
 
-  const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000));
+  const window = alignRefreshWindow(startDate, endDate);
+  if (!window) {
+    console.log(
+      `[TimescaleDB] Refresh window ${startDate.toISOString()} → ${endDate.toISOString()} has no complete UTC-day bucket - skipping ${aggregateName}, real-time aggregation covers it`
+    );
+    return [];
+  }
+  const { start: alignedStart, end: alignedEnd } = window;
+
+  const totalDays = Math.ceil((alignedEnd.getTime() - alignedStart.getTime()) / DAY_MS);
   // Ensure at least 1 batch to prevent division by zero in progress calculation
   const totalBatches = Math.max(1, Math.ceil(totalDays / batchDays));
 
   let currentBatch = 0;
-  let batchStart = new Date(startDate);
+  let batchStart = new Date(alignedStart);
   const failedBatches: FailedRefreshBatch[] = [];
 
   console.log(
     `[TimescaleDB] Safe refresh ${aggregateName}: ${totalDays} days in ${totalBatches} batches`
   );
 
-  while (batchStart < endDate) {
+  while (batchStart < alignedEnd) {
     // Check for cancellation
     if (signal?.aborted) {
       throw new Error('Refresh cancelled');
     }
 
     const batchEnd = new Date(
-      Math.min(batchStart.getTime() + batchDays * 24 * 60 * 60 * 1000, endDate.getTime())
+      Math.min(batchStart.getTime() + batchDays * DAY_MS, alignedEnd.getTime())
     );
 
     // Refresh this batch
@@ -1302,8 +1434,8 @@ export async function safeFullRefreshAggregate(
       aggregate: aggregateName,
       totalAggregates: 1,
       currentAggregateIndex: 0,
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
+      startDate: alignedStart.toISOString(),
+      endDate: alignedEnd.toISOString(),
       currentBatchStart: batchStart.toISOString(),
       currentBatchEnd: batchEnd.toISOString(),
       percentComplete: Math.round((currentBatch / totalBatches) * 100),
@@ -1314,7 +1446,7 @@ export async function safeFullRefreshAggregate(
     batchStart = batchEnd;
 
     // Delay between batches to let system breathe
-    if (batchStart < endDate && delayBetweenBatches > 0) {
+    if (batchStart < alignedEnd && delayBetweenBatches > 0) {
       await new Promise((resolve) => setTimeout(resolve, delayBetweenBatches));
     }
   }
@@ -1435,7 +1567,11 @@ const BACKFILL_ADVISORY_LOCK_KEY = 875_100_001;
  * unlock (crash, etc.), so a losing or crashing instance can never wedge it.
  */
 async function tryAcquireBackfillLock(): Promise<pg.Client | null> {
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  // This connection stays open for the whole backfill, including retry sleeps;
+  // the factory's error handler is what keeps a postgres restart underneath it
+  // from taking the process down. Note the lock dies with the session: after
+  // such a restart this run continues unguarded and a peer can acquire it.
+  const client = createRawPgClient('backfill-lock');
   await client.connect();
   const result = await client.query('SELECT pg_try_advisory_lock($1) AS acquired', [
     BACKFILL_ADVISORY_LOCK_KEY,
@@ -1452,7 +1588,12 @@ async function tryAcquireBackfillLock(): Promise<pg.Client | null> {
 
 async function releaseBackfillLock(client: pg.Client): Promise<void> {
   try {
-    await client.query('SELECT pg_advisory_unlock($1)', [BACKFILL_ADVISORY_LOCK_KEY]);
+    // The connection may already be dead (postgres restart during a long
+    // backfill). The lock died with the session, so a failed unlock must not
+    // replace the backfill's own result with a throw.
+    await client.query('SELECT pg_advisory_unlock($1)', [BACKFILL_ADVISORY_LOCK_KEY]).catch(() => {
+      /* ignore cleanup errors */
+    });
   } finally {
     await client.end().catch(() => {
       /* ignore cleanup errors */
@@ -1691,7 +1832,7 @@ export async function updateTimescaleExtensions(): Promise<void> {
   // ALTER EXTENSION must be the FIRST statement in a PostgreSQL session. TimescaleDB's
   // hooks fire on any prior query (even SELECT 1), marking the old version as "loaded"
   // in the backend, which blocks the update. A fresh connection avoids this.
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  const client = createRawPgClient('extension-update');
   try {
     await client.connect();
     for (const row of extensions) {
@@ -1927,8 +2068,7 @@ export async function initTimescaleDB(): Promise<{
         // library_stats_daily/content_quality_daily stay empty until the
         // background backfill finishes even though the log below says recent
         // data is available.
-        const startOfTodayUtc = new Date();
-        startOfTodayUtc.setUTCHours(0, 0, 0, 0);
+        const startOfTodayUtc = floorToUtcDay(new Date());
         await refreshAggregates({ endTime: startOfTodayUtc });
         await refreshLibrarySnapshotAggregates({ endTime: startOfTodayUtc });
         const ddlMs = Date.now() - ddlStart;

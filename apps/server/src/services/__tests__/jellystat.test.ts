@@ -1468,11 +1468,13 @@ vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(),
     insert: vi.fn(),
+    transaction: vi.fn(),
   },
 }));
 
 vi.mock('../../db/timescale.js', () => ({
   refreshAggregates: vi.fn().mockResolvedValue(undefined),
+  uncapDecompressionForTx: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../jobs/poller/database.js', () => ({
@@ -1576,6 +1578,12 @@ describe('importJellystatBackup', () => {
     const mockValues = vi.fn().mockResolvedValue(undefined);
     mockDbInsert = vi.fn().mockReturnValue({ values: mockValues });
     (db.insert as ReturnType<typeof vi.fn>) = mockDbInsert;
+
+    // batchProcessor wraps chunk inserts in db.transaction - hand the same
+    // mocked db back as `tx` so mockDbInsert still sees the calls.
+    (db.transaction as ReturnType<typeof vi.fn>) = vi.fn(
+      async (callback: (tx: typeof db) => Promise<unknown>) => callback(db)
+    );
 
     // Default: return server, users, and empty sessions
     mockLimit.mockImplementation(() => {

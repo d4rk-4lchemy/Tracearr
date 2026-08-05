@@ -7,7 +7,11 @@ import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { serverUsers, sessions, users } from '../db/schema.js';
-import { checkAggregateNeedsRebuild, refreshAggregates } from '../db/timescale.js';
+import {
+  checkAggregateNeedsRebuild,
+  refreshAggregates,
+  uncapDecompressionForTx,
+} from '../db/timescale.js';
 import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
 import { batchGetLibraryItemIdentity } from '../jobs/poller/database.js';
 import { sanitizeCodec } from '../utils/codecNormalizer.js';
@@ -1462,6 +1466,12 @@ export class TautulliService {
         // Batch write all updates in a single transaction
         if (pendingUpdates.length > 0) {
           await db.transaction(async (tx) => {
+            // The cap on decompressed tuples is per transaction, so it adds up
+            // across every UPDATE below, and `WHERE id = ?` matches no
+            // segmentby column - each row decompresses its segment. Enrichment
+            // ran uncapped before the cap came back globally; keep that, scoped
+            // to this transaction.
+            await uncapDecompressionForTx(tx);
             for (const update of pendingUpdates) {
               await tx.update(sessions).set(update.data).where(eq(sessions.id, update.id));
             }

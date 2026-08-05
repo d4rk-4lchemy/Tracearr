@@ -34,6 +34,22 @@ function createPool(): pg.Pool {
   return p;
 }
 
+/**
+ * Dedicated non-pooled client for sessions the pool can't hand out (advisory
+ * locks, ALTER EXTENSION, migrations). Always carries an error listener: a
+ * severed connection (postgres crash/restart) emits 'error' on an idle client,
+ * and an unhandled 'error' event kills the process. A query in flight when the
+ * connection drops rejects to its caller instead, listener or not.
+ * `context` names the owner in the log line.
+ */
+export function createRawPgClient(context: string): pg.Client {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  client.on('error', (err) => {
+    console.error(`[DB Client Error] (${context})`, err.message);
+  });
+  return client;
+}
+
 let pool = createPool();
 // Exported as `let` so recreatePool() can reassign it. ESM live bindings ensure
 // all modules importing `db` automatically see the new instance after reassignment.

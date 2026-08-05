@@ -24,8 +24,12 @@ import {
   type MediaLibraryItem,
 } from './mediaServer/index.js';
 import { resolveMediaBatch, reconcileMediaDuplicates } from './library/mediaResolutionService.js';
-import { backfillSessionIdentityBatch } from '../jobs/sessionIdentityBackfill.js';
-import { refreshAggregates } from '../db/timescale.js';
+import {
+  backfillSessionIdentityBatch,
+  hasStampableSessionsBefore,
+} from '../jobs/sessionIdentityBackfill.js';
+import { maybeEnqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
+import { getSessionsCompressionHorizon, refreshAggregates } from '../db/timescale.js';
 import type { LibrarySyncProgress } from '@tracearr/shared';
 import {
   REDIS_KEYS,
@@ -75,6 +79,29 @@ const COUNT_MISMATCH_RATIO = 0.01;
 // Undercount escalation compares the drift against an accepted structural shortfall, not zero - see computeAcceptedShortfall.
 /** Music-type library sections: their server totalCount spans a different item universe than we store, so the undercount check is skipped for them. */
 const MUSIC_LIBRARY_TYPES = new Set(['music', 'artist']);
+
+// Auto-handoff throttles for the compressed-history identity backfill. The
+// probe decompress-scans all compressed history when it comes back false (the
+// steady state - media_id is in neither segmentby nor orderby), so it must
+// not run on every event sync. New library items are what flips the probe
+// from false to true, so item-adding syncs probe freely; a daily allowance
+// catches the rarer flips (an existing item resolving media_id later). The
+// enqueue floor caps the retry loop when a walk keeps failing on a bad chunk
+// - one auto walk per floor interval, while the manual button stays
+// unthrottled. The floor gates the whole probe, not just the enqueue, so it
+// also delays post-success probing: a new item batch landing right after a
+// successful walk still waits out the floor before the next probe runs -
+// a latency trade-off, not a bug. Module-level state: resets on restart,
+// which just allows one extra probe/enqueue - acceptable.
+const AUTO_BACKFILL_PROBE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const AUTO_BACKFILL_ENQUEUE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+let lastAutoBackfillProbeAt = 0;
+let lastAutoBackfillEnqueueAt = 0;
+
+export function _resetAutoBackfillThrottleForTests(): void {
+  lastAutoBackfillProbeAt = 0;
+  lastAutoBackfillEnqueueAt = 0;
+}
 
 let redisClient: Redis | null = null;
 
@@ -306,12 +333,39 @@ export class LibrarySyncService {
     }
 
     // Newly synced library items may match sessions that predate identity stamping.
-    // Single bounded batch. Never let a backfill failure skip the reconcile/cache
-    // steps below - the item upserts above already succeeded.
+    // Single bounded batch over the uncompressed region only - stamping compressed
+    // history decompresses chunk segments and belongs to the maintenance backfill
+    // job, not the tail of every sync (an unwindowed batch here is what OOM-crash-
+    // looped postgres in the field). Never let a backfill failure skip the
+    // reconcile/cache steps below - the item upserts above already succeeded.
     try {
-      const repaired = await backfillSessionIdentityBatch(10000);
+      const horizon = await getSessionsCompressionHorizon();
+      const repaired = await backfillSessionIdentityBatch(
+        10000,
+        horizon ? { start: horizon } : undefined
+      );
       if (repaired.updated > 0 && repaired.oldest) {
         await refreshAggregates({ startTime: repaired.oldest, endTime: new Date() });
+      }
+      // Compressed history can't be stamped here (one sync-tail transaction
+      // must not decompress old chunks) - hand it to the maintenance walk
+      // instead of relying on someone finding the button. maybeEnqueue
+      // dedupes: the queue is single-flight, so a pending job already covers
+      // this. Both the probe and the enqueue are throttled (see the interval
+      // constants): the probe is expensive when it answers false, and a walk
+      // that keeps dying on one bad chunk would otherwise re-enqueue on every
+      // sync forever.
+      const addedItems = results.some((r) => r.itemsAdded > 0);
+      const now = Date.now();
+      const probeAllowed =
+        now - lastAutoBackfillEnqueueAt >= AUTO_BACKFILL_ENQUEUE_INTERVAL_MS &&
+        (addedItems || now - lastAutoBackfillProbeAt >= AUTO_BACKFILL_PROBE_INTERVAL_MS);
+      if (horizon && probeAllowed) {
+        lastAutoBackfillProbeAt = now;
+        if (await hasStampableSessionsBefore(horizon)) {
+          const enqueued = await maybeEnqueueMaintenanceJob('backfill_session_identity', 'system');
+          if (enqueued) lastAutoBackfillEnqueueAt = now;
+        }
       }
     } catch (err) {
       console.error('[LibrarySync] Session identity backfill failed, continuing sync:', err);

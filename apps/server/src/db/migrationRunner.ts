@@ -9,10 +9,12 @@
  * (lock_timeout makes it fail fast so the caller's retry loop gets a turn).
  */
 
-import pg from 'pg';
+import type pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { createRawPgClient } from './client.js';
 import * as schema from './schema.js';
+import { uncapDecompressionForSession } from './timescale.js';
 
 /**
  * Advisory lock key for the migration runner. Distinct from
@@ -49,9 +51,7 @@ export async function runMigrationsGuarded(
     throw new Error(`Invalid lockTimeout value: ${lockTimeout}`);
   }
 
-  const client = createClient
-    ? createClient()
-    : new pg.Client({ connectionString: process.env.DATABASE_URL });
+  const client = createClient ? createClient() : createRawPgClient('migrations');
 
   await client.connect();
   try {
@@ -76,6 +76,12 @@ export async function runMigrationsGuarded(
       // here - but set it explicitly so a session default set elsewhere can
       // never silently cap a legitimately long migration.
       await client.query('SET statement_timeout = 0');
+
+      // Historical migrations bulk-update compressed sessions chunks. The
+      // runtime default caps decompression per DML transaction (the global
+      // unlimited setting this replaced OOM-crashed postgres under routine
+      // load), so only this dedicated migration session runs uncapped.
+      await uncapDecompressionForSession(client);
 
       const migrationDb = drizzle(client, { schema });
       await migrate(migrationDb, { migrationsFolder });

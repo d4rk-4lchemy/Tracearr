@@ -50,6 +50,34 @@ let lastBackfillCheck: number = 0;
 const BACKFILL_CHECK_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 /**
+ * True when the job was produced by a BullMQ job scheduler (our per-server
+ * auto-sync cron), as opposed to a manual, boot, or event sync.
+ *
+ * A registered scheduler always keeps exactly one job parked in `delayed` for
+ * the next cron slot - up to a full 12h period out - so anything that treats
+ * "a delayed job exists" as "work is already pending" is permanently true and
+ * suppresses every other code path. `repeatJobKey` is how we tell them apart:
+ * BullMQ writes the scheduler id to the job hash's `rjk` field and `getJobs`
+ * hydrates it back onto the Job (Job.fromId -> Job.fromJSON). It's also the
+ * field BullMQ's own removal guard reads (isJobSchedulerJob.lua), which makes
+ * it more reliable than sniffing the `repeat:<id>:<ms>` job id prefix.
+ * Verified against bullmq 5.80.2 on a live Redis.
+ *
+ * The flag survives promotion - a scheduler job that reached waiting or active
+ * still carries repeatJobKey - so only apply this to jobs read from `delayed`.
+ * A promoted one is genuinely imminent work and must count as pending.
+ *
+ * One case this knowingly discounts: a scheduler job sitting in retry-backoff
+ * also lives in `delayed` with repeatJobKey set, so it reads as a placeholder
+ * too even though it's a real pending retry. Accepted trade-off - the cost is
+ * one redundant enqueue, which fails toward extra work rather than a missed
+ * sync.
+ */
+function isSchedulerJob(job: Pick<Job<LibrarySyncJobData>, 'repeatJobKey'>): boolean {
+  return Boolean(job.repeatJobKey);
+}
+
+/**
  * Invalidate library-related caches after sync completes.
  * Uses pattern matching to clear all variants (per-server, per-library, with timezone, etc.)
  */
@@ -470,9 +498,14 @@ export async function scheduleAutoSync(): Promise<void> {
   );
 
   // Queue an immediate sync on boot (non-blocking, staggered to avoid overwhelming startup)
-  // Check for any pending/delayed jobs first to avoid duplicates after rapid restarts
+  // Check for any pending/delayed jobs first to avoid duplicates after rapid restarts.
+  // The schedulers re-added just above each park a delayed job for their next
+  // cron slot, matching every server - counting those would skip boot sync
+  // every time, which is exactly what shipped. Only non-scheduler jobs count.
   const pendingJobs = await librarySyncQueue.getJobs(['delayed', 'waiting']);
-  const pendingServerIds = new Set(pendingJobs.map((j) => j.data.serverId));
+  const pendingServerIds = new Set(
+    pendingJobs.filter((j) => !isSchedulerJob(j)).map((j) => j.data.serverId)
+  );
 
   for (let i = 0; i < allServers.length; i++) {
     const server = allServers[i];
@@ -518,6 +551,24 @@ export async function enqueueLibrarySync(serverId: string, userId?: string): Pro
     throw new Error('A sync is already in progress for this server');
   }
 
+  // A manual sync supersedes queued scheduled/event syncs for the same server -
+  // they'd redo strictly less work than the manual full pass that's about to run.
+  // Scheduler-owned jobs are left alone: BullMQ refuses to remove the parked
+  // cron placeholder outright, and a promoted one costs at most one redundant
+  // pass that the worker's activeSyncs guard already collapses.
+  const queuedJobs = await librarySyncQueue.getJobs(['waiting', 'delayed']);
+  for (const queued of queuedJobs) {
+    if (
+      queued.data.serverId === serverId &&
+      queued.data.triggeredBy === 'scheduled' &&
+      !isSchedulerJob(queued)
+    ) {
+      await queued.remove().catch(() => {
+        /* raced to active or already gone - the active check above stands */
+      });
+    }
+  }
+
   // Add job with unique ID
   const job = await librarySyncQueue.add(
     `manual-sync-${serverId}`,
@@ -549,10 +600,19 @@ export async function enqueueLibrarySync(serverId: string, userId?: string): Pro
 export async function enqueueLibrarySyncFromEvent(serverId: string): Promise<void> {
   if (!librarySyncQueue) return;
 
-  const activeJobs = await librarySyncQueue.getJobs(['active']);
-  if (activeJobs.some((job) => job.data.serverId === serverId)) {
-    return; // already syncing - the in-flight run or the next scheduled one covers it
-  }
+  // One pending sync per server is all that's ever needed: a sync job reads
+  // the server's current state when it runs. But a job SCHEDULER's parked
+  // delayed job (id "repeat:...") is a placeholder for the next cron slot -
+  // possibly hours out - not pending work, so it must not suppress event
+  // syncs. Scheduler jobs that reached waiting/active ARE real work and do.
+  const [runningJobs, delayedJobs] = await Promise.all([
+    librarySyncQueue.getJobs(['active', 'waiting']),
+    librarySyncQueue.getJobs(['delayed']),
+  ]);
+  const covered =
+    runningJobs.some((job) => job.data.serverId === serverId) ||
+    delayedJobs.some((job) => job.data.serverId === serverId && !isSchedulerJob(job));
+  if (covered) return;
 
   const bucket = Math.floor(Date.now() / EVENT_SYNC_JOB_BUCKET_MS);
   await librarySyncQueue.add(
@@ -607,7 +667,15 @@ export async function getAllActiveLibrarySyncs(): Promise<
     return [];
   }
 
-  const jobs = await librarySyncQueue.getJobs(['active', 'waiting', 'delayed']);
+  // A delayed scheduler placeholder (see isSchedulerJob) is a parked cron
+  // slot, not a pending sync - counting it here is what surfaced as "every
+  // server shows a permanently queued sync" in the tasks UI. Scheduler jobs
+  // that reached waiting/active are real runs and stay in the list.
+  const [runningJobs, delayedJobs] = await Promise.all([
+    librarySyncQueue.getJobs(['active', 'waiting']),
+    librarySyncQueue.getJobs(['delayed']),
+  ]);
+  const jobs = [...runningJobs, ...delayedJobs.filter((job) => !isSchedulerJob(job))];
 
   return Promise.all(
     jobs.map(async (job) => {

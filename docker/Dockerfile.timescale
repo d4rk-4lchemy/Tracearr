@@ -25,11 +25,11 @@ RUN apt-get update \
     && apt-get purge -y --auto-remove curl gnupg
 
 # Enable TimescaleDB in PostgreSQL config
-# Set unlimited tuple decompression to allow migrations on compressed hypertables
+# Cap tuple decompression per DML transaction at TimescaleDB's default
 # Increase lock table size for TimescaleDB hypertables with many chunks
 # Memory cost: 4096 * max_connections * ~256 bytes = ~100MB at 100 connections (trivial)
 RUN echo "shared_preload_libraries = 'timescaledb'" >> /usr/share/postgresql/postgresql.conf.sample \
-    && echo "timescaledb.max_tuples_decompressed_per_dml_transaction = 0" >> /usr/share/postgresql/postgresql.conf.sample \
+    && echo "timescaledb.max_tuples_decompressed_per_dml_transaction = 100000" >> /usr/share/postgresql/postgresql.conf.sample \
     && echo "timescaledb.telemetry_level = off" >> /usr/share/postgresql/postgresql.conf.sample \
     && echo "max_locks_per_transaction = 4096" >> /usr/share/postgresql/postgresql.conf.sample
 

@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import type * as TimescaleModule from '../../db/timescale.js';
 
 // Mock the database
 vi.mock('../../db/client.js', () => ({
@@ -37,6 +38,19 @@ vi.mock('../library/mediaResolutionService.js', () => ({
 
 vi.mock('../../jobs/sessionIdentityBackfill.js', () => ({
   backfillSessionIdentityBatch: vi.fn().mockResolvedValue({ updated: 0, oldest: null }),
+  hasStampableSessionsBefore: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../../jobs/maintenanceQueue.js', () => ({
+  maybeEnqueueMaintenanceJob: vi.fn().mockResolvedValue(null),
+}));
+
+// Only the compression-horizon probe is stubbed; the aggregate refresh paths stay
+// real so the db.execute assertions below still measure refresh behavior rather
+// than this one extra catalog read at the tail of every sync.
+vi.mock('../../db/timescale.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof TimescaleModule>()),
+  getSessionsCompressionHorizon: vi.fn().mockResolvedValue(null),
 }));
 
 // Import after mocking
@@ -45,8 +59,17 @@ import { renderSql } from '../../test/helpers.js';
 import { libraries as librariesTable } from '../../db/schema.js';
 import { createMediaServerClient } from '../mediaServer/index.js';
 import { reconcileMediaDuplicates, resolveMediaBatch } from '../library/mediaResolutionService.js';
-import { backfillSessionIdentityBatch } from '../../jobs/sessionIdentityBackfill.js';
-import { LibrarySyncService, initLibrarySyncRedis } from '../librarySync.js';
+import {
+  backfillSessionIdentityBatch,
+  hasStampableSessionsBefore,
+} from '../../jobs/sessionIdentityBackfill.js';
+import { maybeEnqueueMaintenanceJob } from '../../jobs/maintenanceQueue.js';
+import { getSessionsCompressionHorizon } from '../../db/timescale.js';
+import {
+  LibrarySyncService,
+  initLibrarySyncRedis,
+  _resetAutoBackfillThrottleForTests,
+} from '../librarySync.js';
 import type { MediaLibraryItem } from '../mediaServer/types.js';
 import type { LibrarySyncProgress } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
@@ -317,6 +340,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: no orphaned libraries (selectDistinct returns matching current libraries)
   mockSelectDistinctChain([[], []]);
+  // The auto-handoff throttles are module-level, so a test that probes or
+  // enqueues would otherwise gate the next one for hours. Reset keeps the
+  // order-dependence out of it.
+  _resetAutoBackfillThrottleForTests();
 });
 
 // clearAllMocks only clears call history, not implementations - restore db.execute so a test's override can't leak into the next.
@@ -455,6 +482,191 @@ describe('LibrarySyncService', () => {
       // Item upserts already succeeded and must not be undone by the backfill failure.
       expect(results).toHaveLength(1);
       expect(reconcileMediaDuplicates).toHaveBeenCalledTimes(1);
+    });
+
+    it('hands compressed history to the maintenance walk when the probe finds work below the horizon', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+        totalCount: 1,
+      });
+
+      const horizon = new Date('2026-07-01T00:00:00.000Z');
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(horizon);
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValueOnce(true);
+
+      await service.syncServer(mockServer.id);
+
+      expect(hasStampableSessionsBefore).toHaveBeenCalledWith(horizon);
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledWith(
+        'backfill_session_identity',
+        'system'
+      );
+    });
+
+    it('stops re-probing after an enqueue, so a walk dying on one bad chunk cannot loop', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const runSync = async () => {
+        setupSelectForIncrementalTest(mockServer);
+        mockSelectDistinctChain([[], []]);
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+          totalCount: 1,
+        });
+        await service.syncServer(mockServer.id);
+      };
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(true);
+      vi.mocked(maybeEnqueueMaintenanceJob).mockResolvedValue('maintenance-job-1');
+
+      await runSync();
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
+
+      // The walk it just queued can fail on a bad chunk and leave the probe
+      // answering true forever. Both syncs add items, so only the enqueue
+      // floor can be what stops the second one.
+      await runSync();
+      expect(hasStampableSessionsBefore).toHaveBeenCalledTimes(1);
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(null);
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(false);
+      vi.mocked(maybeEnqueueMaintenanceJob).mockResolvedValue(null);
+    });
+
+    it('keeps probing when the enqueue never succeeds, so the floor never arms', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const runSync = async () => {
+        setupSelectForIncrementalTest(mockServer);
+        mockSelectDistinctChain([[], []]);
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+          totalCount: 1,
+        });
+        await service.syncServer(mockServer.id);
+      };
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(true);
+      // The queue is already full, or the job fails to enqueue for some other
+      // reason - maybeEnqueueMaintenanceJob returns null on every call.
+      vi.mocked(maybeEnqueueMaintenanceJob).mockResolvedValue(null);
+
+      await runSync();
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
+
+      // The floor is only meant to arm on a successful enqueue. Since it
+      // never succeeded, the second sync must still probe and still try.
+      await runSync();
+      expect(hasStampableSessionsBefore).toHaveBeenCalledTimes(2);
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(2);
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(null);
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(false);
+    });
+
+    it('probes at most once a day on syncs that add no items', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const runSync = async () => {
+        setupSelectForIncrementalTest(mockServer);
+        mockSelectDistinctChain([[], []]);
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          items: [],
+          totalCount: 0,
+        });
+        await service.syncServer(mockServer.id);
+      };
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValue(false);
+
+      // A false probe decompress-scans every compressed chunk below the
+      // horizon, and event syncs fire twice a minute. Nothing new landed in
+      // the library on the second sync, so nothing can have flipped the
+      // answer - the daily allowance is what keeps that off the hot path.
+      await runSync();
+      await runSync();
+
+      expect(hasStampableSessionsBefore).toHaveBeenCalledTimes(1);
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValue(null);
+    });
+
+    it('skips the probe entirely and runs an unwindowed batch when nothing is compressed', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+        totalCount: 1,
+      });
+
+      // Default mock already resolves null, but pin it here - this test is
+      // about what a null horizon does, not about the default.
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(null);
+
+      await service.syncServer(mockServer.id);
+
+      // No compressed chunks means no history the sync tail can't reach, so
+      // the expensive probe must not run at all.
+      expect(hasStampableSessionsBefore).not.toHaveBeenCalled();
+      expect(maybeEnqueueMaintenanceJob).not.toHaveBeenCalled();
+      expect(backfillSessionIdentityBatch).toHaveBeenCalledWith(10000, undefined);
+    });
+
+    it('leaves the maintenance queue alone when nothing is left below the horizon', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+        totalCount: 1,
+      });
+
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(hasStampableSessionsBefore).mockResolvedValueOnce(false);
+
+      await service.syncServer(mockServer.id);
+
+      expect(maybeEnqueueMaintenanceJob).not.toHaveBeenCalled();
     });
 
     it('does not truncate a full scan when a page is all extras', async () => {
