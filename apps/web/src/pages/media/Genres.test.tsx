@@ -166,12 +166,13 @@ describe('MediaGenres', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('shows the sync-aware LibraryEmptyState when no servers are selected', () => {
+  it('shows the no-library-server message when no servers are selected', () => {
     mockUseServer.mockReturnValue(serverReturn({ selectedServerIds: [] }));
     mockUseGenres.mockReturnValue(genresReturn());
 
     renderGenres();
 
-    expect(screen.getByTestId('library-empty-state')).toBeInTheDocument();
+    expect(screen.getByText('media.noLibraryServers')).toBeInTheDocument();
+    expect(screen.queryByTestId('library-empty-state')).not.toBeInTheDocument();
   });
 });

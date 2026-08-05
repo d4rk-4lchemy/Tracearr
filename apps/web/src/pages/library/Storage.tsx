@@ -36,7 +36,15 @@ import { toast } from 'sonner';
 
 export function LibraryStorage() {
   const { t } = useTranslation(['pages', 'common']);
-  const { selectedServerIds, selectedServers, servers, isMultiServer } = useServer();
+  const {
+    mediaLibraryServerIds,
+    mediaLibraryServers,
+    servers,
+    isLoading: serversLoading,
+  } = useServer();
+  const selectedServerIds = mediaLibraryServerIds;
+  const selectedServers = mediaLibraryServers;
+  const isMultiServer = selectedServerIds.length > 1;
   const { value: timeRange, setValue: setTimeRange } = useTimeRange();
 
   // Check library status - fan out per server to detect which need setup
@@ -245,11 +253,17 @@ export function LibraryStorage() {
     );
   }
 
+  if (!serversLoading && selectedServerIds.length === 0) {
+    return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
+  }
+
   if (allNeedSetup) {
     return (
       <div className="space-y-6">
         {header}
         <LibraryEmptyState
+          serverIds={selectedServerIds}
+          servers={selectedServers}
           onComplete={() => {
             for (const id of selectedServerIds) {
               void storageMulti.byServer.get(id)?.refetch();

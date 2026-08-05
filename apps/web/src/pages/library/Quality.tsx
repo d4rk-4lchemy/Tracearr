@@ -48,7 +48,14 @@ function ServerQualityEvolutionCard({
 
 export function LibraryQuality() {
   const { t } = useTranslation(['pages', 'common']);
-  const { selectedServers, isMultiServer, selectedServerIds } = useServer();
+  const {
+    mediaLibraryServers,
+    mediaLibraryServerIds,
+    isLoading: serversLoading,
+  } = useServer();
+  const isMultiServer = mediaLibraryServerIds.length > 1;
+  const selectedServers = mediaLibraryServers;
+  const selectedServerIds = mediaLibraryServerIds;
   // When single-server, the one selected ID drives the quality/status hooks
   const singleServerId = !isMultiServer ? (selectedServerIds[0] ?? null) : null;
   const { value: timeRange, setValue: setTimeRange } = useTimeRange();
@@ -78,7 +85,7 @@ export function LibraryQuality() {
     singleServerId ?? undefined,
     apiPeriod,
     mediaType,
-    !isMultiServer
+    !isMultiServer && selectedServerIds.length > 0
   );
 
   // Header component (used in all states)
@@ -101,6 +108,10 @@ export function LibraryQuality() {
         />
       </div>
     );
+  }
+
+  if (!serversLoading && selectedServerIds.length === 0) {
+    return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
   }
 
   // Gate on empty/setup state:
@@ -131,7 +142,11 @@ export function LibraryQuality() {
     return (
       <div className="space-y-6">
         {header}
-        <LibraryEmptyState onComplete={singleQuality.refetch} />
+        <LibraryEmptyState
+          onComplete={singleQuality.refetch}
+          serverIds={selectedServerIds}
+          servers={selectedServers}
+        />
       </div>
     );
   }

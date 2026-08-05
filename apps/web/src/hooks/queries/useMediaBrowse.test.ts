@@ -218,7 +218,7 @@ describe('browse hooks forward the full serverIds selection', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const args = {
       type: 'movie' as const,
-      serverIds: [],
+      serverIds: ['server-a'],
       lens: 'all',
       filters: {},
       sort: 'title' as const,
@@ -247,7 +247,7 @@ describe('browse hooks forward the full serverIds selection', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const args = {
       type: 'movie' as const,
-      serverIds: [],
+      serverIds: ['server-a'],
       lens: 'all',
       filters: {},
     };

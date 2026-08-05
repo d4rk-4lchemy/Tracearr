@@ -10,12 +10,15 @@ import { toast } from 'sonner';
 import { useLibraryStatus } from '@/hooks/queries';
 import { useSocket } from '@/hooks/useSocket';
 import { WS_EVENTS } from '@tracearr/shared';
-import type { MaintenanceJobProgress } from '@tracearr/shared';
+import type { MaintenanceJobProgress, Server } from '@tracearr/shared';
 import { ServerBadge } from '@/components/server';
 
 interface LibraryEmptyStateProps {
   /** Called after sync or backfill completes to refetch page data */
   onComplete?: () => void;
+  /** Optional scoped library selection (for example, excluding Dispatcharr). */
+  serverIds?: string[];
+  servers?: Server[];
 }
 
 /**
@@ -34,9 +37,16 @@ interface LibraryEmptyStateProps {
  * its own Sync Now action. The historical-data backfill is a single global
  * job shared by every server, so it keeps one button for all of them.
  */
-export function LibraryEmptyState({ onComplete }: LibraryEmptyStateProps) {
+export function LibraryEmptyState({ onComplete, serverIds, servers }: LibraryEmptyStateProps) {
   const { t } = useTranslation('pages');
-  const { selectedServerIds, selectedServers } = useServer();
+  const {
+    selectedServerIds: globalServerIds,
+    selectedServers: globalServers,
+    mediaLibraryServerIds,
+    mediaLibraryServers,
+  } = useServer();
+  const selectedServerIds = serverIds ?? mediaLibraryServerIds ?? globalServerIds;
+  const selectedServers = servers ?? mediaLibraryServers ?? globalServers;
   const queryClient = useQueryClient();
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
   const [isStartingBackfill, setIsStartingBackfill] = useState(false);
