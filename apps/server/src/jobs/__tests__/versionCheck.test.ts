@@ -586,7 +586,7 @@ describe('processVersionCheck', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: vi.fn().mockResolvedValue([mockRelease('v1.5.0-r1', false)]),
+      json: vi.fn().mockResolvedValue([mockRelease('v1.5.0-r1', true)]),
     });
     await processVersionCheck(makeJob(true));
     expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -625,7 +625,7 @@ describe('processVersionCheck', () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: vi.fn().mockResolvedValue([mockRelease('v1.5.0-r1', false)]),
+      json: vi.fn().mockResolvedValue([mockRelease('v1.5.0-r1', true)]),
     });
     await processVersionCheck(makeJob(false));
     expect(sharedRedis.set).toHaveBeenCalledWith(
@@ -640,6 +640,11 @@ describe('processVersionCheck', () => {
       'EX',
       expect.any(Number)
     );
+    const forkCacheWrite = sharedRedis.set.mock.calls.find(([key]) =>
+      String(key).includes('version:latest:fork')
+    );
+    expect(forkCacheWrite).toBeDefined();
+    expect(JSON.parse(String(forkCacheWrite?.[1])).isPrerelease).toBe(false);
     expect(sharedRedis.set).toHaveBeenCalledWith(
       expect.stringContaining('version:check:cooldown'),
       '1',

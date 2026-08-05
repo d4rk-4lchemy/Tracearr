@@ -358,6 +358,10 @@ function toForkLatestData(release: GitHubRelease): LatestForkReleaseData {
     ...toLatestData(release),
     version: parsed.forkVersion,
     releaseUrl: release.html_url || `${FORK_RELEASES_URL}/tag/${release.tag_name}`,
+    // A -rN suffix is the fork revision, not a prerelease channel. Fork
+    // prerelease channels, if introduced later, must use an explicit tag
+    // convention instead of inheriting GitHub's prerelease flag here.
+    isPrerelease: false,
     upstreamVersion: parsed.upstreamVersion,
     forkRevision: parsed.forkRevision,
     forkVersion: parsed.forkVersion,
