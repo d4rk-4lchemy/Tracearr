@@ -897,6 +897,23 @@ describe('CacheService', () => {
       expect(result.map((s: any) => s.id).sort()).toEqual(['session-1', 'session-2']);
     });
 
+    it('rehydrates serialized session dates for lifecycle consumers', async () => {
+      const session = {
+        ...createTestActiveSession('session-1'),
+        startedAt: new Date('2026-08-05T10:00:00.000Z'),
+        lastPausedAt: new Date('2026-08-05T10:01:00.000Z'),
+        progressUpdatedAt: new Date('2026-08-05T10:02:00.000Z'),
+      };
+
+      await cache.addActiveSession(session);
+
+      const [result] = await cache.getAllActiveSessions();
+      expect(result?.startedAt).toBeInstanceOf(Date);
+      expect(result?.lastPausedAt).toBeInstanceOf(Date);
+      expect(result?.progressUpdatedAt).toBeInstanceOf(Date);
+      expect(result?.startedAt.toISOString()).toBe('2026-08-05T10:00:00.000Z');
+    });
+
     it('should clean up stale IDs (IDs without session data)', async () => {
       // Manually add a stale ID to the SET (no corresponding data)
       redis.sets.set('tracearr:sessions:active:ids', new Set(['stale-id', 'valid-id']));

@@ -12,6 +12,9 @@ function jsonResponse(data: unknown, init?: ResponseInit): Response {
 afterEach(() => {
   vi.restoreAllMocks();
   (DispatcharrClient as unknown as { credentialCache: Map<string, unknown> }).credentialCache.clear();
+  (
+    DispatcharrClient as unknown as { credentialRequestsInFlight: Map<string, unknown> }
+  ).credentialRequestsInFlight.clear();
   (DispatcharrClient as unknown as { outputProfileCache: Map<string, unknown> }).outputProfileCache.clear();
 });
 
@@ -366,6 +369,40 @@ describe('DispatcharrClient', () => {
     const token = DispatcharrClient.encodeCredentialToken('admin', 'secret');
     const client = new DispatcharrClient({ url: 'http://dispatcharr.local', token });
     await client.getUsers();
+  });
+
+  it('shares concurrent credential authentication across REST requests', async () => {
+    let resolveTokenRequest = (): void => undefined;
+    const tokenRequest = new Promise<Response>((resolve) => {
+      resolveTokenRequest = () =>
+        resolve(
+          jsonResponse({
+            access: 'eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQ3NDA3MTY4MDB9.signature',
+            refresh: 'refresh-token',
+          })
+        );
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/accounts/token/')) return tokenRequest;
+      if (url.endsWith('/api/accounts/users/')) return jsonResponse([]);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const token = DispatcharrClient.encodeCredentialToken('admin', 'secret');
+    const clients = Array.from(
+      { length: 3 },
+      () => new DispatcharrClient({ url: 'http://dispatcharr.local', token })
+    );
+    const requests = clients.map((client) => client.getUsers());
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    resolveTokenRequest();
+
+    await expect(Promise.all(requests)).resolves.toEqual([[], [], []]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('terminates live sessions using ts stop_client endpoint', async () => {

@@ -9,6 +9,26 @@ import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import type { PendingSessionData } from '../jobs/poller/types.js';
 
+/**
+ * Active sessions are JSON-serialized before entering Redis, so their Date
+ * fields return as ISO strings. Keep the cache boundary type-correct for all
+ * consumers, especially lifecycle operations which require Date#getTime().
+ */
+function hydrateActiveSession(session: ActiveSession): ActiveSession {
+  const asDate = (value: Date | string | null | undefined): Date | null | undefined => {
+    if (value === null || value === undefined || value instanceof Date) return value;
+    return new Date(value);
+  };
+
+  return {
+    ...session,
+    startedAt: asDate(session.startedAt) as Date,
+    stoppedAt: asDate(session.stoppedAt) as Date | null,
+    lastPausedAt: asDate(session.lastPausedAt) as Date | null,
+    progressUpdatedAt: asDate(session.progressUpdatedAt) as Date,
+  };
+}
+
 export interface CacheService {
   // Active sessions (legacy - JSON array, deprecated)
   getActiveSessions(): Promise<ActiveSession[] | null>;
@@ -165,7 +185,7 @@ export function createCacheService(redis: Redis): CacheService {
       const data = await redis.get(REDIS_KEYS.ACTIVE_SESSIONS);
       if (!data) return null;
       try {
-        return JSON.parse(data) as ActiveSession[];
+        return (JSON.parse(data) as ActiveSession[]).map(hydrateActiveSession);
       } catch {
         return null;
       }
@@ -244,7 +264,7 @@ export function createCacheService(redis: Redis): CacheService {
           const sessionId = chunkIds[j]!;
           if (sessionData) {
             try {
-              sessions.push(JSON.parse(sessionData) as ActiveSession);
+              sessions.push(hydrateActiveSession(JSON.parse(sessionData) as ActiveSession));
             } catch {
               staleIds.push(sessionId);
             }
@@ -413,7 +433,7 @@ export function createCacheService(redis: Redis): CacheService {
       const data = await redis.get(REDIS_KEYS.SESSION_BY_ID(id));
       if (!data) return null;
       try {
-        return JSON.parse(data) as ActiveSession;
+        return hydrateActiveSession(JSON.parse(data) as ActiveSession);
       } catch {
         return null;
       }

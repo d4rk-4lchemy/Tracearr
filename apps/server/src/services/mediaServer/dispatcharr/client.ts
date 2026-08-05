@@ -90,6 +90,10 @@ export class DispatcharrClient implements IMediaServerClient {
   public readonly serverType = 'dispatcharr' as const;
 
   private static credentialCache = new Map<string, DispatcharrCredentialAuthCache>();
+  private static credentialRequestsInFlight = new Map<
+    string,
+    Promise<DispatcharrCredentialAuthCache>
+  >();
   private static outputProfileCache = new Map<
     string,
     { expiresAtMs: number; profilesById: Map<number, DispatcharrResolvedOutputProfile> }
@@ -800,27 +804,49 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   private async getCredentialAccessToken(): Promise<string> {
-    if (!this.credentials) {
+    const credentials = this.credentials;
+    if (!credentials) {
       throw new Error('Dispatcharr credentials token is invalid');
     }
 
-    const cacheKey = this.getCredentialCacheKey(this.credentials);
+    const cacheKey = this.getCredentialCacheKey(credentials);
     const cached = DispatcharrClient.credentialCache.get(cacheKey);
     if (cached && cached.expiresAtMs - TOKEN_REFRESH_SKEW_MS > Date.now()) {
       return cached.accessToken;
     }
 
-    if (cached?.refreshToken) {
-      const refreshed = await this.tryRefreshCredentialToken(cached.refreshToken);
-      if (refreshed) {
-        DispatcharrClient.credentialCache.set(cacheKey, refreshed);
-        return refreshed.accessToken;
-      }
+    const inFlight = DispatcharrClient.credentialRequestsInFlight.get(cacheKey);
+    if (inFlight) {
+      return (await inFlight).accessToken;
     }
 
-    const authenticated = await this.authenticateWithCredentials(this.credentials);
-    DispatcharrClient.credentialCache.set(cacheKey, authenticated);
-    return authenticated.accessToken;
+    const request = (async (): Promise<DispatcharrCredentialAuthCache> => {
+      const latestCached = DispatcharrClient.credentialCache.get(cacheKey);
+      if (latestCached && latestCached.expiresAtMs - TOKEN_REFRESH_SKEW_MS > Date.now()) {
+        return latestCached;
+      }
+
+      if (latestCached?.refreshToken) {
+        const refreshed = await this.tryRefreshCredentialToken(latestCached.refreshToken);
+        if (refreshed) {
+          DispatcharrClient.credentialCache.set(cacheKey, refreshed);
+          return refreshed;
+        }
+      }
+
+      const authenticated = await this.authenticateWithCredentials(credentials);
+      DispatcharrClient.credentialCache.set(cacheKey, authenticated);
+      return authenticated;
+    })();
+
+    DispatcharrClient.credentialRequestsInFlight.set(cacheKey, request);
+    try {
+      return (await request).accessToken;
+    } finally {
+      if (DispatcharrClient.credentialRequestsInFlight.get(cacheKey) === request) {
+        DispatcharrClient.credentialRequestsInFlight.delete(cacheKey);
+      }
+    }
   }
 
   private async authenticateWithCredentials(
