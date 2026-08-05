@@ -102,6 +102,7 @@ Database:
   - `progress_estimated boolean default false not null`
 - `apps/server/src/db/migrations/` is the upstream-only migration history. It must remain directly mergeable with the source repository.
 - `apps/server/src/db/fork-migrations/` is the Dispatcharr overlay, with its own `meta/_journal.json` and `tracearr_fork.__drizzle_migrations` database ledger. Its current files `0000`–`0002` replace the historical main-ledger migrations `0067`–`0069`.
+- Before upstream migrations, the runtime removes the exact legacy `0069_steady_squadron_supreme` ledger entry only when `media` is absent. This is a one-time compatibility bridge: its timestamp would otherwise cause Drizzle to skip upstream `0067_cold_maggott`, which creates `media`.
 - The overlay runs after upstream migrations. Its SQL is idempotent so installations that previously ran `0067`–`0069`, installations where they were skipped, and original Tracearr databases all converge without data loss.
 
 Server-side Dispatcharr integration:
@@ -211,6 +212,7 @@ Current upstream merge notes:
 ### Migration History Policy
 
 - Drizzle compares the latest `created_at` only within one ledger. The upstream and fork ledgers are intentionally separate so an original Tracearr database with newer upstream migrations still receives all missing Dispatcharr migrations.
+- The pre-ledger Dispatcharr `0069_steady_squadron_supreme` entry remains a special upgrade case: before upstream migration, remove only its known hash/timestamp pair when `public.media` is missing. Do not generalize this to deleting arbitrary ledger rows.
 - Keep upstream migration files and journal entries immutable and merge them from source as-is. Create fork schema changes only with `pnpm --filter @tracearr/server db:fork:generate -- <name>`; it creates a new overlay SQL file and monotonic journal entry.
 - `db:generate` and `db:push` are deliberately disabled in this fork because the combined runtime schema would otherwise emit Dispatcharr DDL into the upstream history.
 - Before releasing a migration-affecting merge, test a fresh database, an upgrade from the latest upstream release, and an upgrade from the prior fork release. Confirm `servers` rows survive, the fork ledger is populated, and all Dispatcharr columns exist.

@@ -2405,7 +2405,7 @@ export async function triggerServerPoll(serverId: string): Promise<void> {
       watchedTransitionOccurred,
       confirmedFromPendingIds,
     } = await processServerSessions(
-      server as ServerWithToken,
+      server,
       activeRulesV2,
       cachedSessionKeys,
       cachedSessions

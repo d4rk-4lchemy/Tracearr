@@ -4,11 +4,27 @@ const { migrateMock } = vi.hoisted(() => ({ migrateMock: vi.fn().mockResolvedVal
 
 vi.mock('drizzle-orm/node-postgres/migrator', () => ({ migrate: migrateMock }));
 
-import { runMigrations } from '../client.js';
+import { db, repairLegacyForkMigrationLedger, runMigrations } from '../client.js';
+
+function createMigrationLedgerExecutor(
+  rows: Array<{ ledger?: string | null; repaired?: boolean }>
+) {
+  return {
+    execute: vi.fn().mockImplementation(async () => ({ rows: [rows.shift() ?? {}] })),
+  };
+}
 
 describe('runMigrations', () => {
   it('runs the upstream history before the fork overlay in a separate ledger', async () => {
-    await runMigrations({ upstream: '/migrations/upstream', fork: '/migrations/fork' });
+    const executeSpy = vi
+      .spyOn(db, 'execute')
+      .mockResolvedValue({ rows: [{ ledger: null }] } as never);
+
+    try {
+      await runMigrations({ upstream: '/migrations/upstream', fork: '/migrations/fork' });
+    } finally {
+      executeSpy.mockRestore();
+    }
 
     expect(migrateMock).toHaveBeenCalledTimes(2);
     expect(migrateMock).toHaveBeenNthCalledWith(
@@ -25,5 +41,34 @@ describe('runMigrations', () => {
         migrationsTable: '__drizzle_migrations',
       })
     );
+  });
+});
+
+describe('repairLegacyForkMigrationLedger', () => {
+  it('does nothing when the main Drizzle ledger has not been created yet', async () => {
+    const executor = createMigrationLedgerExecutor([{ ledger: null }]);
+
+    await expect(repairLegacyForkMigrationLedger(executor as never)).resolves.toBe(false);
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a repair only when the guarded legacy row is removed', async () => {
+    const executor = createMigrationLedgerExecutor([
+      { ledger: 'drizzle.__drizzle_migrations' },
+      { repaired: true },
+    ]);
+
+    await expect(repairLegacyForkMigrationLedger(executor as never)).resolves.toBe(true);
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves a database with media already present untouched', async () => {
+    const executor = createMigrationLedgerExecutor([
+      { ledger: 'drizzle.__drizzle_migrations' },
+      { repaired: false },
+    ]);
+
+    await expect(repairLegacyForkMigrationLedger(executor as never)).resolves.toBe(false);
+    expect(executor.execute).toHaveBeenCalledTimes(2);
   });
 });
