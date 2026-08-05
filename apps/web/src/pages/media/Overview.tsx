@@ -251,17 +251,17 @@ export function MediaOverview() {
   const { t } = useTranslation(['pages', 'common']);
   const {
     selectedServerIds,
-    mediaLibraryServerIds: scopedServerIds = selectedServerIds,
+    mediaLibraryServerIds: scopedServerIds,
     selectedServers,
-    mediaLibraryServers: scopedServers = selectedServers,
+    mediaLibraryServers: scopedServers,
     servers,
     isMultiServer,
     isLoading: serversLoading,
   } = useServer();
   const { value: timeRange, setValue: setTimeRange } = useTimeRange();
 
-  const mediaLibraryServerIds = scopedServerIds;
-  const mediaLibraryServers = scopedServers;
+  const mediaLibraryServerIds = scopedServerIds ?? selectedServerIds;
+  const mediaLibraryServers = scopedServers ?? selectedServers;
   const statusResult = useLibraryStatus(mediaLibraryServerIds);
   const {
     data: stats,

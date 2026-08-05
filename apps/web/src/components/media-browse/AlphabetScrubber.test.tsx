@@ -70,7 +70,7 @@ describe('AlphabetScrubber roving keyboard behavior', () => {
     const firstOption = screen.getByText('#');
     expect(firstOption.className).not.toContain('ring-1');
 
-    await act(() => listbox.focus());
+    act(() => listbox.focus());
     expect(firstOption.className).toContain('ring-1');
 
     await user.keyboard('{Tab}');

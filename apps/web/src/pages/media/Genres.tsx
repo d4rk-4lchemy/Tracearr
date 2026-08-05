@@ -59,8 +59,8 @@ function TablePanelSkeleton() {
 
 export function MediaGenres() {
   const { t } = useTranslation('pages');
-  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds = selectedServerIds, isLoading: serversLoading, refetch } = useServer();
-  const mediaLibraryServerIds = scopedServerIds;
+  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds, isLoading: serversLoading, refetch } = useServer();
+  const mediaLibraryServerIds = scopedServerIds ?? selectedServerIds;
   const [type, setType] = useState<'movie' | 'show'>('movie');
 
   const { data, isLoading, isError, refetch: refetchGenres } = useGenres(type, mediaLibraryServerIds);

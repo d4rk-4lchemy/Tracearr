@@ -1,7 +1,7 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
-  <i>Current vesrion:</i> <b>1.5.0</b>
+  <i>Current vesrion:</i> <b>2.0.0</b>
 </p>
 
 > [!WARNING]  
@@ -33,10 +33,10 @@ You can also build your own Docker image.<br>
 Example docker build commands:
 ```bash
 # Regular Image
-docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=1.5.0  --build-arg APP_TAG=1.5.0  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=2.0.0  --build-arg APP_TAG=2.0.0 --build-arg APP_UPSTREAM_VERSION=2.0.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.0.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 
 # Supervised Image
-docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=1.5.0  --build-arg APP_TAG=supervised-1.5.0  --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=2.0.0  --build-arg APP_TAG=supervised-2.0.0 --build-arg APP_UPSTREAM_VERSION=2.0.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.0.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 ```
 
 Example `docker-compose.yml` for **Supervised** image:

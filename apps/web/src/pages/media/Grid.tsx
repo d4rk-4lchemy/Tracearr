@@ -148,8 +148,8 @@ export function MediaGrid() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
-  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds = selectedServerIds, servers, isLoading: serversLoading } = useServer();
-  const mediaLibraryServerIds = scopedServerIds;
+  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds, servers, isLoading: serversLoading } = useServer();
+  const mediaLibraryServerIds = scopedServerIds ?? selectedServerIds;
 
   const type = typeFromSearch(location.search);
   const segment = typeSegment(type);

@@ -5,11 +5,23 @@ vi.mock('../../serverState.js', () => ({
 }));
 
 const { mockDbServers } = vi.hoisted(() => ({
-  mockDbServers: vi.fn(async (): Promise<Array<{ id: string; name: string }>> => []),
+  mockDbServers: vi.fn(
+    async (): Promise<Array<{ id: string; name: string; type: 'plex' | 'dispatcharr' }>> => []
+  ),
 }));
 
 vi.mock('../../db/client.js', () => ({
-  db: { select: () => ({ from: mockDbServers }) },
+  db: {
+    select: () => ({
+      from: () => {
+        const result = mockDbServers();
+        return {
+          then: result.then.bind(result),
+          where: () => ({ limit: () => result }),
+        };
+      },
+    }),
+  },
 }));
 
 vi.mock('../../services/librarySync.js', () => ({
@@ -293,7 +305,7 @@ describe('scheduleAutoSync - boot sync pending-job check', () => {
     mockQueueAdd.mockResolvedValue({ id: 'job-1' });
     mockQueueGetJobs.mockResolvedValue([]);
     mockGetJobSchedulers.mockResolvedValue([]);
-    mockDbServers.mockResolvedValue([{ id: 'srv-1', name: 'Server One' }]);
+    mockDbServers.mockResolvedValue([{ id: 'srv-1', name: 'Server One', type: 'plex' }]);
     await shutdownLibrarySyncQueue();
     initLibrarySyncQueue('redis://localhost:6379');
   });

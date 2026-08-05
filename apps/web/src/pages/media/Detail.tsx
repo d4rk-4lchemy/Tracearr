@@ -287,8 +287,8 @@ function HistoryPanel({
 export function MediaDetail() {
   const { id: rawId } = useParams<{ id: string }>();
   const id = rawId ?? '';
-  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds = selectedServerIds, servers } = useServer();
-  const mediaLibraryServerIds = scopedServerIds;
+  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds, servers } = useServer();
+  const mediaLibraryServerIds = scopedServerIds ?? selectedServerIds;
   const queryClient = useQueryClient();
   const historyRef = useRef<HTMLDivElement>(null);
   // A history row's id is its chain id (the chain's first session id), so the
