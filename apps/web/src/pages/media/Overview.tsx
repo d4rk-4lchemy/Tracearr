@@ -251,21 +251,25 @@ export function MediaOverview() {
   const { t } = useTranslation(['pages', 'common']);
   const {
     selectedServerIds,
+    mediaLibraryServerIds: scopedServerIds = selectedServerIds,
     selectedServers,
+    mediaLibraryServers: scopedServers = selectedServers,
     servers,
     isMultiServer,
     isLoading: serversLoading,
   } = useServer();
   const { value: timeRange, setValue: setTimeRange } = useTimeRange();
 
-  const statusResult = useLibraryStatus(selectedServerIds);
+  const mediaLibraryServerIds = scopedServerIds;
+  const mediaLibraryServers = scopedServers;
+  const statusResult = useLibraryStatus(mediaLibraryServerIds);
   const {
     data: stats,
     isLoading: statsIsLoading,
     isError: statsIsError,
     error: statsError,
     refetch: refetchStats,
-  } = useLibraryStats(selectedServerIds);
+  } = useLibraryStats(mediaLibraryServerIds);
 
   const growthParams = useMemo(() => {
     switch (timeRange.period) {
@@ -303,7 +307,7 @@ export function MediaOverview() {
   }, [timeRange]);
 
   const growth = useLibraryGrowth(
-    selectedServerIds,
+    mediaLibraryServerIds,
     null,
     growthParams.period,
     growthParams.startDate,
@@ -352,15 +356,15 @@ export function MediaOverview() {
   const allTimeLabel = t('common:time.allTime').toLowerCase();
 
   const unreadyServers = useMemo(
-    () => serversNeedingSync(statusResult.byServer, selectedServers),
-    [statusResult.byServer, selectedServers]
+    () => serversNeedingSync(statusResult.byServer, mediaLibraryServers),
+    [statusResult.byServer, mediaLibraryServers]
   );
 
   const allStatusLoaded = !statusResult.isLoading;
   const allServersUnready =
     allStatusLoaded &&
-    selectedServerIds.length > 0 &&
-    unreadyServers.length === selectedServerIds.length;
+    mediaLibraryServerIds.length > 0 &&
+    unreadyServers.length === mediaLibraryServerIds.length;
 
   const serverById = useMemo(
     () => new Map(servers.map((server) => [server.id, server])),
@@ -381,9 +385,9 @@ export function MediaOverview() {
     isLoading: shelvesIsLoading,
     isError: shelvesIsError,
     refetch: refetchShelves,
-  } = useShelves(selectedServerIds, apiTimeRange, false);
+  } = useShelves(mediaLibraryServerIds, apiTimeRange, false);
 
-  const hasNoServers = !serversLoading && selectedServerIds.length === 0;
+  const hasNoServers = !serversLoading && mediaLibraryServerIds.length === 0;
   const hasEmptyLibrary =
     !hasNoServers &&
     !shelvesIsLoading &&
@@ -420,6 +424,9 @@ export function MediaOverview() {
   );
 
   if (hasNoServers || allServersUnready || hasEmptyLibrary) {
+    if (mediaLibraryServerIds.length === 0 && selectedServerIds.length > 0) {
+      return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
+    }
     return (
       <div className="space-y-6">
         {header}

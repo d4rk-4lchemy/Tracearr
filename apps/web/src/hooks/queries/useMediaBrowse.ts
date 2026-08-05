@@ -137,6 +137,7 @@ export function useCatalogWindow(args: UseCatalogArgs, pageIndices: number[]): C
       staleTime: 5 * 60_000,
       refetchOnWindowFocus: false,
       structuralSharing: false,
+      enabled: args.serverIds.length > 0,
     })),
   });
 
@@ -179,7 +180,7 @@ export function useCatalogLetters(args: UseCatalogArgs) {
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
     refetchOnWindowFocus: false,
-    enabled: args.sort === 'title',
+    enabled: args.sort === 'title' && args.serverIds.length > 0,
   });
 }
 
@@ -277,6 +278,7 @@ export function useGenres(type: 'movie' | 'show', serverIds: string[]) {
     queryKey: ['media', 'genres', type, sortedServerIds.join(',')],
     queryFn: () => api.library.genres(type, sortedServerIds),
     staleTime: 5 * 60_000,
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -286,6 +288,7 @@ export function useLibraries(serverIds: string[]) {
     queryKey: ['media', 'libraries', sortedServerIds.join(',')],
     queryFn: () => api.library.libraries(sortedServerIds),
     staleTime: 5 * 60_000,
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -345,6 +348,7 @@ export function useMediaDetail(
     },
     staleTime: 60_000,
     placeholderData: stub && (() => detailFromStub(stub)),
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -407,6 +411,7 @@ export function useMediaStats(id: string, serverIds: string[]) {
     queryFn: () => api.library.media.stats(id, sortedServerIds),
     staleTime: 60_000,
     gcTime: 10 * 60_000,
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -421,6 +426,7 @@ export function useMediaWatchers(
     queryFn: () => api.library.media.watchers(id, window, sortedServerIds),
     staleTime: 60_000,
     gcTime: 10 * 60_000,
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -443,6 +449,7 @@ export function useMediaPlatforms(id: string, serverIds: string[]) {
     queryFn: () => api.library.media.platforms(id, sortedServerIds),
     staleTime: 60_000,
     gcTime: 10 * 60_000,
+    enabled: serverIds.length > 0,
   });
 }
 
@@ -458,5 +465,6 @@ export function useMediaHistory(id: string, serverIds: string[]) {
     getNextPageParam: (last) => last.meta.nextCursor ?? undefined,
     staleTime: 60_000,
     gcTime: 10 * 60_000,
+    enabled: serverIds.length > 0,
   });
 }

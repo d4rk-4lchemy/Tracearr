@@ -148,7 +148,8 @@ export function MediaGrid() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
-  const { selectedServerIds, servers, isLoading: serversLoading } = useServer();
+  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds = selectedServerIds, servers, isLoading: serversLoading } = useServer();
+  const mediaLibraryServerIds = scopedServerIds;
 
   const type = typeFromSearch(location.search);
   const segment = typeSegment(type);
@@ -235,7 +236,7 @@ export function MediaGrid() {
     [servers]
   );
 
-  const genresQuery = useGenres(type, selectedServerIds);
+  const genresQuery = useGenres(type, mediaLibraryServerIds);
   const genresData = genresQuery.data;
   const genres = useMemo(() => genresData?.data ?? [], [genresData]);
   const genreNames = useMemo(
@@ -243,7 +244,7 @@ export function MediaGrid() {
     [genresData, genres]
   );
 
-  const librariesQuery = useLibraries(selectedServerIds);
+  const librariesQuery = useLibraries(mediaLibraryServerIds);
   const librariesData = librariesQuery.data;
   const gridLibraries = useMemo(
     () => librariesForGridType(librariesData?.data ?? [], type),
@@ -264,10 +265,10 @@ export function MediaGrid() {
   // when nothing changed so this can't spin into a render loop even if an
   // upstream query result reference churns.
   useEffect(() => {
-    if (selectedServerIds.length === 0 && !genresData && !librariesData) return;
+    if (mediaLibraryServerIds.length === 0 && !genresData && !librariesData) return;
     setFilters((prev) => {
       const next = validatePersistedFilters(prev, {
-        serverIds: selectedServerIds,
+        serverIds: mediaLibraryServerIds,
         genres: genreNames,
         libraryKeys,
       });
@@ -280,7 +281,7 @@ export function MediaGrid() {
       }
       return next;
     });
-  }, [selectedServerIds, genreNames, genresData, libraryKeys, librariesData]);
+  }, [mediaLibraryServerIds, genreNames, genresData, libraryKeys, librariesData]);
 
   useEffect(() => {
     if (suppressedFiltersRef.current) {
@@ -292,7 +293,7 @@ export function MediaGrid() {
 
   // An explicit single-element array when the server filter is set - never
   // an intersection that could collapse to [] and be read as "unscoped".
-  const catalogServerIds = filters.serverId ? [filters.serverId] : selectedServerIds;
+  const catalogServerIds = filters.serverId ? [filters.serverId] : mediaLibraryServerIds;
 
   const catalogArgs = {
     type,
@@ -424,7 +425,7 @@ export function MediaGrid() {
     });
   };
 
-  const hasNoServers = !serversLoading && selectedServerIds.length === 0;
+  const hasNoServers = !serversLoading && mediaLibraryServerIds.length === 0;
   const isEmpty = !isError && totalItems === 0;
   const hasSearch = search.trim().length > 0;
   const hasFilters = activeFilterCount(filters) > 0;
@@ -452,6 +453,7 @@ export function MediaGrid() {
   );
 
   if (hasNoServers) {
+    if (selectedServerIds.length > 0) return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
     return (
       <div className="space-y-6">
         {header}

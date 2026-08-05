@@ -287,7 +287,8 @@ function HistoryPanel({
 export function MediaDetail() {
   const { id: rawId } = useParams<{ id: string }>();
   const id = rawId ?? '';
-  const { selectedServerIds, servers } = useServer();
+  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds = selectedServerIds, servers } = useServer();
+  const mediaLibraryServerIds = scopedServerIds;
   const queryClient = useQueryClient();
   const historyRef = useRef<HTMLDivElement>(null);
   // A history row's id is its chain id (the chain's first session id), so the
@@ -311,14 +312,14 @@ export function MediaDetail() {
     [queryClient, id]
   );
 
-  const detailQuery = useMediaDetail(id, selectedServerIds, 'all', stub);
-  const statsQuery = useMediaStats(id, selectedServerIds);
-  const watchersQuery = useMediaWatchers(id, selectedServerIds);
+  const detailQuery = useMediaDetail(id, mediaLibraryServerIds, 'all', stub);
+  const statsQuery = useMediaStats(id, mediaLibraryServerIds);
+  const watchersQuery = useMediaWatchers(id, mediaLibraryServerIds);
   const mediaType = detailQuery.data?.mediaType;
   const isShow = mediaType === 'show';
-  const seasonHeatQuery = useSeasonHeat(id, selectedServerIds, isShow);
-  const platformsQuery = useMediaPlatforms(id, selectedServerIds);
-  const historyQuery = useMediaHistory(id, selectedServerIds);
+  const seasonHeatQuery = useSeasonHeat(id, mediaLibraryServerIds, isShow);
+  const platformsQuery = useMediaPlatforms(id, mediaLibraryServerIds);
+  const historyQuery = useMediaHistory(id, mediaLibraryServerIds);
 
   const notFoundStatus =
     detailQuery.error instanceof ApiError &&

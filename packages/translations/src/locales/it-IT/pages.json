@@ -17,10 +17,10 @@
     "apiKeyAutoLoaded": "Chiave API caricata automaticamente",
     "backToSettings": "Torna alle impostazioni",
     "noApiKey": "Nessuna chiave API generata - creane una in Impostazioni per testare gli endpoint",
+    "specLoadError": "Failed to load the API specification. Check your API key and try again.",
     "versionSwitcherLabel": "API documentation version",
     "versionV1": "API v1",
-    "versionV2": "API v2",
-    "specLoadError": "Failed to load the API specification. Check your API key and try again."
+    "versionV2": "API v2"
   },
   "dashboard": {
     "activeUsers": "Utenti Attivi",
@@ -32,11 +32,11 @@
     "serverResources": "Risorse Server",
     "streamLocations": "Posizioni Del Flusso",
     "streamsAppearHere": "I flussi attivi appariranno qui quando gli utenti inizieranno a guardare",
-    "watchTime": "Tempo Di Osservazione",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
     "vodPlays": "Riproduzioni",
     "vodWatchTime": "Tempo Di Osservazione",
-    "tvSessions": "TV Sessions",
-    "tvWatchTime": "TV Watch Time"
+    "watchTime": "Tempo Di Osservazione"
   },
   "debug": {
     "clearLibraryCache": "Cancella Cache Libreria",
@@ -211,6 +211,8 @@
       "days": "giorni",
       "description": "Utilizzo, previsioni e ottimizzazione dello storage",
       "duplicates": "Duplicati",
+      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
+      "duplicatesTitle": "Duplicates",
       "failedToLoad": "Impossibile caricare i dati di archiviazione",
       "failedToLoadDesc": "Impossibile recuperare i dati di archiviazione. Riprova.",
       "groups": "gruppi",
@@ -226,13 +228,17 @@
       "title": "Archiviazione",
       "totalStorage": "Memoria Totale",
       "unused": "inutilizzato",
-      "zeroGrowth": "0 GB/mese",
-      "duplicatesTitle": "Duplicates",
-      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions"
+      "zeroGrowth": "0 GB/mese"
     },
     "title": "Libreria",
     "topMovies": "Film Migliori",
     "topShows": "Top Serie TV",
+    "versionsBackfill": {
+      "action": "Sync now",
+      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
+      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
+      "syncStarted": "Library sync started."
+    },
     "watch": {
       "avgPerItem": "media per articolo",
       "bingeHighlights": "Binge Highlights",
@@ -254,12 +260,6 @@
       "totalWatchTime": "Tempo Totale Di Osservazione",
       "viewingHours": "Orario Di Visualizzazione",
       "watched": "Visti"
-    },
-    "versionsBackfill": {
-      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
-      "action": "Sync now",
-      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
-      "syncStarted": "Library sync started."
     }
   },
   "login": {
@@ -303,6 +303,12 @@
     "yourPasswordPlaceholder": "La tua password"
   },
   "maintenance": {
+    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded.",
+    "initStep": {
+      "migrations": "Applying database migrations",
+      "services": "Starting services",
+      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)"
+    },
     "interruptionDescription": "Uno o più servizi di backend non sono disponibili. Questa pagina si aggiornerà automaticamente quando la connettività viene ripristinata.",
     "interruptionTitle": "Interruzione del servizio",
     "restoreFailed": "Ripristino fallito",
@@ -318,13 +324,7 @@
     },
     "restoreTitle": "Ripristino dal backup...",
     "startingDescription": "Il server sta aspettando che i servizi di backend diventino disponibili. Questa pagina si aggiornerà automaticamente quando tutto sarà pronto.",
-    "startingTitle": "Tracearr si sta avviando...",
-    "initStep": {
-      "migrations": "Applying database migrations",
-      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)",
-      "services": "Starting services"
-    },
-    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded."
+    "startingTitle": "Tracearr si sta avviando..."
   },
   "map": {
     "allActivity": "Tutte le attività",
@@ -342,12 +342,12 @@
       },
       "copies": {
         "columns": {
-          "server": "Server",
+          "added": "Added",
+          "episodes": "Episodes",
           "library": "Library",
           "quality": "Quality",
-          "episodes": "Episodes",
-          "size": "Size",
-          "added": "Added"
+          "server": "Server",
+          "size": "Size"
         },
         "loadError": "Couldn't load copies",
         "title": "Copies",
@@ -457,31 +457,31 @@
       }
     },
     "genres": {
-      "title": "Generi",
-      "subtitle": "Plays and watch time by genre, across every server in view.",
       "chart": {
-        "title": "Plays by genre",
-        "valueLabel": "Plays",
+        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below.",
         "itemCount_one": "{{count}} title",
         "itemCount_other": "{{count}} titles",
-        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below."
+        "title": "Plays by genre",
+        "valueLabel": "Plays"
       },
+      "empty": {
+        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes.",
+        "title": "No genres captured yet"
+      },
+      "loadError": "Couldn't load genres",
+      "subtitle": "Plays and watch time by genre, across every server in view.",
       "table": {
-        "title": "Genre breakdown",
+        "browseMovies": "Browse {{genre}} movies",
+        "browseShows": "Browse {{genre}} shows",
         "columns": {
           "genre": "Genre",
           "items": "Items",
           "plays": "Plays",
           "watchTime": "Watch time"
         },
-        "browseMovies": "Browse {{genre}} movies",
-        "browseShows": "Browse {{genre}} shows"
+        "title": "Genre breakdown"
       },
-      "empty": {
-        "title": "No genres captured yet",
-        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes."
-      },
-      "loadError": "Couldn't load genres"
+      "title": "Generi"
     },
     "grid": {
       "clearJumpAction": "Clear",
@@ -492,34 +492,41 @@
       "loaderError": "Couldn't load more titles",
       "retry": "Retry",
       "scrubber": {
-        "label": "Jump to letter",
-        "current": "Letter {{letter}}"
+        "current": "Letter {{letter}}",
+        "label": "Jump to letter"
       },
       "showAll": "Show all",
       "showingFrom": "Showing from {{letter}}",
       "toolbar": {
         "ariaLabel": "Filters and sort",
         "count": "{{loaded}} of {{total}} titles · {{size}}",
+        "countTotal_one": "{{count}} title · {{size}}",
+        "countTotal_other": "{{count}} titles · {{size}}",
         "done": "Done",
         "filtersLabel": "Filters",
         "filtersSheetTitle": "Filters",
         "genreAll": "Any genre",
         "genreLabel": "Genre",
+        "hdrAll": "Any",
+        "hdrChip": "HDR",
+        "hdrLabel": "Dynamic range",
+        "hdrOnly": "HDR only",
+        "libraryAll": "Any library",
+        "libraryLabel": "Library",
         "moviesToggle": "Movies",
         "removeFilter": "Remove {{label}} filter",
         "resolutionAll": "Any resolution",
-        "hdrLabel": "Dynamic range",
-        "hdrAll": "Any",
-        "hdrOnly": "HDR only",
-        "hdrChip": "HDR",
         "resolutionLabel": "Resolution",
         "searchLabel": "Search titles",
         "searchPlaceholder": "Search titles…",
         "serverAll": "Any server",
-        "libraryLabel": "Library",
-        "libraryAll": "Any library",
         "serverLabel": "Server",
         "showsToggle": "Shows",
+        "sizeChipAtLeast": "≥ {{min}} GB",
+        "sizeChipAtMost": "≤ {{max}} GB",
+        "sizeChipRange": "{{min}}–{{max}} GB",
+        "sizeGbMaxLabel": "Max size (GB)",
+        "sizeGbMinLabel": "Min size (GB)",
         "sort": {
           "added": "Recently added",
           "plays": "Plays",
@@ -539,14 +546,7 @@
         },
         "watchedLabel": "Watched",
         "yearFromLabel": "From year",
-        "yearToLabel": "To year",
-        "sizeGbMinLabel": "Min size (GB)",
-        "sizeGbMaxLabel": "Max size (GB)",
-        "sizeChipAtLeast": "≥ {{min}} GB",
-        "sizeChipAtMost": "≤ {{max}} GB",
-        "sizeChipRange": "{{min}}–{{max}} GB",
-        "countTotal_one": "{{count}} title · {{size}}",
-        "countTotal_other": "{{count}} titles · {{size}}"
+        "yearToLabel": "To year"
       }
     },
     "landing": {
@@ -598,8 +598,10 @@
     "movies": {
       "title": "Film"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Aggiunto {{date}}",
+      "moreServers": "+{{count}} more",
       "onServers": "Su {{servers}}",
       "playsCompact_one": "{{compact}} play",
       "playsCompact_other": "{{compact}} plays",
@@ -623,8 +625,7 @@
         "watched": "Visto",
         "watchedByOthers": "Watched by others",
         "watchedByYou": "Watched by you"
-      },
-      "moreServers": "+{{count}} more"
+      }
     },
     "shows": {
       "title": "Serie TV"
@@ -685,7 +686,6 @@
     "maxIps": "IP Massimi",
     "maxIpsDefault": "Numero massimo di IP univoci ammessi nella finestra temporale. Predefinito: 5 IP in 24 ore",
     "maxSpeed": "Velocità Massima ({{unit}})",
-    "recordsOnly": "Records violations only",
     "maxSpeedDefault": "Velocità di viaggio massima realistica. Predefinita: {{value}} {{unit}} (velocità aerea)",
     "maxStreams": "Max Stream",
     "maxStreamsDefault": "Flussi simultanei massimi per utente. Predefinito: 3",
@@ -695,6 +695,7 @@
     "months": "Mesi",
     "noRulesConfigured": "Nessuna regola configurata",
     "none": "Nessuno",
+    "recordsOnly": "Records violations only",
     "ruleName": "Nome Regola",
     "ruleNamePlaceholder": "Ad esempio, Limite Concorrente Stream",
     "ruleType": "Tipo Di Regola",

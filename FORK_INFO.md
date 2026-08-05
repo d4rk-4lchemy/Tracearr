@@ -37,6 +37,7 @@ User-facing Dispatcharr behavior:
 - Use username/password mode for WebSocket-capable realtime updates; API-key mode falls back to REST polling.
 - Legacy Dispatcharr servers upgraded from older fork versions remain in polling mode until username/password credentials are entered again, because older stored tokens do not contain recoverable credentials for automatic migration.
 - Show Live TV streams, VOD movies, and VOD shows.
+- Dispatcharr does not provide a Media library catalog or VOD library synchronization; it remains supported for sessions, history, Live TV/VOD streams, and user synchronization.
 - Optionally ignore streams reported as anonymous.
 - Terminate Dispatcharr live/VOD streams from Tracearr.
 - Display Live TV channel/programme information, channel logos, stream bitrate, codecs, resolution, and FFmpeg speed where available.

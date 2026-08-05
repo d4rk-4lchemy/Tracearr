@@ -17,10 +17,10 @@
     "apiKeyAutoLoaded": "APIキーが自動的に読み込まれました",
     "backToSettings": "設定に戻る",
     "noApiKey": "APIキーが生成されていません - エンドポイントをテストするための設定を作成します",
+    "specLoadError": "Failed to load the API specification. Check your API key and try again.",
     "versionSwitcherLabel": "API documentation version",
     "versionV1": "API v1",
-    "versionV2": "API v2",
-    "specLoadError": "Failed to load the API specification. Check your API key and try again."
+    "versionV2": "API v2"
   },
   "dashboard": {
     "activeUsers": "アクティブなユーザー",
@@ -32,11 +32,11 @@
     "serverResources": "サーバーリソース",
     "streamLocations": "ストリームの場所",
     "streamsAppearHere": "ユーザーが視聴を開始すると、アクティブなストリームがここに表示されます",
-    "watchTime": "ウォッチ時間",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
     "vodPlays": "再生",
     "vodWatchTime": "ウォッチ時間",
-    "tvSessions": "TV Sessions",
-    "tvWatchTime": "TV Watch Time"
+    "watchTime": "ウォッチ時間"
   },
   "debug": {
     "clearLibraryCache": "ライブラリキャッシュをクリア",
@@ -211,6 +211,8 @@
       "days": "日",
       "description": "ストレージの使用状況、予測、および最適化",
       "duplicates": "重複",
+      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
+      "duplicatesTitle": "Duplicates",
       "failedToLoad": "ストレージデータの読み込みに失敗しました",
       "failedToLoadDesc": "ストレージデータを取得できませんでした。もう一度やり直してください。",
       "groups": "グループ",
@@ -226,13 +228,17 @@
       "title": "ストレージ",
       "totalStorage": "合計ストレージ",
       "unused": "未使用",
-      "zeroGrowth": "0 GB/月",
-      "duplicatesTitle": "Duplicates",
-      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions"
+      "zeroGrowth": "0 GB/月"
     },
     "title": "ライブラリ",
     "topMovies": "トップ 映画",
     "topShows": "トップのテレビショー",
+    "versionsBackfill": {
+      "action": "Sync now",
+      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
+      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
+      "syncStarted": "Library sync started."
+    },
     "watch": {
       "avgPerItem": "項目あたりの平均値",
       "bingeHighlights": "Bingeハイライト",
@@ -254,12 +260,6 @@
       "totalWatchTime": "合計視聴時間",
       "viewingHours": "表示時間",
       "watched": "視聴済み"
-    },
-    "versionsBackfill": {
-      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
-      "action": "Sync now",
-      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
-      "syncStarted": "Library sync started."
     }
   },
   "login": {
@@ -303,6 +303,12 @@
     "yourPasswordPlaceholder": "パスワード"
   },
   "maintenance": {
+    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded.",
+    "initStep": {
+      "migrations": "Applying database migrations",
+      "services": "Starting services",
+      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)"
+    },
     "interruptionDescription": "1 つ以上のバックエンドサービスが利用できなくなりました。接続が復元されると、このページは自動的に更新されます。",
     "interruptionTitle": "サービスの中断",
     "restoreFailed": "復元に失敗しました",
@@ -318,13 +324,7 @@
     },
     "restoreTitle": "バックアップから復元しています...",
     "startingDescription": "サーバーはバックエンドサービスが利用可能になるのを待っています。このページは準備が整ったら自動的に更新されます。",
-    "startingTitle": "Tracearrを起動しています...",
-    "initStep": {
-      "migrations": "Applying database migrations",
-      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)",
-      "services": "Starting services"
-    },
-    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded."
+    "startingTitle": "Tracearrを起動しています..."
   },
   "map": {
     "allActivity": "すべてのアクティビティ",
@@ -342,12 +342,12 @@
       },
       "copies": {
         "columns": {
-          "server": "Server",
+          "added": "Added",
+          "episodes": "Episodes",
           "library": "Library",
           "quality": "Quality",
-          "episodes": "Episodes",
-          "size": "Size",
-          "added": "Added"
+          "server": "Server",
+          "size": "Size"
         },
         "loadError": "Couldn't load copies",
         "title": "Copies",
@@ -457,31 +457,31 @@
       }
     },
     "genres": {
-      "title": "ジャンル",
-      "subtitle": "Plays and watch time by genre, across every server in view.",
       "chart": {
-        "title": "Plays by genre",
-        "valueLabel": "Plays",
+        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below.",
         "itemCount_one": "{{count}} title",
         "itemCount_other": "{{count}} titles",
-        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below."
+        "title": "Plays by genre",
+        "valueLabel": "Plays"
       },
+      "empty": {
+        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes.",
+        "title": "No genres captured yet"
+      },
+      "loadError": "Couldn't load genres",
+      "subtitle": "Plays and watch time by genre, across every server in view.",
       "table": {
-        "title": "Genre breakdown",
+        "browseMovies": "Browse {{genre}} movies",
+        "browseShows": "Browse {{genre}} shows",
         "columns": {
           "genre": "Genre",
           "items": "Items",
           "plays": "Plays",
           "watchTime": "Watch time"
         },
-        "browseMovies": "Browse {{genre}} movies",
-        "browseShows": "Browse {{genre}} shows"
+        "title": "Genre breakdown"
       },
-      "empty": {
-        "title": "No genres captured yet",
-        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes."
-      },
-      "loadError": "Couldn't load genres"
+      "title": "ジャンル"
     },
     "grid": {
       "clearJumpAction": "Clear",
@@ -492,34 +492,41 @@
       "loaderError": "Couldn't load more titles",
       "retry": "Retry",
       "scrubber": {
-        "label": "Jump to letter",
-        "current": "Letter {{letter}}"
+        "current": "Letter {{letter}}",
+        "label": "Jump to letter"
       },
       "showAll": "Show all",
       "showingFrom": "Showing from {{letter}}",
       "toolbar": {
         "ariaLabel": "Filters and sort",
         "count": "{{loaded}} of {{total}} titles · {{size}}",
+        "countTotal_one": "{{count}} title · {{size}}",
+        "countTotal_other": "{{count}} titles · {{size}}",
         "done": "Done",
         "filtersLabel": "Filters",
         "filtersSheetTitle": "Filters",
         "genreAll": "Any genre",
         "genreLabel": "Genre",
+        "hdrAll": "Any",
+        "hdrChip": "HDR",
+        "hdrLabel": "Dynamic range",
+        "hdrOnly": "HDR only",
+        "libraryAll": "Any library",
+        "libraryLabel": "Library",
         "moviesToggle": "Movies",
         "removeFilter": "Remove {{label}} filter",
         "resolutionAll": "Any resolution",
-        "hdrLabel": "Dynamic range",
-        "hdrAll": "Any",
-        "hdrOnly": "HDR only",
-        "hdrChip": "HDR",
         "resolutionLabel": "Resolution",
         "searchLabel": "Search titles",
         "searchPlaceholder": "Search titles…",
         "serverAll": "Any server",
-        "libraryLabel": "Library",
-        "libraryAll": "Any library",
         "serverLabel": "Server",
         "showsToggle": "Shows",
+        "sizeChipAtLeast": "≥ {{min}} GB",
+        "sizeChipAtMost": "≤ {{max}} GB",
+        "sizeChipRange": "{{min}}–{{max}} GB",
+        "sizeGbMaxLabel": "Max size (GB)",
+        "sizeGbMinLabel": "Min size (GB)",
         "sort": {
           "added": "Recently added",
           "plays": "Plays",
@@ -539,14 +546,7 @@
         },
         "watchedLabel": "Watched",
         "yearFromLabel": "From year",
-        "yearToLabel": "To year",
-        "sizeGbMinLabel": "Min size (GB)",
-        "sizeGbMaxLabel": "Max size (GB)",
-        "sizeChipAtLeast": "≥ {{min}} GB",
-        "sizeChipAtMost": "≤ {{max}} GB",
-        "sizeChipRange": "{{min}}–{{max}} GB",
-        "countTotal_one": "{{count}} title · {{size}}",
-        "countTotal_other": "{{count}} titles · {{size}}"
+        "yearToLabel": "To year"
       }
     },
     "landing": {
@@ -598,8 +598,10 @@
     "movies": {
       "title": "映画"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "{{date}}に追加",
+      "moreServers": "+{{count}} more",
       "onServers": "{{servers}}で利用可能",
       "playsCompact_one": "{{compact}} play",
       "playsCompact_other": "{{compact}} plays",
@@ -623,8 +625,7 @@
         "watched": "視聴済み",
         "watchedByOthers": "Watched by others",
         "watchedByYou": "Watched by you"
-      },
-      "moreServers": "+{{count}} more"
+      }
     },
     "shows": {
       "title": "番組"
@@ -685,7 +686,6 @@
     "maxIps": "最大IP",
     "maxIpsDefault": "時間枠内で許可される最大一意のIPアドレス。デフォルト：24時間以内に5つのIPアドレス。",
     "maxSpeed": "最大速度 ({{unit}})",
-    "recordsOnly": "Records violations only",
     "maxSpeedDefault": "最大の現実的な移動速度。デフォルト: {{value}} {{unit}} (飛行機の速度)",
     "maxStreams": "最大ストリーム",
     "maxStreamsDefault": "ユーザーあたりの最大同時ストリーム数。デフォルト: 3",
@@ -695,6 +695,7 @@
     "months": "ヶ月",
     "noRulesConfigured": "ルールが設定されていません",
     "none": "なし",
+    "recordsOnly": "Records violations only",
     "ruleName": "ルール名",
     "ruleNamePlaceholder": "例えば、同時配信制限",
     "ruleType": "ルールの種類",

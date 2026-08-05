@@ -33,6 +33,7 @@ import {
   resolutionTierRank,
   RESOLUTION_TIERS,
   LEGACY_VERSION_SENTINEL,
+  supportsMediaLibrary,
 } from '@tracearr/shared';
 import { resolutionBucketPredicate, resolutionRankSql } from '../utils/resolutionBuckets.js';
 import { getHeavyOpsStatus } from '../jobs/heavyOpsLock.js';
@@ -177,6 +178,7 @@ export class LibrarySyncService {
     if (!server) {
       throw new Error(`Server not found: ${serverId}`);
     }
+    if (!supportsMediaLibrary(server.type)) return results;
 
     const startedAt = new Date().toISOString();
 

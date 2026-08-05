@@ -545,6 +545,7 @@ export { ROLE_PERMISSIONS, LOGIN_ROLES, canLogin, hasMinRole, isOwner, isActive 
 
 // Session constants
 export { MEDIA_TYPES, DEFAULT_STREAM_DETAILS } from './types.js';
+export { SERVER_CAPABILITIES, supportsMediaLibrary } from './serverCapabilities.js';
 
 // Backup constants
 export { RESTORE_PHASES } from './types.js';

@@ -51,6 +51,7 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
           message: 'Sync job queued',
         };
       } catch (error) {
+        if (error instanceof Error && error.message.includes('not supported')) return reply.badRequest(error.message);
         if (error instanceof Error && error.message.includes('already in progress')) {
           return reply.conflict(error.message);
         }

@@ -10,7 +10,7 @@
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import { isMaintenance } from '../serverState.js';
-import { getRedisPrefix, LEGACY_VERSION_SENTINEL } from '@tracearr/shared';
+import { getRedisPrefix, LEGACY_VERSION_SENTINEL, supportsMediaLibrary } from '@tracearr/shared';
 import { Redis } from 'ioredis';
 import { sql } from 'drizzle-orm';
 import { WS_EVENTS, REDIS_KEYS } from '@tracearr/shared';
@@ -429,7 +429,7 @@ export async function scheduleAutoSync(): Promise<void> {
   }
 
   // Query all servers from database
-  const allServers = await db.select({ id: servers.id, name: servers.name }).from(servers);
+  const allServers = (await db.select({ id: servers.id, name: servers.name, type: servers.type }).from(servers)).filter((s) => supportsMediaLibrary(s.type));
 
   if (allServers.length === 0) {
     console.log('[LibrarySync] No servers found - skipping auto-sync scheduling');
@@ -507,6 +507,8 @@ export async function enqueueLibrarySync(serverId: string, userId?: string): Pro
   if (!librarySyncQueue) {
     throw new Error('Library sync queue not initialized');
   }
+  const server = await db.select({ type: servers.type }).from(servers).where(sql`${servers.id} = ${serverId}`).limit(1);
+  if (server[0] && !supportsMediaLibrary(server[0].type)) throw new Error('Library sync is not supported for this server');
 
   // Only block if there's an active sync running - scheduled jobs shouldn't block manual syncs
   const activeJobs = await librarySyncQueue.getJobs(['active']);

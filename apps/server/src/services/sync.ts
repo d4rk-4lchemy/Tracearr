@@ -10,6 +10,7 @@ import { db } from '../db/client.js';
 import { servers, serverUsers } from '../db/schema.js';
 import { createMediaServerClient, PlexClient, type MediaUser } from './mediaServer/index.js';
 import { syncUserFromMediaServer, type SyncUserOptions } from './userService.js';
+import { supportsMediaLibrary } from '@tracearr/shared';
 
 export interface SyncResult {
   usersAdded: number;
@@ -290,7 +291,7 @@ export async function syncServer(
   }
 
   // Sync libraries (just count for now - libraries stored on server)
-  if (options.syncLibraries) {
+  if (options.syncLibraries && supportsMediaLibrary(server.type)) {
     try {
       const client = createMediaServerClient({
         type: server.type,

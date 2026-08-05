@@ -59,10 +59,11 @@ function TablePanelSkeleton() {
 
 export function MediaGenres() {
   const { t } = useTranslation('pages');
-  const { selectedServerIds, isLoading: serversLoading, refetch } = useServer();
+  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds = selectedServerIds, isLoading: serversLoading, refetch } = useServer();
+  const mediaLibraryServerIds = scopedServerIds;
   const [type, setType] = useState<'movie' | 'show'>('movie');
 
-  const { data, isLoading, isError, refetch: refetchGenres } = useGenres(type, selectedServerIds);
+  const { data, isLoading, isError, refetch: refetchGenres } = useGenres(type, mediaLibraryServerIds);
   const genres = useMemo(() => data?.data ?? [], [data]);
 
   const sortedByPlays = useMemo(() => [...genres].sort((a, b) => b.plays - a.plays), [genres]);
@@ -77,7 +78,7 @@ export function MediaGenres() {
     [sortedByPlays, t]
   );
 
-  const hasNoServers = !serversLoading && selectedServerIds.length === 0;
+  const hasNoServers = !serversLoading && mediaLibraryServerIds.length === 0;
   const hasNoGenres = !isLoading && !isError && genres.length === 0;
 
   const header = (
@@ -88,6 +89,7 @@ export function MediaGenres() {
   );
 
   if (hasNoServers) {
+    if (mediaLibraryServerIds.length === 0) return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
     return (
       <div className="space-y-6">
         {header}

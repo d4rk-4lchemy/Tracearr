@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Server } from '@tracearr/shared';
+import { supportsMediaLibrary } from '@tracearr/shared';
 import { api } from '@/lib/api';
 import { useAuth } from './useAuth';
 
@@ -20,6 +21,8 @@ interface ServerContextValue {
   servers: Server[];
   selectedServerIds: string[];
   selectedServers: Server[];
+  mediaLibraryServerIds: string[];
+  mediaLibraryServers: Server[];
   isMultiServer: boolean;
   isAllServersSelected: boolean;
   isLoading: boolean;
@@ -84,6 +87,9 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     if (user.role === 'owner') return servers;
     return servers.filter((s) => user.serverIds.includes(s.id));
   }, [servers, user]);
+
+  const mediaLibraryServers = useMemo(() => accessibleServers.filter((s) => supportsMediaLibrary(s.type)), [accessibleServers]);
+  const mediaLibraryServerIds = useMemo(() => selectedServerIds.filter((id) => mediaLibraryServers.some((s) => s.id === id)), [selectedServerIds, mediaLibraryServers]);
 
   // Validate selection when servers load
   useEffect(() => {
@@ -201,7 +207,9 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     () => ({
       servers: accessibleServers,
       selectedServerIds,
-      selectedServers,
+    selectedServers,
+    mediaLibraryServerIds,
+    mediaLibraryServers,
       isMultiServer,
       isAllServersSelected,
       isLoading,

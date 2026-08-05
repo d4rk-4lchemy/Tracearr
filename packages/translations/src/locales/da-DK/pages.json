@@ -17,10 +17,10 @@
     "apiKeyAutoLoaded": "API-nøgle auto-indlæst",
     "backToSettings": "Tilbage til Indstillinger",
     "noApiKey": "Ingen API-nøgle genereret - opret en i Indstillinger for at teste endepunkter",
+    "specLoadError": "Failed to load the API specification. Check your API key and try again.",
     "versionSwitcherLabel": "API documentation version",
     "versionV1": "API v1",
-    "versionV2": "API v2",
-    "specLoadError": "Failed to load the API specification. Check your API key and try again."
+    "versionV2": "API v2"
   },
   "dashboard": {
     "activeUsers": "Aktive Brugere",
@@ -32,11 +32,11 @@
     "serverResources": "Server Ressourcer",
     "streamLocations": "Stream Placeringer",
     "streamsAppearHere": "Aktive streams vises her, når brugerne begynder at se",
-    "watchTime": "Se Tid",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
     "vodPlays": "Afspil",
     "vodWatchTime": "Se Tid",
-    "tvSessions": "TV Sessions",
-    "tvWatchTime": "TV Watch Time"
+    "watchTime": "Se Tid"
   },
   "debug": {
     "clearLibraryCache": "Ryd Biblioteks Cache",
@@ -211,6 +211,8 @@
       "days": "dage",
       "description": "Opbevaring forbrug, forudsigelser og optimering",
       "duplicates": "Duplikater",
+      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
+      "duplicatesTitle": "Duplicates",
       "failedToLoad": "Kunne ikke indlæse lagringsdata",
       "failedToLoadDesc": "Kunne ikke hente lagringsdata. Prøv venligst igen.",
       "groups": "grupper",
@@ -226,13 +228,17 @@
       "title": "Lagerplads",
       "totalStorage": "Lagerplads I Alt",
       "unused": "ubrugt",
-      "zeroGrowth": "0 GB/md.",
-      "duplicatesTitle": "Duplicates",
-      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions"
+      "zeroGrowth": "0 GB/md."
     },
     "title": "Bibliotek",
     "topMovies": "Top Film",
     "topShows": "Top TV-serier",
+    "versionsBackfill": {
+      "action": "Sync now",
+      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
+      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
+      "syncStarted": "Library sync started."
+    },
     "watch": {
       "avgPerItem": "gns. pr. element",
       "bingeHighlights": "Binge Markeringer",
@@ -254,12 +260,6 @@
       "totalWatchTime": "Total Overvågningstid",
       "viewingHours": "Visning Af Timer",
       "watched": "Set"
-    },
-    "versionsBackfill": {
-      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
-      "action": "Sync now",
-      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
-      "syncStarted": "Library sync started."
     }
   },
   "login": {
@@ -303,6 +303,12 @@
     "yourPasswordPlaceholder": "Din adgangskode"
   },
   "maintenance": {
+    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded.",
+    "initStep": {
+      "migrations": "Applying database migrations",
+      "services": "Starting services",
+      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)"
+    },
     "interruptionDescription": "En eller flere backend-tjenester er blevet utilgængelige. Denne side opdateres automatisk, når forbindelsen genoprettes.",
     "interruptionTitle": "Afbrydelse af tjenesten",
     "restoreFailed": "Gendannelse mislykkedes",
@@ -318,13 +324,7 @@
     },
     "restoreTitle": "Gendanner fra backup...",
     "startingDescription": "Serveren venter på at backend-tjenester bliver tilgængelige. Denne side opdateres automatisk, når alt er klar.",
-    "startingTitle": "Tracearr starter op...",
-    "initStep": {
-      "migrations": "Applying database migrations",
-      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)",
-      "services": "Starting services"
-    },
-    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded."
+    "startingTitle": "Tracearr starter op..."
   },
   "map": {
     "allActivity": "Alle aktiviteter",
@@ -342,12 +342,12 @@
       },
       "copies": {
         "columns": {
-          "server": "Server",
+          "added": "Added",
+          "episodes": "Episodes",
           "library": "Library",
           "quality": "Quality",
-          "episodes": "Episodes",
-          "size": "Size",
-          "added": "Added"
+          "server": "Server",
+          "size": "Size"
         },
         "loadError": "Couldn't load copies",
         "title": "Copies",
@@ -457,31 +457,31 @@
       }
     },
     "genres": {
-      "title": "Genrer",
-      "subtitle": "Plays and watch time by genre, across every server in view.",
       "chart": {
-        "title": "Plays by genre",
-        "valueLabel": "Plays",
+        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below.",
         "itemCount_one": "{{count}} title",
         "itemCount_other": "{{count}} titles",
-        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below."
+        "title": "Plays by genre",
+        "valueLabel": "Plays"
       },
+      "empty": {
+        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes.",
+        "title": "No genres captured yet"
+      },
+      "loadError": "Couldn't load genres",
+      "subtitle": "Plays and watch time by genre, across every server in view.",
       "table": {
-        "title": "Genre breakdown",
+        "browseMovies": "Browse {{genre}} movies",
+        "browseShows": "Browse {{genre}} shows",
         "columns": {
           "genre": "Genre",
           "items": "Items",
           "plays": "Plays",
           "watchTime": "Watch time"
         },
-        "browseMovies": "Browse {{genre}} movies",
-        "browseShows": "Browse {{genre}} shows"
+        "title": "Genre breakdown"
       },
-      "empty": {
-        "title": "No genres captured yet",
-        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes."
-      },
-      "loadError": "Couldn't load genres"
+      "title": "Genrer"
     },
     "grid": {
       "clearJumpAction": "Clear",
@@ -492,34 +492,41 @@
       "loaderError": "Couldn't load more titles",
       "retry": "Retry",
       "scrubber": {
-        "label": "Jump to letter",
-        "current": "Letter {{letter}}"
+        "current": "Letter {{letter}}",
+        "label": "Jump to letter"
       },
       "showAll": "Show all",
       "showingFrom": "Showing from {{letter}}",
       "toolbar": {
         "ariaLabel": "Filters and sort",
         "count": "{{loaded}} of {{total}} titles · {{size}}",
+        "countTotal_one": "{{count}} title · {{size}}",
+        "countTotal_other": "{{count}} titles · {{size}}",
         "done": "Done",
         "filtersLabel": "Filters",
         "filtersSheetTitle": "Filters",
         "genreAll": "Any genre",
         "genreLabel": "Genre",
+        "hdrAll": "Any",
+        "hdrChip": "HDR",
+        "hdrLabel": "Dynamic range",
+        "hdrOnly": "HDR only",
+        "libraryAll": "Any library",
+        "libraryLabel": "Library",
         "moviesToggle": "Movies",
         "removeFilter": "Remove {{label}} filter",
         "resolutionAll": "Any resolution",
-        "hdrLabel": "Dynamic range",
-        "hdrAll": "Any",
-        "hdrOnly": "HDR only",
-        "hdrChip": "HDR",
         "resolutionLabel": "Resolution",
         "searchLabel": "Search titles",
         "searchPlaceholder": "Search titles…",
         "serverAll": "Any server",
-        "libraryLabel": "Library",
-        "libraryAll": "Any library",
         "serverLabel": "Server",
         "showsToggle": "Shows",
+        "sizeChipAtLeast": "≥ {{min}} GB",
+        "sizeChipAtMost": "≤ {{max}} GB",
+        "sizeChipRange": "{{min}}–{{max}} GB",
+        "sizeGbMaxLabel": "Max size (GB)",
+        "sizeGbMinLabel": "Min size (GB)",
         "sort": {
           "added": "Recently added",
           "plays": "Plays",
@@ -539,14 +546,7 @@
         },
         "watchedLabel": "Watched",
         "yearFromLabel": "From year",
-        "yearToLabel": "To year",
-        "sizeGbMinLabel": "Min size (GB)",
-        "sizeGbMaxLabel": "Max size (GB)",
-        "sizeChipAtLeast": "≥ {{min}} GB",
-        "sizeChipAtMost": "≤ {{max}} GB",
-        "sizeChipRange": "{{min}}–{{max}} GB",
-        "countTotal_one": "{{count}} title · {{size}}",
-        "countTotal_other": "{{count}} titles · {{size}}"
+        "yearToLabel": "To year"
       }
     },
     "landing": {
@@ -598,8 +598,10 @@
     "movies": {
       "title": "Film"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Tilføjet {{date}}",
+      "moreServers": "+{{count}} more",
       "onServers": "På {{servers}}",
       "playsCompact_one": "{{compact}} play",
       "playsCompact_other": "{{compact}} plays",
@@ -623,8 +625,7 @@
         "watched": "Set",
         "watchedByOthers": "Watched by others",
         "watchedByYou": "Watched by you"
-      },
-      "moreServers": "+{{count}} more"
+      }
     },
     "shows": {
       "title": "Serier"
@@ -685,7 +686,6 @@
     "maxIps": "Maks. Ip'er",
     "maxIpsDefault": "Maksimal unikke IP'er tilladt inden for tidsvinduet. Standard: 5 IP'er i 24 timer",
     "maxSpeed": "Maks. Hastighed ({{unit}})",
-    "recordsOnly": "Records violations only",
     "maxSpeedDefault": "Maksimal realistisk rejsehastighed. Standard: {{value}} {{unit}} (flyhastighed)",
     "maxStreams": "Maks. Streams",
     "maxStreamsDefault": "Maksimum samtidige strømme pr. bruger. Standard: 3",
@@ -695,6 +695,7 @@
     "months": "Måneder",
     "noRulesConfigured": "Ingen regler konfigureret",
     "none": "Ingen",
+    "recordsOnly": "Records violations only",
     "ruleName": "Regel Navn",
     "ruleNamePlaceholder": "f.eks. Samtidig Stream Grænse",
     "ruleType": "Regel Type",

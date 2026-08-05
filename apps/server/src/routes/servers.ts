@@ -27,6 +27,7 @@ import { syncServer } from '../services/sync.js';
 import { sseManager } from '../services/sseManager.js';
 import { getCacheService } from '../services/cache.js';
 import { enqueueLibrarySync } from '../jobs/librarySyncQueue.js';
+import { supportsMediaLibrary } from '@tracearr/shared';
 
 function getDispatcharrAuthMode(token?: string | null): 'token' | 'credentials' {
   return token && DispatcharrClient.isCredentialToken(token) ? 'credentials' : 'token';
@@ -689,6 +690,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     if (serverRows.length === 0) {
       return reply.notFound('Server not found');
     }
+    const serverRow = serverRows[0]!;
 
     try {
       const result = await syncServer(id, { syncUsers: true, syncLibraries: true });
@@ -699,6 +701,19 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       // Also trigger full library sync (items/episodes) in background
       let librarySyncJobId: string | null = null;
       try {
+        if (!supportsMediaLibrary(serverRow.type)) {
+          return {
+            success: result.errors.length === 0,
+            usersAdded: result.usersAdded,
+            usersUpdated: result.usersUpdated,
+            usersRemoved: result.usersRemoved,
+            usersRestored: result.usersRestored,
+            librariesSynced: 0,
+            librarySyncJobId: null,
+            errors: result.errors,
+            syncedAt: new Date().toISOString(),
+          };
+        }
         librarySyncJobId = await enqueueLibrarySync(id, authUser.userId);
         app.log.info({ serverId: id, jobId: librarySyncJobId }, 'Library sync job enqueued');
       } catch (err) {

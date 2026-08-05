@@ -646,6 +646,7 @@
     "logExplorerUnavailable": "Log explorer is only available in Docker environments"
   },
   "media": {
+    "noLibraryServers": "No media library available.",
     "landing": {
       "title": "Media",
       "lens": {
