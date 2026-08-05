@@ -383,7 +383,7 @@ describe('proxyImage cache-miss pipeline', () => {
     const metadata = await (await import('sharp')).default(result.data).metadata();
     expect(metadata.width).toBeLessThanOrEqual(200);
     expect(metadata.height).toBeLessThanOrEqual(300);
-    expect(metadata.width! / metadata.height!).toBeCloseTo(1, 1);
+    expect(metadata.width / metadata.height).toBeCloseTo(1, 1);
   });
 
   it('normalizes absolute Dispatcharr logo URLs to the configured server while preserving query strings', async () => {

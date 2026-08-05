@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA inspected: `feature/version-2.0-preparation` at `368c460f`
+- Fork branch/SHA inspected: `feature/version-2.0-preparation` at `6a284d7a`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `367f6c69`
-- Last shared upstream commit found during inspection: `127bcf6d`
-- Latest upstream commit merged into the current working tree: `367f6c69`
+- Source branch/SHA inspected: `main` at `c600f88f`
+- Last shared upstream commit found during inspection: `367f6c69`
+- Latest upstream commit merged into the current working tree: `c600f88f`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -207,6 +207,9 @@ High-conflict areas to review manually:
 - Mobile server metadata and Live TV display.
 
 Current upstream merge notes:
+
+- Upstream `main` at `c600f88f` was merged into `feature/version-2.0-preparation` on Wednesday, August 5, 2026 (merge commit `6a284d7a`). The merge retains the Dispatcharr library-capability guard: Dispatcharr remains excluded from library-sync scheduling and media catalog work while receiving session/history support.
+- Upstream's Timescale maintenance, session-identity backfill, library-sync queue, import transaction, supervised Docker, and translation changes were retained. The database-client test conflict was resolved by retaining both the fork migration-ledger coverage and upstream raw-client error-listener coverage; the Dutch settings translation retains Dispatcharr configuration/realtime and fork-version keys alongside upstream localization updates.
 
 - Upstream `main` at `367f6c69` has been merged into `feature/version-2.0-preparation` in the current working tree on Tuesday, August 4, 2026 (merge commit `0f7e1597`, followed by Dispatcharr reconciliation `368c460f`).
 - The merge ports the Dispatcharr overlay onto Tracearr 2.0: the new media/version schema, public API v2, mobile navigation and SSE plugin recovery behavior are retained alongside Dispatcharr auth, polling/realtime snapshots, history-threshold semantics, catch-up metadata, and image handling.

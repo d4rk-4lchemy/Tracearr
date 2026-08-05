@@ -4,7 +4,7 @@ const { migrateMock } = vi.hoisted(() => ({ migrateMock: vi.fn().mockResolvedVal
 
 vi.mock('drizzle-orm/node-postgres/migrator', () => ({ migrate: migrateMock }));
 
-import { db, repairLegacyForkMigrationLedger, runMigrations } from '../client.js';
+import { createRawPgClient, db, repairLegacyForkMigrationLedger, runMigrations } from '../client.js';
 
 function createMigrationLedgerExecutor(
   rows: Array<{ ledger?: string | null; repaired?: boolean }>
