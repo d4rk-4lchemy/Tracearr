@@ -251,6 +251,9 @@ jobs:
           build-args: |
             APP_VERSION=${{ inputs.version }}
             APP_TAG=insiders
+            APP_UPSTREAM_VERSION=${{ inputs.version }}
+            APP_FORK_REPO=d4rk-4lchemy/Tracearr
+            APP_IMAGE_REPO=darkalchemy2137/distracearr
             APP_COMMIT=${{ github.sha }}
             APP_BUILD_DATE=${{ github.event.head_commit.timestamp }}
             CACHE_BUST=${{ github.sha }}
@@ -382,6 +385,9 @@ jobs:
           build-args: |
             APP_VERSION=${{ inputs.version }}
             APP_TAG=supervised-insiders
+            APP_UPSTREAM_VERSION=${{ inputs.version }}
+            APP_FORK_REPO=d4rk-4lchemy/Tracearr
+            APP_IMAGE_REPO=darkalchemy2137/distracearr
             APP_COMMIT=${{ github.sha }}
             APP_BUILD_DATE=${{ github.event.head_commit.timestamp }}
             CACHE_BUST=${{ github.sha }}

@@ -10,7 +10,7 @@ import { getRedisPrefix } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
 import { isMaintenance } from '../serverState.js';
 import { REDIS_KEYS, CACHE_TTL, WS_EVENTS } from '@tracearr/shared';
-import { getCurrentVersion } from '../utils/buildInfo.js';
+import { getBuildInfo, getCurrentVersion } from '../utils/buildInfo.js';
 
 // Queue name
 const QUEUE_NAME = 'version-check';
@@ -31,9 +31,11 @@ export class GitHubRateLimitError extends Error {
 }
 
 // GitHub API configuration
-const GITHUB_API_LATEST_URL = 'https://api.github.com/repos/connorgallopo/Tracearr/releases/latest';
-const GITHUB_API_ALL_RELEASES_URL = 'https://api.github.com/repos/connorgallopo/Tracearr/releases';
-const GITHUB_RELEASES_URL = 'https://github.com/connorgallopo/Tracearr/releases';
+const UPSTREAM_API_LATEST_URL = 'https://api.github.com/repos/connorgallopo/Tracearr/releases/latest';
+const UPSTREAM_API_ALL_RELEASES_URL = 'https://api.github.com/repos/connorgallopo/Tracearr/releases';
+const UPSTREAM_RELEASES_URL = 'https://github.com/connorgallopo/Tracearr/releases';
+const FORK_API_ALL_RELEASES_URL = 'https://api.github.com/repos/d4rk-4lchemy/Tracearr/releases';
+const FORK_RELEASES_URL = 'https://github.com/d4rk-4lchemy/Tracearr/releases';
 
 // Prerelease identifier patterns (beta, alpha, rc, etc.)
 const PRERELEASE_PATTERN = /-(alpha|beta|rc|next|dev|canary)\.?\d*$/i;
@@ -54,6 +56,19 @@ export interface LatestVersionData {
   isPrerelease: boolean;
   releaseName: string | null;
   releaseNotes: string | null;
+}
+
+export interface LatestForkReleaseData extends LatestVersionData {
+  upstreamVersion: string;
+  forkRevision: number;
+  forkVersion: string;
+}
+
+export interface ParsedForkVersion {
+  upstreamVersion: string;
+  forkRevision: number;
+  forkVersion: string;
+  tag: string;
 }
 
 // Connection options (set during initialization)
@@ -290,6 +305,62 @@ export function findBestUpdateForPrerelease(
   return validReleases.find((r) => compareVersions(r.tag_name, currentVersion) > 0) ?? null;
 }
 
+/** Parse only the fork's deliberate v<semver>-r<number> release convention. */
+export function parseForkReleaseTag(tag: string): ParsedForkVersion | null {
+  const match = tag.match(/^v(\d+\.\d+\.\d+)-r(\d+)$/);
+  if (!match) return null;
+  const [, upstreamVersion, revision] = match;
+  if (!upstreamVersion || !revision) return null;
+  const forkRevision = Number(revision);
+  if (!Number.isSafeInteger(forkRevision)) return null;
+  return {
+    upstreamVersion,
+    forkRevision,
+    forkVersion: `${upstreamVersion}-r${forkRevision}`,
+    tag,
+  };
+}
+
+export function compareForkVersions(a: string, b: string): number {
+  const parsedA = parseForkReleaseTag(a.startsWith('v') ? a : `v${a}`);
+  const parsedB = parseForkReleaseTag(b.startsWith('v') ? b : `v${b}`);
+  if (!parsedA || !parsedB) return 0;
+  const upstreamComparison = compareVersions(parsedA.upstreamVersion, parsedB.upstreamVersion);
+  return upstreamComparison || (parsedA.forkRevision > parsedB.forkRevision ? 1 : parsedA.forkRevision < parsedB.forkRevision ? -1 : 0);
+}
+
+export function findLatestForkRelease(releases: GitHubRelease[]): GitHubRelease | null {
+  return releases
+    .filter((release) => !release.draft && parseForkReleaseTag(release.tag_name))
+    .sort((a, b) => compareForkVersions(b.tag_name, a.tag_name))[0] ?? null;
+}
+
+function toLatestData(release: GitHubRelease): LatestVersionData {
+  return {
+    version: release.tag_name.replace(/^v/, ''),
+    tag: release.tag_name,
+    releaseUrl: release.html_url || `${UPSTREAM_RELEASES_URL}/tag/${release.tag_name}`,
+    publishedAt: release.published_at,
+    checkedAt: new Date().toISOString(),
+    isPrerelease: release.prerelease,
+    releaseName: release.name || null,
+    releaseNotes: release.body || null,
+  };
+}
+
+function toForkLatestData(release: GitHubRelease): LatestForkReleaseData {
+  const parsed = parseForkReleaseTag(release.tag_name);
+  if (!parsed) throw new Error(`Invalid fork release tag: ${release.tag_name}`);
+  return {
+    ...toLatestData(release),
+    version: parsed.forkVersion,
+    releaseUrl: release.html_url || `${FORK_RELEASES_URL}/tag/${release.tag_name}`,
+    upstreamVersion: parsed.upstreamVersion,
+    forkRevision: parsed.forkRevision,
+    forkVersion: parsed.forkVersion,
+  };
+}
+
 /**
  * Process a version check job.
  * Best-effort/informational; on rate limit it sets a cooldown and returns
@@ -317,58 +388,60 @@ export async function processVersionCheck(job: Job<VersionCheckJobData>): Promis
 
     console.log(`Current version: ${currentVersion} (prerelease: ${currentIsPrerelease})`);
 
-    let targetRelease: GitHubRelease | null = null;
+    let upstreamRelease: GitHubRelease | null = null;
 
     if (currentIsPrerelease) {
       // For prerelease users, fetch all releases to find the best update
-      const releases = await fetchGitHubReleases(`${GITHUB_API_ALL_RELEASES_URL}?per_page=30`);
+      const releases = await fetchGitHubReleases(`${UPSTREAM_API_ALL_RELEASES_URL}?per_page=30`);
 
       if (!releases || !Array.isArray(releases)) {
         console.log('No releases found or invalid response');
         return;
       }
 
-      targetRelease = findBestUpdateForPrerelease(currentVersion, releases);
+      const valid = releases.filter((r) => !r.draft);
+      upstreamRelease = valid.sort((a, b) => compareVersions(b.tag_name, a.tag_name))[0] ?? null;
     } else {
       // For stable users, just check the latest stable release
-      const release = await fetchGitHubReleases(GITHUB_API_LATEST_URL);
+      const release = await fetchGitHubReleases(UPSTREAM_API_LATEST_URL);
 
       if (!release || Array.isArray(release)) {
         console.log('No latest release found');
         return;
       }
 
-      targetRelease = release;
+      upstreamRelease = release;
     }
 
-    if (!targetRelease) {
-      console.log('No update target found');
+    const forkReleases = await fetchGitHubReleases(`${FORK_API_ALL_RELEASES_URL}?per_page=100`);
+    if (!forkReleases || !Array.isArray(forkReleases)) {
+      console.log('No fork releases found or invalid response');
+      return;
+    }
+    const forkRelease = findLatestForkRelease(forkReleases);
+    if (!upstreamRelease || !forkRelease) {
+      console.log('No valid upstream or fork release found');
       return;
     }
 
-    // Parse version from tag (remove 'v' prefix if present)
-    const version = targetRelease.tag_name.replace(/^v/, '');
+    const latestUpstream = toLatestData(upstreamRelease);
+    const latestFork = toForkLatestData(forkRelease);
 
-    const latestData: LatestVersionData = {
-      version,
-      tag: targetRelease.tag_name,
-      releaseUrl: targetRelease.html_url || `${GITHUB_RELEASES_URL}/tag/${targetRelease.tag_name}`,
-      publishedAt: targetRelease.published_at,
-      checkedAt: new Date().toISOString(),
-      isPrerelease: targetRelease.prerelease,
-      releaseName: targetRelease.name || null,
-      releaseNotes: targetRelease.body || null,
-    };
-
-    // Cache in Redis
+    // Cache each source independently.
     await redisClient.set(
-      REDIS_KEYS.VERSION_LATEST,
-      JSON.stringify(latestData),
+      REDIS_KEYS.VERSION_LATEST_UPSTREAM,
+      JSON.stringify(latestUpstream),
+      'EX',
+      CACHE_TTL.VERSION_CHECK
+    );
+    await redisClient.set(
+      REDIS_KEYS.VERSION_LATEST_FORK,
+      JSON.stringify(latestFork),
       'EX',
       CACHE_TTL.VERSION_CHECK
     );
 
-    console.log(`Latest version cached: ${version} (tag: ${targetRelease.tag_name})`);
+    console.log(`Latest releases cached: fork ${latestFork.forkVersion}, upstream ${latestUpstream.version}`);
 
     // Set cooldown so restart bursts don't re-fetch immediately
     await redisClient.set(
@@ -379,16 +452,17 @@ export async function processVersionCheck(job: Job<VersionCheckJobData>): Promis
     );
 
     // Check if update is available
-    const updateAvailable = isNewerVersion(version, currentVersion);
-
-    if (updateAvailable && pubSubPublish) {
+    const currentForkVersion = getBuildInfo().forkVersion;
+    const forkUpdateAvailable = !!currentForkVersion && compareForkVersions(latestFork.forkVersion, currentForkVersion) > 0;
+    if (forkUpdateAvailable && pubSubPublish) {
       // Broadcast update availability to connected clients
       await pubSubPublish(WS_EVENTS.VERSION_UPDATE, {
         current: currentVersion,
-        latest: version,
-        releaseUrl: latestData.releaseUrl,
+        latest: latestFork.forkVersion,
+        releaseUrl: latestFork.releaseUrl,
+        kind: 'fork-update',
       });
-      console.log(`Update available: ${currentVersion} -> ${version}`);
+      console.log(`Fork update available: ${currentForkVersion} -> ${latestFork.forkVersion}`);
     }
   } catch (error) {
     if (error instanceof GitHubRateLimitError) {
@@ -406,23 +480,24 @@ export {
   getCurrentTag,
   getCurrentCommit,
   getBuildDate,
+  getBuildInfo,
 } from '../utils/buildInfo.js';
 
 /**
  * Get cached latest version from Redis
  */
-export async function getCachedLatestVersion(): Promise<LatestVersionData | null> {
+async function getCachedVersion<T extends LatestVersionData>(key: string): Promise<T | null> {
   if (!redisClient) {
     return null;
   }
 
-  const cached = await redisClient.get(REDIS_KEYS.VERSION_LATEST);
+  const cached = await redisClient.get(key);
   if (!cached) {
     return null;
   }
 
   try {
-    const data = JSON.parse(cached) as Partial<LatestVersionData>;
+    const data = JSON.parse(cached) as Partial<T>;
 
     // Ensure required fields exist (handles schema migration from older cache)
     if (!data.version || !data.tag) {
@@ -430,7 +505,8 @@ export async function getCachedLatestVersion(): Promise<LatestVersionData | null
     }
 
     // Provide defaults for new fields that may be missing from old cache
-    return {
+    const result = {
+      ...data,
       version: data.version,
       tag: data.tag,
       releaseUrl: data.releaseUrl ?? '',
@@ -439,10 +515,19 @@ export async function getCachedLatestVersion(): Promise<LatestVersionData | null
       isPrerelease: data.isPrerelease ?? isPrerelease(data.tag),
       releaseName: data.releaseName ?? null,
       releaseNotes: data.releaseNotes ?? null,
-    };
+    } as T;
+    return result;
   } catch {
     return null;
   }
+}
+
+export function getCachedLatestVersion(): Promise<LatestVersionData | null> {
+  return getCachedVersion<LatestVersionData>(REDIS_KEYS.VERSION_LATEST_UPSTREAM);
+}
+
+export function getCachedLatestForkRelease(): Promise<LatestForkReleaseData | null> {
+  return getCachedVersion<LatestForkReleaseData>(REDIS_KEYS.VERSION_LATEST_FORK);
 }
 
 /**

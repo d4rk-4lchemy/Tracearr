@@ -24,11 +24,14 @@ interface UpdateDialogProps {
  */
 export function UpdateDialog({ open, onOpenChange, version }: UpdateDialogProps) {
   const { t } = useTranslation(['settings', 'common']);
-  const { current, latest } = version;
+  const { current } = version;
+  const imageRepo = current.imageRepo;
+  const latest = version.fork.latest;
+  const upstreamAhead = version.recommended.kind === 'upstream-ahead';
 
   // Determine update type label
   const updateType = useMemo(() => {
-    if (!latest) return null;
+    if (!latest || upstreamAhead) return null;
 
     // Current is beta, latest is stable of same base version
     if (current.isPrerelease && !latest.isPrerelease) {
@@ -50,7 +53,7 @@ export function UpdateDialog({ open, onOpenChange, version }: UpdateDialogProps)
 
     // Current is stable, latest is newer stable
     return { label: t('settings:update.newVersion'), variant: 'default' as const, icon: Sparkles };
-  }, [current, latest, t]);
+  }, [current, latest, upstreamAhead, t]);
 
   // Format the docker pull command
   const dockerCommand = useMemo(() => {
@@ -67,8 +70,31 @@ export function UpdateDialog({ open, onOpenChange, version }: UpdateDialogProps)
       tag = latest.isPrerelease ? 'next' : 'latest';
     }
 
-    return `docker pull ghcr.io/connorgallopo/tracearr:${tag}`;
-  }, [current.tag, latest]);
+    return `docker pull ${imageRepo}:${tag}`;
+  }, [current.tag, imageRepo, latest]);
+
+  if (upstreamAhead) {
+    const upstream = version.upstream.latest;
+    if (!upstream) return null;
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('settings:update.upstreamAhead')}</DialogTitle>
+            <DialogDescription>{t('settings:update.upstreamAheadDescription')}</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Button asChild className="gap-2">
+              <a href={upstream.releaseUrl} target="_blank" rel="noopener noreferrer">
+                {t('common:actions.viewOnGithub')}
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   if (!latest || !updateType) return null;
 

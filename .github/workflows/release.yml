@@ -246,6 +246,18 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
+      - name: Prepare fork version metadata
+        id: fork_version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+$ ]] || { echo "Release tag must use v<semver>-r<number>: $tag" >&2; exit 1; }
+          upstream="${tag#v}"
+          upstream="${upstream%-r*}"
+          revision="${tag##*-r}"
+          echo "upstream_version=${upstream}" >> "$GITHUB_OUTPUT"
+          echo "fork_revision=${revision}" >> "$GITHUB_OUTPUT"
+          echo "fork_version=${upstream}-r${revision}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -258,8 +270,14 @@ jobs:
           cache-from: type=gha,scope=docker-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
           build-args: |
-            APP_VERSION=${{ github.ref_name }}
+            APP_VERSION=${{ steps.fork_version.outputs.upstream_version }}
             APP_TAG=${{ github.ref_name }}
+            APP_UPSTREAM_VERSION=${{ steps.fork_version.outputs.upstream_version }}
+            APP_FORK_REVISION=${{ steps.fork_version.outputs.fork_revision }}
+            APP_FORK_VERSION=${{ steps.fork_version.outputs.fork_version }}
+            APP_FORK_RELEASE_TAG=${{ github.ref_name }}
+            APP_FORK_REPO=d4rk-4lchemy/Tracearr
+            APP_IMAGE_REPO=darkalchemy2137/distracearr
             APP_COMMIT=${{ github.sha }}
             APP_BUILD_DATE=${{ github.event.head_commit.timestamp }}
             CACHE_BUST=${{ github.sha }}
@@ -389,6 +407,18 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
+      - name: Prepare fork version metadata
+        id: fork_version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+$ ]] || { echo "Release tag must use v<semver>-r<number>: $tag" >&2; exit 1; }
+          upstream="${tag#v}"
+          upstream="${upstream%-r*}"
+          revision="${tag##*-r}"
+          echo "upstream_version=${upstream}" >> "$GITHUB_OUTPUT"
+          echo "fork_revision=${revision}" >> "$GITHUB_OUTPUT"
+          echo "fork_version=${upstream}-r${revision}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -401,8 +431,14 @@ jobs:
           cache-from: type=gha,scope=supervised-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=supervised-${{ matrix.arch }}
           build-args: |
-            APP_VERSION=${{ github.ref_name }}
+            APP_VERSION=${{ steps.fork_version.outputs.upstream_version }}
             APP_TAG=supervised-${{ github.ref_name }}
+            APP_UPSTREAM_VERSION=${{ steps.fork_version.outputs.upstream_version }}
+            APP_FORK_REVISION=${{ steps.fork_version.outputs.fork_revision }}
+            APP_FORK_VERSION=${{ steps.fork_version.outputs.fork_version }}
+            APP_FORK_RELEASE_TAG=${{ github.ref_name }}
+            APP_FORK_REPO=d4rk-4lchemy/Tracearr
+            APP_IMAGE_REPO=darkalchemy2137/distracearr
             APP_COMMIT=${{ github.sha }}
             APP_BUILD_DATE=${{ github.event.head_commit.timestamp }}
             CACHE_BUST=${{ github.sha }}

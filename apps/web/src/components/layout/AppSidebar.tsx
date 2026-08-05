@@ -137,11 +137,13 @@ function VersionDisplay() {
   const displayVersion = version.current.tag ?? `v${version.current.version}`;
 
   const getUpdateLabel = () => {
-    if (!version.latest) return t('settings:update.title');
-    if (version.current.isPrerelease && !version.latest.isPrerelease) {
+    if (version.recommended.kind === 'upstream-ahead') return t('settings:update.upstreamAhead');
+    const latest = version.fork.latest;
+    if (!latest) return t('settings:update.title');
+    if (version.current.isPrerelease && !latest.isPrerelease) {
       return t('settings:update.stableRelease');
     }
-    if (version.current.isPrerelease && version.latest.isPrerelease) {
+    if (version.current.isPrerelease && latest.isPrerelease) {
       return t('settings:update.betaUpdate');
     }
     return t('settings:update.title');
@@ -156,10 +158,15 @@ function VersionDisplay() {
             <span className="text-muted-foreground/60 ml-1">({t('common:beta')})</span>
           )}
         </span>
-        {version.updateAvailable && version.latest && (
+        {version.recommended.kind !== 'none' && (
           <Badge
             variant="secondary"
-            className="h-5 cursor-pointer gap-1 bg-green-500/10 text-green-600 hover:bg-green-500/20 dark:text-green-400"
+            className={cn(
+              'h-5 cursor-pointer gap-1',
+              version.recommended.kind === 'fork-update'
+                ? 'bg-green-500/10 text-green-600 hover:bg-green-500/20 dark:text-green-400'
+                : 'bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:text-blue-400'
+            )}
             onClick={() => setDialogOpen(true)}
           >
             <ArrowUpCircle className="h-3 w-3" />
@@ -179,7 +186,7 @@ function VersionDisplay() {
         )}
       </div>
 
-      {version.updateAvailable && version.latest && (
+      {version.recommended.kind !== 'none' && (
         <UpdateDialog open={dialogOpen} onOpenChange={setDialogOpen} version={version} />
       )}
     </>

@@ -491,7 +491,9 @@
   "title": "Настройки",
   "update": {
     "betaUpdate": "Бета обновление",
-    "newVersion": "Новая версия",
+   "newVersion": "Новая версия",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "После загрузки перезагрузите контейнер, чтобы применить обновление.",
     "releaseNotes": "Примечания к выпуску",
     "stableRelease": "Стабильный выпуск",

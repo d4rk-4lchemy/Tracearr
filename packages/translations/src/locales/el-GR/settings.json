@@ -491,7 +491,9 @@
   "title": "Ρυθμίσεις",
   "update": {
     "betaUpdate": "Ενημέρωση Beta",
-    "newVersion": "Νέα Έκδοση",
+   "newVersion": "Νέα Έκδοση",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Μετά το τράβηγμα, επανεκκινήστε τον περιέκτη για να εφαρμόσετε την ενημέρωση.",
     "releaseNotes": "Σημειώσεις Έκδοσης",
     "stableRelease": "Σταθερή Έκδοση",

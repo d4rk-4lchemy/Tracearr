@@ -398,6 +398,8 @@
     "stableRelease": "Stable Release",
     "betaUpdate": "Beta Update",
     "newVersion": "New Version",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "versionAvailable": "{{version}} available"
   },
   "serverHealth": {

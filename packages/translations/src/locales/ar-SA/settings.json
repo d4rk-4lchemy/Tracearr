@@ -491,7 +491,9 @@
   "title": "الإعدادات",
   "update": {
     "betaUpdate": "تحديث بيتا",
-    "newVersion": "نسخة جديدة",
+   "newVersion": "نسخة جديدة",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "بعد السحب ، أعد تشغيل الحاوية لتطبيق التحديث.",
     "releaseNotes": "ملاحظات الإصدار",
     "stableRelease": "الإصدار المستقر",

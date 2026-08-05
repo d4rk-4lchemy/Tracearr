@@ -1006,7 +1006,7 @@ async function initializePostListen(app: FastifyInstance) {
         case WS_EVENTS.VERSION_UPDATE:
           broadcastToSessions(
             'version:update',
-            data as { current: string; latest: string; releaseUrl: string }
+            data as { current: string; latest: string; releaseUrl: string; kind: 'fork-update' }
           );
           break;
         default:

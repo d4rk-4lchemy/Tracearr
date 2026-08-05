@@ -491,7 +491,9 @@
   "title": "Instellingen",
   "update": {
     "betaUpdate": "Bèta-update",
-    "newVersion": "Nieuwe versie",
+   "newVersion": "Nieuwe versie",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Herstart je container na het ophalen om de update toe te passen.",
     "releaseNotes": "Uitgave-opmerkingen",
     "stableRelease": "Stabiele versie",

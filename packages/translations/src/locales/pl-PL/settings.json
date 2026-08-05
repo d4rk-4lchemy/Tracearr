@@ -491,7 +491,9 @@
   "title": "Ustawienia",
   "update": {
     "betaUpdate": "Aktualizacja wersji beta",
-    "newVersion": "Nowa wersja",
+   "newVersion": "Nowa wersja",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Po ściągnięciu uruchom ponownie kontener, aby zastosować aktualizację.",
     "releaseNotes": "Informacje o wersji",
     "stableRelease": "Wydanie Stabilne",

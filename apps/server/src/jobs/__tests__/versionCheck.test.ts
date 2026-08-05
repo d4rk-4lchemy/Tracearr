@@ -21,6 +21,9 @@ import {
   findBestUpdateForPrerelease,
   fetchGitHubReleases,
   GitHubRateLimitError,
+  parseForkReleaseTag,
+  compareForkVersions,
+  findLatestForkRelease,
   processVersionCheck,
   initVersionCheckQueue,
   type GitHubRelease,
@@ -48,6 +51,7 @@ vi.mock('../../serverState.js', () => ({ isMaintenance: vi.fn().mockReturnValue(
 const mockGetCurrentVersion = vi.fn().mockReturnValue('1.4.0');
 vi.mock('../../utils/buildInfo.js', () => ({
   getCurrentVersion: () => mockGetCurrentVersion(),
+  getBuildInfo: () => ({ forkVersion: '1.4.0-r1' }),
   getCurrentTag: vi.fn(),
   getCurrentCommit: vi.fn(),
   getBuildDate: vi.fn(),
@@ -424,6 +428,34 @@ describe('findBestUpdateForPrerelease', () => {
   });
 });
 
+describe('fork release versions', () => {
+  it('parses the supported fork tag format', () => {
+    expect(parseForkReleaseTag('v1.5.0-r2')).toMatchObject({
+      upstreamVersion: '1.5.0',
+      forkRevision: 2,
+      forkVersion: '1.5.0-r2',
+    });
+    expect(parseForkReleaseTag('v1.5.0')).toBeNull();
+    expect(parseForkReleaseTag('v1.5.0-rx')).toBeNull();
+  });
+
+  it('orders upstream semver before fork revision', () => {
+    expect(compareForkVersions('1.6.0-r1', '1.5.0-r999')).toBeGreaterThan(0);
+    expect(compareForkVersions('1.5.0-r10', '1.5.0-r9')).toBeGreaterThan(0);
+  });
+
+  it('ignores malformed and draft releases when selecting the newest fork release', () => {
+    expect(
+      findLatestForkRelease([
+        mockRelease('v9.0.0', false),
+        mockRelease('v1.5.0-r3', false),
+        mockRelease('v1.6.0-r1', false, true),
+        mockRelease('v1.5.0-r2', false),
+      ])?.tag_name
+    ).toBe('v1.5.0-r3');
+  });
+});
+
 // ============================================================================
 // fetchGitHubReleases — rate-limit error handling
 // ============================================================================
@@ -546,13 +578,18 @@ describe('processVersionCheck', () => {
       prerelease: false,
       draft: false,
     };
-    mockFetch.mockResolvedValue({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: vi.fn().mockResolvedValue(latestRelease),
     });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue([mockRelease('v1.5.0-r1', false)]),
+    });
     await processVersionCheck(makeJob(true));
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it('sets cooldown key on rate-limit and returns without throwing', async () => {
@@ -580,12 +617,29 @@ describe('processVersionCheck', () => {
       prerelease: false,
       draft: false,
     };
-    mockFetch.mockResolvedValue({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: vi.fn().mockResolvedValue(latestRelease),
     });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue([mockRelease('v1.5.0-r1', false)]),
+    });
     await processVersionCheck(makeJob(false));
+    expect(sharedRedis.set).toHaveBeenCalledWith(
+      expect.stringContaining('version:latest:upstream'),
+      expect.any(String),
+      'EX',
+      expect.any(Number)
+    );
+    expect(sharedRedis.set).toHaveBeenCalledWith(
+      expect.stringContaining('version:latest:fork'),
+      expect.any(String),
+      'EX',
+      expect.any(Number)
+    );
     expect(sharedRedis.set).toHaveBeenCalledWith(
       expect.stringContaining('version:check:cooldown'),
       '1',

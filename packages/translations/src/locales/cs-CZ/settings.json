@@ -491,7 +491,9 @@
   "title": "Nastavení",
   "update": {
     "betaUpdate": "Aktualizace beta verze",
-    "newVersion": "Nová verze",
+   "newVersion": "Nová verze",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Po natažení restartujte kontejner pro aplikaci aktualizace.",
     "releaseNotes": "Poznámky k vydání",
     "stableRelease": "Stabilní vydání",

@@ -491,7 +491,9 @@
   "title": "Налаштування",
   "update": {
     "betaUpdate": "Бета-оновлення",
-    "newVersion": "Нова версія",
+   "newVersion": "Нова версія",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Після витягування, перезавантажте контейнер щоб застосувати оновлення.",
     "releaseNotes": "Примітки до оновлення",
     "stableRelease": "Стабільна версія",

@@ -491,7 +491,9 @@
   "title": "Setări",
   "update": {
     "betaUpdate": "Actualizare beta",
-    "newVersion": "Versiune nouă",
+   "newVersion": "Versiune nouă",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "După tragere, reporniţi recipientul pentru a aplica actualizarea.",
     "releaseNotes": "Note de lansare",
     "stableRelease": "Lansare stabilă",

@@ -114,6 +114,9 @@ jobs:
           build-args: |
             APP_VERSION=nightly
             APP_TAG=nightly
+            APP_UPSTREAM_VERSION=nightly
+            APP_FORK_REPO=d4rk-4lchemy/Tracearr
+            APP_IMAGE_REPO=darkalchemy2137/distracearr
             APP_COMMIT=${{ steps.sha.outputs.short }}
             APP_BUILD_DATE=${{ github.event.repository.pushed_at || github.event.head_commit.timestamp }}
             CACHE_BUST=${{ github.sha }}
@@ -189,6 +192,9 @@ jobs:
           build-args: |
             APP_VERSION=nightly
             APP_TAG=supervised-nightly
+            APP_UPSTREAM_VERSION=nightly
+            APP_FORK_REPO=d4rk-4lchemy/Tracearr
+            APP_IMAGE_REPO=darkalchemy2137/distracearr
             APP_COMMIT=${{ steps.sha.outputs.short }}
             APP_BUILD_DATE=${{ github.event.repository.pushed_at || github.event.head_commit.timestamp }}
             CACHE_BUST=${{ github.sha }}

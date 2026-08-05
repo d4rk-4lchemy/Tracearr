@@ -1234,7 +1234,7 @@ export interface ServerToClientEvents {
   'maintenance:progress': (progress: MaintenanceJobProgress) => void;
   'library:sync:progress': (progress: LibrarySyncProgress) => void;
   'tasks:updated': (tasks: RunningTask[]) => void;
-  'version:update': (data: { current: string; latest: string; releaseUrl: string }) => void;
+  'version:update': (data: { current: string; latest: string; releaseUrl: string; kind: 'fork-update' }) => void;
   'server:down': (data: { serverId: string; serverName: string }) => void;
   'server:up': (data: { serverId: string; serverName: string }) => void;
   'server:connection': (status: ServerConnectionStatus) => void;
@@ -2030,14 +2030,35 @@ export interface ShowStatsResponse {
 export interface VersionInfo {
   // Current running version
   current: {
-    version: string; // Semantic version (e.g., "1.3.8")
+    version: string; // Upstream base semantic version (e.g., "1.3.8")
+    upstreamVersion: string;
+    forkRevision: number | null;
+    forkVersion: string | null;
+    forkReleaseTag: string | null;
+    forkRepo: string;
+    imageRepo: string;
     tag: string | null; // Docker tag (e.g., "latest", "stable", "v1.3.8")
     commit: string | null; // Git commit SHA (short)
     buildDate: string | null; // ISO date of build
     isPrerelease: boolean; // Whether current version is a prerelease (beta, alpha, rc)
   };
-  // Latest available version (null if check hasn't run yet)
-  latest: {
+  fork: {
+    latest: {
+      version: string;
+      upstreamVersion: string;
+      forkRevision: number;
+      forkVersion: string;
+      tag: string;
+      releaseUrl: string;
+      publishedAt: string;
+      isPrerelease: boolean;
+      releaseName: string | null;
+      releaseNotes: string | null;
+    } | null;
+    updateAvailable: boolean;
+  };
+  upstream: {
+    latest: {
     version: string;
     tag: string;
     releaseUrl: string;
@@ -2045,9 +2066,13 @@ export interface VersionInfo {
     isPrerelease: boolean; // Whether this update is a prerelease
     releaseName: string | null; // Release title from GitHub
     releaseNotes: string | null; // Release body/notes from GitHub (markdown)
-  } | null;
-  // Update status
-  updateAvailable: boolean;
+    } | null;
+    updateAvailable: boolean;
+  };
+  recommended:
+    | { kind: 'fork-update'; target: NonNullable<VersionInfo['fork']['latest']> }
+    | { kind: 'upstream-ahead'; target: NonNullable<VersionInfo['upstream']['latest']> }
+    | { kind: 'none' };
   // When the last check occurred (ISO timestamp)
   lastChecked: string | null;
 }

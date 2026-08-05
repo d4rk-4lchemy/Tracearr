@@ -240,7 +240,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     newSocket.on(
       WS_EVENTS.VERSION_UPDATE,
-      (data: { current: string; latest: string; releaseUrl: string }) => {
+      (data: { current: string; latest: string; releaseUrl: string; kind: 'fork-update' }) => {
+        if (data.kind !== 'fork-update') return;
         // Invalidate version query to refresh update status
         void queryClient.invalidateQueries({ queryKey: ['version'] });
 

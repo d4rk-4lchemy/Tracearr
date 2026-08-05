@@ -491,7 +491,9 @@
   "title": "Asetukset",
   "update": {
     "betaUpdate": "Beta Päivitys",
-    "newVersion": "Uusi Versio",
+   "newVersion": "Uusi Versio",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Käynnistä kontti uudelleen vetämisen jälkeen käyttääksesi päivitystä.",
     "releaseNotes": "Julkaise Muistiinpanot",
     "stableRelease": "Vakaa Versio",

@@ -468,7 +468,9 @@
   "title": "Settings",
   "update": {
     "betaUpdate": "Beta Update",
-    "newVersion": "New Version",
+   "newVersion": "New Version",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "After pulling, restart your container to apply the update.",
     "releaseNotes": "Release Notes",
     "stableRelease": "Stable Release",

@@ -11,7 +11,10 @@ import {
   getCurrentTag,
   getCurrentCommit,
   getBuildDate,
+  getBuildInfo,
   getCachedLatestVersion,
+  getCachedLatestForkRelease,
+  compareForkVersions,
   isNewerVersion,
   isPrerelease,
   forceVersionCheck,
@@ -30,34 +33,77 @@ export const versionRoutes: FastifyPluginAsync = async (app) => {
     const currentTag = getCurrentTag();
     const currentCommit = getCurrentCommit();
     const buildDate = getBuildDate();
+    const buildInfo = getBuildInfo();
 
-    // Get cached latest version info
-    const latestData = await getCachedLatestVersion();
+    const [upstreamData, forkData] = await Promise.all([
+      getCachedLatestVersion(),
+      getCachedLatestForkRelease(),
+    ]);
 
-    // Determine if update is available
-    const updateAvailable = latestData ? isNewerVersion(latestData.version, currentVersion) : false;
+    const forkUpdateAvailable = !!(
+      forkData &&
+      buildInfo.forkVersion &&
+      compareForkVersions(forkData.forkVersion, buildInfo.forkVersion) > 0
+    );
+    const upstreamUpdateAvailable = !!upstreamData && isNewerVersion(upstreamData.version, currentVersion);
+    const latestFork = forkData
+      ? {
+          version: forkData.forkVersion,
+          upstreamVersion: forkData.upstreamVersion,
+          forkRevision: forkData.forkRevision,
+          forkVersion: forkData.forkVersion,
+          tag: forkData.tag,
+          releaseUrl: forkData.releaseUrl,
+          publishedAt: forkData.publishedAt,
+          isPrerelease: forkData.isPrerelease,
+          releaseName: forkData.releaseName,
+          releaseNotes: forkData.releaseNotes,
+        }
+      : null;
+    const latestUpstream = upstreamData
+      ? {
+          version: upstreamData.version,
+          tag: upstreamData.tag,
+          releaseUrl: upstreamData.releaseUrl,
+          publishedAt: upstreamData.publishedAt,
+          isPrerelease: upstreamData.isPrerelease,
+          releaseName: upstreamData.releaseName,
+          releaseNotes: upstreamData.releaseNotes,
+        }
+      : null;
+    let recommended: VersionInfo['recommended'];
+    if (forkUpdateAvailable && latestFork) {
+      recommended = { kind: 'fork-update', target: latestFork };
+    } else if (upstreamUpdateAvailable && latestUpstream) {
+      recommended = { kind: 'upstream-ahead', target: latestUpstream };
+    } else {
+      recommended = { kind: 'none' };
+    }
 
     return {
       current: {
         version: currentVersion,
+        upstreamVersion: buildInfo.upstreamVersion,
+        forkRevision: buildInfo.forkRevision,
+        forkVersion: buildInfo.forkVersion,
+        forkReleaseTag: buildInfo.forkReleaseTag,
+        forkRepo: buildInfo.forkRepo,
+        imageRepo: buildInfo.imageRepo,
         tag: currentTag,
         commit: currentCommit,
         buildDate,
         isPrerelease: isPrerelease(currentVersion),
       },
-      latest: latestData
-        ? {
-            version: latestData.version,
-            tag: latestData.tag,
-            releaseUrl: latestData.releaseUrl,
-            publishedAt: latestData.publishedAt,
-            isPrerelease: latestData.isPrerelease,
-            releaseName: latestData.releaseName,
-            releaseNotes: latestData.releaseNotes,
-          }
-        : null,
-      updateAvailable,
-      lastChecked: latestData?.checkedAt ?? null,
+      fork: {
+        latest: latestFork,
+        updateAvailable: forkUpdateAvailable,
+      },
+      upstream: {
+        latest: latestUpstream,
+        updateAvailable: upstreamUpdateAvailable,
+      },
+      recommended,
+      lastChecked: [forkData?.checkedAt, upstreamData?.checkedAt].filter(Boolean).sort().at(-1) ?? null,
     };
   });
 

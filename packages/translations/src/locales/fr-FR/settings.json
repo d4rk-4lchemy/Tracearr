@@ -491,7 +491,9 @@
   "title": "Réglages",
   "update": {
     "betaUpdate": "Mise à jour bêta",
-    "newVersion": "Nouvelle version",
+   "newVersion": "Nouvelle version",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Après avoir réalisé le pull Docker, redémarrez cotre conteneur pour appliquer la modification.",
     "releaseNotes": "Notes de version",
     "stableRelease": "Version stable",

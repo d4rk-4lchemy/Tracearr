@@ -163,9 +163,17 @@ export const REDIS_KEYS = {
     const serverHash = serverIds.length > 0 ? serverIds.slice().sort().join(',') : 'all';
     return `${_redisPrefix}tracearr:filters:locations:${userId}:${serverHash}`;
   },
-  // Version check cache
+  // Version check caches (kept separate so fork and upstream failures/expiry do
+  // not hide one another).
+  get VERSION_LATEST_FORK() {
+    return `${_redisPrefix}tracearr:version:latest:fork`;
+  },
+  get VERSION_LATEST_UPSTREAM() {
+    return `${_redisPrefix}tracearr:version:latest:upstream`;
+  },
+  /** @deprecated Use the source-specific keys above. */
   get VERSION_LATEST() {
-    return `${_redisPrefix}tracearr:version:latest`;
+    return `${_redisPrefix}tracearr:version:latest:upstream`;
   },
   // Cooldown key to prevent hammering GitHub on restarts or retry storms
   get VERSION_CHECK_COOLDOWN() {

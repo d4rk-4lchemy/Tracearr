@@ -491,7 +491,9 @@
   "title": "设置",
   "update": {
     "betaUpdate": "测试版升级",
-    "newVersion": "新版本",
+   "newVersion": "新版本",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "在拉取后，重新启动您的容器以应用更新。",
     "releaseNotes": "更新日志",
     "stableRelease": "Stable 版",

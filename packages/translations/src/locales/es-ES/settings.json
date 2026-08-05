@@ -491,7 +491,9 @@
   "title": "Ajustes",
   "update": {
     "betaUpdate": "Actualización beta",
-    "newVersion": "Nueva versión",
+   "newVersion": "Nueva versión",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Entendido.",
     "releaseNotes": "Notas de la versión",
     "stableRelease": "Versión Estable",

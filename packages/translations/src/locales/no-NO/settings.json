@@ -491,7 +491,9 @@
   "title": "Innstillinger",
   "update": {
     "betaUpdate": "Oppdatering av beta",
-    "newVersion": "Ny versjon",
+   "newVersion": "Ny versjon",
+    "upstreamAhead": "Upstream is newer",
+    "upstreamAheadDescription": "A newer official Tracearr release is available, but this fork has not published a matching release yet.",
     "pullInstructions": "Etter trekk, start deretter beholderen på nytt for å bruke oppdateringen.",
     "releaseNotes": "Utgivelsesnotater",
     "stableRelease": "Stabil versjon",
