@@ -801,7 +801,9 @@ async function initializeServices(app: FastifyInstance) {
   try {
     initVersionCheckQueue(redisUrl, app.redis, pubSubService.publish.bind(pubSubService));
     startVersionCheckWorker();
-    void scheduleVersionChecks();
+    void scheduleVersionChecks().catch((err) => {
+      app.log.error({ err }, 'Failed to schedule version checks');
+    });
     app.log.info('Version check queue initialized');
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize version check queue');

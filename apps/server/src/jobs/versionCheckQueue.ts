@@ -201,8 +201,11 @@ export async function scheduleVersionChecks(): Promise<void> {
     }
   );
 
-  // Stable jobId so repeated restarts collapse to a single waiting job
-  await versionQueue.add('startup-check', { type: 'check' }, { jobId: 'startup-check' });
+  // Use a fresh startup job on every process start. A stable id can refer to a
+  // previously completed BullMQ job, in which case BullMQ silently refuses to
+  // enqueue it and a new cache namespace never gets populated after upgrade.
+  // The cooldown key still prevents restart bursts from hammering GitHub.
+  await versionQueue.add('startup-check', { type: 'check' }, { jobId: `startup-check-${Date.now()}` });
 
   console.log('Version checks scheduled (every 6 hours)');
 }
