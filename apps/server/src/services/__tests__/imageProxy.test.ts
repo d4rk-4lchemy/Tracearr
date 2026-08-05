@@ -356,6 +356,60 @@ describe('proxyImage cache-miss pipeline', () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
+  it('fetches Dispatcharr relative logos without proxy headers and resizes them inside', async () => {
+    mockSelectChain([
+      {
+        id: 'server-dispatcharr',
+        type: 'dispatcharr',
+        url: 'http://dispatcharr.local/',
+        token: 'token',
+      },
+    ]);
+
+    const result = await proxyImage({
+      serverId: 'server-dispatcharr',
+      imagePath: '/api/channels/logos/4671/cache/',
+      width: 200,
+      height: 300,
+    });
+
+    expect(result.contentType).toBe('image/webp');
+    expect(result.data.subarray(0, 4).toString('ascii')).toBe('RIFF');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://dispatcharr.local/api/channels/logos/4671/cache/',
+      expect.objectContaining({ headers: {}, signal: expect.any(AbortSignal) })
+    );
+
+    const metadata = await (await import('sharp')).default(result.data).metadata();
+    expect(metadata.width).toBeLessThanOrEqual(200);
+    expect(metadata.height).toBeLessThanOrEqual(300);
+    expect(metadata.width! / metadata.height!).toBeCloseTo(1, 1);
+  });
+
+  it('normalizes absolute Dispatcharr logo URLs to the configured server while preserving query strings', async () => {
+    mockSelectChain([
+      {
+        id: 'server-dispatcharr-absolute',
+        type: 'dispatcharr',
+        url: 'https://configured.dispatcharr.example',
+        token: 'token',
+      },
+    ]);
+
+    const result = await proxyImage({
+      serverId: 'server-dispatcharr-absolute',
+      imagePath: 'https://other.example/api/channels/logos/4671/cache/?ts=123#ignored',
+      width: 200,
+      height: 300,
+    });
+
+    expect(result.contentType).toBe('image/webp');
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'https://configured.dispatcharr.example/api/channels/logos/4671/cache/?ts=123',
+      expect.objectContaining({ headers: {} })
+    );
+  });
+
   it('with skipLqipRace, waits for the real pipeline instead of returning the LQIP placeholder once the wait timeout elapses', async () => {
     vi.useFakeTimers();
     try {

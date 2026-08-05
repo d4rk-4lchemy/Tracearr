@@ -119,6 +119,11 @@ Server routes and services:
 - `apps/server/src/services/sync.ts` syncs Dispatcharr users through the generic user sync path.
 - `apps/server/src/services/termination.ts` passes Dispatcharr config into session termination.
 - `apps/server/src/services/imageProxy.ts` normalizes Dispatcharr image paths, supports Dispatcharr channel logos, and uses `inside` resize fit for Dispatcharr images.
+- Dispatcharr channel-logo proxy requests must use the configured server origin
+  and an empty header set. Do not reintroduce generic `Accept` or auth headers
+  when refactoring the shared image-proxy request builder; preserve URL
+  normalization and `fit: inside` while retaining upstream cache/LQIP behavior
+  for other server types.
 - `apps/server/src/routes/public.ts` and `apps/server/src/routes/public.openapi.ts` expose Dispatcharr-aware live media fields in public API responses.
 - Dashboard daily stats keep `todayPlays`, `todaySessions`, and `watchTimeHours` as VOD-only metrics, add `tvSessions`, `tvChannels`, and `tvWatchTimeHours` for `mediaType === 'live'`, and count `activeUsersToday` across all media types so Dispatcharr Live TV/catch-up activity is no longer invisible on the homepage.
 - `apps/server/src/routes/sessions.ts` carries `dispatcharrPlaybackKind` through `/sessions/history` so History UI can distinguish Dispatcharr catch-up/timeshift rows from ordinary Live TV.

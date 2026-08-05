@@ -449,18 +449,23 @@ function buildUpstreamRequest(
   server: typeof servers.$inferSelect,
   imagePath: string
 ): { imageUrl: string; headers: Record<string, string> } {
-  const headers: Record<string, string> = { Accept: 'image/*' };
   const baseUrl = server.url.replace(/\/$/, '');
+
+  // Dispatcharr's channel-logo endpoint expects the request contract used by
+  // the provider itself: the configured server URL and no proxy-added
+  // headers. In particular, do not send the generic Accept header or any
+  // authentication header through the public image proxy.
+  if (server.type === 'dispatcharr') {
+    return { imageUrl: `${baseUrl}${imagePath}`, headers: {} };
+  }
+
+  const headers: Record<string, string> = { Accept: 'image/*' };
 
   if (server.type === 'plex') {
     // Plex image URLs are relative paths like /library/metadata/123/thumb/456
     // Need to append X-Plex-Token
     const separator = imagePath.includes('?') ? '&' : '?';
     return { imageUrl: `${baseUrl}${imagePath}${separator}X-Plex-Token=${server.token}`, headers };
-  }
-
-  if (server.type === 'dispatcharr') {
-    return { imageUrl: `${baseUrl}${imagePath}`, headers };
   }
 
   // Jellyfin/Emby - imagePath should include the full endpoint
