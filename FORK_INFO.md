@@ -48,6 +48,8 @@ The fork also carries local maintenance/distribution changes:
 
 - README has fork-specific warnings, Docker image names, and Dispatcharr feature notes.
 - Renovate scheduled execution is disabled in `.github/workflows/renovate.yml`.
+- CI runs only for pull requests; merges to `main` do not trigger a second CI run.
+- Release automation is manual-only, so merging to `main` does not create a release, push Docker images, or post to Reddit.
 - Local Husky hooks were removed.
 - `.tmp/`, `.plans/`, `AGENTS.md`, and this `FORK_INFO.md` are ignored locally.
 - `AGENTS.md` documents the Pull Request CI workflow warning baseline. Read both `AGENTS.md` and this file before making changes, and update either file when a change affects repo instructions, fork overlay behavior, validation workflow expectations, warning counts, or future merge guidance.
