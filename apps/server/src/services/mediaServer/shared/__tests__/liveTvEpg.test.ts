@@ -51,7 +51,7 @@ describe('Live TV EPG cache', () => {
       ],
     });
 
-    const result = await enrichLiveTvSessions(
+    const firstResult = await enrichLiveTvSessions(
       'server-1',
       'http://jellyfin.local',
       { Authorization: 'token' },
@@ -61,7 +61,17 @@ describe('Live TV EPG cache', () => {
     );
 
     expect(mockFetchJson).toHaveBeenCalledTimes(1);
-    expect(result).toHaveLength(2);
+    expect(firstResult).toHaveLength(2);
+    expect(nowPlayingName(firstResult[0])).toBe('News 24');
+    await vi.waitFor(() => expect(mockFetchJson).toHaveBeenCalledTimes(1));
+    const result = await enrichLiveTvSessions(
+      'server-1',
+      'http://jellyfin.local',
+      { Authorization: 'token' },
+      [session('one'), session('two')],
+      'jellyfin',
+      now
+    );
     expect(nowPlayingName(result[0])).toBe('The Current Programme');
     expect(nowPlayingId(result[1])).toBe('channel-1');
   });
@@ -104,6 +114,15 @@ describe('Live TV EPG cache', () => {
       },
     };
 
+    await enrichLiveTvSessions(
+      'server-1',
+      'http://jellyfin.local',
+      { Authorization: 'token' },
+      [raw],
+      'jellyfin',
+      now
+    );
+    await vi.waitFor(() => expect(mockFetchJson).toHaveBeenCalledTimes(1));
     const result = await enrichLiveTvSessions(
       'server-1',
       'http://jellyfin.local',

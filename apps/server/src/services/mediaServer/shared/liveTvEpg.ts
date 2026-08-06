@@ -22,6 +22,7 @@ interface CacheEntry {
 
 const entries = new Map<string, CacheEntry>();
 const timers = new Map<string, NodeJS.Timeout>();
+const inFlightChannels = new Set<string>();
 let pollTrigger: ((serverId: string) => void) | undefined;
 
 export function registerLiveTvEpgPollTrigger(handler: (serverId: string) => void): void {
@@ -114,41 +115,29 @@ export async function enrichLiveTvSessions(
     return !entry || entry.expiresAt <= now;
   });
 
-  if (missing.length > 0) {
-    try {
-      const params = new URLSearchParams({ channelIds: missing.join(','), isAiring: 'true' });
-      const response = await fetchJson<{ Items?: unknown[] }>(
-        `${baseUrl}/LiveTv/Programs?${params.toString()}`,
-        { headers, service, timeout: 10_000 }
-      );
-      const programmesByChannel = new Map<string, EpgProgramme>();
-      for (const item of Array.isArray(response?.Items) ? response.Items : []) {
-        if (!item || typeof item !== 'object') continue;
-        const programme = programmeFromRaw(item);
-        const channelId = programme?.channelId;
-        if (!channelId || !programme || programme.startAt > now || programme.endAt <= now) continue;
-        programmesByChannel.set(channelId, programme);
-      }
-      for (const channelId of missing) {
-        // Some Jellyfin versions expose the programme item ID as NowPlayingItem.Id
-        // and omit ChannelId. When that is the only unresolved channel, the sole
-        // current EPG item is the safe association for that session snapshot.
-        const fallbackProgramme =
-          programmesByChannel.get(channelId) ??
-          (missing.length === 1 ? [...programmesByChannel.values()][0] : undefined);
-        setEntry(serverId, channelId, fallbackProgramme ?? null, now);
-      }
-    } catch (error) {
-      for (const channelId of missing) setEntry(serverId, channelId, null, now);
-      // EPG is optional; the session snapshot remains authoritative.
-      console.warn(`[${service}] Live TV EPG unavailable for server ${serverId}`, error);
-    }
+  const channelsToRefresh = missing.filter((channelId) => {
+    const key = `${serverId}:${channelId}`;
+    if (inFlightChannels.has(key)) return false;
+    inFlightChannels.add(key);
+    return true;
+  });
+
+  if (channelsToRefresh.length > 0) {
+    void refreshEpg(
+      serverId,
+      baseUrl,
+      headers,
+      channelsToRefresh,
+      service,
+      now
+    );
   }
 
   return sessions.map((value) => {
     const channelId = channelIdFromSession(value);
     if (!channelId || !value || typeof value !== 'object') return value;
-    const programme = entries.get(`${serverId}:${channelId}`)?.programme;
+    const entry = entries.get(`${serverId}:${channelId}`);
+    const programme = entry && entry.expiresAt > now ? entry.programme : null;
     if (!programme) return value;
     const session = value as Record<string, unknown>;
     const nowPlaying = session.NowPlayingItem;
@@ -169,4 +158,46 @@ export async function enrichLiveTvSessions(
       },
     };
   });
+}
+
+async function refreshEpg(
+  serverId: string,
+  baseUrl: string,
+  headers: Record<string, string>,
+  channelIds: string[],
+  service: 'jellyfin' | 'emby',
+  now: number
+): Promise<void> {
+  try {
+    const params = new URLSearchParams({ channelIds: channelIds.join(','), isAiring: 'true' });
+    const response = await fetchJson<{ Items?: unknown[] }>(
+      `${baseUrl}/LiveTv/Programs?${params.toString()}`,
+      { headers, service, timeout: 10_000 }
+    );
+    const programmesByChannel = new Map<string, EpgProgramme>();
+    for (const item of Array.isArray(response?.Items) ? response.Items : []) {
+      if (!item || typeof item !== 'object') continue;
+      const programme = programmeFromRaw(item);
+      const channelId = programme?.channelId;
+      if (!channelId || !programme || programme.startAt > now || programme.endAt <= now) continue;
+      programmesByChannel.set(channelId, programme);
+    }
+    for (const channelId of channelIds) {
+      // Some Jellyfin versions expose the programme item ID as NowPlayingItem.Id
+      // and omit ChannelId. When that is the only unresolved channel, the sole
+      // current EPG item is the safe association for that session snapshot.
+      const fallbackProgramme =
+        programmesByChannel.get(channelId) ??
+        (channelIds.length === 1 ? [...programmesByChannel.values()][0] : undefined);
+      setEntry(serverId, channelId, fallbackProgramme ?? null, now);
+    }
+  } catch (error) {
+    for (const channelId of channelIds) setEntry(serverId, channelId, null, now);
+    // EPG is optional; the session snapshot remains authoritative.
+    console.warn(`[${service}] Live TV EPG unavailable for server ${serverId}`, error);
+  }
+
+  finally {
+    for (const channelId of channelIds) inFlightChannels.delete(`${serverId}:${channelId}`);
+  }
 }
