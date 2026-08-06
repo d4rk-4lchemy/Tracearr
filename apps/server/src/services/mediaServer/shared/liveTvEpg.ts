@@ -9,6 +9,9 @@ interface EpgProgramme {
   title: string;
   startAt: number;
   endAt: number;
+  channelId?: string;
+  channelName?: string;
+  channelNumber?: string;
 }
 
 interface CacheEntry {
@@ -45,7 +48,17 @@ function programmeFromRaw(value: unknown): EpgProgramme | null {
   if (!title || !Number.isFinite(startAt) || !Number.isFinite(endAt) || endAt <= startAt) {
     return null;
   }
-  return { title, startAt, endAt };
+  const channel = raw.Channel && typeof raw.Channel === 'object' ? raw.Channel as Record<string, unknown> : undefined;
+  return {
+    title,
+    startAt,
+    endAt,
+    channelId: parseOptionalString(raw.ChannelId) ?? parseOptionalString(channel?.Id),
+    channelName:
+      parseOptionalBoundedString(raw.ChannelName, MAX_PROGRAMME_TITLE_LENGTH) ??
+      parseOptionalBoundedString(channel?.Name, MAX_PROGRAMME_TITLE_LENGTH),
+    channelNumber: parseOptionalBoundedString(raw.ChannelNumber, 100),
+  };
 }
 
 function channelIdFromSession(value: unknown): string | null {
@@ -111,14 +124,19 @@ export async function enrichLiveTvSessions(
       const programmesByChannel = new Map<string, EpgProgramme>();
       for (const item of Array.isArray(response?.Items) ? response.Items : []) {
         if (!item || typeof item !== 'object') continue;
-        const raw = item as Record<string, unknown>;
-        const channelId = parseOptionalString(raw.ChannelId);
         const programme = programmeFromRaw(item);
+        const channelId = programme?.channelId;
         if (!channelId || !programme || programme.startAt > now || programme.endAt <= now) continue;
         programmesByChannel.set(channelId, programme);
       }
       for (const channelId of missing) {
-        setEntry(serverId, channelId, programmesByChannel.get(channelId) ?? null, now);
+        // Some Jellyfin versions expose the programme item ID as NowPlayingItem.Id
+        // and omit ChannelId. When that is the only unresolved channel, the sole
+        // current EPG item is the safe association for that session snapshot.
+        const fallbackProgramme =
+          programmesByChannel.get(channelId) ??
+          (missing.length === 1 ? [...programmesByChannel.values()][0] : undefined);
+        setEntry(serverId, channelId, fallbackProgramme ?? null, now);
       }
     } catch (error) {
       for (const channelId of missing) setEntry(serverId, channelId, null, now);
@@ -135,9 +153,20 @@ export async function enrichLiveTvSessions(
     const session = value as Record<string, unknown>;
     const nowPlaying = session.NowPlayingItem;
     if (!nowPlaying || typeof nowPlaying !== 'object') return value;
+    const existingItem = nowPlaying as Record<string, unknown>;
+    const channelIdFromProgramme = programme.channelId ?? channelId;
     return {
       ...session,
-      NowPlayingItem: { ...(nowPlaying as Record<string, unknown>), Name: programme.title },
+      NowPlayingItem: {
+        ...existingItem,
+        // Keep the provider's existing identity unchanged. If ChannelName was
+        // omitted, the pre-enrichment Name is the channel label; only after
+        // preserving it do we replace Name with the current EPG programme.
+        ChannelId: existingItem.ChannelId ?? channelIdFromProgramme,
+        ChannelName: programme.channelName ?? existingItem.ChannelName ?? existingItem.Name,
+        ChannelNumber: programme.channelNumber ?? existingItem.ChannelNumber,
+        Name: programme.title,
+      },
     };
   });
 }

@@ -81,4 +81,43 @@ describe('Live TV EPG cache', () => {
 
     expect(result).toEqual([original]);
   });
+
+  it('restores channel identity and metadata when /Sessions only exposes a programme item', async () => {
+    mockFetchJson.mockResolvedValue({
+      Items: [
+        {
+          ChannelId: 'real-channel-1',
+          ChannelNumber: '12',
+          Name: 'Świat według Kiepskich',
+          StartDate: '2026-08-06T11:30:00.000Z',
+          EndDate: '2026-08-06T12:30:00.000Z',
+        },
+      ],
+    });
+    const raw = {
+      Id: 'programme-item-1',
+      NowPlayingItem: {
+        Id: 'programme-item-1',
+        ChannelId: 'real-channel-1',
+        Type: 'LiveTvChannel',
+        Name: 'Mocny Full TV',
+      },
+    };
+
+    const result = await enrichLiveTvSessions(
+      'server-1',
+      'http://jellyfin.local',
+      { Authorization: 'token' },
+      [raw],
+      'jellyfin',
+      now
+    );
+    const item = (result[0] as { NowPlayingItem: Record<string, unknown> }).NowPlayingItem;
+
+    expect(item.Id).toBe('programme-item-1');
+    expect(item.ChannelId).toBe('real-channel-1');
+    expect(item.ChannelName).toBe('Mocny Full TV');
+    expect(item.ChannelNumber).toBe('12');
+    expect(item.Name).toBe('Świat według Kiepskich');
+  });
 });
