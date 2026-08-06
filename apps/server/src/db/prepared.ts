@@ -17,7 +17,7 @@
 import { eq, gte, and, isNull, desc, sql, inArray } from 'drizzle-orm';
 import { db } from './client.js';
 import { sessions, violations, users, serverUsers, servers, rules } from './schema.js';
-import { PRIMARY_MEDIA_TYPES } from '../constants/index.js';
+import { ACTIVITY_MEDIA_TYPES, PRIMARY_MEDIA_TYPES } from '../constants/index.js';
 
 /**
  * Single source of truth for all prepared statement definitions.
@@ -232,7 +232,7 @@ function createStatements() {
      * Plays by platform since a given date
      * Used for: Stats platform breakdown chart
      * Called: Every stats page load
-     * Note: Excludes live TV and music tracks
+     * Note: Includes Live TV and excludes non-playback media types
      */
     playsByPlatformSince: db
       .select({
@@ -243,7 +243,7 @@ function createStatements() {
       .where(
         and(
           gte(sessions.startedAt, sql.placeholder('since')),
-          inArray(sessions.mediaType, PRIMARY_MEDIA_TYPES)
+          inArray(sessions.mediaType, ACTIVITY_MEDIA_TYPES)
         )
       )
       .groupBy(sessions.platform)
@@ -254,7 +254,7 @@ function createStatements() {
      * Quality breakdown (direct vs transcode) since a given date
      * Used for: Stats quality chart
      * Called: Every stats page load
-     * Note: Excludes live TV and music tracks
+     * Note: Includes Live TV and excludes non-playback media types
      */
     qualityStatsSince: db
       .select({
@@ -269,7 +269,7 @@ function createStatements() {
       .where(
         and(
           gte(sessions.startedAt, sql.placeholder('since')),
-          inArray(sessions.mediaType, PRIMARY_MEDIA_TYPES)
+          inArray(sessions.mediaType, ACTIVITY_MEDIA_TYPES)
         )
       )
       .groupBy(sql`tier`)

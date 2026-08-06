@@ -170,7 +170,22 @@ describe('Plays Routes', () => {
       expect(params).toContain('episode');
     });
 
-    it('rejects a mediaType value outside the primary media types', async () => {
+    it('accepts mediaType=live', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+      vi.mocked(db.execute).mockResolvedValueOnce({ rows: [] } as never);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/stats/plays?mediaType=live',
+      });
+
+      expect(response.statusCode).toBe(200);
+      const { params } = renderSql(vi.mocked(db.execute).mock.calls[0]![0] as SQL);
+      expect(params).toContain('live');
+    });
+
+    it('rejects a mediaType value outside the Activity media types', async () => {
       const ownerUser = createOwnerUser();
       app = await buildTestApp(ownerUser);
 

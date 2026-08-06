@@ -13,7 +13,7 @@
 import type { SQL } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
+import { ACTIVITY_MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
 
 // Sessions shorter than 2 minutes are not counted as intentional plays
 const MIN_PLAY_DURATION_MS = 120000;
@@ -56,7 +56,7 @@ export async function queryPlaysOverTime(params: {
       COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
     FROM sessions
     ${baseWhere}
-    ${MEDIA_TYPE_SQL_FILTER}
+    ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
     ${mediaTypeFilter ?? sql``}
     ${endDate ? sql`AND started_at < ${endDate}` : sql``}
     ${serverFilter}
@@ -100,7 +100,7 @@ export async function queryPlaysByDayOfWeek(params: {
       COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
     FROM sessions
     ${baseWhere}
-    ${MEDIA_TYPE_SQL_FILTER}
+    ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
     ${endDate ? sql`AND started_at < ${endDate}` : sql``}
     ${serverFilter}
     GROUP BY 1
@@ -143,7 +143,7 @@ export async function queryPlaysByHourOfDay(params: {
       COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
     FROM sessions
     ${baseWhere}
-    ${MEDIA_TYPE_SQL_FILTER}
+    ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
     ${endDate ? sql`AND started_at < ${endDate}` : sql``}
     ${serverFilter}
     GROUP BY 1
@@ -189,7 +189,7 @@ export async function queryConcurrentStreams(params: {
       SELECT started_at, stopped_at, is_transcode, video_decision, audio_decision
       FROM sessions
       WHERE stopped_at IS NOT NULL
-        ${MEDIA_TYPE_SQL_FILTER}
+        ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
         ${serverFilter}
         AND stopped_at >= ${rangeStart}
         AND started_at <= ${rangeEnd}
@@ -284,7 +284,7 @@ export async function queryPlatforms(params: {
       COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
     FROM sessions
     WHERE true
-    ${MEDIA_TYPE_SQL_FILTER}
+    ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
     ${serverFilter}
     ${rangeStart ? sql`AND started_at >= ${rangeStart}` : sql``}
     GROUP BY platform
@@ -354,7 +354,7 @@ export async function queryQualityBreakdown(params: {
       COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
     FROM sessions
     WHERE true
-    ${MEDIA_TYPE_SQL_FILTER}
+    ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
     ${serverFilter}
     ${rangeStart ? sql`AND started_at >= ${rangeStart}` : sql``}
     GROUP BY tier

@@ -2,10 +2,11 @@
  * Media Type Constants
  *
  * Centralized definitions for media type filtering across the application.
- * Live TV and music tracks are excluded from primary statistics but tracked separately.
+ * Live TV and music tracks are excluded from primary statistics, while Activity
+ * stats intentionally include Live TV alongside VOD.
  *
  * IMPORTANT: All SQL fragments are dynamically derived from the TypeScript arrays.
- * Changing PRIMARY_MEDIA_TYPES or EXCLUDED_MEDIA_TYPES will automatically update all SQL.
+ * Changing the named media-type sets will automatically update their derived SQL fragments.
  */
 
 import { sql } from 'drizzle-orm';
@@ -16,11 +17,18 @@ export const ALL_MEDIA_TYPES = MEDIA_TYPES;
 export type { MediaType };
 
 /**
- * Media types that count toward primary statistics (dashboard, plays, users, etc.)
- * Excludes live TV and music tracks - they have their own breakdowns.
+ * Media types that count toward VOD-primary statistics (dashboard, primary plays, users, etc.).
+ * Activity charts use ACTIVITY_MEDIA_TYPES because they also include Live TV.
  */
 export const PRIMARY_MEDIA_TYPES = ['movie', 'episode'] as const;
 export type PrimaryMediaType = (typeof PRIMARY_MEDIA_TYPES)[number];
+
+/**
+ * Media types included in the Activity stats charts.
+ * Unlike primary statistics, Activity includes Live TV from every server type.
+ */
+export const ACTIVITY_MEDIA_TYPES = ['movie', 'episode', 'live'] as const;
+export type ActivityMediaType = (typeof ACTIVITY_MEDIA_TYPES)[number];
 
 /**
  * Media types excluded from rule evaluation and primary statistics.
@@ -37,12 +45,18 @@ export const EXCLUDED_MEDIA_TYPES_SET = new Set<string>(EXCLUDED_MEDIA_TYPES);
 
 // Generate SQL IN clause from array - single source of truth
 const primaryTypesInClause = PRIMARY_MEDIA_TYPES.map((t) => `'${t}'`).join(', ');
+const activityTypesInClause = ACTIVITY_MEDIA_TYPES.map((t) => `'${t}'`).join(', ');
 
 /**
  * SQL fragment for filtering to primary media types in raw queries.
  * Use this when building dynamic SQL with template literals.
  */
 export const MEDIA_TYPE_SQL_FILTER = sql.raw(`AND media_type IN (${primaryTypesInClause})`);
+
+/** SQL fragment for Activity stats, including Live TV but excluding non-playback media. */
+export const ACTIVITY_MEDIA_TYPE_SQL_FILTER = sql.raw(
+  `AND media_type IN (${activityTypesInClause})`
+);
 
 /**
  * SQL fragment without "AND" prefix - for use with sql.join() in query builders.
