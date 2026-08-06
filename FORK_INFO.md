@@ -41,6 +41,7 @@ User-facing Dispatcharr behavior:
 - Optionally ignore streams reported as anonymous.
 - Terminate Dispatcharr live/VOD streams from Tracearr.
 - Display Live TV channel/programme information, channel logos, stream bitrate, codecs, resolution, and FFmpeg speed where available.
+- Jellyfin and Emby Live TV sessions are enriched from `/LiveTv/Programs`; the current programme is stored in `mediaTitle` while the channel remains in `live.*`. The EPG cache is shared per server/channel and refreshes the existing poller at programme boundaries. Web and mobile Live TV cards use the same channel-title/programme-subtitle layout as Dispatcharr; Plex keeps its legacy Live TV card for now.
 - Show Dispatcharr active sessions immediately from healthy WebSocket snapshots.
 - Save Dispatcharr Live TV sessions to history only after a configurable threshold; default is 30 seconds and `0` means always save. This threshold does not delay active-session visibility, does not emit a second stream-start event when history is confirmed, and does not apply to Dispatcharr VOD history.
 

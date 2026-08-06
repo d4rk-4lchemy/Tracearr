@@ -36,6 +36,7 @@ interface NowPlayingCardProps {
 
 function getCardMediaDisplay(session: ActiveSession): { title: string; subtitle: string | null } {
   if (session.mediaType === 'live') {
+    if (session.server.type === 'plex') return { title: session.mediaTitle, subtitle: null };
     const channelTitle = session.channelTitle?.trim() || session.mediaTitle;
     const programTitle = session.mediaTitle?.trim() || null;
     const subtitle = programTitle && programTitle !== channelTitle ? programTitle : null;

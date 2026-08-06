@@ -117,6 +117,7 @@ function buildPublicMediaFields(input: PublicMediaFieldsInput) {
   return {
     mediaTitle,
     mediaType: input.mediaType,
+    ...(isLive ? { programmeTitle: firstNonEmpty(input.mediaTitle) } : {}),
     ...(isDispatcharrLive ? {} : { showTitle }),
     thumbPath,
     posterUrl: buildPosterUrl(input.serverId, thumbPath),

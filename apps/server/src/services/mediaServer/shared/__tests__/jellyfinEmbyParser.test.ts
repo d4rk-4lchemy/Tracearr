@@ -18,6 +18,32 @@ import {
   parseItem,
 } from '../jellyfinEmbyParser.js';
 
+describe('Live TV EPG normalization contract', () => {
+  it('keeps the channel identity independent from the programme title', async () => {
+    const { parseSession } = await import('../../jellyfin/../jellyfin/parser.js');
+    const session = parseSession({
+      Id: 'session-1',
+      UserId: 'user-1',
+      UserName: 'viewer',
+      DeviceName: 'TV',
+      DeviceId: 'device-1',
+      NowPlayingItem: {
+        Id: 'channel-1',
+        Type: 'LiveTvChannel',
+        Name: 'Morning News',
+        ChannelName: 'News 24',
+        ChannelId: 'channel-1',
+      },
+      PlayState: {},
+    });
+
+    expect(session?.media.title).toBe('Morning News');
+    expect(session?.mediaId).toBe('channel-1');
+    expect(session?.live?.channelTitle).toBe('News 24');
+    expect(session?.live?.channelIdentifier).toBeUndefined();
+  });
+});
+
 // ============================================================================
 // parseProviderIds tests
 // ============================================================================

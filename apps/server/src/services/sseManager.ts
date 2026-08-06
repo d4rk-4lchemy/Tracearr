@@ -38,6 +38,7 @@ import {
 } from './mediaServer/shared/jellyfinEmbyEventSource.js';
 import { broadcastToAll } from '../websocket/index.js';
 import { triggerServerPoll } from '../jobs/poller/index.js';
+import { clearLiveTvEpgServer } from './mediaServer/shared/liveTvEpg.js';
 import { compareVersions } from '../utils/pluginVersion.js';
 import type { CacheService, PubSubService } from './cache.js';
 
@@ -308,6 +309,7 @@ export class SSEManager extends EventEmitter {
 
   private async removeServerInternal(serverId: string): Promise<void> {
     const connection = this.connections.get(serverId);
+    clearLiveTvEpgServer(serverId);
     if (!connection) {
       return;
     }

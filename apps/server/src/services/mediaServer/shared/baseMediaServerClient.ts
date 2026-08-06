@@ -17,6 +17,7 @@ import type {
   MediaWatchHistoryItem,
   MediaServerConfig,
 } from '../types.js';
+import { enrichLiveTvSessions } from './liveTvEpg.js';
 
 // Client identification constants
 const CLIENT_NAME = 'Tracearr';
@@ -95,6 +96,7 @@ export abstract class BaseMediaServerClient
 
   protected readonly baseUrl: string;
   protected readonly apiKey: string;
+  protected readonly serverId: string;
 
   /** Parser functions injected by subclass */
   protected abstract readonly parsers: MediaServerParsers;
@@ -102,6 +104,7 @@ export abstract class BaseMediaServerClient
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
     this.apiKey = config.token;
+    this.serverId = config.id ?? this.baseUrl;
   }
 
   // ==========================================================================
@@ -141,7 +144,14 @@ export abstract class BaseMediaServerClient
       timeout: 10000,
     });
 
-    return this.parsers.parseSessionsResponse(data);
+    const enriched = await enrichLiveTvSessions(
+      this.serverId,
+      this.baseUrl,
+      this.buildHeaders(),
+      data,
+      this.serverType
+    );
+    return this.parsers.parseSessionsResponse(enriched);
   }
 
   /**

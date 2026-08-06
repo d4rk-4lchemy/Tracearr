@@ -262,7 +262,10 @@ export const HistoryTableRow = memo(
       },
       ref
     ) => {
-      const { title: primary, subtitle: secondary } = getMediaDisplay(session);
+      const { title: primary, subtitle: secondary } = getMediaDisplay({
+        ...session,
+        serverType: session.server.type,
+      });
       const progress = getProgress(session);
       const colorMap = useServerColorMap();
       const serverColor = isMultiServer ? (colorMap.get(session.serverId) ?? null) : null;

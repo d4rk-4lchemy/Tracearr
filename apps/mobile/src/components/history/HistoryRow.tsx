@@ -38,8 +38,12 @@ function getProgress(session: SessionWithDetails): number {
 // Get content title with proper formatting for different media types
 function getContentTitle(session: SessionWithDetails): { primary: string; secondary?: string } {
   if (session.mediaType === 'live') {
+    if (session.server.type === 'plex') return { primary: session.mediaTitle };
+    const channelTitle = session.channelTitle?.trim() || session.mediaTitle;
+    const programmeTitle = session.mediaTitle?.trim() || null;
     return {
-      primary: session.channelTitle?.trim() || session.mediaTitle,
+      primary: channelTitle,
+      secondary: programmeTitle && programmeTitle !== channelTitle ? programmeTitle : undefined,
     };
   }
 

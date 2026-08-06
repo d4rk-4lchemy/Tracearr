@@ -46,6 +46,7 @@ interface MediaDisplayFields {
   channelTitle?: string | null;
   artistName?: string | null;
   albumName?: string | null;
+  serverType?: string | null;
 }
 
 /**
@@ -59,12 +60,16 @@ export function getMediaDisplay(media: MediaDisplayFields): {
   title: string;
   subtitle: string | null;
 } {
-  if (media.mediaType === 'live') {
+  const unifiedLiveTv = ['jellyfin', 'emby', 'dispatcharr'].includes(media.serverType ?? '');
+  if (media.mediaType === 'live' && unifiedLiveTv) {
+    const channelTitle = media.channelTitle?.trim() || (media.mediaTitle ?? '');
+    const programmeTitle = media.mediaTitle?.trim() || null;
     return {
-      title: media.channelTitle?.trim() || (media.mediaTitle ?? ''),
-      subtitle: null,
+      title: channelTitle,
+      subtitle: programmeTitle && programmeTitle !== channelTitle ? programmeTitle : null,
     };
   }
+  if (media.mediaType === 'live') return { title: media.mediaTitle ?? '', subtitle: null };
 
   if (media.mediaType === 'episode' && media.grandparentTitle) {
     // TV Show episode

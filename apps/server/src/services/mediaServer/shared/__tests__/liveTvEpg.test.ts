@@ -1,0 +1,84 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchJson } from '../../../../utils/http.js';
+import {
+  clearLiveTvEpgServer,
+  enrichLiveTvSessions,
+  registerLiveTvEpgPollTrigger,
+} from '../liveTvEpg.js';
+
+vi.mock('../../../../utils/http.js', () => ({ fetchJson: vi.fn() }));
+
+const mockFetchJson = vi.mocked(fetchJson);
+const now = Date.parse('2026-08-06T12:00:00.000Z');
+
+function nowPlayingName(value: unknown): unknown {
+  return (value as { NowPlayingItem?: { Name?: unknown } }).NowPlayingItem?.Name;
+}
+
+function nowPlayingId(value: unknown): unknown {
+  return (value as { NowPlayingItem?: { Id?: unknown } }).NowPlayingItem?.Id;
+}
+
+function session(id: string) {
+  return {
+    Id: id,
+    NowPlayingItem: {
+      Id: 'channel-1',
+      Type: 'LiveTvChannel',
+      Name: 'News 24',
+      ChannelName: 'News 24',
+      ChannelId: 'channel-1',
+    },
+  };
+}
+
+describe('Live TV EPG cache', () => {
+  beforeEach(() => {
+    mockFetchJson.mockReset();
+    clearLiveTvEpgServer('server-1');
+    registerLiveTvEpgPollTrigger(() => undefined);
+  });
+
+  it('fetches one guide response for multiple sessions on the same channel', async () => {
+    mockFetchJson.mockResolvedValue({
+      Items: [
+        {
+          ChannelId: 'channel-1',
+          Name: 'The Current Programme',
+          StartDate: '2026-08-06T11:30:00.000Z',
+          EndDate: '2026-08-06T12:30:00.000Z',
+        },
+      ],
+    });
+
+    const result = await enrichLiveTvSessions(
+      'server-1',
+      'http://jellyfin.local',
+      { Authorization: 'token' },
+      [session('one'), session('two')],
+      'jellyfin',
+      now
+    );
+
+    expect(mockFetchJson).toHaveBeenCalledTimes(1);
+    expect(result).toHaveLength(2);
+    expect(nowPlayingName(result[0])).toBe('The Current Programme');
+    expect(nowPlayingId(result[1])).toBe('channel-1');
+  });
+
+  it('keeps the session unchanged when the guide is unavailable', async () => {
+    mockFetchJson.mockRejectedValue(new Error('403'));
+    const original = session('one');
+
+    const result = await enrichLiveTvSessions(
+      'server-1',
+      'http://emby.local',
+      { 'X-Emby-Authorization': 'token' },
+      [original],
+      'emby',
+      now
+    );
+
+    expect(result).toEqual([original]);
+  });
+});

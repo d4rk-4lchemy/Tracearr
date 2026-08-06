@@ -30,6 +30,7 @@ import { lookupGeoIP } from '../../services/plexGeoip.js';
 import { registerService, unregisterService } from '../../services/serviceTracker.js';
 import { getWatchedThreshold } from '../../services/settings.js';
 import { sseManager } from '../../services/sseManager.js';
+import { registerLiveTvEpgPollTrigger } from '../../services/mediaServer/shared/liveTvEpg.js';
 
 import { enqueueNotification } from '../notificationQueue.js';
 import {
@@ -97,6 +98,10 @@ let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;
 let previousPollHadSessions = false;
 let currentPollIntervalMs: number = POLLING_INTERVALS.SESSIONS_IDLE;
+
+registerLiveTvEpgPollTrigger((serverId) => {
+  void triggerServerPoll(serverId);
+});
 
 const pollGuard = { running: false };
 const sweepGuard = { running: false };
@@ -844,6 +849,8 @@ export async function processServerSessions(
       type: server.type,
       url: server.url,
       token: server.token,
+      id: server.id,
+      name: server.name,
     });
     const mediaSessions = options.mediaSessions ?? (await client.getSessions());
     sseManager.nudgeReconnect(server.id);
