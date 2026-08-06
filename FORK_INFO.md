@@ -129,7 +129,7 @@ Server routes and services:
   for other server types.
 - `apps/server/src/routes/public.ts` and `apps/server/src/routes/public.openapi.ts` expose Dispatcharr-aware live media fields in public API responses.
 - Dashboard daily stats keep `todayPlays`, `todaySessions`, and `watchTimeHours` as VOD-only metrics, add `tvSessions`, `tvChannels`, and `tvWatchTimeHours` for `mediaType === 'live'`, and count `activeUsersToday` across all media types so Dispatcharr Live TV/catch-up activity is no longer invisible on the homepage.
-- Activity stats charts (`plays`, `concurrent`, day/hour activity, platforms, and quality) include `movie`, `episode`, and `live` sessions from every supported server type. The two-minute intentional-play threshold remains limited to the plays/activity charts; Dashboard, engagement, and other primary-statistics filters remain VOD-only.
+- Activity stats (`plays`, `concurrent`, day/hour activity, platforms, quality, users, and top users) include `movie`, `episode`, and `live` sessions from every supported server type. The two-minute intentional-play threshold remains limited to the plays/activity charts; Dashboard, engagement, and other primary-statistics filters remain VOD-only.
 - `apps/server/src/routes/sessions.ts` carries `dispatcharrPlaybackKind` through `/sessions/history` so History UI can distinguish Dispatcharr catch-up/timeshift rows from ordinary Live TV.
 
 Realtime and polling:

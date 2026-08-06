@@ -76,6 +76,11 @@ export const PRIMARY_MEDIA_TYPE_CONDITION_S = sql.raw(`s.media_type IN (${primar
  */
 export const MEDIA_TYPE_SQL_FILTER_S = sql.raw(`AND s.media_type IN (${primaryTypesInClause})`);
 
+/** SQL fragment for Activity stats with the sessions table alias 's.'. */
+export const ACTIVITY_MEDIA_TYPE_SQL_FILTER_S = sql.raw(
+  `AND s.media_type IN (${activityTypesInClause})`
+);
+
 /**
  * Raw SQL string for use in TimescaleDB continuous aggregate definitions.
  * Used directly in CREATE MATERIALIZED VIEW statements.

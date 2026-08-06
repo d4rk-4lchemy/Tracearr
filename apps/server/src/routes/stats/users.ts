@@ -7,6 +7,7 @@
  * Stats are per-User (identity), not per-ServerUser (server account): a merged
  * person with accounts on multiple servers appears once, with plays and watch
  * time summed across every account they have on the resolved servers.
+ * Activity includes VOD and Live TV sessions; non-playback media is excluded.
  */
 
 import type { FastifyPluginAsync } from 'fastify';
@@ -22,7 +23,7 @@ import {
   buildServerAccessCondition,
 } from '../../utils/serverFiltering.js';
 import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
-import { MEDIA_TYPE_SQL_FILTER_S } from '../../constants/index.js';
+import { ACTIVITY_MEDIA_TYPE_SQL_FILTER_S } from '../../constants/index.js';
 
 export const usersRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -47,12 +48,12 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
     const serverFilterSu2 = buildMultiServerFragment(resolvedIds, 'su2.server_id');
 
     // Build date filter for JOIN condition
-    // Also filter to only movies/episodes (exclude live TV and music tracks)
+    // Include VOD and Live TV, while excluding music and other non-playback media.
     const dateJoinFilter = dateRange.start
       ? period === 'custom'
-        ? sql`AND s.started_at >= ${dateRange.start} AND s.started_at < ${dateRange.end} ${MEDIA_TYPE_SQL_FILTER_S}`
-        : sql`AND s.started_at >= ${dateRange.start} ${MEDIA_TYPE_SQL_FILTER_S}`
-      : MEDIA_TYPE_SQL_FILTER_S; // All-time: only media type filter
+        ? sql`AND s.started_at >= ${dateRange.start} AND s.started_at < ${dateRange.end} ${ACTIVITY_MEDIA_TYPE_SQL_FILTER_S}`
+        : sql`AND s.started_at >= ${dateRange.start} ${ACTIVITY_MEDIA_TYPE_SQL_FILTER_S}`
+      : ACTIVITY_MEDIA_TYPE_SQL_FILTER_S; // All-time: only media type filter
 
     const result = await db.execute(sql`
         SELECT
@@ -118,12 +119,12 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
     const serverFilterSu2 = buildMultiServerFragment(resolvedIds, 'su2.server_id');
 
     // Build date filter for JOIN condition
-    // Also filter to only movies/episodes (exclude live TV and music tracks)
+    // Include VOD and Live TV, while excluding music and other non-playback media.
     const topDateJoinFilter = dateRange.start
       ? period === 'custom'
-        ? sql`AND s.started_at >= ${dateRange.start} AND s.started_at < ${dateRange.end} ${MEDIA_TYPE_SQL_FILTER_S}`
-        : sql`AND s.started_at >= ${dateRange.start} ${MEDIA_TYPE_SQL_FILTER_S}`
-      : MEDIA_TYPE_SQL_FILTER_S; // All-time: only media type filter
+        ? sql`AND s.started_at >= ${dateRange.start} AND s.started_at < ${dateRange.end} ${ACTIVITY_MEDIA_TYPE_SQL_FILTER_S}`
+        : sql`AND s.started_at >= ${dateRange.start} ${ACTIVITY_MEDIA_TYPE_SQL_FILTER_S}`
+      : ACTIVITY_MEDIA_TYPE_SQL_FILTER_S; // All-time: only media type filter
 
     // Aggregate by identity: plays/watch time are summed across every account
     // the person has on the resolved servers. `rep` picks one representative
