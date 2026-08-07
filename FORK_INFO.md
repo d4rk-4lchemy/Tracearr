@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA inspected: `feature/version-2.0-preparation` at `6a284d7a`
+- Fork branch/SHA inspected: `feature/better-live-tv-for-jellyfin-and-emby` at `a28c0103`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `c600f88f`
+- Source branch/SHA inspected: `main` at `55af7da5`
 - Last shared upstream commit found during inspection: `367f6c69`
-- Latest upstream commit merged into the current working tree: `c600f88f`
+- Latest upstream commit merged into the current working tree: `55af7da5`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -211,6 +211,17 @@ High-conflict areas to review manually:
 - Mobile server metadata and Live TV display.
 
 Current upstream merge notes:
+
+- Upstream `main` at `55af7da5` (Tracearr `v2.0.1`) was merged into
+  `feature/better-live-tv-for-jellyfin-and-emby` on Thursday, August 7, 2026
+  (merge commit `a28c0103`). The upstream full-scan and snapshot aggregation
+  rewrite was retained. `LibrarySyncService.syncServer()` keeps the fork's
+  `supportsMediaLibrary()` guard, so Dispatcharr remains excluded from library
+  catalog work while retaining session/history and realtime support.
+- Jellyfin/Emby SSE retains upstream's bounded event-burst debounce, plugin
+  diagnostics, leader-only connection refresh, and library-event sync. The
+  fork additionally carries immediate terminal-event polling; Dispatcharr
+  continues to use its separate authenticated WebSocket snapshot processor.
 
 - Upstream `main` at `c600f88f` was merged into `feature/version-2.0-preparation` on Wednesday, August 5, 2026 (merge commit `6a284d7a`). The merge retains the Dispatcharr library-capability guard: Dispatcharr remains excluded from library-sync scheduling and media catalog work while receiving session/history support.
 - Upstream's Timescale maintenance, session-identity backfill, library-sync queue, import transaction, supervised Docker, and translation changes were retained. The database-client test conflict was resolved by retaining both the fork migration-ledger coverage and upstream raw-client error-listener coverage; the Dutch settings translation retains Dispatcharr configuration/realtime and fork-version keys alongside upstream localization updates.

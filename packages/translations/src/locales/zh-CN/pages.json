@@ -17,10 +17,10 @@
     "apiKeyAutoLoaded": "API 密钥自动加载",
     "backToSettings": "返回设置",
     "noApiKey": "没有生成 API 密钥 - 在设置中创建一个测试端点",
+    "specLoadError": "Failed to load the API specification. Check your API key and try again.",
     "versionSwitcherLabel": "API documentation version",
     "versionV1": "API v1",
-    "versionV2": "API v2",
-    "specLoadError": "Failed to load the API specification. Check your API key and try again."
+    "versionV2": "API v2"
   },
   "dashboard": {
     "activeUsers": "活动用户",
@@ -32,6 +32,10 @@
     "serverResources": "服务器资源",
     "streamLocations": "流媒体位置",
     "streamsAppearHere": "当用户开始观看时活跃的流将出现在这里",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "观看时长"
   },
   "debug": {
@@ -198,6 +202,10 @@
     },
     "storage": {
       "avgHoursPerGB": "avg小时/GB",
+      "colCopies": "Copies",
+      "colMatchType": "Match Type",
+      "colRecoverable": "Recoverable Space",
+      "colTitle": "Title",
       "confidence": "置信度",
       "confidenceHigh": "高",
       "confidenceLow": "低",
@@ -207,40 +215,42 @@
       "days": "天",
       "description": "存储使用、预测和优化",
       "duplicates": "重复项",
+      "duplicatesFailed": "Failed to load duplicates",
+      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
+      "duplicatesTitle": "Duplicates",
       "failedToLoad": "加载存储数据失败",
       "failedToLoadDesc": "无法获取存储数据。请重试。",
       "groups": "组",
+      "growthPreChangeover": "based on pre-update history",
       "growthRate": "增长",
       "insufficientData": "数据不足",
       "items": "项目",
+      "loadingDuplicates": "Loading duplicates...",
+      "mirror": "Mirror",
+      "noDuplicatesDesc": "No titles with more than one physical file detected.",
+      "noDuplicatesTitle": "No duplicates found",
       "of": "共",
+      "pageOf": "Page {{page}} of {{totalPages}}",
       "predictions": "预测",
       "recoverable": "可恢复",
+      "sameServer": "Same server",
       "staleContent": "陈旧内容",
       "staleContentDesc": "可选除名的内容",
       "storageTrend": "存储趋势",
       "title": "存储",
       "totalStorage": "总存储",
       "unused": "未使用",
-      "zeroGrowth": "0 GB/月",
-      "duplicatesTitle": "Duplicates",
-      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
-      "growthPreChangeover": "based on pre-update history",
-      "loadingDuplicates": "Loading duplicates...",
-      "duplicatesFailed": "Failed to load duplicates",
-      "noDuplicatesTitle": "No duplicates found",
-      "noDuplicatesDesc": "No titles with more than one physical file detected.",
-      "colTitle": "Title",
-      "colMatchType": "Match Type",
-      "colCopies": "Copies",
-      "colRecoverable": "Recoverable Space",
-      "sameServer": "Same server",
-      "mirror": "Mirror",
-      "pageOf": "Page {{page}} of {{totalPages}}"
+      "zeroGrowth": "0 GB/月"
     },
     "title": "媒体库",
     "topMovies": "热门电影",
     "topShows": "热门电视节目",
+    "versionsBackfill": {
+      "action": "Sync now",
+      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
+      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
+      "syncStarted": "Library sync started."
+    },
     "watch": {
       "avgPerItem": "每个项目avg",
       "bingeHighlights": "Binge 高光",
@@ -262,12 +272,6 @@
       "totalWatchTime": "总观察时间",
       "viewingHours": "查看时间",
       "watched": "观看了"
-    },
-    "versionsBackfill": {
-      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
-      "action": "Sync now",
-      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
-      "syncStarted": "Library sync started."
     }
   },
   "login": {
@@ -311,6 +315,12 @@
     "yourPasswordPlaceholder": "您的密码"
   },
   "maintenance": {
+    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded.",
+    "initStep": {
+      "migrations": "Applying database migrations",
+      "services": "Starting services",
+      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)"
+    },
     "interruptionDescription": "一个或多个后端服务已不可用。当连接恢复时，此页面将自动刷新。",
     "interruptionTitle": "服务中止",
     "restoreFailed": "还原失败",
@@ -326,13 +336,7 @@
     },
     "restoreTitle": "正在从备份还原……",
     "startingDescription": "服务器正在等待后端服务可用。此页面将在一切就绪时自动刷新。",
-    "startingTitle": "Tracearr 正在启动……",
-    "initStep": {
-      "migrations": "Applying database migrations",
-      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)",
-      "services": "Starting services"
-    },
-    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded."
+    "startingTitle": "Tracearr 正在启动……"
   },
   "map": {
     "allActivity": "所有活动",
@@ -350,12 +354,12 @@
       },
       "copies": {
         "columns": {
-          "server": "Server",
+          "added": "Added",
+          "episodes": "Episodes",
           "library": "Library",
           "quality": "Quality",
-          "episodes": "Episodes",
-          "size": "Size",
-          "added": "Added"
+          "server": "Server",
+          "size": "Size"
         },
         "loadError": "Couldn't load copies",
         "title": "Copies",
@@ -465,31 +469,31 @@
       }
     },
     "genres": {
-      "title": "类型",
-      "subtitle": "Plays and watch time by genre, across every server in view.",
       "chart": {
-        "title": "Plays by genre",
-        "valueLabel": "Plays",
+        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below.",
         "itemCount_one": "{{count}} title",
         "itemCount_other": "{{count}} titles",
-        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below."
+        "title": "Plays by genre",
+        "valueLabel": "Plays"
       },
+      "empty": {
+        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes.",
+        "title": "No genres captured yet"
+      },
+      "loadError": "Couldn't load genres",
+      "subtitle": "Plays and watch time by genre, across every server in view.",
       "table": {
-        "title": "Genre breakdown",
+        "browseMovies": "Browse {{genre}} movies",
+        "browseShows": "Browse {{genre}} shows",
         "columns": {
           "genre": "Genre",
           "items": "Items",
           "plays": "Plays",
           "watchTime": "Watch time"
         },
-        "browseMovies": "Browse {{genre}} movies",
-        "browseShows": "Browse {{genre}} shows"
+        "title": "Genre breakdown"
       },
-      "empty": {
-        "title": "No genres captured yet",
-        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes."
-      },
-      "loadError": "Couldn't load genres"
+      "title": "类型"
     },
     "grid": {
       "clearJumpAction": "Clear",
@@ -500,34 +504,41 @@
       "loaderError": "Couldn't load more titles",
       "retry": "Retry",
       "scrubber": {
-        "label": "Jump to letter",
-        "current": "Letter {{letter}}"
+        "current": "Letter {{letter}}",
+        "label": "Jump to letter"
       },
       "showAll": "Show all",
       "showingFrom": "Showing from {{letter}}",
       "toolbar": {
         "ariaLabel": "Filters and sort",
         "count": "{{loaded}} of {{total}} titles · {{size}}",
+        "countTotal_one": "{{count}} title · {{size}}",
+        "countTotal_other": "{{count}} titles · {{size}}",
         "done": "Done",
         "filtersLabel": "Filters",
         "filtersSheetTitle": "Filters",
         "genreAll": "Any genre",
         "genreLabel": "Genre",
+        "hdrAll": "Any",
+        "hdrChip": "HDR",
+        "hdrLabel": "Dynamic range",
+        "hdrOnly": "HDR only",
+        "libraryAll": "Any library",
+        "libraryLabel": "Library",
         "moviesToggle": "Movies",
         "removeFilter": "Remove {{label}} filter",
         "resolutionAll": "Any resolution",
-        "hdrLabel": "Dynamic range",
-        "hdrAll": "Any",
-        "hdrOnly": "HDR only",
-        "hdrChip": "HDR",
         "resolutionLabel": "Resolution",
         "searchLabel": "Search titles",
         "searchPlaceholder": "Search titles…",
         "serverAll": "Any server",
-        "libraryLabel": "Library",
-        "libraryAll": "Any library",
         "serverLabel": "Server",
         "showsToggle": "Shows",
+        "sizeChipAtLeast": "≥ {{min}} GB",
+        "sizeChipAtMost": "≤ {{max}} GB",
+        "sizeChipRange": "{{min}}–{{max}} GB",
+        "sizeGbMaxLabel": "Max size (GB)",
+        "sizeGbMinLabel": "Min size (GB)",
         "sort": {
           "added": "Recently added",
           "plays": "Plays",
@@ -547,14 +558,7 @@
         },
         "watchedLabel": "Watched",
         "yearFromLabel": "From year",
-        "yearToLabel": "To year",
-        "sizeGbMinLabel": "Min size (GB)",
-        "sizeGbMaxLabel": "Max size (GB)",
-        "sizeChipAtLeast": "≥ {{min}} GB",
-        "sizeChipAtMost": "≤ {{max}} GB",
-        "sizeChipRange": "{{min}}–{{max}} GB",
-        "countTotal_one": "{{count}} title · {{size}}",
-        "countTotal_other": "{{count}} titles · {{size}}"
+        "yearToLabel": "To year"
       }
     },
     "landing": {
@@ -606,8 +610,10 @@
     "movies": {
       "title": "电影"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "{{date}}添加",
+      "moreServers": "+{{count}} more",
       "onServers": "可在 {{servers}} 观看",
       "playsCompact_one": "{{compact}} play",
       "playsCompact_other": "{{compact}} plays",
@@ -631,8 +637,7 @@
         "watched": "已观看",
         "watchedByOthers": "Watched by others",
         "watchedByYou": "Watched by you"
-      },
-      "moreServers": "+{{count}} more"
+      }
     },
     "shows": {
       "title": "剧集"
@@ -693,7 +698,6 @@
     "maxIps": "最多IP地址",
     "maxIpsDefault": "时间窗口内允许的最大唯一IP地址。默认值：24小时内5 个 IP",
     "maxSpeed": "最大速度 ({{unit}})",
-    "recordsOnly": "Records violations only",
     "maxSpeedDefault": "最大现实旅行速度。默认值：{{value}} {{unit}}（飞机速度）",
     "maxStreams": "最大流",
     "maxStreamsDefault": "每个用户的最大同步流。默认值：3",
@@ -703,6 +707,7 @@
     "months": "月",
     "noRulesConfigured": "没有已配置的规则",
     "none": "未设置",
+    "recordsOnly": "Records violations only",
     "ruleName": "规则名称",
     "ruleNamePlaceholder": "例如: 并发流限制",
     "ruleType": "规则类型",
