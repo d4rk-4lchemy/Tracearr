@@ -222,6 +222,11 @@ Current upstream merge notes:
   diagnostics, leader-only connection refresh, and library-event sync. The
   fork additionally carries immediate terminal-event polling; Dispatcharr
   continues to use its separate authenticated WebSocket snapshot processor.
+- Session producers are leader-lease gated: the Redis lease holder runs the
+  poller, Jellyfin/Emby SSE processor, plugin checker, and Dispatcharr
+  realtime snapshot processor. On lease loss or shutdown they all stop before
+  the lease is released, preventing duplicate polling or realtime consumers
+  during failover.
 
 - Upstream `main` at `c600f88f` was merged into `feature/version-2.0-preparation` on Wednesday, August 5, 2026 (merge commit `6a284d7a`). The merge retains the Dispatcharr library-capability guard: Dispatcharr remains excluded from library-sync scheduling and media catalog work while receiving session/history support.
 - Upstream's Timescale maintenance, session-identity backfill, library-sync queue, import transaction, supervised Docker, and translation changes were retained. The database-client test conflict was resolved by retaining both the fork migration-ledger coverage and upstream raw-client error-listener coverage; the Dutch settings translation retains Dispatcharr configuration/realtime and fork-version keys alongside upstream localization updates.
