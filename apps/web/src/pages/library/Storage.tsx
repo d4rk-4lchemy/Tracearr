@@ -25,6 +25,7 @@ import {
   useLibraryStale,
   useLibraryRoi,
   useLibraryStatus,
+  useLibraryStorageScoped,
   useShelves,
 } from '@/hooks/queries';
 import { useMultiServerQuery } from '@/hooks/useMultiServerQuery';
@@ -86,36 +87,56 @@ export function LibraryStorage() {
     queryFn: () => api.library.storage(id, undefined, apiPeriod),
   }));
 
-  // Combined KPI: sum totalSizeBytes across all servers (field is a string from BigInt serialization)
+  // Combined KPI: one request over the whole selection so the server-side
+  // mirror dedup spans servers - summing per-server totals double-counts
+  // every file two servers share. Single-server reuses the fan-out entry.
+  const scopedStorage = useLibraryStorageScoped(selectedServerIds, apiPeriod, isMultiServer);
   const totalStorageBytes = useMemo(() => {
+    if (isMultiServer) return Number(scopedStorage.data?.current.totalSizeBytes ?? 0);
     let sum = 0;
     for (const id of selectedServerIds) {
       const entry = storageMulti.byServer.get(id);
       sum += Number(entry?.data?.current.totalSizeBytes ?? 0);
     }
     return sum;
-  }, [storageMulti.byServer, selectedServerIds]);
+  }, [isMultiServer, scopedStorage.data, storageMulti.byServer, selectedServerIds]);
 
-  // Combined growth rate: sum bytesPerMonth; treat insufficient as 0 contribution
+  // Combined growth rate: sum bytesPerMonth; treat insufficient as 0
+  // contribution. fitDays is how many days actually back the fit (it can be
+  // the pre-changeover side); older cached responses fall back to the
+  // predictions countdown.
   const growthSummary = useMemo(() => {
     let totalBytes = 0;
     let allInsufficient = true;
     let hasAnyData = false;
+    let anyPreChangeover = false;
+    let worstDays: number | null = null;
+    let minDataDays = 7;
 
     for (const id of selectedServerIds) {
       const data = storageMulti.byServer.get(id)?.data;
       if (!data) continue;
       hasAnyData = true;
-      const insufficient =
-        data.predictions.currentDataDays != null &&
-        data.predictions.currentDataDays < (data.predictions.minDataDays ?? 7);
-      if (!insufficient) {
+      minDataDays = data.predictions.minDataDays ?? minDataDays;
+      const fitDays = data.growthRate?.fitDays ?? data.predictions.currentDataDays;
+      const insufficient = fitDays != null && fitDays < (data.predictions.minDataDays ?? 7);
+      if (insufficient) {
+        const days = data.predictions.currentDataDays;
+        if (days != null && (worstDays === null || days < worstDays)) worstDays = days;
+      } else {
         allInsufficient = false;
         totalBytes += Number(data.growthRate?.bytesPerMonth ?? 0);
+        if (data.growthRate?.basis === 'preChangeover') anyPreChangeover = true;
       }
     }
 
-    return { totalBytes, allInsufficient: !hasAnyData || allInsufficient };
+    return {
+      totalBytes,
+      allInsufficient: !hasAnyData || allInsufficient,
+      anyPreChangeover,
+      worstDays,
+      minDataDays,
+    };
   }, [storageMulti.byServer, selectedServerIds]);
 
   const growthRateDisplay = growthSummary.allInsufficient
@@ -129,14 +150,12 @@ export function LibraryStorage() {
     !isMultiServer && selectedServerIds.length === 1
       ? (storageMulti.byServer.get(selectedServerIds[0] ?? '') ?? null)
       : null;
-  const singleInsufficient =
-    singleStorageEntry?.data?.predictions.currentDataDays != null &&
-    singleStorageEntry.data.predictions.currentDataDays <
-      (singleStorageEntry.data.predictions.minDataDays ?? 7);
   const growthRateSubValue =
-    !isMultiServer && singleInsufficient
-      ? `${singleStorageEntry?.data?.predictions.currentDataDays} ${t('library.storage.of')} ${singleStorageEntry?.data?.predictions.minDataDays} ${t('library.storage.days')}`
-      : undefined;
+    growthSummary.allInsufficient && growthSummary.worstDays != null
+      ? `${growthSummary.worstDays} ${t('library.storage.of')} ${growthSummary.minDataDays} ${t('library.storage.days')}`
+      : growthSummary.anyPreChangeover
+        ? t('library.storage.growthPreChangeover')
+        : undefined;
 
   // Duplicates cover same-server copies and versions too, so the KPI and
   // table render for single-server installs as well
@@ -302,8 +321,11 @@ export function LibraryStorage() {
         <StatCard
           icon={HardDrive}
           label={t('library.storage.totalStorage')}
-          value={formatBytes(totalStorageBytes)}
-          isLoading={storageMulti.isLoading}
+          value={isMultiServer && scopedStorage.isError ? '—' : formatBytes(totalStorageBytes)}
+          subValue={
+            isMultiServer && scopedStorage.isError ? t('library.storage.failedToLoad') : undefined
+          }
+          isLoading={isMultiServer ? scopedStorage.isLoading : storageMulti.isLoading}
         />
         <StatCard
           icon={TrendingUp}
@@ -315,8 +337,16 @@ export function LibraryStorage() {
         <StatCard
           icon={Copy}
           label={t('library.storage.duplicates')}
-          value={`${duplicates.data?.summary.totalGroups ?? 0} ${t('library.storage.groups')}`}
-          subValue={`${formatBytes(duplicates.data?.summary.totalPotentialSavingsBytes ?? 0)} ${t('library.storage.recoverable')}`}
+          value={
+            duplicates.isError
+              ? '—'
+              : `${duplicates.data?.summary.totalGroups ?? 0} ${t('library.storage.groups')}`
+          }
+          subValue={
+            duplicates.isError
+              ? t('library.storage.failedToLoad')
+              : `${formatBytes(duplicates.data?.summary.totalPotentialSavingsBytes ?? 0)} ${t('library.storage.recoverable')}`
+          }
           isLoading={duplicates.isLoading}
         />
         <StatCard
@@ -413,6 +443,8 @@ export function LibraryStorage() {
           <DuplicatesTable
             data={duplicates.data}
             isLoading={duplicates.isLoading}
+            isError={duplicates.isError}
+            onRetry={() => void duplicates.refetch()}
             page={duplicatesPage}
             onPageChange={setDuplicatesPage}
           />

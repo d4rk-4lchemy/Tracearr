@@ -248,4 +248,72 @@ describe('rebuildSnapshotFromDb aggregates in SQL', () => {
       h264_count: 2,
     });
   });
+
+  it('folds sd labels, tallies media types, and excludes size-less items', async () => {
+    // The full-scan path aggregates snapshots from these rows too, so this
+    // pins the scenarios the old in-memory builder's unit tests covered
+    const server = await createTestServer({ type: 'plex' });
+    const service = new LibrarySyncService();
+    const libraryId = `lib-${randomUUID().slice(0, 8)}`;
+
+    const typed = (
+      ratingKey: string,
+      mediaType: MediaLibraryItem['mediaType'],
+      versions: MediaItemVersion[]
+    ): MediaLibraryItem => ({ ...buildItem(ratingKey, versions), mediaType });
+    const v = (
+      key: string,
+      videoResolution: string | undefined,
+      videoCodec: string | undefined,
+      fileSize?: number
+    ): MediaItemVersion => ({
+      serverVersionKey: key,
+      videoResolution,
+      videoCodec,
+      fileSize,
+      partCount: 1,
+    });
+
+    await service.upsertItems(server.id, libraryId, [
+      typed(`m480-${randomUUID().slice(0, 6)}`, 'movie', [v('a', '480p', 'AV1', 700_000_000)]),
+      typed(`ep-${randomUUID().slice(0, 6)}`, 'episode', [v('b', '1080p', 'H264', 900_000_000)]),
+      typed(`trk-${randomUUID().slice(0, 6)}`, 'track', [v('c', undefined, undefined, 50_000_000)]),
+      typed(`nosize-${randomUUID().slice(0, 6)}`, 'movie', [v('d', '4k', 'HEVC')]),
+      typed(`show-${randomUUID().slice(0, 6)}`, 'show', []),
+      typed(`season-${randomUUID().slice(0, 6)}`, 'season', []),
+    ]);
+
+    const snapshot = await (
+      service as unknown as {
+        rebuildSnapshotFromDb: (s: string, l: string) => Promise<{ id: string } | null>;
+      }
+    ).rebuildSnapshotFromDb(server.id, libraryId);
+    expect(snapshot).not.toBeNull();
+
+    const row = await db.execute(sql`
+      SELECT item_count, total_size::text, movie_count, episode_count, season_count,
+             show_count, music_count, count_sd, count_1080p, count_4k,
+             av1_count, h264_count, hevc_count, version_count
+      FROM library_snapshots WHERE id = ${snapshot!.id}
+    `);
+    expect(row.rows[0]).toMatchObject({
+      // The size-less 4k movie contributes nothing anywhere
+      item_count: 3,
+      total_size: String(700_000_000 + 900_000_000 + 50_000_000),
+      movie_count: 1,
+      episode_count: 1,
+      // Containers count without a file-size gate
+      season_count: 1,
+      show_count: 1,
+      music_count: 1,
+      // 480p folds into sd
+      count_sd: 1,
+      count_1080p: 1,
+      count_4k: 0,
+      av1_count: 1,
+      h264_count: 1,
+      hevc_count: 0,
+      version_count: 3,
+    });
+  });
 });

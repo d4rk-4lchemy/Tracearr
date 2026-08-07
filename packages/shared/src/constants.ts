@@ -195,10 +195,10 @@ export const REDIS_KEYS = {
     return `${_redisPrefix}tracearr:library:stale:v2`;
   },
   get LIBRARY_DUPLICATES() {
-    return `${_redisPrefix}tracearr:library:duplicates:v2`;
+    return `${_redisPrefix}tracearr:library:duplicates:v3`;
   },
   get LIBRARY_STORAGE() {
-    return `${_redisPrefix}tracearr:library:storage:v2`;
+    return `${_redisPrefix}tracearr:library:storage:v3`;
   },
   get LIBRARY_WATCH() {
     return `${_redisPrefix}tracearr:library:watch:v2`;

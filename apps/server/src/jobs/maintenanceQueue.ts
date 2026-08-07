@@ -34,6 +34,7 @@ import { sessions, serverUsers } from '../db/schema.js';
 import { normalizeClient, normalizePlatformName } from '../utils/platformNormalizer.js';
 import { resolutionBucketPredicate, resolutionRankSql } from '../utils/resolutionBuckets.js';
 import { getCacheService, getPubSubService } from '../services/cache.js';
+import { getSetting, setSetting } from '../services/settings.js';
 import {
   rebuildTimescaleViews,
   safeFullRefreshAllAggregates,
@@ -74,6 +75,7 @@ function getMaintenanceJobDescription(type: MaintenanceJobType): string {
     normalize_resolutions: 'Resolution normalization',
     backfill_user_dates: 'User dates backfill',
     backfill_library_snapshots: 'Library snapshots backfill',
+    normalize_library_snapshots: 'Snapshot history normalization',
     cleanup_old_chunks: 'Old chunks cleanup',
     full_aggregate_rebuild: 'Full aggregate rebuild',
     repair_corrupted_chunks: 'Corrupted chunks repair',
@@ -102,6 +104,8 @@ let maintenanceWorker: Worker<MaintenanceJobData> | null = null;
 
 // Track active job state
 let activeJobProgress: MaintenanceJobProgress | null = null;
+
+const LOCK_EXTENSION_INTERVAL = 60 * 1000;
 
 /**
  * Initialize the maintenance queue with Redis connection
@@ -341,6 +345,8 @@ async function processMaintenanceJob(job: Job<MaintenanceJobData>): Promise<Main
       return processBackfillUserDatesJob(job);
     case 'backfill_library_snapshots':
       return processBackfillLibrarySnapshotsJob(job);
+    case 'normalize_library_snapshots':
+      return processNormalizeLibrarySnapshotsJob(job);
     case 'cleanup_old_chunks':
       return processCleanupOldChunksJob(job);
     case 'full_aggregate_rebuild':
@@ -1074,7 +1080,6 @@ export async function processRebuildTimescaleViewsJob(
 
     // Track last lock extension to avoid excessive Redis calls
     let lastLockExtension = Date.now();
-    const LOCK_EXTENSION_INTERVAL = 60 * 1000; // Extend lock every 60 seconds
 
     // progressCallback is synchronous, so a lock-loss rejection from
     // extendJobLock can't be awaited in place - capture its message here and
@@ -1178,7 +1183,6 @@ async function processBackfillSessionIdentityJob(
   const startTime = Date.now();
   const pubSubService = getPubSubService();
   const BATCH = 5000;
-  const LOCK_EXTENSION_INTERVAL = 60 * 1000;
 
   activeJobProgress = {
     type: 'backfill_session_identity',
@@ -2254,9 +2258,33 @@ export async function processBackfillLibrarySnapshotsJob(
     const earliestDate = (earliestResult.rows[0] as { earliest: string | null })?.earliest;
 
     if (earliestDate) {
-      await db.execute(sql`
-        CALL refresh_continuous_aggregate('library_stats_daily', ${earliestDate}::date, NOW()::date + INTERVAL '1 day')
-      `);
+      // Batched, never one CALL over the whole span: a backfill reaching
+      // years back makes a single-call refresh materialize the entire range
+      // in one transaction, which can OOM postgres on memory-limited
+      // containers - and the crash loop re-triggers this very job through
+      // the gap check. Per-batch failures (including the materialization-
+      // range-overlaps race against the policy refresh) are logged, not
+      // fatal; the policy catches whatever a failed batch leaves behind.
+      let refreshLockExtension = Date.now();
+      const refreshFailures = await safeFullRefreshAggregate(
+        'library_stats_daily',
+        new Date(earliestDate),
+        new Date(),
+        {
+          onProgress: () => {
+            if (Date.now() - refreshLockExtension > LOCK_EXTENSION_INTERVAL) {
+              refreshLockExtension = Date.now();
+              void extendJobLock(job).catch(() => undefined);
+              void extendHeavyOpsLock(job.id!);
+            }
+          },
+        }
+      );
+      if (refreshFailures.length > 0) {
+        console.warn(
+          `[Maintenance] ${refreshFailures.length} aggregate refresh batch(es) failed; the refresh policy will fill the gaps`
+        );
+      }
 
       // Verify the refresh succeeded by checking aggregate has data
       const verifyResult = await db.execute(sql`
@@ -2741,6 +2769,93 @@ export async function getAllActiveMaintenanceJobs(): Promise<
  * deliberately single-flight. Returns null when busy (or when the queue isn't
  * up), for automated callers that treat "already covered" as success.
  */
+/**
+ * One-time snapshot normalization: everything older than raw retention is
+ * already version-aware reconstruction (the 2.0 aggregate rebuild), so
+ * regenerating the surviving pre-stamp band the same way leaves the whole
+ * curve in one semantics and lets the growth fit use full history. 1-day
+ * chunks drop without decompression; the stamp-day chunk survives, so at
+ * most one day keeps old rows. snapshotsNormalizedAt is set only on success
+ * so a failed run retries on the next trigger; re-runs are no-ops.
+ */
+export async function processNormalizeLibrarySnapshotsJob(
+  job: Job<MaintenanceJobData>
+): Promise<MaintenanceJobResult> {
+  const startTime = Date.now();
+  const skipped = (message: string): MaintenanceJobResult => ({
+    success: true,
+    type: 'normalize_library_snapshots',
+    processed: 0,
+    updated: 0,
+    skipped: 0,
+    errors: 0,
+    durationMs: Date.now() - startTime,
+    message,
+  });
+
+  const stamp = await getSetting('mediaVersionsBackfilledAt');
+  if (!stamp) {
+    return skipped('Version backfill has not completed; nothing to normalize yet');
+  }
+  if ((await getSetting('snapshotsNormalizedAt')) !== null) {
+    return skipped('Snapshot history already normalized');
+  }
+
+  const timescale = await getTimescaleStatus();
+  if (timescale.extensionInstalled) {
+    await db.execute(
+      sql`SELECT drop_chunks('library_snapshots', older_than => ${stamp}::timestamptz)`
+    );
+  } else {
+    await db.execute(
+      sql`DELETE FROM library_snapshots WHERE snapshot_time < ${stamp}::timestamptz`
+    );
+  }
+  console.log('[Maintenance] Dropped pre-changeover snapshot history, regenerating');
+
+  const backfill = await processBackfillLibrarySnapshotsJob(job);
+  if (!backfill.success) {
+    return { ...backfill, type: 'normalize_library_snapshots' };
+  }
+
+  // The backfill's tail refreshes library_stats_daily only; without this,
+  // content_quality_daily keeps stale materializations for the dropped range.
+  // Batched for the same reason as the tail: one full-span CALL can OOM
+  // postgres on a memory-limited container.
+  if (timescale.extensionInstalled) {
+    try {
+      const earliest = await db.execute(sql`
+        SELECT MIN(snapshot_time)::date AS earliest FROM library_snapshots
+      `);
+      const earliestDate = (earliest.rows[0] as { earliest: string | null })?.earliest;
+      if (earliestDate) {
+        const failures = await safeFullRefreshAggregate(
+          'content_quality_daily',
+          new Date(earliestDate),
+          new Date()
+        );
+        if (failures.length > 0) {
+          console.warn(
+            `[Maintenance] ${failures.length} content_quality_daily refresh batch(es) failed; the refresh policy will fill the gaps`
+          );
+        }
+      }
+    } catch (err) {
+      console.warn('[Maintenance] content_quality_daily refresh after normalization failed:', err);
+    }
+  }
+
+  await setSetting('snapshotsNormalizedAt', new Date().toISOString());
+  console.log('[Maintenance] Snapshot history normalized to post-changeover semantics');
+
+  return {
+    ...backfill,
+    type: 'normalize_library_snapshots',
+    durationMs: Date.now() - startTime,
+    message: `Normalized snapshot history: ${backfill.message}`,
+  };
+}
+
 export async function maybeEnqueueMaintenanceJob(
   type: MaintenanceJobType,
   userId: string,

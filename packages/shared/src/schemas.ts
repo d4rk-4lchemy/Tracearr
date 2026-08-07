@@ -1178,6 +1178,7 @@ export const libraryQualityQuerySchema = z.object({
 // Library storage analytics query schema
 export const libraryStorageQuerySchema = z.object({
   serverId: z.uuid().optional(),
+  serverIds: serverIdsQuerySchema, // Combined scope so mirror dedup spans servers
   libraryId: z.uuid().optional(),
   period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
   timezone: timezoneSchema,

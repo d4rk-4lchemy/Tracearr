@@ -138,6 +138,7 @@ export {
   useLibraryGrowth,
   useLibraryQuality,
   useLibraryStorage,
+  useLibraryStorageScoped,
   useLibraryDuplicates,
   useLibraryStale,
   useLibraryWatch,

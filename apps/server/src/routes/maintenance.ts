@@ -158,6 +158,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
         'normalize_resolutions',
         'backfill_user_dates',
         'backfill_library_snapshots',
+        'normalize_library_snapshots',
         'cleanup_old_chunks',
         'repair_corrupted_chunks',
         'backfill_session_identity',

@@ -136,6 +136,7 @@ import {
   shutdownPlexTokenRefreshQueue,
 } from './jobs/plexTokenRefresh.js';
 import { initHeavyOpsLock } from './jobs/heavyOpsLock.js';
+import { startConnectionBudget, stopConnectionBudget } from './services/connectionBudget.js';
 import { initPushRateLimiter } from './services/pushRateLimiter.js';
 import { initializeV2Rules } from './services/rules/v2Integration.js';
 import { processPushReceipts } from './services/pushNotification.js';
@@ -781,6 +782,14 @@ async function initializeServices(app: FastifyInstance) {
   await initHeavyOpsLock(app.redis);
   app.log.info('Heavy operations lock initialized');
 
+  // Size the pg pool from the server's real max_connections and the live
+  // instance count (no-op when DATABASE_POOL_MAX is set explicitly)
+  try {
+    await startConnectionBudget(app.redis);
+  } catch (err) {
+    app.log.warn({ err }, 'Connection budget unavailable, keeping default pool size');
+  }
+
   // Initialize library sync queue (uses Redis for job storage)
   try {
     initLibrarySyncQueue(redisUrl);
@@ -1154,6 +1163,7 @@ async function start() {
       process.once(signal, () => {
         app.log.info(`Received ${signal}, shutting down gracefully...`);
         stopPoller();
+        void stopConnectionBudget(app.redis);
         void tailscaleService.shutdown();
         void shutdownNotificationQueue();
         void shutdownKillQueue();

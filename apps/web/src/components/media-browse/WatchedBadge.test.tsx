@@ -34,35 +34,48 @@ describe('WatchedBadge', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('renders the partial badge as a conic-gradient pie, not a translucent fill', () => {
-    const { container } = render(<WatchedBadge watchedState="partial" />);
+  it('renders the partial pie in the warning tone when the requester has no progress of their own', () => {
+    const { container } = render(
+      <WatchedBadge watchedState="partial" watchedStateSelf="unwatched" />
+    );
+    const badge = container.firstElementChild;
+    expect(badge).toHaveStyle({
+      background: 'conic-gradient(hsl(var(--warning)) 0 62%, hsl(var(--muted)) 62% 100%)',
+    });
+  });
+
+  it('renders the partial pie in the success tone when the requester is mid-watch themselves', () => {
+    const { container } = render(
+      <WatchedBadge watchedState="partial" watchedStateSelf="partial" />
+    );
     const badge = container.firstElementChild;
     expect(badge).toHaveStyle({
       background: 'conic-gradient(hsl(var(--success)) 0 62%, hsl(var(--muted)) 62% 100%)',
     });
   });
 
-  it('renders the primary/teal tone with a "watched by you" label when the requester watched it', () => {
+  it('renders the success/green tone with a "watched by you" label when the requester watched it', () => {
     const { container } = render(
       <WatchedBadge watchedState="watched" watchedStateSelf="watched" />
     );
     expect(screen.getByText('Watched by you')).toHaveClass('sr-only');
-    expect(container.firstElementChild).toHaveClass('bg-primary');
-    expect(container.firstElementChild).not.toHaveClass('bg-success');
+    expect(container.firstElementChild).toHaveClass('bg-success');
+    expect(container.firstElementChild).not.toHaveClass('bg-warning');
   });
 
-  it('renders the success/green tone with a "watched by others" label when only someone else watched it', () => {
+  it('renders the warning/orange tone with a "watched by others" label when only someone else watched it', () => {
     const { container } = render(
       <WatchedBadge watchedState="watched" watchedStateSelf="unwatched" />
     );
     expect(screen.getByText('Watched by others')).toHaveClass('sr-only');
-    expect(container.firstElementChild).toHaveClass('bg-success');
-    expect(container.firstElementChild).not.toHaveClass('bg-primary');
+    expect(container.firstElementChild).toHaveClass('bg-warning');
+    expect(container.firstElementChild).not.toHaveClass('bg-success');
   });
 
-  it('falls back to the single-tone "Watched" rendering when watchedStateSelf is not supplied', () => {
+  it('never claims green without requester data: single-tone fallback stays warning', () => {
     const { container } = render(<WatchedBadge watchedState="watched" />);
     expect(screen.getByText('Watched')).toHaveClass('sr-only');
-    expect(container.firstElementChild).toHaveClass('bg-success');
+    expect(container.firstElementChild).toHaveClass('bg-warning');
+    expect(container.firstElementChild).not.toHaveClass('bg-success');
   });
 });

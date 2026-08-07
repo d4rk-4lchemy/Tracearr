@@ -221,7 +221,7 @@ describe('duplicates taxonomy against a real database', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json<DuplicatesResponse>();
 
-    const copyGroup = body.duplicates.find((g) => g.matchKey === 'tt7700001');
+    const copyGroup = body.duplicates.find((g) => g.matchKey === 'imdb:movie:tt7700001');
     expect(copyGroup).toBeDefined();
     expect(copyGroup!.matchType).toBe('imdb');
     expect(copyGroup!.sameServer).toBe(true);
@@ -231,7 +231,8 @@ describe('duplicates taxonomy against a real database', () => {
     expect(copyGroup!.totalStorageBytes).toBe(14_000_000_000);
     expect(copyGroup!.potentialSavingsBytes).toBe(4_000_000_000);
 
-    const versionGroup = body.duplicates.find((g) => g.matchKey === `version:${merged.id}`);
+    // Single-item groups keep their external-id key but present as 'version'
+    const versionGroup = body.duplicates.find((g) => g.matchKey === 'imdb:movie:tt7700002');
     expect(versionGroup).toBeDefined();
     expect(versionGroup!.matchType).toBe('version');
     expect(versionGroup!.sameServer).toBe(true);
@@ -242,7 +243,12 @@ describe('duplicates taxonomy against a real database', () => {
     expect(body.summary.byMatchType.version).toBe(1);
   });
 
-  it('mirrored copies (equal size) contribute zero reclaimable bytes', async () => {
+  it('mirrored copies (equal size) never form a group', async () => {
+    // A mirror is one physical file listed by several servers, not a
+    // duplicate: with no second distinct file there is nothing to reclaim,
+    // so the group is gated out entirely rather than shipped with zero
+    // savings. This is what keeps a fully mirrored multi-server install
+    // from reporting every title as a duplicate.
     const serverA = await createTestServer({ type: 'plex' });
     const serverB = await createTestServer({ type: 'jellyfin' });
 
@@ -269,11 +275,7 @@ describe('duplicates taxonomy against a real database', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json<DuplicatesResponse>();
 
-    const group = body.duplicates.find((g) => g.matchKey === 'tt7700003');
-    expect(group).toBeDefined();
-    expect(group!.sameServer).toBe(false);
-    // One physical file behind both copies: nothing to reclaim
-    expect(group!.totalStorageBytes).toBe(9_000_000_000);
-    expect(group!.potentialSavingsBytes).toBe(0);
+    expect(body.duplicates.find((g) => g.matchKey.includes('tt7700003'))).toBeUndefined();
+    expect(body.summary.totalGroups).toBe(0);
   });
 });

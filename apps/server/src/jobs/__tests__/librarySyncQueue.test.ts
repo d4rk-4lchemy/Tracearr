@@ -337,6 +337,53 @@ describe('scheduleAutoSync - boot sync pending-job check', () => {
       expect.anything()
     );
   });
+
+  it('sweeps banked duplicate queued jobs, keeping only the newest per server', async () => {
+    // Older releases banked one event-sync job per 30s bucket during a long
+    // scan, and the backlog survives restarts
+    const oldRemove = vi.fn().mockResolvedValue(undefined);
+    const olderRemove = vi.fn().mockResolvedValue(undefined);
+    const newestRemove = vi.fn().mockResolvedValue(undefined);
+    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
+      states.includes('waiting')
+        ? [
+            plainJob('srv-1', 'scheduled', { id: 'e1', timestamp: 100, remove: oldRemove }),
+            plainJob('srv-1', 'scheduled', { id: 'e2', timestamp: 200, remove: olderRemove }),
+            plainJob('srv-1', 'scheduled', { id: 'e3', timestamp: 300, remove: newestRemove }),
+            schedulerJob('srv-1'),
+          ]
+        : []
+    );
+
+    await scheduleAutoSync();
+
+    expect(oldRemove).toHaveBeenCalledTimes(1);
+    expect(olderRemove).toHaveBeenCalledTimes(1);
+    expect(newestRemove).not.toHaveBeenCalled();
+    // The survivor counts as pending, so no boot sync stacks on top
+    expect(mockQueueAdd).not.toHaveBeenCalledWith(
+      'boot-sync-srv-1',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it('keeps sweeping and boot-syncing when a stale job raced to active and cannot be removed', async () => {
+    const racedRemove = vi.fn().mockRejectedValue(new Error('job is active'));
+    const newestRemove = vi.fn().mockResolvedValue(undefined);
+    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
+      states.includes('waiting')
+        ? [
+            plainJob('srv-1', 'scheduled', { id: 'e1', timestamp: 100, remove: racedRemove }),
+            plainJob('srv-1', 'scheduled', { id: 'e2', timestamp: 200, remove: newestRemove }),
+          ]
+        : []
+    );
+
+    await expect(scheduleAutoSync()).resolves.toBeUndefined();
+    expect(racedRemove).toHaveBeenCalledTimes(1);
+    expect(newestRemove).not.toHaveBeenCalled();
+  });
 });
 
 describe('getAllActiveLibrarySyncs', () => {

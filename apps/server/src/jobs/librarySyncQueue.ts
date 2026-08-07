@@ -20,7 +20,7 @@ import { getSetting, setSetting } from '../services/settings.js';
 import { servers } from '../db/schema.js';
 import { librarySyncService, initLibrarySyncRedis } from '../services/librarySync.js';
 import { getPubSubService } from '../services/cache.js';
-import { enqueueMaintenanceJob } from './maintenanceQueue.js';
+import { enqueueMaintenanceJob, maybeEnqueueMaintenanceJob } from './maintenanceQueue.js';
 import { enqueueImagePrecache } from './imagePrecacheQueue.js';
 import { resolvePrecachePass } from './precachePassPolicy.js';
 import { VALID_LIBRARY_ITEM_CONDITION } from '../utils/snapshotValidation.js';
@@ -326,7 +326,10 @@ export function startLibrarySyncWorker(): void {
 
   // After sync completes, check if snapshot backfill is needed (with cooldown)
   // Only runs once per hour to avoid constant queries after every server sync
-  librarySyncWorker.on('completed', () => {
+  librarySyncWorker.on('completed', (job) => {
+    // Skipped duplicates did no work; a backlog drain completes hundreds in
+    // seconds and the sentinel probe scans library_item_versions per call
+    if ((job.returnvalue as { skipped?: boolean } | undefined)?.skipped) return;
     const now = Date.now();
     if (now - lastBackfillCheck > BACKFILL_CHECK_COOLDOWN_MS) {
       lastBackfillCheck = now;
@@ -357,11 +360,17 @@ export function startLibrarySyncWorker(): void {
  * Stamp mediaVersionsBackfilledAt the first time the last 'legacy:1' version
  * sentinel clears. The stamp marks where storage numbers change meaning
  * (multi-version rollups); the storage regression clamp and the release-note
- * plot line both read it. Write-once: never cleared or moved.
+ * plot line both read it. Write-once: never cleared or moved. Once stamped,
+ * chase the snapshot normalization until its marker lands.
  */
+let normalizationConfirmed = false;
+
 async function stampVersionsBackfillComplete(): Promise<void> {
   try {
-    if ((await getSetting('mediaVersionsBackfilledAt')) !== null) return;
+    if ((await getSetting('mediaVersionsBackfilledAt')) !== null) {
+      await maybeTriggerSnapshotNormalization();
+      return;
+    }
     const result = await db.execute(sql`
       SELECT 1 FROM library_item_versions
       WHERE server_version_key = ${LEGACY_VERSION_SENTINEL} AND removed_at IS NULL
@@ -370,9 +379,22 @@ async function stampVersionsBackfillComplete(): Promise<void> {
     if (result.rows.length === 0) {
       await setSetting('mediaVersionsBackfilledAt', new Date().toISOString());
       console.log('[LibrarySync] Version backfill complete; stamped mediaVersionsBackfilledAt');
+      await maybeTriggerSnapshotNormalization();
     }
   } catch (error) {
     console.warn('[LibrarySync] Version backfill stamp check failed:', error);
+  }
+}
+
+async function maybeTriggerSnapshotNormalization(): Promise<void> {
+  if (normalizationConfirmed) return;
+  if ((await getSetting('snapshotsNormalizedAt')) !== null) {
+    normalizationConfirmed = true;
+    return;
+  }
+  const enqueued = await maybeEnqueueMaintenanceJob('normalize_library_snapshots', 'system');
+  if (enqueued) {
+    console.log('[LibrarySync] Snapshot normalization job queued');
   }
 }
 
@@ -426,6 +448,20 @@ async function checkAndTriggerSnapshotBackfill(): Promise<void> {
       isStale;
 
     if (needsBackfill) {
+      // A pending normalization includes a full backfill; running the plain
+      // backfill first would fill the gap with rows normalization is about
+      // to drop and regenerate anyway
+      if (
+        (await getSetting('mediaVersionsBackfilledAt')) !== null &&
+        (await getSetting('snapshotsNormalizedAt')) === null
+      ) {
+        console.log(
+          '[LibrarySync] Snapshot backfill needed but normalization is pending; deferring to it'
+        );
+        await maybeTriggerSnapshotNormalization();
+        return;
+      }
+
       const reason = isStale
         ? `stale aggregate (last: ${row.latest_aggregate})`
         : `items from ${row.earliest_item}, aggregate from ${row.earliest_aggregate || 'none'}`;
@@ -503,9 +539,29 @@ export async function scheduleAutoSync(): Promise<void> {
   // cron slot, matching every server - counting those would skip boot sync
   // every time, which is exactly what shipped. Only non-scheduler jobs count.
   const pendingJobs = await librarySyncQueue.getJobs(['delayed', 'waiting']);
-  const pendingServerIds = new Set(
-    pendingJobs.filter((j) => !isSchedulerJob(j)).map((j) => j.data.serverId)
-  );
+  const queuedSyncJobs = pendingJobs.filter((j) => !isSchedulerJob(j));
+
+  // Backlogs survive restarts in Redis (older releases banked one event-sync
+  // job per 30s bucket during long scans). A sync reads current server state
+  // when it runs, so the newest queued job per server covers all of them.
+  const newestPerServer = new Map<string, Job<LibrarySyncJobData>>();
+  for (const job of queuedSyncJobs) {
+    const current = newestPerServer.get(job.data.serverId);
+    if (!current || (job.timestamp ?? 0) > (current.timestamp ?? 0)) {
+      newestPerServer.set(job.data.serverId, job);
+    }
+  }
+  let sweptCount = 0;
+  for (const job of queuedSyncJobs) {
+    if (newestPerServer.get(job.data.serverId) === job) continue;
+    await job.remove().catch(() => undefined);
+    sweptCount++;
+  }
+  if (sweptCount > 0) {
+    console.log(`[LibrarySync] Swept ${sweptCount} stale queued sync job(s) from a previous run`);
+  }
+
+  const pendingServerIds = new Set(newestPerServer.keys());
 
   for (let i = 0; i < allServers.length; i++) {
     const server = allServers[i];

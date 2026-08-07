@@ -65,7 +65,9 @@ services:
     # Cap tuple decompression per DML transaction (migrations and imports grant
     # themselves unlimited per-session, so this stays at the TimescaleDB default)
     # Increase lock table size for large imports (Tautulli imports with many TimescaleDB chunks)
-    command: postgres -c timescaledb.license=timescale -c timescaledb.max_tuples_decompressed_per_dml_transaction=100000 -c max_locks_per_transaction=4096 -c timescaledb.telemetry_level=off
+    # max_connections 150 leaves headroom for multi-instance app pools; the app
+    # sizes its pool from whatever postgres reports, so this is capacity, not tuning
+    command: postgres -c timescaledb.license=timescale -c timescaledb.max_tuples_decompressed_per_dml_transaction=100000 -c max_locks_per_transaction=4096 -c timescaledb.telemetry_level=off -c max_connections=150
     environment:
       - POSTGRES_USER=tracearr
       - POSTGRES_PASSWORD=${DB_PASSWORD:-tracearr}

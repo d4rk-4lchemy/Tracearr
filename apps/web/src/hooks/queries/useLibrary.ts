@@ -104,6 +104,26 @@ export function useLibraryStorage(
 }
 
 /**
+ * Fetch storage analytics over the whole server selection in one request, so
+ * the server-side mirror dedup spans servers. Used for the combined KPI;
+ * per-server charts keep the fan-out.
+ */
+export function useLibraryStorageScoped(
+  serverIds: string[],
+  period: string = '30d',
+  enabled: boolean = true
+) {
+  const timezone = getBrowserTimezone();
+  const sortedIds = serverScopeKey(serverScopeFromIds(serverIds));
+  return useQuery<LibraryStorageResponse>({
+    queryKey: ['library', 'storage', 'scoped', sortedIds, period, timezone],
+    queryFn: () => api.library.storageScoped(serverIds, period),
+    staleTime: LIBRARY_STALE_TIME,
+    enabled: enabled && serverIds.length > 0,
+  });
+}
+
+/**
  * Fetch cross-server duplicate detection results
  * @param enabled - Set to false to skip fetching (e.g., when only one server is selected)
  */

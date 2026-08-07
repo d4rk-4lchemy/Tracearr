@@ -17,10 +17,10 @@
     "apiKeyAutoLoaded": "API ключ автоматически загружен",
     "backToSettings": "Вернуться к настройкам",
     "noApiKey": "Нет API ключа - создайте его в Настройках для тестирования конечных точек",
-    "specLoadError": "Failed to load the API specification. Check your API key and try again.",
     "versionSwitcherLabel": "API documentation version",
     "versionV1": "API v1",
-    "versionV2": "API v2"
+    "versionV2": "API v2",
+    "specLoadError": "Failed to load the API specification. Check your API key and try again."
   },
   "dashboard": {
     "activeUsers": "Активные пользователи",
@@ -32,10 +32,6 @@
     "serverResources": "Ресурсы сервера",
     "streamLocations": "Местоположение потока",
     "streamsAppearHere": "Активные потоки появятся здесь, когда пользователи начнут просматривать",
-    "tvSessions": "TV Sessions",
-    "tvWatchTime": "TV Watch Time",
-    "vodPlays": "Играет",
-    "vodWatchTime": "Время просмотра",
     "watchTime": "Время просмотра"
   },
   "debug": {
@@ -211,8 +207,6 @@
       "days": "дней",
       "description": "Использование хранения, прогнозы и оптимизация",
       "duplicates": "Дубликаты",
-      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
-      "duplicatesTitle": "Duplicates",
       "failedToLoad": "Не удалось загрузить данные памяти",
       "failedToLoadDesc": "Не удалось получить данные хранилища. Пожалуйста, попробуйте еще раз.",
       "groups": "группы",
@@ -228,17 +222,25 @@
       "title": "Хранилище",
       "totalStorage": "Хранилище",
       "unused": "неиспользованный",
-      "zeroGrowth": "0 ГБ/мес"
+      "zeroGrowth": "0 ГБ/мес",
+      "duplicatesTitle": "Duplicates",
+      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
+      "growthPreChangeover": "based on pre-update history",
+      "loadingDuplicates": "Loading duplicates...",
+      "duplicatesFailed": "Failed to load duplicates",
+      "noDuplicatesTitle": "No duplicates found",
+      "noDuplicatesDesc": "No titles with more than one physical file detected.",
+      "colTitle": "Title",
+      "colMatchType": "Match Type",
+      "colCopies": "Copies",
+      "colRecoverable": "Recoverable Space",
+      "sameServer": "Same server",
+      "mirror": "Mirror",
+      "pageOf": "Page {{page}} of {{totalPages}}"
     },
     "title": "Библиотека",
     "topMovies": "Топ фильмов",
     "topShows": "Лучшие сериалы",
-    "versionsBackfill": {
-      "action": "Sync now",
-      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
-      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
-      "syncStarted": "Library sync started."
-    },
     "watch": {
       "avgPerItem": "в среднем за единицу",
       "bingeHighlights": "Отметины на Бинге",
@@ -260,6 +262,12 @@
       "totalWatchTime": "Общее время наблюдения",
       "viewingHours": "Часы просмотра",
       "watched": "Просмотрено"
+    },
+    "versionsBackfill": {
+      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
+      "action": "Sync now",
+      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
+      "syncStarted": "Library sync started."
     }
   },
   "login": {
@@ -303,12 +311,6 @@
     "yourPasswordPlaceholder": "Ваш пароль"
   },
   "maintenance": {
-    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded.",
-    "initStep": {
-      "migrations": "Applying database migrations",
-      "services": "Starting services",
-      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)"
-    },
     "interruptionDescription": "Одна или несколько сервисов бэкэнда недоступны. Эта страница будет автоматически обновляться, когда подключение восстановлено.",
     "interruptionTitle": "Прерывание службы",
     "restoreFailed": "Не удалось восстановить",
@@ -324,7 +326,13 @@
     },
     "restoreTitle": "Восстановление из резервной копии...",
     "startingDescription": "Сервер ожидает доступа к сервисам бэкэнда. Эта страница будет автоматически обновляться, когда все будет готово.",
-    "startingTitle": "Tracearr запускается..."
+    "startingTitle": "Tracearr запускается...",
+    "initStep": {
+      "migrations": "Applying database migrations",
+      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)",
+      "services": "Starting services"
+    },
+    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded."
   },
   "map": {
     "allActivity": "Все действия",
@@ -342,12 +350,12 @@
       },
       "copies": {
         "columns": {
-          "added": "Added",
-          "episodes": "Episodes",
+          "server": "Server",
           "library": "Library",
           "quality": "Quality",
-          "server": "Server",
-          "size": "Size"
+          "episodes": "Episodes",
+          "size": "Size",
+          "added": "Added"
         },
         "loadError": "Couldn't load copies",
         "title": "Copies",
@@ -457,31 +465,31 @@
       }
     },
     "genres": {
+      "title": "Жанры",
+      "subtitle": "Plays and watch time by genre, across every server in view.",
       "chart": {
-        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below.",
+        "title": "Plays by genre",
+        "valueLabel": "Plays",
         "itemCount_one": "{{count}} title",
         "itemCount_other": "{{count}} titles",
-        "title": "Plays by genre",
-        "valueLabel": "Plays"
+        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below."
       },
-      "empty": {
-        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes.",
-        "title": "No genres captured yet"
-      },
-      "loadError": "Couldn't load genres",
-      "subtitle": "Plays and watch time by genre, across every server in view.",
       "table": {
-        "browseMovies": "Browse {{genre}} movies",
-        "browseShows": "Browse {{genre}} shows",
+        "title": "Genre breakdown",
         "columns": {
           "genre": "Genre",
           "items": "Items",
           "plays": "Plays",
           "watchTime": "Watch time"
         },
-        "title": "Genre breakdown"
+        "browseMovies": "Browse {{genre}} movies",
+        "browseShows": "Browse {{genre}} shows"
       },
-      "title": "Жанры"
+      "empty": {
+        "title": "No genres captured yet",
+        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes."
+      },
+      "loadError": "Couldn't load genres"
     },
     "grid": {
       "clearJumpAction": "Clear",
@@ -492,41 +500,34 @@
       "loaderError": "Couldn't load more titles",
       "retry": "Retry",
       "scrubber": {
-        "current": "Letter {{letter}}",
-        "label": "Jump to letter"
+        "label": "Jump to letter",
+        "current": "Letter {{letter}}"
       },
       "showAll": "Show all",
       "showingFrom": "Showing from {{letter}}",
       "toolbar": {
         "ariaLabel": "Filters and sort",
         "count": "{{loaded}} of {{total}} titles · {{size}}",
-        "countTotal_one": "{{count}} title · {{size}}",
-        "countTotal_other": "{{count}} titles · {{size}}",
         "done": "Done",
         "filtersLabel": "Filters",
         "filtersSheetTitle": "Filters",
         "genreAll": "Any genre",
         "genreLabel": "Genre",
-        "hdrAll": "Any",
-        "hdrChip": "HDR",
-        "hdrLabel": "Dynamic range",
-        "hdrOnly": "HDR only",
-        "libraryAll": "Any library",
-        "libraryLabel": "Library",
         "moviesToggle": "Movies",
         "removeFilter": "Remove {{label}} filter",
         "resolutionAll": "Any resolution",
+        "hdrLabel": "Dynamic range",
+        "hdrAll": "Any",
+        "hdrOnly": "HDR only",
+        "hdrChip": "HDR",
         "resolutionLabel": "Resolution",
         "searchLabel": "Search titles",
         "searchPlaceholder": "Search titles…",
         "serverAll": "Any server",
+        "libraryLabel": "Library",
+        "libraryAll": "Any library",
         "serverLabel": "Server",
         "showsToggle": "Shows",
-        "sizeChipAtLeast": "≥ {{min}} GB",
-        "sizeChipAtMost": "≤ {{max}} GB",
-        "sizeChipRange": "{{min}}–{{max}} GB",
-        "sizeGbMaxLabel": "Max size (GB)",
-        "sizeGbMinLabel": "Min size (GB)",
         "sort": {
           "added": "Recently added",
           "plays": "Plays",
@@ -546,7 +547,14 @@
         },
         "watchedLabel": "Watched",
         "yearFromLabel": "From year",
-        "yearToLabel": "To year"
+        "yearToLabel": "To year",
+        "sizeGbMinLabel": "Min size (GB)",
+        "sizeGbMaxLabel": "Max size (GB)",
+        "sizeChipAtLeast": "≥ {{min}} GB",
+        "sizeChipAtMost": "≤ {{max}} GB",
+        "sizeChipRange": "{{min}}–{{max}} GB",
+        "countTotal_one": "{{count}} title · {{size}}",
+        "countTotal_other": "{{count}} titles · {{size}}"
       }
     },
     "landing": {
@@ -598,10 +606,8 @@
     "movies": {
       "title": "Фильмы"
     },
-    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Добавлено {{date}}",
-      "moreServers": "+{{count}} more",
       "onServers": "На {{servers}}",
       "playsCompact_one": "{{compact}} play",
       "playsCompact_other": "{{compact}} plays",
@@ -625,7 +631,8 @@
         "watched": "Просмотрено",
         "watchedByOthers": "Watched by others",
         "watchedByYou": "Watched by you"
-      }
+      },
+      "moreServers": "+{{count}} more"
     },
     "shows": {
       "title": "Сериалы"
@@ -686,6 +693,7 @@
     "maxIps": "Макс. IP",
     "maxIpsDefault": "Максимальное количество уникальных IP-адресов, разрешенных в окне времени. По умолчанию: 5 IP-адреса в течение 24 часов",
     "maxSpeed": "Макс. скорость ({{unit}})",
+    "recordsOnly": "Records violations only",
     "maxSpeedDefault": "Максимальная реалистичная скорость передвижения. По умолчанию: {{value}} {{unit}} (скорость самолета)",
     "maxStreams": "Макс. Потоков",
     "maxStreamsDefault": "Максимальное количество одновременных потоков для каждого пользователя. По умолчанию: 3",
@@ -695,7 +703,6 @@
     "months": "Месяцев",
     "noRulesConfigured": "Правила не настроены",
     "none": "Нет",
-    "recordsOnly": "Records violations only",
     "ruleName": "Название правила",
     "ruleNamePlaceholder": "например, Лимит одновременного потока",
     "ruleType": "Тип правила",
