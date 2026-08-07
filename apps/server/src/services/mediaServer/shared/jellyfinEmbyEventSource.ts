@@ -53,6 +53,7 @@ interface EventSource {
 let EventSourceClass: new (url: string, init?: EventSourceInit) => EventSource;
 
 export interface PluginSessionEvent {
+  eventType: string;
   sessionId: string;
   itemId: string | null;
   userId: string | null;
@@ -98,7 +99,7 @@ export class JellyfinEmbyEventSource extends EventEmitter {
   private pluginVersion: string | null = null;
 
   private openListener: ((e: Event) => void) | null = null;
-  private sessionEventListener: ((e: EventSourceMessage) => void) | null = null;
+  private readonly sessionEventListeners = new Map<string, (e: EventSourceMessage) => void>();
   private libraryAddedListener: ((e: EventSourceMessage) => void) | null = null;
   private libraryRemovedListener: ((e: EventSourceMessage) => void) | null = null;
   private pingListener: ((e: EventSourceMessage) => void) | null = null;
@@ -189,13 +190,14 @@ export class JellyfinEmbyEventSource extends EventEmitter {
         this.startHeartbeatMonitor();
       };
 
-      const handleSessionEvent = (ev: EventSourceMessage) => {
+      const handleSessionEvent = (eventType: string) => (ev: EventSourceMessage) => {
         this.lastEventTime = new Date();
         this.resetHeartbeatMonitor();
         if (!ev.data) return;
         try {
           const raw = JSON.parse(ev.data) as Record<string, unknown>;
           const payload: PluginSessionEvent = {
+            eventType,
             sessionId: (raw.sessionId as string | undefined) ?? '',
             itemId: (raw.itemId as string | undefined) ?? null,
             userId: (raw.userId as string | undefined) ?? null,
@@ -221,7 +223,6 @@ export class JellyfinEmbyEventSource extends EventEmitter {
         }
       };
 
-      this.sessionEventListener = handleSessionEvent;
       this.libraryAddedListener = handleLibraryEvent('added');
       this.libraryRemovedListener = handleLibraryEvent('removed');
       this.pingListener = () => {
@@ -259,7 +260,9 @@ export class JellyfinEmbyEventSource extends EventEmitter {
         'session.start',
         'session.end',
       ]) {
-        this.eventSource.addEventListener(eventName, this.sessionEventListener);
+        const listener = handleSessionEvent(eventName);
+        this.sessionEventListeners.set(eventName, listener);
+        this.eventSource.addEventListener(eventName, listener);
       }
       this.eventSource.addEventListener(LIBRARY_ADDED_EVENT, this.libraryAddedListener);
       this.eventSource.addEventListener(LIBRARY_REMOVED_EVENT, this.libraryRemovedListener);
@@ -295,18 +298,10 @@ export class JellyfinEmbyEventSource extends EventEmitter {
     this.eventSource.onerror = null;
     this.eventSource.onmessage = null;
 
-    if (this.sessionEventListener) {
-      for (const eventName of [
-        'playing',
-        'progress',
-        'paused',
-        'stopped',
-        'session.start',
-        'session.end',
-      ]) {
-        this.eventSource.removeEventListener(eventName, this.sessionEventListener);
-      }
+    for (const [eventName, listener] of this.sessionEventListeners) {
+      this.eventSource.removeEventListener(eventName, listener);
     }
+    this.sessionEventListeners.clear();
     if (this.libraryAddedListener) {
       this.eventSource.removeEventListener(LIBRARY_ADDED_EVENT, this.libraryAddedListener);
     }
@@ -323,7 +318,6 @@ export class JellyfinEmbyEventSource extends EventEmitter {
     this.eventSource.close();
     this.eventSource = null;
     this.openListener = null;
-    this.sessionEventListener = null;
     this.libraryAddedListener = null;
     this.libraryRemovedListener = null;
     this.pingListener = null;

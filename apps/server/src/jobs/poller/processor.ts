@@ -2437,7 +2437,10 @@ export async function triggerPoll(): Promise<void> {
  * Process a single server on demand, triggered by a plugin SSE event.
  * Runs the same pipeline as the normal poller for that one server only.
  */
-export async function triggerServerPoll(serverId: string): Promise<void> {
+export async function triggerServerPoll(
+  serverId: string,
+  options: { immediateStops?: boolean } = {}
+): Promise<void> {
   if (isMaintenance()) return;
   // Plugin SSE events must only drive polls on the leaseholder; a follower
   // that somehow holds a connection must not write sessions or run rules
@@ -2487,7 +2490,8 @@ export async function triggerServerPoll(serverId: string): Promise<void> {
       server,
       activeRulesV2,
       cachedSessionKeys,
-      cachedSessions
+      cachedSessions,
+      { immediateStops: options.immediateStops }
     );
 
     if (newSessions.length > 0 || stoppedSessionKeys.length > 0 || updatedSessions.length > 0) {

@@ -73,17 +73,20 @@ interface ServerConnection {
 
 // Per-server debounce timers to coalesce rapid plugin events before polling
 const pendingServerPolls = new Map<string, NodeJS.Timeout>();
+const pendingImmediateStops = new Set<string>();
 
 const NUDGE_MIN_INTERVAL_MS = 60 * 1000;
 
-function scheduleServerPoll(serverId: string, serverName: string): void {
+function scheduleServerPoll(serverId: string, serverName: string, immediateStops = false): void {
   const existing = pendingServerPolls.get(serverId);
   if (existing) clearTimeout(existing);
+  if (immediateStops) pendingImmediateStops.add(serverId);
 
   const timer = setTimeout(() => {
     pendingServerPolls.delete(serverId);
     console.log(`[PluginSSE] ${serverName}: live event, refreshing`);
-    void triggerServerPoll(serverId);
+    const stopImmediately = pendingImmediateStops.delete(serverId);
+    void triggerServerPoll(serverId, { immediateStops: stopImmediately });
   }, 1000);
 
   pendingServerPolls.set(serverId, timer);
@@ -319,6 +322,7 @@ export class SSEManager extends EventEmitter {
       clearTimeout(pending);
       pendingServerPolls.delete(serverId);
     }
+    pendingImmediateStops.delete(serverId);
 
     if (connection.eventSource) {
       connection.eventSource.removeAllListeners();
@@ -572,11 +576,13 @@ export class SSEManager extends EventEmitter {
     serverName: string,
     serverType: 'jellyfin' | 'emby'
   ): void {
-    eventSource.on('session:event', (_event: PluginSessionEvent) => {
+    eventSource.on('session:event', (event: PluginSessionEvent) => {
       const connection = this.connections.get(serverId);
       if (connection) connection.lastEventAt = new Date();
       // Trigger-poll approach: event arrived -> run existing poller pipeline for this server
-      scheduleServerPoll(serverId, serverName);
+      const eventType = event.eventType.toLowerCase();
+      const immediateStops = eventType === 'stopped' || eventType === 'session.end';
+      scheduleServerPoll(serverId, serverName, immediateStops);
     });
 
     eventSource.on('connection:state', (state: SSEConnectionState) => {
