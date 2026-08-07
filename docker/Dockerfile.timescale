@@ -27,11 +27,21 @@ RUN apt-get update \
 # Enable TimescaleDB in PostgreSQL config
 # Cap tuple decompression per DML transaction at TimescaleDB's default
 # Increase lock table size for TimescaleDB hypertables with many chunks
-# Memory cost: 4096 * max_connections * ~256 bytes = ~100MB at 100 connections (trivial)
+# Memory cost: 4096 * max_connections * ~256 bytes = ~150MB at 150 connections (fine on a dedicated DB container)
+# max_connections 150 leaves room for multi-instance app pools; the entrypoint
+# wrapper applies the same floor to volumes initialized by older image versions
 RUN echo "shared_preload_libraries = 'timescaledb'" >> /usr/share/postgresql/postgresql.conf.sample \
     && echo "timescaledb.max_tuples_decompressed_per_dml_transaction = 100000" >> /usr/share/postgresql/postgresql.conf.sample \
     && echo "timescaledb.telemetry_level = off" >> /usr/share/postgresql/postgresql.conf.sample \
-    && echo "max_locks_per_transaction = 4096" >> /usr/share/postgresql/postgresql.conf.sample
+    && echo "max_locks_per_transaction = 4096" >> /usr/share/postgresql/postgresql.conf.sample \
+    && echo "max_connections = 150" >> /usr/share/postgresql/postgresql.conf.sample
+
+COPY timescale-entrypoint.sh /usr/local/bin/tracearr-entrypoint.sh
+RUN chmod +x /usr/local/bin/tracearr-entrypoint.sh
+
+# Overriding ENTRYPOINT resets the inherited CMD - restore it
+ENTRYPOINT ["tracearr-entrypoint.sh"]
+CMD ["postgres"]
 
 # OCI image labels for container registries and tools like Renovate
 LABEL org.opencontainers.image.source="https://github.com/connorgallopo/Tracearr" \

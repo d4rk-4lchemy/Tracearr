@@ -92,6 +92,7 @@ import {
   stopDispatcharrRealtimeProcessor,
 } from './jobs/dispatcharrRealtimeProcessor.js';
 import { startPluginUpdateChecker, stopPluginUpdateChecker } from './jobs/pluginUpdateChecker.js';
+import { startLeaderLease, stopLeaderLease } from './services/leaderLease.js';
 import { initializeWebSocket, broadcastToSessions } from './websocket/index.js';
 import {
   initNotificationQueue,
@@ -136,6 +137,7 @@ import {
   shutdownPlexTokenRefreshQueue,
 } from './jobs/plexTokenRefresh.js';
 import { initHeavyOpsLock } from './jobs/heavyOpsLock.js';
+import { startConnectionBudget, stopConnectionBudget } from './services/connectionBudget.js';
 import { initPushRateLimiter } from './services/pushRateLimiter.js';
 import { initializeV2Rules } from './services/rules/v2Integration.js';
 import { processPushReceipts } from './services/pushNotification.js';
@@ -502,12 +504,15 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     await closeAuth();
     if (pubSubRedis) await pubSubRedis.quit();
     if (wsSubscriber) await wsSubscriber.quit();
+    // Producers stop before the lease releases so the next leader never
+    // overlaps an in-flight poll or realtime snapshot from this instance.
     stopPoller();
-    await sseManager.stop();
-    await tailscaleService.shutdown();
     stopSSEProcessor();
     stopDispatcharrRealtimeProcessor();
     stopPluginUpdateChecker();
+    await sseManager.stop();
+    await stopLeaderLease();
+    await tailscaleService.shutdown();
     await shutdownNotificationQueue();
     await shutdownKillQueue();
     await shutdownImportQueue();
@@ -781,6 +786,14 @@ async function initializeServices(app: FastifyInstance) {
   await initHeavyOpsLock(app.redis);
   app.log.info('Heavy operations lock initialized');
 
+  // Size the pg pool from the server's real max_connections and the live
+  // instance count (no-op when DATABASE_POOL_MAX is set explicitly)
+  try {
+    await startConnectionBudget(app.redis);
+  } catch (err) {
+    app.log.warn({ err }, 'Connection budget unavailable, keeping default pool size');
+  }
+
   // Initialize library sync queue (uses Redis for job storage)
   try {
     initLibrarySyncQueue(redisUrl);
@@ -1020,26 +1033,43 @@ async function initializePostListen(app: FastifyInstance) {
     }
   });
 
-  // Start session poller after server is listening (uses DB settings)
-  const pollerSettings = await getPollerSettings();
-  if (pollerSettings.enabled) {
-    startPoller({ enabled: true, intervalMs: pollerSettings.intervalMs });
-  } else {
-    app.log.info('Session poller disabled in settings');
-  }
+  // The session producers (poller loop + realtime connections) run on exactly
+  // one instance: N instances would otherwise open N connections per media
+  // server and poll N times. HTTP, Socket.io, pub/sub, and BullMQ workers run
+  // on every instance.
+  const startProducers = async (): Promise<void> => {
+    const pollerSettings = await getPollerSettings();
+    if (pollerSettings.enabled) {
+      startPoller({ enabled: true, intervalMs: pollerSettings.intervalMs });
+    } else {
+      app.log.info('Session poller disabled in settings');
+    }
 
-  // Start SSE connections for all media servers (real-time updates)
-  try {
-    // Clean up any orphaned pending sessions from previous server instance
-    await cleanupOrphanedPendingSessions();
-    startSSEProcessor(); // Subscribe to SSE events
-    startDispatcharrRealtimeProcessor();
-    startPluginUpdateChecker();
-    await sseManager.start(); // Start SSE connections
-    app.log.info('Real-time SSE connections started');
-  } catch (err) {
-    app.log.error({ err }, 'Failed to start SSE connections - falling back to polling');
-  }
+    try {
+      // Clean up any orphaned pending sessions from the previous leader.
+      await cleanupOrphanedPendingSessions();
+      startSSEProcessor();
+      startDispatcharrRealtimeProcessor();
+      startPluginUpdateChecker();
+      await sseManager.start();
+      app.log.info('Real-time connections started');
+    } catch (err) {
+      app.log.error({ err }, 'Failed to start real-time connections - falling back to polling');
+    }
+  };
+
+  const stopProducers = async (): Promise<void> => {
+    stopPoller();
+    stopSSEProcessor();
+    stopDispatcharrRealtimeProcessor();
+    stopPluginUpdateChecker();
+    await sseManager.stop();
+  };
+
+  await startLeaderLease(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+    onAcquired: startProducers,
+    onLost: stopProducers,
+  });
 
   // Log network settings status
   const networkSettings = await getNetworkSettings();
@@ -1154,6 +1184,7 @@ async function start() {
       process.once(signal, () => {
         app.log.info(`Received ${signal}, shutting down gracefully...`);
         stopPoller();
+        void stopConnectionBudget(app.redis);
         void tailscaleService.shutdown();
         void shutdownNotificationQueue();
         void shutdownKillQueue();
@@ -1177,7 +1208,10 @@ async function start() {
         stopSSEProcessor();
         stopDispatcharrRealtimeProcessor();
         stopPluginUpdateChecker();
-        void sseManager.stop();
+        void sseManager
+          .stop()
+          .then(() => stopLeaderLease())
+          .catch(() => stopLeaderLease());
         void tailscaleService.shutdown();
 
         // Disconnect extra Redis clients to stop reconnection attempts

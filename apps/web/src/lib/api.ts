@@ -1287,6 +1287,17 @@ class ApiClient {
       params.set('timezone', getBrowserTimezone());
       return this.request<LibraryStorageResponse>(`/library/storage?${params.toString()}`);
     },
+    // Scoped variant: one request over the whole selection, so the server's
+    // mirror dedup sees every server at once instead of per-server sums
+    storageScoped: (serverIds: string[], period: string = '30d') => {
+      const params = new URLSearchParams();
+      for (const id of serverIds) {
+        params.append('serverIds', id);
+      }
+      params.set('period', period);
+      params.set('timezone', getBrowserTimezone());
+      return this.request<LibraryStorageResponse>(`/library/storage?${params.toString()}`);
+    },
     duplicates: (serverIds?: string[], page: number = 1, pageSize: number = 20) => {
       const params = new URLSearchParams();
       if (serverIds?.length) {

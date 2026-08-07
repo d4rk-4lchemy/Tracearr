@@ -2,7 +2,7 @@
  * Play Statistics Routes
  *
  * GET /plays - Plays over time (engagement-based, >= 2 min sessions).
- *   Accepts an optional mediaType filter (movie|episode); omitting it keeps
+ *   Accepts an optional mediaType filter (movie|episode|live); omitting it keeps
  *   the response identical to before the filter existed.
  * GET /plays-by-dayofweek - Plays grouped by day of week
  * GET /plays-by-hourofday - Plays grouped by hour of day
@@ -18,12 +18,12 @@ import { statsQuerySchema } from '@tracearr/shared';
 import { resolveDateRange } from './utils.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
 import { queryPlaysOverTime, queryPlaysByDayOfWeek, queryPlaysByHourOfDay } from './queries.js';
-import { PRIMARY_MEDIA_TYPES } from '../../constants/index.js';
+import { ACTIVITY_MEDIA_TYPES } from '../../constants/index.js';
 
-// /plays queries the sessions table directly (already restricted to primary
+// /plays queries the sessions table directly (already restricted to Activity
 // media types), so the optional filter only ever needs to narrow within that set.
 const playsMediaTypeQuerySchema = z.object({
-  mediaType: z.enum(PRIMARY_MEDIA_TYPES).optional(),
+  mediaType: z.enum(ACTIVITY_MEDIA_TYPES).optional(),
 });
 
 /**

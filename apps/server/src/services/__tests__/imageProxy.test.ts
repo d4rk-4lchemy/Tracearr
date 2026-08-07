@@ -43,6 +43,7 @@ import {
   readdir,
   mkdir,
 } from 'node:fs/promises';
+import sharp from 'sharp';
 import { db } from '../../db/client.js';
 import {
   proxyImage,
@@ -50,6 +51,7 @@ import {
   posterCacheEntryExists,
   cleanupCache,
   buildLqipPlaceholder,
+  persistDominantColorIfNeeded,
   stopImageCacheCleanup,
 } from '../imageProxy.js';
 
@@ -495,5 +497,82 @@ describe('proxyImage cache-miss pipeline', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('persistDominantColorIfNeeded', () => {
+  const red1x1 = () =>
+    sharp(Buffer.from([255, 0, 0]), { raw: { width: 1, height: 1, channels: 3 } })
+      .png()
+      .toBuffer();
+
+  it('coalesces concurrent persists for the same image into one write', async () => {
+    // Fire-and-forget persists from earlier proxyImage tests can settle
+    // during this one and hit the shared db.update mock - drain them and
+    // count only writes carrying this test's color
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    vi.clearAllMocks();
+
+    // The miss pipeline runs per size, so one poster at 160/240/360 lands
+    // here three times at once - the shape that deadlocks multi-row updates
+    const chain = mockUpdateChain();
+    const serverId = randomUUID();
+    const buffer = await red1x1();
+
+    await Promise.all([
+      persistDominantColorIfNeeded(serverId, '/thumb/coalesce', buffer),
+      persistDominantColorIfNeeded(serverId, '/thumb/coalesce', buffer),
+      persistDominantColorIfNeeded(serverId, '/thumb/coalesce', buffer),
+    ]);
+
+    const redWrites = chain.set.mock.calls.filter(
+      (call) => (call[0] as { dominantColor?: string }).dominantColor === '#ff0000'
+    );
+    expect(redWrites).toHaveLength(1);
+  });
+
+  it('retries once after a deadlock and succeeds', async () => {
+    const chain = {
+      set: vi.fn().mockReturnThis(),
+      where: vi
+        .fn()
+        .mockRejectedValueOnce(Object.assign(new Error('deadlock detected'), { code: '40P01' }))
+        .mockResolvedValueOnce(undefined),
+    };
+    vi.mocked(db.update).mockReturnValue(chain as never);
+
+    await persistDominantColorIfNeeded(randomUUID(), '/thumb/deadlock', await red1x1());
+
+    expect(chain.where).toHaveBeenCalledTimes(2);
+    expect(chain.set).toHaveBeenCalledWith({ dominantColor: '#ff0000' });
+  });
+
+  it('recognizes a wrapped deadlock via the error cause', async () => {
+    const wrapped = Object.assign(new Error('query failed'), {
+      cause: Object.assign(new Error('deadlock detected'), { code: '40P01' }),
+    });
+    const chain = {
+      set: vi.fn().mockReturnThis(),
+      where: vi.fn().mockRejectedValueOnce(wrapped).mockResolvedValueOnce(undefined),
+    };
+    vi.mocked(db.update).mockReturnValue(chain as never);
+
+    await persistDominantColorIfNeeded(randomUUID(), '/thumb/wrapped', await red1x1());
+
+    expect(chain.where).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry non-deadlock failures and never throws', async () => {
+    const chain = {
+      set: vi.fn().mockReturnThis(),
+      where: vi.fn().mockRejectedValue(Object.assign(new Error('boom'), { code: '23505' })),
+    };
+    vi.mocked(db.update).mockReturnValue(chain as never);
+
+    await expect(
+      persistDominantColorIfNeeded(randomUUID(), '/thumb/other-error', await red1x1())
+    ).resolves.toBeUndefined();
+
+    expect(chain.where).toHaveBeenCalledTimes(1);
   });
 });

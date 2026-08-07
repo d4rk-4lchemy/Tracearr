@@ -81,6 +81,10 @@ const MediaInfo = z.object({
     example: 'Inception',
   }),
   mediaType: MediaTypeEnum,
+  programmeTitle: z.string().nullable().optional().openapi({
+    description: 'Currently airing programme title for Live TV; mediaTitle remains the compatibility field.',
+    example: 'Morning News',
+  }),
   showTitle: z
     .string()
     .nullable()

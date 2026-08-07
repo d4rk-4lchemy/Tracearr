@@ -30,6 +30,7 @@ import { lookupGeoIP } from '../../services/plexGeoip.js';
 import { registerService, unregisterService } from '../../services/serviceTracker.js';
 import { getWatchedThreshold } from '../../services/settings.js';
 import { sseManager } from '../../services/sseManager.js';
+import { registerLiveTvEpgPollTrigger } from '../../services/mediaServer/shared/liveTvEpg.js';
 
 import { enqueueNotification } from '../notificationQueue.js';
 import {
@@ -97,6 +98,10 @@ let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;
 let previousPollHadSessions = false;
 let currentPollIntervalMs: number = POLLING_INTERVALS.SESSIONS_IDLE;
+
+registerLiveTvEpgPollTrigger((serverId) => {
+  void triggerServerPoll(serverId);
+});
 
 const pollGuard = { running: false };
 const sweepGuard = { running: false };
@@ -844,6 +849,8 @@ export async function processServerSessions(
       type: server.type,
       url: server.url,
       token: server.token,
+      id: server.id,
+      name: server.name,
     });
     const mediaSessions = options.mediaSessions ?? (await client.getSessions());
     sseManager.nudgeReconnect(server.id);
@@ -2430,7 +2437,10 @@ export async function triggerPoll(): Promise<void> {
  * Process a single server on demand, triggered by a plugin SSE event.
  * Runs the same pipeline as the normal poller for that one server only.
  */
-export async function triggerServerPoll(serverId: string): Promise<void> {
+export async function triggerServerPoll(
+  serverId: string,
+  options: { immediateStops?: boolean } = {}
+): Promise<void> {
   if (isMaintenance()) return;
   // Plugin SSE events must only drive polls on the leaseholder; a follower
   // that somehow holds a connection must not write sessions or run rules
@@ -2480,7 +2490,8 @@ export async function triggerServerPoll(serverId: string): Promise<void> {
       server,
       activeRulesV2,
       cachedSessionKeys,
-      cachedSessions
+      cachedSessions,
+      { immediateStops: options.immediateStops }
     );
 
     if (newSessions.length > 0 || stoppedSessionKeys.length > 0 || updatedSessions.length > 0) {

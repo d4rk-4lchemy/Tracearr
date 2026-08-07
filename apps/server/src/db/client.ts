@@ -14,10 +14,13 @@ if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL environment variable is required');
 }
 
+// Set by the connection budget service; survives recreatePool()
+let poolMaxOverride: number | null = null;
+
 function createPool(): pg.Pool {
   const p = new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: Number(process.env.DATABASE_POOL_MAX) || 50,
+    max: poolMaxOverride ?? (Number(process.env.DATABASE_POOL_MAX) || 50),
     idleTimeoutMillis: 20000, // Close idle connections after 20s
     connectionTimeoutMillis: 5000, // Max wait to acquire a connection from the pool (not running query timeout)
     maxUses: 7500, // Max queries per connection before refresh (prevents memory leaks)
@@ -54,6 +57,19 @@ let pool = createPool();
 // Exported as `let` so recreatePool() can reassign it. ESM live bindings ensure
 // all modules importing `db` automatically see the new instance after reassignment.
 export let db: NodePgDatabase<typeof schema> = drizzle(pool, { schema });
+
+/**
+ * Resize the live pool. pg-pool reads options.max on every acquire;
+ * connections above a lowered cap drain through idleTimeoutMillis.
+ */
+export function setPoolMax(max: number): void {
+  poolMaxOverride = max;
+  pool.options.max = max;
+}
+
+export function getPoolMax(): number {
+  return pool.options.max ?? 0;
+}
 
 /**
  * Destroy the current pool and create a fresh one.

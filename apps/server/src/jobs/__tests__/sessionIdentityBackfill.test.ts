@@ -43,9 +43,14 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+/** Transaction call 0 is always the decompression-cap GUC probe */
+const GUC_ABSENT = { rows: [] };
+const GUC_PRESENT = { rows: [{ '?column?': 1 }] };
+
 describe('backfillSessionIdentityBatch', () => {
   it('combines the fresh-stamp and repair pass counts and picks the oldest across both', async () => {
     mockTransaction([
+      GUC_ABSENT,
       {
         rows: [
           { started_at: '2024-01-05T00:00:00.000Z' },
@@ -63,6 +68,7 @@ describe('backfillSessionIdentityBatch', () => {
 
   it('runs both passes even when the fresh-stamp pass finds nothing to repair', async () => {
     const execute = mockTransaction([
+      GUC_ABSENT,
       { rows: [] },
       { rows: [{ started_at: '2024-02-01T00:00:00.000Z' }] },
     ]);
@@ -71,32 +77,47 @@ describe('backfillSessionIdentityBatch', () => {
 
     expect(result.updated).toBe(1);
     expect(result.oldest).toEqual(new Date('2024-02-01T00:00:00.000Z'));
-    // Fresh-stamp query + repair query, nothing else in the transaction.
-    expect(execute).toHaveBeenCalledTimes(2);
+    // GUC probe + fresh-stamp query + repair query, nothing else.
+    expect(execute).toHaveBeenCalledTimes(3);
   });
 
   it('returns zero updated and a null oldest when neither pass finds anything', async () => {
-    mockTransaction([{ rows: [] }, { rows: [] }]);
+    mockTransaction([GUC_ABSENT, { rows: [] }, { rows: [] }]);
 
     const result = await backfillSessionIdentityBatch(5000);
 
     expect(result).toEqual({ updated: 0, oldest: null });
   });
+
+  it('lifts the decompression cap inside the transaction when the GUC exists', async () => {
+    // The field failure: a compressed month-chunk decompresses more tuples
+    // than the 100k default for one batch, and without SET LOCAL the walk
+    // fail-retries forever
+    const execute = mockTransaction([GUC_PRESENT, { rows: [] }, { rows: [] }, { rows: [] }]);
+
+    await backfillSessionIdentityBatch(5000);
+
+    expect(execute).toHaveBeenCalledTimes(4);
+    const setLocal = renderSql(execute.mock.calls[1]![0] as SQL).sql;
+    expect(setLocal).toContain(
+      'SET LOCAL timescaledb.max_tuples_decompressed_per_dml_transaction = 0'
+    );
+  });
 });
 
 describe('backfillSessionIdentityBatch windowing', () => {
   it('applies started_at bounds to both passes when a window is given', async () => {
-    const execute = mockTransaction([{ rows: [] }, { rows: [] }]);
+    const execute = mockTransaction([GUC_ABSENT, { rows: [] }, { rows: [] }]);
 
     await backfillSessionIdentityBatch(5000, {
       start: new Date('2026-01-01T00:00:00.000Z'),
       end: new Date('2026-01-08T00:00:00.000Z'),
     });
 
-    // Call 0 is the fresh-stamp pass, call 1 is the show-link repair pass -
-    // each must carry both bounds, not just the union of the two.
-    expect(execute).toHaveBeenCalledTimes(2);
-    for (const call of execute.mock.calls) {
+    // After the GUC probe: the fresh-stamp pass, then the show-link repair
+    // pass - each must carry both bounds, not just the union of the two.
+    expect(execute).toHaveBeenCalledTimes(3);
+    for (const call of execute.mock.calls.slice(1)) {
       const { sql: text, params } = renderSql(call[0] as SQL);
       expect(text).toContain('started_at >=');
       expect(text).toContain('started_at <');
@@ -106,9 +127,9 @@ describe('backfillSessionIdentityBatch windowing', () => {
   });
 
   it('omits the bounds when no window is given', async () => {
-    const execute = mockTransaction([{ rows: [] }, { rows: [] }]);
+    const execute = mockTransaction([GUC_ABSENT, { rows: [] }, { rows: [] }]);
     await backfillSessionIdentityBatch(5000);
-    for (const call of execute.mock.calls) {
+    for (const call of execute.mock.calls.slice(1)) {
       const { sql: text } = renderSql(call[0] as SQL);
       expect(text).not.toContain('started_at >=');
       expect(text).not.toContain('started_at <');
@@ -160,11 +181,11 @@ describe('probe / batch predicate drift', () => {
       (call) => renderSql(call[0] as SQL).sql
     );
 
-    const batchExecute = mockTransaction([{ rows: [] }, { rows: [] }]);
+    const batchExecute = mockTransaction([GUC_ABSENT, { rows: [] }, { rows: [] }]);
     await backfillSessionIdentityBatch(5000);
-    const [freshBatch, repairBatch] = batchExecute.mock.calls.map(
-      (call) => renderSql(call[0] as SQL).sql
-    );
+    const [freshBatch, repairBatch] = batchExecute.mock.calls
+      .slice(1)
+      .map((call) => renderSql(call[0] as SQL).sql);
 
     // The probe answers "does the maintenance walk still have work below the
     // horizon", so it has to select exactly the rows the batch would stamp.

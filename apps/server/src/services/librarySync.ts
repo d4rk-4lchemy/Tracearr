@@ -33,8 +33,6 @@ import { getSessionsCompressionHorizon, refreshAggregates } from '../db/timescal
 import type { LibrarySyncProgress } from '@tracearr/shared';
 import {
   REDIS_KEYS,
-  resolutionBucket,
-  resolutionTierRank,
   RESOLUTION_TIERS,
   LEGACY_VERSION_SENTINEL,
   supportsMediaLibrary,
@@ -105,10 +103,6 @@ export function _resetAutoBackfillThrottleForTests(): void {
 
 let redisClient: Redis | null = null;
 
-function getPersistableItems(items: MediaLibraryItem[]): MediaLibraryItem[] {
-  return items.filter((item) => Boolean(item.ratingKey));
-}
-
 /**
  * Initialize the library sync service with a Redis client.
  * Required to enable incremental sync state persistence.
@@ -117,7 +111,7 @@ export function initLibrarySyncRedis(redis: Redis): void {
   redisClient = redis;
 }
 
-/** Fields createSnapshot needs — works with both API items and DB rows */
+/** Precomputed stats writeSnapshot upserts as today's snapshot row */
 interface SnapshotStats {
   itemCount: number;
   totalSize: number;
@@ -135,15 +129,6 @@ interface SnapshotStats {
   av1Count: number;
   countHighQuality: number;
   versionCount: number;
-}
-
-interface SnapshotItemInput {
-  fileSize?: number | null;
-  videoResolution?: string | null;
-  videoCodec?: string | null;
-  mediaType: string;
-  /** Active versions; absent falls back to the flat fields as one version */
-  versions?: Array<{ videoResolution?: string | null; videoCodec?: string | null }>;
 }
 
 /**
@@ -205,6 +190,7 @@ export class LibrarySyncService {
     if (!server) {
       throw new Error(`Server not found: ${serverId}`);
     }
+    // Dispatcharr has active-session support but no media-library API.
     if (!supportsMediaLibrary(server.type)) return results;
 
     const startedAt = new Date().toISOString();
@@ -214,7 +200,6 @@ export class LibrarySyncService {
       type: server.type,
       url: server.url,
       token: server.token,
-      ignoreAnonymousStreams: server.ignoreAnonymousStreams,
       id: server.id,
       name: server.name,
     });
@@ -260,10 +245,7 @@ export class LibrarySyncService {
 
     // Sync each library
     for (let i = 0; i < libraries.length; i++) {
-      const library = libraries[i];
-      if (!library) {
-        continue;
-      }
+      const library = libraries[i]!;
 
       const result = await this.syncLibrary(
         serverId,
@@ -471,12 +453,8 @@ export class LibrarySyncService {
       !forceFullScan;
 
     if (isIncremental) {
-      const lastSyncedAt = syncState.lastSyncedAt;
-      if (!lastSyncedAt) {
-        throw new Error('Incremental sync requires lastSyncedAt');
-      }
       console.log(
-        `[LibrarySync] Incremental sync for ${libraryName}: last synced ${lastSyncedAt.toISOString()}, ` +
+        `[LibrarySync] Incremental sync for ${libraryName}: last synced ${syncState.lastSyncedAt!.toISOString()}, ` +
           `count ${syncState.lastItemCount} → ${totalCount}, cycle ${syncState.syncCycle + 1}/${FULL_SCAN_INTERVAL}`
       );
     } else {
@@ -516,13 +494,9 @@ export class LibrarySyncService {
     // =========================================================================
     if (isIncremental && client.getLibraryItemsSince) {
       try {
-        const lastSyncedAt = syncState.lastSyncedAt;
-        if (!lastSyncedAt) {
-          throw new Error('Incremental sync requires lastSyncedAt');
-        }
         const { items: newItems, totalCount: incrementalCount } = await client.getLibraryItemsSince(
           libraryId,
-          lastSyncedAt
+          syncState.lastSyncedAt!
         );
 
         // Check for new episodes/tracks independently — new episodes can arrive
@@ -532,7 +506,7 @@ export class LibrarySyncService {
           try {
             const { items: leaves } = await client.getLibraryLeavesSince(
               libraryId,
-              lastSyncedAt
+              syncState.lastSyncedAt!
             );
             newLeaves = leaves;
           } catch (leafErr) {
@@ -697,7 +671,17 @@ export class LibrarySyncService {
     // Get previous item keys for delta detection
     const previousKeys = await this.getPreviousItemKeys(serverId, libraryId);
     const currentKeys = new Set<string>();
-    const allItems: MediaLibraryItem[] = [];
+    // Per-type tallies (deduped by rating key) are all the scan retains -
+    // the snapshot aggregates in SQL from the rows already upserted, so item
+    // objects must not accumulate for the whole scan (hundreds of MB on
+    // large libraries, held for minutes)
+    const typeCounts: Record<string, number> = { show: 0, episode: 0, artist: 0, track: 0 };
+    const noteItem = (item: MediaLibraryItem) => {
+      if (item.ratingKey && !currentKeys.has(item.ratingKey) && item.mediaType in typeCounts) {
+        typeCounts[item.mediaType] = (typeCounts[item.mediaType] ?? 0) + 1;
+      }
+      currentKeys.add(item.ratingKey);
+    };
     let totalSkippedEmpty = 0;
 
     // Fetch items in batches with pagination
@@ -714,12 +698,9 @@ export class LibrarySyncService {
       // was full, so the empty check must use rawCount, not the filtered items
       if ((rawCount ?? items.length) === 0) break;
 
-      const persistableItems = getPersistableItems(items);
-
-      // Track only keys we actually persist for delta detection and snapshots
-      for (const item of persistableItems) {
-        currentKeys.add(item.ratingKey);
-        allItems.push(item);
+      // Track current keys for delta detection
+      for (const item of items) {
+        noteItem(item);
       }
 
       // Upsert batch to database
@@ -753,7 +734,7 @@ export class LibrarySyncService {
     }
 
     // For TV libraries (contains shows), also fetch all episodes
-    const hasShows = allItems.some((item) => item.mediaType === 'show');
+    const hasShows = (typeCounts.show ?? 0) > 0;
     if (hasShows && client.getLibraryLeaves) {
       // Report episode fetching
       if (onProgress) {
@@ -790,12 +771,8 @@ export class LibrarySyncService {
 
         if ((rawCount ?? episodes.length) === 0) break;
 
-        const persistableEpisodes = getPersistableItems(episodes);
-
-        // Track only keys we actually persist for delta detection and snapshots
-        for (const episode of persistableEpisodes) {
-          currentKeys.add(episode.ratingKey);
-          allItems.push(episode);
+        for (const episode of episodes) {
+          noteItem(episode);
         }
 
         // Upsert episodes to database
@@ -851,8 +828,7 @@ export class LibrarySyncService {
         if ((rawCount ?? seasons.length) === 0) break;
 
         for (const season of seasons) {
-          currentKeys.add(season.ratingKey);
-          allItems.push(season);
+          noteItem(season);
         }
 
         const seasonRes = await this.upsertItems(serverId, libraryId, seasons, touchedMediaIds);
@@ -870,7 +846,7 @@ export class LibrarySyncService {
     }
 
     // For music libraries (contains artists), also fetch all tracks
-    const hasArtists = allItems.some((item) => item.mediaType === 'artist');
+    const hasArtists = (typeCounts.artist ?? 0) > 0;
     if (hasArtists && client.getLibraryLeaves) {
       // Report track fetching
       if (onProgress) {
@@ -907,12 +883,8 @@ export class LibrarySyncService {
 
         if ((rawCount ?? tracks.length) === 0) break;
 
-        const persistableTracks = getPersistableItems(tracks);
-
-        // Track only keys we actually persist for delta detection and snapshots
-        for (const track of persistableTracks) {
-          currentKeys.add(track.ratingKey);
-          allItems.push(track);
+        for (const track of tracks) {
+          noteItem(track);
         }
 
         // Upsert tracks to database
@@ -957,16 +929,12 @@ export class LibrarySyncService {
       await this.markItemsRemoved(serverId, libraryId, removedKeys, touchedMediaIds);
     }
 
-    const uniqueAllItems = Array.from(
-      new Map(allItems.filter((i) => i.ratingKey).map((i) => [i.ratingKey, i])).values()
-    );
-
     // Validate sync completeness before creating snapshot
     // TV libraries with shows should have episodes, Music libraries with artists should have tracks
-    const showCount = uniqueAllItems.filter((i) => i.mediaType === 'show').length;
-    const episodeCount = uniqueAllItems.filter((i) => i.mediaType === 'episode').length;
-    const artistCount = uniqueAllItems.filter((i) => i.mediaType === 'artist').length;
-    const trackCount = uniqueAllItems.filter((i) => i.mediaType === 'track').length;
+    const showCount = typeCounts.show ?? 0;
+    const episodeCount = typeCounts.episode ?? 0;
+    const artistCount = typeCounts.artist ?? 0;
+    const trackCount = typeCounts.track ?? 0;
 
     if (showCount > 0 && episodeCount === 0) {
       console.warn(
@@ -1028,8 +996,14 @@ export class LibrarySyncService {
       };
     }
 
-    // Create snapshot (may return null if data is invalid - e.g., no file sizes)
-    const snapshot = await this.createSnapshot(serverId, libraryId, uniqueAllItems);
+    // Snapshot aggregation is local DB work over rows already upserted - a
+    // failure must not fail the scan (matches the incremental path's guard)
+    let snapshot: { id: string } | null = null;
+    try {
+      snapshot = await this.rebuildSnapshotFromDb(serverId, libraryId);
+    } catch (err) {
+      console.error('[LibrarySync] Snapshot rebuild failed, continuing sync:', err);
+    }
 
     const acceptedShortfall = await this.computeAcceptedShortfall(
       serverId,
@@ -1504,119 +1478,9 @@ export class LibrarySyncService {
   }
 
   /**
-   * Create a snapshot record with aggregate statistics.
-   * Snapshots are only created if they would be valid (has items AND has storage size).
-   * See snapshotValidation.ts for validity criteria.
-   */
-  async createSnapshot(
-    serverId: string,
-    libraryId: string,
-    items: SnapshotItemInput[]
-  ): Promise<{ id: string } | null> {
-    // Don't create snapshots for empty libraries
-    if (items.length === 0) {
-      return null;
-    }
-    // Calculate quality distribution
-    let count4k = 0;
-    let count1080p = 0;
-    let count720p = 0;
-    let countSd = 0;
-    let hevcCount = 0;
-    let h264Count = 0;
-    let av1Count = 0;
-    let countHighQuality = 0;
-    let versionCount = 0;
-    let totalSize = 0;
-
-    // Media type counts
-    let movieCount = 0;
-    let episodeCount = 0;
-    let musicCount = 0;
-
-    // Filter to only items with valid file size to match backfill behavior.
-    const validItems = items.filter((item) => item.fileSize && item.fileSize > 0);
-    // Shows and seasons are containers with no file of their own, so counting
-    // them from validItems would always yield zero - tally from the full set instead.
-    const seasonCount = items.filter((item) => item.mediaType === 'season').length;
-    const showCount = items.filter((item) => item.mediaType === 'show').length;
-
-    for (const item of validItems) {
-      // Overlapping buckets: a title counts once in every bucket it has an
-      // active version in, so bucket sums can exceed item_count by design.
-      const versions = item.versions?.length
-        ? item.versions
-        : [{ videoResolution: item.videoResolution, videoCodec: item.videoCodec }];
-      const buckets = new Set<string>();
-      const codecFamilies = new Set<string>();
-      let highQuality = false;
-      for (const version of versions) {
-        const bucket = resolutionBucket(version.videoResolution);
-        if (bucket) buckets.add(bucket);
-        const rank = resolutionTierRank(version.videoResolution);
-        if (rank !== null && rank >= RESOLUTION_TIERS['1080p']) highQuality = true;
-        const codec = version.videoCodec?.toLowerCase();
-        if (codec === 'hevc' || codec === 'h265' || codec === 'x265') {
-          codecFamilies.add('hevc');
-        } else if (codec === 'h264' || codec === 'avc' || codec === 'x264') {
-          codecFamilies.add('h264');
-        } else if (codec === 'av1') {
-          codecFamilies.add('av1');
-        }
-      }
-      if (buckets.has('4k')) count4k++;
-      if (buckets.has('1080p')) count1080p++;
-      if (buckets.has('720p')) count720p++;
-      if (buckets.has('sd')) countSd++;
-      if (highQuality) countHighQuality++;
-      if (codecFamilies.has('hevc')) hevcCount++;
-      if (codecFamilies.has('h264')) h264Count++;
-      if (codecFamilies.has('av1')) av1Count++;
-      versionCount += item.versions?.length ?? 1;
-
-      // File size
-      totalSize += item.fileSize ?? 0;
-
-      // Media type counts
-      switch (item.mediaType) {
-        case 'movie':
-          movieCount++;
-          break;
-        case 'episode':
-          episodeCount++;
-          break;
-        case 'artist':
-        case 'album':
-        case 'track':
-          musicCount++;
-          break;
-      }
-    }
-
-    return this.writeSnapshot(serverId, libraryId, {
-      itemCount: validItems.length,
-      totalSize,
-      movieCount,
-      episodeCount,
-      seasonCount,
-      showCount,
-      musicCount,
-      count4k,
-      count1080p,
-      count720p,
-      countSd,
-      hevcCount,
-      h264Count,
-      av1Count,
-      countHighQuality,
-      versionCount,
-    });
-  }
-
-  /**
-   * Upsert today's snapshot row from precomputed stats. Shared by
-   * createSnapshot (in-memory items, full scan) and rebuildSnapshotFromDb
-   * (SQL aggregate, incremental syncs).
+   * Upsert today's snapshot row from precomputed stats (fed by
+   * rebuildSnapshotFromDb for both full and incremental syncs). Rows are only
+   * written when valid (has storage size) - see snapshotValidation.ts.
    */
   private async writeSnapshot(
     serverId: string,
@@ -1679,11 +1543,8 @@ export class LibrarySyncService {
         enrichmentComplete: 0,
       })
       .returning({ id: librarySnapshots.id });
-    if (!snapshot) {
-      throw new Error('Library snapshot insert returned no row');
-    }
 
-    return { id: snapshot.id };
+    return { id: snapshot!.id };
   }
 
   /**
@@ -1853,11 +1714,8 @@ export class LibrarySyncService {
         enrichmentComplete: latest.enrichmentComplete,
       })
       .returning({ id: librarySnapshots.id });
-    if (!copy) {
-      throw new Error('Library snapshot copy returned no row');
-    }
 
-    return { id: copy.id };
+    return { id: copy!.id };
   }
 
   /**
@@ -1869,7 +1727,6 @@ export class LibrarySyncService {
     type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
     url: string;
     token: string;
-    ignoreAnonymousStreams: boolean;
   } | null> {
     const [server] = await db
       .select({
@@ -1878,7 +1735,6 @@ export class LibrarySyncService {
         type: servers.type,
         url: servers.url,
         token: servers.token,
-        ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
       })
       .from(servers)
       .where(eq(servers.id, serverId))

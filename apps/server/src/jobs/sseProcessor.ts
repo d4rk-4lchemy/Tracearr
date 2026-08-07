@@ -1015,6 +1015,8 @@ async function fetchFullSession(
       type: server.type,
       url: server.url,
       token: server.token,
+      id: server.id,
+      name: server.name,
     });
 
     const allSessions = await client.getSessions();

@@ -42,11 +42,12 @@ export function watchedLabelKey(watchedStateSelf: WatchedState | undefined): Wat
  * shelf/context already conveys that, and badging every untouched card
  * would be noise).
  *
- * The fully-watched check is two-tone: primary/teal when the requester
- * watched it themselves (matching the "watched" color SeasonHeatPanel
- * already uses), success/green when only someone else has - self wins
- * whenever both are true. Partial stays a single tone either way; it's
- * already the anyone-grain and doesn't need a self/other split.
+ * Both indicators are two-tone on the same rule: success/green only when
+ * the requester's own watch state earned it, warning/orange when the state
+ * comes from someone else (or the self grain is unavailable, as on shelf
+ * cards - green must never claim "you watched" without requester data).
+ * Green wins whenever both are true. Teal was tried for the self tone and
+ * reads as green at 18px, which hid the split entirely.
  */
 export function WatchedBadge({ watchedState, watchedStateSelf, className }: WatchedBadgeProps) {
   const { t } = useTranslation('pages');
@@ -57,7 +58,7 @@ export function WatchedBadge({ watchedState, watchedStateSelf, className }: Watc
       <span
         className={cn(
           'text-background border-background/55 inline-flex size-[18px] items-center justify-center rounded-full border-2',
-          bySelf ? 'bg-primary' : 'bg-success',
+          bySelf ? 'bg-success' : 'bg-warning',
           className
         )}
       >
@@ -68,6 +69,8 @@ export function WatchedBadge({ watchedState, watchedStateSelf, className }: Watc
   }
 
   if (watchedState === 'partial') {
+    const selfProgress = watchedStateSelf === 'partial' || watchedStateSelf === 'watched';
+    const tone = selfProgress ? '--success' : '--warning';
     return (
       <span
         className={cn(
@@ -75,7 +78,7 @@ export function WatchedBadge({ watchedState, watchedStateSelf, className }: Watc
           className
         )}
         style={{
-          background: 'conic-gradient(hsl(var(--success)) 0 62%, hsl(var(--muted)) 62% 100%)',
+          background: `conic-gradient(hsl(var(${tone})) 0 62%, hsl(var(--muted)) 62% 100%)`,
         }}
       >
         <span className="sr-only">{t('media.posterCard.watchedState.partial')}</span>

@@ -66,6 +66,9 @@ const INTERNAL_DEFAULTS = {
   // ISO 8601 - set once when the last legacy:1 version sentinel clears; marks
   // where storage history changes meaning (multi-version rollups)
   mediaVersionsBackfilledAt: null as string | null,
+  // ISO 8601 - set once when pre-changeover snapshot history has been
+  // regenerated in multi-version semantics; retires the growth fit clamp
+  snapshotsNormalizedAt: null as string | null,
 };
 
 type InternalSettings = typeof INTERNAL_DEFAULTS;

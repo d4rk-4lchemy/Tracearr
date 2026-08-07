@@ -338,6 +338,32 @@ if command -v timescaledb-tune &> /dev/null; then
 fi
 
 # =============================================================================
+# Floor max_connections when the postgres memory budget affords it
+# =============================================================================
+# The Node/Redis reserve shrinks the budget timescaledb-tune sees, and its
+# tuned max_connections can dip below the stock 100. At a 2GB+ postgres
+# budget 100 backends are affordable, so restore the floor; smaller
+# containers keep tune's value.
+PG_BUDGET_MB=""
+if [ -n "${PG_TUNE_MB:-}" ]; then
+    PG_BUDGET_MB="$PG_TUNE_MB"
+elif [ -n "${PG_MAX_MEMORY:-}" ]; then
+    PG_MEM_NUM=$(printf '%s' "$PG_MAX_MEMORY" | grep -oE '[0-9]+' | head -1 || echo "")
+    case "$PG_MAX_MEMORY" in
+        *[Gg]*) [ -n "$PG_MEM_NUM" ] && PG_BUDGET_MB=$((PG_MEM_NUM * 1024)) ;;
+        *) PG_BUDGET_MB="$PG_MEM_NUM" ;;
+    esac
+fi
+
+if [ -n "$PG_BUDGET_MB" ] && [ "$PG_BUDGET_MB" -ge 2048 ] 2>/dev/null && [ -f /data/postgres/postgresql.conf ]; then
+    TUNED_MAX_CONN=$(grep -E "^max_connections\s*=" /data/postgres/postgresql.conf | tail -1 | grep -oE '[0-9]+' | head -1 || echo "")
+    if [ -n "$TUNED_MAX_CONN" ] && [ "$TUNED_MAX_CONN" -lt 100 ] 2>/dev/null; then
+        log "Raising max_connections from $TUNED_MAX_CONN to 100 (postgres budget ${PG_BUDGET_MB}MB affords it)"
+        sed -i "s/^max_connections\s*=.*/max_connections = 100/" /data/postgres/postgresql.conf
+    fi
+fi
+
+# =============================================================================
 # Configure database connection pool to match PostgreSQL max_connections
 # =============================================================================
 # After timescaledb-tune runs, read the configured max_connections and set

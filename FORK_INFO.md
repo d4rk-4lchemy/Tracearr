@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA inspected: `feature/version-2.0-preparation` at `6a284d7a`
+- Fork branch/SHA inspected: `feature/better-live-tv-for-jellyfin-and-emby` at `a28c0103`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `c600f88f`
+- Source branch/SHA inspected: `main` at `55af7da5`
 - Last shared upstream commit found during inspection: `367f6c69`
-- Latest upstream commit merged into the current working tree: `c600f88f`
+- Latest upstream commit merged into the current working tree: `55af7da5`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -41,6 +41,7 @@ User-facing Dispatcharr behavior:
 - Optionally ignore streams reported as anonymous.
 - Terminate Dispatcharr live/VOD streams from Tracearr.
 - Display Live TV channel/programme information, channel logos, stream bitrate, codecs, resolution, and FFmpeg speed where available.
+- Jellyfin and Emby Live TV sessions are enriched from `/LiveTv/Programs`; the current programme is stored in `mediaTitle` while the channel remains in `live.*`. The EPG cache is shared per server/channel and refreshes the existing poller at programme boundaries. Web and mobile Live TV cards use the same channel-title/programme-subtitle layout as Dispatcharr; Plex keeps its legacy Live TV card for now.
 - Show Dispatcharr active sessions immediately from healthy WebSocket snapshots.
 - Save Dispatcharr Live TV sessions to history only after a configurable threshold; default is 30 seconds and `0` means always save. This threshold does not delay active-session visibility, does not emit a second stream-start event when history is confirmed, and does not apply to Dispatcharr VOD history.
 
@@ -48,6 +49,8 @@ The fork also carries local maintenance/distribution changes:
 
 - README has fork-specific warnings, Docker image names, and Dispatcharr feature notes.
 - Renovate scheduled execution is disabled in `.github/workflows/renovate.yml`.
+- CI runs only for pull requests; merges to `main` do not trigger a second CI run.
+- Release automation is manual-only, so merging to `main` does not create a release, push Docker images, or post to Reddit.
 - Local Husky hooks were removed.
 - `.tmp/`, `.plans/`, `AGENTS.md`, and this `FORK_INFO.md` are ignored locally.
 - `AGENTS.md` documents the Pull Request CI workflow warning baseline. Read both `AGENTS.md` and this file before making changes, and update either file when a change affects repo instructions, fork overlay behavior, validation workflow expectations, warning counts, or future merge guidance.
@@ -127,6 +130,7 @@ Server routes and services:
   for other server types.
 - `apps/server/src/routes/public.ts` and `apps/server/src/routes/public.openapi.ts` expose Dispatcharr-aware live media fields in public API responses.
 - Dashboard daily stats keep `todayPlays`, `todaySessions`, and `watchTimeHours` as VOD-only metrics, add `tvSessions`, `tvChannels`, and `tvWatchTimeHours` for `mediaType === 'live'`, and count `activeUsersToday` across all media types so Dispatcharr Live TV/catch-up activity is no longer invisible on the homepage.
+- Activity stats (`plays`, `concurrent`, day/hour activity, platforms, quality, users, and top users) include `movie`, `episode`, and `live` sessions from every supported server type. The two-minute intentional-play threshold remains limited to the plays/activity charts; Dashboard, engagement, and other primary-statistics filters remain VOD-only.
 - `apps/server/src/routes/sessions.ts` carries `dispatcharrPlaybackKind` through `/sessions/history` so History UI can distinguish Dispatcharr catch-up/timeshift rows from ordinary Live TV.
 
 Realtime and polling:
@@ -207,6 +211,22 @@ High-conflict areas to review manually:
 - Mobile server metadata and Live TV display.
 
 Current upstream merge notes:
+
+- Upstream `main` at `55af7da5` (Tracearr `v2.0.1`) was merged into
+  `feature/better-live-tv-for-jellyfin-and-emby` on Thursday, August 7, 2026
+  (merge commit `a28c0103`). The upstream full-scan and snapshot aggregation
+  rewrite was retained. `LibrarySyncService.syncServer()` keeps the fork's
+  `supportsMediaLibrary()` guard, so Dispatcharr remains excluded from library
+  catalog work while retaining session/history and realtime support.
+- Jellyfin/Emby SSE retains upstream's bounded event-burst debounce, plugin
+  diagnostics, leader-only connection refresh, and library-event sync. The
+  fork additionally carries immediate terminal-event polling; Dispatcharr
+  continues to use its separate authenticated WebSocket snapshot processor.
+- Session producers are leader-lease gated: the Redis lease holder runs the
+  poller, Jellyfin/Emby SSE processor, plugin checker, and Dispatcharr
+  realtime snapshot processor. On lease loss or shutdown they all stop before
+  the lease is released, preventing duplicate polling or realtime consumers
+  during failover.
 
 - Upstream `main` at `c600f88f` was merged into `feature/version-2.0-preparation` on Wednesday, August 5, 2026 (merge commit `6a284d7a`). The merge retains the Dispatcharr library-capability guard: Dispatcharr remains excluded from library-sync scheduling and media catalog work while receiving session/history support.
 - Upstream's Timescale maintenance, session-identity backfill, library-sync queue, import transaction, supervised Docker, and translation changes were retained. The database-client test conflict was resolved by retaining both the fork migration-ledger coverage and upstream raw-client error-listener coverage; the Dutch settings translation retains Dispatcharr configuration/realtime and fork-version keys alongside upstream localization updates.

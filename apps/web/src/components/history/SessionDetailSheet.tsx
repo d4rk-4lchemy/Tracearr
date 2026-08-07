@@ -281,7 +281,10 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
   const stateConfig = STATE_CONFIG[session.state];
   const mediaConfig = MEDIA_CONFIG[session.mediaType];
   const MediaIcon = mediaConfig.icon;
-  const { title: primary, subtitle: secondary } = getMediaDisplay(session);
+  const { title: primary, subtitle: secondary } = getMediaDisplay({
+    ...session,
+    serverType: session.server.type,
+  });
   const progress = getProgress(session);
   const geoCountryName = getCountryName(session.geoCountry);
   const geoCoordinates =

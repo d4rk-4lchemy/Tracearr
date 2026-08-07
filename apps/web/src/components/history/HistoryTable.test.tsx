@@ -146,7 +146,7 @@ describe('HistoryTable mobile layout protections', () => {
 });
 
 describe('HistoryTable live content display', () => {
-  it('shows the channel name only for live sessions', () => {
+  it('shows the channel as primary and programme as secondary for unified live TV', () => {
     render(
       <TooltipProvider>
         <MemoryRouter>
@@ -171,7 +171,7 @@ describe('HistoryTable live content display', () => {
     );
 
     expect(screen.getByText('Classic Hits TV')).toBeInTheDocument();
-    expect(screen.queryByText('Evening Movie')).not.toBeInTheDocument();
+    expect(screen.getByText('Evening Movie')).toBeInTheDocument();
     expect(screen.queryByText('Abandoned')).not.toBeInTheDocument();
     expect(screen.queryByText('Sampled')).not.toBeInTheDocument();
     expect(screen.queryByText('Engaged')).not.toBeInTheDocument();

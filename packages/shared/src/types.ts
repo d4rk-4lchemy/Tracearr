@@ -1830,6 +1830,7 @@ export type MaintenanceJobType =
   | 'normalize_resolutions'
   | 'backfill_user_dates'
   | 'backfill_library_snapshots'
+  | 'normalize_library_snapshots'
   | 'cleanup_old_chunks'
   | 'full_aggregate_rebuild'
   | 'repair_corrupted_chunks'
@@ -2342,6 +2343,14 @@ export interface LibraryStorageResponse {
     bytesPerDay: string;
     bytesPerWeek: string;
     bytesPerMonth: string;
+    /** Days of history behind the numbers; below minDataDays they are unusable */
+    fitDays?: number;
+    /**
+     * Which side of the mediaVersionsBackfilledAt changeover the fit ran on.
+     * 'preChangeover' means old-semantics history is standing in until the
+     * post-changeover side accumulates minDataDays of snapshots.
+     */
+    basis?: 'current' | 'preChangeover';
   };
   predictions: {
     day30: StoragePrediction | null;

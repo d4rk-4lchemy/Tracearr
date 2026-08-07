@@ -12,6 +12,16 @@ vi.mock('../../jobs/poller/index.js', () => ({
   triggerServerPoll: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../leaderLease.js', () => ({
+  isLeader: vi.fn(() => true),
+}));
+
+vi.mock('../libraryEventSync.js', () => ({
+  clearPendingLibraryEventSync: vi.fn(),
+  clearPendingLibraryEventSyncs: vi.fn(),
+  recordLibraryEvent: vi.fn(),
+}));
+
 // Mock the event sources so addServer() doesn't open real network connections.
 // Must use regular functions (not arrows) so `new` works.
 vi.mock('../mediaServer/plex/eventSource.js', () => ({
@@ -248,6 +258,51 @@ describe('SSEManager.addServer', () => {
     // entry from the failed attempt would silently no-op this call instead.
     await manager.addServer('plex-1', 'Plex Server', 'plex', 'http://plex.local', 'token');
     expect(manager.getStatus()).toHaveLength(1);
+  });
+});
+
+describe('SSEManager Jellyfin/Emby SSE polling', () => {
+  let manager: SSEManager;
+  let cache: CacheService;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    manager = new SSEManager();
+    cache = makeCacheService();
+  });
+
+  afterEach(async () => {
+    await manager.stop();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it('refreshes during a continuous Jellyfin progress-event burst', async () => {
+    await manager.initialize(cache, makePubSubService());
+    await manager.addServer('jf-1', 'Jellyfin Server', 'jellyfin', 'http://jf.local', 'token');
+
+    const { JellyfinEmbyEventSource } =
+      await import('../mediaServer/shared/jellyfinEmbyEventSource.js');
+    const instance = vi.mocked(JellyfinEmbyEventSource).mock.results[0]?.value as {
+      on: ReturnType<typeof vi.fn>;
+    };
+    const sessionEventHandler = instance.on.mock.calls.find(
+      ([eventName]) => eventName === 'session:event'
+    )?.[1] as ((event: { eventType: string }) => void) | undefined;
+
+    expect(sessionEventHandler).toBeDefined();
+
+    sessionEventHandler!({ eventType: 'progress' });
+    await vi.advanceTimersByTimeAsync(900);
+    sessionEventHandler!({ eventType: 'progress' });
+    await vi.advanceTimersByTimeAsync(900);
+    sessionEventHandler!({ eventType: 'progress' });
+    await vi.advanceTimersByTimeAsync(900);
+    sessionEventHandler!({ eventType: 'progress' });
+
+    const { triggerServerPoll } = await import('../../jobs/poller/index.js');
+    expect(triggerServerPoll).toHaveBeenCalledTimes(1);
+    expect(triggerServerPoll).toHaveBeenCalledWith('jf-1', { immediateStops: false });
   });
 });
 

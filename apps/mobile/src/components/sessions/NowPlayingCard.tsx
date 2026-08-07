@@ -46,6 +46,15 @@ interface NowPlayingCardProps {
  * Get display title for media (handles TV shows vs movies)
  */
 function getMediaDisplay(session: ActiveSession): { title: string; subtitle: string | null } {
+  if (session.mediaType === 'live') {
+    if (session.server.type === 'plex') return { title: session.mediaTitle, subtitle: null };
+    const channelTitle = session.channelTitle?.trim() || session.mediaTitle;
+    const programmeTitle = session.mediaTitle?.trim() || null;
+    return {
+      title: channelTitle,
+      subtitle: programmeTitle && programmeTitle !== channelTitle ? programmeTitle : null,
+    };
+  }
   if (session.mediaType === 'episode' && session.grandparentTitle) {
     // TV Show episode
     const episodeInfo =

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { ChunkTimeRange } from '../db/timescale.js';
+import { uncapDecompressionForTx, type ChunkTimeRange } from '../db/timescale.js';
 
 export interface BackfillWindow {
   /** Inclusive lower bound on started_at */
@@ -23,11 +23,12 @@ export interface BackfillWindow {
  *
  * The optional started_at window is what keeps this survivable on a compressed
  * hypertable: one transaction per chunk bounds tuple decompression to a single
- * chunk's segments. An unwindowed batch spans as many compressed chunks as the
- * newest N unstamped rows happen to live in, which either trips
- * timescaledb.max_tuples_decompressed_per_dml_transaction or - with that cap
- * disabled, as this code once did - balloons until the OOM killer takes postgres
- * down.
+ * chunk's segments. The per-transaction cap is lifted inside that bound - a
+ * busy month-chunk decompresses more tuples than the 100k default even for a
+ * 10k-row batch, and tripping the cap turns the walk into a fail-retry loop.
+ * The window is the memory guard, not the cap; an unwindowed batch with the
+ * cap disabled globally is what once ballooned until the OOM killer took
+ * postgres down.
  */
 export async function backfillSessionIdentityBatch(
   limit: number,
@@ -41,6 +42,7 @@ export async function backfillSessionIdentityBatch(
     : sql``;
 
   const { freshRows, repairRows } = await db.transaction(async (tx) => {
+    await uncapDecompressionForTx(tx);
     const fresh = await tx.execute(sql`
       WITH batch AS (
         SELECT s.id, s.started_at, s.server_id, s.rating_key

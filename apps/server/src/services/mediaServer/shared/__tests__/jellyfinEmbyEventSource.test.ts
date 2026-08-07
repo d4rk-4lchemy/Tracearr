@@ -303,6 +303,7 @@ describe('JellyfinEmbyEventSource detection', () => {
     stub._emit('playing', payload);
 
     expect(events).toHaveLength(1);
+    expect((events[0] as { eventType: string }).eventType).toBe('playing');
     expect((events[0] as { sessionId: string }).sessionId).toBe('abc123');
   });
 

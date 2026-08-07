@@ -1,4 +1,5 @@
 import { useState, Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, Copy } from 'lucide-react';
 import { formatMediaTech, type DuplicatesResponse } from '@tracearr/shared';
 import { cn } from '@/lib/utils';
@@ -14,11 +15,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MatchTypeBadge, EmptyState } from '@/components/library';
+import { MatchTypeBadge, EmptyState, InlineErrorState } from '@/components/library';
 
 interface DuplicatesTableProps {
   data: DuplicatesResponse | undefined;
   isLoading?: boolean;
+  isError?: boolean;
+  onRetry: () => void;
   page: number;
   onPageChange: (page: number) => void;
 }
@@ -27,7 +30,15 @@ interface DuplicatesTableProps {
  * Table component for displaying duplicate content groups.
  * Rows are expandable to show individual items within each duplicate group.
  */
-export function DuplicatesTable({ data, isLoading, page, onPageChange }: DuplicatesTableProps) {
+export function DuplicatesTable({
+  data,
+  isLoading,
+  isError,
+  onRetry,
+  page,
+  onPageChange,
+}: DuplicatesTableProps) {
+  const { t } = useTranslation(['pages', 'common']);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = (matchKey: string) => {
@@ -42,17 +53,21 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
   if (isLoading) {
     return (
       <div className="flex h-48 items-center justify-center">
-        <div className="text-muted-foreground">Loading duplicates...</div>
+        <div className="text-muted-foreground">{t('library.storage.loadingDuplicates')}</div>
       </div>
     );
+  }
+
+  if (isError) {
+    return <InlineErrorState message={t('library.storage.duplicatesFailed')} onRetry={onRetry} />;
   }
 
   if (!data?.duplicates?.length) {
     return (
       <EmptyState
         icon={Copy}
-        title="No duplicates found"
-        description="No duplicate content detected across your libraries."
+        title={t('library.storage.noDuplicatesTitle')}
+        description={t('library.storage.noDuplicatesDesc')}
       />
     );
   }
@@ -65,17 +80,17 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
         <TableHeader>
           <TableRow>
             <TableHead className="w-10" />
-            <TableHead>Title</TableHead>
-            <TableHead>Match Type</TableHead>
-            <TableHead className="text-right">Copies</TableHead>
-            <TableHead className="text-right">Recoverable Space</TableHead>
+            <TableHead>{t('library.storage.colTitle')}</TableHead>
+            <TableHead>{t('library.storage.colMatchType')}</TableHead>
+            <TableHead className="text-right">{t('library.storage.colCopies')}</TableHead>
+            <TableHead className="text-right">{t('library.storage.colRecoverable')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {data.duplicates.map((group) => {
             const isExpanded = expandedGroups.has(group.matchKey);
             // Get representative title from first item
-            const displayTitle = group.items[0]?.title ?? 'Unknown';
+            const displayTitle = group.items[0]?.title ?? t('common:labels.unknown');
             const displayYear = group.items[0]?.year;
 
             return (
@@ -110,7 +125,9 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
                               matchType={group.matchType}
                               confidence={group.confidence}
                             />
-                            {group.sameServer && <Badge variant="secondary">Same server</Badge>}
+                            {group.sameServer && (
+                              <Badge variant="secondary">{t('library.storage.sameServer')}</Badge>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
@@ -164,7 +181,7 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
                                             .join(' · ') || '—'}
                                           {version.isMirror && (
                                             <Badge variant="outline" className="text-[10px]">
-                                              Mirror
+                                              {t('library.storage.mirror')}
                                             </Badge>
                                           )}
                                         </span>
@@ -190,7 +207,7 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-2">
           <span className="text-muted-foreground text-sm">
-            Page {page} of {totalPages}
+            {t('library.storage.pageOf', { page, totalPages })}
           </span>
           <div className="flex gap-2">
             <Button
@@ -199,7 +216,7 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
               onClick={() => onPageChange(page - 1)}
               disabled={page <= 1}
             >
-              Previous
+              {t('common:actions.previous')}
             </Button>
             <Button
               variant="outline"
@@ -207,7 +224,7 @@ export function DuplicatesTable({ data, isLoading, page, onPageChange }: Duplica
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
             >
-              Next
+              {t('common:actions.next')}
             </Button>
           </div>
         </div>

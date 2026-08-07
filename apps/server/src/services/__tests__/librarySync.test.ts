@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type * as TimescaleModule from '../../db/timescale.js';
+import type { SQL } from 'drizzle-orm';
 
 // Mock the database
 vi.mock('../../db/client.js', () => ({
@@ -22,7 +23,7 @@ vi.mock('../../db/client.js', () => ({
     update: vi.fn(),
     delete: vi.fn(),
     transaction: vi.fn(),
-    execute: vi.fn().mockResolvedValue(undefined),
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
   },
 }));
 
@@ -348,7 +349,7 @@ beforeEach(() => {
 
 // clearAllMocks only clears call history, not implementations - restore db.execute so a test's override can't leak into the next.
 afterEach(() => {
-  vi.mocked(db.execute).mockResolvedValue(undefined as never);
+  vi.mocked(db.execute).mockResolvedValue({ rows: [] } as never);
 });
 
 // ============================================================================
@@ -977,161 +978,6 @@ describe('LibrarySyncService', () => {
     });
   });
 
-  describe('createSnapshot', () => {
-    it('should create snapshot with correct item count', async () => {
-      const service = new LibrarySyncService();
-      const serverId = randomUUID();
-      const libraryId = '1';
-      const snapshotId = randomUUID();
-      const items = [createMockLibraryItem(), createMockLibraryItem(), createMockLibraryItem()];
-
-      // Self-contained: don't rely on a leftover db.select mock from a previous test.
-      mockSelectChain([]);
-      const insertChain = mockInsertChain([{ id: snapshotId }]);
-
-      const result = await service.createSnapshot(serverId, libraryId, items);
-
-      expect(result).not.toBeNull();
-      expect(result!.id).toBe(snapshotId);
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          serverId,
-          libraryId,
-          itemCount: 3,
-        })
-      );
-    });
-
-    it('should calculate quality distribution correctly', async () => {
-      const service = new LibrarySyncService();
-      const serverId = randomUUID();
-      const libraryId = '1';
-      const items = [
-        createMockLibraryItem({ videoResolution: '4k', videoCodec: 'hevc' }),
-        createMockLibraryItem({ videoResolution: '4k', videoCodec: 'hevc' }),
-        createMockLibraryItem({ videoResolution: '1080p', videoCodec: 'h264' }),
-        createMockLibraryItem({ videoResolution: '720p', videoCodec: 'h264' }),
-        createMockLibraryItem({ videoResolution: '480p', videoCodec: 'h264' }),
-      ];
-
-      mockSelectChain([]);
-      const insertChain = mockInsertChain([{ id: randomUUID() }]);
-
-      await service.createSnapshot(serverId, libraryId, items);
-
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          count4k: 2,
-          count1080p: 1,
-          count720p: 1,
-          countSd: 1,
-          hevcCount: 2,
-          h264Count: 3,
-          countHighQuality: 3,
-        })
-      );
-    });
-
-    it('counts a multi-version title in every bucket it has a version in', async () => {
-      const service = new LibrarySyncService();
-      const serverId = randomUUID();
-      const libraryId = '1';
-      const items = [
-        createMockLibraryItem({
-          videoResolution: '4k',
-          videoCodec: 'HEVC',
-          fileSize: 17_430_000_000,
-          versions: [
-            {
-              serverVersionKey: '3207',
-              videoResolution: '4k',
-              videoCodec: 'HEVC',
-              partCount: 1,
-              fileSize: 13_330_000_000,
-            },
-            {
-              serverVersionKey: '98869',
-              videoResolution: '1080p',
-              videoCodec: 'H264',
-              partCount: 1,
-              fileSize: 4_100_000_000,
-            },
-          ],
-        }),
-        createMockLibraryItem({ videoResolution: '720p', videoCodec: 'h264' }),
-      ];
-
-      mockSelectChain([]);
-      const insertChain = mockInsertChain([{ id: randomUUID() }]);
-
-      await service.createSnapshot(serverId, libraryId, items);
-
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          // The two-version title lands in BOTH 4k and 1080p; buckets overlap
-          count4k: 1,
-          count1080p: 1,
-          count720p: 1,
-          countSd: 0,
-          hevcCount: 1,
-          h264Count: 2,
-          countHighQuality: 1,
-          versionCount: 3,
-          itemCount: 2,
-        })
-      );
-    });
-
-    it('should calculate total file size', async () => {
-      const service = new LibrarySyncService();
-      const serverId = randomUUID();
-      const libraryId = '1';
-      const items = [
-        createMockLibraryItem({ fileSize: 5000000000 }),
-        createMockLibraryItem({ fileSize: 3000000000 }),
-        createMockLibraryItem({ fileSize: undefined }),
-      ];
-
-      mockSelectChain([]);
-      const insertChain = mockInsertChain([{ id: randomUUID() }]);
-
-      await service.createSnapshot(serverId, libraryId, items);
-
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          totalSize: 8000000000,
-        })
-      );
-    });
-
-    it('should count media types correctly', async () => {
-      const service = new LibrarySyncService();
-      const serverId = randomUUID();
-      const libraryId = '1';
-      const items = [
-        createMockLibraryItem({ mediaType: 'movie' }),
-        createMockLibraryItem({ mediaType: 'movie' }),
-        createMockLibraryItem({ mediaType: 'episode' }),
-        createMockLibraryItem({ mediaType: 'show' }),
-        createMockLibraryItem({ mediaType: 'track' }),
-      ];
-
-      mockSelectChain([]);
-      const insertChain = mockInsertChain([{ id: randomUUID() }]);
-
-      await service.createSnapshot(serverId, libraryId, items);
-
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          movieCount: 2,
-          episodeCount: 1,
-          showCount: 1,
-          musicCount: 1,
-        })
-      );
-    });
-  });
-
   describe('unreachable server preflight', () => {
     it('fails fast without touching libraries or sync state when the server is unreachable', async () => {
       const service = new LibrarySyncService();
@@ -1610,7 +1456,11 @@ describe('LibrarySyncService', () => {
       const service = new LibrarySyncService();
       await service.syncServer(serverId, undefined, 'manual');
 
-      expect(db.execute).not.toHaveBeenCalled();
+      // The snapshot aggregate is the only raw query a manual full scan may
+      // run; anything else here would be the count-mismatch check
+      for (const call of vi.mocked(db.execute).mock.calls) {
+        expect(renderSql(call[0] as SQL).sql).toContain('item_rollup');
+      }
     });
 
     it('does full scan when triggeredBy is manual', async () => {

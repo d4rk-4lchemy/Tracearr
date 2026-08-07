@@ -1,12 +1,11 @@
 /**
  * Library duplicates route tests
  *
- * db.execute is mocked (this suite's convention, see catalog.routes.test.ts),
- * so these prove the grouping, mirror-dedup, and storage math over canned
- * rows - not SQL correctness. The shapes mirror real installs: the
- * cross-library merged-versions case is issue #958, the byte-identical
- * same-item pair and the near-identical remux pair are shapes observed on a
- * production database.
+ * db.execute is mocked (this suite's convention, see catalog.routes.test.ts).
+ * Grouping, the distinct-file gate, and the storage math live in SQL now, so
+ * duplicatesGrouping.integration.test.ts proves those against a real
+ * database; this suite covers what remains in Node - page assembly, mirror
+ * flag attachment, the past-the-end summary fallback, and caching.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -54,30 +53,54 @@ function createOwnerUser(): AuthUser {
 }
 
 const SERVER_A = randomUUID();
-const SERVER_B = randomUUID();
 
-interface ItemRowInput {
-  id: string;
-  serverId?: string;
-  libraryId?: string;
-  libraryName?: string;
-  title?: string;
-  fileSize?: number;
-  resolution?: string;
+interface GroupRowInput {
+  groupKey: string;
+  matchType?: string;
+  itemIds: string[];
+  serverCount?: number;
+  uniqueFileCount?: number;
+  totalBytes?: number;
+  savingsBytes?: number;
+  totalGroups?: number;
+  totalSavings?: number;
 }
 
-function itemRow(input: ItemRowInput) {
+/** Row shape produced by the route's single group query (summary via window aggregates) */
+function groupRow(input: GroupRowInput) {
   return {
-    id: input.id,
-    server_id: input.serverId ?? SERVER_A,
+    group_key: input.groupKey,
+    match_type: input.matchType ?? 'imdb',
+    confidence: 100,
+    item_ids: input.itemIds,
+    item_count: input.itemIds.length,
+    server_count: input.serverCount ?? 1,
+    unique_file_count: input.uniqueFileCount ?? 2,
+    total_bytes: String(input.totalBytes ?? 160),
+    savings_bytes: String(input.savingsBytes ?? 60),
+    total_groups: input.totalGroups ?? 1,
+    total_duplicate_items: input.itemIds.length,
+    total_savings_bytes: String(input.totalSavings ?? input.savingsBytes ?? 60),
+    imdb_groups: 1,
+    tmdb_groups: 0,
+    tvdb_groups: 0,
+    fuzzy_groups: 0,
+    version_groups: 0,
+  };
+}
+
+function itemRow(id: string, fileSize: number | null = 160) {
+  return {
+    id,
+    server_id: SERVER_A,
     server_name: 'Server',
-    library_id: input.libraryId ?? 'lib-1',
-    library_name: input.libraryName ?? 'Movies',
-    title: input.title ?? 'Some Movie',
+    library_id: 'lib-1',
+    library_name: 'Movies',
+    title: 'Some Movie',
     year: 2023,
     media_type: 'movie',
-    file_size: input.fileSize != null ? String(input.fileSize) : null,
-    video_resolution: input.resolution ?? '4k',
+    file_size: fileSize != null ? String(fileSize) : null,
+    video_resolution: '4k',
   };
 }
 
@@ -91,29 +114,20 @@ function versionRow(itemId: string, fileSize: number, resolution = '4k', path = 
   };
 }
 
-/**
- * Queue the route's four db.execute calls for an includeFuzzy=false request:
- * id matches, version groups, item details, version rows.
- */
-function mockQueries(opts: {
-  idMatches?: unknown[];
-  versionGroups?: unknown[];
-  items?: unknown[];
-  versions?: unknown[];
-}) {
+/** Queue the route's db.execute calls: group query, then details when rows exist */
+function mockQueries(opts: { groups?: unknown[]; items?: unknown[]; versions?: unknown[] }) {
   const execute = vi.mocked(db.execute);
-  execute.mockResolvedValueOnce({ rows: opts.idMatches ?? [] } as never);
-  execute.mockResolvedValueOnce({ rows: opts.versionGroups ?? [] } as never);
-  if ((opts.idMatches?.length ?? 0) > 0 || (opts.versionGroups?.length ?? 0) > 0) {
+  execute.mockResolvedValueOnce({ rows: opts.groups ?? [] } as never);
+  if ((opts.groups?.length ?? 0) > 0) {
     execute.mockResolvedValueOnce({ rows: opts.items ?? [] } as never);
     execute.mockResolvedValueOnce({ rows: opts.versions ?? [] } as never);
   }
 }
 
-async function requestDuplicates(app: FastifyInstance): Promise<DuplicatesResponse> {
+async function requestDuplicates(app: FastifyInstance, extra = ''): Promise<DuplicatesResponse> {
   const response = await app.inject({
     method: 'GET',
-    url: '/library/duplicates?includeFuzzy=false',
+    url: `/library/duplicates?includeFuzzy=false${extra}`,
   });
   expect(response.statusCode).toBe(200);
   return response.json<DuplicatesResponse>();
@@ -121,36 +135,28 @@ async function requestDuplicates(app: FastifyInstance): Promise<DuplicatesRespon
 
 describe('GET /library/duplicates', () => {
   let app: FastifyInstance;
+  let redis: ReturnType<typeof createSpyRedis>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    app = await buildTestApp(createOwnerUser(), createSpyRedis());
+    redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
   });
 
-  it('counts mirrored cross-library versions once (issue #958 shape)', async () => {
-    // One Jellyfin server, the same movie in Movies and Movies 4K via the
-    // merge-versions plugin: two items, each listing BOTH physical files.
+  it('assembles page groups and flags mirrored listings (issue #958 shape)', async () => {
     const itemX = randomUUID();
     const itemY = randomUUID();
     mockQueries({
-      idMatches: [
-        {
-          match_key: 'tt0000001',
-          match_type: 'imdb',
-          confidence: 100,
-          server_ids: [SERVER_A],
-          item_ids: [itemX, itemY],
-          server_count: 1,
-        },
+      groups: [
+        groupRow({
+          groupKey: 'imdb:movie:tt0000001',
+          itemIds: [itemX, itemY],
+          uniqueFileCount: 2,
+          totalBytes: 160,
+          savingsBytes: 60,
+        }),
       ],
-      versionGroups: [
-        { id: itemX, server_id: SERVER_A },
-        { id: itemY, server_id: SERVER_A },
-      ],
-      items: [
-        itemRow({ id: itemX, libraryId: 'lib-movies', libraryName: 'Movies', fileSize: 160 }),
-        itemRow({ id: itemY, libraryId: 'lib-4k', libraryName: 'Movies 4K', fileSize: 160 }),
-      ],
+      items: [itemRow(itemX), itemRow(itemY)],
       versions: [
         versionRow(itemX, 100, '4k', '/movies/a-4k.mkv'),
         versionRow(itemX, 60, '1080p', '/movies/a-1080.mkv'),
@@ -162,86 +168,63 @@ describe('GET /library/duplicates', () => {
     const body = await requestDuplicates(app);
 
     expect(body.summary.totalGroups).toBe(1);
+    expect(body.summary.totalPotentialSavingsBytes).toBe(60);
     const group = body.duplicates[0]!;
-    // Two physical files, not four
+    expect(group.matchKey).toBe('imdb:movie:tt0000001');
+    // Group math comes from the SQL row, not recomputed in Node
     expect(group.uniqueFileCount).toBe(2);
-    // Byte math already deduped mirrors; both stay pinned
     expect(group.totalStorageBytes).toBe(160);
     expect(group.potentialSavingsBytes).toBe(60);
-    // Every file is still listed under its library entry, but the second
-    // listing of each physical file is flagged as a mirror
+    // Every file still listed; the second listing of each physical file is a mirror
     const allVersions = group.items.flatMap((item) => item.versions);
     expect(allVersions).toHaveLength(4);
     expect(allVersions.filter((v) => v.isMirror)).toHaveLength(2);
     expect(allVersions.filter((v) => !v.isMirror)).toHaveLength(2);
   });
 
-  it('does not report a byte-identical same-item pair as a duplicate', async () => {
-    // The same release present twice under one item (renamed folder leaving
-    // a second directory entry): equal byte size means the same physical
-    // file everywhere else in the codebase, so it is not a reclaimable dup.
-    const itemZ = randomUUID();
-    mockQueries({
-      versionGroups: [{ id: itemZ, server_id: SERVER_A }],
-      items: [itemRow({ id: itemZ, fileSize: 1000 })],
-      versions: [
-        versionRow(itemZ, 500, '4k', '/movies/x and y.mkv'),
-        versionRow(itemZ, 500, '4k', '/movies/x & y.mkv'),
-      ],
-    });
+  it('returns an honest zero when the gate leaves nothing', async () => {
+    mockQueries({ groups: [] });
 
     const body = await requestDuplicates(app);
 
     expect(body.summary.totalGroups).toBe(0);
+    expect(body.summary.totalPotentialSavingsBytes).toBe(0);
     expect(body.duplicates).toHaveLength(0);
+    // No detail queries when there is no page to hydrate
+    expect(vi.mocked(db.execute)).toHaveBeenCalledTimes(1);
   });
 
-  it('reports a real same-item version pair with distinct sizes', async () => {
-    const itemW = randomUUID();
-    mockQueries({
-      versionGroups: [{ id: itemW, server_id: SERVER_A }],
-      items: [itemRow({ id: itemW, fileSize: 1199 })],
-      versions: [versionRow(itemW, 600, '4k', '/a.mkv'), versionRow(itemW, 599, '4k', '/b.mkv')],
-    });
+  it('refetches the summary when the requested page is past the end', async () => {
+    const execute = vi.mocked(db.execute);
+    // Page 3 query: empty. Fallback page-1 query: one group carrying the summary.
+    execute.mockResolvedValueOnce({ rows: [] } as never);
+    execute.mockResolvedValueOnce({
+      rows: [
+        groupRow({
+          groupKey: 'imdb:movie:tt0000009',
+          itemIds: [randomUUID()],
+          totalGroups: 4,
+          totalSavings: 999,
+        }),
+      ],
+    } as never);
 
-    const body = await requestDuplicates(app);
+    const body = await requestDuplicates(app, '&page=3&pageSize=10');
 
-    expect(body.summary.totalGroups).toBe(1);
-    const group = body.duplicates[0]!;
-    expect(group.matchType).toBe('version');
-    expect(group.uniqueFileCount).toBe(2);
-    expect(group.totalStorageBytes).toBe(1199);
-    expect(group.potentialSavingsBytes).toBe(599);
+    expect(body.duplicates).toHaveLength(0);
+    expect(body.summary.totalGroups).toBe(4);
+    expect(body.summary.totalPotentialSavingsBytes).toBe(999);
+    expect(body.pagination).toEqual({ page: 3, pageSize: 10, total: 4 });
+    expect(execute).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps classic cross-server duplicates intact', async () => {
-    const itemA = randomUUID();
-    const itemB = randomUUID();
-    mockQueries({
-      idMatches: [
-        {
-          match_key: 'tt0000002',
-          match_type: 'imdb',
-          confidence: 100,
-          server_ids: [SERVER_A, SERVER_B],
-          item_ids: [itemA, itemB],
-          server_count: 2,
-        },
-      ],
-      items: [
-        itemRow({ id: itemA, serverId: SERVER_A, fileSize: 900, resolution: '4k' }),
-        itemRow({ id: itemB, serverId: SERVER_B, fileSize: 400, resolution: '1080p' }),
-      ],
-      versions: [],
-    });
+  it('serves the cached response without touching the database', async () => {
+    mockQueries({ groups: [] });
+    await requestDuplicates(app);
+    expect(vi.mocked(db.execute)).toHaveBeenCalledTimes(1);
 
-    const body = await requestDuplicates(app);
-
-    expect(body.summary.totalGroups).toBe(1);
-    const group = body.duplicates[0]!;
-    expect(group.serverCount).toBe(2);
-    expect(group.uniqueFileCount).toBe(2);
-    expect(group.totalStorageBytes).toBe(1300);
-    expect(group.potentialSavingsBytes).toBe(400);
+    const again = await requestDuplicates(app);
+    expect(again.summary.totalGroups).toBe(0);
+    expect(vi.mocked(db.execute)).toHaveBeenCalledTimes(1);
   });
 });
