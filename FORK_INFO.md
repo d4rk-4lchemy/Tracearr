@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA inspected: `feature/better-live-tv-for-jellyfin-and-emby` at `a28c0103`
+- Fork branch/SHA inspected: `feature/prepare-for-2.1.0` at `e3b84559`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `55af7da5`
+- Source branch/SHA inspected: `main` at `d058577d`
 - Last shared upstream commit found during inspection: `367f6c69`
-- Latest upstream commit merged into the current working tree: `55af7da5`
+- Latest upstream commit merged into the current working tree: `d058577d`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -211,6 +211,17 @@ High-conflict areas to review manually:
 - Mobile server metadata and Live TV display.
 
 Current upstream merge notes:
+
+- Upstream `main` at `d058577d` (Tracearr `v2.1.0-beta.4`) was merged into
+  `feature/prepare-for-2.1.0` on Sunday, August 9, 2026 (merge commit
+  `e3b84559`). The upstream migration lock, TimescaleDB drift/degradation
+  checks, PostgreSQL 18 test volume layout, server-side image resizing,
+  live-resource stats, and playback-reporting import work were retained.
+  The guarded migration runner now applies the upstream history and the
+  Dispatcharr fork overlay under the same advisory lock while retaining their
+  separate ledgers and the legacy-ledger repair. Dispatcharr-specific image
+  normalization and header-free channel-logo requests remain intact before
+  the upstream resize/fallback candidates are built.
 
 - Upstream `main` at `55af7da5` (Tracearr `v2.0.1`) was merged into
   `feature/better-live-tv-for-jellyfin-and-emby` on Thursday, August 7, 2026
