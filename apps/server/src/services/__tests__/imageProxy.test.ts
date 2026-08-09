@@ -51,6 +51,7 @@ import {
   posterCacheEntryExists,
   cleanupCache,
   buildLqipPlaceholder,
+  buildUpstreamRequest,
   persistDominantColorIfNeeded,
   stopImageCacheCleanup,
 } from '../imageProxy.js';
@@ -355,7 +356,9 @@ describe('proxyImage cache-miss pipeline', () => {
 
     expect(result.contentType).toBe('image/svg+xml');
     expect(result.cacheControl).toBe('public, max-age=15');
-    expect(cancel).toHaveBeenCalledTimes(1);
+    // Both upstream candidates (server-resized, then original) hit the same
+    // erroring mock, and each drains its body.
+    expect(cancel).toHaveBeenCalledTimes(2);
   });
 
   it('fetches Dispatcharr relative logos without proxy headers and resizes them inside', async () => {
@@ -574,5 +577,67 @@ describe('persistDominantColorIfNeeded', () => {
     ).resolves.toBeUndefined();
 
     expect(chain.where).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('buildUpstreamRequest', () => {
+  const baseServer = {
+    id: randomUUID(),
+    name: 'Test',
+    url: 'http://media:1234/',
+    token: 'tok123',
+  };
+
+  it('plex without resize appends the token to the raw path', () => {
+    const server = { ...baseServer, type: 'plex' } as never;
+    const { imageUrl } = buildUpstreamRequest(server, '/library/metadata/1/thumb/2');
+    expect(imageUrl).toBe('http://media:1234/library/metadata/1/thumb/2?X-Plex-Token=tok123');
+  });
+
+  it('plex with resize routes through the photo transcoder with the path encoded', () => {
+    const server = { ...baseServer, type: 'plex' } as never;
+    const { imageUrl } = buildUpstreamRequest(server, '/library/metadata/1/thumb/2', {
+      width: 240,
+      height: 360,
+    });
+    const url = new URL(imageUrl);
+    expect(url.pathname).toBe('/photo/:/transcode');
+    expect(url.searchParams.get('width')).toBe('240');
+    expect(url.searchParams.get('height')).toBe('360');
+    expect(url.searchParams.get('upscale')).toBe('0');
+    expect(url.searchParams.get('minSize')).toBe('1');
+    expect(url.searchParams.get('url')).toBe('/library/metadata/1/thumb/2');
+    expect(url.searchParams.get('X-Plex-Token')).toBe('tok123');
+  });
+
+  it('jellyfin portrait resize constrains the long axis via maxHeight', () => {
+    const server = { ...baseServer, type: 'jellyfin' } as never;
+    const { imageUrl, headers } = buildUpstreamRequest(server, '/Items/abc/Images/Primary', {
+      width: 240,
+      height: 360,
+    });
+    expect(imageUrl).toBe('http://media:1234/Items/abc/Images/Primary?maxHeight=360&quality=90');
+    expect(headers['Authorization']).toBe('MediaBrowser Token="tok123"');
+  });
+
+  it('emby landscape resize constrains the long axis via maxWidth', () => {
+    const server = { ...baseServer, type: 'emby' } as never;
+    const { imageUrl, headers } = buildUpstreamRequest(server, '/emby/Items/9/Images/Backdrop', {
+      width: 500,
+      height: 280,
+    });
+    expect(imageUrl).toBe('http://media:1234/emby/Items/9/Images/Backdrop?maxWidth=500&quality=90');
+    expect(headers['X-Emby-Token']).toBe('tok123');
+  });
+
+  it('preserves an existing query string when appending resize params', () => {
+    const server = { ...baseServer, type: 'jellyfin' } as never;
+    const { imageUrl } = buildUpstreamRequest(server, '/Items/abc/Images/Primary?tag=5', {
+      width: 240,
+      height: 360,
+    });
+    expect(imageUrl).toBe(
+      'http://media:1234/Items/abc/Images/Primary?tag=5&maxHeight=360&quality=90'
+    );
   });
 });

@@ -70,6 +70,7 @@ import {
   LibrarySyncService,
   initLibrarySyncRedis,
   _resetAutoBackfillThrottleForTests,
+  _resetReconcileThrottleForTests,
 } from '../librarySync.js';
 import type { MediaLibraryItem } from '../mediaServer/types.js';
 import type { LibrarySyncProgress } from '@tracearr/shared';
@@ -345,6 +346,7 @@ beforeEach(() => {
   // enqueues would otherwise gate the next one for hours. Reset keeps the
   // order-dependence out of it.
   _resetAutoBackfillThrottleForTests();
+  _resetReconcileThrottleForTests();
 });
 
 // clearAllMocks only clears call history, not implementations - restore db.execute so a test's override can't leak into the next.
@@ -1258,7 +1260,8 @@ describe('LibrarySyncService', () => {
       const mockRedis = createMockRedis({
         get: vi
           .fn()
-          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString()) // lastSyncedAt
+          // 20 min ago: outside COUNT_CHECK_MIN_INTERVAL_MS so the drift check runs
+          .mockResolvedValueOnce(new Date(Date.now() - 20 * 60_000).toISOString()) // lastSyncedAt
           .mockResolvedValueOnce('10'), // lastItemCount
       });
       initLibrarySyncRedis(mockRedis);
@@ -1290,7 +1293,8 @@ describe('LibrarySyncService', () => {
       const mockRedis = createMockRedis({
         get: vi
           .fn()
-          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString()) // lastSyncedAt
+          // 20 min ago: outside COUNT_CHECK_MIN_INTERVAL_MS so the drift check runs
+          .mockResolvedValueOnce(new Date(Date.now() - 20 * 60_000).toISOString()) // lastSyncedAt
           .mockResolvedValueOnce('20'), // lastItemCount
       });
       initLibrarySyncRedis(mockRedis);
@@ -1322,7 +1326,8 @@ describe('LibrarySyncService', () => {
       const mockRedis = createMockRedis({
         get: vi
           .fn()
-          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString()) // lastSyncedAt
+          // 20 min ago: the drift check window is open, yet music must still not escalate
+          .mockResolvedValueOnce(new Date(Date.now() - 20 * 60_000).toISOString()) // lastSyncedAt
           .mockResolvedValueOnce('20'), // lastItemCount
       });
       initLibrarySyncRedis(mockRedis);
@@ -1379,7 +1384,8 @@ describe('LibrarySyncService', () => {
       const mockRedis = createMockRedis({
         get: vi
           .fn()
-          .mockResolvedValueOnce(new Date(Date.now() - 60_000).toISOString())
+          // 20 min ago: outside COUNT_CHECK_MIN_INTERVAL_MS so both count probes run
+          .mockResolvedValueOnce(new Date(Date.now() - 20 * 60_000).toISOString())
           .mockResolvedValueOnce('5'),
       });
       initLibrarySyncRedis(mockRedis);

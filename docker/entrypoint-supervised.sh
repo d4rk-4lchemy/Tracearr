@@ -410,6 +410,11 @@ else
     log "Using user-specified DATABASE_POOL_MAX=$DATABASE_POOL_MAX"
 fi
 
+# The supervised image bundles its own postgres, so the extension owner is the
+# app user and updates always match the bundled binaries: safe to auto-update.
+# Image bumps would otherwise leave the extension version behind silently.
+export TIMESCALEDB_AUTO_UPDATE="${TIMESCALEDB_AUTO_UPDATE:-true}"
+
 # =============================================================================
 # Ensure the TimescaleDB decompression cap is at its default (existing installs)
 # =============================================================================

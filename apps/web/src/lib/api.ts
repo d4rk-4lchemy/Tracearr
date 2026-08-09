@@ -94,6 +94,11 @@ import type {
   MediaWatchersResponse,
   MediaPlatformBreakdownResponse,
   MediaSeasonHeatResponse,
+  ServerResourceDataPoint,
+  ServerBandwidthDataPoint,
+  BandwidthSample,
+  BandwidthAccount,
+  BandwidthDevice,
 } from '@tracearr/shared';
 
 // Re-export shared types needed by frontend components
@@ -580,30 +585,16 @@ class ApiClient {
         method: 'PATCH',
         body: JSON.stringify({ servers }),
       }),
-    statistics: (id: string) =>
+    liveStats: (id: string) =>
       this.request<{
         serverId: string;
-        data: {
-          at: number;
-          timespan: number;
-          hostCpuUtilization: number;
-          processCpuUtilization: number;
-          hostMemoryUtilization: number;
-          processMemoryUtilization: number;
-        }[];
+        statistics: ServerResourceDataPoint[];
+        bandwidth: ServerBandwidthDataPoint[];
+        bandwidthSamples: BandwidthSample[];
+        bandwidthAccounts: BandwidthAccount[];
+        bandwidthDevices: BandwidthDevice[];
         fetchedAt: string;
-      }>(`/servers/${id}/statistics`),
-    bandwidth: (id: string) =>
-      this.request<{
-        serverId: string;
-        data: {
-          at: number;
-          timespan: number;
-          lanBytes: number;
-          wanBytes: number;
-        }[];
-        fetchedAt: string;
-      }>(`/servers/${id}/bandwidth`),
+      }>(`/servers/${id}/live-stats`),
     health: async () => {
       const response = await this.request<{
         data: { serverId: string; serverName: string }[];
@@ -1814,6 +1805,61 @@ class ApiClient {
         }>(`/import/jellystat/${jobId}`),
       cancel: (jobId: string) =>
         this.request<{ status: string; jobId: string }>(`/import/jellystat/${jobId}`, {
+          method: 'DELETE',
+        }),
+    },
+    playbackReporting: {
+      test: (serverId: string) =>
+        this.request<{
+          success: boolean;
+          installed: boolean;
+          message: string;
+          records?: number;
+          oldestDate?: string;
+          newestDate?: string;
+        }>('/import/playback-reporting/test', {
+          method: 'POST',
+          body: JSON.stringify({ serverId }),
+        }),
+      start: (
+        serverId: string,
+        timezone: string,
+        enrichMedia: boolean = true,
+        importFullRange: boolean = false
+      ) =>
+        this.request<{ status: string; jobId?: string; message: string }>(
+          '/import/playback-reporting',
+          {
+            method: 'POST',
+            body: JSON.stringify({ serverId, timezone, enrichMedia, importFullRange }),
+          }
+        ),
+      getActive: (serverId: string) =>
+        this.request<{
+          active: boolean;
+          jobId?: string;
+          state?: string;
+          progress?: number | object;
+          createdAt?: number;
+        }>(`/import/playback-reporting/active/${serverId}`),
+      getStatus: (jobId: string) =>
+        this.request<{
+          jobId: string;
+          state: string;
+          progress: number | object | null;
+          result?: {
+            success: boolean;
+            imported: number;
+            skipped: number;
+            errors: number;
+            message: string;
+          };
+          failedReason?: string;
+          createdAt?: number;
+          finishedAt?: number;
+        }>(`/import/playback-reporting/${jobId}`),
+      cancel: (jobId: string) =>
+        this.request<{ status: string; jobId: string }>(`/import/playback-reporting/${jobId}`, {
           method: 'DELETE',
         }),
     },

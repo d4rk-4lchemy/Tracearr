@@ -16,7 +16,7 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { and, asc, eq, gt, gte, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getRedisPrefix } from '@tracearr/shared';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
@@ -38,6 +38,13 @@ export interface ImagePrecacheJobData {
    *  with a thumb_path - the periodic backstop that heals disk cache
    *  eviction or anything a watermark pass could miss. */
   sinceUpdatedAt?: string | null;
+  /** Pass-level progress for the running-tasks UI, threaded through the
+   *  cursor chain. Seeded by the first batch (which counts eligible rows)
+   *  and absent on externally-enqueued pass starts. */
+  totalItems?: number;
+  processedItems?: number;
+  /** ISO start of the whole pass, not of the current chained job. */
+  passStartedAt?: string;
 }
 
 const QUEUE_NAME = 'image-precache';
@@ -144,23 +151,37 @@ export async function enqueueImagePrecache(
   return job.id;
 }
 
-/** Re-enqueue with an unchanged cursor after a delay, bypassing the jobId
- *  timestamp collision that a same-tick re-add of the active job's own id
- *  would hit - always a fresh id here since Date.now() advances. */
-async function reenqueueDelayed(
-  serverId: string,
-  cursor: string | null,
-  delayMs: number,
-  sinceUpdatedAt?: string | null
-) {
+/** Chain continuation: carries the full job data (including pass progress)
+ *  forward, with an optional delay. Fresh jobId every call - Date.now()
+ *  advances, so a same-tick re-add of the active job's own id can't collide. */
+async function enqueueChained(data: ImagePrecacheJobData, delayMs?: number) {
   if (!imagePrecacheQueue) return;
 
-  const job = await imagePrecacheQueue.add(
-    'precache',
-    sinceUpdatedAt ? { serverId, cursor, sinceUpdatedAt } : { serverId, cursor },
-    { jobId: `precache-${serverId}-${cursor ?? 'start'}-${Date.now()}`, delay: delayMs }
-  );
+  const job = await imagePrecacheQueue.add('precache', data, {
+    jobId: `precache-${data.serverId}-${data.cursor ?? 'start'}-${Date.now()}`,
+    ...(delayMs !== undefined ? { delay: delayMs } : {}),
+  });
   return job.id;
+}
+
+/** Count the rows a pass will walk - same predicate as fetchBatch, minus the
+ *  cursor. Runs once per pass (first batch) to seed the progress total. */
+async function countEligibleItems(
+  serverId: string,
+  sinceUpdatedAt?: string | null
+): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(libraryItems)
+    .where(
+      and(
+        eq(libraryItems.serverId, serverId),
+        isNull(libraryItems.removedAt),
+        isNotNull(libraryItems.thumbPath),
+        sinceUpdatedAt ? gte(libraryItems.updatedAt, new Date(sinceUpdatedAt)) : undefined
+      )
+    );
+  return row?.n ?? 0;
 }
 
 interface PrecacheBatchRow {
@@ -260,11 +281,30 @@ export async function processImagePrecacheJob(
     return { skipped: true, reason: 'disabled' };
   }
 
+  const passStartedAt =
+    job.data.passStartedAt ?? new Date(job.timestamp ?? Date.now()).toISOString();
+
   const syncStatus = await getLibrarySyncStatus(serverId);
   if (syncStatus?.isActive) {
-    await reenqueueDelayed(serverId, cursor, SYNC_ACTIVE_RETRY_DELAY_MS, sinceUpdatedAt);
+    // Raw passthrough - the sync-active backoff must stay DB-free, so the
+    // progress seed (which counts rows) waits for an actual processing run.
+    await enqueueChained(
+      {
+        serverId,
+        cursor,
+        sinceUpdatedAt,
+        totalItems: job.data.totalItems,
+        processedItems: job.data.processedItems,
+        passStartedAt,
+      },
+      SYNC_ACTIVE_RETRY_DELAY_MS
+    );
     return { skipped: true, reason: 'sync active' };
   }
+
+  // Seed pass progress on the first processing batch; continuations carry it.
+  const processedItems = job.data.processedItems ?? 0;
+  const totalItems = job.data.totalItems ?? (await countEligibleItems(serverId, sinceUpdatedAt));
 
   const batch = await fetchBatch(serverId, cursor, sinceUpdatedAt);
   if (batch.length === 0) {
@@ -302,10 +342,56 @@ export async function processImagePrecacheJob(
 
   if (batch.length === BATCH_SIZE) {
     const nextCursor = batch[batch.length - 1]!.id;
-    await enqueueImagePrecache(serverId, nextCursor, sinceUpdatedAt);
+    await enqueueChained({
+      serverId,
+      cursor: nextCursor,
+      sinceUpdatedAt,
+      totalItems,
+      processedItems: processedItems + batch.length,
+      passStartedAt,
+    });
   }
 
   return { processed: batch.length };
+}
+
+/**
+ * Active precache passes for the running-tasks UI. A pass is a chain of
+ * batch jobs; at any moment the chain has at most one live job per server
+ * carrying cumulative pass progress in its data. Delayed jobs are the
+ * sync-active backoff and count as pending, not running.
+ */
+export async function getAllActiveImagePrecacheJobs(): Promise<
+  Array<{
+    jobId: string;
+    serverId: string;
+    state: string;
+    createdAt: number;
+    passStartedAt: string | null;
+    totalItems: number | null;
+    processedItems: number;
+  }>
+> {
+  if (!imagePrecacheQueue) {
+    return [];
+  }
+
+  const jobs = await imagePrecacheQueue.getJobs(['active', 'waiting', 'delayed']);
+
+  return Promise.all(
+    jobs.map(async (job) => {
+      const state = await job.getState();
+      return {
+        jobId: job.id ?? 'unknown',
+        serverId: job.data.serverId,
+        state,
+        createdAt: job.timestamp ?? Date.now(),
+        passStartedAt: job.data.passStartedAt ?? null,
+        totalItems: job.data.totalItems ?? null,
+        processedItems: job.data.processedItems ?? 0,
+      };
+    })
+  );
 }
 
 /**

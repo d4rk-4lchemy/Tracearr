@@ -112,8 +112,8 @@ export interface MigrationFolders {
   fork: string;
 }
 
-const FORK_MIGRATIONS_SCHEMA = 'tracearr_fork';
-const FORK_MIGRATIONS_TABLE = '__drizzle_migrations';
+export const FORK_MIGRATIONS_SCHEMA = 'tracearr_fork';
+export const FORK_MIGRATIONS_TABLE = '__drizzle_migrations';
 
 /**
  * Before the fork ledger existed, this Dispatcharr migration lived in the

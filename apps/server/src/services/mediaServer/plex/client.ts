@@ -33,7 +33,7 @@ import {
   getTranscodingSessionRatingKeys,
   type PlexServerResource,
   type PlexStatisticsDataPoint,
-  type PlexBandwidthDataPoint,
+  type PlexBandwidthStats,
   type PlexOriginalMedia,
 } from './parser.js';
 
@@ -511,12 +511,12 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
    * Get server bandwidth statistics (Local/Remote traffic)
    *
    * Uses the undocumented /statistics/bandwidth endpoint.
-   * Returns per-second data points with local/remote byte totals.
+   * Returns aggregated per-second points plus per-account/device samples.
    *
    * @param timespan - Plex API timespan parameter (default: 6)
-   * @returns Array of bandwidth data points, sorted newest first
+   * @returns Bandwidth stats, series sorted newest first
    */
-  async getServerBandwidth(timespan: number = 6): Promise<PlexBandwidthDataPoint[]> {
+  async getServerBandwidth(timespan: number = 6): Promise<PlexBandwidthStats> {
     const url = `${this.baseUrl}/statistics/bandwidth?timespan=${timespan}`;
 
     try {
@@ -529,7 +529,7 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
       return parseStatisticsBandwidthResponse(data);
     } catch {
       // Requires Plex Pass — silently return empty when unavailable
-      return [];
+      return { points: [], samples: [], accounts: [], devices: [] };
     }
   }
 

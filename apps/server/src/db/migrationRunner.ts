@@ -13,6 +13,12 @@ import type pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { createRawPgClient } from './client.js';
+import {
+  FORK_MIGRATIONS_SCHEMA,
+  FORK_MIGRATIONS_TABLE,
+  repairLegacyForkMigrationLedger,
+  type MigrationFolders,
+} from './client.js';
 import * as schema from './schema.js';
 import { uncapDecompressionForSession } from './timescale.js';
 
@@ -35,6 +41,8 @@ export interface RunMigrationsGuardedOptions {
   createClient?: () => pg.Client;
 }
 
+type MigrationTarget = string | MigrationFolders;
+
 /**
  * Run pending migrations inside a dedicated session guarded by a blocking
  * advisory lock and a short lock_timeout. Throws on failure (bad SQL,
@@ -43,7 +51,7 @@ export interface RunMigrationsGuardedOptions {
  * the process.
  */
 export async function runMigrationsGuarded(
-  migrationsFolder: string,
+  migrations: MigrationTarget,
   options: RunMigrationsGuardedOptions = {}
 ): Promise<void> {
   const { lockTimeout = '10s', createClient } = options;
@@ -84,7 +92,19 @@ export async function runMigrationsGuarded(
       await uncapDecompressionForSession(client);
 
       const migrationDb = drizzle(client, { schema });
-      await migrate(migrationDb, { migrationsFolder });
+      if (typeof migrations === 'string') {
+        await migrate(migrationDb, { migrationsFolder: migrations });
+      } else {
+        // Keep the upstream and Dispatcharr histories in their own ledgers,
+        // while holding a single advisory lock across both applications.
+        await repairLegacyForkMigrationLedger(migrationDb);
+        await migrate(migrationDb, { migrationsFolder: migrations.upstream });
+        await migrate(migrationDb, {
+          migrationsFolder: migrations.fork,
+          migrationsSchema: FORK_MIGRATIONS_SCHEMA,
+          migrationsTable: FORK_MIGRATIONS_TABLE,
+        });
+      }
     } finally {
       // A dead connection here (e.g. the migration failure itself dropped it) must not
       // mask the real error from migrate() with an unlock failure instead.

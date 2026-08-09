@@ -29,6 +29,7 @@ import { registerService, unregisterService } from '../services/serviceTracker.j
 import { getWatchedThreshold } from '../services/settings.js';
 import { sseManager } from '../services/sseManager.js';
 import { getIdentityServerUserIds } from '../services/userService.js';
+import { createLogger } from '../utils/logger.js';
 import { enqueueNotification } from './notificationQueue.js';
 import {
   batchGetLibraryItemIdentity,
@@ -68,6 +69,8 @@ import {
 import { PENDING_STOP_PERSIST_MIN_PROGRESS_MS, type PendingSessionData } from './poller/types.js';
 import { excludeUncountableSessions } from './poller/utils.js';
 import { broadcastViolations } from './poller/violations.js';
+
+const sseLogger = createLogger('SSEProcessor');
 
 let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;
@@ -750,7 +753,7 @@ async function handleProgress(event: {
  * Handle reconciliation request - triggers a light poll to catch missed events
  */
 async function handleReconciliation(): Promise<void> {
-  console.log('[SSEProcessor] Triggering reconciliation poll');
+  sseLogger.debug('Triggering reconciliation poll');
   await triggerReconciliationPoll();
 
   // Run maintenance tasks during reconciliation

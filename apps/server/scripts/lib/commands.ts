@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, sql } from 'drizzle-orm';
 import { REDIS_KEYS } from '@tracearr/shared';
 import { loadRuntime } from './bootstrap.ts';
 
@@ -97,10 +97,12 @@ async function killSessionsInRedis(userId: string): Promise<{ token: string }[]>
 }
 
 async function findUserByUsername(username: string) {
+  // Legacy and Plex-created rows can hold mixed-case usernames, so compare on
+  // lower(username) - the same semantics as the login-role unique index.
   const [user] = await db
     .select()
     .from(users)
-    .where(eq(users.username, username.toLowerCase()))
+    .where(sql`lower(${users.username}) = ${username.toLowerCase()}`)
     .limit(1);
   return user;
 }
@@ -115,7 +117,7 @@ export async function resetPasswordCommand(opts: {
   password: string;
 }): Promise<void> {
   const target = opts.username
-    ? await db.select().from(users).where(eq(users.username, opts.username.toLowerCase())).limit(1)
+    ? [await findUserByUsername(opts.username)]
     : await db
         .select()
         .from(users)

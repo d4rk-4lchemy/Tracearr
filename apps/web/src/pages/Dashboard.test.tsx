@@ -22,8 +22,14 @@ vi.mock('@/hooks/queries', () => ({
 }));
 
 vi.mock('@/hooks/queries/useServers', () => ({
-  useServerStatistics: () => ({ data: undefined, isLoading: false, averages: undefined }),
-  useServerBandwidth: () => ({ data: undefined, isLoading: false, averages: undefined }),
+  useServerLiveStats: () => ({
+    statistics: undefined,
+    statisticsAverages: null,
+    bandwidth: undefined,
+    bandwidthAverages: null,
+    isLoading: false,
+  }),
+  useMultiServerLiveStats: () => ({ series: [], isLoading: false }),
 }));
 
 vi.mock('@/components/charts/ServerResourceCharts', () => ({
@@ -48,6 +54,10 @@ vi.mock('@/components/sessions', () => ({
 
 vi.mock('@/hooks/useServer', () => ({
   useServer: vi.fn(),
+}));
+
+vi.mock('@/hooks/useSocket', () => ({
+  useSocket: () => ({ isConnected: true }),
 }));
 
 vi.mock('@/hooks/useServerColorMap', () => ({

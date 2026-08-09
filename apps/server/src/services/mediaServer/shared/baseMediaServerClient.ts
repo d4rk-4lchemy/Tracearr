@@ -6,7 +6,7 @@
  * are handled by abstract methods or configuration.
  */
 
-import { fetchJson, jellyfinEmbyHeaders } from '../../../utils/http.js';
+import { fetchJson, jellyfinEmbyHeaders, HttpClientError } from '../../../utils/http.js';
 import type {
   IMediaServerClient,
   IMediaServerClientWithHistory,
@@ -68,6 +68,7 @@ export interface JellyfinEmbyItemResult {
   };
   SeriesId?: string;
   SeriesPrimaryImageTag?: string;
+  RunTimeTicks?: number;
 }
 
 /**
@@ -563,7 +564,7 @@ export abstract class BaseMediaServerClient
       Ids: ids.join(','),
       // Include episode, movie, and music metadata fields
       Fields:
-        'ProductionYear,ParentIndexNumber,IndexNumber,SeriesId,SeriesPrimaryImageTag,Album,AlbumArtist,Artists,AlbumId,AlbumPrimaryImageTag',
+        'ProductionYear,ParentIndexNumber,IndexNumber,SeriesId,SeriesPrimaryImageTag,Album,AlbumArtist,Artists,AlbumId,AlbumPrimaryImageTag,RunTimeTicks',
     });
 
     const data = await fetchJson<{ Items?: unknown[] }>(`${this.baseUrl}/Items?${params}`, {
@@ -572,6 +573,66 @@ export abstract class BaseMediaServerClient
     });
 
     return this.parsers.parseItemsResponse(data);
+  }
+
+  private static readonly PLAYBACK_REPORTING_PATHS = {
+    jellyfin: '/user_usage_stats/submit_custom_query',
+    emby: '/emby/user_usage_stats/submit_custom_query',
+  } as const;
+
+  /**
+   * Run a SQL query against the Playback Reporting plugin's SQLite database.
+   * Requires the plugin; a missing plugin surfaces as HttpClientError 404.
+   */
+  async queryPlaybackReporting(query: string): Promise<string[][]> {
+    const path = BaseMediaServerClient.PLAYBACK_REPORTING_PATHS[this.serverType];
+    const data = await fetchJson<{ results?: unknown; message?: string }>(
+      `${this.baseUrl}${path}`,
+      {
+        method: 'POST',
+        headers: { ...this.buildHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ CustomQueryString: query }),
+        service: this.serverType,
+      }
+    );
+    const results = Array.isArray(data.results) ? (data.results as string[][]) : [];
+    if (results.length === 0 && data.message?.startsWith('Error')) {
+      throw new Error(`Playback Reporting query failed: ${data.message}`);
+    }
+    return results;
+  }
+
+  async getPlaybackReportingInfo(): Promise<
+    | { installed: false }
+    | {
+        installed: true;
+        columns: string[];
+        totalRecords: number;
+        oldestDate: string | null;
+        newestDate: string | null;
+      }
+  > {
+    let pragma: string[][];
+    try {
+      pragma = await this.queryPlaybackReporting("pragma table_info('PlaybackActivity')");
+    } catch (error) {
+      if (error instanceof HttpClientError && error.statusCode === 404) {
+        return { installed: false };
+      }
+      throw error;
+    }
+    const columns = pragma.map((row) => row[1] ?? '').filter(Boolean);
+    const summary = await this.queryPlaybackReporting(
+      'SELECT COUNT(1), MIN(DateCreated), MAX(DateCreated) FROM PlaybackActivity'
+    );
+    const first = summary[0];
+    return {
+      installed: true,
+      columns,
+      totalRecords: first?.[0] ? Number(first[0]) : 0,
+      oldestDate: first?.[1] || null,
+      newestDate: first?.[2] || null,
+    };
   }
 
   /**

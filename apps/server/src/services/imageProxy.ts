@@ -24,6 +24,11 @@ import { TIME_MS } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { servers, libraryItems } from '../db/schema.js';
 import { registerService, unregisterService } from './serviceTracker.js';
+
+// libvips defaults its thread pool to the core count, so one background
+// precache walk can own every core of a small box. Inputs are server-resized
+// thumbnails now; one thread is plenty and the poller keeps its CPU.
+sharp.concurrency(1);
 // Token encryption removed - tokens now stored in plain text (DB is localhost-only)
 
 // Cache directory (in project root/data/image-cache), sharded by the first two
@@ -478,9 +483,10 @@ function acquireFetchSlot(): Promise<() => void> {
   });
 }
 
-function buildUpstreamRequest(
+export function buildUpstreamRequest(
   server: typeof servers.$inferSelect,
-  imagePath: string
+  imagePath: string,
+  resize?: { width: number; height: number }
 ): { imageUrl: string; headers: Record<string, string> } {
   const baseUrl = server.url.replace(/\/$/, '');
 
@@ -496,7 +502,20 @@ function buildUpstreamRequest(
 
   if (server.type === 'plex') {
     // Plex image URLs are relative paths like /library/metadata/123/thumb/456
-    // Need to append X-Plex-Token
+    if (resize) {
+      // Plex's photo transcoder resizes and caches server-side - a 240px
+      // poster arrives as ~20KB instead of the multi-MB original. upscale=0
+      // keeps small sources untouched; minSize=1 fills the requested box.
+      const params = new URLSearchParams({
+        width: String(resize.width),
+        height: String(resize.height),
+        minSize: '1',
+        upscale: '0',
+        url: imagePath,
+        'X-Plex-Token': server.token,
+      });
+      return { imageUrl: `${baseUrl}/photo/:/transcode?${params.toString()}`, headers };
+    }
     const separator = imagePath.includes('?') ? '&' : '?';
     return { imageUrl: `${baseUrl}${imagePath}${separator}X-Plex-Token=${server.token}`, headers };
   }
@@ -506,6 +525,19 @@ function buildUpstreamRequest(
     headers['Authorization'] = `MediaBrowser Token="${server.token}"`;
   } else {
     headers['X-Emby-Token'] = server.token;
+  }
+  if (resize) {
+    // Both accept max-dimension params on image endpoints and cache the
+    // result. Constrain only the target's long axis so the cover crop below
+    // always has enough pixels where it matters; sharp still normalizes to
+    // the exact box, but it decodes a thumbnail instead of the original.
+    const separator = imagePath.includes('?') ? '&' : '?';
+    const dimension =
+      resize.height >= resize.width ? `maxHeight=${resize.height}` : `maxWidth=${resize.width}`;
+    return {
+      imageUrl: `${baseUrl}${imagePath}${separator}${dimension}&quality=90`,
+      headers,
+    };
   }
   return { imageUrl: `${baseUrl}${imagePath}`, headers };
 }
@@ -550,24 +582,50 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
     };
   }
 
-  const { imageUrl, headers } = buildUpstreamRequest(server, effectiveImagePath);
+  // Ask the media server for a pre-resized image first (all three types
+  // resize and cache server-side; a 240px poster is ~20-40KB against a
+  // multi-MB original). Fall back to the original path so a transcoder
+  // hiccup degrades to the old behavior instead of a broken image.
+  const candidates = [
+    buildUpstreamRequest(server, effectiveImagePath, { width, height }),
+    buildUpstreamRequest(server, effectiveImagePath),
+  ];
 
   const release = await acquireFetchSlot();
   try {
-    const response = await fetch(imageUrl, {
-      headers,
-      signal: AbortSignal.timeout(10000), // 10 second timeout
-    });
+    let imageBuffer: Buffer | null = null;
+    let lastError: unknown = null;
+    for (const { imageUrl, headers } of candidates) {
+      try {
+        const response = await fetch(imageUrl, {
+          headers,
+          signal: AbortSignal.timeout(10000), // 10 second timeout
+        });
 
-    if (!response.ok) {
-      // Drain the body so undici releases the connection instead of holding
-      // it open until the socket times out.
-      await response.body?.cancel().catch(() => undefined);
-      throw new Error(`HTTP ${response.status}`);
+        // Reject only clearly-non-image payloads (the Plex transcoder can
+        // return an XML error page with a 200). Anything else - image/*,
+        // octet-stream, or a missing header - proceeds; sharp is the final
+        // arbiter and its failure lands in the same fallback path.
+        const contentType = response.headers?.get('content-type') ?? '';
+        const clearlyNotImage = /^(text\/|application\/(json|xml|xhtml))/i.test(contentType);
+        if (!response.ok || clearlyNotImage) {
+          // Drain the body so undici releases the connection instead of
+          // holding it open until the socket times out.
+          await response.body?.cancel().catch(() => undefined);
+          throw new Error(`HTTP ${response.status} (${contentType || 'no content-type'})`);
+        }
+
+        imageBuffer = Buffer.from(await response.arrayBuffer());
+        break;
+      } catch (err) {
+        lastError = err;
+      }
     }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const imageBuffer = Buffer.from(arrayBuffer);
+    if (!imageBuffer) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error(String(lastError ?? 'upstream fetch failed'));
+    }
 
     const resized = await sharp(imageBuffer)
       .resize(width, height, {

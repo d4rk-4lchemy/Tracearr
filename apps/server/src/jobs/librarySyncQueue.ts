@@ -49,6 +49,12 @@ const activeSyncs = new Map<string, boolean>();
 let lastBackfillCheck: number = 0;
 const BACKFILL_CHECK_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
+// MIN(created_at) over library_items is a plain-table scan and only moves
+// earlier when an import adds older history - cache it for a day. Worst case
+// a backfill triggered by freshly imported old items starts one day late.
+const EARLIEST_ITEM_CACHE_MS = 24 * 60 * 60 * 1000;
+let earliestItemCache: { value: string | null; fetchedAt: number } | null = null;
+
 /**
  * True when the job was produced by a BullMQ job scheduler (our per-server
  * auto-sync cron), as opposed to a manual, boot, or event sync.
@@ -400,35 +406,52 @@ async function maybeTriggerSnapshotNormalization(): Promise<void> {
 
 async function checkAndTriggerSnapshotBackfill(): Promise<void> {
   try {
-    // Get earliest item date (only items with valid size) and earliest aggregate date
+    // Aggregate-side facts every run (library_stats_daily is tiny), but the
+    // library_items side is a plain-table scan: the count is only an
+    // existence question, and MIN(created_at) only moves when an import adds
+    // older history, so it's cached below. The staleness gap detection stays
+    // live on every run - it exists to catch the incremental-sync snapshot
+    // bug and must not be cached away.
     // We check library_stats_daily (aggregate) instead of raw library_snapshots
     // because the aggregate persists after raw chunks are cleaned up
     const result = await db.execute(sql`
       SELECT
-        (SELECT MIN(created_at)::date FROM library_items
-         WHERE ${VALID_LIBRARY_ITEM_CONDITION} AND removed_at IS NULL) AS earliest_item,
         (SELECT MIN(day)::date FROM library_stats_daily) AS earliest_aggregate,
         (SELECT MAX(day)::date FROM library_stats_daily) AS latest_aggregate,
-        (SELECT COUNT(*) FROM library_items
-         WHERE ${VALID_LIBRARY_ITEM_CONDITION} AND removed_at IS NULL) AS item_count,
-        (SELECT COUNT(DISTINCT day) FROM library_stats_daily) AS aggregate_days
+        (SELECT COUNT(DISTINCT day) FROM library_stats_daily) AS aggregate_days,
+        EXISTS (
+          SELECT 1 FROM library_items
+          WHERE ${VALID_LIBRARY_ITEM_CONDITION} AND removed_at IS NULL
+        ) AS has_items
     `);
 
     const row = result.rows[0] as {
-      earliest_item: string | null;
       earliest_aggregate: string | null;
       latest_aggregate: string | null;
-      item_count: string;
       aggregate_days: string;
+      has_items: boolean;
     };
 
-    const itemCount = parseInt(row.item_count, 10);
     const aggregateDays = parseInt(row.aggregate_days, 10);
 
     // No items = nothing to backfill
-    if (itemCount === 0) {
+    if (!row.has_items) {
       return;
     }
+
+    const now = Date.now();
+    if (!earliestItemCache || now - earliestItemCache.fetchedAt >= EARLIEST_ITEM_CACHE_MS) {
+      const earliestResult = await db.execute(sql`
+        SELECT MIN(created_at)::date AS earliest_item
+        FROM library_items
+        WHERE ${VALID_LIBRARY_ITEM_CONDITION} AND removed_at IS NULL
+      `);
+      earliestItemCache = {
+        value: (earliestResult.rows[0] as { earliest_item: string | null }).earliest_item,
+        fetchedAt: now,
+      };
+    }
+    const earliestItem = earliestItemCache.value;
 
     // Detect mid-timeline gaps: aggregate exists but hasn't been updated in 2+ days.
     // This catches the incremental sync snapshot bug where syncs ran but no snapshots
@@ -442,9 +465,9 @@ async function checkAndTriggerSnapshotBackfill(): Promise<void> {
     // No aggregate data yet, aggregate starts after items, or mid-timeline gap
     const needsBackfill =
       aggregateDays === 0 ||
-      (row.earliest_item &&
+      (earliestItem &&
         row.earliest_aggregate &&
-        new Date(row.earliest_item) < new Date(row.earliest_aggregate)) ||
+        new Date(earliestItem) < new Date(row.earliest_aggregate)) ||
       isStale;
 
     if (needsBackfill) {
@@ -464,7 +487,7 @@ async function checkAndTriggerSnapshotBackfill(): Promise<void> {
 
       const reason = isStale
         ? `stale aggregate (last: ${row.latest_aggregate})`
-        : `items from ${row.earliest_item}, aggregate from ${row.earliest_aggregate || 'none'}`;
+        : `items from ${earliestItem}, aggregate from ${row.earliest_aggregate || 'none'}`;
       console.log(`[LibrarySync] Snapshot backfill needed: ${reason}`);
 
       // Trigger backfill job (non-blocking, will be queued)

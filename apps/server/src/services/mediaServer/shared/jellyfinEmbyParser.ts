@@ -102,6 +102,7 @@ export interface JellyfinEmbyItemResult {
   Artists?: string[];
   AlbumId?: string;
   AlbumPrimaryImageTag?: string;
+  RunTimeTicks?: number;
 }
 
 // ============================================================================
@@ -437,6 +438,7 @@ export function parseItem(item: Record<string, unknown>): JellyfinEmbyItemResult
     Artists: artists?.length ? artists : undefined,
     AlbumId: parseOptionalString(item.AlbumId),
     AlbumPrimaryImageTag: parseOptionalString(item.AlbumPrimaryImageTag),
+    RunTimeTicks: parseOptionalNumber(item.RunTimeTicks),
   };
 }
 

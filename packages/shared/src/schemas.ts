@@ -1050,6 +1050,30 @@ export const jellystatImportBodySchema = z.object({
   updateStreamDetails: z.coerce.boolean().default(false), // Update existing records with stream/transcode data
 });
 
+// ============================================================================
+// Playback Reporting Import Schemas
+// ============================================================================
+
+const isValidTimeZone = (tz: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const playbackReportingImportSchema = z.object({
+  serverId: uuidSchema,
+  timezone: z.string().refine(isValidTimeZone, { message: 'Invalid IANA timezone' }),
+  enrichMedia: z.boolean().default(true),
+  importFullRange: z.boolean().default(false),
+});
+
+export const playbackReportingTestSchema = z.object({
+  serverId: uuidSchema,
+});
+
 /**
  * Import job status response
  */

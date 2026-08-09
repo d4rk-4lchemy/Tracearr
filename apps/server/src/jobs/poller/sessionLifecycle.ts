@@ -1110,6 +1110,10 @@ export async function createSessionWithRulesAtomic(
         await storeActionResults(violationId, result.ruleId, actionResults);
       }
 
+      console.log(
+        `[SessionLifecycle] Session started: ${processed.mediaType} "${processed.grandparentTitle ? `${processed.grandparentTitle} - ` : ''}${processed.mediaTitle}" by ${serverUser.username} on ${server.name} (${processed.playerName ?? 'unknown player'}, key ${processed.sessionKey})`
+      );
+
       // Transaction succeeded, return result
       return {
         insertedSession,
@@ -1297,6 +1301,12 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
 
       // Return whether the update was applied (for caller to skip cache/broadcast if already stopped)
       const wasUpdated = result.length > 0;
+
+      if (wasUpdated) {
+        console.log(
+          `[SessionLifecycle] Session stopped: "${session.mediaTitle}" after ${Math.round(durationMs / 1000)}s (watched=${watched}${forceStopped ? ', forced' : ''})`
+        );
+      }
 
       return { durationMs, watched, shortSession, wasUpdated };
     } catch (error) {

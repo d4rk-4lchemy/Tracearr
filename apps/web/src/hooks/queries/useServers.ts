@@ -9,6 +9,7 @@ import {
 } from '@tracearr/shared';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { useMultiServerQuery } from '@/hooks/useMultiServerQuery';
 import { useRef, useCallback, useEffect } from 'react';
 
 export function useServers() {
@@ -280,158 +281,228 @@ export function useReorderServers() {
   };
 }
 
-/**
- * Hook for fetching server resource statistics with fixed 2-minute window
- * Polls every 10 seconds, displays last 2 minutes of data (12 points)
- * X-axis is static (2m → NOW), data slides through as new points arrive
- *
- * @param serverId - Server ID to fetch stats for
- * @param enabled - Whether polling is enabled (typically tied to component mount)
- */
-export function useServerStatistics(serverId: string | undefined, enabled: boolean = true) {
-  // Accumulate data points across polls, keyed by timestamp for deduplication
-  const dataMapRef = useRef<Map<number, ServerResourceDataPoint>>(new Map());
+// Merge new points into a rolling window keyed by timestamp, keep the newest
+// `keep` entries, and return them oldest first for chart rendering
+function mergeWindow<T extends { at: number }>(
+  ref: { current: Map<number, T> },
+  newData: T[],
+  keep: number
+): T[] {
+  const map = ref.current;
 
-  // Merge new data with existing, keep most recent DATA_POINTS
-  const mergeData = useCallback((newData: ServerResourceDataPoint[]) => {
-    const map = dataMapRef.current;
+  for (const point of newData) {
+    map.set(point.at, point);
+  }
 
-    // Add/update data points
-    for (const point of newData) {
-      map.set(point.at, point);
-    }
+  const sorted = Array.from(map.values())
+    .sort((a, b) => b.at - a.at)
+    .slice(0, keep);
 
-    // Sort by timestamp descending (newest first), keep DATA_POINTS
-    const sorted = Array.from(map.values())
-      .sort((a, b) => b.at - a.at)
-      .slice(0, SERVER_STATS_CONFIG.DATA_POINTS);
+  ref.current = new Map(sorted.map((p) => [p.at, p]));
 
-    // Rebuild map with only kept points
-    dataMapRef.current = new Map(sorted.map((p) => [p.at, p]));
-
-    // Return in ascending order (oldest first) for chart rendering
-    return sorted.reverse();
-  }, []);
-
-  const query = useQuery({
-    queryKey: ['servers', 'statistics', serverId],
-    queryFn: async () => {
-      if (!serverId) throw new Error('Server ID required');
-      const response = await api.servers.statistics(serverId);
-      // Merge with accumulated data
-      const mergedData = mergeData(response.data);
-      return {
-        ...response,
-        data: mergedData,
-      };
-    },
-    enabled: enabled && !!serverId,
-    // Poll every 10 seconds
-    refetchInterval: SERVER_STATS_CONFIG.POLL_INTERVAL_SECONDS * 1000,
-    // Don't poll when tab is hidden
-    refetchIntervalInBackground: false,
-    // Don't refetch on window focus (we have interval polling)
-    refetchOnWindowFocus: false,
-    // Keep previous data while fetching new
-    placeholderData: (prev) => prev,
-    // Data is fresh until next poll
-    staleTime: SERVER_STATS_CONFIG.POLL_INTERVAL_SECONDS * 1000 - 500,
-  });
-
-  // Calculate averages from windowed data
-  const dataPoints = query.data?.data;
-  const dataLength = dataPoints?.length ?? 0;
-  const averages =
-    dataPoints && dataLength > 0
-      ? {
-          hostCpu: Math.round(
-            dataPoints.reduce((sum: number, p) => sum + p.hostCpuUtilization, 0) / dataLength
-          ),
-          processCpu: Math.round(
-            dataPoints.reduce((sum: number, p) => sum + p.processCpuUtilization, 0) / dataLength
-          ),
-          hostMemory: Math.round(
-            dataPoints.reduce((sum: number, p) => sum + p.hostMemoryUtilization, 0) / dataLength
-          ),
-          processMemory: Math.round(
-            dataPoints.reduce((sum: number, p) => sum + p.processMemoryUtilization, 0) / dataLength
-          ),
-        }
-      : null;
-
-  return {
-    ...query,
-    averages,
-  };
+  return sorted.reverse();
 }
 
 /**
- * Hook for fetching server bandwidth statistics with fixed 2-minute window
- * X-axis is static (2m → NOW), data slides through as new points arrive
+ * Hook for the combined live server stats (CPU/RAM + bandwidth) with fixed
+ * 2-minute windows. One request per tick serves both charts; the poll
+ * interval selector governs the shared cadence. X-axis is static (2m → NOW),
+ * data slides through as new points arrive.
  *
- * @param serverId - Server ID to fetch bandwidth for
+ * @param serverId - Server ID to fetch stats for
  * @param enabled - Whether polling is enabled (typically tied to component mount)
  * @param pollIntervalSeconds - Override poll interval (defaults to BANDWIDTH_STATS_CONFIG)
  */
-export function useServerBandwidth(
+function averageOf(values: (number | null)[]): number | null {
+  const present = values.filter((v): v is number => v != null);
+  return present.length > 0
+    ? Math.round(present.reduce((sum, v) => sum + v, 0) / present.length)
+    : null;
+}
+
+// Servers with no live-stats source (no plugin, or offline) back off to this
+// cadence instead of hammering at chart speed; data appearing restores it
+const EMPTY_STATS_BACKOFF_MS = 30_000;
+
+interface LiveStatsData {
+  statistics: unknown[];
+  bandwidth: unknown[];
+}
+
+function liveStatsInterval(pollMs: number) {
+  return (query: { state: { data?: LiveStatsData } }) => {
+    const data = query.state.data;
+    const empty = !data || (data.statistics.length === 0 && data.bandwidth.length === 0);
+    return empty ? EMPTY_STATS_BACKOFF_MS : pollMs;
+  };
+}
+
+export function useServerLiveStats(
   serverId: string | undefined,
   enabled: boolean = true,
   pollIntervalSeconds: number = BANDWIDTH_STATS_CONFIG.POLL_INTERVAL_SECONDS
 ) {
-  const dataMapRef = useRef<Map<number, ServerBandwidthDataPoint>>(new Map());
+  const statsMapRef = useRef<Map<number, ServerResourceDataPoint>>(new Map());
+  const bandwidthMapRef = useRef<Map<number, ServerBandwidthDataPoint>>(new Map());
 
-  const mergeData = useCallback((newData: ServerBandwidthDataPoint[]) => {
-    const map = dataMapRef.current;
-
-    for (const point of newData) {
-      map.set(point.at, point);
-    }
-
-    const sorted = Array.from(map.values())
-      .sort((a, b) => b.at - a.at)
-      .slice(0, BANDWIDTH_STATS_CONFIG.DATA_POINTS);
-
-    dataMapRef.current = new Map(sorted.map((p) => [p.at, p]));
-
-    return sorted.reverse();
-  }, []);
+  // A server switch must not blend the previous server's window into the next
+  const lastServerIdRef = useRef(serverId);
+  if (lastServerIdRef.current !== serverId) {
+    lastServerIdRef.current = serverId;
+    statsMapRef.current = new Map();
+    bandwidthMapRef.current = new Map();
+  }
 
   const query = useQuery({
-    queryKey: ['servers', 'bandwidth', serverId],
+    queryKey: ['servers', 'live-stats', serverId],
     queryFn: async () => {
       if (!serverId) throw new Error('Server ID required');
-      const response = await api.servers.bandwidth(serverId);
-      const mergedData = mergeData(response.data);
+      const response = await api.servers.liveStats(serverId);
       return {
         ...response,
-        data: mergedData,
+        statistics: mergeWindow(statsMapRef, response.statistics, SERVER_STATS_CONFIG.DATA_POINTS),
+        bandwidth: mergeWindow(
+          bandwidthMapRef,
+          response.bandwidth,
+          BANDWIDTH_STATS_CONFIG.DATA_POINTS
+        ),
       };
     },
     enabled: enabled && !!serverId,
-    refetchInterval: pollIntervalSeconds * 1000,
+    refetchInterval: liveStatsInterval(pollIntervalSeconds * 1000),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
     placeholderData: (prev) => prev,
     staleTime: pollIntervalSeconds * 1000 - 500,
   });
 
-  // Calculate averages as bytes/second
-  const dataPoints = query.data?.data;
-  const dataLength = dataPoints?.length ?? 0;
-  const averages =
-    dataPoints && dataLength > 0
+  const statistics = query.data?.statistics;
+  const statisticsAverages =
+    statistics && statistics.length > 0
+      ? {
+          hostCpu: averageOf(statistics.map((p) => p.hostCpuUtilization)),
+          processCpu: Math.round(
+            statistics.reduce((sum, p) => sum + p.processCpuUtilization, 0) / statistics.length
+          ),
+          hostMemory: averageOf(statistics.map((p) => p.hostMemoryUtilization)),
+          processMemory: Math.round(
+            statistics.reduce((sum, p) => sum + p.processMemoryUtilization, 0) / statistics.length
+          ),
+        }
+      : null;
+
+  const bandwidth = query.data?.bandwidth;
+  const bandwidthAverages =
+    bandwidth && bandwidth.length > 0
       ? {
           local: Math.round(
-            dataPoints.reduce((sum: number, p) => sum + p.lanBytes / p.timespan, 0) / dataLength
+            bandwidth.reduce((sum, p) => sum + p.lanBytes / p.timespan, 0) / bandwidth.length
           ),
           remote: Math.round(
-            dataPoints.reduce((sum: number, p) => sum + p.wanBytes / p.timespan, 0) / dataLength
+            bandwidth.reduce((sum, p) => sum + p.wanBytes / p.timespan, 0) / bandwidth.length
           ),
         }
       : null;
 
   return {
     ...query,
-    averages,
+    statistics,
+    statisticsAverages,
+    bandwidth,
+    bandwidthAverages,
+    bandwidthSamples: query.data?.bandwidthSamples,
+    bandwidthAccounts: query.data?.bandwidthAccounts,
+    bandwidthDevices: query.data?.bandwidthDevices,
   };
+}
+
+export interface ServerLiveStatsSeries {
+  serverId: string;
+  statistics: ServerResourceDataPoint[];
+  bandwidth: ServerBandwidthDataPoint[];
+}
+
+/**
+ * Live stats for several servers at once, one query per server sharing the
+ * single-server cache keys. Each server accumulates its own rolling window.
+ *
+ * @param serverIds - Servers to poll (Plex only; others return 400 and are
+ *   surfaced as empty series)
+ * @param enabled - Whether polling is enabled
+ * @param pollIntervalSeconds - Shared poll cadence for all servers
+ */
+export function useMultiServerLiveStats(
+  serverIds: string[],
+  enabled: boolean = true,
+  pollIntervalSeconds: number = BANDWIDTH_STATS_CONFIG.POLL_INTERVAL_SECONDS
+) {
+  const statsWindowsRef = useRef(
+    new Map<string, { current: Map<number, ServerResourceDataPoint> }>()
+  );
+  const bandwidthWindowsRef = useRef(
+    new Map<string, { current: Map<number, ServerBandwidthDataPoint> }>()
+  );
+
+  // Prune windows for deselected servers so re-adding one later starts clean
+  const idsKey = serverIds.join(',');
+  const lastIdsKeyRef = useRef(idsKey);
+  if (lastIdsKeyRef.current !== idsKey) {
+    lastIdsKeyRef.current = idsKey;
+    const keep = new Set(serverIds);
+    for (const store of [statsWindowsRef.current, bandwidthWindowsRef.current]) {
+      for (const key of Array.from(store.keys())) {
+        if (!keep.has(key)) store.delete(key);
+      }
+    }
+  }
+
+  const windowFor = useCallback(function <T>(
+    store: Map<string, { current: Map<number, T> }>,
+    serverId: string
+  ): { current: Map<number, T> } {
+    let ref = store.get(serverId);
+    if (!ref) {
+      ref = { current: new Map<number, T>() };
+      store.set(serverId, ref);
+    }
+    return ref;
+  }, []);
+
+  const { byServer, isLoading } = useMultiServerQuery<
+    Awaited<ReturnType<typeof api.servers.liveStats>>
+  >(enabled ? serverIds : [], (serverId) => ({
+    queryKey: ['servers', 'live-stats', serverId],
+    queryFn: async () => {
+      const response = await api.servers.liveStats(serverId);
+      return {
+        ...response,
+        statistics: mergeWindow(
+          windowFor(statsWindowsRef.current, serverId),
+          response.statistics,
+          SERVER_STATS_CONFIG.DATA_POINTS
+        ),
+        bandwidth: mergeWindow(
+          windowFor(bandwidthWindowsRef.current, serverId),
+          response.bandwidth,
+          BANDWIDTH_STATS_CONFIG.DATA_POINTS
+        ),
+      };
+    },
+    refetchInterval: liveStatsInterval(pollIntervalSeconds * 1000),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
+    staleTime: pollIntervalSeconds * 1000 - 500,
+  }));
+
+  const series: ServerLiveStatsSeries[] = serverIds.map((serverId) => {
+    const result = byServer.get(serverId);
+    return {
+      serverId,
+      statistics: result?.data?.statistics ?? [],
+      bandwidth: result?.data?.bandwidth ?? [],
+    };
+  });
+
+  return { series, isLoading };
 }

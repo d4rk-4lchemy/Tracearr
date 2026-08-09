@@ -2128,8 +2128,7 @@ export async function processBackfillLibrarySnapshotsJob(
                 movie_count, episode_count, season_count, show_count, music_count,
                 count_4k, count_1080p, count_720p, count_sd,
                 hevc_count, h264_count, av1_count,
-                count_high_quality, version_count,
-                enrichment_pending, enrichment_complete
+                count_high_quality, version_count
               )
               SELECT
                 ${lib.server_id}::uuid,
@@ -2150,9 +2149,7 @@ export async function processBackfillLibrarySnapshotsJob(
                 bc.h264_count,
                 bc.av1_count,
                 bc.count_high_quality,
-                bc.version_count,
-                0,  -- enrichment_pending: all historical items already enriched
-                bc.item_count  -- enrichment_complete
+                bc.version_count
               FROM backfill_cumulative bc
               WHERE bc.day >= ${batchStartStr}::date
                 AND bc.day <= ${batchEndStr}::date

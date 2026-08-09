@@ -85,6 +85,7 @@ export const WS_EVENTS = {
   STATS_UPDATED: 'stats:updated',
   IMPORT_PROGRESS: 'import:progress',
   IMPORT_JELLYSTAT_PROGRESS: 'import:jellystat:progress',
+  IMPORT_PLAYBACK_REPORTING_PROGRESS: 'import:playbackreporting:progress',
   MAINTENANCE_PROGRESS: 'maintenance:progress',
   /** Library sync progress updates */
   LIBRARY_SYNC_PROGRESS: 'library:sync:progress',
@@ -151,6 +152,12 @@ export const REDIS_KEYS = {
   SERVER_HEALTH_FAIL_COUNT: (serverId: string) =>
     `${_redisPrefix}tracearr:servers:${serverId}:health:fails`,
   SERVER_CONNECTION: (serverId: string) => `${_redisPrefix}tracearr:servers:${serverId}:connection`,
+  SERVER_STATS_RESOURCES: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:stats:resources`,
+  SERVER_STATS_BANDWIDTH: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:stats:bandwidth`,
+  SERVER_STATS_SAMPLES: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:stats:samples`,
   get PUBSUB_EVENTS() {
     return `${_redisPrefix}tracearr:events`;
   },
@@ -260,8 +267,10 @@ export const REDIS_KEYS = {
     `${_redisPrefix}tracearr:library:sync:last:${serverId}:${libraryId}`,
   LIBRARY_SYNC_COUNT: (serverId: string, libraryId: string) =>
     `${_redisPrefix}tracearr:library:sync:count:${serverId}:${libraryId}`,
-  LIBRARY_SYNC_CYCLE: (serverId: string, libraryId: string) =>
-    `${_redisPrefix}tracearr:library:sync:cycle:${serverId}:${libraryId}`,
+  // Timestamp of the last completed full scan - the periodic full-scan safety
+  // net is time-based so event-sync bursts can't drag it forward
+  LIBRARY_SYNC_FULL_SCAN_AT: (serverId: string, libraryId: string) =>
+    `${_redisPrefix}tracearr:library:sync:fullscan:${serverId}:${libraryId}`,
   // Accepted structural shortfall from the last full scan - see COUNT_MISMATCH_* in librarySync.ts
   LIBRARY_SYNC_SHORTFALL: (serverId: string, libraryId: string) =>
     `${_redisPrefix}tracearr:library:sync:shortfall:${serverId}:${libraryId}`,
@@ -325,6 +334,11 @@ export const CACHE_TTL = {
   RATE_LIMIT: 900,
   SERVER_HEALTH: 600, // 10 minutes - servers marked unhealthy if no update
   SERVER_CONNECTION: 600, // 10 minutes - live runtime state, not persisted to DB
+  // Live stats micro-cache: collapses concurrent dashboard viewers into one
+  // Plex call per tick. Bandwidth TTL must stay under the fastest poll
+  // option (1s) or that chart setting stops meaning anything.
+  SERVER_STATS_RESOURCES: 5,
+  SERVER_STATS_BANDWIDTH: 1,
   LOCATION_FILTERS: 300, // 5 minutes - filter options change infrequently
   VERSION_CHECK: 21600, // 6 hours - version check interval
   // Library statistics

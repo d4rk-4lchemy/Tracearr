@@ -741,12 +741,9 @@ async function createPartialIndexes(): Promise<void> {
     WHERE acknowledged_at IS NULL
   `);
 
-  // Partial index for active/playing sessions
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_sessions_active_partial
-    ON sessions (server_id, server_user_id, started_at DESC)
-    WHERE state = 'playing'
-  `);
+  // idx_sessions_active_partial removed - live "now playing" reads come from the
+  // Redis cache, and the one matching query (violations detail) plans onto the
+  // server_user time index instead
 
   // Partial index for the stale-session sweep: open rows only, so the
   // sweep's lastSeenAt filter never seq-scans the current 30-day chunk
@@ -791,11 +788,9 @@ async function createPartialIndexes(): Promise<void> {
  * Time-prefixed indexes enable efficient time-filtered aggregations
  */
 async function createContentIndexes(): Promise<void> {
-  // Time-prefixed index for media title queries
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_sessions_media_time
-    ON sessions (started_at DESC, media_type, media_title)
-  `);
+  // idx_sessions_media_time removed - idx_sessions_top_content_covering leads with
+  // the same started_at DESC and carries media_title/media_type, so it serves the
+  // same time-range shapes
 
   // Time-prefixed index for show/episode queries (excludes NULLs)
   await db.execute(sql`
@@ -916,7 +911,25 @@ async function enableCompression(): Promise<void> {
 
 const COMPRESSION_POLICY_DEGRADED_KEY = 'sessions_compression_policy_degraded';
 
+// The persisted flag in timescale_metadata stays the source of truth (it
+// survives restarts and spans instances), but the health interval reads it
+// every 10s and the healthy answer never changes on its own. Cache the
+// healthy answer briefly; a local mark bypasses the cache entirely so the
+// instance that broke the policy retries every tick until healed. The only
+// cost is cross-instance heal latency moving from 10s to the TTL, against a
+// compression job that fires every 12 hours.
+const DEGRADED_CHECK_TTL_MS = 10 * 60 * 1000;
+let degradedLocalHint = false;
+let degradedCache: { value: boolean; checkedAt: number } | null = null;
+
+export function _resetDegradedCacheForTests(): void {
+  degradedLocalHint = false;
+  degradedCache = null;
+}
+
 async function markCompressionPolicyDegraded(reason: string): Promise<void> {
+  degradedLocalHint = true;
+  degradedCache = null;
   try {
     await ensureMetadataTable();
     await db.execute(sql`
@@ -930,6 +943,8 @@ async function markCompressionPolicyDegraded(reason: string): Promise<void> {
 }
 
 async function clearCompressionPolicyDegraded(): Promise<void> {
+  degradedLocalHint = false;
+  degradedCache = { value: false, checkedAt: Date.now() };
   try {
     await db.execute(
       sql`DELETE FROM timescale_metadata WHERE key = ${COMPRESSION_POLICY_DEGRADED_KEY}`
@@ -942,15 +957,23 @@ async function clearCompressionPolicyDegraded(): Promise<void> {
 /**
  * Whether a previous restore of the sessions compression policy failed and
  * hasn't self-healed yet. Persisted (not in-memory) so it survives a restart
- * and stays visible to every instance in a multi-instance deployment.
+ * and stays visible to every instance in a multi-instance deployment; the
+ * healthy answer is cached in-process for DEGRADED_CHECK_TTL_MS so the
+ * 10-second health interval doesn't re-ask the database.
  */
 export async function isCompressionPolicyDegraded(): Promise<boolean> {
+  if (degradedLocalHint) return true;
+  if (degradedCache && Date.now() - degradedCache.checkedAt < DEGRADED_CHECK_TTL_MS) {
+    return degradedCache.value;
+  }
   try {
     await ensureMetadataTable();
     const result = await db.execute(
       sql`SELECT 1 FROM timescale_metadata WHERE key = ${COMPRESSION_POLICY_DEGRADED_KEY}`
     );
-    return result.rows.length > 0;
+    const value = result.rows.length > 0;
+    degradedCache = { value, checkedAt: Date.now() };
+    return value;
   } catch {
     return false;
   }
@@ -1806,6 +1829,36 @@ export async function getTimescaleStatus(): Promise<TimescaleStatus> {
 }
 
 /**
+ * Warn when the database image ships a newer extension than the one the
+ * database is running. Swapping the image alone never updates the extension,
+ * so without this the drift is invisible until something breaks.
+ */
+export async function warnOnTimescaleVersionDrift(log: {
+  warn: (msg: string) => void;
+}): Promise<void> {
+  const result = await db.execute(sql`
+    SELECT name, installed_version, default_version
+    FROM pg_available_extensions
+    WHERE name IN ('timescaledb', 'timescaledb_toolkit')
+      AND installed_version IS NOT NULL
+      AND installed_version != default_version
+  `);
+
+  for (const row of result.rows as {
+    name: string;
+    installed_version: string;
+    default_version: string;
+  }[]) {
+    log.warn(
+      `TimescaleDB extension "${row.name}" is at ${row.installed_version} but the database ` +
+        `image ships ${row.default_version}. Set TIMESCALEDB_AUTO_UPDATE=true to let Tracearr ` +
+        `update it at boot, or run as the extension owner: ` +
+        `psql -X -d <database> -c 'ALTER EXTENSION ${row.name} UPDATE'`
+    );
+  }
+}
+
+/**
  * Update TimescaleDB extensions to the latest version available on the system.
  *
  * MUST run before migrations or any queries that touch timescaledb objects
@@ -2134,7 +2187,7 @@ export async function initTimescaleDB(): Promise<{
   // Create partial indexes for optimized filtered queries
   try {
     await createPartialIndexes();
-    actions.push('Created partial indexes (geo, violations, active, transcode)');
+    actions.push('Created partial indexes (geo, violations, open-session, transcode)');
   } catch (err) {
     console.warn('Failed to create some partial indexes:', err);
     actions.push('Partial indexes: some may already exist');

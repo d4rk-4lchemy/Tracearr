@@ -37,7 +37,10 @@ import {
   JellyfinEmbyEventSource,
   type PluginSessionEvent,
   type PluginLibraryEvent,
+  type PluginServerStats,
 } from './mediaServer/shared/jellyfinEmbyEventSource.js';
+import { recordServerStatsSample } from './serverLiveStats.js';
+import { getRedis } from '../lib/redisShared.js';
 import { probeSsePlugin } from './mediaServer/shared/ssePluginProbe.js';
 import { broadcastToAll } from '../websocket/index.js';
 import { isLeader } from './leaderLease.js';
@@ -645,6 +648,13 @@ export class SSEManager extends EventEmitter {
 
     eventSource.on('library:event', ({ type, itemId }: PluginLibraryEvent) => {
       recordLibraryEvent({ serverId, serverName, type, itemId });
+    });
+
+    // Plugin v0.4+ CPU/RAM samples feed the live-stats endpoint's rolling buffer
+    eventSource.on('stats:event', (sample: PluginServerStats) => {
+      const connection = this.connections.get(serverId);
+      if (connection) connection.lastEventAt = new Date();
+      void recordServerStatsSample(getRedis(), serverId, sample);
     });
 
     eventSource.on('connection:state', (state: SSEConnectionState) => {

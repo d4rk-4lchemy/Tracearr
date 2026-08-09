@@ -72,9 +72,21 @@ export interface PluginLibraryEvent {
   itemId: string | null;
 }
 
+// Plugin v0.4+: CPU/RAM sample every 6s; host values omitted on non-Linux hosts
+const SERVER_STATS_EVENT = 'server.stats';
+
+export interface PluginServerStats {
+  at: number;
+  hostCpuUtilization: number | null;
+  processCpuUtilization: number | null;
+  hostMemoryUtilization: number | null;
+  processMemoryUtilization: number | null;
+}
+
 export interface JellyfinEmbyEventSourceEvents {
   'session:event': PluginSessionEvent;
   'library:event': PluginLibraryEvent;
+  'stats:event': PluginServerStats;
   'connection:state': SSEConnectionState;
   'connection:error': Error;
 }
@@ -104,6 +116,7 @@ export class JellyfinEmbyEventSource extends EventEmitter {
   private libraryRemovedListener: ((e: EventSourceMessage) => void) | null = null;
   private pingListener: ((e: EventSourceMessage) => void) | null = null;
   private helloListener: ((ev: EventSourceMessage) => void) | null = null;
+  private statsListener: ((e: EventSourceMessage) => void) | null = null;
   private errorListener: ((e: Event) => void) | null = null;
 
   constructor(config: {
@@ -223,8 +236,35 @@ export class JellyfinEmbyEventSource extends EventEmitter {
         }
       };
 
+      const handleStatsEvent = (ev: EventSourceMessage) => {
+        this.lastEventTime = new Date();
+        this.resetHeartbeatMonitor();
+        if (!ev.data) return;
+        try {
+          const raw = JSON.parse(ev.data) as Record<string, unknown>;
+          if (typeof raw.at !== 'number') return;
+          this.emit('stats:event', {
+            at: raw.at,
+            hostCpuUtilization:
+              typeof raw.hostCpuUtilization === 'number' ? raw.hostCpuUtilization : null,
+            processCpuUtilization:
+              typeof raw.processCpuUtilization === 'number' ? raw.processCpuUtilization : null,
+            hostMemoryUtilization:
+              typeof raw.hostMemoryUtilization === 'number' ? raw.hostMemoryUtilization : null,
+            processMemoryUtilization:
+              typeof raw.processMemoryUtilization === 'number'
+                ? raw.processMemoryUtilization
+                : null,
+          });
+        } catch {
+          // malformed payload - drop the sample, the next one is 6s away
+        }
+      };
+
+      this.sessionEventListener = handleSessionEvent;
       this.libraryAddedListener = handleLibraryEvent('added');
       this.libraryRemovedListener = handleLibraryEvent('removed');
+      this.statsListener = handleStatsEvent;
       this.pingListener = () => {
         this.lastEventTime = new Date();
         this.resetHeartbeatMonitor();
@@ -266,6 +306,7 @@ export class JellyfinEmbyEventSource extends EventEmitter {
       }
       this.eventSource.addEventListener(LIBRARY_ADDED_EVENT, this.libraryAddedListener);
       this.eventSource.addEventListener(LIBRARY_REMOVED_EVENT, this.libraryRemovedListener);
+      this.eventSource.addEventListener(SERVER_STATS_EVENT, this.statsListener);
       this.eventSource.addEventListener('ping', this.pingListener);
       this.eventSource.addEventListener('hello', this.helloListener);
     } catch (error) {
@@ -307,6 +348,9 @@ export class JellyfinEmbyEventSource extends EventEmitter {
     }
     if (this.libraryRemovedListener) {
       this.eventSource.removeEventListener(LIBRARY_REMOVED_EVENT, this.libraryRemovedListener);
+    }
+    if (this.statsListener) {
+      this.eventSource.removeEventListener(SERVER_STATS_EVENT, this.statsListener);
     }
     if (this.pingListener) {
       this.eventSource.removeEventListener('ping', this.pingListener);

@@ -37,6 +37,7 @@ import type {
   DashboardStats,
   TautulliImportProgress,
   JellystatImportProgress,
+  PlaybackReportingImportProgress,
   MaintenanceJobProgress,
   LibrarySyncProgress,
 } from '@tracearr/shared';
@@ -142,13 +143,17 @@ import { initPushRateLimiter } from './services/pushRateLimiter.js';
 import { initializeV2Rules } from './services/rules/v2Integration.js';
 import { processPushReceipts } from './services/pushNotification.js';
 import { cleanupMobileTokens } from './jobs/cleanupMobileTokens.js';
-import { db, checkDatabaseConnection, runMigrations } from './db/client.js';
+import { db, checkDatabaseConnection } from './db/client.js';
 import { migrationFolders } from './db/migrationPaths.js';
+import { runMigrationsGuarded } from './db/migrationRunner.js';
 import {
   initTimescaleDB,
   getTimescaleStatus,
   updateTimescaleExtensions,
+  warnOnTimescaleVersionDrift,
   runAggregateBackfill,
+  isCompressionPolicyDegraded,
+  retryDegradedCompressionPolicy,
 } from './db/timescale.js';
 import { eq } from 'drizzle-orm';
 import { servers } from './db/schema.js';
@@ -203,6 +208,7 @@ let cachedTimescale: {
   compression: boolean;
   aggregates: number;
   chunks: number;
+  compressionDegraded: boolean;
 } | null = null;
 
 async function refreshTimescaleCache(): Promise<void> {
@@ -214,6 +220,9 @@ async function refreshTimescaleCache(): Promise<void> {
       compression: tsStatus.compressionEnabled,
       aggregates: tsStatus.continuousAggregates.length,
       chunks: tsStatus.chunkCount,
+      // Locally-marked degradation surfaces instantly (in-process hint);
+      // another instance's flag surfaces within the check's own short TTL.
+      compressionDegraded: await isCompressionPolicyDegraded(),
     };
   } catch {
     cachedTimescale = null;
@@ -573,26 +582,33 @@ async function initializeServices(app: FastifyInstance) {
   // Connect the lazy Redis client
   await connectRedis(app);
 
-  // Update TimescaleDB extensions before migrations — must happen before any
+  // Update TimescaleDB extensions before migrations: must happen before any
   // query touches timescaledb objects, otherwise the old version gets locked in.
-  // Opt-in only: requires ALTER EXTENSION privilege, which managed DB hosts often lack.
-  // Note: we generally dont want users to update extensions since it can cause issues.
-  //
-  // This is disabled for now, but the code is left in place for a rainy day.
-  // Future devs: do not remove this functionality.
-  // eslint-disable-next-line no-constant-condition
-  if (false) {
+  // Opt-in (TIMESCALEDB_AUTO_UPDATE): the update is one-way, needs ALTER
+  // EXTENSION privilege (managed hosts often lack it), and rolling the image
+  // back after an update leaves the database unable to load the extension.
+  // When disabled, a version drift still gets a loud warning: bumping the
+  // database image does NOT update the extension inside the database, and the
+  // gap otherwise goes unnoticed.
+  if (process.env.TIMESCALEDB_AUTO_UPDATE === 'true') {
     try {
       await updateTimescaleExtensions();
     } catch (err) {
       app.log.warn({ err }, 'Failed to update TimescaleDB extensions (non-fatal)');
     }
+  } else {
+    try {
+      await warnOnTimescaleVersionDrift(app.log);
+    } catch {
+      // Drift check is best-effort; boot continues either way
+    }
   }
 
-  // Run database migrations
+  // Run upstream migrations and the fork-owned Dispatcharr overlay under one
+  // advisory lock so concurrent instances cannot race either ledger.
   try {
     app.log.info('Running database migrations...');
-    await runMigrations(migrationFolders);
+    await runMigrationsGuarded(migrationFolders);
     app.log.info('Database migrations complete');
   } catch (err) {
     app.log.error({ err }, 'Failed to run database migrations');
@@ -1011,6 +1027,12 @@ async function initializePostListen(app: FastifyInstance) {
           break;
         case WS_EVENTS.IMPORT_JELLYSTAT_PROGRESS:
           broadcastToSessions('import:jellystat:progress', data as JellystatImportProgress);
+          break;
+        case WS_EVENTS.IMPORT_PLAYBACK_REPORTING_PROGRESS:
+          broadcastToSessions(
+            'import:playbackreporting:progress',
+            data as PlaybackReportingImportProgress
+          );
           break;
         case WS_EVENTS.MAINTENANCE_PROGRESS:
           broadcastToSessions('maintenance:progress', data as MaintenanceJobProgress);
