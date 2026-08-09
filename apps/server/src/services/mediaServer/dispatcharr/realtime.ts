@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { SSE_CONFIG } from '@tracearr/shared';
 import { DispatcharrClient } from './client.js';
 import type { MediaSession, MediaUser } from '../types.js';
+import type { PluginStatsSample } from '../../serverLiveStats.js';
 import {
   parseCatchupStatsResponse,
   parseRealtimeCatchupStatsPayload,
@@ -17,11 +18,7 @@ import {
 
 export type DispatcharrRealtimeMode = 'ws' | 'rest-fallback' | 'rest-only-api-key';
 type DispatcharrRealtimeState =
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'disconnected'
-  | 'fallback';
+  'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'fallback';
 
 export interface DispatcharrRealtimeStatus {
   serverId: string;
@@ -50,12 +47,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Parse only the Tracearr Metrics plugin message; provider snapshots use a separate contract. */
+export function parseDispatcharrServerStatsMessage(raw: unknown): PluginStatsSample | null {
+  let message: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      message = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(message) || message.type !== 'update' || !isRecord(message.data)) return null;
+  const data = message.data;
+  if (data.type !== 'tracearr_server_stats' || data.schemaVersion !== 1) return null;
+
+  const at = data.at;
+  const processCpu = data.processCpuUtilization;
+  const processMemory = data.processMemoryUtilization;
+  const hostCpu = data.hostCpuUtilization;
+  const hostMemory = data.hostMemoryUtilization;
+  const validPercentage = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+  if (
+    typeof at !== 'number' ||
+    !Number.isFinite(at) ||
+    !validPercentage(processCpu) ||
+    !validPercentage(processMemory) ||
+    (hostCpu !== null && !validPercentage(hostCpu)) ||
+    (hostMemory !== null && !validPercentage(hostMemory))
+  ) {
+    return null;
+  }
+  return {
+    at,
+    processCpuUtilization: processCpu,
+    processMemoryUtilization: processMemory,
+    hostCpuUtilization: hostCpu,
+    hostMemoryUtilization: hostMemory,
+  };
+}
+
 function extractReferencedUserIds(channels: NormalizedDispatcharrChannel[]): string[] {
   const ids = new Set<string>();
   for (const channel of channels) {
     for (const client of channel.clients) {
       const raw = client.user_id;
-      const userId = typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? String(raw) : '';
+      const userId =
+        typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? String(raw) : '';
       if (!userId || userId === '0') continue;
       ids.add(userId);
     }
@@ -222,7 +260,10 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
         this.fallbackReason = null;
         this.setState('connected');
         if (wasInFallback) {
-          this.emit('fallback:deactivated', { serverId: this.serverId, serverName: this.serverName });
+          this.emit('fallback:deactivated', {
+            serverId: this.serverId,
+            serverName: this.serverName,
+          });
         }
         this.enqueueUpdate(() => this.bootstrapFromRest());
         this.resetHeartbeat();
@@ -278,6 +319,14 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     try {
       parsed = JSON.parse(rawText) as unknown;
     } catch {
+      return;
+    }
+
+    const serverStats = parseDispatcharrServerStatsMessage(parsed);
+    if (serverStats) {
+      this.lastEventAt = new Date();
+      this.resetHeartbeat();
+      this.emit('stats:event', { serverId: this.serverId, sample: serverStats });
       return;
     }
 
@@ -416,7 +465,9 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     forceUserRefresh = false,
     emitSnapshot = true
   ): Promise<void> {
-    const groups = Array.isArray(catchupStats.timeshift_sessions) ? catchupStats.timeshift_sessions : [];
+    const groups = Array.isArray(catchupStats.timeshift_sessions)
+      ? catchupStats.timeshift_sessions
+      : [];
     const referencedUserIds = new Set<string>();
     for (const rawGroup of groups) {
       if (!isRecord(rawGroup)) continue;

@@ -754,6 +754,13 @@ export class SSEManager extends EventEmitter {
       }
     );
 
+    realtime.on(
+      'stats:event',
+      ({ sample }: { serverId: string; sample: Parameters<typeof recordServerStatsSample>[2] }) => {
+        void recordServerStatsSample(getRedis(), serverId, sample);
+      }
+    );
+
     realtime.on('connection:status', (status: DispatcharrRealtimeStatus) => {
       const state = this.toSseStatus(status).state;
       this.handleConnectionStateChange(serverId, serverName, state, this.toSseStatus(status));

@@ -103,15 +103,20 @@ export function ServerSettings() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editServer, setEditServer] = useState<Server | null>(null);
-  const [serverType, setServerType] = useState<'plex' | 'jellyfin' | 'emby' | 'dispatcharr'>('plex');
+  const [serverType, setServerType] = useState<'plex' | 'jellyfin' | 'emby' | 'dispatcharr'>(
+    'plex'
+  );
   const [serverUrl, setServerUrl] = useState('');
   const [serverName, setServerName] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [dispatcharrAuthMode, setDispatcharrAuthMode] = useState<'token' | 'credentials'>('credentials');
+  const [dispatcharrAuthMode, setDispatcharrAuthMode] = useState<'token' | 'credentials'>(
+    'credentials'
+  );
   const [dispatcharrUsername, setDispatcharrUsername] = useState('');
   const [dispatcharrPassword, setDispatcharrPassword] = useState('');
   const [ignoreAnonymousStreams, setIgnoreAnonymousStreams] = useState(true);
-  const [dispatcharrLiveHistoryThresholdSeconds, setDispatcharrLiveHistoryThresholdSeconds] = useState(30);
+  const [dispatcharrLiveHistoryThresholdSeconds, setDispatcharrLiveHistoryThresholdSeconds] =
+    useState(30);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -746,10 +751,17 @@ export function ServerSettings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="credentials">Username + Password (for WebSocket)</SelectItem>
+                        <SelectItem value="credentials">
+                          Username + Password (for WebSocket)
+                        </SelectItem>
                         <SelectItem value="token">API Key</SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-muted-foreground rounded-md border p-3 text-xs">
+                      Server Resources requires the Dispatcharr Metrics plugin to be enabled and
+                      username/password authentication to keep the WebSocket active. API key mode
+                      does not provide Server Resources samples.
+                    </p>
                   </div>
                 )}
                 {serverType === 'dispatcharr' && dispatcharrAuthMode === 'credentials' ? (
@@ -911,8 +923,7 @@ export function ServerSettings() {
                 username,
                 password,
                 ignoreAnonymousStreams: ignoreAnonymousStreamsValue,
-                dispatcharrLiveHistoryThresholdSeconds:
-                  dispatcharrLiveHistoryThresholdSecondsValue,
+                dispatcharrLiveHistoryThresholdSeconds: dispatcharrLiveHistoryThresholdSecondsValue,
               },
               {
                 onSuccess: () => {
@@ -1021,13 +1032,17 @@ function EditServerDialog({
   const [editName, setEditName] = useState('');
   const [manualUrl, setManualUrl] = useState('');
   const [editColor, setEditColor] = useState('#3b82f6');
-  const [editDispatcharrAuthMode, setEditDispatcharrAuthMode] = useState<'token' | 'credentials'>('token');
+  const [editDispatcharrAuthMode, setEditDispatcharrAuthMode] = useState<'token' | 'credentials'>(
+    'token'
+  );
   const [editDispatcharrToken, setEditDispatcharrToken] = useState('');
   const [editDispatcharrUsername, setEditDispatcharrUsername] = useState('');
   const [editDispatcharrPassword, setEditDispatcharrPassword] = useState('');
   const [editIgnoreAnonymousStreams, setEditIgnoreAnonymousStreams] = useState(true);
-  const [editDispatcharrLiveHistoryThresholdSeconds, setEditDispatcharrLiveHistoryThresholdSeconds] =
-    useState(30);
+  const [
+    editDispatcharrLiveHistoryThresholdSeconds,
+    setEditDispatcharrLiveHistoryThresholdSeconds,
+  ] = useState(30);
   const isPlexServer = server?.type === 'plex';
   const isDispatcharrServer = server?.type === 'dispatcharr';
 
@@ -1084,9 +1099,11 @@ function EditServerDialog({
   const hasNameChange = server ? editName.trim() !== server.name : false;
   const hasUrlChange = server ? manualUrl.trim() !== server.url : false;
   const hasColorChange = server ? editColor !== (server.color ?? '') : false;
-  const currentDispatcharrAuthMode =
-    isDispatcharrServer ? (server as Server & DispatcharrServerExtras).dispatcharrAuthMode ?? 'token' : 'token';
-  const hasAuthModeChange = isDispatcharrServer && editDispatcharrAuthMode !== currentDispatcharrAuthMode;
+  const currentDispatcharrAuthMode = isDispatcharrServer
+    ? ((server as Server & DispatcharrServerExtras).dispatcharrAuthMode ?? 'token')
+    : 'token';
+  const hasAuthModeChange =
+    isDispatcharrServer && editDispatcharrAuthMode !== currentDispatcharrAuthMode;
   const hasCredentialValueChange =
     isDispatcharrServer &&
     ((editDispatcharrAuthMode === 'credentials' &&
@@ -1101,10 +1118,10 @@ function EditServerDialog({
   const hasAuthChange = hasAuthModeChange || hasCredentialValueChange;
   const hasValidAuthInput =
     !isDispatcharrServer ||
-    (!hasAuthChange ||
-      (editDispatcharrAuthMode === 'credentials'
-        ? Boolean(editDispatcharrUsername.trim()) && Boolean(editDispatcharrPassword)
-        : Boolean(editDispatcharrToken.trim())));
+    !hasAuthChange ||
+    (editDispatcharrAuthMode === 'credentials'
+      ? Boolean(editDispatcharrUsername.trim()) && Boolean(editDispatcharrPassword)
+      : Boolean(editDispatcharrToken.trim()));
   const canSave =
     (hasNameChange ||
       hasUrlChange ||
@@ -1243,12 +1260,16 @@ function EditServerDialog({
                 </p>
               </div>
 
+              <p className="text-muted-foreground rounded-md border p-3 text-xs">
+                Server Resources requires the Dispatcharr Metrics plugin to be enabled and
+                username/password authentication to keep the WebSocket active. API key mode does not
+                provide Server Resources samples.
+              </p>
+
               {editDispatcharrAuthMode === 'credentials' ? (
                 <>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-dispatcharr-username">
-                      Username
-                    </Label>
+                    <Label htmlFor="edit-dispatcharr-username">Username</Label>
                     <Input
                       id="edit-dispatcharr-username"
                       value={editDispatcharrUsername}
@@ -1257,9 +1278,7 @@ function EditServerDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-dispatcharr-password">
-                      Password
-                    </Label>
+                    <Label htmlFor="edit-dispatcharr-password">Password</Label>
                     <Input
                       id="edit-dispatcharr-password"
                       type="password"
@@ -1320,7 +1339,10 @@ function EditServerDialog({
                   onCheckedChange={(checked) => setEditIgnoreAnonymousStreams(checked === true)}
                 />
                 <div className="space-y-1">
-                  <Label htmlFor="edit-ignore-anonymous-streams" className="cursor-pointer font-medium">
+                  <Label
+                    htmlFor="edit-ignore-anonymous-streams"
+                    className="cursor-pointer font-medium"
+                  >
                     Ignore Anonymous streams
                   </Label>
                   <p className="text-muted-foreground text-sm">

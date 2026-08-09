@@ -74,7 +74,9 @@ export function Dashboard() {
     isLoading: liveStatsLoading,
   } = useServerLiveStats(selectedServerId ?? undefined, !!singleServer, statsPollInterval);
 
-  const showServerResources = !!singleServer && (singleIsPlex || (serverStats?.length ?? 0) > 0);
+  const showServerResources =
+    !!singleServer &&
+    (singleIsPlex || singleServer.type === 'dispatcharr' || (serverStats?.length ?? 0) > 0);
 
   // Plex measures bandwidth; Jellyfin/Emby have no source for it
   const showBandwidthChart =
@@ -84,7 +86,7 @@ export function Dashboard() {
         plex: 'Plex Media Server',
         jellyfin: 'Jellyfin',
         emby: 'Emby',
-        dispatcharr: 'Dispatcharr',
+        dispatcharr: 'Dispatcharr container',
       }[singleServer.type]
     : undefined;
 
@@ -196,7 +198,9 @@ export function Dashboard() {
             value={stats?.tvSessions ?? 0}
             isLoading={statsLoading}
             href="/history"
-            subValue={stats ? t('common:count.channel', { count: stats.tvChannels ?? 0 }) : undefined}
+            subValue={
+              stats ? t('common:count.channel', { count: stats.tvChannels ?? 0 }) : undefined
+            }
           />
           <StatCard
             icon={Clock}
