@@ -939,6 +939,9 @@ async function initializeServices(app: FastifyInstance) {
 
       if (dbOk) {
         await refreshTimescaleCache();
+        retryDegradedCompressionPolicy().catch((err) => {
+          app.log.warn({ err }, 'Failed to retry degraded compression policy');
+        });
       } else {
         cachedTimescale = null;
       }

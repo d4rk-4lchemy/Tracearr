@@ -261,7 +261,6 @@ export class JellyfinEmbyEventSource extends EventEmitter {
         }
       };
 
-      this.sessionEventListener = handleSessionEvent;
       this.libraryAddedListener = handleLibraryEvent('added');
       this.libraryRemovedListener = handleLibraryEvent('removed');
       this.statsListener = handleStatsEvent;
