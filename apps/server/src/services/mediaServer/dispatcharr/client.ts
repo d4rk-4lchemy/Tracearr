@@ -1,4 +1,5 @@
 import { fetchJson } from '../../../utils/http.js';
+import { createHash } from 'node:crypto';
 import type {
   IMediaServerClient,
   MediaLibrary,
@@ -157,12 +158,13 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   async getSessions(): Promise<MediaSession[]> {
-    const [statusResult, vodStatsResult, catchupStatsResult, userByIdResult] = await Promise.allSettled([
-      this.getStatusSnapshot(),
-      this.getVodStatsSnapshot(),
-      this.getCatchupStatsSnapshot(),
-      this.getUserMap(),
-    ]);
+    const [statusResult, vodStatsResult, catchupStatsResult, userByIdResult] =
+      await Promise.allSettled([
+        this.getStatusSnapshot(),
+        this.getVodStatsSnapshot(),
+        this.getCatchupStatsSnapshot(),
+        this.getUserMap(),
+      ]);
 
     if (statusResult.status === 'rejected') {
       throw statusResult.reason;
@@ -312,9 +314,7 @@ export class DispatcharrClient implements IMediaServerClient {
       );
 
       const record: { next?: unknown } | null =
-        data && typeof data === 'object' && !Array.isArray(data)
-          ? data
-          : null;
+        data && typeof data === 'object' && !Array.isArray(data) ? data : null;
       nextUrl = typeof record?.next === 'string' && record.next ? record.next : null;
     }
 
@@ -488,7 +488,12 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   async getCatchupProgrammes(
-    sessions: Array<{ session_id: string; channel_uuid: string; programme_start: string; position_secs?: number }>
+    sessions: Array<{
+      session_id: string;
+      channel_uuid: string;
+      programme_start: string;
+      position_secs?: number;
+    }>
   ): Promise<Map<string, DispatcharrCatchupProgramme>> {
     if (sessions.length === 0) return new Map();
 
@@ -527,14 +532,20 @@ export class DispatcharrClient implements IMediaServerClient {
     const resolvedUserMap = userById ?? (await this.getUserMap());
     const groups = Array.isArray(stats.timeshift_sessions) ? stats.timeshift_sessions : [];
     const programmeRequests = groups.flatMap((rawGroup) => {
-      const group = rawGroup && typeof rawGroup === 'object' ? (rawGroup as Record<string, unknown>) : null;
+      const group =
+        rawGroup && typeof rawGroup === 'object' ? (rawGroup as Record<string, unknown>) : null;
       const sessionId = String(group?.session_id ?? '').trim();
       const channelUuid = String(group?.channel_uuid ?? '').trim();
       const programmeStart = String(group?.programme_start ?? '').trim();
       if (!sessionId || !channelUuid || !programmeStart) return [];
       return [
         { session_id: sessionId, channel_uuid: channelUuid, programme_start: programmeStart },
-        { session_id: sessionId, channel_uuid: channelUuid, programme_start: programmeStart, position_secs: 0 },
+        {
+          session_id: sessionId,
+          channel_uuid: channelUuid,
+          programme_start: programmeStart,
+          position_secs: 0,
+        },
       ];
     });
     const programmeBySessionId = await this.getCatchupProgrammes(programmeRequests);
@@ -778,7 +789,20 @@ export class DispatcharrClient implements IMediaServerClient {
   }
 
   private getCredentialCacheKey(credentials: DispatcharrCredentials): string {
-    return `${this.baseUrl}|${credentials.username}`;
+    const fingerprintInput = JSON.stringify([
+      this.baseUrl,
+      credentials.username,
+      credentials.password,
+    ]);
+    return createHash('sha256').update(fingerprintInput, 'utf8').digest('hex');
+  }
+
+  private static purgeExpiredCredentialCache(nowMs: number): void {
+    for (const [key, cached] of DispatcharrClient.credentialCache) {
+      if (cached.expiresAtMs <= nowMs) {
+        DispatcharrClient.credentialCache.delete(key);
+      }
+    }
   }
 
   private async buildHeaders(): Promise<Record<string, string>> {
@@ -810,6 +834,7 @@ export class DispatcharrClient implements IMediaServerClient {
     }
 
     const cacheKey = this.getCredentialCacheKey(credentials);
+    DispatcharrClient.purgeExpiredCredentialCache(Date.now());
     const cached = DispatcharrClient.credentialCache.get(cacheKey);
     if (cached && cached.expiresAtMs - TOKEN_REFRESH_SKEW_MS > Date.now()) {
       return cached.accessToken;
@@ -897,7 +922,9 @@ export class DispatcharrClient implements IMediaServerClient {
       const accessToken = typeof data.access === 'string' ? data.access.trim() : '';
       if (!accessToken) return null;
       const nextRefreshToken =
-        typeof data.refresh === 'string' && data.refresh.trim() ? data.refresh.trim() : refreshToken;
+        typeof data.refresh === 'string' && data.refresh.trim()
+          ? data.refresh.trim()
+          : refreshToken;
       return {
         accessToken,
         refreshToken: nextRefreshToken,

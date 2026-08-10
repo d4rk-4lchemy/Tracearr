@@ -77,6 +77,7 @@ interface ServerConnection {
   // Retained for diagnosing a Jellyfin/Emby plugin endpoint reported as unsupported.
   url: string;
   token: string;
+  ignoreAnonymousStreams: boolean;
   eventSource: PlexEventSource | JellyfinEmbyEventSource | null;
   dispatcharrRealtime: DispatcharrRealtimeConnector | null;
   state: SSEConnectionState;
@@ -84,6 +85,23 @@ interface ServerConnection {
   connectedAt: Date | null;
   lastEventAt: Date | null;
   pluginIssue: PluginIssue | null;
+}
+
+function normalizeConnectorUrl(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+function hasConnectorConfigChanged(
+  connection: ServerConnection,
+  server: typeof servers.$inferSelect
+): boolean {
+  return (
+    connection.serverType !== server.type ||
+    connection.serverName !== server.name ||
+    normalizeConnectorUrl(connection.url) !== normalizeConnectorUrl(server.url) ||
+    connection.token !== server.token ||
+    connection.ignoreAnonymousStreams !== server.ignoreAnonymousStreams
+  );
 }
 
 // Per-server debounce timers to coalesce rapid plugin events before polling
@@ -270,6 +288,7 @@ export class SSEManager extends EventEmitter {
         serverType,
         url,
         token,
+        ignoreAnonymousStreams,
         eventSource: null,
         dispatcharrRealtime: null,
         state: 'disconnected',
@@ -940,7 +959,12 @@ export class SSEManager extends EventEmitter {
       }
 
       for (const server of allServers) {
-        if (!connectedServerIds.has(server.id)) {
+        const connection = this.connections.get(server.id);
+        if (connection && hasConnectorConfigChanged(connection, server)) {
+          await this.removeServerInternal(server.id);
+        }
+
+        if (!this.connections.has(server.id)) {
           await this.addServer(
             server.id,
             server.name,

@@ -34,6 +34,9 @@ User-facing Dispatcharr behavior:
 - Add Dispatcharr as a selectable server type.
 - Connect to Dispatcharr with either an API key/JWT token or username/password credentials.
 - Edit an existing Dispatcharr server in place to switch between API key/JWT token auth and username/password auth without deleting and re-adding the server.
+- Cache username/password JWT acquisition by a non-reversible fingerprint of
+  the complete credential set, preserving cross-client single-flight without
+  allowing a warm token to validate a changed password.
 - Use username/password mode for WebSocket-capable realtime updates; API-key mode falls back to REST polling.
 - Legacy Dispatcharr servers upgraded from older fork versions remain in polling mode until username/password credentials are entered again, because older stored tokens do not contain recoverable credentials for automatic migration.
 - Show Live TV streams, VOD movies, and VOD shows.
@@ -43,6 +46,9 @@ User-facing Dispatcharr behavior:
 - Display Live TV channel/programme information, channel logos, stream bitrate, codecs, resolution, and FFmpeg speed where available.
 - Jellyfin and Emby Live TV sessions are enriched from `/LiveTv/Programs`; the current programme is stored in `mediaTitle` while the channel remains in `live.*`. The EPG cache is shared per server/channel and refreshes the existing poller at programme boundaries. Web and mobile Live TV cards use the same channel-title/programme-subtitle layout as Dispatcharr; Plex keeps its legacy Live TV card for now.
 - Show Dispatcharr active sessions immediately from healthy WebSocket snapshots.
+- Reconcile connector-owned server configuration (type, name, normalized URL,
+  token, and anonymous-stream filtering) on the Redis leader, replacing stale
+  connectors after local or cross-replica edits.
 - Dispatcharr Live TV, VOD, and catch-up sessions use the shared pending playback lifecycle: they become history after the global 30-second confirmation threshold. While a session is pending, every REST/WebSocket snapshot refreshes its metadata in place and retains the highest observed progress.
 
 The fork also carries local maintenance/distribution changes:
@@ -139,6 +145,9 @@ Realtime and polling:
 - `apps/server/src/index.ts` starts and stops the Dispatcharr realtime processor with other background services.
 - `apps/server/src/jobs/poller/processor.ts` skips normal Dispatcharr session processing while WebSocket mode is healthy. Dispatcharr polling remains the fallback for API-key/token mode, disconnected/fallback WebSocket mode, and explicit reconciliation after realtime loss.
 - Dispatcharr Live TV, VOD, and catch-up history confirmation uses the shared playback lifecycle and global confirmation threshold. Pending REST/WebSocket snapshots replace metadata in place while protecting maximum progress from partial/out-of-order data.
+- Authoritative Dispatcharr stop results retain the exact active-session ID
+  through pending/database stop, cache removal, pub/sub, and notifications, so
+  catch-up clients sharing a provider session key cannot stop one another.
 - Dispatcharr catch-up/timeshift sessions are also keyed to `media.type === 'live'`, but carry `dispatcharrPlaybackKind === 'catchup'` and `progressEstimated === true`. Catch-up uses `/proxy/stats/` plus `/proxy/catchup/programs/` for enrichment. Programme title and EPG timeline update in place like Dispatcharr Live TV; the resolved programme must not be part of catch-up session identity.
 - `apps/server/src/jobs/poller/stateTracker.ts` supports a configurable confirmation threshold and detects media-title changes for DB writes.
 - `apps/server/src/jobs/poller/types.ts` extends poller server/session types to include Dispatcharr.

@@ -23,7 +23,7 @@ const {
     mockProcessServerSessions: vi.fn().mockResolvedValue({
       success: true,
       newSessions: [],
-      stoppedSessionKeys: [],
+      stoppedSessions: [],
       updatedSessions: [],
       watchedTransitionOccurred: false,
     }),
@@ -123,7 +123,7 @@ describe('Dispatcharr realtime processor', () => {
     mockProcessServerSessions.mockResolvedValue({
       success: true,
       newSessions: [],
-      stoppedSessionKeys: [],
+      stoppedSessions: [],
       updatedSessions: [],
       watchedTransitionOccurred: false,
     });
@@ -140,7 +140,7 @@ describe('Dispatcharr realtime processor', () => {
     mockProcessServerSessions.mockResolvedValueOnce({
       success: true,
       newSessions: [newSession],
-      stoppedSessionKeys: [],
+      stoppedSessions: [],
       updatedSessions: [],
       watchedTransitionOccurred: false,
     });
@@ -151,19 +151,16 @@ describe('Dispatcharr realtime processor', () => {
     });
 
     await vi.waitFor(() => {
-      expect(mockProcessServerSessions).toHaveBeenCalledWith(
-        server,
-        [],
-        expect.any(Set),
-        [],
-        { mediaSessions: [liveSession], immediateStops: true }
-      );
+      expect(mockProcessServerSessions).toHaveBeenCalledWith(server, [], expect.any(Set), [], {
+        mediaSessions: [liveSession],
+        immediateStops: true,
+      });
     });
 
     expect(mockProcessPollResults).toHaveBeenCalledWith(
       expect.objectContaining({
         newSessions: [newSession],
-        stoppedKeys: [],
+        stoppedSessions: [],
         updatedSessions: [],
       })
     );
@@ -177,13 +174,10 @@ describe('Dispatcharr realtime processor', () => {
     });
 
     await vi.waitFor(() => {
-      expect(mockProcessServerSessions).toHaveBeenCalledWith(
-        server,
-        [],
-        expect.any(Set),
-        [],
-        { mediaSessions: [liveSession], immediateStops: false }
-      );
+      expect(mockProcessServerSessions).toHaveBeenCalledWith(server, [], expect.any(Set), [], {
+        mediaSessions: [liveSession],
+        immediateStops: false,
+      });
     });
   });
 
@@ -218,7 +212,13 @@ describe('Dispatcharr realtime processor', () => {
     mockProcessServerSessions.mockResolvedValueOnce({
       success: true,
       newSessions: [],
-      stoppedSessionKeys: ['dispatcharr-1:channel-1:client-1'],
+      stoppedSessions: [
+        {
+          id: 'session-1',
+          serverId: 'dispatcharr-1',
+          sessionKey: 'channel-1:client-1',
+        },
+      ],
       updatedSessions: [],
       watchedTransitionOccurred: false,
       confirmedFromPendingIds: new Set(),
@@ -233,7 +233,13 @@ describe('Dispatcharr realtime processor', () => {
       expect(mockProcessPollResults).toHaveBeenCalledWith(
         expect.objectContaining({
           newSessions: [],
-          stoppedKeys: ['dispatcharr-1:channel-1:client-1'],
+          stoppedSessions: [
+            {
+              id: 'session-1',
+              serverId: 'dispatcharr-1',
+              sessionKey: 'channel-1:client-1',
+            },
+          ],
           updatedSessions: [],
         })
       );

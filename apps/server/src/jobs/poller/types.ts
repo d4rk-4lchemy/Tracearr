@@ -343,8 +343,8 @@ export interface ServerProcessingResult {
   success: boolean;
   /** Newly created sessions */
   newSessions: ActiveSession[];
-  /** Session keys that stopped playing */
-  stoppedSessionKeys: string[];
+  /** Exact sessions that stopped playing */
+  stoppedSessions: StoppedSessionRef[];
   /** Sessions that were updated (state change, progress, etc.) */
   updatedSessions: ActiveSession[];
   /** Whether any session crossed the watched-completion threshold this tick */
@@ -355,6 +355,13 @@ export interface ServerProcessingResult {
    * must not publish it again for these.
    */
   confirmedFromPendingIds: Set<string>;
+}
+
+/** Exact identity carried from stop detection through cache/event processing. */
+export interface StoppedSessionRef {
+  id: string;
+  serverId: string;
+  sessionKey: string;
 }
 
 // ============================================================================

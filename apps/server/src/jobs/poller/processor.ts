@@ -85,6 +85,7 @@ import type {
   ResolvePendingSessionInput,
   ServerProcessingResult,
   ServerWithToken,
+  StoppedSessionRef,
 } from './types.js';
 import { excludeUncountableSessions } from './utils.js';
 import { broadcastViolations } from './violations.js';
@@ -770,8 +771,8 @@ async function stopMissingSessionsImmediately(
   currentSessionKeys: Set<string>,
   server: ServerWithToken,
   activeSessions: ActiveSession[]
-): Promise<string[]> {
-  const stoppedKeys: string[] = [];
+): Promise<StoppedSessionRef[]> {
+  const stoppedSessions: StoppedSessionRef[] = [];
 
   for (const activeSession of activeSessions) {
     if (activeSession.serverId !== server.id) continue;
@@ -791,7 +792,11 @@ async function stopMissingSessionsImmediately(
       const pending = await cache.getPendingSession(server.id, activeKey);
       if (pending) {
         await cache.deletePendingSession(server.id, activeKey);
-        stoppedKeys.push(`${server.id}:${activeSession.sessionKey}`);
+        stoppedSessions.push({
+          id: activeSession.id,
+          serverId: activeSession.serverId,
+          sessionKey: activeSession.sessionKey,
+        });
         missedPollTracking.delete(activeKey);
         continue;
       }
@@ -808,11 +813,15 @@ async function stopMissingSessionsImmediately(
       await cache.addSessionWriteRetry(activeSession.id, result.retryData);
     }
 
-    stoppedKeys.push(`${server.id}:${activeSession.sessionKey}`);
+    stoppedSessions.push({
+      id: activeSession.id,
+      serverId: activeSession.serverId,
+      sessionKey: activeSession.sessionKey,
+    });
     missedPollTracking.delete(activeKey);
   }
 
-  return stoppedKeys;
+  return stoppedSessions;
 }
 
 export async function processServerSessions(
@@ -857,7 +866,7 @@ export async function processServerSessions(
         return {
           success: true,
           newSessions: [],
-          stoppedSessionKeys: await stopMissingSessionsImmediately(
+          stoppedSessions: await stopMissingSessionsImmediately(
             cachedSessionKeys,
             currentSessionKeys,
             server,
@@ -876,11 +885,11 @@ export async function processServerSessions(
       await handleFirstMisses(cachedSessionKeys, server.id, activeSessions, sTypeMap);
       await sweepGracePeriod(keysToSweep, server.id, sTypeMap);
 
-      // stoppedSessionKeys intentionally empty
+      // stoppedSessions intentionally empty
       return {
         success: true,
         newSessions: [],
-        stoppedSessionKeys: [],
+        stoppedSessions: [],
         updatedSessions: [],
         watchedTransitionOccurred: false,
         confirmedFromPendingIds: new Set(),
@@ -1907,7 +1916,7 @@ export async function processServerSessions(
       return {
         success: true,
         newSessions,
-        stoppedSessionKeys: await stopMissingSessionsImmediately(
+        stoppedSessions: await stopMissingSessionsImmediately(
           cachedSessionKeys,
           currentSessionKeys,
           server,
@@ -1928,12 +1937,12 @@ export async function processServerSessions(
     );
     await sweepGracePeriod(keysToSweep, server.id, sTypeMap, currentSessionKeys);
 
-    // stoppedSessionKeys intentionally empty - grace period handles stops inline.
+    // stoppedSessions intentionally empty - grace period handles stops inline.
     // processPollResults still processes newSessions and updatedSessions normally.
     return {
       success: true,
       newSessions,
-      stoppedSessionKeys: [],
+      stoppedSessions: [],
       updatedSessions,
       watchedTransitionOccurred,
       confirmedFromPendingIds,
@@ -1943,7 +1952,7 @@ export async function processServerSessions(
     return {
       success: false,
       newSessions: [],
-      stoppedSessionKeys: [],
+      stoppedSessions: [],
       updatedSessions: [],
       watchedTransitionOccurred: false,
       confirmedFromPendingIds: new Set(),
@@ -2038,7 +2047,7 @@ async function pollServers(): Promise<void> {
 
     // Collect results from all servers
     const allNewSessions: ActiveSession[] = [];
-    const allStoppedKeys: string[] = [];
+    const allStoppedSessions: StoppedSessionRef[] = [];
     const allUpdatedSessions: ActiveSession[] = [];
     const allConfirmedFromPendingIds = new Set<string>();
     let anyWatchedTransition = false;
@@ -2062,7 +2071,7 @@ async function pollServers(): Promise<void> {
         const {
           success,
           newSessions,
-          stoppedSessionKeys,
+          stoppedSessions,
           updatedSessions,
           watchedTransitionOccurred,
           confirmedFromPendingIds,
@@ -2107,7 +2116,7 @@ async function pollServers(): Promise<void> {
         }
 
         allNewSessions.push(...newSessions);
-        allStoppedKeys.push(...stoppedSessionKeys);
+        allStoppedSessions.push(...stoppedSessions);
         allUpdatedSessions.push(...updatedSessions);
         for (const id of confirmedFromPendingIds) allConfirmedFromPendingIds.add(id);
         if (watchedTransitionOccurred) anyWatchedTransition = true;
@@ -2126,7 +2135,7 @@ async function pollServers(): Promise<void> {
 
     await processPollResults({
       newSessions: allNewSessions,
-      stoppedKeys: allStoppedKeys,
+      stoppedSessions: allStoppedSessions,
       updatedSessions: allUpdatedSessions,
       watchedTransitionOccurred: anyWatchedTransition,
       cachedSessions,
@@ -2136,9 +2145,9 @@ async function pollServers(): Promise<void> {
       confirmedFromPendingIds: allConfirmedFromPendingIds,
     });
 
-    if (allNewSessions.length > 0 || allStoppedKeys.length > 0) {
+    if (allNewSessions.length > 0 || allStoppedSessions.length > 0) {
       console.log(
-        `Poll complete: ${allNewSessions.length} new, ${allUpdatedSessions.length} updated, ${allStoppedKeys.length} stopped`
+        `Poll complete: ${allNewSessions.length} new, ${allUpdatedSessions.length} updated, ${allStoppedSessions.length} stopped`
       );
     }
 
@@ -2153,7 +2162,7 @@ async function pollServers(): Promise<void> {
     const hasActiveSessions =
       allNewSessions.length > 0 ||
       allUpdatedSessions.length > 0 ||
-      cachedSessionsOnPolledServers.length > allStoppedKeys.length;
+      cachedSessionsOnPolledServers.length > allStoppedSessions.length;
 
     if (hasActiveSessions !== previousPollHadSessions && pollingInterval) {
       const newInterval = hasActiveSessions
@@ -2476,7 +2485,7 @@ export async function triggerServerPoll(
     const activeRulesV2 = await getActiveRulesV2();
     const {
       newSessions,
-      stoppedSessionKeys,
+      stoppedSessions,
       updatedSessions,
       watchedTransitionOccurred,
       confirmedFromPendingIds,
@@ -2484,10 +2493,10 @@ export async function triggerServerPoll(
       immediateStops: options.immediateStops,
     });
 
-    if (newSessions.length > 0 || stoppedSessionKeys.length > 0 || updatedSessions.length > 0) {
+    if (newSessions.length > 0 || stoppedSessions.length > 0 || updatedSessions.length > 0) {
       await processPollResults({
         newSessions,
-        stoppedKeys: stoppedSessionKeys,
+        stoppedSessions,
         updatedSessions,
         watchedTransitionOccurred,
         cachedSessions,
@@ -2562,7 +2571,7 @@ export async function triggerReconciliationPoll(): Promise<void> {
 
     // Collect results from all SSE servers
     const allNewSessions: ActiveSession[] = [];
-    const allStoppedKeys: string[] = [];
+    const allStoppedSessions: StoppedSessionRef[] = [];
     const allUpdatedSessions: ActiveSession[] = [];
     const allConfirmedFromPendingIds = new Set<string>();
     let anyWatchedTransition = false;
@@ -2581,7 +2590,7 @@ export async function triggerReconciliationPoll(): Promise<void> {
       try {
         const {
           newSessions,
-          stoppedSessionKeys,
+          stoppedSessions,
           updatedSessions,
           watchedTransitionOccurred,
           confirmedFromPendingIds,
@@ -2592,7 +2601,7 @@ export async function triggerReconciliationPoll(): Promise<void> {
           cachedSessions
         );
         allNewSessions.push(...newSessions);
-        allStoppedKeys.push(...stoppedSessionKeys);
+        allStoppedSessions.push(...stoppedSessions);
         allUpdatedSessions.push(...updatedSessions);
         for (const id of confirmedFromPendingIds) allConfirmedFromPendingIds.add(id);
         if (watchedTransitionOccurred) anyWatchedTransition = true;
@@ -2601,10 +2610,14 @@ export async function triggerReconciliationPoll(): Promise<void> {
       }
     });
 
-    if (allNewSessions.length > 0 || allStoppedKeys.length > 0 || allUpdatedSessions.length > 0) {
+    if (
+      allNewSessions.length > 0 ||
+      allStoppedSessions.length > 0 ||
+      allUpdatedSessions.length > 0
+    ) {
       await processPollResults({
         newSessions: allNewSessions,
-        stoppedKeys: allStoppedKeys,
+        stoppedSessions: allStoppedSessions,
         updatedSessions: allUpdatedSessions,
         watchedTransitionOccurred: anyWatchedTransition,
         cachedSessions,
@@ -2615,7 +2628,7 @@ export async function triggerReconciliationPoll(): Promise<void> {
       });
 
       console.log(
-        `[Poller] Reconciliation complete: ${allNewSessions.length} new, ${allUpdatedSessions.length} updated, ${allStoppedKeys.length} stopped`
+        `[Poller] Reconciliation complete: ${allNewSessions.length} new, ${allUpdatedSessions.length} updated, ${allStoppedSessions.length} stopped`
       );
     }
   } catch (error) {

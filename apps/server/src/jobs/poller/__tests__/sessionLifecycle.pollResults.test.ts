@@ -49,7 +49,7 @@ describe('processPollResults', () => {
 
     await processPollResults({
       newSessions: [],
-      stoppedKeys: [],
+      stoppedSessions: [],
       updatedSessions,
       watchedTransitionOccurred: false,
       cachedSessions: [],
@@ -75,7 +75,7 @@ describe('processPollResults', () => {
 
     await processPollResults({
       newSessions: [],
-      stoppedKeys: [],
+      stoppedSessions: [],
       updatedSessions: [],
       watchedTransitionOccurred: false,
       cachedSessions: [],
@@ -101,7 +101,7 @@ describe('processPollResults', () => {
 
     await processPollResults({
       newSessions,
-      stoppedKeys: [],
+      stoppedSessions: [],
       updatedSessions: [],
       watchedTransitionOccurred: false,
       cachedSessions: [],
@@ -129,7 +129,7 @@ describe('processPollResults', () => {
 
     await processPollResults({
       newSessions,
-      stoppedKeys: [],
+      stoppedSessions: [],
       updatedSessions: [],
       watchedTransitionOccurred: false,
       cachedSessions: [],
@@ -159,7 +159,7 @@ describe('processPollResults', () => {
 
     await processPollResults({
       newSessions: [confirmedSession],
-      stoppedKeys: [],
+      stoppedSessions: [],
       updatedSessions: [],
       watchedTransitionOccurred: false,
       cachedSessions: [],
@@ -169,10 +169,7 @@ describe('processPollResults', () => {
       confirmedFromPendingIds: new Set([confirmedSession.id]),
     });
 
-    expect(pubSubService.publish).not.toHaveBeenCalledWith(
-      'session:started',
-      expect.anything()
-    );
+    expect(pubSubService.publish).not.toHaveBeenCalledWith('session:started', expect.anything());
     expect(pubSubService.publish).toHaveBeenCalledWith('session:updated', confirmedSession);
     expect(enqueueNotification).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: 'session_started' })
@@ -197,7 +194,11 @@ describe('processPollResults', () => {
 
     await processPollResults({
       newSessions: [],
-      stoppedKeys: ['server-1:key-stopped-1', 'server-1:key-stopped-2'],
+      stoppedSessions: cachedSessions.map(({ id, serverId, sessionKey }) => ({
+        id,
+        serverId,
+        sessionKey,
+      })),
       updatedSessions: [],
       watchedTransitionOccurred: false,
       cachedSessions,
@@ -210,5 +211,50 @@ describe('processPollResults', () => {
       ([event]) => event === 'session:stopped'
     );
     expect(stoppedPublishes).toHaveLength(2);
+  });
+
+  it('uses exact stopped IDs and deduplicates overlapping stop paths', async () => {
+    mockDbSelect.mockReturnValue({
+      from: () => ({
+        where: () => Promise.resolve([{ durationMs: 12345 }]),
+      }),
+    });
+
+    const first = makeSession('first', { sessionKey: 'shared-catchup-key' });
+    const second = makeSession('second', { sessionKey: 'shared-catchup-key' });
+    const cacheService = { incrementalSyncActiveSessions: vi.fn() };
+    const pubSubService = { publish: vi.fn() };
+    const enqueueNotification = vi.fn();
+    const stoppedRef = {
+      id: second.id,
+      serverId: second.serverId,
+      sessionKey: second.sessionKey,
+    };
+
+    await processPollResults({
+      newSessions: [],
+      stoppedSessions: [stoppedRef, stoppedRef],
+      updatedSessions: [],
+      watchedTransitionOccurred: false,
+      cachedSessions: [first, second],
+      cacheService,
+      pubSubService,
+      enqueueNotification,
+    });
+
+    expect(cacheService.incrementalSyncActiveSessions).toHaveBeenCalledWith(
+      [],
+      [second.id],
+      [],
+      false
+    );
+    expect(pubSubService.publish).toHaveBeenCalledTimes(1);
+    expect(pubSubService.publish).toHaveBeenCalledWith('session:stopped', second.id);
+    expect(enqueueNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'session_stopped',
+        payload: expect.objectContaining({ id: second.id }),
+      })
+    );
   });
 });

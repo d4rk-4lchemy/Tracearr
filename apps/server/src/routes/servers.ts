@@ -68,8 +68,7 @@ async function verifyServerAccess(params: {
     if (!adminCheck.success) {
       return {
         ok: false,
-        statusCode:
-          adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED ? 503 : 403,
+        statusCode: adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED ? 503 : 403,
         message: adminCheck.message,
       };
     }
@@ -184,15 +183,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Invalid request body');
     }
 
-    const {
-      name,
-      type,
-      url,
-      token,
-      username,
-      password,
-      ignoreAnonymousStreams,
-    } = body.data;
+    const { name, type, url, token, username, password, ignoreAnonymousStreams } = body.data;
     const authUser = request.user;
 
     // Only owners can add servers
@@ -368,7 +359,8 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.notFound('Server not found');
     }
 
-    const authChanged = newToken !== undefined || newUsername !== undefined || newPassword !== undefined;
+    const authChanged =
+      newToken !== undefined || newUsername !== undefined || newPassword !== undefined;
     if (authChanged && server.type !== 'dispatcharr') {
       return reply.badRequest('Authentication updates are only supported for Dispatcharr servers');
     }
@@ -384,9 +376,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         : server.token;
 
     if (authChanged && !normalizedToken) {
-      return reply.badRequest(
-        'Dispatcharr update requires a complete token or username+password'
-      );
+      return reply.badRequest('Dispatcharr update requires a complete token or username+password');
     }
     const verifiedToken = normalizedToken ?? undefined;
 
@@ -396,7 +386,9 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       if (
         server.url === newUrl &&
         (newName === undefined || server.name === newName) &&
-        !authChanged
+        !authChanged &&
+        newIgnoreAnonymousStreams === undefined &&
+        newColor === undefined
       ) {
         return {
           id: server.id,
@@ -451,7 +443,13 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           );
         }
       }
-    } else if (newName !== undefined && server.name === newName && !authChanged) {
+    } else if (
+      newName !== undefined &&
+      server.name === newName &&
+      !authChanged &&
+      newIgnoreAnonymousStreams === undefined &&
+      newColor === undefined
+    ) {
       // Name-only update but name unchanged
       return {
         id: server.id,
@@ -526,23 +524,29 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.internalServerError('Failed to update server');
     }
 
-    if (newUrl !== undefined || authChanged) {
+    const connectorConfigChanged =
+      (newName !== undefined && newName !== server.name) ||
+      (newUrl !== undefined && newUrl !== server.url) ||
+      authChanged ||
+      (newIgnoreAnonymousStreams !== undefined &&
+        newIgnoreAnonymousStreams !== server.ignoreAnonymousStreams);
+
+    if (connectorConfigChanged) {
       if (newUrl !== undefined) {
         app.log.info({ serverId: id, oldUrl: server.url, newUrl }, 'Server URL updated');
       }
       if (authChanged) {
         app.log.info({ serverId: id }, 'Server authentication updated');
       }
-      // Existing SSE connection holds the old config; drop it and let refresh re-add
-      sseManager
-        .removeServer(id)
-        .then(() => sseManager.refresh())
-        .catch((error: unknown) => {
-          app.log.error(
-            { err: error, serverId: id },
-            'SSE refresh failed after server configuration update'
-          );
-        });
+      // The leader compares connector-owned fields with the database row and
+      // replaces stale connections. Followers safely no-op here and converge
+      // on the leader's next reconciliation tick.
+      sseManager.refresh().catch((error: unknown) => {
+        app.log.error(
+          { err: error, serverId: id },
+          'SSE refresh failed after server configuration update'
+        );
+      });
     }
     if (newName !== undefined) {
       app.log.info({ serverId: id, oldName: server.name, newName }, 'Server name updated');

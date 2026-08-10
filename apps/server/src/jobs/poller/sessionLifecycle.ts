@@ -49,6 +49,7 @@ import type {
   SessionIdentity,
   SessionStopInput,
   SessionStopResult,
+  StoppedSessionRef,
   TranscodeReEvalInput,
 } from './types.js';
 import type { ViolationInsertResult } from './violations.js';
@@ -1428,8 +1429,8 @@ type PollNotification =
 export interface PollResultsInput {
   /** Newly created sessions */
   newSessions: ActiveSession[];
-  /** Keys of stopped sessions in format "serverId:sessionKey" */
-  stoppedKeys: string[];
+  /** Exact references for stopped sessions */
+  stoppedSessions: StoppedSessionRef[];
   /** Sessions that were updated */
   updatedSessions: ActiveSession[];
   /** Whether any session crossed the watched-completion threshold this tick */
@@ -1460,26 +1461,12 @@ export interface PollResultsInput {
 }
 
 /**
- * Find a stopped session from cached sessions by serverId:sessionKey format
- */
-function findStoppedSession(
-  key: string,
-  cachedSessions: ActiveSession[]
-): ActiveSession | undefined {
-  const parts = key.split(':');
-  if (parts.length < 2) return undefined;
-  const serverId = parts[0];
-  const sessionKey = parts.slice(1).join(':');
-  return cachedSessions.find((s) => s.serverId === serverId && s.sessionKey === sessionKey);
-}
-
-/**
  * Process poll results: sync cache and broadcast events.
  */
 export async function processPollResults(input: PollResultsInput): Promise<void> {
   const {
     newSessions,
-    stoppedKeys,
+    stoppedSessions,
     updatedSessions,
     watchedTransitionOccurred,
     cachedSessions,
@@ -1489,14 +1476,13 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     confirmedFromPendingIds,
   } = input;
 
-  // Extract stopped session IDs from the key format "serverId:sessionKey"
-  const stoppedSessionIds: string[] = [];
-  for (const key of stoppedKeys) {
-    const stoppedSession = findStoppedSession(key, cachedSessions);
-    if (stoppedSession) {
-      stoppedSessionIds.push(stoppedSession.id);
-    }
-  }
+  const uniqueStoppedSessions = [
+    ...new Map(
+      stoppedSessions.map((stoppedSession) => [stoppedSession.id, stoppedSession])
+    ).values(),
+  ];
+  const stoppedSessionIds = uniqueStoppedSessions.map((stoppedSession) => stoppedSession.id);
+  const cachedSessionsById = new Map(cachedSessions.map((session) => [session.id, session]));
 
   // Update cache incrementally
   if (cacheService) {
@@ -1530,8 +1516,8 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
       await pubSubService.publish('session:updated', sessionToUpdate);
     }
 
-    for (const key of stoppedKeys) {
-      const stoppedSession = findStoppedSession(key, cachedSessions);
+    for (const stoppedRef of uniqueStoppedSessions) {
+      const stoppedSession = cachedSessionsById.get(stoppedRef.id);
       if (stoppedSession) {
         // Fetch the computed durationMs from DB since the cached session has stale data
         const [dbSession] = await db

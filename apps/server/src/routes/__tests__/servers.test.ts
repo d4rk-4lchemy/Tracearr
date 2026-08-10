@@ -766,6 +766,7 @@ describe('Server Routes', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json().ignoreAnonymousStreams).toBe(false);
       expect(db.update).toHaveBeenCalled();
+      expect(sseManager.refresh).toHaveBeenCalledOnce();
     });
 
     it('updates Dispatcharr auth from token to credentials in place', async () => {
@@ -805,8 +806,36 @@ describe('Server Routes', () => {
         'http://dispatcharr.local:9191'
       );
       expect(response.json().dispatcharrAuthMode).toBe('credentials');
-      expect(sseManager.removeServer).toHaveBeenCalledWith(dispatcharrServer.id);
+      expect(response.json()).not.toHaveProperty('token');
+      expect(sseManager.removeServer).not.toHaveBeenCalled();
       expect(sseManager.refresh).toHaveBeenCalled();
+    });
+
+    it('does not persist rejected Dispatcharr replacement credentials', async () => {
+      app = await buildTestApp(ownerUser);
+      const dispatcharrServer = {
+        ...mockServer,
+        type: 'dispatcharr' as const,
+        name: 'Dispatcharr',
+        url: 'http://dispatcharr.local:9191',
+        token: 'dispatcharr-credentials:admin:old-password',
+      };
+      mockDbSelectLimit([dispatcharrServer]);
+      vi.mocked(DispatcharrClient.verifyServerAdmin).mockResolvedValueOnce({
+        success: false,
+        code: 'CONNECTION_FAILED',
+        message: 'Invalid credentials',
+      });
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/servers/${dispatcharrServer.id}`,
+        payload: { username: 'admin', password: 'wrong-password' },
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(db.update).not.toHaveBeenCalled();
+      expect(sseManager.refresh).not.toHaveBeenCalled();
     });
 
     it('rejects partial Dispatcharr auth updates', async () => {
