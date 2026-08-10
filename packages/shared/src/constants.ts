@@ -135,6 +135,8 @@ export const REDIS_KEYS = {
    */
   PENDING_SESSION: (serverId: string, sessionKey: string) =>
     `${_redisPrefix}tracearr:sessions:pending:${serverId}:${sessionKey}`,
+  DISPATCHARR_CATCHUP_PROGRAMME_START: (identity: string) =>
+    `${_redisPrefix}tracearr:dispatcharr:catchup:programme-start:${identity}`,
   /** Set of all pending session keys (serverId:sessionKey format) for enumeration */
   get PENDING_SESSION_IDS() {
     return `${_redisPrefix}tracearr:sessions:pending:ids`;
@@ -168,9 +170,17 @@ export const REDIS_KEYS = {
     const serverHash = serverIds.length > 0 ? serverIds.slice().sort().join(',') : 'all';
     return `${_redisPrefix}tracearr:filters:locations:${userId}:${serverHash}`;
   },
-  // Version check cache
+  // Version check caches remain separate so upstream and fork failures or
+  // expiry cannot hide one another.
+  get VERSION_LATEST_FORK() {
+    return `${_redisPrefix}tracearr:version:latest:fork`;
+  },
+  get VERSION_LATEST_UPSTREAM() {
+    return `${_redisPrefix}tracearr:version:latest:upstream`;
+  },
+  /** @deprecated Use the source-specific keys above. */
   get VERSION_LATEST() {
-    return `${_redisPrefix}tracearr:version:latest`;
+    return `${_redisPrefix}tracearr:version:latest:upstream`;
   },
   // Cooldown key to prevent hammering GitHub on restarts or retry storms
   get VERSION_CHECK_COOLDOWN() {
@@ -824,6 +834,7 @@ export const SERVER_TYPE_BRAND_COLORS: Record<string, string> = {
   plex: '#F4A825',
   jellyfin: '#895FDD',
   emby: '#39C668',
+  dispatcharr: '#14B8A6',
 };
 
 /** Pick best color for a server given its type and colors already used by other servers */

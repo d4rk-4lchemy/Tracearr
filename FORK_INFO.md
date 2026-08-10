@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA inspected: `feature/prepare-for-2.1.0` at `bf28c7df`
+- Fork branch/SHA inspected: `feature/prepare-for-2.1.0` at `a1595115`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `2483fe68`
-- Last shared upstream commit found during inspection: `2483fe68`
-- Latest upstream commit merged into the current working tree: `2483fe68`
+- Source branch/SHA inspected: `main` at `36d82db5`
+- Last shared upstream commit found during inspection: `36d82db5`
+- Latest upstream commit merged into the current working tree: `36d82db5`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -208,6 +208,20 @@ Dispatcharr differs from the original supported media servers in several ways:
 ## Future Upstream Update Notes
 
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
+
+### Latest upstream merge
+
+- Upstream `main` at `36d82db5` was merged into
+  `feature/prepare-for-2.1.0` on Monday, August 10, 2026 (merge commit
+  `a1595115`). The upstream live-statistics time-window implementation was
+  retained across server, mobile, shared contracts, and web charts.
+- The temporary fork-only Highcharts hidden-series lifecycle workaround was
+  removed as required: upstream now owns the chart update lifecycle. Its
+  time-window model also supersedes the fork's 21-point endpoint correction;
+  `SERVER_STATS_CONFIG` now uses the upstream time-bound retention settings.
+- Dispatcharr server-resource samples continue to use the same generic
+  `ServerResourceDataPoint` path, so no Dispatcharr-specific chart control
+  flow was retained.
 
 General merge rules:
 
