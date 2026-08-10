@@ -46,6 +46,10 @@ User-facing Dispatcharr behavior:
 - Display Live TV channel/programme information, channel logos, stream bitrate, codecs, resolution, and FFmpeg speed where available.
 - Jellyfin and Emby Live TV sessions are enriched from `/LiveTv/Programs`; the current programme is stored in `mediaTitle` while the channel remains in `live.*`. The EPG cache is shared per server/channel and refreshes the existing poller at programme boundaries. Web and mobile Live TV cards use the same channel-title/programme-subtitle layout as Dispatcharr; Plex keeps its legacy Live TV card for now.
 - Show Dispatcharr active sessions immediately from healthy WebSocket snapshots.
+- Enrich the first healthy WebSocket Live TV snapshot with the detailed status
+  of active channels. The summary status can omit bitrate, codecs, resolution,
+  and FFmpeg speed even when Dispatcharr already exposes them; later
+  `channel_stats` updates remain request-free.
 - Reconcile connector-owned server configuration (type, name, normalized URL,
   token, and anonymous-stream filtering) on the Redis leader, replacing stale
   connectors after local or cross-replica edits.

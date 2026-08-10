@@ -127,7 +127,20 @@ describe('DispatcharrRealtimeConnector', () => {
 
   it('bootstraps merged live and vod sessions from REST', async () => {
     vi.spyOn(DispatcharrClient.prototype, 'getWebSocketToken').mockResolvedValue('jwt-token');
-    vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockResolvedValue([{ channel_id: 'channel-1' }]);
+    const statusChannels = [{ channel_id: 'channel-1', client_count: 1 }];
+    const detailChannels = [
+      {
+        channel_id: 'channel-1',
+        avg_bitrate_kbps: 12000,
+        video_codec: 'h264',
+        audio_codec: 'aac',
+        resolution: '1920x1080',
+      },
+    ];
+    vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockResolvedValue(statusChannels);
+    const getActiveChannelDetails = vi
+      .spyOn(DispatcharrClient.prototype, 'getActiveChannelDetails')
+      .mockResolvedValue(detailChannels);
     vi.spyOn(DispatcharrClient.prototype, 'getVodStatsSnapshot').mockResolvedValue({
       vod_connections: [
         {
@@ -185,6 +198,24 @@ describe('DispatcharrRealtimeConnector', () => {
 
     expect(snapshot.sessions).toHaveLength(2);
     expect(snapshot.authoritative).toBe(false);
+    expect(getActiveChannelDetails).toHaveBeenCalledTimes(1);
+    expect(getActiveChannelDetails).toHaveBeenCalledWith(statusChannels);
+    expect(DispatcharrClient.prototype.buildNormalizedChannelsFromStatus).toHaveBeenCalledWith(
+      statusChannels,
+      detailChannels
+    );
+
+    const updateSnapshotPromise = nextSnapshot(connector);
+    ws.onmessage?.call(ws, {
+      data: JSON.stringify({
+        data: {
+          type: 'channel_stats',
+          stats: JSON.stringify({ channels: statusChannels }),
+        },
+      }),
+    });
+    await updateSnapshotPromise;
+    expect(getActiveChannelDetails).toHaveBeenCalledTimes(1);
   });
 
   it('does not publish a partial REST bootstrap as an authoritative session snapshot', async () => {

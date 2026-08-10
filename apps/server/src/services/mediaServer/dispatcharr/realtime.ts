@@ -419,9 +419,18 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     forceEnrichment = false,
     emitSnapshot = true
   ): Promise<void> {
+    // The WebSocket bootstrap starts from the summary status endpoint. It has
+    // enough information to identify a playback, but can omit the codec,
+    // bitrate, resolution, and FFmpeg fields returned by the active channel's
+    // detail endpoint. Enrich that first snapshot once so the pending card is
+    // complete before the 30s history-confirmation threshold. Subsequent WS
+    // updates stay request-free and use their own channel_stats payload.
+    const detailChannels = forceEnrichment
+      ? await this.client.getActiveChannelDetails(statusChannels)
+      : statusChannels;
     const normalizedChannels = await this.client.buildNormalizedChannelsFromStatus(
       statusChannels,
-      statusChannels
+      detailChannels
     );
 
     await this.refreshUserCache(normalizedChannels, forceEnrichment);
