@@ -1,16 +1,16 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import Highcharts from 'highcharts';
-import { HighchartsReact, type HighchartsReactRefObject } from 'highcharts-react-official';
-import type { ServerResourceDataPoint } from '@tracearr/shared';
+import { HighchartsReact } from 'highcharts-react-official';
+import { SERVER_STATS_CONFIG, type ServerResourceDataPoint } from '@tracearr/shared';
 import {
-  LIVE_STATS_TICK_INTERVAL,
-  LIVE_STATS_TICK_INTERVAL_NARROW,
-  LIVE_STATS_X_LABELS,
+  liveStatsTimeAxis,
+  nearestPointTooltip,
+  useSlidingWindow,
+  withGaps,
 } from './liveStatsAxis';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Cpu, MemoryStick } from 'lucide-react';
-import { ChartErrorBoundary } from './ChartErrorBoundary';
 
 // Colors matching Plex's style
 const COLORS = {
@@ -22,7 +22,12 @@ const COLORS = {
   systemGradientEnd: 'rgba(204, 123, 159, 0.05)',
 };
 
-const CHART_CONTAINER_PROPS = { style: { width: '100%', height: '100%' } };
+// In highcharts-react's effect deps - inline literals would update per render
+const UPDATE_ARGS: [boolean, boolean, boolean] = [true, true, false];
+const CONTAINER_PROPS = { style: { width: '100%', height: '100%' } };
+
+type ProcessKey = 'processCpuUtilization' | 'processMemoryUtilization';
+type HostKey = 'hostCpuUtilization' | 'hostMemoryUtilization';
 
 export interface ResourceMultiSeries {
   serverId: string;
@@ -40,28 +45,27 @@ interface ServerResourceChartsProps {
     hostMemory: number | null;
     processMemory: number;
   } | null;
-  /** One host-metric line per server; replaces the process/system split */
+  /** One per-server line each; host metrics are dropped in this mode */
   multiSeries?: ResourceMultiSeries[];
   /** Single-view name for the process series (defaults to Plex's) */
   processLabel?: string;
+  clockSkewMs?: number;
 }
 
-interface ResourceChartProps {
+interface ResourceChartProps extends Omit<ServerResourceChartsProps, 'averages'> {
   title: string;
   icon: React.ReactNode;
-  data: ServerResourceDataPoint[] | undefined;
-  processKey: 'processCpuUtilization' | 'processMemoryUtilization';
-  hostKey: 'hostCpuUtilization' | 'hostMemoryUtilization';
+  processKey: ProcessKey;
+  hostKey: HostKey;
   processAvg?: number;
   hostAvg?: number | null;
-  isLoading?: boolean;
-  multiSeries?: ResourceMultiSeries[];
-  processLabel?: string;
 }
 
-/**
- * Single resource chart (CPU or RAM)
- */
+const pointsFor = (
+  data: ServerResourceDataPoint[],
+  key: ProcessKey | HostKey
+): [number, number | null][] => data.map((p) => [p.at * 1000, p[key]]);
+
 function ResourceChart({
   title,
   icon,
@@ -73,140 +77,78 @@ function ResourceChart({
   isLoading,
   multiSeries,
   processLabel,
+  clockSkewMs = 0,
 }: ResourceChartProps) {
-  const chartRef = useRef<HighchartsReactRefObject>(null);
-  const pendingDataBySeriesId = useRef(new Map<string, Highcharts.SeriesLineOptions['data']>());
-  const [hiddenServerIds, setHiddenServerIds] = useState<Set<string>>(() => new Set());
-  const recordLegendVisibility = useCallback((serverId: string, isVisible: boolean) => {
-    setHiddenServerIds((current) => {
-      const next = new Set(current);
-      if (isVisible) next.delete(serverId);
-      else next.add(serverId);
-      return next;
-    });
-  }, []);
-  const applyPendingDataOnShow = useCallback(function (this: Highcharts.Series) {
-    const id = this.options.id;
-    if (typeof id !== 'string') return;
-
-    const pendingData = pendingDataBySeriesId.current.get(id);
-    if (!pendingData) return;
-
-    pendingDataBySeriesId.current.delete(id);
-    // `show` fires after Highcharts marks the series visible. Its own
-    // setVisible call performs the following redraw, so this does not need one.
-    this.setData(pendingData, false, false, true);
-  }, []);
+  const chartRef = useRef<HighchartsReact.RefObject | null>(null);
   const isMulti = !!multiSeries && multiSeries.length > 0;
-  const hasHiddenSeries = isMulti && hiddenServerIds.size > 0;
-  const hasData = isMulti ? multiSeries.some((s) => s.data.length > 0) : !!data && data.length > 0;
+  const hasData = isMulti ? multiSeries.some((s) => s.data.length > 0) : !!data?.length;
+
+  useSlidingWindow(chartRef, clockSkewMs);
 
   const chartOptions = useMemo<Highcharts.Options>(() => {
-    if (!hasData) {
-      return {};
-    }
+    if (!hasData) return {};
 
-    let series: Highcharts.SeriesOptionsType[];
-    let allValues: number[];
+    const gap = SERVER_STATS_CONFIG.GAP_BREAK_SECONDS;
 
-    if (isMulti) {
-      // Anchor each server to its own newest sample: media server clocks
-      // disagree, and a shared anchor lets one skewed clock push every other
-      // line off the fixed -120..0 axis
-      series = multiSeries
-        .filter((s) => s.data.some((p) => p[hostKey] != null))
-        .map((s) => {
-          const newestAt = s.data[s.data.length - 1]?.at ?? 0;
-          return {
-            type: 'line' as const,
-            id: s.serverId,
-            name: s.serverName,
-            color: s.color,
-            visible: !hiddenServerIds.has(s.serverId),
-            // Samples arrive every 6s; snapping x to that grid puts every
-            // server's points on shared positions so the tooltip groups them
-            data: s.data.map(
-              (p) => [-Math.round((newestAt - p.at) / 6) * 6, p[hostKey]] as [number, number | null]
-            ),
-          };
-        });
-      allValues = multiSeries.flatMap((s) =>
-        s.data.map((p) => p[hostKey]).filter((v): v is number => v != null)
-      );
-    } else {
-      if (!data || data.length === 0) return {};
-
-      // Map data points to x positions in -120 to 0 range
-      // Data is sorted oldest first, spread across the 2-minute window
-      const processData: [number, number][] = [];
-      const hostData: [number, number | null][] = [];
-
-      const n = data.length;
-      for (let i = 0; i < n; i++) {
-        const point = data[i];
-        if (!point) continue;
-        // Spread points from -120 (oldest) to 0 (newest)
-        const x = n === 1 ? 0 : -120 + (i * 120) / (n - 1);
-        processData.push([x, point[processKey]]);
-        hostData.push([x, point[hostKey]]);
-      }
-
-      series = [
-        {
-          type: 'area',
-          id: 'process',
-          name: processLabel ?? 'Plex Media Server',
-          data: processData,
-          color: COLORS.process,
-          fillColor: {
-            linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
-            stops: [
-              [0, COLORS.processGradientStart],
-              [1, COLORS.processGradientEnd],
-            ],
+    // Host metrics belong to the box: N co-hosted servers, N identical lines
+    const series: Highcharts.SeriesOptionsType[] = isMulti
+      ? multiSeries.map((s) => ({
+          type: 'line' as const,
+          name: s.serverName,
+          color: s.color,
+          data: withGaps(pointsFor(s.data, processKey), gap),
+        }))
+      : [
+          {
+            type: 'area',
+            name: processLabel ?? 'Plex Media Server',
+            color: COLORS.process,
+            data: withGaps(pointsFor(data ?? [], processKey), gap),
+            fillColor: {
+              linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+              stops: [
+                [0, COLORS.processGradientStart],
+                [1, COLORS.processGradientEnd],
+              ],
+            },
           },
-        },
-        {
-          type: 'area',
-          id: 'system',
-          name: 'System',
-          data: hostData,
-          color: COLORS.system,
-          fillColor: {
-            linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
-            stops: [
-              [0, COLORS.systemGradientStart],
-              [1, COLORS.systemGradientEnd],
-            ],
+          {
+            type: 'area',
+            name: 'System',
+            color: COLORS.system,
+            data: withGaps(pointsFor(data ?? [], hostKey), gap),
+            fillColor: {
+              linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+              stops: [
+                [0, COLORS.systemGradientStart],
+                [1, COLORS.systemGradientEnd],
+              ],
+            },
           },
-        },
-      ];
-      allValues = [...processData, ...hostData]
+        ];
+
+    const values = series.flatMap((s) =>
+      ((s as { data?: [number, number | null][] }).data ?? [])
         .map(([, y]) => y)
-        .filter((v): v is number => v != null);
-    }
+        .filter((v): v is number => v != null)
+    );
+    const maxValue = Math.max(...values, 0);
 
-    // Calculate dynamic Y-axis max (round up to nearest 10, min 20)
-    const maxValue = Math.max(...allValues, 0);
-    const yMax = Math.max(20, Math.ceil(maxValue / 10) * 10);
+    // Process metrics idle near zero; only host values need a coarse scale
+    const yMax =
+      maxValue <= 5 ? Math.max(2, Math.ceil(maxValue * 1.3)) : Math.ceil(maxValue / 10) * 10;
 
     return {
       chart: {
         type: 'area',
         height: 180,
         backgroundColor: 'transparent',
-        style: {
-          fontFamily: 'inherit',
-        },
+        style: { fontFamily: 'inherit' },
         spacing: [10, 10, 15, 10],
         reflow: true,
       },
-      title: {
-        text: undefined,
-      },
-      credits: {
-        enabled: false,
-      },
+      title: { text: undefined },
+      credits: { enabled: false },
       legend: {
         enabled: true,
         align: 'left',
@@ -217,212 +159,69 @@ function ResourceChart({
           fontWeight: 'normal',
           fontSize: '11px',
         },
-        itemHoverStyle: {
-          color: 'hsl(var(--foreground))',
-        },
+        itemHoverStyle: { color: 'hsl(var(--foreground))' },
       },
-      xAxis: {
-        type: 'linear',
-        min: -120,
-        max: 0,
-        tickInterval: LIVE_STATS_TICK_INTERVAL,
-        labels: {
-          style: {
-            color: 'hsl(var(--muted-foreground))',
-            fontSize: '10px',
-          },
-          formatter: function () {
-            return LIVE_STATS_X_LABELS[this.value as number] || '';
-          },
-        },
-        lineColor: 'hsl(var(--border))',
-        tickColor: 'hsl(var(--border))',
-      },
+      xAxis: liveStatsTimeAxis(Date.now() + clockSkewMs),
       yAxis: {
-        title: {
-          text: undefined,
-        },
+        title: { text: undefined },
         labels: {
-          style: {
-            color: 'hsl(var(--muted-foreground))',
-            fontSize: '10px',
-          },
+          style: { color: 'hsl(var(--muted-foreground))', fontSize: '10px' },
           format: '{value}%',
         },
         gridLineColor: 'hsl(var(--border) / 0.5)',
         min: 0,
         max: yMax,
-        tickInterval: yMax <= 20 ? 5 : 10,
+        tickInterval: yMax <= 10 ? 1 : yMax <= 20 ? 5 : 10,
       },
       plotOptions: {
         series: {
-          marker: {
-            enabled: false,
-            states: {
-              hover: {
-                enabled: true,
-                radius: 3,
-              },
-            },
-          },
+          marker: { enabled: false, states: { hover: { enabled: true, radius: 3 } } },
           lineWidth: 2,
-          states: {
-            hover: {
-              lineWidth: 2,
-            },
-          },
-          connectNulls: false, // Don't connect across null values
-          events: {
-            legendItemClick: function () {
-              if (!isMulti || typeof this.options.id !== 'string') return true;
-              // Highcharts performs its native legend toggle before this
-              // legacy series event, so `visible` is already the new state.
-              recordLegendVisibility(this.options.id, this.visible);
-              return true;
-            },
-            show: applyPendingDataOnShow,
-          },
+          states: { hover: { lineWidth: 2 } },
+          connectNulls: false,
         },
-        area: {
-          threshold: null,
-        },
+        area: { threshold: null },
       },
       tooltip: {
-        shared: true,
         backgroundColor: 'hsl(var(--popover))',
         borderColor: 'hsl(var(--border))',
-        style: {
-          color: 'hsl(var(--popover-foreground))',
-          fontSize: '11px',
-        },
-        formatter: function () {
-          const points = this.points || [];
-          let html = '';
-          for (const point of points) {
-            if (point.y !== null) {
-              const color = point.series.color;
-              html += `<span style="color:${color}">●</span> ${point.series.name}: <b>${Math.round(point.y as number)}%</b><br/>`;
-            }
-          }
-          return html;
-        },
+        style: { color: 'hsl(var(--popover-foreground))', fontSize: '11px' },
+        formatter: nearestPointTooltip((y) => `${Math.round(y)}%`),
       },
       series,
       responsive: {
         rules: [
           {
-            condition: {
-              maxWidth: 400,
-            },
+            condition: { maxWidth: 400 },
             chartOptions: {
               legend: {
                 align: 'center',
                 layout: 'horizontal',
-                itemStyle: {
-                  fontSize: '10px',
-                },
+                itemStyle: { fontSize: '10px' },
               },
-              xAxis: {
-                tickInterval: LIVE_STATS_TICK_INTERVAL_NARROW,
-                labels: {
-                  style: {
-                    fontSize: '9px',
-                  },
-                },
-              },
+              xAxis: liveStatsTimeAxis(Date.now() + clockSkewMs, true),
             },
           },
         ],
       },
     };
-  }, [
-    data,
-    processKey,
-    hostKey,
-    multiSeries,
-    isMulti,
-    hasData,
-    processLabel,
-    applyPendingDataOnShow,
-    hiddenServerIds,
-    recordLegendVisibility,
-  ]);
+  }, [data, processKey, hostKey, multiSeries, isMulti, hasData, processLabel, clockSkewMs]);
 
-  useLayoutEffect(() => {
-    // When every series is visible, leave updates to the standard upstream
-    // HighchartsReact lifecycle. Only take over while a legend-hidden series
-    // would make Highcharts 13 destroy its points during a data update.
-    if (!hasHiddenSeries) return;
-
-    const chart = chartRef.current?.chart;
-    const desiredSeries = chartOptions.series;
-    if (!chart || !desiredSeries) return;
-
-    const desiredById = new Map(
-      desiredSeries
-        .filter((series): series is Highcharts.SeriesOptionsType & { id: string } =>
-          typeof series.id === 'string'
-        )
-        .map((series) => [series.id, series])
-    );
-
-    for (const series of [...chart.series]) {
-      if (!desiredById.has(series.options.id ?? '')) {
-        if (typeof series.options.id === 'string') {
-          pendingDataBySeriesId.current.delete(series.options.id);
-        }
-        series.remove(false);
-      }
-    }
-
-    for (const [id, options] of desiredById) {
-      const existing = chart.series.find((series) => series.options.id === id);
-      if (existing) {
-        const nextData = (options as Highcharts.SeriesLineOptions).data ?? [];
-        if (existing.visible) {
-          existing.setData(nextData, false, false, true);
-        } else {
-          // Highcharts 13 destroys hidden points in setData rather than taking
-          // its visible-series soft-update path. Keep these samples outside of
-          // Highcharts until the native legend shows the series again.
-          pendingDataBySeriesId.current.set(id, nextData);
-        }
-      } else {
-        chart.addSeries(options, false);
-      }
-    }
-
-    const yAxis = chart.yAxis[0];
-    const yMax = (chartOptions.yAxis as Highcharts.YAxisOptions | undefined)?.max;
-    if (yAxis && typeof yMax === 'number') {
-      const { userMin, userMax } = yAxis.getExtremes();
-      if (userMin !== 0 || userMax !== yMax) {
-        yAxis.setExtremes(0, yMax, false, false);
-      }
-      const tickInterval = yMax <= 20 ? 5 : 10;
-      if (yAxis.options.tickInterval !== tickInterval) {
-        yAxis.update({ tickInterval }, false);
-      }
-    }
-
-    chart.redraw(false);
-  }, [chartOptions, hasHiddenSeries]);
-
-  const chartResetKey = isMulti
-    ? multiSeries
-        ?.map((s) => `${s.serverId}:${s.data[s.data.length - 1]?.at ?? ''}`)
-        .join('|')
-    : data?.[data.length - 1]?.at;
+  const header = (
+    <CardHeader className="pb-2">
+      <CardTitle className="flex items-center gap-2 text-sm font-medium">
+        {icon}
+        {title}
+        {/* Per-process, not per-host: an order of magnitude smaller */}
+        {isMulti && <span className="text-muted-foreground font-normal">per server</span>}
+      </CardTitle>
+    </CardHeader>
+  );
 
   if (isLoading) {
     return (
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            {icon}
-            {title}
-          </CardTitle>
-        </CardHeader>
+        {header}
         <CardContent>
           <ChartSkeleton height={180} />
         </CardContent>
@@ -433,12 +232,7 @@ function ResourceChart({
   if (!hasData) {
     return (
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            {icon}
-            {title}
-          </CardTitle>
-        </CardHeader>
+        {header}
         <CardContent>
           <div
             className="text-muted-foreground flex items-center justify-center rounded-lg border border-dashed text-sm"
@@ -453,29 +247,20 @@ function ResourceChart({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center justify-between text-sm font-medium">
-          <span className="flex items-center gap-2">
-            {icon}
-            {title}
-          </span>
-        </CardTitle>
-      </CardHeader>
+      {header}
       <CardContent className="pb-2">
-        <ChartErrorBoundary resetKey={chartResetKey} title={title}>
-          <HighchartsReact
-            ref={chartRef}
-            highcharts={Highcharts}
-            options={chartOptions}
-            allowChartUpdate={!hasHiddenSeries}
-            containerProps={CHART_CONTAINER_PROPS}
-          />
-        </ChartErrorBoundary>
-        {/* Averages row */}
+        <HighchartsReact
+          ref={chartRef}
+          highcharts={Highcharts}
+          options={chartOptions}
+          // animation:false, or the default swing cancels the in-flight pan
+          updateArgs={UPDATE_ARGS}
+          containerProps={CONTAINER_PROPS}
+        />
         <div className="text-muted-foreground mt-1 flex flex-wrap justify-end gap-4 pr-2 text-xs">
           {isMulti ? (
             multiSeries.map((s) => {
-              const values = s.data.map((p) => p[hostKey]).filter((v): v is number => v != null);
+              const values = s.data.map((p) => p[processKey]).filter((v): v is number => v != null);
               const avg =
                 values.length > 0
                   ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length)
@@ -483,7 +268,7 @@ function ResourceChart({
               return (
                 <span key={s.serverId}>
                   <span style={{ color: s.color }}>●</span> Avg:{' '}
-                  <span className="text-foreground font-medium">{avg ?? '\u2014'}%</span>
+                  <span className="text-foreground font-medium">{avg ?? '—'}%</span>
                 </span>
               );
             })
@@ -491,11 +276,11 @@ function ResourceChart({
             <>
               <span>
                 <span style={{ color: COLORS.process }}>●</span> Avg:{' '}
-                <span className="text-foreground font-medium">{processAvg ?? '\u2014'}%</span>
+                <span className="text-foreground font-medium">{processAvg ?? '—'}%</span>
               </span>
               <span>
                 <span style={{ color: COLORS.system }}>●</span> Avg:{' '}
-                <span className="text-foreground font-medium">{hostAvg ?? '\u2014'}%</span>
+                <span className="text-foreground font-medium">{hostAvg ?? '—'}%</span>
               </span>
             </>
           )}
@@ -505,42 +290,36 @@ function ResourceChart({
   );
 }
 
-/**
- * Server resource monitoring charts (CPU + RAM)
- * Displays real-time server resource utilization matching Plex's dashboard style
- */
+/** Live CPU and RAM utilization, one card each. */
 export function ServerResourceCharts({
   data,
   isLoading,
   averages,
   multiSeries,
   processLabel,
+  clockSkewMs,
 }: ServerResourceChartsProps) {
+  const shared = { data, isLoading, multiSeries, processLabel, clockSkewMs };
+
   return (
     <>
       <ResourceChart
+        {...shared}
         title="CPU"
         icon={<Cpu className="h-4 w-4" />}
-        data={data}
         processKey="processCpuUtilization"
         hostKey="hostCpuUtilization"
         processAvg={averages?.processCpu}
         hostAvg={averages?.hostCpu}
-        isLoading={isLoading}
-        multiSeries={multiSeries}
-        processLabel={processLabel}
       />
       <ResourceChart
+        {...shared}
         title="RAM"
         icon={<MemoryStick className="h-4 w-4" />}
-        data={data}
         processKey="processMemoryUtilization"
         hostKey="hostMemoryUtilization"
         processAvg={averages?.processMemory}
         hostAvg={averages?.hostMemory}
-        isLoading={isLoading}
-        multiSeries={multiSeries}
-        processLabel={processLabel}
       />
     </>
   );

@@ -1,11 +1,7 @@
 /**
- * Live server stats (CPU/RAM and bandwidth). Plex serves its statistics
- * endpoints behind a short Redis cache, so concurrent dashboard viewers cost
- * one Plex call per tick each half; resources and bandwidth cache separately
- * because the bandwidth TTL must stay under the chart's fastest poll option
- * (1s). Jellyfin/Emby stats arrive as server.stats events from the SSE
- * plugin and sit in a rolling Redis buffer that expires shortly after the
- * plugin goes quiet, so charts empty honestly instead of freezing.
+ * Live server stats (CPU/RAM and bandwidth). Plex is fetched behind a short
+ * Redis cache; Jellyfin/Emby arrive as SSE plugin events into a rolling
+ * buffer, so their charts empty when a plugin goes quiet.
  */
 
 import type { Redis } from 'ioredis';
@@ -36,9 +32,15 @@ export interface PluginStatsSample {
   processMemoryUtilization: number | null;
 }
 
-// ~2.5 minutes of 6s samples, mirroring what Plex's resources endpoint returns
-const PLUGIN_STATS_WINDOW = 27;
-const PLUGIN_STATS_TTL_SECONDS = 60;
+// SSE plugin timer period as of 0.4.x; labels the sample, never positions it
+const PLUGIN_SAMPLE_INTERVAL_SECONDS = 6;
+
+const PLUGIN_STATS_WINDOW = Math.ceil(
+  (SERVER_STATS_CONFIG.WINDOW_SECONDS * 1.3) / PLUGIN_SAMPLE_INTERVAL_SECONDS
+);
+
+// Outlives the chart window so a dropped plugin drains rather than blanking
+const PLUGIN_STATS_TTL_SECONDS = SERVER_STATS_CONFIG.WINDOW_SECONDS * 2;
 
 // Coalesce concurrent misses per key so a hung upstream (10s client timeout)
 // costs one in-flight request instead of one per poll tick per viewer
@@ -84,7 +86,7 @@ export async function getServerResourceStats(
     CACHE_TTL.SERVER_STATS_RESOURCES,
     () =>
       new PlexClient({ url: server.url, token: server.token }).getServerStatistics(
-        SERVER_STATS_CONFIG.TIMESPAN_SECONDS
+        SERVER_STATS_CONFIG.TIMESPAN_PARAM
       )
   );
 }
@@ -99,9 +101,19 @@ export async function getServerBandwidthStats(
     CACHE_TTL.SERVER_STATS_BANDWIDTH,
     () =>
       new PlexClient({ url: server.url, token: server.token }).getServerBandwidth(
-        BANDWIDTH_STATS_CONFIG.TIMESPAN_SECONDS
+        BANDWIDTH_STATS_CONFIG.TIMESPAN_PARAM
       )
   );
+}
+
+// A corrupt entry must not block the write
+function headTimestamp(entry: string | null): number | null {
+  if (!entry) return null;
+  try {
+    return (JSON.parse(entry) as ServerResourceDataPoint).at;
+  } catch {
+    return null;
+  }
 }
 
 export async function recordServerStatsSample(
@@ -115,9 +127,11 @@ export async function recordServerStatsSample(
     return;
   }
 
+  // Re-stamp with our clock - the plugin sends its host's, and a drifting
+  // host shifts its whole line against the others
   const point: ServerResourceDataPoint = {
-    at: sample.at,
-    timespan: SERVER_STATS_CONFIG.TIMESPAN_SECONDS,
+    at: Math.floor(Date.now() / 1000),
+    timespan: PLUGIN_SAMPLE_INTERVAL_SECONDS,
     hostCpuUtilization: sample.hostCpuUtilization,
     processCpuUtilization: sample.processCpuUtilization,
     hostMemoryUtilization: sample.hostMemoryUtilization,
@@ -126,6 +140,10 @@ export async function recordServerStatsSample(
 
   const key = REDIS_KEYS.SERVER_STATS_SAMPLES(serverId);
   try {
+    // Best-effort: calls are concurrent, so a race can still let both
+    // through. The client dedupes by timestamp anyway.
+    if (headTimestamp(await redis.lindex(key, 0)) === point.at) return;
+
     await redis
       .multi()
       .lpush(key, JSON.stringify(point))
@@ -155,6 +173,23 @@ export async function getPluginServerStats(
   }
 }
 
+// Past this, the gap is a wrong clock rather than sampling lag
+const MAX_PLAUSIBLE_LAG_SECONDS = 15;
+
+/** Seconds to shift a Plex server's timestamps onto our clock. Zero when the
+ *  gap reads as sampling lag, so a synced server keeps its own timestamps. */
+export function plexClockShift(...series: { at: number }[][]): number {
+  const newest = Math.max(...series.flat().map((p) => p.at), 0);
+  if (newest === 0) return 0;
+
+  const lag = Math.floor(Date.now() / 1000) - newest;
+  return lag - Math.min(Math.max(lag, 0), MAX_PLAUSIBLE_LAG_SECONDS);
+}
+
+function shiftPoints<T extends { at: number }>(points: T[], shift: number): T[] {
+  return shift === 0 ? points : points.map((p) => ({ ...p, at: p.at + shift }));
+}
+
 export async function getServerLiveStats(redis: Redis, server: ServerRow) {
   if (server.type !== 'plex') {
     return {
@@ -171,10 +206,14 @@ export async function getServerLiveStats(redis: Redis, server: ServerRow) {
     getServerBandwidthStats(redis, server),
   ]);
 
+  // One absolute axis for every server, so an unsynced Plex box would draw
+  // off it entirely. After the cache, so the shift is fresh.
+  const shift = plexClockShift(statistics, bandwidthStats.points);
+
   return {
-    statistics,
-    bandwidth: bandwidthStats.points,
-    bandwidthSamples: bandwidthStats.samples,
+    statistics: shiftPoints(statistics, shift),
+    bandwidth: shiftPoints(bandwidthStats.points, shift),
+    bandwidthSamples: shiftPoints(bandwidthStats.samples, shift),
     bandwidthAccounts: bandwidthStats.accounts,
     bandwidthDevices: bandwidthStats.devices,
   };

@@ -1076,8 +1076,8 @@ export interface ServerLiveStats {
   bandwidthAccounts: BandwidthAccount[];
   /** Devices referenced by bandwidthSamples */
   bandwidthDevices: BandwidthDevice[];
-  /** When this data was fetched */
-  fetchedAt: Date;
+  /** ISO, on the Tracearr server's clock - the charts' axis anchor */
+  fetchedAt: string;
 }
 
 // Webhook format types

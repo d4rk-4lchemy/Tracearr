@@ -135,8 +135,6 @@ export const REDIS_KEYS = {
    */
   PENDING_SESSION: (serverId: string, sessionKey: string) =>
     `${_redisPrefix}tracearr:sessions:pending:${serverId}:${sessionKey}`,
-  DISPATCHARR_CATCHUP_PROGRAMME_START: (identity: string) =>
-    `${_redisPrefix}tracearr:dispatcharr:catchup:programme-start:${identity}`,
   /** Set of all pending session keys (serverId:sessionKey format) for enumeration */
   get PENDING_SESSION_IDS() {
     return `${_redisPrefix}tracearr:sessions:pending:ids`;
@@ -170,17 +168,9 @@ export const REDIS_KEYS = {
     const serverHash = serverIds.length > 0 ? serverIds.slice().sort().join(',') : 'all';
     return `${_redisPrefix}tracearr:filters:locations:${userId}:${serverHash}`;
   },
-  // Version check caches (kept separate so fork and upstream failures/expiry do
-  // not hide one another).
-  get VERSION_LATEST_FORK() {
-    return `${_redisPrefix}tracearr:version:latest:fork`;
-  },
-  get VERSION_LATEST_UPSTREAM() {
-    return `${_redisPrefix}tracearr:version:latest:upstream`;
-  },
-  /** @deprecated Use the source-specific keys above. */
+  // Version check cache
   get VERSION_LATEST() {
-    return `${_redisPrefix}tracearr:version:latest:upstream`;
+    return `${_redisPrefix}tracearr:version:latest`;
   },
   // Cooldown key to prevent hammering GitHub on restarts or retry storms
   get VERSION_CHECK_COOLDOWN() {
@@ -335,9 +325,9 @@ export const CACHE_TTL = {
   SERVER_HEALTH: 600, // 10 minutes - servers marked unhealthy if no update
   SERVER_CONNECTION: 600, // 10 minutes - live runtime state, not persisted to DB
   // Live stats micro-cache: collapses concurrent dashboard viewers into one
-  // Plex call per tick. Bandwidth TTL must stay under the fastest poll
-  // option (1s) or that chart setting stops meaning anything.
-  SERVER_STATS_RESOURCES: 5,
+  // Plex call per tick. Each stays under its endpoint's sample spacing so a
+  // tick can't serve an entry that already missed a sample.
+  SERVER_STATS_RESOURCES: 4,
   SERVER_STATS_BANDWIDTH: 1,
   LOCATION_FILTERS: 300, // 5 minutes - filter options change infrequently
   VERSION_CHECK: 21600, // 6 hours - version check interval
@@ -834,7 +824,6 @@ export const SERVER_TYPE_BRAND_COLORS: Record<string, string> = {
   plex: '#F4A825',
   jellyfin: '#895FDD',
   emby: '#39C668',
-  dispatcharr: '#14B8A6',
 };
 
 /** Pick best color for a server given its type and colors already used by other servers */
@@ -858,30 +847,41 @@ export const TIME_MS = {
 } as const;
 
 // Server resource statistics configuration (CPU, RAM)
-// Used with Plex's undocumented /statistics/resources endpoint
+// Used with Plex's undocumented /statistics/resources endpoint.
+//
+// Plex samples every 5s, not the 6 its per-point `timespan` field implies.
+// The timer free-runs and drifts, so timestamps land on no fixed grid.
 export const SERVER_STATS_CONFIG = {
-  // Poll interval in seconds (how often we fetch new data)
-  POLL_INTERVAL_SECONDS: 6,
-  // Timespan parameter for Plex API (MUST be 6 - other values return empty!)
-  TIMESPAN_SECONDS: 6,
-  // Fixed 2-minute window: include both endpoints, so 20 six-second gaps
-  // require 21 samples.
+  // Granularity enum, not seconds (days=3, hours=4, seconds=6).
+  // Resources answers only 6; bandwidth also answers 0-4 for rollups.
+  TIMESPAN_PARAM: 6,
+  POLL_INTERVAL_SECONDS: 5,
   WINDOW_SECONDS: 120,
-  DATA_POINTS: 21,
+  // Charts hold their right edge this far behind real time so the newest
+  // region is always populated. Sized to the slowest source, the 6s plugin.
+  NOW_DELAY_SECONDS: 6,
+  // Memory cap, not a window - charts bound themselves by time
+  MAX_POINTS: 32,
+  // Break the line rather than bridge dead air: 3 Plex samples, 2 plugin ones
+  GAP_BREAK_SECONDS: 15,
 } as const;
 
-// Server bandwidth statistics configuration (Local/Remote)
-// Used with Plex's undocumented /statistics/bandwidth endpoint
-// Data arrives per-second from Plex, displayed at 1-second granularity
+/**
+ * How far back live-stats points are kept: the visible window, plus the delay
+ * the chart holds its right edge by, plus slack. Retaining only the window
+ * drops points while they are still inside the left wall.
+ */
+export function liveStatsRetentionSeconds(windowSeconds: number): number {
+  return windowSeconds + SERVER_STATS_CONFIG.NOW_DELAY_SECONDS + 10;
+}
+
+// Plex-only; Jellyfin and Emby expose no server-wide byte counter.
+// Rows are per-second and sparse - an absent second moved no bytes, so a
+// point count is not a time window.
 export const BANDWIDTH_STATS_CONFIG = {
-  // Poll interval in seconds (how often we fetch new data)
-  POLL_INTERVAL_SECONDS: 6,
-  // Timespan parameter for Plex API
-  TIMESPAN_SECONDS: 6,
-  // Fixed 2-minute window (120 data points at 1s intervals)
+  TIMESPAN_PARAM: 6,
   WINDOW_SECONDS: 120,
-  // Data points to display (2 min * 1/s = 120 points)
-  DATA_POINTS: 120,
+  MAX_POINTS: 150,
 } as const;
 
 // Sentinel returned by the merge API when combining server users on the same
