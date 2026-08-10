@@ -45,7 +45,6 @@ export interface Server {
   url: string;
   dispatcharrAuthMode?: DispatcharrAuthMode;
   ignoreAnonymousStreams?: boolean;
-  dispatcharrLiveHistoryThresholdSeconds?: number;
   displayOrder?: number;
   color?: string | null;
   createdAt: Date;

@@ -55,7 +55,8 @@ async function main(): Promise<void> {
     const dispatcharrServers = await listDispatcharrServers();
 
     if (dispatcharrServers.length === 0) {
-      console.log('No Dispatcharr servers found. Nothing to purge.\n');
+      await purgeDispatcharrCommand();
+      console.log('No Dispatcharr servers found. Data and fork schema are already clean.\n');
       return;
     }
 

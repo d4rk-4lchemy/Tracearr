@@ -60,9 +60,21 @@ export function updatePendingSession(
     confirmThresholdMs
   );
 
+  // The latest snapshot owns metadata, while progress is monotonic.  Provider
+  // snapshots can be partial or arrive out of order, so never let one regress
+  // the progress shown on the pending card or persisted at confirmation.
+  const latestProgressMs = Math.max(
+    pendingData.processed.progressMs ?? 0,
+    processed?.progressMs ?? 0
+  );
+  const refreshedProcessed =
+    processed && latestProgressMs > (processed.progressMs ?? 0)
+      ? { ...processed, progressMs: latestProgressMs }
+      : (processed ?? pendingData.processed);
+
   const updatedData: PendingSessionData = {
     ...pendingData,
-    processed: processed ?? pendingData.processed,
+    processed: refreshedProcessed,
     confirmation: confirmed
       ? { ...updatedConfirmation, confirmedPlayback: true }
       : updatedConfirmation,

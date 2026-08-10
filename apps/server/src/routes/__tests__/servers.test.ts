@@ -200,7 +200,6 @@ const mockServer = {
   url: 'http://localhost:32400',
   token: 'encrypted_test-token',
   ignoreAnonymousStreams: true,
-  dispatcharrLiveHistoryThresholdSeconds: 30,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -225,7 +224,6 @@ describe('Server Routes', () => {
           url: mockServer.url,
           token: mockServer.token,
           ignoreAnonymousStreams: true,
-          dispatcharrLiveHistoryThresholdSeconds: 30,
           displayOrder: 0,
           color: '#4B8BFF',
           createdAt: mockServer.createdAt,
@@ -262,7 +260,6 @@ describe('Server Routes', () => {
           url: 'http://localhost:8096',
           token: 'guest-token',
           ignoreAnonymousStreams: true,
-          dispatcharrLiveHistoryThresholdSeconds: 30,
           displayOrder: 0,
           color: '#9B59B6',
           createdAt: new Date(),
@@ -292,7 +289,6 @@ describe('Server Routes', () => {
           url: 'http://dispatcharr.local:9191',
           token: 'dispatcharr-credentials:abc123',
           ignoreAnonymousStreams: true,
-          dispatcharrLiveHistoryThresholdSeconds: 30,
           displayOrder: 0,
           color: '#F97316',
           createdAt: new Date(),
@@ -305,7 +301,6 @@ describe('Server Routes', () => {
           url: 'http://dispatcharr-token.local:9191',
           token: 'opaque-token',
           ignoreAnonymousStreams: true,
-          dispatcharrLiveHistoryThresholdSeconds: 30,
           displayOrder: 1,
           color: '#F97316',
           createdAt: new Date(),
@@ -551,7 +546,6 @@ describe('Server Routes', () => {
         url: 'http://dispatcharr.local:9191',
         token: 'dispatcharr-api-key',
         ignoreAnonymousStreams: false,
-        dispatcharrLiveHistoryThresholdSeconds: 45,
         color: '#F97316',
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -582,7 +576,6 @@ describe('Server Routes', () => {
           url: 'http://dispatcharr.local:9191',
           token: 'dispatcharr-api-key',
           ignoreAnonymousStreams: false,
-          dispatcharrLiveHistoryThresholdSeconds: 45,
         },
       });
 
@@ -593,7 +586,6 @@ describe('Server Routes', () => {
       );
       expect(response.json().dispatcharrAuthMode).toBe('token');
       expect(response.json().ignoreAnonymousStreams).toBe(false);
-      expect(response.json().dispatcharrLiveHistoryThresholdSeconds).toBe(45);
     });
 
     it('rejects duplicate server URL', async () => {
@@ -753,14 +745,12 @@ describe('Server Routes', () => {
         url: 'http://dispatcharr.local:9191',
         token: 'opaque-token',
         ignoreAnonymousStreams: true,
-        dispatcharrLiveHistoryThresholdSeconds: 30,
       };
       mockDbSelectLimit([dispatcharrServer]);
       mockDbUpdateReturning([
         {
           ...dispatcharrServer,
           ignoreAnonymousStreams: false,
-          dispatcharrLiveHistoryThresholdSeconds: 10,
           updatedAt: new Date(),
         },
       ]);
@@ -770,13 +760,11 @@ describe('Server Routes', () => {
         url: `/servers/${dispatcharrServer.id}`,
         payload: {
           ignoreAnonymousStreams: false,
-          dispatcharrLiveHistoryThresholdSeconds: 10,
         },
       });
 
       expect(response.statusCode).toBe(200);
       expect(response.json().ignoreAnonymousStreams).toBe(false);
-      expect(response.json().dispatcharrLiveHistoryThresholdSeconds).toBe(10);
       expect(db.update).toHaveBeenCalled();
     });
 
@@ -790,7 +778,6 @@ describe('Server Routes', () => {
         url: 'http://dispatcharr.local:9191',
         token: 'opaque-token',
         ignoreAnonymousStreams: true,
-        dispatcharrLiveHistoryThresholdSeconds: 30,
       };
 
       mockDbSelectLimit([dispatcharrServer]);

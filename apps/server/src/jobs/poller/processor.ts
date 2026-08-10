@@ -644,7 +644,9 @@ async function resolvePendingSession(
     pendingSession,
     processed.state,
     processed.progressMs,
-    Date.now()
+    Date.now(),
+    undefined,
+    processed
   );
 
   if (!isConfirmed) {
@@ -684,7 +686,7 @@ async function resolvePendingSession(
       // updatedData's stale snapshot from pending creation; confirmAndPersistSession
       // corrects startedAt/pausedDurationMs/progressMs from updatedData's own fields.
       return confirmAndPersistSession({
-        pendingData: { ...updatedData, processed, server, serverUser: userDetail, geo },
+        pendingData: { ...updatedData, server, serverUser: userDetail, geo },
         activeRulesV2,
         activeSessions,
         recentSessions,
@@ -707,7 +709,7 @@ async function resolvePendingSession(
   if (!wasTerminatedByRule) {
     newSession = buildActiveSession({
       session: insertedSession,
-      processed,
+      processed: updatedData.processed,
       user: userDetail,
       geo,
       server,
@@ -752,21 +754,10 @@ export function mergeDispatcharrRealtimeSessions(
     ...(restBySessionKey.get(session.sessionKey) ?? {}),
   }));
   const realtimeKeys = new Set(realtimeSessions.map((session) => session.sessionKey));
-  return [...mergedRealtime, ...restSessions.filter((session) => !realtimeKeys.has(session.sessionKey))];
-}
-
-export function syncDispatcharrPendingProgress(
-  pendingData: PendingSessionData,
-  dispatcharrLiveConfirmThresholdMs: number | null
-): PendingSessionData {
-  if (dispatcharrLiveConfirmThresholdMs === null || dispatcharrLiveConfirmThresholdMs <= 0) {
-    return pendingData;
-  }
-  const progressMs = Math.max(
-    pendingData.processed.progressMs,
-    pendingData.confirmation.maxViewOffset || 0
-  );
-  return { ...pendingData, processed: { ...pendingData.processed, progressMs } };
+  return [
+    ...mergedRealtime,
+    ...restSessions.filter((session) => !realtimeKeys.has(session.sessionKey)),
+  ];
 }
 
 /**
@@ -2489,13 +2480,9 @@ export async function triggerServerPoll(
       updatedSessions,
       watchedTransitionOccurred,
       confirmedFromPendingIds,
-    } = await processServerSessions(
-      server,
-      activeRulesV2,
-      cachedSessionKeys,
-      cachedSessions,
-      { immediateStops: options.immediateStops }
-    );
+    } = await processServerSessions(server, activeRulesV2, cachedSessionKeys, cachedSessions, {
+      immediateStops: options.immediateStops,
+    });
 
     if (newSessions.length > 0 || stoppedSessionKeys.length > 0 || updatedSessions.length > 0) {
       await processPollResults({

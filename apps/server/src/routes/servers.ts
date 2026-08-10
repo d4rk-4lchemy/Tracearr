@@ -131,7 +131,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         url: servers.url,
         token: servers.token,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         displayOrder: servers.displayOrder,
         color: servers.color,
         createdAt: servers.createdAt,
@@ -193,7 +192,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       username,
       password,
       ignoreAnonymousStreams,
-      dispatcharrLiveHistoryThresholdSeconds,
     } = body.data;
     const authUser = request.user;
 
@@ -274,7 +272,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         url,
         token: normalizedToken,
         ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds,
         color,
         plexAccountId, // Links Plex servers to their owning account (undefined for non-Plex)
       })
@@ -285,7 +282,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         url: servers.url,
         token: servers.token,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
@@ -354,7 +350,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       username: newUsername,
       password: newPassword,
       ignoreAnonymousStreams: newIgnoreAnonymousStreams,
-      dispatcharrLiveHistoryThresholdSeconds: newDispatcharrLiveHistoryThresholdSeconds,
       color: newColor,
     } = body.data;
     const newUrl = bodyUrl !== undefined ? bodyUrl.replace(/\/$/, '') : undefined;
@@ -411,7 +406,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           dispatcharrAuthMode:
             server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
           ignoreAnonymousStreams: server.ignoreAnonymousStreams,
-          dispatcharrLiveHistoryThresholdSeconds: server.dispatcharrLiveHistoryThresholdSeconds,
           createdAt: server.createdAt,
           updatedAt: server.updatedAt,
         };
@@ -467,7 +461,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         dispatcharrAuthMode:
           server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
         ignoreAnonymousStreams: server.ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds: server.dispatcharrLiveHistoryThresholdSeconds,
         createdAt: server.createdAt,
         updatedAt: server.updatedAt,
       };
@@ -501,7 +494,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       url?: string;
       token?: string;
       ignoreAnonymousStreams?: boolean;
-      dispatcharrLiveHistoryThresholdSeconds?: number;
       color?: string | null;
       updatedAt: Date;
     } = { updatedAt: new Date() };
@@ -510,10 +502,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     if (authChanged) updatePayload.token = normalizedToken;
     if (newIgnoreAnonymousStreams !== undefined) {
       updatePayload.ignoreAnonymousStreams = newIgnoreAnonymousStreams;
-    }
-    if (newDispatcharrLiveHistoryThresholdSeconds !== undefined) {
-      updatePayload.dispatcharrLiveHistoryThresholdSeconds =
-        newDispatcharrLiveHistoryThresholdSeconds;
     }
     if (newColor !== undefined) updatePayload.color = newColor;
 
@@ -528,7 +516,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         url: servers.url,
         token: servers.token,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,

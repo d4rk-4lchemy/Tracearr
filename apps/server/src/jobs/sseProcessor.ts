@@ -369,7 +369,8 @@ async function handlePlaying(event: {
           notification.sessionKey,
           pendingData,
           'playing',
-          notification.viewOffset
+          notification.viewOffset,
+          result?.session
         );
         return;
       }
@@ -1676,7 +1677,8 @@ async function updatePendingSession(
   sessionKey: string,
   pendingData: PendingSessionData,
   newState: 'playing' | 'paused',
-  viewOffset?: number
+  viewOffset?: number,
+  processed?: PendingSessionData['processed']
 ): Promise<void> {
   if (!cacheService) return;
 
@@ -1704,6 +1706,13 @@ async function updatePendingSession(
   const currentViewOffset = viewOffset ?? pendingData.confirmation.maxViewOffset;
   const updatedConfirmation = updateConfirmationState(pendingData.confirmation, currentViewOffset);
 
+  const previousProgressMs = pendingData.processed.progressMs ?? 0;
+  const incomingProgressMs = processed?.progressMs ?? 0;
+  const latestProcessed =
+    processed && previousProgressMs > incomingProgressMs
+      ? { ...processed, progressMs: previousProgressMs }
+      : (processed ?? pendingData.processed);
+
   // Check if playback is now confirmed
   const isConfirmed = isPlaybackConfirmed(updatedConfirmation, currentViewOffset, newState, now);
 
@@ -1711,6 +1720,7 @@ async function updatePendingSession(
     // Session is confirmed - persist to DB and evaluate rules
     await confirmPendingSessionAndPersist(serverId, sessionKey, {
       ...pendingData,
+      processed: latestProcessed,
       confirmation: { ...updatedConfirmation, confirmedPlayback: true },
       currentState: newState,
       pausedDurationMs,
@@ -1721,6 +1731,7 @@ async function updatePendingSession(
     // Still pending - update Redis data
     const updatedData: PendingSessionData = {
       ...pendingData,
+      processed: latestProcessed,
       confirmation: updatedConfirmation,
       currentState: newState,
       pausedDurationMs,

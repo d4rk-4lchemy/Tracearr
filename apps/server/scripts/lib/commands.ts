@@ -401,12 +401,29 @@ async function cleanupDispatcharrRedis(serverIds: string[]): Promise<void> {
 }
 
 export async function purgeDispatcharrCommand(): Promise<PurgeDispatcharrResult> {
-  const deletedServers = await db.transaction(async (tx: typeof db) =>
-    tx
+  const deletedServers = await db.transaction(async (tx: typeof db) => {
+    const deleted = await tx
       .delete(servers)
       .where(eq(servers.type, 'dispatcharr'))
-      .returning({ id: servers.id, name: servers.name, url: servers.url })
-  );
+      .returning({ id: servers.id, name: servers.name, url: servers.url });
+
+    // Restore the fork-owned schema before handing the database to the
+    // upstream Tracearr image. IF EXISTS keeps this safe for databases that
+    // already ran the fork cleanup migration, and also covers older fork
+    // versions which still had progress_estimated or the live-history column.
+    await tx.execute(sql`
+      ALTER TABLE "servers"
+        DROP COLUMN IF EXISTS "ignore_anonymous_streams",
+        DROP COLUMN IF EXISTS "dispatcharr_live_history_threshold_seconds"
+    `);
+    await tx.execute(sql`
+      ALTER TABLE "sessions"
+        DROP COLUMN IF EXISTS "dispatcharr_playback_kind",
+        DROP COLUMN IF EXISTS "progress_estimated"
+    `);
+
+    return deleted;
+  });
 
   let redisWarning: string | null = null;
   try {

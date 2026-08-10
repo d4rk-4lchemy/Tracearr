@@ -542,7 +542,6 @@ class ApiClient {
       username?: string;
       password?: string;
       ignoreAnonymousStreams?: boolean;
-      dispatcharrLiveHistoryThresholdSeconds?: number;
     }) => this.request<Server>('/servers', { method: 'POST', body: JSON.stringify(data) }),
     update: (
       id: string,
@@ -554,7 +553,6 @@ class ApiClient {
         username?: string;
         password?: string;
         ignoreAnonymousStreams?: boolean;
-        dispatcharrLiveHistoryThresholdSeconds?: number;
         color?: string | null;
       }
     ) =>

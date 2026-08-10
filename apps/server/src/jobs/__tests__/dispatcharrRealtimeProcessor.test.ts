@@ -75,7 +75,6 @@ const server = {
   url: 'http://dispatcharr.local',
   token: 'token',
   ignoreAnonymousStreams: true,
-  dispatcharrLiveHistoryThresholdSeconds: 30,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

@@ -48,7 +48,6 @@ export interface ServerWithToken {
   url: string;
   token: string;
   ignoreAnonymousStreams?: boolean;
-  dispatcharrLiveHistoryThresholdSeconds?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -463,7 +462,6 @@ export interface ResolvePendingSessionInput {
   /** Recent sessions for rule evaluation context */
   recentSessions: Session[];
   usePlexGeoip: boolean;
-  dispatcharrLiveConfirmThresholdMs?: number | null;
 }
 
 /** Outcome of checking Redis for a pending session tracked under a given key. */

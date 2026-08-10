@@ -136,7 +136,6 @@ export const createServerSchema = z
     username: z.string().min(1).optional(),
     password: z.string().min(1).optional(),
     ignoreAnonymousStreams: z.boolean().default(true),
-    dispatcharrLiveHistoryThresholdSeconds: z.coerce.number().int().min(0).default(30),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'dispatcharr') {
@@ -183,7 +182,6 @@ export const updateServerSchema = z
     username: z.string().min(1).optional(),
     password: z.string().min(1).optional(),
     ignoreAnonymousStreams: z.boolean().optional(),
-    dispatcharrLiveHistoryThresholdSeconds: z.coerce.number().int().min(0).optional(),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a valid hex color (e.g. #3b82f6)')
@@ -222,13 +220,12 @@ export const updateServerSchema = z
       data.token === undefined &&
       data.username === undefined &&
       data.password === undefined &&
-      data.ignoreAnonymousStreams === undefined &&
-      data.dispatcharrLiveHistoryThresholdSeconds === undefined
+      data.ignoreAnonymousStreams === undefined
     ) {
       ctx.addIssue({
         code: 'custom',
         message:
-          'At least one of name, url, color, token, username, password, ignoreAnonymousStreams, or dispatcharrLiveHistoryThresholdSeconds is required',
+          'At least one of name, url, color, token, username, password, or ignoreAnonymousStreams is required',
       });
     }
   });

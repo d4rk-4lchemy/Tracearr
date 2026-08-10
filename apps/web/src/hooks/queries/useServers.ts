@@ -33,7 +33,6 @@ export function useCreateServer() {
       username?: string;
       password?: string;
       ignoreAnonymousStreams?: boolean;
-      dispatcharrLiveHistoryThresholdSeconds?: number;
     }) =>
       api.servers.create(data),
     onSuccess: (_, variables) => {
@@ -80,7 +79,6 @@ export function useUpdateServer() {
       username,
       password,
       ignoreAnonymousStreams,
-      dispatcharrLiveHistoryThresholdSeconds,
       color,
     }: {
       id: string;
@@ -91,7 +89,6 @@ export function useUpdateServer() {
       username?: string;
       password?: string;
       ignoreAnonymousStreams?: boolean;
-      dispatcharrLiveHistoryThresholdSeconds?: number;
       color?: string | null;
     }) =>
       api.servers.update(id, {
@@ -102,7 +99,6 @@ export function useUpdateServer() {
         username,
         password,
         ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds,
         color,
       }),
     onSuccess: () => {

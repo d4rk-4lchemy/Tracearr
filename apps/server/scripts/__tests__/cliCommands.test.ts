@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { REDIS_KEYS } from '@tracearr/shared';
 import { resetTestDb } from '@tracearr/test-utils/db';
 import {
@@ -31,6 +31,19 @@ import {
 describe('admin cli commands', () => {
   beforeEach(async () => {
     await resetTestDb();
+    // purgeDispatcharrCommand deliberately drops fork-owned columns. Restore
+    // the legacy shape between tests so later factory inserts still exercise
+    // the same database contract.
+    await db.execute(sql`
+      ALTER TABLE "servers"
+        ADD COLUMN IF NOT EXISTS "ignore_anonymous_streams" boolean DEFAULT true NOT NULL,
+        ADD COLUMN IF NOT EXISTS "dispatcharr_live_history_threshold_seconds" integer DEFAULT 30 NOT NULL
+    `);
+    await db.execute(sql`
+      ALTER TABLE "sessions"
+        ADD COLUMN IF NOT EXISTS "dispatcharr_playback_kind" varchar(20),
+        ADD COLUMN IF NOT EXISTS "progress_estimated" boolean DEFAULT false NOT NULL
+    `);
     await getRedis().flushall();
   });
 
@@ -456,7 +469,7 @@ describe('admin cli commands', () => {
       const result = await purgeDispatcharrCommand();
       expect(result).toEqual({ servers: [], redisWarning: null });
 
-      const remainingServers = await db.select().from(servers);
+      const remainingServers = await db.select({ id: servers.id, type: servers.type }).from(servers);
       expect(remainingServers).toHaveLength(1);
       expect(remainingServers[0]?.type).toBe('plex');
     });
@@ -520,18 +533,41 @@ describe('admin cli commands', () => {
         { id: dispatcharr.id, name: dispatcharr.name, url: dispatcharr.url },
       ]);
 
-      expect(await db.select().from(servers).where(eq(servers.id, dispatcharr.id))).toHaveLength(0);
-      expect(await db.select().from(servers).where(eq(servers.id, plex.id))).toHaveLength(1);
+      expect(
+        await db.select({ id: servers.id }).from(servers).where(eq(servers.id, dispatcharr.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select({ id: servers.id }).from(servers).where(eq(servers.id, plex.id))
+      ).toHaveLength(1);
       expect(
         await db.select().from(serverUsers).where(eq(serverUsers.serverId, dispatcharr.id))
       ).toHaveLength(0);
       expect(await db.select().from(serverUsers).where(eq(serverUsers.serverId, plex.id))).toHaveLength(
         1
       );
-      expect(await db.select().from(sessions).where(eq(sessions.serverId, dispatcharr.id))).toHaveLength(
-        0
-      );
-      expect(await db.select().from(sessions).where(eq(sessions.serverId, plex.id))).toHaveLength(1);
+      expect(
+        await db
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(eq(sessions.serverId, dispatcharr.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select({ id: sessions.id }).from(sessions).where(eq(sessions.serverId, plex.id))
+      ).toHaveLength(1);
+
+      const forkColumns = await db.execute<{ column_name: string }>(sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name IN ('servers', 'sessions')
+          AND column_name IN (
+            'ignore_anonymous_streams',
+            'dispatcharr_live_history_threshold_seconds',
+            'dispatcharr_playback_kind',
+            'progress_estimated'
+          )
+      `);
+      expect(forkColumns.rows).toEqual([]);
 
       expect(await redis.smembers(REDIS_KEYS.ACTIVE_SESSION_IDS)).toEqual([plexActiveId]);
       expect(await redis.get(REDIS_KEYS.SESSION_BY_ID(dispatcharrActiveId))).toBeNull();
@@ -558,7 +594,9 @@ describe('admin cli commands', () => {
         { id: dispatcharr.id, name: dispatcharr.name, url: dispatcharr.url },
       ]);
       expect(result.redisWarning).toMatch(/redis unavailable/i);
-      expect(await db.select().from(servers).where(eq(servers.id, dispatcharr.id))).toHaveLength(0);
+      expect(
+        await db.select({ id: servers.id }).from(servers).where(eq(servers.id, dispatcharr.id))
+      ).toHaveLength(0);
     });
   });
 });
