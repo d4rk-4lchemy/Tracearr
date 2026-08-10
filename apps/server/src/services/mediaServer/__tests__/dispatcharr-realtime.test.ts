@@ -265,6 +265,47 @@ describe('DispatcharrRealtimeConnector', () => {
     connector.disconnect();
   });
 
+  it('does not retain a departed named client from cached channel details', async () => {
+    vi.spyOn(DispatcharrClient.prototype, 'getUserMap').mockResolvedValue(
+      new Map([['7', { id: '7', username: 'John Doe', isAdmin: false }]])
+    );
+    vi.spyOn(DispatcharrClient.prototype, 'getLogoPathByChannelId').mockResolvedValue(new Map());
+    vi.spyOn(DispatcharrClient.prototype, 'getCurrentProgramByChannelId').mockResolvedValue(
+      new Map()
+    );
+
+    const connector = new DispatcharrRealtimeConnector({
+      serverId: 'server-1',
+      serverName: 'Dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'a.b.c',
+      ignoreAnonymousStreams: true,
+    });
+    const internals = connector as unknown as {
+      latestLiveStatusChannels: Array<Record<string, unknown>>;
+      liveDetailByChannelId: Map<string, Record<string, unknown>>;
+      rebuildLiveSessions(forceEnrichment?: boolean): Promise<Set<string>>;
+    };
+
+    // The detail request observed John earlier, but the newest WebSocket snapshot
+    // reports only Anonymous on the same channel. Anonymous is intentionally ignored.
+    internals.liveDetailByChannelId.set('channel-1', {
+      channel_id: 'channel-1',
+      avg_bitrate_kbps: 12_000,
+      clients: [{ client_id: 'john-client', user_id: '7' }],
+    });
+    internals.latestLiveStatusChannels = [
+      {
+        channel_id: 'channel-1',
+        clients: [{ client_id: 'anonymous-client', user_id: '0' }],
+      },
+    ];
+
+    await internals.rebuildLiveSessions();
+
+    expect(connector.getLatestSessions()).toEqual([]);
+  });
+
   it('keeps API-key authentication in REST polling mode without opening a WebSocket', async () => {
     const connector = new DispatcharrRealtimeConnector({
       serverId: 'server-1',

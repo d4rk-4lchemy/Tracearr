@@ -452,10 +452,14 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
 
   /** Rebuild Live TV sessions from the newest summary and any fetched channel details. */
   private async rebuildLiveSessions(forceEnrichment = false): Promise<Set<string>> {
-    // buildNormalizedChannelsFromStatus iterates its detail input, so preserve one
-    // detail candidate per summary channel rather than passing the sparse cache.
+    // The WebSocket summary is authoritative for connected clients. Preserve
+    // cached detail only for channel metadata; otherwise a stale detail response
+    // can resurrect a client that is absent from the current snapshot.
     const detailChannels = this.latestLiveStatusChannels.map(
-      (channel) => this.liveDetailByChannelId.get(channelIdOf(channel)) ?? channel
+      (channel) => {
+        const detail = this.liveDetailByChannelId.get(channelIdOf(channel));
+        return detail ? { ...detail, clients: channel.clients } : channel;
+      }
     );
     const normalizedChannels = await this.client.buildNormalizedChannelsFromStatus(
       this.latestLiveStatusChannels,
