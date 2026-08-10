@@ -20,6 +20,9 @@ export type DispatcharrRealtimeMode = 'ws' | 'rest-fallback' | 'rest-only-api-ke
 type DispatcharrRealtimeState =
   'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'fallback';
 
+const LIVE_DETAIL_RETRY_DELAY_MS = 2_000;
+const LIVE_DETAIL_MAX_ATTEMPTS = 6;
+
 export interface DispatcharrRealtimeStatus {
   serverId: string;
   serverName: string;
@@ -125,6 +128,11 @@ function extractReferencedVodUserIds(stats: DispatcharrVodStatsResponse): string
   return [...ids];
 }
 
+function channelIdOf(channel: DispatcharrChannelStatus): string {
+  const value = channel.channel_id;
+  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+}
+
 export class DispatcharrRealtimeConnector extends EventEmitter {
   private readonly serverId: string;
   private readonly serverName: string;
@@ -149,8 +157,14 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
 
   private latestSessions: MediaSession[] = [];
   private latestLiveSessions: MediaSession[] = [];
+  private latestLiveStatusChannels: DispatcharrChannelStatus[] = [];
   private latestVodSessions: MediaSession[] = [];
   private latestCatchupSessions: MediaSession[] = [];
+  private liveDetailByChannelId = new Map<string, DispatcharrChannelStatus>();
+  private liveDetailRetries = new Map<
+    string,
+    { attempts: number; timer: NodeJS.Timeout | null }
+  >();
   private userCache = new Map<string, MediaUser>();
   private logoCache = new Map<string, string>();
   private programCache = new Map<string, string>();
@@ -233,6 +247,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
     this.clearCatchupRefreshTimer();
+    this.clearLiveDetailRetries();
 
     try {
       const jwtToken = await this.client.getWebSocketToken();
@@ -307,6 +322,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
     this.clearCatchupRefreshTimer();
+    this.clearLiveDetailRetries();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -419,17 +435,30 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     forceEnrichment = false,
     emitSnapshot = true
   ): Promise<void> {
-    // The WebSocket bootstrap starts from the summary status endpoint. It has
-    // enough information to identify a playback, but can omit the codec,
-    // bitrate, resolution, and FFmpeg fields returned by the active channel's
-    // detail endpoint. Enrich that first snapshot once so the pending card is
-    // complete before the 30s history-confirmation threshold. Subsequent WS
-    // updates stay request-free and use their own channel_stats payload.
-    const detailChannels = forceEnrichment
-      ? await this.client.getActiveChannelDetails(statusChannels)
-      : statusChannels;
+    const previousActiveChannelIds = this.activeLiveChannelIds();
+    this.latestLiveStatusChannels = statusChannels;
+    const activeChannelIds = await this.rebuildLiveSessions(forceEnrichment);
+
+    for (const channelId of previousActiveChannelIds) {
+      if (!activeChannelIds.has(channelId)) this.clearLiveDetailRetry(channelId);
+    }
+    for (const channelId of activeChannelIds) {
+      if (!previousActiveChannelIds.has(channelId)) this.startLiveDetailRetry(channelId);
+    }
+
+    if (emitSnapshot) this.emitMergedSnapshot();
+    else this.emitStatus();
+  }
+
+  /** Rebuild Live TV sessions from the newest summary and any fetched channel details. */
+  private async rebuildLiveSessions(forceEnrichment = false): Promise<Set<string>> {
+    // buildNormalizedChannelsFromStatus iterates its detail input, so preserve one
+    // detail candidate per summary channel rather than passing the sparse cache.
+    const detailChannels = this.latestLiveStatusChannels.map(
+      (channel) => this.liveDetailByChannelId.get(channelIdOf(channel)) ?? channel
+    );
     const normalizedChannels = await this.client.buildNormalizedChannelsFromStatus(
-      statusChannels,
+      this.latestLiveStatusChannels,
       detailChannels
     );
 
@@ -446,8 +475,88 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       this.userCache,
       this.logoCache
     );
-    if (emitSnapshot) this.emitMergedSnapshot();
-    else this.emitStatus();
+    return this.activeLiveChannelIds();
+  }
+
+  private activeLiveChannelIds(): Set<string> {
+    return new Set(
+      this.latestLiveSessions.flatMap((session) => {
+        const channelId = session.live?.channelIdentifier?.trim();
+        return channelId ? [channelId] : [];
+      })
+    );
+  }
+
+  private startLiveDetailRetry(channelId: string): void {
+    if (this.liveDetailRetries.has(channelId)) return;
+    this.liveDetailRetries.set(channelId, { attempts: 0, timer: null });
+    this.enqueueUpdate(() => this.refreshNewLiveChannelDetails(channelId));
+  }
+
+  private async refreshNewLiveChannelDetails(channelId: string): Promise<void> {
+    const retry = this.liveDetailRetries.get(channelId);
+    if (!retry || !this.activeLiveChannelIds().has(channelId) || this.state !== 'connected') {
+      this.clearLiveDetailRetry(channelId);
+      return;
+    }
+
+    retry.attempts++;
+    try {
+      const detail = await this.client.getChannelStatus(channelId);
+      // The channel may have stopped while the detail request was in flight.
+      if (!this.activeLiveChannelIds().has(channelId) || this.state !== 'connected') {
+        this.clearLiveDetailRetry(channelId);
+        return;
+      }
+
+      if (detail) {
+        this.liveDetailByChannelId.set(channelId, detail);
+        await this.rebuildLiveSessions();
+        this.emitMergedSnapshot();
+
+        if (this.hasCoreLiveTechnicalDetails(channelId)) {
+          this.clearLiveDetailRetry(channelId, false);
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `[DispatcharrRealtime] Failed to enrich active channel ${channelId} on ${this.serverName}:`,
+        error
+      );
+    }
+
+    const currentRetry = this.liveDetailRetries.get(channelId);
+    if (!currentRetry || currentRetry.attempts >= LIVE_DETAIL_MAX_ATTEMPTS) {
+      this.clearLiveDetailRetry(channelId, false);
+      return;
+    }
+    currentRetry.timer = setTimeout(() => {
+      currentRetry.timer = null;
+      this.enqueueUpdate(() => this.refreshNewLiveChannelDetails(channelId));
+    }, LIVE_DETAIL_RETRY_DELAY_MS);
+  }
+
+  private hasCoreLiveTechnicalDetails(channelId: string): boolean {
+    return this.latestLiveSessions.some(
+      (session) =>
+        session.live?.channelIdentifier === channelId &&
+        session.quality.bitrate > 0 &&
+        Boolean(session.quality.sourceVideoCodec) &&
+        Boolean(session.quality.videoResolution)
+    );
+  }
+
+  private clearLiveDetailRetry(channelId: string, discardDetail = true): void {
+    const retry = this.liveDetailRetries.get(channelId);
+    if (retry?.timer) clearTimeout(retry.timer);
+    this.liveDetailRetries.delete(channelId);
+    if (discardDetail) this.liveDetailByChannelId.delete(channelId);
+  }
+
+  private clearLiveDetailRetries(): void {
+    for (const channelId of this.liveDetailRetries.keys()) this.clearLiveDetailRetry(channelId);
+    this.liveDetailByChannelId.clear();
   }
 
   private async applyVodStatsUpdate(
@@ -566,6 +675,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
 
   private scheduleReconnect(): void {
     if (this.manualDisconnect) return;
+    this.clearLiveDetailRetries();
     if (this.reconnectAttempts >= SSE_CONFIG.MAX_RETRIES) {
       this.activateFallback('Dispatcharr websocket max reconnect attempts reached');
       return;
@@ -592,6 +702,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.mode = 'rest-fallback';
     this.fallbackReason = reason;
     this.clearCatchupRefreshTimer();
+    this.clearLiveDetailRetries();
     this.setState('fallback');
     this.emit('fallback:activated', {
       serverId: this.serverId,

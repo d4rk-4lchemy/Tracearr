@@ -37,6 +37,7 @@ describe('DispatcharrRealtimeConnector', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     delete (globalThis as { WebSocket?: unknown }).WebSocket;
   });
@@ -126,6 +127,7 @@ describe('DispatcharrRealtimeConnector', () => {
   });
 
   it('bootstraps merged live and vod sessions from REST', async () => {
+    vi.useFakeTimers();
     vi.spyOn(DispatcharrClient.prototype, 'getWebSocketToken').mockResolvedValue('jwt-token');
     const statusChannels = [{ channel_id: 'channel-1', client_count: 1 }];
     const detailChannels = [
@@ -138,9 +140,10 @@ describe('DispatcharrRealtimeConnector', () => {
       },
     ];
     vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockResolvedValue(statusChannels);
-    const getActiveChannelDetails = vi
-      .spyOn(DispatcharrClient.prototype, 'getActiveChannelDetails')
-      .mockResolvedValue(detailChannels);
+    const getChannelStatus = vi
+      .spyOn(DispatcharrClient.prototype, 'getChannelStatus')
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(detailChannels[0]!);
     vi.spyOn(DispatcharrClient.prototype, 'getVodStatsSnapshot').mockResolvedValue({
       vod_connections: [
         {
@@ -169,14 +172,17 @@ describe('DispatcharrRealtimeConnector', () => {
         mediaId: 'channel-1',
         user: { id: '7', username: 'User Seven' },
         media: { title: 'Channel 1', type: 'live', durationMs: 0 },
+        live: { channelTitle: 'Channel 1', channelIdentifier: 'channel-1' },
         playback: { state: 'playing', positionMs: 0, progressPercent: 0 },
         player: { name: 'Player', deviceId: 'live-1', platform: 'Dispatcharr' },
         network: { ipAddress: '0.0.0.0', isLocal: false },
         quality: {
-          bitrate: 0,
+          bitrate: 12000,
           isTranscode: false,
           videoDecision: 'directplay',
           audioDecision: 'directplay',
+          sourceVideoCodec: 'h264',
+          videoResolution: '1080p',
         },
       },
     ]);
@@ -198,14 +204,16 @@ describe('DispatcharrRealtimeConnector', () => {
 
     expect(snapshot.sessions).toHaveLength(2);
     expect(snapshot.authoritative).toBe(false);
-    expect(getActiveChannelDetails).toHaveBeenCalledTimes(1);
-    expect(getActiveChannelDetails).toHaveBeenCalledWith(statusChannels);
-    expect(DispatcharrClient.prototype.buildNormalizedChannelsFromStatus).toHaveBeenCalledWith(
-      statusChannels,
-      detailChannels
-    );
+    await vi.waitFor(() => {
+      expect(getChannelStatus).toHaveBeenCalledTimes(1);
+    });
+    expect(getChannelStatus).toHaveBeenCalledWith('channel-1');
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => {
+      expect(getChannelStatus).toHaveBeenCalledTimes(2);
+    });
 
-    const updateSnapshotPromise = nextSnapshot(connector);
+    const updatedSnapshotPromise = nextSnapshot(connector);
     ws.onmessage?.call(ws, {
       data: JSON.stringify({
         data: {
@@ -214,8 +222,12 @@ describe('DispatcharrRealtimeConnector', () => {
         },
       }),
     });
-    await updateSnapshotPromise;
-    expect(getActiveChannelDetails).toHaveBeenCalledTimes(1);
+    await updatedSnapshotPromise;
+    expect(DispatcharrClient.prototype.buildNormalizedChannelsFromStatus).toHaveBeenLastCalledWith(
+      statusChannels,
+      detailChannels
+    );
+    vi.useRealTimers();
   });
 
   it('does not publish a partial REST bootstrap as an authoritative session snapshot', async () => {
