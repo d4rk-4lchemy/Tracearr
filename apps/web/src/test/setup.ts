@@ -41,6 +41,16 @@ if (typeof Element.prototype.releasePointerCapture === 'undefined') {
   };
 }
 
+// Highcharts checks this browser API while applying its adaptive theme. jsdom
+// exposes CSS without `supports`, so real Highcharts component tests need the
+// same harmless feature-detection fallback as an older browser.
+if (typeof globalThis.CSS?.supports !== 'function') {
+  Object.defineProperty(globalThis.CSS, 'supports', {
+    configurable: true,
+    value: () => false,
+  });
+}
+
 afterEach(() => {
   cleanup();
 });

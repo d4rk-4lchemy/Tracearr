@@ -167,12 +167,15 @@ Web UI:
 - `apps/web/src/components/history/HistoryTable.tsx` fixes column sizing/truncation for long Live TV content, improves history layout, and shows the Dispatcharr catch-up indicator for catch-up rows.
 - `apps/web/src/components/history/StreamDetailsPanel.tsx` shows FFmpeg speed and Dispatcharr-oriented stream details.
 - `apps/web/src/lib/api.ts`, `apps/web/src/hooks/queries/useServers.ts`, and `apps/web/src/hooks/useServer.tsx` carry Dispatcharr server settings through the frontend API/cache layer.
-- `apps/web/src/components/charts/ServerResourceCharts.tsx` temporarily keeps each
-  multi-server chart's legend visibility in React and identifies Highcharts
-  series by server ID. This prevents Highcharts 13 incremental updates from
-  crashing the Dashboard after a legend interaction. When upstream supplies a
-  chart-rendering fix, adopt its approach and remove this local workaround
-  rather than maintaining divergent chart lifecycle code.
+- `apps/web/src/components/charts/ServerResourceCharts.tsx` temporarily owns the
+  live-data lifecycle for Server Resources only while a legend entry is
+  hidden. With every series visible, it uses the ordinary upstream
+  HighchartsReact update flow. While hidden, samples for that series are held
+  outside Highcharts and applied when its native legend entry shows it again,
+  avoiding Highcharts 13's crashing hidden-point destruction path.
+  This is only a stopgap: when upstream Tracearr fixes the chart lifecycle,
+  its implementation must overwrite and remove this fork-owned code and tests
+  during the merge; do not retain parallel chart lifecycle code.
 - `SERVER_STATS_CONFIG.DATA_POINTS` is temporarily `21`: a two-minute range at
   six-second cadence has 20 intervals and therefore needs both endpoint
   samples. If upstream changes the Server Resources window model, adopt its

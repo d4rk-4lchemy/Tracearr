@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Highcharts from 'highcharts';
-import { HighchartsReact } from 'highcharts-react-official';
+import { HighchartsReact, type HighchartsReactRefObject } from 'highcharts-react-official';
 import type { ServerResourceDataPoint } from '@tracearr/shared';
 import {
   LIVE_STATS_TICK_INTERVAL,
@@ -21,6 +21,8 @@ const COLORS = {
   systemGradientStart: 'rgba(204, 123, 159, 0.3)',
   systemGradientEnd: 'rgba(204, 123, 159, 0.05)',
 };
+
+const CHART_CONTAINER_PROPS = { style: { width: '100%', height: '100%' } };
 
 export interface ResourceMultiSeries {
   serverId: string;
@@ -72,19 +74,31 @@ function ResourceChart({
   multiSeries,
   processLabel,
 }: ResourceChartProps) {
-  // Highcharts mutates series visibility when its legend is clicked. Keep the
-  // multi-server selection in React instead, so the next live-data update has
-  // the same series state that Highcharts is currently displaying.
+  const chartRef = useRef<HighchartsReactRefObject>(null);
+  const pendingDataBySeriesId = useRef(new Map<string, Highcharts.SeriesLineOptions['data']>());
   const [hiddenServerIds, setHiddenServerIds] = useState<Set<string>>(() => new Set());
-  const toggleServerVisibility = useCallback((serverId: string) => {
+  const recordLegendVisibility = useCallback((serverId: string, isVisible: boolean) => {
     setHiddenServerIds((current) => {
       const next = new Set(current);
-      if (next.has(serverId)) next.delete(serverId);
+      if (isVisible) next.delete(serverId);
       else next.add(serverId);
       return next;
     });
   }, []);
+  const applyPendingDataOnShow = useCallback(function (this: Highcharts.Series) {
+    const id = this.options.id;
+    if (typeof id !== 'string') return;
+
+    const pendingData = pendingDataBySeriesId.current.get(id);
+    if (!pendingData) return;
+
+    pendingDataBySeriesId.current.delete(id);
+    // `show` fires after Highcharts marks the series visible. Its own
+    // setVisible call performs the following redraw, so this does not need one.
+    this.setData(pendingData, false, false, true);
+  }, []);
   const isMulti = !!multiSeries && multiSeries.length > 0;
+  const hasHiddenSeries = isMulti && hiddenServerIds.size > 0;
   const hasData = isMulti ? multiSeries.some((s) => s.data.length > 0) : !!data && data.length > 0;
 
   const chartOptions = useMemo<Highcharts.Options>(() => {
@@ -140,6 +154,7 @@ function ResourceChart({
       series = [
         {
           type: 'area',
+          id: 'process',
           name: processLabel ?? 'Plex Media Server',
           data: processData,
           color: COLORS.process,
@@ -153,6 +168,7 @@ function ResourceChart({
         },
         {
           type: 'area',
+          id: 'system',
           name: 'System',
           data: hostData,
           color: COLORS.system,
@@ -259,9 +275,12 @@ function ResourceChart({
           events: {
             legendItemClick: function () {
               if (!isMulti || typeof this.options.id !== 'string') return true;
-              toggleServerVisibility(this.options.id);
-              return false;
+              // Highcharts performs its native legend toggle before this
+              // legacy series event, so `visible` is already the new state.
+              recordLegendVisibility(this.options.id, this.visible);
+              return true;
             },
+            show: applyPendingDataOnShow,
           },
         },
         area: {
@@ -324,9 +343,70 @@ function ResourceChart({
     isMulti,
     hasData,
     processLabel,
+    applyPendingDataOnShow,
     hiddenServerIds,
-    toggleServerVisibility,
+    recordLegendVisibility,
   ]);
+
+  useLayoutEffect(() => {
+    // When every series is visible, leave updates to the standard upstream
+    // HighchartsReact lifecycle. Only take over while a legend-hidden series
+    // would make Highcharts 13 destroy its points during a data update.
+    if (!hasHiddenSeries) return;
+
+    const chart = chartRef.current?.chart;
+    const desiredSeries = chartOptions.series;
+    if (!chart || !desiredSeries) return;
+
+    const desiredById = new Map(
+      desiredSeries
+        .filter((series): series is Highcharts.SeriesOptionsType & { id: string } =>
+          typeof series.id === 'string'
+        )
+        .map((series) => [series.id, series])
+    );
+
+    for (const series of [...chart.series]) {
+      if (!desiredById.has(series.options.id ?? '')) {
+        if (typeof series.options.id === 'string') {
+          pendingDataBySeriesId.current.delete(series.options.id);
+        }
+        series.remove(false);
+      }
+    }
+
+    for (const [id, options] of desiredById) {
+      const existing = chart.series.find((series) => series.options.id === id);
+      if (existing) {
+        const nextData = (options as Highcharts.SeriesLineOptions).data ?? [];
+        if (existing.visible) {
+          existing.setData(nextData, false, false, true);
+        } else {
+          // Highcharts 13 destroys hidden points in setData rather than taking
+          // its visible-series soft-update path. Keep these samples outside of
+          // Highcharts until the native legend shows the series again.
+          pendingDataBySeriesId.current.set(id, nextData);
+        }
+      } else {
+        chart.addSeries(options, false);
+      }
+    }
+
+    const yAxis = chart.yAxis[0];
+    const yMax = (chartOptions.yAxis as Highcharts.YAxisOptions | undefined)?.max;
+    if (yAxis && typeof yMax === 'number') {
+      const { userMin, userMax } = yAxis.getExtremes();
+      if (userMin !== 0 || userMax !== yMax) {
+        yAxis.setExtremes(0, yMax, false, false);
+      }
+      const tickInterval = yMax <= 20 ? 5 : 10;
+      if (yAxis.options.tickInterval !== tickInterval) {
+        yAxis.update({ tickInterval }, false);
+      }
+    }
+
+    chart.redraw(false);
+  }, [chartOptions, hasHiddenSeries]);
 
   const chartResetKey = isMulti
     ? multiSeries
@@ -384,9 +464,11 @@ function ResourceChart({
       <CardContent className="pb-2">
         <ChartErrorBoundary resetKey={chartResetKey} title={title}>
           <HighchartsReact
+            ref={chartRef}
             highcharts={Highcharts}
             options={chartOptions}
-            containerProps={{ style: { width: '100%', height: '100%' } }}
+            allowChartUpdate={!hasHiddenSeries}
+            containerProps={CHART_CONTAINER_PROPS}
           />
         </ChartErrorBoundary>
         {/* Averages row */}
