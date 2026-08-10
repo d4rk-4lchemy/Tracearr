@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA inspected: `feature/prepare-for-2.1.0` at `e3b84559`
+- Fork branch/SHA inspected: `feature/prepare-for-2.1.0` at `bf28c7df`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `d058577d`
-- Last shared upstream commit found during inspection: `367f6c69`
-- Latest upstream commit merged into the current working tree: `d058577d`
+- Source branch/SHA inspected: `main` at `2483fe68`
+- Last shared upstream commit found during inspection: `2483fe68`
+- Latest upstream commit merged into the current working tree: `2483fe68`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -212,6 +212,15 @@ High-conflict areas to review manually:
 - Mobile server metadata and Live TV display.
 
 Current upstream merge notes:
+
+- Upstream `main` at `2483fe68` (Tracearr `v2.1.0-beta.5`) was merged into
+  `feature/prepare-for-2.1.0` on Monday, August 10, 2026 (merge commit
+  `bf28c7df`). The upstream `0085_far_captain_universe` migration and
+  `library_items(server_id, thumb_path)` index were retained, along with the
+  short-lived image-proxy server-row cache. The Dispatcharr image overlay was
+  verified after the automatic merge: absolute paths remain normalized to the
+  configured server origin, channel-logo proxy requests use no added headers,
+  and Dispatcharr images retain `fit: inside`.
 
 - Upstream `main` at `d058577d` (Tracearr `v2.1.0-beta.4`) was merged into
   `feature/prepare-for-2.1.0` on Sunday, August 9, 2026 (merge commit
