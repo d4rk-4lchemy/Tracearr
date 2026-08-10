@@ -161,6 +161,10 @@ Web UI:
   crashing the Dashboard after a legend interaction. When upstream supplies a
   chart-rendering fix, adopt its approach and remove this local workaround
   rather than maintaining divergent chart lifecycle code.
+- `SERVER_STATS_CONFIG.DATA_POINTS` is temporarily `21`: a two-minute range at
+  six-second cadence has 20 intervals and therefore needs both endpoint
+  samples. If upstream changes the Server Resources window model, adopt its
+  implementation and remove this fork-specific endpoint correction.
 
 Mobile UI:
 

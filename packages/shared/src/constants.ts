@@ -864,10 +864,10 @@ export const SERVER_STATS_CONFIG = {
   POLL_INTERVAL_SECONDS: 6,
   // Timespan parameter for Plex API (MUST be 6 - other values return empty!)
   TIMESPAN_SECONDS: 6,
-  // Fixed 2-minute window (20 data points at 6s intervals)
+  // Fixed 2-minute window: include both endpoints, so 20 six-second gaps
+  // require 21 samples.
   WINDOW_SECONDS: 120,
-  // Data points to display (2 min / 6s = 20 points)
-  DATA_POINTS: 20,
+  DATA_POINTS: 21,
 } as const;
 
 // Server bandwidth statistics configuration (Local/Remote)
