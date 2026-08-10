@@ -558,10 +558,28 @@ interface MissPipelineArgs {
  * dominant color persist. Wrapped by the coalescing map in proxyImage so
  * concurrent misses for the same key run this exactly once.
  */
+// Server rows change rarely (URL or token edits), and every cache miss needs
+// one - during a warm pass that's hundreds of identical point lookups. The
+// short TTL means a token rotation takes at most 30s to reach this path.
+const SERVER_ROW_TTL_MS = 30_000;
+const serverRowCache = new Map<string, { row: typeof servers.$inferSelect | null; at: number }>();
+
+export function _resetServerRowCacheForTests(): void {
+  serverRowCache.clear();
+}
+
+async function getServerRow(serverId: string): Promise<typeof servers.$inferSelect | null> {
+  const cached = serverRowCache.get(serverId);
+  if (cached && Date.now() - cached.at < SERVER_ROW_TTL_MS) return cached.row;
+  const [row] = await db.select().from(servers).where(eq(servers.id, serverId)).limit(1);
+  serverRowCache.set(serverId, { row: row ?? null, at: Date.now() });
+  return row ?? null;
+}
+
 async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
   const { serverId, imagePath, width, height, fallback, cachePath, shardDir } = args;
 
-  const [server] = await db.select().from(servers).where(eq(servers.id, serverId)).limit(1);
+  const server = await getServerRow(serverId);
   if (!server) {
     return {
       data: getFallbackImage(fallback, width, height),

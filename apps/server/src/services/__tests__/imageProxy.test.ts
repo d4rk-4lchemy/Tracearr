@@ -54,6 +54,7 @@ import {
   buildUpstreamRequest,
   persistDominantColorIfNeeded,
   stopImageCacheCleanup,
+  _resetServerRowCacheForTests,
 } from '../imageProxy.js';
 
 const CACHE_DIR = join(process.cwd(), 'data', 'image-cache');
@@ -84,6 +85,7 @@ afterAll(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  _resetServerRowCacheForTests();
 });
 
 describe('posterVersionFor', () => {

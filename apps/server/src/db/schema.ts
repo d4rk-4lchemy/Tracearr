@@ -1092,6 +1092,11 @@ export const libraryItems = pgTable(
     // Composite index for media type filtering (used by nearly all library routes)
     index('idx_library_items_server_media_type').on(table.serverId, table.mediaType),
 
+    // The image pipeline's dominant-color persist and stored-color read both
+    // filter on (server_id, thumb_path); without this they seq-scan the table
+    // once per poster during a cache warm
+    index('idx_library_items_server_thumb').on(table.serverId, table.thumbPath),
+
     // Composite index for growth queries (created_at range filtering with server context)
     index('idx_library_items_server_created').on(table.serverId, table.createdAt),
 
