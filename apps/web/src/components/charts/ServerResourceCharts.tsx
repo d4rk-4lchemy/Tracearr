@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import type { ServerResourceDataPoint } from '@tracearr/shared';
@@ -10,6 +10,7 @@ import {
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Cpu, MemoryStick } from 'lucide-react';
+import { ChartErrorBoundary } from './ChartErrorBoundary';
 
 // Colors matching Plex's style
 const COLORS = {
@@ -71,6 +72,18 @@ function ResourceChart({
   multiSeries,
   processLabel,
 }: ResourceChartProps) {
+  // Highcharts mutates series visibility when its legend is clicked. Keep the
+  // multi-server selection in React instead, so the next live-data update has
+  // the same series state that Highcharts is currently displaying.
+  const [hiddenServerIds, setHiddenServerIds] = useState<Set<string>>(() => new Set());
+  const toggleServerVisibility = useCallback((serverId: string) => {
+    setHiddenServerIds((current) => {
+      const next = new Set(current);
+      if (next.has(serverId)) next.delete(serverId);
+      else next.add(serverId);
+      return next;
+    });
+  }, []);
   const isMulti = !!multiSeries && multiSeries.length > 0;
   const hasData = isMulti ? multiSeries.some((s) => s.data.length > 0) : !!data && data.length > 0;
 
@@ -92,8 +105,10 @@ function ResourceChart({
           const newestAt = s.data[s.data.length - 1]?.at ?? 0;
           return {
             type: 'line' as const,
+            id: s.serverId,
             name: s.serverName,
             color: s.color,
+            visible: !hiddenServerIds.has(s.serverId),
             // Samples arrive every 6s; snapping x to that grid puts every
             // server's points on shared positions so the tooltip groups them
             data: s.data.map(
@@ -241,6 +256,13 @@ function ResourceChart({
             },
           },
           connectNulls: false, // Don't connect across null values
+          events: {
+            legendItemClick: function () {
+              if (!isMulti || typeof this.options.id !== 'string') return true;
+              toggleServerVisibility(this.options.id);
+              return false;
+            },
+          },
         },
         area: {
           threshold: null,
@@ -294,7 +316,23 @@ function ResourceChart({
         ],
       },
     };
-  }, [data, processKey, hostKey, multiSeries, isMulti, hasData, processLabel]);
+  }, [
+    data,
+    processKey,
+    hostKey,
+    multiSeries,
+    isMulti,
+    hasData,
+    processLabel,
+    hiddenServerIds,
+    toggleServerVisibility,
+  ]);
+
+  const chartResetKey = isMulti
+    ? multiSeries
+        ?.map((s) => `${s.serverId}:${s.data[s.data.length - 1]?.at ?? ''}`)
+        .join('|')
+    : data?.[data.length - 1]?.at;
 
   if (isLoading) {
     return (
@@ -344,11 +382,13 @@ function ResourceChart({
         </CardTitle>
       </CardHeader>
       <CardContent className="pb-2">
-        <HighchartsReact
-          highcharts={Highcharts}
-          options={chartOptions}
-          containerProps={{ style: { width: '100%', height: '100%' } }}
-        />
+        <ChartErrorBoundary resetKey={chartResetKey} title={title}>
+          <HighchartsReact
+            highcharts={Highcharts}
+            options={chartOptions}
+            containerProps={{ style: { width: '100%', height: '100%' } }}
+          />
+        </ChartErrorBoundary>
         {/* Averages row */}
         <div className="text-muted-foreground mt-1 flex flex-wrap justify-end gap-4 pr-2 text-xs">
           {isMulti ? (

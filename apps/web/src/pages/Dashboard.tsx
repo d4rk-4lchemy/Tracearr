@@ -86,7 +86,7 @@ export function Dashboard() {
         plex: 'Plex Media Server',
         jellyfin: 'Jellyfin',
         emby: 'Emby',
-        dispatcharr: 'Dispatcharr container',
+        dispatcharr: 'Dispatcharr',
       }[singleServer.type]
     : undefined;
 
