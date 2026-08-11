@@ -126,6 +126,15 @@ describe('public API v2 skeleton', () => {
       expect(spec.paths['/api/v2/public/docs']).toBeDefined();
       expect(spec.paths['/api/v2/public/history']).toBeDefined();
       expect(spec.paths['/api/v2/public/streams']).toBeDefined();
+      expect(
+        (
+          spec as {
+            components: {
+              schemas: { ActiveStream: { properties: { server_type: { enum: string[] } } } };
+            };
+          }
+        ).components.schemas.ActiveStream.properties.server_type.enum
+      ).toContain('dispatcharr');
     });
 
     it('rejects an unreadable history cursor with 400', async () => {
