@@ -81,6 +81,19 @@ export class EmbyClient extends BaseMediaServerClient {
     return parseActivityLogResponse(data);
   }
 
+  /**
+   * The server's own id, needed as the `serverId` param on Emby web deep
+   * links (an item link without it 404s).
+   */
+  async getServerIdentity(): Promise<string | null> {
+    const data = await fetchJson<Record<string, unknown>>(`${this.baseUrl}/System/Info`, {
+      headers: this.buildHeaders(),
+      service: 'emby',
+      timeout: 10000,
+    });
+    return typeof data.Id === 'string' && data.Id ? data.Id : null;
+  }
+
   // ==========================================================================
   // Static Methods - Authentication (Emby-specific)
   // ==========================================================================

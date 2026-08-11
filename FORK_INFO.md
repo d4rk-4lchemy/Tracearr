@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA inspected: `feature/prepare-for-2.1.0` at `a1595115`
+- Fork branch/SHA before this upstream merge: `feature/prepare-for-2.1.0` at `a1595115`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `36d82db5`
-- Last shared upstream commit found during inspection: `36d82db5`
-- Latest upstream commit merged into the current working tree: `36d82db5`
+- Source branch/SHA inspected: `main` at `73e00663`
+- Last shared upstream commit found during inspection: `73e00663`
+- Latest upstream commit merged into the current working tree: `73e00663`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -210,6 +210,18 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `73e00663` (Tracearr `v2.1.0-beta.7`) was merged into
+  `feature/prepare-for-2.1.0` on Tuesday, August 11, 2026. The upstream
+  server-identity backfill, media-server deep links, login-role hardening,
+  and scoped server listing were retained. Dispatcharr remains a first-class
+  server type: its credentials/settings are returned only through the
+  Dispatcharr-aware route formatting, it participates in identity backfill,
+  and library sync stays guarded by `supportsMediaLibrary()`.
+- Upstream Crowdin locale updates and package/workspace changes were retained.
+  Future locale updates should continue to use upstream as the baseline;
+  Dispatcharr UI labels are implemented in the server settings components and
+  must be smoke-tested after translation changes.
 
 - Upstream `main` at `36d82db5` was merged into
   `feature/prepare-for-2.1.0` on Monday, August 10, 2026 (merge commit

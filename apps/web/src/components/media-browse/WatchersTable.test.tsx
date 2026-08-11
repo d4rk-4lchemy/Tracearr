@@ -74,7 +74,7 @@ describe('WatchersTable', () => {
     renderTable({ watchers: [watcher()] });
 
     const link = screen.getByRole('link', { name: /Sarah/ });
-    expect(link).toHaveAttribute('href', '/users/u1');
+    expect(link).toHaveAttribute('href', '/users/s1');
   });
 
   it('renders the watcher avatar from their thumbnail with an initial fallback', () => {

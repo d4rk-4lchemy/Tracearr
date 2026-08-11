@@ -83,7 +83,7 @@ export const servers = pgTable(
     type: varchar('type', { length: 20 }).notNull().$type<(typeof serverTypeEnum)[number]>(),
     url: text('url').notNull(),
     token: text('token').notNull(), // Encrypted
-    machineIdentifier: varchar('machine_identifier', { length: 100 }), // Plex clientIdentifier for dedup
+    machineIdentifier: varchar('machine_identifier', { length: 100 }), // The media server's own id: Plex clientIdentifier (also used for dedup), Jellyfin/Emby System/Info Id
     // For Plex servers: which linked Plex account this server was added from (nullable for Jellyfin/Emby and legacy)
     plexAccountId: uuid('plex_account_id'),
     displayOrder: integer('display_order').default(0).notNull(),

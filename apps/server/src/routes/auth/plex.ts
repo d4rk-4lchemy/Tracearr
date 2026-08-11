@@ -487,7 +487,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
     const existing = await db
       .select({ id: servers.id })
       .from(servers)
-      .where(eq(servers.machineIdentifier, clientIdentifier))
+      .where(and(eq(servers.type, 'plex'), eq(servers.machineIdentifier, clientIdentifier)))
       .limit(1);
 
     if (existing.length > 0) {

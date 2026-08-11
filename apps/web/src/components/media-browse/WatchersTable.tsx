@@ -116,9 +116,9 @@ export function WatchersTable({
                             <span className="truncate">{name}</span>
                           </>
                         );
-                        return watcher.user.userId ? (
+                        return watcher.user.serverUserId ? (
                           <Link
-                            to={`/users/${watcher.user.userId}`}
+                            to={`/users/${watcher.user.serverUserId}`}
                             className="flex items-center gap-2 font-medium hover:underline"
                           >
                             {cell}

@@ -6,7 +6,7 @@ overrides:
   # (1.30.2 and >=1.32 both break its serde contract); scoped so tailwind's
   # own exact lightningcss pin stays current.
   '@expo/metro-config>lightningcss': 1.30.1
-  hono: '>=4.12.12'
+  hono: '>=4.12.34'
   '@hono/node-server': '>=2.0.10'
   fast-jwt: '>=6.2.2'
   express-rate-limit: '>=8.2.2'
@@ -23,6 +23,9 @@ overrides:
   lodash: '>=4.17.23'
   bn.js@<5: '>=4.12.3'
   minimatch@<4: '>=3.1.3'
+  js-yaml@>=4: '^4.3.1'
+  nanoid@<4: '^3.3.17'
+  '@esbuild-kit/core-utils>esbuild': '^0.25.0'
 publicHoistPattern:
   - '@babel/types'
 allowBuilds:

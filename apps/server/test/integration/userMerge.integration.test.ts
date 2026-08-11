@@ -282,7 +282,7 @@ describe('mergeUsers', () => {
     const serverA = await createTestServer({ type: 'plex' });
     const serverB = await createTestServer({ type: 'jellyfin' });
     const target = await createTestUser({ role: 'member' });
-    const loginCapableSource = await createTestUser({ role: 'viewer' });
+    const loginCapableSource = await createTestUser({ role: 'admin' });
     await createTestServerUser({ userId: target.id, serverId: serverA.id });
     await createTestServerUser({ userId: loginCapableSource.id, serverId: serverB.id });
 

@@ -140,6 +140,18 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
   }
 
   /**
+   * The server's machineIdentifier, needed to address it on app.plex.tv.
+   */
+  async getServerIdentity(): Promise<string | null> {
+    const data = await fetchJson<{ MediaContainer?: { machineIdentifier?: unknown } }>(
+      `${this.baseUrl}/identity`,
+      { headers: this.buildHeaders(), service: 'plex', timeout: 10000 }
+    );
+    const id = data.MediaContainer?.machineIdentifier;
+    return typeof id === 'string' && id ? id : null;
+  }
+
+  /**
    * Get all local users (accounts from /accounts endpoint)
    *
    * Note: For complete user lists including shared users,

@@ -148,6 +148,7 @@ export interface MediaHistoryPlayEntry {
   watched: boolean;
   user: {
     id: string;
+    server_user_id: string;
     username: string;
     thumb_url: string | null;
     avatar_url: string | null;

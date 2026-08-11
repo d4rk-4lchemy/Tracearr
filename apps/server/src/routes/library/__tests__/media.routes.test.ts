@@ -429,6 +429,49 @@ describe('GET /library/media/:id and sub-resources', () => {
     expect(redis.setex).not.toHaveBeenCalled();
   });
 
+  it('returns the account id alongside the identity id on history rows', async () => {
+    const redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
+    const row = rawMediaRow();
+    const chainId = randomUUID();
+    const serverUserId = randomUUID();
+    const identityId = randomUUID();
+    const startedAt = new Date('2024-03-04T05:06:07.000Z');
+
+    queueSelect([row], [{ id: row.id }]);
+    dbExecute.mockResolvedValueOnce({
+      rows: [{ chain_ids: [chainId], raw_row_count: '1', window_lower_bound: startedAt }],
+    } as never);
+    dbExecute.mockResolvedValueOnce({
+      rows: [
+        {
+          chain_id: chainId,
+          chain_started_at: startedAt,
+          server_id: randomUUID(),
+          server_name: 'Plex',
+          server_type: 'plex',
+          state: 'stopped',
+          media_type: 'movie',
+          media_title: 'Arrival',
+          segment_count: '1',
+          watched: true,
+          server_user_id: serverUserId,
+          user_id: identityId,
+          server_username: 'alice',
+          user_thumb_url: null,
+          user_name: 'Alice',
+          user_username: 'alice',
+        },
+      ],
+    } as never);
+
+    const response = await app.inject({ method: 'GET', url: `/library/media/${row.id}/history` });
+    expect(response.statusCode).toBe(200);
+    const play = response.json().data[0];
+    expect(play.user.server_user_id).toBe(serverUserId);
+    expect(play.user.id).toBe(identityId);
+  });
+
   it('shapes the platform breakdown response in camelCase', async () => {
     const redis = createSpyRedis();
     app = await buildTestApp(createOwnerUser(), redis);

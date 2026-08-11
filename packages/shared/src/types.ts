@@ -23,7 +23,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, number> = {
 } as const;
 
 // Roles that can log into Tracearr
-export const LOGIN_ROLES: UserRole[] = ['owner', 'admin', 'viewer'];
+export const LOGIN_ROLES: UserRole[] = ['owner', 'admin'];
 
 // Role helper functions
 export const canLogin = (role: UserRole): boolean => LOGIN_ROLES.includes(role);
@@ -43,6 +43,8 @@ export interface Server {
   name: string;
   type: ServerType;
   url: string;
+  /** The media server's own id, used to build item deep links. */
+  machineIdentifier?: string | null;
   dispatcharrAuthMode?: DispatcharrAuthMode;
   ignoreAnonymousStreams?: boolean;
   displayOrder?: number;

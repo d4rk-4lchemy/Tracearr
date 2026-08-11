@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { format } from 'date-fns';
 import { ChevronDown, ExternalLink } from 'lucide-react';
+import { buildMediaServerItemUrl } from '@tracearr/shared';
 import type { MediaAvailabilityEntry, ServerType } from '@tracearr/shared';
 import type { MediaDetailData, MediaDetailStub } from '@/hooks/queries';
 import { buildPosterSrc } from './PosterCard';
@@ -31,6 +32,7 @@ export interface HeroServerLookupEntry {
   type: ServerType;
   color?: string | null;
   url: string;
+  machineIdentifier?: string | null;
 }
 
 interface DetailHeroProps {
@@ -172,7 +174,14 @@ function OpenOnServerAction({
   const targets = activeAvailability
     .map((entry) => {
       const server = serverById.get(entry.serverId);
-      return server ? { serverId: entry.serverId, name: server.name, url: server.url } : null;
+      if (!server) return null;
+      const itemUrl = buildMediaServerItemUrl({
+        serverType: server.type,
+        baseUrl: server.url,
+        ratingKey: entry.ratingKey,
+        machineIdentifier: server.machineIdentifier,
+      });
+      return { serverId: entry.serverId, name: server.name, url: itemUrl ?? server.url };
     })
     .filter((target): target is { serverId: string; name: string; url: string } => !!target);
 

@@ -173,6 +173,7 @@ import { eq } from 'drizzle-orm';
 import { servers } from './db/schema.js';
 import { initializeClaimCode } from './utils/claimCode.js';
 import { registerService, unregisterService } from './services/serviceTracker.js';
+import { backfillMissingServerIdentifiers } from './services/serverIdentity.js';
 import {
   getServerMode,
   setServerMode,
@@ -1149,6 +1150,15 @@ async function initializePostListen(app: FastifyInstance) {
     } catch (err) {
       app.log.error({ err }, 'Failed to start real-time connections - falling back to polling');
     }
+
+    // One bounded pass per leadership term; nothing else sweeps these rows.
+    void backfillMissingServerIdentifiers(app.log)
+      .then((filled) => {
+        if (filled > 0) app.log.info(`Recorded identifiers for ${filled} server(s)`);
+      })
+      .catch((err: unknown) => {
+        app.log.debug({ err }, 'Server identifier backfill failed');
+      });
   };
 
   const stopProducers = async (): Promise<void> => {

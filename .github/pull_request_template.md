@@ -41,7 +41,11 @@ Closes #
 
 - [ ] AI tools were used significantly in writing this code
 
-<!-- If checked, briefly note how (e.g., "generated initial implementation", "helped debug matching logic"): -->
+<!-- If checked, say which parts and how much. "Used AI" is not enough.
+     Example: "wrote the adapter myself, used Claude for the Zod schema"
+
+     This tells us where to look harder. It is not a permission slip.
+     See CONTRIBUTING.md, "On AI-Assisted Code". -->
 
 ## Checklist
 

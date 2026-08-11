@@ -484,6 +484,12 @@ export interface IMediaServerClient {
   testConnection(): Promise<boolean>;
 
   /**
+   * The server's own identifier, as its web client addresses it. Distinct from
+   * the Tracearr `servers.id` row uuid.
+   */
+  getServerIdentity?(): Promise<string | null>;
+
+  /**
    * Terminate a playback session
    *
    * @param sessionId - The session ID to terminate (use terminationId from MediaSession)

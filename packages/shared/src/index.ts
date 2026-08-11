@@ -610,3 +610,5 @@ export {
   serverScopeParamEntries,
   type ServerScope,
 } from './serverScope.js';
+
+export { buildMediaServerItemUrl, type MediaServerItemLinkInput } from './mediaServerLinks.js';
