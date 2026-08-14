@@ -501,6 +501,41 @@ describe('Dispatcharr direct snapshot stops', () => {
   });
 });
 
+describe('Dispatcharr anonymous stream filtering in REST polling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateMediaServerClient.mockReturnValue({
+      getSessions: vi.fn().mockResolvedValue([]),
+    });
+  });
+
+  it('passes disabled anonymous filtering to the REST client', async () => {
+    await processServerSessions(
+      {
+        id: 'dispatcharr-1',
+        name: 'Dispatcharr',
+        type: 'dispatcharr',
+        url: 'http://dispatcharr.local',
+        token: 'api-key',
+        ignoreAnonymousStreams: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      [],
+      new Set()
+    );
+
+    expect(mockCreateMediaServerClient).toHaveBeenCalledWith({
+      type: 'dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'api-key',
+      ignoreAnonymousStreams: false,
+      id: 'dispatcharr-1',
+      name: 'Dispatcharr',
+    });
+  });
+});
+
 describe('poller rediscovered-session guard against stop races', () => {
   let cacheService: {
     getAllActiveSessions: ReturnType<typeof vi.fn>;

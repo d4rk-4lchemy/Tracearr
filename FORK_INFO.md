@@ -61,6 +61,9 @@ The fork also carries local maintenance/distribution changes:
 - README has fork-specific warnings, Docker image names, and Dispatcharr feature notes.
 - Renovate scheduled execution is disabled in `.github/workflows/renovate.yml`.
 - CI runs only for pull requests; merges to `main` do not trigger a second CI run.
+- The Docker-backed integration matrix (PG15/Timescale 2.28 and PG18/Timescale
+  2.29) is intentionally not part of GitHub PR CI. Run it manually when
+  validating database, migration, or integration-test changes.
 - Release automation is manual-only, so merging to `main` does not create a release, push Docker images, or post to Reddit.
 - Local Husky hooks were removed.
 - `.tmp/`, `.plans/`, `AGENTS.md`, and this `FORK_INFO.md` are ignored locally.
