@@ -282,6 +282,7 @@ export type {
   GenresResponse,
   MediaVersionEntry,
   MediaAvailabilityEntry,
+  MediaReplacedCopy,
   MediaDetailResponse,
   MediaChildEntry,
   MediaChildrenResponse,

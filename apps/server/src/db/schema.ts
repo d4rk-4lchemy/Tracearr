@@ -1058,6 +1058,12 @@ export const libraryItems = pgTable(
     genres: text('genres').array(),
     // Soft delete - set when the item disappears from the server; upsert clears it
     removedAt: timestamp('removed_at', { withTimezone: true }),
+    // 'event' (SSE removal, accurate time) or 'scan' (removed_at = when the scan noticed)
+    removedSource: varchar('removed_source', { length: 10 }),
+    // id of the copy this row replaced; set once by event-witnessed replacement linking
+    replacesLibraryItemId: uuid('replaces_library_item_id'),
+    // When Tracearr first saw this rating key; app-set on insert, null = predates tracking
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }),
 
     // Browsing UI: cached poster thumbnail path and dominant color accent
     thumbPath: text('thumb_path'),
@@ -1117,6 +1123,11 @@ export const libraryItems = pgTable(
     index('idx_library_items_resolution_active')
       .on(table.videoResolution)
       .where(sql`${table.removedAt} IS NULL`),
+
+    // The availability query's hide-a-linked-tombstone probe seq-scans without this
+    index('idx_library_items_replaces_active')
+      .on(table.replacesLibraryItemId)
+      .where(sql`${table.replacesLibraryItemId} IS NOT NULL AND ${table.removedAt} IS NULL`),
 
     index('idx_library_items_dynamic_range_active')
       .on(table.videoDynamicRange)

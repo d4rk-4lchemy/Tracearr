@@ -642,4 +642,45 @@ describe('buildUpstreamRequest', () => {
       'http://media:1234/Items/abc/Images/Primary?tag=5&maxHeight=360&quality=90'
     );
   });
+
+  describe('origin pinning', () => {
+    // The attack only parses when the configured URL has no explicit port:
+    // with one, "32400.evil" is an invalid port and the URL is rejected anyway.
+    const portless = { ...baseServer, url: 'https://jf.example.com' };
+
+    it('rejects a suffix that moves the request to another host', () => {
+      const server = { ...portless, type: 'jellyfin' } as never;
+      expect(() => buildUpstreamRequest(server, '.attacker.example/x')).toThrow();
+      expect(() =>
+        buildUpstreamRequest(server, '.attacker.example/x', { width: 240, height: 360 })
+      ).toThrow();
+    });
+
+    it('rejects a plex path that moves the host, which would leak the token', () => {
+      const server = { ...portless, type: 'plex' } as never;
+      expect(() => buildUpstreamRequest(server, '.attacker.example/x')).toThrow();
+    });
+
+    it('rejects injected URL credentials', () => {
+      const server = { ...portless, type: 'jellyfin' } as never;
+      expect(() => buildUpstreamRequest(server, '@evil.test/x')).toThrow();
+    });
+
+    it('rejects an absolute URL', () => {
+      const server = { ...portless, type: 'jellyfin' } as never;
+      expect(() => buildUpstreamRequest(server, 'https://evil.test/x')).toThrow();
+    });
+
+    it('still builds a normal relative path on a portless server', () => {
+      const server = { ...portless, type: 'jellyfin' } as never;
+      const { imageUrl } = buildUpstreamRequest(server, '/Items/abc/Images/Primary');
+      expect(imageUrl).toBe('https://jf.example.com/Items/abc/Images/Primary');
+    });
+
+    it('treats a protocol-relative path as a path on the configured host', () => {
+      const server = { ...portless, type: 'jellyfin' } as never;
+      const { imageUrl } = buildUpstreamRequest(server, '//evil.test/x');
+      expect(new URL(imageUrl).host).toBe('jf.example.com');
+    });
+  });
 });

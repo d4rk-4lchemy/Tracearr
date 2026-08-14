@@ -28,6 +28,8 @@ export interface LibraryItemData {
   genres?: string[] | null;
   mediaId?: string | null;
   removedAt?: Date | null;
+  removedSource?: 'event' | 'scan' | null;
+  firstSeenAt?: Date | null;
   fileSize?: number | null;
   videoResolution?: string | null;
   videoDynamicRange?: string | null;
@@ -71,6 +73,8 @@ export function buildLibraryItem(data: LibraryItemData): Required<LibraryItemDat
     genres: data.genres ?? null,
     mediaId: data.mediaId ?? null,
     removedAt: data.removedAt ?? null,
+    removedSource: data.removedSource ?? null,
+    firstSeenAt: data.firstSeenAt ?? null,
     fileSize: data.fileSize ?? null,
     videoResolution: data.videoResolution ?? null,
     videoDynamicRange: data.videoDynamicRange ?? null,
@@ -89,6 +93,8 @@ export async function createTestLibraryItem(
   const genres =
     d.genres === null ? 'NULL' : `ARRAY[${d.genres.map((g) => `'${esc(g)}'`).join(',')}]::text[]`;
   const removedAt = d.removedAt === null ? 'NULL' : `'${d.removedAt.toISOString()}'`;
+  const removedSource = str(d.removedSource);
+  const firstSeenAt = d.firstSeenAt === null ? 'NULL' : `'${d.firstSeenAt.toISOString()}'`;
   const fileSize = d.fileSize === null ? 'NULL' : String(d.fileSize);
   const videoResolution = str(d.videoResolution);
   const videoDynamicRange = str(d.videoDynamicRange);
@@ -97,12 +103,12 @@ export async function createTestLibraryItem(
     INSERT INTO library_items
       (server_id, library_id, rating_key, title, media_type, year, imdb_id, tmdb_id, tvdb_id,
        grandparent_rating_key, parent_rating_key, parent_index, item_index, genres, media_id, removed_at,
-       file_size, video_resolution, video_dynamic_range, created_at)
+       removed_source, first_seen_at, file_size, video_resolution, video_dynamic_range, created_at)
     VALUES ('${d.serverId}', '${esc(d.libraryId)}', '${esc(d.ratingKey)}', '${esc(d.title)}',
        '${d.mediaType}', ${num(d.year)}, ${str(d.imdbId)}, ${num(d.tmdbId)}, ${num(d.tvdbId)},
        ${str(d.grandparentRatingKey)}, ${str(d.parentRatingKey)}, ${num(d.parentIndex)},
        ${num(d.itemIndex)}, ${genres}, ${d.mediaId === null ? 'NULL' : `'${d.mediaId}'`}, ${removedAt},
-       ${fileSize}, ${videoResolution}, ${videoDynamicRange}, ${createdAt})
+       ${removedSource}, ${firstSeenAt}, ${fileSize}, ${videoResolution}, ${videoDynamicRange}, ${createdAt})
     RETURNING id, rating_key, server_id
   `);
   const row = result.rows[0] as { id: string; rating_key: string; server_id: string };

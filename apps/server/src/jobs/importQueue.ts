@@ -12,8 +12,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
-import { getRedisPrefix } from '@tracearr/shared';
 import type {
   TautulliImportProgress,
   TautulliImportResult,
@@ -101,8 +101,8 @@ export function initImportQueue(redisUrl: string): void {
     return;
   }
 
-  connectionOptions = { url: redisUrl };
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  connectionOptions = queueConnectionOptions(redisUrl);
+  const bullPrefix = getBullPrefix();
 
   importQueue = new Queue<ImportJobData>(QUEUE_NAME, {
     connection: connectionOptions,
@@ -294,7 +294,7 @@ export function startImportWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   // Recover any stuck jobs from a previous crash before starting the worker
   if (importQueue) {

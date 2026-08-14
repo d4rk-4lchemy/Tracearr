@@ -83,6 +83,12 @@ const SNAPSHOT_REBUILD_MIN_INTERVAL_MS = 5 * 60 * 1000;
 /** Cooldown for reconcileMediaDuplicates (five aggregate scans over media). */
 const RECONCILE_MIN_INTERVAL_MS = 10 * 60 * 1000;
 
+/** Max gap between an event tombstone and a new copy's first sighting to link them. */
+const REPLACEMENT_LINK_WINDOW_MS = 10 * 60 * 1000;
+
+/** More links than this in one pass is a library rebuild, not upgrades - link nothing. */
+const REPLACEMENT_LINK_MAX_PER_PASS = 50;
+
 /** If incremental sync returns more than this fraction of total items, fall through to full scan */
 const INCREMENTAL_CAP_RATIO = 0.3;
 
@@ -396,6 +402,17 @@ export class LibrarySyncService {
     }
 
     await this.syncLibraryNames(serverId, libraries);
+
+    if (libraries.length > 0) {
+      try {
+        const linked = await this.linkEventReplacements(serverId, new Date(startedAt));
+        if (linked > 0) {
+          console.log(`[LibrarySync] Linked ${linked} replaced copies for ${server.name}`);
+        }
+      } catch (err) {
+        console.warn('[LibrarySync] Replacement linking failed, continuing sync:', err);
+      }
+    }
 
     // Report completion
     if (onProgress) {
@@ -1352,6 +1369,7 @@ export class LibrarySyncService {
     );
 
     // Bulk upsert with transaction for atomicity
+    const firstSeen = new Date();
     await db.transaction(async (tx) => {
       const changedRows = await tx
         .insert(libraryItems)
@@ -1397,6 +1415,8 @@ export class LibrarySyncService {
               genres: item.genres ?? null,
               thumbPath: item.thumbPath ?? null,
               removedAt: null,
+              // insert-only: the conflict update never touches it
+              firstSeenAt: firstSeen,
               createdAt,
             });
           })
@@ -1433,6 +1453,7 @@ export class LibrarySyncService {
             // pipeline and deliberately excluded so a sync never nulls or overwrites it.
             thumbPath: sql`excluded.thumb_path`,
             removedAt: null,
+            removedSource: null,
             // Fix created_at with Plex's addedAt (for existing items with wrong dates)
             createdAt: sql`excluded.created_at`,
             updatedAt: new Date(),
@@ -1972,7 +1993,8 @@ export class LibrarySyncService {
       const rows = await db.transaction(async (tx) => {
         const updated = await tx
           .update(libraryItems)
-          .set({ removedAt: new Date(), updatedAt: new Date() })
+          // 'scan': removed_at is when the diff noticed, not when the file vanished
+          .set({ removedAt: new Date(), removedSource: 'scan', updatedAt: new Date() })
           .where(
             and(
               eq(libraryItems.serverId, serverId),
@@ -2035,7 +2057,8 @@ export class LibrarySyncService {
       const rows = await db.transaction(async (tx) => {
         const updated = await tx
           .update(libraryItems)
-          .set({ removedAt: new Date(), updatedAt: new Date() })
+          // 'event': the SSE removal arrived seconds after the file vanished
+          .set({ removedAt: new Date(), removedSource: 'event', updatedAt: new Date() })
           .where(
             and(
               eq(libraryItems.serverId, serverId),
@@ -2054,6 +2077,72 @@ export class LibrarySyncService {
     }
 
     await this.recomputeLatestAddedAt(touchedMediaIds);
+
+    try {
+      await this.linkEventReplacements(serverId, new Date(Date.now() - REPLACEMENT_LINK_WINDOW_MS));
+    } catch (err) {
+      console.warn('[LibrarySync] Replacement linking failed after event tombstone:', err);
+    }
+  }
+
+  /**
+   * Point copies first seen near an event tombstone of the same media at that
+   * tombstone. Scan tombstones never qualify: their removed_at says when a
+   * diff noticed, so pairing against them would fabricate swap stories.
+   */
+  async linkEventReplacements(serverId: string, newRowsSince: Date): Promise<number> {
+    const candidates = await db.execute(sql`
+      WITH ranked AS (
+        SELECT act.id AS new_id, old.id AS old_id, old.removed_at,
+               ROW_NUMBER() OVER (
+                 PARTITION BY old.id
+                 ORDER BY abs(extract(epoch FROM act.first_seen_at - old.removed_at))
+               ) AS act_rank
+        FROM library_items act
+        JOIN library_items old
+          ON old.server_id = act.server_id
+         AND old.library_id = act.library_id
+         AND old.media_id = act.media_id
+         AND old.id <> act.id
+        WHERE act.server_id = ${serverId}
+          AND act.media_type IN ('movie', 'episode')
+          AND act.removed_at IS NULL
+          AND act.replaces_library_item_id IS NULL
+          AND act.media_id IS NOT NULL
+          AND act.first_seen_at >= ${newRowsSince}
+          AND old.removed_at IS NOT NULL
+          AND old.removed_source = 'event'
+          AND old.removed_at BETWEEN act.first_seen_at - ${REPLACEMENT_LINK_WINDOW_MS / 1000} * interval '1 second'
+                                 AND act.first_seen_at + ${REPLACEMENT_LINK_WINDOW_MS / 1000} * interval '1 second'
+          -- an unchanged copy (byte-identical, same resolution) is a re-key, not a replacement
+          AND (old.video_resolution IS DISTINCT FROM act.video_resolution
+               OR old.file_size IS DISTINCT FROM act.file_size)
+      )
+      SELECT DISTINCT ON (new_id) new_id, old_id
+      FROM ranked
+      WHERE act_rank = 1
+      ORDER BY new_id, removed_at DESC
+    `);
+    const rows = candidates.rows as unknown as Array<{ new_id: string; old_id: string }>;
+    if (rows.length === 0) return 0;
+    if (rows.length > REPLACEMENT_LINK_MAX_PER_PASS) {
+      console.warn(
+        `[LibrarySync] Skipping replacement linking: ${rows.length} candidates in one pass looks like a library rebuild`
+      );
+      return 0;
+    }
+
+    const pairs = sql.join(
+      rows.map((r) => sql`(${r.new_id}::uuid, ${r.old_id}::uuid)`),
+      sql`, `
+    );
+    const updated = await db.execute(sql`
+      UPDATE library_items li
+      SET replaces_library_item_id = v.old_id, updated_at = now()
+      FROM (VALUES ${pairs}) AS v(new_id, old_id)
+      WHERE li.id = v.new_id AND li.replaces_library_item_id IS NULL
+    `);
+    return updated.rowCount ?? 0;
   }
 
   /**

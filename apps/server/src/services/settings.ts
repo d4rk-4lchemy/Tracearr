@@ -69,6 +69,9 @@ const INTERNAL_DEFAULTS = {
   // ISO 8601 - set once when pre-changeover snapshot history has been
   // regenerated in multi-version semantics; retires the growth fit clamp
   snapshotsNormalizedAt: null as string | null,
+  // Per-install Plex client identifier, generated on first boot. Scopes plex.tv
+  // PINs to this deployment. Served to the web UI, so it is public, not secret.
+  plexClientIdentifier: null as string | null,
 };
 
 type InternalSettings = typeof INTERNAL_DEFAULTS;

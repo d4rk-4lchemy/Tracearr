@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '@tracearr/shared';
@@ -1137,6 +1137,42 @@ describe('Server Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
+      await customApp.close();
+    });
+
+    it('goes through the shared authenticate guard, not a bare jwtVerify', async () => {
+      // The shared guard enforces the post-restore revocation timestamp and the
+      // mobile device blacklist; a hand-rolled jwtVerify skips both. Here the
+      // guard rejects while jwtVerify would succeed, so a 200 means the route
+      // is still bypassing it.
+      const customApp = Fastify({ logger: false });
+      await customApp.register(sensible);
+
+      customApp.decorate('authenticate', async (_request: unknown, reply: FastifyReply) => {
+        await reply.status(401).send({ message: 'Session has been revoked' });
+      });
+
+      customApp.decorateRequest('jwtVerify', async function (this: { user: AuthUser }) {
+        this.user = ownerUser;
+      });
+
+      await customApp.register(serverRoutes, { prefix: '/servers' });
+
+      mockDbSelectLimit([mockServer]);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        headers: new Map([['content-type', 'image/jpeg']]),
+        arrayBuffer: () => Promise.resolve(Buffer.from('image')),
+      });
+
+      const response = await customApp.inject({
+        method: 'GET',
+        url: `/servers/${mockServer.id}/image/thumb.jpg`,
+        headers: { authorization: 'Bearer revoked-but-well-formed' },
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(mockFetch).not.toHaveBeenCalled();
       await customApp.close();
     });
 

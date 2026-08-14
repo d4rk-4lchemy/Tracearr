@@ -6,8 +6,8 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { getRedisPrefix } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { eq, and, isNull } from 'drizzle-orm';
 import type {
@@ -162,10 +162,10 @@ export function initInactivityCheckQueue(
     return;
   }
 
-  connectionOptions = { url: redisUrl };
+  connectionOptions = queueConnectionOptions(redisUrl);
   _redisClient = redis;
   pubSubPublish = publishFn;
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   // Create the inactivity check queue
   inactivityQueue = new Queue<InactivityCheckJobData>(QUEUE_NAME, {
@@ -207,7 +207,7 @@ export function startInactivityCheckWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   inactivityWorker = new Worker<InactivityCheckJobData>(
     QUEUE_NAME,

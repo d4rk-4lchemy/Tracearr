@@ -14,6 +14,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, and, count, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import { getPlexClientIdentifier } from '../../utils/http.js';
 import {
   REDIS_KEYS,
   type PlexAvailableServersResponse,
@@ -704,6 +705,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
           serverCount: a.serverCount,
           createdAt: a.createdAt,
         })),
+        clientIdentifier: getPlexClientIdentifier(),
       };
     }
   );

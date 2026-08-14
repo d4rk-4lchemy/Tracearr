@@ -6,8 +6,8 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { getRedisPrefix } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { REDIS_KEYS, CACHE_TTL, WS_EVENTS } from '@tracearr/shared';
 import { getBuildInfo, getCurrentVersion } from '../utils/buildInfo.js';
@@ -97,10 +97,10 @@ export function initVersionCheckQueue(
     return;
   }
 
-  connectionOptions = { url: redisUrl };
+  connectionOptions = queueConnectionOptions(redisUrl);
   redisClient = redis;
   pubSubPublish = publishFn;
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   // Create the version check queue
   versionQueue = new Queue<VersionCheckJobData>(QUEUE_NAME, {
@@ -142,7 +142,7 @@ export function startVersionCheckWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   versionWorker = new Worker<VersionCheckJobData>(
     QUEUE_NAME,

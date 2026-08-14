@@ -12,6 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { Queue, Worker, UnrecoverableError, type Job, type ConnectionOptions } from 'bullmq';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { getRedisPrefix } from '@tracearr/shared';
 import { extendJobLock, MAINTENANCE_LOCK_DURATION_MS } from './lockUtils.js';
@@ -116,8 +117,8 @@ export function initMaintenanceQueue(redisUrl: string): void {
     return;
   }
 
-  connectionOptions = { url: redisUrl };
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  connectionOptions = queueConnectionOptions(redisUrl);
+  const bullPrefix = getBullPrefix();
 
   maintenanceQueue = new Queue<MaintenanceJobData>(QUEUE_NAME, {
     connection: connectionOptions,
@@ -165,7 +166,7 @@ export function startMaintenanceWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   maintenanceWorker = new Worker<MaintenanceJobData>(
     QUEUE_NAME,

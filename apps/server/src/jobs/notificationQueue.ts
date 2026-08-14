@@ -6,13 +6,13 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { getRedisPrefix } from '@tracearr/shared';
 import type {
   ViolationWithDetails,
   ActiveSession,
   NotificationEventType,
   GroupEvidence,
 } from '@tracearr/shared';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { WS_EVENTS } from '@tracearr/shared';
 import { notificationManager } from '../services/notifications/index.js';
@@ -75,9 +75,9 @@ export function initNotificationQueue(redisUrl: string): void {
     return;
   }
 
-  connectionOptions = { url: redisUrl };
+  connectionOptions = queueConnectionOptions(redisUrl);
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   // Create the main notification queue
   notificationQueue = new Queue<NotificationJobData>(QUEUE_NAME, {
@@ -138,7 +138,7 @@ export function startNotificationWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   notificationWorker = new Worker<NotificationJobData>(
     QUEUE_NAME,

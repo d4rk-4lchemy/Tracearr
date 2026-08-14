@@ -5,7 +5,7 @@
  * Provides a unified interface for session tracking, user management, and library access.
  */
 
-import { fetchJson, fetchText, plexHeaders } from '../../../utils/http.js';
+import { fetchJson, fetchText, plexHeaders, getPlexClientIdentifier } from '../../../utils/http.js';
 import { assertSafeProbeUrl, SsrfBlockedError } from '../../../utils/ssrf.js';
 import type {
   IMediaServerClient,
@@ -567,8 +567,10 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
       service: 'plex.tv',
     });
 
+    // Must match the identifier the PIN was created under above, or plex.tv
+    // binds the authorisation to a different device and polling never resolves.
     const params = new URLSearchParams({
-      clientID: 'tracearr',
+      clientID: getPlexClientIdentifier(),
       code: data.code,
       'context[device][product]': 'Tracearr',
     });

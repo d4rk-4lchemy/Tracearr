@@ -817,11 +817,10 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       request.headers.authorization = `Bearer ${queryToken}`;
     }
 
-    try {
-      await request.jwtVerify();
-    } catch {
-      return reply.unauthorized('Invalid or missing token');
-    }
+    // Shared guard rather than a bare jwtVerify: it also enforces the
+    // post-restore revocation timestamp and the mobile device blacklist.
+    await app.authenticate(request, reply);
+    if (reply.sent) return;
 
     const { id } = request.params as { id: string; '*': string };
     const imagePath = (request.params as { '*': string })['*'];

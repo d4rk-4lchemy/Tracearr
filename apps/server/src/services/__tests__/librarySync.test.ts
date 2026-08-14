@@ -1462,10 +1462,11 @@ describe('LibrarySyncService', () => {
       const service = new LibrarySyncService();
       await service.syncServer(serverId, undefined, 'manual');
 
-      // The snapshot aggregate is the only raw query a manual full scan may
-      // run; anything else here would be the count-mismatch check
+      // Snapshot aggregates and the sync-tail replacement linking are the only
+      // raw queries a manual full scan may run; anything else here would be
+      // the count-mismatch check
       for (const call of vi.mocked(db.execute).mock.calls) {
-        expect(renderSql(call[0] as SQL).sql).toContain('item_rollup');
+        expect(renderSql(call[0] as SQL).sql).toMatch(/item_rollup|replaces_library_item_id/);
       }
     });
 

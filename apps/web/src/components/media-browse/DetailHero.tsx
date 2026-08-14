@@ -350,19 +350,41 @@ export function DetailHero({
                   {availability.map((entry) => {
                     const server = serverById.get(entry.serverId);
                     const removed = entry.removedAt != null;
-                    const caption = removed
-                      ? t('media.detail.hero.availability.removed', {
-                          date: format(new Date(entry.removedAt as string), 'MMM d, yyyy'),
+                    const dateText = removed
+                      ? t('media.detail.hero.availability.addedRemoved', {
+                          added: format(new Date(entry.addedAt), 'MMM d, yyyy'),
+                          removed: format(new Date(entry.removedAt as string), 'MMM d, yyyy'),
                         })
-                      : joinMeta([
-                          t('media.detail.hero.availability.added', {
-                            date: format(new Date(entry.addedAt), 'MMM d, yyyy'),
-                          }),
-                          entry.videoResolution,
-                          entry.fileSize != null
-                            ? formatBytes(entry.fileSize, 1, { minUnit: 'GB' })
-                            : null,
-                        ]);
+                      : t('media.detail.hero.availability.added', {
+                          date: format(new Date(entry.addedAt), 'MMM d, yyyy'),
+                        });
+                    // A witnessed replacement tells the swap as one line, dated by
+                    // the removal event rather than the server's claimed added date
+                    const caption =
+                      entry.replaces && !removed
+                        ? joinMeta([
+                            t('media.detail.hero.availability.added', {
+                              date: format(new Date(entry.replaces.addedAt), 'MMM d, yyyy'),
+                            }),
+                            entry.replaces.videoResolution,
+                            entry.replaces.fileSize != null
+                              ? formatBytes(entry.replaces.fileSize, 1, { minUnit: 'GB' })
+                              : null,
+                            t('media.detail.hero.availability.replaced', {
+                              date: format(new Date(entry.replaces.removedAt), 'MMM d, yyyy'),
+                            }),
+                            entry.videoResolution,
+                            entry.fileSize != null
+                              ? formatBytes(entry.fileSize, 1, { minUnit: 'GB' })
+                              : null,
+                          ])
+                        : joinMeta([
+                            dateText,
+                            entry.videoResolution,
+                            entry.fileSize != null
+                              ? formatBytes(entry.fileSize, 1, { minUnit: 'GB' })
+                              : null,
+                          ]);
                     return (
                       <div
                         key={`${entry.serverId}-${entry.ratingKey}`}

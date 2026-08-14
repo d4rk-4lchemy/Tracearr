@@ -17,7 +17,7 @@
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import { and, asc, eq, gt, gte, isNotNull, isNull, sql } from 'drizzle-orm';
-import { getRedisPrefix } from '@tracearr/shared';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
 import { libraryItems } from '../db/schema.js';
@@ -67,8 +67,8 @@ export function initImagePrecacheQueue(redisUrl: string): void {
     return;
   }
 
-  connectionOptions = { url: redisUrl };
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  connectionOptions = queueConnectionOptions(redisUrl);
+  const bullPrefix = getBullPrefix();
 
   imagePrecacheQueue = new Queue<ImagePrecacheJobData>(QUEUE_NAME, {
     connection: connectionOptions,
@@ -108,7 +108,7 @@ export function startImagePrecacheWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   imagePrecacheWorker = new Worker<ImagePrecacheJobData>(
     QUEUE_NAME,

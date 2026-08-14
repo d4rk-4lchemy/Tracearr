@@ -178,6 +178,7 @@ describe('GET /library/media/:id and sub-resources', () => {
         episodeResolutions: null,
         episodeCount: null,
         versions: [],
+        replaces: null,
       },
     ]);
     expect(redis.setex).toHaveBeenCalledTimes(1);

@@ -9,6 +9,7 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { getRedisPrefix, LEGACY_VERSION_SENTINEL, supportsMediaLibrary } from '@tracearr/shared';
 import { Redis } from 'ioredis';
@@ -166,10 +167,10 @@ export function initLibrarySyncQueue(redisUrl: string): void {
     return;
   }
 
-  connectionOptions = { url: redisUrl };
+  connectionOptions = queueConnectionOptions(redisUrl);
   redisClient = new Redis(redisUrl);
   initLibrarySyncRedis(redisClient);
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   librarySyncQueue = new Queue<LibrarySyncJobData>(QUEUE_NAME, {
     connection: connectionOptions,
@@ -209,7 +210,7 @@ export function startLibrarySyncWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   librarySyncWorker = new Worker<LibrarySyncJobData>(
     QUEUE_NAME,

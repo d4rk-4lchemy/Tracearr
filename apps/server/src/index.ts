@@ -77,6 +77,8 @@ import {
 } from './routes/settings.js';
 import { initializeEncryption, migrateToken, looksEncrypted } from './utils/crypto.js';
 import { publicApiRateLimitKey } from './utils/publicApiRateLimitKey.js';
+import { registerErrorHandler } from './utils/errors.js';
+import { resolveWebAsset } from './utils/webRoot.js';
 import { geoipService } from './services/geoip.js';
 import { tailscaleService } from './services/tailscale.js';
 import { geoasnService } from './services/geoasn.js';
@@ -382,6 +384,13 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
 
   // Utility plugins
   await app.register(sensible);
+
+  // The SPA fallback below claims the not-found slot in production, and Fastify
+  // throws on a second handler for the same scope - so hand off the 404 half
+  // only when that branch is inactive.
+  const webDistPath = resolve(PROJECT_ROOT, 'apps/web/dist');
+  const serveSpa = process.env.NODE_ENV === 'production' && existsSync(webDistPath);
+  registerErrorHandler(app, { notFound: !serveSpa });
   await app.register(cookie, {
     secret: process.env.COOKIE_SECRET,
   });
@@ -481,9 +490,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
   await app.register(backupRoutes, { prefix: `${API_BASE_PATH}/backup` });
 
   // Serve static frontend in production
-  const webDistPath = resolve(PROJECT_ROOT, 'apps/web/dist');
-
-  if (process.env.NODE_ENV === 'production' && existsSync(webDistPath)) {
+  if (serveSpa) {
     // Read index.html once at startup for <base> tag injection
     const indexHtmlPath = resolve(webDistPath, 'index.html');
     const cachedIndexHtml = readFileSync(indexHtmlPath, 'utf-8');
@@ -513,11 +520,13 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
       // request.url is already stripped by rewriteUrl
       const urlPath = request.url.split('?')[0]!;
 
-      // Serve static files (paths with a file extension)
+      // Serve static files (paths with a file extension). resolveWebAsset
+      // returns null for anything escaping the web root, so a crafted path
+      // falls through to the SPA response instead of stat-ing the filesystem.
       if (urlPath !== '/' && /\.\w+$/.test(urlPath)) {
-        const fullPath = resolve(webDistPath, urlPath.slice(1));
-        if (existsSync(fullPath)) {
-          return reply.sendFile(urlPath.slice(1));
+        const assetPath = resolveWebAsset(webDistPath, urlPath);
+        if (assetPath && existsSync(resolve(webDistPath, assetPath))) {
+          return reply.sendFile(assetPath);
         }
       }
 
@@ -662,6 +671,10 @@ async function initializeServices(app: FastifyInstance) {
 
   // Load JWT revoke settings — ensures tokens issued before a prior restore are rejected
   await loadJwtRevokeSettings();
+
+  // Generate this install's Plex client identifier on first boot
+  const { initializePlexClientIdentifier } = await import('./lib/plexIdentity.js');
+  await initializePlexClientIdentifier();
 
   // Initialize TimescaleDB features (hypertable, compression, aggregates)
   try {

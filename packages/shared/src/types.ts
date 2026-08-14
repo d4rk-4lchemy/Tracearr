@@ -1896,6 +1896,12 @@ export interface PlexAccount {
 // Response from GET /auth/plex/accounts
 export interface PlexAccountsResponse {
   accounts: PlexAccount[];
+  /**
+   * This install's Plex client identifier. The browser creates the link PIN and
+   * the server redeems it, and plex.tv only honours a redemption from the
+   * identifier that created the PIN, so both ends must use this exact value.
+   */
+  clientIdentifier: string;
 }
 
 // Request body for POST /auth/plex/link-account
@@ -2872,6 +2878,15 @@ export interface MediaAvailabilityEntry {
   episodeCount: number | null;
   /** Physical files of this copy, largest first. Empty for containers. */
   versions: MediaVersionEntry[];
+  /** The copy this one replaced (event-witnessed upgrade); null when none was witnessed. */
+  replaces: MediaReplacedCopy | null;
+}
+
+export interface MediaReplacedCopy {
+  addedAt: string;
+  removedAt: string;
+  videoResolution: string | null;
+  fileSize: number | null;
 }
 
 export interface MediaDetailResponse {

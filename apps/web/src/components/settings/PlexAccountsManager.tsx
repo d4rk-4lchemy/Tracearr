@@ -19,9 +19,11 @@ import { api } from '@/lib/api';
 import type { PlexAccount } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-// Plex OAuth configuration
+// Plex OAuth configuration. The client identifier is NOT hardcoded: plex.tv
+// scopes a PIN to the identifier that created it, and the server redeems the
+// PIN this component creates, so both ends must send the same per-install
+// value. It comes from GET /auth/plex/accounts.
 const PLEX_OAUTH_URL = 'https://app.plex.tv/auth#';
-const PLEX_CLIENT_ID = 'tracearr';
 
 interface PlexAccountsManagerProps {
   compact?: boolean; // For inline display in server settings
@@ -50,6 +52,7 @@ export function PlexAccountsManager({
   });
 
   const accounts = accountsData?.accounts ?? [];
+  const plexClientId = accountsData?.clientIdentifier;
 
   // Unlink mutation
   const unlinkMutation = useMutation({
@@ -70,6 +73,11 @@ export function PlexAccountsManager({
 
   // Start Plex OAuth flow for linking
   const startPlexOAuth = async () => {
+    if (!plexClientId) {
+      setLinkError('Plex client identifier unavailable - reload and try again');
+      return;
+    }
+
     setIsLinking(true);
     setLinkError(null);
 
@@ -80,13 +88,13 @@ export function PlexAccountsManager({
         headers: {
           Accept: 'application/json',
           'Content-Type': 'application/json',
-          'X-Plex-Client-Identifier': PLEX_CLIENT_ID,
+          'X-Plex-Client-Identifier': plexClientId,
           'X-Plex-Product': 'Tracearr',
         },
         body: JSON.stringify({
           strong: true,
           'X-Plex-Product': 'Tracearr',
-          'X-Plex-Client-Identifier': PLEX_CLIENT_ID,
+          'X-Plex-Client-Identifier': plexClientId,
         }),
       });
 
@@ -97,7 +105,7 @@ export function PlexAccountsManager({
       const pinData = (await pinResponse.json()) as { id: number; code: string };
 
       // Open Plex OAuth window
-      const oauthUrl = `${PLEX_OAUTH_URL}?clientID=${PLEX_CLIENT_ID}&code=${pinData.code}&context%5Bdevice%5D%5Bproduct%5D=Tracearr`;
+      const oauthUrl = `${PLEX_OAUTH_URL}?clientID=${plexClientId}&code=${pinData.code}&context%5Bdevice%5D%5Bproduct%5D=Tracearr`;
       const oauthWindow = window.open(oauthUrl, 'plex_oauth', 'width=600,height=700');
 
       // Poll for PIN authorization
@@ -107,7 +115,7 @@ export function PlexAccountsManager({
             const checkResponse = await fetch(`https://plex.tv/api/v2/pins/${pinData.id}`, {
               headers: {
                 Accept: 'application/json',
-                'X-Plex-Client-Identifier': PLEX_CLIENT_ID,
+                'X-Plex-Client-Identifier': plexClientId,
               },
             });
 
