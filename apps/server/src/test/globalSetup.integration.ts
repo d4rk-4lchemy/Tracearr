@@ -115,12 +115,15 @@ async function sweepOrphanDatabases(client: pg.Client): Promise<void> {
   }
 }
 
-function computeTemplateHash(migrationsFolder: string, schemaVersion: number): string {
-  const files = readdirSync(migrationsFolder).sort();
-  const parts = files.map((file) => {
-    const { mtimeMs } = statSync(resolve(migrationsFolder, file));
-    return `${file}:${mtimeMs}`;
-  });
+function computeTemplateHash(migrationsFolders: readonly string[], schemaVersion: number): string {
+  const parts = migrationsFolders.flatMap((migrationsFolder) =>
+    readdirSync(migrationsFolder)
+      .sort()
+      .map((file) => {
+        const { mtimeMs } = statSync(resolve(migrationsFolder, file));
+        return `${migrationsFolder}:${file}:${mtimeMs}`;
+      })
+  );
   return createHash('sha1')
     .update(`${parts.join('|')}:${schemaVersion}`)
     .digest('hex');
@@ -138,7 +141,8 @@ async function readTemplateHash(client: pg.Client): Promise<string | null> {
 
 async function rebuildTemplate(
   client: pg.Client,
-  migrationsFolder: string,
+  upstreamMigrationsFolder: string,
+  forkMigrationsFolder: string,
   baseUrl: string,
   hash: string
 ): Promise<void> {
@@ -159,16 +163,10 @@ async function rebuildTemplate(
     // would leave migrations running against the previously bound database.
     await recreatePool();
 
-    try {
-      await runMigrations({
-        upstream: migrationsFolder,
-        fork: resolve(dirname(migrationsFolder), 'fork-migrations'),
-      });
-    } catch (error) {
-      if (!(error instanceof Error && error.message.includes('already exists'))) {
-        throw error;
-      }
-    }
+    await runMigrations({
+      upstream: upstreamMigrationsFolder,
+      fork: forkMigrationsFolder,
+    });
 
     try {
       await initTimescaleDB();
@@ -192,11 +190,15 @@ async function rebuildTemplate(
 
 async function ensureTemplate(
   client: pg.Client,
-  migrationsFolder: string,
+  upstreamMigrationsFolder: string,
+  forkMigrationsFolder: string,
   baseUrl: string
 ): Promise<void> {
   const { AGGREGATE_SCHEMA_VERSION } = await import('../db/timescale.js');
-  const hash = computeTemplateHash(migrationsFolder, AGGREGATE_SCHEMA_VERSION);
+  const hash = computeTemplateHash(
+    [upstreamMigrationsFolder, forkMigrationsFolder],
+    AGGREGATE_SCHEMA_VERSION
+  );
 
   if ((await readTemplateHash(client)) === hash) return;
 
@@ -204,14 +206,16 @@ async function ensureTemplate(
   try {
     // A concurrent run may have rebuilt the template while we waited for the lock.
     if ((await readTemplateHash(client)) === hash) return;
-    await rebuildTemplate(client, migrationsFolder, baseUrl, hash);
+    await rebuildTemplate(client, upstreamMigrationsFolder, forkMigrationsFolder, baseUrl, hash);
   } finally {
     await client.query('SELECT pg_advisory_unlock(hashtext($1))', ['tracearr_template_build']);
   }
 }
 
 export default async function globalSetup(project: TestProject) {
-  const migrationsFolder = resolve(dirname(fileURLToPath(import.meta.url)), '../db/migrations');
+  const dbDir = resolve(dirname(fileURLToPath(import.meta.url)), '../db');
+  const upstreamMigrationsFolder = resolve(dbDir, 'migrations');
+  const forkMigrationsFolder = resolve(dbDir, 'fork-migrations');
   const baseUrl = process.env.TEST_DATABASE_URL!;
   const runToken = generateRunToken();
 
@@ -220,7 +224,7 @@ export default async function globalSetup(project: TestProject) {
 
   await client.query('SELECT pg_advisory_lock(hashtext($1))', [`tracearr_run_${runToken}`]);
   await sweepOrphanDatabases(client);
-  await ensureTemplate(client, migrationsFolder, baseUrl);
+  await ensureTemplate(client, upstreamMigrationsFolder, forkMigrationsFolder, baseUrl);
 
   // Same trick template0 uses: a no-connections database stays copyable as a
   // template while nothing (Timescale bgws included) can attach to it. Runs
