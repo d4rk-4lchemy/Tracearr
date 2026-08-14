@@ -9,7 +9,9 @@
  */
 
 import { randomBytes, createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
+import { promisify } from 'node:util';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
@@ -29,6 +31,7 @@ const WORKER_COUNT = 7;
 const TEMPLATE_DB = 'tracearr_test_template';
 const RUN_TOKEN_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 const ORPHAN_TOKEN_PATTERN = /^tracearr_test_r([a-z0-9]+)_w\d+$/;
+const execFileAsync = promisify(execFile);
 
 function generateRunToken(): string {
   const bytes = randomBytes(6);
@@ -115,7 +118,7 @@ async function sweepOrphanDatabases(client: pg.Client): Promise<void> {
   }
 }
 
-function computeTemplateHash(migrationsFolders: readonly string[], schemaVersion: number): string {
+function computeTemplateHash(migrationsFolders: readonly string[]): string {
   const parts = migrationsFolders.flatMap((migrationsFolder) =>
     readdirSync(migrationsFolder)
       .sort()
@@ -125,7 +128,7 @@ function computeTemplateHash(migrationsFolders: readonly string[], schemaVersion
       })
   );
   return createHash('sha1')
-    .update(`${parts.join('|')}:${schemaVersion}`)
+    .update(parts.join('|'))
     .digest('hex');
 }
 
@@ -146,41 +149,24 @@ async function rebuildTemplate(
   baseUrl: string,
   hash: string
 ): Promise<void> {
-  const { runMigrations, closeDatabase, recreatePool } = await import('../db/client.js');
-  const { initTimescaleDB } = await import('../db/timescale.js');
-
   await terminateTemplateSessions(client);
   await client.query(`DROP DATABASE IF EXISTS "${TEMPLATE_DB}"`);
   await client.query(`CREATE DATABASE "${TEMPLATE_DB}"`);
 
-  const prevDatabaseUrl = process.env.DATABASE_URL;
-  const prevTestDatabaseUrl = process.env.TEST_DATABASE_URL;
-  process.env.DATABASE_URL = dbUrl(baseUrl, TEMPLATE_DB);
-  process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
-
   try {
-    // The pool binds DATABASE_URL at module import, so swapping the env alone
-    // would leave migrations running against the previously bound database.
-    await recreatePool();
-
-    await runMigrations({
-      upstream: upstreamMigrationsFolder,
-      fork: forkMigrationsFolder,
+    await execFileAsync(resolve(process.cwd(), 'node_modules/.bin/tsx'), [
+      resolve(dirname(fileURLToPath(import.meta.url)), 'migrateTemplate.integration.ts'),
+    ], {
+      env: {
+        ...process.env,
+        DATABASE_URL: dbUrl(baseUrl, TEMPLATE_DB),
+        TEST_DATABASE_URL: dbUrl(baseUrl, TEMPLATE_DB),
+      },
     });
-
-    try {
-      await initTimescaleDB();
-    } catch (error) {
-      if (process.env.DEBUG) {
-        console.warn('[Test Setup] TimescaleDB init warning:', error);
-      }
-    }
   } finally {
-    // Postgres refuses CREATE DATABASE ... TEMPLATE while any session,
-    // including idle pool connections, is still connected to the source db.
-    await closeDatabase();
-    process.env.DATABASE_URL = prevDatabaseUrl;
-    process.env.TEST_DATABASE_URL = prevTestDatabaseUrl;
+    // The migration subprocess has exited, but TimescaleDB can still have a
+    // background connection to the template for a moment.
+    await terminateTemplateSessions(client);
   }
 
   // COMMENT ON DATABASE only accepts a string literal, not a bind parameter;
@@ -194,11 +180,7 @@ async function ensureTemplate(
   forkMigrationsFolder: string,
   baseUrl: string
 ): Promise<void> {
-  const { AGGREGATE_SCHEMA_VERSION } = await import('../db/timescale.js');
-  const hash = computeTemplateHash(
-    [upstreamMigrationsFolder, forkMigrationsFolder],
-    AGGREGATE_SCHEMA_VERSION
-  );
+  const hash = computeTemplateHash([upstreamMigrationsFolder, forkMigrationsFolder]);
 
   if ((await readTemplateHash(client)) === hash) return;
 
