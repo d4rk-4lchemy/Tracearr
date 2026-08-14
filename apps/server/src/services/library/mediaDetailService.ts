@@ -143,6 +143,11 @@ export interface AvailabilityRow {
     container: string | null;
     fileSize: number | null;
   }>;
+  /** Copy this row replaced (event-witnessed); fields null when none. */
+  replaces_added_at: Date | null;
+  replaces_removed_at: Date | null;
+  replaces_video_resolution: string | null;
+  replaces_file_size: string | number | null;
 }
 
 export interface MediaAvailabilityResult {
@@ -183,12 +188,24 @@ export async function getAvailability(
         ) ORDER BY v.file_size DESC NULLS LAST)
         FROM library_item_versions v
         WHERE v.library_item_id = li.id AND v.removed_at IS NULL
-      ), '[]'::json) AS versions
+      ), '[]'::json) AS versions,
+      rep.created_at AS replaces_added_at,
+      rep.removed_at AS replaces_removed_at,
+      rep.video_resolution AS replaces_video_resolution,
+      rep.file_size AS replaces_file_size
     FROM library_items li
     JOIN servers sv ON sv.id = li.server_id
     LEFT JOIN libraries lib ON lib.server_id = li.server_id AND lib.library_id = li.library_id
+    -- the join requires the target still tombstoned, so a revived predecessor
+    -- invalidates the link at read time and both copies render separately
+    LEFT JOIN library_items rep
+      ON rep.id = li.replaces_library_item_id AND rep.removed_at IS NOT NULL
     WHERE li.media_id = ${mediaId} ${serverFragmentLi}
-    ORDER BY li.created_at ASC, li.rating_key ASC
+      AND NOT (li.removed_at IS NOT NULL AND EXISTS (
+        SELECT 1 FROM library_items succ
+        WHERE succ.replaces_library_item_id = li.id AND succ.removed_at IS NULL
+      ))
+    ORDER BY (li.removed_at IS NULL), li.created_at ASC, li.rating_key ASC
   `);
   const availability = availRes.rows as unknown as AvailabilityRow[];
 

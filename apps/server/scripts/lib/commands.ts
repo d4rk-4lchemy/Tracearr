@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, sql } from 'drizzle-orm';
 import { REDIS_KEYS } from '@tracearr/shared';
 import { loadRuntime } from './bootstrap.ts';
 
@@ -97,10 +97,12 @@ async function killSessionsInRedis(userId: string): Promise<{ token: string }[]>
 }
 
 async function findUserByUsername(username: string) {
+  // Legacy and Plex-created rows can hold mixed-case usernames, so compare on
+  // lower(username) - the same semantics as the login-role unique index.
   const [user] = await db
     .select()
     .from(users)
-    .where(eq(users.username, username.toLowerCase()))
+    .where(sql`lower(${users.username}) = ${username.toLowerCase()}`)
     .limit(1);
   return user;
 }
@@ -115,7 +117,7 @@ export async function resetPasswordCommand(opts: {
   password: string;
 }): Promise<void> {
   const target = opts.username
-    ? await db.select().from(users).where(eq(users.username, opts.username.toLowerCase())).limit(1)
+    ? [await findUserByUsername(opts.username)]
     : await db
         .select()
         .from(users)
@@ -399,12 +401,29 @@ async function cleanupDispatcharrRedis(serverIds: string[]): Promise<void> {
 }
 
 export async function purgeDispatcharrCommand(): Promise<PurgeDispatcharrResult> {
-  const deletedServers = await db.transaction(async (tx: typeof db) =>
-    tx
+  const deletedServers = await db.transaction(async (tx: typeof db) => {
+    const deleted = await tx
       .delete(servers)
       .where(eq(servers.type, 'dispatcharr'))
-      .returning({ id: servers.id, name: servers.name, url: servers.url })
-  );
+      .returning({ id: servers.id, name: servers.name, url: servers.url });
+
+    // Restore the fork-owned schema before handing the database to the
+    // upstream Tracearr image. IF EXISTS keeps this safe for databases that
+    // already ran the fork cleanup migration, and also covers older fork
+    // versions which still had progress_estimated or the live-history column.
+    await tx.execute(sql`
+      ALTER TABLE "servers"
+        DROP COLUMN IF EXISTS "ignore_anonymous_streams",
+        DROP COLUMN IF EXISTS "dispatcharr_live_history_threshold_seconds"
+    `);
+    await tx.execute(sql`
+      ALTER TABLE "sessions"
+        DROP COLUMN IF EXISTS "dispatcharr_playback_kind",
+        DROP COLUMN IF EXISTS "progress_estimated"
+    `);
+
+    return deleted;
+  });
 
   let redisWarning: string | null = null;
   try {

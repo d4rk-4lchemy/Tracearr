@@ -111,7 +111,7 @@ jobs:
 
     services:
       timescale:
-        image: timescale/timescaledb:2.25.0-pg16@sha256:9e9f50161784dc57d3f547b89ded4af73553f9acb4677345ed05f45af7c7f664
+        image: timescale/timescaledb:2.29.1-pg18@sha256:373eb0fee9c0f8e0b4b0d4e74c7d0dd463dce05de6b49982701c4b540e94cba0
         ports:
           - 5433:5432
         env:
@@ -516,6 +516,85 @@ jobs:
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+
+  # Publish @tracearr/shared and @tracearr/translations, version-locked to the
+  # release tag so the mobile repo can pin the exact release it targets.
+  # Auth is npm trusted publishing (OIDC) configured against this workflow file.
+  # setup-node deliberately has no registry-url: the .npmrc auth line it writes
+  # breaks the OIDC exchange when NODE_AUTH_TOKEN is unset.
+  publish-packages:
+    name: Publish npm Packages
+    runs-on: ubuntu-latest
+    needs: [check-release-type, merge-docker, merge-supervised]
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @tracearr/shared --filter @tracearr/translations
+
+      - name: Publish to npm
+        run: |
+          npm --version
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${{ needs.check-release-type.outputs.prerelease == 'true' && 'next' || 'latest' }}"
+          for pkg in shared translations; do
+            if [ -n "$(npm view "@tracearr/${pkg}@${VERSION}" version 2>/dev/null)" ]; then
+              echo "@tracearr/${pkg}@${VERSION} already published, skipping"
+              continue
+            fi
+            (cd "packages/${pkg}" && npm pkg set version="$VERSION" && npm publish --tag "$TAG")
+          done
+
+  # Keep the Helm chart's appVersion in sync with stable releases so the
+  # chart's default image tag (which falls back to appVersion) doesn't drift.
+  # Skipped for prereleases: the chart default should never point at a beta.
+  bump-helm-chart:
+    name: Bump Helm Chart
+    runs-on: ubuntu-latest
+    needs: [check-release-type, merge-docker, merge-supervised]
+    if: needs.check-release-type.outputs.prerelease == 'false'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: main
+
+      - name: Bump chart appVersion and commit
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          CHART=docker/helm/tracearr/Chart.yaml
+          CURRENT=$(awk '/^appVersion:/ {gsub(/"/, "", $2); print $2}' "$CHART")
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "appVersion already $VERSION, nothing to do"
+            exit 0
+          fi
+          CHART_VERSION=$(awk '/^version:/ {print $2}' "$CHART")
+          NEW_CHART_VERSION=$(echo "$CHART_VERSION" | awk -F. '{print $1 "." $2 "." $3 + 1}')
+          sed -i "s/^version: .*/version: $NEW_CHART_VERSION/" "$CHART"
+          sed -i "s/^appVersion: .*/appVersion: \"$VERSION\"/" "$CHART"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$CHART"
+          git commit -m "bump helm chart to $NEW_CHART_VERSION, appVersion $VERSION"
+          git pull --rebase origin main
+          git push origin main
 
   create-release:
     name: Create GitHub Release

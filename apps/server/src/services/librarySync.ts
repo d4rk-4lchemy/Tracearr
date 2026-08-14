@@ -53,8 +53,41 @@ const BATCH_DELAY_MS_INCREMENTAL = 50;
 const SYNC_SAFETY_MARGIN_MS = 5 * 60 * 1000; // 5 minutes
 const SYNC_STATE_TTL = 30 * 24 * 60 * 60; // 30 days in seconds
 
-/** Force a full scan every N scheduled syncs per library (safety net for all server types) */
-const FULL_SCAN_INTERVAL = 7;
+/**
+ * Force a full scan when the last one is older than this (safety net for all
+ * server types). Time-based, not sync-count-based: event syncs used to advance
+ * a per-library cycle counter, so an import burst firing event syncs every 30s
+ * dragged the "every 7th sync" full scan down to minutes and re-paged whole
+ * libraries from the media server. 84h matches the old floor cadence
+ * (7 cycles x 12h cron).
+ */
+const FULL_SCAN_MAX_AGE_MS = 84 * 60 * 60 * 1000;
+
+/**
+ * Cooldown for the count-mismatch drift checks (overcount pre-check and
+ * undercount escalation). Each costs a COUNT over library_items; during a 30s
+ * event-sync burst that's pure overhead, and drift caught 15 minutes later is
+ * caught just as well. lastSyncedAt is stored minus SYNC_SAFETY_MARGIN_MS, so
+ * the effective gap between checks is about 10 minutes.
+ */
+const COUNT_CHECK_MIN_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * Floor between full snapshot rebuilds per library. The rebuild is a GROUP BY
+ * over the library's items feeding a daily-grain snapshot row - once per burst
+ * window is plenty. A skipped rebuild arms a trailing timer so the final state
+ * of a burst still lands without waiting for the next scheduled sync.
+ */
+const SNAPSHOT_REBUILD_MIN_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Cooldown for reconcileMediaDuplicates (five aggregate scans over media). */
+const RECONCILE_MIN_INTERVAL_MS = 10 * 60 * 1000;
+
+/** Max gap between an event tombstone and a new copy's first sighting to link them. */
+const REPLACEMENT_LINK_WINDOW_MS = 10 * 60 * 1000;
+
+/** More links than this in one pass is a library rebuild, not upgrades - link nothing. */
+const REPLACEMENT_LINK_MAX_PER_PASS = 50;
 
 /** If incremental sync returns more than this fraction of total items, fall through to full scan */
 const INCREMENTAL_CAP_RATIO = 0.3;
@@ -99,6 +132,18 @@ let lastAutoBackfillEnqueueAt = 0;
 export function _resetAutoBackfillThrottleForTests(): void {
   lastAutoBackfillProbeAt = 0;
   lastAutoBackfillEnqueueAt = 0;
+}
+
+// Reconcile throttle: same module-level pattern as the backfill probe above.
+// pending remembers a skipped run so the next sync tail (even a no-change
+// scheduled one) picks it up once the cooldown has passed - duplicates only
+// arise from processed items, so a skip is never silently dropped.
+let lastReconcileAt = 0;
+let reconcilePending = false;
+
+export function _resetReconcileThrottleForTests(): void {
+  lastReconcileAt = 0;
+  reconcilePending = false;
 }
 
 let redisClient: Redis | null = null;
@@ -170,6 +215,74 @@ function toPgTextArrayLiteral(values: string[]): string {
  * creating snapshots with quality statistics, and detecting delta changes.
  */
 export class LibrarySyncService {
+  // Snapshot-rebuild throttle, per library. In-process is enough: the Redis
+  // leader lease means one instance runs syncs, and a restart just allows one
+  // extra rebuild. A skipped rebuild arms a trailing timer so the last events
+  // of a burst still land in the snapshot without waiting for the next
+  // scheduled sync.
+  private lastSnapshotRebuildAt = new Map<string, number>();
+  private pendingSnapshotRebuilds = new Map<string, NodeJS.Timeout>();
+
+  /**
+   * Rebuild the library snapshot unless one was rebuilt within
+   * SNAPSHOT_REBUILD_MIN_INTERVAL_MS. Returns null when throttled (a trailing
+   * rebuild is armed) or when a heavy op owns the tables.
+   */
+  private async maybeRebuildSnapshot(
+    serverId: string,
+    libraryId: string
+  ): Promise<{ id: string } | null> {
+    const key = `${serverId}:${libraryId}`;
+    const now = Date.now();
+    const last = this.lastSnapshotRebuildAt.get(key) ?? 0;
+    if (now - last < SNAPSHOT_REBUILD_MIN_INTERVAL_MS) {
+      this.armTrailingSnapshotRebuild(
+        key,
+        serverId,
+        libraryId,
+        last + SNAPSHOT_REBUILD_MIN_INTERVAL_MS - now
+      );
+      return null;
+    }
+    const heavyOps = await getHeavyOpsStatus();
+    if (heavyOps) return null;
+    this.markSnapshotRebuilt(key, now);
+    return await this.rebuildSnapshotFromDb(serverId, libraryId);
+  }
+
+  private markSnapshotRebuilt(key: string, at: number): void {
+    this.lastSnapshotRebuildAt.set(key, at);
+    const pending = this.pendingSnapshotRebuilds.get(key);
+    if (pending) {
+      clearTimeout(pending);
+      this.pendingSnapshotRebuilds.delete(key);
+    }
+  }
+
+  private armTrailingSnapshotRebuild(
+    key: string,
+    serverId: string,
+    libraryId: string,
+    delayMs: number
+  ): void {
+    if (this.pendingSnapshotRebuilds.has(key)) return;
+    const timer = setTimeout(() => {
+      this.pendingSnapshotRebuilds.delete(key);
+      void (async () => {
+        try {
+          const heavyOps = await getHeavyOpsStatus();
+          if (heavyOps) return;
+          this.lastSnapshotRebuildAt.set(key, Date.now());
+          await this.rebuildSnapshotFromDb(serverId, libraryId);
+        } catch (err) {
+          console.warn(`[LibrarySync] Trailing snapshot rebuild failed for ${libraryId}:`, err);
+        }
+      })();
+    }, delayMs);
+    timer.unref();
+    this.pendingSnapshotRebuilds.set(key, timer);
+  }
+
   /**
    * Sync all libraries for a server
    *
@@ -290,6 +403,17 @@ export class LibrarySyncService {
 
     await this.syncLibraryNames(serverId, libraries);
 
+    if (libraries.length > 0) {
+      try {
+        const linked = await this.linkEventReplacements(serverId, new Date(startedAt));
+        if (linked > 0) {
+          console.log(`[LibrarySync] Linked ${linked} replaced copies for ${server.name}`);
+        }
+      } catch (err) {
+        console.warn('[LibrarySync] Replacement linking failed, continuing sync:', err);
+      }
+    }
+
     // Report completion
     if (onProgress) {
       const totalItems = results.reduce((sum, r) => sum + r.itemsProcessed, 0);
@@ -353,9 +477,21 @@ export class LibrarySyncService {
       console.error('[LibrarySync] Session identity backfill failed, continuing sync:', err);
     }
 
-    const merges = await reconcileMediaDuplicates();
-    if (merges > 0) {
-      console.log(`[LibrarySync] Reconciled ${merges} duplicate media rows`);
+    // Duplicate media rows can only appear when items were actually processed
+    // (resolution runs per upserted batch, including updates), so idle syncs
+    // skip the five aggregate scans entirely. Bursts are cooled down to one
+    // run per RECONCILE_MIN_INTERVAL_MS; a skip sets pending so the next sync
+    // tail after the cooldown runs it even if that sync itself changed nothing.
+    if (results.some((r) => r.itemsProcessed > 0)) {
+      reconcilePending = true;
+    }
+    if (reconcilePending && Date.now() - lastReconcileAt >= RECONCILE_MIN_INTERVAL_MS) {
+      lastReconcileAt = Date.now();
+      reconcilePending = false;
+      const merges = await reconcileMediaDuplicates();
+      if (merges > 0) {
+        console.log(`[LibrarySync] Reconciled ${merges} duplicate media rows`);
+      }
     }
 
     return results;
@@ -428,10 +564,16 @@ export class LibrarySyncService {
     const syncState = await this.getSyncState(serverId, libraryId);
 
     // Overcount-only pre-sync check (see COUNT_MISMATCH_* doc comment above).
+    // Cooled down: a null countTolerance also disables the undercount checks
+    // downstream for this run, so during an event-sync burst the drift checks
+    // run at most once per COUNT_CHECK_MIN_INTERVAL_MS instead of per sync.
     let overcountMismatch = false;
     let localActiveCount: number | null = null;
     let countTolerance: number | null = null;
-    if (triggeredBy !== 'manual' && syncState.lastSyncedAt !== null) {
+    const countCheckDue =
+      syncState.lastSyncedAt === null ||
+      Date.now() - syncState.lastSyncedAt.getTime() >= COUNT_CHECK_MIN_INTERVAL_MS;
+    if (triggeredBy !== 'manual' && syncState.lastSyncedAt !== null && countCheckDue) {
       localActiveCount = await this.getActiveItemCount(serverId, libraryId);
       countTolerance = Math.max(
         COUNT_MISMATCH_MIN_TOLERANCE,
@@ -441,10 +583,10 @@ export class LibrarySyncService {
     }
 
     // Decision tree: incremental only when we have prior state, count hasn't dropped, and not manual
-    const forceFullScan =
-      triggeredBy === 'manual' ||
-      (syncState.syncCycle > 0 && syncState.syncCycle % FULL_SCAN_INTERVAL === 0) ||
-      overcountMismatch;
+    const fullScanDue =
+      syncState.lastFullScanAt !== null &&
+      Date.now() - syncState.lastFullScanAt.getTime() >= FULL_SCAN_MAX_AGE_MS;
+    const forceFullScan = triggeredBy === 'manual' || fullScanDue || overcountMismatch;
 
     const isIncremental =
       syncState.lastSyncedAt !== null &&
@@ -455,9 +597,12 @@ export class LibrarySyncService {
     if (isIncremental) {
       console.log(
         `[LibrarySync] Incremental sync for ${libraryName}: last synced ${syncState.lastSyncedAt!.toISOString()}, ` +
-          `count ${syncState.lastItemCount} → ${totalCount}, cycle ${syncState.syncCycle + 1}/${FULL_SCAN_INTERVAL}`
+          `count ${syncState.lastItemCount} → ${totalCount}`
       );
     } else {
+      const fullScanAgeHours = syncState.lastFullScanAt
+        ? Math.round((Date.now() - syncState.lastFullScanAt.getTime()) / (60 * 60 * 1000))
+        : null;
       const reason = !syncState.lastSyncedAt
         ? 'first sync'
         : totalCount < (syncState.lastItemCount ?? 0)
@@ -467,7 +612,7 @@ export class LibrarySyncService {
             : forceFullScan && triggeredBy === 'manual'
               ? 'manual trigger'
               : forceFullScan
-                ? `periodic full scan (cycle ${syncState.syncCycle})`
+                ? `periodic full scan (last full scan ${fullScanAgeHours}h ago)`
                 : 'unknown';
       console.log(`[LibrarySync] Full sync for ${libraryName}: ${reason}`);
     }
@@ -558,7 +703,12 @@ export class LibrarySyncService {
           }
           console.log(`[LibrarySync] ${libraryName}: no changes since last sync, skipping`);
           const snapshot = await this.copyLastSnapshot(serverId, libraryId);
-          await this.saveSyncState(serverId, libraryId, totalCount, syncState.syncCycle + 1);
+          await this.saveSyncState(
+            serverId,
+            libraryId,
+            totalCount,
+            syncState.lastFullScanAt ?? new Date()
+          );
           return {
             serverId,
             libraryId,
@@ -621,13 +771,12 @@ export class LibrarySyncService {
           throw new Error('UNDERCOUNT_MISMATCH');
         }
 
-        // Snapshot rebuild is local DB work — don't let failures trigger a full scan
+        // Snapshot rebuild is local DB work — don't let failures trigger a full
+        // scan. Throttled during event bursts; null just means the trailing
+        // timer (or the next eligible sync) owns the rebuild.
         let snapshot: { id: string } | null = null;
         try {
-          const heavyOps = await getHeavyOpsStatus();
-          if (!heavyOps) {
-            snapshot = await this.rebuildSnapshotFromDb(serverId, libraryId);
-          }
+          snapshot = await this.maybeRebuildSnapshot(serverId, libraryId);
         } catch (snapshotError) {
           console.warn(
             `[LibrarySync] Failed to rebuild snapshot for ${libraryName} (items were upserted OK):`,
@@ -635,7 +784,12 @@ export class LibrarySyncService {
           );
         }
 
-        await this.saveSyncState(serverId, libraryId, totalCount, syncState.syncCycle + 1);
+        await this.saveSyncState(
+          serverId,
+          libraryId,
+          totalCount,
+          syncState.lastFullScanAt ?? new Date()
+        );
 
         return {
           serverId,
@@ -983,7 +1137,7 @@ export class LibrarySyncService {
         triggeredBy,
         syncState.acceptedShortfall
       );
-      await this.saveSyncState(serverId, libraryId, totalCount, 0, acceptedShortfall);
+      await this.saveSyncState(serverId, libraryId, totalCount, new Date(), acceptedShortfall);
       return {
         serverId,
         libraryId,
@@ -997,10 +1151,13 @@ export class LibrarySyncService {
     }
 
     // Snapshot aggregation is local DB work over rows already upserted - a
-    // failure must not fail the scan (matches the incremental path's guard)
+    // failure must not fail the scan (matches the incremental path's guard).
+    // Unthrottled: full scans are rare and their snapshot must land, but stamp
+    // the throttle so burst events right after don't rebuild again immediately.
     let snapshot: { id: string } | null = null;
     try {
       snapshot = await this.rebuildSnapshotFromDb(serverId, libraryId);
+      this.markSnapshotRebuilt(`${serverId}:${libraryId}`, Date.now());
     } catch (err) {
       console.error('[LibrarySync] Snapshot rebuild failed, continuing sync:', err);
     }
@@ -1013,7 +1170,7 @@ export class LibrarySyncService {
       triggeredBy,
       syncState.acceptedShortfall
     );
-    await this.saveSyncState(serverId, libraryId, totalCount, 0, acceptedShortfall);
+    await this.saveSyncState(serverId, libraryId, totalCount, new Date(), acceptedShortfall);
 
     return {
       serverId,
@@ -1036,23 +1193,28 @@ export class LibrarySyncService {
   ): Promise<{
     lastSyncedAt: Date | null;
     lastItemCount: number | null;
-    syncCycle: number;
+    lastFullScanAt: Date | null;
     acceptedShortfall: number;
   }> {
     if (!redisClient)
-      return { lastSyncedAt: null, lastItemCount: null, syncCycle: 0, acceptedShortfall: 0 };
+      return {
+        lastSyncedAt: null,
+        lastItemCount: null,
+        lastFullScanAt: null,
+        acceptedShortfall: 0,
+      };
 
-    const [lastStr, countStr, cycleStr, shortfallStr] = await Promise.all([
+    const [lastStr, countStr, fullScanStr, shortfallStr] = await Promise.all([
       redisClient.get(REDIS_KEYS.LIBRARY_SYNC_LAST(serverId, libraryId)),
       redisClient.get(REDIS_KEYS.LIBRARY_SYNC_COUNT(serverId, libraryId)),
-      redisClient.get(REDIS_KEYS.LIBRARY_SYNC_CYCLE(serverId, libraryId)),
+      redisClient.get(REDIS_KEYS.LIBRARY_SYNC_FULL_SCAN_AT(serverId, libraryId)),
       redisClient.get(REDIS_KEYS.LIBRARY_SYNC_SHORTFALL(serverId, libraryId)),
     ]);
 
     return {
       lastSyncedAt: lastStr ? new Date(lastStr) : null,
       lastItemCount: countStr ? parseInt(countStr, 10) : null,
-      syncCycle: cycleStr ? parseInt(cycleStr, 10) : 0,
+      lastFullScanAt: fullScanStr ? new Date(fullScanStr) : null,
       acceptedShortfall: shortfallStr ? parseInt(shortfallStr, 10) : 0,
     };
   }
@@ -1061,13 +1223,16 @@ export class LibrarySyncService {
    * Persist incremental sync state for a library to Redis.
    * Stores the current time minus a safety margin so items added during sync
    * are not missed on the next incremental run.
+   * lastFullScanAt is passed through on incremental saves (seeded to now when
+   * absent, e.g. right after an upgrade from the cycle-counter scheme) and set
+   * to now by the full-scan paths.
    * acceptedShortfall is omitted unless a full scan just recomputed it, leaving the prior baseline in place.
    */
   private async saveSyncState(
     serverId: string,
     libraryId: string,
     itemCount: number,
-    syncCycle: number,
+    lastFullScanAt: Date,
     acceptedShortfall?: number
   ): Promise<void> {
     if (!redisClient) return;
@@ -1088,8 +1253,8 @@ export class LibrarySyncService {
         SYNC_STATE_TTL
       ),
       redisClient.set(
-        REDIS_KEYS.LIBRARY_SYNC_CYCLE(serverId, libraryId),
-        String(syncCycle),
+        REDIS_KEYS.LIBRARY_SYNC_FULL_SCAN_AT(serverId, libraryId),
+        lastFullScanAt.toISOString(),
         'EX',
         SYNC_STATE_TTL
       ),
@@ -1204,6 +1369,7 @@ export class LibrarySyncService {
     );
 
     // Bulk upsert with transaction for atomicity
+    const firstSeen = new Date();
     await db.transaction(async (tx) => {
       const changedRows = await tx
         .insert(libraryItems)
@@ -1249,6 +1415,8 @@ export class LibrarySyncService {
               genres: item.genres ?? null,
               thumbPath: item.thumbPath ?? null,
               removedAt: null,
+              // insert-only: the conflict update never touches it
+              firstSeenAt: firstSeen,
               createdAt,
             });
           })
@@ -1285,6 +1453,7 @@ export class LibrarySyncService {
             // pipeline and deliberately excluded so a sync never nulls or overwrites it.
             thumbPath: sql`excluded.thumb_path`,
             removedAt: null,
+            removedSource: null,
             // Fix created_at with Plex's addedAt (for existing items with wrong dates)
             createdAt: sql`excluded.created_at`,
             updatedAt: new Date(),
@@ -1500,7 +1669,25 @@ export class LibrarySyncService {
     tomorrow.setDate(tomorrow.getDate() + 1);
 
     const [existing] = await db
-      .select({ id: librarySnapshots.id, itemCount: librarySnapshots.itemCount })
+      .select({
+        id: librarySnapshots.id,
+        itemCount: librarySnapshots.itemCount,
+        totalSize: librarySnapshots.totalSize,
+        movieCount: librarySnapshots.movieCount,
+        episodeCount: librarySnapshots.episodeCount,
+        seasonCount: librarySnapshots.seasonCount,
+        showCount: librarySnapshots.showCount,
+        musicCount: librarySnapshots.musicCount,
+        count4k: librarySnapshots.count4k,
+        count1080p: librarySnapshots.count1080p,
+        count720p: librarySnapshots.count720p,
+        countSd: librarySnapshots.countSd,
+        hevcCount: librarySnapshots.hevcCount,
+        h264Count: librarySnapshots.h264Count,
+        av1Count: librarySnapshots.av1Count,
+        countHighQuality: librarySnapshots.countHighQuality,
+        versionCount: librarySnapshots.versionCount,
+      })
       .from(librarySnapshots)
       .where(
         and(
@@ -1516,14 +1703,13 @@ export class LibrarySyncService {
     // Note: Don't update snapshotTime - TimescaleDB doesn't allow updates that
     // would move a row to a different chunk (causes constraint_1 violation)
     if (existing && stats.itemCount >= existing.itemCount) {
-      await db
-        .update(librarySnapshots)
-        .set({
-          ...stats,
-          enrichmentPending: stats.itemCount,
-          enrichmentComplete: 0,
-        })
-        .where(eq(librarySnapshots.id, existing.id));
+      // Identical stats rewrite nothing - mirrors the upsertItems setWhere
+      // guard, so unchanged libraries stop leaving a dead tuple per sync
+      const keys = Object.keys(stats) as (keyof SnapshotStats)[];
+      if (keys.every((k) => existing[k] === stats[k])) {
+        return { id: existing.id };
+      }
+      await db.update(librarySnapshots).set(stats).where(eq(librarySnapshots.id, existing.id));
       return { id: existing.id };
     }
 
@@ -1539,8 +1725,6 @@ export class LibrarySyncService {
         libraryId,
         snapshotTime: new Date(),
         ...stats,
-        enrichmentPending: stats.itemCount, // Valid items need enrichment
-        enrichmentComplete: 0,
       })
       .returning({ id: librarySnapshots.id });
 
@@ -1710,8 +1894,6 @@ export class LibrarySyncService {
         av1Count: latest.av1Count,
         countHighQuality: latest.countHighQuality,
         versionCount: latest.versionCount,
-        enrichmentPending: 0,
-        enrichmentComplete: latest.enrichmentComplete,
       })
       .returning({ id: librarySnapshots.id });
 
@@ -1811,7 +1993,8 @@ export class LibrarySyncService {
       const rows = await db.transaction(async (tx) => {
         const updated = await tx
           .update(libraryItems)
-          .set({ removedAt: new Date(), updatedAt: new Date() })
+          // 'scan': removed_at is when the diff noticed, not when the file vanished
+          .set({ removedAt: new Date(), removedSource: 'scan', updatedAt: new Date() })
           .where(
             and(
               eq(libraryItems.serverId, serverId),
@@ -1838,6 +2021,27 @@ export class LibrarySyncService {
   }
 
   /**
+   * Whether an active (non-tombstoned) item with this rating key exists for
+   * the server. Point lookup on the (server_id, rating_key) unique index -
+   * used by the event path to tell a genuine add from a metadata refresh of
+   * an item Tracearr already tracks.
+   */
+  async hasActiveItemByRatingKey(serverId: string, ratingKey: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: libraryItems.id })
+      .from(libraryItems)
+      .where(
+        and(
+          eq(libraryItems.serverId, serverId),
+          eq(libraryItems.ratingKey, ratingKey),
+          isNull(libraryItems.removedAt)
+        )
+      )
+      .limit(1);
+    return row !== undefined;
+  }
+
+  /**
    * Tombstone items by server + rating key alone (no libraryId needed - real-time
    * removal events arrive with only an item id). Self-healing: if the guess is
    * wrong, the next sync's upsert clears removed_at for any item the server
@@ -1853,7 +2057,8 @@ export class LibrarySyncService {
       const rows = await db.transaction(async (tx) => {
         const updated = await tx
           .update(libraryItems)
-          .set({ removedAt: new Date(), updatedAt: new Date() })
+          // 'event': the SSE removal arrived seconds after the file vanished
+          .set({ removedAt: new Date(), removedSource: 'event', updatedAt: new Date() })
           .where(
             and(
               eq(libraryItems.serverId, serverId),
@@ -1872,6 +2077,72 @@ export class LibrarySyncService {
     }
 
     await this.recomputeLatestAddedAt(touchedMediaIds);
+
+    try {
+      await this.linkEventReplacements(serverId, new Date(Date.now() - REPLACEMENT_LINK_WINDOW_MS));
+    } catch (err) {
+      console.warn('[LibrarySync] Replacement linking failed after event tombstone:', err);
+    }
+  }
+
+  /**
+   * Point copies first seen near an event tombstone of the same media at that
+   * tombstone. Scan tombstones never qualify: their removed_at says when a
+   * diff noticed, so pairing against them would fabricate swap stories.
+   */
+  async linkEventReplacements(serverId: string, newRowsSince: Date): Promise<number> {
+    const candidates = await db.execute(sql`
+      WITH ranked AS (
+        SELECT act.id AS new_id, old.id AS old_id, old.removed_at,
+               ROW_NUMBER() OVER (
+                 PARTITION BY old.id
+                 ORDER BY abs(extract(epoch FROM act.first_seen_at - old.removed_at))
+               ) AS act_rank
+        FROM library_items act
+        JOIN library_items old
+          ON old.server_id = act.server_id
+         AND old.library_id = act.library_id
+         AND old.media_id = act.media_id
+         AND old.id <> act.id
+        WHERE act.server_id = ${serverId}
+          AND act.media_type IN ('movie', 'episode')
+          AND act.removed_at IS NULL
+          AND act.replaces_library_item_id IS NULL
+          AND act.media_id IS NOT NULL
+          AND act.first_seen_at >= ${newRowsSince}
+          AND old.removed_at IS NOT NULL
+          AND old.removed_source = 'event'
+          AND old.removed_at BETWEEN act.first_seen_at - ${REPLACEMENT_LINK_WINDOW_MS / 1000} * interval '1 second'
+                                 AND act.first_seen_at + ${REPLACEMENT_LINK_WINDOW_MS / 1000} * interval '1 second'
+          -- an unchanged copy (byte-identical, same resolution) is a re-key, not a replacement
+          AND (old.video_resolution IS DISTINCT FROM act.video_resolution
+               OR old.file_size IS DISTINCT FROM act.file_size)
+      )
+      SELECT DISTINCT ON (new_id) new_id, old_id
+      FROM ranked
+      WHERE act_rank = 1
+      ORDER BY new_id, removed_at DESC
+    `);
+    const rows = candidates.rows as unknown as Array<{ new_id: string; old_id: string }>;
+    if (rows.length === 0) return 0;
+    if (rows.length > REPLACEMENT_LINK_MAX_PER_PASS) {
+      console.warn(
+        `[LibrarySync] Skipping replacement linking: ${rows.length} candidates in one pass looks like a library rebuild`
+      );
+      return 0;
+    }
+
+    const pairs = sql.join(
+      rows.map((r) => sql`(${r.new_id}::uuid, ${r.old_id}::uuid)`),
+      sql`, `
+    );
+    const updated = await db.execute(sql`
+      UPDATE library_items li
+      SET replaces_library_item_id = v.old_id, updated_at = now()
+      FROM (VALUES ${pairs}) AS v(new_id, old_id)
+      WHERE li.id = v.new_id AND li.replaces_library_item_id IS NULL
+    `);
+    return updated.rowCount ?? 0;
   }
 
   /**

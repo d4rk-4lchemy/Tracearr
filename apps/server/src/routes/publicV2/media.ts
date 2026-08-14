@@ -75,6 +75,15 @@ export function registerMediaRoutes(app: FastifyInstance, routeConfig: RouteConf
             container: v.container,
             file_size: v.fileSize === null ? null : Number(v.fileSize),
           })),
+          replaces:
+            r.replaces_added_at && r.replaces_removed_at
+              ? {
+                  added_at: new Date(r.replaces_added_at).toISOString(),
+                  removed_at: new Date(r.replaces_removed_at).toISOString(),
+                  video_resolution: r.replaces_video_resolution,
+                  file_size: r.replaces_file_size == null ? null : Number(r.replaces_file_size),
+                }
+              : null,
         })),
         season_count: seasonCount,
         episode_count: episodeCount,

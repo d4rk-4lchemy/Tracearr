@@ -37,7 +37,10 @@ import {
   JellyfinEmbyEventSource,
   type PluginSessionEvent,
   type PluginLibraryEvent,
+  type PluginServerStats,
 } from './mediaServer/shared/jellyfinEmbyEventSource.js';
+import { recordServerStatsSample } from './serverLiveStats.js';
+import { getRedis } from '../lib/redisShared.js';
 import { probeSsePlugin } from './mediaServer/shared/ssePluginProbe.js';
 import { broadcastToAll } from '../websocket/index.js';
 import { isLeader } from './leaderLease.js';
@@ -74,6 +77,7 @@ interface ServerConnection {
   // Retained for diagnosing a Jellyfin/Emby plugin endpoint reported as unsupported.
   url: string;
   token: string;
+  ignoreAnonymousStreams: boolean;
   eventSource: PlexEventSource | JellyfinEmbyEventSource | null;
   dispatcharrRealtime: DispatcharrRealtimeConnector | null;
   state: SSEConnectionState;
@@ -81,6 +85,23 @@ interface ServerConnection {
   connectedAt: Date | null;
   lastEventAt: Date | null;
   pluginIssue: PluginIssue | null;
+}
+
+function normalizeConnectorUrl(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
+function hasConnectorConfigChanged(
+  connection: ServerConnection,
+  server: typeof servers.$inferSelect
+): boolean {
+  return (
+    connection.serverType !== server.type ||
+    connection.serverName !== server.name ||
+    normalizeConnectorUrl(connection.url) !== normalizeConnectorUrl(server.url) ||
+    connection.token !== server.token ||
+    connection.ignoreAnonymousStreams !== server.ignoreAnonymousStreams
+  );
 }
 
 // Per-server debounce timers to coalesce rapid plugin events before polling
@@ -267,6 +288,7 @@ export class SSEManager extends EventEmitter {
         serverType,
         url,
         token,
+        ignoreAnonymousStreams,
         eventSource: null,
         dispatcharrRealtime: null,
         state: 'disconnected',
@@ -647,6 +669,13 @@ export class SSEManager extends EventEmitter {
       recordLibraryEvent({ serverId, serverName, type, itemId });
     });
 
+    // Plugin v0.4+ CPU/RAM samples feed the live-stats endpoint's rolling buffer
+    eventSource.on('stats:event', (sample: PluginServerStats) => {
+      const connection = this.connections.get(serverId);
+      if (connection) connection.lastEventAt = new Date();
+      void recordServerStatsSample(getRedis(), serverId, sample);
+    });
+
     eventSource.on('connection:state', (state: SSEConnectionState) => {
       const status = eventSource.getStatus();
       this.handleConnectionStateChange(serverId, serverName, state, status);
@@ -741,6 +770,13 @@ export class SSEManager extends EventEmitter {
         const connection = this.connections.get(serverId);
         if (connection) connection.lastEventAt = new Date();
         this.emit('dispatcharr:snapshot', { serverId, sessions, authoritative });
+      }
+    );
+
+    realtime.on(
+      'stats:event',
+      ({ sample }: { serverId: string; sample: Parameters<typeof recordServerStatsSample>[2] }) => {
+        void recordServerStatsSample(getRedis(), serverId, sample);
       }
     );
 
@@ -923,7 +959,12 @@ export class SSEManager extends EventEmitter {
       }
 
       for (const server of allServers) {
-        if (!connectedServerIds.has(server.id)) {
+        const connection = this.connections.get(server.id);
+        if (connection && hasConnectorConfigChanged(connection, server)) {
+          await this.removeServerInternal(server.id);
+        }
+
+        if (!this.connections.has(server.id)) {
           await this.addServer(
             server.id,
             server.name,

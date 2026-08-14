@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { SSE_CONFIG } from '@tracearr/shared';
 import { DispatcharrClient } from './client.js';
 import type { MediaSession, MediaUser } from '../types.js';
+import type { PluginStatsSample } from '../../serverLiveStats.js';
 import {
   parseCatchupStatsResponse,
   parseRealtimeCatchupStatsPayload,
@@ -17,11 +18,10 @@ import {
 
 export type DispatcharrRealtimeMode = 'ws' | 'rest-fallback' | 'rest-only-api-key';
 type DispatcharrRealtimeState =
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'disconnected'
-  | 'fallback';
+  'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'fallback';
+
+const LIVE_DETAIL_RETRY_DELAY_MS = 2_000;
+const LIVE_DETAIL_MAX_ATTEMPTS = 6;
 
 export interface DispatcharrRealtimeStatus {
   serverId: string;
@@ -50,12 +50,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Parse only the Tracearr Metrics plugin message; provider snapshots use a separate contract. */
+export function parseDispatcharrServerStatsMessage(raw: unknown): PluginStatsSample | null {
+  let message: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      message = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(message) || message.type !== 'update' || !isRecord(message.data)) return null;
+  const data = message.data;
+  if (data.type !== 'tracearr_server_stats' || data.schemaVersion !== 1) return null;
+
+  const at = data.at;
+  const processCpu = data.processCpuUtilization;
+  const processMemory = data.processMemoryUtilization;
+  const hostCpu = data.hostCpuUtilization;
+  const hostMemory = data.hostMemoryUtilization;
+  const validPercentage = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+  if (
+    typeof at !== 'number' ||
+    !Number.isFinite(at) ||
+    !validPercentage(processCpu) ||
+    !validPercentage(processMemory) ||
+    (hostCpu !== null && !validPercentage(hostCpu)) ||
+    (hostMemory !== null && !validPercentage(hostMemory))
+  ) {
+    return null;
+  }
+  return {
+    at,
+    processCpuUtilization: processCpu,
+    processMemoryUtilization: processMemory,
+    hostCpuUtilization: hostCpu,
+    hostMemoryUtilization: hostMemory,
+  };
+}
+
 function extractReferencedUserIds(channels: NormalizedDispatcharrChannel[]): string[] {
   const ids = new Set<string>();
   for (const channel of channels) {
     for (const client of channel.clients) {
       const raw = client.user_id;
-      const userId = typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? String(raw) : '';
+      const userId =
+        typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? String(raw) : '';
       if (!userId || userId === '0') continue;
       ids.add(userId);
     }
@@ -87,6 +128,11 @@ function extractReferencedVodUserIds(stats: DispatcharrVodStatsResponse): string
   return [...ids];
 }
 
+function channelIdOf(channel: DispatcharrChannelStatus): string {
+  const value = channel.channel_id;
+  return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+}
+
 export class DispatcharrRealtimeConnector extends EventEmitter {
   private readonly serverId: string;
   private readonly serverName: string;
@@ -111,8 +157,14 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
 
   private latestSessions: MediaSession[] = [];
   private latestLiveSessions: MediaSession[] = [];
+  private latestLiveStatusChannels: DispatcharrChannelStatus[] = [];
   private latestVodSessions: MediaSession[] = [];
   private latestCatchupSessions: MediaSession[] = [];
+  private liveDetailByChannelId = new Map<string, DispatcharrChannelStatus>();
+  private liveDetailRetries = new Map<
+    string,
+    { attempts: number; timer: NodeJS.Timeout | null }
+  >();
   private userCache = new Map<string, MediaUser>();
   private logoCache = new Map<string, string>();
   private programCache = new Map<string, string>();
@@ -195,6 +247,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
     this.clearCatchupRefreshTimer();
+    this.clearLiveDetailRetries();
 
     try {
       const jwtToken = await this.client.getWebSocketToken();
@@ -222,7 +275,10 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
         this.fallbackReason = null;
         this.setState('connected');
         if (wasInFallback) {
-          this.emit('fallback:deactivated', { serverId: this.serverId, serverName: this.serverName });
+          this.emit('fallback:deactivated', {
+            serverId: this.serverId,
+            serverName: this.serverName,
+          });
         }
         this.enqueueUpdate(() => this.bootstrapFromRest());
         this.resetHeartbeat();
@@ -266,6 +322,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
     this.clearCatchupRefreshTimer();
+    this.clearLiveDetailRetries();
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -278,6 +335,14 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     try {
       parsed = JSON.parse(rawText) as unknown;
     } catch {
+      return;
+    }
+
+    const serverStats = parseDispatcharrServerStatsMessage(parsed);
+    if (serverStats) {
+      this.lastEventAt = new Date();
+      this.resetHeartbeat();
+      this.emit('stats:event', { serverId: this.serverId, sample: serverStats });
       return;
     }
 
@@ -370,9 +435,35 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     forceEnrichment = false,
     emitSnapshot = true
   ): Promise<void> {
+    const previousActiveChannelIds = this.activeLiveChannelIds();
+    this.latestLiveStatusChannels = statusChannels;
+    const activeChannelIds = await this.rebuildLiveSessions(forceEnrichment);
+
+    for (const channelId of previousActiveChannelIds) {
+      if (!activeChannelIds.has(channelId)) this.clearLiveDetailRetry(channelId);
+    }
+    for (const channelId of activeChannelIds) {
+      if (!previousActiveChannelIds.has(channelId)) this.startLiveDetailRetry(channelId);
+    }
+
+    if (emitSnapshot) this.emitMergedSnapshot();
+    else this.emitStatus();
+  }
+
+  /** Rebuild Live TV sessions from the newest summary and any fetched channel details. */
+  private async rebuildLiveSessions(forceEnrichment = false): Promise<Set<string>> {
+    // The WebSocket summary is authoritative for connected clients. Preserve
+    // cached detail only for channel metadata; otherwise a stale detail response
+    // can resurrect a client that is absent from the current snapshot.
+    const detailChannels = this.latestLiveStatusChannels.map(
+      (channel) => {
+        const detail = this.liveDetailByChannelId.get(channelIdOf(channel));
+        return detail ? { ...detail, clients: channel.clients } : channel;
+      }
+    );
     const normalizedChannels = await this.client.buildNormalizedChannelsFromStatus(
-      statusChannels,
-      statusChannels
+      this.latestLiveStatusChannels,
+      detailChannels
     );
 
     await this.refreshUserCache(normalizedChannels, forceEnrichment);
@@ -388,8 +479,88 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       this.userCache,
       this.logoCache
     );
-    if (emitSnapshot) this.emitMergedSnapshot();
-    else this.emitStatus();
+    return this.activeLiveChannelIds();
+  }
+
+  private activeLiveChannelIds(): Set<string> {
+    return new Set(
+      this.latestLiveSessions.flatMap((session) => {
+        const channelId = session.live?.channelIdentifier?.trim();
+        return channelId ? [channelId] : [];
+      })
+    );
+  }
+
+  private startLiveDetailRetry(channelId: string): void {
+    if (this.liveDetailRetries.has(channelId)) return;
+    this.liveDetailRetries.set(channelId, { attempts: 0, timer: null });
+    this.enqueueUpdate(() => this.refreshNewLiveChannelDetails(channelId));
+  }
+
+  private async refreshNewLiveChannelDetails(channelId: string): Promise<void> {
+    const retry = this.liveDetailRetries.get(channelId);
+    if (!retry || !this.activeLiveChannelIds().has(channelId) || this.state !== 'connected') {
+      this.clearLiveDetailRetry(channelId);
+      return;
+    }
+
+    retry.attempts++;
+    try {
+      const detail = await this.client.getChannelStatus(channelId);
+      // The channel may have stopped while the detail request was in flight.
+      if (!this.activeLiveChannelIds().has(channelId) || this.state !== 'connected') {
+        this.clearLiveDetailRetry(channelId);
+        return;
+      }
+
+      if (detail) {
+        this.liveDetailByChannelId.set(channelId, detail);
+        await this.rebuildLiveSessions();
+        this.emitMergedSnapshot();
+
+        if (this.hasCoreLiveTechnicalDetails(channelId)) {
+          this.clearLiveDetailRetry(channelId, false);
+          return;
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `[DispatcharrRealtime] Failed to enrich active channel ${channelId} on ${this.serverName}:`,
+        error
+      );
+    }
+
+    const currentRetry = this.liveDetailRetries.get(channelId);
+    if (!currentRetry || currentRetry.attempts >= LIVE_DETAIL_MAX_ATTEMPTS) {
+      this.clearLiveDetailRetry(channelId, false);
+      return;
+    }
+    currentRetry.timer = setTimeout(() => {
+      currentRetry.timer = null;
+      this.enqueueUpdate(() => this.refreshNewLiveChannelDetails(channelId));
+    }, LIVE_DETAIL_RETRY_DELAY_MS);
+  }
+
+  private hasCoreLiveTechnicalDetails(channelId: string): boolean {
+    return this.latestLiveSessions.some(
+      (session) =>
+        session.live?.channelIdentifier === channelId &&
+        session.quality.bitrate > 0 &&
+        Boolean(session.quality.sourceVideoCodec) &&
+        Boolean(session.quality.videoResolution)
+    );
+  }
+
+  private clearLiveDetailRetry(channelId: string, discardDetail = true): void {
+    const retry = this.liveDetailRetries.get(channelId);
+    if (retry?.timer) clearTimeout(retry.timer);
+    this.liveDetailRetries.delete(channelId);
+    if (discardDetail) this.liveDetailByChannelId.delete(channelId);
+  }
+
+  private clearLiveDetailRetries(): void {
+    for (const channelId of this.liveDetailRetries.keys()) this.clearLiveDetailRetry(channelId);
+    this.liveDetailByChannelId.clear();
   }
 
   private async applyVodStatsUpdate(
@@ -416,7 +587,9 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     forceUserRefresh = false,
     emitSnapshot = true
   ): Promise<void> {
-    const groups = Array.isArray(catchupStats.timeshift_sessions) ? catchupStats.timeshift_sessions : [];
+    const groups = Array.isArray(catchupStats.timeshift_sessions)
+      ? catchupStats.timeshift_sessions
+      : [];
     const referencedUserIds = new Set<string>();
     for (const rawGroup of groups) {
       if (!isRecord(rawGroup)) continue;
@@ -506,6 +679,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
 
   private scheduleReconnect(): void {
     if (this.manualDisconnect) return;
+    this.clearLiveDetailRetries();
     if (this.reconnectAttempts >= SSE_CONFIG.MAX_RETRIES) {
       this.activateFallback('Dispatcharr websocket max reconnect attempts reached');
       return;
@@ -532,6 +706,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.mode = 'rest-fallback';
     this.fallbackReason = reason;
     this.clearCatchupRefreshTimer();
+    this.clearLiveDetailRetries();
     this.setState('fallback');
     this.emit('fallback:activated', {
       serverId: this.serverId,

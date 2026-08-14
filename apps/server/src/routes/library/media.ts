@@ -93,6 +93,15 @@ function toAvailabilityEntry(r: AvailabilityRow): MediaAvailabilityEntry {
       ...v,
       fileSize: v.fileSize === null ? null : Number(v.fileSize),
     })),
+    replaces:
+      r.replaces_added_at && r.replaces_removed_at
+        ? {
+            addedAt: new Date(r.replaces_added_at).toISOString(),
+            removedAt: new Date(r.replaces_removed_at).toISOString(),
+            videoResolution: r.replaces_video_resolution,
+            fileSize: r.replaces_file_size == null ? null : Number(r.replaces_file_size),
+          }
+        : null,
   };
 }
 
@@ -185,8 +194,8 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
     const canonical = await resolveCanonicalMediaByRef(id);
     if (!canonical) return reply.notFound();
 
-    // detail-v2: availability rows gained show episode rollup fields
-    const cacheKey = mediaCacheKey(canonical.id, 'detail-v2', resolvedIds);
+    // detail-v3: availability rows gained replaced-copy info
+    const cacheKey = mediaCacheKey(canonical.id, 'detail-v3', resolvedIds);
     const cached = await readCache<MediaDetailResponse>(app.redis, cacheKey);
     if (cached) return cached;
 

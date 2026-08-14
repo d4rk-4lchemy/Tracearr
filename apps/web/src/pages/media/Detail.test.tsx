@@ -200,7 +200,12 @@ describe('MediaDetail page', () => {
                   started_at: '2026-07-01T12:00:00.000Z',
                   duration_ms: 2_700_000,
                   watched: true,
-                  user: { id: 'user-1', username: 'ari', thumb_url: null },
+                  user: {
+                    id: 'user-1',
+                    server_user_id: 'server-user-1',
+                    username: 'ari',
+                    thumb_url: null,
+                  },
                 },
               ],
             },
@@ -234,7 +239,12 @@ describe('MediaDetail page', () => {
                   started_at: '2026-07-01T12:00:00.000Z',
                   duration_ms: 2_700_000,
                   watched: true,
-                  user: { id: 'user-1', username: 'ari', thumb_url: null },
+                  user: {
+                    id: 'user-1',
+                    server_user_id: 'server-user-1',
+                    username: 'ari',
+                    thumb_url: null,
+                  },
                 },
               ],
             },
@@ -249,7 +259,7 @@ describe('MediaDetail page', () => {
     renderPage();
 
     const link = screen.getByRole('link', { name: /ari/ });
-    expect(link).toHaveAttribute('href', '/users/user-1');
+    expect(link).toHaveAttribute('href', '/users/server-user-1');
     fireEvent.click(link);
     // stopPropagation keeps the row's session selection from firing.
     expect(mockUseSession).not.toHaveBeenCalledWith('chain-1');
@@ -271,7 +281,12 @@ describe('MediaDetail page', () => {
                   started_at: '2026-07-01T12:00:00.000Z',
                   duration_ms: 2_700_000,
                   watched: true,
-                  user: { id: 'user-1', username: 'ari', thumb_url: null },
+                  user: {
+                    id: 'user-1',
+                    server_user_id: 'server-user-1',
+                    username: 'ari',
+                    thumb_url: null,
+                  },
                 },
               ],
             },
@@ -318,7 +333,12 @@ describe('MediaDetail page', () => {
                   started_at: '2026-07-01T12:00:00.000Z',
                   duration_ms: 2_700_000,
                   watched: true,
-                  user: { id: 'user-1', username: 'ari', thumb_url: null },
+                  user: {
+                    id: 'user-1',
+                    server_user_id: 'server-user-1',
+                    username: 'ari',
+                    thumb_url: null,
+                  },
                 },
               ],
             },
@@ -359,7 +379,12 @@ describe('MediaDetail page', () => {
                   started_at: '2026-07-01T12:00:00.000Z',
                   duration_ms: 2_700_000,
                   watched: true,
-                  user: { id: 'user-1', username: 'ari', thumb_url: null },
+                  user: {
+                    id: 'user-1',
+                    server_user_id: 'server-user-1',
+                    username: 'ari',
+                    thumb_url: null,
+                  },
                 },
               ],
             },
@@ -400,7 +425,12 @@ describe('MediaDetail page', () => {
                   started_at: '2026-07-01T12:00:00.000Z',
                   duration_ms: 2_700_000,
                   watched: true,
-                  user: { id: 'user-1', username: 'ari', thumb_url: null },
+                  user: {
+                    id: 'user-1',
+                    server_user_id: 'server-user-1',
+                    username: 'ari',
+                    thumb_url: null,
+                  },
                 },
               ],
             },

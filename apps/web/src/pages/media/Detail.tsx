@@ -79,6 +79,7 @@ interface HistoryRow {
   watched: boolean;
   user: {
     id: string;
+    server_user_id: string;
     username: string;
     thumb_url: string | null;
   };
@@ -226,9 +227,9 @@ function HistoryPanel({
                       </div>
                     </div>
                     <div role="cell" className={HISTORY_CELL_CLASS}>
-                      {row.user.id ? (
+                      {row.user.server_user_id ? (
                         <Link
-                          to={`/users/${row.user.id}`}
+                          to={`/users/${row.user.server_user_id}`}
                           onClick={(event) => event.stopPropagation()}
                           className="flex items-center gap-2 hover:underline"
                         >
@@ -301,7 +302,13 @@ export function MediaDetail() {
       new Map(
         servers.map((server) => [
           server.id,
-          { name: server.name, type: server.type, color: server.color, url: server.url },
+          {
+            name: server.name,
+            type: server.type,
+            color: server.color,
+            url: server.url,
+            machineIdentifier: server.machineIdentifier,
+          },
         ])
       ),
     [servers]

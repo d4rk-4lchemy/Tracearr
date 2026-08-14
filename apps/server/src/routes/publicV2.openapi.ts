@@ -86,7 +86,7 @@ const PLAY_SEMANTICS =
   'excluded (COALESCE(duration_ms, 0) >= 120000). Rating keys the media server never provided ' +
   'are returned as null.';
 
-const ServerTypeEnum = z.enum(['plex', 'jellyfin', 'emby']);
+const ServerTypeEnum = z.enum(['plex', 'jellyfin', 'emby', 'dispatcharr']);
 // Responses can carry 'trailer' (sessions store it); the history filter
 // deliberately accepts only the six primary types.
 const MediaTypeEnum = z.enum(['movie', 'episode', 'track', 'live', 'photo', 'trailer', 'unknown']);
@@ -295,7 +295,8 @@ const HistoryQuery = z.object({
 
 const HistoryUser = z
   .object({
-    id: z.uuid().openapi({ description: 'Tracearr user id' }),
+    id: z.uuid().openapi({ description: 'Tracearr identity id' }),
+    server_user_id: z.uuid().openapi({ description: "Tracearr's id for this per-server account" }),
     username: z.string().nullable(),
     thumb_url: z.string().nullable(),
     avatar_url: z.string().nullable(),

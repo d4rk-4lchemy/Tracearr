@@ -37,6 +37,7 @@ describe('DispatcharrRealtimeConnector', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     delete (globalThis as { WebSocket?: unknown }).WebSocket;
   });
@@ -126,8 +127,23 @@ describe('DispatcharrRealtimeConnector', () => {
   });
 
   it('bootstraps merged live and vod sessions from REST', async () => {
+    vi.useFakeTimers();
     vi.spyOn(DispatcharrClient.prototype, 'getWebSocketToken').mockResolvedValue('jwt-token');
-    vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockResolvedValue([{ channel_id: 'channel-1' }]);
+    const statusChannels = [{ channel_id: 'channel-1', client_count: 1 }];
+    const detailChannels = [
+      {
+        channel_id: 'channel-1',
+        avg_bitrate_kbps: 12000,
+        video_codec: 'h264',
+        audio_codec: 'aac',
+        resolution: '1920x1080',
+      },
+    ];
+    vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockResolvedValue(statusChannels);
+    const getChannelStatus = vi
+      .spyOn(DispatcharrClient.prototype, 'getChannelStatus')
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(detailChannels[0]!);
     vi.spyOn(DispatcharrClient.prototype, 'getVodStatsSnapshot').mockResolvedValue({
       vod_connections: [
         {
@@ -156,14 +172,17 @@ describe('DispatcharrRealtimeConnector', () => {
         mediaId: 'channel-1',
         user: { id: '7', username: 'User Seven' },
         media: { title: 'Channel 1', type: 'live', durationMs: 0 },
+        live: { channelTitle: 'Channel 1', channelIdentifier: 'channel-1' },
         playback: { state: 'playing', positionMs: 0, progressPercent: 0 },
         player: { name: 'Player', deviceId: 'live-1', platform: 'Dispatcharr' },
         network: { ipAddress: '0.0.0.0', isLocal: false },
         quality: {
-          bitrate: 0,
+          bitrate: 12000,
           isTranscode: false,
           videoDecision: 'directplay',
           audioDecision: 'directplay',
+          sourceVideoCodec: 'h264',
+          videoResolution: '1080p',
         },
       },
     ]);
@@ -185,6 +204,30 @@ describe('DispatcharrRealtimeConnector', () => {
 
     expect(snapshot.sessions).toHaveLength(2);
     expect(snapshot.authoritative).toBe(false);
+    await vi.waitFor(() => {
+      expect(getChannelStatus).toHaveBeenCalledTimes(1);
+    });
+    expect(getChannelStatus).toHaveBeenCalledWith('channel-1');
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.waitFor(() => {
+      expect(getChannelStatus).toHaveBeenCalledTimes(2);
+    });
+
+    const updatedSnapshotPromise = nextSnapshot(connector);
+    ws.onmessage?.call(ws, {
+      data: JSON.stringify({
+        data: {
+          type: 'channel_stats',
+          stats: JSON.stringify({ channels: statusChannels }),
+        },
+      }),
+    });
+    await updatedSnapshotPromise;
+    expect(DispatcharrClient.prototype.buildNormalizedChannelsFromStatus).toHaveBeenLastCalledWith(
+      statusChannels,
+      detailChannels
+    );
+    vi.useRealTimers();
   });
 
   it('does not publish a partial REST bootstrap as an authoritative session snapshot', async () => {
@@ -220,6 +263,47 @@ describe('DispatcharrRealtimeConnector', () => {
     expect(snapshotListener).not.toHaveBeenCalled();
     expect(connector.isInFallback()).toBe(true);
     connector.disconnect();
+  });
+
+  it('does not retain a departed named client from cached channel details', async () => {
+    vi.spyOn(DispatcharrClient.prototype, 'getUserMap').mockResolvedValue(
+      new Map([['7', { id: '7', username: 'John Doe', isAdmin: false }]])
+    );
+    vi.spyOn(DispatcharrClient.prototype, 'getLogoPathByChannelId').mockResolvedValue(new Map());
+    vi.spyOn(DispatcharrClient.prototype, 'getCurrentProgramByChannelId').mockResolvedValue(
+      new Map()
+    );
+
+    const connector = new DispatcharrRealtimeConnector({
+      serverId: 'server-1',
+      serverName: 'Dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'a.b.c',
+      ignoreAnonymousStreams: true,
+    });
+    const internals = connector as unknown as {
+      latestLiveStatusChannels: Array<Record<string, unknown>>;
+      liveDetailByChannelId: Map<string, Record<string, unknown>>;
+      rebuildLiveSessions(forceEnrichment?: boolean): Promise<Set<string>>;
+    };
+
+    // The detail request observed John earlier, but the newest WebSocket snapshot
+    // reports only Anonymous on the same channel. Anonymous is intentionally ignored.
+    internals.liveDetailByChannelId.set('channel-1', {
+      channel_id: 'channel-1',
+      avg_bitrate_kbps: 12_000,
+      clients: [{ client_id: 'john-client', user_id: '7' }],
+    });
+    internals.latestLiveStatusChannels = [
+      {
+        channel_id: 'channel-1',
+        clients: [{ client_id: 'anonymous-client', user_id: '0' }],
+      },
+    ];
+
+    await internals.rebuildLiveSessions();
+
+    expect(connector.getLatestSessions()).toEqual([]);
   });
 
   it('keeps API-key authentication in REST polling mode without opening a WebSocket', async () => {

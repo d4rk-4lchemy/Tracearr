@@ -29,6 +29,7 @@ import { registerService, unregisterService } from '../services/serviceTracker.j
 import { getWatchedThreshold } from '../services/settings.js';
 import { sseManager } from '../services/sseManager.js';
 import { getIdentityServerUserIds } from '../services/userService.js';
+import { createLogger } from '../utils/logger.js';
 import { enqueueNotification } from './notificationQueue.js';
 import {
   batchGetLibraryItemIdentity,
@@ -68,6 +69,8 @@ import {
 import { PENDING_STOP_PERSIST_MIN_PROGRESS_MS, type PendingSessionData } from './poller/types.js';
 import { excludeUncountableSessions } from './poller/utils.js';
 import { broadcastViolations } from './poller/violations.js';
+
+const sseLogger = createLogger('SSEProcessor');
 
 let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;
@@ -366,7 +369,8 @@ async function handlePlaying(event: {
           notification.sessionKey,
           pendingData,
           'playing',
-          notification.viewOffset
+          notification.viewOffset,
+          result?.session
         );
         return;
       }
@@ -750,7 +754,7 @@ async function handleProgress(event: {
  * Handle reconciliation request - triggers a light poll to catch missed events
  */
 async function handleReconciliation(): Promise<void> {
-  console.log('[SSEProcessor] Triggering reconciliation poll');
+  sseLogger.debug('Triggering reconciliation poll');
   await triggerReconciliationPoll();
 
   // Run maintenance tasks during reconciliation
@@ -1673,7 +1677,8 @@ async function updatePendingSession(
   sessionKey: string,
   pendingData: PendingSessionData,
   newState: 'playing' | 'paused',
-  viewOffset?: number
+  viewOffset?: number,
+  processed?: PendingSessionData['processed']
 ): Promise<void> {
   if (!cacheService) return;
 
@@ -1701,6 +1706,13 @@ async function updatePendingSession(
   const currentViewOffset = viewOffset ?? pendingData.confirmation.maxViewOffset;
   const updatedConfirmation = updateConfirmationState(pendingData.confirmation, currentViewOffset);
 
+  const previousProgressMs = pendingData.processed.progressMs ?? 0;
+  const incomingProgressMs = processed?.progressMs ?? 0;
+  const latestProcessed =
+    processed && previousProgressMs > incomingProgressMs
+      ? { ...processed, progressMs: previousProgressMs }
+      : (processed ?? pendingData.processed);
+
   // Check if playback is now confirmed
   const isConfirmed = isPlaybackConfirmed(updatedConfirmation, currentViewOffset, newState, now);
 
@@ -1708,6 +1720,7 @@ async function updatePendingSession(
     // Session is confirmed - persist to DB and evaluate rules
     await confirmPendingSessionAndPersist(serverId, sessionKey, {
       ...pendingData,
+      processed: latestProcessed,
       confirmation: { ...updatedConfirmation, confirmedPlayback: true },
       currentState: newState,
       pausedDurationMs,
@@ -1718,6 +1731,7 @@ async function updatePendingSession(
     // Still pending - update Redis data
     const updatedData: PendingSessionData = {
       ...pendingData,
+      processed: latestProcessed,
       confirmation: updatedConfirmation,
       currentState: newState,
       pausedDurationMs,

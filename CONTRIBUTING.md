@@ -69,7 +69,13 @@ We're fine with AI tools. Copilot, Claude, Cursor, whatever helps you work. But 
 
 **You own what you submit.** If you can't explain the code or debug it when something breaks, that's a problem. We've had PRs where contributors couldn't answer basic questions about their own submissions because they didn't actually understand what the AI generated. That's not a contribution, it's a maintenance burden.
 
-**Disclose significant AI usage in your PR.** Not every autocomplete suggestion, but if AI wrote substantial portions of your code, say so. This helps reviewers know where to look carefully. The PR template has a checkbox for this.
+**Disclose significant AI usage in your PR.** Not every autocomplete suggestion, but if AI wrote substantial portions of your code, say so, and say how much. "Used AI" tells us nothing. "Wrote the Emby adapter myself, used Claude for the Zod schema and to chase down a socket race" tells us where to look. The PR template has a checkbox and a place for the note.
+
+The checkbox is not a permission slip. It tells us where to look harder, and that's all it does. A PR you prompted into existence and then tested is the thing we close, disclosed or not.
+
+**Reply in your own words.** Routing our review questions through an AI and pasting back whatever it returns doesn't move the review forward, since we can run that ourselves. If English isn't your first language and you translated your reply, say so and we'll read it the same as any other.
+
+**Don't commit your local tooling.** Editor settings and AI assistant files (`.claude/`, `CLAUDE.md`, `.cursor/`, `AGENTS.md`) aren't part of this project. Run `git status` before you push.
 
 **Tests matter more than ever.** If you understood the code well enough to write it, you can write tests for it. PRs that add features without tests often indicate the contributor doesn't fully grasp what they've built.
 
@@ -82,6 +88,8 @@ We do not accept contributions from autonomous agents. Pull requests and issues 
 The human-shaped version gets the same treatment. If a PR exists because someone pointed an AI at something they wanted and opened whatever came out, without discussing the feature with a code owner and without being able to explain the diff, it gets closed. This has already happened to recent submissions and it will keep happening.
 
 Bug reports follow the same rule. Fill in the template with what actually happened and attach logs. A report that swaps the template for an AI-written diagnosis with a suggested fix gets closed; generated analysis is not evidence, and reviewing it costs more than the two facts we actually needed.
+
+Any of the above more than once gets one warning, then we block the account. Reviewing these costs volunteer time we don't get back.
 
 ## Testing
 

@@ -64,6 +64,8 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "{{count}} помилка",
@@ -93,9 +95,7 @@
     "usersUpdated_one": "Оновлено користувача {{count}}",
     "usersUpdated_other": "Оновлено користувачів {{count}}",
     "violation_one": "{{count}} порушення",
-    "violation_other": "{{count}} порушень",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels"
+    "violation_other": "{{count}} порушень"
   },
   "duration": {
     "day_one": "{{count}} день",

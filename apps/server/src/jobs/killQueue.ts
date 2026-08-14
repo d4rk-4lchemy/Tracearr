@@ -10,12 +10,13 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { getRedisPrefix, type Action } from '@tracearr/shared';
+import { type Action } from '@tracearr/shared';
 import {
   getActionExecutorDeps,
   cooldownTargetId,
   type ActionResult,
 } from '../services/rules/executors/index.js';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import {
   reverifyKillCondition,
@@ -67,8 +68,8 @@ export function initKillQueue(redisUrl: string): void {
     return;
   }
 
-  connectionOptions = { url: redisUrl };
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  connectionOptions = queueConnectionOptions(redisUrl);
+  const bullPrefix = getBullPrefix();
 
   killQueue = new Queue<KillJobData>(QUEUE_NAME, {
     connection: connectionOptions,
@@ -109,7 +110,7 @@ export function startKillWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   killWorker = new Worker<KillJobData>(
     QUEUE_NAME,

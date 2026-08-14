@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../librarySync.js', () => ({
   librarySyncService: {
     tombstoneItemsByRatingKey: vi.fn().mockResolvedValue(undefined),
+    // Default: item unknown to Tracearr, i.e. a genuine add. Tests covering
+    // the metadata-refresh skip flip this to true per call.
+    hasActiveItemByRatingKey: vi.fn().mockResolvedValue(false),
   },
 }));
 
@@ -15,6 +18,7 @@ import { enqueueLibrarySyncFromEvent } from '../../jobs/librarySyncQueue.js';
 import { recordLibraryEvent, clearPendingLibraryEventSyncs } from '../libraryEventSync.js';
 
 const tombstoneMock = vi.mocked(librarySyncService.tombstoneItemsByRatingKey);
+const hasItemMock = vi.mocked(librarySyncService.hasActiveItemByRatingKey);
 const enqueueMock = vi.mocked(enqueueLibrarySyncFromEvent);
 
 beforeEach(() => {
@@ -92,10 +96,72 @@ describe('recordLibraryEvent debounce', () => {
 
   it('clearPendingLibraryEventSyncs cancels windows without enqueuing', async () => {
     recordLibraryEvent({ serverId: 'srv-1', serverName: 'Server 1', type: 'added', itemId: 'a' });
+    // Let the known-item probe settle so the window actually opens before
+    // the clear - the clear's contract is cancelling opened windows.
+    await vi.advanceTimersByTimeAsync(0);
     clearPendingLibraryEventSyncs();
 
     await vi.advanceTimersByTimeAsync(60_000);
     expect(enqueueMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('recordLibraryEvent metadata-refresh filtering', () => {
+  it('skips the sync window when the "added" item is already tracked (Plex refresh, not an add)', async () => {
+    hasItemMock.mockResolvedValueOnce(true);
+
+    recordLibraryEvent({
+      serverId: 'srv-1',
+      serverName: 'Server 1',
+      type: 'added',
+      itemId: 'rk-1',
+    });
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(hasItemMock).toHaveBeenCalledWith('srv-1', 'rk-1');
+    expect(enqueueMock).not.toHaveBeenCalled();
+  });
+
+  it('opens the sync window for an unknown item (genuine add)', async () => {
+    hasItemMock.mockResolvedValueOnce(false);
+
+    recordLibraryEvent({
+      serverId: 'srv-1',
+      serverName: 'Server 1',
+      type: 'added',
+      itemId: 'rk-2',
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(enqueueMock).toHaveBeenCalledWith('srv-1');
+  });
+
+  it('fails open: a probe error still opens the sync window', async () => {
+    hasItemMock.mockRejectedValueOnce(new Error('db unavailable'));
+
+    recordLibraryEvent({
+      serverId: 'srv-1',
+      serverName: 'Server 1',
+      type: 'added',
+      itemId: 'rk-3',
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(enqueueMock).toHaveBeenCalledWith('srv-1');
+  });
+
+  it('never probes on removal events - tombstone and window fire regardless', async () => {
+    recordLibraryEvent({
+      serverId: 'srv-1',
+      serverName: 'Server 1',
+      type: 'removed',
+      itemId: 'rk-4',
+    });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(hasItemMock).not.toHaveBeenCalled();
+    expect(tombstoneMock).toHaveBeenCalledWith('srv-1', ['rk-4']);
+    expect(enqueueMock).toHaveBeenCalledWith('srv-1');
   });
 });
 

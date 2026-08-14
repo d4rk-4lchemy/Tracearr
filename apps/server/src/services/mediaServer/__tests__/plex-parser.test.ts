@@ -24,6 +24,8 @@ import {
   parsePlexTvUser,
   parseMediaMetadataResponse,
   parseLibraryItemsResponse,
+  parseStatisticsBandwidthResponse,
+  parseStatisticsResourcesResponse,
   getTranscodingSessionRatingKeys,
   findStreamByType,
   STREAM_TYPE,
@@ -2005,5 +2007,175 @@ describe('findStreamByType', () => {
     };
 
     expect(findStreamByType(part, STREAM_TYPE.AUDIO)?.codec).toBe('eac3');
+  });
+});
+
+describe('parseStatisticsResourcesResponse', () => {
+  it('maps fields and sorts newest first', () => {
+    const response = {
+      MediaContainer: {
+        size: 2,
+        StatisticsResources: [
+          {
+            timespan: 6,
+            at: 1786145458,
+            hostCpuUtilization: 1.2,
+            processCpuUtilization: 0.01,
+            hostMemoryUtilization: 12.0,
+            processMemoryUtilization: 0.3,
+          },
+          {
+            timespan: 6,
+            at: 1786145464,
+            hostCpuUtilization: 2.757,
+            processCpuUtilization: 0.025,
+            hostMemoryUtilization: 12.41,
+            processMemoryUtilization: 0.371,
+          },
+        ],
+      },
+    };
+
+    const points = parseStatisticsResourcesResponse(response);
+
+    expect(points).toHaveLength(2);
+    expect(points[0]).toEqual({
+      timespan: 6,
+      at: 1786145464,
+      hostCpuUtilization: 2.757,
+      processCpuUtilization: 0.025,
+      hostMemoryUtilization: 12.41,
+      processMemoryUtilization: 0.371,
+    });
+    expect(points[1]?.at).toBe(1786145458);
+  });
+
+  it('returns empty for malformed input', () => {
+    expect(parseStatisticsResourcesResponse(null)).toEqual([]);
+    expect(parseStatisticsResourcesResponse({})).toEqual([]);
+    expect(parseStatisticsResourcesResponse({ MediaContainer: {} })).toEqual([]);
+  });
+});
+
+describe('parseStatisticsBandwidthResponse', () => {
+  const response = {
+    MediaContainer: {
+      size: 3,
+      Account: [
+        { id: 1, key: '/accounts/1', name: 'Gallapagos', thumb: 'https://plex.tv/users/a/avatar' },
+        { id: 99, key: '/accounts/99', name: 'Unreferenced' },
+      ],
+      Device: [
+        { id: 1, name: 'Chromecast', platform: 'Chromecast', clientIdentifier: '' },
+        { id: 382, name: 'Web Player', platform: 'Chrome' },
+        { id: 777, name: 'Stale Device', platform: 'iOS' },
+      ],
+      StatisticsBandwidth: [
+        { accountID: 1577033, deviceID: 260, timespan: 6, at: 100, lan: false, bytes: 22 },
+        { accountID: 1, deviceID: 1, timespan: 6, at: 101, lan: true, bytes: 28 },
+        { accountID: 1, deviceID: 382, timespan: 6, at: 101, lan: false, bytes: 729 },
+      ],
+    },
+  };
+
+  it('keeps per-account/device samples sorted newest first', () => {
+    const { samples } = parseStatisticsBandwidthResponse(response);
+
+    expect(samples).toEqual([
+      { at: 101, accountId: 1, deviceId: 1, lan: true, bytes: 28 },
+      { at: 101, accountId: 1, deviceId: 382, lan: false, bytes: 729 },
+      { at: 100, accountId: 1577033, deviceId: 260, lan: false, bytes: 22 },
+    ]);
+  });
+
+  it('aggregates points per timestamp with lan/wan split and timespan normalized to 1', () => {
+    const { points } = parseStatisticsBandwidthResponse(response);
+
+    expect(points).toEqual([
+      { at: 101, timespan: 1, lanBytes: 28, wanBytes: 729 },
+      { at: 100, timespan: 1, lanBytes: 0, wanBytes: 22 },
+    ]);
+  });
+
+  it('filters account and device maps to ids referenced by samples', () => {
+    const { accounts, devices } = parseStatisticsBandwidthResponse(response);
+
+    expect(accounts).toEqual([
+      { id: 1, name: 'Gallapagos', thumb: 'https://plex.tv/users/a/avatar' },
+    ]);
+    expect(devices).toEqual([
+      { id: 1, name: 'Chromecast', platform: 'Chromecast' },
+      { id: 382, name: 'Web Player', platform: 'Chrome' },
+    ]);
+  });
+
+  it('returns empty structure for malformed input', () => {
+    const empty = { points: [], samples: [], accounts: [], devices: [] };
+    expect(parseStatisticsBandwidthResponse(null)).toEqual(empty);
+    expect(parseStatisticsBandwidthResponse({})).toEqual(empty);
+    expect(parseStatisticsBandwidthResponse({ MediaContainer: {} })).toEqual(empty);
+  });
+});
+
+describe('transcode progress fields', () => {
+  const buildSession = (transcodeSession: Record<string, unknown>) => ({
+    MediaContainer: {
+      Metadata: [
+        {
+          sessionKey: 'tk-1',
+          ratingKey: '55',
+          title: 'Movie',
+          type: 'movie',
+          User: { id: '1', title: 'Alice' },
+          Player: { title: 'TV', machineIdentifier: 'tv1', state: 'playing' },
+          TranscodeSession: transcodeSession,
+          Media: [{ id: 1, selected: '1', container: 'mkv', Part: [{ container: 'mkv' }] }],
+        },
+      ],
+    },
+  });
+
+  it('parses progress, maxOffsetAvailable, speed, and json-boolean throttled', () => {
+    const sessions = parseSessionsResponse(
+      buildSession({
+        videoDecision: 'transcode',
+        audioDecision: 'copy',
+        speed: 1.8,
+        throttled: true,
+        progress: 42.5,
+        maxOffsetAvailable: 913.4,
+        container: 'mkv',
+      })
+    );
+
+    const info = sessions[0]?.quality.transcodeInfo;
+    expect(info?.progress).toBe(42.5);
+    expect(info?.maxOffsetAvailable).toBe(913.4);
+    expect(info?.speed).toBe(1.8);
+    expect(info?.throttled).toBe(true);
+  });
+
+  it('parses xml-style throttled and keeps progress 0', () => {
+    const sessions = parseSessionsResponse(
+      buildSession({
+        videoDecision: 'transcode',
+        throttled: '1',
+        progress: 0,
+      })
+    );
+
+    const info = sessions[0]?.quality.transcodeInfo;
+    expect(info?.throttled).toBe(true);
+    expect(info?.progress).toBe(0);
+  });
+
+  it('omits progress fields when absent', () => {
+    const sessions = parseSessionsResponse(
+      buildSession({ videoDecision: 'transcode', container: 'mp4' })
+    );
+
+    const info = sessions[0]?.quality.transcodeInfo;
+    expect(info?.progress).toBeUndefined();
+    expect(info?.maxOffsetAvailable).toBeUndefined();
   });
 });

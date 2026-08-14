@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA inspected: `feature/better-live-tv-for-jellyfin-and-emby` at `a28c0103`
+- Fork branch/SHA after this upstream merge: `feature/prepare-for-2.1.0` at `d084d0c1`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `55af7da5`
-- Last shared upstream commit found during inspection: `367f6c69`
-- Latest upstream commit merged into the current working tree: `55af7da5`
+- Source branch/SHA inspected: `main` at `cd08ec94`
+- Last shared upstream commit found during inspection: `22199d26`
+- Latest upstream commit merged into the current working tree: `cd08ec94`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -34,6 +34,9 @@ User-facing Dispatcharr behavior:
 - Add Dispatcharr as a selectable server type.
 - Connect to Dispatcharr with either an API key/JWT token or username/password credentials.
 - Edit an existing Dispatcharr server in place to switch between API key/JWT token auth and username/password auth without deleting and re-adding the server.
+- Cache username/password JWT acquisition by a non-reversible fingerprint of
+  the complete credential set, preserving cross-client single-flight without
+  allowing a warm token to validate a changed password.
 - Use username/password mode for WebSocket-capable realtime updates; API-key mode falls back to REST polling.
 - Legacy Dispatcharr servers upgraded from older fork versions remain in polling mode until username/password credentials are entered again, because older stored tokens do not contain recoverable credentials for automatic migration.
 - Show Live TV streams, VOD movies, and VOD shows.
@@ -43,7 +46,15 @@ User-facing Dispatcharr behavior:
 - Display Live TV channel/programme information, channel logos, stream bitrate, codecs, resolution, and FFmpeg speed where available.
 - Jellyfin and Emby Live TV sessions are enriched from `/LiveTv/Programs`; the current programme is stored in `mediaTitle` while the channel remains in `live.*`. The EPG cache is shared per server/channel and refreshes the existing poller at programme boundaries. Web and mobile Live TV cards use the same channel-title/programme-subtitle layout as Dispatcharr; Plex keeps its legacy Live TV card for now.
 - Show Dispatcharr active sessions immediately from healthy WebSocket snapshots.
-- Save Dispatcharr Live TV sessions to history only after a configurable threshold; default is 30 seconds and `0` means always save. This threshold does not delay active-session visibility, does not emit a second stream-start event when history is confirmed, and does not apply to Dispatcharr VOD history.
+- When a Dispatcharr Live TV channel gains its first client, enrich its card
+  from the detailed channel status immediately and retry for up to ten seconds
+  while Dispatcharr initializes stream metadata. This avoids waiting for a
+  later `channel_stats` update; retries stop when core technical fields arrive
+  or the channel becomes inactive.
+- Reconcile connector-owned server configuration (type, name, normalized URL,
+  token, and anonymous-stream filtering) on the Redis leader, replacing stale
+  connectors after local or cross-replica edits.
+- Dispatcharr Live TV, VOD, and catch-up sessions use the shared pending playback lifecycle: they become history after the global 30-second confirmation threshold. While a session is pending, every REST/WebSocket snapshot refreshes its metadata in place and retains the highest observed progress.
 
 The fork also carries local maintenance/distribution changes:
 
@@ -61,7 +72,7 @@ Most fork-only changes made for Dispatcharr fall into a few recurring categories
 
 - Shared model extensions:
   - add `dispatcharr` to server enums, schema validation, and frontend/backend shared types
-  - carry Dispatcharr-only settings such as auth mode, anonymous-stream filtering, and live-history threshold
+  - carry Dispatcharr-only settings such as auth mode and anonymous-stream filtering
 - Server configuration flow:
   - accept both token-based auth and username/password auth
   - allow switching auth mode in place while editing an existing server
@@ -72,8 +83,7 @@ Most fork-only changes made for Dispatcharr fall into a few recurring categories
   - bypass normal poller processing while healthy Dispatcharr realtime snapshots are active
 - Session semantics:
   - treat Live TV and VOD differently
-  - delay history persistence only for Dispatcharr Live TV when the threshold is enabled
-  - keep VOD persistence immediate
+  - use the shared pending confirmation lifecycle for Dispatcharr Live TV, VOD, and catch-up
 - Metadata and media presentation:
   - map channel/programme-specific live metadata
   - classify Dispatcharr catch-up/timeshift sessions as Live TV with estimated progress and a separate playback kind
@@ -93,19 +103,18 @@ Most fork-only changes made for Dispatcharr fall into a few recurring categories
 Shared contracts:
 
 - `packages/shared/src/schemas.ts` adds `dispatcharr` to server type validation and extends server create/update schemas with Dispatcharr credentials/settings.
-- `packages/shared/src/types.ts` extends server-related types with `dispatcharr`, `dispatcharrAuthMode`, `ignoreAnonymousStreams`, and `dispatcharrLiveHistoryThresholdSeconds`.
+- `packages/shared/src/types.ts` extends server-related types with `dispatcharr`, `dispatcharrAuthMode`, and `ignoreAnonymousStreams`.
 - `packages/shared/src/constants.ts` adds Dispatcharr brand color support.
 
 Database:
 
-- `apps/server/src/db/schema.ts` extends `serverTypeEnum` and adds two server columns:
+- `apps/server/src/db/schema.ts` extends `serverTypeEnum` and adds the Dispatcharr server column:
   - `ignore_anonymous_streams boolean default true not null`
-  - `dispatcharr_live_history_threshold_seconds integer default 30 not null`
 - It also adds Dispatcharr playback metadata to `sessions`:
   - `dispatcharr_playback_kind varchar(20)`
   - `progress_estimated boolean default false not null`
 - `apps/server/src/db/migrations/` is the upstream-only migration history. It must remain directly mergeable with the source repository.
-- `apps/server/src/db/fork-migrations/` is the Dispatcharr overlay, with its own `meta/_journal.json` and `tracearr_fork.__drizzle_migrations` database ledger. Its current files `0000`–`0002` replace the historical main-ledger migrations `0067`–`0069`.
+- `apps/server/src/db/fork-migrations/` is the Dispatcharr overlay, with its own `meta/_journal.json` and `tracearr_fork.__drizzle_migrations` database ledger. Its current files `0000`–`0004` replace the historical main-ledger migrations `0067`–`0069`; `0004` removes the retired Dispatcharr live-history column.
 - Before upstream migrations, the runtime removes the exact legacy `0069_steady_squadron_supreme` ledger entry only when `media` is absent. This is a one-time compatibility bridge: its timestamp would otherwise cause Drizzle to skip upstream `0067_cold_maggott`, which creates `media`.
 - The overlay runs after upstream migrations. Its SQL is idempotent so installations that previously ran `0067`–`0069`, installations where they were skipped, and original Tracearr databases all converge without data loss.
 
@@ -130,6 +139,7 @@ Server routes and services:
   for other server types.
 - `apps/server/src/routes/public.ts` and `apps/server/src/routes/public.openapi.ts` expose Dispatcharr-aware live media fields in public API responses.
 - Dashboard daily stats keep `todayPlays`, `todaySessions`, and `watchTimeHours` as VOD-only metrics, add `tvSessions`, `tvChannels`, and `tvWatchTimeHours` for `mediaType === 'live'`, and count `activeUsersToday` across all media types so Dispatcharr Live TV/catch-up activity is no longer invisible on the homepage.
+- Dispatcharr Server Resources are supplied by the separate `Dispatcharr-Metrics` v1 plugin. The plugin broadcasts sanitized `tracearr_server_stats` schema version `1` messages on the existing authenticated `updates` WebSocket; Tracearr accepts only finite timestamps and 0–100 utilization values. `process*` samples describe the complete Docker `web` container cgroup (including FFmpeg and cache-backed memory), not the host. If Docker has no explicit memory limit, the container memory percentage uses host-visible `MemTotal` as denominator, matching Docker Stats' no-limit behavior. `host*` samples are true host-wide CPU and memory utilization via Dispatcharr's bundled `psutil`, constrained to `0.00–100.00%`; they include every process visible to the host. Username/password authentication is required to keep the Dispatcharr WebSocket; API-key mode remains REST-only and has no resource samples. v1 supports Docker AIO and modular `web` deployments only; bare-metal/systemd is intentionally unsupported.
 - Activity stats (`plays`, `concurrent`, day/hour activity, platforms, quality, users, and top users) include `movie`, `episode`, and `live` sessions from every supported server type. The two-minute intentional-play threshold remains limited to the plays/activity charts; Dashboard, engagement, and other primary-statistics filters remain VOD-only.
 - `apps/server/src/routes/sessions.ts` carries `dispatcharrPlaybackKind` through `/sessions/history` so History UI can distinguish Dispatcharr catch-up/timeshift rows from ordinary Live TV.
 
@@ -139,14 +149,17 @@ Realtime and polling:
 - `apps/server/src/jobs/dispatcharrRealtimeProcessor.ts` consumes healthy Dispatcharr WebSocket snapshots directly, updates the active-session cache, and publishes existing `session:started`, `session:updated`, and `session:stopped` events.
 - `apps/server/src/index.ts` starts and stops the Dispatcharr realtime processor with other background services.
 - `apps/server/src/jobs/poller/processor.ts` skips normal Dispatcharr session processing while WebSocket mode is healthy. Dispatcharr polling remains the fallback for API-key/token mode, disconnected/fallback WebSocket mode, and explicit reconciliation after realtime loss.
-- Dispatcharr Live TV history confirmation is keyed to Live TV media classification (`media.type === 'live'` after parsing), not server type alone. Confirming history updates the already-visible active session in place. VOD sessions persist, update, and stop immediately through realtime or polling regardless of the Live TV threshold setting.
+- Dispatcharr Live TV, VOD, and catch-up history confirmation uses the shared playback lifecycle and global confirmation threshold. Pending REST/WebSocket snapshots replace metadata in place while protecting maximum progress from partial/out-of-order data.
+- Authoritative Dispatcharr stop results retain the exact active-session ID
+  through pending/database stop, cache removal, pub/sub, and notifications, so
+  catch-up clients sharing a provider session key cannot stop one another.
 - Dispatcharr catch-up/timeshift sessions are also keyed to `media.type === 'live'`, but carry `dispatcharrPlaybackKind === 'catchup'` and `progressEstimated === true`. Catch-up uses `/proxy/stats/` plus `/proxy/catchup/programs/` for enrichment. Programme title and EPG timeline update in place like Dispatcharr Live TV; the resolved programme must not be part of catch-up session identity.
 - `apps/server/src/jobs/poller/stateTracker.ts` supports a configurable confirmation threshold and detects media-title changes for DB writes.
 - `apps/server/src/jobs/poller/types.ts` extends poller server/session types to include Dispatcharr.
 
 Web UI:
 
-- `apps/web/src/components/settings/ServerSettings.tsx` adds Dispatcharr server creation/editing, in-place auth mode switching, anonymous-stream filtering, live history threshold controls, and Dispatcharr-specific realtime setup guidance for legacy token-based servers.
+- `apps/web/src/components/settings/ServerSettings.tsx` adds Dispatcharr server creation/editing, in-place auth mode switching, anonymous-stream filtering, and Dispatcharr-specific realtime setup guidance for legacy token-based servers.
 - `apps/web/src/components/icons/MediaServerIcon.tsx` and `apps/web/public/images/servers/dispatcharr.png` add Dispatcharr branding.
 - `apps/web/src/components/sessions/NowPlayingCard.tsx` shows Live TV channel/programme-oriented cards.
 - Catch-up cards must continue to use the Live TV visual grouping, but favor progress/remaining-time presentation over FFmpeg live-speed presentation.
@@ -154,6 +167,19 @@ Web UI:
 - `apps/web/src/components/history/HistoryTable.tsx` fixes column sizing/truncation for long Live TV content, improves history layout, and shows the Dispatcharr catch-up indicator for catch-up rows.
 - `apps/web/src/components/history/StreamDetailsPanel.tsx` shows FFmpeg speed and Dispatcharr-oriented stream details.
 - `apps/web/src/lib/api.ts`, `apps/web/src/hooks/queries/useServers.ts`, and `apps/web/src/hooks/useServer.tsx` carry Dispatcharr server settings through the frontend API/cache layer.
+- `apps/web/src/components/charts/ServerResourceCharts.tsx` temporarily owns the
+  live-data lifecycle for Server Resources only while a legend entry is
+  hidden. With every series visible, it uses the ordinary upstream
+  HighchartsReact update flow. While hidden, samples for that series are held
+  outside Highcharts and applied when its native legend entry shows it again,
+  avoiding Highcharts 13's crashing hidden-point destruction path.
+  This is only a stopgap: when upstream Tracearr fixes the chart lifecycle,
+  its implementation must overwrite and remove this fork-owned code and tests
+  during the merge; do not retain parallel chart lifecycle code.
+- `SERVER_STATS_CONFIG.DATA_POINTS` is temporarily `21`: a two-minute range at
+  six-second cadence has 20 intervals and therefore needs both endpoint
+  samples. If upstream changes the Server Resources window model, adopt its
+  implementation and remove this fork-specific endpoint correction.
 
 Mobile UI:
 
@@ -172,10 +198,9 @@ Tests:
 Dispatcharr differs from the original supported media servers in several ways:
 
 - Live TV state comes from Dispatcharr transport-stream status endpoints and can be enriched with channel/logo/current-programme APIs.
-- VOD state can be included in Dispatcharr realtime snapshots and is not gated by the Live TV history threshold.
+- VOD state can be included in Dispatcharr realtime snapshots and follows the same global pending confirmation lifecycle as Live TV.
 - Catch-up state arrives from `/proxy/stats/` and `timeshift_stats`, while EPG enrichment comes from `/proxy/catchup/programs/`; both sources are required to keep programme titles, boundaries, and estimated progress current without splitting a single catch-up viewing session.
 - WebSocket auth needs a JWT, while API keys can still support REST polling.
-- Live TV sessions can be too short/noisy for useful history, so the fork adds a configurable history threshold.
 - Catch-up playhead is approximate: Dispatcharr reports anchors such as `programme_start`, `position_anchor_at`, and optional `playback_base_secs`, not a guaranteed client-authoritative position.
 - Dispatcharr can report anonymous clients; the fork defaults to ignoring them to reduce noise.
 - Session identifiers and termination endpoints differ between live and VOD streams.
@@ -183,6 +208,46 @@ Dispatcharr differs from the original supported media servers in several ways:
 ## Future Upstream Update Notes
 
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
+
+### Latest upstream merge
+
+- Upstream `main` at `22199d26` (Tracearr `v2.1.0-beta.8`) was merged into
+  `feature/prepare-for-2.1.0` on Friday, August 14, 2026 (merge commit
+  `7b7e79e7`). Upstream security hardening, queue/Redis cleanup, media-detail
+  replacement history, and migrations `0086`–`0087` were retained. Conflicts
+  in the session cache and image proxy were reconciled: Redis active sessions
+  still hydrate date fields for Dispatcharr lifecycle operations, while all
+  image requests now receive upstream origin/SSRF validation; Dispatcharr
+  retains normalized image paths, no added channel-logo headers, and
+  `fit: inside` resizing.
+- The upstream locale refresh omitted keys used by the fork's VOD/TV dashboard
+  and update-status UI. The translation checker was run with `--fix`, adding
+  the English fallback values to all locale files, after which the full
+  translation check passed.
+
+- Upstream `main` at `73e00663` (Tracearr `v2.1.0-beta.7`) was merged into
+  `feature/prepare-for-2.1.0` on Tuesday, August 11, 2026. The upstream
+  server-identity backfill, media-server deep links, login-role hardening,
+  and scoped server listing were retained. Dispatcharr remains a first-class
+  server type: its credentials/settings are returned only through the
+  Dispatcharr-aware route formatting, it participates in identity backfill,
+  and library sync stays guarded by `supportsMediaLibrary()`.
+- Upstream Crowdin locale updates and package/workspace changes were retained.
+  Future locale updates should continue to use upstream as the baseline;
+  Dispatcharr UI labels are implemented in the server settings components and
+  must be smoke-tested after translation changes.
+
+- Upstream `main` at `36d82db5` was merged into
+  `feature/prepare-for-2.1.0` on Monday, August 10, 2026 (merge commit
+  `a1595115`). The upstream live-statistics time-window implementation was
+  retained across server, mobile, shared contracts, and web charts.
+- The temporary fork-only Highcharts hidden-series lifecycle workaround was
+  removed as required: upstream now owns the chart update lifecycle. Its
+  time-window model also supersedes the fork's 21-point endpoint correction;
+  `SERVER_STATS_CONFIG` now uses the upstream time-bound retention settings.
+- Dispatcharr server-resource samples continue to use the same generic
+  `ServerResourceDataPoint` path, so no Dispatcharr-specific chart control
+  flow was retained.
 
 General merge rules:
 
@@ -212,6 +277,26 @@ High-conflict areas to review manually:
 
 Current upstream merge notes:
 
+- Upstream `main` at `2483fe68` (Tracearr `v2.1.0-beta.5`) was merged into
+  `feature/prepare-for-2.1.0` on Monday, August 10, 2026 (merge commit
+  `bf28c7df`). The upstream `0085_far_captain_universe` migration and
+  `library_items(server_id, thumb_path)` index were retained, along with the
+  short-lived image-proxy server-row cache. The Dispatcharr image overlay was
+  verified after the automatic merge: absolute paths remain normalized to the
+  configured server origin, channel-logo proxy requests use no added headers,
+  and Dispatcharr images retain `fit: inside`.
+
+- Upstream `main` at `d058577d` (Tracearr `v2.1.0-beta.4`) was merged into
+  `feature/prepare-for-2.1.0` on Sunday, August 9, 2026 (merge commit
+  `e3b84559`). The upstream migration lock, TimescaleDB drift/degradation
+  checks, PostgreSQL 18 test volume layout, server-side image resizing,
+  live-resource stats, and playback-reporting import work were retained.
+  The guarded migration runner now applies the upstream history and the
+  Dispatcharr fork overlay under the same advisory lock while retaining their
+  separate ledgers and the legacy-ledger repair. Dispatcharr-specific image
+  normalization and header-free channel-logo requests remain intact before
+  the upstream resize/fallback candidates are built.
+
 - Upstream `main` at `55af7da5` (Tracearr `v2.0.1`) was merged into
   `feature/better-live-tv-for-jellyfin-and-emby` on Thursday, August 7, 2026
   (merge commit `a28c0103`). The upstream full-scan and snapshot aggregation
@@ -232,7 +317,7 @@ Current upstream merge notes:
 - Upstream's Timescale maintenance, session-identity backfill, library-sync queue, import transaction, supervised Docker, and translation changes were retained. The database-client test conflict was resolved by retaining both the fork migration-ledger coverage and upstream raw-client error-listener coverage; the Dutch settings translation retains Dispatcharr configuration/realtime and fork-version keys alongside upstream localization updates.
 
 - Upstream `main` at `367f6c69` has been merged into `feature/version-2.0-preparation` in the current working tree on Tuesday, August 4, 2026 (merge commit `0f7e1597`, followed by Dispatcharr reconciliation `368c460f`).
-- The merge ports the Dispatcharr overlay onto Tracearr 2.0: the new media/version schema, public API v2, mobile navigation and SSE plugin recovery behavior are retained alongside Dispatcharr auth, polling/realtime snapshots, history-threshold semantics, catch-up metadata, and image handling.
+- The merge ports the Dispatcharr overlay onto Tracearr 2.0: the new media/version schema, public API v2, mobile navigation and SSE plugin recovery behavior are retained alongside Dispatcharr auth, polling/realtime snapshots, shared history-confirmation semantics, catch-up metadata, and image handling.
 - Upstream migration history is now aligned through `0082_backfill_last_activity.sql`; the Dispatcharr overlay remains in its separate fork ledger.
 - Migration `0063_long_maria_hill.sql` must keep upstream's login-username collision auto-rename block before creating `users_login_username_unique`; without it, `loginUsernameCollision.integration.test.ts` fails.
 - Dispatcharr migrations now live in the separate fork overlay, leaving `apps/server/src/db/migrations/` aligned to upstream through `0066`.
@@ -275,8 +360,8 @@ After an upstream merge that touched any server, auth, polling, realtime, or UI 
 3. Open the server settings UI and confirm Dispatcharr-specific controls are still present:
    - auth mode handling
    - anonymous-stream filtering
-   - live-history threshold
+   - shared global history-confirmation behavior
 4. Verify a Dispatcharr Live TV session appears in active sessions.
-5. Verify Dispatcharr VOD still appears and persists without waiting for the Live TV threshold.
+5. Verify Dispatcharr VOD and catch-up use the shared history-confirmation lifecycle.
 6. Confirm Dispatcharr channel/logo or image URLs still render through the current frontend/mobile image flow.
 7. Confirm terminating a Dispatcharr session still works.

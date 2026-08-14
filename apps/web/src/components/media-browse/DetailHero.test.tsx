@@ -73,6 +73,7 @@ function fullDetail(overrides: Partial<MediaDetailData> = {}): MediaDetailData {
         episodeResolutions: null,
         episodeCount: null,
         versions: [],
+        replaces: null,
       },
     ],
     seasonCount: 2,
@@ -145,6 +146,7 @@ describe('DetailHero', () => {
         episodeResolutions: null,
         episodeCount: null,
         versions: [],
+        replaces: null,
       },
       {
         serverId: 'srv-jf',
@@ -155,16 +157,53 @@ describe('DetailHero', () => {
         addedAt: '2025-01-01T00:00:00Z',
         removedAt: '2026-06-08T00:00:00Z',
         videoResolution: '1080p',
-        fileSize: 2000,
+        fileSize: 1_932_735_283,
         episodeFileSize: null,
         episodeResolutions: null,
         episodeCount: null,
         versions: [],
+        replaces: null,
       },
     ];
     renderHero({ data: fullDetail({ availability }) });
 
-    expect(screen.getByText(/removed/)).toBeInTheDocument();
+    // The removed copy keeps its added date, resolution, and size so an
+    // upgrade reads as one (struck-through 1080p, active 4k)
+    const caption = screen.getByText(/added .+ – removed .+ · 1080p · 1\.8 GB/);
+    expect(caption).toHaveClass('line-through');
+  });
+
+  it('renders a witnessed replacement as one line dated by the removal event', () => {
+    const availability: MediaAvailabilityEntry[] = [
+      {
+        serverId: 'srv-plex',
+        serverType: 'plex',
+        libraryId: 'lib-1',
+        libraryName: 'Movies',
+        ratingKey: 'rk-2',
+        // The server's back-dated claim - the caption must never show this date
+        addedAt: '2026-08-01T12:00:00Z',
+        removedAt: null,
+        videoResolution: '4k',
+        fileSize: 5_261_334_938,
+        episodeFileSize: null,
+        episodeResolutions: null,
+        episodeCount: null,
+        versions: [],
+        replaces: {
+          addedAt: '2026-08-06T12:00:00Z',
+          removedAt: '2026-08-13T12:00:00Z',
+          videoResolution: '1080p',
+          fileSize: 1_932_735_283,
+        },
+      },
+    ];
+    renderHero({ data: fullDetail({ availability }) });
+
+    const caption = screen.getByText(
+      'added Aug 6, 2026 · 1080p · 1.8 GB · replaced Aug 13, 2026 · 4k · 4.9 GB'
+    );
+    expect(caption).not.toHaveClass('line-through');
   });
 
   it('removed-everywhere variant: no poster fetch, no Open on server action, and a removal caption', () => {
@@ -183,6 +222,7 @@ describe('DetailHero', () => {
         episodeResolutions: null,
         episodeCount: null,
         versions: [],
+        replaces: null,
       },
     ];
     const { container } = renderHero({ data: fullDetail({ availability }), stub });

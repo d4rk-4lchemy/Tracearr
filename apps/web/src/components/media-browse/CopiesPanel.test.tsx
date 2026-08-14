@@ -40,6 +40,7 @@ function makeEntry(overrides: Partial<MediaAvailabilityEntry> = {}): MediaAvaila
     episodeResolutions: null,
     versions: [],
     episodeCount: null,
+    replaces: null,
     ...overrides,
   };
 }

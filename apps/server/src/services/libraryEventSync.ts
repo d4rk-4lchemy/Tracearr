@@ -44,6 +44,36 @@ export function recordLibraryEvent(event: LibraryChangeEvent): void {
       });
   }
 
+  // Plex's timeline fires its "added" terminal state (5) for ANY item that
+  // finishes metadata processing - refreshes, analysis, and the entire
+  // nightly maintenance window included, not just new media (verified
+  // against a live server: refreshing an existing movie ends in state 5).
+  // An item Tracearr already tracks is a refresh, not an add, and must not
+  // open a sync window - otherwise Plex maintenance makes the dashboard
+  // show a library sync every 30 seconds for hours. Unknown items and probe
+  // failures fall through to the sync (fail-open: a missed skip costs one
+  // redundant incremental sync, a missed add would delay ingestion by up to
+  // the 12h scheduled cadence).
+  if (event.type === 'added' && event.itemId) {
+    if (pendingWindows.has(event.serverId)) {
+      return; // a window is already open; ride along without probing
+    }
+    const itemId = event.itemId;
+    void librarySyncService
+      .hasActiveItemByRatingKey(event.serverId, itemId)
+      .then((known) => {
+        if (!known) openSyncWindow(event);
+      })
+      .catch(() => {
+        openSyncWindow(event);
+      });
+    return;
+  }
+
+  openSyncWindow(event);
+}
+
+function openSyncWindow(event: LibraryChangeEvent): void {
   if (pendingWindows.has(event.serverId)) {
     return; // a window is already open for this server; this event rides along
   }

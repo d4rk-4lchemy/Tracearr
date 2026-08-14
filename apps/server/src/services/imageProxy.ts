@@ -23,7 +23,13 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { TIME_MS } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { servers, libraryItems } from '../db/schema.js';
+import { assertSafeProbeUrl, SsrfBlockedError } from '../utils/ssrf.js';
 import { registerService, unregisterService } from './serviceTracker.js';
+
+// libvips defaults its thread pool to the core count, so one background
+// precache walk can own every core of a small box. Inputs are server-resized
+// thumbnails now; one thread is plenty and the poller keeps its CPU.
+sharp.concurrency(1);
 // Token encryption removed - tokens now stored in plain text (DB is localhost-only)
 
 // Cache directory (in project root/data/image-cache), sharded by the first two
@@ -478,11 +484,38 @@ function acquireFetchSlot(): Promise<() => void> {
   });
 }
 
-function buildUpstreamRequest(
+/**
+ * imagePath reaches here from the unauthenticated /images routes and is
+ * concatenated onto the server URL, so a suffix like ".attacker.example/x"
+ * moves the request to another host and takes the media-server token with it.
+ * Resolve it and require the origin to survive.
+ */
+function assertSameOrigin(baseUrl: string, imagePath: string): void {
+  let resolved: URL;
+  try {
+    resolved = new URL(`${baseUrl}${imagePath}`);
+  } catch {
+    throw new SsrfBlockedError(`Image path produced an unparseable URL: ${imagePath}`);
+  }
+  if (resolved.origin !== new URL(baseUrl).origin) {
+    throw new SsrfBlockedError(`Image path escapes the server origin: ${resolved.origin}`);
+  }
+  if (resolved.username || resolved.password) {
+    throw new SsrfBlockedError('Image path injected URL credentials');
+  }
+}
+
+export function buildUpstreamRequest(
   server: typeof servers.$inferSelect,
-  imagePath: string
+  imagePath: string,
+  resize?: { width: number; height: number }
 ): { imageUrl: string; headers: Record<string, string> } {
   const baseUrl = server.url.replace(/\/$/, '');
+
+  // Origin pinning makes the configured server the only reachable host, so one
+  // check on the base URL covers every request shape built below.
+  assertSameOrigin(baseUrl, imagePath);
+  assertSafeProbeUrl(baseUrl);
 
   // Dispatcharr's channel-logo endpoint expects the request contract used by
   // the provider itself: the configured server URL and no proxy-added
@@ -496,7 +529,20 @@ function buildUpstreamRequest(
 
   if (server.type === 'plex') {
     // Plex image URLs are relative paths like /library/metadata/123/thumb/456
-    // Need to append X-Plex-Token
+    if (resize) {
+      // Plex's photo transcoder resizes and caches server-side - a 240px
+      // poster arrives as ~20KB instead of the multi-MB original. upscale=0
+      // keeps small sources untouched; minSize=1 fills the requested box.
+      const params = new URLSearchParams({
+        width: String(resize.width),
+        height: String(resize.height),
+        minSize: '1',
+        upscale: '0',
+        url: imagePath,
+        'X-Plex-Token': server.token,
+      });
+      return { imageUrl: `${baseUrl}/photo/:/transcode?${params.toString()}`, headers };
+    }
     const separator = imagePath.includes('?') ? '&' : '?';
     return { imageUrl: `${baseUrl}${imagePath}${separator}X-Plex-Token=${server.token}`, headers };
   }
@@ -506,6 +552,19 @@ function buildUpstreamRequest(
     headers['Authorization'] = `MediaBrowser Token="${server.token}"`;
   } else {
     headers['X-Emby-Token'] = server.token;
+  }
+  if (resize) {
+    // Both accept max-dimension params on image endpoints and cache the
+    // result. Constrain only the target's long axis so the cover crop below
+    // always has enough pixels where it matters; sharp still normalizes to
+    // the exact box, but it decodes a thumbnail instead of the original.
+    const separator = imagePath.includes('?') ? '&' : '?';
+    const dimension =
+      resize.height >= resize.width ? `maxHeight=${resize.height}` : `maxWidth=${resize.width}`;
+    return {
+      imageUrl: `${baseUrl}${imagePath}${separator}${dimension}&quality=90`,
+      headers,
+    };
   }
   return { imageUrl: `${baseUrl}${imagePath}`, headers };
 }
@@ -526,10 +585,28 @@ interface MissPipelineArgs {
  * dominant color persist. Wrapped by the coalescing map in proxyImage so
  * concurrent misses for the same key run this exactly once.
  */
+// Server rows change rarely (URL or token edits), and every cache miss needs
+// one - during a warm pass that's hundreds of identical point lookups. The
+// short TTL means a token rotation takes at most 30s to reach this path.
+const SERVER_ROW_TTL_MS = 30_000;
+const serverRowCache = new Map<string, { row: typeof servers.$inferSelect | null; at: number }>();
+
+export function _resetServerRowCacheForTests(): void {
+  serverRowCache.clear();
+}
+
+async function getServerRow(serverId: string): Promise<typeof servers.$inferSelect | null> {
+  const cached = serverRowCache.get(serverId);
+  if (cached && Date.now() - cached.at < SERVER_ROW_TTL_MS) return cached.row;
+  const [row] = await db.select().from(servers).where(eq(servers.id, serverId)).limit(1);
+  serverRowCache.set(serverId, { row: row ?? null, at: Date.now() });
+  return row ?? null;
+}
+
 async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
   const { serverId, imagePath, width, height, fallback, cachePath, shardDir } = args;
 
-  const [server] = await db.select().from(servers).where(eq(servers.id, serverId)).limit(1);
+  const server = await getServerRow(serverId);
   if (!server) {
     return {
       data: getFallbackImage(fallback, width, height),
@@ -550,24 +627,51 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
     };
   }
 
-  const { imageUrl, headers } = buildUpstreamRequest(server, effectiveImagePath);
-
+  // Ask the media server for a pre-resized image first (all three types
+  // resize and cache server-side; a 240px poster is ~20-40KB against a
+  // multi-MB original). Fall back to the original path so a transcoder
+  // hiccup degrades to the old behavior instead of a broken image.
   const release = await acquireFetchSlot();
   try {
-    const response = await fetch(imageUrl, {
-      headers,
-      signal: AbortSignal.timeout(10000), // 10 second timeout
-    });
+    // Inside the try so a blocked path degrades to the fallback image like any
+    // other upstream failure, instead of escaping as a 500.
+    const candidates = [
+      buildUpstreamRequest(server, effectiveImagePath, { width, height }),
+      buildUpstreamRequest(server, effectiveImagePath),
+    ];
+    let imageBuffer: Buffer | null = null;
+    let lastError: unknown = null;
+    for (const { imageUrl, headers } of candidates) {
+      try {
+        const response = await fetch(imageUrl, {
+          headers,
+          signal: AbortSignal.timeout(10000), // 10 second timeout
+        });
 
-    if (!response.ok) {
-      // Drain the body so undici releases the connection instead of holding
-      // it open until the socket times out.
-      await response.body?.cancel().catch(() => undefined);
-      throw new Error(`HTTP ${response.status}`);
+        // Reject only clearly-non-image payloads (the Plex transcoder can
+        // return an XML error page with a 200). Anything else - image/*,
+        // octet-stream, or a missing header - proceeds; sharp is the final
+        // arbiter and its failure lands in the same fallback path.
+        const contentType = response.headers?.get('content-type') ?? '';
+        const clearlyNotImage = /^(text\/|application\/(json|xml|xhtml))/i.test(contentType);
+        if (!response.ok || clearlyNotImage) {
+          // Drain the body so undici releases the connection instead of
+          // holding it open until the socket times out.
+          await response.body?.cancel().catch(() => undefined);
+          throw new Error(`HTTP ${response.status} (${contentType || 'no content-type'})`);
+        }
+
+        imageBuffer = Buffer.from(await response.arrayBuffer());
+        break;
+      } catch (err) {
+        lastError = err;
+      }
     }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const imageBuffer = Buffer.from(arrayBuffer);
+    if (!imageBuffer) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error(String(lastError ?? 'upstream fetch failed'));
+    }
 
     const resized = await sharp(imageBuffer)
       .resize(width, height, {

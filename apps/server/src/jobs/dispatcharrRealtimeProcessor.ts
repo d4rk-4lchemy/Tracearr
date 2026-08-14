@@ -87,7 +87,7 @@ async function processSnapshot(
 
   const {
     newSessions,
-    stoppedSessionKeys,
+    stoppedSessions,
     updatedSessions,
     watchedTransitionOccurred,
     confirmedFromPendingIds,
@@ -96,17 +96,13 @@ async function processSnapshot(
     immediateStops: authoritative,
   });
 
-  if (
-    newSessions.length === 0 &&
-    stoppedSessionKeys.length === 0 &&
-    updatedSessions.length === 0
-  ) {
+  if (newSessions.length === 0 && stoppedSessions.length === 0 && updatedSessions.length === 0) {
     return;
   }
 
   await processPollResults({
     newSessions,
-    stoppedKeys: stoppedSessionKeys,
+    stoppedSessions,
     updatedSessions,
     watchedTransitionOccurred,
     cachedSessions,
@@ -117,10 +113,7 @@ async function processSnapshot(
   });
 }
 
-async function drainSnapshots(
-  serverId: string,
-  firstSnapshot: PendingSnapshot
-): Promise<void> {
+async function drainSnapshots(serverId: string, firstSnapshot: PendingSnapshot): Promise<void> {
   const guard = getGuard(serverId);
   if (guard.running) {
     guard.pending = firstSnapshot;

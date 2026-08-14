@@ -66,12 +66,39 @@ vi.mock('../mediaServer/shared/jellyfinEmbyEventSource.js', () => ({
   }),
 }));
 
+vi.mock('../mediaServer/dispatcharr/realtime.js', () => ({
+  DispatcharrRealtimeConnector: vi.fn(function (config: { serverId: string; serverName: string }) {
+    return {
+      config,
+      on: vi.fn(),
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn(),
+      removeAllListeners: vi.fn(),
+      retryFromFallback: vi.fn(),
+      isInFallback: vi.fn().mockReturnValue(false),
+      isHealthy: vi.fn().mockReturnValue(true),
+      getStatus: vi.fn().mockReturnValue({
+        serverId: config.serverId,
+        serverName: config.serverName,
+        state: 'connected',
+        connectedAt: new Date('2026-01-01T00:00:00Z'),
+        lastEventAt: null,
+        reconnectAttempts: 0,
+        error: null,
+      }),
+    };
+  }),
+}));
+
 vi.mock('../serviceTracker.js', () => ({
   registerService: vi.fn(),
   unregisterService: vi.fn(),
 }));
 
 import { SSEManager } from '../sseManager.js';
+import { db } from '../../db/client.js';
+import { isLeader } from '../leaderLease.js';
+import { DispatcharrRealtimeConnector } from '../mediaServer/dispatcharr/realtime.js';
 import { PlexEventSource } from '../mediaServer/plex/eventSource.js';
 import type { CacheService, PubSubService } from '../cache.js';
 
@@ -258,6 +285,120 @@ describe('SSEManager.addServer', () => {
     // entry from the failed attempt would silently no-op this call instead.
     await manager.addServer('plex-1', 'Plex Server', 'plex', 'http://plex.local', 'token');
     expect(manager.getStatus()).toHaveLength(1);
+  });
+});
+
+describe('SSEManager connector configuration reconciliation', () => {
+  let manager: SSEManager;
+  let cache: CacheService;
+
+  const baseServer = {
+    id: 'dispatcharr-1',
+    name: 'Dispatcharr',
+    type: 'dispatcharr' as const,
+    url: 'http://dispatcharr.local',
+    token: 'credentials-token-old',
+    ignoreAnonymousStreams: false,
+    color: '#123456',
+    displayOrder: 0,
+    machineIdentifier: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+  };
+
+  function mockServers(rows: unknown[]): void {
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(rows),
+    } as never);
+  }
+
+  beforeEach(async () => {
+    manager = new SSEManager();
+    cache = makeCacheService();
+    vi.mocked(isLeader).mockReturnValue(true);
+    await manager.initialize(cache, makePubSubService());
+    await manager.addServer(
+      baseServer.id,
+      baseServer.name,
+      baseServer.type,
+      baseServer.url,
+      baseServer.token,
+      baseServer.ignoreAnonymousStreams
+    );
+  });
+
+  afterEach(async () => {
+    await manager.stop();
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ['name', { name: 'Renamed Dispatcharr' }, { serverName: 'Renamed Dispatcharr' }],
+    ['url', { url: 'http://dispatcharr-new.local/' }, { url: 'http://dispatcharr-new.local/' }],
+    ['token', { token: 'credentials-token-new' }, { token: 'credentials-token-new' }],
+    ['anonymous filtering', { ignoreAnonymousStreams: true }, { ignoreAnonymousStreams: true }],
+  ])(
+    'replaces a Dispatcharr connector when %s changes',
+    async (_label, changes, expectedConfig) => {
+      const oldConnector = vi.mocked(DispatcharrRealtimeConnector).mock.results[0]?.value as {
+        disconnect: ReturnType<typeof vi.fn>;
+        removeAllListeners: ReturnType<typeof vi.fn>;
+      };
+      mockServers([{ ...baseServer, ...changes }]);
+
+      await manager.refresh();
+
+      expect(oldConnector.removeAllListeners).toHaveBeenCalledOnce();
+      expect(oldConnector.disconnect).toHaveBeenCalledOnce();
+      expect(DispatcharrRealtimeConnector).toHaveBeenCalledTimes(2);
+      expect(DispatcharrRealtimeConnector).toHaveBeenLastCalledWith(
+        expect.objectContaining(expectedConfig)
+      );
+    }
+  );
+
+  it('replaces the connector implementation when the server type changes', async () => {
+    const oldConnector = vi.mocked(DispatcharrRealtimeConnector).mock.results[0]?.value as {
+      disconnect: ReturnType<typeof vi.fn>;
+      removeAllListeners: ReturnType<typeof vi.fn>;
+    };
+    const { JellyfinEmbyEventSource } =
+      await import('../mediaServer/shared/jellyfinEmbyEventSource.js');
+    mockServers([{ ...baseServer, type: 'jellyfin' }]);
+
+    await manager.refresh();
+
+    expect(oldConnector.removeAllListeners).toHaveBeenCalledOnce();
+    expect(oldConnector.disconnect).toHaveBeenCalledOnce();
+    expect(JellyfinEmbyEventSource).toHaveBeenCalledOnce();
+  });
+
+  it('does not reconnect for unchanged connector fields or display-only changes', async () => {
+    mockServers([{ ...baseServer, url: `${baseServer.url}/`, color: '#abcdef', displayOrder: 9 }]);
+
+    await manager.refresh();
+
+    expect(DispatcharrRealtimeConnector).toHaveBeenCalledOnce();
+  });
+
+  it('lets only the leader replace a connector after cross-replica configuration drift', async () => {
+    mockServers([{ ...baseServer, token: 'credentials-token-new' }]);
+    vi.mocked(isLeader).mockReturnValue(false);
+
+    await manager.refresh();
+    expect(DispatcharrRealtimeConnector).toHaveBeenCalledOnce();
+
+    vi.mocked(isLeader).mockReturnValue(true);
+    await manager.refresh();
+    expect(DispatcharrRealtimeConnector).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not create duplicate connectors during concurrent refresh calls', async () => {
+    mockServers([{ ...baseServer, ignoreAnonymousStreams: true }]);
+
+    await Promise.all([manager.refresh(), manager.refresh(), manager.refresh()]);
+
+    expect(DispatcharrRealtimeConnector).toHaveBeenCalledTimes(2);
   });
 });
 

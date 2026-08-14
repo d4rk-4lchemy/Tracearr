@@ -36,6 +36,9 @@ import type {
   StreamAudioDetails,
   TranscodeInfo,
   SubtitleInfo,
+  BandwidthAccount,
+  BandwidthDevice,
+  BandwidthSample,
 } from '@tracearr/shared';
 import { normalizeResolutionLabel, normalizeDynamicRange } from '@tracearr/shared';
 import { calculateProgress } from '../shared/parserUtils.js';
@@ -347,8 +350,15 @@ function extractTranscodeInfo(
     const speed = parseOptionalNumber(transcodeSession.speed);
     if (speed) info.speed = speed;
 
-    const throttled = parseString(transcodeSession.throttled) === '1';
+    const throttled =
+      transcodeSession.throttled === true || parseString(transcodeSession.throttled) === '1';
     if (throttled) info.throttled = true;
+
+    const progress = parseOptionalNumber(transcodeSession.progress);
+    if (progress !== undefined) info.progress = progress;
+
+    const maxOffsetAvailable = parseOptionalNumber(transcodeSession.maxOffsetAvailable);
+    if (maxOffsetAvailable !== undefined) info.maxOffsetAvailable = maxOffsetAvailable;
   }
 
   // Only return if we have any data
@@ -1360,6 +1370,8 @@ interface PlexRawStatisticsBandwidth {
   timespan?: unknown;
   lan?: unknown;
   bytes?: unknown;
+  accountID?: unknown;
+  deviceID?: unknown;
 }
 
 export interface PlexBandwidthDataPoint {
@@ -1369,32 +1381,45 @@ export interface PlexBandwidthDataPoint {
   wanBytes: number;
 }
 
+export interface PlexBandwidthStats {
+  points: PlexBandwidthDataPoint[];
+  samples: BandwidthSample[];
+  accounts: BandwidthAccount[];
+  devices: BandwidthDevice[];
+}
+
+const EMPTY_BANDWIDTH_STATS: PlexBandwidthStats = {
+  points: [],
+  samples: [],
+  accounts: [],
+  devices: [],
+};
+
 /**
  * Parse statistics bandwidth response from /statistics/bandwidth endpoint.
  *
- * The endpoint returns per-second entries per device/account. This function
- * aggregates all device/account entries per timestamp, splitting by the `lan`
- * flag into local/remote totals. Returns 1-second granularity data points
- * sorted newest first.
+ * The endpoint returns per-second entries per device/account plus Account and
+ * Device lookup maps. Samples keep the per-account/device attribution; points
+ * aggregate the same samples per timestamp into local/remote totals.
+ * Note: Plex echoes the query timespan (6) but data is per-second, so points
+ * use timespan=1 since each entry represents 1 second of bandwidth.
  */
-export function parseStatisticsBandwidthResponse(data: unknown): PlexBandwidthDataPoint[] {
+export function parseStatisticsBandwidthResponse(data: unknown): PlexBandwidthStats {
   if (!data || typeof data !== 'object') {
-    return [];
+    return EMPTY_BANDWIDTH_STATS;
   }
 
   const container = (data as Record<string, unknown>).MediaContainer;
   if (!container || typeof container !== 'object') {
-    return [];
+    return EMPTY_BANDWIDTH_STATS;
   }
 
   const rawStats = (container as Record<string, unknown>).StatisticsBandwidth;
   if (!Array.isArray(rawStats)) {
-    return [];
+    return EMPTY_BANDWIDTH_STATS;
   }
 
-  // Aggregate by timestamp: sum bytes across devices/accounts, split by local/remote
-  // Note: Plex returns timespan=6 (echoing the query param) but data is per-second,
-  // so we use timespan=1 since each entry represents 1 second of bandwidth.
+  const samples: BandwidthSample[] = [];
   const byTimestamp = new Map<number, { lanBytes: number; wanBytes: number }>();
 
   for (const raw of rawStats) {
@@ -1403,7 +1428,15 @@ export function parseStatisticsBandwidthResponse(data: unknown): PlexBandwidthDa
     if (at === 0) continue;
 
     const bytes = parseNumber(entry.bytes, 0);
-    const isLan = parseBoolean(entry.lan);
+    const lan = parseBoolean(entry.lan);
+
+    samples.push({
+      at,
+      accountId: parseNumber(entry.accountID),
+      deviceId: parseNumber(entry.deviceID),
+      lan,
+      bytes,
+    });
 
     let bucket = byTimestamp.get(at);
     if (!bucket) {
@@ -1411,14 +1444,16 @@ export function parseStatisticsBandwidthResponse(data: unknown): PlexBandwidthDa
       byTimestamp.set(at, bucket);
     }
 
-    if (isLan) {
+    if (lan) {
       bucket.lanBytes += bytes;
     } else {
       bucket.wanBytes += bytes;
     }
   }
 
-  return Array.from(byTimestamp.entries())
+  samples.sort((a, b) => b.at - a.at);
+
+  const points = Array.from(byTimestamp.entries())
     .map(([at, bucket]) => ({
       at,
       timespan: 1,
@@ -1426,6 +1461,29 @@ export function parseStatisticsBandwidthResponse(data: unknown): PlexBandwidthDa
       wanBytes: bucket.wanBytes,
     }))
     .sort((a, b) => b.at - a.at);
+
+  const referencedAccounts = new Set(samples.map((s) => s.accountId));
+  const referencedDevices = new Set(samples.map((s) => s.deviceId));
+
+  const accounts = parseArray((container as Record<string, unknown>).Account, (item) => {
+    const raw = item as Record<string, unknown>;
+    return {
+      id: parseNumber(raw.id),
+      name: parseString(raw.name),
+      thumb: parseOptionalString(raw.thumb) ?? null,
+    };
+  }).filter((a) => referencedAccounts.has(a.id));
+
+  const devices = parseArray((container as Record<string, unknown>).Device, (item) => {
+    const raw = item as Record<string, unknown>;
+    return {
+      id: parseNumber(raw.id),
+      name: parseString(raw.name),
+      platform: parseOptionalString(raw.platform) ?? null,
+    };
+  }).filter((d) => referencedDevices.has(d.id));
+
+  return { points, samples, accounts, devices };
 }
 
 // ============================================================================

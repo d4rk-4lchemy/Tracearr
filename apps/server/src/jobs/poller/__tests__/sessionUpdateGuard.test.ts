@@ -375,7 +375,7 @@ describe('Dispatcharr direct snapshot stops', () => {
           id: 'session-1',
           serverId: 'dispatcharr-1',
           serverUserId: 'server-user-1',
-          sessionKey: 'sess-key-1',
+          sessionKey: 'catchup:shared:channel-1',
           ratingKey: '1001',
           deviceId: 'device-1',
         } as never,
@@ -383,7 +383,13 @@ describe('Dispatcharr direct snapshot stops', () => {
       { mediaSessions: [], immediateStops: true }
     );
 
-    expect(result.stoppedSessionKeys).toEqual(['dispatcharr-1:sess-key-1']);
+    expect(result.stoppedSessions).toEqual([
+      {
+        id: 'session-1',
+        serverId: 'dispatcharr-1',
+        sessionKey: 'catchup:shared:channel-1',
+      },
+    ]);
     expect(mockStopSessionAtomic).toHaveBeenCalledTimes(1);
   });
 
@@ -408,7 +414,7 @@ describe('Dispatcharr direct snapshot stops', () => {
           id: 'session-1',
           serverId: 'dispatcharr-1',
           serverUserId: 'server-user-1',
-          sessionKey: 'sess-key-1',
+          sessionKey: 'catchup:shared:channel-1',
           ratingKey: '1001',
           deviceId: 'device-1',
         } as never,
@@ -416,7 +422,7 @@ describe('Dispatcharr direct snapshot stops', () => {
           id: 'session-2',
           serverId: 'dispatcharr-1',
           serverUserId: 'server-user-2',
-          sessionKey: 'sess-key-2',
+          sessionKey: 'catchup:shared:channel-1',
           ratingKey: '1002',
           deviceId: 'device-2',
         } as never,
@@ -424,11 +430,74 @@ describe('Dispatcharr direct snapshot stops', () => {
       { mediaSessions: [{} as never], immediateStops: true }
     );
 
-    expect(result.stoppedSessionKeys).toEqual(['dispatcharr-1:sess-key-2']);
+    expect(result.stoppedSessions).toEqual([
+      {
+        id: 'session-2',
+        serverId: 'dispatcharr-1',
+        sessionKey: 'catchup:shared:channel-1',
+      },
+    ]);
     expect(mockStopSessionAtomic).toHaveBeenCalledTimes(1);
     expect(mockStopSessionAtomic).toHaveBeenCalledWith(
       expect.objectContaining({ session: expect.objectContaining({ id: 'session-2' }) })
     );
+  });
+
+  it('discards every exact pending connection with a shared provider key', async () => {
+    const deletePendingSession = vi.fn().mockResolvedValue(undefined);
+    initializePoller(
+      {
+        getPendingSession: vi.fn().mockResolvedValue({ id: 'pending' }),
+        deletePendingSession,
+        addSessionWriteRetry: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Parameters<typeof initializePoller>[0],
+      { publish: vi.fn(), subscribe: vi.fn() } as unknown as Parameters<typeof initializePoller>[1]
+    );
+    const sharedSessionKey = 'catchup:shared:channel-1';
+    const activeSessions = [
+      {
+        id: 'session-2',
+        serverId: 'dispatcharr-1',
+        serverUserId: 'server-user-2',
+        sessionKey: sharedSessionKey,
+        ratingKey: '1002',
+        deviceId: 'device-2',
+      },
+      {
+        id: 'session-1',
+        serverId: 'dispatcharr-1',
+        serverUserId: 'server-user-1',
+        sessionKey: sharedSessionKey,
+        ratingKey: '1001',
+        deviceId: 'device-1',
+      },
+    ] as never[];
+
+    const result = await processServerSessions(
+      {
+        id: 'dispatcharr-1',
+        name: 'Dispatcharr',
+        type: 'dispatcharr',
+        url: 'http://dispatcharr.local',
+        token: 'token',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      [],
+      new Set([
+        'dispatcharr-1:server-user-1:device-1:1001',
+        'dispatcharr-1:server-user-2:device-2:1002',
+      ]),
+      activeSessions,
+      { mediaSessions: [], immediateStops: true }
+    );
+
+    expect(result.stoppedSessions).toEqual([
+      { id: 'session-2', serverId: 'dispatcharr-1', sessionKey: sharedSessionKey },
+      { id: 'session-1', serverId: 'dispatcharr-1', sessionKey: sharedSessionKey },
+    ]);
+    expect(deletePendingSession).toHaveBeenCalledTimes(2);
+    expect(mockStopSessionAtomic).not.toHaveBeenCalled();
   });
 });
 

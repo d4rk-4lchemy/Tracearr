@@ -20,8 +20,9 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { getRedisPrefix, TIME_MS } from '@tracearr/shared';
+import { TIME_MS } from '@tracearr/shared';
 import { sql } from 'drizzle-orm';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
 
@@ -49,8 +50,8 @@ export function initViolationRetentionQueue(redisUrl: string): void {
     return;
   }
 
-  connectionOptions = { url: redisUrl };
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  connectionOptions = queueConnectionOptions(redisUrl);
+  const bullPrefix = getBullPrefix();
 
   retentionQueue = new Queue<ViolationRetentionJobData>(QUEUE_NAME, {
     connection: connectionOptions,
@@ -93,7 +94,7 @@ export function startViolationRetentionWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   retentionWorker = new Worker<ViolationRetentionJobData>(
     QUEUE_NAME,

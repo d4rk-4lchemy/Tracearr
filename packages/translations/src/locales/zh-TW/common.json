@@ -64,6 +64,8 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "{{count}} 個錯誤",
@@ -93,9 +95,7 @@
     "usersUpdated_one": "{{count}} 個使用者已更新",
     "usersUpdated_other": "{{count}} 個使用者已更新",
     "violation_one": "{{count}} 項違規",
-    "violation_other": "{{count}} 項違規",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels"
+    "violation_other": "{{count}} 項違規"
   },
   "duration": {
     "day_one": "{{count}} 天",

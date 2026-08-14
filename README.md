@@ -1,14 +1,14 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
-  <i>Current vesrion:</i> <b>2.0.0</b>
+  <i>Current vesrion:</i> <b>2.1.0</b>
 </p>
 
 > [!WARNING]  
 > You can do "in-place" replacement of your current Tracearr instance.<br>But **CREATE A BACKUP FIRST**, as I don't guarantee 100% success rate, and **I don't care if you break your setup** ¯\\\_(ツ)_/¯
 
-> [!WARNING]  
-> When updating to **≥1.5.0** Jellyfin login **will no longer work!** You need to use your local Tracearr account, created when first launching the service.<br> If you don't remember your password and want to reset it, please execute:<br>`docker exec {distracearr_container_name} node apps/server/dist/scripts/reset-password.js '{new_password}'`
+> [!NOTE]  
+> If you want to have "Server Resources" charts populated for Dispatcharr in Tracearr, you need to install this Dispatcharr plugin and align your Docker Compose file according to its README: [Tracearr SSE Metrics](https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics)
 
 > [!NOTE] 
 > If you ever want to switch back from this fork to the official image, but you have already added a Dispatcharr server and stored data from its sessions, run the following command **while you are still using this forked image**.<br>`docker exec -it {distracearr_container_name} node apps/server/dist/scripts/purge-dispatcharr.js`<br>After running the command, you can stop this container and replace the image with the official one.
@@ -20,23 +20,21 @@
 - You can kill Dispatcharr streams directly from Tracearr dashboard,
 - Live TV card is aligned to Dispatcharr needs, showing speed threshold, watchtime,
 - Stream details for Live TV shows bitrate, codecs and video resolution,
-- Support for Catch-Up (Timeshift) sessions, with small badge and custom card,
-- Fixed bad `Content` column in mobile view of `History` tab _(this has nothing to do with Dispatcharr, just annoying bug)._
+- Support for Catch-Up (Timeshift) sessions, with small badge and custom card.
 
 **Docker images:**
 - `darkalchemy2137/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` - supervised image
-- `darkalchemy2137/distracearr:standalone` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 
 I tested it on **Supervised image**, so keep that in mind.
 You can also build your own Docker image.<br>
 Example docker build commands:
 ```bash
 # Regular Image
-docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=2.0.0  --build-arg APP_TAG=2.0.0 --build-arg APP_UPSTREAM_VERSION=2.0.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.0.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=2.1.0  --build-arg APP_TAG=2.1.0 --build-arg APP_UPSTREAM_VERSION=2.1.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.1.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 
 # Supervised Image
-docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=2.0.0  --build-arg APP_TAG=supervised-2.0.0 --build-arg APP_UPSTREAM_VERSION=2.0.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.0.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+docker build  -f docker/Dockerfile.supervised  -t distracearr  --build-arg APP_VERSION=2.1.0  --build-arg APP_TAG=supervised-2.1.0 --build-arg APP_UPSTREAM_VERSION=2.1.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.1.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 ```
 
 Example `docker-compose.yml` for **Supervised** image:
@@ -351,15 +349,15 @@ Run `pnpm dev` in a terminal to start both apps, then use the "Debug All" config
   />
 </p>
 
-<p align="center">
-  <a href="https://www.star-history.com/#connorgallopo/Tracearr&type=date&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=connorgallopo/Tracearr&type=date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=connorgallopo/Tracearr&type=date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=connorgallopo/Tracearr&type=date&legend=top-left" />
-  </picture>
-  </a>
-</p>
+## Star History
+
+<a href="https://www.star-history.com/?repos=connorgallopo%2FTracearr&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=connorgallopo/Tracearr&type=date&theme=dark&legend=top-left&sealed_token=gqNERdnUn6ObeSY81Y6zP40vLBLudEzd1HRVmVfMCjaDrF-MPIll0_KXFkm0b36agZvr6RxkGRX_2xeM81kTqylKJN4i8IpTj9RIq9oLT7AxiBYGK0Zrr2IZR0sQpGHAvmnQP0KtQaN03rFdvuUf6ce-MVOZ7XQ7tpf3UGbabcegW5GUP97_aQso0cq3" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=connorgallopo/Tracearr&type=date&legend=top-left&sealed_token=gqNERdnUn6ObeSY81Y6zP40vLBLudEzd1HRVmVfMCjaDrF-MPIll0_KXFkm0b36agZvr6RxkGRX_2xeM81kTqylKJN4i8IpTj9RIq9oLT7AxiBYGK0Zrr2IZR0sQpGHAvmnQP0KtQaN03rFdvuUf6ce-MVOZ7XQ7tpf3UGbabcegW5GUP97_aQso0cq3" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=connorgallopo/Tracearr&type=date&legend=top-left&sealed_token=gqNERdnUn6ObeSY81Y6zP40vLBLudEzd1HRVmVfMCjaDrF-MPIll0_KXFkm0b36agZvr6RxkGRX_2xeM81kTqylKJN4i8IpTj9RIq9oLT7AxiBYGK0Zrr2IZR0sQpGHAvmnQP0KtQaN03rFdvuUf6ce-MVOZ7XQ7tpf3UGbabcegW5GUP97_aQso0cq3" />
+ </picture>
+</a>
 
 ## License
 

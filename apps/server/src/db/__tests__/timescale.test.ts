@@ -11,6 +11,7 @@ import {
   withSessionsCompressionPaused,
   isCompressionPolicyDegraded,
   retryDegradedCompressionPolicy,
+  _resetDegradedCacheForTests,
   getTimescaleStatus,
   invalidateTimescaleStatusCache,
   coerceRefreshBound,
@@ -165,6 +166,7 @@ describe('withSessionsCompressionPaused', () => {
 describe('isCompressionPolicyDegraded / retryDegradedCompressionPolicy', () => {
   beforeEach(() => {
     executeMock().mockReset();
+    _resetDegradedCacheForTests();
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
@@ -218,6 +220,17 @@ describe('isCompressionPolicyDegraded / retryDegradedCompressionPolicy', () => {
       executedSql(call).includes('add_compression_policy')
     );
     expect(addCalled).toBe(false);
+  });
+
+  it('caches the healthy answer instead of re-querying every call', async () => {
+    executeMock().mockImplementation(() => Promise.resolve({ rows: [] }) as never);
+
+    await isCompressionPolicyDegraded();
+    const queriesAfterFirst = executeMock().mock.calls.length;
+    await isCompressionPolicyDegraded();
+    await isCompressionPolicyDegraded();
+
+    expect(executeMock().mock.calls.length).toBe(queriesAfterFirst);
   });
 });
 

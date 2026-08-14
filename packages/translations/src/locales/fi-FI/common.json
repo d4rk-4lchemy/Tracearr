@@ -64,6 +64,8 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "{{count}} virhe",
@@ -93,9 +95,7 @@
     "usersUpdated_one": "{{count}} käyttäjä päivitetty",
     "usersUpdated_other": "{{count}} käyttäjää päivitetty",
     "violation_one": "{{count}} rikkomusta",
-    "violation_other": "{{count}} rikkomusta",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels"
+    "violation_other": "{{count}} rikkomusta"
   },
   "duration": {
     "day_one": "{{count}} päivää",

@@ -191,6 +191,11 @@ function buildAuth(redis: Redis) {
     account: {
       accountLinking: {
         enabled: true,
+        // Kept deliberately. Authentik hardcodes email_verified:false since
+        // 2025.10 and Keycloak defaults it false for admin-created users, so
+        // requiring the claim breaks OIDC linking on the IdPs self-hosters
+        // actually run. The operator owns both ends here; a shared or
+        // self-registration IdP is the case this does not defend against.
         trustedProviders: ['oidc'],
       },
     },
@@ -284,9 +289,9 @@ type Auth = ReturnType<typeof buildAuth>;
 let authInstance: Auth | null = null;
 
 /**
- * Returns the singleton Better Auth instance, constructing it (and its
- * Redis connection) on first call. Must not run at module load time -
- * Phase 1 startup (building the Fastify app) has to succeed without DB/Redis.
+ * Returns the singleton Better Auth instance, constructing it on first call.
+ * Must not run at module load time - Phase 1 startup (building the Fastify app)
+ * has to succeed without DB/Redis.
  */
 export function getAuth(): Auth {
   if (authInstance) return authInstance;
@@ -296,8 +301,9 @@ export function getAuth(): Auth {
 }
 
 /**
- * Quits the shared Redis client backing the auth instance.
- * Safe to call even when getAuth() was never invoked.
+ * Drops the auth instance so the next getAuth() rebuilds it, and quits the
+ * fallback Redis client if one was created. The Fastify plugin's client is left
+ * alone - its own onClose hook owns it.
  */
 export async function closeAuth(): Promise<void> {
   await closeRedis();

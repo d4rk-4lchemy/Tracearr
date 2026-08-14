@@ -373,7 +373,9 @@
         },
         "availability": {
           "added": "added {{date}}",
-          "removed": "removed {{date}}"
+          "addedRemoved": "added {{added}} – removed {{removed}}",
+          "removed": "removed {{date}}",
+          "replaced": "replaced {{date}}"
         },
         "loadError": "Couldn't load this title",
         "meta": {

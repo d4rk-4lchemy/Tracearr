@@ -10,8 +10,6 @@ import {
   reorderServersSchema,
   updateServerSchema,
   pickServerColor,
-  SERVER_STATS_CONFIG,
-  BANDWIDTH_STATS_CONFIG,
   type ServerConnectionStatus,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
@@ -23,11 +21,13 @@ import {
   EmbyClient,
   DispatcharrClient,
 } from '../services/mediaServer/index.js';
+import { getServerLiveStats, getServerResourceStats } from '../services/serverLiveStats.js';
 import { syncServer } from '../services/sync.js';
 import { sseManager } from '../services/sseManager.js';
 import { getCacheService } from '../services/cache.js';
 import { enqueueLibrarySync } from '../jobs/librarySyncQueue.js';
 import { supportsMediaLibrary } from '@tracearr/shared';
+import { buildServerAccessCondition } from '../utils/serverFiltering.js';
 
 function getDispatcharrAuthMode(token?: string | null): 'token' | 'credentials' {
   return token && DispatcharrClient.isCredentialToken(token) ? 'credentials' : 'token';
@@ -69,8 +69,7 @@ async function verifyServerAccess(params: {
     if (!adminCheck.success) {
       return {
         ok: false,
-        statusCode:
-          adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED ? 503 : 403,
+        statusCode: adminCheck.code === PlexClient.AdminVerifyError.CONNECTION_FAILED ? 503 : 403,
         message: adminCheck.message,
       };
     }
@@ -131,21 +130,15 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         type: servers.type,
         url: servers.url,
         token: servers.token,
+        machineIdentifier: servers.machineIdentifier,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         displayOrder: servers.displayOrder,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
       })
       .from(servers)
-      .where(
-        authUser.role === 'owner'
-          ? undefined // Owners see all servers
-          : authUser.serverIds.length > 0
-            ? inArray(servers.id, authUser.serverIds)
-            : undefined // No serverIds = no access (will return empty)
-      )
+      .where(buildServerAccessCondition(authUser, servers.id))
       .orderBy(asc(servers.displayOrder));
 
     // Backfill colors for any servers missing them
@@ -186,16 +179,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Invalid request body');
     }
 
-    const {
-      name,
-      type,
-      url,
-      token,
-      username,
-      password,
-      ignoreAnonymousStreams,
-      dispatcharrLiveHistoryThresholdSeconds,
-    } = body.data;
+    const { name, type, url, token, username, password, ignoreAnonymousStreams } = body.data;
     const authUser = request.user;
 
     // Only owners can add servers
@@ -275,7 +259,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         url,
         token: normalizedToken,
         ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds,
         color,
         plexAccountId, // Links Plex servers to their owning account (undefined for non-Plex)
       })
@@ -286,7 +269,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         url: servers.url,
         token: servers.token,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
@@ -355,7 +337,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       username: newUsername,
       password: newPassword,
       ignoreAnonymousStreams: newIgnoreAnonymousStreams,
-      dispatcharrLiveHistoryThresholdSeconds: newDispatcharrLiveHistoryThresholdSeconds,
       color: newColor,
     } = body.data;
     const newUrl = bodyUrl !== undefined ? bodyUrl.replace(/\/$/, '') : undefined;
@@ -374,7 +355,8 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.notFound('Server not found');
     }
 
-    const authChanged = newToken !== undefined || newUsername !== undefined || newPassword !== undefined;
+    const authChanged =
+      newToken !== undefined || newUsername !== undefined || newPassword !== undefined;
     if (authChanged && server.type !== 'dispatcharr') {
       return reply.badRequest('Authentication updates are only supported for Dispatcharr servers');
     }
@@ -390,9 +372,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         : server.token;
 
     if (authChanged && !normalizedToken) {
-      return reply.badRequest(
-        'Dispatcharr update requires a complete token or username+password'
-      );
+      return reply.badRequest('Dispatcharr update requires a complete token or username+password');
     }
     const verifiedToken = normalizedToken ?? undefined;
 
@@ -402,7 +382,9 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       if (
         server.url === newUrl &&
         (newName === undefined || server.name === newName) &&
-        !authChanged
+        !authChanged &&
+        newIgnoreAnonymousStreams === undefined &&
+        newColor === undefined
       ) {
         return {
           id: server.id,
@@ -412,7 +394,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           dispatcharrAuthMode:
             server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
           ignoreAnonymousStreams: server.ignoreAnonymousStreams,
-          dispatcharrLiveHistoryThresholdSeconds: server.dispatcharrLiveHistoryThresholdSeconds,
           createdAt: server.createdAt,
           updatedAt: server.updatedAt,
         };
@@ -458,7 +439,13 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           );
         }
       }
-    } else if (newName !== undefined && server.name === newName && !authChanged) {
+    } else if (
+      newName !== undefined &&
+      server.name === newName &&
+      !authChanged &&
+      newIgnoreAnonymousStreams === undefined &&
+      newColor === undefined
+    ) {
       // Name-only update but name unchanged
       return {
         id: server.id,
@@ -468,7 +455,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         dispatcharrAuthMode:
           server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
         ignoreAnonymousStreams: server.ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds: server.dispatcharrLiveHistoryThresholdSeconds,
         createdAt: server.createdAt,
         updatedAt: server.updatedAt,
       };
@@ -502,7 +488,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       url?: string;
       token?: string;
       ignoreAnonymousStreams?: boolean;
-      dispatcharrLiveHistoryThresholdSeconds?: number;
       color?: string | null;
       updatedAt: Date;
     } = { updatedAt: new Date() };
@@ -511,10 +496,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     if (authChanged) updatePayload.token = normalizedToken;
     if (newIgnoreAnonymousStreams !== undefined) {
       updatePayload.ignoreAnonymousStreams = newIgnoreAnonymousStreams;
-    }
-    if (newDispatcharrLiveHistoryThresholdSeconds !== undefined) {
-      updatePayload.dispatcharrLiveHistoryThresholdSeconds =
-        newDispatcharrLiveHistoryThresholdSeconds;
     }
     if (newColor !== undefined) updatePayload.color = newColor;
 
@@ -529,7 +510,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         url: servers.url,
         token: servers.token,
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
-        dispatcharrLiveHistoryThresholdSeconds: servers.dispatcharrLiveHistoryThresholdSeconds,
         color: servers.color,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
@@ -540,23 +520,29 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.internalServerError('Failed to update server');
     }
 
-    if (newUrl !== undefined || authChanged) {
+    const connectorConfigChanged =
+      (newName !== undefined && newName !== server.name) ||
+      (newUrl !== undefined && newUrl !== server.url) ||
+      authChanged ||
+      (newIgnoreAnonymousStreams !== undefined &&
+        newIgnoreAnonymousStreams !== server.ignoreAnonymousStreams);
+
+    if (connectorConfigChanged) {
       if (newUrl !== undefined) {
         app.log.info({ serverId: id, oldUrl: server.url, newUrl }, 'Server URL updated');
       }
       if (authChanged) {
         app.log.info({ serverId: id }, 'Server authentication updated');
       }
-      // Existing SSE connection holds the old config; drop it and let refresh re-add
-      sseManager
-        .removeServer(id)
-        .then(() => sseManager.refresh())
-        .catch((error: unknown) => {
-          app.log.error(
-            { err: error, serverId: id },
-            'SSE refresh failed after server configuration update'
-          );
-        });
+      // The leader compares connector-owned fields with the database row and
+      // replaces stale connections. Followers safely no-op here and converge
+      // on the leader's next reconciliation tick.
+      sseManager.refresh().catch((error: unknown) => {
+        app.log.error(
+          { err: error, serverId: id },
+          'SSE refresh failed after server configuration update'
+        );
+      });
     }
     if (newName !== undefined) {
       app.log.info({ serverId: id, oldName: server.name, newName }, 'Server name updated');
@@ -765,12 +751,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Server statistics are only available for Plex servers');
     }
 
-    const client = new PlexClient({
-      url: server.url,
-      token: server.token,
-    });
-
-    const data = await client.getServerStatistics(SERVER_STATS_CONFIG.TIMESPAN_SECONDS);
+    const data = await getServerResourceStats(app.redis, server);
 
     return {
       serverId: id,
@@ -780,11 +761,14 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * GET /servers/:id/bandwidth - Get server bandwidth statistics (Local/Remote)
-   * On-demand endpoint for dashboard - data is not stored
-   * Currently only supported for Plex servers (undocumented /statistics/bandwidth endpoint)
+   * GET /servers/:id/live-stats - Combined resource and bandwidth statistics
+   * One request per dashboard tick, for any server type: Plex serves its
+   * statistics endpoints behind a short Redis cache, Jellyfin/Emby serve the
+   * rolling buffer the SSE plugin's server.stats events fill (empty until
+   * the plugin reports), so multi-server dashboards fan out without
+   * special-casing type.
    */
-  app.get('/:id/bandwidth', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id/live-stats', { preHandler: [app.authenticate] }, async (request, reply) => {
     const params = serverIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid server ID');
@@ -799,20 +783,18 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.notFound('Server not found');
     }
 
-    if (server.type !== 'plex') {
-      return reply.badRequest('Bandwidth statistics are only available for Plex servers');
-    }
+    const stats = await getServerLiveStats(app.redis, server);
 
-    const client = new PlexClient({
-      url: server.url,
-      token: server.token,
-    });
-
-    const data = await client.getServerBandwidth(BANDWIDTH_STATS_CONFIG.TIMESPAN_SECONDS);
+    // Per-account/device attribution names other users' accounts; the charts
+    // only need the aggregated series, so the detail is owner-only
+    const includeDetail = request.user?.role === 'owner';
 
     return {
       serverId: id,
-      data,
+      ...stats,
+      ...(includeDetail
+        ? {}
+        : { bandwidthSamples: [], bandwidthAccounts: [], bandwidthDevices: [] }),
       fetchedAt: new Date().toISOString(),
     };
   });
@@ -835,11 +817,10 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       request.headers.authorization = `Bearer ${queryToken}`;
     }
 
-    try {
-      await request.jwtVerify();
-    } catch {
-      return reply.unauthorized('Invalid or missing token');
-    }
+    // Shared guard rather than a bare jwtVerify: it also enforces the
+    // post-restore revocation timestamp and the mobile device blacklist.
+    await app.authenticate(request, reply);
+    if (reply.sent) return;
 
     const { id } = request.params as { id: string; '*': string };
     const imagePath = (request.params as { '*': string })['*'];
@@ -911,13 +892,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         name: servers.name,
       })
       .from(servers)
-      .where(
-        authUser.role === 'owner'
-          ? undefined
-          : authUser.serverIds.length > 0
-            ? inArray(servers.id, authUser.serverIds)
-            : undefined
-      );
+      .where(buildServerAccessCondition(authUser, servers.id));
 
     const cacheService = getCacheService();
     const unhealthyServers: { serverId: string; serverName: string }[] = [];
@@ -953,13 +928,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         type: servers.type,
       })
       .from(servers)
-      .where(
-        authUser.role === 'owner'
-          ? undefined
-          : authUser.serverIds.length > 0
-            ? inArray(servers.id, authUser.serverIds)
-            : undefined
-      );
+      .where(buildServerAccessCondition(authUser, servers.id));
 
     const cacheService = getCacheService();
     const result: ServerConnectionStatus[] = [];

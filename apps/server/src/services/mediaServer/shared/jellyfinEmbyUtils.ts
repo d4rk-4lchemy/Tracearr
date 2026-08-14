@@ -546,9 +546,7 @@ function extractSourceVideoDetails(stream: Record<string, unknown> | undefined):
   const bitrate = parseOptionalNumber(stream.BitRate);
   if (bitrate) details.bitrate = Math.round(bitrate / 1000);
 
-  // Framerate - prefer RealFrameRate
-  const frameRate =
-    parseOptionalNumber(stream.RealFrameRate) ?? parseOptionalNumber(stream.AverageFrameRate);
+  const frameRate = getStreamFrameRate(stream);
   if (frameRate) details.framerate = frameRate.toString();
 
   // Dynamic range
@@ -633,13 +631,18 @@ function extractSubtitleInfo(
   return Object.keys(info).length > 0 ? info : undefined;
 }
 
+/** Preferred frame rate for a media stream */
+function getStreamFrameRate(stream: Record<string, unknown>): number | undefined {
+  return parseOptionalNumber(stream.RealFrameRate) ?? parseOptionalNumber(stream.AverageFrameRate);
+}
+
 /**
  * Extract transcode info from TranscodingInfo object
- * Note: Jellyfin/Emby don't expose hardware acceleration details
  */
 function extractTranscodeInfo(
   transcodingInfo: Record<string, unknown> | undefined,
-  mediaSource: Record<string, unknown> | undefined
+  mediaSource: Record<string, unknown> | undefined,
+  sourceFrameRate?: number
 ): TranscodeInfo | undefined {
   const info: TranscodeInfo = {};
 
@@ -666,9 +669,51 @@ function extractTranscodeInfo(
       info.reasons = Array.from(new Set(reasons));
     }
 
-    // Note: Jellyfin/Emby don't expose these fields:
-    // - hwRequested, hwDecoding, hwEncoding
-    // - speed, throttled
+    const progress = parseOptionalNumber(transcodingInfo.CompletionPercentage);
+    if (progress !== undefined) info.progress = progress;
+
+    // Framerate is the transcoder's output fps; against the source fps that
+    // is the x-realtime speed Plex reports natively
+    const transcodeFps = parseOptionalNumber(transcodingInfo.Framerate);
+    if (transcodeFps && sourceFrameRate && sourceFrameRate > 0) {
+      info.speed = Math.round((transcodeFps / sourceFrameRate) * 10) / 10;
+    }
+
+    // Emby: CurrentThrottle is the applied throttle rate; nonzero means active
+    const currentThrottle = parseOptionalNumber(transcodingInfo.CurrentThrottle);
+    if (currentThrottle !== undefined && currentThrottle > 0) info.throttled = true;
+
+    // Emby: absolute position the transcoder has reached in the file
+    const positionTicks = parseOptionalNumber(transcodingInfo.TranscodingPositionTicks);
+    if (positionTicks !== undefined && positionTicks > 0) {
+      info.maxOffsetAvailable = Math.round(ticksToMs(positionTicks) / 1000);
+    }
+
+    // Jellyfin: one pipeline-wide acceleration enum ('none' when software)
+    const jfAccel = parseOptionalString(transcodingInfo.HardwareAccelerationType);
+    if (jfAccel && jfAccel !== 'none') {
+      info.hwRequested = true;
+      info.hwEncoding = jfAccel;
+    }
+
+    // Emby: per-direction acceleration detail
+    const decoderHw =
+      transcodingInfo.VideoDecoderIsHardware === true
+        ? parseOptionalString(transcodingInfo.VideoDecoderHwAccel)
+        : undefined;
+    if (decoderHw) {
+      info.hwRequested = true;
+      info.hwDecoding = decoderHw;
+    }
+
+    const encoderHw =
+      transcodingInfo.VideoEncoderIsHardware === true
+        ? parseOptionalString(transcodingInfo.VideoEncoderHwAccel)
+        : undefined;
+    if (encoderHw) {
+      info.hwRequested = true;
+      info.hwEncoding = encoderHw;
+    }
   }
 
   return Object.keys(info).length > 0 ? info : undefined;
@@ -788,7 +833,11 @@ export function extractStreamDetails(session: Record<string, unknown>): StreamDe
   );
   const streamAudio = extractStreamAudioDetails(transcodingInfo);
 
-  const transcodeInfo = extractTranscodeInfo(transcodingInfo, mediaSource);
+  const transcodeInfo = extractTranscodeInfo(
+    transcodingInfo,
+    mediaSource,
+    videoStream ? getStreamFrameRate(videoStream) : undefined
+  );
   const subtitleInfo = extractSubtitleInfo(subtitleStream);
 
   return {

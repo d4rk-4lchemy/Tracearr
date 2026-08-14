@@ -11,11 +11,15 @@ function jsonResponse(data: unknown, init?: ResponseInit): Response {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  (DispatcharrClient as unknown as { credentialCache: Map<string, unknown> }).credentialCache.clear();
+  (
+    DispatcharrClient as unknown as { credentialCache: Map<string, unknown> }
+  ).credentialCache.clear();
   (
     DispatcharrClient as unknown as { credentialRequestsInFlight: Map<string, unknown> }
   ).credentialRequestsInFlight.clear();
-  (DispatcharrClient as unknown as { outputProfileCache: Map<string, unknown> }).outputProfileCache.clear();
+  (
+    DispatcharrClient as unknown as { outputProfileCache: Map<string, unknown> }
+  ).outputProfileCache.clear();
 });
 
 describe('DispatcharrClient', () => {
@@ -86,9 +90,7 @@ describe('DispatcharrClient', () => {
         expect(init?.method).toBe('POST');
         const headers = init?.headers as Record<string, string> | undefined;
         expect(headers?.['Content-Type']).toBe('application/json');
-        expect(init?.body).toBe(
-          JSON.stringify({ channel_uuids: ['channel-1', 'channel-2'] })
-        );
+        expect(init?.body).toBe(JSON.stringify({ channel_uuids: ['channel-1', 'channel-2'] }));
         return jsonResponse([
           { channel_uuid: 'channel-1', title: 'Morning News' },
           { channel_uuid: 'channel-2', title: 'Sports Live' },
@@ -351,8 +353,7 @@ describe('DispatcharrClient', () => {
       if (url.endsWith('/api/accounts/token/')) {
         expect(init?.method).toBe('POST');
         return jsonResponse({
-          access:
-            'eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQ3NDA3MTY4MDB9.signature',
+          access: 'eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQ3NDA3MTY4MDB9.signature',
           refresh: 'refresh-token',
         });
       }
@@ -403,6 +404,45 @@ describe('DispatcharrClient', () => {
 
     await expect(Promise.all(requests)).resolves.toEqual([[], [], []]);
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('does not reuse cached authentication when the password changes', async () => {
+    const tokenBodies: Array<{ username: string; password: string }> = [];
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/accounts/token/')) {
+        const body = JSON.parse(String(init?.body)) as { username: string; password: string };
+        tokenBodies.push(body);
+        if (body.password === 'wrong-password') {
+          return jsonResponse({ detail: 'Invalid credentials' }, { status: 401 });
+        }
+        const access =
+          body.password === 'old-password'
+            ? 'eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQ3NDA3MTY4MDB9.old'
+            : 'eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQ3NDA3MTY4MDB9.new';
+        return jsonResponse({ access, refresh: null });
+      }
+      if (url.endsWith('/api/accounts/users/')) return jsonResponse([]);
+      return jsonResponse({ error: 'not found' }, { status: 404 });
+    });
+
+    const makeClient = (password: string) =>
+      new DispatcharrClient({
+        url: 'http://dispatcharr.local',
+        token: DispatcharrClient.encodeCredentialToken('admin', password),
+      });
+
+    await expect(makeClient('old-password').getUsers()).resolves.toEqual([]);
+    await expect(makeClient('wrong-password').getUsers()).rejects.toThrow();
+    await expect(makeClient('new-password').getUsers()).resolves.toEqual([]);
+    await expect(makeClient('new-password').getUsers()).resolves.toEqual([]);
+
+    expect(tokenBodies).toEqual([
+      { username: 'admin', password: 'old-password' },
+      { username: 'admin', password: 'wrong-password' },
+      { username: 'admin', password: 'new-password' },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
   it('terminates live sessions using ts stop_client endpoint', async () => {

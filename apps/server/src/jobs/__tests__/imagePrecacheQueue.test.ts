@@ -73,15 +73,22 @@ function makeJob(data: ImagePrecacheJobData): Job<ImagePrecacheJobData> {
   return { data } as unknown as Job<ImagePrecacheJobData>;
 }
 
-/** Mock db.select().from().where().orderBy().limit() resolving to `rows`. */
-function mockBatchQuery(rows: unknown[]) {
+/**
+ * Mock both drizzle query shapes the processor uses: the batch fetch
+ * (select().from().where().orderBy().limit() -> rows) and the pass-progress
+ * count (select().from().where() awaited directly -> [{ n }]).
+ */
+function mockBatchQuery(rows: unknown[], eligibleCount = rows.length) {
   mockDbSelect.mockReturnValue({
     from: () => ({
-      where: () => ({
-        orderBy: () => ({
-          limit: () => Promise.resolve(rows),
-        }),
-      }),
+      where: () => {
+        const countResult = Promise.resolve([{ n: eligibleCount }]);
+        return Object.assign(countResult, {
+          orderBy: () => ({
+            limit: () => Promise.resolve(rows),
+          }),
+        });
+      },
     }),
   });
 }
@@ -156,7 +163,11 @@ describe('imagePrecacheQueue', () => {
       expect(mockProxyImage).not.toHaveBeenCalled();
       expect(mockQueueAdd).toHaveBeenCalledTimes(1);
       const [, jobData, opts] = mockQueueAdd.mock.calls[0]!;
-      expect(jobData).toEqual({ serverId: 'server-1', cursor: 'cursor-1' });
+      expect(jobData).toEqual({
+        serverId: 'server-1',
+        cursor: 'cursor-1',
+        passStartedAt: expect.any(String),
+      });
       expect(opts.delay).toBe(60000);
     });
 
@@ -173,7 +184,13 @@ describe('imagePrecacheQueue', () => {
       expect(mockProxyImage).toHaveBeenCalledWith(expect.objectContaining({ skipLqipRace: true }));
       expect(mockQueueAdd).toHaveBeenCalledTimes(1);
       const [, jobData] = mockQueueAdd.mock.calls[0]!;
-      expect(jobData).toEqual({ serverId: 'server-1', cursor: 'item-49' });
+      expect(jobData).toEqual({
+        serverId: 'server-1',
+        cursor: 'item-49',
+        totalItems: 50,
+        processedItems: 50,
+        passStartedAt: expect.any(String),
+      });
     });
 
     it('re-enqueues from the raw row count even when one row in the raw 50 has a null thumbPath', async () => {
@@ -188,7 +205,42 @@ describe('imagePrecacheQueue', () => {
       expect(result).toEqual({ processed: 50 });
       expect(mockQueueAdd).toHaveBeenCalledTimes(1);
       const [, jobData] = mockQueueAdd.mock.calls[0]!;
-      expect(jobData).toEqual({ serverId: 'server-1', cursor: 'item-49' });
+      expect(jobData).toEqual({
+        serverId: 'server-1',
+        cursor: 'item-49',
+        totalItems: 50,
+        processedItems: 50,
+        passStartedAt: expect.any(String),
+      });
+    });
+
+    it('carries pass progress through the cursor chain without recounting', async () => {
+      const rows = Array.from({ length: 50 }, (_, i) => makeItemRow(`item-${i}`));
+      mockBatchQuery(rows);
+      mockQueueAdd.mockResolvedValue({ id: 'job-next' });
+
+      const result = await processImagePrecacheJob(
+        makeJob({
+          serverId: 'server-1',
+          cursor: 'item-99',
+          totalItems: 500,
+          processedItems: 100,
+          passStartedAt: '2026-08-09T00:00:00.000Z',
+        })
+      );
+
+      expect(result).toEqual({ processed: 50 });
+      // totalItems present in the job data means the seed count is skipped:
+      // one db.select for the batch, none for the count.
+      expect(mockDbSelect).toHaveBeenCalledTimes(1);
+      const [, jobData] = mockQueueAdd.mock.calls[0]!;
+      expect(jobData).toEqual({
+        serverId: 'server-1',
+        cursor: 'item-49',
+        totalItems: 500,
+        processedItems: 150,
+        passStartedAt: '2026-08-09T00:00:00.000Z',
+      });
     });
 
     it('does not re-enqueue when the batch is smaller than 50 (cursor exhausted)', async () => {

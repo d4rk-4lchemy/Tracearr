@@ -136,7 +136,6 @@ export const createServerSchema = z
     username: z.string().min(1).optional(),
     password: z.string().min(1).optional(),
     ignoreAnonymousStreams: z.boolean().default(true),
-    dispatcharrLiveHistoryThresholdSeconds: z.coerce.number().int().min(0).default(30),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'dispatcharr') {
@@ -183,7 +182,6 @@ export const updateServerSchema = z
     username: z.string().min(1).optional(),
     password: z.string().min(1).optional(),
     ignoreAnonymousStreams: z.boolean().optional(),
-    dispatcharrLiveHistoryThresholdSeconds: z.coerce.number().int().min(0).optional(),
     color: z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be a valid hex color (e.g. #3b82f6)')
@@ -222,13 +220,12 @@ export const updateServerSchema = z
       data.token === undefined &&
       data.username === undefined &&
       data.password === undefined &&
-      data.ignoreAnonymousStreams === undefined &&
-      data.dispatcharrLiveHistoryThresholdSeconds === undefined
+      data.ignoreAnonymousStreams === undefined
     ) {
       ctx.addIssue({
         code: 'custom',
         message:
-          'At least one of name, url, color, token, username, password, ignoreAnonymousStreams, or dispatcharrLiveHistoryThresholdSeconds is required',
+          'At least one of name, url, color, token, username, password, or ignoreAnonymousStreams is required',
       });
     }
   });
@@ -1048,6 +1045,30 @@ export const jellystatImportBodySchema = z.object({
   serverId: uuidSchema, // Which Tracearr server to import into
   enrichMedia: z.coerce.boolean().default(true), // Fetch season/episode from Jellyfin API
   updateStreamDetails: z.coerce.boolean().default(false), // Update existing records with stream/transcode data
+});
+
+// ============================================================================
+// Playback Reporting Import Schemas
+// ============================================================================
+
+const isValidTimeZone = (tz: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const playbackReportingImportSchema = z.object({
+  serverId: uuidSchema,
+  timezone: z.string().refine(isValidTimeZone, { message: 'Invalid IANA timezone' }),
+  enrichMedia: z.boolean().default(true),
+  importFullRange: z.boolean().default(false),
+});
+
+export const playbackReportingTestSchema = z.object({
+  serverId: uuidSchema,
 });
 
 /**

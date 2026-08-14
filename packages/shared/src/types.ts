@@ -23,7 +23,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, number> = {
 } as const;
 
 // Roles that can log into Tracearr
-export const LOGIN_ROLES: UserRole[] = ['owner', 'admin', 'viewer'];
+export const LOGIN_ROLES: UserRole[] = ['owner', 'admin'];
 
 // Role helper functions
 export const canLogin = (role: UserRole): boolean => LOGIN_ROLES.includes(role);
@@ -43,9 +43,10 @@ export interface Server {
   name: string;
   type: ServerType;
   url: string;
+  /** The media server's own id, used to build item deep links. */
+  machineIdentifier?: string | null;
   dispatcharrAuthMode?: DispatcharrAuthMode;
   ignoreAnonymousStreams?: boolean;
-  dispatcharrLiveHistoryThresholdSeconds?: number;
   displayOrder?: number;
   color?: string | null;
   createdAt: Date;
@@ -308,6 +309,10 @@ export interface TranscodeInfo {
   hwEncoding?: string;
   speed?: number;
   throttled?: boolean;
+  /** Percent of the file transcoded so far (0-100) */
+  progress?: number;
+  /** Seconds of media the transcoder has ready past the start */
+  maxOffsetAvailable?: number;
   reasons?: string[];
 }
 
@@ -992,13 +997,13 @@ export interface ServerResourceDataPoint {
   at: number;
   /** Timespan interval in seconds */
   timespan: number;
-  /** System-wide CPU utilization percentage */
-  hostCpuUtilization: number;
-  /** Plex process CPU utilization percentage */
+  /** System-wide CPU utilization percentage; null when the source cannot see the host (non-Linux plugin hosts) */
+  hostCpuUtilization: number | null;
+  /** Media server process CPU utilization percentage */
   processCpuUtilization: number;
-  /** System-wide memory utilization percentage */
-  hostMemoryUtilization: number;
-  /** Plex process memory utilization percentage */
+  /** System-wide memory utilization percentage; null when the source cannot see the host */
+  hostMemoryUtilization: number | null;
+  /** Media server process memory utilization percentage */
   processMemoryUtilization: number;
 }
 
@@ -1031,6 +1036,50 @@ export interface ServerBandwidthStats {
   data: ServerBandwidthDataPoint[];
   /** When this data was fetched */
   fetchedAt: Date;
+}
+
+/** Plex account referenced by bandwidth samples */
+export interface BandwidthAccount {
+  id: number;
+  name: string;
+  thumb: string | null;
+}
+
+/** Plex device referenced by bandwidth samples */
+export interface BandwidthDevice {
+  id: number;
+  name: string;
+  platform: string | null;
+}
+
+/**
+ * Per-account/device bandwidth sample. Entries are 1-second buckets
+ * regardless of the timespan echoed by the Plex API.
+ */
+export interface BandwidthSample {
+  at: number;
+  accountId: number;
+  deviceId: number;
+  lan: boolean;
+  bytes: number;
+}
+
+// Combined live stats for the dashboard: one request carries both series
+export interface ServerLiveStats {
+  /** Server ID these stats belong to */
+  serverId: string;
+  /** Resource data points (newest first based on 'at' timestamp) */
+  statistics: ServerResourceDataPoint[];
+  /** Aggregated bandwidth points (newest first based on 'at' timestamp) */
+  bandwidth: ServerBandwidthDataPoint[];
+  /** Raw per-account/device bandwidth samples (newest first) */
+  bandwidthSamples: BandwidthSample[];
+  /** Accounts referenced by bandwidthSamples */
+  bandwidthAccounts: BandwidthAccount[];
+  /** Devices referenced by bandwidthSamples */
+  bandwidthDevices: BandwidthDevice[];
+  /** ISO, on the Tracearr server's clock - the charts' axis anchor */
+  fetchedAt: string;
 }
 
 // Webhook format types
@@ -1205,6 +1254,54 @@ export interface JellystatImportResult {
   }[];
 }
 
+// Playback Reporting plugin import types
+export interface PlaybackReportingImportProgress {
+  status:
+    | 'idle'
+    | 'waiting'
+    | 'detecting'
+    | 'fetching'
+    | 'enriching'
+    | 'processing'
+    | 'complete'
+    | 'error';
+  totalRecords: number;
+  fetchedRecords: number;
+  processedRecords: number;
+  importedRecords: number;
+  skippedRecords: number;
+  /** Skipped: row already imported (pr- namespace) or already present via a Jellystat import (raw rowid namespace) */
+  duplicateRecords: number;
+  /** Skipped: user not found in Tracearr (sync server first) */
+  unknownUserRecords: number;
+  /** Skipped: row falls inside the span Tracearr already tracks for this server */
+  overlapRecords: number;
+  /** Skipped: theme songs, trailers, etc. */
+  filteredRecords: number;
+  errorRecords: number;
+  enrichedRecords: number;
+  message: string;
+  /** Present when status='waiting' - what this job is waiting for */
+  waitingFor?: HeavyOpsWaitingFor;
+}
+
+export interface PlaybackReportingImportResult {
+  success: boolean;
+  imported: number;
+  skipped: number;
+  duplicates: number;
+  overlap: number;
+  filtered: number;
+  errors: number;
+  enriched: number;
+  message: string;
+  skippedUsers?: {
+    userId: string;
+    username: string | null;
+    recordCount: number;
+  }[];
+}
+
 // Library sync progress types
 export interface LibrarySyncProgress {
   serverId: string;
@@ -1231,6 +1328,7 @@ export interface ServerToClientEvents {
   'stats:updated': (stats: DashboardStats) => void;
   'import:progress': (progress: TautulliImportProgress) => void;
   'import:jellystat:progress': (progress: JellystatImportProgress) => void;
+  'import:playbackreporting:progress': (progress: PlaybackReportingImportProgress) => void;
   'maintenance:progress': (progress: MaintenanceJobProgress) => void;
   'library:sync:progress': (progress: LibrarySyncProgress) => void;
   'tasks:updated': (tasks: RunningTask[]) => void;
@@ -1798,6 +1896,12 @@ export interface PlexAccount {
 // Response from GET /auth/plex/accounts
 export interface PlexAccountsResponse {
   accounts: PlexAccount[];
+  /**
+   * This install's Plex client identifier. The browser creates the link PIN and
+   * the server redeems it, and plex.tv only honours a redemption from the
+   * identifier that created the PIN, so both ends must use this exact value.
+   */
+  clientIdentifier: string;
 }
 
 // Request body for POST /auth/plex/link-account
@@ -1869,7 +1973,12 @@ export interface MaintenanceJobResult {
 // =============================================================================
 
 export type RunningTaskType =
-  'library_sync' | 'tautulli_import' | 'jellystat_import' | 'maintenance';
+  | 'library_sync'
+  | 'tautulli_import'
+  | 'jellystat_import'
+  | 'playback_reporting_import'
+  | 'image_precache'
+  | 'maintenance';
 
 export interface RunningTask {
   /** Unique task identifier */
@@ -2769,6 +2878,15 @@ export interface MediaAvailabilityEntry {
   episodeCount: number | null;
   /** Physical files of this copy, largest first. Empty for containers. */
   versions: MediaVersionEntry[];
+  /** The copy this one replaced (event-witnessed upgrade); null when none was witnessed. */
+  replaces: MediaReplacedCopy | null;
+}
+
+export interface MediaReplacedCopy {
+  addedAt: string;
+  removedAt: string;
+  videoResolution: string | null;
+  fileSize: number | null;
 }
 
 export interface MediaDetailResponse {

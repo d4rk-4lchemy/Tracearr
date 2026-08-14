@@ -16,8 +16,9 @@
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { getRedisPrefix, TIME_MS } from '@tracearr/shared';
+import { TIME_MS } from '@tracearr/shared';
 import { and, eq, lte, isNotNull } from 'drizzle-orm';
+import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
 import { authAccounts, plexAccounts, servers } from '../db/schema.js';
@@ -47,8 +48,8 @@ export function initPlexTokenRefreshQueue(redisUrl: string): void {
     return;
   }
 
-  connectionOptions = { url: redisUrl };
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  connectionOptions = queueConnectionOptions(redisUrl);
+  const bullPrefix = getBullPrefix();
 
   refreshQueue = new Queue<PlexTokenRefreshJobData>(QUEUE_NAME, {
     connection: connectionOptions,
@@ -91,7 +92,7 @@ export function startPlexTokenRefreshWorker(): void {
     return;
   }
 
-  const bullPrefix = `${getRedisPrefix()}bull`;
+  const bullPrefix = getBullPrefix();
 
   refreshWorker = new Worker<PlexTokenRefreshJobData>(
     QUEUE_NAME,

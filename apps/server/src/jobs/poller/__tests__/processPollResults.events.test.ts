@@ -15,7 +15,7 @@ describe('processPollResults event semantics', () => {
 
     await processPollResults({
       newSessions: [],
-      stoppedKeys: [],
+      stoppedSessions: [],
       updatedSessions: [session],
       cachedSessions: [],
       cacheService: null,

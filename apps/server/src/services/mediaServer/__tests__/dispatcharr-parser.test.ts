@@ -883,6 +883,34 @@ describe('Dispatcharr parser', () => {
       }
     });
 
+    it('keeps a shared catch-up provider key while distinguishing each connection', () => {
+      const sessions = parseSessionsFromCatchupStats(
+        {
+          timeshift_sessions: [
+            {
+              session_id: 'catchup-shared',
+              channel_uuid: 'channel-uuid-1',
+              channel_name: 'News Channel',
+              connections: [
+                { client_id: 'client-1', user_id: '7' },
+                { client_id: 'client-2', user_id: '8' },
+              ],
+            },
+          ],
+        },
+        new Map([
+          ['7', { id: '7', username: 'First User', isAdmin: false }],
+          ['8', { id: '8', username: 'Second User', isAdmin: false }],
+        ])
+      );
+
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]?.sessionKey).toBe('catchup:catchup-shared:channel-uuid-1');
+      expect(sessions[1]?.sessionKey).toBe(sessions[0]?.sessionKey);
+      expect(sessions.map((session) => session.player.deviceId)).toEqual(['client-1', 'client-2']);
+      expect(sessions.map((session) => session.user.id)).toEqual(['7', '8']);
+    });
+
     it('uses the UTC catch-up URL timestamp when the EPG start has an offset', () => {
       const dateNowSpy = vi
         .spyOn(Date, 'now')

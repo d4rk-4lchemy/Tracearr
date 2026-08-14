@@ -103,6 +103,10 @@ export type {
   // Server bandwidth stats
   ServerBandwidthDataPoint,
   ServerBandwidthStats,
+  BandwidthAccount,
+  BandwidthDevice,
+  BandwidthSample,
+  ServerLiveStats,
   // Settings
   Settings,
   WebhookFormat,
@@ -117,6 +121,9 @@ export type {
   // Jellystat import
   JellystatImportProgress,
   JellystatImportResult,
+  // Playback Reporting import
+  PlaybackReportingImportProgress,
+  PlaybackReportingImportResult,
   // Library sync
   LibrarySyncProgress,
   // Heavy ops coordination
@@ -275,6 +282,7 @@ export type {
   GenresResponse,
   MediaVersionEntry,
   MediaAvailabilityEntry,
+  MediaReplacedCopy,
   MediaDetailResponse,
   MediaChildEntry,
   MediaChildrenResponse,
@@ -396,6 +404,9 @@ export {
   jellystatBackupSchema,
   jellystatImportBodySchema,
   importJobStatusSchema,
+  // Playback Reporting import
+  playbackReportingImportSchema,
+  playbackReportingTestSchema,
   // Engagement tracking
   engagementTierSchema,
   userBehaviorTypeSchema,
@@ -507,6 +518,7 @@ export {
   SESSION_LIMITS,
   SESSION_WRITE_RETRY,
   SERVER_STATS_CONFIG,
+  liveStatsRetentionSeconds,
   BANDWIDTH_STATS_CONFIG,
   // SSE
   SSE_CONFIG,
@@ -599,3 +611,5 @@ export {
   serverScopeParamEntries,
   type ServerScope,
 } from './serverScope.js';
+
+export { buildMediaServerItemUrl, type MediaServerItemLinkInput } from './mediaServerLinks.js';

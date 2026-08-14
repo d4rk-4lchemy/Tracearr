@@ -64,7 +64,8 @@ let cleanup: (() => Promise<void>) | null = null;
 beforeAll(async () => {
   process.env.TEST_INITIALIZED = 'true';
 
-  // Set up database connection (migrations + TimescaleDB init run once in globalSetup)
+  // Set up the test-utils connection (migrations + TimescaleDB init run once
+  // in globalSetup).
   cleanup = await setupIntegrationTests();
 }, 60000); // 60s timeout for database connection setup
 

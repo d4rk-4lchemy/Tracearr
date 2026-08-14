@@ -5,7 +5,7 @@
  * Provides a unified interface for session tracking, user management, and library access.
  */
 
-import { fetchJson, fetchText, plexHeaders } from '../../../utils/http.js';
+import { fetchJson, fetchText, plexHeaders, getPlexClientIdentifier } from '../../../utils/http.js';
 import { assertSafeProbeUrl, SsrfBlockedError } from '../../../utils/ssrf.js';
 import type {
   IMediaServerClient,
@@ -33,7 +33,7 @@ import {
   getTranscodingSessionRatingKeys,
   type PlexServerResource,
   type PlexStatisticsDataPoint,
-  type PlexBandwidthDataPoint,
+  type PlexBandwidthStats,
   type PlexOriginalMedia,
 } from './parser.js';
 
@@ -137,6 +137,18 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
     } catch {
       return null;
     }
+  }
+
+  /**
+   * The server's machineIdentifier, needed to address it on app.plex.tv.
+   */
+  async getServerIdentity(): Promise<string | null> {
+    const data = await fetchJson<{ MediaContainer?: { machineIdentifier?: unknown } }>(
+      `${this.baseUrl}/identity`,
+      { headers: this.buildHeaders(), service: 'plex', timeout: 10000 }
+    );
+    const id = data.MediaContainer?.machineIdentifier;
+    return typeof id === 'string' && id ? id : null;
   }
 
   /**
@@ -511,12 +523,12 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
    * Get server bandwidth statistics (Local/Remote traffic)
    *
    * Uses the undocumented /statistics/bandwidth endpoint.
-   * Returns per-second data points with local/remote byte totals.
+   * Returns aggregated per-second points plus per-account/device samples.
    *
    * @param timespan - Plex API timespan parameter (default: 6)
-   * @returns Array of bandwidth data points, sorted newest first
+   * @returns Bandwidth stats, series sorted newest first
    */
-  async getServerBandwidth(timespan: number = 6): Promise<PlexBandwidthDataPoint[]> {
+  async getServerBandwidth(timespan: number = 6): Promise<PlexBandwidthStats> {
     const url = `${this.baseUrl}/statistics/bandwidth?timespan=${timespan}`;
 
     try {
@@ -529,7 +541,7 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
       return parseStatisticsBandwidthResponse(data);
     } catch {
       // Requires Plex Pass — silently return empty when unavailable
-      return [];
+      return { points: [], samples: [], accounts: [], devices: [] };
     }
   }
 
@@ -555,8 +567,10 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
       service: 'plex.tv',
     });
 
+    // Must match the identifier the PIN was created under above, or plex.tv
+    // binds the authorisation to a different device and polling never resolves.
     const params = new URLSearchParams({
-      clientID: 'tracearr',
+      clientID: getPlexClientIdentifier(),
       code: data.code,
       'context[device][product]': 'Tracearr',
     });

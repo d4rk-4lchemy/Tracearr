@@ -64,6 +64,8 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "{{count}} fejl",
@@ -93,9 +95,7 @@
     "usersUpdated_one": "{{count}} bruger opdateret",
     "usersUpdated_other": "{{count}} brugere opdateret",
     "violation_one": "{{count}} overtrædelse",
-    "violation_other": "{{count}} overtrædelser",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels"
+    "violation_other": "{{count}} overtrædelser"
   },
   "duration": {
     "day_one": "{{count}} dag",
