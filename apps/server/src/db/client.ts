@@ -17,9 +17,28 @@ if (!process.env.DATABASE_URL) {
 // Set by the connection budget service; survives recreatePool()
 let poolMaxOverride: number | null = null;
 
+/**
+ * Vitest forks can evaluate application modules before their setupFiles run.
+ * Resolve the per-worker test database here, at pool creation time, so those
+ * early imports cannot bind the app client to the shared base database.
+ */
+function resolveDatabaseUrl(): string {
+  const baseUrl = process.env.DATABASE_URL!;
+  const runToken = process.env.TRACEARR_TEST_RUN_TOKEN;
+  const poolId = Number(process.env.VITEST_POOL_ID);
+
+  if (!runToken || !/^[a-z0-9]+$/.test(runToken) || !Number.isInteger(poolId) || poolId < 1) {
+    return baseUrl;
+  }
+
+  const url = new URL(baseUrl);
+  url.pathname = `/tracearr_test_r${runToken}_w${poolId}`;
+  return url.toString();
+}
+
 function createPool(): pg.Pool {
   const p = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: resolveDatabaseUrl(),
     max: poolMaxOverride ?? (Number(process.env.DATABASE_POOL_MAX) || 50),
     idleTimeoutMillis: 20000, // Close idle connections after 20s
     connectionTimeoutMillis: 5000, // Max wait to acquire a connection from the pool (not running query timeout)
@@ -46,7 +65,7 @@ function createPool(): pg.Pool {
  * `context` names the owner in the log line.
  */
 export function createRawPgClient(context: string): pg.Client {
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  const client = new pg.Client({ connectionString: resolveDatabaseUrl() });
   client.on('error', (err) => {
     console.error(`[DB Client Error] (${context})`, err.message);
   });
