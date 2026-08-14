@@ -230,6 +230,47 @@ describe('DispatcharrRealtimeConnector', () => {
     vi.useRealTimers();
   });
 
+  it('refreshes the complete snapshot every 30 seconds while Dispatcharr WebSocket is idle', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(DispatcharrClient.prototype, 'getWebSocketToken').mockResolvedValue('jwt-token');
+    const getStatusSnapshot = vi
+      .spyOn(DispatcharrClient.prototype, 'getStatusSnapshot')
+      .mockResolvedValue([]);
+    const getVodStatsSnapshot = vi
+      .spyOn(DispatcharrClient.prototype, 'getVodStatsSnapshot')
+      .mockResolvedValue({ vod_connections: [] });
+    const getCatchupStatsSnapshot = vi
+      .spyOn(DispatcharrClient.prototype, 'getCatchupStatsSnapshot')
+      .mockResolvedValue({ timeshift_sessions: [] });
+    vi.spyOn(DispatcharrClient.prototype, 'getUserMap').mockResolvedValue(new Map());
+
+    const connector = new DispatcharrRealtimeConnector({
+      serverId: 'server-1',
+      serverName: 'Dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'a.b.c',
+    });
+
+    await connector.connect();
+    const ws = MockWebSocket.instances[0];
+    if (!ws) throw new Error('WebSocket was not created');
+
+    const initialSnapshot = nextSnapshot(connector);
+    ws.onopen?.call(ws, {});
+    await initialSnapshot;
+
+    const refreshedSnapshot = nextSnapshot(connector);
+    await vi.advanceTimersByTimeAsync(30_000);
+    const snapshot = await refreshedSnapshot;
+
+    expect(getStatusSnapshot).toHaveBeenCalledTimes(2);
+    expect(getVodStatsSnapshot).toHaveBeenCalledTimes(2);
+    expect(getCatchupStatsSnapshot).toHaveBeenCalledTimes(2);
+    expect(snapshot.authoritative).toBe(false);
+    expect(connector.isConnected()).toBe(true);
+    connector.disconnect();
+  });
+
   it('does not publish a partial REST bootstrap as an authoritative session snapshot', async () => {
     vi.spyOn(DispatcharrClient.prototype, 'getWebSocketToken').mockResolvedValue('jwt-token');
     vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockRejectedValue(

@@ -22,6 +22,10 @@ type DispatcharrRealtimeState =
 
 const LIVE_DETAIL_RETRY_DELAY_MS = 2_000;
 const LIVE_DETAIL_MAX_ATTEMPTS = 6;
+// Dispatcharr emits channel_stats only when a client connects or disconnects.
+// Refresh the complete REST snapshot before the active-session cache expires
+// when a long-running stream produces no websocket traffic.
+const SNAPSHOT_HEARTBEAT_INTERVAL_MS = 30_000;
 
 export interface DispatcharrRealtimeStatus {
   serverId: string;
@@ -144,6 +148,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private manualDisconnect = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private snapshotHeartbeatTimer: NodeJS.Timeout | null = null;
   private catchupRefreshTimer: NodeJS.Timeout | null = null;
 
   private mode: DispatcharrRealtimeMode;
@@ -246,6 +251,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.setState(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
+    this.clearSnapshotHeartbeatTimer();
     this.clearCatchupRefreshTimer();
     this.clearLiveDetailRetries();
 
@@ -281,6 +287,9 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
           });
         }
         this.enqueueUpdate(() => this.bootstrapFromRest());
+        // Register this timer first so, at the shared 30-second boundary, it
+        // refreshes the websocket heartbeat before the timeout callback runs.
+        this.startSnapshotHeartbeat();
         this.resetHeartbeat();
       };
 
@@ -296,6 +305,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
 
       ws.onclose = () => {
         this.clearHeartbeatTimer();
+        this.clearSnapshotHeartbeatTimer();
         if (this.manualDisconnect) {
           this.setState('disconnected');
           return;
@@ -321,6 +331,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.manualDisconnect = true;
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
+    this.clearSnapshotHeartbeatTimer();
     this.clearCatchupRefreshTimer();
     this.clearLiveDetailRetries();
     if (this.ws) {
@@ -705,6 +716,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private activateFallback(reason: string): void {
     this.mode = 'rest-fallback';
     this.fallbackReason = reason;
+    this.clearSnapshotHeartbeatTimer();
     this.clearCatchupRefreshTimer();
     this.clearLiveDetailRetries();
     this.setState('fallback');
@@ -728,6 +740,20 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     }, SSE_CONFIG.HEARTBEAT_TIMEOUT_MS);
   }
 
+  private startSnapshotHeartbeat(): void {
+    this.clearSnapshotHeartbeatTimer();
+    this.snapshotHeartbeatTimer = setInterval(() => {
+      if (this.state !== 'connected') return;
+
+      // Dispatcharr can keep an otherwise healthy WebSocket completely idle
+      // while streams continue. A successful REST snapshot is proof that the
+      // connector can still obtain session state, so keep the connection out
+      // of fallback and refresh the cache through the normal queued path.
+      this.resetHeartbeat();
+      this.enqueueUpdate(() => this.bootstrapFromRest());
+    }, SNAPSHOT_HEARTBEAT_INTERVAL_MS);
+  }
+
   private setState(state: DispatcharrRealtimeState): void {
     if (this.state !== state) {
       this.state = state;
@@ -749,6 +775,12 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     if (!this.heartbeatTimer) return;
     clearTimeout(this.heartbeatTimer);
     this.heartbeatTimer = null;
+  }
+
+  private clearSnapshotHeartbeatTimer(): void {
+    if (!this.snapshotHeartbeatTimer) return;
+    clearInterval(this.snapshotHeartbeatTimer);
+    this.snapshotHeartbeatTimer = null;
   }
 
   private scheduleCatchupRefresh(): void {
