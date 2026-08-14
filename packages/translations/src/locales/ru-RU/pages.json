@@ -32,6 +32,10 @@
     "serverResources": "Ресурсы сервера",
     "streamLocations": "Местоположение потока",
     "streamsAppearHere": "Активные потоки появятся здесь, когда пользователи начнут просматривать",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Время просмотра"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Фильмы"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Добавлено {{date}}",
       "moreServers": "+{{count}} more",

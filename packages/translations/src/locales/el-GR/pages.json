@@ -32,6 +32,10 @@
     "serverResources": "Πόροι Διακομιστή",
     "streamLocations": "Τοποθεσίες Ροής",
     "streamsAppearHere": "Οι ενεργές ροές θα εμφανιστούν εδώ όταν οι χρήστες αρχίσουν να παρακολουθούν",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Ώρα Παρακολούθησης"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Ταινίες"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Προστέθηκε {{date}}",
       "moreServers": "+{{count}} more",

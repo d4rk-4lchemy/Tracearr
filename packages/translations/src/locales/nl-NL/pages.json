@@ -32,6 +32,10 @@
     "serverResources": "Serverbronnen",
     "streamLocations": "Streamlocaties",
     "streamsAppearHere": "Actieve streams zullen hier verschijnen wanneer gebruikers gaan kijken",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Kijktijd"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Films"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Toegevoegd {{date}}",
       "moreServers": "+{{count}} more",

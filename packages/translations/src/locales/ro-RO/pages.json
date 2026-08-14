@@ -32,6 +32,10 @@
     "serverResources": "Resurse server",
     "streamLocations": "Locații stream",
     "streamsAppearHere": "Fluxurile active vor apărea aici atunci când utilizatorii încep să vizioneze",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Timp de urmărire"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Filme"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Adăugat {{date}}",
       "moreServers": "+{{count}} more",

@@ -32,6 +32,10 @@
     "serverResources": "サーバーリソース",
     "streamLocations": "ストリームの場所",
     "streamsAppearHere": "ユーザーが視聴を開始すると、アクティブなストリームがここに表示されます",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "ウォッチ時間"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "映画"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "{{date}}に追加",
       "moreServers": "+{{count}} more",

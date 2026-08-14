@@ -32,6 +32,10 @@
     "serverResources": "Palvelimen Resurssit",
     "streamLocations": "Virran Sijainnit",
     "streamsAppearHere": "Aktiiviset streamit näkyvät täällä, kun käyttäjät alkavat katsella",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Kellon Aika"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Elokuvat"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Lisätty {{date}}",
       "moreServers": "+{{count}} more",

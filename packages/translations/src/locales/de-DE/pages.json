@@ -32,6 +32,10 @@
     "serverResources": "Server-Ressourcen",
     "streamLocations": "Stream-Standorte",
     "streamsAppearHere": "Streams werden hier angezeigt, wenn Benutzer anfangen zu schauen",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Wiedergabezeit"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Filme"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Hinzugefügt {{date}}",
       "moreServers": "+{{count}} more",

@@ -32,6 +32,10 @@
     "serverResources": "Server ressurser",
     "streamLocations": "Steder i strømmen",
     "streamsAppearHere": "Aktive streamer vises her når brukere begynner å se",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Klokke tid"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Filmer"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Lagt til {{date}}",
       "moreServers": "+{{count}} more",

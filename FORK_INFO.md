@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA before this upstream merge: `feature/prepare-for-2.1.0` at `a1595115`
+- Fork branch/SHA before this upstream merge: `feature/prepare-for-2.1.0` at `6f7b604f`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `73e00663`
+- Source branch/SHA inspected: `main` at `22199d26`
 - Last shared upstream commit found during inspection: `73e00663`
-- Latest upstream commit merged into the current working tree: `73e00663`
+- Latest upstream commit merged into the current working tree: `22199d26`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -210,6 +210,20 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `22199d26` (Tracearr `v2.1.0-beta.8`) was merged into
+  `feature/prepare-for-2.1.0` on Friday, August 14, 2026 (merge commit
+  `7b7e79e7`). Upstream security hardening, queue/Redis cleanup, media-detail
+  replacement history, and migrations `0086`–`0087` were retained. Conflicts
+  in the session cache and image proxy were reconciled: Redis active sessions
+  still hydrate date fields for Dispatcharr lifecycle operations, while all
+  image requests now receive upstream origin/SSRF validation; Dispatcharr
+  retains normalized image paths, no added channel-logo headers, and
+  `fit: inside` resizing.
+- The upstream locale refresh omitted keys used by the fork's VOD/TV dashboard
+  and update-status UI. The translation checker was run with `--fix`, adding
+  the English fallback values to all locale files, after which the full
+  translation check passed.
 
 - Upstream `main` at `73e00663` (Tracearr `v2.1.0-beta.7`) was merged into
   `feature/prepare-for-2.1.0` on Tuesday, August 11, 2026. The upstream

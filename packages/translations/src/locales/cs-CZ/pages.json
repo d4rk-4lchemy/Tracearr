@@ -32,6 +32,10 @@
     "serverResources": "Zdroje serveru",
     "streamLocations": "Umístění streamu",
     "streamsAppearHere": "Aktivní streamy se zobrazí zde, když uživatelé začnou sledovat",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Čas sledování"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Filmy"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Přidáno {{date}}",
       "moreServers": "+{{count}} more",

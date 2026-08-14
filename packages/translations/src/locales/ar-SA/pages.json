@@ -32,6 +32,10 @@
     "serverResources": "موارد الخادم",
     "streamLocations": "مواقع البث",
     "streamsAppearHere": "ستظهر البث النشط هنا عندما يبدأ المستخدمون بمشاهدة",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "وقت المشاهدة"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "أفلام"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "أُضيف {{date}}",
       "moreServers": "+{{count}} more",

@@ -32,6 +32,10 @@
     "serverResources": "Ресурси сервера",
     "streamLocations": "Потокові місцезнаходження",
     "streamsAppearHere": "Активні потоки з'являться тут, коли користувачі почнуть перегляд",
+    "tvSessions": "TV Sessions",
+    "tvWatchTime": "TV Watch Time",
+    "vodPlays": "VOD Plays",
+    "vodWatchTime": "VOD Watch Time",
     "watchTime": "Час перегляду"
   },
   "debug": {
@@ -608,6 +612,7 @@
     "movies": {
       "title": "Фільми"
     },
+    "noLibraryServers": "No media library available.",
     "posterCard": {
       "addedLabel": "Додано {{date}}",
       "moreServers": "+{{count}} more",

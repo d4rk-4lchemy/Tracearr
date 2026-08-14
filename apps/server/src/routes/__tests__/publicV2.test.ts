@@ -121,20 +121,15 @@ describe('public API v2 skeleton', () => {
       const spec = res.json<{
         info: { version: string };
         paths: Record<string, unknown>;
+        components: {
+          schemas: { ActiveStream: { properties: { server_type: { enum: string[] } } } };
+        };
       }>();
       expect(spec.info.version).toBe('2.0.0');
       expect(spec.paths['/api/v2/public/docs']).toBeDefined();
       expect(spec.paths['/api/v2/public/history']).toBeDefined();
       expect(spec.paths['/api/v2/public/streams']).toBeDefined();
-      expect(
-        (
-          spec as {
-            components: {
-              schemas: { ActiveStream: { properties: { server_type: { enum: string[] } } } };
-            };
-          }
-        ).components.schemas.ActiveStream.properties.server_type.enum
-      ).toContain('dispatcharr');
+      expect(spec.components.schemas.ActiveStream.properties.server_type.enum).toContain('dispatcharr');
     });
 
     it('rejects an unreadable history cursor with 400', async () => {
