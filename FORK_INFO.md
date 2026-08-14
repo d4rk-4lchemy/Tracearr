@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA before this upstream merge: `feature/prepare-for-2.1.0` at `6f7b604f`
+- Fork branch/SHA after this upstream merge: `feature/prepare-for-2.1.0` at `d084d0c1`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `22199d26`
-- Last shared upstream commit found during inspection: `73e00663`
-- Latest upstream commit merged into the current working tree: `22199d26`
+- Source branch/SHA inspected: `main` at `cd08ec94`
+- Last shared upstream commit found during inspection: `22199d26`
+- Latest upstream commit merged into the current working tree: `cd08ec94`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
