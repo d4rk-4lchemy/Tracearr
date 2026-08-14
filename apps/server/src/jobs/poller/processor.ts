@@ -852,6 +852,7 @@ export async function processServerSessions(
       type: server.type,
       url: server.url,
       token: server.token,
+      ignoreAnonymousStreams: server.ignoreAnonymousStreams,
       id: server.id,
       name: server.name,
     });
