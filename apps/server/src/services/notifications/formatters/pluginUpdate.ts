@@ -15,5 +15,9 @@ export function formatPluginUpdateMessage(ctx: PluginUpdateContext): string {
     return `Update the Tracearr SSE plugin in Dashboard > Plugins (installed ${installed}, latest ${ctx.latestVersion})`;
   }
 
+  if (ctx.serverType === 'dispatcharr') {
+    return `Download the new Tracearr SSE Metrics plugin release (installed ${installed}, latest ${ctx.latestVersion}): ${ctx.downloadUrl}`;
+  }
+
   return `Download the new Tracearr SSE plugin build (installed ${installed}, latest ${ctx.latestVersion}): ${ctx.downloadUrl}`;
 }

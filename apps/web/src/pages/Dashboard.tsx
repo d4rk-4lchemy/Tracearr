@@ -77,9 +77,6 @@ export function Dashboard() {
     !!singleServer &&
     (singleIsPlex || singleServer.type === 'dispatcharr' || (serverStats?.length ?? 0) > 0);
 
-  // Plex measures bandwidth; Jellyfin/Emby have no source for it
-  const showBandwidthChart =
-    singleIsPlex || (isMultiServer && selectedServers.some((s) => s.type === 'plex'));
   const singleProcessLabel = singleServer
     ? {
         plex: 'Plex Media Server',
@@ -102,6 +99,19 @@ export function Dashboard() {
   );
   const showMultiServerResources =
     isMultiServer && (hasAnyMultiData || selectedServers.some((s) => s.type === 'plex'));
+  // Plex always exposes its bandwidth endpoint. Dispatcharr only exposes the
+  // card after its Metrics plugin has supplied at least one valid sample;
+  // a zero-valued sample is still valid and intentionally shows the chart.
+  const showBandwidthChart =
+    singleIsPlex ||
+    (singleServer?.type === 'dispatcharr' && (bandwidthStats?.length ?? 0) > 0) ||
+    (isMultiServer &&
+      (selectedServers.some((s) => s.type === 'plex') ||
+        multiLiveStats.some(
+          (series) =>
+            selectedServers.find((server) => server.id === series.serverId)?.type ===
+              'dispatcharr' && series.bandwidth.length > 0
+        )));
 
   const seriesMeta = useCallback(
     (serverId: string) => {
