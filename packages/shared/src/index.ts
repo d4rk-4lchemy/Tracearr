@@ -179,6 +179,7 @@ export type {
   SSEConnectionStatus,
   ServerConnectionStatus,
   PluginIssue,
+  PluginFamily,
   // Termination logs
   TerminationTrigger,
   TerminationLogWithDetails,

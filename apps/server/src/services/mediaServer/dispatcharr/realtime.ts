@@ -1,5 +1,9 @@
 import { EventEmitter } from 'events';
-import { SSE_CONFIG, type ServerBandwidthDataPoint } from '@tracearr/shared';
+import {
+  SSE_CONFIG,
+  type PluginIssue,
+  type ServerBandwidthDataPoint,
+} from '@tracearr/shared';
 import { DispatcharrClient } from './client.js';
 import type { MediaSession, MediaUser } from '../types.js';
 import type { PluginStatsSample } from '../../serverLiveStats.js';
@@ -26,6 +30,8 @@ const LIVE_DETAIL_MAX_ATTEMPTS = 6;
 // Refresh the complete REST snapshot before the active-session cache expires
 // when a long-running stream produces no websocket traffic.
 const SNAPSHOT_HEARTBEAT_INTERVAL_MS = 30_000;
+const PLUGIN_INFO_TIMEOUT_MS = 15_000;
+const DISPATCHARR_METRICS_PLUGIN_ID = 'tracearr-sse-metrics';
 
 export interface DispatcharrRealtimeStatus {
   serverId: string;
@@ -38,6 +44,8 @@ export interface DispatcharrRealtimeStatus {
   reconnectAttempts: number;
   fallbackReason: string | null;
   error: string | null;
+  pluginVersion: string | null;
+  pluginIssue: PluginIssue | null;
 }
 
 interface WebSocketLike {
@@ -91,6 +99,41 @@ export function parseDispatcharrServerStatsMessage(raw: unknown): PluginStatsSam
     processMemoryUtilization: processMemory,
     hostCpuUtilization: hostCpu,
     hostMemoryUtilization: hostMemory,
+  };
+}
+
+export interface DispatcharrPluginInfo {
+  pluginId: string;
+  name: string;
+  version: string;
+}
+
+export function parseDispatcharrPluginInfoMessage(raw: unknown): DispatcharrPluginInfo | null {
+  let message: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      message = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(message) || message.type !== 'update' || !isRecord(message.data)) return null;
+  const data = message.data;
+  if (
+    data.type !== 'tracearr_plugin_info' ||
+    data.schemaVersion !== 1 ||
+    data.pluginId !== DISPATCHARR_METRICS_PLUGIN_ID ||
+    typeof data.name !== 'string' ||
+    typeof data.version !== 'string' ||
+    data.name.trim() === '' ||
+    data.version.trim() === ''
+  ) {
+    return null;
+  }
+  return {
+    pluginId: data.pluginId,
+    name: data.name,
+    version: data.version,
   };
 }
 
@@ -183,6 +226,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private manualDisconnect = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private pluginInfoTimer: NodeJS.Timeout | null = null;
   private snapshotHeartbeatTimer: NodeJS.Timeout | null = null;
   private catchupRefreshTimer: NodeJS.Timeout | null = null;
 
@@ -194,6 +238,8 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private connectedAt: Date | null = null;
   private lastEventAt: Date | null = null;
   private lastBootstrapAt: Date | null = null;
+  private pluginVersion: string | null = null;
+  private pluginIssue: PluginIssue | null = null;
 
   private latestSessions: MediaSession[] = [];
   private latestLiveSessions: MediaSession[] = [];
@@ -270,6 +316,8 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       reconnectAttempts: this.reconnectAttempts,
       fallbackReason: this.fallbackReason,
       error: this.lastError?.message ?? null,
+      pluginVersion: this.pluginVersion,
+      pluginIssue: this.pluginIssue,
     };
   }
 
@@ -286,6 +334,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.setState(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
+    this.clearPluginInfoTimer();
     this.clearSnapshotHeartbeatTimer();
     this.clearCatchupRefreshTimer();
     this.clearLiveDetailRetries();
@@ -315,6 +364,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
         this.mode = 'ws';
         this.fallbackReason = null;
         this.setState('connected');
+        this.resetPluginDetection();
         if (wasInFallback) {
           this.emit('fallback:deactivated', {
             serverId: this.serverId,
@@ -340,6 +390,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
 
       ws.onclose = () => {
         this.clearHeartbeatTimer();
+        this.clearPluginInfoTimer();
         this.clearSnapshotHeartbeatTimer();
         if (this.manualDisconnect) {
           this.setState('disconnected');
@@ -366,6 +417,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     this.manualDisconnect = true;
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
+    this.clearPluginInfoTimer();
     this.clearSnapshotHeartbeatTimer();
     this.clearCatchupRefreshTimer();
     this.clearLiveDetailRetries();
@@ -389,6 +441,17 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       this.lastEventAt = new Date();
       this.resetHeartbeat();
       this.emit('stats:event', { serverId: this.serverId, sample: serverStats });
+      return;
+    }
+
+    const pluginInfo = parseDispatcharrPluginInfoMessage(parsed);
+    if (pluginInfo) {
+      this.lastEventAt = new Date();
+      this.resetHeartbeat();
+      this.clearPluginInfoTimer();
+      this.pluginVersion = pluginInfo.version;
+      this.pluginIssue = null;
+      this.emitStatus();
       return;
     }
 
@@ -759,6 +822,7 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
   private activateFallback(reason: string): void {
     this.mode = 'rest-fallback';
     this.fallbackReason = reason;
+    this.clearPluginInfoTimer();
     this.clearSnapshotHeartbeatTimer();
     this.clearCatchupRefreshTimer();
     this.clearLiveDetailRetries();
@@ -818,6 +882,24 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
     if (!this.heartbeatTimer) return;
     clearTimeout(this.heartbeatTimer);
     this.heartbeatTimer = null;
+  }
+
+  private clearPluginInfoTimer(): void {
+    if (!this.pluginInfoTimer) return;
+    clearTimeout(this.pluginInfoTimer);
+    this.pluginInfoTimer = null;
+  }
+
+  private resetPluginDetection(): void {
+    this.clearPluginInfoTimer();
+    this.pluginVersion = null;
+    this.pluginIssue = null;
+    this.pluginInfoTimer = setTimeout(() => {
+      this.pluginInfoTimer = null;
+      if (this.state !== 'connected' || this.pluginVersion !== null) return;
+      this.pluginIssue = 'missing';
+      this.emitStatus();
+    }, PLUGIN_INFO_TIMEOUT_MS);
   }
 
   private clearSnapshotHeartbeatTimer(): void {

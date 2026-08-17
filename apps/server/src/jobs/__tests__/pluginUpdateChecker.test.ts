@@ -36,8 +36,14 @@ describe('runPluginUpdateCheck', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetNudgeStateForTests();
+    mockSseManager.isInFallback.mockReturnValue(false);
+    mockSseManager.getPluginVersion.mockReturnValue(null);
     mockGetSettings.mockResolvedValue({ pluginUpdateCheckEnabled: true, pluginManifestUrl: null });
-    mockFetchJson.mockResolvedValue(MANIFEST);
+    mockFetchJson.mockImplementation((url: string) =>
+      url.includes('/releases/latest')
+        ? { tag_name: 'v0.2.0', html_url: 'https://github.com/example/release' }
+        : MANIFEST
+    );
     mockDbServers.mockResolvedValue([
       { id: 's1', name: 'JF', type: 'jellyfin' },
       { id: 's2', name: 'Plex', type: 'plex' },
@@ -46,7 +52,10 @@ describe('runPluginUpdateCheck', () => {
 
   it('publishes the max manifest version to sseManager', async () => {
     await runPluginUpdateCheck();
-    expect(mockSseManager.setLatestPluginVersion).toHaveBeenCalledWith('0.2.0.0');
+    expect(mockSseManager.setLatestPluginVersion).toHaveBeenCalledWith(
+      'media-server-sse',
+      '0.2.0.0'
+    );
   });
 
   it('nudges once for an outdated jellyfin plugin and dedups repeats', async () => {
@@ -64,7 +73,11 @@ describe('runPluginUpdateCheck', () => {
   it('re-arms when a newer version appears', async () => {
     mockSseManager.getPluginVersion.mockReturnValue('0.1.0.0');
     await runPluginUpdateCheck();
-    mockFetchJson.mockResolvedValue([{ versions: [{ version: '0.3.0.0' }] }]);
+    mockFetchJson.mockImplementation((url: string) =>
+      url.includes('/releases/latest')
+        ? { tag_name: 'v0.2.0', html_url: 'https://github.com/example/release' }
+        : [{ versions: [{ version: '0.3.0.0' }] }]
+    );
     await runPluginUpdateCheck();
     const calls = mockEnqueueNotification.mock.calls.filter(
       (c) => c[0].type === 'plugin_update_available'
@@ -89,6 +102,44 @@ describe('runPluginUpdateCheck', () => {
     mockSseManager.getPluginVersion.mockReturnValue('0.1.0.0');
     await runPluginUpdateCheck();
     expect(mockEnqueueNotification).not.toHaveBeenCalled();
+  });
+
+  it('checks and notifies for an outdated Dispatcharr Metrics plugin', async () => {
+    mockSseManager.getPluginVersion.mockReturnValue('0.1.0');
+    mockDbServers.mockResolvedValue([{ id: 's3', name: 'Dispatcharr', type: 'dispatcharr' }]);
+
+    await runPluginUpdateCheck();
+
+    expect(mockSseManager.setLatestPluginVersion).toHaveBeenCalledWith(
+      'dispatcharr-metrics',
+      '0.2.0'
+    );
+    expect(mockEnqueueNotification).toHaveBeenCalledWith({
+      type: 'plugin_update_available',
+      payload: {
+        serverId: 's3',
+        serverName: 'Dispatcharr',
+        serverType: 'dispatcharr',
+        installedVersion: '0.1.0',
+        latestVersion: '0.2.0',
+        downloadUrl: 'https://github.com/example/release',
+      },
+    });
+  });
+
+  it('continues checking Dispatcharr when the SSE manifest fails', async () => {
+    mockFetchJson.mockImplementation((url: string) => {
+      if (url.includes('/releases/latest')) {
+        return { tag_name: 'v0.2.0', html_url: 'https://github.com/example/release' };
+      }
+      return Promise.reject(new Error('manifest unavailable'));
+    });
+    mockSseManager.getPluginVersion.mockReturnValue('0.1.0');
+    mockDbServers.mockResolvedValue([{ id: 's3', name: 'Dispatcharr', type: 'dispatcharr' }]);
+
+    await runPluginUpdateCheck();
+
+    expect(mockEnqueueNotification).toHaveBeenCalledOnce();
   });
 
   it('fails soft on manifest fetch error', async () => {

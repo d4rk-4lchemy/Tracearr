@@ -1356,6 +1356,9 @@ function RealtimeSetupDialog({
   const { t } = useTranslation(['settings']);
   const [copied, setCopied] = useState(false);
   const repoUrl = t('servers.realtimeDialog.jellyfinRepoUrl');
+  const dispatcharrReleasesUrl =
+    'https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics/releases/latest';
+  const isDispatcharr = server.type === 'dispatcharr';
 
   const issueMessage =
     connectionStatus?.pluginIssue === 'blocked'
@@ -1383,7 +1386,17 @@ function RealtimeSetupDialog({
               : t('servers.realtimeDialog.title')}
           </DialogTitle>
           <DialogDescription>
-            {server.type === 'jellyfin'
+            {isDispatcharr
+              ? mode === 'update'
+                ? t('servers.realtimeDialog.dispatcharrUpdateDescription', {
+                    defaultValue:
+                      'A newer Tracearr SSE Metrics release is available. Download the latest ZIP, replace the plugin in Dispatcharr, and refresh or restart the plugin.',
+                  })
+                : t('servers.realtimeDialog.dispatcharrDescription', {
+                    defaultValue:
+                      'Install the Tracearr SSE Metrics plugin to provide server metrics and plugin version information to Tracearr.',
+                  })
+              : server.type === 'jellyfin'
               ? mode === 'update'
                 ? t('servers.realtimeDialog.jellyfinUpdateDescription')
                 : t('servers.realtimeDialog.jellyfinDescription')
@@ -1410,7 +1423,26 @@ function RealtimeSetupDialog({
               )}
             </div>
           )}
-          {server.type === 'jellyfin' ? (
+          {isDispatcharr ? (
+            <>
+              <ol className="list-decimal space-y-2 pl-4">
+                <li>
+                  Download the latest <strong>Tracearr SSE Metrics</strong> release ZIP.
+                </li>
+                <li>Import it from Dispatcharr&apos;s My Plugins screen.</li>
+                <li>Refresh or restart the plugin so Tracearr can detect the new version.</li>
+              </ol>
+              <a
+                href={dispatcharrReleasesUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary inline-flex items-center gap-1 hover:underline"
+              >
+                {t('servers.realtimeDialog.openReleases')}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </>
+          ) : server.type === 'jellyfin' ? (
             <>
               <ol className="list-decimal space-y-2 pl-4">
                 <li>In your Jellyfin dashboard, go to Plugins → Repositories.</li>
@@ -1466,7 +1498,14 @@ function RealtimeSetupDialog({
               </a>
             </>
           )}
-          <p className="text-xs">{t('servers.realtimeDialog.autoDetectNote')}</p>
+          <p className="text-xs">
+            {isDispatcharr
+              ? t('servers.realtimeDialog.dispatcharrAutoDetectNote', {
+                  defaultValue:
+                    'Tracearr detects the plugin version automatically after the Dispatcharr WebSocket reconnects.',
+                })
+              : t('servers.realtimeDialog.autoDetectNote')}
+          </p>
         </div>
 
         <DialogFooter>

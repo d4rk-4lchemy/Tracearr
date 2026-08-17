@@ -21,6 +21,7 @@ import {
   type SSEConnectionState,
   type SSEConnectionStatus,
   type ServerConnectionStatus,
+  type PluginFamily,
   type PluginIssue,
   type PlexPlaySessionNotification,
 } from '@tracearr/shared';
@@ -174,7 +175,7 @@ export class SSEManager extends EventEmitter {
   private reconciliationTimer: NodeJS.Timeout | null = null;
   private initialized = false;
   private pendingOperations = new Set<string>();
-  private latestPluginVersion: string | null = null;
+  private latestPluginVersions = new Map<PluginFamily, string>();
   private lastNudgeAt = new Map<string, number>();
   private lastPluginProbeAt = new Map<string, number>();
   private pluginProbesInFlight = new Set<string>();
@@ -471,15 +472,19 @@ export class SSEManager extends EventEmitter {
   /**
    * Set the latest known plugin version (called by the update checker)
    */
-  setLatestPluginVersion(v: string | null): void {
-    this.latestPluginVersion = v;
+  setLatestPluginVersion(family: PluginFamily, v: string | null): void {
+    if (v === null) {
+      this.latestPluginVersions.delete(family);
+    } else {
+      this.latestPluginVersions.set(family, v);
+    }
   }
 
   /**
    * Get the latest known plugin version
    */
-  getLatestPluginVersion(): string | null {
-    return this.latestPluginVersion;
+  getLatestPluginVersion(family: PluginFamily): string | null {
+    return this.latestPluginVersions.get(family) ?? null;
   }
 
   /**
@@ -487,9 +492,11 @@ export class SSEManager extends EventEmitter {
    */
   getPluginVersion(serverId: string): string | null {
     const connection = this.connections.get(serverId);
-    if (!connection?.eventSource) return null;
-    const status = connection.eventSource.getStatus() as { pluginVersion?: string | null };
-    return status.pluginVersion ?? null;
+    if (!connection) return null;
+    const status = connection.eventSource
+      ? (connection.eventSource.getStatus() as { pluginVersion?: string | null })
+      : connection.dispatcharrRealtime?.getStatus();
+    return status?.pluginVersion ?? null;
   }
 
   /**
@@ -581,7 +588,9 @@ export class SSEManager extends EventEmitter {
   ): ServerConnectionStatus {
     const state = status.state;
     const pluginVersion = (status as { pluginVersion?: string | null }).pluginVersion ?? null;
-    const latest = this.latestPluginVersion;
+    const family: PluginFamily =
+      serverType === 'dispatcharr' ? 'dispatcharr-metrics' : 'media-server-sse';
+    const latest = this.latestPluginVersions.get(family) ?? null;
     // Null version on a connection that has been up >30s means a pre-hello plugin build
     const connectedLongEnough =
       state === 'connected' &&
@@ -589,7 +598,6 @@ export class SSEManager extends EventEmitter {
       Date.now() - status.connectedAt.getTime() > 30_000;
     const pluginUpdateAvailable =
       serverType !== 'plex' &&
-      serverType !== 'dispatcharr' &&
       latest !== null &&
       state === 'connected' &&
       (pluginVersion === null ? connectedLongEnough : compareVersions(pluginVersion, latest) < 0);
@@ -605,7 +613,11 @@ export class SSEManager extends EventEmitter {
       pluginVersion,
       pluginUpdateAvailable,
       pluginIssue:
-        state === 'unsupported' ? (this.connections.get(serverId)?.pluginIssue ?? null) : null,
+        serverType === 'dispatcharr'
+          ? ((status as { pluginIssue?: PluginIssue | null }).pluginIssue ?? null)
+          : state === 'unsupported'
+            ? (this.connections.get(serverId)?.pluginIssue ?? null)
+            : null,
     };
   }
 
@@ -828,6 +840,8 @@ export class SSEManager extends EventEmitter {
       lastEventAt: status.lastEventAt,
       reconnectAttempts: status.reconnectAttempts,
       error: status.error,
+      pluginVersion: status.pluginVersion,
+      pluginIssue: status.pluginIssue,
     };
   }
 

@@ -1775,6 +1775,7 @@ export interface SSEConnectionStatus {
   reconnectAttempts: number;
   error: string | null;
   pluginVersion?: string | null;
+  pluginIssue?: PluginIssue | null;
 }
 
 // Diagnosis for an SSE endpoint that 404s, from the server's own plugin list:
@@ -1782,6 +1783,8 @@ export interface SSEConnectionStatus {
 // unreachable (usually a reverse proxy); 'restart_required' installed, server
 // restart pending; 'malfunctioned' failed to load; 'unknown' could not check.
 export type PluginIssue = 'missing' | 'blocked' | 'restart_required' | 'malfunctioned' | 'unknown';
+
+export type PluginFamily = 'media-server-sse' | 'dispatcharr-metrics';
 
 // Per-server connection status surfaced to clients
 // Covers all server types (plex/jellyfin/emby) with a unified shape
@@ -1796,7 +1799,8 @@ export interface ServerConnectionStatus {
   error: string | null;
   pluginVersion: string | null;
   pluginUpdateAvailable: boolean;
-  // Only set while state is 'unsupported'; null otherwise
+  // Jellyfin/Emby set this while the SSE endpoint is unsupported. Dispatcharr
+  // also uses it for active-plugin detection on its realtime WebSocket.
   pluginIssue: PluginIssue | null;
 }
 

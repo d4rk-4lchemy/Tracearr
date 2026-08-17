@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseDispatcharrBandwidthStatsMessage,
+  parseDispatcharrPluginInfoMessage,
   parseDispatcharrServerStatsMessage,
 } from '../dispatcharr/realtime.js';
 
@@ -47,6 +48,37 @@ describe('parseDispatcharrServerStatsMessage', () => {
 
   it('also accepts an already decoded WebSocket envelope', () => {
     expect(parseDispatcharrServerStatsMessage(valid)?.processCpuUtilization).toBe(12.34);
+  });
+});
+
+describe('parseDispatcharrPluginInfoMessage', () => {
+  const info = {
+    type: 'update',
+    data: {
+      type: 'tracearr_plugin_info',
+      schemaVersion: 1,
+      pluginId: 'tracearr-sse-metrics',
+      name: 'Tracearr SSE Metrics',
+      version: '1.2.0',
+    },
+  };
+
+  it('accepts the plugin identity contract', () => {
+    expect(parseDispatcharrPluginInfoMessage(JSON.stringify(info))).toEqual({
+      pluginId: info.data.pluginId,
+      name: info.data.name,
+      version: info.data.version,
+    });
+  });
+
+  it.each([
+    ['wrong envelope type', { ...info, type: 'snapshot' }],
+    ['wrong schema version', { ...info, data: { ...info.data, schemaVersion: 2 } }],
+    ['wrong plugin id', { ...info, data: { ...info.data, pluginId: 'other-plugin' } }],
+    ['missing version', { ...info, data: { ...info.data, version: '' } }],
+    ['missing name', { ...info, data: { ...info.data, name: '' } }],
+  ])('rejects %s', (_name, message) => {
+    expect(parseDispatcharrPluginInfoMessage(message)).toBeNull();
   });
 });
 
