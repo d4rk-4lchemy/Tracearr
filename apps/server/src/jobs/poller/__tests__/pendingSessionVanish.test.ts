@@ -85,6 +85,7 @@ vi.mock('../../notificationQueue.js', () => ({
 }));
 
 vi.mock('../database.js', () => ({
+  onActiveRulesRefill: vi.fn(),
   getCachedServers: () => mockDbSelect().from(serversTable),
   getActiveRulesV2: mockGetActiveRulesV2,
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
@@ -111,9 +112,13 @@ vi.mock('../sessionLifecycle.js', () => ({
   handleMediaChangeAtomic: vi.fn(),
   handleQualityChangeFallout: vi.fn().mockResolvedValue(undefined),
   processPollResults: vi.fn().mockResolvedValue(undefined),
-  reEvaluateRulesOnPauseState: vi.fn(),
-  reEvaluateRulesOnTranscodeChange: vi.fn(),
   stopSessionAtomic: (...args: unknown[]) => mockStopSessionAtomic(...args),
+}));
+
+const mockDispatch = vi.fn().mockResolvedValue({ violations: [], outcomes: [] });
+vi.mock('../../../services/rules/events/dispatcher.js', () => ({
+  dispatch: (...args: unknown[]) => mockDispatch(...args),
+  subscribe: vi.fn(),
 }));
 
 vi.mock('../violations.js', () => ({

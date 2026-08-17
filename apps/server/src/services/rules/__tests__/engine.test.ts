@@ -4,6 +4,7 @@ import type { EvaluationContext } from '../types.js';
 import {
   evaluateRuleAsync,
   evaluateRulesAsync,
+  hasInactivityCondition,
   hasTranscodeConditions,
   hasPauseConditions,
 } from '../engine.js';
@@ -581,6 +582,78 @@ describe('evaluateRuleAsync', () => {
   });
 });
 
+describe('session-less context', () => {
+  it.each(['concurrent_streams', 'active_session_distance_km', 'travel_speed_kmh'] as const)(
+    'never matches a group whose conditions all need a session: %s',
+    async (field) => {
+      const rule = createMockRule({
+        conditions: {
+          groups: [
+            { conditions: [{ field: 'trust_score', operator: 'lt', value: 50 }] },
+            { conditions: [{ field, operator: 'lt', value: 1 }] },
+          ],
+        },
+      });
+      const ctx = {
+        ...createTestContext(rule),
+        session: null,
+        serverUser: createMockServerUser({ trustScore: 10 }),
+        activeSessions: [],
+        recentSessions: [],
+      };
+
+      const result = await evaluateRuleAsync(ctx);
+
+      expect(result.matched).toBe(false);
+    }
+  );
+
+  it('matches on the account condition when a session condition shares the group', async () => {
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const rule = createMockRule({
+      conditions: {
+        groups: [
+          {
+            conditions: [
+              { field: 'inactive_days', operator: 'gte', value: 30 },
+              { field: 'trust_score', operator: 'lt', value: 50 },
+            ],
+          },
+        ],
+      },
+    });
+    const ctx = {
+      ...createTestContext(rule),
+      session: null,
+      serverUser: createMockServerUser({ trustScore: 30, lastActivityAt: tenDaysAgo }),
+      activeSessions: [],
+    };
+
+    const result = await evaluateRuleAsync(ctx);
+
+    expect(result.matched).toBe(true);
+  });
+
+  it('runs inactive_days through the registry without a session', async () => {
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const rule = createMockRule({
+      conditions: {
+        groups: [{ conditions: [{ field: 'inactive_days', operator: 'in', value: [10, 20] }] }],
+      },
+    });
+    const ctx = {
+      ...createTestContext(rule),
+      session: null,
+      serverUser: createMockServerUser({ lastActivityAt: tenDaysAgo }),
+      activeSessions: [],
+    };
+
+    const result = await evaluateRuleAsync(ctx);
+
+    expect(result.matched).toBe(true);
+  });
+});
+
 describe('evaluateRulesAsync', () => {
   it('returns only matching rules', async () => {
     const rules: RuleV2[] = [
@@ -596,7 +669,7 @@ describe('evaluateRulesAsync', () => {
         conditions: {
           groups: [{ conditions: [{ field: 'is_transcoding', operator: 'eq', value: false }] }],
         },
-        actions: { actions: [{ type: 'notify', channels: ['push'] }] },
+        actions: { actions: [{ type: 'send', to: ['11111111-1111-4111-8111-111111111111'] }] },
       }),
     ];
 
@@ -939,5 +1012,61 @@ describe('hasPauseConditions', () => {
     });
 
     expect(hasPauseConditions(rule)).toBe(false);
+  });
+});
+
+describe('hasInactivityCondition', () => {
+  it('returns false for null conditions', () => {
+    expect(hasInactivityCondition({ conditions: null })).toBe(false);
+  });
+
+  it('returns false for conditions with no groups', () => {
+    expect(hasInactivityCondition({ conditions: { groups: [] } })).toBe(false);
+  });
+
+  it('returns false when no inactive_days field exists', () => {
+    const rule = createMockRule({
+      conditions: {
+        groups: [{ conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 2 }] }],
+      },
+    });
+    expect(hasInactivityCondition(rule)).toBe(false);
+  });
+
+  it('returns true for a single group with inactive_days', () => {
+    const rule = createMockRule({
+      conditions: {
+        groups: [{ conditions: [{ field: 'inactive_days', operator: 'gt', value: 30 }] }],
+      },
+    });
+    expect(hasInactivityCondition(rule)).toBe(true);
+  });
+
+  it('returns true when inactive_days is in a later group', () => {
+    const rule = createMockRule({
+      conditions: {
+        groups: [
+          { conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 2 }] },
+          { conditions: [{ field: 'inactive_days', operator: 'gte', value: 14 }] },
+        ],
+      },
+    });
+    expect(hasInactivityCondition(rule)).toBe(true);
+  });
+
+  it('returns true when inactive_days shares a group with other conditions', () => {
+    const rule = createMockRule({
+      conditions: {
+        groups: [
+          {
+            conditions: [
+              { field: 'inactive_days', operator: 'gt', value: 30 },
+              { field: 'trust_score', operator: 'lt', value: 20 },
+            ],
+          },
+        ],
+      },
+    });
+    expect(hasInactivityCondition(rule)).toBe(true);
   });
 });

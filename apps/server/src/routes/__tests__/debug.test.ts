@@ -38,10 +38,21 @@ vi.mock('../mobile.js', () => ({
   revokeMobileDeviceSession: vi.fn(),
 }));
 
+vi.mock('../../services/notifications/destinationStore.js', () => ({
+  invalidateDestinationsCache: vi.fn(),
+  publishDestinationsChanged: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock('../../services/notifications/destinationsMigration.js', () => ({
+  seedBuiltinDestinations: vi.fn(),
+}));
+
 // Import mocked db and routes
 import { db } from '../../db/client.js';
+import { destinations } from '../../db/schema.js';
 import { getAuth } from '../../lib/auth.js';
 import { revokeMobileDeviceSession } from '../mobile.js';
+import { seedBuiltinDestinations } from '../../services/notifications/destinationsMigration.js';
 import { debugRoutes } from '../debug.js';
 
 /**
@@ -594,9 +605,11 @@ describe('Debug Routes', () => {
       expect(getAuth).not.toHaveBeenCalled();
 
       // Verify delete was called 15 times (violations, terminationLogs, sessions, rules,
-      // notificationChannelRouting, notificationPreferences, mobileSessions, mobileTokens,
+      // destinations, notificationPreferences, mobileSessions, mobileTokens,
       // librarySnapshots, libraryItems, serverUsers, servers, plexAccounts, users, settings)
       expect(db.delete).toHaveBeenCalledTimes(15);
+      expect(db.delete).toHaveBeenCalledWith(destinations);
+      expect(seedBuiltinDestinations).toHaveBeenCalledTimes(1);
     });
 
     it('revokes every Better Auth session before deleting any row (ghost cookie rejected after reset)', async () => {

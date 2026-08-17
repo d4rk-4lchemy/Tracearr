@@ -27,6 +27,17 @@ import { type GeoLocation } from '../../services/geoip.js';
 import { createMediaServerClient } from '../../services/mediaServer/index.js';
 import type { MediaSession } from '../../services/mediaServer/types.js';
 import { lookupGeoIP } from '../../services/plexGeoip.js';
+import {
+  fetchRecentSessionsForIdentity,
+  setContextAssemblyDeps,
+  toRuleSession,
+} from '../../services/rules/events/contextAssembly.js';
+import { dispatch } from '../../services/rules/events/dispatcher.js';
+import { registerRuleSubscribers } from '../../services/rules/events/subscribers.js';
+import {
+  registerPauseWakeSubscriptions,
+  setPauseWakeDeps,
+} from '../../services/rules/wakes/pauseWakes.js';
 import { registerService, unregisterService } from '../../services/serviceTracker.js';
 import { getWatchedThreshold } from '../../services/settings.js';
 import { sseManager } from '../../services/sseManager.js';
@@ -40,7 +51,6 @@ import {
   batchGetRecentUserSessions,
   getActiveRulesV2,
   getCachedServers,
-  mergeRecentSessionsForIdentity,
   widenRecentSessionsForMergedIdentities,
 } from './database.js';
 import {
@@ -62,11 +72,9 @@ import {
   handleMediaChangeAtomic,
   handleQualityChangeFallout,
   processPollResults,
-  reEvaluateRulesOnPauseState,
-  reEvaluateRulesOnTranscodeChange,
   stopSessionAtomic,
 } from './sessionLifecycle.js';
-import { mapMediaSession, pickStreamDetailFields } from './sessionMapper.js';
+import { mapMediaSession, pickLiveSessionFields, pickStreamDetailFields } from './sessionMapper.js';
 import {
   buildCompositeKey,
   calculatePauseAccumulation,
@@ -227,7 +235,11 @@ async function handleFirstMisses(
     if (missedPollTracking.has(cachedKey)) continue; // Already in grace period
 
     const cachedActiveSession = activeSessions.find((s) => {
-      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as 'plex' | 'jellyfin' | 'emby';
+      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as
+        | 'plex'
+        | 'jellyfin'
+        | 'emby'
+        | 'dispatcharr';
       return (
         buildCompositeKey({
           serverType: sType,
@@ -273,29 +285,6 @@ async function sendGracePeriodStopNotification(
     });
   } catch (notifErr) {
     console.error(`[Poller] Failed to enqueue stop notification for ${key}:`, notifErr);
-  }
-}
-
-/**
- * Fetch recent sessions for windowed rule evaluation, widened to every
- * server_user id of the same identity when merged. Mirrors sseProcessor's
- * fetchRecentSessionsForRules so both confirm paths see identical history.
- */
-async function fetchRecentSessionsForRules(
-  serverUserId: string,
-  identityServerUserIds: string[]
-): Promise<Session[]> {
-  const ids = identityServerUserIds.length > 1 ? identityServerUserIds : [serverUserId];
-  try {
-    const recentSessionsMap = await batchGetRecentUserSessions(ids);
-    return mergeRecentSessionsForIdentity(recentSessionsMap, ids);
-  } catch (error) {
-    console.error(
-      `[Poller] Failed to fetch recent sessions for ${serverUserId}, falling back to this server only:`,
-      error
-    );
-    const fallbackMap = await batchGetRecentUserSessions([serverUserId]);
-    return fallbackMap.get(serverUserId) ?? [];
   }
 }
 
@@ -377,7 +366,7 @@ async function resolveVanishedPendingSession(
         await cache.getAllActiveSessions(),
         gracePeriodSessionIds()
       );
-      const recentSessions = await fetchRecentSessionsForRules(
+      const recentSessions = await fetchRecentSessionsForIdentity(
         stillPending.serverUser.id,
         stillPending.serverUser.identityServerUserIds
       );
@@ -1812,60 +1801,67 @@ export async function processServerSessions(
           // If transcode state changed, re-evaluate rules that have transcode-related conditions.
           // Gated by the wasStoppedConcurrently guard above (like the pause re-eval below) so a
           // session stopped mid-tick cannot still earn a violation row or a kill enqueue.
-          if (transcodeStateChanged) {
-            // Re-evaluate V2 rules that have transcode-related conditions.
-            // At session creation, transcode state might not be known yet (especially Plex SSE),
-            // so rules like "block 4K transcoding" need a second chance when transcode starts.
-            if (activeRulesV2.length > 0) {
-              try {
-                const recentSessions = await getOrFetchRecentSessions(
-                  recentSessionsMap,
-                  serverUserId
-                );
-                const violationResults = await reEvaluateRulesOnTranscodeChange({
-                  existingSession,
-                  processed,
-                  server: { id: server.id, name: server.name, type: server.type },
-                  serverUser: userDetail,
-                  activeRulesV2,
-                  activeSessions: ruleEvalSessions,
-                  recentSessions,
-                });
-
-                if (violationResults.length > 0 && pubSubService) {
-                  await broadcastViolations(violationResults, existingSession.id, pubSubService);
-                }
-              } catch (error) {
-                console.error(
-                  `[Poller] Error re-evaluating rules on transcode change for session ${existingSession.id}:`,
-                  error
-                );
-              }
-            }
-          }
-
-          if (newState === 'paused' && activeRulesV2.length > 0) {
+          if (transcodeStateChanged && activeRulesV2.length > 0) {
             try {
               const recentSessions = await getOrFetchRecentSessions(
                 recentSessionsMap,
                 serverUserId
               );
-              const violationResults = await reEvaluateRulesOnPauseState({
-                existingSession,
-                processed,
-                pauseData: {
-                  lastPausedAt: pauseResult.lastPausedAt,
-                  pausedDurationMs: pauseResult.pausedDurationMs,
+              const { violations } = await dispatch(
+                {
+                  type: 'session.transcode_changed',
+                  at: now,
+                  server: { id: server.id, name: server.name, type: server.type },
+                  serverUser: userDetail,
+                  previous: {
+                    videoDecision: existingSession.videoDecision,
+                    audioDecision: existingSession.audioDecision,
+                  },
+                  next: {
+                    videoDecision: processed.videoDecision,
+                    audioDecision: processed.audioDecision,
+                  },
+                  session: toRuleSession(existingSession, pickLiveSessionFields(processed)),
                 },
-                server: { id: server.id, name: server.name, type: server.type },
-                serverUser: userDetail,
-                activeRulesV2,
-                activeSessions: ruleEvalSessions,
-                recentSessions,
-              });
+                { activeRulesV2, activeSessions: ruleEvalSessions, recentSessions }
+              );
+              if (violations.length > 0 && pubSubService) {
+                await broadcastViolations(violations, existingSession.id, pubSubService);
+              }
+            } catch (error) {
+              console.error(
+                `[Poller] Error re-evaluating rules on transcode change for session ${existingSession.id}:`,
+                error
+              );
+            }
+          }
 
-              if (violationResults.length > 0 && pubSubService) {
-                await broadcastViolations(violationResults, existingSession.id, pubSubService);
+          if (previousState !== 'paused' && newState === 'paused' && activeRulesV2.length > 0) {
+            try {
+              const recentSessions = await getOrFetchRecentSessions(
+                recentSessionsMap,
+                serverUserId
+              );
+              const { violations } = await dispatch(
+                {
+                  type: 'session.paused',
+                  at: now,
+                  server: { id: server.id, name: server.name, type: server.type },
+                  serverUser: userDetail,
+                  pauseData: {
+                    lastPausedAt: pauseResult.lastPausedAt,
+                    pausedDurationMs: pauseResult.pausedDurationMs,
+                  },
+                  session: toRuleSession(existingSession, {
+                    ...pickLiveSessionFields(processed),
+                    lastPausedAt: pauseResult.lastPausedAt,
+                    pausedDurationMs: pauseResult.pausedDurationMs,
+                  }),
+                },
+                { activeRulesV2, activeSessions: ruleEvalSessions, recentSessions }
+              );
+              if (violations.length > 0 && pubSubService) {
+                await broadcastViolations(violations, existingSession.id, pubSubService);
               }
             } catch (error) {
               console.error(
@@ -1873,6 +1869,13 @@ export async function processServerSessions(
                 error
               );
             }
+          } else if (previousState === 'paused' && newState === 'playing') {
+            await dispatch({
+              type: 'session.resumed',
+              at: now,
+              sessionId: existingSession.id,
+              serverId: server.id,
+            });
           }
 
           // Build active session for cache/broadcast (with updated pause tracking values)
@@ -2356,6 +2359,13 @@ export async function sweepStaleSessions(): Promise<number> {
 export function initializePoller(cache: CacheService, pubSub: PubSubService): void {
   cacheService = cache;
   pubSubService = pubSub;
+  setContextAssemblyDeps({
+    getAllActiveSessions: () => cache.getAllActiveSessions(),
+    gracePeriodSessionIds,
+  });
+  registerRuleSubscribers();
+  setPauseWakeDeps({ pubSubService });
+  registerPauseWakeSubscriptions();
 }
 
 /**

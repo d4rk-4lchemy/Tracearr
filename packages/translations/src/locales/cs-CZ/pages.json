@@ -336,7 +336,8 @@
     },
     "restoreTitle": "Obnovení ze zálohy...",
     "startingDescription": "Server čeká na dostupnost služeb backendu. Tato stránka se automaticky obnoví, až bude vše připraveno.",
-    "startingTitle": "Tracearr se spustí..."
+    "startingTitle": "Tracearr se spustí...",
+    "unreachable": "Can't reach the Tracearr server right now. Live updates are paused and will resume on their own."
   },
   "map": {
     "allActivity": "Všechny aktivity",
@@ -374,7 +375,6 @@
         "availability": {
           "added": "added {{date}}",
           "addedRemoved": "added {{added}} – removed {{removed}}",
-          "removed": "removed {{date}}",
           "replaced": "replaced {{date}}"
         },
         "loadError": "Couldn't load this title",
@@ -665,6 +665,13 @@
     "blocked": "Blokované",
     "blockedCountries": "Blokované země",
     "blocklist": "Seznam blokací (blokuje tyto země)",
+    "builder": {
+      "destinationDisabled": "Disabled destination",
+      "errors": {
+        "sendNeedsDestination": "Pick at least one destination"
+      },
+      "noDestinations": "No destinations yet. Add one to send notifications."
+    },
     "chooseTemplate": "Vyberte šablonu pravidla",
     "chooseTemplateDesc": "Vyberte přednastavený typ pravidla pro rychlý začátek.",
     "classicRule": "Klasické pravidlo",
@@ -725,6 +732,58 @@
     "weeks": "Týdny"
   },
   "settings": {
+    "destinations": {
+      "add": "Add destination",
+      "builtinNote": "Built in",
+      "clearSecret": "Clear",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{name}}? Rules that send to it will be blocked until they are updated.",
+      "description": "Where notifications go. Add as many as you like; each one picks the system events it receives, and rules can send to any of them.",
+      "empty": "No destinations yet.",
+      "events": {
+        "plugin_update_available": "Plugin update available",
+        "server_down": "Server down",
+        "server_up": "Server up",
+        "stream_started": "Stream started",
+        "stream_stopped": "Stream stopped",
+        "violation_detected": "Violation detected"
+      },
+      "eventsLabel": "Events",
+      "fields": {
+        "apiToken": "API token",
+        "apiUrl": "API URL",
+        "authToken": "Auth token",
+        "serverUrl": "Server URL",
+        "topic": "Topic",
+        "url": "URL",
+        "userKey": "User key",
+        "webhookUrl": "Webhook URL"
+      },
+      "hints": {
+        "authTokenOptional": "Optional for public topics"
+      },
+      "ownerOnly": "Only the owner can manage notification destinations.",
+      "pushNote": "Delivered to paired mobile devices; each device filters in its own notification settings.",
+      "reencrypt": "Re-enter this destination's secret",
+      "secretSet": "Set (leave blank to keep)",
+      "test": "Test",
+      "testHint": "Save first to test",
+      "testNeedsForm": "Fill in the required fields to test",
+      "title": "Notification destinations",
+      "types": {
+        "apprise": "Apprise",
+        "discord": "Discord",
+        "gotify": "Gotify",
+        "jsonWebhook": "Webhook (JSON)",
+        "ntfy": "ntfy",
+        "push": "Mobile push",
+        "pushover": "Pushover",
+        "webToast": "Browser toasts"
+      },
+      "usedBy": "Used by {{count}} rule",
+      "usedBy_other": "Used by {{count}} rules",
+      "webToastNote": "Toasts in this browser."
+    },
     "jobs": {
       "lastRun": "Poslední spuštění",
       "nextRun": "Další běh",
@@ -738,36 +797,6 @@
       "editDisplayName": "Upravit zobrazované jméno",
       "editDisplayNameDesc": "Změňte způsob zobrazení tohoto zařízení v seznamu zařízení",
       "updating": "Probíhá aktualizace..."
-    },
-    "notifications": {
-      "addAgent": "Přidat Agenta oznámení",
-      "addAgentDesc": "Vyberte si službu oznámení a nastavte ji.",
-      "agentType": "Typ agenta",
-      "allAgentsConfigured": "Všichni agenti oznámení jsou již nakonfigurováni.",
-      "allEvents": "Všechny události",
-      "currentlyConfigured": "{{name}} je aktuálně nakonfigurován.",
-      "customEvents": "Vlastní události",
-      "description": "Nastavte kanály oznámení a zvolte, které události by měl každý agent přijmout.",
-      "editAgent": "Upravit oznamovacího agenta",
-      "editAgentDesc": "Aktualizovat konfiguraci oznamovacího agenta.",
-      "eventSelection": "Výběr události",
-      "loadingSettings": "Načítání nastavení oznámení...",
-      "noAgents": "Nejsou nakonfigurováni žádní agenti oznámení",
-      "noAgentsHint": "Přidejte agenta, abyste mohli dostávat oznámení o porušování a streamování událostí.",
-      "noConfigNeeded": "Pro tohoto agenta není potřebná žádná konfigurace.",
-      "oneWebhookLimit": "Pouze jeden webhook agent může být aktivován najednou.",
-      "removeAgentDesc": "Tímto odeberete {{name}} a vypnete všechna jeho oznámení. Později jej můžete přidat zpět.",
-      "removeAgentTitle": "Odstranit {{name}}?",
-      "saveAgent": "Přidat agenta",
-      "selectType": "Vyberte typ...",
-      "testAgent": "Zkušební činitel",
-      "testingAgent": "Testování...",
-      "title": "Notifikační agenti",
-      "triggerEvents": "Spouštěč událostí",
-      "updateAgent": "Aktualizovat agenta",
-      "webhookAgents": "Webhookoví agenti",
-      "webhookUrl": "URL webového háčku",
-      "webhookUrlPlaceholder": "https://..."
     },
     "plex": {
       "accountsLinked_one": "{{count}} Plex účet propojen",

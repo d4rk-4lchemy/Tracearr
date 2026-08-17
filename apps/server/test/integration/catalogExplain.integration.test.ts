@@ -236,9 +236,12 @@ describe('catalog EXPLAIN gate at scale', () => {
         FROM library_items
       `);
 
-      await db.execute(sql`ANALYZE media`);
-      await db.execute(sql`ANALYZE library_items`);
-      await db.execute(sql`ANALYZE library_item_versions`);
+      // VACUUM, not just ANALYZE: only VACUUM sets the visibility map, and the
+      // index-only paths pinned below (letter counts on the sort_title index)
+      // are costed off relallvisible. ANALYZE alone left that to autovacuum timing.
+      await db.execute(sql`VACUUM (ANALYZE) media`);
+      await db.execute(sql`VACUUM (ANALYZE) library_items`);
+      await db.execute(sql`VACUUM (ANALYZE) library_item_versions`);
 
       // ~500k sessions: every 3rd movie/show gets play history (the rest stay
       // never-watched), spread across 300 server_users and 400 days.
@@ -286,7 +289,7 @@ describe('catalog EXPLAIN gate at scale', () => {
         CROSS JOIN watched_shows
       `);
 
-      await db.execute(sql`ANALYZE sessions`);
+      await db.execute(sql`VACUUM (ANALYZE) sessions`);
 
       await db.execute(
         sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
@@ -299,7 +302,7 @@ describe('catalog EXPLAIN gate at scale', () => {
       `);
       const caggTable = caggTableResult.rows[0] as { schema: string; name: string };
       await db.execute(
-        sql`ANALYZE ${sql.identifier(caggTable.schema)}.${sql.identifier(caggTable.name)}`
+        sql`VACUUM (ANALYZE) ${sql.identifier(caggTable.schema)}.${sql.identifier(caggTable.name)}`
       );
 
       // ==== Assertion 1: title offset window ====

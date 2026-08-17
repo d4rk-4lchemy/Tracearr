@@ -336,7 +336,8 @@
     },
     "restoreTitle": "Gendanner fra backup...",
     "startingDescription": "Serveren venter på at backend-tjenester bliver tilgængelige. Denne side opdateres automatisk, når alt er klar.",
-    "startingTitle": "Tracearr starter op..."
+    "startingTitle": "Tracearr starter op...",
+    "unreachable": "Can't reach the Tracearr server right now. Live updates are paused and will resume on their own."
   },
   "map": {
     "allActivity": "Alle aktiviteter",
@@ -374,7 +375,6 @@
         "availability": {
           "added": "added {{date}}",
           "addedRemoved": "added {{added}} – removed {{removed}}",
-          "removed": "removed {{date}}",
           "replaced": "replaced {{date}}"
         },
         "loadError": "Couldn't load this title",
@@ -665,6 +665,13 @@
     "blocked": "Blokeret",
     "blockedCountries": "Blokerede Lande",
     "blocklist": "Blokliste (blokér disse lande)",
+    "builder": {
+      "destinationDisabled": "Disabled destination",
+      "errors": {
+        "sendNeedsDestination": "Pick at least one destination"
+      },
+      "noDestinations": "No destinations yet. Add one to send notifications."
+    },
     "chooseTemplate": "Vælg en regelskabelon",
     "chooseTemplateDesc": "Vælg en prækonfigureret regeltype for at komme i gang hurtigt.",
     "classicRule": "Klassisk Regel",
@@ -725,6 +732,58 @@
     "weeks": "Uger"
   },
   "settings": {
+    "destinations": {
+      "add": "Add destination",
+      "builtinNote": "Built in",
+      "clearSecret": "Clear",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{name}}? Rules that send to it will be blocked until they are updated.",
+      "description": "Where notifications go. Add as many as you like; each one picks the system events it receives, and rules can send to any of them.",
+      "empty": "No destinations yet.",
+      "events": {
+        "plugin_update_available": "Plugin update available",
+        "server_down": "Server down",
+        "server_up": "Server up",
+        "stream_started": "Stream started",
+        "stream_stopped": "Stream stopped",
+        "violation_detected": "Violation detected"
+      },
+      "eventsLabel": "Events",
+      "fields": {
+        "apiToken": "API token",
+        "apiUrl": "API URL",
+        "authToken": "Auth token",
+        "serverUrl": "Server URL",
+        "topic": "Topic",
+        "url": "URL",
+        "userKey": "User key",
+        "webhookUrl": "Webhook URL"
+      },
+      "hints": {
+        "authTokenOptional": "Optional for public topics"
+      },
+      "ownerOnly": "Only the owner can manage notification destinations.",
+      "pushNote": "Delivered to paired mobile devices; each device filters in its own notification settings.",
+      "reencrypt": "Re-enter this destination's secret",
+      "secretSet": "Set (leave blank to keep)",
+      "test": "Test",
+      "testHint": "Save first to test",
+      "testNeedsForm": "Fill in the required fields to test",
+      "title": "Notification destinations",
+      "types": {
+        "apprise": "Apprise",
+        "discord": "Discord",
+        "gotify": "Gotify",
+        "jsonWebhook": "Webhook (JSON)",
+        "ntfy": "ntfy",
+        "push": "Mobile push",
+        "pushover": "Pushover",
+        "webToast": "Browser toasts"
+      },
+      "usedBy": "Used by {{count}} rule",
+      "usedBy_other": "Used by {{count}} rules",
+      "webToastNote": "Toasts in this browser."
+    },
     "jobs": {
       "lastRun": "Sidste kørsel",
       "nextRun": "Næste kørsel",
@@ -738,36 +797,6 @@
       "editDisplayName": "Rediger Visningsnavn",
       "editDisplayNameDesc": "Ændre hvordan denne enhed vises på din enhedsliste",
       "updating": "Opdaterer..."
-    },
-    "notifications": {
-      "addAgent": "Tilføj Meddelelsesagent",
-      "addAgentDesc": "Vælg en notifikationstjeneste og konfigurere den.",
-      "agentType": "Agentens Type",
-      "allAgentsConfigured": "Alle notifikationsagenter er allerede konfigureret.",
-      "allEvents": "Alle Begivenheder",
-      "currentlyConfigured": "{{name}} er i øjeblikket konfigureret.",
-      "customEvents": "Brugerdefinerede Begivenheder",
-      "description": "Konfigurere meddelelseskanaler og vælge hvilke begivenheder hver agent skal modtage.",
-      "editAgent": "Rediger Anmeldelsesagent",
-      "editAgentDesc": "Opdater konfigurationen af notifikationsagenten.",
-      "eventSelection": "Valg Af Begivenheder",
-      "loadingSettings": "Indlæser notifikationsindstillinger...",
-      "noAgents": "Ingen notifikationsagenter konfigureret",
-      "noAgentsHint": "Tilføj en agent for at modtage meddelelser om deling af overtrædelser og stream events.",
-      "noConfigNeeded": "Ingen konfiguration nødvendig for denne agent.",
-      "oneWebhookLimit": "Kun én webhook agent kan være aktiv ad gangen.",
-      "removeAgentDesc": "Dette vil fjerne {{name}} og deaktivere alle dets meddelelser. Du kan tilføje det igen senere.",
-      "removeAgentTitle": "Fjern {{name}}?",
-      "saveAgent": "Tilføj Agent",
-      "selectType": "Vælg type...",
-      "testAgent": "Test Agent",
-      "testingAgent": "Test...",
-      "title": "Meddelelsesagenter",
-      "triggerEvents": "Udløser Begivenheder",
-      "updateAgent": "Opdater Agent",
-      "webhookAgents": "Webhook Agenter",
-      "webhookUrl": "Webhook URL",
-      "webhookUrlPlaceholder": "https://..."
     },
     "plex": {
       "accountsLinked_one": "{{count}} Plex konto tilknyttet",

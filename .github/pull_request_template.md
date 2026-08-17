@@ -12,9 +12,10 @@
 
 ## Related Issue
 
-<!-- Feature PRs REQUIRE a prior discussion with a code owner (Discussions or Discord).
-     Link it here. Undiscussed feature PRs are closed regardless of code quality.
-     See CONTRIBUTING.md, "Autonomous Agents and Undiscussed Features". -->
+<!-- Link the issue or discussion a maintainer labelled `planned` or `help wanted`.
+     Every PR needs one, bug fixes included. Your account also has to be vouched
+     (a maintainer commented `!vouch`) or this PR closes automatically.
+     See CONTRIBUTING.md, "Getting to Yes". -->
 
 Closes #
 
@@ -51,6 +52,6 @@ Closes #
 
 - [ ] Code follows project style (ran `pnpm lint` and `pnpm format`)
 - [ ] Self-reviewed, and I can explain every part of this diff
-- [ ] For features: discussed with a code owner first (linked above)
+- [ ] A maintainer agreed to this change first (discussion or confirmed issue linked above)
 - [ ] No new warnings from `pnpm typecheck`
 - [ ] Tests pass locally

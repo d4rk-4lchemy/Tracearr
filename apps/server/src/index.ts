@@ -40,6 +40,7 @@ import type {
   PlaybackReportingImportProgress,
   MaintenanceJobProgress,
   LibrarySyncProgress,
+  NotificationToast,
 } from '@tracearr/shared';
 
 import authPlugin, { loadJwtRevokeSettings } from './plugins/auth.js';
@@ -61,7 +62,7 @@ import { stopImageCacheCleanup } from './services/imageProxy.js';
 import { debugRoutes } from './routes/debug.js';
 import { mobileRoutes } from './routes/mobile.js';
 import { notificationPreferencesRoutes } from './routes/notificationPreferences.js';
-import { channelRoutingRoutes } from './routes/channelRouting.js';
+import { destinationRoutes } from './routes/destinations.js';
 import { versionRoutes } from './routes/version.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
 import { publicRoutes } from './routes/public.js';
@@ -84,6 +85,7 @@ import { tailscaleService } from './services/tailscale.js';
 import { geoasnService } from './services/geoasn.js';
 import { createCacheService, createPubSubService } from './services/cache.js';
 import { initializePoller, startPoller, stopPoller } from './jobs/poller/index.js';
+import { invalidateServersCache } from './jobs/poller/database.js';
 import { sseManager } from './services/sseManager.js';
 import {
   initializeSSEProcessor,
@@ -104,6 +106,12 @@ import {
   startNotificationWorker,
   shutdownNotificationQueue,
 } from './jobs/notificationQueue.js';
+import { initDestinationCrypto } from './services/notifications/destinationCrypto.js';
+import { invalidateDestinationsCache } from './services/notifications/destinationStore.js';
+import {
+  runDestinationsMigration,
+  sweepDestinationConfigs,
+} from './services/notifications/destinationsMigration.js';
 import { initKillQueue, startKillWorker, shutdownKillQueue } from './jobs/killQueue.js';
 import { initImportQueue, startImportWorker, shutdownImportQueue } from './jobs/importQueue.js';
 import {
@@ -156,6 +164,7 @@ import { initHeavyOpsLock } from './jobs/heavyOpsLock.js';
 import { startConnectionBudget, stopConnectionBudget } from './services/connectionBudget.js';
 import { initPushRateLimiter } from './services/pushRateLimiter.js';
 import { initializeV2Rules } from './services/rules/v2Integration.js';
+import { rehydratePauseWakes, stopPauseWakes } from './services/rules/wakes/pauseWakes.js';
 import { processPushReceipts } from './services/pushNotification.js';
 import { cleanupMobileTokens } from './jobs/cleanupMobileTokens.js';
 import { db, checkDatabaseConnection } from './db/client.js';
@@ -235,6 +244,7 @@ let cachedTimescale: {
   compression: boolean;
   aggregates: number;
   chunks: number;
+  /** True if a previous sessions-compression-policy restore failed and hasn't self-healed yet. */
   compressionDegraded: boolean;
 } | null = null;
 
@@ -404,7 +414,9 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
   // Health check endpoint — always reachable, even in maintenance mode.
   // Every value returned here is read from in-memory caches; nothing awaits
   // a network call, so the handler is effectively synchronous.
-  app.get('/health', () => {
+  app.get('/health', (_request, reply) => {
+    // The web client polls this to decide if we're up; a cached answer is a wrong answer
+    reply.header('Cache-Control', 'no-store');
     const dbHealthy = isDbHealthy();
     const redisHealthy = isRedisHealthy();
     const mode = getServerMode();
@@ -420,8 +432,6 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
         db: dbHealthy,
         redis: redisHealthy,
         restore: restoreProgress,
-        initStep: getInitStep(),
-        migrationError: getLastMigrationError(),
       };
     }
 
@@ -444,7 +454,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
       db: dbHealthy,
       redis: redisHealthy,
       // Non-null while a startup phase is applying; 'migrations' and
-      // 'timescale' mean interrupting the process risks half-applied work.
+      // 'timescale' mean interrupting the process risks half-applied work
       initStep: getInitStep(),
       // Set when db/redis are both reachable but startup init (migrations, etc.)
       // failed - otherwise the maintenance state looks identical to a plain
@@ -474,7 +484,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
   await app.register(violationRoutes, { prefix: `${API_BASE_PATH}/violations` });
   await app.register(statsRoutes, { prefix: `${API_BASE_PATH}/stats` });
   await app.register(settingsRoutes, { prefix: `${API_BASE_PATH}/settings` });
-  await app.register(channelRoutingRoutes, { prefix: `${API_BASE_PATH}/settings/notifications` });
+  await app.register(destinationRoutes, { prefix: `${API_BASE_PATH}/destinations` });
   await app.register(importRoutes, { prefix: `${API_BASE_PATH}/import` });
   await app.register(imageRoutes, { prefix: `${API_BASE_PATH}/images` });
   await app.register(debugRoutes, { prefix: `${API_BASE_PATH}/debug` });
@@ -559,10 +569,11 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     if (pubSubRedis) await pubSubRedis.quit();
     if (wsSubscriber) await wsSubscriber.quit();
     // Producers stop before the lease releases so the next leader never
-    // overlaps an in-flight poll or realtime snapshot from this instance.
+    // overlaps an in-flight poll from this instance
     stopPoller();
     stopSSEProcessor();
     stopDispatcharrRealtimeProcessor();
+    stopPauseWakes();
     stopPluginUpdateChecker();
     await sseManager.stop();
     await stopLeaderLease();
@@ -606,6 +617,12 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
   setDbHealthy(dbOk);
   setRedisHealthy(redisOk);
 
+  // Initialization (migrations, TimescaleDB, services) deliberately does NOT
+  // run here. It runs in start() after listen(), so /health is reachable and
+  // the UI can show which phase is applying with a do-not-restart warning
+  // while a long migration or aggregate rebuild holds the boot. A slow
+  // migration must never look like a dead container, or orchestrators with
+  // tight start periods kill it mid-DDL.
   if (!dbOk || !redisOk) {
     lastInitFailureKind = 'connectivity';
     app.log.warn(
@@ -613,8 +630,6 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
       'Server starting in MAINTENANCE mode — database or Redis unavailable'
     );
   }
-  // Initialization deliberately happens in start(), after listen(), so
-  // /health remains reachable while migrations or startup work is running.
   setServerMode('maintenance');
 
   return app;
@@ -705,7 +720,6 @@ async function initializeServices(app: FastifyInstance) {
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize TimescaleDB - continuing without optimization');
     // Don't throw - app can still work without TimescaleDB features
-    setInitStep(null);
   }
 
   setInitStep('services');
@@ -747,6 +761,7 @@ async function initializeServices(app: FastifyInstance) {
     }
 
     if (migrated > 0) {
+      invalidateServersCache();
       app.log.info(`Migrated ${migrated} server token(s) from encrypted to plain text storage`);
     }
     if (failed > 0) {
@@ -793,6 +808,19 @@ async function initializeServices(app: FastifyInstance) {
   });
   const cacheService = createCacheService(app.redis);
   const pubSubService = createPubSubService(app.redis, pubSubRedis);
+
+  const keySource = initDestinationCrypto();
+  app.log.info(`Destination secrets keyed from ${keySource}`);
+
+  // Unwrapped on purpose: a half-applied migration must reach the boot recovery loop, not leave
+  // rules pointing at destinations that were never inserted.
+  await runDestinationsMigration();
+
+  try {
+    await sweepDestinationConfigs();
+  } catch (err) {
+    app.log.warn({ err }, 'Failed to sweep destination configs');
+  }
 
   // Initialize push notification rate limiter (uses Redis for sliding window counters)
   initPushRateLimiter(app.redis);
@@ -898,14 +926,15 @@ async function initializeServices(app: FastifyInstance) {
   try {
     initVersionCheckQueue(redisUrl, app.redis, pubSubService.publish.bind(pubSubService));
     startVersionCheckWorker();
-    void scheduleVersionChecks().catch((err) => {
-      app.log.error({ err }, 'Failed to schedule version checks');
-    });
+    void scheduleVersionChecks();
     app.log.info('Version check queue initialized');
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize version check queue');
     // Don't throw - version checks are non-critical
   }
+
+  // Registers the rule subscribers; the inactivity worker below dispatches into them.
+  initializePoller(cacheService, pubSubService);
 
   // Initialize inactivity check queue (monitors inactive accounts)
   try {
@@ -937,9 +966,7 @@ async function initializeServices(app: FastifyInstance) {
   try {
     initViolationRetentionQueue(redisUrl);
     startViolationRetentionWorker();
-    void scheduleViolationRetention().catch((err: unknown) => {
-      app.log.error({ err }, 'Failed to schedule violation retention purge');
-    });
+    void scheduleViolationRetention();
     app.log.info('Violation retention queue initialized');
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize violation retention queue');
@@ -955,9 +982,6 @@ async function initializeServices(app: FastifyInstance) {
     app.log.error({ err }, 'Failed to initialize plex token refresh queue');
     // Don't throw - legacy tokens don't need refreshing and login has its own fallback
   }
-
-  // Initialize poller with cache services
-  initializePoller(cacheService, pubSubService);
 
   // Initialize SSE manager and processor for real-time Plex updates
   try {
@@ -1131,6 +1155,19 @@ async function initializePostListen(app: FastifyInstance) {
             data as { current: string; latest: string; releaseUrl: string; kind: 'fork-update' }
           );
           break;
+        case WS_EVENTS.DESTINATIONS_CHANGED:
+          invalidateDestinationsCache();
+          broadcastToSessions('destinations:changed');
+          break;
+        case WS_EVENTS.NOTIFICATION_TOAST:
+          broadcastToSessions('notification:toast', data as NotificationToast);
+          break;
+        case WS_EVENTS.SERVER_DOWN:
+          broadcastToSessions('server:down', data as { serverId: string; serverName: string });
+          break;
+        case WS_EVENTS.SERVER_UP:
+          broadcastToSessions('server:up', data as { serverId: string; serverName: string });
+          break;
         default:
           // Unknown event, ignore
           break;
@@ -1140,10 +1177,10 @@ async function initializePostListen(app: FastifyInstance) {
     }
   });
 
-  // The session producers (poller loop + realtime connections) run on exactly
-  // one instance: N instances would otherwise open N connections per media
-  // server and poll N times. HTTP, Socket.io, pub/sub, and BullMQ workers run
-  // on every instance.
+  // The session producers (poller loop + SSE connections) run on exactly one
+  // instance: N instances would otherwise open N connections per media server
+  // and poll N times. The leader lease gates them; HTTP, Socket.io, pub/sub,
+  // and the BullMQ workers above run on every instance.
   const startProducers = async (): Promise<void> => {
     const pollerSettings = await getPollerSettings();
     if (pollerSettings.enabled) {
@@ -1153,15 +1190,21 @@ async function initializePostListen(app: FastifyInstance) {
     }
 
     try {
-      // Clean up any orphaned pending sessions from the previous leader.
+      // Clean up any orphaned pending sessions from the previous leader
       await cleanupOrphanedPendingSessions();
-      startSSEProcessor();
+      startSSEProcessor(); // Subscribe to SSE events
       startDispatcharrRealtimeProcessor();
       startPluginUpdateChecker();
-      await sseManager.start();
-      app.log.info('Real-time connections started');
+      await sseManager.start(); // Start SSE connections
+      app.log.info('Real-time SSE connections started');
     } catch (err) {
-      app.log.error({ err }, 'Failed to start real-time connections - falling back to polling');
+      app.log.error({ err }, 'Failed to start SSE connections - falling back to polling');
+    }
+
+    try {
+      await rehydratePauseWakes();
+    } catch (err) {
+      app.log.error({ err }, 'Failed to rehydrate pause wakes');
     }
 
     // One bounded pass per leadership term; nothing else sweeps these rows.
@@ -1178,6 +1221,7 @@ async function initializePostListen(app: FastifyInstance) {
     stopPoller();
     stopSSEProcessor();
     stopDispatcharrRealtimeProcessor();
+    stopPauseWakes();
     stopPluginUpdateChecker();
     await sseManager.stop();
   };
@@ -1229,109 +1273,79 @@ function startRecoveryLoop(app: FastifyInstance, intervalMs: number = RECOVERY_I
   }
   let tickInFlight = false;
   recoveryInterval = setInterval(() => {
-    // A probe against a hung-but-connected Postgres can outlive the
-    // interval; without this guard two ticks could both reach
-    // initializeServices and double-start every queue worker.
-    if (tickInFlight) return;
-    tickInFlight = true;
     void (async () => {
+      // A probe against a hung-but-connected Postgres can outlive the
+      // interval; without this guard two ticks could both reach
+      // initializeServices and double-start every queue worker
+      if (tickInFlight) return;
+      tickInFlight = true;
       try {
-        if (isRestoring()) {
-          app.log.info('Recovery check skipped — restore in progress');
-          return;
-        }
-
-        app.log.info('Recovery check: probing database and Redis...');
-
-        const dbOk = await checkDatabaseConnection();
-        setDbHealthy(dbOk);
-        let redisOk = false;
-        try {
-          const testRedis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
-            connectTimeout: 5000,
-            maxRetriesPerRequest: 1,
-            lazyConnect: true,
-            retryStrategy: () => null,
-          });
-          testRedis.on('error', noop); // Suppress — failure is handled via catch
-          try {
-            await testRedis.connect();
-            const pong = await testRedis.ping();
-            redisOk = pong === 'PONG';
-          } finally {
-            testRedis.disconnect();
-          }
-        } catch {
-          redisOk = false;
-        }
-        setRedisHealthy(redisOk);
-
-        if (dbOk && redisOk) {
-          if (recoveryInterval) {
-            clearInterval(recoveryInterval);
-            recoveryInterval = null;
-          }
-          app.log.info('Database and Redis are now available — initializing services...');
-
-          try {
-            await initializeServices(app);
-            await initializePostListen(app);
-            setRestoreProgress(null);
-            app.log.info('Server transitioned to READY mode');
-          } catch (err) {
-            // Connectivity just succeeded above, so this is a migration/init failure -
-            // back off to the slower cadence rather than hammering it every 10s.
-            app.log.error(
-              { err },
-              'Failed to initialize after recovery — restarting recovery loop'
-            );
-            lastInitFailureKind = 'migration';
-            setLastMigrationError('migration or startup initialization failed - see server logs');
-            setInitStep(null);
-            setServerMode('maintenance');
-            startRecoveryLoop(
-              app,
-              pickRecoveryIntervalMs(
-                lastInitFailureKind,
-                RECOVERY_INTERVAL_MS,
-                MIGRATION_RETRY_INTERVAL_MS
-              )
-            );
-          }
-        } else {
-          lastInitFailureKind = 'connectivity';
-          app.log.info(`Recovery check: services still unavailable (db:${dbOk}, redis:${redisOk})`);
-          if (intervalMs !== RECOVERY_INTERVAL_MS) {
-            startRecoveryLoop(
-              app,
-              pickRecoveryIntervalMs(
-                lastInitFailureKind,
-                RECOVERY_INTERVAL_MS,
-                MIGRATION_RETRY_INTERVAL_MS
-              )
-            );
-          }
-        }
-      } catch (err) {
-        // Probe failures must not leave the in-flight guard stuck or create an
-        // unhandled rejection that terminates recovery.
-        app.log.error({ err }, 'Recovery check failed');
-        lastInitFailureKind = 'connectivity';
-        if (intervalMs !== RECOVERY_INTERVAL_MS) {
-          startRecoveryLoop(
-            app,
-            pickRecoveryIntervalMs(
-              lastInitFailureKind,
-              RECOVERY_INTERVAL_MS,
-              MIGRATION_RETRY_INTERVAL_MS
-            )
-          );
-        }
+        await runRecoveryTick();
       } finally {
         tickInFlight = false;
       }
     })();
   }, intervalMs);
+
+  async function runRecoveryTick(): Promise<void> {
+    {
+      if (isRestoring()) {
+        app.log.info('Recovery check skipped — restore in progress');
+        return;
+      }
+
+      app.log.info('Recovery check: probing database and Redis...');
+
+      const dbOk = await checkDatabaseConnection();
+      setDbHealthy(dbOk);
+      let redisOk = false;
+      try {
+        const testRedis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+          connectTimeout: 5000,
+          maxRetriesPerRequest: 1,
+          lazyConnect: true,
+          retryStrategy: () => null,
+        });
+        testRedis.on('error', noop); // Suppress — failure is handled via catch
+        try {
+          await testRedis.connect();
+          const pong = await testRedis.ping();
+          redisOk = pong === 'PONG';
+        } finally {
+          testRedis.disconnect();
+        }
+      } catch {
+        redisOk = false;
+      }
+      setRedisHealthy(redisOk);
+
+      if (dbOk && redisOk) {
+        if (recoveryInterval) {
+          clearInterval(recoveryInterval);
+          recoveryInterval = null;
+        }
+        app.log.info('Database and Redis are now available — initializing services...');
+
+        try {
+          await initializeServices(app);
+          await initializePostListen(app);
+          setRestoreProgress(null);
+          app.log.info('Server transitioned to READY mode');
+        } catch (err) {
+          // Connectivity just succeeded above, so this is a migration/init failure -
+          // back off to the slower cadence rather than hammering it every 10s.
+          app.log.error({ err }, 'Failed to initialize after recovery — restarting recovery loop');
+          lastInitFailureKind = 'migration';
+          setLastMigrationError('migration or startup initialization failed - see server logs');
+          setInitStep(null);
+          setServerMode('maintenance');
+          startRecoveryLoop(app, MIGRATION_RETRY_INTERVAL_MS);
+        }
+      } else {
+        app.log.info(`Recovery check: services still unavailable (db:${dbOk}, redis:${redisOk})`);
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -1376,6 +1390,7 @@ async function start() {
         stopPoller();
         stopSSEProcessor();
         stopDispatcharrRealtimeProcessor();
+        stopPauseWakes();
         stopPluginUpdateChecker();
         void sseManager
           .stop()
@@ -1432,16 +1447,8 @@ async function start() {
 
         // Reset so recovery loop can re-run initializeServices + initializePostListen
         setServicesInitialized(false);
-        lastInitFailureKind = 'connectivity';
 
-        startRecoveryLoop(
-          app,
-          pickRecoveryIntervalMs(
-            lastInitFailureKind,
-            RECOVERY_INTERVAL_MS,
-            MIGRATION_RETRY_INTERVAL_MS
-          )
-        );
+        startRecoveryLoop(app);
       }
     });
 
@@ -1457,8 +1464,11 @@ async function start() {
         await initializePostListen(app);
         app.log.info('Server transitioned to READY mode');
       } catch (err) {
-        // Connectivity was fine - a migration or other init failure is usually
-        // deterministic. Stay in maintenance and retry without a restart loop.
+        // Connectivity was fine - a migration or other init failure, which is
+        // usually deterministic. Stay in maintenance (API 503s, /health and
+        // the SPA maintenance page stay reachable) and retry on an interval
+        // instead of exiting: exiting would restart the container into the
+        // exact same failure, forever.
         lastInitFailureKind = 'migration';
         setLastMigrationError('migration or startup initialization failed - see server logs');
         setInitStep(null);
@@ -1467,14 +1477,7 @@ async function start() {
           { err },
           'Failed to initialize services after listen - staying in MAINTENANCE mode; will retry automatically'
         );
-        startRecoveryLoop(
-          app,
-          pickRecoveryIntervalMs(
-            lastInitFailureKind,
-            RECOVERY_INTERVAL_MS,
-            MIGRATION_RETRY_INTERVAL_MS
-          )
-        );
+        startRecoveryLoop(app, MIGRATION_RETRY_INTERVAL_MS);
       }
     } else {
       app.log.warn('Waiting for database and Redis to become available...');

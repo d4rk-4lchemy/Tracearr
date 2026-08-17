@@ -33,6 +33,11 @@ import { getInactivityCheckQueueStats } from '../jobs/inactivityCheckQueue.js';
 import { invalidateRulesCache, invalidateServersCache } from '../jobs/poller/database.js';
 import { getBackupQueueStats } from '../jobs/backupQueue.js';
 import { resetSettingsCache } from '../services/settings.js';
+import {
+  invalidateDestinationsCache,
+  publishDestinationsChanged,
+} from '../services/notifications/destinationStore.js';
+import { seedBuiltinDestinations } from '../services/notifications/destinationsMigration.js';
 import { getAllServices } from '../services/serviceTracker.js';
 import { getAuth } from '../lib/auth.js';
 import { revokeMobileDeviceSession } from './mobile.js';
@@ -47,7 +52,7 @@ import {
   mobileTokens,
   mobileSessions,
   notificationPreferences,
-  notificationChannelRouting,
+  destinations,
   terminationLogs,
   plexAccounts,
   libraryItems,
@@ -369,7 +374,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
       WHERE relname IN (
         'sessions', 'users', 'servers', 'server_users', 'rules', 'violations',
         'termination_logs', 'plex_accounts', 'settings',
-        'notification_preferences', 'notification_channel_routing',
+        'notification_preferences', 'destinations',
         'mobile_sessions', 'mobile_tokens',
         'library_items', 'library_item_versions', 'library_snapshots'
       )
@@ -590,7 +595,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
     await db.delete(terminationLogs);
     await db.delete(sessions);
     await db.delete(rules);
-    await db.delete(notificationChannelRouting);
+    await db.delete(destinations);
     await db.delete(notificationPreferences);
     await db.delete(mobileSessions);
     await db.delete(mobileTokens);
@@ -607,6 +612,9 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
 
     invalidateRulesCache();
     resetSettingsCache();
+    invalidateDestinationsCache();
+    await seedBuiltinDestinations();
+    await publishDestinationsChanged();
 
     return {
       success: true,

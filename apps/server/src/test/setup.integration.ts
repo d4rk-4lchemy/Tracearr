@@ -35,7 +35,7 @@ if (!runToken) {
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-must-be-32-chars-min';
-process.env.ENCRYPTION_KEY = 'test-encryption-key-32-chars!!!';
+process.env.ENCRYPTION_KEY = 'a'.repeat(64);
 // Use port 5433 for test database (docker-compose.test.yml) to avoid conflicts with dev.
 // Each worker gets its own run-scoped, template-copied database.
 process.env.DATABASE_URL = `postgresql://test:test@localhost:5433/tracearr_test_r${runToken}_w${poolId}`;

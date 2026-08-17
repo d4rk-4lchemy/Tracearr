@@ -5,13 +5,14 @@ import type {
   Session,
   Server,
   ServerUser,
-  NotifyAction,
+  SendAction,
   AdjustTrustAction,
   SetTrustAction,
   KillStreamAction,
   MessageClientAction,
   LogOnlyAction,
 } from '@tracearr/shared';
+import { rulesLogger } from '../../../utils/logger.js';
 import {
   setActionExecutorDeps,
   resetActionExecutorDeps,
@@ -21,7 +22,7 @@ import {
   executorRegistry,
   type ActionExecutorDeps,
 } from '../executors/index.js';
-import type { EvaluationContext } from '../types.js';
+import type { EvaluationContext, SessionEvaluationContext } from '../types.js';
 
 // Mock factories for testing - matching actual types from @tracearr/shared
 function createMockSession(overrides: Partial<Session> = {}): Session {
@@ -153,7 +154,9 @@ function createMockRule(overrides: Partial<RuleV2> = {}): RuleV2 {
   };
 }
 
-function createMockContext(overrides: Partial<EvaluationContext> = {}): EvaluationContext {
+function createMockContext(
+  overrides: Partial<SessionEvaluationContext> = {}
+): SessionEvaluationContext {
   const session = createMockSession();
   return {
     session,
@@ -169,7 +172,7 @@ function createMockContext(overrides: Partial<EvaluationContext> = {}): Evaluati
 function createMockDeps(): ActionExecutorDeps {
   return {
     logAudit: vi.fn().mockResolvedValue(undefined),
-    sendNotification: vi.fn().mockResolvedValue(undefined),
+    enqueueRuleNotification: vi.fn().mockResolvedValue(1),
     adjustUserTrust: vi.fn().mockResolvedValue(undefined),
     setUserTrust: vi.fn().mockResolvedValue(undefined),
     resetUserTrust: vi.fn().mockResolvedValue(undefined),
@@ -212,7 +215,7 @@ describe('Action Executor Registry', () => {
     it('should have executors for all action types', () => {
       const expectedTypes = [
         'log_only',
-        'notify',
+        'send',
         'adjust_trust',
         'set_trust',
         'reset_trust',
@@ -269,57 +272,93 @@ describe('Action Executor Registry', () => {
       });
     });
 
-    describe('notify', () => {
-      it('should send notification to channels', async () => {
-        const context = createMockContext();
-        const action: NotifyAction = {
-          type: 'notify',
-          channels: ['discord', 'email'],
-        };
+    describe('send', () => {
+      it('builds a violation event with the rule severity and real ids and hands it to the queue with source rule', async () => {
+        const context = createMockContext({ violationId: 'v1' });
+        const action: SendAction = { type: 'send', to: ['d1', 'd2'] };
 
         const result = await executeAction(context, action);
 
         expect(result.success).toBe(true);
-        expect(mockDeps.sendNotification).toHaveBeenCalledWith({
-          channels: ['discord', 'email'],
-          title: expect.stringContaining(context.rule.name),
-          message: expect.stringContaining(context.serverUser.username),
-          data: expect.objectContaining({
-            ruleId: context.rule.id,
-            sessionId: context.session.id,
-            serverUserId: context.serverUser.id,
-            username: context.serverUser.username,
-            displayName: context.serverUser.username,
-          }),
-        });
+        expect(mockDeps.enqueueRuleNotification).toHaveBeenCalledWith(
+          expect.objectContaining({
+            to: ['d1', 'd2'],
+            title: `Rule Triggered: ${context.rule.name}`,
+            message: expect.stringContaining('while playing'),
+            event: {
+              type: 'violation',
+              payload: expect.objectContaining({
+                id: 'v1',
+                ruleId: context.rule.id,
+                serverUserId: context.serverUser.id,
+                sessionId: context.session.id,
+                severity: context.rule.severity,
+                acknowledgedAt: null,
+                rule: { id: context.rule.id, name: context.rule.name, type: null },
+                session: undefined,
+                user: expect.objectContaining({
+                  id: context.serverUser.id,
+                  username: context.serverUser.username,
+                  serverId: context.server.id,
+                }),
+                data: expect.objectContaining({
+                  ruleId: context.rule.id,
+                  serverId: context.server.id,
+                  sessionId: context.session.id,
+                  mediaTitle: context.session.mediaTitle,
+                  thumbPath: context.session.thumbPath,
+                }),
+              }),
+            },
+          })
+        );
       });
 
       it('prefers the identity name over the account username for display', async () => {
         const context = createMockContext();
         context.serverUser.identityName = 'Alice Smith';
-        const action: NotifyAction = { type: 'notify', channels: ['discord'] };
+        const action: SendAction = { type: 'send', to: ['d1'] };
 
         const result = await executeAction(context, action);
 
         expect(result.success).toBe(true);
-        expect(mockDeps.sendNotification).toHaveBeenCalledWith(
+        expect(mockDeps.enqueueRuleNotification).toHaveBeenCalledWith(
           expect.objectContaining({
-            data: expect.objectContaining({
-              username: context.serverUser.username,
-              displayName: 'Alice Smith',
+            event: expect.objectContaining({
+              payload: expect.objectContaining({
+                data: expect.objectContaining({
+                  username: context.serverUser.username,
+                  displayName: 'Alice Smith',
+                }),
+                user: expect.objectContaining({ identityName: 'Alice Smith' }),
+              }),
             }),
           })
         );
       });
 
-      it('should not send notification if no channels specified', async () => {
+      it('with empty to is a no-op', async () => {
         const context = createMockContext();
-        const action: NotifyAction = { type: 'notify', channels: [] };
+        const action: SendAction = { type: 'send', to: [] };
 
         const result = await executeAction(context, action);
 
         expect(result.success).toBe(true);
-        expect(mockDeps.sendNotification).not.toHaveBeenCalled();
+        expect(mockDeps.enqueueRuleNotification).not.toHaveBeenCalled();
+      });
+
+      it('logs when no enabled destination resolves', async () => {
+        (mockDeps.enqueueRuleNotification as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+        const info = vi.spyOn(rulesLogger, 'info').mockImplementation(() => undefined);
+        const context = createMockContext();
+
+        await executeAction(context, { type: 'send', to: ['d1'] });
+
+        expect(info).toHaveBeenCalledWith(
+          'send resolved no enabled destination',
+          expect.objectContaining({ ruleId: context.rule.id, to: ['d1'] })
+        );
+        info.mockRestore();
       });
     });
 
@@ -779,45 +818,45 @@ describe('Action Executor Registry', () => {
       it('should skip action if on cooldown', async () => {
         (mockDeps.checkCooldown as ReturnType<typeof vi.fn>).mockResolvedValue(true);
         const context = createMockContext();
-        const action: NotifyAction = { type: 'notify', channels: ['discord'], cooldown_minutes: 5 };
+        const action: SendAction = { type: 'send', to: ['d1'], cooldown_minutes: 5 };
 
         const result = await executeAction(context, action);
 
         expect(result.success).toBe(true);
         expect(result.skipped).toBe(true);
         expect(result.skipReason).toContain('cooldown');
-        expect(mockDeps.sendNotification).not.toHaveBeenCalled();
+        expect(mockDeps.enqueueRuleNotification).not.toHaveBeenCalled();
       });
 
       it('should execute and set cooldown if not on cooldown', async () => {
         (mockDeps.checkCooldown as ReturnType<typeof vi.fn>).mockResolvedValue(false);
         const context = createMockContext();
-        const action: NotifyAction = { type: 'notify', channels: ['discord'], cooldown_minutes: 5 };
+        const action: SendAction = { type: 'send', to: ['d1'], cooldown_minutes: 5 };
 
         const result = await executeAction(context, action);
 
         expect(result.success).toBe(true);
         expect(result.skipped).toBeUndefined();
-        expect(mockDeps.sendNotification).toHaveBeenCalled();
+        expect(mockDeps.enqueueRuleNotification).toHaveBeenCalled();
         expect(mockDeps.setCooldown).toHaveBeenCalled();
       });
 
       it('should not check cooldown if cooldown_minutes is not set', async () => {
         const context = createMockContext();
-        const action: NotifyAction = { type: 'notify', channels: ['discord'] };
+        const action: SendAction = { type: 'send', to: ['d1'] };
 
         await executeAction(context, action);
 
         expect(mockDeps.checkCooldown).not.toHaveBeenCalled();
       });
 
-      it('scopes cooldown keys per action type so a notify cooldown cannot suppress kill_stream', async () => {
+      it('scopes cooldown keys per action type so a send cooldown cannot suppress kill_stream', async () => {
         (mockDeps.checkCooldown as ReturnType<typeof vi.fn>).mockImplementation(
-          (_ruleId: string, targetId: string) => targetId.endsWith(':notify')
+          (_ruleId: string, targetId: string) => targetId.endsWith(':send')
         );
         const context = createMockContext();
         const actions: Action[] = [
-          { type: 'notify', channels: ['discord'], cooldown_minutes: 5 },
+          { type: 'send', to: ['d1'], cooldown_minutes: 5 },
           { type: 'kill_stream', cooldown_minutes: 10 },
         ];
 
@@ -827,7 +866,7 @@ describe('Action Executor Registry', () => {
         expect(results[0]?.skipReason).toContain('cooldown');
         expect(mockDeps.checkCooldown).toHaveBeenCalledWith(
           context.rule.id,
-          `${context.rule.id}:${context.serverUser.id}:notify`,
+          `${context.rule.id}:${context.serverUser.id}:send`,
           5
         );
         expect(mockDeps.checkCooldown).toHaveBeenCalledWith(
@@ -851,13 +890,13 @@ describe('Action Executor Registry', () => {
       it('arms the cooldown key with the action type', async () => {
         (mockDeps.checkCooldown as ReturnType<typeof vi.fn>).mockResolvedValue(false);
         const context = createMockContext();
-        const action: NotifyAction = { type: 'notify', channels: ['discord'], cooldown_minutes: 5 };
+        const action: SendAction = { type: 'send', to: ['d1'], cooldown_minutes: 5 };
 
         await executeAction(context, action);
 
         expect(mockDeps.setCooldown).toHaveBeenCalledWith(
           context.rule.id,
-          `${context.rule.id}:${context.serverUser.id}:notify`,
+          `${context.rule.id}:${context.serverUser.id}:send`,
           5
         );
       });
@@ -887,11 +926,11 @@ describe('Action Executor Registry', () => {
 
     describe('Error Handling', () => {
       it('should return error result if executor throws', async () => {
-        (mockDeps.sendNotification as ReturnType<typeof vi.fn>).mockRejectedValue(
+        (mockDeps.enqueueRuleNotification as ReturnType<typeof vi.fn>).mockRejectedValue(
           new Error('Network error')
         );
         const context = createMockContext();
-        const action: NotifyAction = { type: 'notify', channels: ['discord'] };
+        const action: SendAction = { type: 'send', to: ['d1'] };
 
         const result = await executeAction(context, action);
 
@@ -918,7 +957,7 @@ describe('Action Executor Registry', () => {
       const actions: Action[] = [
         { type: 'log_only', message: 'Test' },
         { type: 'adjust_trust', amount: -10 },
-        { type: 'notify', channels: ['discord'] },
+        { type: 'send', to: ['d1'] },
       ];
 
       const results = await executeActions(context, actions);
@@ -927,7 +966,7 @@ describe('Action Executor Registry', () => {
       expect(results.every((r) => r.success)).toBe(true);
       expect(mockDeps.logAudit).toHaveBeenCalled();
       expect(mockDeps.adjustUserTrust).toHaveBeenCalled();
-      expect(mockDeps.sendNotification).toHaveBeenCalled();
+      expect(mockDeps.enqueueRuleNotification).toHaveBeenCalled();
     });
 
     it('should continue executing after an action fails', async () => {
@@ -935,7 +974,7 @@ describe('Action Executor Registry', () => {
       const context = createMockContext();
       const actions: Action[] = [
         { type: 'log_only', message: 'Test' },
-        { type: 'notify', channels: ['discord'] },
+        { type: 'send', to: ['d1'] },
       ];
 
       const results = await executeActions(context, actions);
@@ -943,7 +982,7 @@ describe('Action Executor Registry', () => {
       expect(results).toHaveLength(2);
       expect(results[0]?.success).toBe(false);
       expect(results[1]?.success).toBe(true);
-      expect(mockDeps.sendNotification).toHaveBeenCalled();
+      expect(mockDeps.enqueueRuleNotification).toHaveBeenCalled();
     });
 
     it('should return empty array for empty actions', async () => {
@@ -952,6 +991,190 @@ describe('Action Executor Registry', () => {
       const results = await executeActions(context, []);
 
       expect(results).toEqual([]);
+    });
+  });
+
+  describe('without a session (account violations)', () => {
+    let mockDeps: ActionExecutorDeps;
+    const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+
+    function createAccountContext(serverUser: ServerUser): EvaluationContext {
+      return {
+        ...createMockContext(),
+        session: null,
+        serverUser,
+        activeSessions: [],
+        recentSessions: [],
+      };
+    }
+
+    beforeEach(() => {
+      mockDeps = createMockDeps();
+      setActionExecutorDeps(mockDeps);
+    });
+
+    afterEach(() => {
+      resetActionExecutorDeps();
+    });
+
+    it('uses the account-inactivity wording and a synthetic id when no violation was recorded', async () => {
+      const context = createAccountContext(
+        createMockServerUser({ lastActivityAt: fortyFiveDaysAgo })
+      );
+      const actions: Action[] = [
+        { type: 'send', to: ['d1', 'd2'] },
+        { type: 'kill_stream' },
+        { type: 'message_client', message: 'stop' },
+      ];
+
+      const results = await executeActions(context, actions);
+
+      expect(mockDeps.enqueueRuleNotification).toHaveBeenCalledWith({
+        to: ['d1', 'd2'],
+        title: `Rule Triggered: ${context.rule.name}`,
+        message: 'Account "testuser" has been inactive for 45 days',
+        event: {
+          type: 'violation',
+          payload: expect.objectContaining({
+            id: expect.stringMatching(new RegExp(`^rule-send-${context.rule.id}-\\d+$`)),
+            ruleId: context.rule.id,
+            serverUserId: context.serverUser.id,
+            sessionId: null,
+            severity: context.rule.severity,
+            createdAt: expect.any(Date),
+            acknowledgedAt: null,
+            session: undefined,
+            data: {
+              ruleId: context.rule.id,
+              serverUserId: context.serverUser.id,
+              username: 'testuser',
+              displayName: 'testuser',
+              serverId: context.server.id,
+              userThumbUrl: null,
+            },
+          }),
+        },
+      });
+      expect(mockDeps.terminateSession).not.toHaveBeenCalled();
+      expect(mockDeps.sendClientMessage).not.toHaveBeenCalled();
+      expect(results[0]).toMatchObject({ success: true, message: 'Executed send' });
+      expect(results[1]).toMatchObject({
+        success: true,
+        skipped: true,
+        skipReason: 'No active session for an inactivity violation',
+      });
+      expect(results[2]).toMatchObject({
+        success: true,
+        skipped: true,
+        skipReason: 'No active session for an inactivity violation',
+      });
+    });
+
+    it('words the message for never-active accounts', async () => {
+      const context = createAccountContext(createMockServerUser({ lastActivityAt: null }));
+
+      await executeActions(context, [{ type: 'send', to: ['d1'] }]);
+
+      expect(mockDeps.enqueueRuleNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Account "testuser" has never been active' })
+      );
+    });
+
+    it('keys cooldowns per action type and lets other actions run', async () => {
+      (mockDeps.checkCooldown as ReturnType<typeof vi.fn>).mockImplementation(
+        (_ruleId: string, targetId: string) => targetId.endsWith(':send')
+      );
+      const context = createAccountContext(
+        createMockServerUser({ lastActivityAt: fortyFiveDaysAgo })
+      );
+      const actions: Action[] = [
+        { type: 'send', to: ['d1'], cooldown_minutes: 60 },
+        { type: 'adjust_trust', amount: -10 },
+      ];
+
+      const results = await executeActions(context, actions);
+
+      expect(mockDeps.checkCooldown).toHaveBeenCalledWith(
+        context.rule.id,
+        `${context.rule.id}:${context.serverUser.id}:send`,
+        60
+      );
+      expect(mockDeps.enqueueRuleNotification).not.toHaveBeenCalled();
+      expect(mockDeps.adjustUserTrust).toHaveBeenCalledWith(context.serverUser.id, -10);
+      expect(results[0]).toMatchObject({ skipped: true, skipReason: 'On cooldown (60 minutes)' });
+      expect(results[1]).toMatchObject({ success: true, message: 'Executed adjust_trust' });
+    });
+
+    it('arms the cooldown with the action-type key after executing', async () => {
+      const context = createAccountContext(
+        createMockServerUser({ lastActivityAt: fortyFiveDaysAgo })
+      );
+
+      await executeActions(context, [{ type: 'send', to: ['d1'], cooldown_minutes: 30 }]);
+
+      expect(mockDeps.setCooldown).toHaveBeenCalledWith(
+        context.rule.id,
+        `${context.rule.id}:${context.serverUser.id}:send`,
+        30
+      );
+    });
+
+    it('runs trust and log actions against the account', async () => {
+      const context = createAccountContext(
+        createMockServerUser({ lastActivityAt: fortyFiveDaysAgo })
+      );
+      const actions: Action[] = [
+        { type: 'adjust_trust', amount: -5 },
+        { type: 'set_trust', value: 20 },
+        { type: 'reset_trust' },
+        { type: 'log_only', message: 'dormant account seen' },
+      ];
+
+      await executeActions(context, actions);
+
+      expect(mockDeps.adjustUserTrust).toHaveBeenCalledWith(context.serverUser.id, -5);
+      expect(mockDeps.setUserTrust).toHaveBeenCalledWith(context.serverUser.id, 20);
+      expect(mockDeps.resetUserTrust).toHaveBeenCalledWith(context.serverUser.id);
+      expect(mockDeps.logAudit).toHaveBeenCalledWith({
+        sessionId: null,
+        serverUserId: context.serverUser.id,
+        serverId: context.server.id,
+        ruleId: context.rule.id,
+        ruleName: context.rule.name,
+        message: 'dormant account seen',
+        details: { lastActivityAt: fortyFiveDaysAgo },
+      });
+    });
+
+    it('records a failure without aborting later actions', async () => {
+      (mockDeps.enqueueRuleNotification as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('discord webhook 500')
+      );
+      const context = createAccountContext(
+        createMockServerUser({ lastActivityAt: fortyFiveDaysAgo })
+      );
+      const actions: Action[] = [
+        { type: 'send', to: ['d1'] },
+        { type: 'adjust_trust', amount: -5 },
+      ];
+
+      const results = await executeActions(context, actions);
+
+      expect(mockDeps.adjustUserTrust).toHaveBeenCalledWith(context.serverUser.id, -5);
+      expect(results[0]).toMatchObject({ success: false, message: 'discord webhook 500' });
+      expect(results[1]).toMatchObject({ success: true });
+    });
+
+    it('does nothing when the rule has no actions', async () => {
+      const context = createAccountContext(
+        createMockServerUser({ lastActivityAt: fortyFiveDaysAgo })
+      );
+
+      const results = await executeActions(context, []);
+
+      expect(results).toEqual([]);
+      expect(mockDeps.enqueueRuleNotification).not.toHaveBeenCalled();
+      expect(mockDeps.logAudit).not.toHaveBeenCalled();
     });
   });
 });

@@ -21,7 +21,6 @@ vi.mock('../../services/settings.js', () => ({
   getPollerSettings: vi.fn(),
   getGeoIPSettings: vi.fn(),
   getNetworkSettings: vi.fn(),
-  getNotificationSettings: vi.fn(),
   getBackupScheduleSettings: vi.fn(),
 }));
 
@@ -31,13 +30,6 @@ vi.mock('../../db/client.js', () => ({
     select: vi.fn(),
     update: vi.fn(),
     selectDistinct: vi.fn(),
-  },
-}));
-
-// Mock notification manager
-vi.mock('../../services/notifications/index.js', () => ({
-  notificationManager: {
-    testAgent: vi.fn(),
   },
 }));
 
@@ -54,13 +46,6 @@ import { settingsRoutes } from '../settings.js';
 const mockAllSettings: Settings = {
   allowGuestAccess: false,
   unitSystem: 'metric',
-  discordWebhookUrl: 'https://discord.com/api/webhooks/123',
-  customWebhookUrl: 'https://example.com/webhook',
-  webhookFormat: 'json',
-  ntfyTopic: null,
-  ntfyAuthToken: null,
-  pushoverUserKey: null,
-  pushoverApiToken: null,
   pollerEnabled: true,
   pollerIntervalMs: 15000,
   usePlexGeoip: false,
@@ -137,7 +122,6 @@ describe('Settings Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.allowGuestAccess).toBe(false);
-      expect(body.discordWebhookUrl).toBe('https://discord.com/api/webhooks/123');
       expect(body.pollerEnabled).toBe(true);
       expect(body.pollerIntervalMs).toBe(15000);
       expect(body.externalUrl).toBe('https://tracearr.example.com');
@@ -187,43 +171,7 @@ describe('Settings Routes', () => {
       expect(response.json().message).toContain('Only server owners');
     });
 
-    it('returns webhook format settings', async () => {
-      app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        webhookFormat: 'ntfy',
-        ntfyTopic: 'my-topic',
-      });
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/settings',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.webhookFormat).toBe('ntfy');
-      expect(body.ntfyTopic).toBe('my-topic');
-    });
-
-    it('returns ntfy auth token to owners', async () => {
-      app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        ntfyAuthToken: 'tk_secret_token_456',
-      });
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/settings',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.ntfyAuthToken).toBe('tk_secret_token_456');
-    });
-
-    it('returns null for ntfy auth token when not set', async () => {
+    it('no longer returns provider keys', async () => {
       app = await buildTestApp(ownerUser);
 
       const response = await app.inject({
@@ -233,37 +181,17 @@ describe('Settings Routes', () => {
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      expect(body.ntfyAuthToken).toBe(null);
-    });
-
-    it('returns pushover api token to owners', async () => {
-      app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        pushoverApiToken: 'pushover-api-token',
-      });
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/settings',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.pushoverApiToken).toBe('pushover-api-token');
-    });
-
-    it('returns null for pushover api token when not set', async () => {
-      app = await buildTestApp(ownerUser);
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/settings',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.pushoverApiToken).toBe(null);
+      for (const key of [
+        'discordWebhookUrl',
+        'customWebhookUrl',
+        'webhookFormat',
+        'ntfyTopic',
+        'ntfyAuthToken',
+        'pushoverUserKey',
+        'pushoverApiToken',
+      ]) {
+        expect(body).not.toHaveProperty(key);
+      }
     });
   });
 
@@ -289,27 +217,21 @@ describe('Settings Routes', () => {
       expect(body.allowGuestAccess).toBe(true);
     });
 
-    it('updates webhook URLs', async () => {
+    it('strips provider keys instead of persisting them', async () => {
       app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        discordWebhookUrl: 'https://new-discord-webhook.com',
-        customWebhookUrl: 'https://new-custom-webhook.com',
-      });
 
       const response = await app.inject({
         method: 'PATCH',
         url: '/settings',
         payload: {
           discordWebhookUrl: 'https://new-discord-webhook.com',
-          customWebhookUrl: 'https://new-custom-webhook.com',
+          allowGuestAccess: true,
         },
       });
 
       expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.discordWebhookUrl).toBe('https://new-discord-webhook.com');
-      expect(body.customWebhookUrl).toBe('https://new-custom-webhook.com');
+      expect(setSettings).toHaveBeenCalledWith({ allowGuestAccess: true });
+      expect(response.json()).not.toHaveProperty('discordWebhookUrl');
     });
 
     it('updates poller settings', async () => {
@@ -392,38 +314,6 @@ describe('Settings Routes', () => {
       });
 
       expect(response.statusCode).toBe(400);
-    });
-
-    it('rejects invalid webhook format', async () => {
-      app = await buildTestApp(ownerUser);
-
-      const response = await app.inject({
-        method: 'PATCH',
-        url: '/settings',
-        payload: { webhookFormat: 'invalid-format' },
-      });
-
-      expect(response.statusCode).toBe(400);
-    });
-
-    it('clears webhook URLs when set to null', async () => {
-      app = await buildTestApp(ownerUser);
-      vi.mocked(getAllSettings).mockResolvedValue({
-        ...mockAllSettings,
-        discordWebhookUrl: null,
-        customWebhookUrl: null,
-      });
-
-      const response = await app.inject({
-        method: 'PATCH',
-        url: '/settings',
-        payload: { discordWebhookUrl: null, customWebhookUrl: null },
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.discordWebhookUrl).toBe(null);
-      expect(body.customWebhookUrl).toBe(null);
     });
 
     it('handles empty update body', async () => {

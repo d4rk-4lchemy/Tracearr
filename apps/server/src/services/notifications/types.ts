@@ -1,26 +1,12 @@
 /**
- * Notification Agent System Types
- *
- * Based on Jellyseerr's agent pattern for extensible notifications.
+ * Notification payload types shared by every destination type module.
  */
 
-import type { ViolationWithDetails, ActiveSession, Settings } from '@tracearr/shared';
+import type { ViolationWithDetails, ActiveSession, NotificationEventType } from '@tracearr/shared';
+import type { NotificationEvent, NotificationSource } from './events.js';
 
 // Re-export for convenience
-export type { ViolationWithDetails, ActiveSession, Settings };
-
-/**
- * Notification event types matching NOTIFICATION_EVENTS from shared
- */
-export type NotificationEventType =
-  | 'violation_detected'
-  | 'stream_started'
-  | 'stream_stopped'
-  | 'new_device'
-  | 'trust_score_changed'
-  | 'server_down'
-  | 'server_up'
-  | 'plugin_update_available';
+export type { ViolationWithDetails, ActiveSession, NotificationEventType };
 
 /**
  * Severity levels for notifications
@@ -79,37 +65,10 @@ export interface PluginUpdateContext {
 }
 
 /**
- * Context provided with new device notifications
- */
-export interface NewDeviceContext {
-  type: 'new_device';
-  userName: string;
-  deviceName: string;
-  platform: string | null;
-  location: string | null;
-}
-
-/**
- * Context provided with trust score change notifications
- */
-export interface TrustScoreChangedContext {
-  type: 'trust_score_changed';
-  userName: string;
-  previousScore: number;
-  newScore: number;
-  reason: string | null;
-}
-
-/**
  * Union of all notification contexts
  */
 export type NotificationContext =
-  | ViolationContext
-  | SessionContext
-  | ServerContext
-  | PluginUpdateContext
-  | NewDeviceContext
-  | TrustScoreChangedContext;
+  ViolationContext | SessionContext | ServerContext | PluginUpdateContext;
 
 /**
  * Unified notification payload for all agents
@@ -135,73 +94,6 @@ export interface NotificationPayload {
 
   /** Optional image URL (e.g., poster) */
   imageUrl?: string;
-}
-
-/**
- * Result of a notification send attempt
- */
-export interface SendResult {
-  success: boolean;
-  error?: string;
-  /** Agent name for logging/debugging */
-  agent: string;
-}
-
-/**
- * Result of a test notification
- */
-export interface TestResult {
-  success: boolean;
-  error?: string;
-}
-
-/**
- * Settings type with agent-specific fields extracted
- * Agents can pick the fields they need
- */
-export type NotificationSettings = Pick<
-  Settings,
-  | 'discordWebhookUrl'
-  | 'customWebhookUrl'
-  | 'webhookFormat'
-  | 'ntfyTopic'
-  | 'ntfyAuthToken'
-  | 'pushoverUserKey'
-  | 'pushoverApiToken'
->;
-
-/**
- * Interface that all notification agents must implement
- */
-export interface NotificationAgent {
-  /** Unique agent identifier */
-  readonly name: string;
-
-  /** Human-readable display name */
-  readonly displayName: string;
-
-  /**
-   * Check if this agent should send for the given event and settings
-   * @param event The notification event type
-   * @param settings Current notification settings
-   * @returns true if the agent is configured and should send
-   */
-  shouldSend(event: NotificationEventType, settings: NotificationSettings): boolean;
-
-  /**
-   * Send a notification
-   * @param payload The notification payload
-   * @param settings Current notification settings
-   * @returns Result indicating success or failure
-   */
-  send(payload: NotificationPayload, settings: NotificationSettings): Promise<SendResult>;
-
-  /**
-   * Send a test notification
-   * @param settings Current notification settings
-   * @returns Result indicating success or failure with optional error message
-   */
-  sendTest(settings: NotificationSettings): Promise<TestResult>;
 }
 
 /**
@@ -298,39 +190,40 @@ export const PayloadBuilders = {
       },
     };
   },
-
-  fromNewDevice(
-    userName: string,
-    deviceName: string,
-    platform: string | null,
-    location: string | null
-  ): NotificationPayload {
-    const locationStr = location ? ` from ${location}` : '';
-    return {
-      event: 'new_device',
-      title: 'New Device Detected',
-      message: `${userName} connected from a new device: ${deviceName}${locationStr}`,
-      severity: 'warning',
-      timestamp: new Date().toISOString(),
-      context: { type: 'new_device', userName, deviceName, platform, location },
-    };
-  },
-
-  fromTrustScoreChanged(
-    userName: string,
-    previousScore: number,
-    newScore: number,
-    reason: string | null
-  ): NotificationPayload {
-    const direction = newScore < previousScore ? 'decreased' : 'increased';
-    const reasonStr = reason ? `: ${reason}` : '';
-    return {
-      event: 'trust_score_changed',
-      title: 'Trust Score Changed',
-      message: `${userName}'s trust score ${direction} from ${previousScore} to ${newScore}${reasonStr}`,
-      severity: newScore < previousScore ? 'warning' : 'low',
-      timestamp: new Date().toISOString(),
-      context: { type: 'trust_score_changed', userName, previousScore, newScore, reason },
-    };
-  },
 };
+
+/** One NotificationPayload per event; a rule send carries its own title and message. */
+export function toNotificationPayload(
+  event: NotificationEvent,
+  source: NotificationSource
+): NotificationPayload {
+  const base = ((): NotificationPayload => {
+    switch (event.type) {
+      case 'violation':
+        return PayloadBuilders.fromViolation(event.payload);
+      case 'session_started':
+        return PayloadBuilders.fromSessionStarted(event.payload);
+      case 'session_stopped':
+        return PayloadBuilders.fromSessionStopped(event.payload);
+      case 'server_down':
+        return PayloadBuilders.fromServerDown(event.payload.serverName);
+      case 'server_up':
+        return PayloadBuilders.fromServerUp(event.payload.serverName);
+      case 'plugin_update_available': {
+        const p = event.payload;
+        return PayloadBuilders.fromPluginUpdate(
+          p.serverId,
+          p.serverName,
+          p.serverType,
+          p.installedVersion,
+          p.latestVersion,
+          p.downloadUrl
+        );
+      }
+    }
+  })();
+  if (source.kind === 'rule') {
+    return { ...base, title: source.title, message: source.message };
+  }
+  return base;
+}

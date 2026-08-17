@@ -34,10 +34,15 @@ vi.mock('../mediaServer/index.js', () => ({
   createMediaServerClient: vi.fn(),
 }));
 
+vi.mock('../rules/events/dispatcher.js', () => ({
+  dispatch: vi.fn().mockResolvedValue({ violations: [], outcomes: [] }),
+}));
+
 // Import after mocking
 import { db } from '../../db/client.js';
 import { getCacheService, getPubSubService } from '../cache.js';
 import { createMediaServerClient } from '../mediaServer/index.js';
+import { dispatch } from '../rules/events/dispatcher.js';
 import { terminateSession } from '../termination.js';
 
 // Type for the mock session findFirst function (returns partial session for tests)
@@ -157,6 +162,25 @@ describe('terminateSession', () => {
       });
 
       expect(mockPubSubService.publish).toHaveBeenCalledWith('session:stopped', mockSession.id);
+    });
+
+    it('should dispatch session.stopped on success', async () => {
+      const mockSession = createMockSession();
+      mockSessionFindFirst.mockResolvedValue(mockSession);
+      mockMediaClient.terminateSession.mockResolvedValue(true);
+
+      await terminateSession({
+        sessionId: mockSession.id,
+        trigger: 'manual',
+      });
+
+      expect(dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'session.stopped',
+          sessionId: mockSession.id,
+          serverId: mockSession.serverId,
+        })
+      );
     });
 
     it('should update session state to stopped in database', async () => {
@@ -326,6 +350,19 @@ describe('terminateSession', () => {
       });
 
       expect(mockPubSubService.publish).not.toHaveBeenCalled();
+    });
+
+    it('should NOT dispatch session.stopped on failure', async () => {
+      const mockSession = createMockSession();
+      mockSessionFindFirst.mockResolvedValue(mockSession);
+      mockMediaClient.terminateSession.mockRejectedValue(new Error('Server error'));
+
+      await terminateSession({
+        sessionId: mockSession.id,
+        trigger: 'manual',
+      });
+
+      expect(dispatch).not.toHaveBeenCalled();
     });
 
     it('should still log the failed termination attempt', async () => {

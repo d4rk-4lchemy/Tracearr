@@ -339,7 +339,7 @@ describe('killQueue', () => {
       function depsWith(setCooldown: ActionExecutorDeps['setCooldown']) {
         setActionExecutorDeps({
           logAudit: vi.fn(),
-          sendNotification: vi.fn(),
+          enqueueRuleNotification: vi.fn().mockResolvedValue(0),
           adjustUserTrust: vi.fn(),
           setUserTrust: vi.fn(),
           resetUserTrust: vi.fn(),

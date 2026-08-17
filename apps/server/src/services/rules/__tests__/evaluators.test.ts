@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Condition, Session, ServerUser, Server, RuleV2 } from '@tracearr/shared';
-import type { EvaluationContext, EvaluatorResult } from '../types.js';
+import type { Condition, Operator, Session, ServerUser, Server, RuleV2 } from '@tracearr/shared';
+import type { EvaluatorResult, SessionEvaluationContext } from '../types.js';
 import {
   evaluatorRegistry,
   getResolution,
@@ -165,7 +165,9 @@ function createMockRule(overrides: Partial<RuleV2> = {}): RuleV2 {
 }
 
 // Helper to create a test context
-function createTestContext(overrides: Partial<EvaluationContext> = {}): EvaluationContext {
+function createTestContext(
+  overrides: Partial<SessionEvaluationContext> = {}
+): SessionEvaluationContext {
   const server = createMockServer();
   const serverUser = createMockServerUser({ serverId: server.id });
   const session = createMockSession({ serverId: server.id, serverUserId: serverUser.id });
@@ -813,6 +815,87 @@ describe('Session Behavior Evaluators', () => {
 
       expect(matched(result)).toBe(true);
     });
+
+    it('does not count other sessions from the same device by default', async () => {
+      const session1 = createMockSession({
+        id: 's1',
+        serverUserId: 'user-1',
+        deviceId: 'device-1',
+        ipAddress: '1.2.3.4',
+      });
+      const session2 = createMockSession({
+        id: 's2',
+        serverUserId: 'user-1',
+        deviceId: 'device-1', // Same device as the triggering session
+        ipAddress: '5.6.7.8',
+      });
+      const session3 = createMockSession({
+        id: 's3',
+        serverUserId: 'user-1',
+        deviceId: 'device-2',
+        ipAddress: '9.10.11.12',
+      });
+
+      const ctx = createTestContext({
+        session: session1,
+        serverUser: createMockServerUser({ id: 'user-1' }),
+        activeSessions: [session1, session2, session3],
+      });
+
+      const evaluator = evaluatorRegistry.concurrent_streams;
+
+      // exclude_same_device defaults to true: s2 is dropped, s1 + s3 remain
+      const dedup = await evaluator(
+        ctx,
+        createCondition({ field: 'concurrent_streams', operator: 'eq', value: 2 })
+      );
+      expect(dedup.matched).toBe(true);
+      expect(dedup.actual).toBe(2);
+      expect(dedup.relatedSessionIds).toEqual(['s3']);
+
+      // Explicit opt-out counts the same-device duplicate
+      const counted = await evaluator(
+        ctx,
+        createCondition({
+          field: 'concurrent_streams',
+          operator: 'eq',
+          value: 3,
+          params: { exclude_same_device: false },
+        })
+      );
+      expect(counted.matched).toBe(true);
+      expect(counted.actual).toBe(3);
+      expect(counted.relatedSessionIds).toEqual(['s2', 's3']);
+    });
+
+    it('counts sessions with an empty deviceId instead of deduping them', async () => {
+      const session1 = createMockSession({
+        id: 's1',
+        serverUserId: 'user-1',
+        deviceId: '',
+        ipAddress: '1.2.3.4',
+      });
+      const session2 = createMockSession({
+        id: 's2',
+        serverUserId: 'user-1',
+        deviceId: '',
+        ipAddress: '5.6.7.8',
+      });
+
+      const ctx = createTestContext({
+        session: session1,
+        serverUser: createMockServerUser({ id: 'user-1' }),
+        activeSessions: [session1, session2],
+      });
+
+      // exclude_same_device defaults to true, but '' is falsy so neither is dropped
+      const result = await evaluatorRegistry.concurrent_streams(
+        ctx,
+        createCondition({ field: 'concurrent_streams', operator: 'eq', value: 2 })
+      );
+      expect(result.matched).toBe(true);
+      expect(result.actual).toBe(2);
+    });
   });
 
   describe('active_session_distance_km', () => {
@@ -879,6 +962,52 @@ describe('Session Behavior Evaluators', () => {
           )
         )
       ).toBe(false);
+    });
+
+    it('ignores other active sessions from the same device by default', () => {
+      const session1 = createMockSession({
+        id: 's1',
+        serverUserId: 'user-1',
+        geoLat: 40.7128,
+        geoLon: -74.006,
+        deviceId: 'device-1',
+      });
+      const session2 = createMockSession({
+        id: 's2',
+        serverUserId: 'user-1',
+        geoLat: 34.0522,
+        geoLon: -118.2437,
+        deviceId: 'device-1', // Same device - same physical location, distance is meaningless
+      });
+
+      const ctx = createTestContext({
+        session: session1,
+        serverUser: createMockServerUser({ id: 'user-1' }),
+        activeSessions: [session1, session2],
+      });
+
+      const evaluator = evaluatorRegistry.active_session_distance_km;
+
+      // exclude_same_device defaults to true: the LA session is not compared
+      const dedup = evaluator(
+        ctx,
+        createCondition({ field: 'active_session_distance_km', operator: 'gt', value: 1000 })
+      ) as EvaluatorResult;
+      expect(matched(dedup)).toBe(false);
+      expect(dedup.actual).toBe(0);
+      expect(dedup.relatedSessionIds).toEqual([]);
+
+      // Explicit opt-out compares against it (~3936 km apart)
+      const counted = evaluator(
+        ctx,
+        createCondition({
+          field: 'active_session_distance_km',
+          operator: 'gt',
+          value: 1000,
+          params: { exclude_same_device: false },
+        })
+      );
+      expect(matched(counted)).toBe(true);
     });
   });
 
@@ -1002,6 +1131,7 @@ describe('Session Behavior Evaluators', () => {
         startedAt: oneHourAgo,
         geoLat: 40.7128,
         geoLon: -74.006,
+        deviceId: 'device-2', // Different device so it isn't deduped away
       });
 
       const ctx = createTestContext({
@@ -1014,6 +1144,62 @@ describe('Session Behavior Evaluators', () => {
       expect(
         matched(
           evaluator(ctx, createCondition({ field: 'travel_speed_kmh', operator: 'eq', value: 0 }))
+        )
+      ).toBe(true);
+    });
+
+    it('ignores previous sessions from the same device by default', () => {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+      // NYC now
+      const currentSession = createMockSession({
+        id: 's1',
+        serverUserId: 'user-1',
+        startedAt: now,
+        geoLat: 40.7128,
+        geoLon: -74.006,
+        deviceId: 'device-1',
+      });
+
+      // LA one hour earlier on the SAME device - a VPN switch, not travel
+      const previousSession = createMockSession({
+        id: 's2',
+        serverUserId: 'user-1',
+        startedAt: oneHourAgo,
+        geoLat: 34.0522,
+        geoLon: -118.2437,
+        deviceId: 'device-1',
+      });
+
+      const ctx = createTestContext({
+        session: currentSession,
+        serverUser: createMockServerUser({ id: 'user-1' }),
+        recentSessions: [currentSession, previousSession],
+      });
+
+      const evaluator = evaluatorRegistry.travel_speed_kmh;
+
+      // exclude_same_device defaults to true: no comparable previous session, speed is 0
+      const dedup = evaluator(
+        ctx,
+        createCondition({ field: 'travel_speed_kmh', operator: 'gt', value: 500 })
+      ) as EvaluatorResult;
+      expect(matched(dedup)).toBe(false);
+      expect(dedup.actual).toBe(0);
+
+      // Explicit opt-out compares against it (~3936 km in one hour)
+      expect(
+        matched(
+          evaluator(
+            ctx,
+            createCondition({
+              field: 'travel_speed_kmh',
+              operator: 'gt',
+              value: 500,
+              params: { exclude_same_device: false },
+            })
+          )
         )
       ).toBe(true);
     });
@@ -1456,18 +1642,25 @@ describe('Session Behavior Evaluators', () => {
       ).toBe(false);
     });
 
-    it('uses account age when no activity recorded', () => {
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    it('treats never-active accounts as infinitely inactive: gte/gt/neq match, eq/lt/lte do not', () => {
+      const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
       const ctx = createTestContext({
-        serverUser: createMockServerUser({ lastActivityAt: null, createdAt: thirtyDaysAgo }),
+        serverUser: createMockServerUser({ lastActivityAt: null, createdAt: tenDaysAgo }),
       });
-
       const evaluator = evaluatorRegistry.inactive_days;
-      expect(
-        matched(
-          evaluator(ctx, createCondition({ field: 'inactive_days', operator: 'gte', value: 30 }))
-        )
-      ).toBe(true);
+      const run = (operator: Operator) =>
+        evaluator(
+          ctx,
+          createCondition({ field: 'inactive_days', operator, value: 30 })
+        ) as EvaluatorResult;
+      expect(run('gte').matched).toBe(true);
+      expect(run('gt').matched).toBe(true);
+      expect(run('neq').matched).toBe(true);
+      expect(run('eq').matched).toBe(false);
+      expect(run('lt').matched).toBe(false);
+      expect(run('lte').matched).toBe(false);
+      expect(run('gte').actual).toBeNull();
+      expect(run('gte').details).toMatchObject({ neverActive: true });
     });
   });
 

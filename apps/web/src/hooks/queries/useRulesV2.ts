@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { CreateRuleV2Input, UpdateRuleV2Input, Rule } from '@tracearr/shared';
 import { toast } from 'sonner';
@@ -40,66 +40,6 @@ export function useUpdateRuleV2() {
       toast.success(t('toast.success.ruleUpdated.title'), {
         description: t('toast.success.ruleUpdated.message'),
       });
-    },
-    onError: (error: Error) => {
-      toast.error(t('toast.error.ruleUpdateFailed'), { description: error.message });
-    },
-  });
-}
-
-/**
- * Preview migration of legacy rules to V2
- */
-export function useMigrationPreview() {
-  return useQuery({
-    queryKey: ['rules', 'migration', 'preview'],
-    queryFn: api.rules.migratePreview,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-}
-
-/**
- * Migrate rules to V2 format
- */
-export function useMigrateRules() {
-  const { t } = useTranslation('notifications');
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (ids?: string[]) => api.rules.migrate(ids),
-    onSuccess: (data) => {
-      void queryClient.invalidateQueries({ queryKey: ['rules'] });
-      if (data.summary.migrated > 0) {
-        toast.success(t('toast.success.ruleUpdated.title'), {
-          description: `Migrated ${data.summary.migrated} rule${data.summary.migrated === 1 ? '' : 's'}`,
-        });
-      }
-      if (data.summary.failed > 0) {
-        toast.warning('Migration partially completed', {
-          description: `${data.summary.failed} rule${data.summary.failed === 1 ? '' : 's'} failed to migrate`,
-        });
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(t('toast.error.ruleUpdateFailed'), {
-        description: error.message,
-      });
-    },
-  });
-}
-
-/**
- * Migrate a single rule to V2 format
- */
-export function useMigrateOneRule() {
-  const { t } = useTranslation('notifications');
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (id: string) => api.rules.migrateOne(id),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['rules', 'list'] });
-      toast.success(t('toast.success.ruleUpdated.title'));
     },
     onError: (error: Error) => {
       toast.error(t('toast.error.ruleUpdateFailed'), { description: error.message });

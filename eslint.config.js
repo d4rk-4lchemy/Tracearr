@@ -10,16 +10,7 @@ export default tseslint.config(
   ...tseslint.configs.stylisticTypeChecked,
   prettierConfig,
   {
-    ignores: [
-      '**/dist/**',
-      '**/node_modules/**',
-      '**/.turbo/**',
-      '**/coverage/**',
-      'apps/mobile/plugins/**',
-      'apps/mobile/.expo/**',
-      'apps/mobile/**.config.js',
-      'apps/mobile/**.config.mjs',
-    ],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '**/coverage/**'],
   },
   {
     languageOptions: {

@@ -20,7 +20,12 @@ vi.mock('../../../db/schema.js', async (importOriginal) => {
   return { ...actual };
 });
 
-import { getActiveRulesV2, invalidateRulesCache, maxWindowHoursFromRules } from '../database.js';
+import {
+  defaultRecentSessionWindowHours,
+  getActiveRulesV2,
+  invalidateRulesCache,
+  maxWindowHoursFromRules,
+} from '../database.js';
 import type { RuleV2 } from '@tracearr/shared';
 
 function ruleRow(id: string, overrides: Record<string, unknown> = {}) {
@@ -110,6 +115,35 @@ describe('getActiveRulesV2 cache', () => {
     const second = await getActiveRulesV2();
 
     expect(second).toEqual(first);
+  });
+
+  it('derives the default recent-session window from the cached rules', async () => {
+    invalidateRulesCache();
+    expect(defaultRecentSessionWindowHours()).toBe(24);
+
+    mockRulesResult([
+      ruleRow('r1', {
+        conditions: {
+          groups: [
+            {
+              conditions: [
+                {
+                  field: 'unique_ips_in_window',
+                  operator: 'gte',
+                  value: 3,
+                  params: { window_hours: 72 },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ]);
+    await getActiveRulesV2();
+    expect(defaultRecentSessionWindowHours()).toBe(72);
+
+    invalidateRulesCache();
+    expect(defaultRecentSessionWindowHours()).toBe(24);
   });
 });
 

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Save, Loader2 } from 'lucide-react';
 import type {
   ConditionGroup as ConditionGroupType,
@@ -118,6 +119,7 @@ export function RuleBuilder({
   isLoading = false,
   filterOptions,
 }: RuleBuilderProps) {
+  const { t } = useTranslation('pages');
   const { servers } = useServer();
 
   // Derive initial scope mode from existing rule fields
@@ -211,6 +213,10 @@ export function RuleBuilder({
       }
     }
 
+    if (actions.actions.some((a) => a.type === 'send' && a.to.length === 0)) {
+      newErrors.push(t('rules.builder.errors.sendNeedsDestination'));
+    }
+
     setErrors(newErrors);
     return newErrors.length === 0;
   };
@@ -275,7 +281,9 @@ export function RuleBuilder({
   };
 
   return (
-    <div className="space-y-6">
+    // min-w-0: DialogContent is a grid, and a grid item can't shrink below its
+    // min-content, so one too-wide row would otherwise widen the whole form.
+    <div className="min-w-0 space-y-6">
       {/* Errors */}
       {errors.length > 0 && (
         <div className="border-destructive/50 bg-destructive/5 rounded-lg border p-4">

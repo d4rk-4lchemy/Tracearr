@@ -813,8 +813,11 @@ describe('wasTriggeringSessionTargetedForKill (Issue #357)', () => {
   it('ignores non-kill_stream action results', async () => {
     const { wasTriggeringSessionTargetedForKill } = await import('../sessionLifecycle.js');
 
-    const notifyResult: ActionResult = { action: { type: 'notify', channels: [] }, success: true };
-    const result = wasTriggeringSessionTargetedForKill([notifyResult], 'session-id');
+    const sendResult: ActionResult = {
+      action: { type: 'send', to: ['11111111-1111-4111-8111-111111111111'] },
+      success: true,
+    };
+    const result = wasTriggeringSessionTargetedForKill([sendResult], 'session-id');
 
     expect(result).toBe(false);
   });

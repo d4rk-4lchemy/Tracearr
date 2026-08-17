@@ -336,7 +336,8 @@
     },
     "restoreTitle": "正在从备份还原……",
     "startingDescription": "服务器正在等待后端服务可用。此页面将在一切就绪时自动刷新。",
-    "startingTitle": "Tracearr 正在启动……"
+    "startingTitle": "Tracearr 正在启动……",
+    "unreachable": "Can't reach the Tracearr server right now. Live updates are paused and will resume on their own."
   },
   "map": {
     "allActivity": "所有活动",
@@ -374,7 +375,6 @@
         "availability": {
           "added": "added {{date}}",
           "addedRemoved": "added {{added}} – removed {{removed}}",
-          "removed": "removed {{date}}",
           "replaced": "replaced {{date}}"
         },
         "loadError": "Couldn't load this title",
@@ -665,6 +665,13 @@
     "blocked": "已屏蔽",
     "blockedCountries": "被封锁的国家",
     "blocklist": "黑名单(屏蔽这些国家)",
+    "builder": {
+      "destinationDisabled": "Disabled destination",
+      "errors": {
+        "sendNeedsDestination": "Pick at least one destination"
+      },
+      "noDestinations": "No destinations yet. Add one to send notifications."
+    },
     "chooseTemplate": "选择规则模板",
     "chooseTemplateDesc": "选择一个预先配置的规则类型来快速开始。",
     "classicRule": "经典规则",
@@ -725,6 +732,58 @@
     "weeks": "星期"
   },
   "settings": {
+    "destinations": {
+      "add": "Add destination",
+      "builtinNote": "Built in",
+      "clearSecret": "Clear",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{name}}? Rules that send to it will be blocked until they are updated.",
+      "description": "Where notifications go. Add as many as you like; each one picks the system events it receives, and rules can send to any of them.",
+      "empty": "No destinations yet.",
+      "events": {
+        "plugin_update_available": "Plugin update available",
+        "server_down": "Server down",
+        "server_up": "Server up",
+        "stream_started": "Stream started",
+        "stream_stopped": "Stream stopped",
+        "violation_detected": "Violation detected"
+      },
+      "eventsLabel": "Events",
+      "fields": {
+        "apiToken": "API token",
+        "apiUrl": "API URL",
+        "authToken": "Auth token",
+        "serverUrl": "Server URL",
+        "topic": "Topic",
+        "url": "URL",
+        "userKey": "User key",
+        "webhookUrl": "Webhook URL"
+      },
+      "hints": {
+        "authTokenOptional": "Optional for public topics"
+      },
+      "ownerOnly": "Only the owner can manage notification destinations.",
+      "pushNote": "Delivered to paired mobile devices; each device filters in its own notification settings.",
+      "reencrypt": "Re-enter this destination's secret",
+      "secretSet": "Set (leave blank to keep)",
+      "test": "Test",
+      "testHint": "Save first to test",
+      "testNeedsForm": "Fill in the required fields to test",
+      "title": "Notification destinations",
+      "types": {
+        "apprise": "Apprise",
+        "discord": "Discord",
+        "gotify": "Gotify",
+        "jsonWebhook": "Webhook (JSON)",
+        "ntfy": "ntfy",
+        "push": "Mobile push",
+        "pushover": "Pushover",
+        "webToast": "Browser toasts"
+      },
+      "usedBy": "Used by {{count}} rule",
+      "usedBy_other": "Used by {{count}} rules",
+      "webToastNote": "Toasts in this browser."
+    },
     "jobs": {
       "lastRun": "上次运行",
       "nextRun": "下次运行",
@@ -738,36 +797,6 @@
       "editDisplayName": "编辑显示昵称",
       "editDisplayNameDesc": "更改此设备在您的设备列表中的显示方式",
       "updating": "更新中……"
-    },
-    "notifications": {
-      "addAgent": "添加通知代理",
-      "addAgentDesc": "选择一个通知服务并进行配置。",
-      "agentType": "代理类型",
-      "allAgentsConfigured": "所有通知代理已经配置。",
-      "allEvents": "全部事件",
-      "currentlyConfigured": "{{name}} 当前已配置。",
-      "customEvents": "自定义事件",
-      "description": "配置通知通道并选择每个代理应接收的事件。",
-      "editAgent": "编辑通知代理",
-      "editAgentDesc": "更新通知代理配置。",
-      "eventSelection": "事件选择",
-      "loadingSettings": "正在加载通知设置……",
-      "noAgents": "未配置通知代理",
-      "noAgentsHint": "添加代理接收关于共享违反行为和流事件的通知。",
-      "noConfigNeeded": "此代理无需配置。",
-      "oneWebhookLimit": "一次只能有一个 webhook 代理激活。",
-      "removeAgentDesc": "这将移除{{name}}并禁用其所有通知。您可以稍后再添加它。",
-      "removeAgentTitle": "移除 {{name}}？",
-      "saveAgent": "添加代理",
-      "selectType": "选择类型……",
-      "testAgent": "测试代理",
-      "testingAgent": "测试中……",
-      "title": "通知代理",
-      "triggerEvents": "触发事件",
-      "updateAgent": "更新代理",
-      "webhookAgents": "Webhook 代理",
-      "webhookUrl": "Webhook URL",
-      "webhookUrlPlaceholder": "https://……"
     },
     "plex": {
       "accountsLinked_one": "{{count}} 个 Plex 账户已链接",

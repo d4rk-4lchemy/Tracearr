@@ -336,7 +336,8 @@
     },
     "restoreTitle": "Επαναφορά από αντίγραφο ασφαλείας...",
     "startingDescription": "Ο διακομιστής περιμένει να γίνουν διαθέσιμες οι υπηρεσίες του συστήματος διαχείρισης. Αυτή η σελίδα θα ανανεωθεί αυτόματα όταν όλα είναι έτοιμα.",
-    "startingTitle": "Το Tracearr ξεκινάει..."
+    "startingTitle": "Το Tracearr ξεκινάει...",
+    "unreachable": "Can't reach the Tracearr server right now. Live updates are paused and will resume on their own."
   },
   "map": {
     "allActivity": "Όλη η δραστηριότητα",
@@ -374,7 +375,6 @@
         "availability": {
           "added": "added {{date}}",
           "addedRemoved": "added {{added}} – removed {{removed}}",
-          "removed": "removed {{date}}",
           "replaced": "replaced {{date}}"
         },
         "loadError": "Couldn't load this title",
@@ -665,6 +665,13 @@
     "blocked": "Αποκλεισμένος",
     "blockedCountries": "Αποκλεισμένες Χώρες",
     "blocklist": "Λίστα αποκλεισμών (μπλοκ αυτών των χωρών)",
+    "builder": {
+      "destinationDisabled": "Disabled destination",
+      "errors": {
+        "sendNeedsDestination": "Pick at least one destination"
+      },
+      "noDestinations": "No destinations yet. Add one to send notifications."
+    },
     "chooseTemplate": "Επιλέξτε ένα πρότυπο κανόνα",
     "chooseTemplateDesc": "Επιλέξτε έναν προ-ρυθμισμένο τύπο κανόνα για να ξεκινήσετε γρήγορα.",
     "classicRule": "Κλασικός Κανόνας",
@@ -725,6 +732,58 @@
     "weeks": "Εβδομάδες"
   },
   "settings": {
+    "destinations": {
+      "add": "Add destination",
+      "builtinNote": "Built in",
+      "clearSecret": "Clear",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{name}}? Rules that send to it will be blocked until they are updated.",
+      "description": "Where notifications go. Add as many as you like; each one picks the system events it receives, and rules can send to any of them.",
+      "empty": "No destinations yet.",
+      "events": {
+        "plugin_update_available": "Plugin update available",
+        "server_down": "Server down",
+        "server_up": "Server up",
+        "stream_started": "Stream started",
+        "stream_stopped": "Stream stopped",
+        "violation_detected": "Violation detected"
+      },
+      "eventsLabel": "Events",
+      "fields": {
+        "apiToken": "API token",
+        "apiUrl": "API URL",
+        "authToken": "Auth token",
+        "serverUrl": "Server URL",
+        "topic": "Topic",
+        "url": "URL",
+        "userKey": "User key",
+        "webhookUrl": "Webhook URL"
+      },
+      "hints": {
+        "authTokenOptional": "Optional for public topics"
+      },
+      "ownerOnly": "Only the owner can manage notification destinations.",
+      "pushNote": "Delivered to paired mobile devices; each device filters in its own notification settings.",
+      "reencrypt": "Re-enter this destination's secret",
+      "secretSet": "Set (leave blank to keep)",
+      "test": "Test",
+      "testHint": "Save first to test",
+      "testNeedsForm": "Fill in the required fields to test",
+      "title": "Notification destinations",
+      "types": {
+        "apprise": "Apprise",
+        "discord": "Discord",
+        "gotify": "Gotify",
+        "jsonWebhook": "Webhook (JSON)",
+        "ntfy": "ntfy",
+        "push": "Mobile push",
+        "pushover": "Pushover",
+        "webToast": "Browser toasts"
+      },
+      "usedBy": "Used by {{count}} rule",
+      "usedBy_other": "Used by {{count}} rules",
+      "webToastNote": "Toasts in this browser."
+    },
     "jobs": {
       "lastRun": "Τελευταία εκτέλεση",
       "nextRun": "Επόμενη εκτέλεση",
@@ -738,36 +797,6 @@
       "editDisplayName": "Επεξεργασία Εμφάνισης Ονόματος",
       "editDisplayNameDesc": "Αλλάξτε τον τρόπο εμφάνισης αυτής της συσκευής στη λίστα συσκευών σας",
       "updating": "Ενημέρωση..."
-    },
-    "notifications": {
-      "addAgent": "Προσθήκη Παράγοντα Ειδοποιήσεων",
-      "addAgentDesc": "Επιλέξτε μια υπηρεσία ειδοποιήσεων και ρυθμίστε την.",
-      "agentType": "Τύπος Παράγοντα",
-      "allAgentsConfigured": "Όλοι οι πράκτορες ειδοποιήσεων έχουν ήδη ρυθμιστεί.",
-      "allEvents": "Όλες Οι Εκδηλώσεις",
-      "currentlyConfigured": "Το {{name}} έχει ρυθμιστεί αυτήν τη στιγμή.",
-      "customEvents": "Προσαρμοσμένα Γεγονότα",
-      "description": "Ρυθμίστε τα κανάλια ειδοποιήσεων και επιλέξτε ποια γεγονότα θα πρέπει να λαμβάνει κάθε πράκτορας.",
-      "editAgent": "Επεξεργασία Πράκτορα Ειδοποιήσεων",
-      "editAgentDesc": "Ενημέρωση της ρύθμισης παραμέτρων πράκτορα ειδοποιήσεων.",
-      "eventSelection": "Επιλογή Συμβάντος",
-      "loadingSettings": "Φόρτωση ρυθμίσεων ειδοποίησης...",
-      "noAgents": "Δεν έχουν ρυθμιστεί πράκτορες ειδοποιήσεων",
-      "noAgentsHint": "Προσθέστε έναν πράκτορα για να λαμβάνετε ειδοποιήσεις σχετικά με την κοινή χρήση παραβιάσεων και συμβάντων ροής.",
-      "noConfigNeeded": "Δεν απαιτούνται ρυθμίσεις για αυτόν τον πράκτορα.",
-      "oneWebhookLimit": "Μόνο ένας πράκτορας webhook μπορεί να είναι ενεργός κάθε φορά.",
-      "removeAgentDesc": "Αυτό θα καταργήσει το {{name}} και θα απενεργοποιήσει όλες τις ειδοποιήσεις. Μπορείτε να τις προσθέσετε ξανά αργότερα.",
-      "removeAgentTitle": "Αφαίρεση {{name}}?",
-      "saveAgent": "Προσθήκη Παράγοντα",
-      "selectType": "Επιλογή τύπου...",
-      "testAgent": "Δοκιμή Πράκτορα",
-      "testingAgent": "Δοκιμή...",
-      "title": "Πράκτορες Ειδοποιήσεων",
-      "triggerEvents": "Ενεργοποίηση Γεγονότων",
-      "updateAgent": "Ενημέρωση Παράγοντα",
-      "webhookAgents": "Παράγοντες Webhook",
-      "webhookUrl": "URL Webhook",
-      "webhookUrlPlaceholder": "https://..."
     },
     "plex": {
       "accountsLinked_one": "Συνδεδεμένος λογαριασμός {{count}} Plex",

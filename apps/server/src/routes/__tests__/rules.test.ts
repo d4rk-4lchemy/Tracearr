@@ -25,8 +25,16 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+vi.mock('../../services/notifications/destinationStore.js', () => ({
+  listDestinations: vi.fn().mockResolvedValue([]),
+}));
+
 // Import the mocked db and the routes
 import { db } from '../../db/client.js';
+import {
+  listDestinations,
+  type DestinationRow,
+} from '../../services/notifications/destinationStore.js';
 import { ruleRoutes } from '../rules.js';
 
 /**
@@ -329,6 +337,67 @@ describe('Rule Routes', () => {
       });
 
       expect(response.statusCode).toBe(201);
+    });
+  });
+
+  describe('POST /rules/v2 send destinations', () => {
+    const conditions = {
+      groups: [{ conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 3 }] }],
+    };
+
+    it('rejects a send action naming an unknown destination', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const knownId = randomUUID();
+      const unknownId = randomUUID();
+      vi.mocked(listDestinations).mockResolvedValue([
+        { id: knownId },
+      ] as unknown as DestinationRow[]);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/rules/v2',
+        payload: {
+          name: 'Send Rule',
+          conditions,
+          actions: { actions: [{ type: 'send', to: [knownId, unknownId] }] },
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body).message).toContain(unknownId);
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it('creates the rule when every destination id exists', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const knownId = randomUUID();
+      vi.mocked(listDestinations).mockResolvedValue([
+        { id: knownId },
+      ] as unknown as DestinationRow[]);
+
+      const created = { id: randomUUID(), name: 'Send Rule' };
+      mockDb.insert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([created]),
+        }),
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/rules/v2',
+        payload: {
+          name: 'Send Rule',
+          conditions,
+          actions: { actions: [{ type: 'send', to: [knownId] }] },
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockDb.insert).toHaveBeenCalled();
     });
   });
 
@@ -676,6 +745,81 @@ describe('Rule Routes', () => {
       const body = JSON.parse(response.body);
       expect(body.userId).toBe(newUserId);
       expect(body.serverId).toBeNull();
+    });
+  });
+
+  describe('PATCH /rules/:id/v2 send destinations', () => {
+    function mockExistingRule(ruleId: string): void {
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          leftJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([
+                {
+                  id: ruleId,
+                  serverId: null,
+                  serverUserId: null,
+                  userId: null,
+                  serverUserServerId: null,
+                  conditions: null,
+                },
+              ]),
+            }),
+          }),
+        }),
+      });
+    }
+
+    it('rejects a send action naming an unknown destination', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const ruleId = randomUUID();
+      const knownId = randomUUID();
+      const unknownId = randomUUID();
+      mockExistingRule(ruleId);
+      vi.mocked(listDestinations).mockResolvedValue([
+        { id: knownId },
+      ] as unknown as DestinationRow[]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/rules/${ruleId}/v2`,
+        payload: { actions: { actions: [{ type: 'send', to: [unknownId] }] } },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body).message).toContain(unknownId);
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('updates the rule when every destination id exists', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const ruleId = randomUUID();
+      const knownId = randomUUID();
+      mockExistingRule(ruleId);
+      vi.mocked(listDestinations).mockResolvedValue([
+        { id: knownId },
+      ] as unknown as DestinationRow[]);
+
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: ruleId, conditions: null }]),
+          }),
+        }),
+      });
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/rules/${ruleId}/v2`,
+        payload: { actions: { actions: [{ type: 'send', to: [knownId] }] } },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockDb.update).toHaveBeenCalled();
     });
   });
 

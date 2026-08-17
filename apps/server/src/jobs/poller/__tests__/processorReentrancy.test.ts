@@ -87,9 +87,13 @@ vi.mock('../sessionLifecycle.js', () => ({
   findActiveSessionByComposite: vi.fn(),
   handleMediaChangeAtomic: vi.fn(),
   processPollResults: vi.fn().mockResolvedValue(undefined),
-  reEvaluateRulesOnPauseState: vi.fn(),
-  reEvaluateRulesOnTranscodeChange: vi.fn(),
   stopSessionAtomic: vi.fn(),
+}));
+
+const mockDispatch = vi.fn().mockResolvedValue({ violations: [], outcomes: [] });
+vi.mock('../../../services/rules/events/dispatcher.js', () => ({
+  dispatch: (...args: unknown[]) => mockDispatch(...args),
+  subscribe: vi.fn(),
 }));
 
 vi.mock('../violations.js', () => ({

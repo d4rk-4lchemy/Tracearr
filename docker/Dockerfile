@@ -21,7 +21,6 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/server/package.json ./apps/server/
 COPY apps/web/package.json ./apps/web/
-COPY apps/mobile/package.json ./apps/mobile/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/translations/package.json ./packages/translations/
 COPY packages/test-utils/package.json ./packages/test-utils/
@@ -32,7 +31,7 @@ RUN pnpm install --frozen-lockfile
 # Copy source code
 COPY . .
 
-# Build only production packages (excludes test-utils, mobile)
+# Build only production packages (excludes test-utils)
 RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --filter=@tracearr/web
 
 # Production stage

@@ -9,7 +9,8 @@ import type {
 } from '@tracearr/shared';
 
 export interface EvaluationContext {
-  session: Session;
+  /** null for account triggers (account.inactive_for); the engine only invokes account evaluators then. */
+  session: Session | null;
   serverUser: ServerUser;
   server: Server;
   activeSessions: Session[];
@@ -32,7 +33,16 @@ export interface EvaluatorResult {
   details?: Record<string, unknown>;
 }
 
+/** What session evaluators receive: the engine never calls them without a session. */
+export type SessionEvaluationContext = EvaluationContext & { session: Session };
+
 export type ConditionEvaluator = (
+  context: SessionEvaluationContext,
+  condition: Condition
+) => EvaluatorResult | Promise<EvaluatorResult>;
+
+/** Reads only serverUser/server; safe with session: null. The five INACTIVITY_COMPATIBLE_FIELDS. */
+export type AccountConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ) => EvaluatorResult | Promise<EvaluatorResult>;

@@ -11,12 +11,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EventEmitter } from 'events';
 
 // Create mocks using vi.hoisted - must require EventEmitter inside for hoisting to work
-const { mockSseManager, mockEnqueueNotification } = vi.hoisted(() => {
+const { mockSseManager, mockEnqueueNotification, mockDispatch } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { EventEmitter: EE } = require('events');
   return {
     mockSseManager: new EE() as EventEmitter,
     mockEnqueueNotification: vi.fn().mockResolvedValue('job-id'),
+    mockDispatch: vi.fn().mockResolvedValue({ violations: [], outcomes: [] }),
   };
 });
 
@@ -87,8 +88,22 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   buildActiveSession: vi.fn(),
   handleMediaChangeAtomic: vi.fn(),
   handleQualityChangeFallout: vi.fn(),
-  reEvaluateRulesOnTranscodeChange: vi.fn(),
   confirmAndPersistSession: vi.fn(),
+}));
+
+vi.mock('../../services/rules/events/dispatcher.js', () => ({
+  dispatch: (...args: unknown[]) => mockDispatch(...args),
+  subscribe: vi.fn(),
+}));
+vi.mock('../../services/rules/events/contextAssembly.js', () => ({
+  loadEvaluationContext: vi.fn().mockResolvedValue(null),
+  assembleEvaluationInputs: vi.fn().mockResolvedValue({
+    activeRulesV2: [],
+    activeSessions: [],
+    recentSessions: [],
+    identityServerUserIds: [],
+  }),
+  setContextAssemblyDeps: vi.fn(),
 }));
 
 // Import after mocking

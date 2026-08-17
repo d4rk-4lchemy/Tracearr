@@ -483,6 +483,19 @@ async function applyRateLimiting(
 // Push Notification Service
 // ============================================================================
 
+/**
+ * The legacy per-device rule-type filter only knows V1 rule types. Every rule
+ * is V2 today (type null), so a null type passes; the filter still narrows typed rules.
+ */
+export function passesViolationRuleTypeFilter(
+  violationRuleTypes: string[],
+  ruleType: string | null
+): boolean {
+  if (violationRuleTypes.length === 0) return true;
+  if (ruleType === null) return true;
+  return violationRuleTypes.includes(ruleType);
+}
+
 export class PushNotificationService {
   /**
    * Send violation notification to devices that have enabled violation alerts
@@ -505,11 +518,8 @@ export class PushNotificationService {
       // Check minimum severity
       if (severityNum < s.violationMinSeverity) return false;
 
-      // Check rule type filter (empty array = all types)
-      // V2 rules have null type - they pass through if array is empty or includes null
-      if (s.violationRuleTypes && s.violationRuleTypes.length > 0) {
-        if (violation.rule.type === null) return false; // V2 rules don't match legacy type filters
-        if (!s.violationRuleTypes.includes(violation.rule.type)) return false;
+      if (!passesViolationRuleTypeFilter(s.violationRuleTypes ?? [], violation.rule.type)) {
+        return false;
       }
 
       return true;

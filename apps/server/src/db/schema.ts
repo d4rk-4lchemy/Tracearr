@@ -25,7 +25,7 @@ import {
   check,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
-import { MEDIA_TYPES } from '@tracearr/shared';
+import { MEDIA_TYPES, type NotificationEventType } from '@tracearr/shared';
 
 // Server types enum
 export const serverTypeEnum = ['plex', 'jellyfin', 'emby', 'dispatcharr'] as const;
@@ -622,9 +622,6 @@ export const notificationEventTypeEnum = [
   'violation_detected',
   'stream_started',
   'stream_stopped',
-  'concurrent_streams',
-  'new_device',
-  'trust_score_changed',
   'server_down',
   'server_up',
   'plugin_update_available',
@@ -652,6 +649,42 @@ export const notificationChannelRouting = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('notification_channel_routing_event_type_idx').on(table.eventType)]
+);
+
+export const destinationKindEnum = [
+  'discord',
+  'json_webhook',
+  'ntfy',
+  'gotify',
+  'apprise',
+  'pushover',
+  'push',
+  'web_toast',
+] as const;
+
+// Outbound notification destinations; config is AES-GCM ciphertext (destinationCrypto), NULL for built-ins.
+export const destinations = pgTable(
+  'destinations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull().unique(),
+    type: varchar('type', { length: 30 }).notNull().$type<(typeof destinationKindEnum)[number]>(),
+    config: text('config'),
+    events: jsonb('events').notNull().default([]).$type<NotificationEventType[]>(),
+    enabled: boolean('enabled').notNull().default(true),
+    builtin: boolean('builtin').notNull().default(false),
+    configStatus: varchar('config_status', { length: 20 })
+      .notNull()
+      .default('ok')
+      .$type<'ok' | 'reencrypt'>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('destinations_builtin_type_uidx')
+      .on(table.type)
+      .where(sql`${table.builtin} = true`),
+  ]
 );
 
 // Termination trigger type enum

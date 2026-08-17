@@ -363,8 +363,12 @@ Run `pnpm dev` in a terminal to start both apps, then use the "Debug All" config
 
 [AGPL-3.0](LICENSE) — Open source with copyleft protection. If you modify Tracearr and offer it as a service, you share your changes.
 
+This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com.
+
 ---
 
 <p align="center">
   <sub>For Plex, Jellyfin, and Emby admins who want to see what's actually happening.</sub>
 </p>
+
+This project is tested with BrowserStack.

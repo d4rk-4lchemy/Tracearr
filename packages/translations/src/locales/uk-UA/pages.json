@@ -336,7 +336,8 @@
     },
     "restoreTitle": "Відновлення з резервної копії...",
     "startingDescription": "Сервер очікує на доступність внутрішніх служб. Ця сторінка автоматично оновиться, коли все буде готове.",
-    "startingTitle": "Tracearr запускається..."
+    "startingTitle": "Tracearr запускається...",
+    "unreachable": "Can't reach the Tracearr server right now. Live updates are paused and will resume on their own."
   },
   "map": {
     "allActivity": "Уся діяльність",
@@ -374,7 +375,6 @@
         "availability": {
           "added": "added {{date}}",
           "addedRemoved": "added {{added}} – removed {{removed}}",
-          "removed": "removed {{date}}",
           "replaced": "replaced {{date}}"
         },
         "loadError": "Couldn't load this title",
@@ -665,6 +665,13 @@
     "blocked": "Заблоковано",
     "blockedCountries": "Заблоковані країни",
     "blocklist": "Список блокувань (блокувати ці країни)",
+    "builder": {
+      "destinationDisabled": "Disabled destination",
+      "errors": {
+        "sendNeedsDestination": "Pick at least one destination"
+      },
+      "noDestinations": "No destinations yet. Add one to send notifications."
+    },
     "chooseTemplate": "Виберіть шаблон правила",
     "chooseTemplateDesc": "Оберіть попередньо налаштований тип правила, щоб швидко запускатися.",
     "classicRule": "Класичне правило",
@@ -725,6 +732,58 @@
     "weeks": "Тижні"
   },
   "settings": {
+    "destinations": {
+      "add": "Add destination",
+      "builtinNote": "Built in",
+      "clearSecret": "Clear",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{name}}? Rules that send to it will be blocked until they are updated.",
+      "description": "Where notifications go. Add as many as you like; each one picks the system events it receives, and rules can send to any of them.",
+      "empty": "No destinations yet.",
+      "events": {
+        "plugin_update_available": "Plugin update available",
+        "server_down": "Server down",
+        "server_up": "Server up",
+        "stream_started": "Stream started",
+        "stream_stopped": "Stream stopped",
+        "violation_detected": "Violation detected"
+      },
+      "eventsLabel": "Events",
+      "fields": {
+        "apiToken": "API token",
+        "apiUrl": "API URL",
+        "authToken": "Auth token",
+        "serverUrl": "Server URL",
+        "topic": "Topic",
+        "url": "URL",
+        "userKey": "User key",
+        "webhookUrl": "Webhook URL"
+      },
+      "hints": {
+        "authTokenOptional": "Optional for public topics"
+      },
+      "ownerOnly": "Only the owner can manage notification destinations.",
+      "pushNote": "Delivered to paired mobile devices; each device filters in its own notification settings.",
+      "reencrypt": "Re-enter this destination's secret",
+      "secretSet": "Set (leave blank to keep)",
+      "test": "Test",
+      "testHint": "Save first to test",
+      "testNeedsForm": "Fill in the required fields to test",
+      "title": "Notification destinations",
+      "types": {
+        "apprise": "Apprise",
+        "discord": "Discord",
+        "gotify": "Gotify",
+        "jsonWebhook": "Webhook (JSON)",
+        "ntfy": "ntfy",
+        "push": "Mobile push",
+        "pushover": "Pushover",
+        "webToast": "Browser toasts"
+      },
+      "usedBy": "Used by {{count}} rule",
+      "usedBy_other": "Used by {{count}} rules",
+      "webToastNote": "Toasts in this browser."
+    },
     "jobs": {
       "lastRun": "Останній запуск",
       "nextRun": "Наступний запуск",
@@ -738,36 +797,6 @@
       "editDisplayName": "Редагувати ім'я",
       "editDisplayNameDesc": "Змінити спосіб відображення цього пристрою у списку пристроїв",
       "updating": "Оновлюється..."
-    },
-    "notifications": {
-      "addAgent": "Додати агента сповіщень",
-      "addAgentDesc": "Виберіть службу сповіщень та налаштуйте її.",
-      "agentType": "Тип агента",
-      "allAgentsConfigured": "Усі агенти сповіщень уже налаштовані.",
-      "allEvents": "Усі події",
-      "currentlyConfigured": "{{name}} наразі налаштовано.",
-      "customEvents": "Події користувача",
-      "description": "Налаштуйте канали сповіщень і оберіть які події кожен агент повинен отримати.",
-      "editAgent": "Редагувати агента сповіщень",
-      "editAgentDesc": "Оновлення конфігурації агента сповіщень.",
-      "eventSelection": "Вибір події",
-      "loadingSettings": "Завантаження налаштувань сповіщень...",
-      "noAgents": "Не налаштовані агенти сповіщень",
-      "noAgentsHint": "Додати агента отримувати повідомлення про порушення обміну та події потоків.",
-      "noConfigNeeded": "Для цього агента не потрібне налаштування.",
-      "oneWebhookLimit": "Одночасно може бути активним лише один агент вебхука.",
-      "removeAgentDesc": "Це видалить {{name}} та вимкне всі його сповіщення. Ви зможете додати його знову пізніше.",
-      "removeAgentTitle": "Видалити {{name}}?",
-      "saveAgent": "Додати агент",
-      "selectType": "Оберіть тип...",
-      "testAgent": "Агент випробування",
-      "testingAgent": "Тестування...",
-      "title": "Агенти сповіщень",
-      "triggerEvents": "Тригер події",
-      "updateAgent": "Оновити агент",
-      "webhookAgents": "Вебхук агенти",
-      "webhookUrl": "URL-адреса вебхука",
-      "webhookUrlPlaceholder": "https://..."
     },
     "plex": {
       "accountsLinked_one": "{{count}} Plex account linked",

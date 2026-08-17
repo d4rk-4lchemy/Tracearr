@@ -1,7 +1,8 @@
 /**
  * Core type definitions for Tracearr
  */
-import type { webhookFormatSchema, sessionTargetSchema, statPeriodSchema } from './schemas.js';
+import type { NotificationToast } from './destinations.js';
+import type { sessionTargetSchema, statPeriodSchema } from './schemas.js';
 import type { z } from 'zod';
 
 // Re-export SessionTarget for use in action interfaces
@@ -690,15 +691,12 @@ export interface RuleConditions {
 // Action types
 export type ActionType =
   | 'log_only'
-  | 'notify'
+  | 'send'
   | 'adjust_trust'
   | 'set_trust'
   | 'reset_trust'
   | 'kill_stream'
   | 'message_client';
-
-// Notification channels
-export type NotificationChannelV2 = 'push' | 'discord' | 'email' | 'webhook';
 
 // Action definitions
 export interface LogOnlyAction {
@@ -706,9 +704,10 @@ export interface LogOnlyAction {
   message?: string;
 }
 
-export interface NotifyAction {
-  type: 'notify';
-  channels: NotificationChannelV2[];
+export interface SendAction {
+  type: 'send';
+  /** destination ids; validated against the destinations table on rule save */
+  to: string[];
   cooldown_minutes?: number;
 }
 
@@ -745,7 +744,7 @@ export interface MessageClientAction {
 
 export type Action =
   | LogOnlyAction
-  | NotifyAction
+  | SendAction
   | AdjustTrustAction
   | SetTrustAction
   | ResetTrustAction
@@ -1082,9 +1081,6 @@ export interface ServerLiveStats {
   fetchedAt: string;
 }
 
-// Webhook format types
-export type WebhookFormat = z.infer<typeof webhookFormatSchema>;
-
 // Unit system for display preferences (stored in settings)
 export type UnitSystem = 'metric' | 'imperial';
 
@@ -1093,14 +1089,6 @@ export interface Settings {
   allowGuestAccess: boolean;
   // Display preferences
   unitSystem: UnitSystem;
-  // Notifications settings
-  discordWebhookUrl: string | null;
-  customWebhookUrl: string | null;
-  webhookFormat: WebhookFormat | null;
-  ntfyTopic: string | null;
-  ntfyAuthToken: string | null;
-  pushoverApiToken: string | null;
-  pushoverUserKey: string | null;
   // Poller settings
   pollerEnabled: boolean;
   pollerIntervalMs: number;
@@ -1336,6 +1324,8 @@ export interface ServerToClientEvents {
   'server:down': (data: { serverId: string; serverName: string }) => void;
   'server:up': (data: { serverId: string; serverName: string }) => void;
   'server:connection': (status: ServerConnectionStatus) => void;
+  'notification:toast': (data: NotificationToast) => void;
+  'destinations:changed': () => void;
 }
 
 export interface ClientToServerEvents {
@@ -1569,9 +1559,6 @@ export type NotificationEventType =
   | 'violation_detected'
   | 'stream_started'
   | 'stream_stopped'
-  | 'concurrent_streams'
-  | 'new_device'
-  | 'trust_score_changed'
   | 'server_down'
   | 'server_up'
   | 'plugin_update_available';
@@ -1625,21 +1612,6 @@ export interface RateLimitStatus {
 // Extended preferences response including live rate limit status
 export interface NotificationPreferencesWithStatus extends NotificationPreferences {
   rateLimitStatus?: RateLimitStatus;
-}
-
-// Notification channel types
-export type NotificationChannel = 'discord' | 'webhook' | 'push' | 'webToast';
-
-// Notification channel routing configuration (per-event type)
-export interface NotificationChannelRouting {
-  id: string;
-  eventType: NotificationEventType;
-  discordEnabled: boolean;
-  webhookEnabled: boolean;
-  pushEnabled: boolean;
-  webToastEnabled: boolean;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 // Encrypted push payload (AES-256-GCM with separate authTag per security best practices)

@@ -1,13 +1,17 @@
+import { TIME_MS } from '@tracearr/shared';
 import type {
   Action,
   ActionType,
   LogOnlyAction,
-  NotifyAction,
+  SendAction,
   AdjustTrustAction,
   SetTrustAction,
   KillStreamAction,
   MessageClientAction,
+  ServerUser,
 } from '@tracearr/shared';
+import { rulesLogger } from '../../../utils/logger.js';
+import type { NotificationEvent } from '../../notifications/events.js';
 import type { ActionExecutor, EvaluationContext } from '../types.js';
 import { resolveTargetSessions } from './targeting.js';
 
@@ -40,12 +44,13 @@ export interface ActionExecutorDeps {
     message?: string;
     details: Record<string, unknown>;
   }) => Promise<void>;
-  sendNotification: (params: {
-    channels: string[];
+  /** Resolves the destination ids and returns how many jobs were enqueued. */
+  enqueueRuleNotification: (params: {
+    to: string[];
     title: string;
     message: string;
-    data?: Record<string, unknown>;
-  }) => Promise<void>;
+    event: NotificationEvent;
+  }) => Promise<number>;
   adjustUserTrust: (userId: string, delta: number) => Promise<void>;
   setUserTrust: (userId: string, value: number) => Promise<void>;
   resetUserTrust: (userId: string) => Promise<void>;
@@ -75,7 +80,7 @@ export interface ActionExecutorDeps {
   queueForConfirmation: (params: {
     ruleId: string;
     ruleName: string;
-    sessionId: string;
+    sessionId: string | null;
     serverUserId: string;
     serverId: string;
     action: Action;
@@ -87,9 +92,7 @@ const noopDeps: ActionExecutorDeps = {
   logAudit: async () => {
     /* no-op */
   },
-  sendNotification: async () => {
-    /* no-op */
-  },
+  enqueueRuleNotification: async () => 0,
   adjustUserTrust: async () => {
     /* no-op */
   },
@@ -189,55 +192,89 @@ const executeLogOnly: ActionExecutor = async (
   const typedAction = action as LogOnlyAction;
 
   await currentDeps.logAudit({
-    sessionId: session.id,
+    sessionId: session?.id ?? null,
     serverUserId: serverUser.id,
     serverId: server.id,
     ruleId: rule.id,
     ruleName: rule.name,
     message: typedAction.message,
-    details: {
-      sessionKey: session.sessionKey,
-      mediaTitle: session.mediaTitle,
-      ipAddress: session.ipAddress,
-    },
+    details: session
+      ? {
+          sessionKey: session.sessionKey,
+          mediaTitle: session.mediaTitle,
+          ipAddress: session.ipAddress,
+        }
+      : { lastActivityAt: serverUser.lastActivityAt },
   });
 };
 
+function accountInactivityMessage(serverUser: ServerUser): string {
+  if (!serverUser.lastActivityAt) return `Account "${serverUser.username}" has never been active`;
+  const days = Math.floor(
+    (Date.now() - new Date(serverUser.lastActivityAt).getTime()) / TIME_MS.DAY
+  );
+  return `Account "${serverUser.username}" has been inactive for ${days} days`;
+}
+
 /**
- * Send notification to specified channels.
+ * Send a violation event to the named destinations.
  */
-const executeNotify: ActionExecutor = async (
+const executeSend: ActionExecutor = async (
   context: EvaluationContext,
   action: Action
 ): Promise<void> => {
   const { session, serverUser, server, rule } = context;
-  const typedAction = action as NotifyAction;
-  const channels = typedAction.channels;
+  const typedAction = action as SendAction;
+  const to = typedAction.to;
 
-  if (channels.length === 0) {
+  if (to.length === 0) {
     return;
   }
 
   const title = `Rule Triggered: ${rule.name}`;
-  const message = `User "${serverUser.username}" triggered rule "${rule.name}" while playing "${session.mediaTitle}"`;
+  const message = session
+    ? `User "${serverUser.username}" triggered rule "${rule.name}" while playing "${session.mediaTitle}"`
+    : accountInactivityMessage(serverUser);
 
-  await currentDeps.sendNotification({
-    channels,
-    title,
-    message,
-    data: {
+  // No violation row for this match, so synthesize an id; the json webhook body carries payload.id.
+  const event: NotificationEvent = {
+    type: 'violation',
+    payload: {
+      id: context.violationId ?? `rule-send-${rule.id}-${Date.now()}`,
       ruleId: rule.id,
-      sessionId: session.id,
       serverUserId: serverUser.id,
-      username: serverUser.username,
-      displayName: serverUser.identityName ?? serverUser.username,
-      mediaTitle: session.mediaTitle,
-      // Image data for rich push notifications
-      serverId: server.id,
-      thumbPath: session.thumbPath,
-      userThumbUrl: serverUser.thumbUrl,
+      sessionId: session?.id ?? null,
+      severity: rule.severity,
+      createdAt: new Date(),
+      acknowledgedAt: null,
+      data: {
+        ruleId: rule.id,
+        serverUserId: serverUser.id,
+        username: serverUser.username,
+        displayName: serverUser.identityName ?? serverUser.username,
+        // Image data for rich push notifications
+        serverId: server.id,
+        userThumbUrl: serverUser.thumbUrl,
+        ...(session
+          ? { sessionId: session.id, mediaTitle: session.mediaTitle, thumbPath: session.thumbPath }
+          : {}),
+      },
+      rule: { id: rule.id, name: rule.name, type: null },
+      session: undefined,
+      user: {
+        id: serverUser.id,
+        username: serverUser.username,
+        identityName: serverUser.identityName ?? null,
+        thumbUrl: serverUser.thumbUrl,
+        serverId: server.id,
+      },
     },
-  });
+  };
+
+  const enqueued = await currentDeps.enqueueRuleNotification({ to, title, message, event });
+  if (enqueued === 0) {
+    rulesLogger.info('send resolved no enabled destination', { ruleId: rule.id, to });
+  }
 };
 
 /**
@@ -285,6 +322,7 @@ const executeKillStream: ActionExecutor = async (
   action: Action
 ): Promise<{ enqueuedSessionIds: string[]; queueFailure: boolean }> => {
   const { session, serverUser, activeSessions, rule, identityServerUserIds } = context;
+  if (!session) return { enqueuedSessionIds: [], queueFailure: false };
   const typedAction = action as KillStreamAction;
   const delaySeconds = typedAction.delay_seconds ?? 0;
   const message = typedAction.message;
@@ -361,6 +399,7 @@ const executeMessageClient: ActionExecutor = async (
   action: Action
 ): Promise<void> => {
   const { session, serverUser, activeSessions, rule, identityServerUserIds } = context;
+  if (!session) return;
   const typedAction = action as MessageClientAction;
   const message = typedAction.message;
   const target = typedAction.target ?? 'triggering';
@@ -397,7 +436,7 @@ const executeMessageClient: ActionExecutor = async (
 
 export const executorRegistry: Record<ActionType, ActionExecutor> = {
   log_only: executeLogOnly,
-  notify: executeNotify,
+  send: executeSend,
   adjust_trust: executeAdjustTrust,
   set_trust: executeSetTrust,
   reset_trust: executeResetTrust,
@@ -411,7 +450,7 @@ export const executorRegistry: Record<ActionType, ActionExecutor> = {
 
 /**
  * Cooldown keys are scoped per action type so one action's cooldown never
- * suppresses a different action on the same rule (a notify cooldown must not
+ * suppresses a different action on the same rule (a send cooldown must not
  * swallow the kill_stream). killQueue arms the kill_stream key through this
  * same builder once a kill actually executes.
  */
@@ -441,6 +480,15 @@ export async function executeAction(
     };
   }
 
+  if (!context.session && (action.type === 'kill_stream' || action.type === 'message_client')) {
+    return {
+      action,
+      success: true,
+      skipped: true,
+      skipReason: 'No active session for an inactivity violation',
+    };
+  }
+
   // Check cooldown
   const cooldownMinutes = getCooldownMinutes(action);
   if (cooldownMinutes && cooldownMinutes > 0) {
@@ -462,7 +510,7 @@ export async function executeAction(
     await currentDeps.queueForConfirmation({
       ruleId: rule.id,
       ruleName: rule.name,
-      sessionId: context.session.id,
+      sessionId: context.session?.id ?? null,
       serverUserId: serverUser.id,
       serverId: context.server.id,
       action,

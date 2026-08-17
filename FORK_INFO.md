@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA after this upstream merge: `feature/prepare-for-2.1.0` at `d084d0c1`
+- Fork branch: `feature/prepare-for-2.2.0`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `cd08ec94`
+- Source branch/SHA inspected: `main` at `da2828d1`
 - Last shared upstream commit found during inspection: `22199d26`
-- Latest upstream commit merged into the current working tree: `cd08ec94`
+- Latest upstream commit merged into the current working tree: `da2828d1`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -215,6 +215,15 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `da2828d1` was merged into `feature/prepare-for-2.2.0`
+  on August 17, 2026. Upstream migration `0088`, the destinations-based
+  notification system, and the rule lifecycle changes were retained.
+  Dispatcharr continues to be included in the shared server and rule types;
+  its WebSocket processor remains leader-lease owned, and authoritative stops
+  retain the exact active-session ID through cache and notification handling.
+  Upstream removed the mobile application, so the former mobile Dispatcharr
+  presentation overlay was removed with it.
 
 - Upstream `main` at `22199d26` (Tracearr `v2.1.0-beta.8`) was merged into
   `feature/prepare-for-2.1.0` on Friday, August 14, 2026 (merge commit

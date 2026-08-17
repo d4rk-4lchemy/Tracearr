@@ -26,6 +26,10 @@ vi.mock('../../../services/settings.js', () => ({
   getWatchedThreshold: vi.fn().mockResolvedValue(0.85),
 }));
 
+vi.mock('../../../services/rules/events/dispatcher.js', () => ({
+  dispatch: vi.fn().mockResolvedValue({ violations: [], outcomes: [] }),
+}));
+
 describe('stopSessionAtomic retry logic', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -161,5 +165,75 @@ describe('stopSessionAtomic watched threshold wiring', () => {
     });
 
     expect(result.watched).toBe(false);
+  });
+});
+
+describe('stopSessionAtomic session.stopped dispatch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('dispatches session.stopped only when the row was actually stopped', async () => {
+    const { db } = await import('../../../db/client.js');
+    const mockUpdate = db.update as ReturnType<typeof vi.fn>;
+    const { dispatch } = await import('../../../services/rules/events/dispatcher.js');
+    const mockDispatch = dispatch as ReturnType<typeof vi.fn>;
+
+    mockUpdate.mockImplementation(() => ({
+      set: () => ({
+        where: () => ({
+          returning: async () => [{ id: 'session-1' }],
+        }),
+      }),
+    }));
+
+    const stoppedAt = new Date();
+    await stopSessionAtomic({
+      session: {
+        id: 'session-1',
+        serverId: 'server-1',
+        startedAt: new Date(),
+        lastPausedAt: null,
+        pausedDurationMs: 0,
+        progressMs: null,
+        totalDurationMs: 3600000,
+        watched: false,
+      } as Parameters<typeof stopSessionAtomic>[0]['session'],
+      stoppedAt,
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'session.stopped',
+        at: stoppedAt,
+        sessionId: 'session-1',
+        serverId: 'server-1',
+      })
+    );
+
+    mockDispatch.mockClear();
+    mockUpdate.mockImplementation(() => ({
+      set: () => ({
+        where: () => ({
+          returning: async () => [],
+        }),
+      }),
+    }));
+
+    await stopSessionAtomic({
+      session: {
+        id: 'session-1',
+        serverId: 'server-1',
+        startedAt: new Date(),
+        lastPausedAt: null,
+        pausedDurationMs: 0,
+        progressMs: null,
+        totalDurationMs: 3600000,
+        watched: false,
+      } as Parameters<typeof stopSessionAtomic>[0]['session'],
+      stoppedAt: new Date(),
+    });
+
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 });

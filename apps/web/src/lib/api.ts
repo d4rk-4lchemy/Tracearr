@@ -28,8 +28,10 @@ import type {
   PlexAccountsResponse,
   LinkPlexAccountResponse,
   UnlinkPlexAccountResponse,
-  NotificationChannelRouting,
-  NotificationEventType,
+  Destination,
+  DestinationKind,
+  CreateDestinationInput,
+  UpdateDestinationInput,
   HistorySessionResponse,
   HistoryFilterOptions,
   RulesFilterOptions,
@@ -41,7 +43,6 @@ import type {
   ShowStatsResponse,
   SetupStatus,
   MediaType,
-  WebhookFormat,
   ServerConnectionStatus,
   // New analytics types
   DeviceCompatibilityResponse,
@@ -185,35 +186,6 @@ export interface StatsTimeRange {
   timezone?: string; // IANA timezone (e.g., 'America/Los_Angeles')
 }
 
-// Rules V2 migration response types
-export interface MigrationPreviewItem {
-  id: string;
-  name: string;
-  type: string;
-  conditions: unknown;
-  actions: unknown;
-}
-
-export interface MigrationPreviewResponse {
-  total: number;
-  alreadyMigrated: number;
-  toMigrate: number;
-  preview: MigrationPreviewItem[];
-}
-
-export interface MigrationResponse {
-  success: boolean;
-  migrated: { id: string; name: string }[];
-  skipped: { id: string; name: string; reason: string }[];
-  errors: { id: string; name: string; error: string }[];
-  summary: {
-    total: number;
-    migrated: number;
-    skipped: number;
-    failed: number;
-  };
-}
-
 // Re-export shared timezone helper for backwards compatibility
 // Uses Intl API which works in both browser and React Native
 export const getBrowserTimezone = getClientTimezone;
@@ -308,11 +280,14 @@ export const API_BASE_URL = `${BASE_PATH}${API_BASE_PATH}`;
 /** Carries the response status so callers can distinguish e.g. a 404 from a network failure. */
 export class ApiError extends Error {
   status: number;
+  /** Parsed error body, for endpoints whose failure carries detail (a 409 delete lists the blocking rules). */
+  body: Record<string, unknown>;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, body: Record<string, unknown> = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -377,7 +352,8 @@ class ApiClient {
       const errorBody = (await response.json().catch(() => ({}))) as Record<string, unknown>;
       throw new ApiError(
         ((errorBody.message ?? errorBody.error) as string) ?? `Request failed: ${response.status}`,
-        response.status
+        response.status,
+        errorBody
       );
     }
 
@@ -855,8 +831,6 @@ class ApiClient {
       const response = await this.request<{ data: Rule[] }>('/rules');
       return response.data;
     },
-    create: (data: Omit<Rule, 'id' | 'createdAt' | 'updatedAt'>) =>
-      this.request<Rule>('/rules', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: Partial<Rule>) =>
       this.request<Rule>(`/rules/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => this.request<void>(`/rules/${id}`, { method: 'DELETE' }),
@@ -876,16 +850,6 @@ class ApiClient {
       this.request<Rule>('/rules/v2', { method: 'POST', body: JSON.stringify(data) }),
     updateV2: (id: string, data: UpdateRuleV2Input) =>
       this.request<Rule>(`/rules/${id}/v2`, { method: 'PATCH', body: JSON.stringify(data) }),
-
-    // Migration
-    migratePreview: () => this.request<MigrationPreviewResponse>('/rules/migrate/preview'),
-    migrate: (ids?: string[]) =>
-      this.request<MigrationResponse>('/rules/migrate', {
-        method: 'POST',
-        body: JSON.stringify(ids ? { ids } : {}),
-      }),
-    migrateOne: (id: string) =>
-      this.request<Rule>(`/rules/${id}/migrate`, { method: 'POST', body: '{}' }),
   };
 
   // Violations
@@ -1664,19 +1628,6 @@ class ApiClient {
     get: () => this.request<Settings>('/settings'),
     update: (data: Partial<Settings>) =>
       this.request<Settings>('/settings', { method: 'PATCH', body: JSON.stringify(data) }),
-    testWebhook: (data: {
-      type: 'discord' | 'custom';
-      url?: string;
-      format?: WebhookFormat;
-      ntfyTopic?: string;
-      ntfyAuthToken?: string;
-      pushoverUserKey?: string;
-      pushoverApiToken?: string;
-    }) =>
-      this.request<{ success: boolean; error?: string }>('/settings/test-webhook', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
     getApiKey: () => this.request<{ token: string | null }>('/settings/api-key'),
     regenerateApiKey: () =>
       this.request<{ token: string }>('/settings/api-key/regenerate', { method: 'POST' }),
@@ -1684,20 +1635,24 @@ class ApiClient {
       this.request<{ showWarning: boolean; stateHash: string }>('/settings/ip-warning'),
   };
 
-  // Channel Routing
-  channelRouting = {
-    getAll: () => this.request<NotificationChannelRouting[]>('/settings/notifications/routing'),
-    update: (
-      eventType: NotificationEventType,
-      data: {
-        discordEnabled?: boolean;
-        webhookEnabled?: boolean;
-        webToastEnabled?: boolean;
-        pushEnabled?: boolean;
-      }
-    ) =>
-      this.request<NotificationChannelRouting>(`/settings/notifications/routing/${eventType}`, {
+  // Notification destinations
+  destinations = {
+    list: () => this.request<Destination[]>('/destinations'),
+    create: (data: CreateDestinationInput) =>
+      this.request<Destination>('/destinations', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: UpdateDestinationInput) =>
+      this.request<Destination>(`/destinations/${id}`, {
         method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    remove: (id: string) => this.request<void>(`/destinations/${id}`, { method: 'DELETE' }),
+    test: (id: string) =>
+      this.request<{ success: boolean; error?: string }>(`/destinations/${id}/test`, {
+        method: 'POST',
+      }),
+    testUnsaved: (data: { type: DestinationKind; config: Record<string, unknown> }) =>
+      this.request<{ success: boolean; error?: string }>('/destinations/test', {
+        method: 'POST',
         body: JSON.stringify(data),
       }),
   };

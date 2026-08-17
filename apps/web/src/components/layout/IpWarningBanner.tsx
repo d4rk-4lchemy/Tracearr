@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
+import { LayoutBanner } from './LayoutBanner';
 
 const IP_WARNING_STATE_KEY = 'tracearr_ip_warning_state';
 
@@ -54,12 +53,8 @@ export function IpWarningBanner() {
   };
 
   return (
-    <Alert
-      variant="warning"
-      className="flex items-center rounded-none border-x-0 border-t-0 bg-yellow-50/50 dark:bg-yellow-950/20 [&>svg]:!top-1/2 [&>svg]:!-translate-y-1/2 [&>svg+div]:!translate-y-0"
-    >
-      <AlertTriangle className="h-4 w-4" />
-      <AlertDescription className="ml-2 flex flex-1 items-center justify-between gap-4">
+    <LayoutBanner variant="warning">
+      <div className="flex items-center justify-between gap-4">
         <span className="flex-1">{t('ipWarning.message')}</span>
         <Button
           variant="outline"
@@ -69,7 +64,7 @@ export function IpWarningBanner() {
         >
           {t('ipWarning.acknowledge')}
         </Button>
-      </AlertDescription>
-    </Alert>
+      </div>
+    </LayoutBanner>
   );
 }

@@ -97,6 +97,8 @@ export const WS_EVENTS = {
   SERVER_DOWN: 'server:down',
   SERVER_UP: 'server:up',
   SERVER_CONNECTION: 'server:connection',
+  NOTIFICATION_TOAST: 'notification:toast',
+  DESTINATIONS_CHANGED: 'destinations:changed',
 } as const;
 
 // Redis key prefix (set at startup via setRedisPrefix)
@@ -376,9 +378,6 @@ export const NOTIFICATION_EVENTS = {
   VIOLATION_DETECTED: 'violation_detected',
   STREAM_STARTED: 'stream_started',
   STREAM_STOPPED: 'stream_stopped',
-  CONCURRENT_STREAMS: 'concurrent_streams',
-  NEW_DEVICE: 'new_device',
-  TRUST_SCORE_CHANGED: 'trust_score_changed',
   SERVER_DOWN: 'server_down',
   SERVER_UP: 'server_up',
   PLUGIN_UPDATE_AVAILABLE: 'plugin_update_available',

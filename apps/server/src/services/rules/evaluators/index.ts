@@ -1,7 +1,9 @@
+import { TIME_MS } from '@tracearr/shared';
 import type {
   Condition,
   ConditionField,
   DeviceType,
+  INACTIVITY_COMPATIBLE_FIELDS,
   Platform,
   Session,
   TranscodingConditionValue,
@@ -13,7 +15,13 @@ import { LOCAL_NETWORK_COUNTRY, normalizeToCountryCode } from '../../../utils/co
 import { normalizeResolution } from '../../../utils/resolutionNormalizer.js';
 import { geoipService } from '../../geoip.js';
 import { compare } from '../comparisons.js';
-import type { ConditionEvaluator, EvaluationContext, EvaluatorResult } from '../types.js';
+import type {
+  AccountConditionEvaluator,
+  ConditionEvaluator,
+  EvaluationContext,
+  EvaluatorResult,
+  SessionEvaluationContext,
+} from '../types.js';
 
 // ============================================================================
 // Helper Functions
@@ -223,7 +231,7 @@ function belongsToIdentity(context: EvaluationContext): (s: Session) => boolean 
 // ============================================================================
 
 const evaluateConcurrentStreams: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session, activeSessions } = context;
@@ -284,7 +292,7 @@ const evaluateConcurrentStreams: ConditionEvaluator = (
 };
 
 const evaluateActiveSessionDistanceKm: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session, activeSessions } = context;
@@ -337,7 +345,7 @@ const evaluateActiveSessionDistanceKm: ConditionEvaluator = (
 };
 
 const evaluateTravelSpeedKmh: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session, recentSessions } = context;
@@ -423,7 +431,7 @@ const evaluateTravelSpeedKmh: ConditionEvaluator = (
 };
 
 const evaluateUniqueIpsInWindow: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session, recentSessions } = context;
@@ -465,7 +473,7 @@ const evaluateUniqueIpsInWindow: ConditionEvaluator = (
 };
 
 const evaluateUniqueDevicesInWindow: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session, recentSessions } = context;
@@ -499,24 +507,23 @@ const evaluateUniqueDevicesInWindow: ConditionEvaluator = (
   };
 };
 
-const evaluateInactiveDays: ConditionEvaluator = (
+/** Never-active accounts are infinitely inactive: gte/gt/neq match, eq/lt/lte do not; the hourly inactivity job's semantic since 860501ac. */
+const evaluateInactiveDays: AccountConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { serverUser } = context;
-
-  let inactiveDays: number;
   if (!serverUser.lastActivityAt) {
-    // Never had activity - treat as maximum inactivity
-    inactiveDays = Math.floor(
-      (Date.now() - new Date(serverUser.createdAt).getTime()) / (1000 * 60 * 60 * 24)
-    );
-  } else {
-    inactiveDays = Math.floor(
-      (Date.now() - new Date(serverUser.lastActivityAt).getTime()) / (1000 * 60 * 60 * 24)
-    );
+    const op = condition.operator;
+    return {
+      matched: op === 'gte' || op === 'gt' || op === 'neq',
+      actual: null,
+      details: { lastActivityAt: null, neverActive: true },
+    };
   }
-
+  const inactiveDays = Math.floor(
+    (Date.now() - new Date(serverUser.lastActivityAt).getTime()) / TIME_MS.DAY
+  );
   return {
     matched: compare(inactiveDays, condition.operator, condition.value),
     actual: inactiveDays,
@@ -533,7 +540,7 @@ const evaluateInactiveDays: ConditionEvaluator = (
  * Returns not matched if the session is not currently paused.
  */
 const evaluateCurrentPauseMinutes: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -557,7 +564,7 @@ const evaluateCurrentPauseMinutes: ConditionEvaluator = (
  * Includes ongoing pause time if the session is currently paused.
  */
 const evaluateTotalPauseMinutes: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -582,7 +589,7 @@ const evaluateTotalPauseMinutes: ConditionEvaluator = (
 // ============================================================================
 
 const evaluateSourceResolution: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -609,7 +616,7 @@ const evaluateSourceResolution: ConditionEvaluator = (
 };
 
 const evaluateOutputResolution: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -640,7 +647,7 @@ const evaluateOutputResolution: ConditionEvaluator = (
 };
 
 const evaluateIsTranscoding: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -708,7 +715,7 @@ const evaluateIsTranscoding: ConditionEvaluator = (
 };
 
 const evaluateIsTranscodeDowngrade: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -736,7 +743,7 @@ const evaluateIsTranscodeDowngrade: ConditionEvaluator = (
 };
 
 const evaluateSourceBitrateMbps: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -756,7 +763,7 @@ const evaluateSourceBitrateMbps: ConditionEvaluator = (
 // User Attribute Evaluators
 // ============================================================================
 
-const evaluateUserId: ConditionEvaluator = (
+const evaluateUserId: AccountConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
@@ -784,7 +791,7 @@ const evaluateUserId: ConditionEvaluator = (
   };
 };
 
-const evaluateTrustScore: ConditionEvaluator = (
+const evaluateTrustScore: AccountConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
@@ -796,15 +803,13 @@ const evaluateTrustScore: ConditionEvaluator = (
   };
 };
 
-const evaluateAccountAgeDays: ConditionEvaluator = (
+const evaluateAccountAgeDays: AccountConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { serverUser } = context;
 
-  const ageDays = Math.floor(
-    (Date.now() - new Date(serverUser.createdAt).getTime()) / (1000 * 60 * 60 * 24)
-  );
+  const ageDays = Math.floor((Date.now() - new Date(serverUser.createdAt).getTime()) / TIME_MS.DAY);
 
   return {
     matched: compare(ageDays, condition.operator, condition.value),
@@ -817,7 +822,7 @@ const evaluateAccountAgeDays: ConditionEvaluator = (
 // ============================================================================
 
 const evaluateDeviceType: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session, server } = context;
@@ -836,7 +841,7 @@ const evaluateDeviceType: ConditionEvaluator = (
 };
 
 const evaluateClientName: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -851,7 +856,7 @@ const evaluateClientName: ConditionEvaluator = (
 };
 
 const evaluatePlatform: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -869,7 +874,7 @@ const evaluatePlatform: ConditionEvaluator = (
 // ============================================================================
 
 const evaluateIsLocalNetwork: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -899,7 +904,7 @@ function normalizeCountryConditionValue(value: Condition['value']): Condition['v
 }
 
 const evaluateCountry: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -934,7 +939,7 @@ const evaluateCountry: ConditionEvaluator = (
 };
 
 const evaluateIpInRange: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -976,7 +981,7 @@ const evaluateIpInRange: ConditionEvaluator = (
 // Scope Evaluators
 // ============================================================================
 
-const evaluateServerId: ConditionEvaluator = (
+const evaluateServerId: AccountConditionEvaluator = (
   context: EvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
@@ -989,7 +994,7 @@ const evaluateServerId: ConditionEvaluator = (
 };
 
 const evaluateMediaType: ConditionEvaluator = (
-  context: EvaluationContext,
+  context: SessionEvaluationContext,
   condition: Condition
 ): EvaluatorResult => {
   const { session } = context;
@@ -1004,7 +1009,11 @@ const evaluateMediaType: ConditionEvaluator = (
 // Evaluator Registry
 // ============================================================================
 
-export const evaluatorRegistry: Record<ConditionField, ConditionEvaluator> = {
+type AccountField = (typeof INACTIVITY_COMPATIBLE_FIELDS)[number];
+
+export const evaluatorRegistry: {
+  [F in ConditionField]: F extends AccountField ? AccountConditionEvaluator : ConditionEvaluator;
+} = {
   // Session behavior
   concurrent_streams: evaluateConcurrentStreams,
   active_session_distance_km: evaluateActiveSessionDistanceKm,

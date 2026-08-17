@@ -1,3 +1,4 @@
+import { INACTIVITY_COMPATIBLE_FIELDS } from '@tracearr/shared';
 import type {
   RuleConditions,
   ConditionGroup,
@@ -8,10 +9,12 @@ import type {
   GroupEvidence,
 } from '@tracearr/shared';
 import type {
+  AccountConditionEvaluator,
   EvaluationContext,
   EvaluationResult,
   ConditionEvaluator,
   EvaluatorResult,
+  SessionEvaluationContext,
 } from './types.js';
 import { evaluatorRegistry } from './evaluators/index.js';
 import { rulesLogger as logger } from '../../utils/logger.js';
@@ -44,7 +47,7 @@ export function hasTranscodeConditions(rule: RuleV2): boolean {
  * Rules containing these fields are re-evaluated on every poll cycle for paused sessions
  * because the pause duration grows over time even without state transitions.
  */
-const PAUSE_CONDITION_FIELDS: ReadonlySet<ConditionField> = new Set([
+export const PAUSE_CONDITION_FIELDS: ReadonlySet<ConditionField> = new Set([
   'current_pause_minutes',
   'total_pause_minutes',
 ]);
@@ -57,6 +60,16 @@ export function hasPauseConditions(rule: RuleV2): boolean {
   if (!rule.conditions?.groups) return false;
   return rule.conditions.groups.some((group) =>
     group.conditions.some((condition) => PAUSE_CONDITION_FIELDS.has(condition.field))
+  );
+}
+
+/** Rules with an inactive_days condition run under account.inactive_for, never at session triggers. */
+export function hasInactivityCondition(rule: {
+  conditions: RuleConditions | null | undefined;
+}): boolean {
+  if (!rule.conditions?.groups) return false;
+  return rule.conditions.groups.some((group) =>
+    group.conditions.some((c) => c.field === 'inactive_days')
   );
 }
 
@@ -90,6 +103,18 @@ interface AllGroupsResult {
   evidence: GroupEvidence[];
 }
 
+const ACCOUNT_CONDITION_FIELDS: ReadonlySet<ConditionField> = new Set(INACTIVITY_COMPATIBLE_FIELDS);
+
+function unmatchedEvidence(condition: Condition): ConditionEvidence {
+  return {
+    field: condition.field,
+    operator: condition.operator,
+    threshold: condition.value,
+    actual: null,
+    matched: false,
+  };
+}
+
 /**
  * Evaluate a single condition and return evidence. Awaits the evaluator's
  * result whether it resolves synchronously or via a Promise.
@@ -98,23 +123,24 @@ async function evaluateConditionAsync(
   context: EvaluationContext,
   condition: Condition
 ): Promise<ConditionEvidence> {
-  const evaluator: ConditionEvaluator | undefined = evaluatorRegistry[condition.field];
+  const evaluator: ConditionEvaluator | AccountConditionEvaluator | undefined =
+    evaluatorRegistry[condition.field];
 
   if (!evaluator) {
     logger.warn(`No evaluator found for condition field: ${condition.field}`, {
       field: condition.field,
     });
-    return {
-      field: condition.field,
-      operator: condition.operator,
-      threshold: condition.value,
-      actual: null,
-      matched: false,
-    };
+    return unmatchedEvidence(condition);
   }
 
   try {
-    const result = evaluator(context, condition);
+    if (context.session === null) {
+      if (!ACCOUNT_CONDITION_FIELDS.has(condition.field)) return unmatchedEvidence(condition);
+      const result = (evaluator as AccountConditionEvaluator)(context, condition);
+      const resolved = result instanceof Promise ? await result : result;
+      return toConditionEvidence(condition, resolved);
+    }
+    const result = evaluator(context as SessionEvaluationContext, condition);
     // Handle both sync and async evaluators
     const resolved = result instanceof Promise ? await result : result;
     return toConditionEvidence(condition, resolved);
@@ -123,13 +149,7 @@ async function evaluateConditionAsync(
       field: condition.field,
       error,
     });
-    return {
-      field: condition.field,
-      operator: condition.operator,
-      threshold: condition.value,
-      actual: null,
-      matched: false,
-    };
+    return unmatchedEvidence(condition);
   }
 }
 

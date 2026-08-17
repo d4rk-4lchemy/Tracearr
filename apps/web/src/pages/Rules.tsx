@@ -2,9 +2,6 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { NumericInput } from '@/components/ui/numeric-input';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,18 +10,10 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,12 +37,10 @@ import {
   Settings2,
   User,
 } from 'lucide-react';
-import { CountryMultiSelect } from '@/components/ui/country-multi-select';
 import { getCountryName, cn } from '@/lib/utils';
 import type {
   Rule,
   RuleType,
-  RuleParams,
   UnitSystem,
   CreateRuleV2Input,
   UpdateRuleV2Input,
@@ -64,16 +51,9 @@ import { RuleBuilderDialog, getRuleIcon, getRuleSummary, isV2Rule } from '@/comp
 import { ServerBadge } from '@/components/server';
 import { useServer } from '@/hooks/useServer';
 import { CLASSIC_RULE_TEMPLATES, type ClassicRuleTemplate } from '@/lib/rules';
-import {
-  getSpeedUnit,
-  getDistanceUnit,
-  fromMetricDistance,
-  toMetricDistance,
-} from '@tracearr/shared';
+import { getSpeedUnit, getDistanceUnit, fromMetricDistance } from '@tracearr/shared';
 import {
   useRules,
-  useCreateRule,
-  useUpdateRule,
   useDeleteRule,
   useToggleRule,
   useBulkToggleRules,
@@ -133,428 +113,6 @@ function useRuleTypes() {
       description: t('rules.accountInactivityDesc'),
     },
   ];
-}
-
-const DEFAULT_PARAMS: Record<RuleType, RuleParams> = {
-  impossible_travel: { maxSpeedKmh: 500, excludePrivateIps: false },
-  simultaneous_locations: { minDistanceKm: 100, excludePrivateIps: false },
-  device_velocity: { maxIps: 5, windowHours: 24, excludePrivateIps: false, groupByDevice: false },
-  concurrent_streams: { maxStreams: 3, excludePrivateIps: false },
-  geo_restriction: { mode: 'blocklist', countries: [], excludePrivateIps: false },
-  account_inactivity: {
-    inactivityValue: 30,
-    inactivityUnit: 'days',
-  },
-};
-
-interface RuleFormData {
-  name: string;
-  type: RuleType;
-  params: RuleParams;
-  isActive: boolean;
-}
-
-// Separate component for geo restriction to handle country selection
-function GeoRestrictionInput({
-  params,
-  onChange,
-}: {
-  params: { mode?: 'blocklist' | 'allowlist'; countries?: string[]; blockedCountries?: string[] };
-  onChange: (params: RuleParams) => void;
-}) {
-  const { t } = useTranslation('pages');
-  // Handle backwards compatibility
-  const mode = params.mode ?? 'blocklist';
-  const countries = params.countries ?? params.blockedCountries ?? [];
-
-  const handleModeChange = (newMode: 'blocklist' | 'allowlist') => {
-    onChange({ mode: newMode, countries });
-  };
-
-  const handleCountriesChange = (newCountries: string[]) => {
-    onChange({ mode, countries: newCountries });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>{t('rules.mode')}</Label>
-        <Select
-          value={mode}
-          onValueChange={(v) => handleModeChange(v as 'blocklist' | 'allowlist')}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="blocklist">{t('rules.blocklist')}</SelectItem>
-            <SelectItem value="allowlist">{t('rules.allowlist')}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label>
-          {mode === 'blocklist' ? t('rules.blockedCountries') : t('rules.allowedCountries')}
-        </Label>
-        <CountryMultiSelect
-          value={countries}
-          onChange={handleCountriesChange}
-          placeholder={
-            mode === 'blocklist'
-              ? t('rules.selectCountriesToBlock')
-              : t('rules.selectAllowedCountries')
-          }
-        />
-        <p className="text-muted-foreground text-xs">
-          {mode === 'allowlist' && t('rules.allowlistNote')}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/** Shared toggle for excluding local/private network IPs from rule evaluation */
-function ExcludePrivateIpsToggle({
-  checked,
-  onCheckedChange,
-}: {
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}) {
-  const { t } = useTranslation('pages');
-  return (
-    <div className="flex items-center justify-between rounded-lg border p-3">
-      <div className="space-y-0.5">
-        <Label htmlFor="excludePrivateIps" className="text-sm font-medium">
-          {t('rules.excludeLocalNetwork')}
-        </Label>
-        <p className="text-muted-foreground text-xs">{t('rules.excludeLocalNetworkDesc')}</p>
-      </div>
-      <Switch id="excludePrivateIps" checked={checked} onCheckedChange={onCheckedChange} />
-    </div>
-  );
-}
-
-function RuleParamsForm({
-  type,
-  params,
-  onChange,
-  unitSystem,
-}: {
-  type: RuleType;
-  params: RuleParams;
-  onChange: (params: RuleParams) => void;
-  unitSystem: UnitSystem;
-}) {
-  const { t } = useTranslation('pages');
-  const speedUnit = getSpeedUnit(unitSystem);
-  const distanceUnit = getDistanceUnit(unitSystem);
-  const excludePrivateIps = (params as { excludePrivateIps?: boolean }).excludePrivateIps ?? false;
-
-  switch (type) {
-    case 'impossible_travel': {
-      // Convert metric value to display value
-      const displayValue = Math.round(
-        fromMetricDistance((params as { maxSpeedKmh: number }).maxSpeedKmh, unitSystem)
-      );
-      const defaultDisplay = Math.round(fromMetricDistance(500, unitSystem));
-      return (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="maxSpeedKmh">{t('rules.maxSpeed', { unit: speedUnit })}</Label>
-            <NumericInput
-              id="maxSpeedKmh"
-              min={0}
-              value={displayValue}
-              onChange={(inputValue) => {
-                // Convert display value back to metric for storage
-                const metricValue = Math.round(toMetricDistance(inputValue, unitSystem));
-                onChange({ ...params, maxSpeedKmh: metricValue });
-              }}
-            />
-            <p className="text-muted-foreground text-xs">
-              {t('rules.maxSpeedDefault', { value: defaultDisplay, unit: speedUnit })}
-            </p>
-          </div>
-          <ExcludePrivateIpsToggle
-            checked={excludePrivateIps}
-            onCheckedChange={(checked) => onChange({ ...params, excludePrivateIps: checked })}
-          />
-        </div>
-      );
-    }
-    case 'simultaneous_locations': {
-      // Convert metric value to display value
-      const displayValue = Math.round(
-        fromMetricDistance((params as { minDistanceKm: number }).minDistanceKm, unitSystem)
-      );
-      const defaultDisplay = Math.round(fromMetricDistance(100, unitSystem));
-      return (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="minDistanceKm">{t('rules.minDistance', { unit: distanceUnit })}</Label>
-            <NumericInput
-              id="minDistanceKm"
-              min={0}
-              value={displayValue}
-              onChange={(inputValue) => {
-                // Convert display value back to metric for storage
-                const metricValue = Math.round(toMetricDistance(inputValue, unitSystem));
-                onChange({ ...params, minDistanceKm: metricValue });
-              }}
-            />
-            <p className="text-muted-foreground text-xs">
-              {t('rules.minDistanceDefault', { value: defaultDisplay, unit: distanceUnit })}
-            </p>
-          </div>
-          <ExcludePrivateIpsToggle
-            checked={excludePrivateIps}
-            onCheckedChange={(checked) => onChange({ ...params, excludePrivateIps: checked })}
-          />
-        </div>
-      );
-    }
-    case 'device_velocity': {
-      const groupByDevice = (params as { groupByDevice?: boolean }).groupByDevice ?? false;
-      return (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="maxIps">{t('rules.maxIps')}</Label>
-            <NumericInput
-              id="maxIps"
-              min={1}
-              value={(params as { maxIps: number; windowHours: number }).maxIps}
-              onChange={(value) => {
-                onChange({ ...params, maxIps: value });
-              }}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="windowHours">{t('rules.timeWindow')}</Label>
-            <NumericInput
-              id="windowHours"
-              min={1}
-              value={(params as { maxIps: number; windowHours: number }).windowHours}
-              onChange={(value) => {
-                onChange({ ...params, windowHours: value });
-              }}
-            />
-          </div>
-          <p className="text-muted-foreground text-xs">{t('rules.maxIpsDefault')}</p>
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div className="space-y-0.5">
-              <Label htmlFor="groupByDevice" className="text-sm font-medium">
-                {t('rules.groupByDevice')}
-              </Label>
-              <p className="text-muted-foreground text-xs">{t('rules.groupByDeviceDesc')}</p>
-            </div>
-            <Switch
-              id="groupByDevice"
-              checked={groupByDevice}
-              onCheckedChange={(checked) => onChange({ ...params, groupByDevice: checked })}
-            />
-          </div>
-          <ExcludePrivateIpsToggle
-            checked={excludePrivateIps}
-            onCheckedChange={(checked) => onChange({ ...params, excludePrivateIps: checked })}
-          />
-        </div>
-      );
-    }
-    case 'concurrent_streams':
-      return (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="maxStreams">{t('rules.maxStreams')}</Label>
-            <NumericInput
-              id="maxStreams"
-              min={1}
-              value={(params as { maxStreams: number }).maxStreams}
-              onChange={(value) => {
-                onChange({ ...params, maxStreams: value });
-              }}
-            />
-            <p className="text-muted-foreground text-xs">{t('rules.maxStreamsDefault')}</p>
-          </div>
-          <ExcludePrivateIpsToggle
-            checked={excludePrivateIps}
-            onCheckedChange={(checked) => onChange({ ...params, excludePrivateIps: checked })}
-          />
-        </div>
-      );
-    case 'geo_restriction':
-      return (
-        <GeoRestrictionInput
-          params={
-            params as {
-              mode?: 'blocklist' | 'allowlist';
-              countries?: string[];
-              blockedCountries?: string[];
-            }
-          }
-          onChange={onChange}
-        />
-      );
-    case 'account_inactivity': {
-      const inactivityParams = params as {
-        inactivityValue: number;
-        inactivityUnit: 'days' | 'weeks' | 'months';
-      };
-      return (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="inactivityValue">{t('rules.inactivityPeriod')}</Label>
-              <NumericInput
-                id="inactivityValue"
-                min={1}
-                value={inactivityParams.inactivityValue}
-                onChange={(value) => {
-                  onChange({ ...params, inactivityValue: value });
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="inactivityUnit">{t('rules.unit')}</Label>
-              <Select
-                value={inactivityParams.inactivityUnit}
-                onValueChange={(v) => {
-                  onChange({ ...params, inactivityUnit: v as 'days' | 'weeks' | 'months' });
-                }}
-              >
-                <SelectTrigger id="inactivityUnit">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="days">{t('rules.days')}</SelectItem>
-                  <SelectItem value="weeks">{t('rules.weeks')}</SelectItem>
-                  <SelectItem value="months">{t('rules.months')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <p className="text-muted-foreground text-xs">{t('rules.inactivityNote')}</p>
-        </div>
-      );
-    }
-    default:
-      return null;
-  }
-}
-
-function RuleDialog({
-  rule,
-  onSave,
-  onClose,
-  isLoading,
-  unitSystem,
-}: {
-  rule?: Rule;
-  onSave: (data: RuleFormData) => void;
-  onClose: () => void;
-  isLoading?: boolean;
-  unitSystem: UnitSystem;
-}) {
-  const { t } = useTranslation(['pages', 'common']);
-  const ruleTypes = useRuleTypes();
-  const isEditing = !!rule;
-  const [formData, setFormData] = useState<RuleFormData>({
-    name: rule?.name ?? '',
-    type: rule?.type ?? 'concurrent_streams',
-    params: rule?.params ?? DEFAULT_PARAMS['concurrent_streams'],
-    isActive: rule?.isActive ?? true,
-  });
-
-  const handleTypeChange = (type: RuleType) => {
-    setFormData({
-      ...formData,
-      type,
-      params: DEFAULT_PARAMS[type],
-    });
-  };
-
-  const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    onSave(formData);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="name">{t('pages:rules.ruleName')}</Label>
-        <Input
-          id="name"
-          value={formData.name}
-          onChange={(e) => {
-            setFormData({ ...formData, name: e.target.value });
-          }}
-          placeholder={t('pages:rules.ruleNamePlaceholder')}
-          required
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="type">{t('pages:rules.ruleType')}</Label>
-        <Select
-          value={formData.type}
-          onValueChange={(value) => {
-            handleTypeChange(value as RuleType);
-          }}
-          disabled={isEditing}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ruleTypes.map((type) => (
-              <SelectItem key={type.value} value={type.value}>
-                <div className="flex items-center gap-2">
-                  {type.icon}
-                  {type.label}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-xs">
-          {ruleTypes.find((t) => t.value === formData.type)?.description}
-        </p>
-      </div>
-
-      <RuleParamsForm
-        type={formData.type}
-        params={formData.params}
-        onChange={(params) => {
-          setFormData({ ...formData, params });
-        }}
-        unitSystem={unitSystem}
-      />
-
-      <div className="flex items-center justify-between">
-        <Label htmlFor="isActive">{t('common:labels.active')}</Label>
-        <Switch
-          id="isActive"
-          checked={formData.isActive}
-          onCheckedChange={(checked) => {
-            setFormData({ ...formData, isActive: checked });
-          }}
-        />
-      </div>
-
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
-          {t('common:actions.cancel')}
-        </Button>
-        <Button type="submit" disabled={isLoading || !formData.name}>
-          {isLoading
-            ? t('common:states.saving')
-            : isEditing
-              ? t('pages:rules.updateRule')
-              : t('pages:rules.createRule')}
-        </Button>
-      </DialogFooter>
-    </form>
-  );
 }
 
 // 'all' | 'global' | 'per_user' | <serverId string>
@@ -843,8 +401,6 @@ export function Rules() {
   const { data: rules, isLoading } = useRules();
   const { data: settings } = useSettings();
   const { servers } = useServer();
-  const createRule = useCreateRule();
-  const updateRule = useUpdateRule();
   const deleteRule = useDeleteRule();
   const toggleRule = useToggleRule();
   const bulkToggleRules = useBulkToggleRules();
@@ -855,9 +411,6 @@ export function Rules() {
   // Scope filter - independent of the global server selector
   const [scopeFilter, setScopeFilter] = useState<ScopeFilterValue>('all');
 
-  // V1 Classic rule dialog state (for editing legacy rules only)
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingRule, setEditingRule] = useState<Rule | undefined>();
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
@@ -895,44 +448,6 @@ export function Rules() {
     totalCount: filteredRules.length,
   });
 
-  const handleCreate = (data: RuleFormData) => {
-    createRule.mutate(
-      {
-        name: data.name,
-        type: data.type,
-        params: data.params,
-        isActive: data.isActive,
-        serverUserId: null,
-      },
-      {
-        onSuccess: () => {
-          setIsDialogOpen(false);
-          setEditingRule(undefined);
-        },
-      }
-    );
-  };
-
-  const handleUpdate = (data: RuleFormData) => {
-    if (!editingRule) return;
-    updateRule.mutate(
-      {
-        id: editingRule.id,
-        data: {
-          name: data.name,
-          params: data.params,
-          isActive: data.isActive,
-        },
-      },
-      {
-        onSuccess: () => {
-          setIsDialogOpen(false);
-          setEditingRule(undefined);
-        },
-      }
-    );
-  };
-
   const handleDelete = (id: string) => {
     deleteRule.mutate(id, {
       onSuccess: () => {
@@ -966,12 +481,6 @@ export function Rules() {
         setBulkDeleteConfirmOpen(false);
       },
     });
-  };
-
-  // Legacy V1 rule editing (for backwards compatibility)
-  const openEditDialog = (rule: Rule) => {
-    setEditingRule(rule);
-    setIsDialogOpen(true);
   };
 
   // Template picker for classic rules
@@ -1062,30 +571,6 @@ export function Rules() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingRule ? t('pages:rules.editRule') : t('pages:rules.createRule')}
-              </DialogTitle>
-              <DialogDescription>
-                {editingRule
-                  ? t('pages:rules.updateDescription')
-                  : t('pages:rules.createDescription')}
-              </DialogDescription>
-            </DialogHeader>
-            <RuleDialog
-              rule={editingRule}
-              onSave={editingRule ? handleUpdate : handleCreate}
-              onClose={() => {
-                setIsDialogOpen(false);
-              }}
-              isLoading={createRule.isPending || updateRule.isPending}
-              unitSystem={unitSystem}
-            />
-          </DialogContent>
-        </Dialog>
       </div>
 
       {isLoading ? (
@@ -1146,12 +631,7 @@ export function Rules() {
                 key={rule.id}
                 rule={rule}
                 onEdit={() => {
-                  // Route to appropriate editor based on rule version
-                  if (isV2Rule(rule)) {
-                    openV2EditDialog(rule);
-                  } else {
-                    openEditDialog(rule);
-                  }
+                  openV2EditDialog(rule);
                 }}
                 onDelete={() => {
                   setDeleteConfirmId(rule.id);

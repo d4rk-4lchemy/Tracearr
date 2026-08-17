@@ -336,7 +336,8 @@
     },
     "restoreTitle": "Restaurare din backup...",
     "startingDescription": "Serverul așteaptă ca serviciile backend să devină disponibile. Această pagină se va reîmprospăta automat când totul este gata.",
-    "startingTitle": "Tracearr pornește..."
+    "startingTitle": "Tracearr pornește...",
+    "unreachable": "Can't reach the Tracearr server right now. Live updates are paused and will resume on their own."
   },
   "map": {
     "allActivity": "Toată activitatea",
@@ -374,7 +375,6 @@
         "availability": {
           "added": "added {{date}}",
           "addedRemoved": "added {{added}} – removed {{removed}}",
-          "removed": "removed {{date}}",
           "replaced": "replaced {{date}}"
         },
         "loadError": "Couldn't load this title",
@@ -665,6 +665,13 @@
     "blocked": "Blocat",
     "blockedCountries": "Țări blocate",
     "blocklist": "Blocklist (bblochează aceste țări)",
+    "builder": {
+      "destinationDisabled": "Disabled destination",
+      "errors": {
+        "sendNeedsDestination": "Pick at least one destination"
+      },
+      "noDestinations": "No destinations yet. Add one to send notifications."
+    },
     "chooseTemplate": "Alegeți un Șablon de Regulă",
     "chooseTemplateDesc": "Selectați un tip de regulă pre-configurat pentru a începe rapid.",
     "classicRule": "Regulă clasică",
@@ -725,6 +732,58 @@
     "weeks": "Săptămâni"
   },
   "settings": {
+    "destinations": {
+      "add": "Add destination",
+      "builtinNote": "Built in",
+      "clearSecret": "Clear",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{name}}? Rules that send to it will be blocked until they are updated.",
+      "description": "Where notifications go. Add as many as you like; each one picks the system events it receives, and rules can send to any of them.",
+      "empty": "No destinations yet.",
+      "events": {
+        "plugin_update_available": "Plugin update available",
+        "server_down": "Server down",
+        "server_up": "Server up",
+        "stream_started": "Stream started",
+        "stream_stopped": "Stream stopped",
+        "violation_detected": "Violation detected"
+      },
+      "eventsLabel": "Events",
+      "fields": {
+        "apiToken": "API token",
+        "apiUrl": "API URL",
+        "authToken": "Auth token",
+        "serverUrl": "Server URL",
+        "topic": "Topic",
+        "url": "URL",
+        "userKey": "User key",
+        "webhookUrl": "Webhook URL"
+      },
+      "hints": {
+        "authTokenOptional": "Optional for public topics"
+      },
+      "ownerOnly": "Only the owner can manage notification destinations.",
+      "pushNote": "Delivered to paired mobile devices; each device filters in its own notification settings.",
+      "reencrypt": "Re-enter this destination's secret",
+      "secretSet": "Set (leave blank to keep)",
+      "test": "Test",
+      "testHint": "Save first to test",
+      "testNeedsForm": "Fill in the required fields to test",
+      "title": "Notification destinations",
+      "types": {
+        "apprise": "Apprise",
+        "discord": "Discord",
+        "gotify": "Gotify",
+        "jsonWebhook": "Webhook (JSON)",
+        "ntfy": "ntfy",
+        "push": "Mobile push",
+        "pushover": "Pushover",
+        "webToast": "Browser toasts"
+      },
+      "usedBy": "Used by {{count}} rule",
+      "usedBy_other": "Used by {{count}} rules",
+      "webToastNote": "Toasts in this browser."
+    },
     "jobs": {
       "lastRun": "Ultima execuție",
       "nextRun": "Următoarea execuție",
@@ -738,36 +797,6 @@
       "editDisplayName": "Editare nume afișat",
       "editDisplayNameDesc": "Schimbă modul în care acest dispozitiv apare în lista dispozitivului",
       "updating": "Actualizare..."
-    },
-    "notifications": {
-      "addAgent": "Adaugă Agent de Notificări",
-      "addAgentDesc": "Alegeți un serviciu de notificare și configurați-l.",
-      "agentType": "Tip Agent",
-      "allAgentsConfigured": "Toți agenții de notificare sunt deja configurați.",
-      "allEvents": "Toate evenimentele",
-      "currentlyConfigured": "{{name}} este configurat în prezent.",
-      "customEvents": "Evenimente personalizate",
-      "description": "Configurați canalele de notificare și selectați evenimentele pe care fiecare agent trebuie să le primească.",
-      "editAgent": "Editează Agent de Notificări",
-      "editAgentDesc": "Actualizează configurația agentului de notificare.",
-      "eventSelection": "Selecție eveniment",
-      "loadingSettings": "Se încarcă setările notificărilor...",
-      "noAgents": "Niciun agent de notificare configurat",
-      "noAgentsHint": "Adaugă un agent pentru a primi notificări despre încălcări și despre streaming de evenimente.",
-      "noConfigNeeded": "Nu este necesară nicio configurare pentru acest agent.",
-      "oneWebhookLimit": "Doar un singur agent webhook poate fi activ odată.",
-      "removeAgentDesc": "Aceasta va elimina {{name}} și va dezactiva toate notificările sale. Puteți să le adăugați din nou mai târziu.",
-      "removeAgentTitle": "Eliminați {{name}}?",
-      "saveAgent": "Adaugă agent",
-      "selectType": "Selectaţi tipul...",
-      "testAgent": "Agent de testare",
-      "testingAgent": "Testare...",
-      "title": "Agenți de notificare",
-      "triggerEvents": "Evenimente declanșatoare",
-      "updateAgent": "Agent Actualizare",
-      "webhookAgents": "Agenți Webhook",
-      "webhookUrl": "URL Webhook",
-      "webhookUrlPlaceholder": "https://..."
     },
     "plex": {
       "accountsLinked_one": "{{count}} Plex cont asociat",

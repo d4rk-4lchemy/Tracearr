@@ -29,11 +29,12 @@ import {
   type ConfigField,
 } from '@/lib/rules';
 import { cn } from '@/lib/utils';
+import { DestinationsField } from './DestinationsField';
 
 // Icon mapping
 const ACTION_ICONS: Record<ActionType, React.ComponentType<{ className?: string }>> = {
   log_only: FileText,
-  notify: Bell,
+  send: Bell,
   adjust_trust: TrendingUp,
   set_trust: Target,
   reset_trust: RotateCcw,
@@ -99,8 +100,9 @@ export function ActionRow({ action, onChange, onRemove, showRemove = true }: Act
           </SelectContent>
         </Select>
 
-        {/* Inline Config Fields */}
-        <div className="flex flex-1 items-center gap-6">
+        {/* Inline config fields. Must wrap: a row wider than the dialog grows
+            the dialog's grid track and every section gets clipped. */}
+        <div className="flex flex-1 flex-wrap items-center gap-x-6 gap-y-2">
           {inlineFields.map((field) => (
             <ConfigFieldInput
               key={field.name}
@@ -239,33 +241,13 @@ function ConfigFieldInput({ field, value, onChange }: ConfigFieldInputProps) {
     );
   }
 
-  // Multi-select (for channels)
-  if (field.type === 'multi-select') {
-    const selectedValues = (value as string[]) ?? [];
+  if (field.type === 'destinations') {
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-muted-foreground text-sm">{field.label}:</span>
-        {field.options?.map((opt) => {
-          const isSelected = selectedValues.includes(opt.value);
-          return (
-            <Button
-              key={opt.value}
-              type="button"
-              variant={isSelected ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => {
-                if (isSelected) {
-                  onChange(selectedValues.filter((v) => v !== opt.value));
-                } else {
-                  onChange([...selectedValues, opt.value]);
-                }
-              }}
-            >
-              {opt.label}
-            </Button>
-          );
-        })}
-      </div>
+      <DestinationsField
+        value={(value as string[]) ?? []}
+        onChange={onChange}
+        label={field.label}
+      />
     );
   }
 

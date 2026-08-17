@@ -29,7 +29,6 @@ import {
   Pause,
 } from 'lucide-react';
 import { DEVICE_TYPE_OPTIONS, FIELD_DEFINITIONS } from './conditionFields';
-import { ACTION_DEFINITIONS } from './actionDefinitions';
 
 // Condition field → icon mapping
 const CONDITION_FIELD_ICONS: Partial<Record<ConditionField, ReactNode>> = {
@@ -275,8 +274,8 @@ function formatConditionValue(
 }
 
 // Compact action labels for summary display (design spec)
-const COMPACT_ACTION_LABELS: Partial<Record<ActionType, string>> = {
-  notify: 'Notify',
+const COMPACT_ACTION_LABELS: Record<ActionType, string> = {
+  send: 'Send',
   log_only: 'Log',
   adjust_trust: 'Adjust trust',
   set_trust: 'Set trust',
@@ -285,16 +284,8 @@ const COMPACT_ACTION_LABELS: Partial<Record<ActionType, string>> = {
   message_client: 'Message',
 };
 
-/**
- * Format the primary action for summary display.
- */
 function formatAction(action: Action): string {
-  // Use compact label if available, otherwise fall back to definition
-  const compactLabel = COMPACT_ACTION_LABELS[action.type];
-  if (compactLabel) return compactLabel;
-
-  const def = ACTION_DEFINITIONS[action.type];
-  return def?.label ?? action.type;
+  return COMPACT_ACTION_LABELS[action.type];
 }
 
 /**

@@ -60,13 +60,12 @@ export type {
   ActionType,
   Action,
   LogOnlyAction,
-  NotifyAction,
+  SendAction,
   AdjustTrustAction,
   SetTrustAction,
   ResetTrustAction,
   KillStreamAction,
   MessageClientAction,
-  NotificationChannelV2,
   RuleActions,
   RuleV2,
   ActionResult,
@@ -109,7 +108,6 @@ export type {
   ServerLiveStats,
   // Settings
   Settings,
-  WebhookFormat,
   UnitSystem,
   // Tailscale
   TailscaleStatus,
@@ -164,8 +162,6 @@ export type {
   NotificationPreferences,
   RateLimitStatus,
   NotificationPreferencesWithStatus,
-  NotificationChannel,
-  NotificationChannelRouting,
   EncryptedPushPayload,
   PushNotificationPayload,
   // SSE (Server-Sent Events)
@@ -322,6 +318,17 @@ export type {
   LibrariesResponse,
 } from './types.js';
 
+// Destination type exports
+export type {
+  DestinationKind,
+  DestinationFieldDescriptor,
+  DestinationDescriptor,
+  Destination,
+  CreateDestinationInput,
+  UpdateDestinationInput,
+  NotificationToast,
+} from './destinations.js';
+
 // Schema exports
 export {
   // Common
@@ -370,6 +377,8 @@ export {
   createRuleV2Schema,
   updateRuleV2Schema,
   ruleConditionsSchema,
+  actionSchema,
+  sendActionSchema,
   hasAtMostOneScope,
   RULE_SCOPE_ERROR_MESSAGE,
   scopeAllowsCrossServerEnforcement,
@@ -428,6 +437,17 @@ export {
   topContentQuerySchema,
   shelvesQuerySchema,
 } from './schemas.js';
+
+// Destination descriptors and schemas
+export {
+  DESTINATION_KINDS,
+  DESTINATION_TYPES,
+  NOTIFICATION_EVENT_TYPES,
+  destinationConfigSchema,
+  notificationEventTypeSchema,
+  createDestinationSchema,
+  updateDestinationSchema,
+} from './destinations.js';
 
 // Schema input type exports
 export type {

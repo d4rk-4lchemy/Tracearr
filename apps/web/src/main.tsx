@@ -27,6 +27,12 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
     },
+    mutations: {
+      // Queries pause while the server is unreachable (useMaintenanceMode). Mutations
+      // don't: a paused save or delete would run whenever the server came back,
+      // minutes after the user clicked.
+      networkMode: 'always',
+    },
   },
 });
 

@@ -29,6 +29,7 @@ import { closeDatabase, recreatePool, runMigrations } from '../db/client.js';
 import { migrationFolders } from '../db/migrationPaths.js';
 import { setSetting, resetSettingsCache } from './settings.js';
 import { invalidateRulesCache } from '../jobs/poller/database.js';
+import { publishDestinationsChanged } from './notifications/destinationStore.js';
 import { loadJwtRevokeSettings } from '../plugins/auth.js';
 import { initTimescaleDB } from '../db/timescale.js';
 import { closeAuth } from '../lib/auth.js';
@@ -41,6 +42,7 @@ export async function reinitDatabaseConsumers(): Promise<void> {
   await closeAuth();
   invalidateRulesCache();
   resetSettingsCache();
+  await publishDestinationsChanged();
 }
 
 /**

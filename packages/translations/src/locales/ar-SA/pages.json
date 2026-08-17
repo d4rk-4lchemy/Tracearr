@@ -336,7 +336,8 @@
     },
     "restoreTitle": "الاستعادة من النسخة الاحتياطية...",
     "startingDescription": "الخادم في انتظار أن تصبح خدمات الخلفية متاحة. سيتم تحديث هذه الصفحة تلقائياً عندما يكون كل شيء جاهزاً.",
-    "startingTitle": "بدأ Tracearr في الإنتظار..."
+    "startingTitle": "بدأ Tracearr في الإنتظار...",
+    "unreachable": "Can't reach the Tracearr server right now. Live updates are paused and will resume on their own."
   },
   "map": {
     "allActivity": "جميع الأنشطة",
@@ -374,7 +375,6 @@
         "availability": {
           "added": "added {{date}}",
           "addedRemoved": "added {{added}} – removed {{removed}}",
-          "removed": "removed {{date}}",
           "replaced": "replaced {{date}}"
         },
         "loadError": "Couldn't load this title",
@@ -665,6 +665,13 @@
     "blocked": "محظور",
     "blockedCountries": "الدول المحظورة",
     "blocklist": "قائمة الحظر (حظر هذه البلدان)",
+    "builder": {
+      "destinationDisabled": "Disabled destination",
+      "errors": {
+        "sendNeedsDestination": "Pick at least one destination"
+      },
+      "noDestinations": "No destinations yet. Add one to send notifications."
+    },
     "chooseTemplate": "اختر قالب قاعدة",
     "chooseTemplateDesc": "حدد نوع قاعدة تم تكوينها مسبقاً للبدء بسرعة.",
     "classicRule": "قاعدة كلاسيكية",
@@ -725,6 +732,58 @@
     "weeks": "أسابيع"
   },
   "settings": {
+    "destinations": {
+      "add": "Add destination",
+      "builtinNote": "Built in",
+      "clearSecret": "Clear",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{name}}? Rules that send to it will be blocked until they are updated.",
+      "description": "Where notifications go. Add as many as you like; each one picks the system events it receives, and rules can send to any of them.",
+      "empty": "No destinations yet.",
+      "events": {
+        "plugin_update_available": "Plugin update available",
+        "server_down": "Server down",
+        "server_up": "Server up",
+        "stream_started": "Stream started",
+        "stream_stopped": "Stream stopped",
+        "violation_detected": "Violation detected"
+      },
+      "eventsLabel": "Events",
+      "fields": {
+        "apiToken": "API token",
+        "apiUrl": "API URL",
+        "authToken": "Auth token",
+        "serverUrl": "Server URL",
+        "topic": "Topic",
+        "url": "URL",
+        "userKey": "User key",
+        "webhookUrl": "Webhook URL"
+      },
+      "hints": {
+        "authTokenOptional": "Optional for public topics"
+      },
+      "ownerOnly": "Only the owner can manage notification destinations.",
+      "pushNote": "Delivered to paired mobile devices; each device filters in its own notification settings.",
+      "reencrypt": "Re-enter this destination's secret",
+      "secretSet": "Set (leave blank to keep)",
+      "test": "Test",
+      "testHint": "Save first to test",
+      "testNeedsForm": "Fill in the required fields to test",
+      "title": "Notification destinations",
+      "types": {
+        "apprise": "Apprise",
+        "discord": "Discord",
+        "gotify": "Gotify",
+        "jsonWebhook": "Webhook (JSON)",
+        "ntfy": "ntfy",
+        "push": "Mobile push",
+        "pushover": "Pushover",
+        "webToast": "Browser toasts"
+      },
+      "usedBy": "Used by {{count}} rule",
+      "usedBy_other": "Used by {{count}} rules",
+      "webToastNote": "Toasts in this browser."
+    },
     "jobs": {
       "lastRun": "آخر تشغيل",
       "nextRun": "التشغيل التالي",
@@ -738,36 +797,6 @@
       "editDisplayName": "تحرير اسم العرض",
       "editDisplayNameDesc": "تغيير كيفية ظهور هذا الجهاز في قائمة جهازك",
       "updating": "تحديث..."
-    },
-    "notifications": {
-      "addAgent": "إضافة وكيل إعلام",
-      "addAgentDesc": "اختر خدمة إشعار وقم بتكوينها.",
-      "agentType": "نوع الوكيل",
-      "allAgentsConfigured": "تم تكوين جميع وكلاء الإشعارات مسبقاً.",
-      "allEvents": "جميع الأحداث",
-      "currentlyConfigured": "تم تكوين {{name}} حاليا.",
-      "customEvents": "أحداث مخصصة",
-      "description": "تكوين قنوات الإشعارات وتحديد الأحداث التي يجب أن يستقبلها كل وكيل.",
-      "editAgent": "تحرير وكيل الإشعارات",
-      "editAgentDesc": "تحديث تكوين وكيل الإشعار.",
-      "eventSelection": "اختيار الحدث",
-      "loadingSettings": "تحميل إعدادات الإشعار...",
-      "noAgents": "لا يوجد وكلاء إعلام تم تكوينهم",
-      "noAgentsHint": "إضافة وكيل لتلقي إشعارات حول مشاركة الانتهاكات وأحداث البث.",
-      "noConfigNeeded": "لا توجد إعدادات مطلوبة لهذا الوكيل.",
-      "oneWebhookLimit": "يمكن لوكيل ويب هوك واحد فقط أن يكون نشطاً في كل مرة.",
-      "removeAgentDesc": "سيؤدي هذا إلى إزالة {{name}} وتعطيل جميع الإشعارات. يمكنك إضافته لاحقاً.",
-      "removeAgentTitle": "إزالة {{name}}؟",
-      "saveAgent": "إضافة وكيل",
-      "selectType": "حدد النوع...",
-      "testAgent": "اختبار الوكيل",
-      "testingAgent": "اختبار...",
-      "title": "وكلاء الإشعارات",
-      "triggerEvents": "تشغيل الأحداث",
-      "updateAgent": "تحديث الوكيل",
-      "webhookAgents": "وكلاء Webhook",
-      "webhookUrl": "رابط Webhook",
-      "webhookUrlPlaceholder": "https://..."
     },
     "plex": {
       "accountsLinked_one": "ربط حساب Plex {{count}}",

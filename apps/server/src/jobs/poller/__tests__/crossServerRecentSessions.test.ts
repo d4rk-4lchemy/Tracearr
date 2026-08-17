@@ -13,7 +13,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Session, Condition, RuleV2, ServerUser, Server } from '@tracearr/shared';
 import { evaluatorRegistry } from '../../../services/rules/evaluators/index.js';
-import type { EvaluationContext } from '../../../services/rules/types.js';
+import type { SessionEvaluationContext } from '../../../services/rules/types.js';
 
 // ============================================================================
 // DB mock - only exercised by widenRecentSessionsForMergedIdentities'
@@ -287,7 +287,9 @@ describe('widenRecentSessionsForMergedIdentities', () => {
 // Full pipeline: widened recentSessions feeding the real evaluators
 // ============================================================================
 
-function createTestContext(overrides: Partial<EvaluationContext> = {}): EvaluationContext {
+function createTestContext(
+  overrides: Partial<SessionEvaluationContext> = {}
+): SessionEvaluationContext {
   const server = createMockServer();
   const serverUser = createMockServerUser({ serverId: server.id });
   const session = createMockSession({ serverId: server.id, serverUserId: serverUser.id });

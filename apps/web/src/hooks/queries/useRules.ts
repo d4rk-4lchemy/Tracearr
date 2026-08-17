@@ -12,42 +12,6 @@ export function useRules() {
   });
 }
 
-export function useCreateRule() {
-  const { t } = useTranslation('notifications');
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: Omit<Rule, 'id' | 'createdAt' | 'updatedAt'>) => api.rules.create(data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['rules', 'list'] });
-      toast.success(t('toast.success.ruleCreated.title'), {
-        description: t('toast.success.ruleCreated.message'),
-      });
-    },
-    onError: (error: Error) => {
-      toast.error(t('toast.error.ruleCreateFailed'), { description: error.message });
-    },
-  });
-}
-
-export function useUpdateRule() {
-  const { t } = useTranslation('notifications');
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<Rule> }) => api.rules.update(id, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['rules', 'list'] });
-      toast.success(t('toast.success.ruleUpdated.title'), {
-        description: t('toast.success.ruleUpdated.message'),
-      });
-    },
-    onError: (error: Error) => {
-      toast.error(t('toast.error.ruleUpdateFailed'), { description: error.message });
-    },
-  });
-}
-
 export function useDeleteRule() {
   const { t } = useTranslation('notifications');
   const queryClient = useQueryClient();

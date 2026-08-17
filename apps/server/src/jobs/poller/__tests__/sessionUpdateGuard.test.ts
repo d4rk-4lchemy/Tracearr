@@ -17,7 +17,6 @@ const {
   mockBatchFindActiveSessionsByComposite,
   mockFindActiveSession,
   mockProcessPollResults,
-  mockStopSessionAtomic,
   mockDb,
   mockUpdateWhere,
 } = vi.hoisted(() => {
@@ -66,12 +65,6 @@ const {
     mockBatchFindActiveSessionsByComposite: vi.fn(),
     mockFindActiveSession: vi.fn().mockResolvedValue(null),
     mockProcessPollResults: vi.fn().mockResolvedValue(undefined),
-    mockStopSessionAtomic: vi.fn().mockResolvedValue({
-      wasUpdated: true,
-      durationMs: 60_000,
-      needsRetry: false,
-      retryData: null,
-    }),
     mockUpdateWhere: updateWhere,
     mockDb: {
       select: vi.fn((columns?: unknown) => ({
@@ -97,6 +90,10 @@ const {
   };
 });
 
+const { mockDispatch } = vi.hoisted(() => ({
+  mockDispatch: vi.fn().mockResolvedValue({ violations: [], outcomes: [] }),
+}));
+
 vi.mock('../../../services/leaderLease.js', () => ({
   isLeader: () => true,
 }));
@@ -121,6 +118,7 @@ vi.mock('../../../services/sseManager.js', () => ({
 }));
 vi.mock('../../notificationQueue.js', () => ({ enqueueNotification: vi.fn() }));
 vi.mock('../database.js', () => ({
+  onActiveRulesRefill: vi.fn(),
   getActiveRulesV2: vi.fn().mockResolvedValue([]),
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
@@ -138,18 +136,19 @@ vi.mock('../sessionLifecycle.js', () => ({
   findActiveSessionByComposite: vi.fn().mockResolvedValue(null),
   handleMediaChangeAtomic: vi.fn(),
   processPollResults: mockProcessPollResults,
-  reEvaluateRulesOnPauseState: vi.fn(),
-  reEvaluateRulesOnTranscodeChange: vi.fn(),
-  stopSessionAtomic: mockStopSessionAtomic,
+  stopSessionAtomic: vi.fn(),
 }));
-vi.mock('../sessionMapper.js', () => ({
+vi.mock('../../../services/rules/events/dispatcher.js', () => ({
+  dispatch: mockDispatch,
+  subscribe: vi.fn(),
+}));
+vi.mock('../sessionMapper.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   mapMediaSession: mockMapMediaSession,
-  pickStreamDetailFields: vi.fn().mockImplementation((s: unknown) => s),
 }));
 vi.mock('../violations.js', () => ({ broadcastViolations: vi.fn() }));
 
-import { initializePoller, processServerSessions, triggerServerPoll } from '../processor.js';
-import { reEvaluateRulesOnTranscodeChange } from '../sessionLifecycle.js';
+import { initializePoller, triggerServerPoll } from '../processor.js';
 import { getActiveRulesV2 } from '../database.js';
 
 const EXISTING_SESSION_ID = 'session-1';
@@ -282,34 +281,6 @@ describe('poller session update guard against stop races', () => {
     expect(call.updatedSessions[0].id).toBe(EXISTING_SESSION_ID);
   });
 
-  it('writes refreshed media identity and timeline fields on normal updates', async () => {
-    mockUpdateWhere.mockResolvedValue([{ id: EXISTING_SESSION_ID }]);
-    mockMapMediaSession.mockReturnValue(
-      processedSession({
-        ratingKey: 'channel-1',
-        mediaTitle: 'Late News',
-        totalDurationMs: 3_600_000,
-      })
-    );
-    cacheService.getAllActiveSessions.mockResolvedValue([
-      { ...cachedActiveSession, ratingKey: 'channel-1' },
-    ]);
-    mockBatchFindActiveSessionsByComposite.mockResolvedValue(
-      new Map([[`server-user-1::channel-1`, [existingSessionRow({ ratingKey: 'channel-1' })]]])
-    );
-
-    await triggerServerPoll('server-1');
-
-    const setPayload = mockDb.update.mock.results
-      .map((result) => result.value?.set?.mock.calls[0]?.[0])
-      .find((payload) => payload?.mediaTitle === 'Late News');
-    expect(setPayload).toMatchObject({
-      ratingKey: 'channel-1',
-      mediaTitle: 'Late News',
-      totalDurationMs: 3_600_000,
-    });
-  });
-
   it('does not re-evaluate transcode rules when the update raced a concurrent stop', async () => {
     mockUpdateWhere.mockResolvedValue([]); // update raced a concurrent stop
     vi.mocked(getActiveRulesV2).mockResolvedValue([{ id: 'rule-1' }] as unknown as Awaited<
@@ -322,7 +293,7 @@ describe('poller session update guard against stop races', () => {
     await triggerServerPoll('server-1');
 
     expect(mockDb.update).toHaveBeenCalledTimes(1);
-    expect(reEvaluateRulesOnTranscodeChange).not.toHaveBeenCalled();
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 
   it('re-evaluates transcode rules when the update affects a row', async () => {
@@ -337,202 +308,8 @@ describe('poller session update guard against stop races', () => {
     await triggerServerPoll('server-1');
 
     expect(mockDb.update).toHaveBeenCalledTimes(1);
-    expect(reEvaluateRulesOnTranscodeChange).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('Dispatcharr direct snapshot stops', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockMapMediaSession.mockReturnValue(processedSession());
-    mockBatchFindActiveSessionsByComposite.mockResolvedValue(
-      new Map([[`server-user-1::1001`, [existingSessionRow()]]])
-    );
-    initializePoller(
-      {
-        getPendingSession: vi.fn().mockResolvedValue(null),
-        addSessionWriteRetry: vi.fn().mockResolvedValue(undefined),
-      } as unknown as Parameters<typeof initializePoller>[0],
-      { publish: vi.fn(), subscribe: vi.fn() } as unknown as Parameters<typeof initializePoller>[1]
-    );
-  });
-
-  it('returns stopped keys immediately when a WebSocket snapshot is empty', async () => {
-    const result = await processServerSessions(
-      {
-        id: 'dispatcharr-1',
-        name: 'Dispatcharr',
-        type: 'dispatcharr',
-        url: 'http://dispatcharr.local',
-        token: 'token',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      [],
-      new Set(['dispatcharr-1:server-user-1:device-1:1001']),
-      [
-        {
-          id: 'session-1',
-          serverId: 'dispatcharr-1',
-          serverUserId: 'server-user-1',
-          sessionKey: 'catchup:shared:channel-1',
-          ratingKey: '1001',
-          deviceId: 'device-1',
-        } as never,
-      ],
-      { mediaSessions: [], immediateStops: true }
-    );
-
-    expect(result.stoppedSessions).toEqual([
-      {
-        id: 'session-1',
-        serverId: 'dispatcharr-1',
-        sessionKey: 'catchup:shared:channel-1',
-      },
-    ]);
-    expect(mockStopSessionAtomic).toHaveBeenCalledTimes(1);
-  });
-
-  it('stops only the session absent from a non-empty WebSocket snapshot', async () => {
-    const result = await processServerSessions(
-      {
-        id: 'dispatcharr-1',
-        name: 'Dispatcharr',
-        type: 'dispatcharr',
-        url: 'http://dispatcharr.local',
-        token: 'token',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      [],
-      new Set([
-        'dispatcharr-1:server-user-1:device-1:1001',
-        'dispatcharr-1:server-user-2:device-2:1002',
-      ]),
-      [
-        {
-          id: 'session-1',
-          serverId: 'dispatcharr-1',
-          serverUserId: 'server-user-1',
-          sessionKey: 'catchup:shared:channel-1',
-          ratingKey: '1001',
-          deviceId: 'device-1',
-        } as never,
-        {
-          id: 'session-2',
-          serverId: 'dispatcharr-1',
-          serverUserId: 'server-user-2',
-          sessionKey: 'catchup:shared:channel-1',
-          ratingKey: '1002',
-          deviceId: 'device-2',
-        } as never,
-      ],
-      { mediaSessions: [{} as never], immediateStops: true }
-    );
-
-    expect(result.stoppedSessions).toEqual([
-      {
-        id: 'session-2',
-        serverId: 'dispatcharr-1',
-        sessionKey: 'catchup:shared:channel-1',
-      },
-    ]);
-    expect(mockStopSessionAtomic).toHaveBeenCalledTimes(1);
-    expect(mockStopSessionAtomic).toHaveBeenCalledWith(
-      expect.objectContaining({ session: expect.objectContaining({ id: 'session-2' }) })
-    );
-  });
-
-  it('discards every exact pending connection with a shared provider key', async () => {
-    const deletePendingSession = vi.fn().mockResolvedValue(undefined);
-    initializePoller(
-      {
-        getPendingSession: vi.fn().mockResolvedValue({ id: 'pending' }),
-        deletePendingSession,
-        addSessionWriteRetry: vi.fn().mockResolvedValue(undefined),
-      } as unknown as Parameters<typeof initializePoller>[0],
-      { publish: vi.fn(), subscribe: vi.fn() } as unknown as Parameters<typeof initializePoller>[1]
-    );
-    const sharedSessionKey = 'catchup:shared:channel-1';
-    const activeSessions = [
-      {
-        id: 'session-2',
-        serverId: 'dispatcharr-1',
-        serverUserId: 'server-user-2',
-        sessionKey: sharedSessionKey,
-        ratingKey: '1002',
-        deviceId: 'device-2',
-      },
-      {
-        id: 'session-1',
-        serverId: 'dispatcharr-1',
-        serverUserId: 'server-user-1',
-        sessionKey: sharedSessionKey,
-        ratingKey: '1001',
-        deviceId: 'device-1',
-      },
-    ] as never[];
-
-    const result = await processServerSessions(
-      {
-        id: 'dispatcharr-1',
-        name: 'Dispatcharr',
-        type: 'dispatcharr',
-        url: 'http://dispatcharr.local',
-        token: 'token',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      [],
-      new Set([
-        'dispatcharr-1:server-user-1:device-1:1001',
-        'dispatcharr-1:server-user-2:device-2:1002',
-      ]),
-      activeSessions,
-      { mediaSessions: [], immediateStops: true }
-    );
-
-    expect(result.stoppedSessions).toEqual([
-      { id: 'session-2', serverId: 'dispatcharr-1', sessionKey: sharedSessionKey },
-      { id: 'session-1', serverId: 'dispatcharr-1', sessionKey: sharedSessionKey },
-    ]);
-    expect(deletePendingSession).toHaveBeenCalledTimes(2);
-    expect(mockStopSessionAtomic).not.toHaveBeenCalled();
-  });
-});
-
-describe('Dispatcharr anonymous stream filtering in REST polling', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockCreateMediaServerClient.mockReturnValue({
-      getSessions: vi.fn().mockResolvedValue([]),
-    });
-  });
-
-  it('passes disabled anonymous filtering to the REST client', async () => {
-    await processServerSessions(
-      {
-        id: 'dispatcharr-1',
-        name: 'Dispatcharr',
-        type: 'dispatcharr',
-        url: 'http://dispatcharr.local',
-        token: 'api-key',
-        ignoreAnonymousStreams: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      [],
-      new Set()
-    );
-
-    expect(mockCreateMediaServerClient).toHaveBeenCalledWith({
-      type: 'dispatcharr',
-      url: 'http://dispatcharr.local',
-      token: 'api-key',
-      ignoreAnonymousStreams: false,
-      id: 'dispatcharr-1',
-      name: 'Dispatcharr',
-    });
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    expect(mockDispatch.mock.calls[0]?.[0]).toMatchObject({ type: 'session.transcode_changed' });
   });
 });
 

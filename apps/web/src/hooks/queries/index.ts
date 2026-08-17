@@ -62,8 +62,6 @@ export {
 // Rule hooks
 export {
   useRules,
-  useCreateRule,
-  useUpdateRule,
   useDeleteRule,
   useToggleRule,
   useBulkToggleRules,
@@ -71,14 +69,7 @@ export {
 } from './useRules';
 
 // Rule V2 hooks
-export {
-  useCreateRuleV2,
-  useUpdateRuleV2,
-  useMigrationPreview,
-  useMigrateRules,
-  useMigrateOneRule,
-  isRuleV2,
-} from './useRulesV2';
+export { useCreateRuleV2, useUpdateRuleV2, isRuleV2 } from './useRulesV2';
 
 // Violation hooks
 export {
@@ -106,8 +97,15 @@ export {
 // Settings hooks
 export { useSettings, useUpdateSettings, useApiKey, useRegenerateApiKey } from './useSettings';
 
-// Channel Routing hooks
-export { useChannelRouting, useUpdateChannelRouting } from './useChannelRouting';
+// Destination hooks
+export {
+  useDestinations,
+  useCreateDestination,
+  useUpdateDestination,
+  useDeleteDestination,
+  useTestDestination,
+  useTestUnsavedDestination,
+} from './useDestinations';
 
 // Mobile hooks
 export {

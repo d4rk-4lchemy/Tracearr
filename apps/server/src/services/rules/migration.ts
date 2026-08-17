@@ -275,7 +275,7 @@ function convertAccountInactivity(params: AccountInactivityParams): RuleConditio
         conditions: [
           {
             field: 'inactive_days',
-            // v1's evaluateAccountInactivity compared with gte; gt here
+            // v1's account-inactivity check compared with gte; gt here
             // fired one day late for every converted rule
             operator: 'gte',
             value: inactivityDays,

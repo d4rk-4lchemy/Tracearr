@@ -41,33 +41,42 @@ export interface ViolationInsertResult {
  * Call this AFTER the transaction to ensure data is persisted before broadcasting.
  *
  * @param violationResults - Array of violation insert results
- * @param sessionId - Session ID for fetching server details
+ * @param subject - Session id, or { serverUserId } for violations that have no session
  * @param pubSubService - PubSub service for WebSocket broadcast
  */
 export async function broadcastViolations(
   violationResults: ViolationInsertResult[],
-  sessionId: string,
-  pubSubService: PubSubService | null
+  subject: string | { serverUserId: string },
+  pubSubService: Pick<PubSubService, 'publish'> | null
 ): Promise<void> {
   if (!pubSubService || violationResults.length === 0) return;
 
-  // Get server user and server details for the violation broadcast (single query for all)
-  const [details] = await db
-    .select({
-      userId: serverUsers.id,
-      username: serverUsers.username,
-      thumbUrl: serverUsers.thumbUrl,
-      identityName: users.name,
-      serverId: servers.id,
-      serverName: servers.name,
-      serverType: servers.type,
-    })
-    .from(sessions)
-    .innerJoin(serverUsers, eq(serverUsers.id, sessions.serverUserId))
-    .innerJoin(users, eq(serverUsers.userId, users.id))
-    .innerJoin(servers, eq(servers.id, sessions.serverId))
-    .where(eq(sessions.id, sessionId))
-    .limit(1);
+  const detailFields = {
+    userId: serverUsers.id,
+    username: serverUsers.username,
+    thumbUrl: serverUsers.thumbUrl,
+    identityName: users.name,
+    serverId: servers.id,
+    serverName: servers.name,
+    serverType: servers.type,
+  };
+  const [details] =
+    typeof subject === 'string'
+      ? await db
+          .select(detailFields)
+          .from(sessions)
+          .innerJoin(serverUsers, eq(serverUsers.id, sessions.serverUserId))
+          .innerJoin(users, eq(serverUsers.userId, users.id))
+          .innerJoin(servers, eq(servers.id, sessions.serverId))
+          .where(eq(sessions.id, subject))
+          .limit(1)
+      : await db
+          .select(detailFields)
+          .from(serverUsers)
+          .innerJoin(users, eq(serverUsers.userId, users.id))
+          .innerJoin(servers, eq(servers.id, serverUsers.serverId))
+          .where(eq(serverUsers.id, subject.serverUserId))
+          .limit(1);
 
   if (!details) return;
 
