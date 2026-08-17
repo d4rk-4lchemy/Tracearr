@@ -127,6 +127,20 @@ describe('runPluginUpdateCheck', () => {
     });
   });
 
+  it('does not flag Dispatcharr 1.0.9 as older than release 1.0.1', async () => {
+    mockSseManager.getPluginVersion.mockReturnValue('1.0.9');
+    mockFetchJson.mockImplementation((url: string) =>
+      url.includes('/releases/latest')
+        ? { tag_name: 'v1.0.1', html_url: 'https://github.com/example/release' }
+        : MANIFEST
+    );
+    mockDbServers.mockResolvedValue([{ id: 's3', name: 'Dispatcharr', type: 'dispatcharr' }]);
+
+    await runPluginUpdateCheck();
+
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
+  });
+
   it('continues checking Dispatcharr when the SSE manifest fails', async () => {
     mockFetchJson.mockImplementation((url: string) => {
       if (url.includes('/releases/latest')) {

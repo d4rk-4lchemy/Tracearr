@@ -1381,9 +1381,17 @@ function RealtimeSetupDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {mode === 'update'
-              ? t('servers.realtimeDialog.updateTitle')
-              : t('servers.realtimeDialog.title')}
+            {isDispatcharr
+              ? mode === 'update'
+                ? t('servers.realtimeDialog.dispatcharrUpdateTitle', {
+                    defaultValue: 'Update the Tracearr SSE Metrics plugin',
+                  })
+                : t('servers.realtimeDialog.dispatcharrTitle', {
+                    defaultValue: 'Enable Tracearr SSE Metrics',
+                  })
+              : mode === 'update'
+                ? t('servers.realtimeDialog.updateTitle')
+                : t('servers.realtimeDialog.title')}
           </DialogTitle>
           <DialogDescription>
             {isDispatcharr

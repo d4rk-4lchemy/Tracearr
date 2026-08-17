@@ -600,7 +600,9 @@ export class SSEManager extends EventEmitter {
       serverType !== 'plex' &&
       latest !== null &&
       state === 'connected' &&
-      (pluginVersion === null ? connectedLongEnough : compareVersions(pluginVersion, latest) < 0);
+      (pluginVersion === null
+        ? serverType !== 'dispatcharr' && connectedLongEnough
+        : compareVersions(pluginVersion, latest) < 0);
     return {
       serverId,
       serverName,

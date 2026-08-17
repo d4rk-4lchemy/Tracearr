@@ -115,7 +115,11 @@ export async function runPluginUpdateCheck(): Promise<void> {
       if (!target) continue;
 
       const installed = sseManager.getPluginVersion(server.id);
-      const outdated = installed === null || compareVersions(installed, target.latest) < 0;
+      // A Dispatcharr plugin without a reported version is not enough evidence
+      // to claim that an update exists. Its version announcement can arrive
+      // shortly after the realtime connection is established.
+      const outdated =
+        installed !== null && compareVersions(installed, target.latest) < 0;
       const nudgeKey = `${family}:${target.latest}`;
       if (!outdated) {
         nudgedVersions.delete(server.id);
