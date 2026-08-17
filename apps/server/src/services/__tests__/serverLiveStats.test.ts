@@ -187,7 +187,7 @@ describe('Dispatcharr bandwidth samples', () => {
       lanBytes: 0,
       wanBytes: 0,
     });
-    expect(ctx.multiChain.ltrim).toHaveBeenCalledWith(key, 0, 25);
+    expect(ctx.multiChain.ltrim).toHaveBeenCalledWith(key, 0, 155);
   });
 
   it('reads valid bandwidth points and skips malformed entries', async () => {

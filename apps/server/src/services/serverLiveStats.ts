@@ -39,9 +39,9 @@ const PLUGIN_STATS_WINDOW = Math.ceil(
   (SERVER_STATS_CONFIG.WINDOW_SECONDS * 1.3) / PLUGIN_SAMPLE_INTERVAL_SECONDS
 );
 
-const PLUGIN_BANDWIDTH_WINDOW = Math.ceil(
-  (BANDWIDTH_STATS_CONFIG.WINDOW_SECONDS * 1.3) / PLUGIN_SAMPLE_INTERVAL_SECONDS
-);
+// Dispatcharr Metrics publishes bandwidth at one-second resolution. Retain
+// enough points for the two-minute chart window plus delayed-axis slack.
+const DISPATCHARR_BANDWIDTH_SAMPLE_BUFFER_SIZE = 156;
 
 // Outlives the chart window so a dropped plugin drains rather than blanking
 const PLUGIN_STATS_TTL_SECONDS = SERVER_STATS_CONFIG.WINDOW_SECONDS * 2;
@@ -202,7 +202,7 @@ export async function recordServerBandwidthSample(
     await redis
       .multi()
       .lpush(key, JSON.stringify(point))
-      .ltrim(key, 0, PLUGIN_BANDWIDTH_WINDOW - 1)
+      .ltrim(key, 0, DISPATCHARR_BANDWIDTH_SAMPLE_BUFFER_SIZE - 1)
       .expire(key, PLUGIN_STATS_TTL_SECONDS)
       .exec();
   } catch {
