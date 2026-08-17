@@ -158,6 +158,8 @@ export const REDIS_KEYS = {
     `${_redisPrefix}tracearr:servers:${serverId}:stats:bandwidth`,
   SERVER_STATS_SAMPLES: (serverId: string) =>
     `${_redisPrefix}tracearr:servers:${serverId}:stats:samples`,
+  SERVER_STATS_BANDWIDTH_SAMPLES: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:stats:bandwidth:samples`,
   get PUBSUB_EVENTS() {
     return `${_redisPrefix}tracearr:events`;
   },
@@ -886,9 +888,9 @@ export function liveStatsRetentionSeconds(windowSeconds: number): number {
   return windowSeconds + SERVER_STATS_CONFIG.NOW_DELAY_SECONDS + 10;
 }
 
-// Plex-only; Jellyfin and Emby expose no server-wide byte counter.
-// Rows are per-second and sparse - an absent second moved no bytes, so a
-// point count is not a time window.
+// Plex and the Dispatcharr Metrics plugin expose server-wide byte counters.
+// Rows are sparse - an absent interval moved no bytes, so a point count is
+// not a time window.
 export const BANDWIDTH_STATS_CONFIG = {
   TIMESPAN_PARAM: 6,
   WINDOW_SECONDS: 120,

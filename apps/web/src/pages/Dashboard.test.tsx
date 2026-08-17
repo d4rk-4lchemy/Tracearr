@@ -23,15 +23,8 @@ vi.mock('@/hooks/queries', () => ({
 
 // Not typechecked against the real module - keep in sync by hand
 vi.mock('@/hooks/queries/useServers', () => ({
-  useServerLiveStats: () => ({
-    statistics: undefined,
-    statisticsAverages: null,
-    bandwidth: undefined,
-    bandwidthAverages: null,
-    clockSkewMs: 0,
-    isLoading: false,
-  }),
-  useMultiServerLiveStats: () => ({ series: [], clockSkewMs: 0, isLoading: false }),
+  useServerLiveStats: vi.fn(),
+  useMultiServerLiveStats: vi.fn(),
 }));
 
 vi.mock('@/components/charts/ServerResourceCharts', () => ({
@@ -39,7 +32,7 @@ vi.mock('@/components/charts/ServerResourceCharts', () => ({
 }));
 
 vi.mock('@/components/charts/BandwidthChart', () => ({
-  ServerBandwidthChart: () => null,
+  ServerBandwidthChart: vi.fn(() => null),
 }));
 
 vi.mock('@/components/history/SessionDetailSheet', () => ({
@@ -67,11 +60,16 @@ vi.mock('@/hooks/useServerColorMap', () => ({
 }));
 
 import { useDashboardStats, useActiveSessions } from '@/hooks/queries';
+import { useServerLiveStats, useMultiServerLiveStats } from '@/hooks/queries/useServers';
 import { useServer } from '@/hooks/useServer';
+import { ServerBandwidthChart } from '@/components/charts/BandwidthChart';
 
 const mockUseDashboardStats = vi.mocked(useDashboardStats);
 const mockUseActiveSessions = vi.mocked(useActiveSessions);
+const mockUseServerLiveStats = vi.mocked(useServerLiveStats);
+const mockUseMultiServerLiveStats = vi.mocked(useMultiServerLiveStats);
 const mockUseServer = vi.mocked(useServer);
+const mockServerBandwidthChart = vi.mocked(ServerBandwidthChart);
 
 function serverReturn() {
   return {
@@ -86,6 +84,19 @@ describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseServer.mockReturnValue(serverReturn());
+    mockUseServerLiveStats.mockReturnValue({
+      statistics: undefined,
+      statisticsAverages: null,
+      bandwidth: undefined,
+      bandwidthAverages: null,
+      clockSkewMs: 0,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useServerLiveStats>);
+    mockUseMultiServerLiveStats.mockReturnValue({
+      series: [],
+      clockSkewMs: 0,
+      isLoading: false,
+    });
   });
 
   it('shows Now Playing skeletons (not the empty-streams card) while sessions are still loading', () => {
@@ -158,6 +169,43 @@ describe('Dashboard', () => {
     renderDashboard();
 
     expect(screen.getByText(/common:count.channel/)).toBeInTheDocument();
+  });
+
+  it('renders Dispatcharr bandwidth only after a valid zero-valued sample arrives', () => {
+    mockUseServer.mockReturnValue({
+      selectedServerIds: ['dispatcharr-1'],
+      selectedServers: [{ id: 'dispatcharr-1', type: 'dispatcharr', name: 'Dispatcharr' }],
+      isMultiServer: false,
+      selectedServerId: 'dispatcharr-1',
+    } as unknown as ReturnType<typeof useServer>);
+    mockUseServerLiveStats.mockReturnValue({
+      statistics: [],
+      statisticsAverages: null,
+      bandwidth: [],
+      bandwidthAverages: null,
+      clockSkewMs: 0,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useServerLiveStats>);
+
+    const first = renderDashboard();
+    expect(mockServerBandwidthChart).not.toHaveBeenCalled();
+    first.unmount();
+
+    const sample = { at: 100, timespan: 6, lanBytes: 0, wanBytes: 0 };
+    mockUseServerLiveStats.mockReturnValue({
+      statistics: [],
+      statisticsAverages: null,
+      bandwidth: [sample],
+      bandwidthAverages: { local: 0, remote: 0 },
+      clockSkewMs: 0,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useServerLiveStats>);
+
+    renderDashboard();
+    expect(mockServerBandwidthChart).toHaveBeenCalledWith(
+      expect.objectContaining({ data: [sample] }),
+      undefined
+    );
   });
 
   it('shows a page-level error state when the stats query fails, and retry refetches both queries', async () => {

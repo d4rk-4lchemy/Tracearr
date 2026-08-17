@@ -39,7 +39,7 @@ import {
   type PluginLibraryEvent,
   type PluginServerStats,
 } from './mediaServer/shared/jellyfinEmbyEventSource.js';
-import { recordServerStatsSample } from './serverLiveStats.js';
+import { recordServerBandwidthSample, recordServerStatsSample } from './serverLiveStats.js';
 import { getRedis } from '../lib/redisShared.js';
 import { probeSsePlugin } from './mediaServer/shared/ssePluginProbe.js';
 import { broadcastToAll } from '../websocket/index.js';
@@ -777,6 +777,18 @@ export class SSEManager extends EventEmitter {
       'stats:event',
       ({ sample }: { serverId: string; sample: Parameters<typeof recordServerStatsSample>[2] }) => {
         void recordServerStatsSample(getRedis(), serverId, sample);
+      }
+    );
+
+    realtime.on(
+      'bandwidth:event',
+      ({
+        sample,
+      }: {
+        serverId: string;
+        sample: Parameters<typeof recordServerBandwidthSample>[2];
+      }) => {
+        void recordServerBandwidthSample(getRedis(), serverId, sample);
       }
     );
 

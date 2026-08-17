@@ -1017,7 +1017,7 @@ export interface ServerResourceStats {
 }
 
 // Server bandwidth statistics (Local/Remote)
-// From Plex's undocumented /statistics/bandwidth endpoint
+// From Plex's undocumented /statistics/bandwidth endpoint or Dispatcharr Metrics.
 export interface ServerBandwidthDataPoint {
   /** Unix timestamp */
   at: number;
@@ -1038,14 +1038,14 @@ export interface ServerBandwidthStats {
   fetchedAt: Date;
 }
 
-/** Plex account referenced by bandwidth samples */
+/** Plex account referenced by per-account bandwidth samples */
 export interface BandwidthAccount {
   id: number;
   name: string;
   thumb: string | null;
 }
 
-/** Plex device referenced by bandwidth samples */
+/** Plex device referenced by per-account bandwidth samples */
 export interface BandwidthDevice {
   id: number;
   name: string;

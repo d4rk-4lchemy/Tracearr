@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { SSE_CONFIG } from '@tracearr/shared';
+import { SSE_CONFIG, type ServerBandwidthDataPoint } from '@tracearr/shared';
 import { DispatcharrClient } from './client.js';
 import type { MediaSession, MediaUser } from '../types.js';
 import type { PluginStatsSample } from '../../serverLiveStats.js';
@@ -92,6 +92,41 @@ export function parseDispatcharrServerStatsMessage(raw: unknown): PluginStatsSam
     hostCpuUtilization: hostCpu,
     hostMemoryUtilization: hostMemory,
   };
+}
+
+/** Parse Dispatcharr Metrics bandwidth samples, which match Plex's aggregate shape. */
+export function parseDispatcharrBandwidthStatsMessage(
+  raw: unknown
+): ServerBandwidthDataPoint | null {
+  let message: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      message = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(message) || message.type !== 'update' || !isRecord(message.data)) return null;
+  const data = message.data;
+  if (data.type !== 'tracearr_bandwidth_stats' || data.schemaVersion !== 1) return null;
+
+  const validNonNegativeNumber = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  const at = data.at;
+  const timespan = data.timespan;
+  const lanBytes = data.lanBytes;
+  const wanBytes = data.wanBytes;
+  if (
+    !validNonNegativeNumber(at) ||
+    !validNonNegativeNumber(lanBytes) ||
+    !validNonNegativeNumber(wanBytes) ||
+    !validNonNegativeNumber(timespan) ||
+    timespan === 0
+  ) {
+    return null;
+  }
+
+  return { at, timespan, lanBytes, wanBytes };
 }
 
 function extractReferencedUserIds(channels: NormalizedDispatcharrChannel[]): string[] {
@@ -354,6 +389,14 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       this.lastEventAt = new Date();
       this.resetHeartbeat();
       this.emit('stats:event', { serverId: this.serverId, sample: serverStats });
+      return;
+    }
+
+    const bandwidthStats = parseDispatcharrBandwidthStatsMessage(parsed);
+    if (bandwidthStats) {
+      this.lastEventAt = new Date();
+      this.resetHeartbeat();
+      this.emit('bandwidth:event', { serverId: this.serverId, sample: bandwidthStats });
       return;
     }
 

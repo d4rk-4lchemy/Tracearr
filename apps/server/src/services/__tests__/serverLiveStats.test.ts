@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Redis } from 'ioredis';
 import {
+  getPluginServerBandwidthStats,
   recordServerStatsSample,
+  recordServerBandwidthSample,
   getPluginServerStats,
   getServerLiveStats,
   plexClockShift,
@@ -156,6 +158,47 @@ describe('getPluginServerStats', () => {
   });
 });
 
+describe('Dispatcharr bandwidth samples', () => {
+  let ctx: ReturnType<typeof fakeRedis>;
+
+  beforeEach(() => {
+    ctx = fakeRedis();
+    vi.useFakeTimers();
+    vi.setSystemTime(RECEIVED_AT_MS);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stores zero-valued samples in a dedicated rolling buffer', async () => {
+    await recordServerBandwidthSample(ctx.redis, serverId, {
+      at: 1786151199,
+      timespan: 6,
+      lanBytes: 0,
+      wanBytes: 0,
+    });
+
+    const [key, payload] = ctx.multiChain.lpush.mock.calls[0] as [string, string];
+    expect(key).toContain(`${serverId}:stats:bandwidth:samples`);
+    expect(JSON.parse(payload)).toEqual({
+      at: RECEIVED_AT,
+      timespan: 6,
+      lanBytes: 0,
+      wanBytes: 0,
+    });
+    expect(ctx.multiChain.ltrim).toHaveBeenCalledWith(key, 0, 25);
+  });
+
+  it('reads valid bandwidth points and skips malformed entries', async () => {
+    const point = { at: 100, timespan: 6, lanBytes: 0, wanBytes: 24 };
+    ctx.raw.lrange.mockResolvedValue([JSON.stringify(point), 'not-json']);
+
+    await expect(getPluginServerBandwidthStats(ctx.redis, serverId)).resolves.toEqual([point]);
+    expect(ctx.raw.lrange.mock.calls[0]?.[0]).toContain(`${serverId}:stats:bandwidth:samples`);
+  });
+});
+
 describe('plexClockShift', () => {
   const now = () => Math.floor(Date.now() / 1000);
 
@@ -209,5 +252,40 @@ describe('getServerLiveStats', () => {
       bandwidthDevices: [],
     });
     expect(ctx.raw.get).not.toHaveBeenCalled();
+  });
+
+  it('serves Dispatcharr plugin bandwidth alongside its resource samples', async () => {
+    const statistics = {
+      at: 100,
+      timespan: 6,
+      hostCpuUtilization: 1,
+      processCpuUtilization: 2,
+      hostMemoryUtilization: 3,
+      processMemoryUtilization: 4,
+    };
+    const bandwidth = { at: 101, timespan: 6, lanBytes: 0, wanBytes: 24 };
+    const ctx = fakeRedis();
+    ctx.raw.lrange.mockImplementation((key: string) =>
+      Promise.resolve(
+        key.includes(':bandwidth:samples')
+          ? [JSON.stringify(bandwidth)]
+          : [JSON.stringify(statistics)]
+      )
+    );
+
+    const result = await getServerLiveStats(ctx.redis, {
+      id: serverId,
+      type: 'dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'tok',
+    });
+
+    expect(result).toEqual({
+      statistics: [statistics],
+      bandwidth: [bandwidth],
+      bandwidthSamples: [],
+      bandwidthAccounts: [],
+      bandwidthDevices: [],
+    });
   });
 });

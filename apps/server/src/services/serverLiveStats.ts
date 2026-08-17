@@ -1,7 +1,7 @@
 /**
  * Live server stats (CPU/RAM and bandwidth). Plex is fetched behind a short
- * Redis cache; Jellyfin/Emby arrive as SSE plugin events into a rolling
- * buffer, so their charts empty when a plugin goes quiet.
+ * Redis cache; plugin-backed sources arrive as realtime events into rolling
+ * buffers, so their charts empty when a plugin goes quiet.
  */
 
 import type { Redis } from 'ioredis';
@@ -11,7 +11,7 @@ import {
   REDIS_KEYS,
   SERVER_STATS_CONFIG,
 } from '@tracearr/shared';
-import type { ServerResourceDataPoint } from '@tracearr/shared';
+import type { ServerBandwidthDataPoint, ServerResourceDataPoint } from '@tracearr/shared';
 import { PlexClient } from './mediaServer/plex/client.js';
 import type { PlexBandwidthStats, PlexStatisticsDataPoint } from './mediaServer/plex/parser.js';
 
@@ -37,6 +37,10 @@ const PLUGIN_SAMPLE_INTERVAL_SECONDS = 6;
 
 const PLUGIN_STATS_WINDOW = Math.ceil(
   (SERVER_STATS_CONFIG.WINDOW_SECONDS * 1.3) / PLUGIN_SAMPLE_INTERVAL_SECONDS
+);
+
+const PLUGIN_BANDWIDTH_WINDOW = Math.ceil(
+  (BANDWIDTH_STATS_CONFIG.WINDOW_SECONDS * 1.3) / PLUGIN_SAMPLE_INTERVAL_SECONDS
 );
 
 // Outlives the chart window so a dropped plugin drains rather than blanking
@@ -110,7 +114,8 @@ export async function getServerBandwidthStats(
 function headTimestamp(entry: string | null): number | null {
   if (!entry) return null;
   try {
-    return (JSON.parse(entry) as ServerResourceDataPoint).at;
+    const at = (JSON.parse(entry) as { at?: unknown }).at;
+    return typeof at === 'number' ? at : null;
   } catch {
     return null;
   }
@@ -173,6 +178,56 @@ export async function getPluginServerStats(
   }
 }
 
+/**
+ * Store Dispatcharr Metrics plugin bandwidth using Tracearr's clock. The
+ * Plex bandwidth cache has a different shape, so plugin samples use a
+ * separate rolling key.
+ */
+export async function recordServerBandwidthSample(
+  redis: Redis,
+  serverId: string,
+  sample: ServerBandwidthDataPoint
+): Promise<void> {
+  const point: ServerBandwidthDataPoint = {
+    at: Math.floor(Date.now() / 1000),
+    timespan: sample.timespan,
+    lanBytes: sample.lanBytes,
+    wanBytes: sample.wanBytes,
+  };
+
+  const key = REDIS_KEYS.SERVER_STATS_BANDWIDTH_SAMPLES(serverId);
+  try {
+    if (headTimestamp(await redis.lindex(key, 0)) === point.at) return;
+
+    await redis
+      .multi()
+      .lpush(key, JSON.stringify(point))
+      .ltrim(key, 0, PLUGIN_BANDWIDTH_WINDOW - 1)
+      .expire(key, PLUGIN_STATS_TTL_SECONDS)
+      .exec();
+  } catch {
+    // Best-effort; a missed sample is one gap in a rolling chart
+  }
+}
+
+export async function getPluginServerBandwidthStats(
+  redis: Redis,
+  serverId: string
+): Promise<ServerBandwidthDataPoint[]> {
+  try {
+    const raw = await redis.lrange(REDIS_KEYS.SERVER_STATS_BANDWIDTH_SAMPLES(serverId), 0, -1);
+    return raw.flatMap((entry) => {
+      try {
+        return [JSON.parse(entry) as ServerBandwidthDataPoint];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
 // Past this, the gap is a wrong clock rather than sampling lag
 const MAX_PLAUSIBLE_LAG_SECONDS = 15;
 
@@ -192,9 +247,16 @@ function shiftPoints<T extends { at: number }>(points: T[], shift: number): T[] 
 
 export async function getServerLiveStats(redis: Redis, server: ServerRow) {
   if (server.type !== 'plex') {
+    const [statistics, bandwidth] = await Promise.all([
+      getPluginServerStats(redis, server.id),
+      server.type === 'dispatcharr'
+        ? getPluginServerBandwidthStats(redis, server.id)
+        : Promise.resolve([]),
+    ]);
+
     return {
-      statistics: await getPluginServerStats(redis, server.id),
-      bandwidth: [],
+      statistics,
+      bandwidth,
       bandwidthSamples: [],
       bandwidthAccounts: [],
       bandwidthDevices: [],
