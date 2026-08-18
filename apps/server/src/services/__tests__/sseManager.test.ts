@@ -101,7 +101,6 @@ vi.mock('../leaderLease.js', () => ({
 
 import { db } from '../../db/client.js';
 import { SSEManager } from '../sseManager.js';
-import { db } from '../../db/client.js';
 import { isLeader } from '../leaderLease.js';
 import { DispatcharrRealtimeConnector } from '../mediaServer/dispatcharr/realtime.js';
 import { PlexEventSource } from '../mediaServer/plex/eventSource.js';
@@ -577,6 +576,7 @@ describe('SSEManager.refresh', () => {
     type: 'plex' as const,
     url: 'http://plex.local',
     token: 'token-1',
+    ignoreAnonymousStreams: true,
   };
 
   beforeEach(() => {
