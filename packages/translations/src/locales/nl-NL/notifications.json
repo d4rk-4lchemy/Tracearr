@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Koppeltoken genereren mislukt",
       "plexDirectUrl": "Een plex.direct-URL is een relay-adres dat hier niet gebruikt kan worden. Gebruik een direct IP-adres of hostnaam.",
       "plexUnlinkFailed": "Ontkoppelen Plex-account mislukt",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Routering bijwerken mislukt",
       "ruleCreateFailed": "Regel aanmaken mislukt",
       "ruleDeleteFailed": "Regel verwijderen mislukt",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Je Plex-account is ontkoppeld",
         "title": "Plex-account ontkoppeld"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "De regel is succesvol aangemaakt",

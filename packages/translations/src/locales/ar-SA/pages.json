@@ -841,6 +841,7 @@
       "serversConnected_other": "متصل بخوادم {{count}}",
       "showAll": "إظهار الكل",
       "unlinkAccount": "إلغاء ربط حساب Plex هذا",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "هل أنت متأكد من أنك تريد إلغاء ربط حساب Plex هذا؟ لن تتمكن من إضافة خوادم من هذا الحساب حتى تقوم بربطه مرة أخرى.",
       "unlinkPlexAccount": "إلغاء ربط حساب Plex"
     }

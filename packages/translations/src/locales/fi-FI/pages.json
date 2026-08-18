@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} palvelinta yhdistetty",
       "showAll": "Näytä kaikki",
       "unlinkAccount": "Poista yhteys Plex tiliin",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Oletko varma, että haluat poistaa yhteyden tähän Plex tiliin? Et voi lisätä palvelimia tältä tililtä ennen kuin linkität sen uudelleen.",
       "unlinkPlexAccount": "Irroita Plex Tili"
     }

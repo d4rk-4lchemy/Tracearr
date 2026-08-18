@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Generování tokenu páru se nezdařilo",
       "plexDirectUrl": "plex.direct URL jsou překladové adresy, které zde nelze použít. Použijte prosím přímou IP adresu nebo název hostitele.",
       "plexUnlinkFailed": "Nepodařilo se odpojit Plex účet",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Nepodařilo se aktualizovat směrování",
       "ruleCreateFailed": "Vytvoření pravidla se nezdařilo",
       "ruleDeleteFailed": "Nepodařilo se odstranit pravidlo",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Váš účet Plex byl odpojen",
         "title": "Účet Plex není propojen"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Pravidlo bylo úspěšně vytvořeno",

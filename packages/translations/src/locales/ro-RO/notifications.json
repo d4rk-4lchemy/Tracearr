@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Generarea token-ului de pereche a eșuat",
       "plexDirectUrl": "URL-urile plex.direct sunt adrese de releu care nu pot fi folosite aici. Vă rugăm să folosiți o adresă IP directă sau numele gazdei.",
       "plexUnlinkFailed": "Deconectarea contului Plex a eșuat",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Nu s-a reușit actualizarea rutării",
       "ruleCreateFailed": "Crearea regulii a eșuat",
       "ruleDeleteFailed": "Ștergerea regulii a eșuat",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Contul tău Plex a fost deconectat",
         "title": "Cont Plex Nelegat"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Regula a fost creată cu succes",

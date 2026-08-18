@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Αποτυχία δημιουργίας διακριτικού ζεύγους",
       "plexDirectUrl": "Οι διευθύνσεις URL plex.direct είναι διευθύνσεις ρελέ που δεν μπορούν να χρησιμοποιηθούν εδώ. Παρακαλώ χρησιμοποιήστε μια άμεση διεύθυνση IP ή όνομα κεντρικού υπολογιστή.",
       "plexUnlinkFailed": "Αποτυχία αποσύνδεσης του λογαριασμού Plex",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Αποτυχία ενημέρωσης δρομολόγησης",
       "ruleCreateFailed": "Αποτυχία δημιουργίας κανόνα",
       "ruleDeleteFailed": "Αποτυχία διαγραφής κανόνα",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Ο λογαριασμός σας στο Plex έχει αποσυνδεθεί",
         "title": "Αποσύνδεση Λογαριασμού Plex"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Ο κανόνας έχει δημιουργηθεί με επιτυχία",

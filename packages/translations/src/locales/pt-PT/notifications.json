@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Falha ao gerar token de par",
       "plexDirectUrl": "URLs plex.direct são endereços de retransmissão que não podem ser usados aqui. Por favor, use um endereço IP direto ou nome de host.",
       "plexUnlinkFailed": "Falha ao desvincular a conta Plex",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Falha ao atualizar roteamento",
       "ruleCreateFailed": "Falha ao criar regra",
       "ruleDeleteFailed": "Falha ao excluir regra",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Sua conta Plex foi desconectada",
         "title": "Conta Plex desvinculada"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "A regra foi criada com sucesso",

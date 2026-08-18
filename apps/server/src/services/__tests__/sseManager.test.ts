@@ -95,6 +95,11 @@ vi.mock('../serviceTracker.js', () => ({
   unregisterService: vi.fn(),
 }));
 
+vi.mock('../leaderLease.js', () => ({
+  isLeader: vi.fn().mockReturnValue(true),
+}));
+
+import { db } from '../../db/client.js';
 import { SSEManager } from '../sseManager.js';
 import { db } from '../../db/client.js';
 import { isLeader } from '../leaderLease.js';
@@ -553,5 +558,83 @@ describe('SSEManager.nudgeReconnect', () => {
       retryFromFallback: ReturnType<typeof vi.fn>;
     };
     expect(instance.retryFromFallback).not.toHaveBeenCalled();
+  });
+});
+
+describe('SSEManager.refresh', () => {
+  let manager: SSEManager;
+
+  /** refresh() reads the whole servers table; the chain ends at .from(). */
+  function mockServerRows(rows: unknown[]) {
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn().mockResolvedValue(rows),
+    } as never);
+  }
+
+  const row = {
+    id: 'plex-1',
+    name: 'Plex Server',
+    type: 'plex' as const,
+    url: 'http://plex.local',
+    token: 'token-1',
+  };
+
+  beforeEach(() => {
+    manager = new SSEManager();
+  });
+
+  afterEach(async () => {
+    await manager.stop();
+    vi.clearAllMocks();
+  });
+
+  it('connects a server that has no connection yet', async () => {
+    await manager.initialize(makeCacheService(), makePubSubService());
+    mockServerRows([row]);
+
+    await manager.refresh();
+
+    expect(PlexEventSource).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(PlexEventSource).mock.calls[0]![0]).toMatchObject({ token: 'token-1' });
+  });
+
+  it('rebuilds a connection whose stored token was rotated', async () => {
+    await manager.initialize(makeCacheService(), makePubSubService());
+    await manager.addServer(row.id, row.name, row.type, row.url, 'token-1');
+    vi.mocked(PlexEventSource).mockClear();
+
+    mockServerRows([{ ...row, token: 'token-2' }]);
+    await manager.refresh();
+
+    // A live connection keeps the token it was built with, so the only way the
+    // new one reaches Plex is a rebuild.
+    expect(PlexEventSource).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(PlexEventSource).mock.calls[0]![0]).toMatchObject({ token: 'token-2' });
+  });
+
+  it('rebuilds a connection whose url changed', async () => {
+    await manager.initialize(makeCacheService(), makePubSubService());
+    await manager.addServer(row.id, row.name, row.type, row.url, row.token);
+    vi.mocked(PlexEventSource).mockClear();
+
+    mockServerRows([{ ...row, url: 'http://moved.local' }]);
+    await manager.refresh();
+
+    expect(vi.mocked(PlexEventSource).mock.calls[0]![0]).toMatchObject({
+      url: 'http://moved.local',
+    });
+  });
+
+  it('leaves a connection alone when url and token both still match', async () => {
+    await manager.initialize(makeCacheService(), makePubSubService());
+    await manager.addServer(row.id, row.name, row.type, row.url, row.token);
+    vi.mocked(PlexEventSource).mockClear();
+
+    mockServerRows([row]);
+    await manager.refresh();
+
+    // Reconciliation runs every 30s; rebuilding on every pass would drop the
+    // stream continuously.
+    expect(PlexEventSource).not.toHaveBeenCalled();
   });
 });

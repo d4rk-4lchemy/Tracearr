@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Error al generar el token de emparejado",
       "plexDirectUrl": "Las URLs plex.direct son direcciones repetidas que no se pueden utilizar aquí. Por favor, utilice una dirección IP directa o nombre de host en su lugar.",
       "plexUnlinkFailed": "Error al desvincular la cuenta de Plex",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Error al actualizar la regla",
       "ruleCreateFailed": "Error al crear la regla",
       "ruleDeleteFailed": "Error al eliminar regla",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Tu cuenta de Plex ha sido desconectada",
         "title": "Cuenta Plex desvinculada"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "La regla ha sido creada con éxito",

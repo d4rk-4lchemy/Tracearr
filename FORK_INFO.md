@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `feature/prepare-for-2.2.0`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `da2828d1`
-- Last shared upstream commit found during inspection: `22199d26`
-- Latest upstream commit merged into the current working tree: `da2828d1`
+- Source branch/SHA inspected: `main` at `bf662a89`
+- Last shared upstream commit found during inspection: `bf662a89`
+- Latest upstream commit merged into the current working tree: `bf662a89`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -215,6 +215,16 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `bf662a89` was merged into `feature/prepare-for-2.2.0`
+  on August 18, 2026. The upstream Plex re-authentication/token-reconciliation
+  flow, dependency updates, Docker image refreshes, and translation fallbacks
+  were retained. The `sseManager` conflict preserves the fork's leader-owned
+  Dispatcharr-aware configuration comparison (type, name, normalized URL,
+  token, and anonymous-stream setting), so it still replaces stale connectors
+  after edits. GitHub Actions retain fork policy: CI is PR-only, Renovate is
+  disabled, release is manual-only, and the integration matrix remains a
+  manual validation path; upstream action/image pin updates were accepted.
 
 - Upstream `main` at `da2828d1` was merged into `feature/prepare-for-2.2.0`
   on August 17, 2026. Upstream migration `0088`, the destinations-based

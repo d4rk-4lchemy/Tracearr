@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} servery připojeny",
       "showAll": "Zobrazit vše",
       "unlinkAccount": "Odpojit tento Plex účet",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Opravdu chcete odpojit tento Plex účet? Nebudete moci přidat servery z tohoto účtu dokud jej znovu nepropojíte.",
       "unlinkPlexAccount": "Odpojit Plex účet"
     }

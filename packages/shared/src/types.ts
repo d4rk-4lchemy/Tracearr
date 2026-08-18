@@ -1895,6 +1895,26 @@ export interface UnlinkPlexAccountResponse {
   success: boolean;
 }
 
+/**
+ * refreshed - was already linked to this account, token replaced
+ * adopted   - plex.tv confirmed this account owns it, so the link was corrected
+ * unmatched - no link, and plex.tv could not confirm ownership; still broken
+ */
+export type ReauthorizedServerStatus = 'refreshed' | 'adopted' | 'unmatched';
+
+export interface ReauthorizedServer {
+  id: string;
+  name: string;
+  status: ReauthorizedServerStatus;
+  ok: boolean; // Verified admin access with the new token; always false when unmatched
+}
+
+// Response from POST /auth/plex/accounts/:id/reauthorize
+export interface ReauthorizePlexAccountResponse {
+  account: PlexAccount;
+  servers: ReauthorizedServer[];
+}
+
 // =============================================================================
 // Maintenance Job Types
 // =============================================================================

@@ -28,6 +28,7 @@ import type {
   PlexAccountsResponse,
   LinkPlexAccountResponse,
   UnlinkPlexAccountResponse,
+  ReauthorizePlexAccountResponse,
   Destination,
   DestinationKind,
   CreateDestinationInput,
@@ -453,6 +454,13 @@ class ApiClient {
     // Link a new Plex account via OAuth PIN (authenticated - owner only)
     linkPlexAccount: (pin: string) =>
       this.request<LinkPlexAccountResponse>('/auth/plex/link-account', {
+        method: 'POST',
+        body: JSON.stringify({ pin }),
+      }),
+
+    // Replace a linked Plex account's token via a fresh OAuth PIN (owner only)
+    reauthorizePlexAccount: (accountId: string, pin: string) =>
+      this.request<ReauthorizePlexAccountResponse>(`/auth/plex/accounts/${accountId}/reauthorize`, {
         method: 'POST',
         body: JSON.stringify({ pin }),
       }),

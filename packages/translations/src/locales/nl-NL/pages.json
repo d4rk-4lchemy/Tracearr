@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} servers verbonden",
       "showAll": "Alles weergeven",
       "unlinkAccount": "Dit Plex-account ontkoppelen",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Weet je zeker dat je dit Plex-account wilt ontkoppelen? Je kunt geen servers van dit account meer toevoegen totdat je opnieuw koppelt.",
       "unlinkPlexAccount": "Plex-account ontkoppelen"
     }

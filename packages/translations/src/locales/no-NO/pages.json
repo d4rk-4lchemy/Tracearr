@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} servere tilkoblet",
       "showAll": "Vis alle",
       "unlinkAccount": "Frakoble denne Plex kontoen",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Er du sikker på at du vil koble fra denne Plex kontoen? Du kan ikke legge til servere fra denne kontoen frem til du kobler den til igjen.",
       "unlinkPlexAccount": "Koble fra Plex konto"
     }

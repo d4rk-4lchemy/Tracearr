@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} servere conectate",
       "showAll": "Arată toate",
       "unlinkAccount": "Deconectați acest cont Plex",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Ești sigur că vrei să deconectezi acest cont Plex? Nu vei mai putea adăuga servere din acest cont până nu îl conectezi din nou.",
       "unlinkPlexAccount": "Deconectează contul Plex"
     }

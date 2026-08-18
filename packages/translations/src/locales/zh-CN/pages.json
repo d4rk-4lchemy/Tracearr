@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} 台服务器已连接",
       "showAll": "显示全部",
       "unlinkAccount": "取消链接此Plex账户",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "您确定要取消链接此Plex帐户吗？在您再次链接之前，您将无法从此帐户添加服务器。",
       "unlinkPlexAccount": "取消链接Plex账户"
     }

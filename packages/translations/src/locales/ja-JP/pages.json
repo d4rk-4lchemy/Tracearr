@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} サーバーが接続されました",
       "showAll": "すべて表示",
       "unlinkAccount": "このプレックスアカウントの連携を解除する",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "このプレックスアカウントのリンクを解除してもよろしいですか？再度リンクするまで、このアカウントからサーバーを追加することはできません。",
       "unlinkPlexAccount": "プレックスアカウントのリンクを解除"
     }

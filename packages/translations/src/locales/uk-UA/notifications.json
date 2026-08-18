@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Не вдалося створити токен пари",
       "plexDirectUrl": "plex.direct URL - це естафетні адреси, які не можуть бути використані тут. Замість цього використовуйте пряму IP адресу або ім'я хосту.",
       "plexUnlinkFailed": "Не вдалося від'єднати акаунт Plex",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Не вдалося оновити маршрутизацію",
       "ruleCreateFailed": "Не вдалося створити правило",
       "ruleDeleteFailed": "Не вдалося видалити правило",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Ваш обліковий запис Plex відключено",
         "title": "Plex обліковий запис від'єднано"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Правило успішно створено",

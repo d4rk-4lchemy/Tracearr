@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} Server verbunden",
       "showAll": "Alle anzeigen",
       "unlinkAccount": "Dieses Plex-Konto trennen",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Möchten Sie dieses Plex-Konto wirklich trennen? Sie können erst dann wieder Server von diesem Konto hinzufügen, wenn Sie es erneut verknüpfen.",
       "unlinkPlexAccount": "Plex-Konto trennen"
     }

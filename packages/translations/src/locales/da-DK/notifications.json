@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Kunne ikke generere par token",
       "plexDirectUrl": "plex.direct URLs er relæadresser, der ikke kan bruges her. Brug venligst en direkte IP-adresse eller værtsnavn i stedet.",
       "plexUnlinkFailed": "Kunne ikke frakoble Plex konto",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Kunne ikke opdatere routing",
       "ruleCreateFailed": "Kunne ikke oprette regel",
       "ruleDeleteFailed": "Kunne ikke slette reglen",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Din Plex konto er blevet afbrudt",
         "title": "Plex Konto Ikke Linket"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Reglen er blevet oprettet",

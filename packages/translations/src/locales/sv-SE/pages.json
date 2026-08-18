@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} servrar anslutna",
       "showAll": "Visa alla",
       "unlinkAccount": "Avlänka detta Plex-konto",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Är du säker på att du vill avlänka detta Plex-konto? Du kommer inte att kunna lägga till servrar från detta konto förrän du länkar det igen.",
       "unlinkPlexAccount": "Avlänka Plex-konto"
     }

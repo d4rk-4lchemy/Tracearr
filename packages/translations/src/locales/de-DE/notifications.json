@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Pairing-Token generieren fehlgeschlagen",
       "plexDirectUrl": "plex.direct URLs sind Relayadressen, die hier nicht verwendet werden können. Bitte verwenden Sie stattdessen eine direkte IP-Adresse oder einen Hostnamen.",
       "plexUnlinkFailed": "Plex-Konto trennen fehlgeschlagen",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Routing aktualisieren fehlgeschlagen",
       "ruleCreateFailed": "Regel erstellen fehlgeschlagen",
       "ruleDeleteFailed": "Regel löschen fehlgeschlagen",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Ihr Plex-Konto wurde getrennt",
         "title": "Plex-Konto getrennt"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Regel erfolgreich erstellt",

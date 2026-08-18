@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} серверів підключено",
       "showAll": "Показати всі",
       "unlinkAccount": "Від'єднати обліковий запис Plex",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Ви впевнені, що хочете від'єднати цей обліковий запис Plex? Ви не зможете додавати сервери з цього акаунту, доки не прив'яжете його знову.",
       "unlinkPlexAccount": "Від'єднати акаунт Plex"
     }

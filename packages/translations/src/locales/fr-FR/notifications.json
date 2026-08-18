@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Échec de la génération du jeton d'appairage",
       "plexDirectUrl": "Les URL plex.direct sont des adresses de relai qui ne peuvent pas être utilisées ici. Veuillez utiliser une adresse IP directe ou un nom d’hôte à la place.",
       "plexUnlinkFailed": "Échec de la dissociation du compte Plex",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Échec de la mise à jour du routage",
       "ruleCreateFailed": "Échec de la création de la règle",
       "ruleDeleteFailed": "Échec de la suppression de la règle",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Votre compte Plex a été déconnecté",
         "title": "Compte Plex dissocié"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "La règle a été créée avec succès",

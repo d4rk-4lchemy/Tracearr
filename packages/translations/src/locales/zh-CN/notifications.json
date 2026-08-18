@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "生成配对令牌失败",
       "plexDirectUrl": "plex.direct URL是此处不能使用的中继地址。请使用直接IP地址或主机名。",
       "plexUnlinkFailed": "取消链接Plex帐户失败",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "更新路由失败",
       "ruleCreateFailed": "创建规则失败",
       "ruleDeleteFailed": "删除规则失败",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "您的Plex帐户已断开连接",
         "title": "Plex账户未链接"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "已成功创建规则",

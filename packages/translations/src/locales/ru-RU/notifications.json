@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Не удалось сгенерировать токен пары",
       "plexDirectUrl": "URL-адреса plex.direct это адреса ретрансляции, которые не могут быть использованы здесь. Пожалуйста, используйте прямой IP адрес или имя хоста.",
       "plexUnlinkFailed": "Не удалось отвязать аккаунт Plex",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Не удалось обновить маршрутизацию",
       "ruleCreateFailed": "Не удалось создать правило",
       "ruleDeleteFailed": "Не удалось удалить правило",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Ваша учетная запись Plex была отключена",
         "title": "Учетная запись Plex удалена"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Правило успешно создано",

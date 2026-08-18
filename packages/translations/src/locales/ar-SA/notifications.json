@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "فشل في إنشاء الرمز المميز للزوج",
       "plexDirectUrl": "plex.direct URLs هي عناوين إعادة الإرسال التي لا يمكن استخدامها هنا. الرجاء استخدام عنوان IP مباشر أو اسم المضيف بدلاً من ذلك.",
       "plexUnlinkFailed": "فشل فك ربط حساب Plex",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "فشل تحديث المسار",
       "ruleCreateFailed": "فشل في إنشاء قاعدة",
       "ruleDeleteFailed": "فشل في حذف القاعدة",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "تم قطع اتصال حساب Plex الخاص بك",
         "title": "حساب Plex غير مرتبط"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "تم إنشاء القاعدة بنجاح",

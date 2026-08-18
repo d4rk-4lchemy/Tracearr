@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "ペアトークンの生成に失敗しました",
       "plexDirectUrl": "plex.directのURLはここでは使用できないリレーアドレスです。代わりにIPアドレスまたはホスト名を使用してください。",
       "plexUnlinkFailed": "プレックスアカウントのリンクを解除できませんでした",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "ルーティングの更新に失敗しました",
       "ruleCreateFailed": "ルールの作成に失敗しました",
       "ruleDeleteFailed": "ルールの削除に失敗しました",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "プレックスアカウントが切断されました",
         "title": "プレックスアカウントのリンクが解除されました"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "ルールが正常に作成されました",

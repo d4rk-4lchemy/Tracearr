@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Parin tunnuksen luonti epäonnistui",
       "plexDirectUrl": "plex.direct URL-osoitteet ovat releosoitteita, joita ei voi käyttää tässä. Käytä sen sijaan suoraa IP-osoitetta tai isäntänimeä.",
       "plexUnlinkFailed": "Plex tilin poisto epäonnistui",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Reitityksen päivitys epäonnistui",
       "ruleCreateFailed": "Sääntöä ei voitu luoda",
       "ruleDeleteFailed": "Sääntöä ei voitu poistaa",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Yhteys Plex-tiliisi on katkaistu",
         "title": "Plex Tili Linkittämätön"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Sääntöä on luotu onnistuneesti",

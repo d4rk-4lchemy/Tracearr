@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} servers connected",
       "showAll": "Εμφάνιση όλων",
       "unlinkAccount": "Αποσύνδεση αυτού του λογαριασμού Plex",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Είστε βέβαιοι ότι θέλετε να αποσυνδέσετε αυτό το λογαριασμό Plex? Δεν θα είστε σε θέση να προσθέσετε διακομιστές από αυτό το λογαριασμό μέχρι να τον συνδέσετε ξανά.",
       "unlinkPlexAccount": "Αποσύνδεση Λογαριασμού Plex"
     }

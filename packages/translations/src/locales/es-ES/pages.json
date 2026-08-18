@@ -841,6 +841,7 @@
       "serversConnected_other": "{{count}} servidores conectados",
       "showAll": "Mostrar todo",
       "unlinkAccount": "Desvincular esta cuenta de Plex",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "¿Estás seguro de que quieres desvincular esta cuenta de Plex? No podrás añadir servidores de esta cuenta hasta que la vincules de nuevo.",
       "unlinkPlexAccount": "Desvincular cuenta de Plex"
     }

@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Det gick inte att generera partoken",
       "plexDirectUrl": "plex.direct URL:er är reläadresser som inte kan användas här. Använd en direkt IP-adress eller värdnamn istället.",
       "plexUnlinkFailed": "Det gick inte att koppla bort Plex-kontot",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Det gick inte att uppdatera routing",
       "ruleCreateFailed": "Kunde inte skapa regel",
       "ruleDeleteFailed": "Det gick inte att ta bort regel",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Ditt Plex-konto har kopplats bort",
         "title": "Plex konto olänkat"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Regeln har skapats framgångsrikt",

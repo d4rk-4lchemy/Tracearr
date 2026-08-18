@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Impossibile generare il token della coppia",
       "plexDirectUrl": "Gli URL plex.direct sono indirizzi relè che non possono essere utilizzati qui. Utilizza invece un indirizzo IP diretto o un nome host.",
       "plexUnlinkFailed": "Scollegamento account Plex non riuscito",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Impossibile aggiornare il routing",
       "ruleCreateFailed": "Impossibile creare la regola",
       "ruleDeleteFailed": "Impossibile eliminare la regola",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Il tuo account Plex è stato disconnesso",
         "title": "Account Plex Scollegato"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "La regola è stata creata con successo",

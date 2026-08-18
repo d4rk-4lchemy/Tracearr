@@ -74,6 +74,7 @@
       "pairTokenGenerateFailed": "Nie udało się wygenerować tokenu parowania",
       "plexDirectUrl": "plex.direct adresy URL są adresami, które nie mogą być tutaj użyte. Użyj bezpośredniego adresu IP lub nazwy hosta.",
       "plexUnlinkFailed": "Nie udało się odłączyć konta Plex",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "routingUpdateFailed": "Nie udało się zaktualizować trasy",
       "ruleCreateFailed": "Nie udało się utworzyć reguły",
       "ruleDeleteFailed": "Nie udało się usunąć reguły",
@@ -184,6 +185,14 @@
       "plexAccountUnlinked": {
         "message": "Twoje konto Plex zostało odłączone",
         "title": "Konto Plex niepowiązane"
+      },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
       "ruleCreated": {
         "message": "Użytkownik został pomyślnie utworzony",

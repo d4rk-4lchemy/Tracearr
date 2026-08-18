@@ -191,6 +191,9 @@ export type {
   LinkPlexAccountRequest,
   LinkPlexAccountResponse,
   UnlinkPlexAccountResponse,
+  ReauthorizePlexAccountResponse,
+  ReauthorizedServer,
+  ReauthorizedServerStatus,
   // Version
   VersionInfo,
   // Backup & Restore
