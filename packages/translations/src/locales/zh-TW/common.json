@@ -137,6 +137,19 @@
     "unauthorized": "你沒有權限執行此操作",
     "unexpectedError": "發生錯誤。請再試一次。"
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "操作",
     "active": "生效",
@@ -249,6 +262,12 @@
     "searchTitles": "搜尋標題，使用者……",
     "searchUsers": "搜索用户……"
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Emby",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "成功"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "選擇頁面上的所有內容",
-    "selectAllTotal": "選擇所有 {{total}} 項目",
     "selectRow": "選擇行"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "所有時間",
@@ -293,6 +320,11 @@
     "thisWeek": "本週",
     "today": "今天",
     "yesterday": "昨天"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "公里",

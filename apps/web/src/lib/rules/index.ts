@@ -3,6 +3,7 @@
  */
 
 export * from './conditionFields';
+export * from './scope';
 export * from './actionDefinitions';
 export * from './ruleDisplay';
 export * from './classicRuleTemplates';

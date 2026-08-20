@@ -230,7 +230,6 @@
       "noDuplicatesDesc": "No titles with more than one physical file detected.",
       "noDuplicatesTitle": "No duplicates found",
       "of": "din",
-      "pageOf": "Page {{page}} of {{totalPages}}",
       "predictions": "Predicții",
       "recoverable": "recuperabil",
       "sameServer": "Same server",
@@ -666,11 +665,74 @@
     "blockedCountries": "Țări blocate",
     "blocklist": "Blocklist (bblochează aceste țări)",
     "builder": {
+      "actions": {
+        "add": "Add action",
+        "description": "Optional side-effects when conditions are met. A violation is always created automatically.",
+        "remove": "Remove action",
+        "title": "Additional Actions",
+        "typeLabel": "Action",
+        "typePlaceholder": "Select action"
+      },
+      "activeLabel": "Active",
+      "clearSelection": "Clear selection",
+      "conditions": {
+        "addCondition": "Add OR condition",
+        "addGroup": "Add AND condition group",
+        "allCountries": "All countries",
+        "allDeviceTypes": "All device types",
+        "description": "Define when this rule should trigger. Groups are combined with AND logic.",
+        "deviceTypesHint": "Only count streams from the selected device types. Leave empty to count every device.",
+        "fieldPlaceholder": "Select field",
+        "groupHint": "conditions match with OR logic",
+        "groupLabel": "Group {{number}}",
+        "no": "No",
+        "operatorPlaceholder": "Operator",
+        "recentlySeen": "Recently seen",
+        "removeCondition": "Remove condition",
+        "removeGroup": "Remove group",
+        "title": "Conditions",
+        "uniqueDevices": "Unique devices",
+        "uniqueDevicesHint": "When checked, only compares sessions from different physical devices. Uncheck to include all sessions regardless of device.",
+        "uniqueIps": "Unique IPs",
+        "uniqueIpsHint": "When checked, only counts sessions from different IP addresses. Use this to detect account sharing while allowing same-household usage.",
+        "windowPrefix": "in",
+        "windowUnit": "hrs",
+        "yes": "Yes"
+      },
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
       "destinationDisabled": "Disabled destination",
       "errors": {
-        "sendNeedsDestination": "Pick at least one destination"
+        "conditionRequired": "Each condition group must have at least one condition",
+        "groupRequired": "At least one condition group is required",
+        "nameRequired": "Rule name is required",
+        "scopeIncomplete": "Pick a target for the selected scope",
+        "sendNeedsDestination": "Pick at least one destination",
+        "title": "Please fix the following errors:"
       },
-      "noDestinations": "No destinations yet. Add one to send notifications."
+      "noDestinations": "No destinations yet. Add one to send notifications.",
+      "noMatches": "No matches",
+      "saving": "Saving...",
+      "scope": {
+        "account": "Specific account",
+        "accountLabel": "Account",
+        "accountPlaceholder": "Select account",
+        "enforceAcrossServers": "Enforce across servers",
+        "enforceAcrossServersDescription": "When on, this rule can act on a person's sessions on any of their servers, not just the one that triggered it. Off by default.",
+        "global": "Global",
+        "label": "Scope",
+        "noServers": "No servers connected yet.",
+        "person": "Person (all their servers)",
+        "personLabel": "Person",
+        "personPlaceholder": "Select person",
+        "server": "Specific server",
+        "serverLabel": "Server",
+        "serverPlaceholder": "Select server"
+      },
+      "searchPlaceholder": "Search...",
+      "selectPlaceholder": "Select...",
+      "selectedCount": "{{count}} selected",
+      "severityLabel": "Severity"
     },
     "chooseTemplate": "Alegeți un Șablon de Regulă",
     "chooseTemplateDesc": "Selectați un tip de regulă pre-configurat pentru a începe rapid.",
@@ -834,6 +896,7 @@
       "noReachableConnections": "Nu sunt conexiuni accesibile",
       "noServersFound": "Niciun server de Plex găsit",
       "noServersFoundHint": "Asigură-te că deții cel puțin un server Plex",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "recommended": "Recomandat",
       "remote": "Distanta",
       "secure": "Securizat",
@@ -841,7 +904,6 @@
       "serversConnected_other": "{{count}} servere conectate",
       "showAll": "Arată toate",
       "unlinkAccount": "Deconectați acest cont Plex",
-      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Ești sigur că vrei să deconectezi acest cont Plex? Nu vei mai putea adăuga servere din acest cont până nu îl conectezi din nou.",
       "unlinkPlexAccount": "Deconectează contul Plex"
     }
@@ -883,9 +945,7 @@
     "backToUsers": "Înapoi la Utilizatori",
     "byRule": "De / Regulă",
     "linkedAccounts": "Linked accounts",
-    "locations": "Locații",
     "manual": "Manual",
-    "noSessionsFound": "Nu au fost găsite sesiuni pentru acest utilizator.",
     "noTerminationsFound": "Nici o terminare de flux pentru acest utilizator.",
     "noViolationsFound": "Nu există încălcări pentru acest utilizator.",
     "overallTrust": "Overall Trust",
@@ -903,6 +963,9 @@
     "violations": "Incalcari"
   },
   "users": {
+    "filterHasAccessTo": "Has access to",
+    "filterHasAccessToHint": "Shows people with an active account on every server selected.",
+    "filterHasAccessToPlaceholder": "Any server",
     "mergeConfirm": "Merge",
     "mergeDialogDescription": "Every server account, session, and violation from the duplicate moves to the primary. The duplicate identity is deleted.",
     "mergeDialogTitle": "Merge users",
@@ -937,8 +1000,8 @@
     "title": "Utilizatori"
   },
   "violations": {
-    "allClear": "Toate curățate",
     "allPeople": "All people",
+    "allRules": "All rules",
     "allSeverities": "Toate severitățile",
     "allStatuses": "Toate stările",
     "detail": {
@@ -974,8 +1037,6 @@
     "dismissViolationsConfirm": "Sigur doriți să respingeți? Acest lucru le va elimina din jurnalul de încălcare permanent și va restabili scorurile de încredere asociate.",
     "filterByPerson": "Filter violations by this person",
     "filterPeople": "People",
-    "noMatches": "Nicio potrivire",
-    "noViolationsDetected": "Nicio încălcare a regulilor detectată",
     "noViolationsFound": "Nicio încălcare găsită",
     "noViolationsRecorded": "Nu au fost înregistrate încă încălcări ale legii.",
     "peopleSelectedCount": "{{count}} people",
@@ -984,7 +1045,6 @@
     "personFilterPlaceholder": "Filter by person",
     "selectAllViolations": "Selectați toate filtrele de încălcare {{count}}",
     "title": "Incalcari",
-    "tryAdjustingFilters": "Încercați să ajustați filtrele",
-    "violationLog": "Jurnal Incalcare"
+    "tryAdjustingFilters": "Încercați să ajustați filtrele"
   }
 }

@@ -230,7 +230,6 @@
       "noDuplicatesDesc": "No titles with more than one physical file detected.",
       "noDuplicatesTitle": "No duplicates found",
       "of": "av",
-      "pageOf": "Page {{page}} of {{totalPages}}",
       "predictions": "Forutsigelser",
       "recoverable": "Gjenvinnbart",
       "sameServer": "Same server",
@@ -666,11 +665,74 @@
     "blockedCountries": "Blokkerte land",
     "blocklist": "Svarteliste (blokker disse landene)",
     "builder": {
+      "actions": {
+        "add": "Add action",
+        "description": "Optional side-effects when conditions are met. A violation is always created automatically.",
+        "remove": "Remove action",
+        "title": "Additional Actions",
+        "typeLabel": "Action",
+        "typePlaceholder": "Select action"
+      },
+      "activeLabel": "Active",
+      "clearSelection": "Clear selection",
+      "conditions": {
+        "addCondition": "Add OR condition",
+        "addGroup": "Add AND condition group",
+        "allCountries": "All countries",
+        "allDeviceTypes": "All device types",
+        "description": "Define when this rule should trigger. Groups are combined with AND logic.",
+        "deviceTypesHint": "Only count streams from the selected device types. Leave empty to count every device.",
+        "fieldPlaceholder": "Select field",
+        "groupHint": "conditions match with OR logic",
+        "groupLabel": "Group {{number}}",
+        "no": "No",
+        "operatorPlaceholder": "Operator",
+        "recentlySeen": "Recently seen",
+        "removeCondition": "Remove condition",
+        "removeGroup": "Remove group",
+        "title": "Conditions",
+        "uniqueDevices": "Unique devices",
+        "uniqueDevicesHint": "When checked, only compares sessions from different physical devices. Uncheck to include all sessions regardless of device.",
+        "uniqueIps": "Unique IPs",
+        "uniqueIpsHint": "When checked, only counts sessions from different IP addresses. Use this to detect account sharing while allowing same-household usage.",
+        "windowPrefix": "in",
+        "windowUnit": "hrs",
+        "yes": "Yes"
+      },
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
       "destinationDisabled": "Disabled destination",
       "errors": {
-        "sendNeedsDestination": "Pick at least one destination"
+        "conditionRequired": "Each condition group must have at least one condition",
+        "groupRequired": "At least one condition group is required",
+        "nameRequired": "Rule name is required",
+        "scopeIncomplete": "Pick a target for the selected scope",
+        "sendNeedsDestination": "Pick at least one destination",
+        "title": "Please fix the following errors:"
       },
-      "noDestinations": "No destinations yet. Add one to send notifications."
+      "noDestinations": "No destinations yet. Add one to send notifications.",
+      "noMatches": "No matches",
+      "saving": "Saving...",
+      "scope": {
+        "account": "Specific account",
+        "accountLabel": "Account",
+        "accountPlaceholder": "Select account",
+        "enforceAcrossServers": "Enforce across servers",
+        "enforceAcrossServersDescription": "When on, this rule can act on a person's sessions on any of their servers, not just the one that triggered it. Off by default.",
+        "global": "Global",
+        "label": "Scope",
+        "noServers": "No servers connected yet.",
+        "person": "Person (all their servers)",
+        "personLabel": "Person",
+        "personPlaceholder": "Select person",
+        "server": "Specific server",
+        "serverLabel": "Server",
+        "serverPlaceholder": "Select server"
+      },
+      "searchPlaceholder": "Search...",
+      "selectPlaceholder": "Select...",
+      "selectedCount": "{{count}} selected",
+      "severityLabel": "Severity"
     },
     "chooseTemplate": "Velg en regel mal",
     "chooseTemplateDesc": "Velg en forhåndskonfigurert regeltype for å komme i gang raskt.",
@@ -834,6 +896,7 @@
       "noReachableConnections": "Ingen tilgjengelige forbindelser",
       "noServersFound": "Ingen Plex servere funnet",
       "noServersFoundHint": "Kontroller at du eier minst en Plex server",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "recommended": "Anbefalt",
       "remote": "Ekstern",
       "secure": "Sikker",
@@ -841,7 +904,6 @@
       "serversConnected_other": "{{count}} servere tilkoblet",
       "showAll": "Vis alle",
       "unlinkAccount": "Frakoble denne Plex kontoen",
-      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Er du sikker på at du vil koble fra denne Plex kontoen? Du kan ikke legge til servere fra denne kontoen frem til du kobler den til igjen.",
       "unlinkPlexAccount": "Koble fra Plex konto"
     }
@@ -883,9 +945,7 @@
     "backToUsers": "Tilbake til brukere",
     "byRule": "Av / Regel",
     "linkedAccounts": "Linked accounts",
-    "locations": "Steder",
     "manual": "Manuell",
-    "noSessionsFound": "Ingen økter funnet for denne brukeren.",
     "noTerminationsFound": "Ingen strømopphør for denne brukeren.",
     "noViolationsFound": "Ingen brudd for denne brukeren.",
     "overallTrust": "Overall Trust",
@@ -903,6 +963,9 @@
     "violations": "Brudd"
   },
   "users": {
+    "filterHasAccessTo": "Has access to",
+    "filterHasAccessToHint": "Shows people with an active account on every server selected.",
+    "filterHasAccessToPlaceholder": "Any server",
     "mergeConfirm": "Merge",
     "mergeDialogDescription": "Every server account, session, and violation from the duplicate moves to the primary. The duplicate identity is deleted.",
     "mergeDialogTitle": "Merge users",
@@ -937,8 +1000,8 @@
     "title": "Brukere"
   },
   "violations": {
-    "allClear": "Alt klart",
     "allPeople": "All people",
+    "allRules": "All rules",
     "allSeverities": "Alle Alvorlighetsgrader",
     "allStatuses": "Alle statuser",
     "detail": {
@@ -974,8 +1037,6 @@
     "dismissViolationsConfirm": "Er du sikker på at du vil avvise? Dette vil fjerne dem fra voldsloggen permanent og gjenopprette tilknyttede tillitspoeng.",
     "filterByPerson": "Filter violations by this person",
     "filterPeople": "People",
-    "noMatches": "Ingen treff",
-    "noViolationsDetected": "Ingen regelbrudd oppdaget",
     "noViolationsFound": "Ingen brudd funnet",
     "noViolationsRecorded": "Ingen brudd er registrert ennå.",
     "peopleSelectedCount": "{{count}} people",
@@ -984,7 +1045,6 @@
     "personFilterPlaceholder": "Filter by person",
     "selectAllViolations": "Velg alle overtredelser av {{count}} som matcher filtre",
     "title": "Brudd",
-    "tryAdjustingFilters": "Prøv å justere filtrene dine",
-    "violationLog": "Brudd Logg"
+    "tryAdjustingFilters": "Prøv å justere filtrene dine"
   }
 }

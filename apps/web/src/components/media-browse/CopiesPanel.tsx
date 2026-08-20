@@ -12,6 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { formatBytes } from '@/lib/formatters';
 
@@ -74,9 +75,7 @@ export function CopiesPanel({
       ) : isLoading || availability === undefined ? (
         <CopiesPanelSkeleton />
       ) : activeCopies.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          {t('media.detail.hero.removedEverywhere.caption')}
-        </p>
+        <EmptyState title={t('media.detail.hero.removedEverywhere.caption')} className="py-6" />
       ) : (
         <div className="overflow-x-auto">
           <Table aria-label={t('media.detail.copies.title')}>

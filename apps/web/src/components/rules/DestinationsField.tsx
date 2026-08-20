@@ -1,3 +1,7 @@
+/* eslint-disable @eslint-react/static-components --
+ * The icon lookup returns a module-level component, so its reference is stable
+ * across renders and nothing remounts. The rule cannot see that through the call.
+ */
 import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Destination } from '@tracearr/shared';
@@ -16,6 +20,8 @@ interface DestinationsFieldProps {
   value: string[];
   onChange: (ids: string[]) => void;
   label: string;
+  /** Set when an enclosing Field supplies the label, so this renders none of its own. */
+  labelledBy?: string;
 }
 
 function byBuiltinThenName(a: Destination, b: Destination): number {
@@ -23,11 +29,12 @@ function byBuiltinThenName(a: Destination, b: Destination): number {
   return a.name.localeCompare(b.name);
 }
 
-export function DestinationsField({ value, onChange, label }: DestinationsFieldProps) {
+export function DestinationsField({ value, onChange, label, labelledBy }: DestinationsFieldProps) {
   const { t } = useTranslation(['pages', 'common']);
   const { data: destinations, isLoading } = useDestinations();
   const [addOpen, setAddOpen] = useState(false);
-  const labelId = useId();
+  const ownLabelId = useId();
+  const labelId = labelledBy ?? ownLabelId;
 
   if (isLoading) {
     return <Skeleton className="h-8 w-64" />;
@@ -46,9 +53,11 @@ export function DestinationsField({ value, onChange, label }: DestinationsFieldP
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span id={labelId} className="text-muted-foreground text-sm">
-        {label}:
-      </span>
+      {!labelledBy && (
+        <span id={labelId} className="text-muted-foreground text-sm">
+          {label}:
+        </span>
+      )}
 
       {rows.length === 0 && (
         <span className="text-muted-foreground text-sm">

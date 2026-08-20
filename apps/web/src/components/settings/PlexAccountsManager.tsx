@@ -273,7 +273,7 @@ export function PlexAccountsManager({
           <Button onClick={startPlexOAuth} disabled={oauthBusy}>
             {isLinking ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" />
                 {t('pages:settings.plex.linking')}
               </>
             ) : (
@@ -307,7 +307,7 @@ export function PlexAccountsManager({
           <Button variant="outline" onClick={startPlexOAuth} disabled={oauthBusy}>
             {isLinking ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" />
                 {t('pages:settings.plex.linking')}
               </>
             ) : (
@@ -485,7 +485,7 @@ function ManageDialog({
           <Button onClick={onLink} disabled={oauthBusy}>
             {isLinking ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" />
                 {t('pages:settings.plex.linking')}
               </>
             ) : (

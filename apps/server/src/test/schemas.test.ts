@@ -523,16 +523,23 @@ describe('Violation Schemas', () => {
       }
     });
 
-    it('should validate date filters', () => {
+    it('should validate date filters as calendar days', () => {
       const result = violationQuerySchema.safeParse({
         startDate: '2024-01-01',
         endDate: '2024-12-31',
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.startDate).toBeInstanceOf(Date);
-        expect(result.data.endDate).toBeInstanceOf(Date);
+        // Calendar days, not instants: the route resolves them to half-open UTC
+        // bounds so endDate includes the day it names.
+        expect(result.data.startDate).toBe('2024-01-01');
+        expect(result.data.endDate).toBe('2024-12-31');
       }
+    });
+
+    it('should reject a datetime where a calendar day is expected', () => {
+      const result = violationQuerySchema.safeParse({ startDate: '2024-01-01T10:00:00Z' });
+      expect(result.success).toBe(false);
     });
 
     it('should reject pageSize over 100', () => {

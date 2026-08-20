@@ -126,7 +126,7 @@ function TautulliImportSection({
             >
               {connectionStatus === 'testing' ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="animate-spin" />
                   {t('import.testing')}
                 </>
               ) : connectionStatus === 'success' ? (
@@ -238,7 +238,7 @@ function TautulliImportSection({
               >
                 {isTautulliImporting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin" />
                     {t('import.importing')}
                   </>
                 ) : (
@@ -427,7 +427,7 @@ function JellystatImportSection({
         >
           {isJellystatImporting ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="animate-spin" />
               {t('import.importing')}
             </>
           ) : (

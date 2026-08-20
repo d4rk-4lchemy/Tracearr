@@ -41,14 +41,24 @@ if (typeof Element.prototype.releasePointerCapture === 'undefined') {
   };
 }
 
-// Highcharts checks this browser API while applying its adaptive theme. jsdom
-// exposes CSS without `supports`, so real Highcharts component tests need the
-// same harmless feature-detection fallback as an older browser.
-if (typeof globalThis.CSS?.supports !== 'function') {
-  Object.defineProperty(globalThis.CSS, 'supports', {
-    configurable: true,
-    value: () => false,
-  });
+// jsdom has no media-query engine; the sidebar's useIsMobile hook calls this
+// on mount, so anything rendering a Sidebar throws without it.
+const noop = () => {
+  // no-op: nothing subscribes to media-query changes under test
+};
+
+if (typeof window.matchMedia === 'undefined') {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: noop,
+      removeListener: noop,
+      addEventListener: noop,
+      removeEventListener: noop,
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
 }
 
 afterEach(() => {

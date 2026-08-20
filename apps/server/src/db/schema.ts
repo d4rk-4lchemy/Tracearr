@@ -144,6 +144,12 @@ export const users = pgTable(
     aggregateTrustScore: integer('aggregate_trust_score').notNull().default(100),
     totalViolations: integer('total_violations').notNull().default(0),
 
+    // Identity-level date rollups over ALL of the person's accounts, removed
+    // ones included: removing an account does not un-happen its history. Trust
+    // deliberately does not follow that rule (it prefers active accounts).
+    firstJoinedAt: timestamp('first_joined_at', { withTimezone: true }),
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
+
     // Timestamps
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -159,6 +165,15 @@ export const users = pgTable(
     uniqueIndex('users_email_unique').on(table.email),
     index('users_plex_account_id_idx').on(table.plexAccountId),
     index('users_role_idx').on(table.role),
+    // Roster sort orders. Each one has to match the ORDER BY in
+    // routes/users/list.ts key for key, direction for direction, nulls for
+    // nulls, or the plan drops from an index scan to an incremental sort.
+    index('users_display_name_idx').on(sql`coalesce(${table.name}, ${table.username})`, table.id),
+    index('users_aggregate_trust_idx').on(table.aggregateTrustScore.desc(), table.id),
+    index('users_first_joined_idx').on(table.firstJoinedAt.desc().nullsLast(), table.id),
+    index('users_last_activity_idx').on(table.lastActivityAt.desc().nullsLast(), table.id),
+    // Roster search matches users.name or any account's username
+    index('users_name_trgm_idx').using('gin', sql`${table.name} gin_trgm_ops`),
   ]
 );
 
@@ -251,6 +266,7 @@ export const serverUsers = pgTable(
     index('server_users_user_idx').on(table.userId),
     index('server_users_server_idx').on(table.serverId),
     index('server_users_username_idx').on(table.username),
+    index('server_users_username_trgm_idx').using('gin', sql`${table.username} gin_trgm_ops`),
     // For Plex sync matching by plex.tv account ID
     index('server_users_plex_account_idx').on(table.serverId, table.plexAccountId),
     // For account inactivity rule queries

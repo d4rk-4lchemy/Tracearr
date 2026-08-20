@@ -5,6 +5,7 @@ import type { CatalogRowServerEntry, DeadWeightRow, ServerType } from '@tracearr
 import { buildPosterSrc, type PosterCardServer } from '@/components/media-browse/PosterCard';
 import { ServerDots } from '@/components/media-browse/ServerDots';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table,
   TableBody,
@@ -132,9 +133,7 @@ export function DeadWeightTable({
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          {t('media.landing.deadWeight.empty')}
-        </p>
+        <EmptyState title={t('media.landing.deadWeight.empty')} className="py-6" />
       ) : (
         <Table aria-label={t('media.landing.deadWeight.title')}>
           <TableCaption className="sr-only">{t('media.landing.deadWeight.title')}</TableCaption>

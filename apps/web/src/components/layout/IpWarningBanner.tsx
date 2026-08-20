@@ -60,7 +60,9 @@ export function IpWarningBanner() {
           variant="outline"
           size="sm"
           onClick={handleAcknowledge}
-          className="h-7 shrink-0 border-yellow-300 text-yellow-700 hover:border-yellow-400 hover:bg-yellow-100 hover:text-yellow-800 dark:border-yellow-600 dark:text-yellow-400 dark:hover:border-yellow-500 dark:hover:bg-yellow-900/30 dark:hover:text-yellow-300"
+          // --warning already flips per theme, so the dark: pairs the hardcoded
+          // yellows needed are gone. h-7 keeps it under the strip's line height.
+          className="text-warning hover:bg-warning/10 hover:text-warning h-7 shrink-0"
         >
           {t('ipWarning.acknowledge')}
         </Button>

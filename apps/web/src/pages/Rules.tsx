@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BulkActionsToolbar, type BulkAction } from '@/components/ui/bulk-actions-toolbar';
@@ -37,7 +38,7 @@ import {
   Settings2,
   User,
 } from 'lucide-react';
-import { getCountryName, cn } from '@/lib/utils';
+import { getCountryName } from '@/lib/utils';
 import type {
   Rule,
   RuleType,
@@ -50,7 +51,7 @@ import type {
 import { RuleBuilderDialog, getRuleIcon, getRuleSummary, isV2Rule } from '@/components/rules';
 import { ServerBadge } from '@/components/server';
 import { useServer } from '@/hooks/useServer';
-import { CLASSIC_RULE_TEMPLATES, type ClassicRuleTemplate } from '@/lib/rules';
+import { CLASSIC_RULE_TEMPLATES, scopeFromRule, type ClassicRuleTemplate } from '@/lib/rules';
 import { getSpeedUnit, getDistanceUnit, fromMetricDistance } from '@tracearr/shared';
 import {
   useRules,
@@ -118,13 +119,6 @@ function useRuleTypes() {
 // 'all' | 'global' | 'per_user' | <serverId string>
 type ScopeFilterValue = string;
 
-function getRuleScope(rule: Rule): 'global' | 'server' | 'user' | 'person' {
-  if (rule.userId) return 'person';
-  if (rule.serverUserId) return 'user';
-  if (rule.serverId) return 'server';
-  return 'global';
-}
-
 /** Small chip showing the rule's scope - rendered inline with the rule name row. */
 function RuleScopeChip({
   rule,
@@ -135,7 +129,7 @@ function RuleScopeChip({
   servers: Server[];
   filterOptions?: RulesFilterOptions;
 }) {
-  const scope = getRuleScope(rule);
+  const scope = scopeFromRule(rule).mode;
 
   if (scope === 'global') {
     return (
@@ -200,18 +194,21 @@ function ScopeFilterStrip({
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by scope">
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      value={value}
+      // a single-select ToggleGroup reports '' when the active item is re-clicked
+      onValueChange={(next) => next && onChange(next)}
+      aria-label="Filter by scope"
+      className="flex-wrap"
+    >
       {pills.map((pill) => (
-        <button
+        <ToggleGroupItem
           key={pill.value}
-          onClick={() => onChange(pill.value)}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-            value === pill.value
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-muted/80'
-          )}
-          aria-pressed={value === pill.value}
+          value={pill.value}
+          className="data-[state=on]:bg-primary/15 data-[state=on]:text-primary gap-1.5 rounded-full text-xs"
         >
           {pill.color && (
             <span
@@ -221,9 +218,9 @@ function ScopeFilterStrip({
             />
           )}
           {pill.label}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }
 
@@ -269,7 +266,7 @@ function RuleCard({
     <Card
       className={`${!rule.isActive ? 'opacity-60' : ''} ${isSelected ? 'ring-primary ring-2' : ''}`}
     >
-      <CardContent className="pt-6">
+      <CardContent>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             {onSelect && (
@@ -429,8 +426,8 @@ export function Rules() {
   const filteredRules = useMemo(() => {
     if (!rules) return [];
     if (scopeFilter === 'all') return rules;
-    if (scopeFilter === 'global') return rules.filter((r) => getRuleScope(r) === 'global');
-    if (scopeFilter === 'per_user') return rules.filter((r) => getRuleScope(r) === 'user');
+    if (scopeFilter === 'global') return rules.filter((r) => scopeFromRule(r).mode === 'global');
+    if (scopeFilter === 'per_user') return rules.filter((r) => scopeFromRule(r).mode === 'account');
     // serverId pill: match rules whose serverId === pill, or user-scoped rules whose user belongs to that server
     return rules.filter((r) => {
       if (r.serverId === scopeFilter) return true;
@@ -555,18 +552,18 @@ export function Rules() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button>
-              <Plus className="mr-2 h-4 w-4" />
+              <Plus />
               {t('pages:rules.addRule')}
               <ChevronDown className="ml-2 h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={openTemplatePicker}>
-              <Settings2 className="mr-2 h-4 w-4" />
+              <Settings2 />
               {t('rules.classicRule')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={openV2CreateDialog}>
-              <Sparkles className="mr-2 h-4 w-4" />
+              <Sparkles />
               {t('rules.customRule')}
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -577,7 +574,7 @@ export function Rules() {
         <div className="space-y-4">
           {Array.from({ length: 3 }, (_, i) => (
             <Card key={i}>
-              <CardContent className="pt-6">
+              <CardContent>
                 <div className="flex items-start gap-4">
                   <Skeleton className="h-10 w-10 rounded-lg" />
                   <div className="space-y-2">
@@ -600,18 +597,18 @@ export function Rules() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button>
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Plus />
                   {t('pages:rules.addRule')}
                   <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 <DropdownMenuItem onClick={openTemplatePicker}>
-                  <Settings2 className="mr-2 h-4 w-4" />
+                  <Settings2 />
                   {t('rules.classicRule')}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={openV2CreateDialog}>
-                  <Sparkles className="mr-2 h-4 w-4" />
+                  <Sparkles />
                   {t('rules.customRule')}
                 </DropdownMenuItem>
               </DropdownMenuContent>

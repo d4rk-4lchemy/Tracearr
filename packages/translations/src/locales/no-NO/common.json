@@ -137,6 +137,19 @@
     "unauthorized": "Du har ikke tilgang til å utføre denne handlingen",
     "unexpectedError": "En uventet feil oppstod. Vennligst prøv igjen."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Handlinger",
     "active": "Aktiv",
@@ -249,6 +262,12 @@
     "searchTitles": "Søk etter titler, brukere...",
     "searchUsers": "Søk etter brukere..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Emby",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Vellykket"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Velg alle på siden",
-    "selectAllTotal": "Select all {{total}} items",
     "selectRow": "Velg rad"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "Hele tiden",
@@ -293,6 +320,11 @@
     "thisWeek": "Denne uken",
     "today": "Idag",
     "yesterday": "Igår"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "KTM",

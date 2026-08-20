@@ -194,7 +194,7 @@ export const ACTION_DEFINITIONS: Record<ActionType, ActionDefinition> = {
       },
       {
         name: 'delay_seconds',
-        label: 'Sustain window (seconds)',
+        label: 'Sustain window',
         type: 'number',
         min: 0,
         max: 300,

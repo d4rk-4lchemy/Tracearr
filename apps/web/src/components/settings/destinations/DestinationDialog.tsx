@@ -1,3 +1,7 @@
+/* eslint-disable @eslint-react/static-components --
+ * The icon lookup returns a module-level component, so its reference is stable
+ * across renders and nothing remounts. The rule cannot see that through the call.
+ */
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import {

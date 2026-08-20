@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { navigation, isNavGroup } from '@/components/layout/nav-data';
+import { navigation } from '@/components/layout/nav-data';
 import type { NavKey } from '@tracearr/translations';
 
 const APP_NAME = 'Tracearr';
@@ -10,19 +10,9 @@ const APP_NAME = 'Tracearr';
  * Build a flat map of href -> nameKey from navigation data
  */
 function buildRouteMap(): Map<string, NavKey> {
-  const map = new Map<string, NavKey>();
-
-  for (const entry of navigation) {
-    if (isNavGroup(entry)) {
-      for (const child of entry.children) {
-        map.set(child.href, child.nameKey);
-      }
-    } else {
-      map.set(entry.href, entry.nameKey);
-    }
-  }
-
-  return map;
+  return new Map(
+    navigation.flatMap((section) => section.items.map((item) => [item.href, item.nameKey] as const))
+  );
 }
 
 const routeMap = buildRouteMap();

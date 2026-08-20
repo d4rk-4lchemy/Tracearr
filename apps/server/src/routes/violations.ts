@@ -3,11 +3,29 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify';
-import { z } from 'zod';
-import { eq, and, desc, gte, lte, isNull, isNotNull, sql, inArray } from 'drizzle-orm';
 import {
-  violationQuerySchema,
+  eq,
+  and,
+  count,
+  desc,
+  gte,
+  lt,
+  lte,
+  isNull,
+  isNotNull,
+  sql,
+  inArray,
+  type SQL,
+} from 'drizzle-orm';
+import {
+  violationBulkBodySchema,
   violationIdParamSchema,
+  violationQuerySchema,
+  violationRosterFilterSchema,
+  type AuthUser,
+  type ListResponse,
+  type ViolationBulkBody,
+  type ViolationRosterFilters,
   type ViolationSessionInfo,
   type ViolationSortField,
   type ViolationWithDetails,
@@ -29,7 +47,13 @@ import {
 } from '../utils/serverFiltering.js';
 import { getServerUserDisplayNames, recomputeIdentityAggregates } from '../services/userService.js';
 import { resolveAccessibleServerUserIdsForIdentities } from './users/queries.js';
-import { uuidArraySql } from '../utils/sqlArrays.js';
+import {
+  buildOrderBy,
+  utcDayEnd,
+  utcDayStart,
+  type SortDirection,
+  type SortKey,
+} from '../utils/listQuery.js';
 
 /**
  * Merge the legacy singular `userId` identity filter with the new `userIds`
@@ -41,47 +65,136 @@ function collectIdentityUserIds(userId: string | undefined, userIds: string[] | 
 }
 
 /**
- * Body shape for the bulk acknowledge/dismiss endpoints. Defined locally
- * (not in shared schemas) since these two selectAll-capable endpoints are
- * violations-only and this keeps the shared schemas file uncontested.
+ * Sort keys, every branch tiebroken on violations.id by buildOrderBy. Without a
+ * unique tiebreak, offset paging over rows sharing a created_at (a poller tick
+ * writes several at once) both repeats and drops rows between pages.
+ *
+ * The severity CASE ranks high above low so DESC means high-first, which is
+ * what the column header's descending state has always shown.
  */
-const violationBulkFiltersSchema = z.object({
-  serverId: z.uuid().optional(),
-  serverIds: z.array(z.uuid()).optional(),
-  severity: z.enum(['low', 'warning', 'high']).optional(),
-  acknowledged: z.boolean().optional(),
-  // Identity-level filter, matching GET /violations - every account under
-  // any of these people the caller can access. userIds is the multi-select
-  // form; userId stays supported for back-compat.
-  userId: z.uuid().optional(),
-  userIds: z.array(z.uuid()).optional(),
-});
+const VIOLATION_SORT_KEYS: Record<ViolationSortField, SortKey> = {
+  createdAt: { key: sql`${violations.createdAt}`, defaultDir: 'desc' },
+  severity: {
+    key: sql`CASE ${violations.severity} WHEN 'high' THEN 3 WHEN 'warning' THEN 2 WHEN 'low' THEN 1 END`,
+    defaultDir: 'desc',
+  },
+  user: { key: sql`${serverUsers.username}`, defaultDir: 'desc' },
+  rule: { key: sql`${rules.name}`, defaultDir: 'desc' },
+};
 
-const violationBulkBodySchema = z.object({
-  ids: z.array(z.uuid()).max(1000).optional(),
-  selectAll: z.boolean().optional(),
-  filters: violationBulkFiltersSchema.optional(),
-});
+interface ViolationRosterConditions {
+  /** Nothing can match, so callers skip the query and answer with an empty set. */
+  empty: boolean;
+  conditions: SQL[];
+}
 
 /**
- * Build ORDER BY SQL clause for violations based on sort field and direction.
+ * The single definition of "which violations are in this roster".
+ *
+ * GET /, its count, POST /bulk/acknowledge and DELETE /bulk all build their row
+ * set from this. They used to build it four separate ways, and the two bulk
+ * copies accepted a narrower filter set: filtering the table by a rule or a
+ * date range and hitting "select all" acted on rows the table never showed, and
+ * DELETE /bulk reverses trust as it dismisses. Sharing the builder makes that
+ * drift a type error rather than silent data loss.
+ *
+ * Async because the identity filter has to resolve accessible server-user ids
+ * before it can become a predicate.
  */
-function getViolationOrderBy(orderBy: ViolationSortField, orderDir: 'asc' | 'desc') {
-  const dir = orderDir === 'asc' ? sql`ASC` : sql`DESC`;
-  const reverseDir = orderDir === 'asc' ? sql`DESC` : sql`ASC`;
-
-  switch (orderBy) {
-    case 'severity':
-      // Sort by severity: high > warning > low (descending = high first)
-      return sql`CASE ${violations.severity} WHEN 'high' THEN 1 WHEN 'warning' THEN 2 WHEN 'low' THEN 3 END ${reverseDir}, ${violations.createdAt} DESC`;
-    case 'user':
-      return sql`${serverUsers.username} ${dir}, ${violations.createdAt} DESC`;
-    case 'rule':
-      return sql`${rules.name} ${dir}, ${violations.createdAt} DESC`;
-    case 'createdAt':
-    default:
-      return sql`${violations.createdAt} ${dir}`;
+export async function buildViolationRosterConditions(
+  filters: ViolationRosterFilters,
+  authUser: AuthUser
+): Promise<ViolationRosterConditions> {
+  const resolvedIds = resolveServerIds(authUser, filters.serverId, filters.serverIds, {
+    strict: false,
+  });
+  if (resolvedIds?.length === 0) {
+    return { empty: true, conditions: [] };
   }
+
+  const conditions: SQL[] = [];
+
+  const serverCondition = buildMultiServerCondition(resolvedIds, serverUsers.serverId);
+  if (serverCondition) {
+    conditions.push(serverCondition);
+  }
+
+  if (filters.serverUserId) {
+    conditions.push(eq(violations.serverUserId, filters.serverUserId));
+  }
+
+  // An identity with no accessible account contributes nothing, and a set that
+  // resolves to nothing is an empty result rather than a 403, matching the
+  // non-strict server scoping above.
+  const identityUserIds = collectIdentityUserIds(filters.userId, filters.userIds);
+  if (identityUserIds.length > 0) {
+    const identityServerUserIds = await resolveAccessibleServerUserIdsForIdentities(
+      db,
+      authUser,
+      identityUserIds
+    );
+    if (identityServerUserIds.length === 0) {
+      return { empty: true, conditions: [] };
+    }
+    conditions.push(inArray(violations.serverUserId, identityServerUserIds));
+  }
+
+  if (filters.ruleId) {
+    conditions.push(eq(violations.ruleId, filters.ruleId));
+  }
+
+  if (filters.severity) {
+    conditions.push(eq(violations.severity, filters.severity));
+  }
+
+  if (filters.acknowledged === true) {
+    conditions.push(isNotNull(violations.acknowledgedAt));
+  } else if (filters.acknowledged === false) {
+    conditions.push(isNull(violations.acknowledgedAt));
+  }
+
+  conditions.push(isNull(violations.dismissedAt));
+
+  const startDate = utcDayStart(filters.startDate);
+  if (startDate) {
+    conditions.push(gte(violations.createdAt, startDate));
+  }
+  const endDate = utcDayEnd(filters.endDate);
+  if (endDate) {
+    conditions.push(lt(violations.createdAt, endDate));
+  }
+
+  return { empty: false, conditions };
+}
+
+/**
+ * The id set a bulk action operates on: the explicit ids, or every violation the
+ * roster filters match. Both bulk endpoints go through here so neither can
+ * resolve selectAll differently from the other.
+ */
+async function resolveBulkViolationIds(
+  body: ViolationBulkBody,
+  authUser: AuthUser
+): Promise<string[]> {
+  if (!body.selectAll) {
+    return body.ids ?? [];
+  }
+
+  const roster = await buildViolationRosterConditions(
+    body.filters ?? violationRosterFilterSchema.parse({}),
+    authUser
+  );
+  if (roster.empty) {
+    return [];
+  }
+
+  const matching = await db
+    .select({ id: violations.id })
+    .from(violations)
+    .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
+    .where(and(...roster.conditions));
+
+  return matching.map((row) => row.id);
 }
 
 /**
@@ -475,7 +588,7 @@ async function enrichViolations(violationData: ViolationRow[]) {
     // This is more accurate than time-based queries
     const relatedSessionIdsFromData = (v.data?.relatedSessionIds as string[] | undefined) ?? [];
 
-    let relatedSessions: ViolationSessionInfo[] = [];
+    let relatedSessions: ViolationSessionInfo[];
     if (relatedSessionIdsFromData.length > 0) {
       // Use the stored relatedSessionIds for direct lookup (preferred)
       relatedSessions = relatedSessionIdsFromData
@@ -617,6 +730,75 @@ async function enrichViolations(violationData: ViolationRow[]) {
   });
 }
 
+/**
+ * The page query. `where` comes from buildViolationRosterConditions, and the
+ * count query below reuses it unchanged.
+ */
+function buildViolationPageQuery(params: {
+  where: SQL | undefined;
+  orderBy: ViolationSortField;
+  orderDir: SortDirection | undefined;
+  pageSize: number;
+  offset: number;
+}) {
+  const { where, orderBy, orderDir, pageSize, offset } = params;
+
+  return db
+    .select({
+      id: violations.id,
+      ruleId: violations.ruleId,
+      ruleName: rules.name,
+      ruleType: rules.type,
+      serverUserId: violations.serverUserId,
+      username: serverUsers.username,
+      userThumb: serverUsers.thumbUrl,
+      identityName: users.name,
+      identityUserId: serverUsers.userId,
+      serverId: serverUsers.serverId,
+      serverName: servers.name,
+      sessionId: violations.sessionId,
+      // Session details for context
+      mediaTitle: sessions.mediaTitle,
+      mediaType: sessions.mediaType,
+      grandparentTitle: sessions.grandparentTitle,
+      seasonNumber: sessions.seasonNumber,
+      episodeNumber: sessions.episodeNumber,
+      year: sessions.year,
+      ipAddress: sessions.ipAddress,
+      geoCity: sessions.geoCity,
+      geoRegion: sessions.geoRegion,
+      geoCountry: sessions.geoCountry,
+      geoContinent: sessions.geoContinent,
+      geoPostal: sessions.geoPostal,
+      geoLat: sessions.geoLat,
+      geoLon: sessions.geoLon,
+      playerName: sessions.playerName,
+      device: sessions.device,
+      deviceId: sessions.deviceId,
+      platform: sessions.platform,
+      product: sessions.product,
+      quality: sessions.quality,
+      startedAt: sessions.startedAt,
+      severity: violations.severity,
+      data: violations.data,
+      createdAt: violations.createdAt,
+      acknowledgedAt: violations.acknowledgedAt,
+    })
+    .from(violations)
+    .innerJoin(rules, eq(violations.ruleId, rules.id))
+    .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
+    .leftJoin(users, eq(serverUsers.userId, users.id))
+    .innerJoin(servers, eq(serverUsers.serverId, servers.id))
+    .leftJoin(sessions, eq(violations.sessionId, sessions.id))
+    .where(where)
+    .orderBy(buildOrderBy(VIOLATION_SORT_KEYS, orderBy, orderDir, sql`${violations.id}`))
+    .limit(pageSize)
+    .offset(offset);
+}
+
+/** The list row shape, derived so the envelope cannot drift from the mapper. */
+type EnrichedViolation = Awaited<ReturnType<typeof enrichViolations>>[number];
+
 export const violationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /violations - List violations with pagination and filters
@@ -630,208 +812,41 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Invalid query parameters');
     }
 
-    const {
-      page,
-      pageSize,
-      serverId,
-      serverIds,
-      serverUserId,
-      userId,
-      userIds,
-      ruleId,
-      severity,
-      acknowledged,
-      startDate,
-      endDate,
-      orderBy = 'createdAt',
-      orderDir = 'desc',
-    } = query.data;
-
+    const { page, pageSize, orderBy, orderDir, ...filters } = query.data;
     const authUser = request.user;
     const offset = (page - 1) * pageSize;
 
-    const resolvedIds = resolveServerIds(authUser, serverId, serverIds, { strict: false });
-
-    // Build conditions
-    const conditions = [];
-
-    // Short-circuit when the user has no accessible servers in the requested set
-    if (resolvedIds?.length === 0) {
-      return { data: [], page, pageSize, total: 0, totalPages: 0 };
+    const roster = await buildViolationRosterConditions(filters, authUser);
+    if (roster.empty) {
+      return { data: [], meta: { page, pageSize, total: 0 } } satisfies ListResponse<never>;
     }
 
-    const serverCondition = buildMultiServerCondition(resolvedIds, serverUsers.serverId);
-    if (serverCondition) {
-      conditions.push(serverCondition);
-    }
+    const where = and(...roster.conditions);
 
-    if (serverUserId) {
-      conditions.push(eq(violations.serverUserId, serverUserId));
-    }
+    const violationData = await buildViolationPageQuery({
+      where,
+      orderBy,
+      orderDir,
+      pageSize,
+      offset,
+    });
 
-    // Identity-level filter: every account under any of these people that the
-    // caller can access, resolved in one batched query. Scoped the same way
-    // as everything else here - an identity with no accessible account
-    // contributes nothing, and if the whole set resolves to nothing that's
-    // an empty result, not a 403 (matches the non-strict server filtering above).
-    const identityUserIds = collectIdentityUserIds(userId, userIds);
-    let identityServerUserIds: string[] | undefined;
-    if (identityUserIds.length > 0) {
-      identityServerUserIds = await resolveAccessibleServerUserIdsForIdentities(
-        db,
-        authUser,
-        identityUserIds
-      );
-      if (identityServerUserIds.length === 0) {
-        return { data: [], page, pageSize, total: 0, totalPages: 0 };
-      }
-      conditions.push(inArray(violations.serverUserId, identityServerUserIds));
-    }
-
-    if (ruleId) {
-      conditions.push(eq(violations.ruleId, ruleId));
-    }
-
-    if (severity) {
-      conditions.push(eq(violations.severity, severity));
-    }
-
-    if (acknowledged === true) {
-      conditions.push(isNotNull(violations.acknowledgedAt));
-    } else if (acknowledged === false) {
-      conditions.push(isNull(violations.acknowledgedAt));
-    }
-
-    conditions.push(isNull(violations.dismissedAt));
-
-    if (startDate) {
-      conditions.push(gte(violations.createdAt, startDate));
-    }
-
-    if (endDate) {
-      conditions.push(lte(violations.createdAt, endDate));
-    }
-
-    // Query violations with joins, including server info and session details
-    const violationData = await db
-      .select({
-        id: violations.id,
-        ruleId: violations.ruleId,
-        ruleName: rules.name,
-        ruleType: rules.type,
-        serverUserId: violations.serverUserId,
-        username: serverUsers.username,
-        userThumb: serverUsers.thumbUrl,
-        identityName: users.name,
-        identityUserId: serverUsers.userId,
-        serverId: serverUsers.serverId,
-        serverName: servers.name,
-        sessionId: violations.sessionId,
-        // Session details for context
-        mediaTitle: sessions.mediaTitle,
-        mediaType: sessions.mediaType,
-        grandparentTitle: sessions.grandparentTitle,
-        seasonNumber: sessions.seasonNumber,
-        episodeNumber: sessions.episodeNumber,
-        year: sessions.year,
-        ipAddress: sessions.ipAddress,
-        geoCity: sessions.geoCity,
-        geoRegion: sessions.geoRegion,
-        geoCountry: sessions.geoCountry,
-        geoContinent: sessions.geoContinent,
-        geoPostal: sessions.geoPostal,
-        geoLat: sessions.geoLat,
-        geoLon: sessions.geoLon,
-        playerName: sessions.playerName,
-        device: sessions.device,
-        deviceId: sessions.deviceId,
-        platform: sessions.platform,
-        product: sessions.product,
-        quality: sessions.quality,
-        startedAt: sessions.startedAt,
-        severity: violations.severity,
-        data: violations.data,
-        createdAt: violations.createdAt,
-        acknowledgedAt: violations.acknowledgedAt,
-      })
+    // Counted off the same conditions, minus the joins only the select list
+    // needs. A hand-written copy of these predicates is what let the count
+    // disagree with the page it was counting.
+    const countRows = await db
+      .select({ total: count() })
       .from(violations)
-      .innerJoin(rules, eq(violations.ruleId, rules.id))
       .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
-      .leftJoin(users, eq(serverUsers.userId, users.id))
-      .innerJoin(servers, eq(serverUsers.serverId, servers.id))
-      .leftJoin(sessions, eq(violations.sessionId, sessions.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(getViolationOrderBy(orderBy, orderDir))
-      .limit(pageSize)
-      .offset(offset);
-
-    // Get total count with same filters
-    // Need to use raw SQL for count with the same joins
-    const countConditions = [];
-
-    // Server filter for count query - mirrors the Drizzle filter above
-    if (resolvedIds !== undefined) {
-      if (resolvedIds.length === 1) {
-        countConditions.push(sql`su.server_id = ${resolvedIds[0]}`);
-      } else if (resolvedIds.length > 1) {
-        const ids = resolvedIds.map((id) => sql`${id}`);
-        countConditions.push(sql`su.server_id IN (${sql.join(ids, sql`, `)})`);
-      }
-    }
-
-    if (serverUserId) {
-      countConditions.push(sql`v.server_user_id = ${serverUserId}`);
-    }
-
-    if (identityServerUserIds) {
-      countConditions.push(sql`v.server_user_id = ANY(${uuidArraySql(identityServerUserIds)})`);
-    }
-
-    if (ruleId) {
-      countConditions.push(sql`v.rule_id = ${ruleId}`);
-    }
-
-    if (severity) {
-      countConditions.push(sql`v.severity = ${severity}`);
-    }
-
-    if (acknowledged === true) {
-      countConditions.push(sql`v.acknowledged_at IS NOT NULL`);
-    } else if (acknowledged === false) {
-      countConditions.push(sql`v.acknowledged_at IS NULL`);
-    }
-
-    countConditions.push(sql`v.dismissed_at IS NULL`);
-
-    if (startDate) {
-      countConditions.push(sql`v.created_at >= ${startDate}`);
-    }
-
-    if (endDate) {
-      countConditions.push(sql`v.created_at <= ${endDate}`);
-    }
-
-    const whereClause =
-      countConditions.length > 0 ? sql`WHERE ${sql.join(countConditions, sql` AND `)}` : sql``;
-
-    const countResult = await db.execute(sql`
-        SELECT count(*)::int as count
-        FROM violations v
-        INNER JOIN server_users su ON su.id = v.server_user_id
-        ${whereClause}
-      `);
-
-    const total = (countResult.rows[0] as { count: number })?.count ?? 0;
+      .where(where);
+    const total = countRows[0]?.total ?? 0;
 
     const formattedData = await enrichViolations(violationData);
 
     return {
       data: formattedData,
-      page,
-      pageSize,
-      total,
-      totalPages: Math.ceil(total / pageSize),
-    };
+      meta: { page, pageSize, total },
+    } satisfies ListResponse<EnrichedViolation>;
   });
 
   /**
@@ -1133,61 +1148,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Either ids or selectAll must be provided');
     }
 
-    let violationIds: string[] = [];
-
-    if (body.selectAll && body.filters) {
-      // Query for all violations matching filters
-      const conditions = [];
-
-      const bulkResolvedIds = resolveServerIds(
-        authUser,
-        body.filters.serverId,
-        body.filters.serverIds,
-        { strict: false }
-      );
-
-      if (bulkResolvedIds?.length === 0) {
-        return { success: true, acknowledged: 0 };
-      }
-
-      const bulkServerCondition = buildMultiServerCondition(bulkResolvedIds, serverUsers.serverId);
-      if (bulkServerCondition) {
-        conditions.push(bulkServerCondition);
-      }
-
-      const bulkIdentityUserIds = collectIdentityUserIds(body.filters.userId, body.filters.userIds);
-      if (bulkIdentityUserIds.length > 0) {
-        const identityServerUserIds = await resolveAccessibleServerUserIdsForIdentities(
-          db,
-          authUser,
-          bulkIdentityUserIds
-        );
-        if (identityServerUserIds.length === 0) {
-          return { success: true, acknowledged: 0 };
-        }
-        conditions.push(inArray(violations.serverUserId, identityServerUserIds));
-      }
-
-      if (body.filters.severity) {
-        conditions.push(eq(violations.severity, body.filters.severity));
-      }
-
-      if (body.filters.acknowledged === false) {
-        conditions.push(isNull(violations.acknowledgedAt));
-      }
-
-      conditions.push(isNull(violations.dismissedAt));
-
-      const matchingViolations = await db
-        .select({ id: violations.id })
-        .from(violations)
-        .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
-        .where(and(...conditions));
-
-      violationIds = matchingViolations.map((v) => v.id);
-    } else if (body.ids) {
-      violationIds = body.ids;
-    }
+    const violationIds = await resolveBulkViolationIds(body, authUser);
 
     if (violationIds.length === 0) {
       return { success: true, acknowledged: 0 };
@@ -1244,63 +1205,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       return reply.badRequest('Either ids or selectAll must be provided');
     }
 
-    let violationIds: string[] = [];
-
-    if (body.selectAll && body.filters) {
-      // Query for all violations matching filters
-      const conditions = [];
-
-      const bulkResolvedIds = resolveServerIds(
-        authUser,
-        body.filters.serverId,
-        body.filters.serverIds,
-        { strict: false }
-      );
-
-      if (bulkResolvedIds?.length === 0) {
-        return { success: true, dismissed: 0 };
-      }
-
-      const bulkServerCondition = buildMultiServerCondition(bulkResolvedIds, serverUsers.serverId);
-      if (bulkServerCondition) {
-        conditions.push(bulkServerCondition);
-      }
-
-      const bulkIdentityUserIds = collectIdentityUserIds(body.filters.userId, body.filters.userIds);
-      if (bulkIdentityUserIds.length > 0) {
-        const identityServerUserIds = await resolveAccessibleServerUserIdsForIdentities(
-          db,
-          authUser,
-          bulkIdentityUserIds
-        );
-        if (identityServerUserIds.length === 0) {
-          return { success: true, dismissed: 0 };
-        }
-        conditions.push(inArray(violations.serverUserId, identityServerUserIds));
-      }
-
-      if (body.filters.severity) {
-        conditions.push(eq(violations.severity, body.filters.severity));
-      }
-
-      if (body.filters.acknowledged === false) {
-        conditions.push(isNull(violations.acknowledgedAt));
-      } else if (body.filters.acknowledged === true) {
-        conditions.push(isNotNull(violations.acknowledgedAt));
-      }
-
-      conditions.push(isNull(violations.dismissedAt));
-
-      const matchingViolations = await db
-        .select({ id: violations.id })
-        .from(violations)
-        .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
-        .where(and(...conditions));
-
-      violationIds = matchingViolations.map((v) => v.id);
-    } else if (body.ids) {
-      violationIds = body.ids;
-    }
+    const violationIds = await resolveBulkViolationIds(body, authUser);
 
     if (violationIds.length === 0) {
       return { success: true, dismissed: 0 };

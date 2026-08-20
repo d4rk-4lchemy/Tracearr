@@ -137,6 +137,19 @@
     "unauthorized": "No teniu permís per realitzar aquesta acció",
     "unexpectedError": "Hi ha hagut un error inesperat. Si us plau, torneu-ho a provar."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Accions",
     "active": "Actiu",
@@ -249,6 +262,12 @@
     "searchTitles": "Cerca títols, usuaris...",
     "searchUsers": "Cerca d'usuaris..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Emby",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Realitzat amb èxit"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Selecciona-ho tot a la pàgina",
-    "selectAllTotal": "Selecciona els {{total}} elements",
     "selectRow": "Selecciona la fila"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "Tot el temps",
@@ -293,6 +320,11 @@
     "thisWeek": "Aquesta setmana",
     "today": "Avui",
     "yesterday": "Ahir"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "km",

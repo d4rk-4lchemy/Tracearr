@@ -137,6 +137,19 @@
     "unauthorized": "Du har ikke tilladelse til at udføre denne handling",
     "unexpectedError": "Der opstod en uventet fejl. Prøv venligst igen."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Handlinger",
     "active": "Aktiv",
@@ -249,6 +262,12 @@
     "searchTitles": "Søg i titler, brugere...",
     "searchUsers": "Søg efter brugere..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Emby",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Succes"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Vælg alle på siden",
-    "selectAllTotal": "Vælg alle {{total}} elementer",
     "selectRow": "Vælg række"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "Al Tid",
@@ -293,6 +320,11 @@
     "thisWeek": "Denne Uge",
     "today": "Idag",
     "yesterday": "Igår"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "km",

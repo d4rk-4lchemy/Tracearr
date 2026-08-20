@@ -48,7 +48,6 @@ export function useBulkDeleteSessions() {
     mutationFn: (ids: string[]) => api.sessions.bulkDelete(ids),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['sessions'] });
-      void queryClient.invalidateQueries({ queryKey: ['history'] });
       toast.success(t('toast.success.sessionsDeleted.title'), {
         description: t('toast.success.sessionsDeleted.message', { count: data.deleted }),
       });

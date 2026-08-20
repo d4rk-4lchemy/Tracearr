@@ -163,11 +163,7 @@ export async function createUser(data: {
       role: data.role ?? 'member',
     })
     .returning();
-  const row = rows[0];
-  if (!row) {
-    throw new Error('User insert returned no row');
-  }
-  return row;
+  return rows[0]!;
 }
 
 /**
@@ -446,11 +442,7 @@ export async function createServerUser(data: {
       joinedAt: data.joinedAt ?? null,
     })
     .returning();
-  const row = rows[0];
-  if (!row) {
-    throw new Error('Server user insert returned no row');
-  }
-  return row;
+  return rows[0]!;
 }
 
 /**
@@ -522,6 +514,18 @@ export interface SyncUserOptions {
 }
 
 /**
+ * Server-reported activity only ever advances ours. Jellyfin and Emby report
+ * LastActivityDate for any interaction, including ones that never produce a
+ * session, but a server that has been rebuilt can report something older than
+ * the sessions we already recorded.
+ */
+function advancedActivityAt(reported: Date | undefined, current: Date | null): Date | undefined {
+  if (!reported) return undefined;
+  if (current && reported <= current) return undefined;
+  return reported;
+}
+
+/**
  * Sync a user from media server - handles auto-linking by email
  *
  * Flow for Jellyfin/Emby:
@@ -564,15 +568,23 @@ export async function syncUserFromMediaServer(
     }
 
     if (existing) {
+      const nextJoinedAt = mediaUser.joinedAt ?? existing.joinedAt;
+      const advancedActivity = advancedActivityAt(
+        mediaUser.lastActivityAt,
+        existing.lastActivityAt
+      );
       const updateData: Partial<typeof serverUsers.$inferInsert> = {
         username: mediaUser.username,
         email: mediaUser.email ?? null,
         thumbUrl: mediaUser.thumb ?? null,
         isServerAdmin: mediaUser.isAdmin,
         plexAccountId: mediaUser.id, // Set plex.tv ID
-        joinedAt: mediaUser.joinedAt ?? existing.joinedAt,
+        joinedAt: nextJoinedAt,
         updatedAt: new Date(),
       };
+      if (advancedActivity) {
+        updateData.lastActivityAt = advancedActivity;
+      }
 
       // Update existing server user and set plexAccountId
       const updated = await db
@@ -580,13 +592,16 @@ export async function syncUserFromMediaServer(
         .set(updateData)
         .where(eq(serverUsers.id, existing.id))
         .returning();
-      const updatedServerUser = updated[0];
-      if (!updatedServerUser) {
-        throw new Error('Plex server user update returned no row');
+
+      // Sync is the only thing that moves joined_at from the server side, so
+      // the identity rollups have to follow it. Guarded because this runs for
+      // every user on every sync tick and the rollup is three more queries.
+      if (advancedActivity || nextJoinedAt?.getTime() !== existing.joinedAt?.getTime()) {
+        await recomputeIdentityAggregates(existing.userId);
       }
 
       const user = await requireUserById(existing.userId);
-      return { serverUser: updatedServerUser, user, created: false };
+      return { serverUser: updated[0]!, user, created: false };
     }
 
     // Create new Plex user
@@ -606,6 +621,7 @@ export async function syncUserFromMediaServer(
           .limit(1);
         user = existingUser;
       }
+      const attachedToExistingIdentity = !!user;
 
       // No match - create new user identity
       if (!user) {
@@ -616,6 +632,9 @@ export async function syncUserFromMediaServer(
             name: null,
             email: mediaUser.email ?? null,
             thumbnail: mediaUser.thumb ?? null,
+            // Sole account, so its own dates are the identity rollups.
+            firstJoinedAt: mediaUser.joinedAt ?? null,
+            lastActivityAt: mediaUser.lastActivityAt ?? null,
           })
           .returning();
         if (!newUser) {
@@ -637,12 +656,17 @@ export async function syncUserFromMediaServer(
           thumbUrl: mediaUser.thumb ?? null,
           isServerAdmin: mediaUser.isAdmin,
           joinedAt: mediaUser.joinedAt ?? null,
+          lastActivityAt: mediaUser.lastActivityAt ?? null,
         })
         .returning();
+
+      if (attachedToExistingIdentity) {
+        await recomputeIdentityAggregates(user.id, tx);
+      }
+
       if (!serverUser) {
         throw new Error('Plex server user insert returned no row');
       }
-
       return { serverUser, user };
     });
 
@@ -660,8 +684,17 @@ export async function syncUserFromMediaServer(
       isServerAdmin: mediaUser.isAdmin,
     };
 
+    const advancedActivity = advancedActivityAt(mediaUser.lastActivityAt, existing.lastActivityAt);
+    if (advancedActivity) {
+      updatePayload.lastActivityAt = advancedActivity;
+    }
+
     // Update existing server user
     const updated = await updateServerUser(existing.id, updatePayload);
+
+    if (advancedActivity) {
+      await recomputeIdentityAggregates(existing.userId);
+    }
 
     const user = await requireUserById(existing.userId);
     return { serverUser: updated, user, created: false };
@@ -681,6 +714,7 @@ export async function syncUserFromMediaServer(
         .limit(1);
       user = existingUser;
     }
+    const attachedToExistingIdentity = !!user;
 
     // No match - create new user identity
     if (!user) {
@@ -691,6 +725,9 @@ export async function syncUserFromMediaServer(
           name: null,
           email: mediaUser.email ?? null,
           thumbnail: mediaUser.thumb ?? null,
+          // Sole account, so its own dates are the identity rollups.
+          firstJoinedAt: mediaUser.joinedAt ?? null,
+          lastActivityAt: mediaUser.lastActivityAt ?? null,
         })
         .returning();
       if (!newUser) {
@@ -711,12 +748,19 @@ export async function syncUserFromMediaServer(
         thumbUrl: mediaUser.thumb ?? null,
         isServerAdmin: mediaUser.isAdmin,
         joinedAt: mediaUser.joinedAt ?? null,
+        lastActivityAt: mediaUser.lastActivityAt ?? null,
       })
       .returning();
+
+    // Only when the account joined a person who already had others: a fresh
+    // identity's rollups were seeded by its own insert above.
+    if (attachedToExistingIdentity) {
+      await recomputeIdentityAggregates(user.id, tx);
+    }
+
     if (!serverUser) {
       throw new Error('Media server server_user insert returned no row');
     }
-
     return { serverUser, user };
   });
 
@@ -827,13 +871,17 @@ export async function getUserWithStats(userId: string): Promise<UserWithStats | 
 
 /**
  * Recompute a user's identity-level rollups from their server accounts:
- * aggregate trust and total violation count.
+ * aggregate trust, total violation count, earliest join and latest activity.
  *
  * Identity trust is the WORST active account's score, not an average. Trust
  * penalties land only on the account where the behavior happened
  * (enforceAcrossServers extends kills, never scores), so with several
  * accounts an average would dilute the one signal the system writes.
  * Removed accounts only count when the identity has no active ones left.
+ *
+ * The dates deliberately do not follow that rule: they span every account,
+ * removed included, because removing an account does not un-happen its
+ * history. That matches how a merge combines two accounts on one server.
  *
  * Called after every write to serverUsers.trustScore and every violation
  * insert - there is no database trigger backing this, so every call site
@@ -845,12 +893,14 @@ export async function recomputeIdentityAggregates(
   userId: string,
   executor: Tx = db
 ): Promise<void> {
-  const trustResult = await executor
+  const accountResult = await executor
     .select({
       trust: sql<number | null>`coalesce(
         min(${serverUsers.trustScore}) filter (where ${serverUsers.removedAt} is null),
         min(${serverUsers.trustScore})
       )`,
+      firstJoinedAt: sql<Date | null>`min(${serverUsers.joinedAt})`,
+      lastActivityAt: sql<Date | null>`max(${serverUsers.lastActivityAt})`,
     })
     .from(serverUsers)
     .where(eq(serverUsers.userId, userId));
@@ -861,14 +911,43 @@ export async function recomputeIdentityAggregates(
     .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
     .where(and(eq(serverUsers.userId, userId), isNull(violations.dismissedAt)));
 
+  const accounts = accountResult[0];
+
   await executor
     .update(users)
     .set({
-      aggregateTrustScore: trustResult[0]?.trust ?? 100,
+      aggregateTrustScore: accounts?.trust ?? 100,
       totalViolations: violationResult[0]?.count ?? 0,
+      firstJoinedAt: accounts?.firstJoinedAt ?? null,
+      lastActivityAt: accounts?.lastActivityAt ?? null,
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId));
+}
+
+/**
+ * Bulk version of the identity date rollups, for jobs that rewrite joined_at or
+ * last_activity_at across the whole server_users table at once. The DISTINCT
+ * FROM guard keeps a second pass from rewriting rows the first one settled.
+ */
+export async function recomputeAllIdentityDates(executor: Tx = db): Promise<number> {
+  const result = await executor.execute(sql`
+    UPDATE ${users} u SET
+      first_joined_at = agg.min_joined,
+      last_activity_at = agg.max_activity,
+      updated_at = now()
+    FROM (
+      SELECT user_id, MIN(joined_at) AS min_joined, MAX(last_activity_at) AS max_activity
+      FROM ${serverUsers}
+      GROUP BY user_id
+    ) agg
+    WHERE u.id = agg.user_id
+      AND (
+        u.first_joined_at IS DISTINCT FROM agg.min_joined
+        OR u.last_activity_at IS DISTINCT FROM agg.max_activity
+      )
+  `);
+  return Number(result.rowCount ?? 0);
 }
 
 /** Same recompute, addressed by the account id a violation write already has in hand. */

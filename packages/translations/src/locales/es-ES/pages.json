@@ -230,7 +230,6 @@
       "noDuplicatesDesc": "No titles with more than one physical file detected.",
       "noDuplicatesTitle": "No duplicates found",
       "of": "de",
-      "pageOf": "Page {{page}} of {{totalPages}}",
       "predictions": "Predicciones",
       "recoverable": "recuperable",
       "sameServer": "Same server",
@@ -666,11 +665,74 @@
     "blockedCountries": "Países Bloqueados",
     "blocklist": "Lista de bloqueos (bloquear estos países)",
     "builder": {
+      "actions": {
+        "add": "Add action",
+        "description": "Optional side-effects when conditions are met. A violation is always created automatically.",
+        "remove": "Remove action",
+        "title": "Additional Actions",
+        "typeLabel": "Action",
+        "typePlaceholder": "Select action"
+      },
+      "activeLabel": "Active",
+      "clearSelection": "Clear selection",
+      "conditions": {
+        "addCondition": "Add OR condition",
+        "addGroup": "Add AND condition group",
+        "allCountries": "All countries",
+        "allDeviceTypes": "All device types",
+        "description": "Define when this rule should trigger. Groups are combined with AND logic.",
+        "deviceTypesHint": "Only count streams from the selected device types. Leave empty to count every device.",
+        "fieldPlaceholder": "Select field",
+        "groupHint": "conditions match with OR logic",
+        "groupLabel": "Group {{number}}",
+        "no": "No",
+        "operatorPlaceholder": "Operator",
+        "recentlySeen": "Recently seen",
+        "removeCondition": "Remove condition",
+        "removeGroup": "Remove group",
+        "title": "Conditions",
+        "uniqueDevices": "Unique devices",
+        "uniqueDevicesHint": "When checked, only compares sessions from different physical devices. Uncheck to include all sessions regardless of device.",
+        "uniqueIps": "Unique IPs",
+        "uniqueIpsHint": "When checked, only counts sessions from different IP addresses. Use this to detect account sharing while allowing same-household usage.",
+        "windowPrefix": "in",
+        "windowUnit": "hrs",
+        "yes": "Yes"
+      },
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
       "destinationDisabled": "Disabled destination",
       "errors": {
-        "sendNeedsDestination": "Pick at least one destination"
+        "conditionRequired": "Each condition group must have at least one condition",
+        "groupRequired": "At least one condition group is required",
+        "nameRequired": "Rule name is required",
+        "scopeIncomplete": "Pick a target for the selected scope",
+        "sendNeedsDestination": "Pick at least one destination",
+        "title": "Please fix the following errors:"
       },
-      "noDestinations": "No destinations yet. Add one to send notifications."
+      "noDestinations": "No destinations yet. Add one to send notifications.",
+      "noMatches": "No matches",
+      "saving": "Saving...",
+      "scope": {
+        "account": "Specific account",
+        "accountLabel": "Account",
+        "accountPlaceholder": "Select account",
+        "enforceAcrossServers": "Enforce across servers",
+        "enforceAcrossServersDescription": "When on, this rule can act on a person's sessions on any of their servers, not just the one that triggered it. Off by default.",
+        "global": "Global",
+        "label": "Scope",
+        "noServers": "No servers connected yet.",
+        "person": "Person (all their servers)",
+        "personLabel": "Person",
+        "personPlaceholder": "Select person",
+        "server": "Specific server",
+        "serverLabel": "Server",
+        "serverPlaceholder": "Select server"
+      },
+      "searchPlaceholder": "Search...",
+      "selectPlaceholder": "Select...",
+      "selectedCount": "{{count}} selected",
+      "severityLabel": "Severity"
     },
     "chooseTemplate": "Elija una plantilla de regla",
     "chooseTemplateDesc": "Seleccione un tipo de regla preconfigurada para comenzar rápidamente.",
@@ -834,6 +896,7 @@
       "noReachableConnections": "No hay conexiones accesibles",
       "noServersFound": "No se han encontrado servidores Plex",
       "noServersFoundHint": "Asegúrese de que posee al menos un servidor Plex",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "recommended": "Recomendado",
       "remote": "Remoto",
       "secure": "Seguro",
@@ -841,7 +904,6 @@
       "serversConnected_other": "{{count}} servidores conectados",
       "showAll": "Mostrar todo",
       "unlinkAccount": "Desvincular esta cuenta de Plex",
-      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "¿Estás seguro de que quieres desvincular esta cuenta de Plex? No podrás añadir servidores de esta cuenta hasta que la vincules de nuevo.",
       "unlinkPlexAccount": "Desvincular cuenta de Plex"
     }
@@ -883,9 +945,7 @@
     "backToUsers": "Volver a Usuarios",
     "byRule": "Por / Regla",
     "linkedAccounts": "Linked accounts",
-    "locations": "Ubicaciones",
     "manual": "Manual",
-    "noSessionsFound": "No se encontraron sesiones para este usuario.",
     "noTerminationsFound": "No hay reproducciones para este usuario.",
     "noViolationsFound": "Para este usuario, no hay infracciones.",
     "overallTrust": "Overall Trust",
@@ -903,6 +963,9 @@
     "violations": "Infracciones"
   },
   "users": {
+    "filterHasAccessTo": "Has access to",
+    "filterHasAccessToHint": "Shows people with an active account on every server selected.",
+    "filterHasAccessToPlaceholder": "Any server",
     "mergeConfirm": "Merge",
     "mergeDialogDescription": "Every server account, session, and violation from the duplicate moves to the primary. The duplicate identity is deleted.",
     "mergeDialogTitle": "Merge users",
@@ -937,8 +1000,8 @@
     "title": "Usuarios"
   },
   "violations": {
-    "allClear": "Borrar todo",
     "allPeople": "All people",
+    "allRules": "All rules",
     "allSeverities": "Todas los niveles de gravedad",
     "allStatuses": "Todos los estados",
     "detail": {
@@ -974,8 +1037,6 @@
     "dismissViolationsConfirm": "¿Está seguro que desea eliminar? Esto los eliminará del registro de infracciones permanentemente y restaurará las puntuaciones de confianza asociadas.",
     "filterByPerson": "Filter violations by this person",
     "filterPeople": "People",
-    "noMatches": "Ninguna coincidencia",
-    "noViolationsDetected": "No se han detectado infracciones de reglas",
     "noViolationsFound": "No se encontraron infracciones",
     "noViolationsRecorded": "Todavía no se han registrado infracciones.",
     "peopleSelectedCount": "{{count}} people",
@@ -984,7 +1045,6 @@
     "personFilterPlaceholder": "Filter by person",
     "selectAllViolations": "Filtras por las infracciones de {{count}}",
     "title": "Infracciones",
-    "tryAdjustingFilters": "Intente ajustar sus filtros.",
-    "violationLog": "Registro de infracciones"
+    "tryAdjustingFilters": "Intente ajustar sus filtros."
   }
 }

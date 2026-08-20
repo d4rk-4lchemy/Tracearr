@@ -5,22 +5,11 @@ import {
   MERGE_SAME_SERVER_CONFIRMATION_REQUIRED,
   serverScopeFromIds,
   serverScopeKey,
-  type UserSortField,
+  type UserRosterFilters,
 } from '@tracearr/shared';
-import { api } from '@/lib/api';
+import { api, type UserListParams } from '@/lib/api';
 
-export function useUsers(
-  params: {
-    page?: number;
-    pageSize?: number;
-    serverId?: string;
-    serverIds?: string[];
-    includeRemoved?: boolean;
-    search?: string;
-    orderBy?: UserSortField;
-    orderDir?: 'asc' | 'desc';
-  } = {}
-) {
+export function useUsers(params: UserListParams = {}) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(params.serverIds));
   return useQuery({
     queryKey: ['users', 'list', { ...params, serverIds: serverIdsKey }],
@@ -137,7 +126,11 @@ export function useUserTerminations(
 export interface BulkResetTrustParams {
   ids?: string[];
   selectAll?: boolean;
-  filters?: { serverId?: string; serverIds?: string[]; includeRemoved?: boolean };
+  /**
+   * Every filter the roster was narrowed by. Sending a subset makes "select all
+   * N" reset people the table never showed.
+   */
+  filters?: Partial<UserRosterFilters>;
 }
 
 export function useBulkResetTrust() {

@@ -230,7 +230,6 @@
       "noDuplicatesDesc": "No titles with more than one physical file detected.",
       "noDuplicatesTitle": "No duplicates found",
       "of": "van",
-      "pageOf": "Page {{page}} of {{totalPages}}",
       "predictions": "Voorspellingen",
       "recoverable": "herstelbaar",
       "sameServer": "Same server",
@@ -666,11 +665,74 @@
     "blockedCountries": "Geblokkeerde landen",
     "blocklist": "Blokkeerlijst (deze landen blokkeren)",
     "builder": {
+      "actions": {
+        "add": "Add action",
+        "description": "Optional side-effects when conditions are met. A violation is always created automatically.",
+        "remove": "Remove action",
+        "title": "Additional Actions",
+        "typeLabel": "Action",
+        "typePlaceholder": "Select action"
+      },
+      "activeLabel": "Active",
+      "clearSelection": "Clear selection",
+      "conditions": {
+        "addCondition": "Add OR condition",
+        "addGroup": "Add AND condition group",
+        "allCountries": "All countries",
+        "allDeviceTypes": "All device types",
+        "description": "Define when this rule should trigger. Groups are combined with AND logic.",
+        "deviceTypesHint": "Only count streams from the selected device types. Leave empty to count every device.",
+        "fieldPlaceholder": "Select field",
+        "groupHint": "conditions match with OR logic",
+        "groupLabel": "Group {{number}}",
+        "no": "No",
+        "operatorPlaceholder": "Operator",
+        "recentlySeen": "Recently seen",
+        "removeCondition": "Remove condition",
+        "removeGroup": "Remove group",
+        "title": "Conditions",
+        "uniqueDevices": "Unique devices",
+        "uniqueDevicesHint": "When checked, only compares sessions from different physical devices. Uncheck to include all sessions regardless of device.",
+        "uniqueIps": "Unique IPs",
+        "uniqueIpsHint": "When checked, only counts sessions from different IP addresses. Use this to detect account sharing while allowing same-household usage.",
+        "windowPrefix": "in",
+        "windowUnit": "hrs",
+        "yes": "Yes"
+      },
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
       "destinationDisabled": "Disabled destination",
       "errors": {
-        "sendNeedsDestination": "Pick at least one destination"
+        "conditionRequired": "Each condition group must have at least one condition",
+        "groupRequired": "At least one condition group is required",
+        "nameRequired": "Rule name is required",
+        "scopeIncomplete": "Pick a target for the selected scope",
+        "sendNeedsDestination": "Pick at least one destination",
+        "title": "Please fix the following errors:"
       },
-      "noDestinations": "No destinations yet. Add one to send notifications."
+      "noDestinations": "No destinations yet. Add one to send notifications.",
+      "noMatches": "No matches",
+      "saving": "Saving...",
+      "scope": {
+        "account": "Specific account",
+        "accountLabel": "Account",
+        "accountPlaceholder": "Select account",
+        "enforceAcrossServers": "Enforce across servers",
+        "enforceAcrossServersDescription": "When on, this rule can act on a person's sessions on any of their servers, not just the one that triggered it. Off by default.",
+        "global": "Global",
+        "label": "Scope",
+        "noServers": "No servers connected yet.",
+        "person": "Person (all their servers)",
+        "personLabel": "Person",
+        "personPlaceholder": "Select person",
+        "server": "Specific server",
+        "serverLabel": "Server",
+        "serverPlaceholder": "Select server"
+      },
+      "searchPlaceholder": "Search...",
+      "selectPlaceholder": "Select...",
+      "selectedCount": "{{count}} selected",
+      "severityLabel": "Severity"
     },
     "chooseTemplate": "Kies een regelsjabloon",
     "chooseTemplateDesc": "Selecteer een vooraf geconfigureerd regeltype om snel te beginnen.",
@@ -834,6 +896,7 @@
       "noReachableConnections": "Geen bereikbare verbindingen",
       "noServersFound": "Geen Plex-servers gevonden",
       "noServersFoundHint": "Zorg ervoor dat je minstens één Plex-server bezit",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "recommended": "Aanbevolen",
       "remote": "Extern",
       "secure": "Veilig",
@@ -841,7 +904,6 @@
       "serversConnected_other": "{{count}} servers verbonden",
       "showAll": "Alles weergeven",
       "unlinkAccount": "Dit Plex-account ontkoppelen",
-      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Weet je zeker dat je dit Plex-account wilt ontkoppelen? Je kunt geen servers van dit account meer toevoegen totdat je opnieuw koppelt.",
       "unlinkPlexAccount": "Plex-account ontkoppelen"
     }
@@ -883,9 +945,7 @@
     "backToUsers": "Terug naar gebruikers",
     "byRule": "Door / Regel",
     "linkedAccounts": "Linked accounts",
-    "locations": "Locaties",
     "manual": "Handmatig",
-    "noSessionsFound": "Geen sessies gevonden voor deze gebruiker.",
     "noTerminationsFound": "Geen afgebroken streams voor deze gebruiker.",
     "noViolationsFound": "Geen overtredingen voor deze gebruiker.",
     "overallTrust": "Overall Trust",
@@ -903,6 +963,9 @@
     "violations": "Overtredingen"
   },
   "users": {
+    "filterHasAccessTo": "Has access to",
+    "filterHasAccessToHint": "Shows people with an active account on every server selected.",
+    "filterHasAccessToPlaceholder": "Any server",
     "mergeConfirm": "Merge",
     "mergeDialogDescription": "Every server account, session, and violation from the duplicate moves to the primary. The duplicate identity is deleted.",
     "mergeDialogTitle": "Merge users",
@@ -937,8 +1000,8 @@
     "title": "Gebruikers"
   },
   "violations": {
-    "allClear": "Alles in orde",
     "allPeople": "All people",
+    "allRules": "All rules",
     "allSeverities": "Alle ernstniveaus",
     "allStatuses": "Alle statussen",
     "detail": {
@@ -974,8 +1037,6 @@
     "dismissViolationsConfirm": "Weet je zeker dat je wilt negeren? De overtredingen zullen permanent uit het logboek worden verwijderd en bijbehorende vertrouwensscores zullen worden hersteld.",
     "filterByPerson": "Filter violations by this person",
     "filterPeople": "People",
-    "noMatches": "Geen overeenkomsten",
-    "noViolationsDetected": "Geen regelovertredingen gedetecteerd",
     "noViolationsFound": "Geen overtredingen gevonden",
     "noViolationsRecorded": "Er zijn nog geen overtredingen geregistreerd.",
     "peopleSelectedCount": "{{count}} people",
@@ -984,7 +1045,6 @@
     "personFilterPlaceholder": "Filter by person",
     "selectAllViolations": "Alle {{count}} overtredingen selecteren die overeenkomen met filters",
     "title": "Overtredingen",
-    "tryAdjustingFilters": "Probeer je filters aan te passen",
-    "violationLog": "Overtredingslogboek"
+    "tryAdjustingFilters": "Probeer je filters aan te passen"
   }
 }

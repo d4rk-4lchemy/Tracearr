@@ -137,6 +137,19 @@
     "unauthorized": "أنت غير مصرح لك بتنفيذ هذا الإجراء",
     "unexpectedError": "حدث خطأ غير متوقع. الرجاء المحاولة مرة أخرى."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "الإجراءات",
     "active": "نشط",
@@ -249,6 +262,12 @@
     "searchTitles": "البحث عن العناوين والمستخدمين...",
     "searchUsers": "البحث عن المستخدمين..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "إمبي",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "نجاح"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "حدد الكل في الصفحة",
-    "selectAllTotal": "حدد جميع العناصر {{total}}",
     "selectRow": "حدد الصف"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "كل الوقت",
@@ -293,6 +320,11 @@
     "thisWeek": "هذا الأسبوع",
     "today": "اليوم",
     "yesterday": "أمس"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "كيلومتر",

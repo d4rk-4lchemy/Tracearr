@@ -137,6 +137,19 @@
     "unauthorized": "Nemáte oprávnění k provedení této akce",
     "unexpectedError": "Došlo k neočekávané chybě. Zkuste to prosím znovu."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Akce",
     "active": "Aktivní",
@@ -249,6 +262,12 @@
     "searchTitles": "Hledat titulky, uživatele...",
     "searchUsers": "Hledat uživatele..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Emby",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Úspěšně"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Vybrat vše na stránce",
-    "selectAllTotal": "Vybrat všechny položky {{total}}",
     "selectRow": "Vybrat řádek"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "Celý čas",
@@ -293,6 +320,11 @@
     "thisWeek": "Tento týden",
     "today": "Dnes",
     "yesterday": "Včera"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "km",

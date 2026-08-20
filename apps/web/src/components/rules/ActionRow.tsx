@@ -1,3 +1,5 @@
+import { useId } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   X,
   AlertTriangle,
@@ -12,8 +14,7 @@ import {
 } from 'lucide-react';
 import type { Action, ActionType } from '@tracearr/shared';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { NumericInput } from '@/components/ui/numeric-input';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import {
   Select,
   SelectContent,
@@ -21,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ACTION_DEFINITIONS,
   getAllActionTypes,
@@ -30,8 +31,8 @@ import {
 } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { DestinationsField } from './DestinationsField';
+import { RuleFieldControl, type RuleControlSpec, type RuleControlValue } from './fields';
 
-// Icon mapping
 const ACTION_ICONS: Record<ActionType, React.ComponentType<{ className?: string }>> = {
   log_only: FileText,
   send: Bell,
@@ -50,104 +51,75 @@ interface ActionRowProps {
 }
 
 export function ActionRow({ action, onChange, onRemove, showRemove = true }: ActionRowProps) {
+  const { t } = useTranslation('pages');
+  const typeId = useId();
   const def = ACTION_DEFINITIONS[action.type];
 
-  // Handle action type change
-  const handleTypeChange = (newType: ActionType) => {
-    onChange(createDefaultAction(newType));
-  };
-
-  // Handle config field change
-  const handleFieldChange = (fieldName: string, value: unknown) => {
-    onChange({
-      ...action,
-      [fieldName]: value,
-    });
-  };
-
-  // Split fields into inline and full-width
-  const inlineFields = def.configFields.filter((f) => !f.fullWidth);
-  const fullWidthFields = def.configFields.filter((f) => f.fullWidth);
+  const readValue = (name: string) => (action as unknown as Record<string, unknown>)[name];
 
   return (
     <div
       className={cn(
-        'rounded-lg border p-4',
+        'relative rounded-lg border p-4',
+        showRemove && 'pr-14',
         def.color === 'destructive' && 'border-destructive/50 bg-destructive/5',
-        def.color === 'warning' && 'border-yellow-500/50 bg-yellow-500/5',
+        def.color === 'warning' && 'border-warning/50 bg-warning/5',
         def.color === 'default' && 'border-border bg-card'
       )}
     >
-      <div className="flex items-start gap-4">
-        {/* Action Type Selector */}
-        <Select value={action.type} onValueChange={handleTypeChange}>
-          <SelectTrigger className="w-[220px]">
-            <SelectValue placeholder="Select action" />
-          </SelectTrigger>
-          <SelectContent className="min-w-[200px]">
-            {getAllActionTypes().map((type) => {
-              const actionDef = ACTION_DEFINITIONS[type];
-              const ActionIcon = ACTION_ICONS[type];
-              return (
-                <SelectItem key={type} value={type}>
-                  <div className="flex items-center gap-2">
-                    <ActionIcon className="h-4 w-4" />
-                    {actionDef.label}
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-
-        {/* Inline config fields. Must wrap: a row wider than the dialog grows
-            the dialog's grid track and every section gets clipped. */}
-        <div className="flex flex-1 flex-wrap items-center gap-x-6 gap-y-2">
-          {inlineFields.map((field) => (
-            <ConfigFieldInput
-              key={field.name}
-              field={field}
-              value={(action as unknown as Record<string, unknown>)[field.name]}
-              onChange={(value) => handleFieldChange(field.name, value)}
-            />
-          ))}
-        </div>
-
-        {/* Remove Button */}
-        {showRemove && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="text-muted-foreground hover:text-destructive h-10 w-10 shrink-0"
-            onClick={onRemove}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-
-      {/* Full-width Config Fields */}
-      {fullWidthFields.length > 0 && (
-        <div className="mt-3 space-y-2">
-          {fullWidthFields.map((field) => (
-            <ConfigFieldInput
-              key={field.name}
-              field={field}
-              value={(action as unknown as Record<string, unknown>)[field.name]}
-              onChange={(value) => handleFieldChange(field.name, value)}
-            />
-          ))}
-        </div>
+      {showRemove && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t('rules.builder.actions.remove')}
+          className="text-muted-foreground hover:text-destructive absolute top-3 right-3"
+          onClick={onRemove}
+        >
+          <X className="h-4 w-4" />
+        </Button>
       )}
 
-      {/* Description */}
-      <p className="text-muted-foreground mt-2 text-xs">{def.description}</p>
+      <div className="grid gap-4 @md:grid-cols-2 @3xl:grid-cols-3">
+        <Field>
+          <FieldLabel htmlFor={typeId}>{t('rules.builder.actions.typeLabel')}</FieldLabel>
+          <Select
+            value={action.type}
+            onValueChange={(type) => onChange(createDefaultAction(type as ActionType))}
+          >
+            <SelectTrigger id={typeId}>
+              <SelectValue placeholder={t('rules.builder.actions.typePlaceholder')} />
+            </SelectTrigger>
+            <SelectContent>
+              {getAllActionTypes().map((type) => {
+                const ActionIcon = ACTION_ICONS[type];
+                return (
+                  <SelectItem key={type} value={type}>
+                    <span className="flex items-center gap-2">
+                      <ActionIcon className="h-4 w-4" />
+                      {ACTION_DEFINITIONS[type].label}
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          <FieldDescription>{def.description}</FieldDescription>
+        </Field>
 
-      {/* Hint (if present) */}
+        {def.configFields.map((field) => (
+          <ActionConfigField
+            key={field.name}
+            field={field}
+            value={readValue(field.name)}
+            onChange={(value) => onChange({ ...action, [field.name]: value })}
+          />
+        ))}
+      </div>
+
       {def.hint && (
-        <p className="mt-1 flex items-center gap-1 text-xs text-amber-600">
-          <AlertTriangle className="h-3 w-3" />
+        <p className="text-warning mt-3 flex items-start gap-1.5 text-xs">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
           {def.hint}
         </p>
       )}
@@ -155,123 +127,77 @@ export function ActionRow({ action, onChange, onRemove, showRemove = true }: Act
   );
 }
 
-// Config field input component
-interface ConfigFieldInputProps {
+interface ActionConfigFieldProps {
   field: ConfigField;
   value: unknown;
   onChange: (value: unknown) => void;
 }
 
-function ConfigFieldInput({ field, value, onChange }: ConfigFieldInputProps) {
-  // Number input
-  if (field.type === 'number') {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground text-sm whitespace-nowrap">{field.label}:</span>
-        <NumericInput
-          className="w-20"
-          min={field.min}
-          max={field.max}
-          step={field.step}
-          value={(value as number) ?? field.min ?? 0}
-          onChange={(v) => onChange(v)}
-        />
-        {field.unit && <span className="text-muted-foreground text-sm">{field.unit}</span>}
-      </div>
-    );
-  }
-
-  // Text input
-  if (field.type === 'text') {
-    return (
-      <div className="flex min-w-[200px] flex-1 items-center gap-2">
-        <span className="text-muted-foreground text-sm whitespace-nowrap">{field.label}:</span>
-        <Input
-          type="text"
-          placeholder={field.placeholder ?? field.label}
-          value={(value as string) ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      </div>
-    );
-  }
-
-  // Select input
-  if (field.type === 'select') {
-    const hasTooltips = field.options?.some((opt) => opt.tooltip);
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground flex items-center gap-1 text-sm whitespace-nowrap">
-          {field.label}:
-          {hasTooltips && (
-            <TooltipProvider delayDuration={100}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="text-muted-foreground/70 hover:text-muted-foreground h-3.5 w-3.5 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="start" className="w-max">
-                  <div className="space-y-1.5">
-                    {field.options
-                      ?.filter((opt) => opt.tooltip)
-                      .map((opt) => (
-                        <div key={opt.value}>
-                          <span className="font-medium">{opt.label}:</span>{' '}
-                          <span className="text-muted-foreground">{opt.tooltip}</span>
-                        </div>
-                      ))}
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </span>
-        <Select value={(value as string) ?? ''} onValueChange={onChange}>
-          <SelectTrigger className={cn('w-[120px]', hasTooltips && 'w-[200px]')}>
-            <SelectValue placeholder="Select..." />
-          </SelectTrigger>
-          <SelectContent>
-            {field.options?.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    );
-  }
+function ActionConfigField({ field, value, onChange }: ActionConfigFieldProps) {
+  const controlId = useId();
+  const labelId = useId();
 
   if (field.type === 'destinations') {
     return (
-      <DestinationsField
-        value={(value as string[]) ?? []}
-        onChange={onChange}
-        label={field.label}
-      />
-    );
-  }
-
-  // Slider
-  if (field.type === 'slider') {
-    const numValue = (value as number) ?? 50;
-    return (
-      <div className="flex min-w-[200px] flex-1 items-center gap-3">
-        <span className="text-muted-foreground text-sm">{field.label}:</span>
-        <input
-          type="range"
-          className="bg-muted h-2 flex-1 cursor-pointer appearance-none rounded-full"
-          min={field.min ?? 0}
-          max={field.max ?? 100}
-          step={field.step ?? 1}
-          value={numValue}
-          onChange={(e) => onChange(Number(e.target.value))}
+      <Field className="col-span-full">
+        <FieldLabel id={labelId}>{field.label}</FieldLabel>
+        <DestinationsField
+          value={(value as string[]) ?? []}
+          onChange={onChange}
+          label={field.label}
+          labelledBy={labelId}
         />
-        <span className="w-8 text-sm font-medium">{numValue}</span>
-      </div>
+        {field.description && <FieldDescription>{field.description}</FieldDescription>}
+      </Field>
     );
   }
 
-  return null;
+  const tooltips = field.options?.filter((option) => option.tooltip) ?? [];
+
+  return (
+    <Field className={cn(field.fullWidth && 'col-span-full')}>
+      <FieldLabel htmlFor={controlId}>
+        {field.label}
+        {tooltips.length > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <HelpCircle className="text-muted-foreground/70 hover:text-muted-foreground h-3.5 w-3.5 cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start" className="w-max">
+              <div className="space-y-1.5">
+                {tooltips.map((option) => (
+                  <div key={option.value}>
+                    <span className="font-medium">{option.label}:</span>{' '}
+                    <span className="text-muted-foreground">{option.tooltip}</span>
+                  </div>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </FieldLabel>
+      <RuleFieldControl
+        id={controlId}
+        spec={toControlSpec(field)}
+        value={value as RuleControlValue | undefined}
+        onChange={onChange}
+      />
+      {field.description && <FieldDescription>{field.description}</FieldDescription>}
+    </Field>
+  );
+}
+
+function toControlSpec(field: ConfigField): RuleControlSpec {
+  switch (field.type) {
+    case 'number':
+      return { kind: 'number', min: field.min, max: field.max, step: field.step, unit: field.unit };
+    case 'select':
+      return { kind: 'select', options: field.options ?? [], placeholder: field.placeholder };
+    case 'slider':
+      return { kind: 'slider', min: field.min ?? 0, max: field.max ?? 100, step: field.step ?? 1 };
+    default:
+      return { kind: 'text', placeholder: field.placeholder ?? field.label };
+  }
 }
 
 export default ActionRow;

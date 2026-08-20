@@ -113,7 +113,7 @@ export async function withComputeSingleFlight<T>(
   compute: () => Promise<T>,
   parseCached: (raw: string) => T
 ): Promise<T> {
-  let acquiredLock = true;
+  let acquiredLock: boolean;
   try {
     const lockKey = REDIS_KEYS.LIBRARY_SINGLE_FLIGHT_LOCK(cacheKey);
     acquiredLock =

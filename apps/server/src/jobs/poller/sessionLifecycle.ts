@@ -15,7 +15,7 @@ import {
 } from '@tracearr/shared';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { serverUsers, sessions } from '../../db/schema.js';
+import { serverUsers, sessions, users } from '../../db/schema.js';
 import type { GeoLocation } from '../../services/geoip.js';
 import { toRuleSession } from '../../services/rules/events/contextAssembly.js';
 import { dispatch } from '../../services/rules/events/dispatcher.js';
@@ -854,6 +854,15 @@ export async function createSessionWithRulesAtomic(
               lastActivityAt: sql`GREATEST(COALESCE(${serverUsers.lastActivityAt}, ${inserted.startedAt}), ${inserted.startedAt})`,
             })
             .where(eq(serverUsers.id, serverUser.id));
+
+          // Mirror of the account bump above, not recomputeIdentityAggregates:
+          // this is the poller hot path and the rollup only ever moves forward.
+          await tx
+            .update(users)
+            .set({
+              lastActivityAt: sql`GREATEST(COALESCE(${users.lastActivityAt}, ${inserted.startedAt}), ${inserted.startedAt})`,
+            })
+            .where(eq(users.id, serverUser.userId));
 
           const session = toRuleSession(inserted);
           const { violations: violationResults, deferredActions } = await dispatch(

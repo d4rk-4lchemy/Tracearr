@@ -1,0 +1,31 @@
+name: Snyk Security Scan
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  snyk:
+    name: Snyk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # --all-projects is required: snyk won't pick between pnpm-lock.yaml and
+      # pnpm-workspace.yaml on its own, it scans every workspace package instead.
+      # Reports without blocking: the current findings (esbuild via drizzle-kit,
+      # @fastify/multipart) have no fix available to take yet.
+      - name: Run Snyk to check for vulnerabilities
+        continue-on-error: true
+        uses: snyk/actions/node@12140f4059e244892ae643824a95459a102120dd # master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --all-projects --severity-threshold=high

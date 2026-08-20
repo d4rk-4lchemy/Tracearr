@@ -369,7 +369,7 @@ export function MobileSettings() {
               <Button onClick={() => enableMobile.mutate()} disabled={enableMobile.isPending}>
                 {enableMobile.isPending ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin" />
                     {t('mobile.enabling')}
                   </>
                 ) : (
@@ -394,11 +394,7 @@ export function MobileSettings() {
                   onClick={handleAddDevice}
                   disabled={deviceCount >= maxDevices || generatePairToken.isPending}
                 >
-                  {generatePairToken.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="mr-2 h-4 w-4" />
-                  )}
+                  {generatePairToken.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
                   {t('mobile.addDevice')}
                 </Button>
               </div>
@@ -427,7 +423,7 @@ export function MobileSettings() {
                 </CardDescription>
               </div>
               <Button variant="outline" size="sm" onClick={() => setShowRevokeConfirm(true)}>
-                <LogOut className="mr-2 h-4 w-4" />
+                <LogOut />
                 {t('mobile.revokeAllSessions')}
               </Button>
             </div>

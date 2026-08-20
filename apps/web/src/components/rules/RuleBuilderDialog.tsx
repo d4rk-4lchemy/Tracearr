@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -5,31 +6,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { RuleBuilder } from './RuleBuilder';
-import type {
-  CreateRuleV2Input,
-  UpdateRuleV2Input,
-  RuleConditions,
-  RuleActions,
-  RulesFilterOptions,
-  ViolationSeverity,
-} from '@tracearr/shared';
-
-// Combined rule type that can represent V1 or V2 rules from the API
-interface RuleInput {
-  id: string;
-  name: string;
-  description?: string | null;
-  severity?: ViolationSeverity;
-  isActive: boolean;
-  conditions?: RuleConditions | null;
-  actions?: RuleActions | null;
-}
+import { RuleBuilder, type RuleBuilderInput } from './RuleBuilder';
+import type { CreateRuleV2Input, UpdateRuleV2Input, RulesFilterOptions } from '@tracearr/shared';
 
 interface RuleBuilderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  rule?: RuleInput;
+  rule?: RuleBuilderInput;
   onSave: (data: CreateRuleV2Input | UpdateRuleV2Input) => Promise<void>;
   isLoading?: boolean;
   filterOptions?: RulesFilterOptions;
@@ -43,6 +26,7 @@ export function RuleBuilderDialog({
   isLoading,
   filterOptions,
 }: RuleBuilderDialogProps) {
+  const { t } = useTranslation('pages');
   const isEditing = !!rule;
 
   const handleSave = async (data: CreateRuleV2Input | UpdateRuleV2Input) => {
@@ -52,15 +36,14 @@ export function RuleBuilderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-[900px] !max-w-[900px] overflow-y-auto">
+      {/* min() keeps the wide form from outgrowing a narrow window */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[min(56rem,calc(100%-2rem))]">
         <DialogHeader className="sm:text-center">
           <DialogTitle className="text-xl">
-            {isEditing ? 'Edit Rule' : 'Create Custom Rule'}
+            {isEditing ? t('rules.editRule') : t('rules.createRule')}
           </DialogTitle>
           <DialogDescription>
-            {isEditing
-              ? 'Modify the rule conditions and actions.'
-              : 'Build a custom rule with flexible conditions and actions.'}
+            {isEditing ? t('rules.updateDescription') : t('rules.createDescription')}
           </DialogDescription>
         </DialogHeader>
         <RuleBuilder

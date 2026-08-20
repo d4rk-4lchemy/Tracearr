@@ -4,7 +4,7 @@ import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartSkeleton } from '@/components/ui/skeleton';
-import { EmptyState } from '@/components/library';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PerServerCardGrid } from '@/components/server';
 import { useLibraryResolution } from '@/hooks/queries';
 import type { Server } from '@tracearr/shared';

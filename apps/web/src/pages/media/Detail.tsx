@@ -25,6 +25,7 @@ import { SeasonHeatPanel } from '@/components/media-browse/SeasonHeatPanel';
 import { PlatformPanel } from '@/components/media-browse/PlatformPanel';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -138,9 +139,7 @@ function HistoryPanel({
       ) : isLoading ? (
         <HistoryPanelSkeleton />
       ) : rows.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          {t('media.detail.history.empty')}
-        </p>
+        <EmptyState title={t('media.detail.history.empty')} className="py-6" />
       ) : (
         <div
           ref={scrollRef}

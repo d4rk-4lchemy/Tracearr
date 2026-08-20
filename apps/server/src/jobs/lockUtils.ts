@@ -42,7 +42,8 @@ export async function extendJobLock(job: Job, durationMs: number = MAINTENANCE_L
     throw new Error(
       `Lost lock for job ${job.id} - aborting to allow clean retry. ` +
         `This usually indicates a Redis connectivity issue or a lock stolen by a replacement worker. ` +
-        `Original error: ${message}`
+        `Original error: ${message}`,
+      { cause: error }
     );
   }
 }

@@ -593,7 +593,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
 
   // Probe DB and Redis to decide if we can initialize services now
   const dbOk = await checkDatabaseConnection();
-  let redisOk = false;
+  let redisOk: boolean;
   try {
     // Temporarily connect to test reachability
     const testRedis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
@@ -1298,7 +1298,7 @@ function startRecoveryLoop(app: FastifyInstance, intervalMs: number = RECOVERY_I
 
       const dbOk = await checkDatabaseConnection();
       setDbHealthy(dbOk);
-      let redisOk = false;
+      let redisOk: boolean;
       try {
         const testRedis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
           connectTimeout: 5000,

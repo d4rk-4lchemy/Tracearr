@@ -36,6 +36,7 @@ import { normalizeClient, normalizePlatformName } from '../utils/platformNormali
 import { resolutionBucketPredicate, resolutionRankSql } from '../utils/resolutionBuckets.js';
 import { getCacheService, getPubSubService } from '../services/cache.js';
 import { getSetting, setSetting } from '../services/settings.js';
+import { recomputeAllIdentityDates } from '../services/userService.js';
 import {
   rebuildTimescaleViews,
   safeFullRefreshAllAggregates,
@@ -1751,6 +1752,9 @@ async function processBackfillUserDatesJob(
           AND su.joined_at IS NULL
       `);
       joinedAtUpdated = Number(joinedResult.rowCount ?? 0);
+      // Nothing recomputes users.first_joined_at / last_activity_at off a bulk
+      // account rewrite, so the identity rollups follow each step explicitly.
+      await recomputeAllIdentityDates();
     } catch (error) {
       console.error('[Maintenance] Error updating joinedAt:', error);
       totalErrors++;
@@ -1780,6 +1784,7 @@ async function processBackfillUserDatesJob(
           AND (su.last_activity_at IS NULL OR su.last_activity_at < latest.max_started)
       `);
       lastActivityUpdated = Number(activityResult.rowCount ?? 0);
+      await recomputeAllIdentityDates();
     } catch (error) {
       console.error('[Maintenance] Error updating lastActivityAt:', error);
       totalErrors++;

@@ -137,6 +137,19 @@
     "unauthorized": "Je bent niet bevoegd om deze actie uit te voeren",
     "unexpectedError": "Er is een onverwachte fout opgetreden. Probeer het opnieuw."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Acties",
     "active": "Actief",
@@ -249,6 +262,12 @@
     "searchTitles": "Titels, gebruikers zoeken...",
     "searchUsers": "Gebruikers zoeken..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Emby",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Geslaagd"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Alles selecteren op pagina",
-    "selectAllTotal": "Alle {{total}} items selecteren",
     "selectRow": "Rij selecteren"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "Altijd",
@@ -293,6 +320,11 @@
     "thisWeek": "Deze week",
     "today": "Vandaag",
     "yesterday": "Gisteren"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "km",

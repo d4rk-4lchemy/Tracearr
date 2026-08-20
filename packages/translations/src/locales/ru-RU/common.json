@@ -137,6 +137,19 @@
     "unauthorized": "Вы не авторизованы для выполнения этого действия",
     "unexpectedError": "Произошла непредвиденная ошибка. Пожалуйста, попробуйте еще раз."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Действия",
     "active": "Активный",
@@ -249,6 +262,12 @@
     "searchTitles": "Поиск заголовков, пользователей...",
     "searchUsers": "Поиск пользователей..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Эмби",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Успешно"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Выбрать все на странице",
-    "selectAllTotal": "Выбрать все {{total}} элементы",
     "selectRow": "Выберите строку"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "За всё время",
@@ -293,6 +320,11 @@
     "thisWeek": "На этой неделе",
     "today": "Сегодня",
     "yesterday": "Вчера"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "км",

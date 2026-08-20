@@ -143,11 +143,7 @@ function BackupCard({ onRestore }: { onRestore: (backup: BackupListItem) => void
               onClick={() => createMutation.mutate()}
               disabled={createMutation.isPending || uploadMutation.isPending}
             >
-              {createMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Archive className="mr-2 h-4 w-4" />
-              )}
+              {createMutation.isPending ? <Loader2 className="animate-spin" /> : <Archive />}
               {createMutation.isPending ? t('backup.creating') : t('backup.createBackup')}
             </Button>
 
@@ -164,7 +160,7 @@ function BackupCard({ onRestore }: { onRestore: (backup: BackupListItem) => void
               disabled={createMutation.isPending || uploadMutation.isPending}
             >
               {uploadMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
                 <Upload className="mr-2 h-4 w-4" />
               )}
@@ -472,7 +468,7 @@ function RestoreCard({ backup, onClose }: { backup: BackupListItem; onClose: () 
                 disabled={!confirmed || !canStartRestore || restoreMutation.isPending}
                 variant="destructive"
               >
-                {restoreMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {restoreMutation.isPending && <Loader2 className="animate-spin" />}
                 {t('backup.restore.confirm')}
               </Button>
               <Button variant="outline" onClick={onClose}>
@@ -698,7 +694,7 @@ export function BackupSettings() {
     return (
       <div className="space-y-6">
         <Button variant="ghost" size="sm" onClick={() => setRestoreTarget(null)}>
-          <ArrowLeft className="mr-1 h-4 w-4" />
+          <ArrowLeft />
           {t('backup.backToBackups')}
         </Button>
         <RestoreCard backup={restoreTarget} onClose={() => setRestoreTarget(null)} />

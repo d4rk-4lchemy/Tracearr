@@ -794,7 +794,7 @@ describe('GET /violations userId identity filter', () => {
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.total).toBe(2);
+    expect(body.meta.total).toBe(2);
     const returnedServerUserIds = body.data
       .map((v: { serverUserId: string }) => v.serverUserId)
       .sort();
@@ -847,7 +847,7 @@ describe('GET /violations userId identity filter', () => {
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.total).toBe(1);
+    expect(body.meta.total).toBe(1);
     expect(body.data[0].serverUserId).toBe(targetSu.id);
   });
 });
@@ -943,7 +943,7 @@ describe('GET /users identityServers', () => {
     // The viewer can't see serverB at all, so the merged identity shows up as
     // exactly one row scoped to serverA.
     expect(rows).toHaveLength(1);
-    expect(body.total).toBe(1);
+    expect(body.meta.total).toBe(1);
     const row = rows.find((r) => r.id === targetSu.id);
     expect(row?.identityServers.map((s) => s.id)).toEqual([serverA.id]);
   });
@@ -984,7 +984,7 @@ describe('GET /users dedup + includeRemoved + access scoping', () => {
     const mergedRows = rows.filter((r) => r.id === targetSu.id || r.id === sourceSu.id);
     expect(mergedRows).toHaveLength(1);
     expect(mergedRows[0]?.id).toBe(targetSu.id);
-    expect(body.total).toBeGreaterThanOrEqual(1);
+    expect(body.meta.total).toBeGreaterThanOrEqual(1);
   });
 
   it('hides a merged identity by default when every account is removed, and shows it with includeRemoved=true', async () => {
@@ -1079,7 +1079,7 @@ describe('GET /users dedup + includeRemoved + access scoping', () => {
     }[];
 
     expect(rows).toHaveLength(1);
-    expect(body.total).toBe(1);
+    expect(body.meta.total).toBe(1);
     expect(rows[0]?.id).toBe(targetSu.id);
     expect(rows[0]?.serverId).toBe(serverA.id);
     expect(rows[0]?.identityServers.map((s) => s.id)).toEqual([serverA.id]);
@@ -1233,8 +1233,7 @@ describe('GET /users search', () => {
     const body = response.json();
     const rows = body.data as { id: string }[];
     expect(rows.map((r) => r.id)).toEqual([su.id]);
-    expect(body.total).toBe(1);
-    expect(body.totalPages).toBe(1);
+    expect(body.meta.total).toBe(1);
   });
 
   it('matches by identity display name, not just account username', async () => {
@@ -1267,7 +1266,7 @@ describe('GET /users search', () => {
     const body = response.json();
     const rows = body.data as { id: string }[];
     expect(rows.map((r) => r.id)).toEqual([su.id]);
-    expect(body.total).toBe(1);
+    expect(body.meta.total).toBe(1);
   });
 
   it('escapes % and _ so a literal search term is not treated as a wildcard', async () => {
@@ -1307,7 +1306,7 @@ describe('GET /users search', () => {
     const rowIds = (body.data as { id: string }[]).map((r) => r.id);
     expect(rowIds).toEqual([literalMatch.id]);
     expect(rowIds).not.toContain(decoy.id);
-    expect(body.total).toBe(1);
+    expect(body.meta.total).toBe(1);
   });
 
   it('composes search with serverIds, includeRemoved, and the one-row-per-identity dedup', async () => {
@@ -1357,8 +1356,7 @@ describe('GET /users search', () => {
     // even though the search also matches its removed serverB sibling.
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe(targetSu.id);
-    expect(body.total).toBe(1);
-    expect(body.totalPages).toBe(1);
+    expect(body.meta.total).toBe(1);
 
     // With includeRemoved and no server filter, both sides of the search
     // still collapse to the identity's single representative row, and the
@@ -1374,8 +1372,7 @@ describe('GET /users search', () => {
       (r) => r.id === targetSu.id || r.id === sourceSu.id
     );
     expect(mergedRows).toHaveLength(1);
-    expect(includeRemovedBody.total).toBe(2);
-    expect(includeRemovedBody.totalPages).toBe(1);
+    expect(includeRemovedBody.meta.total).toBe(2);
   });
 });
 
@@ -1750,7 +1747,7 @@ describe('GET /users orderBy', () => {
     expect(response.statusCode).toBe(400);
   });
 
-  it('defaults to username ascending when no sort params are given, matching prior behavior', async () => {
+  it('defaults to identity username ascending when no sort params are given', async () => {
     const admin = await createTestUser({ role: 'owner' });
     const server = await createTestServer({ type: 'plex' });
     const identityA = await createTestUser({ role: 'member' });
@@ -1781,7 +1778,7 @@ describe('GET /users orderBy', () => {
     const relevantIds = rows
       .map((r) => r.id)
       .filter((id) => id === suZebra.id || id === suAardvark.id);
-    expect(relevantIds).toEqual([suAardvark.id, suZebra.id]);
+    expect(relevantIds).toEqual([suZebra.id, suAardvark.id]);
   });
 
   it('sorts lastActivityAt with unset accounts last, regardless of direction', async () => {
@@ -1799,6 +1796,10 @@ describe('GET /users orderBy', () => {
       .update(serverUsers)
       .set({ lastActivityAt: new Date('2026-01-01T00:00:00Z') })
       .where(eq(serverUsers.id, activeSu.id));
+    await db
+      .update(users)
+      .set({ lastActivityAt: new Date('2026-01-01T00:00:00Z') })
+      .where(eq(users.id, active.id));
 
     const app = Fastify({ logger: false });
     await app.register(sensible);

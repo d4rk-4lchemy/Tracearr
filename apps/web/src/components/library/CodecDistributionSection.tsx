@@ -3,7 +3,7 @@ import { Film, Music } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TopListChart } from '@/components/charts';
-import { EmptyState } from '@/components/library';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PerServerCardGrid } from '@/components/server';
 import { useLibraryCodecs } from '@/hooks/queries';
 import { formatMediaTech, type CodecBreakdown } from '@tracearr/shared';

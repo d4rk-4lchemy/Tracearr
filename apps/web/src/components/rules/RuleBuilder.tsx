@@ -11,11 +11,11 @@ import type {
   UpdateRuleV2Input,
   RulesFilterOptions,
 } from '@tracearr/shared';
-import { IDENTITY_AWARE_CONDITION_FIELDS, INACTIVITY_COMPATIBLE_FIELDS } from '@tracearr/shared';
+import { INACTIVITY_COMPATIBLE_FIELDS } from '@tracearr/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import {
   Select,
   SelectContent,
@@ -25,20 +25,21 @@ import {
 } from '@/components/ui/select';
 import { ConditionGroup } from './ConditionGroup';
 import { ActionRow } from './ActionRow';
+import { RuleScopeField } from './RuleScopeField';
 import {
   FIELD_DEFINITIONS,
   getDefaultOperatorForField,
   getDefaultValueForField,
   createDefaultAction,
   SEVERITY_OPTIONS,
+  canEnforceAcrossServers as scopeAllowsCrossServer,
+  isScopeComplete,
+  scopeFromRule,
+  scopeToPayload,
+  type RuleScope,
 } from '@/lib/rules';
-import { useServer } from '@/hooks/useServer';
-import { useUsers } from '@/hooks/queries/useUsers';
-import { ServerBadge } from '@/components/server';
 
-// Combined rule type that can represent V1 or V2 rules from the API
-// The API returns rules with optional V2 fields (conditions, actions, description)
-interface RuleInput {
+export interface RuleBuilderInput {
   id: string;
   name: string;
   description?: string | null;
@@ -48,68 +49,40 @@ interface RuleInput {
   serverUserId?: string | null;
   userId?: string | null;
   enforceAcrossServers?: boolean;
-  // V2 fields
   conditions?: RuleConditions | null;
   actions?: RuleActions | null;
 }
 
-type ScopeMode = 'global' | 'server' | 'user' | 'person';
-
 interface RuleBuilderProps {
-  initialRule?: RuleInput;
+  initialRule?: RuleBuilderInput;
   onSave: (data: CreateRuleV2Input | UpdateRuleV2Input) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
   filterOptions?: RulesFilterOptions;
 }
 
-// Create default condition group
+const DEFAULT_FIELD = 'concurrent_streams';
+
 function createDefaultConditionGroup(): ConditionGroupType {
-  const defaultField = 'concurrent_streams';
   return {
     conditions: [
       {
-        field: defaultField,
-        operator: getDefaultOperatorForField(defaultField),
-        value: getDefaultValueForField(defaultField),
+        field: DEFAULT_FIELD,
+        operator: getDefaultOperatorForField(DEFAULT_FIELD),
+        value: getDefaultValueForField(DEFAULT_FIELD),
       },
     ],
   };
 }
 
-// Create default action
-function createDefaultRuleAction(): Action {
-  return createDefaultAction('log_only');
-}
-
-// Extract conditions from existing rule (V1 or V2)
-function extractConditions(rule?: RuleInput): RuleConditions {
-  if (!rule) {
-    return { groups: [createDefaultConditionGroup()] };
-  }
-
-  // V2 rule - has conditions object with groups
-  if (rule.conditions && 'groups' in rule.conditions) {
-    return rule.conditions;
-  }
-
-  // V1 rule or no conditions - return default
+function extractConditions(rule?: RuleBuilderInput): RuleConditions {
+  if (rule?.conditions && 'groups' in rule.conditions) return rule.conditions;
   return { groups: [createDefaultConditionGroup()] };
 }
 
-// Extract actions from existing rule (V1 or V2)
-function extractActions(rule?: RuleInput): RuleActions {
-  if (!rule) {
-    return { actions: [createDefaultRuleAction()] };
-  }
-
-  // V2 rule - has actions object with actions array
-  if (rule.actions && 'actions' in rule.actions) {
-    return rule.actions;
-  }
-
-  // V1 rule or no actions - return default
-  return { actions: [createDefaultRuleAction()] };
+function extractActions(rule?: RuleBuilderInput): RuleActions {
+  if (rule?.actions && 'actions' in rule.actions) return rule.actions;
+  return { actions: [createDefaultAction('log_only')] };
 }
 
 export function RuleBuilder({
@@ -119,57 +92,25 @@ export function RuleBuilder({
   isLoading = false,
   filterOptions,
 }: RuleBuilderProps) {
-  const { t } = useTranslation('pages');
-  const { servers } = useServer();
-
-  // Derive initial scope mode from existing rule fields
-  const initialScopeMode: ScopeMode = initialRule?.userId
-    ? 'person'
-    : initialRule?.serverUserId
-      ? 'user'
-      : initialRule?.serverId
-        ? 'server'
-        : 'global';
+  const { t } = useTranslation(['pages', 'common']);
 
   const [name, setName] = useState(initialRule?.name ?? '');
   const [description, setDescription] = useState(initialRule?.description ?? '');
   const [severity, setSeverity] = useState<ViolationSeverity>(initialRule?.severity ?? 'warning');
   const [isActive, setIsActive] = useState(initialRule?.isActive ?? true);
-  const [conditions, setConditions] = useState<RuleConditions>(extractConditions(initialRule));
-  const [actions, setActions] = useState<RuleActions>(extractActions(initialRule));
-  const [errors, setErrors] = useState<string[]>([]);
-
-  // Scope picker state - seed from existing rule, fall back to first available server
-  const [scopeMode, setScopeMode] = useState<ScopeMode>(initialScopeMode);
-  const [scopeServerId, setScopeServerId] = useState<string>(
-    initialRule?.serverId ?? servers[0]?.id ?? ''
+  const [conditions, setConditions] = useState<RuleConditions>(() =>
+    extractConditions(initialRule)
   );
-  const [scopeServerUserId, setScopeServerUserId] = useState<string>(
-    initialRule?.serverUserId ?? ''
-  );
-  const [scopeUserId, setScopeUserId] = useState<string>(initialRule?.userId ?? '');
+  const [actions, setActions] = useState<RuleActions>(() => extractActions(initialRule));
+  const [scope, setScope] = useState<RuleScope>(() => scopeFromRule(initialRule));
   const [enforceAcrossServers, setEnforceAcrossServers] = useState(
     initialRule?.enforceAcrossServers ?? false
   );
+  const [errors, setErrors] = useState<string[]>([]);
+  const [submitted, setSubmitted] = useState(false);
 
-  const handleScopeServerChange = (serverId: string) => {
-    setScopeServerId(serverId);
-    setScopeServerUserId('');
-  };
-
-  // Fetch users for selected server when in user-scope mode
-  const { data: usersPage } = useUsers(
-    scopeMode === 'user' && scopeServerId ? { serverId: scopeServerId, pageSize: 100 } : {}
-  );
-  const userOptions = usersPage?.data ?? [];
-
-  // Fetch the identity-deduped user list (one row per person, every server)
-  // for person-scope mode - same list shape the merge account picker uses.
-  const { data: identitiesPage } = useUsers(scopeMode === 'person' ? { pageSize: 100 } : {});
-  const identityOptions = identitiesPage?.data ?? [];
-
-  // The backend rejects mixing inactive_days with session fields, so the
-  // field picker offers only the still-valid choices for the rule as built.
+  // The backend rejects mixing inactive_days with session fields, so the field
+  // picker offers only the still-valid choices for the rule as built.
   const allowedFields = useMemo<ReadonlySet<string> | undefined>(() => {
     const compatible = INACTIVITY_COMPATIBLE_FIELDS as readonly string[];
     const fields = conditions.groups.flatMap((g) => g.conditions.map((c) => c.field));
@@ -180,289 +121,142 @@ export function RuleBuilder({
     return undefined;
   }, [conditions]);
 
-  // Cross-server enforcement is only meaningful for rules built from
-  // identity-aware condition fields (see IDENTITY_AWARE_CONDITION_FIELDS),
-  // and never for server-scoped rules: those detect on one server's sessions
-  // only, and the backend rejects the combination.
-  const canEnforceAcrossServers = useMemo(
-    () =>
-      scopeMode !== 'server' &&
-      conditions.groups.some((group) =>
-        group.conditions.some((c) =>
-          (IDENTITY_AWARE_CONDITION_FIELDS as readonly string[]).includes(c.field)
-        )
-      ),
-    [conditions, scopeMode]
-  );
+  const canEnforce = useMemo(() => scopeAllowsCrossServer(scope, conditions), [scope, conditions]);
 
-  // Validation
   const validate = (): boolean => {
-    const newErrors: string[] = [];
+    const found: string[] = [];
 
-    if (!name.trim()) {
-      newErrors.push('Rule name is required');
+    if (!name.trim()) found.push(t('pages:rules.builder.errors.nameRequired'));
+    if (!isScopeComplete(scope)) found.push(t('pages:rules.builder.errors.scopeIncomplete'));
+    if (conditions.groups.length === 0) found.push(t('pages:rules.builder.errors.groupRequired'));
+    if (conditions.groups.some((group) => group.conditions.length === 0)) {
+      found.push(t('pages:rules.builder.errors.conditionRequired'));
     }
-
-    if (conditions.groups.length === 0) {
-      newErrors.push('At least one condition group is required');
-    }
-
-    for (const group of conditions.groups) {
-      if (group.conditions.length === 0) {
-        newErrors.push('Each condition group must have at least one condition');
-      }
-    }
-
     if (actions.actions.some((a) => a.type === 'send' && a.to.length === 0)) {
-      newErrors.push(t('rules.builder.errors.sendNeedsDestination'));
+      found.push(t('pages:rules.builder.errors.sendNeedsDestination'));
     }
 
-    setErrors(newErrors);
-    return newErrors.length === 0;
+    setErrors(found);
+    return found.length === 0;
   };
 
-  // Submit handler
   const handleSubmit = async () => {
+    setSubmitted(true);
     if (!validate()) return;
 
-    // Exactly one of serverId, serverUserId, userId carries the chosen scope; the
-    // other two stay null so the backend's mutual-exclusivity check passes.
-    const data: CreateRuleV2Input | UpdateRuleV2Input = {
+    await onSave({
       name: name.trim(),
       description: description.trim() || null,
       severity,
       isActive,
       conditions,
       actions,
-      serverId: scopeMode === 'server' && scopeServerId ? scopeServerId : null,
-      serverUserId: scopeMode === 'user' && scopeServerUserId ? scopeServerUserId : null,
-      userId: scopeMode === 'person' && scopeUserId ? scopeUserId : null,
-      enforceAcrossServers: canEnforceAcrossServers ? enforceAcrossServers : false,
-    };
-
-    await onSave(data);
-  };
-
-  // Condition group handlers
-  const addConditionGroup = () => {
-    setConditions({
-      groups: [...conditions.groups, createDefaultConditionGroup()],
+      ...scopeToPayload(scope),
+      enforceAcrossServers: canEnforce ? enforceAcrossServers : false,
     });
   };
 
   const updateConditionGroup = (index: number, group: ConditionGroupType) => {
-    const newGroups = [...conditions.groups];
-    newGroups[index] = group;
-    setConditions({ groups: newGroups });
+    const groups = [...conditions.groups];
+    groups[index] = group;
+    setConditions({ groups });
   };
 
   const removeConditionGroup = (index: number) => {
-    if (conditions.groups.length === 1) return; // Keep at least one group
-    const newGroups = conditions.groups.filter((_, i) => i !== index);
-    setConditions({ groups: newGroups });
-  };
-
-  // Action handlers
-  const addAction = () => {
-    setActions({
-      actions: [...actions.actions, createDefaultRuleAction()],
-    });
+    if (conditions.groups.length === 1) return;
+    setConditions({ groups: conditions.groups.filter((_, i) => i !== index) });
   };
 
   const updateAction = (index: number, action: Action) => {
-    const newActions = [...actions.actions];
-    newActions[index] = action;
-    setActions({ actions: newActions });
-  };
-
-  const removeAction = (index: number) => {
-    const newActions = actions.actions.filter((_, i) => i !== index);
-    setActions({ actions: newActions });
+    const next = [...actions.actions];
+    next[index] = action;
+    setActions({ actions: next });
   };
 
   return (
     // min-w-0: DialogContent is a grid, and a grid item can't shrink below its
     // min-content, so one too-wide row would otherwise widen the whole form.
-    <div className="min-w-0 space-y-6">
-      {/* Errors */}
+    // @container: rows respond to the dialog, not the viewport.
+    <div className="@container min-w-0 space-y-6">
       {errors.length > 0 && (
-        <div className="border-destructive/50 bg-destructive/5 rounded-lg border p-4">
-          <p className="text-destructive font-medium">Please fix the following errors:</p>
+        <div className="border-destructive/50 bg-destructive/5 rounded-lg border p-4" role="alert">
+          <p className="text-destructive font-medium">{t('pages:rules.builder.errors.title')}</p>
           <ul className="text-destructive mt-2 list-inside list-disc text-sm">
-            {errors.map((error, i) => (
-              <li key={i}>{error}</li>
+            {errors.map((error) => (
+              <li key={error}>{error}</li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* Name, Description, Severity, and Active Toggle */}
-      <div className="grid items-end gap-4 sm:grid-cols-[1fr_1fr_auto_auto]">
-        <div className="space-y-2">
-          <Label htmlFor="rule-name">Rule Name *</Label>
-          <Input
-            id="rule-name"
-            placeholder="e.g., Block excessive streams"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="rule-description">Description</Label>
-          <Input
-            id="rule-description"
-            placeholder="Optional description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="rule-severity">Severity</Label>
-          <Select value={severity} onValueChange={(v) => setSeverity(v as ViolationSeverity)}>
-            <SelectTrigger id="rule-severity" className="w-[130px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SEVERITY_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2 pb-2">
-          <Switch id="rule-active" checked={isActive} onCheckedChange={setIsActive} />
-          <Label htmlFor="rule-active" className="text-sm">
-            Active
-          </Label>
-        </div>
-      </div>
-
-      {/* Scope Picker */}
-      <div className="space-y-3">
-        <Label>Scope</Label>
-        <div className="flex flex-wrap gap-2">
-          {(['global', 'server', 'user', 'person'] as ScopeMode[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setScopeMode(mode)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                scopeMode === mode
-                  ? 'bg-primary text-primary-foreground border-transparent'
-                  : 'border-border text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {mode === 'global'
-                ? 'Global'
-                : mode === 'server'
-                  ? 'Specific server'
-                  : mode === 'user'
-                    ? 'Specific account'
-                    : 'Person (all their servers)'}
-            </button>
-          ))}
-        </div>
-
-        {(scopeMode === 'server' || scopeMode === 'user') && servers.length > 0 && (
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="scope-server" className="text-xs">
-                Server
-              </Label>
-              <Select value={scopeServerId} onValueChange={handleScopeServerChange}>
-                <SelectTrigger id="scope-server" className="w-[200px]">
-                  <SelectValue placeholder="Select server" />
-                </SelectTrigger>
-                <SelectContent>
-                  {servers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      <span className="flex items-center gap-2">
-                        <ServerBadge server={s} variant="compact" />
-                        {s.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {scopeMode === 'user' && scopeServerId && (
-              <div className="space-y-1.5">
-                <Label htmlFor="scope-user" className="text-xs">
-                  User
-                </Label>
-                <Select value={scopeServerUserId} onValueChange={setScopeServerUserId}>
-                  <SelectTrigger id="scope-user" className="w-[200px]">
-                    <SelectValue placeholder="Select user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {userOptions.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.identityName ?? u.username}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-        )}
-
-        {scopeMode === 'person' && (
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="scope-person" className="text-xs">
-                Person
-              </Label>
-              <Select value={scopeUserId} onValueChange={setScopeUserId}>
-                <SelectTrigger id="scope-person" className="w-[200px]">
-                  <SelectValue placeholder="Select person" />
-                </SelectTrigger>
-                <SelectContent>
-                  {identityOptions.map((u) => (
-                    <SelectItem key={u.userId} value={u.userId}>
-                      {u.identityName ?? u.username}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        )}
-
-        {canEnforceAcrossServers && (
-          <div className="flex items-start gap-2 pt-1">
-            <Switch
-              id="enforce-across-servers"
-              checked={enforceAcrossServers}
-              onCheckedChange={setEnforceAcrossServers}
+      <FieldGroup className="gap-4">
+        <div className="grid gap-4 @2xl:grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,1fr)_auto] @2xl:items-end">
+          <Field>
+            <FieldLabel htmlFor="rule-name">{t('pages:rules.ruleName')}</FieldLabel>
+            <Input
+              id="rule-name"
+              placeholder={t('pages:rules.ruleNamePlaceholder')}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-invalid={submitted && !name.trim()}
             />
-            <div>
-              <Label htmlFor="enforce-across-servers" className="text-sm">
-                Enforce across servers
-              </Label>
-              <p className="text-muted-foreground text-xs">
-                When on, this rule can act on a person&apos;s sessions on any of their servers, not
-                just the one that triggered it. Off by default.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+          </Field>
 
-      {/* Conditions Section */}
-      <div className="bg-muted/30 space-y-4 rounded-lg border p-4">
-        <div className="flex items-center justify-between border-b pb-3">
-          <div>
-            <h3 className="text-base font-semibold">Conditions</h3>
-            <p className="text-muted-foreground text-sm">
-              Define when this rule should trigger. Groups are combined with{' '}
-              <span className="font-bold">AND</span> logic.
-            </p>
-          </div>
+          <Field>
+            <FieldLabel htmlFor="rule-description">
+              {t('pages:rules.builder.descriptionLabel')}
+            </FieldLabel>
+            <Input
+              id="rule-description"
+              placeholder={t('pages:rules.builder.descriptionPlaceholder')}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="rule-severity">
+              {t('pages:rules.builder.severityLabel')}
+            </FieldLabel>
+            <Select value={severity} onValueChange={(v) => setSeverity(v as ViolationSeverity)}>
+              <SelectTrigger id="rule-severity">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SEVERITY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field className="@2xl:w-auto">
+            <FieldLabel htmlFor="rule-active">{t('pages:rules.builder.activeLabel')}</FieldLabel>
+            <div className="flex h-9 items-center">
+              <Switch id="rule-active" checked={isActive} onCheckedChange={setIsActive} />
+            </div>
+          </Field>
         </div>
+
+        <RuleScopeField
+          scope={scope}
+          onChange={setScope}
+          enforceAcrossServers={enforceAcrossServers}
+          onEnforceAcrossServersChange={setEnforceAcrossServers}
+          canEnforceAcrossServers={canEnforce}
+          showErrors={submitted}
+        />
+      </FieldGroup>
+
+      <section className="bg-muted/30 space-y-4 rounded-lg border p-4">
+        <header className="border-b pb-3">
+          <h3 className="text-base font-semibold">{t('pages:rules.builder.conditions.title')}</h3>
+          <p className="text-muted-foreground text-sm">
+            {t('pages:rules.builder.conditions.description')}
+          </p>
+        </header>
 
         <div className="space-y-4">
           {conditions.groups.map((group, index) => (
@@ -489,21 +283,25 @@ export function RuleBuilder({
           ))}
         </div>
 
-        <Button type="button" variant="outline" onClick={addConditionGroup}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add <span className="font-bold">AND</span> condition group
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() =>
+            setConditions({ groups: [...conditions.groups, createDefaultConditionGroup()] })
+          }
+        >
+          <Plus />
+          {t('pages:rules.builder.conditions.addGroup')}
         </Button>
-      </div>
+      </section>
 
-      {/* Actions Section */}
-      <div className="bg-muted/30 space-y-4 rounded-lg border p-4">
-        <div className="border-b pb-3">
-          <h3 className="text-base font-semibold">Additional Actions</h3>
+      <section className="bg-muted/30 space-y-4 rounded-lg border p-4">
+        <header className="border-b pb-3">
+          <h3 className="text-base font-semibold">{t('pages:rules.builder.actions.title')}</h3>
           <p className="text-muted-foreground text-sm">
-            Optional side-effects when conditions are met. A violation is always created
-            automatically.
+            {t('pages:rules.builder.actions.description')}
           </p>
-        </div>
+        </header>
 
         {actions.actions.length > 0 && (
           <div className="space-y-3">
@@ -512,34 +310,41 @@ export function RuleBuilder({
                 key={index}
                 action={action}
                 onChange={(a) => updateAction(index, a)}
-                onRemove={() => removeAction(index)}
+                onRemove={() =>
+                  setActions({ actions: actions.actions.filter((_, i) => i !== index) })
+                }
                 showRemove
               />
             ))}
           </div>
         )}
 
-        <Button type="button" variant="outline" onClick={addAction}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add action
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() =>
+            setActions({ actions: [...actions.actions, createDefaultAction('log_only')] })
+          }
+        >
+          <Plus />
+          {t('pages:rules.builder.actions.add')}
         </Button>
-      </div>
+      </section>
 
-      {/* Footer */}
       <div className="flex items-center justify-end gap-3 border-t pt-4">
         <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
+          {t('common:actions.cancel')}
         </Button>
         <Button onClick={handleSubmit} disabled={isLoading}>
           {isLoading ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
+              <Loader2 className="animate-spin" />
+              {t('pages:rules.builder.saving')}
             </>
           ) : (
             <>
-              <Save className="mr-2 h-4 w-4" />
-              {initialRule ? 'Update Rule' : 'Create Rule'}
+              <Save />
+              {initialRule ? t('pages:rules.updateRule') : t('pages:rules.createRule')}
             </>
           )}
         </Button>

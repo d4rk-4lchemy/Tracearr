@@ -137,6 +137,19 @@
     "unauthorized": "No está autorizado para realizar esta acción",
     "unexpectedError": "Ha ocurrido un error inesperado. Inténtalo de nuevo."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Acciones",
     "active": "Activo",
@@ -249,6 +262,12 @@
     "searchTitles": "Buscar títulos, usuarios...",
     "searchUsers": "Buscar usuarios..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Emby",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Éxito"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Seleccionar todos en la página",
-    "selectAllTotal": "Seleccionar todos los elementos {{total}}",
     "selectRow": "Seleccionar fila"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "Todo",
@@ -293,6 +320,11 @@
     "thisWeek": "Esta semana",
     "today": "Hoy",
     "yesterday": "Ayer"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "km",

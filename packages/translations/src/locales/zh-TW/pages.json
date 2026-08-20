@@ -230,7 +230,6 @@
       "noDuplicatesDesc": "No titles with more than one physical file detected.",
       "noDuplicatesTitle": "No duplicates found",
       "of": "of",
-      "pageOf": "Page {{page}} of {{totalPages}}",
       "predictions": "Predictions",
       "recoverable": "recoverable",
       "sameServer": "Same server",
@@ -666,11 +665,74 @@
     "blockedCountries": "被封锁的国家",
     "blocklist": "黑名单(屏蔽这些国家)",
     "builder": {
+      "actions": {
+        "add": "Add action",
+        "description": "Optional side-effects when conditions are met. A violation is always created automatically.",
+        "remove": "Remove action",
+        "title": "Additional Actions",
+        "typeLabel": "Action",
+        "typePlaceholder": "Select action"
+      },
+      "activeLabel": "Active",
+      "clearSelection": "Clear selection",
+      "conditions": {
+        "addCondition": "Add OR condition",
+        "addGroup": "Add AND condition group",
+        "allCountries": "All countries",
+        "allDeviceTypes": "All device types",
+        "description": "Define when this rule should trigger. Groups are combined with AND logic.",
+        "deviceTypesHint": "Only count streams from the selected device types. Leave empty to count every device.",
+        "fieldPlaceholder": "Select field",
+        "groupHint": "conditions match with OR logic",
+        "groupLabel": "Group {{number}}",
+        "no": "No",
+        "operatorPlaceholder": "Operator",
+        "recentlySeen": "Recently seen",
+        "removeCondition": "Remove condition",
+        "removeGroup": "Remove group",
+        "title": "Conditions",
+        "uniqueDevices": "Unique devices",
+        "uniqueDevicesHint": "When checked, only compares sessions from different physical devices. Uncheck to include all sessions regardless of device.",
+        "uniqueIps": "Unique IPs",
+        "uniqueIpsHint": "When checked, only counts sessions from different IP addresses. Use this to detect account sharing while allowing same-household usage.",
+        "windowPrefix": "in",
+        "windowUnit": "hrs",
+        "yes": "Yes"
+      },
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
       "destinationDisabled": "Disabled destination",
       "errors": {
-        "sendNeedsDestination": "Pick at least one destination"
+        "conditionRequired": "Each condition group must have at least one condition",
+        "groupRequired": "At least one condition group is required",
+        "nameRequired": "Rule name is required",
+        "scopeIncomplete": "Pick a target for the selected scope",
+        "sendNeedsDestination": "Pick at least one destination",
+        "title": "Please fix the following errors:"
       },
-      "noDestinations": "No destinations yet. Add one to send notifications."
+      "noDestinations": "No destinations yet. Add one to send notifications.",
+      "noMatches": "No matches",
+      "saving": "Saving...",
+      "scope": {
+        "account": "Specific account",
+        "accountLabel": "Account",
+        "accountPlaceholder": "Select account",
+        "enforceAcrossServers": "Enforce across servers",
+        "enforceAcrossServersDescription": "When on, this rule can act on a person's sessions on any of their servers, not just the one that triggered it. Off by default.",
+        "global": "Global",
+        "label": "Scope",
+        "noServers": "No servers connected yet.",
+        "person": "Person (all their servers)",
+        "personLabel": "Person",
+        "personPlaceholder": "Select person",
+        "server": "Specific server",
+        "serverLabel": "Server",
+        "serverPlaceholder": "Select server"
+      },
+      "searchPlaceholder": "Search...",
+      "selectPlaceholder": "Select...",
+      "selectedCount": "{{count}} selected",
+      "severityLabel": "Severity"
     },
     "chooseTemplate": "Choose a Rule Template",
     "chooseTemplateDesc": "Select a pre-configured rule type to get started quickly.",
@@ -834,6 +896,7 @@
       "noReachableConnections": "没有可用的连接",
       "noServersFound": "找不到Plex服务器",
       "noServersFoundHint": "请确保您拥有至少一个Plex服务器",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "recommended": "已推荐",
       "remote": "远程",
       "secure": "安全",
@@ -841,7 +904,6 @@
       "serversConnected_other": "{{count}} 台服务器已连接",
       "showAll": "显示全部",
       "unlinkAccount": "取消链接此Plex账户",
-      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "您确定要取消链接此Plex帐户吗？在您再次链接之前，您将无法从此帐户添加服务器。",
       "unlinkPlexAccount": "取消链接Plex账户"
     }
@@ -883,9 +945,7 @@
     "backToUsers": "返回用户",
     "byRule": "按 / 规则",
     "linkedAccounts": "Linked accounts",
-    "locations": "位置",
     "manual": "手动",
-    "noSessionsFound": "未找到此用户的会话。",
     "noTerminationsFound": "此用户没有流终止。",
     "noViolationsFound": "没有此用户的违规行为。",
     "overallTrust": "Overall Trust",
@@ -903,6 +963,9 @@
     "violations": "违规"
   },
   "users": {
+    "filterHasAccessTo": "Has access to",
+    "filterHasAccessToHint": "Shows people with an active account on every server selected.",
+    "filterHasAccessToPlaceholder": "Any server",
     "mergeConfirm": "Merge",
     "mergeDialogDescription": "Every server account, session, and violation from the duplicate moves to the primary. The duplicate identity is deleted.",
     "mergeDialogTitle": "Merge users",
@@ -937,8 +1000,8 @@
     "title": "用户"
   },
   "violations": {
-    "allClear": "全部清除",
     "allPeople": "All people",
+    "allRules": "All rules",
     "allSeverities": "所有严重程度",
     "allStatuses": "所有状态",
     "detail": {
@@ -974,8 +1037,6 @@
     "dismissViolationsConfirm": "您确定要删除吗？这将永久从违反日志中删除它们并恢复相关的信任分数。",
     "filterByPerson": "Filter violations by this person",
     "filterPeople": "People",
-    "noMatches": "无匹配",
-    "noViolationsDetected": "没有检测到违反规则的行为",
     "noViolationsFound": "未发现任何违规行为",
     "noViolationsRecorded": "尚未记录任何违反行为。",
     "peopleSelectedCount": "{{count}} people",
@@ -984,7 +1045,6 @@
     "personFilterPlaceholder": "Filter by person",
     "selectAllViolations": "选择所有符合筛选条件的{{count}}个违规项",
     "title": "违规",
-    "tryAdjustingFilters": "尝试调整筛选条件",
-    "violationLog": "违规日志"
+    "tryAdjustingFilters": "尝试调整筛选条件"
   }
 }

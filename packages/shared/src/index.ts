@@ -357,7 +357,10 @@ export {
   mergeUsersBodySchema,
   mergeUserParamSchema,
   splitServerUserParamSchema,
-  userSortFieldSchema,
+  USER_SORT_FIELDS,
+  userRosterFilterSchema,
+  userListQuerySchema,
+  bulkResetTrustBodySchema,
   // Session
   sessionQuerySchema,
   historyQuerySchema,
@@ -392,8 +395,10 @@ export {
   bulkDeleteRulesSchema,
   bulkMigrateRulesSchema,
   // Violation
-  violationSortFieldSchema,
+  VIOLATION_SORT_FIELDS,
+  violationRosterFilterSchema,
   violationQuerySchema,
+  violationBulkBodySchema,
   violationIdParamSchema,
   // Stats
   serverIdFilterSchema,
@@ -476,9 +481,11 @@ export type {
   BulkUpdateRulesInput,
   BulkDeleteRulesInput,
   BulkMigrateRulesInput,
-  ViolationQueryInput,
+  ViolationRosterFilters,
+  ViolationBulkBody,
   ViolationSortField,
   UserSortField,
+  UserRosterFilters,
   ServerIdFilterInput,
   DashboardQueryInput,
   StatPeriod,
@@ -603,6 +610,10 @@ export { formatEpisodeLabel, type FormatEpisodeLabelOptions } from './media.js';
 
 // Alphabet rail letters
 export { LETTER_RAIL_ALPHABET } from './catalogLetters.js';
+
+// List-query contract
+export { listSortSchema, listDateBoundSchema, listPageCount } from './listQuery.js';
+export type { ListMeta, ListResponse } from './listQuery.js';
 
 // Resolution classification
 export {

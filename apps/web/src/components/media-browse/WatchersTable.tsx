@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { formatCompactAge } from '@/lib/formatters';
 import { formatNumber } from '@/components/ui/stat-card';
@@ -67,9 +68,7 @@ export function WatchersTable({
       ) : isLoading || watchers === undefined ? (
         <WatchersTableSkeleton />
       ) : watchers.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          {t('media.detail.watchers.empty')}
-        </p>
+        <EmptyState title={t('media.detail.watchers.empty')} className="py-6" />
       ) : (
         <div className="overflow-x-auto">
           <Table aria-label={t('media.detail.watchers.title')}>

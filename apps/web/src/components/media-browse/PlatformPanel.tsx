@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { formatDuration } from '@/lib/formatters';
 import { formatNumber } from '@/components/ui/stat-card';
@@ -52,9 +53,7 @@ export function PlatformPanel({ data, isLoading, isError, onRetry }: PlatformPan
       ) : isLoading || data === undefined ? (
         <PlatformPanelSkeleton />
       ) : data.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          {t('media.detail.platforms.empty')}
-        </p>
+        <EmptyState title={t('media.detail.platforms.empty')} className="py-6" />
       ) : (
         <div className="overflow-x-auto">
           <Table aria-label={t('media.detail.platforms.title')}>

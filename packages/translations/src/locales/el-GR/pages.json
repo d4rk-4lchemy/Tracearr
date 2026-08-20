@@ -230,7 +230,6 @@
       "noDuplicatesDesc": "No titles with more than one physical file detected.",
       "noDuplicatesTitle": "No duplicates found",
       "of": "από",
-      "pageOf": "Page {{page}} of {{totalPages}}",
       "predictions": "Προβλέψεις",
       "recoverable": "ανακτήσιμο",
       "sameServer": "Same server",
@@ -666,11 +665,74 @@
     "blockedCountries": "Αποκλεισμένες Χώρες",
     "blocklist": "Λίστα αποκλεισμών (μπλοκ αυτών των χωρών)",
     "builder": {
+      "actions": {
+        "add": "Add action",
+        "description": "Optional side-effects when conditions are met. A violation is always created automatically.",
+        "remove": "Remove action",
+        "title": "Additional Actions",
+        "typeLabel": "Action",
+        "typePlaceholder": "Select action"
+      },
+      "activeLabel": "Active",
+      "clearSelection": "Clear selection",
+      "conditions": {
+        "addCondition": "Add OR condition",
+        "addGroup": "Add AND condition group",
+        "allCountries": "All countries",
+        "allDeviceTypes": "All device types",
+        "description": "Define when this rule should trigger. Groups are combined with AND logic.",
+        "deviceTypesHint": "Only count streams from the selected device types. Leave empty to count every device.",
+        "fieldPlaceholder": "Select field",
+        "groupHint": "conditions match with OR logic",
+        "groupLabel": "Group {{number}}",
+        "no": "No",
+        "operatorPlaceholder": "Operator",
+        "recentlySeen": "Recently seen",
+        "removeCondition": "Remove condition",
+        "removeGroup": "Remove group",
+        "title": "Conditions",
+        "uniqueDevices": "Unique devices",
+        "uniqueDevicesHint": "When checked, only compares sessions from different physical devices. Uncheck to include all sessions regardless of device.",
+        "uniqueIps": "Unique IPs",
+        "uniqueIpsHint": "When checked, only counts sessions from different IP addresses. Use this to detect account sharing while allowing same-household usage.",
+        "windowPrefix": "in",
+        "windowUnit": "hrs",
+        "yes": "Yes"
+      },
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
       "destinationDisabled": "Disabled destination",
       "errors": {
-        "sendNeedsDestination": "Pick at least one destination"
+        "conditionRequired": "Each condition group must have at least one condition",
+        "groupRequired": "At least one condition group is required",
+        "nameRequired": "Rule name is required",
+        "scopeIncomplete": "Pick a target for the selected scope",
+        "sendNeedsDestination": "Pick at least one destination",
+        "title": "Please fix the following errors:"
       },
-      "noDestinations": "No destinations yet. Add one to send notifications."
+      "noDestinations": "No destinations yet. Add one to send notifications.",
+      "noMatches": "No matches",
+      "saving": "Saving...",
+      "scope": {
+        "account": "Specific account",
+        "accountLabel": "Account",
+        "accountPlaceholder": "Select account",
+        "enforceAcrossServers": "Enforce across servers",
+        "enforceAcrossServersDescription": "When on, this rule can act on a person's sessions on any of their servers, not just the one that triggered it. Off by default.",
+        "global": "Global",
+        "label": "Scope",
+        "noServers": "No servers connected yet.",
+        "person": "Person (all their servers)",
+        "personLabel": "Person",
+        "personPlaceholder": "Select person",
+        "server": "Specific server",
+        "serverLabel": "Server",
+        "serverPlaceholder": "Select server"
+      },
+      "searchPlaceholder": "Search...",
+      "selectPlaceholder": "Select...",
+      "selectedCount": "{{count}} selected",
+      "severityLabel": "Severity"
     },
     "chooseTemplate": "Επιλέξτε ένα πρότυπο κανόνα",
     "chooseTemplateDesc": "Επιλέξτε έναν προ-ρυθμισμένο τύπο κανόνα για να ξεκινήσετε γρήγορα.",
@@ -834,6 +896,7 @@
       "noReachableConnections": "Δεν υπάρχουν προσβάσιμες συνδέσεις",
       "noServersFound": "Δεν βρέθηκαν διακομιστές Plex",
       "noServersFoundHint": "Βεβαιωθείτε ότι έχετε στην κατοχή σας τουλάχιστον έναν διακομιστή Plex",
+      "reauthorizeAccount": "Reauthorize this Plex account",
       "recommended": "Προτεινόμενο",
       "remote": "Απομακρυσμένο",
       "secure": "Ασφαλές",
@@ -841,7 +904,6 @@
       "serversConnected_other": "{{count}} servers connected",
       "showAll": "Εμφάνιση όλων",
       "unlinkAccount": "Αποσύνδεση αυτού του λογαριασμού Plex",
-      "reauthorizeAccount": "Reauthorize this Plex account",
       "unlinkConfirm": "Είστε βέβαιοι ότι θέλετε να αποσυνδέσετε αυτό το λογαριασμό Plex? Δεν θα είστε σε θέση να προσθέσετε διακομιστές από αυτό το λογαριασμό μέχρι να τον συνδέσετε ξανά.",
       "unlinkPlexAccount": "Αποσύνδεση Λογαριασμού Plex"
     }
@@ -883,9 +945,7 @@
     "backToUsers": "Πίσω στους χρήστες",
     "byRule": "Από / Κανόνα",
     "linkedAccounts": "Linked accounts",
-    "locations": "Τοποθεσίες",
     "manual": "Χειροκίνητα",
-    "noSessionsFound": "Δεν βρέθηκαν συνεδρίες για αυτόν το χρήστη.",
     "noTerminationsFound": "Δεν υπάρχουν τερματισμοί ροής για αυτόν το χρήστη.",
     "noViolationsFound": "Δεν υπάρχουν παραβιάσεις για αυτόν τον χρήστη.",
     "overallTrust": "Overall Trust",
@@ -903,6 +963,9 @@
     "violations": "Παραβάσεις"
   },
   "users": {
+    "filterHasAccessTo": "Has access to",
+    "filterHasAccessToHint": "Shows people with an active account on every server selected.",
+    "filterHasAccessToPlaceholder": "Any server",
     "mergeConfirm": "Merge",
     "mergeDialogDescription": "Every server account, session, and violation from the duplicate moves to the primary. The duplicate identity is deleted.",
     "mergeDialogTitle": "Merge users",
@@ -937,8 +1000,8 @@
     "title": "Χρήστες"
   },
   "violations": {
-    "allClear": "Καθαρισμός Όλων",
     "allPeople": "All people",
+    "allRules": "All rules",
     "allSeverities": "Όλες Οι Σοβαρότητες",
     "allStatuses": "Όλες Οι Καταστάσεις",
     "detail": {
@@ -974,8 +1037,6 @@
     "dismissViolationsConfirm": "Είστε βέβαιοι ότι θέλετε να απορρίψετε? Αυτό θα τους αφαιρέσει από το αρχείο καταγραφής παραβίασης μόνιμα και θα αποκαταστήσει τις σχετικές βαθμολογίες εμπιστοσύνης.",
     "filterByPerson": "Filter violations by this person",
     "filterPeople": "People",
-    "noMatches": "Δεν Υπάρχουν Ταίριασμα",
-    "noViolationsDetected": "Δεν εντοπίστηκαν παραβιάσεις κανόνα",
     "noViolationsFound": "Δεν βρέθηκαν παραβιάσεις",
     "noViolationsRecorded": "Καμία παραβίαση δεν έχει καταγραφεί ακόμα.",
     "peopleSelectedCount": "{{count}} people",
@@ -984,7 +1045,6 @@
     "personFilterPlaceholder": "Filter by person",
     "selectAllViolations": "Επιλογή όλων των φίλτρων {{count}} για παραβιάσεις",
     "title": "Παραβάσεις",
-    "tryAdjustingFilters": "Δοκιμάστε να προσαρμόσετε τα φίλτρα σας",
-    "violationLog": "Καταγραφή Παραβίασης"
+    "tryAdjustingFilters": "Δοκιμάστε να προσαρμόσετε τα φίλτρα σας"
   }
 }

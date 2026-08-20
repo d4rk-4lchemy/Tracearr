@@ -137,6 +137,19 @@
     "unauthorized": "Du har inte behörighet att utföra denna åtgärd",
     "unexpectedError": "Ett oväntat fel uppstod. Försök igen."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Åtgärder",
     "active": "Aktiv",
@@ -249,6 +262,12 @@
     "searchTitles": "Sök titlar, användare...",
     "searchUsers": "Sök användare..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Emby",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Klart"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Välj alla på sidan",
-    "selectAllTotal": "Välj alla {{total}} objekt",
     "selectRow": "Välj rad"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "Hela tiden",
@@ -293,6 +320,11 @@
     "thisWeek": "Denna vecka",
     "today": "Idag",
     "yesterday": "Igår"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "km",

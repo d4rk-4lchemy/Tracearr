@@ -106,7 +106,7 @@ export function TailscaleSettings() {
         </CardHeader>
         <CardContent>
           <Alert>
-            <Info className="h-4 w-4" />
+            <Info />
             <AlertDescription>{t('tailscale.notAvailable')}</AlertDescription>
           </Alert>
         </CardContent>
@@ -162,7 +162,7 @@ export function TailscaleSettings() {
                   onClick={() => enableMutation.mutate(hostname || undefined)}
                   disabled={enableMutation.isPending}
                 >
-                  {enableMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {enableMutation.isPending && <Loader2 className="animate-spin" />}
                   {t('tailscale.enable')}
                 </Button>
                 <Button
@@ -202,16 +202,8 @@ export function TailscaleSettings() {
               </div>
               <div className="flex gap-2">
                 {status.authUrl && (
-                  <Button
-                    variant="default"
-                    onClick={() => {
-                      const authUrl = status.authUrl;
-                      if (authUrl) {
-                        window.open(authUrl, '_blank');
-                      }
-                    }}
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
+                  <Button variant="default" onClick={() => window.open(status.authUrl!, '_blank')}>
+                    <ExternalLink />
                     {t('tailscale.authorize')}
                   </Button>
                 )}
@@ -331,7 +323,7 @@ export function TailscaleSettings() {
           {status.status === 'error' && (
             <div className="space-y-4">
               <Alert variant="destructive">
-                <XCircle className="h-4 w-4" />
+                <XCircle />
                 <AlertDescription>{status.error || t('tailscale.unknownError')}</AlertDescription>
               </Alert>
               <div className="flex gap-2">
@@ -339,7 +331,7 @@ export function TailscaleSettings() {
                   onClick={() => enableMutation.mutate(hostname || undefined)}
                   disabled={enableMutation.isPending}
                 >
-                  {enableMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {enableMutation.isPending && <Loader2 className="animate-spin" />}
                   {t('common:actions.retry')}
                 </Button>
                 <Button variant="destructive" onClick={() => setShowDisableConfirm(true)}>

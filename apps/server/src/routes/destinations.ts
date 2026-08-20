@@ -47,7 +47,9 @@ function assertSafeUrls(kind: DestinationKind, config: Record<string, unknown>):
     try {
       assertSafeProbeUrl(value);
     } catch (error) {
-      throw new Error(`${field.key}: ${error instanceof Error ? error.message : 'blocked url'}`);
+      throw new Error(`${field.key}: ${error instanceof Error ? error.message : 'blocked url'}`, {
+        cause: error,
+      });
     }
   }
 }

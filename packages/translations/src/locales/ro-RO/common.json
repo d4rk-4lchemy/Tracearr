@@ -137,6 +137,19 @@
     "unauthorized": "Nu sunteți autorizat să efectuați această acțiune",
     "unexpectedError": "A apărut o eroare neașteptată. Încercați din nou."
   },
+  "filters": {
+    "anyDate": "Any date",
+    "clearAll": "Clear all",
+    "clearDates": "Clear date range",
+    "clearEndDate": "Clear end date",
+    "clearSearch": "Clear search",
+    "clearStartDate": "Clear start date",
+    "dateAfter": "After {{date}}",
+    "dateBefore": "Before {{date}}",
+    "dateBetween": "{{from}} to {{to}}",
+    "done": "Done",
+    "remove": "Remove {{label}} filter"
+  },
   "labels": {
     "actions": "Acțiuni",
     "active": "Activ",
@@ -249,6 +262,12 @@
     "searchTitles": "Căutare titluri, utilizatori...",
     "searchUsers": "Caută utilizatori..."
   },
+  "serverSelector": {
+    "all": "All servers",
+    "noMatches": "No servers found",
+    "search": "Search servers...",
+    "some": "{{count}} of {{total}} servers"
+  },
   "servers": {
     "emby": "Renate",
     "jellyfin": "Jellyfin",
@@ -282,9 +301,17 @@
     "success": "Succes"
   },
   "table": {
+    "pageOf": "Page {{page}} of {{total}}",
+    "pagination": "Pagination",
     "selectAllOnPage": "Selectaţi toate pe pagină",
-    "selectAllTotal": "Selectați toate elementele {{total}}",
     "selectRow": "Selectare rând"
+  },
+  "tasks": {
+    "queued": "Queued",
+    "running": "Running",
+    "startedAgo": "Started {{time}}",
+    "title": "Running Tasks",
+    "waiting": "Waiting"
   },
   "time": {
     "allTime": "Tot timpul",
@@ -293,6 +320,11 @@
     "thisWeek": "Săptămâna aceasta",
     "today": "Astăzi",
     "yesterday": "Ieri"
+  },
+  "trust": {
+    "caution": "Caution",
+    "trusted": "Trusted",
+    "untrusted": "Untrusted"
   },
   "units": {
     "km": "kilometri",

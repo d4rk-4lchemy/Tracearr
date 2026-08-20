@@ -1,6 +1,6 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
-import reactPlugin from 'eslint-plugin-react';
+import eslintReact from '@eslint-react/eslint-plugin';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import prettierConfig from 'eslint-config-prettier';
 
@@ -57,7 +57,6 @@ export default tseslint.config(
       '@typescript-eslint/no-unnecessary-type-parameters': 'warn',
       '@typescript-eslint/no-confusing-void-expression': 'off',
       '@typescript-eslint/prefer-nullish-coalescing': 'off',
-      '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-invalid-void-type': 'off',
       // Transitional: warn on @deprecated usage during multi-server migration
       '@typescript-eslint/no-deprecated': 'warn',
@@ -66,27 +65,23 @@ export default tseslint.config(
   {
     files: ['**/*.tsx', '**/*.jsx'],
     plugins: {
-      react: reactPlugin,
       'react-hooks': reactHooksPlugin,
+      ...eslintReact.configs['recommended-typescript'].plugins,
     },
     settings: {
-      react: {
-        version: 'detect',
-      },
+      ...eslintReact.configs['recommended-typescript'].settings,
     },
     rules: {
-      ...reactPlugin.configs.recommended.rules,
       ...reactHooksPlugin.configs.recommended.rules,
-      'react/react-in-jsx-scope': 'off',
-      'react/prop-types': 'off',
-      'react/no-unescaped-entities': 'off',
-      'react-hooks/set-state-in-effect': 'off',
-      // Disable React Compiler rules (new in v7) until codebase is ready
+      ...eslintReact.configs['recommended-typescript'].rules,
+      // @eslint-react owns every rule both plugins ship, leaving react-hooks the
+      // four React Compiler rules it has no equivalent for.
+      ...eslintReact.configs['disable-conflict-eslint-plugin-react-hooks'].rules,
+      // The remaining two React Compiler rules. @eslint-react reports the rest of
+      // this family as warnings; these two have no equivalent there and fire on
+      // patterns the codebase has not worked through yet.
       'react-hooks/react-compiler': 'off',
-      'react-hooks/refs': 'off',
       'react-hooks/preserve-manual-memoization': 'off',
-      'react-hooks/static-components': 'off',
-      'react-hooks/purity': 'off',
     },
   },
   {

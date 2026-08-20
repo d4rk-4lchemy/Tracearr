@@ -624,6 +624,13 @@
       "when": 1786986044956,
       "tag": "0088_warm_mac_gargan",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1787178482298,
+      "tag": "0089_zippy_frank_castle",
+      "breakpoints": true
     }
   ]
 }

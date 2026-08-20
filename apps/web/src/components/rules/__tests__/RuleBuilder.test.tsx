@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Destination } from '@tracearr/shared';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { RuleBuilder } from '../RuleBuilder';
+import { RuleBuilder, type RuleBuilderInput } from '../RuleBuilder';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -14,7 +14,7 @@ vi.mock('@/hooks/useServer', () => ({
 }));
 
 vi.mock('@/hooks/queries/useUsers', () => ({
-  useUsers: () => ({ data: undefined }),
+  useUsers: () => ({ data: { data: [{ userId: 'usr-3', username: 'ada', identityName: 'Ada' }] } }),
 }));
 
 vi.mock('@/hooks/queries', () => ({
@@ -49,7 +49,7 @@ const discord: Destination = {
 const onSave = vi.fn();
 const onCancel = vi.fn();
 
-function renderBuilder(to: string[]) {
+function renderBuilder(to: string[], scope: Partial<RuleBuilderInput> = {}) {
   return render(
     <TooltipProvider>
       <RuleBuilder
@@ -57,6 +57,7 @@ function renderBuilder(to: string[]) {
           id: 'rule-1',
           name: 'Too many streams',
           isActive: true,
+          ...scope,
           conditions: {
             groups: [{ conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 3 }] }],
           },
@@ -83,9 +84,9 @@ describe('RuleBuilder validation', () => {
     const user = userEvent.setup();
     renderBuilder([]);
 
-    await user.click(screen.getByRole('button', { name: /Update Rule/ }));
+    await user.click(screen.getByRole('button', { name: /rules.updateRule/ }));
 
-    expect(screen.getByText('rules.builder.errors.sendNeedsDestination')).toBeInTheDocument();
+    expect(screen.getByText('pages:rules.builder.errors.sendNeedsDestination')).toBeInTheDocument();
     expect(onSave).not.toHaveBeenCalled();
   });
 
@@ -93,9 +94,36 @@ describe('RuleBuilder validation', () => {
     const user = userEvent.setup();
     renderBuilder(['dest-discord']);
 
-    await user.click(screen.getByRole('button', { name: /Update Rule/ }));
+    await user.click(screen.getByRole('button', { name: /rules.updateRule/ }));
 
-    expect(screen.queryByText('rules.builder.errors.sendNeedsDestination')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('pages:rules.builder.errors.sendNeedsDestination')
+    ).not.toBeInTheDocument();
     expect(onSave).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RuleBuilder scope', () => {
+  it('sends only the column the chosen scope owns', async () => {
+    const user = userEvent.setup();
+    renderBuilder(['dest-discord'], { userId: 'usr-3' });
+
+    await user.click(screen.getByRole('button', { name: /rules.updateRule/ }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'usr-3', serverId: null, serverUserId: null })
+    );
+  });
+
+  it('blocks save when a targeted scope has no target picked', async () => {
+    const user = userEvent.setup();
+    renderBuilder(['dest-discord'], { serverId: 'srv-1' });
+
+    await user.click(screen.getByText('rules.builder.scope.person'));
+    await user.click(screen.getByRole('button', { name: /rules.updateRule/ }));
+
+    expect(screen.getByText('pages:rules.builder.errors.scopeIncomplete')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

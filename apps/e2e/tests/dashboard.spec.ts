@@ -31,9 +31,10 @@ test.describe('Dashboard', () => {
     await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Map' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'History' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Stats' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Media' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Performance' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Activity' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'By User' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Overview' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Bandwidth' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Users', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Rules' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Violations' })).toBeVisible();

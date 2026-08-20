@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 import type {
   Condition,
@@ -27,45 +28,39 @@ export function ConditionGroup({
   filterOptions,
   allowedFields,
 }: ConditionGroupProps) {
-  // Add a new condition to the group
+  const { t } = useTranslation('pages');
+
   const addCondition = () => {
-    const defaultField = 'concurrent_streams';
+    const field = 'concurrent_streams';
     const newCondition: Condition = {
-      field: defaultField,
-      operator: getDefaultOperatorForField(defaultField),
-      value: getDefaultValueForField(defaultField),
+      field,
+      operator: getDefaultOperatorForField(field),
+      value: getDefaultValueForField(field),
     };
-    onChange({
-      conditions: [...group.conditions, newCondition],
-    });
+    onChange({ conditions: [...group.conditions, newCondition] });
   };
 
-  // Update a condition
   const updateCondition = (index: number, condition: Condition) => {
-    const newConditions = [...group.conditions];
-    newConditions[index] = condition;
-    onChange({ conditions: newConditions });
+    const conditions = [...group.conditions];
+    conditions[index] = condition;
+    onChange({ conditions });
   };
 
-  // Remove a condition
   const removeCondition = (index: number) => {
     if (group.conditions.length === 1) {
-      // If last condition, remove the entire group
       onRemove();
-    } else {
-      const newConditions = group.conditions.filter((_, i) => i !== index);
-      onChange({ conditions: newConditions });
+      return;
     }
+    onChange({ conditions: group.conditions.filter((_, i) => i !== index) });
   };
 
   return (
     <div className="border-border bg-card rounded-lg border p-4">
-      {/* Group Header */}
       <div className="mb-3 flex items-center justify-between">
         <span className="text-muted-foreground text-sm font-medium">
-          Group {groupIndex + 1}
+          {t('rules.builder.conditions.groupLabel', { number: groupIndex + 1 })}
           <span className="ml-2 text-xs opacity-60">
-            (conditions match with <span className="font-bold">OR</span> logic)
+            ({t('rules.builder.conditions.groupHint')})
           </span>
         </span>
         {showRemove && (
@@ -76,12 +71,11 @@ export function ConditionGroup({
             className="text-muted-foreground hover:text-destructive"
             onClick={onRemove}
           >
-            Remove group
+            {t('rules.builder.conditions.removeGroup')}
           </Button>
         )}
       </div>
 
-      {/* Conditions */}
       <div className="space-y-2">
         {group.conditions.map((condition, index) => (
           <div key={index}>
@@ -104,7 +98,6 @@ export function ConditionGroup({
         ))}
       </div>
 
-      {/* Add Condition Button */}
       <Button
         type="button"
         variant="ghost"
@@ -112,8 +105,8 @@ export function ConditionGroup({
         className="text-muted-foreground mt-3"
         onClick={addCondition}
       >
-        <Plus className="mr-1 h-4 w-4" />
-        Add <span className="font-bold">OR</span> condition
+        <Plus />
+        {t('rules.builder.conditions.addCondition')}
       </Button>
     </div>
   );

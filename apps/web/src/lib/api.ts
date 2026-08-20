@@ -10,6 +10,8 @@ import type {
   ActiveSession,
   Rule,
   ViolationWithDetails,
+  ViolationRosterFilters,
+  ViolationSortField,
   DashboardStats,
   PlayStats,
   UserStats,
@@ -83,6 +85,8 @@ import type {
   MergeSuggestion,
   ServerUserSplitResult,
   UserSortField,
+  UserRosterFilters,
+  ListResponse,
   // Media browsing types
   WatchedState,
   CatalogResponse,
@@ -129,6 +133,30 @@ export interface LibraryStatusResponse {
   earliestItemDate: string | null;
   earliestSnapshotDate: string | null;
   backfillDays: number | null;
+}
+
+/** Roster query params: the server's own filter schema plus paging and sort. */
+export type UserListParams = Partial<UserRosterFilters> & {
+  page?: number;
+  pageSize?: number;
+  orderBy?: UserSortField;
+  orderDir?: 'asc' | 'desc';
+};
+
+/** Violation query params: the server's own filter schema plus paging and sort. */
+export type ViolationListParams = Partial<ViolationRosterFilters> & {
+  page?: number;
+  pageSize?: number;
+  orderBy?: ViolationSortField;
+  orderDir?: 'asc' | 'desc';
+};
+
+export interface BulkViolationParams {
+  ids?: string[];
+  selectAll?: boolean;
+  /** The filters the table was showing; a narrower set dismisses more
+   *  violations than the user could see. */
+  filters?: Partial<ViolationRosterFilters>;
 }
 
 // GET /library/media/:id/history has no shared-package response type yet (its
@@ -594,30 +622,17 @@ class ApiClient {
 
   // Users
   users = {
-    list: (params?: {
-      page?: number;
-      pageSize?: number;
-      serverId?: string;
-      serverIds?: string[];
-      includeRemoved?: boolean;
-      search?: string;
-      orderBy?: UserSortField;
-      orderDir?: 'asc' | 'desc';
-    }) => {
+    list: (params: UserListParams = {}) => {
       const searchParams = new URLSearchParams();
-      if (params?.page) searchParams.set('page', String(params.page));
-      if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-      if (params?.serverId) searchParams.set('serverId', params.serverId);
-      if (params?.serverIds?.length) {
-        for (const id of params.serverIds) {
-          searchParams.append('serverIds', id);
+      for (const [key, value] of Object.entries(params)) {
+        if (value === undefined || value === false || value === '') continue;
+        if (Array.isArray(value)) {
+          for (const entry of value) searchParams.append(key, entry);
+        } else {
+          searchParams.set(key, String(value));
         }
       }
-      if (params?.includeRemoved) searchParams.set('includeRemoved', 'true');
-      if (params?.search) searchParams.set('search', params.search);
-      if (params?.orderBy) searchParams.set('orderBy', params.orderBy);
-      if (params?.orderDir) searchParams.set('orderDir', params.orderDir);
-      return this.request<PaginatedResponse<ServerUserWithIdentity>>(
+      return this.request<ListResponse<ServerUserWithIdentity>>(
         `/users?${searchParams.toString()}`
       );
     },
@@ -669,7 +684,9 @@ class ApiClient {
     bulkResetTrust: (params: {
       ids?: string[];
       selectAll?: boolean;
-      filters?: { serverId?: string; serverIds?: string[]; includeRemoved?: boolean };
+      /** The roster filters the table was showing; a narrower set resets more
+       *  people than the user could see. */
+      filters?: Partial<UserRosterFilters>;
     }) =>
       this.request<{ success: boolean; updated: number }>('/users/bulk/reset-trust', {
         method: 'POST',
@@ -863,39 +880,19 @@ class ApiClient {
   // Violations
   violations = {
     get: (id: string) => this.request<ViolationWithDetails>(`/violations/${id}`),
-    list: (params?: {
-      page?: number;
-      pageSize?: number;
-      serverUserId?: string;
-      userId?: string;
-      userIds?: string[];
-      severity?: string;
-      acknowledged?: boolean;
-      serverIds?: string[];
-      orderBy?: string;
-      orderDir?: 'asc' | 'desc';
-    }) => {
+    list: (params: ViolationListParams = {}) => {
       const searchParams = new URLSearchParams();
-      if (params?.page) searchParams.set('page', String(params.page));
-      if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-      if (params?.serverUserId) searchParams.set('serverUserId', params.serverUserId);
-      if (params?.userId) searchParams.set('userId', params.userId);
-      if (params?.userIds?.length) {
-        for (const id of params.userIds) {
-          searchParams.append('userIds', id);
+      for (const [key, value] of Object.entries(params)) {
+        // `acknowledged: false` is the "pending only" filter, so unlike the
+        // roster list a false here must survive onto the wire.
+        if (value === undefined || value === '') continue;
+        if (Array.isArray(value)) {
+          for (const entry of value) searchParams.append(key, entry);
+        } else {
+          searchParams.set(key, String(value));
         }
       }
-      if (params?.severity) searchParams.set('severity', params.severity);
-      if (params?.acknowledged !== undefined)
-        searchParams.set('acknowledged', String(params.acknowledged));
-      if (params?.serverIds?.length) {
-        for (const id of params.serverIds) {
-          searchParams.append('serverIds', id);
-        }
-      }
-      if (params?.orderBy) searchParams.set('orderBy', params.orderBy);
-      if (params?.orderDir) searchParams.set('orderDir', params.orderDir);
-      return this.request<PaginatedResponse<ViolationWithDetails>>(
+      return this.request<ListResponse<ViolationWithDetails>>(
         `/violations?${searchParams.toString()}`
       );
     },
@@ -905,32 +902,12 @@ class ApiClient {
         body: '{}',
       }),
     dismiss: (id: string) => this.request<void>(`/violations/${id}`, { method: 'DELETE' }),
-    bulkAcknowledge: (params: {
-      ids?: string[];
-      selectAll?: boolean;
-      filters?: {
-        serverIds?: string[];
-        severity?: string;
-        acknowledged?: boolean;
-        userId?: string;
-        userIds?: string[];
-      };
-    }) =>
+    bulkAcknowledge: (params: BulkViolationParams) =>
       this.request<{ success: boolean; acknowledged: number }>('/violations/bulk/acknowledge', {
         method: 'POST',
         body: JSON.stringify(params),
       }),
-    bulkDismiss: (params: {
-      ids?: string[];
-      selectAll?: boolean;
-      filters?: {
-        serverIds?: string[];
-        severity?: string;
-        acknowledged?: boolean;
-        userId?: string;
-        userIds?: string[];
-      };
-    }) =>
+    bulkDismiss: (params: BulkViolationParams) =>
       this.request<{ success: boolean; dismissed: number }>('/violations/bulk', {
         method: 'DELETE',
         body: JSON.stringify(params),

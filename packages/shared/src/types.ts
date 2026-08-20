@@ -107,6 +107,17 @@ export interface ServerUserWithIdentity extends ServerUser {
   // this representative account's own score.
   // Only populated by the list endpoint; absent on detail endpoints (/users/:id, /full).
   identityTrustScore?: number;
+  // Earliest join and latest activity across every account this person has,
+  // distinct from the representative account's own joinedAt/lastActivityAt.
+  // Only populated by the list endpoint.
+  identityJoinedAt?: Date | string | null;
+  identityLastActivityAt?: Date | string | null;
+  // Server-computed: whether this identity can log in at all. Wider than
+  // canLogin(role) - it also counts a password hash, a linked Plex account and
+  // any auth account. A merge can only ever absorb into a login-capable target,
+  // so deriving this on the client from role alone picks the wrong direction.
+  // Only populated by the list endpoint.
+  loginCapable?: boolean;
 }
 
 // Server User detail with stats - returned by GET /users/:id

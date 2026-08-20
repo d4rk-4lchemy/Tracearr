@@ -148,7 +148,7 @@ export async function terminateSession(
   // Attempt to terminate the session
   let success = false;
   let errorMessage: string | null = null;
-  let outcome: TerminationOutcome = 'failed';
+  let outcome: TerminationOutcome;
 
   try {
     await client.terminateSession(terminationSessionId, reason);

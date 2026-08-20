@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `feature/prepare-for-2.2.0`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `bf662a89`
+- Source branch/SHA inspected: `main` at `6fc80e54`
 - Last shared upstream commit found during inspection: `bf662a89`
-- Latest upstream commit merged into the current working tree: `bf662a89`
+- Latest upstream commit merged into the current working tree: `6fc80e54`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -215,6 +215,15 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `6fc80e54` was merged into `feature/prepare-for-2.2.0`
+  on August 20, 2026. The upstream `0089_zippy_frank_castle` migration,
+  user identity rollups, server-list filtering, dashboard/navigation refresh,
+  dependency/toolchain updates, and translation refresh were retained.
+  Dispatcharr remains present in shared server contracts and settings; its
+  fork migrations remain in the separate `fork-migrations` ledger. The History
+  table now uses upstream's data-table structure while preserving Dispatcharr
+  Live TV labels and the catch-up indicator.
 
 - Upstream `main` at `bf662a89` was merged into `feature/prepare-for-2.2.0`
   on August 18, 2026. The upstream Plex re-authentication/token-reconciliation
