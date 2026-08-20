@@ -912,14 +912,23 @@ export async function recomputeIdentityAggregates(
     .where(and(eq(serverUsers.userId, userId), isNull(violations.dismissedAt)));
 
   const accounts = accountResult[0];
+  // Raw SQL aggregate expressions are returned by pg as timestamp strings,
+  // unlike schema-backed timestamp columns. Normalize them before handing the
+  // values back to Drizzle's timestamp encoder on the update below.
+  const firstJoinedAt = accounts?.firstJoinedAt
+    ? new Date(accounts.firstJoinedAt)
+    : null;
+  const lastActivityAt = accounts?.lastActivityAt
+    ? new Date(accounts.lastActivityAt)
+    : null;
 
   await executor
     .update(users)
     .set({
       aggregateTrustScore: accounts?.trust ?? 100,
       totalViolations: violationResult[0]?.count ?? 0,
-      firstJoinedAt: accounts?.firstJoinedAt ?? null,
-      lastActivityAt: accounts?.lastActivityAt ?? null,
+      firstJoinedAt,
+      lastActivityAt,
       updatedAt: new Date(),
     })
     .where(eq(users.id, userId));

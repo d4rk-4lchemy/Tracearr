@@ -460,7 +460,7 @@ describe('bulk endpoints - people (userIds) multiselect filter', () => {
 
     expect(multiResponse.statusCode).toBe(200);
     const multiBody = multiResponse.json();
-    expect(multiBody.total).toBe(2);
+    expect(multiBody.meta.total).toBe(2);
     const multiUserIds = multiBody.data
       .map((v: { user: { userId: string } }) => v.user.userId)
       .sort();
@@ -468,7 +468,7 @@ describe('bulk endpoints - people (userIds) multiselect filter', () => {
 
     expect(singularResponse.statusCode).toBe(200);
     const singularBody = singularResponse.json();
-    expect(singularBody.total).toBe(1);
+    expect(singularBody.meta.total).toBe(1);
     expect(singularBody.data[0].user.userId).toBe(personC.id);
   });
 
