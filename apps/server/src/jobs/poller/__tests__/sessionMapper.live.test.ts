@@ -74,4 +74,22 @@ describe('pickLiveSessionFields', () => {
     expect(live.seasonNumber).toBeNull();
     expect(live.episodeNumber).toBeNull();
   });
+
+  it('keeps Dispatcharr Catch-up classification and EPG timing on live updates', () => {
+    const live = pickLiveSessionFields({
+      ...processed,
+      mediaType: 'live',
+      dispatcharrPlaybackKind: 'catchup',
+      dispatcharrCatchupAnchorAt: '2026-08-20T10:00:00.000Z',
+      dispatcharrCatchupEpgStartAt: '2026-08-20T09:30:00.000Z',
+      dispatcharrCatchupEpgEndAt: '2026-08-20T11:00:00.000Z',
+    });
+
+    expect(live).toMatchObject({
+      dispatcharrPlaybackKind: 'catchup',
+      dispatcharrCatchupAnchorAt: '2026-08-20T10:00:00.000Z',
+      dispatcharrCatchupEpgStartAt: '2026-08-20T09:30:00.000Z',
+      dispatcharrCatchupEpgEndAt: '2026-08-20T11:00:00.000Z',
+    });
+  });
 });

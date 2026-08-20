@@ -1713,6 +1713,7 @@ export async function processServerSessions(
             quality: processed.quality,
             bitrate: processed.bitrate,
             progressMs: processed.progressMs || null,
+            dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
             lastSeenAt: now,
             plexSessionId: processed.plexSessionId || null,
             isTranscode: processed.isTranscode,

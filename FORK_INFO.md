@@ -223,7 +223,10 @@ When merging or rebasing on source `main`, preserve the Dispatcharr overlay deli
   Dispatcharr remains present in shared server contracts and settings; its
   fork migrations remain in the separate `fork-migrations` ledger. The History
   table now uses upstream's data-table structure while preserving Dispatcharr
-  Live TV labels and the catch-up indicator.
+  Live TV labels and the catch-up indicator. A post-`develop` shared-session
+  mapper refactor had dropped Catch-up classification between `ProcessedSession`,
+  active/pending cache entries, and session persistence; the fork restores
+  `dispatcharrPlaybackKind` and active-card EPG fields across those boundaries.
 
 - Upstream `main` at `bf662a89` was merged into `feature/prepare-for-2.2.0`
   on August 18, 2026. The upstream Plex re-authentication/token-reconciliation

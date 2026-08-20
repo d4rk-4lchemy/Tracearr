@@ -125,6 +125,10 @@ export interface BuildActiveSessionInput {
     platform: string;
     quality: string;
     isTranscode: boolean;
+    dispatcharrPlaybackKind?: 'live' | 'vod' | 'catchup' | null;
+    dispatcharrCatchupAnchorAt?: string | null;
+    dispatcharrCatchupEpgStartAt?: string | null;
+    dispatcharrCatchupEpgEndAt?: string | null;
     videoDecision: string;
     audioDecision: string;
     bitrate: number;
@@ -249,6 +253,10 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     // Quality/transcode info
     quality: processed.quality,
     isTranscode: processed.isTranscode,
+    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
+    dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
+    dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
+    dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
     videoDecision: processed.videoDecision,
     audioDecision: processed.audioDecision,
     bitrate: processed.bitrate,
@@ -359,6 +367,10 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     // Quality/transcode info
     quality: processed.quality,
     isTranscode: processed.isTranscode,
+    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
+    dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
+    dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
+    dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
     videoDecision: processed.videoDecision,
     audioDecision: processed.audioDecision,
     bitrate: processed.bitrate,
@@ -826,6 +838,7 @@ export async function createSessionWithRulesAtomic(
               platform: processed.platform,
               quality: processed.quality,
               isTranscode: processed.isTranscode,
+              dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
               videoDecision: processed.videoDecision,
               audioDecision: processed.audioDecision,
               bitrate: processed.bitrate,

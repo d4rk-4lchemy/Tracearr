@@ -897,6 +897,25 @@ describe('buildRuleContextSessions', () => {
 });
 
 describe('buildActiveSession identity passthrough', () => {
+  it('preserves Dispatcharr Catch-up metadata for active cards and cache', async () => {
+    const { buildActiveSession } = await import('../sessionLifecycle.js');
+
+    const activeSession = buildActiveSession(
+      createMockBuildActiveSessionInput({
+        mediaType: 'live',
+        dispatcharrPlaybackKind: 'catchup',
+        dispatcharrCatchupAnchorAt: '2026-08-20T10:00:00.000Z',
+        dispatcharrCatchupEpgStartAt: '2026-08-20T09:30:00.000Z',
+        dispatcharrCatchupEpgEndAt: '2026-08-20T11:00:00.000Z',
+      })
+    );
+
+    expect(activeSession.dispatcharrPlaybackKind).toBe('catchup');
+    expect(activeSession.dispatcharrCatchupAnchorAt).toBe('2026-08-20T10:00:00.000Z');
+    expect(activeSession.dispatcharrCatchupEpgStartAt).toBe('2026-08-20T09:30:00.000Z');
+    expect(activeSession.dispatcharrCatchupEpgEndAt).toBe('2026-08-20T11:00:00.000Z');
+  });
+
   it('carries media identity fields from processed.identity onto the ActiveSession', async () => {
     const { buildActiveSession } = await import('../sessionLifecycle.js');
 
