@@ -84,6 +84,8 @@ export function FilterBar<S extends FilterState>({
 
   const panelCount = countActiveFilters(panelDescriptors, value);
   const chips = activeFilterChips(descriptors, value);
+  // An inline field draws no chip of its own, but Clear all still has something to clear.
+  const anyActive = countActiveFilters(descriptors, value) > 0;
 
   const update = (key: string, next: FilterValue) => onChange(setFilterValue(value, key, next));
 
@@ -168,7 +170,7 @@ export function FilterBar<S extends FilterState>({
         {children}
       </div>
 
-      {chips.length > 0 && (
+      {anyActive && (
         <div className="flex flex-wrap items-center gap-2">
           {chips.map((chip) => (
             <FilterChip

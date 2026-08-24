@@ -13,7 +13,7 @@ const {
   mockCreateMediaServerClient,
   mockCalculatePauseAccumulation,
   mockLoadEvaluationContext,
-  mockGetActiveRulesV2,
+  mockGetActiveAutomations,
   mockDb,
   mockUpdateReturning,
   mockDispatch,
@@ -30,7 +30,7 @@ const {
     mockCreateMediaServerClient: vi.fn(),
     mockCalculatePauseAccumulation: vi.fn(),
     mockLoadEvaluationContext: vi.fn(),
-    mockGetActiveRulesV2: vi.fn(),
+    mockGetActiveAutomations: vi.fn(),
     mockUpdateReturning: updateReturning,
     mockDispatch: vi.fn().mockResolvedValue({ violations: [], outcomes: [] }),
     mockDb: {
@@ -95,7 +95,7 @@ vi.mock('../poller/stateTracker.js', () => ({
   updateConfirmationState: vi.fn().mockImplementation((state) => state),
 }));
 vi.mock('../poller/database.js', () => ({
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   // Matches the existing row's serverUserId so the paused-event cross-user
   // guard lets these updates through.
   getServerUserIdByExternalId: vi.fn().mockResolvedValue('server-user-1'),
@@ -119,16 +119,16 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   handleQualityChangeFallout: vi.fn(),
   confirmAndPersistSession: vi.fn(),
 }));
-vi.mock('../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
-vi.mock('../../services/rules/events/contextAssembly.js', () => ({
+vi.mock('../../services/automations/events/contextAssembly.js', () => ({
   loadEvaluationContext: mockLoadEvaluationContext,
   loadEvaluationServerUser: vi.fn().mockResolvedValue(null),
   toRuleSession: vi.fn().mockImplementation((session, overrides) => ({ ...session, ...overrides })),
   assembleEvaluationInputs: vi.fn().mockResolvedValue({
-    activeRulesV2: [],
+    activeAutomations: [],
     activeSessions: [],
     recentSessions: [],
     identityServerUserIds: [],
@@ -178,7 +178,7 @@ const evaluationContext = {
     identityServerUserIds: [],
   },
   inputs: {
-    activeRulesV2: [{ id: 'rule-1' }],
+    activeAutomations: [{ id: 'rule-1' }],
     activeSessions: [],
     recentSessions: [],
     identityServerUserIds: [],
@@ -204,7 +204,7 @@ describe('SSE processor pause edge', () => {
     mockSseManager.removeAllListeners();
     mockUpdateReturning.mockResolvedValue([{ id: EXISTING_SESSION_ID }]);
 
-    mockGetActiveRulesV2.mockResolvedValue([{ id: 'rule-1' }]);
+    mockGetActiveAutomations.mockResolvedValue([{ id: 'rule-1' }]);
     mockLoadEvaluationContext.mockResolvedValue(evaluationContext);
     mockCalculatePauseAccumulation.mockReturnValue({ lastPausedAt: null, pausedDurationMs: 0 });
     mockCreateMediaServerClient.mockReturnValue({

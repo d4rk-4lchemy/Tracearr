@@ -1,19 +1,19 @@
 /**
  * Inactivity Check Queue - hourly dispatch of account.inactive_for.
- * Rules carrying an inactive_days condition are evaluated, recorded and acted
+ * Rules carrying an account.inactive_for trigger are evaluated, recorded and acted
  * on by the shared rule pipeline; this file only finds the candidate accounts.
  */
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, lte, or, type SQL } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
-import { TIME_MS, type ServerType } from '@tracearr/shared';
+import { TIME_MS, type EngineAutomation, type ServerType } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { serverUsers, users, servers } from '../db/schema.js';
-import { dispatch } from '../services/rules/events/dispatcher.js';
-import { hasInactivityCondition } from '../services/rules/engine.js';
+import { dispatch } from '../services/automations/events/dispatcher.js';
+import { matchesTrigger, triggerNodeFor } from '../services/automations/events/evaluate.js';
 import { isMaintenance } from '../serverState.js';
-import { batchGetIdentityServerUserIds, getActiveRulesV2 } from './poller/database.js';
+import { batchGetIdentityServerUserIds, getActiveAutomations } from './poller/database.js';
 import { broadcastViolations } from './poller/violations.js';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 
@@ -146,12 +146,12 @@ export async function scheduleInactivityChecks(): Promise<void> {
   // Remove any existing job schedulers
   const schedulers = await inactivityQueue.getJobSchedulers();
   for (const scheduler of schedulers) {
-    if (scheduler.id) {
-      await inactivityQueue.removeJobScheduler(scheduler.id);
-    }
+    await inactivityQueue.removeJobScheduler(scheduler.key);
   }
 
-  const activeRules = (await getActiveRulesV2()).filter(hasInactivityCondition);
+  const activeRules = (await getActiveAutomations()).filter((r) =>
+    matchesTrigger(r, 'account.inactive_for')
+  );
 
   if (activeRules.length === 0) {
     console.log('[Inactivity] No active inactivity rules found');
@@ -198,14 +198,22 @@ interface CandidateRow {
   serverType: ServerType;
 }
 
+/** The trigger's own threshold, so an automation only ever sees accounts idle long enough for it. */
+function inactiveSince(rule: EngineAutomation, now: number): Date | null {
+  const node = triggerNodeFor(rule, 'account.inactive_for');
+  if (node?.type !== 'account.inactive_for') return null;
+  return new Date(now - node.params.days * TIME_MS.DAY);
+}
+
 /**
  * Process an inactivity check job
  */
 async function processInactivityCheck(job: Job<InactivityCheckJobData>): Promise<void> {
   console.log(`[Inactivity] Processing check (job ${job.id})`);
 
-  const activeRules = (await getActiveRulesV2()).filter(
-    (r) => hasInactivityCondition(r) && (!job.data.ruleId || r.id === job.data.ruleId)
+  const activeRules = (await getActiveAutomations()).filter(
+    (r) =>
+      matchesTrigger(r, 'account.inactive_for') && (!job.data.ruleId || r.id === job.data.ruleId)
   );
   if (activeRules.length === 0) {
     console.log('[Inactivity] No active inactivity rules to check');
@@ -215,11 +223,18 @@ async function processInactivityCheck(job: Job<InactivityCheckJobData>): Promise
   // One dispatch per distinct account across every rule's scope; the engine's own
   // per-rule scope filters decide which rules apply to which account.
   const candidates = new Map<string, CandidateRow>();
+  const now = Date.now();
   for (const rule of activeRules) {
-    const scopeFilters = [isNull(serverUsers.removedAt)];
+    const since = inactiveSince(rule, now);
+    const scopeFilters: (SQL | undefined)[] = [isNull(serverUsers.removedAt)];
     if (rule.serverUserId) scopeFilters.push(eq(serverUsers.id, rule.serverUserId));
     if (rule.serverId) scopeFilters.push(eq(serverUsers.serverId, rule.serverId));
     if (rule.userId) scopeFilters.push(eq(serverUsers.userId, rule.userId));
+    if (since) {
+      scopeFilters.push(
+        or(isNull(serverUsers.lastActivityAt), lte(serverUsers.lastActivityAt, since))
+      );
+    }
 
     const rows = await db
       .select({
@@ -269,7 +284,7 @@ async function processInactivityCheck(job: Job<InactivityCheckJobData>): Promise
           session: null,
         },
         {
-          activeRulesV2: activeRules,
+          activeAutomations: activeRules,
           activeSessions: [],
           recentSessions: [],
           identityServerUserIds,

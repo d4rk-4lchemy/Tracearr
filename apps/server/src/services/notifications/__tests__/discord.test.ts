@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ViolationWithDetails } from '@tracearr/shared';
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { discordType, type DiscordEmbed } from '../destinations/discord.js';
+import type { NotificationEvent } from '../events.js';
 import type { RenderContext } from '../destinations/types.js';
 
 const config = { webhookUrl: 'https://discord.com/api/webhooks/123/abc' };
@@ -36,6 +37,38 @@ const render = async (
   event: Parameters<typeof discordType.render>[0],
   ctx: RenderContext = systemCtx
 ): Promise<DiscordEmbed> => discordType.render(event, config, ctx);
+
+const mediaUpgraded: NotificationEvent = {
+  type: 'media_upgraded',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    libraryItemId: 'item-1',
+    title: 'Cars',
+    grandparentTitle: null,
+    mediaType: 'movie',
+    year: 2006,
+    libraryName: 'Movies',
+    to: {
+      resolution: '4k',
+      dynamicRange: 'hdr10',
+      videoCodec: 'HEVC',
+      audioCodec: 'TRUEHD',
+      audioChannels: 8,
+      fileSize: 42_000_000_000,
+    },
+    from: {
+      resolution: '1080p',
+      dynamicRange: 'sdr',
+      videoCodec: 'H264',
+      audioCodec: 'AC3',
+      audioChannels: 6,
+      fileSize: 8_000_000_000,
+    },
+    changed: ['resolution'],
+  },
+};
 
 describe('discordType.render', () => {
   it('builds the violation embed with severity color and rule fields', async () => {
@@ -171,5 +204,102 @@ describe('discordType.deliver', () => {
     expect(body.embeds[0].title).toBe('Test Notification');
     expect(body.embeds[0].description).toBe('This is a test notification from Tracearr');
     expect(body.embeds[0].color).toBe(0x3498db);
+  });
+});
+
+const newDevice = {
+  type: 'new_device',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    serverUserId: 'su-1',
+    sessionId: 'sess-1',
+    userName: 'Test User',
+    username: 'testuser',
+    identityName: 'Test User',
+    mediaTitle: 'Cars',
+    mediaType: 'movie',
+    deviceName: 'Living Room TV',
+    platform: 'tvOS',
+    product: 'Plex for Apple TV',
+    location: 'Boston, Massachusetts',
+  },
+} as const;
+
+const trustChanged = {
+  type: 'trust_score_changed',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    serverUserId: 'su-1',
+    userName: 'Test User',
+    username: 'testuser',
+    identityName: 'Test User',
+    previousScore: 90,
+    newScore: 40,
+    reason: 'Sharing penalty',
+  },
+} as const;
+
+const automationCtx = (over: { title?: string; body?: string } = {}): RenderContext => ({
+  destination,
+  source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
+});
+
+describe('discordType.render with an automation source', () => {
+  it('keeps the builtin stream title when nothing is overridden', async () => {
+    const embed = await render({ type: 'session_started', payload: session }, automationCtx());
+
+    expect(embed.title).toBe('Stream Started');
+    expect(embed.description).toBeUndefined();
+  });
+
+  it('uses the rendered override for the title and the description', async () => {
+    const embed = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ title: 'Heads up', body: '{{user.username}} pressed play' })
+    );
+
+    expect(embed.title).toBe('Heads up');
+    expect(embed.description).toBe('testuser pressed play');
+  });
+
+  it('gives a new device and a trust move their own colours', async () => {
+    const device = await render(newDevice, automationCtx());
+    expect(device.title).toBe('New device');
+    expect(device.description).toBe(
+      'Test User connected from a new device: Living Room TV from Boston, Massachusetts'
+    );
+    expect(device.color).toBe(0xf39c12);
+
+    const trust = await render(trustChanged, automationCtx());
+    expect(trust.description).toBe(
+      "Test User's trust score dropped from 90 to 40: Sharing penalty"
+    );
+    expect(trust.color).toBe(0x9b59b6);
+
+    // The media pair keeps the teal it had before the builder was shared.
+    expect((await render(mediaUpgraded, automationCtx())).color).toBe(0x1abc9c);
+  });
+
+  it('builds a media upgrade embed, and an override still wins', async () => {
+    const embed = await render(mediaUpgraded, automationCtx());
+    expect(embed.title).toBe('Media upgraded');
+    expect(embed.description).toBe('Cars on Basement: 1080p → 4K');
+
+    const overridden = await render(mediaUpgraded, automationCtx({ title: 'Better copy' }));
+    expect(overridden.title).toBe('Better copy');
+  });
+
+  it('builds the tracearr update embed', async () => {
+    const embed = await render({
+      type: 'tracearr_update_available',
+      payload: { current: '2.0.0', latest: '2.1.0', releaseUrl: 'https://example.com/r' },
+    });
+
+    expect(embed.title).toBe('Tracearr Update Available');
+    expect(embed.description).toContain('2.1.0');
   });
 });

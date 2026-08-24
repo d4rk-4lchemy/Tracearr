@@ -366,6 +366,161 @@ describe('enqueueNotification - dedupe ids', () => {
     for (const id of ids) expect(id).not.toMatch(/:/);
   });
 
+  it('keys two automations on the same event apart', async () => {
+    const mod = await loadInitializedQueue();
+    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
+
+    await mod.enqueueNotification(sessionStarted, {
+      to: ['d1'],
+      source: { kind: 'automation', automationId: 'a-1', automationName: 'One' },
+    });
+    const first = bulkEntries()[0]?.opts.jobId;
+
+    mainQueue().addBulk.mockClear();
+    await mod.enqueueNotification(sessionStarted, {
+      to: ['d1'],
+      source: { kind: 'automation', automationId: 'a-2', automationName: 'Two' },
+    });
+    const second = bulkEntries()[0]?.opts.jobId;
+
+    expect(first).toBe(`d1|session_started-sess-1-a-1-${bucket()}`);
+    expect(second).toBe(`d1|session_started-sess-1-a-2-${bucket()}`);
+    expect(first).not.toBe(second);
+  });
+
+  it('keys an automation violation apart from another automation on the same rule', async () => {
+    const mod = await loadInitializedQueue();
+    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
+
+    await mod.enqueueNotification(violation(), {
+      to: ['d1'],
+      source: { kind: 'automation', automationId: 'a-1', automationName: 'One' },
+    });
+
+    expect(bulkEntries()[0]?.opts.jobId).toBe(`d1|violation-su-1-rule-1-a-1-${bucket()}`);
+  });
+
+  it('keys media on the library item, so one batch is not one job', async () => {
+    const mod = await loadInitializedQueue();
+    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
+    const added = (libraryItemId: string) =>
+      ({
+        type: 'media_added',
+        payload: {
+          serverId: 'srv-1',
+          serverName: 'Basement',
+          serverType: 'plex',
+          libraryItemId,
+          title: 'Cars',
+          grandparentTitle: null,
+          mediaType: 'movie',
+          year: 2006,
+          libraryName: 'Movies',
+          to: {
+            resolution: '4k',
+            dynamicRange: null,
+            videoCodec: 'HEVC',
+            audioCodec: 'TRUEHD',
+            audioChannels: 8,
+            fileSize: 42_000_000_000,
+          },
+        },
+      }) as const;
+    const source = { kind: 'automation', automationId: 'a-1', automationName: 'One' } as const;
+
+    await mod.enqueueNotification(added('item-1'), { to: ['d1'], source });
+    const first = bulkEntries()[0]?.opts.jobId;
+    mainQueue().addBulk.mockClear();
+    await mod.enqueueNotification(added('item-2'), { to: ['d1'], source });
+    const second = bulkEntries()[0]?.opts.jobId;
+
+    expect(first).toBe(`d1|media_added-item-1-a-1-${bucket()}`);
+    expect(second).toBe(`d1|media_added-item-2-a-1-${bucket()}`);
+  });
+
+  it('keys a new device on the session, so two accounts are two jobs', async () => {
+    const mod = await loadInitializedQueue();
+    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
+    const device = (sessionId: string, serverUserId: string) =>
+      ({
+        type: 'new_device',
+        payload: {
+          serverId: 'srv-1',
+          serverName: 'Basement',
+          serverType: 'plex',
+          serverUserId,
+          sessionId,
+          userName: 'Alice',
+          username: 'alice',
+          identityName: 'Alice',
+          mediaTitle: 'Cars',
+          mediaType: 'movie',
+          deviceName: 'TV',
+          platform: null,
+          product: null,
+          location: null,
+        },
+      }) as const;
+    const source = { kind: 'automation', automationId: 'a-1', automationName: 'One' } as const;
+
+    await mod.enqueueNotification(device('sess-1', 'su-1'), { to: ['d1'], source });
+    const first = bulkEntries()[0]?.opts.jobId;
+    mainQueue().addBulk.mockClear();
+    await mod.enqueueNotification(device('sess-2', 'su-2'), { to: ['d1'], source });
+    const second = bulkEntries()[0]?.opts.jobId;
+
+    expect(first).toBe(`d1|new_device-sess-1-a-1-${bucket()}`);
+    expect(second).toBe(`d1|new_device-sess-2-a-1-${bucket()}`);
+  });
+
+  it('keys a trust move on the account, so two moves in one bucket collapse', async () => {
+    const mod = await loadInitializedQueue();
+    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
+    const moved = (previousScore: number, newScore: number) =>
+      ({
+        type: 'trust_score_changed',
+        payload: {
+          serverId: 'srv-1',
+          serverName: 'Basement',
+          serverType: 'plex',
+          serverUserId: 'su-1',
+          userName: 'Alice',
+          username: 'alice',
+          identityName: 'Alice',
+          previousScore,
+          newScore,
+          reason: null,
+        },
+      }) as const;
+    const source = { kind: 'automation', automationId: 'a-1', automationName: 'One' } as const;
+
+    await mod.enqueueNotification(moved(90, 85), { to: ['d1'], source });
+    const first = bulkEntries()[0]?.opts.jobId;
+    mainQueue().addBulk.mockClear();
+    await mod.enqueueNotification(moved(85, 80), { to: ['d1'], source });
+    const second = bulkEntries()[0]?.opts.jobId;
+
+    expect(first).toBe(`d1|trust_score_changed-su-1-a-1-${bucket()}`);
+    expect(second).toBe(first);
+  });
+
+  it('keys an install-wide event that carries no server', async () => {
+    const mod = await loadInitializedQueue();
+    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
+
+    await mod.enqueueNotification(
+      {
+        type: 'tracearr_update_available',
+        payload: { current: '2.0.0', latest: '2.1.0', releaseUrl: 'https://example.com/r' },
+      },
+      { to: ['d1'], source: { kind: 'automation', automationId: 'a-1', automationName: 'One' } }
+    );
+
+    const jobId = bulkEntries()[0]?.opts.jobId;
+    expect(jobId).toBe(`d1|tracearr_update_available-install-a-1-${bucket()}`);
+    expect(jobId).not.toMatch(/:/);
+  });
+
   it('drops the id when the violation carries neither rule id nor rule type', async () => {
     const mod = await loadInitializedQueue();
     mockFindDestinationsForEvent.mockResolvedValue([destination({ id: 'd1' })]);

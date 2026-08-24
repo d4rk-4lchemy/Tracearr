@@ -7,19 +7,20 @@ import { useTranslation } from 'react-i18next';
 import {
   DESTINATION_KINDS,
   DESTINATION_TYPES,
+  SUBSCRIBABLE_EVENTS,
   type CreateDestinationInput,
   type Destination,
   type DestinationDescriptor,
   type DestinationFieldDescriptor,
   type DestinationKind,
   type NotificationEventType,
+  type SubscribableEvent,
   type UpdateDestinationInput,
 } from '@tracearr/shared';
 import type { PagesTranslations } from '@tracearr/translations';
 import { Loader2, Send } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -30,11 +31,10 @@ import {
 } from '@/components/ui/dialog';
 import {
   Field,
+  FieldContent,
   FieldDescription,
   FieldError,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
@@ -49,6 +49,10 @@ import {
 import { iconFor } from './destinationIcons';
 
 type CreatableKind = CreateDestinationInput['type'];
+
+/** Everything else reaches a destination through an automation, not a subscription. */
+const subscribable = (event: NotificationEventType): event is SubscribableEvent =>
+  (SUBSCRIBABLE_EVENTS as readonly NotificationEventType[]).includes(event);
 
 /** Field labels are plain strings on the shared descriptor; the pages resource decides which exist. */
 type FieldLabel = keyof PagesTranslations['settings']['destinations']['fields'];
@@ -84,7 +88,7 @@ export function DestinationDialog({
   const [kind, setKind] = useState<DestinationKind | null>(null);
   const [name, setName] = useState('');
   const [enabled, setEnabled] = useState(true);
-  const [events, setEvents] = useState<NotificationEventType[]>([]);
+  const [events, setEvents] = useState<SubscribableEvent[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [edited, setEdited] = useState<Record<string, boolean>>({});
   const [cleared, setCleared] = useState<Record<string, boolean>>({});
@@ -103,7 +107,7 @@ export function DestinationDialog({
       setKind(destination.type);
       setName(destination.name);
       setEnabled(destination.enabled);
-      setEvents([...destination.events]);
+      setEvents(destination.events.filter(subscribable));
       setValues(stored);
     } else {
       setKind(null);
@@ -144,7 +148,7 @@ export function DestinationDialog({
     }
     setKind(next);
     setName(t(`pages:settings.destinations.types.${DESTINATION_TYPES[next].label}`));
-    setEvents([...picked.events]);
+    setEvents([...SUBSCRIBABLE_EVENTS]);
     setValues(defaults);
   };
 
@@ -162,8 +166,8 @@ export function DestinationDialog({
     setDirty(true);
   };
 
-  const toggleEvent = (event: NotificationEventType, checked: boolean) => {
-    setEvents((prev) => (checked ? [...prev, event] : prev.filter((e) => e !== event)));
+  const toggleViolations = (checked: boolean) => {
+    setEvents(checked ? [...SUBSCRIBABLE_EVENTS] : []);
     setDirty(true);
   };
 
@@ -294,28 +298,21 @@ export function DestinationDialog({
               />
             </Field>
 
-            <FieldSet>
-              <FieldLegend variant="label">
-                {t('pages:settings.destinations.eventsLabel')}
-              </FieldLegend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {descriptor.events.map((event) => (
-                  <Field key={event} orientation="horizontal">
-                    <Checkbox
-                      id={`destination-event-${event}`}
-                      checked={events.includes(event)}
-                      onCheckedChange={(checked) => toggleEvent(event, checked === true)}
-                    />
-                    <FieldLabel
-                      htmlFor={`destination-event-${event}`}
-                      className="text-sm font-normal"
-                    >
-                      {t(`pages:settings.destinations.events.${event}`)}
-                    </FieldLabel>
-                  </Field>
-                ))}
-              </div>
-            </FieldSet>
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldLabel htmlFor="destination-violations">
+                  {t('pages:settings.destinations.receiveViolations')}
+                </FieldLabel>
+                <FieldDescription>
+                  {t('pages:settings.destinations.receiveViolationsHint')}
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                id="destination-violations"
+                checked={events.includes('violation_detected')}
+                onCheckedChange={toggleViolations}
+              />
+            </Field>
 
             {descriptor.fields.map((field) => {
               const inputId = `destination-${field.key}`;

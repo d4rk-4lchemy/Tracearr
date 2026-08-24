@@ -24,19 +24,19 @@ vi.mock('../../services/notifications/destinationStore.js', () => ({
     id: row.id,
     name: row.name,
     type: row.type,
-    referencedByRuleCount: count,
+    referencedByAutomationCount: count,
   })),
 }));
 
 vi.mock('../../services/notifications/destinationRefs.js', () => ({
-  rulesReferencingDestinations: vi.fn(),
+  automationsReferencingDestinations: vi.fn(),
 }));
 
 vi.mock('../../services/notifications/destinations/registry.js', () => ({
   getDestinationType: vi.fn(() => ({ test: mockTest })),
 }));
 
-import { rulesReferencingDestinations } from '../../services/notifications/destinationRefs.js';
+import { automationsReferencingDestinations } from '../../services/notifications/destinationRefs.js';
 import {
   createDestination,
   deleteDestination,
@@ -97,7 +97,7 @@ describe('Destination Routes', () => {
   let app: FastifyInstance;
 
   beforeEach(() => {
-    vi.mocked(rulesReferencingDestinations).mockResolvedValue(new Map());
+    vi.mocked(automationsReferencingDestinations).mockResolvedValue(new Map());
     vi.mocked(readConfig).mockReturnValue({ ok: true, config: {}, rewrap: false });
     mockTest.mockResolvedValue(undefined);
   });
@@ -114,7 +114,7 @@ describe('Destination Routes', () => {
         makeRow(),
         makeRow({ id: 'dest-2', name: 'Ntfy', type: 'ntfy' }),
       ]);
-      vi.mocked(rulesReferencingDestinations).mockResolvedValue(
+      vi.mocked(automationsReferencingDestinations).mockResolvedValue(
         new Map([
           [
             'dest-1',
@@ -130,8 +130,8 @@ describe('Destination Routes', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual([
-        { id: 'dest-1', name: 'Discord', type: 'discord', referencedByRuleCount: 2 },
-        { id: 'dest-2', name: 'Ntfy', type: 'ntfy', referencedByRuleCount: 0 },
+        { id: 'dest-1', name: 'Discord', type: 'discord', referencedByAutomationCount: 2 },
+        { id: 'dest-2', name: 'Ntfy', type: 'ntfy', referencedByAutomationCount: 0 },
       ]);
     });
 
@@ -162,7 +162,7 @@ describe('Destination Routes', () => {
       });
 
       expect(response.statusCode).toBe(201);
-      expect(response.json()).toMatchObject({ id: 'dest-1', referencedByRuleCount: 0 });
+      expect(response.json()).toMatchObject({ id: 'dest-1', referencedByAutomationCount: 0 });
       expect(createDestination).toHaveBeenCalledWith({
         name: 'Discord',
         type: 'discord',
@@ -292,7 +292,7 @@ describe('Destination Routes', () => {
       expect(updateDestination).not.toHaveBeenCalled();
     });
 
-    it('rejects an event the type cannot receive', async () => {
+    it('rejects an event no destination may subscribe to', async () => {
       app = await buildTestApp(ownerUser);
       vi.mocked(getDestination).mockResolvedValue(
         makeRow({ id: 'push-1', name: 'Mobile push', type: 'push', builtin: true, config: null })
@@ -305,7 +305,6 @@ describe('Destination Routes', () => {
       });
 
       expect(response.statusCode).toBe(400);
-      expect(response.json().message).toContain('cannot receive plugin_update_available');
       expect(updateDestination).not.toHaveBeenCalled();
     });
 
@@ -319,7 +318,7 @@ describe('Destination Routes', () => {
         rewrap: false,
       });
       vi.mocked(updateDestination).mockResolvedValue({ ...row, name: 'Ntfy' });
-      vi.mocked(rulesReferencingDestinations).mockResolvedValue(
+      vi.mocked(automationsReferencingDestinations).mockResolvedValue(
         new Map([['ntfy-1', [{ ruleId: 'r1', ruleName: 'Rule one', isActive: true }]]])
       );
 
@@ -330,7 +329,7 @@ describe('Destination Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({ id: 'ntfy-1', referencedByRuleCount: 1 });
+      expect(response.json()).toMatchObject({ id: 'ntfy-1', referencedByAutomationCount: 1 });
       expect(updateDestination).toHaveBeenCalledWith('ntfy-1', { config: { topic: 'new' } });
     });
 
@@ -470,7 +469,7 @@ describe('Destination Routes', () => {
     it('409s with the rule names when a rule references it', async () => {
       app = await buildTestApp(ownerUser);
       vi.mocked(getDestination).mockResolvedValue(makeRow());
-      vi.mocked(rulesReferencingDestinations).mockResolvedValue(
+      vi.mocked(automationsReferencingDestinations).mockResolvedValue(
         new Map([
           [
             'dest-1',

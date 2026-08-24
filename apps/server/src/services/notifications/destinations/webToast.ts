@@ -1,48 +1,50 @@
 import { DESTINATION_TYPES, WS_EVENTS, type NotificationToast } from '@tracearr/shared';
 import { getPubSubService } from '../../cache.js';
+import { toNotificationPayload } from '../types.js';
+import type { NotificationEvent, NotificationSource } from '../events.js';
 import type { DestinationType } from './types.js';
 
-export type ToastRendered =
-  | {
-      kind: 'server';
-      event: typeof WS_EVENTS.SERVER_DOWN | typeof WS_EVENTS.SERVER_UP;
-      data: { serverId: string; serverName: string };
-    }
-  | { kind: 'rule'; data: NotificationToast }
-  | { kind: 'none' };
+export interface ToastRendered {
+  toast?: NotificationToast;
+}
+
+/** The automation is the gate: only its own sends toast, and every event type does. */
+function toastFor(event: NotificationEvent, source: NotificationSource): NotificationToast | null {
+  if (source.kind === 'rule') {
+    // Pre-automation jobs still in the queue at upgrade; only ever violation-shaped.
+    if (event.type !== 'violation') return null;
+    return {
+      title: source.title,
+      message: source.message,
+      automationId: event.payload.rule.id,
+      automationName: event.payload.rule.name,
+      severity: event.payload.severity,
+    };
+  }
+  if (source.kind !== 'automation') return null;
+  const payload = toNotificationPayload(event, source);
+  return {
+    title: payload.title,
+    message: payload.message,
+    automationId: source.automationId,
+    automationName: source.automationName,
+    severity: payload.severity,
+  };
+}
 
 export const webToastType: DestinationType<Record<string, never>, ToastRendered> = {
   kind: 'web_toast',
   events: DESTINATION_TYPES.web_toast.events,
   render(event, _config, ctx) {
-    if (ctx.source.kind === 'rule' && event.type === 'violation') {
-      const v = event.payload;
-      return {
-        kind: 'rule',
-        data: {
-          title: ctx.source.title,
-          message: ctx.source.message,
-          ruleId: v.rule.id,
-          ruleName: v.rule.name,
-          severity: v.severity,
-        },
-      };
-    }
-    if (event.type === 'server_down') {
-      return { kind: 'server', event: WS_EVENTS.SERVER_DOWN, data: event.payload };
-    }
-    if (event.type === 'server_up') {
-      return { kind: 'server', event: WS_EVENTS.SERVER_UP, data: event.payload };
-    }
-    // stream/violation events already reach the browser as data events over pub/sub; the client gates the toast on this row's events
-    return { kind: 'none' };
+    // The health banner is published by the producer, so a toast is all this carries.
+    const toast = toastFor(event, ctx.source);
+    return toast ? { toast } : {};
   },
   async deliver(rendered) {
-    if (rendered.kind === 'none') return;
+    if (!rendered.toast) return;
     const pubSub = getPubSubService();
     if (!pubSub) throw new Error('pub/sub unavailable');
-    if (rendered.kind === 'server') await pubSub.publish(rendered.event, rendered.data);
-    else await pubSub.publish(WS_EVENTS.NOTIFICATION_TOAST, rendered.data);
+    await pubSub.publish(WS_EVENTS.NOTIFICATION_TOAST, rendered.toast);
   },
   test: async () => {
     // no config to test; the route returns 400 for built-ins

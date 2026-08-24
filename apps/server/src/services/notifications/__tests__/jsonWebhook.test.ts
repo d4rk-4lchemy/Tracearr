@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ViolationWithDetails } from '@tracearr/shared';
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { jsonWebhookType, type JsonWebhookBody } from '../destinations/jsonWebhook.js';
+import type { NotificationEvent } from '../events.js';
 import type { RenderContext } from '../destinations/types.js';
 
 const config = { url: 'https://example.com/webhook' };
@@ -50,6 +51,38 @@ const render = async (
   event: Parameters<typeof jsonWebhookType.render>[0],
   ctx: RenderContext = systemCtx
 ): Promise<JsonWebhookBody> => jsonWebhookType.render(event, config, ctx);
+
+const mediaUpgraded: NotificationEvent = {
+  type: 'media_upgraded',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    libraryItemId: 'item-1',
+    title: 'Cars',
+    grandparentTitle: null,
+    mediaType: 'movie',
+    year: 2006,
+    libraryName: 'Movies',
+    to: {
+      resolution: '4k',
+      dynamicRange: 'hdr10',
+      videoCodec: 'HEVC',
+      audioCodec: 'TRUEHD',
+      audioChannels: 8,
+      fileSize: 42_000_000_000,
+    },
+    from: {
+      resolution: '1080p',
+      dynamicRange: 'sdr',
+      videoCodec: 'H264',
+      audioCodec: 'AC3',
+      audioChannels: 6,
+      fileSize: 8_000_000_000,
+    },
+    changed: ['resolution'],
+  },
+};
 
 describe('jsonWebhookType.render', () => {
   it('builds the violation body with user, rule and violation blocks', async () => {
@@ -226,5 +259,91 @@ describe('jsonWebhookType.deliver', () => {
     const body = JSON.parse(f.mock.calls[0]?.[1].body);
     expect(body.event).toBe('test');
     expect(body.data.message).toBe('This is a test notification from Tracearr');
+  });
+});
+
+const newDevice = {
+  type: 'new_device',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    serverUserId: 'su-1',
+    sessionId: 'sess-1',
+    userName: 'Test User',
+    username: 'testuser',
+    identityName: 'Test User',
+    mediaTitle: 'Cars',
+    mediaType: 'movie',
+    deviceName: 'Living Room TV',
+    platform: 'tvOS',
+    product: 'Plex for Apple TV',
+    location: 'Boston, Massachusetts',
+  },
+} as const;
+
+const trustChanged = {
+  type: 'trust_score_changed',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    serverUserId: 'su-1',
+    userName: 'Test User',
+    username: 'testuser',
+    identityName: 'Test User',
+    previousScore: 90,
+    newScore: 40,
+    reason: 'Sharing penalty',
+  },
+} as const;
+
+const automationCtx = (over: { title?: string; body?: string } = {}): RenderContext => ({
+  destination,
+  source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
+});
+
+describe('jsonWebhookType.render with an automation source', () => {
+  it('names the automation and carries its rendered overrides', async () => {
+    const body = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ title: 'Heads up', body: '{{user.username}} pressed play' })
+    );
+
+    expect(body.automation).toEqual({
+      id: 'a-1',
+      name: 'Now playing',
+      title: 'Heads up',
+      message: 'testuser pressed play',
+    });
+  });
+
+  it('carries the account payloads flat, under the event name', async () => {
+    const device = await render(newDevice, automationCtx());
+    expect(device.event).toBe('new_device');
+    expect(device.data).toEqual(newDevice.payload);
+
+    const trust = await render(trustChanged, automationCtx());
+    expect(trust.event).toBe('trust_score_changed');
+    expect(trust.data).toEqual(trustChanged.payload);
+  });
+
+  it('carries the whole media payload as data under the event name', async () => {
+    const body = await render(mediaUpgraded, automationCtx());
+
+    expect(body.event).toBe('media_upgraded');
+    expect(body.data).toEqual(mediaUpgraded.payload);
+  });
+
+  it('names the automation with no overrides to carry', async () => {
+    const body = await render({ type: 'session_started', payload: session }, automationCtx());
+
+    expect(body.automation).toEqual({ id: 'a-1', name: 'Now playing' });
+  });
+
+  it('leaves the automation out of a system event', async () => {
+    const body = await render({ type: 'session_started', payload: session });
+
+    expect(body.automation).toBeUndefined();
   });
 });

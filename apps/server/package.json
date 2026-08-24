@@ -36,7 +36,8 @@
     "purge-dispatcharr": "node dist/scripts/purge-dispatcharr.js",
     "cli": "node dist/scripts/cli.js",
     "backup": "tsx scripts/backup.ts",
-    "openapi:dump": "tsx scripts/generate-openapi.ts"
+    "openapi:dump": "tsx scripts/generate-openapi.ts",
+    "templates:fingerprint": "tsx scripts/template-fingerprints.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.0.0",
@@ -54,7 +55,7 @@
     "@tracearr/shared": "workspace:*",
     "archiver": "^8.0.0",
     "bcrypt": "^6.0.0",
-    "better-auth": "1.6.27",
+    "better-auth": "1.6.29",
     "bullmq": "^5.76.5",
     "cacheable-lookup": "^7.0.0",
     "dotenv": "^17.4.2",

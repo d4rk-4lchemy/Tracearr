@@ -21,7 +21,7 @@ import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import { and, type SQL } from 'drizzle-orm';
 import type { AuthUser, ViolationRosterFilters, ViolationSeverity } from '@tracearr/shared';
-import { renderSql } from '../../test/helpers.js';
+import { queryChain, renderCall, renderSql } from '../../test/helpers.js';
 
 // Mock the database module before importing routes
 vi.mock('../../db/client.js', () => ({
@@ -34,13 +34,24 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const { mockGetServerUserDisplayNames, mockRecalculateAggregateTrustScore } = vi.hoisted(() => ({
+const {
+  mockGetServerUserDisplayNames,
+  mockRecalculateAggregateTrustScore,
+  mockDispatchTrustMoves,
+} = vi.hoisted(() => ({
   mockGetServerUserDisplayNames: vi.fn(),
   mockRecalculateAggregateTrustScore: vi.fn(),
+  mockDispatchTrustMoves: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock('../../services/userService.js', () => ({
+// moveTrust stays real: the reversal SQL it builds is what these tests pin.
+vi.mock('../../services/userService.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   getServerUserDisplayNames: mockGetServerUserDisplayNames,
   recomputeIdentityAggregates: mockRecalculateAggregateTrustScore,
+}));
+
+vi.mock('../../services/automations/events/producers.js', () => ({
+  dispatchTrustMoves: mockDispatchTrustMoves,
 }));
 
 // Import the mocked db and the routes
@@ -51,48 +62,15 @@ function normalize(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Chainable Drizzle stub that records every builder argument, so assertions can
- * render the WHERE and ORDER BY the handler actually passed rather than only
- * proving a mock was reached.
- */
-function queryChain(result: unknown): any {
-  const chain: Record<string, unknown> = {};
-  for (const method of [
-    'from',
-    'innerJoin',
-    'leftJoin',
-    'where',
-    'orderBy',
-    'limit',
-    'offset',
-    'groupBy',
-    'set',
-    'returning',
-  ]) {
-    chain[method] = vi.fn(() => chain);
-  }
-  chain.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
-    Promise.resolve(result).then(resolve, reject);
-  return chain;
-}
-
 /** GET / issues the page query, then the count, then enrichment lookups. */
 function setupListMocks(rows: unknown[], total: number) {
-  const pageChain = queryChain(rows);
-  const countChain = queryChain([{ total }]);
+  const pageChain = queryChain(vi.fn, rows);
+  const countChain = queryChain(vi.fn, [{ total }]);
   vi.mocked((db as any).select)
     .mockReturnValueOnce(pageChain)
     .mockReturnValueOnce(countChain)
-    .mockReturnValue(queryChain([]));
+    .mockReturnValue(queryChain(vi.fn, []));
   return { pageChain, countChain };
-}
-
-function renderCall(chain: any, method: 'where' | 'orderBy', index = 0) {
-  const arg = chain[method].mock.calls[index]?.[0] as SQL | undefined;
-  if (!arg) throw new Error(`${method} was never called`);
-  const rendered = renderSql(arg);
-  return { text: normalize(rendered.sql), params: rendered.params };
 }
 
 /**
@@ -122,7 +100,7 @@ interface MockViolationWithJoins {
   id: string;
   ruleId: string;
   ruleName: string;
-  ruleType: string;
+  ruleType: null;
   serverUserId: string;
   username: string;
   userThumb: string | null;
@@ -158,14 +136,14 @@ interface MockViolationWithJoins {
 }
 
 function createTestViolation(
-  overrides: Partial<MockViolationWithJoins> = {}
+  overrides: Partial<Omit<MockViolationWithJoins, 'ruleType'>> = {}
 ): MockViolationWithJoins {
   const serverId = overrides.serverId ?? randomUUID();
   return {
     id: overrides.id ?? randomUUID(),
     ruleId: overrides.ruleId ?? randomUUID(),
     ruleName: overrides.ruleName ?? 'Test Rule',
-    ruleType: overrides.ruleType ?? 'concurrent_streams',
+    ruleType: null,
     serverUserId: overrides.serverUserId ?? randomUUID(),
     username: overrides.username ?? 'testuser',
     userThumb: overrides.userThumb ?? null,
@@ -525,7 +503,7 @@ describe('Violation Routes', () => {
       expect(body.id).toBe(violationId);
       // Verify nested shape (not flat)
       expect(body.rule.name).toBe('Test Rule');
-      expect(body.rule.type).toBe('concurrent_streams');
+      expect(body.rule.type).toBeNull();
       expect(body.user.username).toBe('testuser');
       expect(body.server.name).toBe('Test Server');
       expect(body.session.mediaTitle).toBe('Test Movie');
@@ -859,9 +837,10 @@ describe('Violation Routes', () => {
       expect(mockRecalculateAggregateTrustScore).toHaveBeenCalledWith(userId, txMock);
     });
 
-    it('reverses trust score when dismissing violation with adjust_trust action', async () => {
+    it('reverses trust score when dismissing a violation with a trust action', async () => {
       // Dismiss reverses any trust changes made by explicit rule actions.
       // This treats dismiss as "false positive, undo everything".
+      const action = { type: 'trust', mode: 'adjust', amount: -20 };
       const ownerUser = createOwnerUser();
       app = await buildTestApp(ownerUser);
 
@@ -872,7 +851,7 @@ describe('Violation Routes', () => {
       const serverId = ownerUser.serverIds[0];
 
       // First select: violation exists check
-      // Second select: rule actions with adjust_trust -20
+      // Second select: the rule's stored trust action, worth -20
       let selectCallCount = 0;
       mockDb.select.mockImplementation(() => {
         selectCallCount++;
@@ -887,16 +866,10 @@ describe('Violation Routes', () => {
             },
           ]);
         } else {
-          // Rule with adjust_trust action
           return {
             from: vi.fn().mockReturnValue({
               where: vi.fn().mockReturnValue({
-                limit: vi.fn().mockResolvedValue([
-                  {
-                    id: ruleId,
-                    actions: { actions: [{ type: 'adjust_trust', amount: -20 }] },
-                  },
-                ]),
+                limit: vi.fn().mockResolvedValue([{ id: ruleId, actions: { actions: [action] } }]),
               }),
             }),
           };
@@ -907,9 +880,19 @@ describe('Violation Routes', () => {
       const deleteMock = vi.fn().mockReturnValue({
         where: vi.fn().mockResolvedValue(undefined),
       });
+      const moved = {
+        previous: 40,
+        row: { id: serverUserId, serverId, userId, trustScore: 60 },
+      };
+      // The stamp is set().where().returning(); the trust write is set().from().where().returning().
       const setMock = vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([{ id: violationId }]),
+        }),
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([moved]),
+          }),
         }),
       });
       const updateMock = vi.fn().mockReturnValue({ set: setMock });
@@ -936,13 +919,71 @@ describe('Violation Routes', () => {
       expect(deleteMock).not.toHaveBeenCalled();
       expect(setMock).toHaveBeenCalledTimes(2);
       expect(setMock.mock.calls[0]?.[0]).toEqual({ dismissedAt: expect.any(Date) });
-      // Trust reversal update carries the score expression and timestamp
-      expect(setMock.mock.calls[1]?.[0]).toEqual(
-        expect.objectContaining({ updatedAt: expect.any(Date) })
-      );
-      expect(setMock.mock.calls[1]?.[0]).toHaveProperty('trustScore');
+      // The stored -20 is subtracted, handing the user back 20 points, clamped to 0..100
+      const reversal = setMock.mock.calls[1]?.[0] as { trustScore: SQL; updatedAt: unknown };
+      expect(reversal.updatedAt).toBeInstanceOf(Date);
+      expect(renderSql(reversal.trustScore)).toMatchObject({
+        sql: 'LEAST(100, GREATEST(0, server_users.trust_score - $1))',
+        params: [-20],
+      });
       // Verify the identity's overall trust rollup was recomputed for the reversal
       expect(mockRecalculateAggregateTrustScore).toHaveBeenCalledWith(userId, txMock);
+      // The reversal is a trust move like any other, announced once after the commit.
+      expect(mockDispatchTrustMoves).toHaveBeenCalledTimes(1);
+      expect(mockDispatchTrustMoves).toHaveBeenCalledWith(
+        [{ previous: 40, serverUser: moved.row }],
+        'a violation was dismissed'
+      );
+    });
+
+    it('announces nothing when a dismiss reverses no trust', async () => {
+      const ownerUser = createOwnerUser();
+      app = await buildTestApp(ownerUser);
+
+      const violationId = randomUUID();
+      const userId = randomUUID();
+      let selectCallCount = 0;
+      mockDb.select.mockImplementation(() => {
+        selectCallCount++;
+        if (selectCallCount === 1) {
+          return createViolationExistsCheckMock([
+            {
+              id: violationId,
+              ruleId: 'rule-1',
+              serverUserId: randomUUID(),
+              serverId: ownerUser.serverIds[0],
+              userId,
+            },
+          ]);
+        }
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ id: 'rule-1', actions: { actions: [] } }]),
+            }),
+          }),
+        };
+      });
+
+      const setMock = vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ id: violationId }]),
+        }),
+      });
+      const txMock = { update: vi.fn().mockReturnValue({ set: setMock }) };
+      mockDb.transaction = vi
+        .fn()
+        .mockImplementation(async (callback: (tx: unknown) => Promise<void>) => callback(txMock));
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/violations/${violationId}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      // No trust action on the rule, so no write and nothing to announce.
+      expect(setMock).toHaveBeenCalledTimes(1);
+      expect(mockDispatchTrustMoves).toHaveBeenCalledWith([], 'a violation was dismissed');
     });
 
     it('should reject delete for non-owner', async () => {
@@ -1059,22 +1100,22 @@ describe('violation roster conditions', () => {
   it('always excludes dismissed rows', async () => {
     const { text } = await rosterSql(rosterFilters(), createOwnerUser());
 
-    expect(text).toContain('violations.dismissed_at is null');
+    expect(text).toContain('automation_runs.dismissed_at is null');
   });
 
   it('narrows on acknowledged === true, not just false', async () => {
     const acknowledged = await rosterSql(rosterFilters({ acknowledged: true }), createOwnerUser());
     const pending = await rosterSql(rosterFilters({ acknowledged: false }), createOwnerUser());
 
-    expect(acknowledged.text).toContain('violations.acknowledged_at is not null');
-    expect(pending.text).toContain('violations.acknowledged_at is null');
-    expect(pending.text).not.toContain('violations.acknowledged_at is not null');
+    expect(acknowledged.text).toContain('automation_runs.acknowledged_at is not null');
+    expect(pending.text).toContain('automation_runs.acknowledged_at is null');
+    expect(pending.text).not.toContain('automation_runs.acknowledged_at is not null');
   });
 
   it('leaves acknowledgement unfiltered when the filter is absent', async () => {
     const { text } = await rosterSql(rosterFilters(), createOwnerUser());
 
-    expect(text).not.toContain('violations.acknowledged_at');
+    expect(text).not.toContain('automation_runs.acknowledged_at');
   });
 
   it('carries ruleId and serverUserId, which the bulk body used to drop', async () => {
@@ -1085,8 +1126,8 @@ describe('violation roster conditions', () => {
       createOwnerUser()
     );
 
-    expect(text).toContain('violations.rule_id =');
-    expect(text).toContain('violations.server_user_id =');
+    expect(text).toContain('automation_runs.rule_id =');
+    expect(text).toContain('automation_runs.server_user_id =');
     expect(params).toContain(ruleId);
     expect(params).toContain(serverUserId);
   });
@@ -1097,7 +1138,7 @@ describe('violation roster conditions', () => {
       createOwnerUser()
     );
 
-    expect(text).toContain('violations.created_at >=');
+    expect(text).toContain('automation_runs.created_at >=');
     expect(params).toContain('2024-03-15T00:00:00.000Z');
   });
 
@@ -1108,8 +1149,8 @@ describe('violation roster conditions', () => {
     );
 
     // An inclusive <= against midnight would drop everything on 2024-03-15.
-    expect(text).toContain('violations.created_at <');
-    expect(text).not.toContain('violations.created_at <=');
+    expect(text).toContain('automation_runs.created_at <');
+    expect(text).not.toContain('automation_runs.created_at <=');
     expect(params).toContain('2024-03-16T00:00:00.000Z');
   });
 
@@ -1129,7 +1170,7 @@ describe('violation roster conditions', () => {
   });
 
   it('reports empty when an identity resolves to no accessible account', async () => {
-    vi.mocked((db as any).select).mockReturnValue(queryChain([]));
+    vi.mocked((db as any).select).mockReturnValue(queryChain(vi.fn, []));
 
     const result = await buildViolationRosterConditions(
       rosterFilters({ userIds: [randomUUID()] }),
@@ -1164,36 +1205,36 @@ describe('GET /violations ORDER BY', () => {
   }
 
   it('defaults to newest first, tiebroken on the violation id', async () => {
-    expect(await orderClause('')).toBe('violations.created_at DESC, violations.id ASC');
+    expect(await orderClause('')).toBe('automation_runs.created_at DESC, automation_runs.id ASC');
   });
 
   it('tiebreaks the createdAt branch in both directions', async () => {
     expect(await orderClause('orderBy=createdAt&orderDir=asc')).toBe(
-      'violations.created_at ASC, violations.id ASC'
+      'automation_runs.created_at ASC, automation_runs.id ASC'
     );
   });
 
   it('ranks severity high-first on desc and tiebreaks on the id', async () => {
     expect(await orderClause('orderBy=severity&orderDir=desc')).toBe(
-      "CASE violations.severity WHEN 'high' THEN 3 WHEN 'warning' THEN 2 WHEN 'low' THEN 1 END DESC, violations.id ASC"
+      "CASE automation_runs.severity WHEN 'high' THEN 3 WHEN 'warning' THEN 2 WHEN 'low' THEN 1 END DESC, automation_runs.id ASC"
     );
   });
 
   it('ranks severity low-first on asc', async () => {
     expect(await orderClause('orderBy=severity&orderDir=asc')).toBe(
-      "CASE violations.severity WHEN 'high' THEN 3 WHEN 'warning' THEN 2 WHEN 'low' THEN 1 END ASC, violations.id ASC"
+      "CASE automation_runs.severity WHEN 'high' THEN 3 WHEN 'warning' THEN 2 WHEN 'low' THEN 1 END ASC, automation_runs.id ASC"
     );
   });
 
   it('tiebreaks the user branch on the id, not on created_at', async () => {
     expect(await orderClause('orderBy=user&orderDir=asc')).toBe(
-      'server_users.username ASC, violations.id ASC'
+      'server_users.username ASC, automation_runs.id ASC'
     );
   });
 
   it('tiebreaks the rule branch on the id, not on created_at', async () => {
     expect(await orderClause('orderBy=rule&orderDir=asc')).toBe(
-      'rules.name ASC, violations.id ASC'
+      'automations.name ASC, automation_runs.id ASC'
     );
   });
 });
@@ -1275,11 +1316,11 @@ describe('bulk selectAll scope', () => {
     const violationId = randomUUID();
     const serverId = randomUUID();
 
-    const seedChain = queryChain([{ id: violationId }]);
+    const seedChain = queryChain(vi.fn, [{ id: violationId }]);
     vi.mocked((db as any).select)
       .mockReturnValueOnce(seedChain)
-      .mockReturnValueOnce(queryChain([{ id: violationId, serverId }]));
-    vi.mocked((db as any).update).mockReturnValue(queryChain([]));
+      .mockReturnValueOnce(queryChain(vi.fn, [{ id: violationId, serverId }]));
+    vi.mocked((db as any).update).mockReturnValue(queryChain(vi.fn, []));
 
     const response = await app.inject({
       method: 'POST',
@@ -1293,9 +1334,9 @@ describe('bulk selectAll scope', () => {
     // Without ruleId and the date bounds in the seed query, "select all" would
     // acknowledge every violation on the server instead of the filtered set.
     const seed = renderCall(seedChain, 'where');
-    expect(seed.text).toContain('violations.rule_id =');
-    expect(seed.text).toContain('violations.created_at >=');
-    expect(seed.text).toContain('violations.created_at <');
+    expect(seed.text).toContain('automation_runs.rule_id =');
+    expect(seed.text).toContain('automation_runs.created_at >=');
+    expect(seed.text).toContain('automation_runs.created_at <');
     expect(seed.params).toContain(ruleId);
     expect(seed.params).toContain('2024-03-01T00:00:00.000Z');
     expect(seed.params).toContain('2024-03-16T00:00:00.000Z');
@@ -1309,15 +1350,15 @@ describe('bulk selectAll scope', () => {
     const userId = randomUUID();
     const serverUserId = randomUUID();
 
-    const seedChain = queryChain([{ id: violationId }]);
+    const seedChain = queryChain(vi.fn, [{ id: violationId }]);
     vi.mocked((db as any).select)
       .mockReturnValueOnce(seedChain)
       .mockReturnValueOnce(
-        queryChain([{ id: violationId, ruleId, serverUserId, serverId, userId }])
+        queryChain(vi.fn, [{ id: violationId, ruleId, serverUserId, serverId, userId }])
       )
-      .mockReturnValueOnce(queryChain([{ id: ruleId, actions: { actions: [] } }]));
+      .mockReturnValueOnce(queryChain(vi.fn, [{ id: ruleId, actions: { actions: [] } }]));
     vi.mocked((db as any).transaction).mockImplementation(async (callback: any) =>
-      callback({ update: () => queryChain([{ id: violationId }]) })
+      callback({ update: () => queryChain(vi.fn, [{ id: violationId }]) })
     );
 
     const response = await app.inject({
@@ -1330,9 +1371,9 @@ describe('bulk selectAll scope', () => {
     expect(response.json()).toEqual({ success: true, dismissed: 1 });
 
     const seed = renderCall(seedChain, 'where');
-    expect(seed.text).toContain('violations.rule_id =');
-    expect(seed.text).toContain('violations.created_at >=');
-    expect(seed.text).toContain('violations.created_at <');
+    expect(seed.text).toContain('automation_runs.rule_id =');
+    expect(seed.text).toContain('automation_runs.created_at >=');
+    expect(seed.text).toContain('automation_runs.created_at <');
     expect(seed.params).toContain(ruleId);
     expect(seed.params).toContain('2024-03-16T00:00:00.000Z');
   });
@@ -1342,7 +1383,7 @@ describe('bulk selectAll scope', () => {
     ['DELETE', '/violations/bulk'],
   ])('%s %s narrows on acknowledged === true', async (method, url) => {
     app = await buildTestApp(createOwnerUser());
-    const seedChain = queryChain([]);
+    const seedChain = queryChain(vi.fn, []);
     vi.mocked((db as any).select).mockReturnValue(seedChain);
 
     const response = await app.inject({
@@ -1353,7 +1394,7 @@ describe('bulk selectAll scope', () => {
 
     expect(response.statusCode).toBe(200);
     const seed = renderCall(seedChain, 'where');
-    expect(seed.text).toContain('violations.acknowledged_at is not null');
+    expect(seed.text).toContain('automation_runs.acknowledged_at is not null');
   });
 
   it.each([
@@ -1361,7 +1402,7 @@ describe('bulk selectAll scope', () => {
     ['DELETE', '/violations/bulk'],
   ])('%s %s narrows on acknowledged === false', async (method, url) => {
     app = await buildTestApp(createOwnerUser());
-    const seedChain = queryChain([]);
+    const seedChain = queryChain(vi.fn, []);
     vi.mocked((db as any).select).mockReturnValue(seedChain);
 
     const response = await app.inject({
@@ -1372,8 +1413,8 @@ describe('bulk selectAll scope', () => {
 
     expect(response.statusCode).toBe(200);
     const seed = renderCall(seedChain, 'where');
-    expect(seed.text).toContain('violations.acknowledged_at is null');
-    expect(seed.text).not.toContain('violations.acknowledged_at is not null');
+    expect(seed.text).toContain('automation_runs.acknowledged_at is null');
+    expect(seed.text).not.toContain('automation_runs.acknowledged_at is not null');
   });
 
   it('resolves both bulk paths through the same conditions as the list', async () => {
@@ -1399,5 +1440,95 @@ describe('bulk selectAll scope', () => {
 
     expect(shared.text).toBe(listWhere.text);
     expect(shared.params).toEqual(listWhere.params);
+  });
+});
+
+// ============================================================================
+// The alias: /violations serves completed policy runs that have a user.
+// automation_runs also holds notification runs, runs stopped by a condition,
+// runs that errored, and policy runs with no server_user_id. Every route below
+// has to reject all four.
+// ============================================================================
+
+/** The predicates that leave only the run flavor this surface calls a violation. */
+function expectAliasFilter(where: { text: string; params: unknown[] }) {
+  // notification runs
+  expect(where.text).toContain('automation_runs.kind =');
+  expect(where.params).toContain('policy');
+  // stopped_by_condition and error runs
+  expect(where.text).toContain('automation_runs.outcome =');
+  expect(where.params).toContain('completed');
+  // runs with no account behind them
+  expect(where.text).toContain('automation_runs.server_user_id is not null');
+}
+
+describe('violations alias filter', () => {
+  let app: FastifyInstance;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (app) await app.close();
+  });
+
+  it('the roster carries it, so the list, its count and both bulk paths inherit', async () => {
+    const roster = await rosterSql(rosterFilters(), createOwnerUser());
+
+    expect(roster.empty).toBe(false);
+    expectAliasFilter(roster);
+  });
+
+  it('GET /:id looks the run up under it and 404s a run outside', async () => {
+    app = await buildTestApp(createOwnerUser());
+    const chain = queryChain(vi.fn, []);
+    vi.mocked((db as any).select).mockReturnValue(chain);
+
+    const response = await app.inject({ method: 'GET', url: `/violations/${randomUUID()}` });
+
+    expect(response.statusCode).toBe(404);
+    expectAliasFilter(renderCall(chain, 'where'));
+  });
+
+  it('PATCH /:id looks the run up under it and 404s a run outside', async () => {
+    app = await buildTestApp(createOwnerUser());
+    const chain = queryChain(vi.fn, []);
+    vi.mocked((db as any).select).mockReturnValue(chain);
+
+    const response = await app.inject({ method: 'PATCH', url: `/violations/${randomUUID()}` });
+
+    expect(response.statusCode).toBe(404);
+    expectAliasFilter(renderCall(chain, 'where'));
+  });
+
+  it('DELETE /:id looks the run up under it and 404s a run outside', async () => {
+    app = await buildTestApp(createOwnerUser());
+    const chain = queryChain(vi.fn, []);
+    vi.mocked((db as any).select).mockReturnValue(chain);
+
+    const response = await app.inject({ method: 'DELETE', url: `/violations/${randomUUID()}` });
+
+    expect(response.statusCode).toBe(404);
+    expectAliasFilter(renderCall(chain, 'where'));
+  });
+
+  it.each([
+    ['POST', '/violations/bulk/acknowledge', { acknowledged: 0 }],
+    ['DELETE', '/violations/bulk', { dismissed: 0 }],
+  ])('%s %s drops explicitly named ids that are outside it', async (method, url, tally) => {
+    app = await buildTestApp(createOwnerUser());
+    const chain = queryChain(vi.fn, []);
+    vi.mocked((db as any).select).mockReturnValue(chain);
+
+    const response = await app.inject({
+      method: method as 'POST' | 'DELETE',
+      url,
+      payload: { ids: [randomUUID()] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ success: true, ...tally });
+    expectAliasFilter(renderCall(chain, 'where'));
   });
 });

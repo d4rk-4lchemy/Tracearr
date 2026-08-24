@@ -49,7 +49,7 @@ function destination(overrides: Partial<Destination> = {}): Destination {
     configStatus: 'ok',
     config: { userKey: null, apiToken: null },
     secretsSet: ['userKey', 'apiToken'],
-    referencedByRuleCount: 0,
+    referencedByAutomationCount: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -124,14 +124,39 @@ describe('DestinationDialog create mode', () => {
         }
       }
 
-      expect(screen.getAllByRole('checkbox')).toHaveLength(descriptor.events.length);
-      for (const event of descriptor.events) {
-        expect(
-          screen.getByLabelText(`pages:settings.destinations.events.${event}`)
-        ).toBeInTheDocument();
-      }
+      expect(screen.getByLabelText('pages:settings.destinations.receiveViolations')).toBeChecked();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     }
   );
+
+  it('saves the violation subscription the switch is left on', async () => {
+    const user = userEvent.setup();
+    renderCreate();
+    await pickType(user, 'discord');
+    await user.type(
+      screen.getByLabelText(/fields\.webhookUrl/),
+      'https://discord.com/api/webhooks/1/x'
+    );
+    await user.click(screen.getByRole('button', { name: 'common:actions.save' }));
+
+    expect(createAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ events: ['violation_detected'] })
+    );
+  });
+
+  it('saves no subscription once the switch is off', async () => {
+    const user = userEvent.setup();
+    renderCreate();
+    await pickType(user, 'discord');
+    await user.type(
+      screen.getByLabelText(/fields\.webhookUrl/),
+      'https://discord.com/api/webhooks/1/x'
+    );
+    await user.click(screen.getByLabelText('pages:settings.destinations.receiveViolations'));
+    await user.click(screen.getByRole('button', { name: 'common:actions.save' }));
+
+    expect(createAsync).toHaveBeenCalledWith(expect.objectContaining({ events: [] }));
+  });
 
   it('keeps Save disabled until every required field is filled', async () => {
     const user = userEvent.setup();
@@ -274,7 +299,8 @@ describe('DestinationDialog edit mode', () => {
     );
   });
 
-  it('limits the event checkboxes to what the built-in type accepts', () => {
+  it('narrows a row that still holds pre-automation subscriptions to violations only', async () => {
+    const user = userEvent.setup();
     render(
       <DestinationDialog
         open
@@ -285,15 +311,33 @@ describe('DestinationDialog edit mode', () => {
           builtin: true,
           config: null,
           secretsSet: [],
-          events: ['stream_started'],
+          events: ['stream_started', 'violation_detected'],
         })}
       />
     );
 
-    expect(screen.getAllByRole('checkbox')).toHaveLength(DESTINATION_TYPES.push.events.length);
-    expect(
-      screen.queryByLabelText('pages:settings.destinations.events.plugin_update_available')
-    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText('pages:settings.destinations.receiveViolations')).toBeChecked();
     expect(screen.queryByRole('button', { name: /destinations\.test/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'common:actions.save' }));
+
+    expect(updateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ events: ['violation_detected'] }) })
+    );
+  });
+
+  it('leaves the switch off for a row that never subscribed to violations', () => {
+    render(
+      <DestinationDialog
+        open
+        onOpenChange={vi.fn()}
+        mode="edit"
+        destination={destination({ events: ['stream_started'] })}
+      />
+    );
+
+    expect(
+      screen.getByLabelText('pages:settings.destinations.receiveViolations')
+    ).not.toBeChecked();
   });
 });

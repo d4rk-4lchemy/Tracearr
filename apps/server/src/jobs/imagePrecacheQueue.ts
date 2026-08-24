@@ -17,18 +17,23 @@
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import { and, asc, eq, gt, gte, isNotNull, isNull, sql } from 'drizzle-orm';
+import { POSTER_IMAGE_SIZE } from '@tracearr/shared';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
-import { libraryItems } from '../db/schema.js';
+import { libraryItems, servers } from '../db/schema.js';
+import { proxyImage, posterCacheEntryExists } from '../services/imageProxy.js';
 import {
-  proxyImage,
-  posterCacheEntryExists,
-  IMAGE_SIZES,
-  posterVersionFor,
-} from '../services/imageProxy.js';
+  takeRefusedWrites,
+  writeDiskLimited,
+  clearDiskLimited,
+  readDiskLimited,
+} from '../services/imageCacheGuard.js';
+import { sweepImageCache } from '../services/imageCacheSweep.js';
+import { getRedis } from '../lib/redisShared.js';
 import { getSetting } from '../services/settings.js';
 import { getLibrarySyncStatus } from './librarySyncQueue.js';
+import { reconcileImagePrecacheOnBoot } from './imagePrecacheBoot.js';
 
 export interface ImagePrecacheJobData {
   serverId: string;
@@ -45,6 +50,8 @@ export interface ImagePrecacheJobData {
   processedItems?: number;
   /** ISO start of the whole pass, not of the current chained job. */
   passStartedAt?: string;
+  /** Writes the disk guard refused during this pass so far; the final batch turns it into the flag. */
+  refusedWrites?: number;
 }
 
 const QUEUE_NAME = 'image-precache';
@@ -98,7 +105,7 @@ export function initImagePrecacheQueue(redisUrl: string): void {
 /**
  * Start the image precache worker to process queued jobs.
  */
-export function startImagePrecacheWorker(): void {
+export async function startImagePrecacheWorker(): Promise<void> {
   if (!connectionOptions) {
     throw new Error('Image precache queue not initialized. Call initImagePrecacheQueue first.');
   }
@@ -107,6 +114,25 @@ export function startImagePrecacheWorker(): void {
     console.log('[ImagePrecache] Worker already running');
     return;
   }
+
+  // One-time reconciliation for the 2.2 poster cache change: empties any
+  // backlog of interleaved passes, queues one fresh pass per server, and
+  // sweeps the old copies. A failure here must not cost the process its worker.
+  await reconcileImagePrecacheOnBoot({
+    queue: imagePrecacheQueue!,
+    redis: getRedis(),
+    listServerIds: async () => (await db.select({ id: servers.id }).from(servers)).map((r) => r.id),
+    enqueuePass: (serverId) => enqueueImagePrecache(serverId),
+    sweep: () => sweepImageCache(),
+  }).catch((err: unknown) => {
+    console.error('[ImagePrecache] boot reconciliation failed:', err);
+  });
+
+  // Older builds queued a pass per sync, so an install can boot with a backlog.
+  // A sweep that can't reach Redis must not cost the process its worker.
+  await dropDuplicatePasses().catch((err: unknown) => {
+    console.error('[ImagePrecache] Backlog sweep failed:', err);
+  });
 
   const bullPrefix = getBullPrefix();
 
@@ -127,14 +153,82 @@ export function startImagePrecacheWorker(): void {
   console.log('[ImagePrecache] Worker started');
 }
 
+/** Everything the queue holds for one server (or for every server), split by
+ *  whether the worker has already picked it up. */
+async function queuedPassJobs(serverId?: string): Promise<{
+  active: Array<Job<ImagePrecacheJobData>>;
+  pending: Array<Job<ImagePrecacheJobData>>;
+}> {
+  if (!imagePrecacheQueue) return { active: [], pending: [] };
+
+  const [active, pending] = await Promise.all([
+    imagePrecacheQueue.getJobs(['active']),
+    imagePrecacheQueue.getJobs(['waiting', 'delayed']),
+  ]);
+  const forServer = (jobs: Array<Job<ImagePrecacheJobData>>) =>
+    serverId === undefined ? jobs : jobs.filter((job) => job.data.serverId === serverId);
+
+  return { active: forServer(active), pending: forServer(pending) };
+}
+
+/** A pass start is what enqueueImagePrecache adds: no cursor and no
+ *  passStartedAt. Both conjuncts matter - passStartedAt only ships from 2.1.0,
+ *  so a 2.0.x backlog's continuations are told apart by their cursor. */
+function isPassStart(job: Job<ImagePrecacheJobData>): boolean {
+  return job.data.passStartedAt === undefined && job.data.cursor === null;
+}
+
+/**
+ * Remove queued pass starts beyond the one that should remain for a server:
+ * the OLDEST survives (its sinceUpdatedAt is the earliest, so it covers the
+ * most), and a server whose pass is already in flight keeps none. Other
+ * servers and the continuations of a running pass are never touched.
+ */
+async function dropDuplicatePasses(serverId?: string): Promise<string[]> {
+  const { active, pending } = await queuedPassJobs(serverId);
+
+  const inFlight = new Set(
+    [...active, ...pending.filter((job) => !isPassStart(job))].map((job) => job.data.serverId)
+  );
+  const startsByServer = new Map<string, Array<Job<ImagePrecacheJobData>>>();
+  for (const job of pending) {
+    if (!isPassStart(job)) continue;
+    const starts = startsByServer.get(job.data.serverId) ?? [];
+    starts.push(job);
+    startsByServer.set(job.data.serverId, starts);
+  }
+
+  const dropped: string[] = [];
+  for (const [id, starts] of startsByServer) {
+    starts.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+    const doomed = inFlight.has(id) ? starts : starts.slice(1);
+    let removedHere = 0;
+    for (const job of doomed) {
+      // A start that raced to active refuses removal - it is the pass now, not a duplicate.
+      const gone = await job
+        .remove()
+        .then(() => true)
+        .catch(() => false);
+      if (!gone) continue;
+      removedHere++;
+      if (job.id !== undefined) dropped.push(job.id);
+    }
+    if (removedHere > 0) {
+      console.log(`[ImagePrecache] dropped ${removedHere} duplicate passes for ${id}`);
+    }
+  }
+
+  return dropped;
+}
+
 /**
  * Enqueue an image precache pass for a server. No-ops when the setting is
- * disabled or the queue isn't initialized, so callers don't need to check
- * either condition themselves.
+ * disabled, the queue isn't initialized, or a pass for the server is already
+ * queued or running, so callers don't need to check any of that themselves.
+ * A returned job id is the caller's proof that a pass really queued.
  */
 export async function enqueueImagePrecache(
   serverId: string,
-  cursor: string | null = null,
   sinceUpdatedAt?: string | null
 ): Promise<string | undefined> {
   if (!imagePrecacheQueue) return undefined;
@@ -142,11 +236,20 @@ export async function enqueueImagePrecache(
   const enabled = await getSetting('imagePrecacheEnabled');
   if (!enabled) return undefined;
 
+  const { active, pending } = await queuedPassJobs(serverId);
+  if (active.length > 0 || pending.length > 0) return undefined;
+
   const job = await imagePrecacheQueue.add(
     'precache',
-    sinceUpdatedAt ? { serverId, cursor, sinceUpdatedAt } : { serverId, cursor },
-    { jobId: `precache-${serverId}-${cursor ?? 'start'}-${Date.now()}` }
+    sinceUpdatedAt ? { serverId, cursor: null, sinceUpdatedAt } : { serverId, cursor: null },
+    { jobId: `precache-${serverId}-start-${Date.now()}` }
   );
+
+  // Two syncs can clear the check above in the same tick. The sweep leaves one
+  // start either way; which of them reports it depends on who sweeps first, and
+  // both resolved the same watermark, so the survivor covers either one's window.
+  const dropped = await dropDuplicatePasses(serverId);
+  if (job.id !== undefined && dropped.includes(job.id)) return undefined;
 
   return job.id;
 }
@@ -221,52 +324,20 @@ async function fetchBatch(
   return rows.map((row) => ({ id: row.id, thumbPath: row.thumbPath! }));
 }
 
-/** Which of the three grid widths are missing their versioned cache entry on disk. */
-async function missingWarmWidths(
-  serverId: string,
-  thumbPath: string
-): Promise<Array<160 | 240 | 360>> {
-  const [has160, has240, has360] = await Promise.all([
-    posterCacheEntryExists(serverId, thumbPath, 160),
-    posterCacheEntryExists(serverId, thumbPath, 240),
-    posterCacheEntryExists(serverId, thumbPath, 360),
-  ]);
-  const widths: Array<160 | 240 | 360> = [];
-  if (!has160) widths.push(160);
-  if (!has240) widths.push(240);
-  if (!has360) widths.push(360);
-  return widths;
-}
-
-interface WarmTask {
-  itemId: string;
-  width: 160 | 240 | 360;
-}
-
-function dimensionsForWidth(width: 160 | 240 | 360) {
-  if (width === 160) return IMAGE_SIZES.posterGrid160;
-  if (width === 240) return IMAGE_SIZES.posterGrid240;
-  return IMAGE_SIZES.posterGrid360;
-}
-
-/** One proxyImage call for one item at one bucket width. Each task is a
- *  single fetch-semaphore acquisition at most, so bounding concurrent tasks
- *  to MAX_CONCURRENT_WARMS bounds concurrent semaphore slots the same way.
- *  skipLqipRace keeps the task holding its warm-pool slot until the real
- *  pipeline settles, instead of freeing it early on the LQIP placeholder. */
-async function runWarmTask(serverId: string, thumbPath: string, task: WarmTask): Promise<void> {
-  const version = posterVersionFor(thumbPath);
-  const dimensions = dimensionsForWidth(task.width);
-  await proxyImage({ serverId, imagePath: thumbPath, ...dimensions, version, skipLqipRace: true });
+/** One proxyImage call for one item, at the poster's one cache size. Each
+ *  task is a single fetch-semaphore acquisition at most, so bounding
+ *  concurrent tasks to MAX_CONCURRENT_WARMS bounds concurrent semaphore
+ *  slots the same way. */
+async function runWarmTask(serverId: string, thumbPath: string): Promise<void> {
+  await proxyImage({ serverId, imagePath: thumbPath, ...POSTER_IMAGE_SIZE, fallback: 'poster' });
 }
 
 /**
- * Process one batch: warm at most MAX_CONCURRENT_WARMS (item, width) pairs at
- * a time - never MAX_CONCURRENT_WARMS whole items in parallel, since an item
- * can need up to three proxyImage calls (160, 240, and 360, whichever cache
- * entries are missing) and each call is its own fetch-semaphore acquisition.
- * Re-enqueues for the next cursor when the raw batch came back full (more
- * items may remain beyond it).
+ * Process one batch: warm at most MAX_CONCURRENT_WARMS items at a time, one
+ * proxyImage call each (posters have exactly one cache size now), so bounding
+ * concurrent items bounds concurrent fetch-semaphore acquisitions the same
+ * way. Re-enqueues for the next cursor when the raw batch came back full
+ * (more items may remain beyond it).
  *
  * Fail-open: precache is a best-effort background warm, so one item's warm
  * failing is logged and skipped rather than failing the batch or the job.
@@ -296,6 +367,7 @@ export async function processImagePrecacheJob(
         totalItems: job.data.totalItems,
         processedItems: job.data.processedItems,
         passStartedAt,
+        refusedWrites: job.data.refusedWrites,
       },
       SYNC_ACTIVE_RETRY_DELAY_MS
     );
@@ -308,38 +380,35 @@ export async function processImagePrecacheJob(
 
   const batch = await fetchBatch(serverId, cursor, sinceUpdatedAt);
   if (batch.length === 0) {
+    await recordPassOutcome(job.data.refusedWrites ?? 0);
     return { done: true };
   }
 
-  const byId = new Map(batch.map((item) => [item.id, item.thumbPath]));
-  const perItemWidths = await Promise.all(
-    batch.map(async (item) => ({
-      itemId: item.id,
-      widths: await missingWarmWidths(serverId, item.thumbPath),
-    }))
-  );
-  const tasks: WarmTask[] = perItemWidths.flatMap(({ itemId, widths }) =>
-    widths.map((width) => ({ itemId, width }))
-  );
+  const missing = (
+    await Promise.all(
+      batch.map(async (item) =>
+        (await posterCacheEntryExists(serverId, item.thumbPath)) ? null : item
+      )
+    )
+  ).filter((item): item is PrecacheBatchRow => item !== null);
 
   let nextIndex = 0;
   async function warmPoolWorker(): Promise<void> {
-    while (nextIndex < tasks.length) {
-      const task = tasks[nextIndex++]!;
-      const thumbPath = byId.get(task.itemId)!;
+    while (nextIndex < missing.length) {
+      const item = missing[nextIndex++]!;
       // Fail-open: a single warm failing must not fail the batch or the job.
       try {
-        await runWarmTask(serverId, thumbPath, task);
+        await runWarmTask(serverId, item.thumbPath);
       } catch (err) {
-        console.error(`[ImagePrecache] Failed to warm item ${task.itemId} (${task.width}):`, err);
+        console.error(`[ImagePrecache] Failed to warm item ${item.id}:`, err);
       }
     }
   }
-
   await Promise.all(
-    Array.from({ length: Math.min(MAX_CONCURRENT_WARMS, tasks.length) }, () => warmPoolWorker())
+    Array.from({ length: Math.min(MAX_CONCURRENT_WARMS, missing.length) }, () => warmPoolWorker())
   );
 
+  const refusedWrites = (job.data.refusedWrites ?? 0) + takeRefusedWrites();
   if (batch.length === BATCH_SIZE) {
     const nextCursor = batch[batch.length - 1]!.id;
     await enqueueChained({
@@ -349,10 +418,27 @@ export async function processImagePrecacheJob(
       totalItems,
       processedItems: processedItems + batch.length,
       passStartedAt,
+      refusedWrites,
     });
+    return { processed: batch.length };
   }
-
+  await recordPassOutcome(refusedWrites);
   return { processed: batch.length };
+}
+
+/**
+ * The flag is volume-global: refusals from live misses drain into whichever pass ends
+ * next, and a clean pass clears what a still-refusing pass re-sets on its own end.
+ * Accepted, since one pass heals it either way.
+ */
+async function recordPassOutcome(refusedWrites: number): Promise<void> {
+  const redis = getRedis();
+  if (refusedWrites > 0) {
+    await writeDiskLimited(redis, refusedWrites);
+    console.warn(`[ImagePrecache] pass ended disk-limited: ${refusedWrites} writes refused`);
+  } else {
+    await clearDiskLimited(redis);
+  }
 }
 
 /**
@@ -370,6 +456,7 @@ export async function getAllActiveImagePrecacheJobs(): Promise<
     passStartedAt: string | null;
     totalItems: number | null;
     processedItems: number;
+    diskLimited: boolean;
   }>
 > {
   if (!imagePrecacheQueue) {
@@ -377,6 +464,7 @@ export async function getAllActiveImagePrecacheJobs(): Promise<
   }
 
   const jobs = await imagePrecacheQueue.getJobs(['active', 'waiting', 'delayed']);
+  const limited = await readDiskLimited(getRedis()).catch(() => null);
 
   return Promise.all(
     jobs.map(async (job) => {
@@ -389,6 +477,7 @@ export async function getAllActiveImagePrecacheJobs(): Promise<
         passStartedAt: job.data.passStartedAt ?? null,
         totalItems: job.data.totalItems ?? null,
         processedItems: job.data.processedItems ?? 0,
+        diskLimited: limited !== null,
       };
     })
   );

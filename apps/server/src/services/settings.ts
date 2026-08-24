@@ -33,6 +33,7 @@ const PUBLIC_DEFAULTS: Settings = {
   backupRetentionCount: 7,
   pluginUpdateCheckEnabled: true,
   pluginManifestUrl: null,
+  serverUpdateCheckEnabled: true,
   // Watch completion thresholds default to the shared industry-standard constant
   watchedThresholdMovie: Math.round(SESSION_LIMITS.WATCH_COMPLETION_THRESHOLD * 100),
   watchedThresholdTv: Math.round(SESSION_LIMITS.WATCH_COMPLETION_THRESHOLD * 100),

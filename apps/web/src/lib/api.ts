@@ -8,7 +8,20 @@ import type {
   Session,
   SessionWithDetails,
   ActiveSession,
-  Rule,
+  Automation,
+  AutomationKind,
+  AutomationListQuery,
+  AutomationRun,
+  AutomationRunSummary,
+  AutomationSortField,
+  CreateAutomationInput,
+  DryRunRequest,
+  DryRunResponse,
+  NearMissEntry,
+  RunCounts,
+  RunListQuery,
+  RunSortField,
+  UpdateAutomationInput,
   ViolationWithDetails,
   ViolationRosterFilters,
   ViolationSortField,
@@ -37,7 +50,7 @@ import type {
   UpdateDestinationInput,
   HistorySessionResponse,
   HistoryFilterOptions,
-  RulesFilterOptions,
+  AutomationFilterOptions,
   HistoryQueryInput,
   HistoryAggregatesQueryInput,
   HistoryAggregates,
@@ -73,9 +86,6 @@ import type {
   LibraryResolutionResponse,
   RunningTasksResponse,
   TailscaleInfo,
-  // Rules V2 types
-  CreateRuleV2Input,
-  UpdateRuleV2Input,
   // Backup & Restore types
   BackupMetadata,
   BackupListItem,
@@ -100,11 +110,16 @@ import type {
   MediaWatchersResponse,
   MediaPlatformBreakdownResponse,
   MediaSeasonHeatResponse,
+  ImageCacheStatus,
   ServerResourceDataPoint,
   ServerBandwidthDataPoint,
   BandwidthSample,
   BandwidthAccount,
   BandwidthDevice,
+  TEMPLATE_GROUPS,
+  TemplateDefinition,
+  TemplateEnvelope,
+  TemplateInput,
 } from '@tracearr/shared';
 
 // Re-export shared types needed by frontend components
@@ -150,6 +165,103 @@ export type ViolationListParams = Partial<ViolationRosterFilters> & {
   orderBy?: ViolationSortField;
   orderDir?: 'asc' | 'desc';
 };
+
+/** Automation query params: the server's own filter schema plus paging and sort. */
+export type AutomationListParams = Partial<
+  Pick<
+    AutomationListQuery,
+    'kind' | 'enabled' | 'search' | 'source' | 'serverId' | 'trigger' | 'severity'
+  >
+> & {
+  page?: number;
+  pageSize?: number;
+  orderBy?: AutomationSortField;
+  orderDir?: 'asc' | 'desc';
+};
+
+export type TemplateGroup = (typeof TEMPLATE_GROUPS)[number];
+
+/** One stored version: the inputs to bind and the definition they fill. */
+export interface TemplateVersionPayload {
+  version: number;
+  inputs: TemplateInput[];
+  definition: TemplateDefinition;
+}
+
+/** A catalog row, carrying the version it currently points at. */
+export interface AutomationTemplate {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  group: TemplateGroup;
+  kind: AutomationKind;
+  builtin: boolean;
+  source: 'builtin' | 'import' | 'local';
+  author: string | null;
+  currentVersion: number;
+  usedBy: number;
+  createdAt: string;
+  updatedAt: string;
+  version: TemplateVersionPayload;
+}
+
+/** A share code or a pasted envelope; the server accepts either. */
+export interface TemplateImportBody {
+  code?: string;
+  envelope?: unknown;
+  source?: 'local';
+  replace?: string;
+}
+
+export interface TemplatePreview {
+  envelope: TemplateEnvelope;
+  fingerprint: string;
+  existing?: {
+    templateId: string;
+    version: number;
+    name: string;
+    builtin: boolean;
+    fingerprintMatch: boolean;
+  };
+  minServerVersion: { required: string; current: string; satisfied: boolean };
+}
+
+export interface InstantiateTemplateInput {
+  inputs: Record<string, unknown>;
+  name?: string;
+  isActive?: boolean;
+}
+
+/** What both run reads filter on. */
+export type RunFilterParams = Partial<
+  Pick<RunListQuery, 'kind' | 'outcome' | 'automationId' | 'startDate' | 'endDate'>
+>;
+
+/** Run query params: the server's own filter schema plus paging and sort. */
+export type RunListParams = RunFilterParams & {
+  page?: number;
+  pageSize?: number;
+  orderBy?: RunSortField;
+  orderDir?: 'asc' | 'desc';
+};
+
+/**
+ * Query string for a list endpoint. `undefined` and `''` drop out; `false` stays,
+ * because a false is a filter value (`acknowledged=false` is "pending only").
+ */
+function listSearchParams(params: Record<string, unknown>): string {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '') continue;
+    if (Array.isArray(value)) {
+      for (const entry of value) searchParams.append(key, String(entry));
+    } else {
+      searchParams.set(key, String(value));
+    }
+  }
+  return searchParams.toString();
+}
 
 export interface BulkViolationParams {
   ids?: string[];
@@ -818,11 +930,13 @@ class ApiClient {
       );
     },
     /**
-     * Get filter options for the rules builder.
+     * Get filter options for the automation builder.
      * Returns all countries (with hasSessions indicator) and servers.
      */
-    rulesFilterOptions: () => {
-      return this.request<RulesFilterOptions>('/sessions/filter-options?includeAllCountries=true');
+    automationFilterOptions: () => {
+      return this.request<AutomationFilterOptions>(
+        '/sessions/filter-options?includeAllCountries=true'
+      );
     },
     getActive: async (serverIds?: string[]) => {
       const params = new URLSearchParams();
@@ -850,52 +964,102 @@ class ApiClient {
       }),
   };
 
-  // Rules
-  rules = {
-    list: async () => {
-      const response = await this.request<{ data: Rule[] }>('/rules');
-      return response.data;
-    },
-    update: (id: string, data: Partial<Rule>) =>
-      this.request<Rule>(`/rules/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    delete: (id: string) => this.request<void>(`/rules/${id}`, { method: 'DELETE' }),
+  // Automations
+  automations = {
+    list: (params: AutomationListParams = {}) =>
+      this.request<ListResponse<Automation>>(`/automations?${listSearchParams(params)}`),
+    get: (id: string) => this.request<Automation>(`/automations/${id}`),
+    create: (data: CreateAutomationInput) =>
+      this.request<Automation>('/automations', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: UpdateAutomationInput) =>
+      this.request<Automation>(`/automations/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    delete: (id: string) => this.request<void>(`/automations/${id}`, { method: 'DELETE' }),
+    /** Re-answers what a bound row's template asked; the server re-materializes the definition. */
+    rebind: (id: string, templateInputs: Record<string, unknown>) =>
+      this.request<Automation>(`/automations/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ templateInputs }),
+      }),
+    /** What a draft would do against the sessions playing now; nothing is recorded. */
+    dryRun: (data: DryRunRequest) =>
+      this.request<DryRunResponse>('/automations/dry-run', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     bulkUpdate: (ids: string[], isActive: boolean) =>
-      this.request<{ success: boolean; updated: number }>('/rules/bulk', {
+      this.request<{ success: boolean; updated: number }>('/automations/bulk', {
         method: 'PATCH',
         body: JSON.stringify({ ids, isActive }),
       }),
     bulkDelete: (ids: string[]) =>
-      this.request<{ success: boolean; deleted: number }>('/rules/bulk', {
+      this.request<{ success: boolean; deleted: number }>('/automations/bulk', {
         method: 'DELETE',
         body: JSON.stringify({ ids }),
       }),
+    /** The automation as an envelope plus the code that carries it. */
+    export: (id: string, author?: string, group?: TemplateGroup) => {
+      const query = listSearchParams({ author, group });
+      return this.request<{ envelope: TemplateEnvelope; code: string }>(
+        `/automations/${id}/export${query ? `?${query}` : ''}`
+      );
+    },
+    detach: (id: string) =>
+      this.request<Automation>(`/automations/${id}/detach`, { method: 'POST' }),
+    upgrade: (id: string, inputs: Record<string, unknown>) =>
+      this.request<Automation>(`/automations/${id}/upgrade`, {
+        method: 'POST',
+        body: JSON.stringify({ inputs }),
+      }),
+  };
 
-    // V2 Rules API
-    createV2: (data: CreateRuleV2Input) =>
-      this.request<Rule>('/rules/v2', { method: 'POST', body: JSON.stringify(data) }),
-    updateV2: (id: string, data: UpdateRuleV2Input) =>
-      this.request<Rule>(`/rules/${id}/v2`, { method: 'PATCH', body: JSON.stringify(data) }),
+  // Automation templates
+  templates = {
+    list: () => this.request<{ data: AutomationTemplate[] }>('/templates'),
+    get: (id: string) => this.request<AutomationTemplate>(`/templates/${id}`),
+    /** One stored version, however old: what a row pinned to it still says. */
+    getVersion: (id: string, version: number) =>
+      this.request<TemplateVersionPayload>(`/templates/${id}/versions/${version}`),
+    /** What an import would land on; nothing is written. */
+    preview: (body: TemplateImportBody) =>
+      this.request<TemplatePreview>('/templates/preview', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    create: (body: TemplateImportBody) =>
+      this.request<AutomationTemplate>('/templates', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    instantiate: (id: string, body: InstantiateTemplateInput) =>
+      this.request<Automation>(`/templates/${id}/instantiate`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  };
+
+  // Automation runs
+  runs = {
+    get: (id: string) => this.request<AutomationRun>(`/runs/${id}`),
+    listForAutomation: (automationId: string, params: RunListParams = {}) =>
+      this.request<ListResponse<AutomationRunSummary>>(
+        `/automations/${automationId}/runs?${listSearchParams(params)}`
+      ),
+    /** How many runs each outcome holds, for the Activity tabs. */
+    counts: (params: RunFilterParams = {}) =>
+      this.request<RunCounts>(`/runs/counts?${listSearchParams(params)}`),
+    /** The capped near-miss ring, newest first. */
+    evaluations: (automationId: string) =>
+      this.request<{ data: NearMissEntry[] }>(`/automations/${automationId}/evaluations`),
   };
 
   // Violations
   violations = {
     get: (id: string) => this.request<ViolationWithDetails>(`/violations/${id}`),
-    list: (params: ViolationListParams = {}) => {
-      const searchParams = new URLSearchParams();
-      for (const [key, value] of Object.entries(params)) {
-        // `acknowledged: false` is the "pending only" filter, so unlike the
-        // roster list a false here must survive onto the wire.
-        if (value === undefined || value === '') continue;
-        if (Array.isArray(value)) {
-          for (const entry of value) searchParams.append(key, entry);
-        } else {
-          searchParams.set(key, String(value));
-        }
-      }
-      return this.request<ListResponse<ViolationWithDetails>>(
-        `/violations?${searchParams.toString()}`
-      );
-    },
+    list: (params: ViolationListParams = {}) =>
+      this.request<ListResponse<ViolationWithDetails>>(`/violations?${listSearchParams(params)}`),
     acknowledge: (id: string) =>
       this.request<{ success: boolean; acknowledgedAt: Date | null }>(`/violations/${id}`, {
         method: 'PATCH',
@@ -1618,6 +1782,7 @@ class ApiClient {
       this.request<{ token: string }>('/settings/api-key/regenerate', { method: 'POST' }),
     getIpWarning: () =>
       this.request<{ showWarning: boolean; stateHash: string }>('/settings/ip-warning'),
+    getImageCache: () => this.request<ImageCacheStatus>('/settings/image-cache'),
   };
 
   // Notification destinations

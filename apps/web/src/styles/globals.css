@@ -146,9 +146,9 @@
   --success: 150 60% 38%;
   --warning: 43 90% 45%;
 
-  /* Media-scoped raised surface (KPI cards, panels, poster fallbacks) -
-     light --card is already pure white, so this is a hair off-white rather
-     than literally lighter. */
+  /* The app's raised surface (KPI cards, panels, builder rows) - light --card
+     is already pure white, so this is a hair off-white rather than literally
+     lighter. */
   --card-raised: 240 5% 98%;
 
   /* Chart Colors - Light Mode */
@@ -200,8 +200,8 @@
   --success: 150 60% 45%;
   --warning: 43 80% 55%;
 
-  /* Media-scoped raised surface (KPI cards, panels, poster fallbacks) -
-     lighter than --card, which is flat against --background in dark mode. */
+  /* The app's raised surface (KPI cards, panels, builder rows) - lighter than
+     --card, which is flat against --background in dark mode. */
   --card-raised: 240 8% 7%;
 
   /* Chart Colors - Dark Mode */

@@ -10,6 +10,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Checkbox } from '@/components/ui/checkbox';
+import { groupOptions } from '@/components/ui/group-options';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { selectTriggerClasses } from '@/components/ui/select';
 
@@ -59,14 +60,7 @@ export function MultiSelectList({
       ? options.filter((option) => option.label.toLowerCase().includes(needle))
       : options;
 
-    const groups = new Map<string, MultiSelectOption[]>();
-    for (const option of matches) {
-      const key = option.group ?? '';
-      const bucket = groups.get(key);
-      if (bucket) bucket.push(option);
-      else groups.set(key, [option]);
-    }
-    return [...groups.entries()];
+    return groupOptions(matches);
   }, [options, search, onSearchChange]);
 
   return (
@@ -90,9 +84,9 @@ export function MultiSelectList({
         {!isLoading && !isError && <CommandEmpty>{emptyMessage}</CommandEmpty>}
         {!isLoading &&
           !isError &&
-          grouped.map(([group, groupOptions]) => (
+          grouped.map(([group, items]) => (
             <CommandGroup key={group} heading={group || undefined}>
-              {groupOptions.map((option) => (
+              {items.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={option.value}

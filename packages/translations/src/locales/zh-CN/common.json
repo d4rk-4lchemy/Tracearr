@@ -64,8 +64,6 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "{{count}}错误",
@@ -78,8 +76,6 @@
     "location_other": "{{count}} locations",
     "result_one": "{{count}} 个结果",
     "result_other": "{{count}} 个结果",
-    "rule_one": "{{count}}规则",
-    "rule_other": "{{count}}规则",
     "selected_one": "{{count}} 已选",
     "selected_other": "{{count}} 已选",
     "server_one": "{{count}}服务器",
@@ -95,7 +91,11 @@
     "usersUpdated_one": "{{count}}用户已更新",
     "usersUpdated_other": "{{count}}用户已更新",
     "violation_one": "{{count}}违反",
-    "violation_other": "{{count}}违反"
+    "violation_other": "{{count}}违反",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
+    "automation_one": "{{count}} automation",
+    "automation_other": "{{count}} automations"
   },
   "duration": {
     "day_one": "{{count}} 天",

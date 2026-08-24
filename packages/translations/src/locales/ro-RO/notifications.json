@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Actualizarea agentului a eșuat",
       "apiKeyGenerateFailed": "Generarea cheii API a eșuat",
       "authFailed": "Autentificare eșuată",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Copierea în clipboard a eșuat",
       "copyFailed": "Nu s-a putut copia în clipboard",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Activarea accesului mobil a eșuat",
       "pairTokenGenerateFailed": "Generarea token-ului de pereche a eșuat",
       "plexDirectUrl": "URL-urile plex.direct sunt adrese de releu care nu pot fi folosite aici. Vă rugăm să folosiți o adresă IP directă sau numele gazdei.",
-      "plexUnlinkFailed": "Deconectarea contului Plex a eșuat",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Deconectarea contului Plex a eșuat",
       "routingUpdateFailed": "Nu s-a reușit actualizarea rutării",
-      "ruleCreateFailed": "Crearea regulii a eșuat",
-      "ruleDeleteFailed": "Ștergerea regulii a eșuat",
-      "ruleUpdateFailed": "Actualizarea regulii a eșuat",
       "serverAddFailed": "Adăugarea serverului a eșuat",
       "serverRemoveFailed": "Ștergerea serverului a eșuat",
       "serverReorderFailed": "Reordonarea serverelor a eșuat",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Testul Webhook a eșuat"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} este inaccesibil",
-        "title": "Server offline"
-      },
-      "serverOnline": {
-        "message": "{{name}} este din nou online",
-        "title": "Server Online"
-      },
-      "streamStarted": {
-        "message": "{{user}} a început urmărirea {{media}}",
-        "title": "A început un nou flux"
-      },
-      "streamStopped": {
-        "message": "{{user}} a oprit vizionarea",
-        "title": "Stream oprit"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} este disponibil",
         "title": "Actualizare disponibilă"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Noua ta cheie API este gata de utilizare",
         "title": "Cheie API generată"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Acum puteţi continua cu configurarea",
@@ -182,29 +178,17 @@
         "message": "Acum poți adăuga servere din contul tău Plex",
         "title": "Cont Plex legat"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Contul tău Plex a fost deconectat",
         "title": "Cont Plex Nelegat"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "Regula a fost creată cu succes",
-        "title": "Regulă creată"
-      },
-      "ruleDeleted": {
-        "message": "Regula a fost ștearsă cu succes",
-        "title": "Regulă ștearsă"
-      },
-      "ruleUpdated": {
-        "message": "Regula a fost actualizată cu succes",
-        "title": "Regulă actualizată"
       },
       "serverAdded": {
         "message": "{{name}} a fost conectat cu succes",
@@ -259,7 +243,7 @@
         "title": "Resetarea scorurilor de încredere"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

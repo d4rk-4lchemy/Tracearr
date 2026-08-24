@@ -29,7 +29,7 @@ const {
   mockCreateInitialConfirmationState,
   mockUpdateConfirmationState,
   mockDetectMediaChange,
-  mockGetActiveRulesV2,
+  mockGetActiveAutomations,
   mockBatchGetRecentUserSessions,
   mockBatchGetLibraryItemIdentity,
   mockBroadcastViolations,
@@ -66,7 +66,7 @@ const {
     }),
     mockUpdateConfirmationState: vi.fn().mockImplementation((state) => state),
     mockDetectMediaChange: vi.fn().mockReturnValue(false),
-    mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
+    mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
     mockBatchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
     mockBatchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
     mockBroadcastViolations: vi.fn(),
@@ -153,7 +153,7 @@ vi.mock('../poller/database.js', () => ({
   getServerUserIdByExternalId: vi.fn(() => {
     throw new Error('getServerUserIdByExternalId not configured in this test');
   }),
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   batchGetRecentUserSessions: mockBatchGetRecentUserSessions,
   batchGetLibraryItemIdentity: mockBatchGetLibraryItemIdentity,
   mergeRecentSessionsForIdentity: (map: Map<string, unknown[]>, ids: string[]) =>
@@ -175,14 +175,14 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   confirmAndPersistSession: mockConfirmAndPersistSession,
 }));
 
-vi.mock('../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
-vi.mock('../../services/rules/events/contextAssembly.js', () => ({
+vi.mock('../../services/automations/events/contextAssembly.js', () => ({
   loadEvaluationContext: vi.fn().mockResolvedValue(null),
   assembleEvaluationInputs: vi.fn().mockResolvedValue({
-    activeRulesV2: [],
+    activeAutomations: [],
     activeSessions: [],
     recentSessions: [],
     identityServerUserIds: [],

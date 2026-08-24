@@ -47,6 +47,11 @@ export function buildOrderBy<TField extends string>(
   return sql`${entry.key} ${dir}${nulls}, ${tiebreak} ASC`;
 }
 
+/** ILIKE treats these as wildcards, so a literal search for them has to escape. */
+export function likePattern(search: string): string {
+  return `%${search.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
+}
+
 /**
  * Resolve a calendar date to the start of that UTC day.
  *

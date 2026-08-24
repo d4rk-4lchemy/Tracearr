@@ -10,7 +10,7 @@ import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
-import type { AuthUser, Settings } from '@tracearr/shared';
+import type { AuthUser, ImageCacheStatus, Settings } from '@tracearr/shared';
 
 // Mock the settings service
 vi.mock('../../services/settings.js', () => ({
@@ -22,6 +22,11 @@ vi.mock('../../services/settings.js', () => ({
   getGeoIPSettings: vi.fn(),
   getNetworkSettings: vi.fn(),
   getBackupScheduleSettings: vi.fn(),
+}));
+
+// Mock the image cache service
+vi.mock('../../services/imageCacheSweep.js', () => ({
+  getImageCacheStatus: vi.fn(),
 }));
 
 // Mock the database module (still needed for api-key and ip-warning routes)
@@ -41,6 +46,7 @@ vi.mock('../../services/geoip.js', () => ({
 }));
 
 import { getAllSettings, setSettings } from '../../services/settings.js';
+import { getImageCacheStatus } from '../../services/imageCacheSweep.js';
 import { settingsRoutes } from '../settings.js';
 
 const mockAllSettings: Settings = {
@@ -63,12 +69,30 @@ const mockAllSettings: Settings = {
   backupRetentionCount: 7,
   pluginUpdateCheckEnabled: true,
   pluginManifestUrl: null,
+  serverUpdateCheckEnabled: true,
   watchedThresholdMovie: 85,
   watchedThresholdTv: 85,
   watchedThresholdMusic: 85,
   publicApiRateLimitPerMinute: 240,
   imagePrecacheEnabled: true,
   preferredPosterServerId: null,
+};
+
+const mockImageCacheStatus: ImageCacheStatus = {
+  bytes: 12345,
+  files: 10,
+  versionedFiles: 8,
+  sweptAt: '2026-08-23T00:00:00.000Z',
+  freedBytesLastSweep: 500,
+  deletedFilesLastSweep: 2,
+  postersWithThumb: 42,
+  estimatedNeedBytes: 42 * 18 * 1024,
+  freeBytes: 50 * 1024 ** 3,
+  totalBytes: 100 * 1024 ** 3,
+  minFreePercent: 10,
+  maxBytes: null,
+  diskLimitedSince: null,
+  shortfallBytes: 0,
 };
 
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
@@ -103,6 +127,7 @@ describe('Settings Routes', () => {
   beforeEach(() => {
     vi.mocked(getAllSettings).mockResolvedValue({ ...mockAllSettings });
     vi.mocked(setSettings).mockResolvedValue(undefined);
+    vi.mocked(getImageCacheStatus).mockResolvedValue({ ...mockImageCacheStatus });
   });
 
   afterEach(async () => {
@@ -345,6 +370,57 @@ describe('Settings Routes', () => {
       expect(setSettings).toHaveBeenCalledWith({ imagePrecacheEnabled: false });
       const body = response.json();
       expect(body.imagePrecacheEnabled).toBe(false);
+    });
+
+    it('accepts and persists both update-check toggles', async () => {
+      app = await buildTestApp(ownerUser);
+      vi.mocked(getAllSettings).mockResolvedValue({
+        ...mockAllSettings,
+        pluginUpdateCheckEnabled: false,
+        serverUpdateCheckEnabled: false,
+      });
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/settings',
+        payload: { pluginUpdateCheckEnabled: false, serverUpdateCheckEnabled: false },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(setSettings).toHaveBeenCalledWith({
+        pluginUpdateCheckEnabled: false,
+        serverUpdateCheckEnabled: false,
+      });
+      const body = response.json();
+      expect(body.pluginUpdateCheckEnabled).toBe(false);
+      expect(body.serverUpdateCheckEnabled).toBe(false);
+    });
+  });
+
+  describe('GET /settings/image-cache', () => {
+    it('returns the image cache status for owner', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/settings/image-cache',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(mockImageCacheStatus);
+    });
+
+    it('rejects viewer requesting the image cache status', async () => {
+      app = await buildTestApp(viewerUser);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/settings/image-cache',
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json().message).toContain('Only server owners');
+      expect(getImageCacheStatus).not.toHaveBeenCalled();
     });
   });
 });

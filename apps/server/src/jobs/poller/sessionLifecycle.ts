@@ -9,7 +9,7 @@ import {
   SESSION_WRITE_RETRY,
   TIME_MS,
   type ActiveSession,
-  type RuleV2,
+  type EngineAutomation,
   type Session,
   type StreamDetailFields,
 } from '@tracearr/shared';
@@ -17,9 +17,14 @@ import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { serverUsers, sessions, users } from '../../db/schema.js';
 import type { GeoLocation } from '../../services/geoip.js';
-import { toRuleSession } from '../../services/rules/events/contextAssembly.js';
-import { dispatch } from '../../services/rules/events/dispatcher.js';
-import type { ActionResult } from '../../services/rules/executors/index.js';
+import { toRuleSession } from '../../services/automations/events/contextAssembly.js';
+import { dispatch } from '../../services/automations/events/dispatcher.js';
+import { matchesTrigger } from '../../services/automations/events/evaluate.js';
+import {
+  dispatchNewDevice,
+  dispatchSessionStopped,
+} from '../../services/automations/events/producers.js';
+import type { ActionResult } from '../../services/automations/executors/index.js';
 import { getWatchedThreshold } from '../../services/settings.js';
 import { clearDbWriteTracking } from './dbWriteThrottle.js';
 import { pickStreamDetailFields } from './sessionMapper.js';
@@ -28,6 +33,7 @@ import {
   checkWatchCompletion,
   shouldRecordSession,
 } from './stateTracker.js';
+import type { DbTx } from '../../services/automations/events/types.js';
 import type { SessionIdentity as MediaItemIdentity } from './database.js';
 import type {
   CompositeSessionIdentity,
@@ -578,24 +584,53 @@ export async function batchFindActiveSessionsByComposite(
 // ============================================================================
 
 /**
- * Build the session list used for rule evaluation context.
- *
- * Excludes stoppedTwinId (the quality-change twin stopped earlier in the
- * same operation but still present in the caller's cache snapshot) and
- * appends triggeringSession unless a session with that id is already
- * present.
+ * What a device is known by. An empty deviceId falls through to the player name rather than
+ * probing for '', which the insert could never have written: it stores `deviceId || null`.
  */
-export function buildRuleContextSessions(
-  activeSessions: Session[],
-  triggeringSession: Session,
-  stoppedTwinId: string | null | undefined
-): Session[] {
-  const countableSessions = stoppedTwinId
-    ? activeSessions.filter((s) => s.id !== stoppedTwinId)
-    : activeSessions;
-  return countableSessions.some((s) => s.id === triggeringSession.id)
-    ? countableSessions
-    : [...countableSessions, triggeringSession];
+export function deviceKeyOf(session: {
+  deviceId?: string | null;
+  playerName?: string | null;
+}): { column: 'deviceId' | 'playerName'; value: string } | null {
+  if (session.deviceId) return { column: 'deviceId', value: session.deviceId };
+  if (session.playerName) return { column: 'playerName', value: session.playerName };
+  return null;
+}
+
+/** City and region as a message names them, or null when the session carries no geo columns. */
+export function sessionLocation(session: {
+  geoCity: string | null;
+  geoRegion: string | null;
+  geoCountry: string | null;
+}): string | null {
+  const parts = [session.geoCity, session.geoRegion ?? session.geoCountry].filter(
+    (part): part is string => part !== null && part !== ''
+  );
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+/**
+ * Whether this account has ever streamed from the device. Ordered append visits the newest
+ * chunk first and stops at the first row, so a device already on file never fans out.
+ */
+async function accountHasSeenDevice(
+  tx: DbTx,
+  serverUserId: string,
+  key: { column: 'deviceId' | 'playerName'; value: string }
+): Promise<boolean> {
+  const seen = await tx
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.serverUserId, serverUserId),
+        key.column === 'deviceId'
+          ? eq(sessions.deviceId, key.value)
+          : and(isNull(sessions.deviceId), eq(sessions.playerName, key.value))
+      )
+    )
+    .orderBy(desc(sessions.startedAt))
+    .limit(1);
+  return seen.length > 0;
 }
 
 /**
@@ -651,7 +686,7 @@ export async function createSessionWithRulesAtomic(
     server,
     serverUser,
     geo,
-    activeRulesV2,
+    activeAutomations,
     activeSessions,
     recentSessions,
     preGeneratedId,
@@ -696,6 +731,7 @@ export async function createSessionWithRulesAtomic(
         session: existingActiveSession,
         stoppedAt: now,
         preserveWatched: true,
+        reason: 'quality_change',
       });
 
       // Only proceed with quality change if we actually stopped the session
@@ -768,8 +804,8 @@ export async function createSessionWithRulesAtomic(
 
   for (let attempt = 1; attempt <= MAX_SERIALIZATION_RETRIES; attempt++) {
     try {
-      const { insertedSession, violationResults, deferredActions } = await db.transaction(
-        async (tx) => {
+      const { insertedSession, violationResults, deferredActions, newDevice } =
+        await db.transaction(async (tx) => {
           // Set SERIALIZABLE isolation to prevent duplicate violations from concurrent polls
           // This ensures that if two transactions read the violations table simultaneously,
           // one will be forced to retry after the other commits
@@ -780,6 +816,17 @@ export async function createSessionWithRulesAtomic(
           await tx.execute(
             sql`SET LOCAL statement_timeout = ${sql.raw(String(TRANSACTION_TIMEOUT_MS))}`
           );
+
+          // Before the insert: after it the new row would match itself. The rules are in
+          // hand, so an install with no such automation never issues the query.
+          const deviceKey = activeAutomations.some((candidate) =>
+            matchesTrigger(candidate, 'account.new_device')
+          )
+            ? deviceKeyOf(processed)
+            : null;
+          const isNewDevice = deviceKey
+            ? !(await accountHasSeenDevice(tx, serverUser.id, deviceKey))
+            : false;
 
           const insertedRows = await tx
             .insert(sessions)
@@ -878,31 +925,51 @@ export async function createSessionWithRulesAtomic(
             .where(eq(users.id, serverUser.userId));
 
           const session = toRuleSession(inserted);
+          const ruleServer = { id: server.id, name: server.name, type: server.type };
+          const inputs = {
+            activeAutomations,
+            // The quality-change twin was stopped in STEP 1 but still sits in the caller's snapshot.
+            activeSessions: qualityChange
+              ? activeSessions.filter((s) => s.id !== qualityChange.stoppedSession.id)
+              : activeSessions,
+            recentSessions,
+            identityServerUserIds: serverUser.identityServerUserIds,
+          };
           const { violations: violationResults, deferredActions } = await dispatch(
             {
               type: 'session.started',
               at: inserted.startedAt,
-              server: { id: server.id, name: server.name, type: server.type },
+              server: ruleServer,
               serverUser,
               session,
             },
-            {
-              activeRulesV2,
-              // The quality-change twin was stopped in STEP 1 but still sits in the caller's snapshot.
-              activeSessions: qualityChange
-                ? activeSessions.filter((s) => s.id !== qualityChange.stoppedSession.id)
-                : activeSessions,
-              recentSessions,
-              identityServerUserIds: serverUser.identityServerUserIds,
-            },
+            inputs,
             { tx, deferActions: true }
           );
 
-          return { insertedSession: inserted, violationResults, deferredActions };
-        }
-      );
+          const newDevice = isNewDevice
+            ? {
+                event: {
+                  at: inserted.startedAt,
+                  server: ruleServer,
+                  serverUser,
+                  session,
+                  device: {
+                    name: inserted.playerName ?? inserted.device ?? inserted.product ?? '',
+                    platform: inserted.platform,
+                    product: inserted.product,
+                    location: sessionLocation(inserted),
+                  },
+                },
+                inputs,
+              }
+            : null;
+
+          return { insertedSession: inserted, violationResults, deferredActions, newDevice };
+        });
 
       const actionResults = deferredActions ? await deferredActions() : [];
+      if (newDevice) await dispatchNewDevice(newDevice.event, newDevice.inputs);
       const wasTerminatedByRule = wasTriggeringSessionTargetedForKill(
         actionResults,
         insertedSession.id
@@ -954,7 +1021,7 @@ export interface ConfirmPendingSessionInput {
   /** Pending session data from Redis */
   pendingData: PendingSessionData;
   /** Active V2 rules to evaluate */
-  activeRulesV2: RuleV2[];
+  activeAutomations: EngineAutomation[];
   /** Active sessions for rule context */
   activeSessions: Session[];
   /** Recent sessions for rule evaluation */
@@ -974,7 +1041,7 @@ export interface ConfirmPendingSessionInput {
 export async function confirmAndPersistSession(
   input: ConfirmPendingSessionInput
 ): Promise<SessionCreationResult> {
-  const { pendingData, activeRulesV2, activeSessions, recentSessions } = input;
+  const { pendingData, activeAutomations, activeSessions, recentSessions } = input;
   const { processed, server, serverUser, geo } = pendingData;
 
   // Delegate to createSessionWithRulesAtomic for atomic rule evaluation
@@ -991,7 +1058,7 @@ export async function confirmAndPersistSession(
     server,
     serverUser,
     geo,
-    activeRulesV2,
+    activeAutomations,
     activeSessions,
     recentSessions,
     // Use the pre-generated UUID - ensures same ID from pending to confirmed state
@@ -1049,7 +1116,13 @@ export async function confirmAndPersistSession(
  * Implements bounded retry logic for transient DB failures.
  */
 export async function stopSessionAtomic(input: SessionStopInput): Promise<SessionStopResult> {
-  const { session, stoppedAt, forceStopped = false, preserveWatched = false } = input;
+  const {
+    session,
+    stoppedAt,
+    forceStopped = false,
+    preserveWatched = false,
+    reason = 'ended',
+  } = input;
 
   const { durationMs, finalPausedDurationMs } = calculateStopDuration(
     {
@@ -1078,6 +1151,8 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
 
   // Retry loop for transient DB failures (connection errors, timeouts, etc.)
   let lastError: unknown;
+  // null until a write attempt lands; then whether this call is the one that stopped the row.
+  let wasUpdated: boolean | null = null;
   for (let attempt = 1; attempt <= SESSION_WRITE_RETRY.IMMEDIATE_RETRIES; attempt++) {
     try {
       // Use conditional update for idempotency - only stop if not already stopped
@@ -1097,22 +1172,8 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
         .where(and(eq(sessions.id, session.id), isNull(sessions.stoppedAt)))
         .returning({ id: sessions.id });
 
-      // Return whether the update was applied (for caller to skip cache/broadcast if already stopped)
-      const wasUpdated = result.length > 0;
-
-      if (wasUpdated) {
-        console.log(
-          `[SessionLifecycle] Session stopped: "${session.mediaTitle}" after ${Math.round(durationMs / 1000)}s (watched=${watched}${forceStopped ? ', forced' : ''})`
-        );
-        await dispatch({
-          type: 'session.stopped',
-          at: stoppedAt,
-          sessionId: session.id,
-          serverId: session.serverId,
-        });
-      }
-
-      return { durationMs, watched, shortSession, wasUpdated };
+      wasUpdated = result.length > 0;
+      break;
     } catch (error) {
       lastError = error;
       if (attempt < SESSION_WRITE_RETRY.IMMEDIATE_RETRIES) {
@@ -1125,20 +1186,44 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
     }
   }
 
-  // All retries failed - return needsRetry for caller to queue for later processing
-  console.error(
-    `[SessionLifecycle] All ${SESSION_WRITE_RETRY.IMMEDIATE_RETRIES} attempts failed for session ${session.id}:`,
-    lastError
-  );
+  if (wasUpdated === null) {
+    // All retries failed - return needsRetry for caller to queue for later processing
+    console.error(
+      `[SessionLifecycle] All ${SESSION_WRITE_RETRY.IMMEDIATE_RETRIES} attempts failed for session ${session.id}:`,
+      lastError
+    );
 
-  return {
-    durationMs,
-    watched,
-    shortSession,
-    wasUpdated: false,
-    needsRetry: true,
-    retryData: { stoppedAt: stoppedAt.getTime(), forceStopped },
-  };
+    return {
+      durationMs,
+      watched,
+      shortSession,
+      wasUpdated: false,
+      needsRetry: true,
+      retryData: { stoppedAt: stoppedAt.getTime(), forceStopped },
+    };
+  }
+
+  if (wasUpdated) {
+    console.log(
+      `[SessionLifecycle] Session stopped: "${session.mediaTitle}" after ${Math.round(durationMs / 1000)}s (watched=${watched}${forceStopped ? ', forced' : ''})`
+    );
+    // Outside the retry loop: the row is stopped, and a failed dispatch must not re-run the write.
+    await dispatchSessionStopped(
+      toRuleSession(session, {
+        state: 'stopped',
+        stoppedAt,
+        durationMs,
+        pausedDurationMs: finalPausedDurationMs,
+        lastPausedAt: null,
+        watched,
+      }),
+      durationMs,
+      stoppedAt,
+      reason
+    );
+  }
+
+  return { durationMs, watched, shortSession, wasUpdated };
 }
 
 // ============================================================================
@@ -1165,7 +1250,7 @@ export async function handleMediaChangeAtomic(
     server,
     serverUser,
     geo,
-    activeRulesV2,
+    activeAutomations,
     activeSessions,
     recentSessions,
   } = input;
@@ -1179,6 +1264,7 @@ export async function handleMediaChangeAtomic(
   const { wasUpdated } = await stopSessionAtomic({
     session: existingSession,
     stoppedAt: now,
+    reason: 'media_change',
   });
 
   if (!wasUpdated) {
@@ -1202,7 +1288,7 @@ export async function handleMediaChangeAtomic(
       server,
       serverUser,
       geo,
-      activeRulesV2,
+      activeAutomations,
       // The old-media session was stopped above; the caller's snapshot
       // predates that stop.
       activeSessions: activeSessions.filter((s) => s.id !== existingSession.id),
@@ -1225,13 +1311,6 @@ export async function handleMediaChangeAtomic(
 // ============================================================================
 // Poll Result Processing
 // ============================================================================
-
-/**
- * Notification types used during poll processing
- */
-type PollNotification =
-  | { type: 'session_started'; payload: ActiveSession }
-  | { type: 'session_stopped'; payload: ActiveSession };
 
 /**
  * Input for processing poll results
@@ -1260,12 +1339,10 @@ export interface PollResultsInput {
   pubSubService: {
     publish: (event: string, data: unknown) => Promise<void>;
   } | null;
-  /** Notification enqueue function */
-  enqueueNotification: (notification: PollNotification) => Promise<unknown>;
   /**
    * IDs (subset of newSessions) confirmed from a pending entry rather than
-   * created fresh. The pending create already published session:started and
-   * enqueued session_started, so both are skipped here for these ids.
+   * created fresh. The pending create already published session:started, so
+   * it is skipped here for these ids.
    */
   confirmedFromPendingIds?: Set<string>;
 }
@@ -1282,7 +1359,6 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     cachedSessions,
     cacheService,
     pubSubService,
-    enqueueNotification,
     confirmedFromPendingIds,
   } = input;
 
@@ -1306,12 +1382,10 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
   // Publish events via pub/sub
   if (pubSubService) {
     for (const session of newSessions) {
-      // Sessions confirmed from a pending entry already got both of these
-      // at pending create - re-sending here would double the SSE event and
-      // the user-facing notification.
+      // A session confirmed from a pending entry was already published at pending
+      // create; re-sending here would double the SSE event.
       if (confirmedFromPendingIds?.has(session.id)) continue;
       await pubSubService.publish('session:started', session);
-      await enqueueNotification({ type: 'session_started', payload: session });
     }
 
     // No consumer reads the payload, so one tick's updates collapse to a single publish.
@@ -1326,17 +1400,7 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     for (const stoppedRef of uniqueStoppedSessions) {
       const stoppedSession = cachedSessionsById.get(stoppedRef.id);
       if (stoppedSession) {
-        // Fetch the computed durationMs from DB since the cached session has stale data
-        const [dbSession] = await db
-          .select({ durationMs: sessions.durationMs })
-          .from(sessions)
-          .where(eq(sessions.id, stoppedSession.id));
-        const durationMs = dbSession?.durationMs ?? stoppedSession.durationMs;
         await pubSubService.publish('session:stopped', stoppedSession.id);
-        await enqueueNotification({
-          type: 'session_stopped',
-          payload: { ...stoppedSession, durationMs },
-        });
       }
     }
   }

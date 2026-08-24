@@ -10,13 +10,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ActiveSession } from '@tracearr/shared';
 
-const mockDbSelect = vi.fn();
-
-vi.mock('../../../db/client.js', () => ({
-  db: {
-    select: (...args: unknown[]) => mockDbSelect(...args),
-  },
-}));
+vi.mock('../../../db/client.js', () => ({ db: { select: vi.fn() } }));
 
 vi.mock('../../../db/schema.js', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -45,7 +39,6 @@ describe('processPollResults', () => {
       removeUserSession: vi.fn(),
     };
     const pubSubService = { publish: vi.fn() };
-    const enqueueNotification = vi.fn();
 
     await processPollResults({
       newSessions: [],
@@ -55,7 +48,6 @@ describe('processPollResults', () => {
       cachedSessions: [],
       cacheService,
       pubSubService,
-      enqueueNotification,
     });
 
     const updatedPublishes = pubSubService.publish.mock.calls.filter(
@@ -81,7 +73,6 @@ describe('processPollResults', () => {
       cachedSessions: [],
       cacheService,
       pubSubService,
-      enqueueNotification: vi.fn(),
     });
 
     expect(pubSubService.publish.mock.calls.some(([event]) => event === 'session:updated')).toBe(
@@ -97,7 +88,6 @@ describe('processPollResults', () => {
       removeUserSession: vi.fn(),
     };
     const pubSubService = { publish: vi.fn() };
-    const enqueueNotification = vi.fn();
 
     await processPollResults({
       newSessions,
@@ -107,17 +97,15 @@ describe('processPollResults', () => {
       cachedSessions: [],
       cacheService,
       pubSubService,
-      enqueueNotification,
     });
 
     const startedPublishes = pubSubService.publish.mock.calls.filter(
       ([event]) => event === 'session:started'
     );
     expect(startedPublishes).toHaveLength(2);
-    expect(enqueueNotification).toHaveBeenCalledTimes(2);
   });
 
-  it('skips the session:started publish and notification for sessions confirmed from a pending entry', async () => {
+  it('skips the session:started publish for sessions confirmed from a pending entry', async () => {
     const newSessions = [makeSession('fresh-1'), makeSession('confirmed-1')];
     const cacheService = {
       incrementalSyncActiveSessions: vi.fn(),
@@ -125,7 +113,6 @@ describe('processPollResults', () => {
       removeUserSession: vi.fn(),
     };
     const pubSubService = { publish: vi.fn() };
-    const enqueueNotification = vi.fn();
 
     await processPollResults({
       newSessions,
@@ -135,7 +122,6 @@ describe('processPollResults', () => {
       cachedSessions: [],
       cacheService,
       pubSubService,
-      enqueueNotification,
       confirmedFromPendingIds: new Set(['confirmed-1']),
     });
 
@@ -144,7 +130,6 @@ describe('processPollResults', () => {
     );
     expect(startedPublishes).toHaveLength(1);
     expect(startedPublishes[0]?.[1]).toBe(newSessions[0]);
-    expect(enqueueNotification).toHaveBeenCalledTimes(1);
   });
 
   it('publishes session:updated when a pending session is confirmed', async () => {
@@ -177,12 +162,6 @@ describe('processPollResults', () => {
   });
 
   it('still publishes one session:stopped per stopped session', async () => {
-    mockDbSelect.mockReturnValue({
-      from: () => ({
-        where: () => Promise.resolve([{ durationMs: 12345 }]),
-      }),
-    });
-
     const cachedSessions = [makeSession('stopped-1'), makeSession('stopped-2')];
     const cacheService = {
       incrementalSyncActiveSessions: vi.fn(),
@@ -190,7 +169,6 @@ describe('processPollResults', () => {
       removeUserSession: vi.fn(),
     };
     const pubSubService = { publish: vi.fn() };
-    const enqueueNotification = vi.fn();
 
     await processPollResults({
       newSessions: [],
@@ -204,7 +182,6 @@ describe('processPollResults', () => {
       cachedSessions,
       cacheService,
       pubSubService,
-      enqueueNotification,
     });
 
     const stoppedPublishes = pubSubService.publish.mock.calls.filter(

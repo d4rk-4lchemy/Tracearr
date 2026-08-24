@@ -9,6 +9,7 @@ import { updateSettingsSchema, type Settings } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { users, sessions } from '../db/schema.js';
 import { geoipService } from '../services/geoip.js';
+import { getImageCacheStatus } from '../services/imageCacheSweep.js';
 import { getAllSettings, setSettings } from '../services/settings.js';
 
 // Re-export service getters so existing import paths still work
@@ -166,5 +167,13 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return { showWarning, stateHash };
+  });
+
+  /** GET /settings/image-cache - poster cache size, need, free disk, disk-limited flag */
+  app.get('/image-cache', { preHandler: [app.authenticate] }, async (request, reply) => {
+    if (request.user.role !== 'owner') {
+      return reply.forbidden('Only server owners can view settings');
+    }
+    return getImageCacheStatus();
   });
 };

@@ -5,11 +5,11 @@ import {
   type Action,
   type DestinationKind,
   type NotificationEventType,
-  type RuleActions,
+  type AutomationActions,
 } from '@tracearr/shared';
-import { db } from '../../db/client.js';
-import { destinations, rules, settings } from '../../db/schema.js';
-import { invalidateRulesCache } from '../../jobs/poller/database.js';
+import { db, type Executor } from '../../db/client.js';
+import { destinations, automations, settings } from '../../db/schema.js';
+import { invalidateAutomationsCache } from '../../jobs/poller/database.js';
 import { createLogger } from '../../utils/logger.js';
 import { resetSettingsCache } from '../settings.js';
 import { encryptConfig } from './destinationCrypto.js';
@@ -37,9 +37,6 @@ export type SevenKey = (typeof SEVEN_KEYS)[number];
 
 /** Distinct from the schema runner's 875_100_002 and timescale's backfill 875_100_001. */
 const LOCK_KEY = 875_100_003;
-
-/** Transaction handle, or the plain client when there is no surrounding transaction. */
-type Executor = Parameters<Parameters<typeof db.transaction>[0]>[0] | typeof db;
 
 type WebhookKind = 'json_webhook' | 'ntfy' | 'gotify' | 'apprise';
 const WEBHOOK_NAMES: Record<WebhookKind, string> = {
@@ -88,7 +85,7 @@ export interface PlannedDestination {
 export interface Plan {
   destinations: PlannedDestination[];
   builtinEvents: { push: NotificationEventType[]; webToast: NotificationEventType[] };
-  ruleUpdates: Array<{ id: string; actions: RuleActions }>;
+  ruleUpdates: Array<{ id: string; actions: AutomationActions }>;
   logs: string[];
 }
 
@@ -98,7 +95,13 @@ const set = (v: string | null | undefined): v is string => typeof v === 'string'
 function routingFor(routing: RoutingRow[] | null, event: NotificationEventType): RoutingRow {
   const row = routing?.find((r) => r.eventType === event);
   if (row) return row;
-  const on = !(event === 'stream_started' || event === 'stream_stopped');
+  // Trust joins the stream pair: 0004 seeded it off for everyone, so a database with no
+  // routing table at all is no evidence anyone asked for it.
+  const on = !(
+    event === 'stream_started' ||
+    event === 'stream_stopped' ||
+    event === 'trust_score_changed'
+  );
   return {
     eventType: event,
     discordEnabled: on,
@@ -111,12 +114,21 @@ function routingFor(routing: RoutingRow[] | null, event: NotificationEventType):
 const capable = (kind: DestinationKind, events: NotificationEventType[]): NotificationEventType[] =>
   events.filter((e) => (DESTINATION_TYPES[kind].events as readonly string[]).includes(e));
 
+/** The events the pre-automation routing table knew; the update and media events post-date it. */
+const ROUTED_EVENTS: NotificationEventType[] = NOTIFICATION_EVENT_TYPES.filter(
+  (e) =>
+    e !== 'server_update_available' &&
+    e !== 'tracearr_update_available' &&
+    e !== 'media_added' &&
+    e !== 'media_upgraded'
+);
+
 export function planDestinationsMigration(input: PlanInput): Plan {
   const s = input.settings;
   const logs: string[] = [];
   const planned: PlannedDestination[] = [];
   const evts = (pick: (r: RoutingRow) => boolean): NotificationEventType[] =>
-    NOTIFICATION_EVENT_TYPES.filter((e) => pick(routingFor(input.routing, e)));
+    ROUTED_EVENTS.filter((e) => pick(routingFor(input.routing, e)));
 
   if (set(s.discordWebhookUrl)) {
     planned.push({
@@ -217,9 +229,11 @@ export function planDestinationsMigration(input: PlanInput): Plan {
         'push',
         evts((r) => r.pushEnabled)
       ),
+      // 0018 set web_toast_enabled true on every existing row, so a checked toast is not
+      // evidence anyone wanted trust-score alerts; its other three columns all default off.
       webToast: capable(
         'web_toast',
-        evts((r) => r.webToastEnabled)
+        evts((r) => r.webToastEnabled && r.eventType !== 'trust_score_changed')
       ),
     },
     ruleUpdates,
@@ -254,7 +268,7 @@ export async function seedBuiltinDestinations(
   executor: Executor = db
 ): Promise<{ pushId: string; webToastId: string; inserted: number }> {
   const defaultEvents = (kind: 'push' | 'web_toast'): NotificationEventType[] =>
-    DESTINATION_TYPES[kind].events.filter((e) => e !== 'stream_started' && e !== 'stream_stopped');
+    capable(kind, ROUTED_EVENTS).filter((e) => e !== 'stream_started' && e !== 'stream_stopped');
   const created = await executor
     .insert(destinations)
     .values([
@@ -310,8 +324,13 @@ export async function runDestinationsMigration(): Promise<void> {
     }
 
     const ruleRows = await tx
-      .select({ id: rules.id, name: rules.name, isActive: rules.isActive, actions: rules.actions })
-      .from(rules);
+      .select({
+        id: automations.id,
+        name: automations.name,
+        isActive: automations.isActive,
+        actions: automations.actions,
+      })
+      .from(automations);
 
     const regclass = await tx.execute(
       sql`SELECT to_regclass('public.notification_channel_routing') AS r`
@@ -381,9 +400,9 @@ export async function runDestinationsMigration(): Promise<void> {
         a.type === 'send' ? { ...a, to: a.to.map((t) => ids.get(t) ?? t) } : a
       );
       await tx
-        .update(rules)
+        .update(automations)
         .set({ actions: { actions }, updatedAt: new Date() })
-        .where(eq(rules.id, update.id));
+        .where(eq(automations.id, update.id));
     }
 
     await tx.delete(settings).where(inArray(settings.name, [...SEVEN_KEYS]));
@@ -393,7 +412,7 @@ export async function runDestinationsMigration(): Promise<void> {
     );
     return true;
   });
-  invalidateRulesCache();
+  invalidateAutomationsCache();
   invalidateDestinationsCache();
   resetSettingsCache();
   if (changed) await publishDestinationsChanged();

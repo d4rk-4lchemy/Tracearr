@@ -37,7 +37,7 @@ const testMutate = vi.fn();
 function destination(overrides: Partial<Destination> = {}): Destination {
   return {
     id: 'dest-discord',
-    name: 'Team Discord',
+    name: 'Discord',
     type: 'discord',
     enabled: true,
     builtin: false,
@@ -45,7 +45,7 @@ function destination(overrides: Partial<Destination> = {}): Destination {
     configStatus: 'ok',
     config: { webhookUrl: null },
     secretsSet: ['webhookUrl'],
-    referencedByRuleCount: 0,
+    referencedByAutomationCount: 0,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -105,7 +105,7 @@ describe('DestinationsManager', () => {
 
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
       'Mobile push',
-      'Team Discord',
+      'Discord',
     ]);
     expect(screen.getByText('pages:settings.destinations.builtinNote')).toBeInTheDocument();
     expect(screen.getByText('pages:settings.destinations.pushNote')).toBeInTheDocument();

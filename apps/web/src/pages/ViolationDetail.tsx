@@ -13,8 +13,6 @@ import {
   getViolationDescription,
   getViolationDetails,
   collectViolationSessions,
-  CONDITION_FIELD_LABELS,
-  OPERATOR_LABELS,
   formatConditionFieldValue,
   formatUserList,
   type UnitSystem,
@@ -36,6 +34,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SeverityBadge } from '@/components/violations/SeverityBadge';
 import { ActionResultsList } from '@/components/violations/ActionResultsList';
 import { getAvatarUrl } from '@/components/users/utils';
+import { fieldLabel, operatorLabel } from '@/lib/automations';
 import { getCountryName, getMediaDisplay } from '@/lib/utils';
 import { ServerBadge } from '@/components/server';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
@@ -84,8 +83,8 @@ function ConditionEvidenceRow({
   userIdToName?: Record<string, string>;
 }) {
   const { t } = useTranslation(['pages', 'common']);
-  const label = CONDITION_FIELD_LABELS[condition.field] ?? condition.field;
-  const op = OPERATOR_LABELS[condition.operator] ?? condition.operator;
+  const label = fieldLabel(t, condition.field);
+  const op = operatorLabel(t, condition.operator);
 
   const resolveValue = (value: unknown): string => {
     const str = String(value);

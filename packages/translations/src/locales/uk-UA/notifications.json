@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Не вдалося оновити агента",
       "apiKeyGenerateFailed": "Не вдалося згенерувати ключ API",
       "authFailed": "Помилка автентифікації",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Не вдалося скопіювати в буфер обміну",
       "copyFailed": "Не вдалося скопіювати в буфер обміну",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Не вдалося увімкнути доступ до мобільного зв'язку",
       "pairTokenGenerateFailed": "Не вдалося створити токен пари",
       "plexDirectUrl": "plex.direct URL - це естафетні адреси, які не можуть бути використані тут. Замість цього використовуйте пряму IP адресу або ім'я хосту.",
-      "plexUnlinkFailed": "Не вдалося від'єднати акаунт Plex",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Не вдалося від'єднати акаунт Plex",
       "routingUpdateFailed": "Не вдалося оновити маршрутизацію",
-      "ruleCreateFailed": "Не вдалося створити правило",
-      "ruleDeleteFailed": "Не вдалося видалити правило",
-      "ruleUpdateFailed": "Не вдалося оновити правило",
       "serverAddFailed": "Не вдалося додати сервер",
       "serverRemoveFailed": "Не вдалося видалити сервер",
       "serverReorderFailed": "Не вдалося змінити порядок серверів",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Тест Webhook не вдався"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} недоступний",
-        "title": "Сервер не в мережі"
-      },
-      "serverOnline": {
-        "message": "{{name}} знову у мережі",
-        "title": "Сервер онлайн"
-      },
-      "streamStarted": {
-        "message": "{{user}} почав дивитися {{media}}",
-        "title": "Нову стрім розпочато"
-      },
-      "streamStopped": {
-        "message": "Перестати відстежувати {{user}}",
-        "title": "Трансляцію зупинено"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} доступний",
         "title": "Доступне оновлення"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Ваш новий API-ключ готовий до використання",
         "title": "API-ключ згенеровано"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Ви можете зараз продовжити установку",
@@ -182,29 +178,17 @@
         "message": "Тепер ви можете додати сервери з вашого акаунту Plex",
         "title": "Plex обліковий запис пов’язаний"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Ваш обліковий запис Plex відключено",
         "title": "Plex обліковий запис від'єднано"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "Правило успішно створено",
-        "title": "Правило створено"
-      },
-      "ruleDeleted": {
-        "message": "Правило успішно видалено",
-        "title": "Правило видалено"
-      },
-      "ruleUpdated": {
-        "message": "Правило успішно оновлено",
-        "title": "Правило оновлено"
       },
       "serverAdded": {
         "message": "{{name}} успішно підключено",
@@ -259,7 +243,7 @@
         "title": "Довіряти кільця скинуті"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

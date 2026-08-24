@@ -180,6 +180,32 @@ export abstract class BaseMediaServerClient
   }
 
   /**
+   * The body both `getServerIdentity` and `getSoftwareVersion` read their one field from.
+   */
+  private async systemInfo(): Promise<Record<string, unknown>> {
+    return fetchJson<Record<string, unknown>>(`${this.baseUrl}/System/Info`, {
+      headers: this.buildHeaders(),
+      service: this.serverType,
+      timeout: 10000,
+    });
+  }
+
+  /**
+   * The server's own id. Jellyfin item links resolve without it; an Emby web deep link
+   * without its `serverId` param 404s.
+   */
+  async getServerIdentity(): Promise<string | null> {
+    const { Id } = await this.systemInfo();
+    return typeof Id === 'string' && Id ? Id : null;
+  }
+
+  /** The version the server reports for itself, as the update checker compares it. */
+  async getSoftwareVersion(): Promise<string | null> {
+    const { Version } = await this.systemInfo();
+    return typeof Version === 'string' && Version ? Version : null;
+  }
+
+  /**
    * Test connection to the server
    */
   async testConnection(): Promise<boolean> {

@@ -94,7 +94,7 @@ vi.mock('../poller/stateTracker.js', () => ({
   updateConfirmationState: vi.fn().mockImplementation((state) => state),
 }));
 vi.mock('../poller/database.js', () => ({
-  getActiveRulesV2: vi.fn().mockResolvedValue([]),
+  getActiveAutomations: vi.fn().mockResolvedValue([]),
   // Matches the existing row's serverUserId so the paused-event cross-user
   // guard lets these updates through.
   getServerUserIdByExternalId: vi.fn().mockResolvedValue('server-user-1'),
@@ -118,14 +118,14 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   handleQualityChangeFallout: vi.fn(),
   confirmAndPersistSession: vi.fn(),
 }));
-vi.mock('../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
-vi.mock('../../services/rules/events/contextAssembly.js', () => ({
+vi.mock('../../services/automations/events/contextAssembly.js', () => ({
   loadEvaluationContext: vi.fn().mockResolvedValue(null),
   assembleEvaluationInputs: vi.fn().mockResolvedValue({
-    activeRulesV2: [],
+    activeAutomations: [],
     activeSessions: [],
     recentSessions: [],
     identityServerUserIds: [],

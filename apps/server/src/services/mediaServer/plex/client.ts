@@ -151,6 +151,16 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
     return typeof id === 'string' && id ? id : null;
   }
 
+  /** The version Plex reports for itself, build hash and all. */
+  async getSoftwareVersion(): Promise<string | null> {
+    const data = await fetchJson<{ MediaContainer?: { version?: unknown } }>(
+      `${this.baseUrl}/identity`,
+      { headers: this.buildHeaders(), service: 'plex', timeout: 10000 }
+    );
+    const version = data.MediaContainer?.version;
+    return typeof version === 'string' && version ? version : null;
+  }
+
   /**
    * Get all local users (accounts from /accounts endpoint)
    *

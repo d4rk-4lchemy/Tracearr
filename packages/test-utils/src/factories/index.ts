@@ -9,8 +9,7 @@ import { resetUserCounter } from './user.js';
 import { resetServerCounter } from './server.js';
 import { resetServerUserCounter } from './serverUser.js';
 import { resetSessionCounter } from './session.js';
-import { resetRuleCounter } from './rule.js';
-import { resetViolationCounter } from './violation.js';
+import { resetAutomationCounter } from './automation.js';
 import { resetLibraryItemCounter } from './libraryItem.js';
 
 export {
@@ -63,41 +62,21 @@ export {
 } from './session.js';
 
 export {
-  buildRule,
-  createTestRule,
-  createImpossibleTravelRule,
-  createSimultaneousLocationsRule,
-  createDeviceVelocityRule,
-  createConcurrentStreamsRule,
-  createGeoRestrictionRule,
-  createAccountInactivityRule,
-  resetRuleCounter,
-  type RuleData,
-  type CreatedRule,
-  type RuleType,
-  type RuleParams,
-  type ImpossibleTravelParams,
-  type SimultaneousLocationsParams,
-  type DeviceVelocityParams,
-  type ConcurrentStreamsParams,
-  type GeoRestrictionParams,
-  type AccountInactivityParams,
-} from './rule.js';
+  buildAutomation,
+  createTestAutomation,
+  createConcurrentStreamsAutomation,
+  createImpossibleTravelAutomation,
+  createSimultaneousLocationsAutomation,
+  createDeviceVelocityAutomation,
+  createGeoRestrictionAutomation,
+  createAccountInactivityAutomation,
+  resetAutomationCounter,
+  type AutomationData,
+  type AutomationPresetOverrides,
+  type CreatedAutomation,
+} from './automation.js';
 
-export {
-  buildViolation,
-  createTestViolation,
-  createLowViolation,
-  createWarningViolation,
-  createHighViolation,
-  createAcknowledgedViolation,
-  createImpossibleTravelViolation,
-  createConcurrentStreamsViolation,
-  resetViolationCounter,
-  type ViolationData,
-  type CreatedViolation,
-  type ViolationSeverity,
-} from './violation.js';
+export { buildRun, createTestRun, type RunData, type CreatedRun } from './run.js';
 
 export {
   buildLibraryItem,
@@ -118,7 +97,6 @@ export function resetAllFactoryCounters(): void {
   resetServerCounter();
   resetServerUserCounter();
   resetSessionCounter();
-  resetRuleCounter();
-  resetViolationCounter();
+  resetAutomationCounter();
   resetLibraryItemCounter();
 }

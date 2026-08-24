@@ -10,7 +10,8 @@ import { db } from '../db/client.js';
 import { terminationLogs, sessions } from '../db/schema.js';
 import { createMediaServerClient } from './mediaServer/index.js';
 import { getCacheService, getPubSubService } from './cache.js';
-import { dispatch } from './rules/events/dispatcher.js';
+import { toRuleSession } from './automations/events/contextAssembly.js';
+import { dispatchSessionStopped } from './automations/events/producers.js';
 import { clearDbWriteTracking } from '../jobs/poller/dbWriteThrottle.js';
 
 // ============================================================================
@@ -185,12 +186,11 @@ export async function terminateSession(
       })
       .where(eq(sessions.id, session.id));
 
-    await dispatch({
-      type: 'session.stopped',
-      at: now,
-      sessionId: session.id,
-      serverId: session.serverId,
-    });
+    await dispatchSessionStopped(
+      toRuleSession(session, { state: 'stopped', stoppedAt: now, durationMs }),
+      durationMs,
+      now
+    );
 
     clearDbWriteTracking(session.id);
 

@@ -51,6 +51,9 @@
       "agentUpdateFailed": "エージェントの更新に失敗しました",
       "apiKeyGenerateFailed": "API キーの生成に失敗しました",
       "authFailed": "認証に失敗しました",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "クリップボードにコピーできませんでした",
       "copyFailed": "クリップボードにコピーできませんでした",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "モバイルアクセスを有効にできませんでした",
       "pairTokenGenerateFailed": "ペアトークンの生成に失敗しました",
       "plexDirectUrl": "plex.directのURLはここでは使用できないリレーアドレスです。代わりにIPアドレスまたはホスト名を使用してください。",
-      "plexUnlinkFailed": "プレックスアカウントのリンクを解除できませんでした",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "プレックスアカウントのリンクを解除できませんでした",
       "routingUpdateFailed": "ルーティングの更新に失敗しました",
-      "ruleCreateFailed": "ルールの作成に失敗しました",
-      "ruleDeleteFailed": "ルールの削除に失敗しました",
-      "ruleUpdateFailed": "ルールの更新に失敗しました",
       "serverAddFailed": "サーバーの追加に失敗しました",
       "serverRemoveFailed": "サーバーの削除に失敗しました",
       "serverReorderFailed": "サーバーの順序を変更できませんでした",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Webhookテストに失敗しました"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} に到達できません",
-        "title": "サーバーオフライン"
-      },
-      "serverOnline": {
-        "message": "{{name}} がオンラインに戻りました",
-        "title": "サーバーオンライン"
-      },
-      "streamStarted": {
-        "message": "{{user}} が {{media}} の視聴を開始しました",
-        "title": "新しいストリームを開始"
-      },
-      "streamStopped": {
-        "message": "{{user}} が視聴を停止しました",
-        "title": "配信を停止しました"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} が利用できます",
         "title": "アップデートがあります"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "新しいAPIキーを使用する準備ができました",
         "title": "APIキーを生成しました"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "セットアップを続けることができます",
@@ -182,29 +178,17 @@
         "message": "プレックスアカウントからサーバーを追加できるようになりました",
         "title": "プレックスアカウントがリンクされています"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "プレックスアカウントが切断されました",
         "title": "プレックスアカウントのリンクが解除されました"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "ルールが正常に作成されました",
-        "title": "作成されたルール"
-      },
-      "ruleDeleted": {
-        "message": "ルールが正常に削除されました",
-        "title": "ルールを削除しました"
-      },
-      "ruleUpdated": {
-        "message": "ルールが正常に更新されました",
-        "title": "ルールが更新されました"
       },
       "serverAdded": {
         "message": "{{name}} は正常に接続されました",
@@ -259,7 +243,7 @@
         "title": "信頼スコアをリセット"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

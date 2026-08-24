@@ -27,6 +27,7 @@ import { sseManager } from '../services/sseManager.js';
 import { getCacheService } from '../services/cache.js';
 import { enqueueLibrarySync } from '../jobs/librarySyncQueue.js';
 import { supportsMediaLibrary } from '@tracearr/shared';
+import { publishServersChanged } from '../jobs/poller/database.js';
 import { buildServerAccessCondition } from '../utils/serverFiltering.js';
 
 function getDispatcharrAuthMode(token?: string | null): 'token' | 'credentials' {
@@ -134,6 +135,8 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         displayOrder: servers.displayOrder,
         color: servers.color,
+        version: servers.version,
+        latestVersion: servers.latestVersion,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
       })
@@ -279,6 +282,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       return reply.internalServerError('Failed to create server');
     }
 
+    await publishServersChanged();
     // Auto-sync users and libraries in background
     syncServer(server.id, { syncUsers: true, syncLibraries: true })
       .then((result) => {
@@ -526,6 +530,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       authChanged ||
       (newIgnoreAnonymousStreams !== undefined &&
         newIgnoreAnonymousStreams !== server.ignoreAnonymousStreams);
+    await publishServersChanged();
 
     if (connectorConfigChanged) {
       if (newUrl !== undefined) {
@@ -603,6 +608,8 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         }
       });
 
+      await publishServersChanged();
+
       app.log.info(
         { serverCount: serverUpdates.length },
         'Server display order updated successfully'
@@ -642,6 +649,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
 
     // Delete server (cascade will handle related records)
     await db.delete(servers).where(eq(servers.id, id));
+    await publishServersChanged();
 
     // Tear down the server's SSE connection in background
     sseManager.refresh().catch((error: unknown) => {

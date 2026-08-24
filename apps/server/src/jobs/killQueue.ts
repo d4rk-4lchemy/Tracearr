@@ -15,14 +15,14 @@ import {
   getActionExecutorDeps,
   cooldownTargetId,
   type ActionResult,
-} from '../services/rules/executors/index.js';
+} from '../services/automations/executors/index.js';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import {
   reverifyKillCondition,
   type ReverifyKillConditionResult,
-} from '../services/rules/reverify.js';
-import { storeActionResults } from '../services/rules/v2Integration.js';
+} from '../services/automations/reverify.js';
+import { storeActionResults } from '../services/automations/v2Integration.js';
 
 const QUEUE_NAME = 'kill-stream';
 

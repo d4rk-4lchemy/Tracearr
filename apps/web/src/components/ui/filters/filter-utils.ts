@@ -195,7 +195,8 @@ export function countActiveFilters(descriptors: FilterDescriptor[], state: Filte
 }
 
 /** A chip with an empty `value` renders as its label alone, which is all a
- *  boolean filter has to say. */
+ *  boolean filter has to say. An inline field is its own chip: the typed query
+ *  is already in the box beside the row. */
 export function activeFilterChips(
   descriptors: FilterDescriptor[],
   state: FilterState
@@ -203,6 +204,7 @@ export function activeFilterChips(
   const chips: ActiveFilterChip[] = [];
 
   for (const descriptor of descriptors) {
+    if (descriptor.inline) continue;
     const value = normalizeFilterValue(descriptor.kind, state[descriptor.key]);
     if (value === undefined) continue;
 

@@ -51,6 +51,9 @@
       "agentUpdateFailed": "فشل تحديث الوكيل",
       "apiKeyGenerateFailed": "فشل في إنشاء مفتاح API",
       "authFailed": "فشل المصادقة",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "فشل النسخ إلى الحافظة",
       "copyFailed": "تعذر النسخ إلى الحافظة",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "فشل في تمكين الوصول إلى الجوال",
       "pairTokenGenerateFailed": "فشل في إنشاء الرمز المميز للزوج",
       "plexDirectUrl": "plex.direct URLs هي عناوين إعادة الإرسال التي لا يمكن استخدامها هنا. الرجاء استخدام عنوان IP مباشر أو اسم المضيف بدلاً من ذلك.",
-      "plexUnlinkFailed": "فشل فك ربط حساب Plex",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "فشل فك ربط حساب Plex",
       "routingUpdateFailed": "فشل تحديث المسار",
-      "ruleCreateFailed": "فشل في إنشاء قاعدة",
-      "ruleDeleteFailed": "فشل في حذف القاعدة",
-      "ruleUpdateFailed": "فشل تحديث القاعدة",
       "serverAddFailed": "فشل في إضافة الخادم",
       "serverRemoveFailed": "فشل في إزالة الخادم",
       "serverReorderFailed": "فشل في إعادة ترتيب الخوادم",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "فشل اختبار Webhook"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} غير قابل للوصول",
-        "title": "الخادم غير متصل"
-      },
-      "serverOnline": {
-        "message": "{{name}} يعود إلى الإنترنت",
-        "title": "خادم متصل"
-      },
-      "streamStarted": {
-        "message": "{{user}} started watching {{media}}",
-        "title": "بدأ بث جديد"
-      },
-      "streamStopped": {
-        "message": "{{user}} stopped watching",
-        "title": "توقف البث"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} متاح",
         "title": "تحديث متوفر"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "مفتاح API الجديد الخاص بك جاهز للاستخدام",
         "title": "تم إنشاء مفتاح API"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "يمكنك الآن المضي قدما في الإعداد",
@@ -182,29 +178,17 @@
         "message": "يمكنك الآن إضافة خوادم من حساب Plex الخاص بك",
         "title": "حساب Plex مرتبط"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "تم قطع اتصال حساب Plex الخاص بك",
         "title": "حساب Plex غير مرتبط"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "تم إنشاء القاعدة بنجاح",
-        "title": "تم إنشاء قاعدة"
-      },
-      "ruleDeleted": {
-        "message": "تم حذف القاعدة بنجاح",
-        "title": "تم حذف القاعدة"
-      },
-      "ruleUpdated": {
-        "message": "تم تحديث القاعدة بنجاح",
-        "title": "تم تحديث القاعدة"
       },
       "serverAdded": {
         "message": "تم توصيل {{name}} بنجاح",
@@ -259,7 +243,7 @@
         "title": "إعادة تعيين نقاط الثقة"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

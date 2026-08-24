@@ -22,7 +22,7 @@ import {
   type HistorySessionResponse,
   type HistoryAggregates,
   type HistoryFilterOptions,
-  type RulesFilterOptions,
+  type AutomationFilterOptions,
   type CountryOption,
   type HistoryAggregatesQueryInput,
 } from '@tracearr/shared';
@@ -1053,7 +1053,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     if (resolvedIds?.length === 0) {
       // No accessible servers - return empty filter options
       if (includeAllCountries) {
-        const emptyRulesResponse: RulesFilterOptions = {
+        const emptyRulesResponse: AutomationFilterOptions = {
           platforms: [],
           products: [],
           devices: [],
@@ -1264,7 +1264,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           return a.name.localeCompare(b.name);
         });
 
-      const rulesResponse: RulesFilterOptions = {
+      const rulesResponse: AutomationFilterOptions = {
         platforms: platformsResult.rows as unknown as HistoryFilterOptions['platforms'],
         products: productsResult.rows as unknown as HistoryFilterOptions['products'],
         devices: devicesResult.rows as unknown as HistoryFilterOptions['devices'],

@@ -23,7 +23,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 const SIDEBAR_COOKIE_NAME = 'sidebar_state';
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = '14rem';
-const SIDEBAR_WIDTH_MOBILE = '18rem';
+// Matches the desktop width; upstream's 18rem default made the mobile sheet wider than the rail.
+const SIDEBAR_WIDTH_MOBILE = '14rem';
 const SIDEBAR_WIDTH_ICON = '3rem';
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b';
 

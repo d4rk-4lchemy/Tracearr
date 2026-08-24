@@ -37,17 +37,16 @@ import { MergeSuggestionsBanner } from '@/components/users/MergeSuggestionsBanne
 import { MergeUsersDialog, type MergeCandidate } from '@/components/users/MergeUsersDialog';
 import { RemovedBadge } from '@/components/users/RemovedBadge';
 import { TrustScoreBadge } from '@/components/users/TrustScoreBadge';
+import { UserCell } from '@/components/users/UserCell';
 import { getIdentityServers } from '@/components/users/identityServerPills';
 import {
   deriveMergeActionState,
   findOverlappingServerName,
 } from '@/components/users/mergeSelection';
-import { getAvatarUrl } from '@/components/users/utils';
 import { useBulkResetTrust, useMergeUsers, useUsers } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { useRowSelection } from '@/hooks/useRowSelection';
 import { useServer } from '@/hooks/useServer';
-import { cn } from '@/lib/utils';
 import {
   buildUsersRosterParams,
   USERS_FILTER_DEFAULTS,
@@ -244,40 +243,29 @@ export function Users() {
           header: t('common:labels.user'),
           cell: ({ row }) => {
             const user = row.original;
-            const avatarUrl = getAvatarUrl(user.serverId, user.thumbUrl, 40);
             return (
-              <div className="flex items-center gap-3">
-                <div className="bg-muted flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt={user.username}
-                      className="h-10 w-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <UserIcon className="text-muted-foreground h-5 w-5" />
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={cn(
-                        'font-medium',
-                        user.removedAt && 'text-muted-foreground line-through'
-                      )}
-                    >
-                      {user.identityName ?? user.username}
-                    </span>
+              <UserCell
+                serverUserId={user.id}
+                username={user.username}
+                identityName={user.identityName}
+                thumbUrl={user.thumbUrl}
+                serverId={user.serverId}
+                size="md"
+                showUsername
+                // The row already opens the person, so the cell does not link too.
+                link={false}
+                muted={user.removedAt !== null}
+                trailing={
+                  <>
                     {user.role === 'owner' && (
                       <span title={t('common:labels.serverOwner')}>
                         <Crown className="h-4 w-4 text-yellow-500" />
                       </span>
                     )}
                     {user.removedAt && <RemovedBadge removedAt={user.removedAt} />}
-                  </div>
-                  <p className="text-muted-foreground truncate text-xs">@{user.username}</p>
-                </div>
-              </div>
+                  </>
+                }
+              />
             );
           },
         }),

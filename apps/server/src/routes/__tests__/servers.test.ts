@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
-import type { AuthUser } from '@tracearr/shared';
+import { WS_EVENTS, type AuthUser } from '@tracearr/shared';
 
 // Mock dependencies before imports
 vi.mock('../../db/client.js', () => ({
@@ -22,6 +22,7 @@ vi.mock('../../db/client.js', () => ({
     insert: vi.fn(),
     delete: vi.fn(),
     update: vi.fn(),
+    transaction: vi.fn(),
   },
 }));
 
@@ -63,10 +64,12 @@ vi.mock('../../services/sync.js', () => ({
   syncServer: vi.fn(),
 }));
 
+const mockPublish = vi.fn(() => Promise.resolve());
 vi.mock('../../services/cache.js', () => ({
   getCacheService: vi.fn().mockReturnValue({
     invalidateServerStats: vi.fn().mockResolvedValue(undefined),
   }),
+  getPubSubService: () => ({ publish: mockPublish }),
 }));
 
 vi.mock('../../jobs/librarySyncQueue.js', () => ({
@@ -242,6 +245,35 @@ describe('Server Routes', () => {
       expect(body.data[0].name).toBe('Test Plex Server');
       // Should not include token
       expect(body.data[0].token).toBeUndefined();
+    });
+
+    it('carries the installed and latest versions when they are known', async () => {
+      app = await buildTestApp(ownerUser);
+
+      mockDbSelectWhere([
+        {
+          id: mockServer.id,
+          name: mockServer.name,
+          type: mockServer.type,
+          url: mockServer.url,
+          displayOrder: 0,
+          color: '#4B8BFF',
+          version: '10.11.11',
+          latestVersion: '10.11.12',
+          createdAt: mockServer.createdAt,
+          updatedAt: mockServer.updatedAt,
+        },
+      ]);
+
+      const response = await app.inject({ method: 'GET', url: '/servers' });
+
+      expect(response.statusCode).toBe(200);
+      const selected = vi.mocked(db.select).mock.calls[0]?.[0];
+      expect(selected).toHaveProperty('version');
+      expect(selected).toHaveProperty('latestVersion');
+      const body = response.json();
+      expect(body.data[0].version).toBe('10.11.11');
+      expect(body.data[0].latestVersion).toBe('10.11.12');
     });
 
     it('returns only authorized servers for guest', async () => {
@@ -931,6 +963,115 @@ describe('Server Routes', () => {
       });
 
       expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('servers:changed', () => {
+    it('announces a created server', async () => {
+      app = await buildTestApp(ownerUser);
+
+      vi.mocked(PlexClient.verifyServerAdmin).mockResolvedValue({ success: true });
+      vi.mocked(PlexClient.getAccountInfo).mockResolvedValue({
+        id: 'plex-account-123',
+        username: 'admin',
+        isAdmin: true,
+      });
+      vi.mocked(syncServer).mockResolvedValue({
+        usersAdded: 0,
+        usersUpdated: 0,
+        usersSkipped: 0,
+        usersRemoved: 0,
+        usersRestored: 0,
+        librariesSynced: 0,
+        errors: [],
+      });
+
+      let selectCall = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCall++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([]),
+        };
+        if (selectCall === 3) {
+          chain.from = vi.fn().mockResolvedValue([]);
+        }
+        return chain as never;
+      });
+      mockDbInsert([{ ...mockServer, id: randomUUID() }]);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/servers',
+        payload: {
+          name: 'Announced Plex',
+          type: 'plex',
+          url: 'http://plex.local:32400',
+          token: 'my-plex-token',
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(mockPublish).toHaveBeenCalledWith(WS_EVENTS.SERVERS_CHANGED, {});
+    });
+
+    it('announces an updated server', async () => {
+      app = await buildTestApp(ownerUser);
+
+      mockDbSelectLimit([mockServer]);
+      mockDbUpdateReturning([{ ...mockServer, name: 'Renamed Server' }]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/servers/${mockServer.id}`,
+        payload: { name: 'Renamed Server' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockPublish).toHaveBeenCalledWith(WS_EVENTS.SERVERS_CHANGED, {});
+    });
+
+    it('announces a reordered server list', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const ids = [randomUUID(), randomUUID()];
+      // The reorder lookup awaits .where() directly, with no orderBy or limit.
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue(ids.map((id) => ({ id }))),
+      } as never);
+      vi.mocked(db.transaction).mockImplementation(async (fn: unknown) =>
+        (fn as (tx: unknown) => Promise<void>)({
+          update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+        })
+      );
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/servers/reorder',
+        payload: {
+          servers: ids.map((id, index) => ({ id, displayOrder: index })),
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockPublish).toHaveBeenCalledWith(WS_EVENTS.SERVERS_CHANGED, {});
+    });
+
+    it('announces a deleted server', async () => {
+      app = await buildTestApp(ownerUser);
+
+      mockDbSelectLimit([mockServer]);
+      mockDbDelete();
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/servers/${mockServer.id}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(mockPublish).toHaveBeenCalledWith(WS_EVENTS.SERVERS_CHANGED, {});
     });
   });
 

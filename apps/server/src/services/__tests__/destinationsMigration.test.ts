@@ -13,7 +13,7 @@ vi.mock('../../db/client.js', () => ({ db: { transaction: vi.fn() } }));
 vi.mock('../../db/schema.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
 }));
-vi.mock('../../jobs/poller/database.js', () => ({ invalidateRulesCache: vi.fn() }));
+vi.mock('../../jobs/poller/database.js', () => ({ invalidateAutomationsCache: vi.fn() }));
 vi.mock('../settings.js', () => ({ resetSettingsCache: vi.fn() }));
 vi.mock('../notifications/destinationStore.js', () => ({
   invalidateDestinationsCache: vi.fn(),
@@ -25,8 +25,8 @@ vi.mock('../notifications/destinationStore.js', () => ({
 }));
 
 import { db } from '../../db/client.js';
-import { destinations, rules, settings } from '../../db/schema.js';
-import { invalidateRulesCache } from '../../jobs/poller/database.js';
+import { destinations, automations, settings } from '../../db/schema.js';
+import { invalidateAutomationsCache } from '../../jobs/poller/database.js';
 import {
   initDestinationCrypto,
   resetDestinationCryptoForTests,
@@ -184,7 +184,7 @@ describe('planDestinationsMigration', () => {
     expect(plan({ settings: seven({ pushoverUserKey: 'u' }) }).destinations).toEqual([]);
   });
 
-  it('routing null falls back to every event but the stream pair, capped by type capability', () => {
+  it('routing null falls back to every event but the stream pair and trust, capped by capability', () => {
     const result = plan({
       settings: seven({
         discordWebhookUrl: 'https://d/h',
@@ -193,14 +193,27 @@ describe('planDestinationsMigration', () => {
       }),
       routing: null,
     });
-    const all = ['violation_detected', 'server_down', 'server_up', 'plugin_update_available'];
+    // A factory-reset install seeds New device and not this one.
+    const all = [
+      'violation_detected',
+      'server_down',
+      'server_up',
+      'plugin_update_available',
+      'new_device',
+    ];
     expect(result.destinations[0]?.events).toEqual(all);
     expect(result.destinations[1]?.events).toEqual(all);
-    expect(result.builtinEvents.push).toEqual(['violation_detected', 'server_down', 'server_up']);
+    expect(result.builtinEvents.push).toEqual([
+      'violation_detected',
+      'server_down',
+      'server_up',
+      'new_device',
+    ]);
     expect(result.builtinEvents.webToast).toEqual([
       'violation_detected',
       'server_down',
       'server_up',
+      'new_device',
     ]);
   });
 
@@ -214,8 +227,12 @@ describe('planDestinationsMigration', () => {
         { eventType: 'plugin_update_available', pushEnabled: true, webToastEnabled: true },
       ]),
     });
-    expect(result.builtinEvents.push).toEqual(['violation_detected', 'stream_started']);
-    expect(result.builtinEvents.webToast).toEqual(['stream_started', 'server_down']);
+    expect(result.builtinEvents.push).toEqual([
+      'violation_detected',
+      'stream_started',
+      'new_device',
+    ]);
+    expect(result.builtinEvents.webToast).toEqual(['stream_started', 'server_down', 'new_device']);
   });
 
   it('rewrites notify actions to send across every rule, dropping email and empty actions', () => {
@@ -235,7 +252,7 @@ describe('planDestinationsMigration', () => {
           id: 'r5',
           name: 'no notify',
           isActive: true,
-          actions: { actions: [{ type: 'log_only' }] },
+          actions: { actions: [{ type: 'kill_stream' }] },
         },
       ],
     });
@@ -293,6 +310,7 @@ interface TxState {
 function buildTx(state: TxState) {
   const log: string[] = [];
   const inserted: Array<Record<string, unknown>> = [];
+  const seeded: Array<Record<string, unknown>> = [];
   const updates: Array<{ table: unknown; patch: Record<string, unknown> }> = [];
   const deletes: Array<unknown> = [];
   let nextId = 0;
@@ -326,6 +344,7 @@ function buildTx(state: TxState) {
       values: (values: Record<string, unknown> | Array<Record<string, unknown>>) => {
         if (Array.isArray(values)) {
           log.push(`insert:${nameFor(table)}:builtins`);
+          seeded.push(...values);
         } else {
           log.push(`insert:${nameFor(table)}:${String(values.name)}`);
           inserted.push(values);
@@ -357,7 +376,7 @@ function buildTx(state: TxState) {
     }),
   };
 
-  return { tx, log, inserted, updates, deletes };
+  return { tx, log, inserted, seeded, updates, deletes };
 }
 
 describe('runDestinationsMigration', () => {
@@ -425,19 +444,48 @@ describe('runDestinationsMigration', () => {
       'violation_detected',
       'server_down',
       'server_up',
+      'new_device',
     ]);
-    expect(builtinPatches[1]?.patch.events).toEqual(['server_down', 'server_up']);
+    expect(builtinPatches[1]?.patch.events).toEqual(['server_down', 'server_up', 'new_device']);
 
-    const ruleUpdate = harness.updates.find((u) => u.table === rules);
+    const ruleUpdate = harness.updates.find((u) => u.table === automations);
     expect(ruleUpdate?.patch.actions).toEqual({
       actions: [{ type: 'send', to: ['new-1', 'push-row'] }],
     });
 
     expect(harness.deletes).toEqual([settings]);
-    expect(invalidateRulesCache).toHaveBeenCalledTimes(1);
+    expect(invalidateAutomationsCache).toHaveBeenCalledTimes(1);
     expect(invalidateDestinationsCache).toHaveBeenCalledTimes(1);
     expect(resetSettingsCache).toHaveBeenCalledTimes(1);
     expect(publishDestinationsChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the four events that post-date the routing table off every row it writes', async () => {
+    const harness = await runWith({
+      builtinRows: [
+        { id: 'push-row', type: 'push' },
+        { id: 'toast-row', type: 'web_toast' },
+      ],
+      settingRows: [{ name: 'discordWebhookUrl', value: 'https://d/h' }],
+      ruleRows: [],
+      routingRows: [],
+      routingExists: false,
+      builtinsInserted: true,
+    });
+
+    const written = [...harness.seeded, ...harness.inserted];
+    expect(written).toHaveLength(3);
+    for (const row of written) {
+      expect(row.events).toContain('violation_detected');
+      expect(row.events).toEqual(
+        expect.not.arrayContaining([
+          'server_update_available',
+          'tracearr_update_available',
+          'media_added',
+          'media_upgraded',
+        ])
+      );
+    }
   });
 
   it('deletes exactly the seven legacy setting names', async () => {
@@ -558,7 +606,7 @@ describe('runDestinationsMigration', () => {
       cb(harness.tx)) as unknown as typeof db.transaction);
 
     await expect(runDestinationsMigration()).rejects.toThrow('insert exploded');
-    expect(invalidateRulesCache).not.toHaveBeenCalled();
+    expect(invalidateAutomationsCache).not.toHaveBeenCalled();
   });
 
   it('throws when the built-in rows are missing after seeding', async () => {

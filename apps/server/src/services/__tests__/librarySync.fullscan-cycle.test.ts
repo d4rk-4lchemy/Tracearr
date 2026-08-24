@@ -38,6 +38,13 @@ vi.mock('../library/mediaResolutionService.js', () => ({
   reconcileMediaDuplicates: vi.fn().mockResolvedValue(0),
 }));
 
+// Nothing here listens for the media triggers, so the sync builds no announce context.
+vi.mock('../automations/events/producers.js', () => ({
+  hasMediaListeners: vi.fn().mockResolvedValue(false),
+  dispatchMediaAdded: vi.fn(),
+  dispatchMediaUpgraded: vi.fn(),
+}));
+
 import type { Redis } from 'ioredis';
 import { LibrarySyncService, initLibrarySyncRedis } from '../librarySync.js';
 import { createMediaServerClient } from '../mediaServer/index.js';

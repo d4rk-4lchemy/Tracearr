@@ -51,6 +51,9 @@
       "agentUpdateFailed": "更新代理失败",
       "apiKeyGenerateFailed": "API 密钥重置失败",
       "authFailed": "验证失败",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "复制到剪贴板失败",
       "copyFailed": "无法复制到剪贴板",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "启用移动访问失败",
       "pairTokenGenerateFailed": "生成配对令牌失败",
       "plexDirectUrl": "plex.direct URL是此处不能使用的中继地址。请使用直接IP地址或主机名。",
-      "plexUnlinkFailed": "取消链接Plex帐户失败",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "取消链接Plex帐户失败",
       "routingUpdateFailed": "更新路由失败",
-      "ruleCreateFailed": "创建规则失败",
-      "ruleDeleteFailed": "删除规则失败",
-      "ruleUpdateFailed": "更新规则失败",
       "serverAddFailed": "添加服务器失败",
       "serverRemoveFailed": "删除服务器失败",
       "serverReorderFailed": "服务器重新排序失败",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Webhook 测试失败"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} 无法联系",
-        "title": "服务器离线"
-      },
-      "serverOnline": {
-        "message": "{{name}} 已经上线了",
-        "title": "服务器在线"
-      },
-      "streamStarted": {
-        "message": "{{user}}开始观看{{media}}",
-        "title": "新流已开始"
-      },
-      "streamStopped": {
-        "message": "{{user}}停止观看",
-        "title": "流停止"
-      },
       "updateAvailable": {
         "message": "Tracearr{{version}}可用",
         "title": "有可用更新"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "您的新 API 密钥已准备好使用",
         "title": "已生成API密钥"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "您现在可以继续设置",
@@ -182,29 +178,17 @@
         "message": "您现在可以从Plex帐户添加服务器",
         "title": "Plex 账户已链接"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "您的Plex帐户已断开连接",
         "title": "Plex账户未链接"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "已成功创建规则",
-        "title": "规则已创建"
-      },
-      "ruleDeleted": {
-        "message": "规则已成功删除",
-        "title": "规则已删除"
-      },
-      "ruleUpdated": {
-        "message": "规则已成功更新",
-        "title": "规则已更新"
       },
       "serverAdded": {
         "message": "{{name}}已成功连接",
@@ -259,7 +243,7 @@
         "title": "重置信任分数"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

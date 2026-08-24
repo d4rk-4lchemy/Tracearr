@@ -33,6 +33,7 @@ import { useMaintenanceMode } from './useMaintenanceMode';
 import { toast } from 'sonner';
 import { useDestinations } from './queries';
 import { DESTINATIONS_KEY } from './queries/useDestinations';
+import { RUNS_KEY } from './queries/useRuns';
 import { api } from '@/lib/api';
 
 type TypedSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -62,6 +63,9 @@ const SESSION_STOPPED_HISTORY_THROTTLE_MS = 5000;
 // would otherwise drive /tasks/running refetches for hours, so this stays
 // near the old fixed poll cadence.
 const TASKS_REFRESH_THROTTLE_MS = 5000;
+// One session start can finish a run per automation, so the burst collapses
+// into a single refetch of the run list.
+const RUNS_REFRESH_THROTTLE_MS = 2000;
 
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation(['notifications', 'common']);
@@ -84,6 +88,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const sessionUpdatedThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionStoppedHistoryThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tasksRefreshThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runsRefreshThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasConnectedRef = useRef(false);
 
   useEffect(() => {
@@ -92,6 +97,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   }, [destinations]);
 
   // null means not loaded or not readable (non-owners get a 403): toast anyway, as before.
+  // Only violations still subscribe; every other toast comes from an automation.
   const isWebToastEnabled = useCallback((eventType: NotificationEventType): boolean => {
     const events = webToastEventsRef.current;
     return events ? events.has(eventType) : true;
@@ -182,22 +188,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // Handle real-time events
     // Note: Since users can filter by server, we invalidate all matching query patterns
     // and let react-query refetch with the appropriate server filter
-    newSocket.on(WS_EVENTS.SESSION_STARTED, (session: ActiveSession) => {
+    newSocket.on(WS_EVENTS.SESSION_STARTED, (_session: ActiveSession) => {
       // Invalidate all active sessions queries (regardless of server filter)
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'active'] });
       // Invalidate dashboard stats and session history
       void queryClient.invalidateQueries({ queryKey: ['stats', 'dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['sessions', 'list'] });
-
-      // Show toast if web notifications are enabled for stream_started
-      if (isWebToastEnabled('stream_started')) {
-        toast.info(t('notifications:toast.info.streamStarted.title'), {
-          description: t('notifications:toast.info.streamStarted.message', {
-            user: session.user.identityName ?? session.user.username,
-            media: session.mediaTitle,
-          }),
-        });
-      }
     });
 
     newSocket.on(WS_EVENTS.SESSION_STOPPED, (_sessionId: string) => {
@@ -212,11 +208,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
           sessionStoppedHistoryThrottleRef.current = null;
           void queryClient.invalidateQueries({ queryKey: ['sessions', 'history'] });
         }, SESSION_STOPPED_HISTORY_THROTTLE_MS);
-      }
-
-      // Show toast if web notifications are enabled for stream_stopped
-      if (isWebToastEnabled('stream_stopped')) {
-        toast.info(t('notifications:toast.info.streamStopped.title'));
       }
     });
 
@@ -246,6 +237,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
           }
         );
       }
+    });
+
+    newSocket.on(WS_EVENTS.RUN_FINISHED, () => {
+      if (runsRefreshThrottleRef.current) return;
+      runsRefreshThrottleRef.current = setTimeout(() => {
+        runsRefreshThrottleRef.current = null;
+        void queryClient.invalidateQueries({ queryKey: RUNS_KEY });
+      }, RUNS_REFRESH_THROTTLE_MS);
     });
 
     newSocket.on(WS_EVENTS.STATS_UPDATED, (_stats: DashboardStats) => {
@@ -280,31 +279,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         if (prev.some((s) => s.serverId === data.serverId)) return prev;
         return [...prev, { ...data, since: new Date() }];
       });
-
-      if (isWebToastEnabled('server_down')) {
-        toast.error(t('notifications:toast.info.serverOffline.title'), {
-          description: t('notifications:toast.info.serverOffline.message', {
-            name: data.serverName,
-          }),
-          duration: 10000,
-        });
-      }
     });
 
     newSocket.on(WS_EVENTS.SERVER_UP, (data: { serverId: string; serverName: string }) => {
       // Remove from unhealthy servers
       setUnhealthyServers((prev) => prev.filter((s) => s.serverId !== data.serverId));
-
-      if (isWebToastEnabled('server_up')) {
-        toast.success(t('notifications:toast.info.serverOnline.title'), {
-          description: t('notifications:toast.info.serverOnline.message', {
-            name: data.serverName,
-          }),
-        });
-      }
     });
 
-    // No isWebToastEnabled gate: the rule's send action choosing the web_toast row is the gate.
+    // Stream and server toasts arrive here too: the automation choosing the web_toast row is the gate.
     newSocket.on(WS_EVENTS.NOTIFICATION_TOAST, (data: NotificationToast) => {
       const toastFn =
         data.severity === 'high'
@@ -318,6 +300,13 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // Any instance's destination write lands here, including the toast preferences read above.
     newSocket.on(WS_EVENTS.DESTINATIONS_CHANGED, () => {
       void queryClient.invalidateQueries({ queryKey: DESTINATIONS_KEY });
+    });
+
+    // A server added, renamed, reordered or removed anywhere; the builder's
+    // server list comes from the filter options, so refresh both.
+    newSocket.on(WS_EVENTS.SERVERS_CHANGED, () => {
+      void queryClient.invalidateQueries({ queryKey: ['servers'] });
+      void queryClient.invalidateQueries({ queryKey: ['sessions', 'filter-options'] });
     });
 
     newSocket.on(WS_EVENTS.SERVER_CONNECTION, (status: ServerConnectionStatus) => {
@@ -423,6 +412,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       if (tasksRefreshThrottleRef.current) {
         clearTimeout(tasksRefreshThrottleRef.current);
         tasksRefreshThrottleRef.current = null;
+      }
+      if (runsRefreshThrottleRef.current) {
+        clearTimeout(runsRefreshThrottleRef.current);
+        runsRefreshThrottleRef.current = null;
       }
     };
   }, [isAuthenticated, isInMaintenance, queryClient, isWebToastEnabled]);

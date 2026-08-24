@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { CopyButton } from '@/components/ui/copy-button';
 import {
   Select,
   SelectContent,
@@ -38,7 +39,6 @@ import {
   Check,
   Zap,
   Radio,
-  Copy,
   ArrowUpCircle,
   Image as ImageIcon,
 } from 'lucide-react';
@@ -54,6 +54,7 @@ import { AutosaveSelectField } from '@/components/ui/autosave-field';
 import { toast } from 'sonner';
 import { PlexServerSelector } from '@/components/auth/PlexServerSelector';
 import { PlexAccountsManager } from '@/components/settings/PlexAccountsManager';
+import { ServerVersionLine } from '@/components/settings/ServerVersionLine';
 import { SERVER_COLOR_PALETTE, pickServerColor } from '@tracearr/shared';
 import type { Server, ServerConnectionStatus } from '@tracearr/shared';
 import {
@@ -1359,7 +1360,6 @@ function RealtimeSetupDialog({
   connectionStatus?: ServerConnectionStatus;
 }) {
   const { t } = useTranslation(['settings']);
-  const [copied, setCopied] = useState(false);
   const repoUrl = t('servers.realtimeDialog.jellyfinRepoUrl');
   const dispatcharrReleasesUrl =
     'https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics/releases/latest';
@@ -1373,13 +1373,6 @@ function RealtimeSetupDialog({
         : connectionStatus?.pluginIssue === 'malfunctioned'
           ? t('servers.realtimeDialog.issueMalfunctioned')
           : null;
-
-  const handleCopy = (text: string) => {
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -1475,18 +1468,13 @@ function RealtimeSetupDialog({
                   <code className="bg-muted flex-1 truncate rounded px-2 py-1 text-xs">
                     {repoUrl}
                   </code>
-                  <button
-                    type="button"
-                    aria-label={t('servers.realtimeDialog.copyUrl')}
-                    className="hover:text-foreground shrink-0"
-                    onClick={() => handleCopy(repoUrl)}
-                  >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </button>
+                  <CopyButton
+                    value={repoUrl}
+                    label={t('servers.realtimeDialog.copyUrl')}
+                    variant="ghost"
+                    size="icon-sm"
+                    className="shrink-0"
+                  />
                 </div>
               </div>
             </>
@@ -1610,6 +1598,7 @@ function SortableServerCard({
             <p className="text-muted-foreground text-xs">
               {t('servers.added', { date: format(new Date(server.createdAt), 'MMM d, yyyy') })}
             </p>
+            <ServerVersionLine server={server} />
             {/* Connection status — only shown for Jellyfin and Emby */}
             {server.type !== 'plex' && (
               <div className="mt-1">

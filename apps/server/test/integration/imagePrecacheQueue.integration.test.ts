@@ -11,13 +11,14 @@
  * Run with: pnpm --filter @tracearr/server test:integration -- imagePrecacheQueue
  */
 
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { unlink } from 'node:fs/promises';
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import sharp from 'sharp';
 import { eq } from 'drizzle-orm';
 import type { Job } from 'bullmq';
+import { POSTER_IMAGE_SIZE } from '@tracearr/shared';
 import { createTestServer, createTestLibraryItem } from '@tracearr/test-utils/factories';
 import { db } from '../../src/db/client.js';
 import { libraryItems } from '../../src/db/schema.js';
@@ -27,11 +28,10 @@ import {
 } from '../../src/jobs/imagePrecacheQueue.js';
 import {
   proxyImage,
-  posterVersionFor,
   posterCacheEntryExists,
+  posterCacheFileName,
+  IMAGE_CACHE_DIR,
 } from '../../src/services/imageProxy.js';
-
-const CACHE_DIR = join(process.cwd(), 'data', 'image-cache');
 
 let testImage: Buffer;
 
@@ -60,24 +60,14 @@ function makeJob(data: ImagePrecacheJobData): Job<ImagePrecacheJobData> {
   return { data } as unknown as Job<ImagePrecacheJobData>;
 }
 
-/** Mirrors buildCacheKeyInfo's derivation so the eviction test can delete the exact file. */
-function cacheFilePathFor(
-  serverId: string,
-  thumbPath: string,
-  width: number,
-  height: number
-): string {
-  const version = posterVersionFor(thumbPath);
-  const baseHash = createHash('sha256')
-    .update(`${serverId}:${thumbPath}:${width}:${height}`)
-    .digest('hex')
-    .slice(0, 16);
-  const shard = baseHash.slice(0, 2);
-  return join(CACHE_DIR, shard, `${baseHash}:v${version}.webp`);
+/** The one cache file a poster warms - same derivation the job itself uses. */
+function cacheFilePathFor(serverId: string, thumbPath: string): string {
+  const { fileName, shard } = posterCacheFileName(serverId, thumbPath);
+  return join(IMAGE_CACHE_DIR, shard, fileName);
 }
 
 describe('image precache job: real selection + warming behavior', () => {
-  it('warms an item whose grid cache entries are missing even though dominant color is already set', async () => {
+  it('warms an item whose poster cache entry is missing even though dominant color is already set', async () => {
     const server = await createTestServer({ type: 'plex' });
     const { id, ratingKey } = await createTestLibraryItem({ serverId: server.id });
     const thumbPath = `/library/metadata/${ratingKey}/thumb/${randomUUID()}`;
@@ -92,13 +82,11 @@ describe('image precache job: real selection + warming behavior', () => {
     const result = await processImagePrecacheJob(makeJob({ serverId: server.id, cursor: null }));
 
     expect(result).toEqual({ processed: 1 });
-    expect(counter.calls).toBe(3); // 160 + 240 + 360
-    await expect(posterCacheEntryExists(server.id, thumbPath, 160)).resolves.toBe(true);
-    await expect(posterCacheEntryExists(server.id, thumbPath, 240)).resolves.toBe(true);
-    await expect(posterCacheEntryExists(server.id, thumbPath, 360)).resolves.toBe(true);
+    expect(counter.calls).toBe(1);
+    await expect(posterCacheEntryExists(server.id, thumbPath)).resolves.toBe(true);
   });
 
-  it('skips a fully-warmed item (all grid widths cached, dominant color set)', async () => {
+  it('skips a fully-warmed item (poster cached, dominant color set)', async () => {
     const server = await createTestServer({ type: 'plex' });
     const { id, ratingKey } = await createTestLibraryItem({ serverId: server.id });
     const thumbPath = `/library/metadata/${ratingKey}/thumb/${randomUUID()}`;
@@ -106,29 +94,13 @@ describe('image precache job: real selection + warming behavior', () => {
 
     const counter = { calls: 0 };
     stubFetch(counter);
-    const version = posterVersionFor(thumbPath);
     await proxyImage({
       serverId: server.id,
       imagePath: thumbPath,
-      width: 160,
-      height: 240,
-      version,
+      ...POSTER_IMAGE_SIZE,
+      fallback: 'poster',
     });
-    await proxyImage({
-      serverId: server.id,
-      imagePath: thumbPath,
-      width: 240,
-      height: 360,
-      version,
-    });
-    await proxyImage({
-      serverId: server.id,
-      imagePath: thumbPath,
-      width: 360,
-      height: 540,
-      version,
-    });
-    expect(counter.calls).toBe(3);
+    expect(counter.calls).toBe(1);
 
     await db.update(libraryItems).set({ dominantColor: '#112233' }).where(eq(libraryItems.id, id));
 
@@ -139,7 +111,7 @@ describe('image precache job: real selection + warming behavior', () => {
     expect(counter.calls).toBe(0);
   });
 
-  it('re-warms only the width whose cache file was evicted from disk', async () => {
+  it('re-warms an item whose poster cache file was evicted from disk', async () => {
     const server = await createTestServer({ type: 'plex' });
     const { id, ratingKey } = await createTestLibraryItem({ serverId: server.id });
     const thumbPath = `/library/metadata/${ratingKey}/thumb/${randomUUID()}`;
@@ -147,41 +119,23 @@ describe('image precache job: real selection + warming behavior', () => {
 
     const counter = { calls: 0 };
     stubFetch(counter);
-    const version = posterVersionFor(thumbPath);
     await proxyImage({
       serverId: server.id,
       imagePath: thumbPath,
-      width: 160,
-      height: 240,
-      version,
+      ...POSTER_IMAGE_SIZE,
+      fallback: 'poster',
     });
-    await proxyImage({
-      serverId: server.id,
-      imagePath: thumbPath,
-      width: 240,
-      height: 360,
-      version,
-    });
-    await proxyImage({
-      serverId: server.id,
-      imagePath: thumbPath,
-      width: 360,
-      height: 540,
-      version,
-    });
-    expect(counter.calls).toBe(3);
+    expect(counter.calls).toBe(1);
 
-    await unlink(cacheFilePathFor(server.id, thumbPath, 240, 360));
-    await expect(posterCacheEntryExists(server.id, thumbPath, 160)).resolves.toBe(true);
-    await expect(posterCacheEntryExists(server.id, thumbPath, 240)).resolves.toBe(false);
-    await expect(posterCacheEntryExists(server.id, thumbPath, 360)).resolves.toBe(true);
+    await unlink(cacheFilePathFor(server.id, thumbPath));
+    await expect(posterCacheEntryExists(server.id, thumbPath)).resolves.toBe(false);
 
     counter.calls = 0;
     const result = await processImagePrecacheJob(makeJob({ serverId: server.id, cursor: null }));
 
     expect(result).toEqual({ processed: 1 });
-    expect(counter.calls).toBe(1); // only the evicted 240 width is re-fetched
-    await expect(posterCacheEntryExists(server.id, thumbPath, 240)).resolves.toBe(true);
+    expect(counter.calls).toBe(1);
+    await expect(posterCacheEntryExists(server.id, thumbPath)).resolves.toBe(true);
   });
 
   it('sinceUpdatedAt scopes the pass to items touched on/after the watermark', async () => {
@@ -212,8 +166,8 @@ describe('image precache job: real selection + warming behavior', () => {
     );
 
     expect(result).toEqual({ processed: 1 });
-    expect(counter.calls).toBe(3); // only the fresh item's three widths
-    await expect(posterCacheEntryExists(server.id, freshThumb, 240)).resolves.toBe(true);
-    await expect(posterCacheEntryExists(server.id, staleThumb, 240)).resolves.toBe(false);
+    expect(counter.calls).toBe(1); // only the fresh item's one warm
+    await expect(posterCacheEntryExists(server.id, freshThumb)).resolves.toBe(true);
+    await expect(posterCacheEntryExists(server.id, staleThumb)).resolves.toBe(false);
   });
 });

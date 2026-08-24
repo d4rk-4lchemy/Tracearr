@@ -8,7 +8,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { PendingSessionData } from '../types.js';
-import type { RuleV2, Session, ServerUser, Server as MediaServer } from '@tracearr/shared';
+import type {
+  EngineAutomation,
+  Session,
+  ServerUser,
+  Server as MediaServer,
+} from '@tracearr/shared';
 
 const {
   mockSseManager,
@@ -132,8 +137,8 @@ vi.mock('../../../services/serviceTracker.js', () => ({
 vi.mock('../../../services/sseManager.js', () => ({ sseManager: mockSseManager }));
 vi.mock('../../notificationQueue.js', () => ({ enqueueNotification: mockEnqueueNotification }));
 vi.mock('../database.js', () => ({
-  onActiveRulesRefill: vi.fn(),
-  getActiveRulesV2: vi.fn().mockResolvedValue([]),
+  onActiveAutomationsRefill: vi.fn(),
+  getActiveAutomations: vi.fn().mockResolvedValue([]),
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
   batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
@@ -155,7 +160,7 @@ vi.mock('../sessionLifecycle.js', () => ({
   stopSessionAtomic: vi.fn(),
 }));
 const mockDispatch = vi.fn().mockResolvedValue({ violations: [], outcomes: [] });
-vi.mock('../../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
@@ -166,7 +171,7 @@ vi.mock('../sessionMapper.js', () => ({
 vi.mock('../violations.js', () => ({ broadcastViolations: vi.fn() }));
 
 import { initializePoller, triggerServerPoll } from '../processor.js';
-import { evaluateRulesAsync } from '../../../services/rules/engine.js';
+import { evaluateRulesAsync } from '../../../services/automations/engine.js';
 
 function createPendingSessionData(): PendingSessionData {
   const now = Date.now();
@@ -635,7 +640,7 @@ describe('poller isNew branch defers to a pending session', () => {
       actions: { actions: [{ type: 'kill_stream' }] },
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as unknown as RuleV2;
+    } as unknown as EngineAutomation;
 
     const serverUser = { id: 'server-user-1', serverId: 'server-1' } as unknown as ServerUser;
     const server = { id: 'server-1', type: 'plex' } as unknown as MediaServer;
@@ -651,6 +656,8 @@ describe('poller isNew branch defers to a pending session', () => {
         session: secondSession,
         serverUser,
         server,
+        media: null,
+        subjectKey: secondSession.id,
         activeSessions: [secondSession],
         recentSessions: [],
       },
@@ -664,6 +671,8 @@ describe('poller isNew branch defers to a pending session', () => {
         session: secondSession,
         serverUser,
         server,
+        media: null,
+        subjectKey: secondSession.id,
         activeSessions: [...secondActiveSessions!, secondSession] as unknown as Session[],
         recentSessions: [],
       },
@@ -774,10 +783,8 @@ describe('poller isNew branch defers to a pending session', () => {
     // Both display immediately - session:started fires for each, with no DB write.
     expect(pubSubService.publish).toHaveBeenCalledTimes(2);
     expect(pubSubService.publish).toHaveBeenCalledWith('session:started', expect.anything());
-    expect(mockEnqueueNotification).toHaveBeenCalledTimes(2);
-    expect(mockEnqueueNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'session_started' })
-    );
+    // A pending entry is not a session yet; the automations fire at confirmation.
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
 
     // Nothing goes through the batched new/updated/stopped pipeline this tick.
     expect(mockProcessPollResults).not.toHaveBeenCalled();

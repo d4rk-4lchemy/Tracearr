@@ -59,17 +59,35 @@ export {
   useSplitServerUser,
 } from './useUsers';
 
-// Rule hooks
+// Automation hooks
 export {
-  useRules,
-  useDeleteRule,
-  useToggleRule,
-  useBulkToggleRules,
-  useBulkDeleteRules,
-} from './useRules';
+  AUTOMATIONS_KEY,
+  useAutomation,
+  useAutomations,
+  useBulkDeleteAutomations,
+  useBulkToggleAutomations,
+  useCreateAutomation,
+  useDeleteAutomation,
+  useDetachAutomation,
+  useRebindAutomation,
+  useToggleAutomation,
+  useUpdateAutomation,
+  useUpgradeAutomation,
+} from './useAutomations';
 
-// Rule V2 hooks
-export { useCreateRuleV2, useUpdateRuleV2, isRuleV2 } from './useRulesV2';
+// Automation template hooks
+export {
+  TEMPLATES_KEY,
+  useImportTemplate,
+  useInstantiateTemplate,
+  usePreviewTemplate,
+  useTemplate,
+  useTemplates,
+  useTemplateVersion,
+} from './useTemplates';
+
+// Automation run hooks
+export { RUNS_KEY, useAutomationEvaluations, useAutomationRuns, useRun } from './useRuns';
 
 // Violation hooks
 export {
@@ -95,7 +113,13 @@ export {
 } from './useServers';
 
 // Settings hooks
-export { useSettings, useUpdateSettings, useApiKey, useRegenerateApiKey } from './useSettings';
+export {
+  useSettings,
+  useUpdateSettings,
+  useApiKey,
+  useRegenerateApiKey,
+  useImageCacheStatus,
+} from './useSettings';
 
 // Destination hooks
 export {

@@ -140,7 +140,7 @@ describe('destinationStore', () => {
     const pub = toPublicDestination(discord(), 2);
     expect(pub.config).toEqual({ webhookUrl: null });
     expect(pub.secretsSet).toEqual(['webhookUrl']);
-    expect(pub.referencedByRuleCount).toBe(2);
+    expect(pub.referencedByAutomationCount).toBe(2);
     expect(toPublicDestination({ ...discord(), configStatus: 'reencrypt' }, 0).config).toBeNull();
   });
 

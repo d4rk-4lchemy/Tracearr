@@ -1,5 +1,6 @@
 import { DESTINATION_TYPES } from '@tracearr/shared';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
+import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
 import {
   formatViolationDetailsForDiscord,
   getSeverityInfo,
@@ -7,6 +8,7 @@ import {
 } from '../formatters/violation.js';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
+import { ownText, textOf } from './overrides.js';
 import {
   formatDuration,
   getMediaDisplay,
@@ -17,7 +19,9 @@ import type {
   NotificationPayload,
   PluginUpdateContext,
   ServerContext,
+  ServerUpdateContext,
   SessionContext,
+  TracearrUpdateContext,
   ViolationContext,
 } from '../types.js';
 import type { DeliverContext, DestinationType } from './types.js';
@@ -43,8 +47,11 @@ function buildViolationEmbed(payload: NotificationPayload, ctx: ViolationContext
     violation.userNames
   );
 
+  const text = textOf(payload, { title: payload.title, message: '' });
+
   return {
-    title: payload.title,
+    title: text.title,
+    ...(text.message && { description: text.message }),
     color,
     fields: [
       {
@@ -67,7 +74,7 @@ function buildViolationEmbed(payload: NotificationPayload, ctx: ViolationContext
   };
 }
 
-function buildSessionStartedEmbed(ctx: SessionContext): DiscordEmbed {
+function buildSessionStartedEmbed(payload: NotificationPayload, ctx: SessionContext): DiscordEmbed {
   const { session } = ctx;
   const { title: mediaTitle, subtitle } = getMediaDisplay(session);
   const playbackType = getPlaybackType(session);
@@ -105,14 +112,17 @@ function buildSessionStartedEmbed(ctx: SessionContext): DiscordEmbed {
     inline: true,
   });
 
+  const text = textOf(payload, { title: 'Stream Started', message: '' });
+
   return {
-    title: 'Stream Started',
+    title: text.title,
+    ...(text.message && { description: text.message }),
     color: 0x3498db, // Blue
     fields,
   };
 }
 
-function buildSessionStoppedEmbed(ctx: SessionContext): DiscordEmbed {
+function buildSessionStoppedEmbed(payload: NotificationPayload, ctx: SessionContext): DiscordEmbed {
   const { session } = ctx;
   const { title: mediaTitle, subtitle } = getMediaDisplay(session);
   const durationStr = session.durationMs ? formatDuration(session.durationMs) : 'Unknown';
@@ -136,35 +146,69 @@ function buildSessionStoppedEmbed(ctx: SessionContext): DiscordEmbed {
 
   fields.push({ name: 'Duration', value: durationStr, inline: true });
 
+  const text = textOf(payload, { title: 'Stream Ended', message: '' });
+
   return {
-    title: 'Stream Ended',
+    title: text.title,
+    ...(text.message && { description: text.message }),
     color: 0x95a5a6, // Gray
     fields,
   };
 }
 
-function buildServerDownEmbed(ctx: ServerContext): DiscordEmbed {
-  return {
+function buildServerDownEmbed(payload: NotificationPayload, ctx: ServerContext): DiscordEmbed {
+  const text = textOf(payload, {
     title: 'Server Connection Lost',
-    description: `Lost connection to ${ctx.serverName}`,
-    color: 0xff0000, // Red
-  };
+    message: `Lost connection to ${ctx.serverName}`,
+  });
+  return { title: text.title, description: text.message, color: 0xff0000 }; // Red
 }
 
-function buildServerUpEmbed(ctx: ServerContext): DiscordEmbed {
-  return {
+function buildServerUpEmbed(payload: NotificationPayload, ctx: ServerContext): DiscordEmbed {
+  const text = textOf(payload, {
     title: 'Server Back Online',
-    description: `${ctx.serverName} is back online`,
-    color: 0x2ecc71, // Green
-  };
+    message: `${ctx.serverName} is back online`,
+  });
+  return { title: text.title, description: text.message, color: 0x2ecc71 }; // Green
 }
 
-function buildPluginUpdateEmbed(ctx: PluginUpdateContext): DiscordEmbed {
-  return {
+function buildPluginUpdateEmbed(
+  payload: NotificationPayload,
+  ctx: PluginUpdateContext
+): DiscordEmbed {
+  const text = textOf(payload, {
     title: 'Plugin Update Available',
-    description: `${ctx.serverName}: ${formatPluginUpdateMessage(ctx)}`,
-    color: 0xf39c12, // Orange/Warning
-  };
+    message: `${ctx.serverName}: ${formatPluginUpdateMessage(ctx)}`,
+  });
+  return { title: text.title, description: text.message, color: 0xf39c12 }; // Orange/Warning
+}
+
+function buildServerUpdateEmbed(
+  payload: NotificationPayload,
+  ctx: ServerUpdateContext
+): DiscordEmbed {
+  const text = textOf(payload, {
+    title: 'Server Update Available',
+    message: formatServerUpdateMessage(ctx),
+  });
+  return { title: text.title, description: text.message, color: 0xf39c12 }; // Orange/Warning
+}
+
+function buildTracearrUpdateEmbed(
+  payload: NotificationPayload,
+  ctx: TracearrUpdateContext
+): DiscordEmbed {
+  const text = textOf(payload, {
+    title: 'Tracearr Update Available',
+    message: formatTracearrUpdateMessage(ctx),
+  });
+  return { title: text.title, description: text.message, color: 0x3498db }; // Blue
+}
+
+/** The events whose whole text the payload already carries; the colour is all that differs. */
+function buildOwnText(payload: NotificationPayload, color: number): DiscordEmbed {
+  const text = ownText(payload);
+  return { title: text.title, description: text.message, color };
 }
 
 function buildEmbed(payload: NotificationPayload): DiscordEmbed {
@@ -172,15 +216,26 @@ function buildEmbed(payload: NotificationPayload): DiscordEmbed {
     case 'violation_detected':
       return buildViolationEmbed(payload, payload.context);
     case 'stream_started':
-      return buildSessionStartedEmbed(payload.context);
+      return buildSessionStartedEmbed(payload, payload.context);
     case 'stream_stopped':
-      return buildSessionStoppedEmbed(payload.context);
+      return buildSessionStoppedEmbed(payload, payload.context);
     case 'server_down':
-      return buildServerDownEmbed(payload.context);
+      return buildServerDownEmbed(payload, payload.context);
     case 'server_up':
-      return buildServerUpEmbed(payload.context);
+      return buildServerUpEmbed(payload, payload.context);
     case 'plugin_update_available':
-      return buildPluginUpdateEmbed(payload.context);
+      return buildPluginUpdateEmbed(payload, payload.context);
+    case 'server_update_available':
+      return buildServerUpdateEmbed(payload, payload.context);
+    case 'tracearr_update_available':
+      return buildTracearrUpdateEmbed(payload, payload.context);
+    case 'media_added':
+    case 'media_upgraded':
+      return buildOwnText(payload, 0x1abc9c); // Teal
+    case 'new_device':
+      return buildOwnText(payload, 0xf39c12); // Orange/Warning
+    case 'trust_score_changed':
+      return buildOwnText(payload, 0x9b59b6); // Purple
   }
 }
 

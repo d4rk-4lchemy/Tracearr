@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DESTINATION_KINDS,
   DESTINATION_TYPES,
+  NOTIFICATION_EVENT_TYPES,
+  SUBSCRIBABLE_EVENTS,
   destinationConfigSchema,
   createDestinationSchema,
   updateDestinationSchema,
@@ -21,6 +23,17 @@ describe('DESTINATION_TYPES', () => {
       expect(DESTINATION_TYPES[kind].fields).toEqual([]);
       expect(DESTINATION_TYPES[kind].events).not.toContain('plugin_update_available');
     }
+  });
+  it('every kind can carry the update and media events an automation renders', () => {
+    for (const kind of DESTINATION_KINDS) {
+      expect(DESTINATION_TYPES[kind].events).toContain('server_update_available');
+      expect(DESTINATION_TYPES[kind].events).toContain('tracearr_update_available');
+      expect(DESTINATION_TYPES[kind].events).toContain('media_added');
+      expect(DESTINATION_TYPES[kind].events).toContain('media_upgraded');
+    }
+    expect(NOTIFICATION_EVENT_TYPES).toContain('media_upgraded');
+    // The automation is the only way in: nothing subscribes to a media event directly.
+    expect(SUBSCRIBABLE_EVENTS).toEqual(['violation_detected']);
   });
   it('every url field is secret and every secret field is marked', () => {
     for (const kind of DESTINATION_KINDS) {
@@ -63,8 +76,14 @@ describe('destinationConfigSchema', () => {
   });
 });
 
+describe('SUBSCRIBABLE_EVENTS', () => {
+  it('is violations only: every other event reaches a destination through an automation', () => {
+    expect(SUBSCRIBABLE_EVENTS).toEqual(['violation_detected']);
+  });
+});
+
 describe('createDestinationSchema', () => {
-  it('rejects built-in types; events are checked against the type by the route, not here', () => {
+  it('rejects built-in types', () => {
     expect(
       createDestinationSchema.safeParse({
         name: 'x',
@@ -74,17 +93,28 @@ describe('createDestinationSchema', () => {
         enabled: true,
       }).success
     ).toBe(false);
-    expect(
+  });
+
+  it('accepts violation_detected and rejects any other subscription', () => {
+    const create = (events: string[]) =>
       createDestinationSchema.safeParse({
         name: 'x',
         type: 'discord',
         config: { webhookUrl: 'https://x' },
-        events: ['plugin_update_available'],
+        events,
         enabled: true,
-      }).success
-    ).toBe(true);
+      }).success;
+
+    expect(create(['violation_detected'])).toBe(true);
+    expect(create([])).toBe(true);
+    expect(create(['plugin_update_available'])).toBe(false);
+    expect(create(['stream_started'])).toBe(false);
+  });
+
+  it('narrows a patch to the same subscribable set', () => {
+    expect(updateDestinationSchema.safeParse({ events: ['stream_started'] }).success).toBe(false);
     expect(
-      updateDestinationSchema.safeParse({ events: ['stream_started'], enabled: false }).success
+      updateDestinationSchema.safeParse({ events: ['violation_detected'], enabled: false }).success
     ).toBe(true);
   });
 });

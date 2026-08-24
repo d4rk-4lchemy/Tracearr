@@ -173,7 +173,6 @@ export function useDataTable<TData extends object>({
               selection.onTogglePage(table.getRowModel().rows.map((row) => row.original))
             }
             onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
             aria-label={selection.labels.selectAllOnPage}
             className={INDETERMINATE_CHECKBOX_CLASSES}
           />
@@ -184,7 +183,6 @@ export function useDataTable<TData extends object>({
           checked={row.getIsSelected()}
           onCheckedChange={() => selection.onToggleRow(row.original)}
           onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
           aria-label={selection.labels.selectRow}
         />
       ),

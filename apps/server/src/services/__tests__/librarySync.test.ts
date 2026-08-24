@@ -37,6 +37,15 @@ vi.mock('../library/mediaResolutionService.js', () => ({
   reconcileMediaDuplicates: vi.fn().mockResolvedValue(0),
 }));
 
+const mockHasMediaListeners = vi.fn().mockResolvedValue(false);
+const mockDispatchMediaAdded = vi.fn();
+const mockDispatchMediaUpgraded = vi.fn();
+vi.mock('../automations/events/producers.js', () => ({
+  hasMediaListeners: (...args: unknown[]) => mockHasMediaListeners(...args),
+  dispatchMediaAdded: (...args: unknown[]) => mockDispatchMediaAdded(...args),
+  dispatchMediaUpgraded: (...args: unknown[]) => mockDispatchMediaUpgraded(...args),
+}));
+
 vi.mock('../../jobs/sessionIdentityBackfill.js', () => ({
   backfillSessionIdentityBatch: vi.fn().mockResolvedValue({ updated: 0, oldest: null }),
   hasStampableSessionsBefore: vi.fn().mockResolvedValue(false),
@@ -152,6 +161,33 @@ function mockSelectChain(result: unknown[]) {
   };
   vi.mocked(db.select).mockReturnValue(chain as never);
   return chain;
+}
+
+/** One row as the item upsert returns it: already 4K, and larger than the copy it replaced. */
+function changedRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'library-item-1',
+    ratingKey: 'rk-1',
+    firstSeenAt: new Date('2026-01-01T00:00:00Z'),
+    title: 'Cars',
+    mediaType: 'movie',
+    year: 2006,
+    resolution: '4k',
+    dynamicRange: null,
+    videoCodec: 'H264',
+    audioCodec: 'AC3',
+    audioChannels: 6,
+    fileSize: 9_000_000_000,
+    ...overrides,
+  };
+}
+
+/** The announce path's prior read ends at .where(), with no limit. */
+function mockPriorQuality(rows: unknown[]) {
+  vi.mocked(db.select).mockReturnValue({
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockResolvedValue(rows),
+  } as never);
 }
 
 function mockInsertChain(result: unknown[] = []) {
@@ -977,6 +1013,100 @@ describe('LibrarySyncService', () => {
       }>;
       expect(valuesArg).toHaveLength(1);
       expect(valuesArg[0]!.ratingKey).toBe('real');
+    });
+
+    it('reads no prior quality and announces nothing without an announce context', async () => {
+      const service = new LibrarySyncService();
+      const { insertChain } = mockTransaction();
+      insertChain.returning.mockResolvedValue([changedRow()]);
+
+      await service.upsertItems(randomUUID(), '1', [createMockLibraryItem({ ratingKey: 'rk-1' })]);
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(mockDispatchMediaUpgraded).not.toHaveBeenCalled();
+    });
+
+    it('reads nothing more once the run has spent its announce budget', async () => {
+      const service = new LibrarySyncService();
+      const announce = {
+        server: { id: 'server-1', name: 'Basement', type: 'plex' as const },
+        libraryName: 'Movies',
+        budget: { remaining: 0, suppressed: 4 },
+      };
+      const { insertChain } = mockTransaction();
+      insertChain.returning.mockResolvedValue([changedRow()]);
+
+      await service.upsertItems(
+        randomUUID(),
+        '1',
+        [createMockLibraryItem({ ratingKey: 'rk-1' })],
+        undefined,
+        announce
+      );
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(mockDispatchMediaUpgraded).not.toHaveBeenCalled();
+      expect(announce.budget.suppressed).toBe(4);
+    });
+
+    it('announces the quality a changed row moved to, after the transaction', async () => {
+      const service = new LibrarySyncService();
+      const announce = {
+        server: { id: 'server-1', name: 'Basement', type: 'plex' as const },
+        libraryName: 'Movies',
+        budget: { remaining: 20, suppressed: 0 },
+      };
+      mockPriorQuality([
+        {
+          ratingKey: 'rk-1',
+          resolution: '1080p',
+          dynamicRange: null,
+          videoCodec: 'H264',
+          audioCodec: 'AC3',
+          audioChannels: 6,
+          fileSize: 8_000_000_000,
+        },
+      ]);
+      const { insertChain } = mockTransaction();
+      insertChain.returning.mockResolvedValue([changedRow()]);
+
+      await service.upsertItems(
+        randomUUID(),
+        '1',
+        [createMockLibraryItem({ ratingKey: 'rk-1' })],
+        undefined,
+        announce
+      );
+
+      expect(mockDispatchMediaUpgraded).toHaveBeenCalledWith({
+        server: announce.server,
+        media: {
+          libraryItemId: 'library-item-1',
+          title: 'Cars',
+          type: 'movie',
+          year: 2006,
+          libraryId: '1',
+          libraryName: 'Movies',
+          quality: {
+            resolution: '4k',
+            dynamicRange: null,
+            videoCodec: 'H264',
+            audioCodec: 'AC3',
+            audioChannels: 6,
+            fileSize: 9_000_000_000,
+          },
+        },
+        from: {
+          resolution: '1080p',
+          dynamicRange: null,
+          videoCodec: 'H264',
+          audioCodec: 'AC3',
+          audioChannels: 6,
+          fileSize: 8_000_000_000,
+        },
+        changed: ['resolution', 'fileSize'],
+      });
+      expect(announce.budget).toEqual({ remaining: 19, suppressed: 0 });
     });
   });
 

@@ -47,6 +47,7 @@ import { getAvatarUrl } from '@/components/users/utils';
 import { useTheme } from '@/components/theme-provider';
 import { StreamDetailsPanel } from './StreamDetailsPanel';
 
+import { POSTER_IMAGE_SIZE } from '@tracearr/shared';
 import type {
   SessionWithDetails,
   ActiveSession,
@@ -294,7 +295,13 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
   const geoAsnNumber = session.geoAsnNumber ? `AS${session.geoAsnNumber}` : null;
 
   const posterUrl = session.thumbPath
-    ? imageProxyUrl(session.serverId, session.thumbPath, 120, 180, 'poster')
+    ? imageProxyUrl(
+        session.serverId,
+        session.thumbPath,
+        POSTER_IMAGE_SIZE.width,
+        POSTER_IMAGE_SIZE.height,
+        'poster'
+      )
     : null;
 
   const locationParts = [session.geoCity, session.geoRegion, geoCountryName].filter(Boolean);

@@ -3,7 +3,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { initI18n } from '@tracearr/translations';
-import { PosterCard, buildPosterSrc, buildPosterSrcSet, formatResolutionLabel } from './PosterCard';
+import { PosterCard, buildPosterSrc, formatResolutionLabel } from './PosterCard';
 
 beforeAll(async () => {
   await initI18n({ lng: 'en' });
@@ -62,6 +62,18 @@ describe('PosterCard', () => {
     const overlay = poster!.querySelector('[aria-hidden="true"].absolute.inset-0');
     expect(overlay).not.toBeNull();
     expect(overlay).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('requests the single cached size with the LQIP race and no responsive srcset', () => {
+    const { container } = renderCard();
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img!.src).toContain('width=360');
+    expect(img!.src).toContain('height=540');
+    expect(img!.src).toContain('v=abc12345');
+    expect(img!.src).toContain('lqip=1');
+    expect(img!.hasAttribute('srcset')).toBe(false);
+    expect(img!.hasAttribute('sizes')).toBe(false);
   });
 
   it('swaps to the titled fallback on image load failure without retrying', () => {
@@ -347,28 +359,30 @@ describe('formatResolutionLabel', () => {
   });
 });
 
-describe('buildPosterSrc / buildPosterSrcSet', () => {
+describe('buildPosterSrc', () => {
   const url =
     '/api/v1/images/proxy?server=srv-1&url=%2Flibrary%2Fthumb%2F1&width=240&height=360&fallback=poster';
 
-  it('rewrites width and height while preserving other params', () => {
-    const src = buildPosterSrc(url, 160, 'abc12345');
+  it('always requests the one cached 360x540 size while preserving other params', () => {
+    const src = buildPosterSrc(url, 'abc12345');
     const parsed = new URL(src, 'http://localhost');
-    expect(parsed.searchParams.get('width')).toBe('160');
-    expect(parsed.searchParams.get('height')).toBe('240');
+    expect(parsed.searchParams.get('width')).toBe('360');
+    expect(parsed.searchParams.get('height')).toBe('540');
     expect(parsed.searchParams.get('server')).toBe('srv-1');
     expect(parsed.searchParams.get('url')).toBe('/library/thumb/1');
     expect(parsed.searchParams.get('v')).toBe('abc12345');
+    expect(parsed.searchParams.has('lqip')).toBe(false);
   });
 
-  it('builds a srcset over the 160/240/360 buckets', () => {
-    const srcSet = buildPosterSrcSet(url, 'abc12345');
-    expect(srcSet).toContain('160w');
-    expect(srcSet).toContain('240w');
-    expect(srcSet).toContain('360w');
+  it('omits v when there is no posterVersion', () => {
+    const src = buildPosterSrc(url, null);
+    const parsed = new URL(src, 'http://localhost');
+    expect(parsed.searchParams.has('v')).toBe(false);
   });
 
-  it('returns undefined when there is no posterUrl', () => {
-    expect(buildPosterSrcSet(null, 'abc12345')).toBeUndefined();
+  it('adds lqip=1 only when asked', () => {
+    const src = buildPosterSrc(url, 'abc12345', { lqip: true });
+    const parsed = new URL(src, 'http://localhost');
+    expect(parsed.searchParams.get('lqip')).toBe('1');
   });
 });

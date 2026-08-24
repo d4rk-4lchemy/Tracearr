@@ -11,12 +11,13 @@
  * - Sync operations handle auto-linking by email
  */
 
-import { eq, and, sql, inArray, isNull } from 'drizzle-orm';
+import { eq, and, sql, inArray, isNull, type SQL } from 'drizzle-orm';
 import type { MediaUser } from './mediaServer/index.js';
 import type { UserRole } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { users, serverUsers, servers, sessions, violations } from '../db/schema.js';
+import { users, serverUsers, servers, sessions, automationRuns } from '../db/schema.js';
 import { NotFoundError } from '../utils/errors.js';
+import { violationAliasConditions } from './automations/aliasFilter.js';
 
 // Type for user identity table row
 export type User = typeof users.$inferSelect;
@@ -474,33 +475,61 @@ export async function updateServerUser(
   return serverUser;
 }
 
+/** How a trust write names its new value; `adjust` is a delta, the other two are absolute. */
+export type TrustChange =
+  { mode: 'adjust'; amount: number } | { mode: 'set'; value: number } | { mode: 'reset' };
+
+/** One account's score before and after a write, read off the row the write returned. */
+export interface TrustMove {
+  previous: number;
+  serverUser: ServerUser;
+}
+
+/** Kept for the callers that read the whole row back, which is every one of them. */
+export type TrustChangeResult = TrustMove;
+
+const TRUST_BASELINE = 100;
+
+/** The clamped expression each mode writes; the clamp is SQL so a delta cannot overshoot. */
+export function trustValueSql(change: TrustChange): SQL {
+  if (change.mode === 'adjust') {
+    return sql`LEAST(100, GREATEST(0, ${serverUsers.trustScore} + ${change.amount}))`;
+  }
+  return sql`${change.mode === 'set' ? Math.min(100, Math.max(0, change.value)) : TRUST_BASELINE}`;
+}
+
 /**
- * Update server user trust score
+ * Every trust write goes through this statement: the self-join returns both sides at once, so
+ * nothing can read a value another write already moved. The caller owns the transaction and
+ * announces the moves after it commits.
  */
-export async function updateServerUserTrustScore(
+export async function moveTrust(executor: Tx, next: SQL, match: SQL): Promise<TrustMove[]> {
+  const rows = await executor
+    .update(serverUsers)
+    .set({ trustScore: next, updatedAt: new Date() })
+    .from(sql`${serverUsers} AS before`)
+    .where(sql`before.id = ${serverUsers.id} AND ${match}`)
+    // Aliased: an unaliased before.trust_score would collide with the row's own column.
+    .returning({
+      previous: sql<number>`before.trust_score`.as('previous_trust'),
+      row: serverUsers,
+    });
+  return rows.map((row) => ({ previous: row.previous, serverUser: row.row }));
+}
+
+/**
+ * One account, in a transaction of its own, with the identity rollup committing alongside it.
+ * Callers already holding a transaction use `moveTrust` directly.
+ */
+export async function applyTrustChange(
   serverUserId: string,
-  trustScore: number
-): Promise<ServerUser> {
-  // The identity rollup recompute runs in the same transaction as the trust
-  // write so the two never commit out of sync with each other.
+  change: TrustChange
+): Promise<TrustMove | null> {
   return db.transaction(async (tx) => {
-    const rows = await tx
-      .update(serverUsers)
-      .set({
-        trustScore,
-        updatedAt: new Date(),
-      })
-      .where(eq(serverUsers.id, serverUserId))
-      .returning();
-
-    const serverUser = rows[0];
-    if (!serverUser) {
-      throw new ServerUserNotFoundError(serverUserId);
-    }
-
-    await recomputeIdentityAggregates(serverUser.userId, tx);
-
-    return serverUser;
+    const [moved] = await moveTrust(tx, trustValueSql(change), eq(serverUsers.id, serverUserId));
+    if (!moved) return null;
+    await recomputeIdentityAggregates(moved.serverUser.userId, tx);
+    return moved;
   });
 }
 
@@ -899,17 +928,27 @@ export async function recomputeIdentityAggregates(
         min(${serverUsers.trustScore}) filter (where ${serverUsers.removedAt} is null),
         min(${serverUsers.trustScore})
       )`,
-      firstJoinedAt: sql<Date | null>`min(${serverUsers.joinedAt})`,
-      lastActivityAt: sql<Date | null>`max(${serverUsers.lastActivityAt})`,
+      // The driver hands timestamps back as strings; mapWith borrows the
+      // column's decoder so these are Dates the users columns can be set to.
+      firstJoinedAt: sql<Date | null>`min(${serverUsers.joinedAt})`.mapWith(serverUsers.joinedAt),
+      lastActivityAt: sql<Date | null>`max(${serverUsers.lastActivityAt})`.mapWith(
+        serverUsers.lastActivityAt
+      ),
     })
     .from(serverUsers)
     .where(eq(serverUsers.userId, userId));
 
   const violationResult = await executor
     .select({ count: sql<number>`count(*)::int` })
-    .from(violations)
-    .innerJoin(serverUsers, eq(violations.serverUserId, serverUsers.id))
-    .where(and(eq(serverUsers.userId, userId), isNull(violations.dismissedAt)));
+    .from(automationRuns)
+    .innerJoin(serverUsers, eq(automationRuns.serverUserId, serverUsers.id))
+    .where(
+      and(
+        eq(serverUsers.userId, userId),
+        isNull(automationRuns.dismissedAt),
+        ...violationAliasConditions()
+      )
+    );
 
   const accounts = accountResult[0];
   // Raw SQL aggregate expressions are returned by pg as timestamp strings,

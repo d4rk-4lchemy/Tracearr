@@ -33,6 +33,7 @@ const GEOASN_DB_PATH = resolve(PROJECT_ROOT, 'data/GeoLite2-ASN.mmdb');
 
 import type {
   ActiveSession,
+  RunFinishedEvent,
   ViolationWithDetails,
   DashboardStats,
   TautulliImportProgress,
@@ -52,13 +53,15 @@ import { serverRoutes } from './routes/servers.js';
 import { userRoutes } from './routes/users/index.js';
 import { serverUserRoutes } from './routes/serverUsers.js';
 import { sessionRoutes } from './routes/sessions.js';
-import { ruleRoutes } from './routes/rules.js';
+import { automationRoutes } from './routes/automations.js';
+import { templateRoutes } from './routes/templates.js';
+import { runRoutes } from './routes/runs.js';
 import { violationRoutes } from './routes/violations.js';
 import { statsRoutes } from './routes/stats/index.js';
 import { settingsRoutes } from './routes/settings.js';
 import { importRoutes } from './routes/import.js';
 import { imageRoutes } from './routes/images.js';
-import { stopImageCacheCleanup } from './services/imageProxy.js';
+import { startImageCacheSweepTimer, stopImageCacheSweep } from './services/imageCacheSweep.js';
 import { debugRoutes } from './routes/debug.js';
 import { mobileRoutes } from './routes/mobile.js';
 import { notificationPreferencesRoutes } from './routes/notificationPreferences.js';
@@ -99,6 +102,7 @@ import {
   stopDispatcharrRealtimeProcessor,
 } from './jobs/dispatcharrRealtimeProcessor.js';
 import { startPluginUpdateChecker, stopPluginUpdateChecker } from './jobs/pluginUpdateChecker.js';
+import { startServerUpdateChecker, stopServerUpdateChecker } from './jobs/serverUpdateChecker.js';
 import { startLeaderLease, stopLeaderLease } from './services/leaderLease.js';
 import { initializeWebSocket, broadcastToSessions } from './websocket/index.js';
 import {
@@ -106,6 +110,9 @@ import {
   startNotificationWorker,
   shutdownNotificationQueue,
 } from './jobs/notificationQueue.js';
+import { runAutomationModelMigration } from './services/automations/modelMigration.js';
+import { runSystemEventsMigration } from './services/automations/systemEventsMigration.js';
+import { seedBuiltinTemplates } from './services/automations/templates/seeder.js';
 import { initDestinationCrypto } from './services/notifications/destinationCrypto.js';
 import { invalidateDestinationsCache } from './services/notifications/destinationStore.js';
 import {
@@ -155,16 +162,16 @@ import {
   shutdownPlexTokenRefreshQueue,
 } from './jobs/plexTokenRefresh.js';
 import {
-  initViolationRetentionQueue,
-  startViolationRetentionWorker,
-  scheduleViolationRetention,
-  shutdownViolationRetentionQueue,
-} from './jobs/violationRetentionQueue.js';
+  initRunRetentionQueue,
+  startRunRetentionWorker,
+  scheduleRunRetention,
+  shutdownRunRetentionQueue,
+} from './jobs/runRetentionQueue.js';
 import { initHeavyOpsLock } from './jobs/heavyOpsLock.js';
 import { startConnectionBudget, stopConnectionBudget } from './services/connectionBudget.js';
 import { initPushRateLimiter } from './services/pushRateLimiter.js';
-import { initializeV2Rules } from './services/rules/v2Integration.js';
-import { rehydratePauseWakes, stopPauseWakes } from './services/rules/wakes/pauseWakes.js';
+import { initializeV2Rules } from './services/automations/v2Integration.js';
+import { rehydratePauseWakes, stopPauseWakes } from './services/automations/wakes/pauseWakes.js';
 import { processPushReceipts } from './services/pushNotification.js';
 import { cleanupMobileTokens } from './jobs/cleanupMobileTokens.js';
 import { db, checkDatabaseConnection } from './db/client.js';
@@ -480,7 +487,9 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
   await app.register(userRoutes, { prefix: `${API_BASE_PATH}/users` });
   await app.register(serverUserRoutes, { prefix: `${API_BASE_PATH}/server-users` });
   await app.register(sessionRoutes, { prefix: `${API_BASE_PATH}/sessions` });
-  await app.register(ruleRoutes, { prefix: `${API_BASE_PATH}/rules` });
+  await app.register(automationRoutes, { prefix: `${API_BASE_PATH}/automations` });
+  await app.register(templateRoutes, { prefix: `${API_BASE_PATH}/templates` });
+  await app.register(runRoutes, { prefix: `${API_BASE_PATH}/runs` });
   await app.register(violationRoutes, { prefix: `${API_BASE_PATH}/violations` });
   await app.register(statsRoutes, { prefix: `${API_BASE_PATH}/stats` });
   await app.register(settingsRoutes, { prefix: `${API_BASE_PATH}/settings` });
@@ -564,7 +573,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     if (mobileTokenCleanupInterval) {
       clearInterval(mobileTokenCleanupInterval);
     }
-    stopImageCacheCleanup();
+    stopImageCacheSweep();
     await closeAuth();
     if (pubSubRedis) await pubSubRedis.quit();
     if (wsSubscriber) await wsSubscriber.quit();
@@ -575,6 +584,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     stopDispatcharrRealtimeProcessor();
     stopPauseWakes();
     stopPluginUpdateChecker();
+    stopServerUpdateChecker();
     await sseManager.stop();
     await stopLeaderLease();
     await tailscaleService.shutdown();
@@ -588,7 +598,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     await shutdownInactivityCheckQueue();
     await shutdownBackupQueue();
     await shutdownPlexTokenRefreshQueue();
-    await shutdownViolationRetentionQueue();
+    await shutdownRunRetentionQueue();
   });
 
   // Probe DB and Redis to decide if we can initialize services now
@@ -791,7 +801,7 @@ async function initializeServices(app: FastifyInstance) {
     app.log.warn('GeoASN database not available - ASN data disabled');
   }
 
-  // Initialize V2 rules system (wire dependencies, run migration)
+  // Initialize V2 rules system (wire action executor dependencies)
   try {
     await initializeV2Rules(app.redis);
     app.log.info('V2 rules system initialized');
@@ -815,6 +825,18 @@ async function initializeServices(app: FastifyInstance) {
   // Unwrapped on purpose: a half-applied migration must reach the boot recovery loop, not leave
   // rules pointing at destinations that were never inserted.
   await runDestinationsMigration();
+
+  // Runs after the destinations rewrite so node ids land on the final action set, and unwrapped
+  // for the same reason: a half-migrated automation model must not survive into serving.
+  await runAutomationModelMigration();
+
+  // Unwrapped like its neighbours: a catalog that failed to seed would leave the gallery
+  // and every bound instance pointing at a template version that was never written.
+  await seedBuiltinTemplates();
+
+  // Needs the catalog it seeds: the destination subscriptions it converts become instances of
+  // those templates. Unwrapped too, or an install ends up with neither the checkbox nor the rule.
+  await runSystemEventsMigration();
 
   try {
     await sweepDestinationConfigs();
@@ -915,12 +937,13 @@ async function initializeServices(app: FastifyInstance) {
   // Initialize image precache queue (uses Redis for job storage)
   try {
     initImagePrecacheQueue(redisUrl);
-    startImagePrecacheWorker();
+    await startImagePrecacheWorker();
     app.log.info('Image precache queue initialized');
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize image precache queue');
     // Don't throw - image precache is non-critical
   }
+  startImageCacheSweepTimer();
 
   // Initialize version check queue (uses Redis for job storage and caching)
   try {
@@ -962,14 +985,14 @@ async function initializeServices(app: FastifyInstance) {
     // Don't throw - scheduled backups are non-critical
   }
 
-  // Initialize violation retention queue (daily purge of old dismissed rows)
+  // Initialize run retention queue (daily purge of aged automation runs)
   try {
-    initViolationRetentionQueue(redisUrl);
-    startViolationRetentionWorker();
-    void scheduleViolationRetention();
-    app.log.info('Violation retention queue initialized');
+    initRunRetentionQueue(redisUrl);
+    startRunRetentionWorker();
+    void scheduleRunRetention();
+    app.log.info('Run retention queue initialized');
   } catch (err) {
-    app.log.error({ err }, 'Failed to initialize violation retention queue');
+    app.log.error({ err }, 'Failed to initialize run retention queue');
   }
 
   // Initialize plex token refresh queue (renews strong-PIN JWT tokens before they expire)
@@ -1128,6 +1151,9 @@ async function initializePostListen(app: FastifyInstance) {
         case WS_EVENTS.VIOLATION_NEW:
           broadcastToSessions('violation:new', data as ViolationWithDetails);
           break;
+        case WS_EVENTS.RUN_FINISHED:
+          broadcastToSessions('run:finished', data as RunFinishedEvent[]);
+          break;
         case WS_EVENTS.STATS_UPDATED:
           broadcastToSessions('stats:updated', data as DashboardStats);
           break;
@@ -1158,6 +1184,10 @@ async function initializePostListen(app: FastifyInstance) {
         case WS_EVENTS.DESTINATIONS_CHANGED:
           invalidateDestinationsCache();
           broadcastToSessions('destinations:changed');
+          break;
+        case WS_EVENTS.SERVERS_CHANGED:
+          invalidateServersCache();
+          broadcastToSessions('servers:changed');
           break;
         case WS_EVENTS.NOTIFICATION_TOAST:
           broadcastToSessions('notification:toast', data as NotificationToast);
@@ -1195,6 +1225,7 @@ async function initializePostListen(app: FastifyInstance) {
       startSSEProcessor(); // Subscribe to SSE events
       startDispatcharrRealtimeProcessor();
       startPluginUpdateChecker();
+      startServerUpdateChecker();
       await sseManager.start(); // Start SSE connections
       app.log.info('Real-time SSE connections started');
     } catch (err) {
@@ -1223,6 +1254,7 @@ async function initializePostListen(app: FastifyInstance) {
     stopDispatcharrRealtimeProcessor();
     stopPauseWakes();
     stopPluginUpdateChecker();
+    stopServerUpdateChecker();
     await sseManager.stop();
   };
 
@@ -1376,7 +1408,7 @@ async function start() {
         void shutdownInactivityCheckQueue();
         void shutdownBackupQueue();
         void shutdownPlexTokenRefreshQueue();
-        void shutdownViolationRetentionQueue();
+        void shutdownRunRetentionQueue();
         void app.close().then(() => process.exit(0));
       });
     }
@@ -1420,7 +1452,7 @@ async function start() {
           shutdownInactivityCheckQueue(),
           shutdownBackupQueue(),
           shutdownPlexTokenRefreshQueue(),
-          shutdownViolationRetentionQueue(),
+          shutdownRunRetentionQueue(),
         ]).catch((err) => {
           app.log.error({ err }, 'Error shutting down queues during maintenance');
         });

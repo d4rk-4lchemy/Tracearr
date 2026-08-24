@@ -589,7 +589,9 @@ describe('GET /library/catalog', () => {
     expect(row.viewers).toBe(2);
     expect(row.resolutionBest).toBe('4k');
     expect(row.posterVersion).toEqual(expect.stringMatching(/^[0-9a-f]{8}$/));
-    expect(row.posterUrl).toContain('width=240');
+    expect(row.posterUrl).toContain('width=360');
+    expect(row.posterUrl).toContain('height=540');
+    expect(row.posterUrl).toContain(`v=${row.posterVersion}`);
     expect(body.meta).toEqual({
       offset: 0,
       pageSize: 60,

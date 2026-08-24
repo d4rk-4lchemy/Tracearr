@@ -20,7 +20,7 @@ vi.mock('react-router', async () => {
 vi.mock('@/hooks/queries', () => ({
   useViolations: vi.fn(),
   useUsers: vi.fn(),
-  useRules: vi.fn(),
+  useAutomations: vi.fn(),
   useAcknowledgeViolation: () => ({ mutate: vi.fn(), isPending: false }),
   useDismissViolation: () => ({ mutate: vi.fn(), isPending: false }),
   useBulkAcknowledgeViolations: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock('@/hooks/useServerColorMap', () => ({
 import {
   useViolations,
   useUsers,
-  useRules,
+  useAutomations,
   useBulkAcknowledgeViolations,
   useBulkDismissViolations,
 } from '@/hooks/queries';
@@ -46,7 +46,7 @@ import { useServer } from '@/hooks/useServer';
 
 const mockUseViolations = vi.mocked(useViolations);
 const mockUseUsers = vi.mocked(useUsers);
-const mockUseRules = vi.mocked(useRules);
+const mockUseAutomations = vi.mocked(useAutomations);
 const mockUseBulkAcknowledge = vi.mocked(useBulkAcknowledgeViolations);
 const mockUseBulkDismiss = vi.mocked(useBulkDismissViolations);
 const mockUseServer = vi.mocked(useServer);
@@ -139,9 +139,12 @@ describe('Violations', () => {
       isLoading: false,
       isError: false,
     } as unknown as ReturnType<typeof useUsers>);
-    mockUseRules.mockReturnValue({
-      data: [{ id: 'rule-7', name: 'Rule Seven' }],
-    } as unknown as ReturnType<typeof useRules>);
+    mockUseAutomations.mockReturnValue({
+      data: {
+        data: [{ id: 'rule-7', name: 'Rule Seven' }],
+        meta: { page: 1, pageSize: 100, total: 1 },
+      },
+    } as unknown as ReturnType<typeof useAutomations>);
     mockUseBulkAcknowledge.mockReturnValue({
       mutate: bulkAcknowledgeMutate,
       isPending: false,
@@ -162,6 +165,12 @@ describe('Violations', () => {
     expect(screen.getByText('common:table.pageOf')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /common:actions.previous/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /common:actions.next/ })).toBeEnabled();
+  });
+
+  it('offers only policy automations in the rule filter', () => {
+    renderViolations();
+
+    expect(mockUseAutomations).toHaveBeenCalledWith(expect.objectContaining({ kind: 'policy' }));
   });
 
   it('sends the mapped sort field to the query and returns to page one', async () => {

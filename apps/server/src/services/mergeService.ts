@@ -21,8 +21,8 @@ import {
   serverUsers,
   servers,
   sessions,
-  violations,
-  rules,
+  automationRuns,
+  automations,
   plexAccounts,
   mobileSessions,
   mobileTokens,
@@ -30,7 +30,7 @@ import {
   authAccounts,
   userMergeAudits,
 } from '../db/schema.js';
-import { invalidateRulesCache } from '../jobs/poller/database.js';
+import { invalidateAutomationsCache } from '../jobs/poller/database.js';
 import { getAuth } from '../lib/auth.js';
 import {
   recomputeIdentityAggregates,
@@ -194,9 +194,9 @@ async function repointIdentityRows(
   // compare names against here, so nothing is lost by leaving them on the
   // target - the restored identity from a split just starts without them.
   await tx
-    .update(rules)
+    .update(automations)
     .set({ userId: targetUserId, updatedAt: new Date() })
-    .where(eq(rules.userId, sourceUserId));
+    .where(eq(automations.userId, sourceUserId));
   // terminationLogs.triggeredByUserId is deliberately not tracked for split to
   // reverse: it records which admin manually triggered a termination, not an
   // attribute of the terminated account, so there is no source-identity row to
@@ -279,9 +279,9 @@ async function combineServerUsers(
     .set({ serverUserId: targetServerUserId })
     .where(eq(sessions.serverUserId, sourceServerUserId));
   await tx
-    .update(violations)
+    .update(automationRuns)
     .set({ serverUserId: targetServerUserId })
-    .where(eq(violations.serverUserId, sourceServerUserId));
+    .where(eq(automationRuns.serverUserId, sourceServerUserId));
   await tx
     .update(terminationLogs)
     .set({ serverUserId: targetServerUserId })
@@ -291,24 +291,24 @@ async function combineServerUsers(
   // Conflicting source rules are dropped rather than kept as duplicates; their
   // names are returned so the caller can tell the admin what didn't survive.
   const targetRuleRows = await tx
-    .select({ name: rules.name })
-    .from(rules)
-    .where(eq(rules.serverUserId, targetServerUserId));
+    .select({ name: automations.name })
+    .from(automations)
+    .where(eq(automations.serverUserId, targetServerUserId));
   const targetRuleNames = new Set(targetRuleRows.map((r) => r.name));
   const sourceRuleRows = await tx
-    .select({ id: rules.id, name: rules.name })
-    .from(rules)
-    .where(eq(rules.serverUserId, sourceServerUserId));
+    .select({ id: automations.id, name: automations.name })
+    .from(automations)
+    .where(eq(automations.serverUserId, sourceServerUserId));
   const droppedRuleNames: string[] = [];
   for (const rule of sourceRuleRows) {
     if (targetRuleNames.has(rule.name)) {
       droppedRuleNames.push(rule.name);
-      await tx.delete(rules).where(eq(rules.id, rule.id));
+      await tx.delete(automations).where(eq(automations.id, rule.id));
     } else {
       await tx
-        .update(rules)
+        .update(automations)
         .set({ serverUserId: targetServerUserId, updatedAt: new Date() })
-        .where(eq(rules.id, rule.id));
+        .where(eq(automations.id, rule.id));
     }
   }
 
@@ -456,7 +456,7 @@ export async function mergeUsers(
     };
   });
 
-  invalidateRulesCache();
+  invalidateAutomationsCache();
 
   // recomputeIdentityAggregates wrote the target's columns with raw SQL,
   // which any live session's cached Redis snapshot never sees on its own

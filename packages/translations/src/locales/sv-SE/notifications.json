@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Det gick inte att uppdatera agent",
       "apiKeyGenerateFailed": "Det gick inte att generera API-nyckel",
       "authFailed": "Autentisering misslyckades",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Det gick inte att kopiera till urklipp",
       "copyFailed": "Kunde inte kopiera till urklipp",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Det gick inte att aktivera mobilåtkomst",
       "pairTokenGenerateFailed": "Det gick inte att generera partoken",
       "plexDirectUrl": "plex.direct URL:er är reläadresser som inte kan användas här. Använd en direkt IP-adress eller värdnamn istället.",
-      "plexUnlinkFailed": "Det gick inte att koppla bort Plex-kontot",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Det gick inte att koppla bort Plex-kontot",
       "routingUpdateFailed": "Det gick inte att uppdatera routing",
-      "ruleCreateFailed": "Kunde inte skapa regel",
-      "ruleDeleteFailed": "Det gick inte att ta bort regel",
-      "ruleUpdateFailed": "Det gick inte att uppdatera regel",
       "serverAddFailed": "Det gick inte att lägga till server",
       "serverRemoveFailed": "Det gick inte att ta bort servern",
       "serverReorderFailed": "Det gick inte att ordna om servrar",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Webhook test misslyckades"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} kan inte nås",
-        "title": "Servern offline"
-      },
-      "serverOnline": {
-        "message": "{{name}} är tillbaka online",
-        "title": "Server online"
-      },
-      "streamStarted": {
-        "message": "{{user}} började titta på {{media}}",
-        "title": "Ny ström startad"
-      },
-      "streamStopped": {
-        "message": "{{user}} slutade titta på",
-        "title": "Stream stoppad"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} är tillgänglig",
         "title": "Uppdatering tillgänglig"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Din nya API-nyckel är klar att användas",
         "title": "API-nyckel genererad"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Du kan nu fortsätta med installationen",
@@ -182,29 +178,17 @@
         "message": "Du kan nu lägga till servrar från ditt Plex-konto",
         "title": "Plex konto länkat"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Ditt Plex-konto har kopplats bort",
         "title": "Plex konto olänkat"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "Regeln har skapats framgångsrikt",
-        "title": "Regel skapad"
-      },
-      "ruleDeleted": {
-        "message": "Regeln har tagits bort",
-        "title": "Regel borttagen"
-      },
-      "ruleUpdated": {
-        "message": "Regeln har uppdaterats",
-        "title": "Regel uppdaterad"
       },
       "serverAdded": {
         "message": "{{name}} har anslutits",
@@ -259,7 +243,7 @@
         "title": "Lita på poäng Återställ"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

@@ -179,6 +179,9 @@ function dedupeKey(
   source: NotificationSource
 ): string | undefined {
   const bucket = getTimeBucket();
+  // Two automations sending the same event are separate sends; without the id they
+  // share a jobId and BullMQ drops the second.
+  const automation = source.kind === 'automation' ? `${source.automationId}-` : '';
   let tail: string;
 
   switch (event.type) {
@@ -187,9 +190,14 @@ function dedupeKey(
       // type-based key would dedupe unrelated rules against each other.
       const ruleKey = event.payload.rule.id || event.payload.rule.type;
       if (!ruleKey) return undefined;
-      // A rule's send action and the routed violation are separate sends;
-      // without the kind they share a jobId and BullMQ drops the second.
-      const kind = source.kind === 'rule' ? 'notify' : 'auto';
+      // A send and the routed violation are separate sends; without the kind
+      // they share a jobId and BullMQ drops the second.
+      const kind =
+        source.kind === 'automation'
+          ? source.automationId
+          : source.kind === 'rule'
+            ? 'notify'
+            : 'auto';
       tail = `violation-${event.payload.serverUserId}-${ruleKey}-${kind}-${bucket}`;
       break;
     }
@@ -201,11 +209,30 @@ function dedupeKey(
         console.warn(`Session ${event.type} missing id, skipping deduplication`);
         return undefined;
       }
-      tail = `${event.type}-${sessionId}-${bucket}`;
+      tail = `${event.type}-${sessionId}-${automation}${bucket}`;
       break;
     }
-    default:
-      tail = `${event.type}-${event.payload.serverId}-${bucket}`;
+    case 'media_added':
+    case 'media_upgraded': {
+      // The default arm keys on the server, which would collapse a whole batch into one job.
+      tail = `${event.type}-${event.payload.libraryItemId}-${automation}${bucket}`;
+      break;
+    }
+    case 'new_device': {
+      // The default arm keys on the server, which would collapse two accounts into one job.
+      tail = `${event.type}-${event.payload.sessionId}-${automation}${bucket}`;
+      break;
+    }
+    case 'trust_score_changed': {
+      // Per account: two moves on one account inside a bucket are meant to collapse.
+      tail = `${event.type}-${event.payload.serverUserId}-${automation}${bucket}`;
+      break;
+    }
+    default: {
+      // The tracearr release is about the install, not a server.
+      const serverId = 'serverId' in event.payload ? event.payload.serverId : 'install';
+      tail = `${event.type}-${serverId}-${automation}${bucket}`;
+    }
   }
 
   // BullMQ rejects custom ids containing ':' unless they have exactly three segments

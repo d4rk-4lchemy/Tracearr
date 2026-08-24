@@ -64,6 +64,16 @@
       "description": "Pin @types/node major to match Node 24 runtime in Dockerfiles"
     },
 
+    // typescript-eslint peers typescript ">=4.8.4 <6.1.0" and the lint parser
+    // resolves the root copy. 6.1 is a minor, so blocking majors misses it, and
+    // typescript is a devDependency everywhere so it would automerge.
+    {
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<6.1.0",
+      "description": "typescript-eslint peers typescript below 6.1; the lint parser resolves the root copy"
+    },
+
     // Postgres/TimescaleDB majors require a schema migration.
     {
       "matchManagers": ["dockerfile", "docker-compose", "helm-values", "helmv3", "github-actions"],

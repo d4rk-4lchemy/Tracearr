@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Agenttia ei voitu päivittää",
       "apiKeyGenerateFailed": "API-avaimen luonti epäonnistui",
       "authFailed": "Todennus epäonnistui",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Kopiointi leikepöydälle epäonnistui",
       "copyFailed": "Ei voitu kopioida leikepöydälle",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Mobiiliyhteyden käyttöoikeuden käyttöönotto epäonnistui",
       "pairTokenGenerateFailed": "Parin tunnuksen luonti epäonnistui",
       "plexDirectUrl": "plex.direct URL-osoitteet ovat releosoitteita, joita ei voi käyttää tässä. Käytä sen sijaan suoraa IP-osoitetta tai isäntänimeä.",
-      "plexUnlinkFailed": "Plex tilin poisto epäonnistui",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Plex tilin poisto epäonnistui",
       "routingUpdateFailed": "Reitityksen päivitys epäonnistui",
-      "ruleCreateFailed": "Sääntöä ei voitu luoda",
-      "ruleDeleteFailed": "Sääntöä ei voitu poistaa",
-      "ruleUpdateFailed": "Sääntöä ei voitu päivittää",
       "serverAddFailed": "Palvelimen lisääminen epäonnistui",
       "serverRemoveFailed": "Palvelimen poistaminen epäonnistui",
       "serverReorderFailed": "Palvelimien uudelleenjärjestäminen epäonnistui",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Webkoukkutesti epäonnistui"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} ei ole tavoitettavissa",
-        "title": "Palvelin Offline-tilassa"
-      },
-      "serverOnline": {
-        "message": "{{name}} on taas verkossa",
-        "title": "Palvelin Paikalla"
-      },
-      "streamStarted": {
-        "message": "{{user}} started watching {{media}}",
-        "title": "Uusi Virta Aloitettu"
-      },
-      "streamStopped": {
-        "message": "{{user}} pysäytti katselun",
-        "title": "Virta Pysäytetty"
-      },
       "updateAvailable": {
         "message": "Seuraa {{version}} on saatavilla",
         "title": "Päivitys Saatavilla"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Uusi API-avaimesi on valmis käytettäväksi",
         "title": "Api Avain Luotu"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Voit nyt jatkaa asetuksia",
@@ -182,29 +178,17 @@
         "message": "Voit nyt lisätä palvelimia Plex tilisi",
         "title": "Plex Tili Yhdistetty"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Yhteys Plex-tiliisi on katkaistu",
         "title": "Plex Tili Linkittämätön"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "Sääntöä on luotu onnistuneesti",
-        "title": "Sääntö Luotu"
-      },
-      "ruleDeleted": {
-        "message": "Sääntöä on poistettu onnistuneesti",
-        "title": "Sääntö Poistettu"
-      },
-      "ruleUpdated": {
-        "message": "Sääntöä on päivitetty onnistuneesti",
-        "title": "Sääntö Päivitetty"
       },
       "serverAdded": {
         "message": "{{name}} on yhdistetty onnistuneesti",
@@ -259,7 +243,7 @@
         "title": "Luottamus Pisteet Nollaa"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

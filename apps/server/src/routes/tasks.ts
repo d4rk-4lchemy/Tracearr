@@ -160,7 +160,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
         progress,
         message:
           precache.totalItems && precache.totalItems > 0
-            ? `Caching posters ${precache.processedItems}/${precache.totalItems}...`
+            ? `Caching posters ${precache.processedItems}/${precache.totalItems}${precache.diskLimited ? ' (disk-limited)' : ''}...`
             : 'Preparing poster cache...',
         startedAt: precache.passStartedAt ?? new Date(precache.createdAt).toISOString(),
         context: serverName,

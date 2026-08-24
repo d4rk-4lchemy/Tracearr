@@ -9,11 +9,12 @@ import {
 } from '@tracearr/shared';
 import { api, type UserListParams } from '@/lib/api';
 
-export function useUsers(params: UserListParams = {}) {
+export function useUsers(params: UserListParams = {}, options: { enabled?: boolean } = {}) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(params.serverIds));
   return useQuery({
     queryKey: ['users', 'list', { ...params, serverIds: serverIdsKey }],
     queryFn: () => api.users.list(params),
+    enabled: options.enabled ?? true,
     // A search query changes often as the user types (debounced upstream) and
     // shouldn't linger stale as long as the default roster listing does.
     staleTime: params.search ? 1000 * 10 : 1000 * 60 * 5,
@@ -186,7 +187,7 @@ export function useMergeUsers() {
       toast.success(t('toast.success.usersMerged.title'), {
         description:
           data.droppedRuleNames.length > 0
-            ? t('toast.success.usersMerged.rulesKept', {
+            ? t('toast.success.usersMerged.automationsKept', {
                 names: data.droppedRuleNames.join(', '),
               })
             : undefined,

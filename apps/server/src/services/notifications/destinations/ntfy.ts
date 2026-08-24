@@ -1,14 +1,18 @@
 import { DESTINATION_TYPES } from '@tracearr/shared';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
+import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
 import { formatViolationMessage } from '../formatters/violation.js';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
+import { ownText, textOf } from './overrides.js';
 import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
 import type {
   NotificationPayload,
   PluginUpdateContext,
   ServerContext,
+  ServerUpdateContext,
   SessionContext,
+  TracearrUpdateContext,
   ViolationContext,
 } from '../types.js';
 import type { DeliverContext, DestinationType } from './types.js';
@@ -34,34 +38,41 @@ function severityToPriority(severity: string): number {
 
 function buildViolation(
   payload: NotificationPayload,
-  topic: string,
   ctx: ViolationContext
-): NtfyMessage {
+): Omit<NtfyMessage, 'topic'> {
   return {
-    topic,
-    title: payload.title,
-    message: formatViolationMessage(ctx.violation),
+    ...textOf(payload, {
+      title: payload.title,
+      message: formatViolationMessage(ctx.violation),
+    }),
     priority: severityToPriority(ctx.violation.severity),
     tags: ['tracearr'],
   };
 }
 
-function buildSessionStarted(topic: string, ctx: SessionContext): NtfyMessage {
+function buildSessionStarted(
+  payload: NotificationPayload,
+  ctx: SessionContext
+): Omit<NtfyMessage, 'topic'> {
   const { session } = ctx;
   const { title: mediaTitle, subtitle } = getMediaDisplay(session);
   const userName = getUserDisplayName(session);
   const mediaDisplay = subtitle ? `${mediaTitle} - ${subtitle}` : mediaTitle;
 
   return {
-    topic,
-    title: 'Stream Started',
-    message: `${userName} started watching ${mediaDisplay}`,
+    ...textOf(payload, {
+      title: 'Stream Started',
+      message: `${userName} started watching ${mediaDisplay}`,
+    }),
     priority: 3,
     tags: ['tracearr'],
   };
 }
 
-function buildSessionStopped(topic: string, ctx: SessionContext): NtfyMessage {
+function buildSessionStopped(
+  payload: NotificationPayload,
+  ctx: SessionContext
+): Omit<NtfyMessage, 'topic'> {
   const { session } = ctx;
   const { title: mediaTitle, subtitle } = getMediaDisplay(session);
   const userName = getUserDisplayName(session);
@@ -69,58 +80,113 @@ function buildSessionStopped(topic: string, ctx: SessionContext): NtfyMessage {
   const durationStr = session.durationMs ? ` (${formatDuration(session.durationMs)})` : '';
 
   return {
-    topic,
-    title: 'Stream Ended',
-    message: `${userName} finished watching ${mediaDisplay}${durationStr}`,
+    ...textOf(payload, {
+      title: 'Stream Ended',
+      message: `${userName} finished watching ${mediaDisplay}${durationStr}`,
+    }),
     priority: 3,
     tags: ['tracearr'],
   };
 }
 
-function buildServerDown(topic: string, ctx: ServerContext): NtfyMessage {
+function buildServerDown(
+  payload: NotificationPayload,
+  ctx: ServerContext
+): Omit<NtfyMessage, 'topic'> {
   return {
-    topic,
-    title: 'Server Offline',
-    message: `${ctx.serverName} is not responding`,
+    ...textOf(payload, {
+      title: 'Server Offline',
+      message: `${ctx.serverName} is not responding`,
+    }),
     priority: 5,
     tags: ['tracearr'],
   };
 }
 
-function buildServerUp(topic: string, ctx: ServerContext): NtfyMessage {
+function buildServerUp(
+  payload: NotificationPayload,
+  ctx: ServerContext
+): Omit<NtfyMessage, 'topic'> {
   return {
-    topic,
-    title: 'Server Online',
-    message: `${ctx.serverName} is back online`,
+    ...textOf(payload, { title: 'Server Online', message: `${ctx.serverName} is back online` }),
     priority: 4,
     tags: ['tracearr'],
   };
 }
 
-function buildPluginUpdate(topic: string, ctx: PluginUpdateContext): NtfyMessage {
+function buildPluginUpdate(
+  payload: NotificationPayload,
+  ctx: PluginUpdateContext
+): Omit<NtfyMessage, 'topic'> {
   return {
-    topic,
-    title: 'Plugin Update Available',
-    message: `${ctx.serverName}: ${formatPluginUpdateMessage(ctx)}`,
+    ...textOf(payload, {
+      title: 'Plugin Update Available',
+      message: `${ctx.serverName}: ${formatPluginUpdateMessage(ctx)}`,
+    }),
     priority: 3,
     tags: ['tracearr'],
   };
 }
 
+function buildServerUpdate(
+  payload: NotificationPayload,
+  ctx: ServerUpdateContext
+): Omit<NtfyMessage, 'topic'> {
+  return {
+    ...textOf(payload, {
+      title: 'Server Update Available',
+      message: formatServerUpdateMessage(ctx),
+    }),
+    priority: 3,
+    tags: ['tracearr'],
+  };
+}
+
+function buildTracearrUpdate(
+  payload: NotificationPayload,
+  ctx: TracearrUpdateContext
+): Omit<NtfyMessage, 'topic'> {
+  return {
+    ...textOf(payload, {
+      title: 'Tracearr Update Available',
+      message: formatTracearrUpdateMessage(ctx),
+    }),
+    priority: 3,
+    tags: ['tracearr'],
+  };
+}
+
+function buildOwnText(payload: NotificationPayload): Omit<NtfyMessage, 'topic'> {
+  return { ...ownText(payload), priority: 3, tags: ['tracearr'] };
+}
+
 function build(payload: NotificationPayload, topic: string): NtfyMessage {
+  return { topic, ...bodyOf(payload) };
+}
+
+function bodyOf(payload: NotificationPayload): Omit<NtfyMessage, 'topic'> {
   switch (payload.context.type) {
     case 'violation_detected':
-      return buildViolation(payload, topic, payload.context);
+      return buildViolation(payload, payload.context);
     case 'stream_started':
-      return buildSessionStarted(topic, payload.context);
+      return buildSessionStarted(payload, payload.context);
     case 'stream_stopped':
-      return buildSessionStopped(topic, payload.context);
+      return buildSessionStopped(payload, payload.context);
     case 'server_down':
-      return buildServerDown(topic, payload.context);
+      return buildServerDown(payload, payload.context);
     case 'server_up':
-      return buildServerUp(topic, payload.context);
+      return buildServerUp(payload, payload.context);
     case 'plugin_update_available':
-      return buildPluginUpdate(topic, payload.context);
+      return buildPluginUpdate(payload, payload.context);
+    case 'server_update_available':
+      return buildServerUpdate(payload, payload.context);
+    case 'tracearr_update_available':
+      return buildTracearrUpdate(payload, payload.context);
+    case 'media_added':
+    case 'media_upgraded':
+    case 'new_device':
+    case 'trust_score_changed':
+      return buildOwnText(payload);
   }
 }
 

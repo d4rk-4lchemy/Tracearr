@@ -1,14 +1,18 @@
 import { DESTINATION_TYPES } from '@tracearr/shared';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
+import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
 import { formatViolationMessage } from '../formatters/violation.js';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
+import { ownText, textOf } from './overrides.js';
 import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
 import type {
   NotificationPayload,
   PluginUpdateContext,
   ServerContext,
+  ServerUpdateContext,
   SessionContext,
+  TracearrUpdateContext,
   ViolationContext,
 } from '../types.js';
 import type { DeliverContext, DestinationType } from './types.js';
@@ -35,62 +39,86 @@ function severityToType(severity: string): AppriseType {
 }
 
 function buildViolation(payload: NotificationPayload, ctx: ViolationContext): AppriseMessage {
-  return {
+  const text = textOf(payload, {
     title: payload.title,
-    body: formatViolationMessage(ctx.violation),
-    type: severityToType(ctx.violation.severity),
-  };
+    message: formatViolationMessage(ctx.violation),
+  });
+  return { title: text.title, body: text.message, type: severityToType(ctx.violation.severity) };
 }
 
-function buildSessionStarted(ctx: SessionContext): AppriseMessage {
+function buildSessionStarted(payload: NotificationPayload, ctx: SessionContext): AppriseMessage {
   const { session } = ctx;
   const { title: mediaTitle, subtitle } = getMediaDisplay(session);
   const userName = getUserDisplayName(session);
   const mediaDisplay = subtitle ? `${mediaTitle} - ${subtitle}` : mediaTitle;
 
-  return {
+  const text = textOf(payload, {
     title: 'Stream Started',
-    body: `${userName} started watching ${mediaDisplay}`,
-    type: 'info',
-  };
+    message: `${userName} started watching ${mediaDisplay}`,
+  });
+  return { title: text.title, body: text.message, type: 'info' };
 }
 
-function buildSessionStopped(ctx: SessionContext): AppriseMessage {
+function buildSessionStopped(payload: NotificationPayload, ctx: SessionContext): AppriseMessage {
   const { session } = ctx;
   const { title: mediaTitle, subtitle } = getMediaDisplay(session);
   const userName = getUserDisplayName(session);
   const mediaDisplay = subtitle ? `${mediaTitle} - ${subtitle}` : mediaTitle;
   const durationStr = session.durationMs ? ` (${formatDuration(session.durationMs)})` : '';
 
-  return {
+  const text = textOf(payload, {
     title: 'Stream Ended',
-    body: `${userName} finished watching ${mediaDisplay}${durationStr}`,
-    type: 'info',
-  };
+    message: `${userName} finished watching ${mediaDisplay}${durationStr}`,
+  });
+  return { title: text.title, body: text.message, type: 'info' };
 }
 
-function buildServerDown(ctx: ServerContext): AppriseMessage {
-  return {
+function buildServerDown(payload: NotificationPayload, ctx: ServerContext): AppriseMessage {
+  const text = textOf(payload, {
     title: 'Server Offline',
-    body: `${ctx.serverName} is not responding`,
-    type: 'failure',
-  };
+    message: `${ctx.serverName} is not responding`,
+  });
+  return { title: text.title, body: text.message, type: 'failure' };
 }
 
-function buildServerUp(ctx: ServerContext): AppriseMessage {
-  return {
+function buildServerUp(payload: NotificationPayload, ctx: ServerContext): AppriseMessage {
+  const text = textOf(payload, {
     title: 'Server Online',
-    body: `${ctx.serverName} is back online`,
-    type: 'success',
-  };
+    message: `${ctx.serverName} is back online`,
+  });
+  return { title: text.title, body: text.message, type: 'success' };
 }
 
-function buildPluginUpdate(ctx: PluginUpdateContext): AppriseMessage {
-  return {
+function buildPluginUpdate(payload: NotificationPayload, ctx: PluginUpdateContext): AppriseMessage {
+  const text = textOf(payload, {
     title: 'Plugin Update Available',
-    body: `${ctx.serverName}: ${formatPluginUpdateMessage(ctx)}`,
-    type: 'warning',
-  };
+    message: `${ctx.serverName}: ${formatPluginUpdateMessage(ctx)}`,
+  });
+  return { title: text.title, body: text.message, type: 'warning' };
+}
+
+function buildServerUpdate(payload: NotificationPayload, ctx: ServerUpdateContext): AppriseMessage {
+  const text = textOf(payload, {
+    title: 'Server Update Available',
+    message: formatServerUpdateMessage(ctx),
+  });
+  return { title: text.title, body: text.message, type: 'warning' };
+}
+
+function buildTracearrUpdate(
+  payload: NotificationPayload,
+  ctx: TracearrUpdateContext
+): AppriseMessage {
+  const text = textOf(payload, {
+    title: 'Tracearr Update Available',
+    message: formatTracearrUpdateMessage(ctx),
+  });
+  return { title: text.title, body: text.message, type: 'info' };
+}
+
+function buildOwnText(payload: NotificationPayload): AppriseMessage {
+  const text = ownText(payload);
+  return { title: text.title, body: text.message, type: 'info' };
 }
 
 function build(payload: NotificationPayload): AppriseMessage {
@@ -98,15 +126,24 @@ function build(payload: NotificationPayload): AppriseMessage {
     case 'violation_detected':
       return buildViolation(payload, payload.context);
     case 'stream_started':
-      return buildSessionStarted(payload.context);
+      return buildSessionStarted(payload, payload.context);
     case 'stream_stopped':
-      return buildSessionStopped(payload.context);
+      return buildSessionStopped(payload, payload.context);
     case 'server_down':
-      return buildServerDown(payload.context);
+      return buildServerDown(payload, payload.context);
     case 'server_up':
-      return buildServerUp(payload.context);
+      return buildServerUp(payload, payload.context);
     case 'plugin_update_available':
-      return buildPluginUpdate(payload.context);
+      return buildPluginUpdate(payload, payload.context);
+    case 'server_update_available':
+      return buildServerUpdate(payload, payload.context);
+    case 'tracearr_update_available':
+      return buildTracearrUpdate(payload, payload.context);
+    case 'media_added':
+    case 'media_upgraded':
+    case 'new_device':
+    case 'trust_score_changed':
+      return buildOwnText(payload);
   }
 }
 

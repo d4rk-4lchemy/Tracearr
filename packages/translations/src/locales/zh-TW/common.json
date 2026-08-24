@@ -64,8 +64,6 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "{{count}} 個錯誤",
@@ -78,8 +76,6 @@
     "location_other": "{{count}} locations",
     "result_one": "{{count}} 個結果",
     "result_other": "{{count}} 個結果",
-    "rule_one": "{{count}} 條規則",
-    "rule_other": "{{count}} 條規則",
     "selected_one": "{{count}} 個已選取",
     "selected_other": "{{count}} 個已選取",
     "server_one": "{{count}} 個伺服器",
@@ -95,7 +91,11 @@
     "usersUpdated_one": "{{count}} 個使用者已更新",
     "usersUpdated_other": "{{count}} 個使用者已更新",
     "violation_one": "{{count}} 項違規",
-    "violation_other": "{{count}} 項違規"
+    "violation_other": "{{count}} 項違規",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
+    "automation_one": "{{count}} automation",
+    "automation_other": "{{count}} automations"
   },
   "duration": {
     "day_one": "{{count}} 天",

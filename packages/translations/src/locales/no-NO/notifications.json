@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Kunne ikke oppdatere agent",
       "apiKeyGenerateFailed": "Kunne ikke generere API-nøkkel",
       "authFailed": "Godkjenning mislyktes",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Kan ikke kopiere til utklippstavlen",
       "copyFailed": "Kunne ikke kopiere til utklippstavlen",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Kunne ikke aktivere mobiltilgang",
       "pairTokenGenerateFailed": "Kunne ikke generere par token",
       "plexDirectUrl": "plex.direkte URL-er er relay adresser som ikke kan brukes her. Vennligst bruk en direkte IP-adresse eller vertsnavn i stedet.",
-      "plexUnlinkFailed": "Klarte ikke koble fra Plex konto",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Klarte ikke koble fra Plex konto",
       "routingUpdateFailed": "Kunne ikke oppdatere ruting",
-      "ruleCreateFailed": "Kunne ikke opprette regel",
-      "ruleDeleteFailed": "Kunne ikke slette regel",
-      "ruleUpdateFailed": "Kunne ikke oppdatere regel",
       "serverAddFailed": "Klarte ikke å legge til server",
       "serverRemoveFailed": "Kan ikke fjerne serveren",
       "serverReorderFailed": "Kan ikke flytte servere",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Webhook-test mislyktes"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} er utilgjengelig",
-        "title": "Server frakoblet"
-      },
-      "serverOnline": {
-        "message": "{{name}} er tilbake på nettet",
-        "title": "Server pålogget"
-      },
-      "streamStarted": {
-        "message": "{{user}} har startet å se på {{media}}",
-        "title": "Ny strømming startet"
-      },
-      "streamStopped": {
-        "message": "{{user}} sluttet å følge",
-        "title": "Strøm stoppet"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} er tilgjengelig",
         "title": "Oppdatering tilgjengelig"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Den nye API-nøkkelen er klar til bruk",
         "title": "API-nøkkel generert"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Nå kan du fortsette med oppsettet",
@@ -182,29 +178,17 @@
         "message": "Du kan nå legge til servere fra din Plex konto",
         "title": "Plex konto lenket"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Din Plex konto har blitt frakoblet",
         "title": "Plex konto frakoblet"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "Regelen har blitt opprettet",
-        "title": "Regel opprettet"
-      },
-      "ruleDeleted": {
-        "message": "Regelen har blitt slettet",
-        "title": "Regelen slettet"
-      },
-      "ruleUpdated": {
-        "message": "Regelen har blitt oppdatert",
-        "title": "Regel oppdatert"
       },
       "serverAdded": {
         "message": "{{name}} har blitt koblet til",
@@ -259,7 +243,7 @@
         "title": "Stol på resultater tilbakestilt"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

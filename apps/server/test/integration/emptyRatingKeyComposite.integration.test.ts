@@ -107,7 +107,7 @@ function buildCreationInput(
       identityServerUserIds: [serverUser.id],
     },
     geo: NULL_GEO,
-    activeRulesV2: [],
+    activeAutomations: [],
     activeSessions: [],
     recentSessions: [],
   };

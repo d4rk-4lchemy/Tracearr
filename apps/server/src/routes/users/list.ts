@@ -34,15 +34,32 @@ import {
 } from '../../utils/serverFiltering.js';
 import {
   buildOrderBy,
+  likePattern,
   utcDayEnd,
   utcDayStart,
   type SortDirection,
   type SortKey,
 } from '../../utils/listQuery.js';
-import { updateUser, recomputeIdentityAggregates } from '../../services/userService.js';
+import {
+  dispatchTrustChanged,
+  dispatchTrustMoves,
+} from '../../services/automations/events/producers.js';
+import {
+  applyTrustChange,
+  moveTrust,
+  trustValueSql,
+  updateUser,
+  recomputeIdentityAggregates,
+} from '../../services/userService.js';
 import { isLoginCapable } from '../../services/mergeService.js';
 import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
 import { PLAY_COUNT } from '../../constants/index.js';
+
+/** What a trust-score notification says moved the score when a person did it by hand. */
+const OWNER_TRUST_REASON = 'changed by an owner';
+
+/** The same, for the bulk reset that follows a merge or a split. */
+const RESET_TRUST_REASON = 'reset by an owner';
 
 /**
  * Sort keys, all on the identity row so the LIMIT can ride an index on `users`
@@ -60,11 +77,6 @@ const USER_SORT_KEYS: Record<UserSortField, SortKey> = {
   joinedAt: { key: sql`u.first_joined_at`, defaultDir: 'desc', nulls: 'last' },
   lastActivityAt: { key: sql`u.last_activity_at`, defaultDir: 'desc', nulls: 'last' },
 };
-
-/** ILIKE treats these as wildcards, so a literal search for them has to escape. */
-function likePattern(search: string): string {
-  return `%${search.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
-}
 
 interface UserRosterSql {
   /** undefined = every server; [] = none of the requested servers are visible. */
@@ -533,52 +545,51 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
       return reply.forbidden('You do not have access to this user');
     }
 
-    // Build update object
-    const updateData: Partial<{
-      trustScore: number;
-      updatedAt: Date;
-    }> = {
-      updatedAt: new Date(),
-    };
+    // A trust write goes through the one writer, which recomputes the person's rollup in
+    // the same transaction; anything else on this body only moves the timestamp.
+    const { trustScore } = body.data;
+    const applied =
+      trustScore === undefined
+        ? null
+        : await applyTrustChange(id, { mode: 'set', value: trustScore });
+    const updated = applied
+      ? applied.serverUser
+      : (
+          await db
+            .update(serverUsers)
+            .set({ updatedAt: new Date() })
+            .where(eq(serverUsers.id, id))
+            .returning()
+        )[0];
 
-    if (body.data.trustScore !== undefined) {
-      updateData.trustScore = body.data.trustScore;
-    }
-
-    // Update server user, and keep the person's overall trust rollup current
-    // in the same transaction whenever trustScore actually changed.
-    const updatedServerUser = await db.transaction(async (tx) => {
-      const updated = await tx
-        .update(serverUsers)
-        .set(updateData)
-        .where(eq(serverUsers.id, id))
-        .returning({
-          id: serverUsers.id,
-          serverId: serverUsers.serverId,
-          userId: serverUsers.userId,
-          externalId: serverUsers.externalId,
-          username: serverUsers.username,
-          email: serverUsers.email,
-          thumbUrl: serverUsers.thumbUrl,
-          isServerAdmin: serverUsers.isServerAdmin,
-          trustScore: serverUsers.trustScore,
-          joinedAt: serverUsers.joinedAt,
-          lastActivityAt: serverUsers.lastActivityAt,
-          updatedAt: serverUsers.updatedAt,
-        });
-
-      const row = updated[0];
-      if (row && updateData.trustScore !== undefined) {
-        await recomputeIdentityAggregates(row.userId, tx);
-      }
-      return row;
-    });
-
-    if (!updatedServerUser) {
+    if (!updated) {
       return reply.internalServerError('Failed to update user');
     }
 
-    return updatedServerUser;
+    if (applied) {
+      await dispatchTrustChanged({
+        serverId: updated.serverId,
+        serverUserId: updated.id,
+        previous: applied.previous,
+        next: updated.trustScore,
+        reason: OWNER_TRUST_REASON,
+      });
+    }
+
+    return {
+      id: updated.id,
+      serverId: updated.serverId,
+      userId: updated.userId,
+      externalId: updated.externalId,
+      username: updated.username,
+      email: updated.email,
+      thumbUrl: updated.thumbUrl,
+      isServerAdmin: updated.isServerAdmin,
+      trustScore: updated.trustScore,
+      joinedAt: updated.joinedAt,
+      lastActivityAt: updated.lastActivityAt,
+      updatedAt: updated.updatedAt,
+    };
   });
 
   /**
@@ -719,19 +730,20 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
 
     // Bulk update trust scores to 100, then recompute each affected identity's
     // rollup once in the same transaction.
-    await db.transaction(async (tx) => {
-      await tx
-        .update(serverUsers)
-        .set({
-          trustScore: 100,
-          updatedAt: new Date(),
-        })
-        .where(inArray(serverUsers.id, accountIds));
+    const moves = await db.transaction(async (tx) => {
+      const moved = await moveTrust(
+        tx,
+        trustValueSql({ mode: 'reset' }),
+        inArray(serverUsers.id, accountIds)
+      );
 
       for (const userId of affectedIdentityIds) {
         await recomputeIdentityAggregates(userId, tx);
       }
+      return moved;
     });
+
+    await dispatchTrustMoves(moves, RESET_TRUST_REASON);
 
     return { success: true, updated: accountIds.length };
   });

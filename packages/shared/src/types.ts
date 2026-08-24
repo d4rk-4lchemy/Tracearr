@@ -1,12 +1,18 @@
 /**
  * Core type definitions for Tracearr
  */
+import type {
+  ActionResult,
+  AutomationActions,
+  AutomationConditions,
+  AutomationKind,
+  GroupEvidence,
+  RunFinishedEvent,
+  TriggerNode,
+} from './automations/index.js';
 import type { NotificationToast } from './destinations.js';
-import type { sessionTargetSchema, statPeriodSchema } from './schemas.js';
+import type { statPeriodSchema } from './schemas.js';
 import type { z } from 'zod';
-
-// Re-export SessionTarget for use in action interfaces
-type SessionTarget = z.infer<typeof sessionTargetSchema>;
 
 // User role - combined permission level and account status
 // Can log in: owner, admin, viewer
@@ -50,6 +56,9 @@ export interface Server {
   ignoreAnonymousStreams?: boolean;
   displayOrder?: number;
   color?: string | null;
+  /** What the server reports running, and the newest release the update checker saw. */
+  version?: string | null;
+  latestVersion?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -489,15 +498,6 @@ export interface SessionWithDetails extends Omit<Session, 'ratingKey' | 'externa
   segments?: SessionSegment[];
 }
 
-// Rule types
-export type RuleType =
-  | 'impossible_travel'
-  | 'simultaneous_locations'
-  | 'device_velocity'
-  | 'concurrent_streams'
-  | 'geo_restriction'
-  | 'account_inactivity';
-
 export interface ImpossibleTravelParams {
   maxSpeedKmh: number;
   ignoreVpnRanges?: boolean;
@@ -545,230 +545,15 @@ export interface AccountInactivityParams {
   inactivityUnit: AccountInactivityUnit;
 }
 
-export type RuleParams =
-  | ImpossibleTravelParams
-  | SimultaneousLocationsParams
-  | DeviceVelocityParams
-  | ConcurrentStreamsParams
-  | GeoRestrictionParams
-  | AccountInactivityParams;
+export type {
+  ActionResult,
+  ConditionEvidence,
+  GroupEvidence,
+  NodeFields,
+} from './automations/index.js';
 
-export interface Rule {
-  id: string;
-  name: string;
-  // V1 fields (legacy, nullable for V2 rules)
-  type: RuleType | null;
-  params: RuleParams | null;
-  // V2 fields (nullable for V1 rules)
-  description?: string | null;
-  severity?: ViolationSeverity;
-  conditions?: RuleConditions | null;
-  actions?: RuleActions | null;
-  serverId?: string | null;
-  // Identity (person) scope - applies to every server_user of this identity.
-  // At most one of serverId, serverUserId, userId is ever set.
-  userId?: string | null;
-  // Display name of the identity userId points at, joined in by the API.
-  identityName?: string | null;
-  // Opt-in: when true and the rule fired from an identity-aware evaluation,
-  // actions may target sessions across every server the identity has an
-  // account on instead of just the triggering account. Defaults to false.
-  enforceAcrossServers?: boolean;
-  // Common fields
-  serverUserId: string | null;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// ============================================
-// Rules Builder V2 - Condition/Action System
-// ============================================
-
-// Condition operators
-export type ComparisonOperator = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';
-export type ArrayOperator = 'in' | 'not_in';
-export type StringOperator = 'contains' | 'not_contains';
-export type Operator = ComparisonOperator | ArrayOperator | StringOperator;
-
-// Condition field categories
-export type SessionBehaviorField =
-  | 'concurrent_streams'
-  | 'active_session_distance_km'
-  | 'travel_speed_kmh'
-  | 'unique_ips_in_window'
-  | 'unique_devices_in_window'
-  | 'inactive_days'
-  | 'current_pause_minutes'
-  | 'total_pause_minutes';
-
-export type StreamQualityField =
-  | 'source_resolution'
-  | 'output_resolution'
-  | 'is_transcoding'
-  | 'is_transcode_downgrade'
-  | 'source_bitrate_mbps';
-
-export type TranscodingConditionValue = 'video' | 'audio' | 'video_or_audio' | 'neither';
-
-export type UserAttributeField = 'user_id' | 'trust_score' | 'account_age_days';
-
-export type DeviceClientField = 'device_type' | 'client_name' | 'platform';
-
-export type NetworkLocationField = 'is_local_network' | 'country' | 'ip_in_range';
-
-export type ScopeField = 'server_id' | 'media_type';
-
-export type ConditionField =
-  | SessionBehaviorField
-  | StreamQualityField
-  | UserAttributeField
-  | DeviceClientField
-  | NetworkLocationField
-  | ScopeField;
-
-// Resolution enum for stream quality
-export type VideoResolution = '4K' | '1080p' | '720p' | '480p' | 'SD' | 'unknown';
-
-// Device type enum
-export type DeviceType = 'mobile' | 'tablet' | 'tv' | 'desktop' | 'browser' | 'unknown';
-
-// Platform enum
-export type Platform =
-  | 'ios'
-  | 'android'
-  | 'windows'
-  | 'macos'
-  | 'linux'
-  | 'tvos'
-  | 'androidtv'
-  | 'roku'
-  | 'webos'
-  | 'tizen'
-  | 'unknown';
-
-// Media type enum (already exists but adding for clarity)
-export type MediaTypeEnum = 'movie' | 'episode' | 'track' | 'photo' | 'live' | 'trailer';
-
-// Condition value types
-export type ConditionValue = string | number | boolean | string[] | number[];
-
-// Evidence types for violation diagnostics
-export interface ConditionEvidence {
-  field: ConditionField;
-  operator: Operator;
-  threshold: ConditionValue;
-  actual: unknown;
-  matched: boolean;
-  relatedSessionIds?: string[];
-  details?: Record<string, unknown>;
-}
-
-export interface GroupEvidence {
-  groupIndex: number;
-  matched: boolean;
-  conditions: ConditionEvidence[];
-}
-
-// Single condition
-export interface Condition {
-  field: ConditionField;
-  operator: Operator;
-  value: ConditionValue;
-  params?: {
-    window_hours?: number; // for velocity checks
-    // When true, exclude sessions from the same device when comparing across sessions.
-    // Useful for: concurrent_streams (don't double-count same device),
-    // travel_speed_kmh (VPN switch isn't travel), active_session_distance_km (same device = same location)
-    exclude_same_device?: boolean;
-    // When true, only count sessions from different IPs.
-    exclude_same_ip?: boolean;
-    // When set, only count sessions from these device types.
-    // Useful for: concurrent_streams (ignore phones/tablets when detecting sharing)
-    count_device_types?: DeviceType[];
-  };
-}
-
-// Condition group (OR logic within group)
-export interface ConditionGroup {
-  conditions: Condition[];
-}
-
-// Rule conditions (AND logic between groups)
-export interface RuleConditions {
-  groups: ConditionGroup[];
-}
-
-// Action types
-export type ActionType =
-  | 'log_only'
-  | 'send'
-  | 'adjust_trust'
-  | 'set_trust'
-  | 'reset_trust'
-  | 'kill_stream'
-  | 'message_client';
-
-// Action definitions
-export interface LogOnlyAction {
-  type: 'log_only';
-  message?: string;
-}
-
-export interface SendAction {
-  type: 'send';
-  /** destination ids; validated against the destinations table on rule save */
-  to: string[];
-  cooldown_minutes?: number;
-}
-
-export interface AdjustTrustAction {
-  type: 'adjust_trust';
-  amount: number; // positive or negative
-}
-
-export interface SetTrustAction {
-  type: 'set_trust';
-  value: number;
-}
-
-export interface ResetTrustAction {
-  type: 'reset_trust';
-}
-
-export interface KillStreamAction {
-  type: 'kill_stream';
-  /** Seconds to wait before killing. The kill only fires if the rule condition still holds after the wait; 0 (default) still re-checks once before killing. */
-  delay_seconds?: number;
-  require_confirmation?: boolean;
-  cooldown_minutes?: number;
-  /** Message to display to user before termination. If omitted, terminates silently. */
-  message?: string;
-  target?: SessionTarget;
-}
-
-export interface MessageClientAction {
-  type: 'message_client';
-  message: string;
-  target?: SessionTarget;
-}
-
-export type Action =
-  | LogOnlyAction
-  | SendAction
-  | AdjustTrustAction
-  | SetTrustAction
-  | ResetTrustAction
-  | KillStreamAction
-  | MessageClientAction;
-
-// Rule actions container
-export interface RuleActions {
-  actions: Action[];
-}
-
-// New Rule interface (V2)
-export interface RuleV2 {
+/** The engine's automation shape: definition columns plus the row's timestamps. */
+export interface EngineAutomation {
   id: string;
   name: string;
   description: string | null;
@@ -777,24 +562,21 @@ export interface RuleV2 {
   serverUserId: string | null;
   // Identity (person) scope - applies to every server_user of this identity.
   userId: string | null;
-  // Opt-in cross-server enforcement; see the field of the same name on Rule.
+  // Opt-in: actions may target sessions on every server the identity has an account on.
   enforceAcrossServers: boolean;
   isActive: boolean;
   severity: ViolationSeverity;
-  conditions: RuleConditions;
-  actions: RuleActions;
+  kind: AutomationKind;
+  conditions: AutomationConditions;
+  actions: AutomationActions;
+  // Which events evaluate this automation. Never null here: the cache mapper normalizes an unstamped row to [].
+  triggers: TriggerNode[];
+  /** Latest automation_versions row, stamped on every run this definition records. */
+  currentVersionId: string | null;
+  /** Minutes a subject is suppressed after a completed run; null disables the cooldown. */
+  cooldownMinutes: number | null;
   createdAt: Date;
   updatedAt: Date;
-}
-
-// Action result types (for UI display of action execution results)
-export interface ActionResult {
-  actionType: string;
-  success: boolean;
-  skipped?: boolean;
-  skipReason?: string;
-  errorMessage?: string;
-  executedAt?: string;
 }
 
 // Violation types
@@ -838,8 +620,8 @@ export interface ViolationSessionInfo {
 }
 
 export interface ViolationWithDetails extends Violation {
-  // type is optional to support V2 rules which don't have a type field
-  rule: Pick<Rule, 'id' | 'name'> & { type: RuleType | null };
+  // type is a v1 leftover: rows written before the automation model carry one, automations leave it null.
+  rule: { id: string; name: string; type: string | null };
   user: Pick<ServerUser, 'id' | 'username' | 'thumbUrl' | 'serverId'> & {
     identityName: string | null;
     // The person's identity id (users.id), for identity-level filtering.
@@ -850,11 +632,6 @@ export interface ViolationWithDetails extends Violation {
   server?: Pick<Server, 'id' | 'name' | 'type'>;
   session?: ViolationSessionInfo;
   relatedSessions?: ViolationSessionInfo[];
-  userHistory?: {
-    previousIPs: string[];
-    previousDevices: string[];
-    previousLocations: Array<{ city: string | null; country: string | null; ip: string }>;
-  };
   /** Action results from V2 rule execution */
   actionResults?: ActionResult[];
   /** Condition evidence from V2 rule evaluation */
@@ -1125,6 +902,8 @@ export interface Settings {
   // Plugin update check
   pluginUpdateCheckEnabled: boolean;
   pluginManifestUrl: string | null;
+  // Media-server update check
+  serverUpdateCheckEnabled: boolean;
   // Watch completion thresholds (percent, per media type)
   watchedThresholdMovie: number;
   watchedThresholdTv: number;
@@ -1135,6 +914,27 @@ export interface Settings {
   imagePrecacheEnabled: boolean;
   // Media browsing: server whose poster wins when a title exists on multiple servers, null = automatic (most recently added copy)
   preferredPosterServerId: string | null;
+}
+
+/** GET /settings/image-cache. Sizes in bytes; timestamps ISO. */
+export interface ImageCacheStatus {
+  bytes: number;
+  files: number;
+  versionedFiles: number;
+  sweptAt: string | null;
+  freedBytesLastSweep: number;
+  deletedFilesLastSweep: number;
+  /** Rows in library_items with a thumb path, removed ones included. */
+  postersWithThumb: number;
+  /** postersWithThumb × 18 KB. */
+  estimatedNeedBytes: number;
+  freeBytes: number;
+  totalBytes: number;
+  minFreePercent: number;
+  /** IMAGE_CACHE_MAX_MB in bytes, or null when unset. */
+  maxBytes: number | null;
+  diskLimitedSince: string | null;
+  shortfallBytes: number;
 }
 
 // Tailscale integration
@@ -1324,6 +1124,7 @@ export interface ServerToClientEvents {
   'session:stopped': (sessionId: string) => void;
   'session:updated': (session: ActiveSession) => void;
   'violation:new': (violation: ViolationWithDetails) => void;
+  'run:finished': (runs: RunFinishedEvent[]) => void;
   'stats:updated': (stats: DashboardStats) => void;
   'import:progress': (progress: TautulliImportProgress) => void;
   'import:jellystat:progress': (progress: JellystatImportProgress) => void;
@@ -1337,6 +1138,7 @@ export interface ServerToClientEvents {
   'server:connection': (status: ServerConnectionStatus) => void;
   'notification:toast': (data: NotificationToast) => void;
   'destinations:changed': () => void;
+  'servers:changed': () => void;
 }
 
 export interface ClientToServerEvents {
@@ -1483,7 +1285,7 @@ export interface HistoryFilterOptions {
  * Extended filter options for rules builder.
  * Includes all countries with session indicators and servers.
  */
-export interface RulesFilterOptions extends Omit<HistoryFilterOptions, 'countries'> {
+export interface AutomationFilterOptions extends Omit<HistoryFilterOptions, 'countries'> {
   /** All countries with session activity indicator */
   countries: CountryOption[];
   /** Available servers */
@@ -1572,7 +1374,13 @@ export type NotificationEventType =
   | 'stream_stopped'
   | 'server_down'
   | 'server_up'
-  | 'plugin_update_available';
+  | 'plugin_update_available'
+  | 'server_update_available'
+  | 'tracearr_update_available'
+  | 'media_added'
+  | 'media_upgraded'
+  | 'new_device'
+  | 'trust_score_changed';
 
 // Notification preferences (per-device settings)
 export interface NotificationPreferences {
@@ -3260,8 +3068,10 @@ export interface BackupMetadata {
     sessions: number;
     users: number;
     servers: number;
-    rules: number;
+    /** Absent in manifests written before the rename, which count automations as `rules`. */
+    automations?: number;
     libraryItems: number;
+    rules?: number;
   };
 }
 

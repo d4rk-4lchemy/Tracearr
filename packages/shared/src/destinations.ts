@@ -20,7 +20,19 @@ export const NOTIFICATION_EVENT_TYPES = [
   'server_down',
   'server_up',
   'plugin_update_available',
+  'server_update_available',
+  'tracearr_update_available',
+  'media_added',
+  'media_upgraded',
+  'new_device',
+  'trust_score_changed',
 ] as const satisfies readonly NotificationEventType[];
+
+/** What a destination may subscribe to on its own; every other event reaches it through an automation. */
+export const SUBSCRIBABLE_EVENTS = [
+  'violation_detected',
+] as const satisfies readonly NotificationEventType[];
+export type SubscribableEvent = (typeof SUBSCRIBABLE_EVENTS)[number];
 
 const ALL_EVENTS = NOTIFICATION_EVENT_TYPES;
 /** Push has no plugin-update method and the browser has no toast for it. */
@@ -179,13 +191,14 @@ export function destinationConfigSchema(kind: DestinationKind): z.ZodObject<z.Zo
 }
 
 export const notificationEventTypeSchema = z.enum(NOTIFICATION_EVENT_TYPES);
+const subscribableEventSchema = z.enum(SUBSCRIBABLE_EVENTS);
 const nonBuiltinKind = z.enum(DESTINATION_KINDS.filter((k) => !DESTINATION_TYPES[k].builtin));
 
 export const createDestinationSchema = z.strictObject({
   name: z.string().trim().min(1).max(100),
   type: nonBuiltinKind,
   config: z.record(z.string(), z.unknown()),
-  events: z.array(notificationEventTypeSchema).default([]),
+  events: z.array(subscribableEventSchema).default([]),
   enabled: z.boolean().default(true),
 });
 
@@ -193,7 +206,7 @@ export const createDestinationSchema = z.strictObject({
 export const updateDestinationSchema = z.strictObject({
   name: z.string().trim().min(1).max(100).optional(),
   config: z.record(z.string(), z.union([z.string(), z.null()])).optional(),
-  events: z.array(notificationEventTypeSchema).optional(),
+  events: z.array(subscribableEventSchema).optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -211,7 +224,7 @@ export interface Destination {
   configStatus: 'ok' | 'reencrypt';
   config: Record<string, string | null> | null;
   secretsSet: string[];
-  referencedByRuleCount: number;
+  referencedByAutomationCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -219,7 +232,7 @@ export interface Destination {
 export interface NotificationToast {
   title: string;
   message: string;
-  ruleId: string;
-  ruleName: string;
+  automationId: string;
+  automationName: string;
   severity: ViolationSeverity;
 }

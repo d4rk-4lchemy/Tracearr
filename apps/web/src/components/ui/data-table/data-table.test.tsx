@@ -31,6 +31,27 @@ const columns = helper.columns([
   helper.accessor('age', { header: 'Age', enableSorting: false, meta: { numeric: true } }),
 ]);
 
+const cellAction = vi.fn();
+const actionColumns = helper.columns([
+  helper.accessor('name', { header: 'Name' }),
+  helper.display({
+    id: 'action',
+    header: 'Action',
+    // Call sites keep the click off the row themselves; the key press is the table's job.
+    cell: ({ row }) => (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          cellAction();
+        }}
+      >
+        Act on {row.original.name}
+      </button>
+    ),
+  }),
+]);
+
 const people: Person[] = [
   { id: 'a', name: 'Charlie', age: 30 },
   { id: 'b', name: 'Alpha', age: 21 },
@@ -51,10 +72,23 @@ interface HarnessProps extends Omit<UseDataTableOptions<Person>, 'columns' | 'ge
   isLoading?: boolean;
   density?: DataTableDensity;
   headerVariant?: DataTableHeaderVariant;
+  /** Swaps in the column holding a button, the shape an interactive cell takes. */
+  withAction?: boolean;
 }
 
-function Harness({ onRowClick, isLoading, density, headerVariant, ...options }: HarnessProps) {
-  const { table, pager } = useDataTable<Person>({ ...options, columns, getRowId });
+function Harness({
+  onRowClick,
+  isLoading,
+  density,
+  headerVariant,
+  withAction,
+  ...options
+}: HarnessProps) {
+  const { table, pager } = useDataTable<Person>({
+    ...options,
+    columns: withAction ? actionColumns : columns,
+    getRowId,
+  });
 
   return (
     <DataTableRoot density={density} headerVariant={headerVariant}>
@@ -240,6 +274,18 @@ describe('data-table row interaction', () => {
 
     const body = screen.getAllByRole('rowgroup')[1]!;
     expect(within(body).getAllByRole('row')[0]!).not.toHaveAttribute('tabindex');
+  });
+
+  it('activates the focused control instead of the row it sits in', async () => {
+    const user = userEvent.setup();
+    const onRowClick = vi.fn<(row: Person) => void>();
+    render(<Harness data={people} onRowClick={onRowClick} withAction />);
+
+    screen.getByRole('button', { name: 'Act on Charlie' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(cellAction).toHaveBeenCalledTimes(1);
+    expect(onRowClick).not.toHaveBeenCalled();
   });
 });
 

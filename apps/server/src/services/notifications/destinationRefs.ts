@@ -1,6 +1,29 @@
 import { isNotNull } from 'drizzle-orm';
+import type { Action, AutomationActions, LeafAction } from '@tracearr/shared';
 import { db } from '../../db/client.js';
-import { rules } from '../../db/schema.js';
+import { automations } from '../../db/schema.js';
+import { listDestinations } from './destinationStore.js';
+
+/** A branch holds effects of its own, so a destination can live one level down. */
+const leaves = (action: Action): LeafAction[] =>
+  action.type === 'if' ? [...action.then, ...action.else] : [action];
+
+/**
+ * The destination ids a save names that no row backs. A send action storing one
+ * would fail silently at match time, so the save paths reject it up front.
+ */
+export async function unknownDestinationIds(
+  actions: AutomationActions | undefined
+): Promise<string[]> {
+  const sendIds = [
+    ...new Set(
+      actions?.actions.flatMap(leaves).flatMap((a) => (a.type === 'send' ? a.to : [])) ?? []
+    ),
+  ];
+  if (sendIds.length === 0) return [];
+  const known = new Set((await listDestinations()).map((d) => d.id));
+  return sendIds.filter((id) => !known.has(id));
+}
 
 export interface DestinationRef {
   ruleId: string;
@@ -8,16 +31,21 @@ export interface DestinationRef {
   isActive: boolean;
 }
 
-/** Every rule, active or not; getActiveRulesV2 is cached and filters inactive rows, which must still block a delete. */
-export async function rulesReferencingDestinations(): Promise<Map<string, DestinationRef[]>> {
+/** Every automation, active or not; getActiveAutomations is cached and filters inactive rows, which must still block a delete. */
+export async function automationsReferencingDestinations(): Promise<Map<string, DestinationRef[]>> {
   const rows = await db
-    .select({ id: rules.id, name: rules.name, isActive: rules.isActive, actions: rules.actions })
-    .from(rules)
-    .where(isNotNull(rules.actions));
+    .select({
+      id: automations.id,
+      name: automations.name,
+      isActive: automations.isActive,
+      actions: automations.actions,
+    })
+    .from(automations)
+    .where(isNotNull(automations.actions));
 
   const refs = new Map<string, DestinationRef[]>();
   for (const row of rows) {
-    for (const action of row.actions?.actions ?? []) {
+    for (const action of (row.actions?.actions ?? []).flatMap(leaves)) {
       if (action.type !== 'send') continue;
       for (const id of action.to) {
         const list = refs.get(id) ?? [];

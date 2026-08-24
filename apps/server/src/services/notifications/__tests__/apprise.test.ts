@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ViolationWithDetails } from '@tracearr/shared';
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { appriseType, type AppriseMessage } from '../destinations/apprise.js';
+import type { NotificationEvent } from '../events.js';
 import type { RenderContext } from '../destinations/types.js';
 
 const config = { url: 'https://apprise.example.com/notify' };
@@ -34,6 +35,38 @@ const render = async (
   event: Parameters<typeof appriseType.render>[0],
   ctx: RenderContext = systemCtx
 ): Promise<AppriseMessage> => appriseType.render(event, config, ctx);
+
+const mediaUpgraded: NotificationEvent = {
+  type: 'media_upgraded',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    libraryItemId: 'item-1',
+    title: 'Cars',
+    grandparentTitle: null,
+    mediaType: 'movie',
+    year: 2006,
+    libraryName: 'Movies',
+    to: {
+      resolution: '4k',
+      dynamicRange: 'hdr10',
+      videoCodec: 'HEVC',
+      audioCodec: 'TRUEHD',
+      audioChannels: 8,
+      fileSize: 42_000_000_000,
+    },
+    from: {
+      resolution: '1080p',
+      dynamicRange: 'sdr',
+      videoCodec: 'H264',
+      audioCodec: 'AC3',
+      audioChannels: 6,
+      fileSize: 8_000_000_000,
+    },
+    changed: ['resolution'],
+  },
+};
 
 describe('appriseType.render', () => {
   it('builds the violation message with the severity type', async () => {
@@ -173,5 +206,85 @@ describe('appriseType.deliver', () => {
       body: 'This is a test notification from Tracearr',
       type: 'info',
     });
+  });
+});
+
+const newDevice = {
+  type: 'new_device',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    serverUserId: 'su-1',
+    sessionId: 'sess-1',
+    userName: 'Test User',
+    username: 'testuser',
+    identityName: 'Test User',
+    mediaTitle: 'Cars',
+    mediaType: 'movie',
+    deviceName: 'Living Room TV',
+    platform: 'tvOS',
+    product: 'Plex for Apple TV',
+    location: 'Boston, Massachusetts',
+  },
+} as const;
+
+const trustChanged = {
+  type: 'trust_score_changed',
+  payload: {
+    serverId: 'server-1',
+    serverName: 'Basement',
+    serverType: 'plex',
+    serverUserId: 'su-1',
+    userName: 'Test User',
+    username: 'testuser',
+    identityName: 'Test User',
+    previousScore: 90,
+    newScore: 40,
+    reason: 'Sharing penalty',
+  },
+} as const;
+
+const automationCtx = (over: { title?: string; body?: string } = {}): RenderContext => ({
+  destination,
+  source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
+});
+
+describe('appriseType.render with an automation source', () => {
+  it('keeps the builtin stream text when nothing is overridden', async () => {
+    const message = await render({ type: 'session_started', payload: session }, automationCtx());
+
+    expect(message.title).toBe('Stream Started');
+  });
+
+  it('renders a new device and a trust move from the payload text', async () => {
+    const device = await render(newDevice, automationCtx());
+    expect(device.title).toBe('New device');
+    expect(device.body).toBe(
+      'Test User connected from a new device: Living Room TV from Boston, Massachusetts'
+    );
+
+    const trust = await render(trustChanged, automationCtx());
+    expect(trust.title).toBe('Trust score changed');
+    expect(trust.body).toBe("Test User's trust score dropped from 90 to 40: Sharing penalty");
+  });
+
+  it('renders a media upgrade, and an override still wins', async () => {
+    const message = await render(mediaUpgraded, automationCtx());
+    expect(message.title).toBe('Media upgraded');
+    expect(message.body).toBe('Cars on Basement: 1080p → 4K');
+
+    const overridden = await render(mediaUpgraded, automationCtx({ body: '4K at last' }));
+    expect(overridden.body).toBe('4K at last');
+  });
+
+  it('uses the rendered override for a stream start', async () => {
+    const message = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ title: 'Heads up', body: '{{user.username}} pressed play' })
+    );
+
+    expect(message.title).toBe('Heads up');
+    expect(message.body).toBe('testuser pressed play');
   });
 });

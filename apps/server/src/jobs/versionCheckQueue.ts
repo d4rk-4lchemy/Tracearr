@@ -11,6 +11,7 @@ import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { REDIS_KEYS, CACHE_TTL, WS_EVENTS } from '@tracearr/shared';
 import { getBuildInfo, getCurrentVersion } from '../utils/buildInfo.js';
+import { dispatchTracearrUpdate } from '../services/automations/events/producers.js';
 
 // Queue name
 const QUEUE_NAME = 'version-check';
@@ -181,12 +182,10 @@ export async function scheduleVersionChecks(): Promise<void> {
     return;
   }
 
-  // Remove any existing job schedulers (repeatable jobs)
+  // Remove any existing job schedulers; BullMQ reports them by key, not id.
   const schedulers = await versionQueue.getJobSchedulers();
   for (const scheduler of schedulers) {
-    if (scheduler.id) {
-      await versionQueue.removeJobScheduler(scheduler.id);
-    }
+    await versionQueue.removeJobScheduler(scheduler.key);
   }
 
   // Schedule a check every 6 hours (4 times per day)
@@ -460,14 +459,25 @@ export async function processVersionCheck(job: Job<VersionCheckJobData>): Promis
 
     // Check if update is available
     const currentForkVersion = getBuildInfo().forkVersion;
-    const forkUpdateAvailable = !!currentForkVersion && compareForkVersions(latestFork.forkVersion, currentForkVersion) > 0;
-    if (forkUpdateAvailable && pubSubPublish) {
+    const forkUpdateAvailable =
+      !!currentForkVersion &&
+      compareForkVersions(latestFork.forkVersion, currentForkVersion) > 0;
+    if (forkUpdateAvailable) {
       // Broadcast update availability to connected clients
-      await pubSubPublish(WS_EVENTS.VERSION_UPDATE, {
+      if (pubSubPublish) {
+        await pubSubPublish(WS_EVENTS.VERSION_UPDATE, {
+          current: currentVersion,
+          latest: latestFork.forkVersion,
+          releaseUrl: latestFork.releaseUrl,
+          kind: 'fork-update',
+        });
+      }
+      // This worker runs on every instance; the cooldown above and the run gate's
+      // edge key (the latest version) bound the duplicate dispatches.
+      await dispatchTracearrUpdate({
         current: currentVersion,
         latest: latestFork.forkVersion,
         releaseUrl: latestFork.releaseUrl,
-        kind: 'fork-update',
       });
       console.log(`Fork update available: ${currentForkVersion} -> ${latestFork.forkVersion}`);
     }

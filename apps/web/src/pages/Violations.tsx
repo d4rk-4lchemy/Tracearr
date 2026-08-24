@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { format, formatDistanceToNow, parseISO } from 'date-fns';
-import { AlertTriangle, Check, Trash2, User, UserRoundSearch, X } from 'lucide-react';
+import { AlertTriangle, Check, Trash2, UserRoundSearch, X } from 'lucide-react';
 import type { ViolationWithDetails } from '@tracearr/shared';
 import { VIOLATION_SORT_FIELDS, listPageCount, type ViolationSortField } from '@tracearr/shared';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -31,16 +31,17 @@ import {
 } from '@/components/ui/filters';
 import { ErrorState } from '@/components/library/ErrorState';
 import { ServerColumnCell } from '@/components/server';
+import { UserCell } from '@/components/users/UserCell';
 import { getAvatarUrl } from '@/components/users/utils';
 import { PersonMultiSelectCombobox } from '@/components/violations/PersonMultiSelectCombobox';
 import { ruleIcons } from '@/components/violations/ruleIcons';
 import { SeverityBadge } from '@/components/violations/SeverityBadge';
 import {
   useAcknowledgeViolation,
+  useAutomations,
   useBulkAcknowledgeViolations,
   useBulkDismissViolations,
   useDismissViolation,
-  useRules,
   useUsers,
   useViolations,
 } from '@/hooks/queries';
@@ -56,6 +57,8 @@ import {
 const PAGE_SIZE = 10;
 
 const PERSON_OPTIONS_PAGE_SIZE = 100;
+
+const RULE_OPTIONS_PAGE_SIZE = 100;
 
 /** Rendered inline by the page itself, so FilterBar never gets a descriptor for it. */
 const PEOPLE_FILTER_KEY = 'people';
@@ -85,10 +88,16 @@ export function Violations() {
   const [dismissId, setDismissId] = useState<string | null>(null);
   const [bulkDismissConfirmOpen, setBulkDismissConfirmOpen] = useState(false);
 
-  const { data: rules } = useRules();
+  // One page covers the dropdown: the filter names an automation, it does not
+  // page through them. Only policy automations reach this list, so the other
+  // kinds would filter it down to nothing.
+  const { data: automations } = useAutomations({
+    kind: 'policy',
+    pageSize: RULE_OPTIONS_PAGE_SIZE,
+  });
   const ruleOptions = useMemo(
-    () => rules?.map((rule) => ({ value: rule.id, label: rule.name })),
-    [rules]
+    () => automations?.data.map((automation) => ({ value: automation.id, label: automation.name })),
+    [automations]
   );
 
   const descriptors = useMemo<FilterDescriptor[]>(
@@ -368,46 +377,33 @@ export function Violations() {
           header: t('common:labels.user'),
           cell: ({ row }) => {
             const violation = row.original;
-            const avatarUrl = getAvatarUrl(violation.user.serverId, violation.user.thumbUrl, 40);
+            const personId = violation.user.userId;
             return (
-              <div className="flex items-center gap-1">
-                <Link
-                  to={`/users/${violation.user.id}`}
-                  className="flex min-w-0 items-center gap-3 hover:underline"
-                >
-                  <div className="bg-muted flex h-10 w-10 shrink-0 items-center justify-center rounded-full">
-                    {avatarUrl ? (
-                      <img
-                        src={avatarUrl}
-                        alt={violation.user.username}
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <User className="text-muted-foreground h-5 w-5" />
-                    )}
-                  </div>
-                  <span className="truncate font-medium">
-                    {violation.user.identityName ?? violation.user.username}
-                  </span>
-                </Link>
-                {violation.user.userId && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:text-foreground h-6 w-6 shrink-0"
-                    title={t('pages:violations.filterByPerson')}
-                    aria-label={t('pages:violations.filterByPerson')}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (violation.user.userId) {
-                        handleAddPersonToFilter(violation.user.userId);
-                      }
-                    }}
-                  >
-                    <UserRoundSearch className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
+              <UserCell
+                serverUserId={violation.user.id}
+                username={violation.user.username}
+                identityName={violation.user.identityName}
+                thumbUrl={violation.user.thumbUrl}
+                serverId={violation.user.serverId}
+                size="md"
+                trailing={
+                  personId && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-foreground h-6 w-6 shrink-0"
+                      title={t('pages:violations.filterByPerson')}
+                      aria-label={t('pages:violations.filterByPerson')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAddPersonToFilter(personId);
+                      }}
+                    >
+                      <UserRoundSearch className="h-3.5 w-3.5" />
+                    </Button>
+                  )
+                }
+              />
             );
           },
         }),

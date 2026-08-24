@@ -244,12 +244,17 @@ describe('countActiveFilters and activeFilterChips', () => {
     });
 
     expect(chips).toEqual([
-      { key: 'search', label: 'Search', value: 'bob' },
       { key: 'serverIds', label: 'Servers', value: 'Alpha' },
       { key: 'role', label: 'Role', value: 'Admin' },
       { key: 'joined', label: 'Joined', value: '*/2024-03-01' },
       { key: 'showRemoved', label: 'Show removed', value: '' },
     ]);
+  });
+
+  it('leaves an inline field out of the chip row, where its own box already shows it', () => {
+    const chips = activeFilterChips(descriptors(), { search: 'bob' });
+
+    expect(chips).toEqual([]);
   });
 
   it('summarises a multi selection with the caller-supplied count label', () => {

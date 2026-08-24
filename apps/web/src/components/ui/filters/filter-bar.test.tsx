@@ -64,16 +64,24 @@ describe('FilterBar', () => {
     expect(screen.queryByRole('button', { name: 'Clear all' })).not.toBeInTheDocument();
   });
 
+  it('offers Clear all for a typed query alone, which draws no chip of its own', () => {
+    renderBar({ search: 'bob' });
+
+    expect(screen.getByRole('button', { name: 'Clear all' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove Search filter' })).not.toBeInTheDocument();
+  });
+
   it('counts only panel filters on the trigger badge', () => {
     renderBar({ search: 'bob', serverIds: ['alpha'], showRemoved: true });
 
     expect(screen.getByRole('button', { name: /Filters/ })).toHaveTextContent('2');
   });
 
-  it('drives chips off the descriptors, including inline fields', () => {
+  it('drives chips off the panel descriptors, leaving the typed query in its own box', () => {
     renderBar({ search: 'bob', serverIds: ['alpha', 'beta'], showRemoved: true });
 
-    expect(screen.getByText('bob')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Search' })).toHaveValue('bob');
+    expect(screen.queryByText('bob')).not.toBeInTheDocument();
     expect(screen.getByText('2 servers')).toBeInTheDocument();
     expect(screen.getByText('Show removed')).toBeInTheDocument();
   });

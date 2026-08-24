@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Agent bijwerken mislukt",
       "apiKeyGenerateFailed": "API-sleutel genereren mislukt",
       "authFailed": "Authenticatie mislukt",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Kopiëren naar klembord mislukt",
       "copyFailed": "Kopiëren naar klembord mislukt",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Mobiele toegang inschakelen mislukt",
       "pairTokenGenerateFailed": "Koppeltoken genereren mislukt",
       "plexDirectUrl": "Een plex.direct-URL is een relay-adres dat hier niet gebruikt kan worden. Gebruik een direct IP-adres of hostnaam.",
-      "plexUnlinkFailed": "Ontkoppelen Plex-account mislukt",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Ontkoppelen Plex-account mislukt",
       "routingUpdateFailed": "Routering bijwerken mislukt",
-      "ruleCreateFailed": "Regel aanmaken mislukt",
-      "ruleDeleteFailed": "Regel verwijderen mislukt",
-      "ruleUpdateFailed": "Regel bijwerken mislukt",
       "serverAddFailed": "Server toevoegen mislukt",
       "serverRemoveFailed": "Server verwijderen mislukt",
       "serverReorderFailed": "Servers herschikken mislukt",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Webhook-test mislukt"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} is onbereikbaar",
-        "title": "Server offline"
-      },
-      "serverOnline": {
-        "message": "{{name}} is weer online",
-        "title": "Server online"
-      },
-      "streamStarted": {
-        "message": "{{user}} is begonnen met kijken naar {{media}}",
-        "title": "Nieuwe stream gestart"
-      },
-      "streamStopped": {
-        "message": "{{user}} is gestopt met kijken",
-        "title": "Stream gestopt"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} is beschikbaar",
         "title": "Update beschikbaar"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Je nieuwe API-sleutel is klaar voor gebruik",
         "title": "API-sleutel gegenereerd"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Je kunt nu doorgaan met instellen",
@@ -182,29 +178,17 @@
         "message": "Je kunt nu servers uit je Plex-account toevoegen",
         "title": "Plex-account gekoppeld"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Je Plex-account is ontkoppeld",
         "title": "Plex-account ontkoppeld"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "De regel is succesvol aangemaakt",
-        "title": "Regel aangemaakt"
-      },
-      "ruleDeleted": {
-        "message": "De regel is succesvol verwijderd",
-        "title": "Regel verwijderd"
-      },
-      "ruleUpdated": {
-        "message": "De regel is succesvol bijgewerkt",
-        "title": "Regel bijgewerkt"
       },
       "serverAdded": {
         "message": "{{name}} is succesvol verbonden",
@@ -259,7 +243,7 @@
         "title": "Vertrouwensscores hersteld"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

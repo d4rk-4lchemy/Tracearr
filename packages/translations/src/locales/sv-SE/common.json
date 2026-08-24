@@ -64,8 +64,6 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "{{count}} fel",
@@ -78,8 +76,6 @@
     "location_other": "{{count}} locations",
     "result_one": "{{count}} resultat",
     "result_other": "{{count}} resultat",
-    "rule_one": "{{count}} regel",
-    "rule_other": "{{count}} regler",
     "selected_one": "{{count}} vald",
     "selected_other": "{{count}} vald",
     "server_one": "{{count}} server",
@@ -95,7 +91,11 @@
     "usersUpdated_one": "{{count}} användare uppdaterad",
     "usersUpdated_other": "{{count}} användare uppdaterade",
     "violation_one": "{{count}} brott",
-    "violation_other": "{{count}} överträdelser"
+    "violation_other": "{{count}} överträdelser",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
+    "automation_one": "{{count}} automation",
+    "automation_other": "{{count}} automations"
   },
   "duration": {
     "day_one": "{{count}} dag",

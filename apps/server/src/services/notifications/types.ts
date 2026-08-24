@@ -2,8 +2,18 @@
  * Notification payload types shared by every destination type module.
  */
 
+import { BYTES_PER_GB, normalizeResolutionLabel } from '@tracearr/shared';
+import { MEDIA_QUALITY_FIELDS } from '../automations/types.js';
 import type { ViolationWithDetails, ActiveSession, NotificationEventType } from '@tracearr/shared';
-import type { NotificationEvent, NotificationSource } from './events.js';
+import type { MediaQuality } from '../automations/types.js';
+import type {
+  MediaEventPayload,
+  MediaUpgradedPayload,
+  NewDevicePayload,
+  NotificationEvent,
+  NotificationSource,
+  TrustChangedPayload,
+} from './events.js';
 
 // Re-export for convenience
 export type { ViolationWithDetails, ActiveSession, NotificationEventType };
@@ -65,10 +75,70 @@ export interface PluginUpdateContext {
 }
 
 /**
+ * Context provided with media server update notifications
+ */
+export interface ServerUpdateContext {
+  type: 'server_update_available';
+  serverId: string;
+  serverName: string;
+  serverType: string;
+  installedVersion: string;
+  latestVersion: string;
+  releaseUrl: string;
+}
+
+/**
+ * Context provided with Tracearr release notifications
+ */
+export interface TracearrUpdateContext {
+  type: 'tracearr_update_available';
+  current: string;
+  latest: string;
+  releaseUrl: string;
+}
+
+/**
+ * Context provided with a library item that just appeared
+ */
+export interface MediaAddedContext extends MediaEventPayload {
+  type: 'media_added';
+}
+
+/**
+ * Context provided with a library item whose quality signature moved
+ */
+export interface MediaUpgradedContext extends MediaUpgradedPayload {
+  type: 'media_upgraded';
+}
+
+/**
+ * Context provided with the first session an account ran from a device
+ */
+export interface NewDeviceContext extends NewDevicePayload {
+  type: 'new_device';
+}
+
+/**
+ * Context provided when a write moved an account's trust score
+ */
+export interface TrustChangedContext extends TrustChangedPayload {
+  type: 'trust_score_changed';
+}
+
+/**
  * Union of all notification contexts
  */
 export type NotificationContext =
-  ViolationContext | SessionContext | ServerContext | PluginUpdateContext;
+  | ViolationContext
+  | SessionContext
+  | ServerContext
+  | PluginUpdateContext
+  | ServerUpdateContext
+  | TracearrUpdateContext
+  | MediaAddedContext
+  | MediaUpgradedContext
+  | NewDeviceContext
+  | TrustChangedContext;
 
 /**
  * Unified notification payload for all agents
@@ -94,6 +164,31 @@ export interface NotificationPayload {
 
   /** Optional image URL (e.g., poster) */
   imageUrl?: string;
+
+  /** The automation whose send produced this, with whatever text it overrode already rendered. */
+  automation?: { id: string; name: string; title?: string; message?: string };
+}
+
+/** An episode or track announces the show or artist it belongs to; a film names itself. */
+const mediaName = (ctx: MediaEventPayload): string =>
+  ctx.grandparentTitle === null ? ctx.title : `${ctx.grandparentTitle} — ${ctx.title}`;
+
+const titleWithYear = (ctx: MediaEventPayload): string =>
+  ctx.year === null ? mediaName(ctx) : `${mediaName(ctx)} (${String(ctx.year)})`;
+
+/** Values as a message shows them: bytes in GB, a resolution in its display spelling. */
+function qualityText(field: keyof MediaQuality, value: string | number | null): string {
+  if (value === null) return '';
+  if (field === 'fileSize') return `${(Number(value) / BYTES_PER_GB).toFixed(1)} GB`;
+  if (field === 'resolution') return normalizeResolutionLabel(String(value)) ?? String(value);
+  return String(value);
+}
+
+/** The resolution pair when that is what moved, else the first field that did. */
+function qualityMove(ctx: MediaUpgradedPayload): string {
+  const field = ctx.changed.includes('resolution') ? 'resolution' : ctx.changed[0];
+  if (!field) return '';
+  return `: ${qualityText(field, ctx.from[field])} → ${qualityText(field, ctx.to[field])}`;
 }
 
 /**
@@ -164,6 +259,75 @@ export const PayloadBuilders = {
     };
   },
 
+  fromServerUpdate(ctx: Omit<ServerUpdateContext, 'type'>): NotificationPayload {
+    return {
+      event: 'server_update_available',
+      title: 'Server Update Available',
+      message: `${ctx.serverName} can update from ${ctx.installedVersion} to ${ctx.latestVersion}`,
+      severity: 'low',
+      timestamp: new Date().toISOString(),
+      context: { type: 'server_update_available', ...ctx },
+    };
+  },
+
+  fromTracearrUpdate(ctx: Omit<TracearrUpdateContext, 'type'>): NotificationPayload {
+    return {
+      event: 'tracearr_update_available',
+      title: 'Tracearr Update Available',
+      message: `Tracearr ${ctx.latest} is out (running ${ctx.current})`,
+      severity: 'low',
+      timestamp: new Date().toISOString(),
+      context: { type: 'tracearr_update_available', ...ctx },
+    };
+  },
+
+  fromMediaAdded(ctx: MediaEventPayload): NotificationPayload {
+    return {
+      event: 'media_added',
+      title: 'New media added',
+      message: `${titleWithYear(ctx)} was added to ${ctx.libraryName} on ${ctx.serverName}`,
+      severity: 'low',
+      timestamp: new Date().toISOString(),
+      context: { type: 'media_added', ...ctx },
+    };
+  },
+
+  fromMediaUpgraded(ctx: MediaUpgradedPayload): NotificationPayload {
+    return {
+      event: 'media_upgraded',
+      title: 'Media upgraded',
+      message: `${mediaName(ctx)} on ${ctx.serverName}${qualityMove(ctx)}`,
+      severity: 'low',
+      timestamp: new Date().toISOString(),
+      context: { type: 'media_upgraded', ...ctx },
+    };
+  },
+
+  fromNewDevice(ctx: NewDevicePayload): NotificationPayload {
+    const locationStr = ctx.location ? ` from ${ctx.location}` : '';
+    return {
+      event: 'new_device',
+      title: 'New device',
+      message: `${ctx.userName} connected from a new device: ${ctx.deviceName}${locationStr}`,
+      severity: 'warning',
+      timestamp: new Date().toISOString(),
+      context: { type: 'new_device', ...ctx },
+    };
+  },
+
+  fromTrustScoreChanged(ctx: TrustChangedPayload): NotificationPayload {
+    const dropped = ctx.newScore < ctx.previousScore;
+    const reasonStr = ctx.reason ? `: ${ctx.reason}` : '';
+    return {
+      event: 'trust_score_changed',
+      title: 'Trust score changed',
+      message: `${ctx.userName}'s trust score ${dropped ? 'dropped' : 'rose'} from ${String(ctx.previousScore)} to ${String(ctx.newScore)}${reasonStr}`,
+      severity: dropped ? 'warning' : 'low',
+      timestamp: new Date().toISOString(),
+      context: { type: 'trust_score_changed', ...ctx },
+    };
+  },
+
   fromPluginUpdate(
     serverId: string,
     serverName: string,
@@ -192,7 +356,152 @@ export const PayloadBuilders = {
   },
 };
 
-/** One NotificationPayload per event; a rule send carries its own title and message. */
+/** Anything the payload holds that a template can name; objects and nulls render as nothing. */
+function scalar(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
+function mediaVariables(payload: MediaEventPayload): Record<string, string> {
+  return {
+    'media.title': payload.title,
+    'media.type': payload.mediaType,
+    'media.year': payload.year === null ? '' : String(payload.year),
+    'media.library': payload.libraryName,
+    'media.server': payload.serverName,
+    'server.name': payload.serverName,
+    'server.type': payload.serverType,
+  };
+}
+
+function qualityVariables(side: 'from' | 'to', quality: MediaQuality): Record<string, string> {
+  return Object.fromEntries(
+    MEDIA_QUALITY_FIELDS.map((field) => [
+      `media.${side}.${field}`,
+      qualityText(field, quality[field]),
+    ])
+  );
+}
+
+/** The four names every account trigger offers, however the event names the person. */
+function accountVariables(payload: {
+  username: string;
+  identityName: string | null;
+  serverName: string;
+  serverType: string;
+}): Record<string, string> {
+  return {
+    'user.username': payload.username,
+    'user.identityName': payload.identityName ?? payload.username,
+    'server.name': payload.serverName,
+    'server.type': payload.serverType,
+  };
+}
+
+/** The TRIGGERS variable vocabulary, read off whatever the event carries. */
+function variablesOf(event: NotificationEvent): Record<string, string> {
+  switch (event.type) {
+    case 'violation': {
+      const v = event.payload;
+      const data = v.data ?? {};
+      return {
+        'user.username': v.user.username,
+        'user.identityName': v.user.identityName ?? v.user.username,
+        'session.mediaTitle': scalar(data.mediaTitle),
+        'session.mediaType': scalar(data.mediaType),
+        'server.name': v.server?.name ?? scalar(data.serverName),
+        'server.type': v.server?.type ?? '',
+        durationMinutes: scalar(data.durationMinutes),
+        minutes: scalar(data.minutes),
+        days: scalar(data.days),
+      };
+    }
+    case 'session_started':
+    case 'session_stopped': {
+      const s = event.payload;
+      return {
+        'user.username': s.user.username,
+        'user.identityName': s.user.identityName ?? s.user.username,
+        'session.mediaTitle': s.mediaTitle,
+        'session.mediaType': s.mediaType,
+        'server.name': s.server.name,
+        'server.type': s.server.type,
+        durationMinutes: s.durationMs === null ? '' : String(Math.round(s.durationMs / 60_000)),
+      };
+    }
+    case 'server_down':
+    case 'server_up':
+      return {
+        'server.name': event.payload.serverName,
+        'server.type': event.payload.serverType ?? '',
+      };
+    case 'plugin_update_available': {
+      const p = event.payload;
+      return {
+        'server.name': p.serverName,
+        'server.type': p.serverType,
+        installedVersion: p.installedVersion ?? '',
+        latestVersion: p.latestVersion,
+        downloadUrl: p.downloadUrl,
+      };
+    }
+    case 'server_update_available': {
+      const p = event.payload;
+      return {
+        'server.name': p.serverName,
+        'server.type': p.serverType,
+        installedVersion: p.installedVersion,
+        latestVersion: p.latestVersion,
+        releaseUrl: p.releaseUrl,
+      };
+    }
+    case 'tracearr_update_available':
+      return {
+        current: event.payload.current,
+        latest: event.payload.latest,
+        releaseUrl: event.payload.releaseUrl,
+      };
+    case 'media_added':
+      return mediaVariables(event.payload);
+    case 'media_upgraded':
+      return {
+        ...mediaVariables(event.payload),
+        ...qualityVariables('from', event.payload.from),
+        ...qualityVariables('to', event.payload.to),
+      };
+    case 'new_device': {
+      const d = event.payload;
+      return {
+        ...accountVariables(d),
+        'session.mediaTitle': d.mediaTitle,
+        'session.mediaType': d.mediaType,
+        'device.name': d.deviceName,
+        'device.platform': d.platform ?? '',
+        'device.product': d.product ?? '',
+        'device.location': d.location ?? '',
+      };
+    }
+    case 'trust_score_changed': {
+      const t = event.payload;
+      return {
+        ...accountVariables(t),
+        'trust.previous': String(t.previousScore),
+        'trust.new': String(t.newScore),
+        'trust.reason': t.reason ?? '',
+      };
+    }
+  }
+}
+
+const VARIABLE = /\{\{\s*([\w.]+)\s*\}\}/g;
+
+/** A name the trigger does not offer renders as nothing rather than leaving the braces in. */
+function renderTemplate(template: string, variables: Record<string, string>): string {
+  return template.replace(VARIABLE, (_match, name: string) => variables[name] ?? '');
+}
+
+/** One NotificationPayload per event; an automation's send may override the text. */
 export function toNotificationPayload(
   event: NotificationEvent,
   source: NotificationSource
@@ -206,9 +515,9 @@ export function toNotificationPayload(
       case 'session_stopped':
         return PayloadBuilders.fromSessionStopped(event.payload);
       case 'server_down':
-        return PayloadBuilders.fromServerDown(event.payload.serverName);
+        return PayloadBuilders.fromServerDown(event.payload.serverName, event.payload.serverType);
       case 'server_up':
-        return PayloadBuilders.fromServerUp(event.payload.serverName);
+        return PayloadBuilders.fromServerUp(event.payload.serverName, event.payload.serverType);
       case 'plugin_update_available': {
         const p = event.payload;
         return PayloadBuilders.fromPluginUpdate(
@@ -220,10 +529,37 @@ export function toNotificationPayload(
           p.downloadUrl
         );
       }
+      case 'server_update_available':
+        return PayloadBuilders.fromServerUpdate(event.payload);
+      case 'tracearr_update_available':
+        return PayloadBuilders.fromTracearrUpdate(event.payload);
+      case 'media_added':
+        return PayloadBuilders.fromMediaAdded(event.payload);
+      case 'media_upgraded':
+        return PayloadBuilders.fromMediaUpgraded(event.payload);
+      case 'new_device':
+        return PayloadBuilders.fromNewDevice(event.payload);
+      case 'trust_score_changed':
+        return PayloadBuilders.fromTrustScoreChanged(event.payload);
     }
   })();
   if (source.kind === 'rule') {
     return { ...base, title: source.title, message: source.message };
   }
-  return base;
+  if (source.kind !== 'automation') return base;
+
+  const variables = variablesOf(event);
+  const title = source.title === undefined ? undefined : renderTemplate(source.title, variables);
+  const message = source.body === undefined ? undefined : renderTemplate(source.body, variables);
+  return {
+    ...base,
+    title: title ?? base.title,
+    message: message ?? base.message,
+    automation: {
+      id: source.automationId,
+      name: source.automationName,
+      ...(title !== undefined && { title }),
+      ...(message !== undefined && { message }),
+    },
+  };
 }

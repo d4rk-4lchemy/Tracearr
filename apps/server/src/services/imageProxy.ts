@@ -7,24 +7,15 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
-import {
-  readFile,
-  writeFile,
-  rename,
-  stat as fsStat,
-  unlink,
-  utimes,
-  readdir,
-  mkdir,
-} from 'node:fs/promises';
+import { readFile, writeFile, rename, stat as fsStat, unlink, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { and, eq, isNull } from 'drizzle-orm';
-import { TIME_MS } from '@tracearr/shared';
+import { POSTER_IMAGE_SIZE, TIME_MS } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { servers, libraryItems } from '../db/schema.js';
 import { assertSafeProbeUrl, SsrfBlockedError } from '../utils/ssrf.js';
-import { registerService, unregisterService } from './serviceTracker.js';
+import { cacheWriteAllowed, noteCacheWrite } from './imageCacheGuard.js';
 
 // libvips defaults its thread pool to the core count, so one background
 // precache walk can own every core of a small box. Inputs are server-resized
@@ -34,20 +25,12 @@ sharp.concurrency(1);
 
 // Cache directory (in project root/data/image-cache), sharded by the first two
 // hex chars of the cache key so no single directory holds every cached file.
-const CACHE_DIR = join(process.cwd(), 'data', 'image-cache');
+export const IMAGE_CACHE_DIR = join(process.cwd(), 'data', 'image-cache');
 const CACHE_TTL_MS = TIME_MS.DAY;
 
-// Maximum cache size in MB. Versioned entries (requests carrying `v=`) are
-// exempt from the TTL sweep below but still count toward this cap and are
-// evicted oldest-first, same as unversioned entries.
-const IMAGE_CACHE_MAX_MB = (() => {
-  const parsed = Number(process.env.IMAGE_CACHE_MAX_MB);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 3072;
-})();
-
 // Ensure cache directory exists
-if (!existsSync(CACHE_DIR)) {
-  mkdirSync(CACHE_DIR, { recursive: true });
+if (!existsSync(IMAGE_CACHE_DIR)) {
+  mkdirSync(IMAGE_CACHE_DIR, { recursive: true });
 }
 
 // Fallback SVG placeholders
@@ -98,10 +81,8 @@ interface ProxyOptions {
   fallback?: FallbackType;
   /** Cache-busting fingerprint from posterVersionFor; presence marks the cache entry immutable. */
   version?: string;
-  /** Precache-only: waits for the real miss pipeline instead of racing it against
-   *  the LQIP placeholder, so a slow upstream can't free the caller's warm-pool
-   *  slot early and stack pipelines ahead of live requests. */
-  skipLqipRace?: boolean;
+  /** Web grid only: race the miss against the LQIP placeholder after 2 s. Everything else waits for the real image. */
+  lqip?: boolean;
 }
 
 interface ProxyResult {
@@ -154,7 +135,7 @@ function buildCacheKeyInfo(
   return { fileName, shard, versioned };
 }
 
-function isVersionedFileName(fileName: string): boolean {
+export function isVersionedFileName(fileName: string): boolean {
   // Orphaned tmp files from a failed write inherit the `:v<hash>` substring
   // when the source entry was versioned, so `.tmp.` must win over that check
   // or they'd be treated as immutable and never swept.
@@ -184,146 +165,6 @@ function getFallbackImage(type: FallbackType, _width: number, _height: number): 
   return Buffer.from(svg);
 }
 
-interface CacheFileInfo {
-  path: string;
-  size: number;
-  mtime: number;
-  versioned: boolean;
-}
-
-async function addCacheFileInfo(
-  filePath: string,
-  fileName: string,
-  out: CacheFileInfo[]
-): Promise<void> {
-  try {
-    const stats = await fsStat(filePath);
-    out.push({
-      path: filePath,
-      size: stats.size,
-      mtime: stats.mtimeMs,
-      versioned: isVersionedFileName(fileName),
-    });
-  } catch {
-    // Ignore errors for individual files
-  }
-}
-
-interface CacheFileRef {
-  path: string;
-  fileName: string;
-}
-
-/** Enumerates the (sharded) cache dir without stat-ing anything yet; legacy flat files count too. */
-async function listCacheFileRefs(): Promise<CacheFileRef[]> {
-  const refs: CacheFileRef[] = [];
-  let entries;
-  try {
-    entries = await readdir(CACHE_DIR, { withFileTypes: true });
-  } catch {
-    return refs;
-  }
-
-  for (const entry of entries) {
-    const entryPath = join(CACHE_DIR, entry.name);
-    if (entry.isDirectory()) {
-      let shardFiles: string[];
-      try {
-        shardFiles = await readdir(entryPath);
-      } catch {
-        continue;
-      }
-      for (const file of shardFiles) {
-        refs.push({ path: join(entryPath, file), fileName: file });
-      }
-    } else if (entry.isFile()) {
-      refs.push({ path: entryPath, fileName: entry.name });
-    }
-  }
-
-  return refs;
-}
-
-// Caps how many stat calls run at once during a sweep, so a cache holding
-// hundreds of thousands of files doesn't stat them one at a time.
-const CLEANUP_STAT_BATCH_SIZE = 32;
-
-async function collectCacheFiles(): Promise<CacheFileInfo[]> {
-  const refs = await listCacheFileRefs();
-  const results: CacheFileInfo[] = [];
-  for (let i = 0; i < refs.length; i += CLEANUP_STAT_BATCH_SIZE) {
-    const batch = refs.slice(i, i + CLEANUP_STAT_BATCH_SIZE);
-    await Promise.all(batch.map((ref) => addCacheFileInfo(ref.path, ref.fileName, results)));
-  }
-  return results;
-}
-
-/**
- * Clean up old cache files. Versioned entries are exempt from the TTL sweep
- * (their filename fingerprint changes whenever the source poster changes, so
- * age alone doesn't mean stale) but still count toward the size cap below.
- */
-export async function cleanupCache(): Promise<void> {
-  try {
-    const files = await collectCacheFiles();
-    const now = Date.now();
-    let totalSize = 0;
-    const survivors: CacheFileInfo[] = [];
-
-    for (const file of files) {
-      if (!file.versioned && now - file.mtime > CACHE_TTL_MS) {
-        try {
-          await unlink(file.path);
-          continue;
-        } catch {
-          // Ignore
-        }
-      }
-      totalSize += file.size;
-      survivors.push(file);
-    }
-
-    // If still over size limit, delete oldest files (LRU via mtime, kept
-    // fresh on cache hits by the fire-and-forget utimes touch below)
-    const maxSizeBytes = IMAGE_CACHE_MAX_MB * 1024 * 1024;
-    if (totalSize > maxSizeBytes) {
-      survivors.sort((a, b) => a.mtime - b.mtime);
-      for (const file of survivors) {
-        if (totalSize <= maxSizeBytes * 0.8) break; // Reduce to 80% of max
-        try {
-          await unlink(file.path);
-          totalSize -= file.size;
-        } catch {
-          // Ignore
-        }
-      }
-    }
-  } catch {
-    // Ignore cleanup errors
-  }
-}
-
-// Run cleanup periodically (every hour)
-let cleanupInterval: NodeJS.Timeout | null = setInterval(() => {
-  void cleanupCache();
-}, TIME_MS.HOUR);
-registerService('image-cache-cleanup', {
-  name: 'Image Cache Cleanup',
-  description: 'Cleans up expired cached images',
-  intervalMs: TIME_MS.HOUR,
-});
-
-// Also run on startup
-void cleanupCache();
-
-export function stopImageCacheCleanup(): void {
-  if (cleanupInterval) {
-    clearInterval(cleanupInterval);
-    cleanupInterval = null;
-    unregisterService('image-cache-cleanup');
-  }
-}
-
 async function readFromCache(cachePath: string, versioned: boolean): Promise<ProxyResult | null> {
   let stats;
   try {
@@ -337,10 +178,6 @@ async function readFromCache(cachePath: string, versioned: boolean): Promise<Pro
 
   try {
     const data = await readFile(cachePath);
-    // LRU touch so size-cap eviction favors recently-served entries; the
-    // response doesn't depend on this succeeding.
-    const now = new Date();
-    void utimes(cachePath, now, now).catch(() => undefined);
     return { data, contentType: 'image/webp', cached: true };
   } catch {
     return null;
@@ -348,13 +185,14 @@ async function readFromCache(cachePath: string, versioned: boolean): Promise<Pro
 }
 
 async function writeCacheAtomic(shardDir: string, cachePath: string, data: Buffer): Promise<void> {
+  if (!(await cacheWriteAllowed(data.length, IMAGE_CACHE_DIR))) return;
   const tmpPath = `${cachePath}.tmp.${process.pid}`;
   try {
     await mkdir(shardDir, { recursive: true });
     await writeFile(tmpPath, data);
     await rename(tmpPath, cachePath);
+    noteCacheWrite(data.length);
   } catch {
-    // Cache write failure is non-fatal, but don't leave the tmp file behind
     await unlink(tmpPath).catch(() => undefined);
   }
 }
@@ -761,17 +599,25 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     height = 450,
     fallback = 'poster',
     version,
-    skipLqipRace,
+    lqip = false,
   } = options;
+
+  // A 360x540 poster is always the one versioned entry, whether or not the URL
+  // said so: the fingerprint is the path's own, so every surface shares the file.
+  const isPoster =
+    fallback === 'poster' &&
+    width === POSTER_IMAGE_SIZE.width &&
+    height === POSTER_IMAGE_SIZE.height;
+  const effectiveVersion = isPoster ? posterVersionFor(imagePath) : version;
 
   const { fileName, shard, versioned } = buildCacheKeyInfo(
     serverId,
     imagePath,
     width,
     height,
-    version
+    effectiveVersion
   );
-  const shardDir = join(CACHE_DIR, shard);
+  const shardDir = join(IMAGE_CACHE_DIR, shard);
   const cachePath = join(shardDir, fileName);
 
   const cached = await readFromCache(cachePath, versioned);
@@ -795,8 +641,7 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     inFlightMisses.set(fileName, pipelinePromise);
   }
 
-  // Only versioned requests can revalidate later, so only they get raced against the LQIP placeholder.
-  if (skipLqipRace || !versioned) return pipelinePromise;
+  if (!lqip || !versioned) return pipelinePromise;
   return raceWithLqipFallback(pipelinePromise, serverId, imagePath);
 }
 
@@ -816,33 +661,15 @@ export function getGravatarUrl(email: string | null | undefined, size: number = 
 // ============================================================================
 
 /**
- * Size presets optimized for different use cases.
- * Push notifications use smaller images to reduce bandwidth and load faster.
- * API responses use standard sizes for flexibility.
+ * Size presets for non-poster images (avatars, logo, cast/art thumbnails).
+ * Posters have exactly one size now: POSTER_IMAGE_SIZE.
  */
 export const IMAGE_SIZES = {
-  // Push notification sizes (smaller for fast loading)
-  pushPoster: { width: 200, height: 300 },
   pushAvatar: { width: 80, height: 80 },
   pushLogo: { width: 128, height: 128 },
-
-  // API response sizes (standard)
-  apiPoster: { width: 300, height: 450 },
-  apiPosterSmall: { width: 150, height: 225 },
   apiAvatar: { width: 100, height: 100 },
   apiArt: { width: 500, height: 280 },
-
-  // Browsing grid buckets (must stay in sync with POSTER_BUCKET_WIDTHS)
-  posterGrid160: { width: 160, height: 240 },
-  posterGrid240: { width: 240, height: 360 },
-  posterGrid360: { width: 360, height: 540 },
 } as const;
-
-/**
- * Allow-list of widths the `v=` versioned cache path accepts. Requests
- * carrying a version fingerprint must use one of these buckets.
- */
-export const POSTER_BUCKET_WIDTHS = [160, 240, 360] as const;
 
 export interface ProxyUrlOptions {
   serverId: string;
@@ -850,6 +677,7 @@ export interface ProxyUrlOptions {
   width?: number;
   height?: number;
   fallback?: FallbackType;
+  version?: string;
 }
 
 /**
@@ -857,7 +685,7 @@ export interface ProxyUrlOptions {
  * Callers can prepend their known base URL.
  */
 export function buildProxyUrl(options: ProxyUrlOptions): string {
-  const { serverId, path, width = 300, height = 450, fallback = 'poster' } = options;
+  const { serverId, path, width = 300, height = 450, fallback = 'poster', version } = options;
   const params = new URLSearchParams({
     server: serverId,
     url: path,
@@ -865,6 +693,7 @@ export function buildProxyUrl(options: ProxyUrlOptions): string {
     height: String(height),
     fallback,
   });
+  if (version) params.set('v', version);
   return `/api/v1/images/proxy?${params}`;
 }
 
@@ -887,33 +716,28 @@ export function posterVersionFor(thumbPath: string): string {
   return createHash('sha1').update(thumbPath).digest('hex').slice(0, 8);
 }
 
-/**
- * Whether the versioned poster-grid cache entry for this path already exists
- * on disk, using the exact cache key derivation the proxy pipeline itself
- * uses (buildCacheKeyInfo + posterVersionFor). Width must be one of the
- * grid buckets the browse UI requests (posterGrid160 / posterGrid240 / posterGrid360).
- */
-export async function posterCacheEntryExists(
+/** File name and shard of a poster's one cache entry: 360x540 at the path's own fingerprint. */
+export function posterCacheFileName(
   serverId: string,
-  thumbPath: string,
-  width: 160 | 240 | 360
-): Promise<boolean> {
-  const dimensions =
-    width === 160
-      ? IMAGE_SIZES.posterGrid160
-      : width === 240
-        ? IMAGE_SIZES.posterGrid240
-        : IMAGE_SIZES.posterGrid360;
-  const version = posterVersionFor(thumbPath);
+  thumbPath: string
+): { fileName: string; shard: string } {
   const { fileName, shard } = buildCacheKeyInfo(
     serverId,
     thumbPath,
-    dimensions.width,
-    dimensions.height,
-    version
+    POSTER_IMAGE_SIZE.width,
+    POSTER_IMAGE_SIZE.height,
+    posterVersionFor(thumbPath)
   );
+  return { fileName, shard };
+}
+
+export async function posterCacheEntryExists(
+  serverId: string,
+  thumbPath: string
+): Promise<boolean> {
+  const { fileName, shard } = posterCacheFileName(serverId, thumbPath);
   try {
-    await fsStat(join(CACHE_DIR, shard, fileName));
+    await fsStat(join(IMAGE_CACHE_DIR, shard, fileName));
     return true;
   } catch {
     return false;
@@ -925,16 +749,15 @@ export async function posterCacheEntryExists(
  */
 export function buildPosterUrl(
   serverId: string | null | undefined,
-  thumbPath: string | null | undefined,
-  size: 'standard' | 'small' = 'standard'
+  thumbPath: string | null | undefined
 ): string | null {
   if (!serverId || !thumbPath) return null;
-  const dimensions = size === 'small' ? IMAGE_SIZES.apiPosterSmall : IMAGE_SIZES.apiPoster;
   return buildProxyUrl({
     serverId,
     path: thumbPath,
-    ...dimensions,
+    ...POSTER_IMAGE_SIZE,
     fallback: 'poster',
+    version: posterVersionFor(thumbPath),
   });
 }
 
@@ -972,8 +795,9 @@ export function buildPushPosterUrl(
   return buildAbsoluteProxyUrl(baseUrl, {
     serverId,
     path: thumbPath,
-    ...IMAGE_SIZES.pushPoster,
+    ...POSTER_IMAGE_SIZE,
     fallback: 'poster',
+    version: posterVersionFor(thumbPath),
   });
 }
 

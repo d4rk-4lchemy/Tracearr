@@ -64,8 +64,6 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "Ошибка {{count}}",
@@ -78,8 +76,6 @@
     "location_other": "{{count}} locations",
     "result_one": "Результат {{count}}",
     "result_other": "{{count}} результаты",
-    "rule_one": "Правило {{count}}",
-    "rule_other": "{{count}} правила",
     "selected_one": "{{count}} выбран",
     "selected_other": "{{count}} выбран",
     "server_one": "{{count}} сервер",
@@ -95,7 +91,11 @@
     "usersUpdated_one": "Пользователь {{count}} обновлен",
     "usersUpdated_other": "{{count}} пользователей обновлено",
     "violation_one": "Нарушение {{count}}",
-    "violation_other": "{{count}} violations"
+    "violation_other": "{{count}} violations",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
+    "automation_one": "{{count}} automation",
+    "automation_other": "{{count}} automations"
   },
   "duration": {
     "day_one": "{{count}} day",

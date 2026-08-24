@@ -270,7 +270,7 @@ function BackupCard({ onRestore }: { onRestore: (backup: BackupListItem) => void
 // Restore Card — Shown when user selects a backup to restore
 // ============================================================================
 
-function RestoreCard({ backup, onClose }: { backup: BackupListItem; onClose: () => void }) {
+export function RestoreCard({ backup, onClose }: { backup: BackupListItem; onClose: () => void }) {
   const { t } = useTranslation(['settings', 'common']);
   const [confirmed, setConfirmed] = useState(false);
   const { restore: restoreProgress } = useMaintenanceMode();
@@ -343,8 +343,14 @@ function RestoreCard({ backup, onClose }: { backup: BackupListItem; onClose: () 
           <dd>{backup.metadata.counts.users.toLocaleString()}</dd>
           <dt className="text-muted-foreground">{t('backup.restore.servers')}</dt>
           <dd>{backup.metadata.counts.servers.toLocaleString()}</dd>
-          <dt className="text-muted-foreground">{t('backup.restore.rules')}</dt>
-          <dd>{backup.metadata.counts.rules.toLocaleString()}</dd>
+          <dt className="text-muted-foreground">{t('backup.restore.automations')}</dt>
+          <dd>
+            {(
+              backup.metadata.counts.automations ??
+              backup.metadata.counts.rules ??
+              0
+            ).toLocaleString()}
+          </dd>
           <dt className="text-muted-foreground">{t('backup.restore.libraryItems')}</dt>
           <dd>{backup.metadata.counts.libraryItems.toLocaleString()}</dd>
           <dt className="text-muted-foreground">{t('backup.restore.tables')}</dt>

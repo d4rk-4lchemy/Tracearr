@@ -1431,6 +1431,9 @@ describe('shelves preferred poster source', () => {
     const { body: autoBody } = await fetchShelves(app, '?period=year');
     const autoRow = autoBody.recentlyAddedMovies.find((r) => r.mediaId === movieId)!;
     expect(autoRow.posterUrl).toContain(`server=${serverB.id}`);
+    expect(autoRow.posterUrl).toContain('width=360');
+    expect(autoRow.posterUrl).toContain('height=540');
+    expect(autoRow.posterUrl).toContain(`v=${autoRow.posterVersion}`);
 
     const autoKey = buildLibraryCacheKey(
       `${REDIS_KEYS.LIBRARY_SHELVES}:v6`,

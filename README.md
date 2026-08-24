@@ -75,14 +75,15 @@ _Original README.md_
 
 <p align="center">
   <a href="https://github.com/connorgallopo/Tracearr/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/connorgallopo/Tracearr/ci.yml?branch=main&style=flat-square&label=CI" alt="CI Status" /></a>
-  <a title="Crowdin" target="_blank" href="https://crowdin.com/project/tracearr"><img src="https://badges.crowdin.net/tracearr/localized.svg"></a>
   <a href="https://github.com/connorgallopo/Tracearr/actions/workflows/nightly.yml"><img src="https://img.shields.io/github/actions/workflow/status/connorgallopo/Tracearr/nightly.yml?style=flat-square&label=Nightly" alt="Nightly Build" /></a>
+  <a href="https://snyk.io/test/github/connorgallopo/Tracearr"><img src="https://snyk.io/test/github/connorgallopo/Tracearr/badge.svg" alt="Snyk Security" /></a>
   <a href="https://github.com/connorgallopo/Tracearr/releases"><img src="https://img.shields.io/github/v/release/connorgallopo/Tracearr?style=flat-square&color=18D1E7" alt="Latest Release" /></a>
   <a href="https://ghcr.io/connorgallopo/tracearr"><img src="https://img.shields.io/badge/ghcr.io-tracearr-blue?style=flat-square&logo=docker&logoColor=white" alt="Docker" /></a>
   <a href="https://github.com/connorgallopo/Tracearr/blob/main/LICENSE"><img src="https://img.shields.io/github/license/connorgallopo/Tracearr?style=flat-square" alt="License" /></a>
-  <a href="https://discord.gg/a7n3sFd2Yw"><img src="https://img.shields.io/discord/1444393247978946684?style=flat-square&logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord" /></a>
+  <a title="Crowdin" target="_blank" href="https://crowdin.com/project/tracearr"><img src="https://badges.crowdin.net/tracearr/localized.svg"></a>
   <a href="https://docs.tracearr.com"><img src="https://img.shields.io/badge/docs-tracearr.com-18D1E7?style=flat-square" alt="Documentation" /></a>
-  <a href="https://ko-fi.com/E1E21QRI1L"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Ko-Fi" /></a>
+  <a href="https://discord.gg/a7n3sFd2Yw"><img src="https://img.shields.io/discord/1444393247978946684?style=flat-square&logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord" /></a>
+  <a href="https://ko-fi.com/E1E21QRI1L"><img src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?style=flat-square&logo=kofi&logoColor=white" alt="Ko-Fi" /></a>
 </p>
 
 ---

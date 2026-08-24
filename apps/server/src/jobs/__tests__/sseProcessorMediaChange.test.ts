@@ -27,7 +27,7 @@ const {
   mockFindActiveSession,
   mockHandleMediaChangeAtomic,
   mockBuildActiveSession,
-  mockGetActiveRulesV2,
+  mockGetActiveAutomations,
   mockBatchGetRecentUserSessions,
   mockGetServerUserIdByExternalId,
   mockBroadcastViolations,
@@ -46,7 +46,7 @@ const {
     mockFindActiveSession: vi.fn(),
     mockHandleMediaChangeAtomic: vi.fn(),
     mockBuildActiveSession: vi.fn(),
-    mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
+    mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
     mockBatchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
     mockGetServerUserIdByExternalId: vi.fn().mockResolvedValue('server-user-1'),
     mockBroadcastViolations: vi.fn(),
@@ -123,7 +123,7 @@ vi.mock('../poller/stateTracker.js', async () => {
 });
 
 vi.mock('../poller/database.js', () => ({
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   batchGetRecentUserSessions: mockBatchGetRecentUserSessions,
   batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
   getServerUserIdByExternalId: mockGetServerUserIdByExternalId,
@@ -153,15 +153,15 @@ vi.mock('../poller/sessionLifecycle.js', async () => {
   };
 });
 
-vi.mock('../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
-vi.mock('../../services/rules/events/contextAssembly.js', () => ({
+vi.mock('../../services/automations/events/contextAssembly.js', () => ({
   loadEvaluationContext: vi.fn().mockResolvedValue(null),
   loadEvaluationServerUser: (...args: unknown[]) => mockLoadEvaluationServerUser(...args),
   assembleEvaluationInputs: vi.fn().mockResolvedValue({
-    activeRulesV2: [],
+    activeAutomations: [],
     activeSessions: [],
     recentSessions: [],
     identityServerUserIds: [],
@@ -430,12 +430,8 @@ describe('SSE Processor - Media Change Detection', () => {
     // Should have broadcast start for new session
     expect(mockPubSubService.publish).toHaveBeenCalledWith('session:started', mockActiveSession);
 
-    // Should only enqueue session_started (no session_stopped — matches poller behavior)
-    expect(mockEnqueueNotification).toHaveBeenCalledTimes(1);
-    expect(mockEnqueueNotification).toHaveBeenCalledWith({
-      type: 'session_started',
-      payload: mockActiveSession,
-    });
+    // The automations own the notification now; the media change enqueues nothing.
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
   });
 
   it('does not trigger media change for same ratingKey', async () => {

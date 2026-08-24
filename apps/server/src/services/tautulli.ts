@@ -157,7 +157,7 @@ export const TautulliUserRecordSchema = z.object({
   is_home_user: z.number().nullable(), // Can be null for local users
   is_admin: z.number(),
   is_active: z.number(),
-  do_notify: z.number(),
+  do_notify: z.number().optional(),
 });
 
 export const TautulliUsersResponseSchema = z.object({

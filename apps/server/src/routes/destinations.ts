@@ -10,9 +10,9 @@ import {
   destinationConfigSchema,
   updateDestinationSchema,
   type DestinationKind,
-  type NotificationEventType,
 } from '@tracearr/shared';
-import { rulesReferencingDestinations } from '../services/notifications/destinationRefs.js';
+import { isUniqueViolation } from '../db/pg.js';
+import { automationsReferencingDestinations } from '../services/notifications/destinationRefs.js';
 import {
   createDestination,
   deleteDestination,
@@ -30,14 +30,6 @@ import { firstIssueMessage } from '../utils/zod.js';
 const DELIVER_TEST_TIMEOUT_MS = 10_000;
 const REENCRYPT_MESSAGE = "Re-enter this destination's secret first";
 
-function firstDisallowedEvent(
-  kind: DestinationKind,
-  events: NotificationEventType[]
-): NotificationEventType | null {
-  const allowed = new Set<string>(DESTINATION_TYPES[kind].events);
-  return events.find((event) => !allowed.has(event)) ?? null;
-}
-
 /** Throws with the field name so the 400 says which url was blocked. */
 function assertSafeUrls(kind: DestinationKind, config: Record<string, unknown>): void {
   for (const field of DESTINATION_TYPES[kind].fields) {
@@ -52,13 +44,6 @@ function assertSafeUrls(kind: DestinationKind, config: Record<string, unknown>):
       });
     }
   }
-}
-
-/** Postgres unique_violation on destinations.name. drizzle wraps the driver error, so the code can sit one level down. */
-function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  const err = error as { code?: unknown; cause?: { code?: unknown } };
-  return err.code === '23505' || err.cause?.code === '23505';
 }
 
 const unsavedTestSchema = z.strictObject({
@@ -91,7 +76,10 @@ export async function destinationRoutes(app: FastifyInstance): Promise<void> {
    * GET /destinations - List destinations with masked config
    */
   app.get('/', owner, async () => {
-    const [rows, refs] = await Promise.all([listDestinations(), rulesReferencingDestinations()]);
+    const [rows, refs] = await Promise.all([
+      listDestinations(),
+      automationsReferencingDestinations(),
+    ]);
     return rows.map((row) => toPublicDestination(row, refs.get(row.id)?.length ?? 0));
   });
 
@@ -106,10 +94,6 @@ export async function destinationRoutes(app: FastifyInstance): Promise<void> {
     const config = destinationConfigSchema(parsed.data.type).safeParse(parsed.data.config);
     if (!config.success) {
       return reply.badRequest(`Invalid config: ${firstIssueMessage(config.error)}`);
-    }
-    const badEvent = firstDisallowedEvent(parsed.data.type, parsed.data.events);
-    if (badEvent) {
-      return reply.badRequest(`${parsed.data.type} cannot receive ${badEvent}`);
     }
     try {
       assertSafeUrls(parsed.data.type, config.data);
@@ -142,12 +126,6 @@ export async function destinationRoutes(app: FastifyInstance): Promise<void> {
     if (current.builtin && parsed.data.config !== undefined) {
       return reply.badRequest('Built-in destinations have no config');
     }
-    if (parsed.data.events) {
-      const badEvent = firstDisallowedEvent(current.type, parsed.data.events);
-      if (badEvent) {
-        return reply.badRequest(`${current.type} cannot receive ${badEvent}`);
-      }
-    }
     if (parsed.data.config !== undefined) {
       // A row that failed to decrypt has no base to merge onto, so the patch must carry every required key.
       const opened = readConfig(current);
@@ -177,7 +155,7 @@ export async function destinationRoutes(app: FastifyInstance): Promise<void> {
       }
       throw error;
     }
-    const refs = await rulesReferencingDestinations();
+    const refs = await automationsReferencingDestinations();
     return toPublicDestination(row, refs.get(row.id)?.length ?? 0);
   });
 
@@ -189,7 +167,7 @@ export async function destinationRoutes(app: FastifyInstance): Promise<void> {
     if (!current) return reply.notFound('Destination not found');
     if (current.builtin) return reply.badRequest('Built-in destinations cannot be deleted');
 
-    const refs = (await rulesReferencingDestinations()).get(current.id) ?? [];
+    const refs = (await automationsReferencingDestinations()).get(current.id) ?? [];
     if (refs.length > 0) {
       return reply.code(409).send({
         message: `Used by ${refs.length} rule(s)`,

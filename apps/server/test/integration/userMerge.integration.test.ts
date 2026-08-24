@@ -10,7 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import Fastify from 'fastify';
 import sensible from '@fastify/sensible';
@@ -19,9 +19,21 @@ import {
   createTestServer,
   createTestServerUser,
   createTestSession,
-  createTestRule,
-  createTestViolation,
+  createConcurrentStreamsAutomation,
+  createGeoRestrictionAutomation,
+  createTestRun,
 } from '@tracearr/test-utils/factories';
+// The routes here are the ones that move trust; the announce is spied, never sent.
+const { mockDispatchTrustMoves, mockDispatchTrustChanged } = vi.hoisted(() => ({
+  mockDispatchTrustMoves: vi.fn().mockResolvedValue(undefined),
+  mockDispatchTrustChanged: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../../src/services/automations/events/producers.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  dispatchTrustMoves: mockDispatchTrustMoves,
+  dispatchTrustChanged: mockDispatchTrustChanged,
+}));
+
 import { db } from '../../src/db/client.js';
 import { fullRoutes } from '../../src/routes/users/full.js';
 import { listRoutes } from '../../src/routes/users/list.js';
@@ -33,7 +45,7 @@ import {
   users,
   serverUsers,
   sessions,
-  rules,
+  automations,
   authAccounts,
   authSessions,
   userMergeAudits,
@@ -46,6 +58,11 @@ import {
   MergeValidationError,
   SameServerCombineNotConfirmedError,
 } from '../../src/services/mergeService.js';
+
+/** The list envelope reports total and pageSize; the page count derives from them. */
+function pageCount(body: { meta: { pageSize: number; total: number } }): number {
+  return Math.ceil(body.meta.total / body.meta.pageSize);
+}
 
 describe('mergeUsers', () => {
   it('merges a cross-server duplicate: repoints server users, carries history, recomputes aggregates, deletes source, writes audit', async () => {
@@ -72,12 +89,9 @@ describe('mergeUsers', () => {
       serverUserId: sourceSu.id,
       durationMs: 60_000,
     });
-    const rule = await createTestRule({
-      type: 'concurrent_streams',
-      params: { max_streams: 2 },
-    });
-    await createTestViolation({
-      ruleId: rule.id,
+    const rule = await createConcurrentStreamsAutomation(2);
+    await createTestRun({
+      automationId: rule.id,
       serverUserId: sourceSu.id,
       sessionId: sourceSession.id,
     });
@@ -178,24 +192,12 @@ describe('mergeUsers', () => {
     await createTestSession({ serverId: server.id, serverUserId: sourceSu.id });
     await createTestSession({ serverId: server.id, serverUserId: sourceSu.id });
 
-    // Conflicting per-user rule override: primary wins, source copy dropped
-    await createTestRule({
-      name: 'Max streams',
-      type: 'concurrent_streams',
-      params: { max_streams: 2 },
-      serverUserId: targetSu.id,
-    });
-    await createTestRule({
-      name: 'Max streams',
-      type: 'concurrent_streams',
-      params: { max_streams: 5 },
-      serverUserId: sourceSu.id,
-    });
+    // Conflicting per-user automation override: primary wins, source copy dropped
+    await createConcurrentStreamsAutomation(2, { name: 'Max streams', serverUserId: targetSu.id });
+    await createConcurrentStreamsAutomation(5, { name: 'Max streams', serverUserId: sourceSu.id });
     // Source-only override: moves to the target server user
-    const geoRule = await createTestRule({
+    const geoRule = await createGeoRestrictionAutomation(['XX'], {
       name: 'Geo lock',
-      type: 'geo_restriction',
-      params: { blocked_countries: ['XX'] },
       serverUserId: sourceSu.id,
     });
 
@@ -222,15 +224,22 @@ describe('mergeUsers', () => {
     expect(combinedSu?.email).toBe('primary@example.com');
     expect(combinedSu?.trustScore).toBe(95);
 
-    // Rule overrides: conflicting name dropped, unique one repointed
-    const targetRules = await db.select().from(rules).where(eq(rules.serverUserId, targetSu.id));
+    // Automation overrides: conflicting name dropped, unique one repointed
+    const targetRules = await db
+      .select()
+      .from(automations)
+      .where(eq(automations.serverUserId, targetSu.id));
     const names = targetRules.map((r) => r.name).sort();
     expect(names).toEqual(['Geo lock', 'Max streams']);
-    const [movedGeoRule] = await db.select().from(rules).where(eq(rules.id, geoRule.id));
+    const [movedGeoRule] = await db
+      .select()
+      .from(automations)
+      .where(eq(automations.id, geoRule.id));
     expect(movedGeoRule?.serverUserId).toBe(targetSu.id);
     const maxStreamRules = targetRules.filter((r) => r.name === 'Max streams');
     expect(maxStreamRules).toHaveLength(1);
-    expect((maxStreamRules[0]?.params as { max_streams: number }).max_streams).toBe(2);
+    // The target's threshold survived, not the source's 5.
+    expect(maxStreamRules[0]?.conditions?.groups[0]?.conditions[0]?.value).toBe(2);
   });
 
   it('never carries removedAt from the source onto the surviving row on a same-server combine', async () => {
@@ -576,14 +585,14 @@ describe('GET /users/:id/full?scope=identity panels', () => {
       state: 'stopped',
     });
 
-    const rule = await createTestRule({ type: 'concurrent_streams', params: { max_streams: 2 } });
-    await createTestViolation({
-      ruleId: rule.id,
+    const rule = await createConcurrentStreamsAutomation(2);
+    await createTestRun({
+      automationId: rule.id,
       serverUserId: targetSu.id,
       sessionId: sessionA.id,
     });
-    await createTestViolation({
-      ruleId: rule.id,
+    await createTestRun({
+      automationId: rule.id,
       serverUserId: sourceSu.id,
       sessionId: sessionB.id,
     });
@@ -765,14 +774,14 @@ describe('GET /violations userId identity filter', () => {
 
     const sessionA = await createTestSession({ serverId: serverA.id, serverUserId: targetSu.id });
     const sessionB = await createTestSession({ serverId: serverB.id, serverUserId: sourceSu.id });
-    const rule = await createTestRule({ type: 'concurrent_streams', params: { max_streams: 2 } });
-    await createTestViolation({
-      ruleId: rule.id,
+    const rule = await createConcurrentStreamsAutomation(2);
+    await createTestRun({
+      automationId: rule.id,
       serverUserId: targetSu.id,
       sessionId: sessionA.id,
     });
-    await createTestViolation({
-      ruleId: rule.id,
+    await createTestRun({
+      automationId: rule.id,
       serverUserId: sourceSu.id,
       sessionId: sessionB.id,
     });
@@ -812,14 +821,14 @@ describe('GET /violations userId identity filter', () => {
 
     const sessionA = await createTestSession({ serverId: serverA.id, serverUserId: targetSu.id });
     const sessionB = await createTestSession({ serverId: serverB.id, serverUserId: sourceSu.id });
-    const rule = await createTestRule({ type: 'concurrent_streams', params: { max_streams: 2 } });
-    await createTestViolation({
-      ruleId: rule.id,
+    const rule = await createConcurrentStreamsAutomation(2);
+    await createTestRun({
+      automationId: rule.id,
       serverUserId: targetSu.id,
       sessionId: sessionA.id,
     });
-    await createTestViolation({
-      ruleId: rule.id,
+    await createTestRun({
+      automationId: rule.id,
       serverUserId: sourceSu.id,
       sessionId: sessionB.id,
     });
@@ -1234,6 +1243,7 @@ describe('GET /users search', () => {
     const rows = body.data as { id: string }[];
     expect(rows.map((r) => r.id)).toEqual([su.id]);
     expect(body.meta.total).toBe(1);
+    expect(pageCount(body)).toBe(1);
   });
 
   it('matches by identity display name, not just account username', async () => {
@@ -1357,6 +1367,7 @@ describe('GET /users search', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe(targetSu.id);
     expect(body.meta.total).toBe(1);
+    expect(pageCount(body)).toBe(1);
 
     // With includeRemoved and no server filter, both sides of the search
     // still collapse to the identity's single representative row, and the
@@ -1373,6 +1384,7 @@ describe('GET /users search', () => {
     );
     expect(mergedRows).toHaveLength(1);
     expect(includeRemovedBody.meta.total).toBe(2);
+    expect(pageCount(includeRemovedBody)).toBe(1);
   });
 });
 
@@ -1437,6 +1449,36 @@ describe('identity trust rollup stays current outside merge/split', () => {
     expect(suARow?.trustScore).toBe(90);
   });
 
+  it('rolls the earliest join and latest activity across accounts onto the identity', async () => {
+    const serverA = await createTestServer({ type: 'plex' });
+    const serverB = await createTestServer({ type: 'jellyfin' });
+    const person = await createTestUser({ role: 'member' });
+
+    const earlyJoin = new Date('2024-03-04T05:06:07.000Z');
+    const lateActivity = new Date('2026-06-02T00:00:00.000Z');
+    const suA = await createTestServerUser({
+      userId: person.id,
+      serverId: serverA.id,
+      lastActivityAt: new Date('2026-06-01T00:00:00.000Z'),
+    });
+    const suB = await createTestServerUser({
+      userId: person.id,
+      serverId: serverB.id,
+      lastActivityAt: lateActivity,
+    });
+    await db.update(serverUsers).set({ joinedAt: earlyJoin }).where(eq(serverUsers.id, suA.id));
+    await db
+      .update(serverUsers)
+      .set({ joinedAt: new Date('2025-09-09T00:00:00.000Z') })
+      .where(eq(serverUsers.id, suB.id));
+
+    await recomputeIdentityAggregates(person.id);
+
+    const [row] = await db.select().from(users).where(eq(users.id, person.id));
+    expect(row?.firstJoinedAt).toEqual(earlyJoin);
+    expect(row?.lastActivityAt).toEqual(lateActivity);
+  });
+
   it('recomputes the aggregate when dismissing a violation reverses a rule trust adjustment on one account', async () => {
     const admin = await createTestUser({ role: 'owner' });
     const serverA = await createTestServer({ type: 'plex' });
@@ -1461,18 +1503,15 @@ describe('identity trust rollup stays current outside merge/split', () => {
     const [before] = await db.select().from(users).where(eq(users.id, person.id));
     expect(before?.aggregateTrustScore).toBe(50);
 
-    const rule = await createTestRule({
-      type: 'concurrent_streams',
-      params: { max_streams: 2 },
-    });
+    const rule = await createConcurrentStreamsAutomation(2);
     await db
-      .update(rules)
-      .set({ actions: { actions: [{ type: 'adjust_trust', amount: -20 }] } })
-      .where(eq(rules.id, rule.id));
+      .update(automations)
+      .set({ actions: { actions: [{ type: 'trust', mode: 'adjust', amount: -20 }] } })
+      .where(eq(automations.id, rule.id));
 
     const session = await createTestSession({ serverId: serverB.id, serverUserId: suB.id });
-    const violation = await createTestViolation({
-      ruleId: rule.id,
+    const violation = await createTestRun({
+      automationId: rule.id,
       serverUserId: suB.id,
       sessionId: session.id,
     });
@@ -1747,11 +1786,13 @@ describe('GET /users orderBy', () => {
     expect(response.statusCode).toBe(400);
   });
 
-  it('defaults to identity username ascending when no sort params are given', async () => {
+  it('defaults to username ascending when no sort params are given, matching prior behavior', async () => {
     const admin = await createTestUser({ role: 'owner' });
     const server = await createTestServer({ type: 'plex' });
-    const identityA = await createTestUser({ role: 'member' });
-    const identityB = await createTestUser({ role: 'member' });
+    // The roster sorts on the identity label the row renders, so the display
+    // name has to carry the username the ordering is being asserted on.
+    const identityA = await createTestUser({ role: 'member', name: 'zebra' });
+    const identityB = await createTestUser({ role: 'member', name: 'aardvark' });
     const suZebra = await createTestServerUser({
       userId: identityA.id,
       serverId: server.id,
@@ -1778,7 +1819,7 @@ describe('GET /users orderBy', () => {
     const relevantIds = rows
       .map((r) => r.id)
       .filter((id) => id === suZebra.id || id === suAardvark.id);
-    expect(relevantIds).toEqual([suZebra.id, suAardvark.id]);
+    expect(relevantIds).toEqual([suAardvark.id, suZebra.id]);
   });
 
   it('sorts lastActivityAt with unset accounts last, regardless of direction', async () => {
@@ -1796,10 +1837,10 @@ describe('GET /users orderBy', () => {
       .update(serverUsers)
       .set({ lastActivityAt: new Date('2026-01-01T00:00:00Z') })
       .where(eq(serverUsers.id, activeSu.id));
-    await db
-      .update(users)
-      .set({ lastActivityAt: new Date('2026-01-01T00:00:00Z') })
-      .where(eq(users.id, active.id));
+    // The roster sorts on the identity rollup, which a direct account write
+    // leaves untouched; without this both rows are null and the id tiebreak
+    // decides the order.
+    await recomputeIdentityAggregates(active.id);
 
     const app = Fastify({ logger: false });
     await app.register(sensible);
@@ -1825,5 +1866,104 @@ describe('GET /users orderBy', () => {
     // first just because DESC otherwise treats nulls as the "greatest" value.
     expect(relevantIds(descResponse.json().data)).toEqual([activeSu.id, neverActiveSu.id]);
     expect(relevantIds(ascResponse.json().data)).toEqual([activeSu.id, neverActiveSu.id]);
+  });
+});
+
+describe('every trust move announces itself', () => {
+  beforeEach(() => {
+    mockDispatchTrustChanged.mockClear();
+    mockDispatchTrustMoves.mockClear();
+  });
+
+  /** The list routes under an owner who can see every server. */
+  async function ownerApp(adminId: string) {
+    const app = Fastify({ logger: false });
+    await app.register(sensible);
+    app.decorate('authenticate', async (request: any) => {
+      request.user = { userId: adminId, username: 'owner', role: 'owner', serverIds: [] };
+    });
+    await app.register(listRoutes, { prefix: '/users' });
+    return app;
+  }
+
+  it('announces a PATCH that moves a score, and stays quiet for one that does not', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const server = await createTestServer({ type: 'plex' });
+    const person = await createTestUser({ role: 'member' });
+    const su = await createTestServerUser({
+      userId: person.id,
+      serverId: server.id,
+      trustScore: 90,
+    });
+    const app = await ownerApp(admin.id);
+
+    const moved = await app.inject({
+      method: 'PATCH',
+      url: `/users/${su.id}`,
+      payload: { trustScore: 40 },
+    });
+    expect(moved.statusCode).toBe(200);
+    expect(mockDispatchTrustChanged).toHaveBeenCalledTimes(1);
+    expect(mockDispatchTrustChanged).toHaveBeenCalledWith({
+      serverId: server.id,
+      serverUserId: su.id,
+      previous: 90,
+      next: 40,
+      reason: 'changed by an owner',
+    });
+
+    mockDispatchTrustChanged.mockClear();
+    const untouched = await app.inject({
+      method: 'PATCH',
+      url: `/users/${su.id}`,
+      payload: {},
+    });
+    expect(untouched.statusCode).toBe(200);
+    // Nothing wrote a score, so there is no move to announce.
+    expect(mockDispatchTrustChanged).not.toHaveBeenCalled();
+
+    await app.close();
+  });
+
+  it('announces one move per account the bulk reset put back to 100', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const server = await createTestServer({ type: 'plex' });
+    const person = await createTestUser({ role: 'member' });
+    const low = await createTestServerUser({
+      userId: person.id,
+      serverId: server.id,
+      trustScore: 30,
+    });
+    // One account per person per server, so the untouched sibling lives on a second one.
+    const other = await createTestServer({ type: 'jellyfin' });
+    const already = await createTestServerUser({
+      userId: person.id,
+      serverId: other.id,
+      trustScore: 100,
+    });
+    const app = await ownerApp(admin.id);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/users/bulk/reset-trust',
+      payload: { ids: [low.id, already.id] },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockDispatchTrustMoves).toHaveBeenCalledTimes(1);
+    const [moves, reason] = mockDispatchTrustMoves.mock.calls[0] as [
+      Array<{ previous: number; serverUser: { id: string; trustScore: number } }>,
+      string,
+    ];
+    expect(reason).toBe('reset by an owner');
+    // Both rows come back; the producer's previous === next skip is what drops the no-op.
+    expect(moves.map((m) => [m.serverUser.id, m.previous, m.serverUser.trustScore]).sort()).toEqual(
+      [
+        [already.id, 100, 100],
+        [low.id, 30, 100],
+      ].sort()
+    );
+
+    await app.close();
   });
 });

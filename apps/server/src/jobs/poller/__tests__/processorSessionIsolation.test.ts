@@ -10,14 +10,14 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ActiveSession } from '@tracearr/shared';
+import type { ActiveSession, EngineAutomation } from '@tracearr/shared';
 import type { CacheService, PubSubService } from '../../../services/cache.js';
 import type { ProcessedSession } from '../types.js';
 
 const mockDbSelect = vi.fn();
-const { mockCreateMediaServerClient, mockGetActiveRulesV2 } = vi.hoisted(() => ({
+const { mockCreateMediaServerClient, mockGetActiveAutomations } = vi.hoisted(() => ({
   mockCreateMediaServerClient: vi.fn(),
-  mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
+  mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../../db/client.js', () => ({
@@ -67,9 +67,9 @@ vi.mock('../../notificationQueue.js', () => ({
 }));
 
 vi.mock('../database.js', () => ({
-  onActiveRulesRefill: vi.fn(),
+  onActiveAutomationsRefill: vi.fn(),
   getCachedServers: () => mockDbSelect().from(servers),
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
   batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
@@ -98,7 +98,7 @@ vi.mock('../sessionLifecycle.js', () => ({
 }));
 
 const mockDispatch = vi.fn().mockResolvedValue({ violations: [], outcomes: [] });
-vi.mock('../../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
@@ -291,6 +291,33 @@ function createCacheService() {
   };
 }
 
+const serverDownAutomation = {
+  id: 'down-1',
+  name: 'down',
+  description: null,
+  serverId: null,
+  serverUserId: null,
+  userId: null,
+  enforceAcrossServers: false,
+  isActive: true,
+  severity: 'warning',
+  kind: 'notification',
+  cooldownMinutes: null,
+  currentVersionId: null,
+  conditions: { groups: [] },
+  actions: { actions: [] },
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  triggers: [{ id: 'down-node', type: 'server.down', enabled: true }],
+} as unknown as EngineAutomation;
+
+/** The seam fans out several event types per tick; health assertions read only their own. */
+function dispatchedOfType(type: string): unknown[] {
+  return mockDispatch.mock.calls
+    .map(([event]) => event as { type: string })
+    .filter((event) => event.type === type);
+}
+
 function createPubSubService() {
   return { publish: vi.fn().mockResolvedValue(undefined) };
 }
@@ -301,7 +328,7 @@ describe('per-session error isolation in processServerSessions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stopPoller();
-    mockGetActiveRulesV2.mockResolvedValue([]);
+    mockGetActiveAutomations.mockResolvedValue([]);
     mockUpdatePendingSession.mockImplementation(() => ({
       updatedData: { id: 'pending-b-data' },
       isConfirmed: false,
@@ -347,9 +374,7 @@ describe('per-session error isolation in processServerSessions', () => {
     await triggerPoll();
 
     expect(cacheService.setServerHealth).not.toHaveBeenCalledWith('server-1', false);
-    expect(mockEnqueueNotification.mock.calls.some(([arg]) => arg.type === 'server_down')).toBe(
-      false
-    );
+    expect(dispatchedOfType('server.down')).toEqual([]);
   });
 
   it('still reports the server unhealthy when client.getSessions() itself fails', async () => {
@@ -362,9 +387,57 @@ describe('per-session error isolation in processServerSessions', () => {
     await triggerPoll();
 
     expect(cacheService.setServerHealth).toHaveBeenCalledWith('server-1', false);
-    expect(mockEnqueueNotification.mock.calls.some(([arg]) => arg.type === 'server_down')).toBe(
-      true
-    );
+  });
+
+  it('dispatches server.down once the threshold trips, and enqueues nothing', async () => {
+    mockGetActiveAutomations.mockResolvedValue([serverDownAutomation]);
+    mockCreateMediaServerClient.mockReturnValue({
+      getSessions: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+    });
+
+    await triggerPoll();
+    await triggerPoll();
+    await triggerPoll();
+
+    expect(dispatchedOfType('server.down')).toEqual([
+      {
+        type: 'server.down',
+        at: expect.any(Date),
+        server: { id: 'server-1', name: 'Test Server', type: 'plex' },
+      },
+    ]);
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
+  });
+
+  it('dispatches server.up when the server comes back', async () => {
+    mockGetActiveAutomations.mockResolvedValue([
+      { ...serverDownAutomation, triggers: [{ id: 'up-node', type: 'server.up', enabled: true }] },
+    ]);
+    mockCreateMediaServerClient.mockReturnValue({
+      getSessions: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+    });
+    await triggerPoll();
+    await triggerPoll();
+    await triggerPoll();
+
+    mockCreateMediaServerClient.mockReturnValue({
+      getSessions: vi.fn().mockResolvedValue([]),
+    });
+    await triggerPoll();
+
+    expect(dispatchedOfType('server.up')).toHaveLength(1);
+  });
+
+  it('dispatches no health event when no automation listens', async () => {
+    mockCreateMediaServerClient.mockReturnValue({
+      getSessions: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+    });
+
+    await triggerPoll();
+    await triggerPoll();
+    await triggerPoll();
+
+    expect(dispatchedOfType('server.down')).toEqual([]);
   });
 
   it('does not treat a session that throws mid-processing as missing for grace-period purposes', async () => {

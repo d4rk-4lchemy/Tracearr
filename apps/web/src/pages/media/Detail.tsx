@@ -198,6 +198,7 @@ function HistoryPanel({
                     tabIndex={0}
                     onClick={() => onRowClick(row.id)}
                     onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onRowClick(row.id);

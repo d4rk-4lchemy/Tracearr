@@ -70,7 +70,7 @@ describe('isNavItemActive', () => {
       '/library/storage',
       '/library/watch',
       '/users',
-      '/rules',
+      '/automations',
       '/violations',
       '/settings',
     ];

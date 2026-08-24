@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Αποτυχία ενημέρωσης πράκτορα",
       "apiKeyGenerateFailed": "Αποτυχία δημιουργίας κλειδιού API",
       "authFailed": "Αποτυχία ταυτοποίησης",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Αποτυχία αντιγραφής στο πρόχειρο",
       "copyFailed": "Αδυναμία αντιγραφής στο πρόχειρο",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Αποτυχία ενεργοποίησης πρόσβασης για κινητά",
       "pairTokenGenerateFailed": "Αποτυχία δημιουργίας διακριτικού ζεύγους",
       "plexDirectUrl": "Οι διευθύνσεις URL plex.direct είναι διευθύνσεις ρελέ που δεν μπορούν να χρησιμοποιηθούν εδώ. Παρακαλώ χρησιμοποιήστε μια άμεση διεύθυνση IP ή όνομα κεντρικού υπολογιστή.",
-      "plexUnlinkFailed": "Αποτυχία αποσύνδεσης του λογαριασμού Plex",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Αποτυχία αποσύνδεσης του λογαριασμού Plex",
       "routingUpdateFailed": "Αποτυχία ενημέρωσης δρομολόγησης",
-      "ruleCreateFailed": "Αποτυχία δημιουργίας κανόνα",
-      "ruleDeleteFailed": "Αποτυχία διαγραφής κανόνα",
-      "ruleUpdateFailed": "Αποτυχία ενημέρωσης κανόνα",
       "serverAddFailed": "Αποτυχία προσθήκης διακομιστή",
       "serverRemoveFailed": "Αποτυχία κατάργησης διακομιστή",
       "serverReorderFailed": "Απέτυχε η αναδιάταξη διακομιστών",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Το τεστ Webhook απέτυχε"
     },
     "info": {
-      "serverOffline": {
-        "message": "Το {{name}} δεν είναι προσβάσιμο",
-        "title": "Διακομιστής Χωρίς Σύνδεση"
-      },
-      "serverOnline": {
-        "message": "Το {{name}} είναι ξανά συνδεδεμένο",
-        "title": "Συνδεδεμένος Διακομιστής"
-      },
-      "streamStarted": {
-        "message": "Ο {{user}} άρχισε να βλέπει {{media}}",
-        "title": "Ξεκίνησε Η Νέα Ροή"
-      },
-      "streamStopped": {
-        "message": "Το {{user}} σταμάτησε να παρακολουθεί",
-        "title": "Η Ροή Σταμάτησε"
-      },
       "updateAvailable": {
         "message": "Το Tracearr {{version}} είναι διαθέσιμο",
         "title": "Διαθέσιμη Ενημέρωση"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Το νέο κλειδί API είναι έτοιμο προς χρήση",
         "title": "Το Κλειδί Api Δημιουργήθηκε"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Τώρα μπορείτε να προχωρήσετε με την εγκατάσταση",
@@ -182,29 +178,17 @@
         "message": "Τώρα μπορείτε να προσθέσετε διακομιστές από το λογαριασμό σας στο Plex",
         "title": "Συνδεδεμένος Λογαριασμός Plex"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Ο λογαριασμός σας στο Plex έχει αποσυνδεθεί",
         "title": "Αποσύνδεση Λογαριασμού Plex"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "Ο κανόνας έχει δημιουργηθεί με επιτυχία",
-        "title": "Ο Κανόνας Δημιουργήθηκε"
-      },
-      "ruleDeleted": {
-        "message": "Ο κανόνας έχει διαγραφεί με επιτυχία",
-        "title": "Κανόνας Διαγράφηκε"
-      },
-      "ruleUpdated": {
-        "message": "Ο κανόνας έχει ενημερωθεί με επιτυχία",
-        "title": "Κανόνας Ενημερώθηκε"
       },
       "serverAdded": {
         "message": "Το {{name}} συνδέθηκε με επιτυχία",
@@ -259,7 +243,7 @@
         "title": "Επαναφορά Βαθμών Εμπιστοσύνης"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

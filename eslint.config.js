@@ -1,3 +1,4 @@
+import { builtinModules } from 'node:module';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import eslintReact from '@eslint-react/eslint-plugin';
@@ -107,6 +108,28 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       // Generic type parameter precision is less important in test utilities
       '@typescript-eslint/no-unnecessary-type-parameters': 'off',
+    },
+  },
+  {
+    // @tracearr/shared runs in the browser and in React Native as well as node,
+    // so its production code stays off node builtins and node globals. Its tests
+    // are node-only and may reach for zlib and crypto.
+    files: ['packages/shared/src/**/*.ts'],
+    ignores: ['packages/shared/src/**/__tests__/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: builtinModules,
+          patterns: [
+            {
+              group: ['node:*'],
+              message: 'shared ships to browsers and React Native; keep node builtins out',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': ['error', 'Buffer', 'process', 'require', '__dirname'],
     },
   }
 );

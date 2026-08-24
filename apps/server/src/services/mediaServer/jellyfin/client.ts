@@ -79,19 +79,6 @@ export class JellyfinClient extends BaseMediaServerClient {
     return parseActivityLogResponse(data);
   }
 
-  /**
-   * The server's own id. Jellyfin item links resolve without it, so this is
-   * stored only to keep every server row addressable the same way.
-   */
-  async getServerIdentity(): Promise<string | null> {
-    const data = await fetchJson<Record<string, unknown>>(`${this.baseUrl}/System/Info`, {
-      headers: this.buildHeaders(),
-      service: 'jellyfin',
-      timeout: 10000,
-    });
-    return typeof data.Id === 'string' && data.Id ? data.Id : null;
-  }
-
   // ==========================================================================
   // Static Methods - Authentication (Jellyfin-specific)
   // ==========================================================================

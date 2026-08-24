@@ -64,8 +64,6 @@
   "count": {
     "alert_one": "{{count}} alert",
     "alert_other": "{{count}} alerts",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
     "error_one": "{{count}} error",
@@ -78,8 +76,6 @@
     "location_other": "{{count}} locations",
     "result_one": "{{count}} resultado",
     "result_other": "{{count}} resultados",
-    "rule_one": "{{count}} regla",
-    "rule_other": "{{count}} reglas",
     "selected_one": "{{count}} seleccionado",
     "selected_other": "{{count}} seleccionados",
     "server_one": "Servidor {{count}}",
@@ -95,7 +91,11 @@
     "usersUpdated_one": "{{count}} usuario actualizado",
     "usersUpdated_other": "{{count}} usuarios actualizados",
     "violation_one": "{{count}} infracción",
-    "violation_other": "{{count}} infracción"
+    "violation_other": "{{count}} infracción",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels",
+    "automation_one": "{{count}} automation",
+    "automation_other": "{{count}} automations"
   },
   "duration": {
     "day_one": "{{count}} día",

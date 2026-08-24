@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Nepodařilo se aktualizovat agenta",
       "apiKeyGenerateFailed": "Generování API klíče se nezdařilo",
       "authFailed": "Ověření se nezdařilo",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Kopírování do schránky se nezdařilo",
       "copyFailed": "Nelze zkopírovat do schránky",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Nepodařilo se povolit mobilní přístup",
       "pairTokenGenerateFailed": "Generování tokenu páru se nezdařilo",
       "plexDirectUrl": "plex.direct URL jsou překladové adresy, které zde nelze použít. Použijte prosím přímou IP adresu nebo název hostitele.",
-      "plexUnlinkFailed": "Nepodařilo se odpojit Plex účet",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Nepodařilo se odpojit Plex účet",
       "routingUpdateFailed": "Nepodařilo se aktualizovat směrování",
-      "ruleCreateFailed": "Vytvoření pravidla se nezdařilo",
-      "ruleDeleteFailed": "Nepodařilo se odstranit pravidlo",
-      "ruleUpdateFailed": "Aktualizace pravidla se nezdařila",
       "serverAddFailed": "Nepodařilo se přidat server",
       "serverRemoveFailed": "Nepodařilo se odstranit server",
       "serverReorderFailed": "Změna pořadí serverů se nezdařila",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Test Webhooku se nezdařil"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} je nedostupný",
-        "title": "Server je offline"
-      },
-      "serverOnline": {
-        "message": "{{name}} je opět online",
-        "title": "Server online"
-      },
-      "streamStarted": {
-        "message": "{{user}} začal sledovat {{media}}",
-        "title": "Nový Stream byl spuštěn"
-      },
-      "streamStopped": {
-        "message": "{{user}} přestal sledovat",
-        "title": "Stream zastaven"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} je k dispozici",
         "title": "Dostupná aktualizace"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Váš nový API klíč je připraven k použití",
         "title": "API klíč vygenerován"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Nyní můžete pokračovat s nastavením",
@@ -182,29 +178,17 @@
         "message": "Nyní můžete přidat servery ze svého účtu Plex",
         "title": "Účet Plexu propojen"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Váš účet Plex byl odpojen",
         "title": "Účet Plex není propojen"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "Pravidlo bylo úspěšně vytvořeno",
-        "title": "Pravidlo vytvořeno"
-      },
-      "ruleDeleted": {
-        "message": "Pravidlo bylo úspěšně odstraněno",
-        "title": "Pravidlo odstraněno"
-      },
-      "ruleUpdated": {
-        "message": "Pravidlo bylo úspěšně aktualizováno",
-        "title": "Pravidlo aktualizováno"
       },
       "serverAdded": {
         "message": "{{name}} byl úspěšně připojen",
@@ -259,7 +243,7 @@
         "title": "Resetování důvěryhodných skóre"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

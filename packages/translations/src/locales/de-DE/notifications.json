@@ -51,6 +51,9 @@
       "agentUpdateFailed": "Agent aktualisieren fehlgeschlagen",
       "apiKeyGenerateFailed": "API-Schlüssel generieren fehlgeschlagen",
       "authFailed": "Authentifizierung fehlgeschlagen",
+      "automationCreateFailed": "Failed to create automation",
+      "automationDeleteFailed": "Failed to delete automation",
+      "automationUpdateFailed": "Failed to update automation",
       "clipboardFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
       "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
       "destinationDeleteFailed": "Failed to delete destination: {{error}}",
@@ -73,12 +76,9 @@
       "mobileAccessEnableFailed": "Mobilen Zugriff aktivieren fehlgeschlagen",
       "pairTokenGenerateFailed": "Pairing-Token generieren fehlgeschlagen",
       "plexDirectUrl": "plex.direct URLs sind Relayadressen, die hier nicht verwendet werden können. Bitte verwenden Sie stattdessen eine direkte IP-Adresse oder einen Hostnamen.",
-      "plexUnlinkFailed": "Plex-Konto trennen fehlgeschlagen",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
+      "plexUnlinkFailed": "Plex-Konto trennen fehlgeschlagen",
       "routingUpdateFailed": "Routing aktualisieren fehlgeschlagen",
-      "ruleCreateFailed": "Regel erstellen fehlgeschlagen",
-      "ruleDeleteFailed": "Regel löschen fehlgeschlagen",
-      "ruleUpdateFailed": "Regel aktualisieren fehlgeschlagen",
       "serverAddFailed": "Server hinzufügen fehlgeschlagen",
       "serverRemoveFailed": "Server entfernen fehlgeschlagen",
       "serverReorderFailed": "Server neu ordnen fehlgeschlagen",
@@ -95,22 +95,6 @@
       "webhookTestFailed": "Webhook-Test fehlgeschlagen"
     },
     "info": {
-      "serverOffline": {
-        "message": "{{name}} ist nicht erreichbar",
-        "title": "Server offline"
-      },
-      "serverOnline": {
-        "message": "{{name}} ist wieder online",
-        "title": "Server online"
-      },
-      "streamStarted": {
-        "message": "{{user}} schaut jetzt {{media}}",
-        "title": "Neuer Stream gestartet"
-      },
-      "streamStopped": {
-        "message": "{{user}} schaut nicht mehr",
-        "title": "Stream beendet"
-      },
       "updateAvailable": {
         "message": "Tracearr {{version}} ist verfügbar",
         "title": "Update verfügbar"
@@ -136,6 +120,18 @@
       "apiKeyGenerated": {
         "message": "Ihr neuer API-Schlüssel ist einsatzbereit",
         "title": "API-Schlüssel generiert"
+      },
+      "automationCreated": {
+        "message": "The automation has been created successfully",
+        "title": "Automation Created"
+      },
+      "automationDeleted": {
+        "message": "The automation has been deleted successfully",
+        "title": "Automation Deleted"
+      },
+      "automationUpdated": {
+        "message": "The automation has been updated successfully",
+        "title": "Automation Updated"
       },
       "claimCodeValidated": {
         "message": "Sie können nun mit dem Setup fortfahren",
@@ -182,29 +178,17 @@
         "message": "Sie können jetzt Server aus Ihrem Plex-Konto hinzufügen",
         "title": "Plex-Konto verbunden"
       },
+      "plexAccountReauthorized": {
+        "messageNoServers": "Account token updated",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "partial": "Token updated, but {{names}} still refused it",
+        "title": "Plex Account Reauthorized",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "plexAccountUnlinked": {
         "message": "Ihr Plex-Konto wurde getrennt",
         "title": "Plex-Konto getrennt"
-      },
-      "plexAccountReauthorized": {
-        "title": "Plex Account Reauthorized",
-        "message_one": "{{count}} server reconnected",
-        "message_other": "{{count}} servers reconnected",
-        "messageNoServers": "Account token updated",
-        "partial": "Token updated, but {{names}} still refused it",
-        "unmatched": "Token updated, but {{names}} could not be re-linked"
-      },
-      "ruleCreated": {
-        "message": "Regel erfolgreich erstellt",
-        "title": "Regel erstellt"
-      },
-      "ruleDeleted": {
-        "message": "Regel erfolgreich gelöscht",
-        "title": "Regel gelöscht"
-      },
-      "ruleUpdated": {
-        "message": "Regel erfolgreich aktualisiert",
-        "title": "Regel aktualisiert"
       },
       "serverAdded": {
         "message": "{{name}} wurde erfolgreich verbunden",
@@ -259,7 +243,7 @@
         "title": "Vertrauenswertung zurückgesetzt"
       },
       "usersMerged": {
-        "rulesKept": "Kept target's version of: {{names}}",
+        "automationsKept": "Kept target's version of: {{names}}",
         "title": "Users merged"
       },
       "violationAcknowledged": {

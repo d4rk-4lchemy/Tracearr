@@ -124,7 +124,7 @@ vi.mock('../poller/database.js', () => ({
   getServerUserIdByExternalId: vi.fn(() => {
     throw new Error('getServerUserIdByExternalId not configured in this test');
   }),
-  getActiveRulesV2: vi.fn().mockResolvedValue([]),
+  getActiveAutomations: vi.fn().mockResolvedValue([]),
   batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
   mergeRecentSessionsForIdentity: vi.fn().mockReturnValue([]),
@@ -145,14 +145,14 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   handleQualityChangeFallout: vi.fn(),
   confirmAndPersistSession: vi.fn(),
 }));
-vi.mock('../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
-vi.mock('../../services/rules/events/contextAssembly.js', () => ({
+vi.mock('../../services/automations/events/contextAssembly.js', () => ({
   loadEvaluationContext: vi.fn().mockResolvedValue(null),
   assembleEvaluationInputs: vi.fn().mockResolvedValue({
-    activeRulesV2: [],
+    activeAutomations: [],
     activeSessions: [],
     recentSessions: [],
     identityServerUserIds: [],
@@ -247,10 +247,7 @@ describe('SSE Processor - Concurrent Session Creation', () => {
     expect(addActiveSessionSpy).toHaveBeenCalledTimes(1);
     expect(setPendingSessionSpy).toHaveBeenCalledTimes(1);
 
-    const startedNotifications = mockEnqueueNotification.mock.calls.filter(
-      (call) => call[0]?.type === 'session_started'
-    );
-    expect(startedNotifications).toHaveLength(1);
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
 
     const pendingKeys = await cacheService.getAllPendingSessionKeys();
     expect(pendingKeys).toHaveLength(1);

@@ -631,6 +631,41 @@
       "when": 1787178482298,
       "tag": "0089_zippy_frank_castle",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1787237792749,
+      "tag": "0090_automation_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1787247820562,
+      "tag": "0091_motionless_psylocke",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1787272330141,
+      "tag": "0092_chilly_namorita",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1787295520176,
+      "tag": "0093_automation_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1787376041186,
+      "tag": "0094_true_ogun",
+      "breakpoints": true
     }
   ]
 }

@@ -91,7 +91,7 @@ vi.mock('../poller/stateTracker.js', () => ({
 }));
 
 vi.mock('../poller/database.js', () => ({
-  getActiveRulesV2: vi.fn().mockResolvedValue([]),
+  getActiveAutomations: vi.fn().mockResolvedValue([]),
   getServerUserIdByExternalId: vi.fn().mockResolvedValue('server-user-1'),
   batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
@@ -113,14 +113,14 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   confirmAndPersistSession: vi.fn(),
 }));
 
-vi.mock('../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
-vi.mock('../../services/rules/events/contextAssembly.js', () => ({
+vi.mock('../../services/automations/events/contextAssembly.js', () => ({
   loadEvaluationContext: vi.fn().mockResolvedValue(null),
   assembleEvaluationInputs: vi.fn().mockResolvedValue({
-    activeRulesV2: [],
+    activeAutomations: [],
     activeSessions: [],
     recentSessions: [],
     identityServerUserIds: [],

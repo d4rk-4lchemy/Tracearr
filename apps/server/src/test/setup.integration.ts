@@ -44,6 +44,10 @@ process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.REDIS_URL = `redis://localhost:6380/${poolId}`;
 process.env.DATABASE_POOL_MAX = '5';
 process.env.BETTER_AUTH_SECRET = 'test-better-auth-secret-32-chars!!';
+// The image cache guard's default floor can exceed actual free disk on a dev
+// box (Task 5 hit this); disable the guard for integration tests so it never
+// blocks a sweep or write on the machine running the suite.
+process.env.IMAGE_CACHE_MIN_FREE_PERCENT = '0';
 
 // Install custom vitest matchers from test-utils
 installMatchers();

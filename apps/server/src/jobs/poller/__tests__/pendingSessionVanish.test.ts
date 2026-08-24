@@ -24,14 +24,14 @@ import type { PendingSessionData } from '../types.js';
 const mockDbSelect = vi.fn();
 const {
   mockCreateMediaServerClient,
-  mockGetActiveRulesV2,
+  mockGetActiveAutomations,
   mockConfirmAndPersistSession,
   mockCreateSessionWithRulesAtomic,
   mockStopSessionAtomic,
   mockBroadcastViolations,
 } = vi.hoisted(() => ({
   mockCreateMediaServerClient: vi.fn(),
-  mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
+  mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
   mockConfirmAndPersistSession: vi.fn(),
   mockCreateSessionWithRulesAtomic: vi.fn(),
   mockStopSessionAtomic: vi.fn(),
@@ -85,9 +85,9 @@ vi.mock('../../notificationQueue.js', () => ({
 }));
 
 vi.mock('../database.js', () => ({
-  onActiveRulesRefill: vi.fn(),
+  onActiveAutomationsRefill: vi.fn(),
   getCachedServers: () => mockDbSelect().from(serversTable),
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
   batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
@@ -116,7 +116,7 @@ vi.mock('../sessionLifecycle.js', () => ({
 }));
 
 const mockDispatch = vi.fn().mockResolvedValue({ violations: [], outcomes: [] });
-vi.mock('../../../services/rules/events/dispatcher.js', () => ({
+vi.mock('../../../services/automations/events/dispatcher.js', () => ({
   dispatch: (...args: unknown[]) => mockDispatch(...args),
   subscribe: vi.fn(),
 }));
@@ -368,7 +368,7 @@ describe('poller resolves a pending session that vanishes before confirmation', 
 
     const call = mockConfirmAndPersistSession.mock.calls[0]?.[0] as {
       pendingData: PendingSessionData;
-      activeRulesV2: unknown[];
+      activeAutomations: unknown[];
       activeSessions: unknown[];
       recentSessions: unknown[];
     };
@@ -377,7 +377,7 @@ describe('poller resolves a pending session that vanishes before confirmation', 
     expect(call.pendingData.id).toBe('pending-vanish-id');
     // Progress comes from the pending session's own tracked maxViewOffset.
     expect(call.pendingData.confirmation.maxViewOffset).toBe(20000);
-    expect(call.activeRulesV2).toEqual([]);
+    expect(call.activeAutomations).toEqual([]);
 
     expect(cacheService.deletePendingSession).toHaveBeenCalledWith('server-1', 'sk-vanish');
 
@@ -392,9 +392,8 @@ describe('poller resolves a pending session that vanishes before confirmation', 
     // stoppedAt is the last confirmed-alive time, not the sweep's own Date.now().
     expect(stopCall.stoppedAt).toEqual(new Date(pendingData.lastSeenAt));
 
-    expect(mockEnqueueNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'session_stopped' })
-    );
+    // stopSessionAtomic owns the session.stopped dispatch; nothing enqueues here.
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
   });
 
   it('drops the stale pending entry without persisting when a concurrent caller already wrote the row', async () => {
