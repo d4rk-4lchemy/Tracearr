@@ -1,11 +1,16 @@
-import type { ActiveSession, NotificationEventType, ViolationWithDetails } from '@tracearr/shared';
+import type {
+  ActiveSession,
+  NotificationEventType,
+  ServerType,
+  ViolationWithDetails,
+} from '@tracearr/shared';
 import type { MediaQuality } from '../automations/types.js';
 
 /** The SSE fallback's down timer holds only the name and id, so the type is optional. */
 export interface ServerEventPayload {
   serverName: string;
   serverId: string;
-  serverType?: 'plex' | 'jellyfin' | 'emby';
+  serverType?: ServerType;
 }
 
 /** One library item, flat, with `to` holding the quality it ends the sync at. */

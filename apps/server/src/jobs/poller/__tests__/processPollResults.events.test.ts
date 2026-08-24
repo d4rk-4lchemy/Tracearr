@@ -11,8 +11,6 @@ describe('processPollResults event semantics', () => {
     } as any;
 
     const publish = vi.fn().mockResolvedValue(undefined);
-    const enqueueNotification = vi.fn().mockResolvedValue(undefined);
-
     await processPollResults({
       newSessions: [],
       stoppedSessions: [],
@@ -22,14 +20,10 @@ describe('processPollResults event semantics', () => {
       pubSubService: {
         publish,
       },
-      enqueueNotification,
       watchedTransitionOccurred: false,
     });
 
     expect(publish).toHaveBeenCalledWith('session:updated', session);
     expect(publish).not.toHaveBeenCalledWith('session:started', expect.anything());
-    expect(enqueueNotification).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'session_started' })
-    );
   });
 });

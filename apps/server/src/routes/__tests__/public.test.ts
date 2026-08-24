@@ -18,6 +18,8 @@ import { randomUUID } from 'node:crypto';
 import type { SQL } from 'drizzle-orm';
 import { queryChain, renderCall, renderSql } from '../../test/helpers.js';
 
+const mockGetDashboardStats = vi.hoisted(() => vi.fn());
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(),
@@ -27,6 +29,10 @@ vi.mock('../../db/client.js', () => ({
 
 vi.mock('../../services/cache.js', () => ({
   getCacheService: vi.fn(() => null),
+}));
+
+vi.mock('../../services/dashboardStats.js', () => ({
+  getDashboardStats: mockGetDashboardStats,
 }));
 
 vi.mock('../stats/queries.js', () => ({
@@ -267,15 +273,19 @@ describe('GET /api/v1/public/stats/today', () => {
     await app.close();
   });
 
-  it('keeps its six keys and counts alerts under the alias', async () => {
+  it('keeps the fork TV metrics alongside the v1 daily-stat keys', async () => {
     app = await buildTestApp();
-    vi.mocked((db as any).select)
-      .mockReturnValueOnce(queryChain(vi.fn, [{ count: 5 }]))
-      .mockReturnValueOnce(queryChain(vi.fn, [{ totalMs: 7200000 }]))
-      .mockReturnValueOnce(queryChain(vi.fn, [{ count: 2 }]));
-    vi.mocked((db as any).execute)
-      .mockResolvedValueOnce({ rows: [{ count: 4 }] })
-      .mockResolvedValueOnce({ rows: [{ count: 9 }] });
+    mockGetDashboardStats.mockResolvedValueOnce({
+      alertsLast24h: 4,
+      todayPlays: 9,
+      todaySessions: 5,
+      watchTimeHours: 2,
+      tvSessions: 3,
+      tvChannels: 2,
+      tvWatchTimeHours: 1.5,
+      activeUsersToday: 2,
+      activeStreams: 0,
+    });
 
     const response = await app.inject({
       method: 'GET',
@@ -290,20 +300,20 @@ describe('GET /api/v1/public/stats/today', () => {
       'alertsLast24h',
       'todayPlays',
       'todaySessions',
+      'tvChannels',
+      'tvSessions',
+      'tvWatchTimeHours',
       'watchTimeHours',
     ]);
     expect(body.alertsLast24h).toBe(4);
     expect(body.todayPlays).toBe(9);
     expect(body.todaySessions).toBe(5);
     expect(body.watchTimeHours).toBe(2);
+    expect(body.tvSessions).toBe(3);
+    expect(body.tvChannels).toBe(2);
+    expect(body.tvWatchTimeHours).toBe(1.5);
     expect(body.activeUsersToday).toBe(2);
     expect(body.activeStreams).toBe(0);
-
-    // The alert count is raw SQL over automation_runs aliased v.
-    const alertsSql = vi.mocked((db as any).execute).mock.calls[0]?.[0] as SQL;
-    const rendered = renderSql(alertsSql).sql.replace(/\s+/g, ' ');
-    expect(rendered).toContain("v.kind = 'policy'");
-    expect(rendered).toContain("v.outcome = 'completed'");
   });
 });
 

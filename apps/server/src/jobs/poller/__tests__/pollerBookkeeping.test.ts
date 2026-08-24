@@ -262,7 +262,7 @@ describe('(a) missedPollTracking pruning for servers no longer polled', () => {
     await triggerReconciliationPoll();
 
     expect(mockCreateMediaServerClient).not.toHaveBeenCalled();
-    expect(mockGetActiveRulesV2).not.toHaveBeenCalled();
+    expect(mockGetActiveAutomations).not.toHaveBeenCalled();
   });
 
   it('leaves the grace-period entry for reconciliation when its server exits fallback to SSE', async () => {

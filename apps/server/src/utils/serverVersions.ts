@@ -21,6 +21,7 @@ export const SERVER_RELEASE_PAGES: Record<ServerType, string> = {
   plex: 'https://plex.tv/media-server-downloads',
   jellyfin: 'https://github.com/jellyfin/jellyfin/releases/latest',
   emby: 'https://github.com/MediaBrowser/Emby.Releases/releases/latest',
+  dispatcharr: 'https://github.com/Dispatcharr/Dispatcharr/releases/latest',
 };
 
 const FEED_TIMEOUT_MS = 10_000;
@@ -80,6 +81,7 @@ async function latestGithubVersion(type: 'jellyfin' | 'emby'): Promise<string | 
 /** The newest release the vendor publishes, normalized. Any failure reads as "unknown". */
 export async function latestVersionFor(type: ServerType): Promise<string | null> {
   try {
+    if (type === 'dispatcharr') return null;
     return type === 'plex' ? await latestPlexVersion() : await latestGithubVersion(type);
   } catch (error) {
     // A firewalled or renamed feed is otherwise invisible: the nudge just never comes.

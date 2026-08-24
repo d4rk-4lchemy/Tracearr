@@ -673,7 +673,7 @@ describe('processVersionCheck', () => {
 
   it('dispatches tracearr.update_available when the release is newer', async () => {
     sharedRedis.exists.mockResolvedValue(0);
-    mockFetch.mockResolvedValue({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: vi.fn().mockResolvedValue({
@@ -686,13 +686,18 @@ describe('processVersionCheck', () => {
         draft: false,
       } satisfies GitHubRelease),
     });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue([mockRelease('v1.5.0-r1', false)]),
+    });
 
     await processVersionCheck(makeJob(false));
 
     expect(mockDispatchTracearrUpdate).toHaveBeenCalledWith({
       current: '1.4.0',
-      latest: '1.5.0',
-      releaseUrl: 'https://github.com/test/releases/tag/v1.5.0',
+      latest: '1.5.0-r1',
+      releaseUrl: 'https://github.com/test/releases/tag/v1.5.0-r1',
     });
   });
 

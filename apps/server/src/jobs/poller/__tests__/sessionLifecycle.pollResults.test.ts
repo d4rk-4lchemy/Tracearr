@@ -140,8 +140,6 @@ describe('processPollResults', () => {
       removeUserSession: vi.fn(),
     };
     const pubSubService = { publish: vi.fn() };
-    const enqueueNotification = vi.fn();
-
     await processPollResults({
       newSessions: [confirmedSession],
       stoppedSessions: [],
@@ -150,15 +148,11 @@ describe('processPollResults', () => {
       cachedSessions: [],
       cacheService,
       pubSubService,
-      enqueueNotification,
       confirmedFromPendingIds: new Set([confirmedSession.id]),
     });
 
     expect(pubSubService.publish).not.toHaveBeenCalledWith('session:started', expect.anything());
     expect(pubSubService.publish).toHaveBeenCalledWith('session:updated', confirmedSession);
-    expect(enqueueNotification).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'session_started' })
-    );
   });
 
   it('still publishes one session:stopped per stopped session', async () => {
@@ -191,17 +185,10 @@ describe('processPollResults', () => {
   });
 
   it('uses exact stopped IDs and deduplicates overlapping stop paths', async () => {
-    mockDbSelect.mockReturnValue({
-      from: () => ({
-        where: () => Promise.resolve([{ durationMs: 12345 }]),
-      }),
-    });
-
     const first = makeSession('first', { sessionKey: 'shared-catchup-key' });
     const second = makeSession('second', { sessionKey: 'shared-catchup-key' });
     const cacheService = { incrementalSyncActiveSessions: vi.fn() };
     const pubSubService = { publish: vi.fn() };
-    const enqueueNotification = vi.fn();
     const stoppedRef = {
       id: second.id,
       serverId: second.serverId,
@@ -216,7 +203,6 @@ describe('processPollResults', () => {
       cachedSessions: [first, second],
       cacheService,
       pubSubService,
-      enqueueNotification,
     });
 
     expect(cacheService.incrementalSyncActiveSessions).toHaveBeenCalledWith(
@@ -227,11 +213,5 @@ describe('processPollResults', () => {
     );
     expect(pubSubService.publish).toHaveBeenCalledTimes(1);
     expect(pubSubService.publish).toHaveBeenCalledWith('session:stopped', second.id);
-    expect(enqueueNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: 'session_stopped',
-        payload: expect.objectContaining({ id: second.id }),
-      })
-    );
   });
 });

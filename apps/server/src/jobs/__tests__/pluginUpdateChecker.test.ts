@@ -116,16 +116,11 @@ describe('runPluginUpdateCheck', () => {
       'dispatcharr-metrics',
       '0.2.0'
     );
-    expect(mockEnqueueNotification).toHaveBeenCalledWith({
-      type: 'plugin_update_available',
-      payload: {
-        serverId: 's3',
-        serverName: 'Dispatcharr',
-        serverType: 'dispatcharr',
-        installedVersion: '0.1.0',
-        latestVersion: '0.2.0',
-        downloadUrl: 'https://github.com/example/release',
-      },
+    expect(mockDispatchPluginUpdate).toHaveBeenCalledWith({
+      server: { id: 's3', name: 'Dispatcharr', type: 'dispatcharr' },
+      installedVersion: '0.1.0',
+      latestVersion: '0.2.0',
+      downloadUrl: 'https://github.com/example/release',
     });
   });
 
@@ -140,7 +135,7 @@ describe('runPluginUpdateCheck', () => {
 
     await runPluginUpdateCheck();
 
-    expect(mockEnqueueNotification).not.toHaveBeenCalled();
+    expect(mockDispatchPluginUpdate).not.toHaveBeenCalled();
   });
 
   it('continues checking Dispatcharr when the SSE manifest fails', async () => {
@@ -155,7 +150,7 @@ describe('runPluginUpdateCheck', () => {
 
     await runPluginUpdateCheck();
 
-    expect(mockEnqueueNotification).toHaveBeenCalledOnce();
+    expect(mockDispatchPluginUpdate).toHaveBeenCalledOnce();
   });
 
   it('fails soft on manifest fetch error', async () => {

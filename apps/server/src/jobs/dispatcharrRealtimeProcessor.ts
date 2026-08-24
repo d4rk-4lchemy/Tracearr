@@ -6,8 +6,7 @@ import type { CacheService, PubSubService } from '../services/cache.js';
 import type { MediaSession } from '../services/mediaServer/types.js';
 import { registerService, unregisterService } from '../services/serviceTracker.js';
 import { sseManager } from '../services/sseManager.js';
-import { enqueueNotification } from './notificationQueue.js';
-import { getActiveRulesV2 } from './poller/database.js';
+import { getActiveAutomations } from './poller/database.js';
 import { processServerSessions } from './poller/processor.js';
 import { processPollResults } from './poller/sessionLifecycle.js';
 import { buildCompositeKey } from './poller/stateTracker.js';
@@ -83,7 +82,7 @@ async function processSnapshot(
   const cachedSessions = await cacheService.getAllActiveSessions();
   const serverTypeMap = new Map([[server.id, server.type]]);
   const cachedSessionKeys = buildCachedSessionKeys(cachedSessions, serverTypeMap);
-  const activeRulesV2 = await getActiveRulesV2();
+  const activeAutomations = await getActiveAutomations();
 
   const {
     newSessions,
@@ -91,7 +90,7 @@ async function processSnapshot(
     updatedSessions,
     watchedTransitionOccurred,
     confirmedFromPendingIds,
-  } = await processServerSessions(server, activeRulesV2, cachedSessionKeys, cachedSessions, {
+  } = await processServerSessions(server, activeAutomations, cachedSessionKeys, cachedSessions, {
     mediaSessions: sessions,
     immediateStops: authoritative,
   });
@@ -108,7 +107,6 @@ async function processSnapshot(
     cachedSessions,
     cacheService,
     pubSubService,
-    enqueueNotification,
     confirmedFromPendingIds,
   });
 }

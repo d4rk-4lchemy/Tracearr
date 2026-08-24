@@ -206,6 +206,7 @@ function activeSessionOf(context: EvaluationContext, durationMs?: number): Activ
   return {
     ...session,
     ...(durationMs !== undefined && { durationMs }),
+    progressUpdatedAt: new Date(),
     user: {
       id: serverUser.id,
       username: serverUser.username,

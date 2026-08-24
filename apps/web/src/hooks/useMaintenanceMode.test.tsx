@@ -292,7 +292,7 @@ describe('useMaintenanceMode', () => {
     const reload = vi.fn();
     const original = window.location;
     Object.defineProperty(window, 'location', {
-      value: { ...original, reload },
+      value: Object.assign({}, original, { reload }),
       writable: true,
       configurable: true,
     });

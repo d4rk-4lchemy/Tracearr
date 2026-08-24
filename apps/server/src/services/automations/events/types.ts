@@ -1,5 +1,6 @@
 import type {
   EngineAutomation,
+  ServerType,
   Session,
   TriggerType as CatalogTriggerType,
   ViolationSeverity,
@@ -21,7 +22,7 @@ export type TriggerType =
 export interface EvaluationServer {
   id: string;
   name: string;
-  type: 'plex' | 'jellyfin' | 'emby';
+  type: ServerType;
 }
 
 /** What every producer already holds about the account; matches SessionCreationInput['serverUser']. */
