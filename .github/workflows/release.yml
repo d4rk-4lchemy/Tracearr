@@ -566,7 +566,8 @@ jobs:
     name: Bump Helm Chart
     runs-on: ubuntu-latest
     needs: [check-release-type, merge-docker, merge-supervised]
-    if: needs.check-release-type.outputs.prerelease == 'false'
+    # Fork policy: Helm chart publishing is managed separately from releases.
+    if: false
     permissions:
       contents: write
 

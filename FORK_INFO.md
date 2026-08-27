@@ -65,6 +65,9 @@ The fork also carries local maintenance/distribution changes:
   2.29) is intentionally not part of GitHub PR CI. Run it manually when
   validating database, migration, or integration-test changes.
 - Release automation is manual-only, so merging to `main` does not create a release, push Docker images, or post to Reddit.
+- The manual release workflow's `bump-helm-chart` job is disabled with
+  `if: false`; this fork does not use upstream's `RELEASE_PAT` path to bypass
+  branch protection and push chart-version commits directly to `main`.
 - Local Husky hooks were removed.
 - `.tmp/`, `.plans/`, `AGENTS.md`, and this `FORK_INFO.md` are ignored locally.
 - `AGENTS.md` documents the Pull Request CI workflow warning baseline. Read both `AGENTS.md` and this file before making changes, and update either file when a change affects repo instructions, fork overlay behavior, validation workflow expectations, warning counts, or future merge guidance.
@@ -226,7 +229,8 @@ When merging or rebasing on source `main`, preserve the Dispatcharr overlay deli
   fallbacks in every locale. Dispatcharr remains excluded from media-library
   synchronization while retaining session, history, realtime, resource, and
   dashboard support; the fork's PR-only CI and manual-only release policy also
-  remain intact.
+  remain intact. The upstream Helm-chart push job was subsequently disabled in
+  the fork so it cannot use a release PAT to write directly to `main`.
 
 - Upstream `main` at `6fc80e54` was merged into `feature/prepare-for-2.2.0`
   on August 20, 2026. The upstream `0089_zippy_frank_castle` migration,
