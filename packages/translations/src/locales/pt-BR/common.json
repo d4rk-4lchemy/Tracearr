@@ -22,12 +22,12 @@
     "expand": "Expandir",
     "export": "Exportar",
     "filter": "Filtrar",
-    "goHome": "Go Home",
-    "grantPermission": "Grant Permission",
+    "goHome": "",
+    "grantPermission": "",
     "import": "Importar",
-    "later": "Later",
+    "later": "",
     "next": "Seguinte",
-    "openSettings": "Open Settings",
+    "openSettings": "",
     "previous": "Anterior",
     "refresh": "Atualizar",
     "remove": "Remover",
@@ -47,33 +47,37 @@
     "sync": "Sincronizar",
     "terminate": "Terminar",
     "test": "Testar",
-    "tryAgain": "Try Again",
+    "tryAgain": "",
     "update": "Atualizar",
     "upload": "Carregar",
     "view": "Ver",
     "viewAll": "Ver tudo",
-    "viewOnGithub": "View on GitHub",
-    "viewProfile": "View Profile"
+    "viewOnGithub": "",
+    "viewProfile": ""
   },
-  "beta": "beta",
+  "beta": "",
   "confirmations": {
     "deleteMessage": "Tem a certeza de que pretende eliminar isto? Esta ação não pode ser desfeita.",
     "deleteTitle": "Confirmar eliminação",
     "unsavedChanges": "Tem alterações não guardadas. Tem a certeza de que quer sair?"
   },
   "count": {
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices",
+    "alert_one": "",
+    "alert_other": "",
+    "automation_one": "",
+    "automation_other": "",
+    "channel_one": "",
+    "channel_other": "",
+    "device_one": "",
+    "device_other": "",
     "error_one": "{{count}} erro",
     "error_other": "{{count}} erros",
-    "item_one": "{{count}} item",
+    "item_one": "",
     "item_other": "{{count}} itens",
     "library_one": "{{count}} biblioteca",
     "library_other": "{{count}} bibliotecas",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
+    "location_one": "",
+    "location_other": "",
     "result_one": "{{count}} resultado",
     "result_other": "{{count}} resultados",
     "selected_one": "{{count}} selecionado",
@@ -91,11 +95,7 @@
     "usersUpdated_one": "{{count}} utilizador atualizado",
     "usersUpdated_other": "{{count}} utilizadores atualizados",
     "violation_one": "{{count}} violação",
-    "violation_other": "{{count}} violações",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
-    "automation_one": "{{count}} automation",
-    "automation_other": "{{count}} automations"
+    "violation_other": "{{count}} violações"
   },
   "duration": {
     "day_one": "{{count}} dia",
@@ -119,36 +119,36 @@
   },
   "errors": {
     "badRequest": "Pedido inválido",
-    "cannotReachServer": "Cannot reach server. Check URL and network connection.",
+    "cannotReachServer": "",
     "conflict": "Ocorreu um conflito",
-    "connectionFailed": "Connection failed",
-    "connectionTimedOut": "Connection timed out. Check your server URL.",
-    "failedToLoad": "Failed to load {{item}}",
+    "connectionFailed": "",
+    "connectionTimedOut": "",
+    "failedToLoad": "",
     "forbidden": "Acesso negado",
     "generic": "Ocorreu um erro",
     "networkError": "Ocorreu um erro de rede",
     "notFound": "Não encontrado",
-    "pageNotFound": "Page Not Found",
-    "pageNotFoundDesc": "The page you're looking for doesn't exist or has been moved.",
+    "pageNotFound": "",
+    "pageNotFoundDesc": "",
     "rateLimited": "Demasiados pedidos. Tente novamente mais tarde",
     "serverError": "Erro no servidor",
-    "somethingWentWrong": "Something went wrong",
+    "somethingWentWrong": "",
     "timeout": "Pedido expirou",
     "unauthorized": "Não está autorizado a executar esta ação",
-    "unexpectedError": "An unexpected error occurred. Please try again."
+    "unexpectedError": ""
   },
   "filters": {
-    "anyDate": "Any date",
-    "clearAll": "Clear all",
-    "clearDates": "Clear date range",
-    "clearEndDate": "Clear end date",
-    "clearSearch": "Clear search",
-    "clearStartDate": "Clear start date",
-    "dateAfter": "After {{date}}",
-    "dateBefore": "Before {{date}}",
-    "dateBetween": "{{from}} to {{to}}",
-    "done": "Done",
-    "remove": "Remove {{label}} filter"
+    "anyDate": "",
+    "clearAll": "",
+    "clearDates": "",
+    "clearEndDate": "",
+    "clearSearch": "",
+    "clearStartDate": "",
+    "dateAfter": "",
+    "dateBefore": "",
+    "dateBetween": "",
+    "done": "",
+    "remove": ""
   },
   "labels": {
     "actions": "Ações",
@@ -157,12 +157,12 @@
     "apiKey": "Chave API",
     "bandwidth": "Largura de banda",
     "content": "Conteúdo",
-    "created": "Created",
+    "created": "",
     "data": "Dado",
     "date": "Data",
-    "days": "days",
+    "days": "",
     "device": "Dispositivo",
-    "deviceId": "Device ID",
+    "deviceId": "",
     "disabled": "Desativado",
     "duration": "Duração",
     "filters": "Filtros",
@@ -170,16 +170,16 @@
     "items": "itens",
     "joined": "Aderiu",
     "lastActivity": "Última atividade",
-    "loadMore": "Load More",
+    "loadMore": "",
     "location": "Localização",
     "media": "Conteúdo",
-    "mediaLength": "Media length",
+    "mediaLength": "",
     "name": "Nome:",
     "never": "Nunca",
     "pausedTime": "Tempo em pausa",
     "platform": "Plataforma",
     "player": "Cliente de reprodução",
-    "product": "Product",
+    "product": "",
     "progress": "Progresso",
     "quality": "Qualidade",
     "rank": "Classificação",
@@ -187,7 +187,7 @@
     "recentSessions": "Sessões recentes",
     "resolution": "Resolução",
     "rule": "Regra",
-    "segments": "segments",
+    "segments": "",
     "server": "Servidor",
     "serverOwner": "Proprietário do servidor",
     "sessionDetails": "Detalhes da sessão",
@@ -197,10 +197,10 @@
     "started": "Iniciado",
     "status": "Estado",
     "stopped": "Parado",
-    "streamDetails": "Stream Details",
-    "total": "total",
+    "streamDetails": "",
+    "total": "",
     "totalSessions": "Total de Sessões",
-    "transcodeReason": "Transcode Reason",
+    "transcodeReason": "",
     "trustScore": "Pontuação de confiança",
     "type": "Tipo",
     "unknown": "Desconhecido",
@@ -209,14 +209,14 @@
     "when": "Quando"
   },
   "media": {
-    "episode": "Episode",
+    "episode": "",
     "episode_plural": "Episódios",
-    "liveTV": "Live TV",
-    "movie": "Movie",
+    "liveTV": "",
+    "movie": "",
     "movie_plural": "Filmes",
     "music": "Música",
-    "photo": "Photo",
-    "track": "Track",
+    "photo": "",
+    "track": "",
     "track_plural": "Acompanhamentos",
     "tv": "Televisão",
     "tvShows": "Programas de TV"
@@ -224,13 +224,13 @@
   "messages": {
     "noChangesDetected": "Nenhuma alteração detetada"
   },
-  "or": "or",
+  "or": "",
   "periods": {
-    "byDay": "By Day",
-    "byHour": "By Hour",
-    "last30Days": "Last 30 Days",
-    "last7Days": "Last 7 Days",
-    "lastYear": "Last Year"
+    "byDay": "",
+    "byHour": "",
+    "last30Days": "",
+    "last7Days": "",
+    "lastYear": ""
   },
   "playback": {
     "directPlay": "Reprodução direta",
@@ -258,20 +258,20 @@
     "year_other": "há {{count}} anos"
   },
   "search": {
-    "placeholder": "Search...",
-    "searchTitles": "Search titles, users...",
-    "searchUsers": "Search users..."
+    "placeholder": "",
+    "searchTitles": "",
+    "searchUsers": ""
   },
   "serverSelector": {
-    "all": "All servers",
-    "noMatches": "No servers found",
-    "search": "Search servers...",
-    "some": "{{count}} of {{total}} servers"
+    "all": "",
+    "noMatches": "",
+    "search": "",
+    "some": ""
   },
   "servers": {
-    "emby": "Emby",
-    "jellyfin": "Jellyfin",
-    "plex": "Plex"
+    "emby": "",
+    "jellyfin": "",
+    "plex": ""
   },
   "severity": {
     "high": "Elevado",
@@ -280,7 +280,7 @@
   },
   "states": {
     "acknowledged": "Reconhecido",
-    "acknowledging": "Acknowledging...",
+    "acknowledging": "",
     "active": "Ativo",
     "completed": "Concluído",
     "connected": "Ligado",
@@ -294,24 +294,24 @@
     "failed": "Falhou",
     "inactive": "Inativo",
     "loading": "A carregar...",
-    "offline": "Offline",
-    "online": "Online",
+    "offline": "",
+    "online": "",
     "pending": "Pendente",
     "saving": "A guardar...",
     "success": "Sucesso"
   },
   "table": {
-    "pageOf": "Page {{page}} of {{total}}",
-    "pagination": "Pagination",
-    "selectAllOnPage": "Select all on page",
-    "selectRow": "Select row"
+    "pageOf": "",
+    "pagination": "",
+    "selectAllOnPage": "",
+    "selectRow": ""
   },
   "tasks": {
-    "queued": "Queued",
-    "running": "Running",
-    "startedAgo": "Started {{time}}",
-    "title": "Running Tasks",
-    "waiting": "Waiting"
+    "queued": "",
+    "running": "",
+    "startedAgo": "",
+    "title": "",
+    "waiting": ""
   },
   "time": {
     "allTime": "Todo o tempo",
@@ -322,15 +322,15 @@
     "yesterday": "Ontem"
   },
   "trust": {
-    "caution": "Caution",
-    "trusted": "Trusted",
-    "untrusted": "Untrusted"
+    "caution": "",
+    "trusted": "",
+    "untrusted": ""
   },
   "units": {
-    "km": "km",
-    "kmh": "km/h",
-    "mi": "mi",
-    "mph": "mph"
+    "km": "",
+    "kmh": "",
+    "mi": "",
+    "mph": ""
   },
   "validation": {
     "invalidEmail": "Introduza um endereço de email válido",

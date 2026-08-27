@@ -822,9 +822,14 @@ export function parseLibraryItem(item: Record<string, unknown>): MediaLibraryIte
   if (result.mediaType === 'episode') {
     result.grandparentTitle = parseOptionalString(item.SeriesName);
     result.grandparentRatingKey = parseOptionalString(item.SeriesId);
+    // SeasonId/SeasonName ride the Episode DTO without being asked for in Fields.
+    result.parentTitle = parseOptionalString(item.SeasonName);
+    result.parentRatingKey = parseOptionalString(item.SeasonId);
     result.parentIndex = parseOptionalNumber(item.ParentIndexNumber); // season number
     result.itemIndex = parseOptionalNumber(item.IndexNumber); // episode number
   } else if (result.mediaType === 'season') {
+    // A season's own Name is often the season's title ("All Systems Red"), not "Season N".
+    result.parentTitle = parseOptionalString(item.SeriesName);
     result.parentRatingKey = parseOptionalString(item.SeriesId);
     result.parentIndex = parseOptionalNumber(item.IndexNumber); // season number, 0 = Specials
   } else if (result.mediaType === 'track') {

@@ -328,12 +328,26 @@ function nativeEventFor(context: EvaluationContext): NotificationEvent | null {
         serverName: server.name,
         serverType: server.type,
         libraryItemId: media.libraryItemId,
+        ratingKey: media.ratingKey,
+        mediaId: media.mediaId,
         title: media.title,
         grandparentTitle: media.grandparentTitle,
+        parentTitle: media.parentTitle,
+        grandparentRatingKey: media.grandparentRatingKey,
+        parentRatingKey: media.parentRatingKey,
+        parentIndex: media.parentIndex,
+        itemIndex: media.itemIndex,
         mediaType: media.type,
         year: media.year,
+        imdbId: media.imdbId,
+        tmdbId: media.tmdbId,
+        tvdbId: media.tvdbId,
+        thumbPath: media.thumbPath,
         libraryName: media.libraryName,
         to: media.quality,
+        ...(media.addedEpisodeCount !== undefined && {
+          addedEpisodeCount: media.addedEpisodeCount,
+        }),
       };
       return trigger.type === 'media.added'
         ? { type: 'media_added', payload }

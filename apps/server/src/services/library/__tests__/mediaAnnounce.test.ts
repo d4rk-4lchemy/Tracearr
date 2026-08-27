@@ -17,10 +17,14 @@ vi.mock('../../automations/events/producers.js', () => ({
 
 import {
   MEDIA_ANNOUNCE_CAP,
-  announceMediaChanges,
+  collapseMediaChanges,
+  collectMediaChanges,
   createAnnounceRun,
   createMediaAnnounce,
   diffMediaChanges,
+  flushMediaAnnounceRun,
+  type CollectedChange,
+  type MediaAnnounceRun,
   type PriorMediaRow,
   type SyncedMediaRow,
 } from '../mediaAnnounce.js';
@@ -42,14 +46,31 @@ const quality = (overrides: Partial<MediaQuality> = {}): MediaQuality => ({
 const synced = (overrides: Partial<SyncedMediaRow> = {}): SyncedMediaRow => ({
   id: 'item-1',
   ratingKey: 'rk-1',
+  mediaId: null,
   firstSeenAt: earlier,
   title: 'Cars',
   grandparentTitle: null,
+  parentTitle: null,
+  grandparentRatingKey: null,
+  parentRatingKey: null,
+  parentIndex: null,
+  itemIndex: null,
   mediaType: 'movie',
   year: 2006,
+  imdbId: null,
+  tmdbId: null,
+  tvdbId: null,
+  thumbPath: null,
   quality: quality(),
   ...overrides,
 });
+
+const collectedOf = (rows: SyncedMediaRow[]): CollectedChange[] =>
+  rows.map((row) => ({
+    change: { kind: 'added' as const, row },
+    libraryId: '1',
+    libraryName: 'Shows',
+  }));
 
 const priorOf = (rows: Array<[string, PriorMediaRow]>) => new Map(rows);
 
@@ -156,19 +177,41 @@ describe('createMediaAnnounce', () => {
   });
 });
 
-describe('announceMediaChanges', () => {
+describe('collectMediaChanges and flushMediaAnnounceRun', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  const announceFor = () => ({
+  const runWith = (remaining: number): MediaAnnounceRun => ({
+    server,
+    budget: { remaining, suppressed: 0 },
+    collected: [],
+  });
+
+  const announceFor = (run: MediaAnnounceRun) => ({
     server,
     libraryName: 'Movies',
-    budget: { remaining: 2, suppressed: 0 },
+    budget: run.budget,
+    run,
+  });
+
+  it('holds changes until the run flushes', () => {
+    const run = runWith(2);
+
+    collectMediaChanges({
+      announce: announceFor(run),
+      libraryId: '1',
+      rows: [synced({ firstSeenAt: firstSeen })],
+      prior: priorOf([]),
+      firstSeen,
+    });
+
+    expect(mockDispatchMediaAdded).not.toHaveBeenCalled();
+    expect(run.collected).toHaveLength(1);
   });
 
   it('dispatches one event per change and spends the run budget', async () => {
-    const announce = announceFor();
+    const run = runWith(2);
     const rows = [
       synced({ firstSeenAt: firstSeen }),
       synced({ id: 'item-2', ratingKey: 'rk-2', quality: quality({ resolution: '4k' }) }),
@@ -179,20 +222,21 @@ describe('announceMediaChanges', () => {
       ['rk-3', { quality: quality() }],
     ]);
 
-    await announceMediaChanges({ announce, libraryId: '1', rows, prior, firstSeen });
+    collectMediaChanges({ announce: announceFor(run), libraryId: '1', rows, prior, firstSeen });
+    await flushMediaAnnounceRun(run);
 
     expect(mockDispatchMediaAdded).toHaveBeenCalledWith({
       server,
-      media: {
+      media: expect.objectContaining({
         libraryItemId: 'item-1',
+        ratingKey: 'rk-1',
         title: 'Cars',
-        grandparentTitle: null,
         type: 'movie',
         year: 2006,
         libraryId: '1',
         libraryName: 'Movies',
         quality: quality(),
-      },
+      }),
     });
     expect(mockDispatchMediaUpgraded).toHaveBeenCalledWith({
       server,
@@ -200,21 +244,151 @@ describe('announceMediaChanges', () => {
       from: quality(),
       changed: ['resolution'],
     });
-    expect(announce.budget).toEqual({ remaining: 0, suppressed: 1 });
+    expect(run.budget).toEqual({ remaining: 0, suppressed: 1 });
   });
 
   it('dispatches nothing once the budget is spent', async () => {
-    const announce = { ...announceFor(), budget: { remaining: 0, suppressed: 3 } };
+    const run = runWith(0);
 
-    await announceMediaChanges({
-      announce,
+    collectMediaChanges({
+      announce: announceFor(run),
       libraryId: '1',
       rows: [synced({ firstSeenAt: firstSeen })],
       prior: priorOf([]),
       firstSeen,
     });
+    await flushMediaAnnounceRun(run);
 
     expect(mockDispatchMediaAdded).not.toHaveBeenCalled();
-    expect(announce.budget).toEqual({ remaining: 0, suppressed: 4 });
+    expect(run.budget).toEqual({ remaining: 0, suppressed: 1 });
+  });
+
+  it('carries the episode count a season absorbed onto the dispatched subject', async () => {
+    const run = runWith(MEDIA_ANNOUNCE_CAP);
+    const season = synced({
+      id: 'season-1',
+      ratingKey: 'season-rk',
+      firstSeenAt: firstSeen,
+      title: 'Season 1',
+      mediaType: 'season',
+      parentTitle: 'Murderbot',
+      parentRatingKey: 'show-rk',
+      parentIndex: 1,
+    });
+    const episodes = [1, 2].map((n) =>
+      synced({
+        id: `ep-${String(n)}`,
+        ratingKey: `ep-rk-${String(n)}`,
+        firstSeenAt: firstSeen,
+        title: `Episode ${String(n)}`,
+        mediaType: 'episode',
+        grandparentTitle: 'Murderbot',
+        grandparentRatingKey: 'show-rk',
+        parentRatingKey: 'season-rk',
+        parentIndex: 1,
+        itemIndex: n,
+      })
+    );
+
+    collectMediaChanges({
+      announce: announceFor(run),
+      libraryId: '1',
+      rows: [...episodes, season],
+      prior: priorOf([]),
+      firstSeen,
+    });
+    await flushMediaAnnounceRun(run);
+
+    expect(mockDispatchMediaAdded).toHaveBeenCalledOnce();
+    expect(mockDispatchMediaAdded).toHaveBeenCalledWith({
+      server,
+      media: expect.objectContaining({ ratingKey: 'season-rk', addedEpisodeCount: 2 }),
+    });
+  });
+});
+
+describe('collapseMediaChanges', () => {
+  const season = (overrides: Partial<SyncedMediaRow> = {}) =>
+    synced({
+      id: 'season-1',
+      ratingKey: 'season-rk',
+      title: 'Season 1',
+      mediaType: 'season',
+      parentTitle: 'Murderbot',
+      parentRatingKey: 'show-rk',
+      parentIndex: 1,
+      ...overrides,
+    });
+
+  const episode = (n: number, overrides: Partial<SyncedMediaRow> = {}) =>
+    synced({
+      id: `ep-${String(n)}`,
+      ratingKey: `ep-rk-${String(n)}`,
+      title: `Episode ${String(n)}`,
+      mediaType: 'episode',
+      grandparentTitle: 'Murderbot',
+      grandparentRatingKey: 'show-rk',
+      parentRatingKey: 'season-rk',
+      parentIndex: 1,
+      itemIndex: n,
+      ...overrides,
+    });
+
+  it("folds a season's episodes into it as a count", () => {
+    const { announced, absorbed } = collapseMediaChanges(
+      collectedOf([episode(1), episode(2), episode(3), season()])
+    );
+
+    expect(absorbed).toBe(3);
+    expect(announced).toHaveLength(1);
+    expect(announced[0]?.addedEpisodeCount).toBe(3);
+    expect(announced[0]?.collected.change.row.ratingKey).toBe('season-rk');
+  });
+
+  it('matches episodes to a season by show and season number when the season key is missing', () => {
+    const legacy = episode(1, { parentRatingKey: null });
+
+    const { announced, absorbed } = collapseMediaChanges(collectedOf([legacy, season()]));
+
+    expect(absorbed).toBe(1);
+    expect(announced[0]?.addedEpisodeCount).toBe(1);
+  });
+
+  it('leaves an episode alone when its season was not added in the same run', () => {
+    const { announced, absorbed } = collapseMediaChanges(collectedOf([episode(4)]));
+
+    expect(absorbed).toBe(0);
+    expect(announced).toHaveLength(1);
+    expect(announced[0]?.addedEpisodeCount).toBeUndefined();
+    expect(announced[0]?.collected.change.row.ratingKey).toBe('ep-rk-4');
+  });
+
+  it('drops a show whose seasons are announcing, since those name it anyway', () => {
+    const show = synced({
+      id: 'show-1',
+      ratingKey: 'show-rk',
+      title: 'Murderbot',
+      mediaType: 'show',
+    });
+
+    const { announced } = collapseMediaChanges(collectedOf([show, season(), episode(1)]));
+
+    expect(announced).toHaveLength(1);
+    expect(announced[0]?.collected.change.row.ratingKey).toBe('season-rk');
+  });
+
+  it('announces a season with no episodes of its own as a count of zero', () => {
+    const { announced } = collapseMediaChanges(collectedOf([season()]));
+
+    expect(announced).toHaveLength(1);
+    expect(announced[0]?.addedEpisodeCount).toBe(0);
+  });
+
+  it('keeps a movie untouched', () => {
+    const { announced, absorbed } = collapseMediaChanges(collectedOf([synced()]));
+
+    expect(absorbed).toBe(0);
+    expect(announced).toHaveLength(1);
+    expect(announced[0]?.addedEpisodeCount).toBeUndefined();
   });
 });

@@ -44,6 +44,11 @@ const SERVER_VARS = ['server.name', 'server.type'] as const;
 /** `server.name` doubles `media.server` so an automation that also carries a server trigger keeps one. */
 const MEDIA_VARS = [
   'media.title',
+  'media.name',
+  'media.show',
+  'media.season',
+  'media.episode',
+  'media.episodeCount',
   'media.type',
   'media.year',
   'media.library',

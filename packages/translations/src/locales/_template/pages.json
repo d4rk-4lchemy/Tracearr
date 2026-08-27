@@ -534,7 +534,8 @@
     "circles": "Circles",
     "streams": "streams",
     "locations": "locations",
-    "allActivity": "All activity"
+    "allActivity": "All activity",
+    "basemapMissing": "Basemap not installed"
   },
   "devices": {
     "title": "Device Compatibility",

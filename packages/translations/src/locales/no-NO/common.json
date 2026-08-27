@@ -31,7 +31,7 @@
     "previous": "Forrige",
     "refresh": "Oppdater",
     "remove": "Fjern",
-    "reset": "Reset",
+    "reset": "",
     "retry": "Prøv igjen",
     "save": "Lagre",
     "search": "Søk",
@@ -55,30 +55,34 @@
     "viewOnGithub": "Vis på GitHub",
     "viewProfile": "Vis profil"
   },
-  "beta": "beta",
+  "beta": "",
   "confirmations": {
     "deleteMessage": "Er du sikker på at du vil slette dette? Denne handlingen kan ikke angres.",
     "deleteTitle": "Bekreft sletting",
     "unsavedChanges": "Du har ulagrede endringer. Er du sikker på at du vil forlate?"
   },
   "count": {
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices",
+    "alert_one": "",
+    "alert_other": "",
+    "automation_one": "",
+    "automation_other": "",
+    "channel_one": "",
+    "channel_other": "",
+    "device_one": "",
+    "device_other": "",
     "error_one": "{{count}} feil",
     "error_other": "{{count}} feil",
     "item_one": "{{count}} element",
     "item_other": "{{count}} objekter",
     "library_one": "{{count}} bibliotek",
     "library_other": "{{count}} biblioteker",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
+    "location_one": "",
+    "location_other": "",
     "result_one": "{{count}} resultat",
     "result_other": "{{count}} resultater",
-    "selected_one": "{{count}} selected",
-    "selected_other": "{{count}} selected",
-    "server_one": "{{count}} server",
+    "selected_one": "",
+    "selected_other": "",
+    "server_one": "",
     "server_other": "{{count}} servere",
     "session_one": "{{count}} sesjon",
     "session_other": "{{count}} økter",
@@ -91,11 +95,7 @@
     "usersUpdated_one": "{{count}} bruker oppdatert",
     "usersUpdated_other": "{{count}} brukere oppdatert",
     "violation_one": "{{count}} brudd",
-    "violation_other": "{{count}} brudd",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
-    "automation_one": "{{count}} automation",
-    "automation_other": "{{count}} automations"
+    "violation_other": "{{count}} brudd"
   },
   "duration": {
     "day_one": "{{count}} dag",
@@ -138,17 +138,17 @@
     "unexpectedError": "En uventet feil oppstod. Vennligst prøv igjen."
   },
   "filters": {
-    "anyDate": "Any date",
-    "clearAll": "Clear all",
-    "clearDates": "Clear date range",
-    "clearEndDate": "Clear end date",
-    "clearSearch": "Clear search",
-    "clearStartDate": "Clear start date",
-    "dateAfter": "After {{date}}",
-    "dateBefore": "Before {{date}}",
-    "dateBetween": "{{from}} to {{to}}",
-    "done": "Done",
-    "remove": "Remove {{label}} filter"
+    "anyDate": "",
+    "clearAll": "",
+    "clearDates": "",
+    "clearEndDate": "",
+    "clearSearch": "",
+    "clearStartDate": "",
+    "dateAfter": "",
+    "dateBefore": "",
+    "dateBetween": "",
+    "done": "",
+    "remove": ""
   },
   "labels": {
     "actions": "Handlinger",
@@ -157,12 +157,12 @@
     "apiKey": "API-nøkkel (Automatic Translation)",
     "bandwidth": "Båndbredde",
     "content": "Innhold",
-    "created": "Created",
-    "data": "Data",
+    "created": "",
+    "data": "",
     "date": "Dato",
     "days": "dager",
     "device": "Enhet",
-    "deviceId": "Device ID",
+    "deviceId": "",
     "disabled": "Deaktivert",
     "duration": "Varighet",
     "filters": "Filtre",
@@ -170,16 +170,16 @@
     "items": "Elementer",
     "joined": "Tiltrådte",
     "lastActivity": "Siste aktivitet",
-    "loadMore": "Load More",
+    "loadMore": "",
     "location": "Sted",
     "media": "Medier",
-    "mediaLength": "Media length",
+    "mediaLength": "",
     "name": "Navn",
     "never": "Aldri",
     "pausedTime": "Pauset tid",
     "platform": "Plattform",
     "player": "Spiller",
-    "product": "Product",
+    "product": "",
     "progress": "Fremdrift",
     "quality": "Kvalitet",
     "rank": "Rangering",
@@ -187,7 +187,7 @@
     "recentSessions": "Siste økter",
     "resolution": "Oppløsning",
     "rule": "Regel",
-    "segments": "segments",
+    "segments": "",
     "server": "Tjener",
     "serverOwner": "Server eier",
     "sessionDetails": "Sesjonens detaljer",
@@ -197,10 +197,10 @@
     "started": "Startet",
     "status": "Status:",
     "stopped": "Stoppet",
-    "streamDetails": "Stream Details",
-    "total": "total",
+    "streamDetails": "",
+    "total": "",
     "totalSessions": "Totalt antall økter",
-    "transcodeReason": "Transcode Reason",
+    "transcodeReason": "",
     "trustScore": "Tillit score",
     "type": "Type:",
     "unknown": "Ukjent",
@@ -209,7 +209,7 @@
     "when": "Når"
   },
   "media": {
-    "episode": "Episode",
+    "episode": "",
     "episode_plural": "Episoder",
     "liveTV": "Levende TV",
     "movie": "Film",
@@ -263,15 +263,15 @@
     "searchUsers": "Søk etter brukere..."
   },
   "serverSelector": {
-    "all": "All servers",
-    "noMatches": "No servers found",
-    "search": "Search servers...",
-    "some": "{{count}} of {{total}} servers"
+    "all": "",
+    "noMatches": "",
+    "search": "",
+    "some": ""
   },
   "servers": {
-    "emby": "Emby",
-    "jellyfin": "Jellyfin",
-    "plex": "Plex"
+    "emby": "",
+    "jellyfin": "",
+    "plex": ""
   },
   "severity": {
     "high": "Høy",
@@ -301,17 +301,17 @@
     "success": "Vellykket"
   },
   "table": {
-    "pageOf": "Page {{page}} of {{total}}",
-    "pagination": "Pagination",
+    "pageOf": "",
+    "pagination": "",
     "selectAllOnPage": "Velg alle på siden",
     "selectRow": "Velg rad"
   },
   "tasks": {
-    "queued": "Queued",
-    "running": "Running",
-    "startedAgo": "Started {{time}}",
-    "title": "Running Tasks",
-    "waiting": "Waiting"
+    "queued": "",
+    "running": "",
+    "startedAgo": "",
+    "title": "",
+    "waiting": ""
   },
   "time": {
     "allTime": "Hele tiden",
@@ -322,13 +322,13 @@
     "yesterday": "Igår"
   },
   "trust": {
-    "caution": "Caution",
-    "trusted": "Trusted",
-    "untrusted": "Untrusted"
+    "caution": "",
+    "trusted": "",
+    "untrusted": ""
   },
   "units": {
     "km": "KTM",
-    "kmh": "km/h",
+    "kmh": "",
     "mi": "SMI",
     "mph": "m/t"
   },

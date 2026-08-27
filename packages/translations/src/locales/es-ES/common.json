@@ -55,32 +55,36 @@
     "viewOnGithub": "Ver en GitHub",
     "viewProfile": "Ver perfil"
   },
-  "beta": "beta",
+  "beta": "",
   "confirmations": {
     "deleteMessage": "¿Seguro que quieres borrar esto? Esta acción no puede deshacerse.",
     "deleteTitle": "Confirmar Borrado",
     "unsavedChanges": "Tienes cambios sin guardar. ¿Seguro que quieres salir?"
   },
   "count": {
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices",
-    "error_one": "{{count}} error",
+    "alert_one": "{{count}} alerta",
+    "alert_other": "{{count}} alertas",
+    "automation_one": "",
+    "automation_other": "",
+    "channel_one": "",
+    "channel_other": "",
+    "device_one": "{{count}} dispositivo",
+    "device_other": "{{count}} dispositivos",
+    "error_one": "",
     "error_other": "{{count}} errores",
     "item_one": "{{count}} artículo",
     "item_other": "{{count}} artículos",
     "library_one": "{{count}} biblioteca",
     "library_other": "{{count}} bibliotecas",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
+    "location_one": "{{count}} ubicación",
+    "location_other": "{{count}} ubicaciones",
     "result_one": "{{count}} resultado",
     "result_other": "{{count}} resultados",
     "selected_one": "{{count}} seleccionado",
     "selected_other": "{{count}} seleccionados",
     "server_one": "Servidor {{count}}",
     "server_other": "Servidores {{count}}",
-    "session_one": "{{count}} session",
+    "session_one": "{{count}} sesión",
     "session_other": "{{count}} sesiones",
     "stream_one": "{{count}} Transmisión",
     "stream_other": "{{count}} Transmisiones",
@@ -91,11 +95,7 @@
     "usersUpdated_one": "{{count}} usuario actualizado",
     "usersUpdated_other": "{{count}} usuarios actualizados",
     "violation_one": "{{count}} infracción",
-    "violation_other": "{{count}} infracción",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
-    "automation_one": "{{count}} automation",
-    "automation_other": "{{count}} automations"
+    "violation_other": "{{count}} infracción"
   },
   "duration": {
     "day_one": "{{count}} día",
@@ -138,17 +138,17 @@
     "unexpectedError": "Ha ocurrido un error inesperado. Inténtalo de nuevo."
   },
   "filters": {
-    "anyDate": "Any date",
-    "clearAll": "Clear all",
-    "clearDates": "Clear date range",
-    "clearEndDate": "Clear end date",
-    "clearSearch": "Clear search",
-    "clearStartDate": "Clear start date",
-    "dateAfter": "After {{date}}",
-    "dateBefore": "Before {{date}}",
-    "dateBetween": "{{from}} to {{to}}",
-    "done": "Done",
-    "remove": "Remove {{label}} filter"
+    "anyDate": "",
+    "clearAll": "",
+    "clearDates": "",
+    "clearEndDate": "",
+    "clearSearch": "",
+    "clearStartDate": "",
+    "dateAfter": "",
+    "dateBefore": "",
+    "dateBetween": "",
+    "done": "",
+    "remove": ""
   },
   "labels": {
     "actions": "Acciones",
@@ -157,12 +157,12 @@
     "apiKey": "Clave API",
     "bandwidth": "Ancho de banda",
     "content": "Contenido",
-    "created": "Created",
+    "created": "",
     "data": "Datos",
     "date": "Fecha",
     "days": "días",
     "device": "Dispositivo",
-    "deviceId": "Device ID",
+    "deviceId": "",
     "disabled": "Deshabilitado",
     "duration": "Duración",
     "filters": "Filtros",
@@ -170,16 +170,16 @@
     "items": "Elementos",
     "joined": "Se unió",
     "lastActivity": "Última actividad",
-    "loadMore": "Load More",
+    "loadMore": "",
     "location": "Ubicación",
     "media": "Multimedia",
-    "mediaLength": "Media length",
+    "mediaLength": "",
     "name": "Nombre",
     "never": "Nunca",
     "pausedTime": "Tiempo de pausa",
     "platform": "Plataforma",
     "player": "Jugador",
-    "product": "Product",
+    "product": "",
     "progress": "Progreso",
     "quality": "Calidad",
     "rank": "Rango",
@@ -187,7 +187,7 @@
     "recentSessions": "Sesiones recientes",
     "resolution": "Resolución",
     "rule": "Regla",
-    "segments": "segments",
+    "segments": "",
     "server": "Servidor",
     "serverOwner": "Propietario del servidor",
     "sessionDetails": "Detalles de la sesión",
@@ -197,10 +197,10 @@
     "started": "Comenzó",
     "status": "Estado",
     "stopped": "Detenido",
-    "streamDetails": "Stream Details",
-    "total": "total",
+    "streamDetails": "",
+    "total": "",
     "totalSessions": "Sesiones totales",
-    "transcodeReason": "Transcode Reason",
+    "transcodeReason": "",
     "trustScore": "Puntuación de confianza",
     "type": "Tipo",
     "unknown": "Desconocido",
@@ -263,15 +263,15 @@
     "searchUsers": "Buscar usuarios..."
   },
   "serverSelector": {
-    "all": "All servers",
-    "noMatches": "No servers found",
-    "search": "Search servers...",
-    "some": "{{count}} of {{total}} servers"
+    "all": "",
+    "noMatches": "",
+    "search": "",
+    "some": ""
   },
   "servers": {
-    "emby": "Emby",
-    "jellyfin": "Jellyfin",
-    "plex": "Plex"
+    "emby": "",
+    "jellyfin": "",
+    "plex": ""
   },
   "severity": {
     "high": "Alto",
@@ -290,7 +290,7 @@
     "disconnected": "Desconectado",
     "dismissing": "Descartando...",
     "enabled": "Habilitado",
-    "error": "Error",
+    "error": "",
     "failed": "Fallido",
     "inactive": "Inactivo",
     "loading": "Cargando...",
@@ -301,17 +301,17 @@
     "success": "Éxito"
   },
   "table": {
-    "pageOf": "Page {{page}} of {{total}}",
-    "pagination": "Pagination",
+    "pageOf": "",
+    "pagination": "",
     "selectAllOnPage": "Seleccionar todos en la página",
     "selectRow": "Seleccionar fila"
   },
   "tasks": {
-    "queued": "Queued",
-    "running": "Running",
-    "startedAgo": "Started {{time}}",
-    "title": "Running Tasks",
-    "waiting": "Waiting"
+    "queued": "",
+    "running": "",
+    "startedAgo": "",
+    "title": "",
+    "waiting": ""
   },
   "time": {
     "allTime": "Todo",
@@ -322,15 +322,15 @@
     "yesterday": "Ayer"
   },
   "trust": {
-    "caution": "Caution",
-    "trusted": "Trusted",
-    "untrusted": "Untrusted"
+    "caution": "",
+    "trusted": "",
+    "untrusted": ""
   },
   "units": {
-    "km": "km",
-    "kmh": "km/h",
-    "mi": "mi",
-    "mph": "mph"
+    "km": "",
+    "kmh": "",
+    "mi": "",
+    "mph": ""
   },
   "validation": {
     "invalidEmail": "Por favor ingrese un correo electrónico válido",

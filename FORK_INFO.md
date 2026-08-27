@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `feature/prepare-for-2.2.0`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `6fc80e54`
-- Last shared upstream commit found during inspection: `bf662a89`
-- Latest upstream commit merged into the current working tree: `6fc80e54`
+- Source branch/SHA inspected: `main` at `64401f0c`
+- Last shared upstream commit found during inspection: `8cec50d3`
+- Latest upstream commit merged into the current working tree: `64401f0c`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -215,6 +215,18 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `64401f0c` (Tracearr `v2.2.0`) was merged into
+  `feature/prepare-for-2.2.0` on August 27, 2026. The built-in MapLibre/PMTiles
+  map, richer media-added and media-upgraded notifications, Fastify 5.12.1,
+  translation refresh, and release/Helm maintenance were retained. The merge
+  added no upstream migrations. Translation conflicts were resolved with the
+  refreshed upstream locales as the baseline and the fork's channel-count,
+  VOD/TV dashboard, no-library, and upstream-version keys restored as English
+  fallbacks in every locale. Dispatcharr remains excluded from media-library
+  synchronization while retaining session, history, realtime, resource, and
+  dashboard support; the fork's PR-only CI and manual-only release policy also
+  remain intact.
 
 - Upstream `main` at `6fc80e54` was merged into `feature/prepare-for-2.2.0`
   on August 20, 2026. The upstream `0089_zippy_frank_castle` migration,

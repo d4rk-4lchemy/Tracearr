@@ -47,6 +47,17 @@ const mediaUpgraded: NotificationEvent = {
     serverName: 'Basement',
     serverType: 'plex',
     libraryItemId: 'item-1',
+    ratingKey: 'rk-1',
+    mediaId: null,
+    parentTitle: null,
+    grandparentRatingKey: null,
+    parentRatingKey: null,
+    parentIndex: null,
+    itemIndex: null,
+    imdbId: null,
+    tmdbId: null,
+    tvdbId: null,
+    thumbPath: null,
     title: 'Cars',
     grandparentTitle: null,
     mediaType: 'movie',
@@ -292,7 +303,7 @@ describe('pushoverType.render with an automation source', () => {
   it('renders a media upgrade, and an override still wins', async () => {
     const message = await render(mediaUpgraded, automationCtx());
     expect(message.title).toBe('Media upgraded');
-    expect(message.message).toBe('Cars on Basement: 1080p → 4K');
+    expect(message.message).toBe('Cars (2006) on Basement was upgraded: resolution 1080p → 4K');
 
     const overridden = await render(mediaUpgraded, automationCtx({ body: '4K at last' }));
     expect(overridden.message).toBe('4K at last');

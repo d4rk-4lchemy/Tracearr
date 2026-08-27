@@ -2,8 +2,14 @@
  * Notification payload types shared by every destination type module.
  */
 
-import { BYTES_PER_GB, normalizeResolutionLabel } from '@tracearr/shared';
 import { MEDIA_QUALITY_FIELDS } from '../automations/types.js';
+import {
+  formatMediaAddedMessage,
+  formatMediaUpgradedMessage,
+  mediaHeadline,
+  parentName,
+  qualityText,
+} from './formatters/media.js';
 import type { ViolationWithDetails, ActiveSession, NotificationEventType } from '@tracearr/shared';
 import type { MediaQuality } from '../automations/types.js';
 import type {
@@ -169,28 +175,6 @@ export interface NotificationPayload {
   automation?: { id: string; name: string; title?: string; message?: string };
 }
 
-/** An episode or track announces the show or artist it belongs to; a film names itself. */
-const mediaName = (ctx: MediaEventPayload): string =>
-  ctx.grandparentTitle === null ? ctx.title : `${ctx.grandparentTitle} — ${ctx.title}`;
-
-const titleWithYear = (ctx: MediaEventPayload): string =>
-  ctx.year === null ? mediaName(ctx) : `${mediaName(ctx)} (${String(ctx.year)})`;
-
-/** Values as a message shows them: bytes in GB, a resolution in its display spelling. */
-function qualityText(field: keyof MediaQuality, value: string | number | null): string {
-  if (value === null) return '';
-  if (field === 'fileSize') return `${(Number(value) / BYTES_PER_GB).toFixed(1)} GB`;
-  if (field === 'resolution') return normalizeResolutionLabel(String(value)) ?? String(value);
-  return String(value);
-}
-
-/** The resolution pair when that is what moved, else the first field that did. */
-function qualityMove(ctx: MediaUpgradedPayload): string {
-  const field = ctx.changed.includes('resolution') ? 'resolution' : ctx.changed[0];
-  if (!field) return '';
-  return `: ${qualityText(field, ctx.from[field])} → ${qualityText(field, ctx.to[field])}`;
-}
-
 /**
  * Payload builders for creating NotificationPayload from raw data
  */
@@ -285,7 +269,7 @@ export const PayloadBuilders = {
     return {
       event: 'media_added',
       title: 'New media added',
-      message: `${titleWithYear(ctx)} was added to ${ctx.libraryName} on ${ctx.serverName}`,
+      message: formatMediaAddedMessage(ctx),
       severity: 'low',
       timestamp: new Date().toISOString(),
       context: { type: 'media_added', ...ctx },
@@ -296,7 +280,7 @@ export const PayloadBuilders = {
     return {
       event: 'media_upgraded',
       title: 'Media upgraded',
-      message: `${mediaName(ctx)} on ${ctx.serverName}${qualityMove(ctx)}`,
+      message: formatMediaUpgradedMessage(ctx),
       severity: 'low',
       timestamp: new Date().toISOString(),
       context: { type: 'media_upgraded', ...ctx },
@@ -366,6 +350,13 @@ function scalar(value: unknown): string {
 function mediaVariables(payload: MediaEventPayload): Record<string, string> {
   return {
     'media.title': payload.title,
+    // What a message would call the item: the show and the episode code, not a bare title.
+    'media.name': mediaHeadline(payload),
+    'media.show': parentName(payload) ?? '',
+    'media.season': payload.parentIndex === null ? '' : String(payload.parentIndex),
+    'media.episode': payload.itemIndex === null ? '' : String(payload.itemIndex),
+    'media.episodeCount':
+      payload.addedEpisodeCount === undefined ? '' : String(payload.addedEpisodeCount),
     'media.type': payload.mediaType,
     'media.year': payload.year === null ? '' : String(payload.year),
     'media.library': payload.libraryName,

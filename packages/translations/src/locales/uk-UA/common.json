@@ -62,18 +62,22 @@
     "unsavedChanges": "У вас є незбережені зміни. Ви впевнені, що хочете вийти?"
   },
   "count": {
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices",
+    "alert_one": "",
+    "alert_other": "",
+    "automation_one": "",
+    "automation_other": "",
+    "channel_one": "",
+    "channel_other": "",
+    "device_one": "",
+    "device_other": "",
     "error_one": "{{count}} помилка",
     "error_other": "{{count}} помилок",
     "item_one": "{{count}} елемент",
     "item_other": "{{count}} елементів",
     "library_one": "{{count}} бібліотека",
     "library_other": "{{count}} бібліотеки",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
+    "location_one": "",
+    "location_other": "",
     "result_one": "{{count}} результат",
     "result_other": "{{count}} результатів",
     "selected_one": "Вибрано {{count}}",
@@ -91,11 +95,7 @@
     "usersUpdated_one": "Оновлено користувача {{count}}",
     "usersUpdated_other": "Оновлено користувачів {{count}}",
     "violation_one": "{{count}} порушення",
-    "violation_other": "{{count}} порушень",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
-    "automation_one": "{{count}} automation",
-    "automation_other": "{{count}} automations"
+    "violation_other": "{{count}} порушень"
   },
   "duration": {
     "day_one": "{{count}} день",
@@ -138,17 +138,17 @@
     "unexpectedError": "Сталася неочікувана помилка. Спробуйте ще раз."
   },
   "filters": {
-    "anyDate": "Any date",
-    "clearAll": "Clear all",
-    "clearDates": "Clear date range",
-    "clearEndDate": "Clear end date",
-    "clearSearch": "Clear search",
-    "clearStartDate": "Clear start date",
-    "dateAfter": "After {{date}}",
-    "dateBefore": "Before {{date}}",
-    "dateBetween": "{{from}} to {{to}}",
-    "done": "Done",
-    "remove": "Remove {{label}} filter"
+    "anyDate": "",
+    "clearAll": "",
+    "clearDates": "",
+    "clearEndDate": "",
+    "clearSearch": "",
+    "clearStartDate": "",
+    "dateAfter": "",
+    "dateBefore": "",
+    "dateBetween": "",
+    "done": "",
+    "remove": ""
   },
   "labels": {
     "actions": "Дії",
@@ -157,12 +157,12 @@
     "apiKey": "Ключ API",
     "bandwidth": "Пропускна здатність",
     "content": "Контент",
-    "created": "Created",
+    "created": "",
     "data": "Дані",
     "date": "Дата",
     "days": "днів",
     "device": "Пристрій",
-    "deviceId": "Device ID",
+    "deviceId": "",
     "disabled": "Вимкнено",
     "duration": "Тривалість",
     "filters": "Фільтри",
@@ -170,16 +170,16 @@
     "items": "Елементи",
     "joined": "Приєднався",
     "lastActivity": "Остання активність",
-    "loadMore": "Load More",
+    "loadMore": "",
     "location": "Розташування",
     "media": "Медіа",
-    "mediaLength": "Media length",
+    "mediaLength": "",
     "name": "Ім'я",
     "never": "Ніколи",
     "pausedTime": "Час призупинення",
     "platform": "Платформа",
     "player": "Плеєр",
-    "product": "Product",
+    "product": "",
     "progress": "Прогрес",
     "quality": "Якість",
     "rank": "Ранг",
@@ -187,7 +187,7 @@
     "recentSessions": "Нещодавні сеанси",
     "resolution": "Роздільна здатність",
     "rule": "Правило",
-    "segments": "segments",
+    "segments": "",
     "server": "Сервер",
     "serverOwner": "Власник сервера",
     "sessionDetails": "Деталі сеансу",
@@ -197,10 +197,10 @@
     "started": "Розпочато",
     "status": "Статус",
     "stopped": "Зупинено",
-    "streamDetails": "Stream Details",
-    "total": "total",
+    "streamDetails": "",
+    "total": "",
     "totalSessions": "Всього сесій",
-    "transcodeReason": "Transcode Reason",
+    "transcodeReason": "",
     "trustScore": "Рейтинг довіри",
     "type": "Тип",
     "unknown": "Невідомо",
@@ -263,15 +263,15 @@
     "searchUsers": "Пошук користувачів..."
   },
   "serverSelector": {
-    "all": "All servers",
-    "noMatches": "No servers found",
-    "search": "Search servers...",
-    "some": "{{count}} of {{total}} servers"
+    "all": "",
+    "noMatches": "",
+    "search": "",
+    "some": ""
   },
   "servers": {
-    "emby": "Emby",
-    "jellyfin": "Jellyfin",
-    "plex": "Plex"
+    "emby": "",
+    "jellyfin": "",
+    "plex": ""
   },
   "severity": {
     "high": "Висока",
@@ -301,17 +301,17 @@
     "success": "Успішно"
   },
   "table": {
-    "pageOf": "Page {{page}} of {{total}}",
-    "pagination": "Pagination",
+    "pageOf": "",
+    "pagination": "",
     "selectAllOnPage": "Вибрати все на сторінці",
     "selectRow": "Виберіть рядок"
   },
   "tasks": {
-    "queued": "Queued",
-    "running": "Running",
-    "startedAgo": "Started {{time}}",
-    "title": "Running Tasks",
-    "waiting": "Waiting"
+    "queued": "",
+    "running": "",
+    "startedAgo": "",
+    "title": "",
+    "waiting": ""
   },
   "time": {
     "allTime": "За весь час",
@@ -322,9 +322,9 @@
     "yesterday": "Вчора"
   },
   "trust": {
-    "caution": "Caution",
-    "trusted": "Trusted",
-    "untrusted": "Untrusted"
+    "caution": "",
+    "trusted": "",
+    "untrusted": ""
   },
   "units": {
     "km": "км",

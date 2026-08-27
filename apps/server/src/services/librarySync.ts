@@ -26,9 +26,11 @@ import {
 import { resolveMediaBatch, reconcileMediaDuplicates } from './library/mediaResolutionService.js';
 import {
   MEDIA_ANNOUNCE_CAP,
-  announceMediaChanges,
+  MEDIA_BUFFER_CAP,
+  collectMediaChanges,
   createAnnounceRun,
   createMediaAnnounce,
+  flushMediaAnnounceRun,
   type MediaAnnounce,
   type MediaAnnounceRun,
   type PriorMediaRow,
@@ -405,6 +407,9 @@ export class LibrarySyncService {
 
       results.push(result);
     }
+
+    // Every library is in, so a season can now absorb the episodes that arrived with it.
+    await flushMediaAnnounceRun(mediaRun);
 
     if (mediaRun.budget.suppressed > 0) {
       console.log(
@@ -1467,7 +1472,9 @@ export class LibrarySyncService {
 
     // Past the cap the run announces nothing more, so it stops reading and diffing too;
     // the suppressed count then reports the batch that hit the cap, not every later one.
-    const announcing = announce && announce.budget.remaining > 0 ? announce : null;
+    // The cap is spent at flush, so what gates the prior-quality read here is buffer room.
+    const announcing =
+      announce && announce.run.collected.length < MEDIA_BUFFER_CAP ? announce : null;
     // Read before the upsert overwrites it; without a listener the diff costs nothing.
     const prior = announcing
       ? await this.readPriorQuality(
@@ -1613,11 +1620,21 @@ export class LibrarySyncService {
             .returning({
               id: libraryItems.id,
               ratingKey: libraryItems.ratingKey,
+              mediaId: libraryItems.mediaId,
               firstSeenAt: libraryItems.firstSeenAt,
               title: libraryItems.title,
               grandparentTitle: libraryItems.grandparentTitle,
+              parentTitle: libraryItems.parentTitle,
+              grandparentRatingKey: libraryItems.grandparentRatingKey,
+              parentRatingKey: libraryItems.parentRatingKey,
+              parentIndex: libraryItems.parentIndex,
+              itemIndex: libraryItems.itemIndex,
               mediaType: libraryItems.mediaType,
               year: libraryItems.year,
+              imdbId: libraryItems.imdbId,
+              tmdbId: libraryItems.tmdbId,
+              tvdbId: libraryItems.tvdbId,
+              thumbPath: libraryItems.thumbPath,
               resolution: libraryItems.videoResolution,
               dynamicRange: libraryItems.videoDynamicRange,
               videoCodec: libraryItems.videoCodec,
@@ -1629,11 +1646,21 @@ export class LibrarySyncService {
               changed = rows.map((row) => ({
                 id: row.id,
                 ratingKey: row.ratingKey,
+                mediaId: row.mediaId,
                 firstSeenAt: row.firstSeenAt,
                 title: row.title,
                 grandparentTitle: row.grandparentTitle,
+                parentTitle: row.parentTitle,
+                grandparentRatingKey: row.grandparentRatingKey,
+                parentRatingKey: row.parentRatingKey,
+                parentIndex: row.parentIndex,
+                itemIndex: row.itemIndex,
                 mediaType: row.mediaType,
                 year: row.year,
+                imdbId: row.imdbId,
+                tmdbId: row.tmdbId,
+                tvdbId: row.tvdbId,
+                thumbPath: row.thumbPath,
                 quality: {
                   resolution: row.resolution,
                   dynamicRange: row.dynamicRange,
@@ -1654,7 +1681,7 @@ export class LibrarySyncService {
 
     // After the commit: an automation acting on a row the transaction rolled back would be a lie.
     if (announcing && prior) {
-      await announceMediaChanges({
+      collectMediaChanges({
         announce: announcing,
         libraryId,
         rows: changed,

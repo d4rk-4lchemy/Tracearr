@@ -1,9 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ViolationWithDetails } from '@tracearr/shared';
+
+const mockProxyImage = vi.fn();
+vi.mock('../../imageProxy.js', () => ({
+  proxyImage: (...args: unknown[]) => mockProxyImage(...args) as unknown,
+}));
+
+const mockBuildMediaLinks = vi.fn();
+vi.mock('../mediaLinks.js', () => ({
+  buildMediaLinks: (...args: unknown[]) => mockBuildMediaLinks(...args) as unknown,
+}));
+
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { discordType, type DiscordEmbed } from '../destinations/discord.js';
 import type { NotificationEvent } from '../events.js';
 import type { RenderContext } from '../destinations/types.js';
+
+mockProxyImage.mockResolvedValue({ data: Buffer.alloc(0), contentType: 'image/svg+xml' });
+mockBuildMediaLinks.mockResolvedValue([]);
 
 const config = { webhookUrl: 'https://discord.com/api/webhooks/123/abc' };
 const destination = { id: 'dest-1', name: 'My Discord' };
@@ -36,7 +50,7 @@ const fieldNames = (embed: DiscordEmbed): string[] => (embed.fields ?? []).map((
 const render = async (
   event: Parameters<typeof discordType.render>[0],
   ctx: RenderContext = systemCtx
-): Promise<DiscordEmbed> => discordType.render(event, config, ctx);
+): Promise<DiscordEmbed> => (await discordType.render(event, config, ctx)).embed;
 
 const mediaUpgraded: NotificationEvent = {
   type: 'media_upgraded',
@@ -45,6 +59,17 @@ const mediaUpgraded: NotificationEvent = {
     serverName: 'Basement',
     serverType: 'plex',
     libraryItemId: 'item-1',
+    ratingKey: 'rk-1',
+    mediaId: null,
+    parentTitle: null,
+    grandparentRatingKey: null,
+    parentRatingKey: null,
+    parentIndex: null,
+    itemIndex: null,
+    imdbId: null,
+    tmdbId: null,
+    tvdbId: null,
+    thumbPath: null,
     title: 'Cars',
     grandparentTitle: null,
     mediaType: 'movie',
@@ -172,7 +197,11 @@ describe('discordType.deliver', () => {
     const f = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', f);
 
-    await discordType.deliver({ title: 'Stream Started', color: 0x3498db }, config, deliverCtx);
+    await discordType.deliver(
+      { embed: { title: 'Stream Started', color: 0x3498db } },
+      config,
+      deliverCtx
+    );
 
     expect(f).toHaveBeenCalledTimes(1);
     const [url, init] = f.mock.calls[0] ?? [];
@@ -190,7 +219,11 @@ describe('discordType.deliver', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('bad payload', { status: 400 })));
 
     await expect(
-      discordType.deliver({ title: 'Stream Started', color: 0x3498db }, config, deliverCtx)
+      discordType.deliver(
+        { embed: { title: 'Stream Started', color: 0x3498db } },
+        config,
+        deliverCtx
+      )
     ).rejects.toThrow(/400 bad payload/);
   });
 
@@ -280,14 +313,22 @@ describe('discordType.render with an automation source', () => {
     );
     expect(trust.color).toBe(0x9b59b6);
 
-    // The media pair keeps the teal it had before the builder was shared.
-    expect((await render(mediaUpgraded, automationCtx())).color).toBe(0x1abc9c);
+    // Both media events stay in the teal family, apart from the trust purple above.
+    expect((await render(mediaUpgraded, automationCtx())).color).toBe(0x16a085);
   });
 
-  it('builds a media upgrade embed, and an override still wins', async () => {
+  it('titles a media upgrade with the item and breaks out every field that moved', async () => {
     const embed = await render(mediaUpgraded, automationCtx());
-    expect(embed.title).toBe('Media upgraded');
-    expect(embed.description).toBe('Cars on Basement: 1080p → 4K');
+
+    expect(embed.title).toBe('Cars');
+    expect(embed.fields).toEqual(
+      expect.arrayContaining([
+        { name: 'Resolution', value: '1080p → 4K', inline: true },
+        { name: 'Library', value: 'Movies', inline: true },
+        { name: 'Server', value: 'Basement', inline: true },
+        { name: 'Year', value: '2006', inline: true },
+      ])
+    );
 
     const overridden = await render(mediaUpgraded, automationCtx({ title: 'Better copy' }));
     expect(overridden.title).toBe('Better copy');
@@ -301,5 +342,137 @@ describe('discordType.render with an automation source', () => {
 
     expect(embed.title).toBe('Tracearr Update Available');
     expect(embed.description).toContain('2.1.0');
+  });
+});
+
+describe('discordType media embeds', () => {
+  const seasonPayload = {
+    serverId: 'server-1',
+    serverName: 'Guardian',
+    serverType: 'plex',
+    libraryItemId: 'item-1',
+    ratingKey: 'rk-1',
+    mediaId: 'media-1',
+    title: 'Season 1',
+    grandparentTitle: null,
+    parentTitle: 'Murderbot',
+    grandparentRatingKey: null,
+    parentRatingKey: 'show-rk',
+    parentIndex: 1,
+    itemIndex: null,
+    mediaType: 'season',
+    year: 2025,
+    imdbId: null,
+    tmdbId: null,
+    tvdbId: null,
+    thumbPath: '/library/metadata/1/thumb',
+    libraryName: 'TV Shows',
+    to: {
+      resolution: '4k',
+      dynamicRange: 'hdr10',
+      videoCodec: 'HEVC',
+      audioCodec: 'TRUEHD',
+      audioChannels: 8,
+      fileSize: 42_000_000_000,
+    },
+    addedEpisodeCount: 10,
+  } as const;
+
+  const seasonAdded: NotificationEvent = {
+    type: 'media_added',
+    payload: { ...seasonPayload },
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    mockProxyImage.mockResolvedValue({ data: Buffer.alloc(0), contentType: 'image/svg+xml' });
+    mockBuildMediaLinks.mockResolvedValue([]);
+  });
+
+  it('titles a season with its show and counts the episodes that came with it', async () => {
+    const { embed } = await discordType.render(seasonAdded, config, systemCtx);
+
+    expect(embed.author).toEqual({ name: 'New media added' });
+    expect(embed.title).toBe('Murderbot — Season 1');
+    expect(embed.description).toBe('10 episodes added');
+    expect(embed.fields).toEqual([
+      { name: 'Library', value: 'TV Shows', inline: true },
+      { name: 'Server', value: 'Guardian', inline: true },
+      { name: 'Year', value: '2025', inline: true },
+    ]);
+  });
+
+  it('renders every link it was given, and titles the embed with the first', async () => {
+    mockBuildMediaLinks.mockResolvedValue([
+      { label: 'Tracearr', url: 'https://tracearr.example/media/media-1' },
+      { label: 'IMDb', url: 'https://www.imdb.com/title/tt1/' },
+    ]);
+
+    const { embed } = await discordType.render(seasonAdded, config, systemCtx);
+
+    expect(embed.url).toBe('https://tracearr.example/media/media-1');
+    expect(embed.fields?.at(-1)).toEqual({
+      name: 'View details',
+      value:
+        '[Tracearr](https://tracearr.example/media/media-1)  ·  [IMDb](https://www.imdb.com/title/tt1/)',
+      inline: false,
+    });
+  });
+
+  it('uploads the poster and points the thumbnail at it, naming the file for its bytes', async () => {
+    mockProxyImage.mockResolvedValue({ data: Buffer.from('webpbytes'), contentType: 'image/webp' });
+    const f = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', f);
+
+    const message = await discordType.render(seasonAdded, config, systemCtx);
+    expect(message.embed.thumbnail).toEqual({ url: 'attachment://poster.webp' });
+
+    await discordType.deliver(message, config, deliverCtx);
+
+    const [, init] = f.mock.calls[0] ?? [];
+    const form = init.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    // Left unset on purpose: undici writes the multipart boundary itself.
+    expect(init.headers).not.toHaveProperty('Content-Type');
+    const payload = JSON.parse(form.get('payload_json') as string);
+    expect(payload.attachments).toEqual([{ id: 0, filename: 'poster.webp' }]);
+    expect(payload.avatar_url).toContain('raw.githubusercontent.com');
+    expect(form.get('files[0]')).toBeInstanceOf(Blob);
+  });
+
+  it('sends json with no attachment when the poster could not be fetched', async () => {
+    mockProxyImage.mockRejectedValue(new Error('server unreachable'));
+    const f = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', f);
+
+    const message = await discordType.render(seasonAdded, config, systemCtx);
+    expect(message.poster).toBeUndefined();
+    expect(message.embed.thumbnail).toBeUndefined();
+
+    await discordType.deliver(message, config, deliverCtx);
+    const [, init] = f.mock.calls[0] ?? [];
+    expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(init.body).attachments).toBeUndefined();
+  });
+
+  it('refuses the placeholder an unreachable server yields, rather than uploading an svg', async () => {
+    mockProxyImage.mockResolvedValue({
+      data: Buffer.from('<svg/>'),
+      contentType: 'image/svg+xml',
+    });
+
+    const message = await discordType.render(seasonAdded, config, systemCtx);
+
+    expect(message.poster).toBeUndefined();
+  });
+
+  it('asks for no poster at all when the item has no thumb', async () => {
+    await discordType.render(
+      { type: 'media_added', payload: { ...seasonPayload, thumbPath: null } },
+      config,
+      systemCtx
+    );
+
+    expect(mockProxyImage).not.toHaveBeenCalled();
   });
 });

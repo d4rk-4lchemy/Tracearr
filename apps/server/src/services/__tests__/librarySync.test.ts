@@ -81,6 +81,7 @@ import {
   _resetAutoBackfillThrottleForTests,
   _resetReconcileThrottleForTests,
 } from '../librarySync.js';
+import { MEDIA_BUFFER_CAP, flushMediaAnnounceRun } from '../library/mediaAnnounce.js';
 import type { MediaLibraryItem } from '../mediaServer/types.js';
 import type { LibrarySyncProgress } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
@@ -168,10 +169,21 @@ function changedRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'library-item-1',
     ratingKey: 'rk-1',
+    mediaId: null,
     firstSeenAt: new Date('2026-01-01T00:00:00Z'),
     title: 'Cars',
+    grandparentTitle: null,
+    parentTitle: null,
+    grandparentRatingKey: null,
+    parentRatingKey: null,
+    parentIndex: null,
+    itemIndex: null,
     mediaType: 'movie',
     year: 2006,
+    imdbId: null,
+    tmdbId: null,
+    tvdbId: null,
+    thumbPath: null,
     resolution: '4k',
     dynamicRange: null,
     videoCodec: 'H264',
@@ -179,6 +191,15 @@ function changedRow(overrides: Record<string, unknown> = {}) {
     audioChannels: 6,
     fileSize: 9_000_000_000,
     ...overrides,
+  };
+}
+
+/** A buffered change, only ever counted, so its contents do not matter. */
+function fakeCollected() {
+  return {
+    change: { kind: 'added' as const, row: changedRow() as never },
+    libraryId: '1',
+    libraryName: 'Movies',
   };
 }
 
@@ -1026,13 +1047,14 @@ describe('LibrarySyncService', () => {
       expect(mockDispatchMediaUpgraded).not.toHaveBeenCalled();
     });
 
-    it('reads nothing more once the run has spent its announce budget', async () => {
+    it('reads nothing more once the run has filled its buffer', async () => {
       const service = new LibrarySyncService();
-      const announce = {
+      const run = {
         server: { id: 'server-1', name: 'Basement', type: 'plex' as const },
-        libraryName: 'Movies',
-        budget: { remaining: 0, suppressed: 4 },
+        budget: { remaining: 20, suppressed: 4 },
+        collected: Array.from({ length: MEDIA_BUFFER_CAP }, () => fakeCollected()),
       };
+      const announce = { ...run, libraryName: 'Movies', run };
       const { insertChain } = mockTransaction();
       insertChain.returning.mockResolvedValue([changedRow()]);
 
@@ -1046,19 +1068,20 @@ describe('LibrarySyncService', () => {
 
       expect(db.select).not.toHaveBeenCalled();
       expect(mockDispatchMediaUpgraded).not.toHaveBeenCalled();
-      expect(announce.budget.suppressed).toBe(4);
     });
 
-    it('announces the quality a changed row moved to, after the transaction', async () => {
+    it('announces the quality a changed row moved to, once the run flushes', async () => {
       const service = new LibrarySyncService();
-      const announce = {
+      const run = {
         server: { id: 'server-1', name: 'Basement', type: 'plex' as const },
-        libraryName: 'Movies',
         budget: { remaining: 20, suppressed: 0 },
+        collected: [],
       };
+      const announce = { ...run, libraryName: 'Movies', run };
       mockPriorQuality([
         {
           ratingKey: 'rk-1',
+          mediaId: null,
           resolution: '1080p',
           dynamicRange: null,
           videoCodec: 'H264',
@@ -1078,10 +1101,16 @@ describe('LibrarySyncService', () => {
         announce
       );
 
+      // Nothing leaves upsertItems: the run holds it until every library is in.
+      expect(mockDispatchMediaUpgraded).not.toHaveBeenCalled();
+      await flushMediaAnnounceRun(run);
+
       expect(mockDispatchMediaUpgraded).toHaveBeenCalledWith({
         server: announce.server,
-        media: {
+        media: expect.objectContaining({
           libraryItemId: 'library-item-1',
+          ratingKey: 'rk-1',
+          mediaId: null,
           title: 'Cars',
           type: 'movie',
           year: 2006,
@@ -1095,7 +1124,7 @@ describe('LibrarySyncService', () => {
             audioChannels: 6,
             fileSize: 9_000_000_000,
           },
-        },
+        }),
         from: {
           resolution: '1080p',
           dynamicRange: null,
@@ -1106,7 +1135,7 @@ describe('LibrarySyncService', () => {
         },
         changed: ['resolution', 'fileSize'],
       });
-      expect(announce.budget).toEqual({ remaining: 19, suppressed: 0 });
+      expect(run.budget).toEqual({ remaining: 19, suppressed: 0 });
     });
   });
 

@@ -1,10 +1,12 @@
-import { useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play, Clock, AlertTriangle, Tv, MapPin, Calendar, Users, Activity } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { NowPlayingCard } from '@/components/sessions';
-import { StreamCard } from '@/components/map';
+const StreamCard = lazy(() =>
+  import('@/components/map/StreamCard').then((m) => ({ default: m.StreamCard }))
+);
 import { SessionDetailSheet } from '@/components/history/SessionDetailSheet';
 import { ServerResourceCharts } from '@/components/charts/ServerResourceCharts';
 import { ServerBandwidthChart } from '@/components/charts/BandwidthChart';
@@ -283,13 +285,15 @@ export function Dashboard() {
             <MapPin className="text-primary h-5 w-5" />
             <h2 className="text-lg font-semibold">{t('dashboard.streamLocations')}</h2>
           </div>
-          <Card className="overflow-hidden">
-            <StreamCard
-              sessions={sessions}
-              height={320}
-              isMultiServer={isMultiServer}
-              serverColorMap={serverColorMap}
-            />
+          <Card className="overflow-hidden py-0">
+            <Suspense fallback={<div className="bg-muted/30 h-[320px] w-full animate-pulse" />}>
+              <StreamCard
+                sessions={sessions}
+                height={320}
+                isMultiServer={isMultiServer}
+                serverColorMap={serverColorMap}
+              />
+            </Suspense>
           </Card>
         </section>
       )}

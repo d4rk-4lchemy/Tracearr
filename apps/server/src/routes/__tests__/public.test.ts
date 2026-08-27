@@ -15,8 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
-import type { SQL } from 'drizzle-orm';
-import { queryChain, renderCall, renderSql } from '../../test/helpers.js';
+import { queryChain, renderCall } from '../../test/helpers.js';
 
 const mockGetDashboardStats = vi.hoisted(() => vi.fn());
 

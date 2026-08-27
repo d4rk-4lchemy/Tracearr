@@ -40,6 +40,17 @@ const mediaPayload = {
   serverName: 'Basement',
   serverType: 'plex',
   libraryItemId: 'item-1',
+  ratingKey: 'rk-1',
+  mediaId: null,
+  parentTitle: null,
+  grandparentRatingKey: null,
+  parentRatingKey: null,
+  parentIndex: null,
+  itemIndex: null,
+  imdbId: null,
+  tmdbId: null,
+  tvdbId: null,
+  thumbPath: null,
   title: 'Cars',
   grandparentTitle: null,
   mediaType: 'movie',
@@ -328,17 +339,19 @@ describe('media events', () => {
     expect(added.context).toEqual({ type: 'media_added', ...mediaPayload });
   });
 
-  it('leads an upgrade with the resolution pair', () => {
+  it('names every field an upgrade moved, resolution first', () => {
     const upgraded = toNotificationPayload(
       { type: 'media_upgraded', payload: upgradedPayload },
       system
     );
 
     expect(upgraded.title).toBe('Media upgraded');
-    expect(upgraded.message).toBe('Cars on Basement: 1080p → 4K');
+    expect(upgraded.message).toBe(
+      'Cars (2006) on Basement was upgraded: resolution 1080p → 4K, size 7.5 GB → 39.1 GB'
+    );
   });
 
-  it('falls back to the first field that moved when the resolution held', () => {
+  it('names whatever moved when the resolution held', () => {
     const upgraded = toNotificationPayload(
       {
         type: 'media_upgraded',
@@ -347,7 +360,7 @@ describe('media events', () => {
       system
     );
 
-    expect(upgraded.message).toBe('Cars on Basement: 7.5 GB → 39.1 GB');
+    expect(upgraded.message).toBe('Cars (2006) on Basement was upgraded: size 7.5 GB → 39.1 GB');
   });
 
   it('renders the from and to variables an automation body names', () => {
@@ -370,7 +383,9 @@ describe('media events', () => {
         { type: 'media_upgraded', payload: { ...upgradedPayload, ...episode } },
         system
       ).message
-    ).toBe('Severance — Pilot on Basement: 1080p → 4K');
+    ).toBe(
+      'Severance — Pilot (2006) on Basement was upgraded: resolution 1080p → 4K, size 7.5 GB → 39.1 GB'
+    );
   });
 
   it('renders a missing year and the item variables as the trigger offers them', () => {

@@ -40,7 +40,8 @@
     "lint": "eslint src/ --cache --cache-location .eslintcache --cache-strategy content",
     "lint:fix": "eslint src/ --fix",
     "clean": "rm -rf dist .turbo",
-    "check": "tsx scripts/check-translations.ts"
+    "check": "tsx scripts/check-translations.ts",
+    "check:english": "tsx scripts/find-english-regressions.ts"
   },
   "dependencies": {
     "i18next": "^26.3.6",

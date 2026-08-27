@@ -13,8 +13,8 @@ test.describe('Page Navigation', () => {
   test('can navigate to map page', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Map' }).click();
-    // Map page has no heading — verify the Leaflet map container rendered
-    await expect(page.locator('.leaflet-container')).toBeVisible();
+    // Map page has no heading — verify the MapLibre map container rendered
+    await expect(page.locator('.maplibregl-map')).toBeVisible();
   });
 
   test('can navigate to users page', async ({ page }) => {

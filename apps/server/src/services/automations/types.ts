@@ -33,14 +33,31 @@ export const MEDIA_QUALITY_FIELDS = [
 /** The library item a media trigger is about, as it stands after the sync. */
 export interface MediaSubject {
   libraryItemId: string;
+  ratingKey: string;
+  /** Canonical media id, which is what Tracearr's own media page is keyed by. */
+  mediaId: string | null;
   title: string;
   /** The show or artist an episode or track belongs to; null for anything standalone. */
   grandparentTitle: string | null;
+  /** The season or album. On a season row this holds the show instead, which is what names it. */
+  parentTitle: string | null;
+  grandparentRatingKey: string | null;
+  parentRatingKey: string | null;
+  /** Season number on an episode or a season; null elsewhere. */
+  parentIndex: number | null;
+  /** Episode or track number; null elsewhere. */
+  itemIndex: number | null;
   type: string;
   year: number | null;
+  imdbId: string | null;
+  tmdbId: number | null;
+  tvdbId: number | null;
+  thumbPath: string | null;
   libraryId: string;
   libraryName: string;
   quality: MediaQuality;
+  /** Set only on a season that swallowed the episodes one sync run added under it. */
+  addedEpisodeCount?: number;
 }
 
 export interface EvaluationContext {

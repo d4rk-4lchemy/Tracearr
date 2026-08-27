@@ -31,7 +31,7 @@
     "previous": "Předchozí",
     "refresh": "Aktualizovat",
     "remove": "Odebrat",
-    "reset": "Reset",
+    "reset": "",
     "retry": "Opakovat",
     "save": "Uložit",
     "search": "Hledat",
@@ -55,34 +55,38 @@
     "viewOnGithub": "Zobrazit na GitHub",
     "viewProfile": "Zobrazit profil"
   },
-  "beta": "beta",
+  "beta": "",
   "confirmations": {
     "deleteMessage": "Opravdu chcete tuto akci odstranit? Tuto akci nelze vrátit zpět.",
     "deleteTitle": "Potvrdit odstranění",
     "unsavedChanges": "Máte neuložené změny. Jste si jisti, že chcete odejít?"
   },
   "count": {
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices",
+    "alert_one": "",
+    "alert_other": "",
+    "automation_one": "",
+    "automation_other": "",
+    "channel_one": "",
+    "channel_other": "",
+    "device_one": "",
+    "device_other": "",
     "error_one": "Chyba {{count}}",
     "error_other": "Chyby {{count}}",
     "item_one": "{{count}} položka",
     "item_other": "{{count}} položky",
     "library_one": "{{count}} knihovna",
     "library_other": "{{count}} knihovny",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
+    "location_one": "",
+    "location_other": "",
     "result_one": "Výsledek {{count}}",
     "result_other": "Výsledky {{count}}",
     "selected_one": "{{count}} vybrán",
     "selected_other": "{{count}} vybrán",
-    "server_one": "{{count}} server",
+    "server_one": "",
     "server_other": "{{count}} servery",
     "session_one": "{{count}} relace",
     "session_other": "{{count}} relace",
-    "stream_one": "{{count}} stream",
+    "stream_one": "",
     "stream_other": "{{count}} streamy",
     "user_one": "{{count}} uživatel",
     "user_other": "{{count}} uživatelé",
@@ -91,11 +95,7 @@
     "usersUpdated_one": "{{count}} uživatel aktualizován",
     "usersUpdated_other": "{{count}} uživatelé aktualizováni",
     "violation_one": "Porušení {{count}}",
-    "violation_other": "{{count}} porušení",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
-    "automation_one": "{{count}} automation",
-    "automation_other": "{{count}} automations"
+    "violation_other": "{{count}} porušení"
   },
   "duration": {
     "day_one": "{{count}} den",
@@ -138,17 +138,17 @@
     "unexpectedError": "Došlo k neočekávané chybě. Zkuste to prosím znovu."
   },
   "filters": {
-    "anyDate": "Any date",
-    "clearAll": "Clear all",
-    "clearDates": "Clear date range",
-    "clearEndDate": "Clear end date",
-    "clearSearch": "Clear search",
-    "clearStartDate": "Clear start date",
-    "dateAfter": "After {{date}}",
-    "dateBefore": "Before {{date}}",
-    "dateBetween": "{{from}} to {{to}}",
-    "done": "Done",
-    "remove": "Remove {{label}} filter"
+    "anyDate": "",
+    "clearAll": "",
+    "clearDates": "",
+    "clearEndDate": "",
+    "clearSearch": "",
+    "clearStartDate": "",
+    "dateAfter": "",
+    "dateBefore": "",
+    "dateBetween": "",
+    "done": "",
+    "remove": ""
   },
   "labels": {
     "actions": "Akce",
@@ -157,12 +157,12 @@
     "apiKey": "API klíč",
     "bandwidth": "Šířka pásma",
     "content": "Obsah",
-    "created": "Created",
+    "created": "",
     "data": "Údaje",
     "date": "Datum:",
     "days": "dny",
     "device": "Zařízení",
-    "deviceId": "Device ID",
+    "deviceId": "",
     "disabled": "Zakázáno",
     "duration": "Doba trvání",
     "filters": "Filtry",
@@ -170,16 +170,16 @@
     "items": "Položky",
     "joined": "Připojeno",
     "lastActivity": "Poslední aktivita",
-    "loadMore": "Load More",
+    "loadMore": "",
     "location": "Poloha",
     "media": "Média",
-    "mediaLength": "Media length",
+    "mediaLength": "",
     "name": "Název",
     "never": "Nikdy",
     "pausedTime": "Čas pozastavení",
     "platform": "Platforma",
     "player": "Přehrávač",
-    "product": "Product",
+    "product": "",
     "progress": "Průběh",
     "quality": "Kvalita",
     "rank": "Hodnost",
@@ -187,8 +187,8 @@
     "recentSessions": "Poslední relace",
     "resolution": "Rozlišení",
     "rule": "Pravidlo",
-    "segments": "segments",
-    "server": "Server",
+    "segments": "",
+    "server": "",
     "serverOwner": "Vlastník serveru",
     "sessionDetails": "Podrobnosti relace",
     "sessions": "Relace",
@@ -197,10 +197,10 @@
     "started": "Začínáno",
     "status": "Stav",
     "stopped": "Zastaveno",
-    "streamDetails": "Stream Details",
-    "total": "total",
+    "streamDetails": "",
+    "total": "",
     "totalSessions": "Celkem relací",
-    "transcodeReason": "Transcode Reason",
+    "transcodeReason": "",
     "trustScore": "Důvěřovat skóre",
     "type": "Typ",
     "unknown": "Neznámý",
@@ -241,8 +241,8 @@
     "transcode": "Přeskóre"
   },
   "relativeTime": {
-    "day_one": "{{count}} day ago",
-    "day_other": "{{count}} days ago",
+    "day_one": "",
+    "day_other": "",
     "hour_one": "{{count}} hodinou",
     "hour_other": "{{count}} hodin",
     "justNow": "Právě teď",
@@ -252,10 +252,10 @@
     "month_other": "{{count}} před měsíci",
     "second_one": "{{count}} před vteřinou",
     "second_other": "{{count}} vteřin",
-    "week_one": "{{count}} week ago",
+    "week_one": "",
     "week_other": "{{count}} týdny",
     "year_one": "před rokem {{count}}",
-    "year_other": "{{count}} years ago"
+    "year_other": ""
   },
   "search": {
     "placeholder": "Hledat...",
@@ -263,15 +263,15 @@
     "searchUsers": "Hledat uživatele..."
   },
   "serverSelector": {
-    "all": "All servers",
-    "noMatches": "No servers found",
-    "search": "Search servers...",
-    "some": "{{count}} of {{total}} servers"
+    "all": "",
+    "noMatches": "",
+    "search": "",
+    "some": ""
   },
   "servers": {
-    "emby": "Emby",
-    "jellyfin": "Jellyfin",
-    "plex": "Plex"
+    "emby": "",
+    "jellyfin": "",
+    "plex": ""
   },
   "severity": {
     "high": "Vysoká",
@@ -294,24 +294,24 @@
     "failed": "Selhalo",
     "inactive": "Neaktivní",
     "loading": "Načítám...",
-    "offline": "Offline",
-    "online": "Online",
+    "offline": "",
+    "online": "",
     "pending": "Nevyřízeno",
     "saving": "Ukládání...",
     "success": "Úspěšně"
   },
   "table": {
-    "pageOf": "Page {{page}} of {{total}}",
-    "pagination": "Pagination",
+    "pageOf": "",
+    "pagination": "",
     "selectAllOnPage": "Vybrat vše na stránce",
     "selectRow": "Vybrat řádek"
   },
   "tasks": {
-    "queued": "Queued",
-    "running": "Running",
-    "startedAgo": "Started {{time}}",
-    "title": "Running Tasks",
-    "waiting": "Waiting"
+    "queued": "",
+    "running": "",
+    "startedAgo": "",
+    "title": "",
+    "waiting": ""
   },
   "time": {
     "allTime": "Celý čas",
@@ -322,15 +322,15 @@
     "yesterday": "Včera"
   },
   "trust": {
-    "caution": "Caution",
-    "trusted": "Trusted",
-    "untrusted": "Untrusted"
+    "caution": "",
+    "trusted": "",
+    "untrusted": ""
   },
   "units": {
-    "km": "km",
-    "kmh": "km/h",
+    "km": "",
+    "kmh": "",
     "mi": "mil",
-    "mph": "mph"
+    "mph": ""
   },
   "validation": {
     "invalidEmail": "Zadejte prosím platnou e-mailovou adresu",

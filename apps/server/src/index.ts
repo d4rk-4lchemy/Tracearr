@@ -68,6 +68,7 @@ import { notificationPreferencesRoutes } from './routes/notificationPreferences.
 import { destinationRoutes } from './routes/destinations.js';
 import { versionRoutes } from './routes/version.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
+import { mapRoutes } from './routes/map.js';
 import { publicRoutes } from './routes/public.js';
 import { publicV2Routes } from './routes/publicV2/index.js';
 import { libraryRoutes } from './routes/library.js';
@@ -501,6 +502,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
   await app.register(notificationPreferencesRoutes, { prefix: `${API_BASE_PATH}/notifications` });
   await app.register(versionRoutes, { prefix: `${API_BASE_PATH}/version` });
   await app.register(maintenanceRoutes, { prefix: `${API_BASE_PATH}/maintenance` });
+  await app.register(mapRoutes, { prefix: `${API_BASE_PATH}/map` });
   await app.register(tailscaleRoutes, { prefix: `${API_BASE_PATH}/tailscale` });
   await app.register(tasksRoutes, { prefix: `${API_BASE_PATH}/tasks` });
   await app.register(publicRoutes, { prefix: `${API_BASE_PATH}/public` });
@@ -545,6 +547,13 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
       if (urlPath !== '/' && /\.\w+$/.test(urlPath)) {
         const assetPath = resolveWebAsset(webDistPath, urlPath);
         if (assetPath && existsSync(resolve(webDistPath, assetPath))) {
+          // Vite content-hashes /assets/ filenames, so they are immutable;
+          // basemap glyphs and sprites are stable vendored files.
+          if (assetPath.startsWith('assets/')) {
+            reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+          } else if (assetPath.startsWith('basemaps/')) {
+            reply.header('Cache-Control', 'public, max-age=604800');
+          }
           return reply.sendFile(assetPath);
         }
       }
