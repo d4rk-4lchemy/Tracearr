@@ -60,6 +60,14 @@
         "title": "Plex konto frakoblet",
         "message": "Din Plex konto har blitt frakoblet"
       },
+      "plexAccountReauthorized": {
+        "title": "",
+        "message_one": "",
+        "message_other": "",
+        "messageNoServers": "",
+        "partial": "",
+        "unmatched": ""
+      },
       "agentAdded": {
         "title": "Agent lagt til",
         "message": "Meldingsagenten er lagt til"
@@ -76,17 +84,17 @@
         "title": "Jobb fullført",
         "message": "{{name}} fullført"
       },
-      "ruleCreated": {
-        "title": "Regel opprettet",
-        "message": "Regelen har blitt opprettet"
+      "automationCreated": {
+        "title": "",
+        "message": ""
       },
-      "ruleUpdated": {
-        "title": "Regel oppdatert",
-        "message": "Regelen har blitt oppdatert"
+      "automationUpdated": {
+        "title": "",
+        "message": ""
       },
-      "ruleDeleted": {
-        "title": "Regelen slettet",
-        "message": "Regelen har blitt slettet"
+      "automationDeleted": {
+        "title": "",
+        "message": ""
       },
       "streamTerminated": {
         "title": "Strømmen er avsluttet",
@@ -147,12 +155,15 @@
         "message": "Nå kan du fortsette med oppsettet"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "",
+        "automationsKept": ""
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": ""
+      },
+      "destinationSaved": "",
+      "destinationDeleted": "",
+      "destinationTestSent": ""
     },
     "error": {
       "serverAddFailed": "Klarte ikke å legge til server",
@@ -164,9 +175,9 @@
       "dismissFailed": "Kunne ikke avvise brudd",
       "authFailed": "Godkjenning mislyktes",
       "webhookTestFailed": "Webhook-test mislyktes",
-      "ruleCreateFailed": "Kunne ikke opprette regel",
-      "ruleUpdateFailed": "Kunne ikke oppdatere regel",
-      "ruleDeleteFailed": "Kunne ikke slette regel",
+      "automationCreateFailed": "",
+      "automationUpdateFailed": "",
+      "automationDeleteFailed": "",
       "streamTerminateFailed": "Kan ikke avslutte strømmen",
       "serverUrlUpdateFailed": "Klarte ikke å oppdatere nettadressen til serveren",
       "serverUpdateFailed": "Kunne ikke oppdatere serveren",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "Kunne ikke oppdatere ruting",
       "clipboardFailed": "Kan ikke kopiere til utklippstavlen",
       "plexUnlinkFailed": "Klarte ikke koble fra Plex konto",
+      "plexReauthorizeFailed": "",
       "agentAddFailed": "Kan ikke legge til agent",
       "agentUpdateFailed": "Kunne ikke oppdatere agent",
       "agentRemoveFailed": "Kunne ikke fjerne agent",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "Kunne ikke laste vedlikeholdsjobber",
       "invalidUrl": "Ugyldig nettadresse",
       "plexDirectUrl": "plex.direkte URL-er er relay adresser som ikke kan brukes her. Vennligst bruk en direkte IP-adresse eller vertsnavn i stedet.",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "",
+      "serverUserSplitFailed": "",
       "invalidClaimCode": {
         "title": "Ugyldig reklamasjonskode",
         "message": "Vennligst sjekk server loggene"
-      }
+      },
+      "destinationSaveFailed": "",
+      "destinationDeleteFailed": "",
+      "destinationTestFailed": "",
+      "destinationInUse": ""
     },
     "warning": {
       "jobFailed": {
@@ -207,25 +223,9 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "Ny strømming startet",
-        "message": "{{user}} har startet å se på {{media}}"
-      },
-      "streamStopped": {
-        "title": "Strøm stoppet",
-        "message": "{{user}} sluttet å følge"
-      },
       "updateAvailable": {
         "title": "Oppdatering tilgjengelig",
         "message": "Tracearr {{version}} er tilgjengelig"
-      },
-      "serverOffline": {
-        "title": "Server frakoblet",
-        "message": "{{name}} er utilgjengelig"
-      },
-      "serverOnline": {
-        "title": "Server pålogget",
-        "message": "{{name}} er tilbake på nettet"
       },
       "violationDetected": {
         "title": "Ny Bruk: {{ruleName}}",

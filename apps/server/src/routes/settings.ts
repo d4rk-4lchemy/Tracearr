@@ -5,21 +5,19 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { updateSettingsSchema, type Settings, type WebhookFormat } from '@tracearr/shared';
+import { updateSettingsSchema, type Settings } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { users, sessions } from '../db/schema.js';
 import { geoipService } from '../services/geoip.js';
-import { notificationManager } from '../services/notifications/index.js';
-import { getAllSettings, getSettings, setSettings } from '../services/settings.js';
+import { getImageCacheStatus } from '../services/imageCacheSweep.js';
+import { getAllSettings, setSettings } from '../services/settings.js';
 
 // Re-export service getters so existing import paths still work
 export {
   getPollerSettings,
   getGeoIPSettings,
   getNetworkSettings,
-  getNotificationSettings,
   getBackupScheduleSettings,
-  type NotificationSettings,
 } from '../services/settings.js';
 
 // API token format: trr_pub_<32 random bytes as base64url>
@@ -79,117 +77,6 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
 
     // Return updated settings with masks
     return getAllSettings();
-  });
-
-  /**
-   * POST /settings/test-webhook - Send a test notification to verify webhook configuration
-   */
-  app.post<{
-    Body: {
-      type: 'discord' | 'custom';
-      url?: string;
-      format?: WebhookFormat;
-      ntfyTopic?: string;
-      ntfyAuthToken?: string;
-      pushoverUserKey?: string;
-      pushoverApiToken?: string;
-    };
-  }>('/test-webhook', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const authUser = request.user;
-
-    // Only owners can test webhooks
-    if (authUser.role !== 'owner') {
-      return reply.forbidden('Only server owners can test webhooks');
-    }
-
-    const { type, url, format } = request.body;
-
-    if (!type) {
-      return reply.badRequest('Missing webhook type');
-    }
-
-    // Get current notification settings
-    const currentSettings = await getSettings([
-      'discordWebhookUrl',
-      'customWebhookUrl',
-      'webhookFormat',
-      'ntfyTopic',
-      'ntfyAuthToken',
-      'pushoverUserKey',
-      'pushoverApiToken',
-    ]);
-
-    let webhookUrl: string | null = null;
-    let webhookFormat: WebhookFormat = 'json';
-    let ntfyTopic: string | null = null;
-    let ntfyAuthToken: string | null = null;
-    let pushoverUserKey: string | null = null;
-    let pushoverApiToken: string | null = null;
-
-    if (type === 'discord') {
-      webhookUrl = url ?? currentSettings.discordWebhookUrl ?? null;
-    } else {
-      webhookUrl = url ?? currentSettings.customWebhookUrl ?? null;
-      webhookFormat = format ?? currentSettings.webhookFormat ?? 'json';
-      ntfyTopic = currentSettings.ntfyTopic ?? null;
-      ntfyAuthToken = currentSettings.ntfyAuthToken ?? null;
-      pushoverUserKey = currentSettings.pushoverUserKey ?? null;
-      pushoverApiToken = currentSettings.pushoverApiToken ?? null;
-    }
-
-    if (webhookFormat === 'pushover') {
-      if (!pushoverUserKey || !pushoverApiToken) {
-        return reply.badRequest('Pushover requires User Key and API Token');
-      }
-    } else if (!webhookUrl) {
-      return reply.badRequest(`No ${type} webhook URL configured`);
-    }
-
-    // Build notification settings for testing
-    const testSettings = {
-      discordWebhookUrl: type === 'discord' ? webhookUrl : null,
-      customWebhookUrl: type === 'custom' ? webhookUrl : null,
-      webhookFormat,
-      ntfyTopic,
-      ntfyAuthToken,
-      pushoverUserKey,
-      pushoverApiToken,
-    };
-
-    // Determine which agent to test based on type and format
-    let agentName: string;
-    if (type === 'discord') {
-      agentName = 'discord';
-    } else {
-      // Custom webhook - determine agent based on format
-      switch (webhookFormat) {
-        case 'ntfy':
-          agentName = 'ntfy';
-          break;
-        case 'apprise':
-          agentName = 'apprise';
-          break;
-        case 'pushover':
-          agentName = 'pushover';
-          break;
-        case 'gotify':
-          agentName = 'gotify';
-          break;
-        default:
-          agentName = 'json-webhook';
-      }
-    }
-
-    const result = await notificationManager.testAgent(agentName, testSettings);
-
-    if (!result.success) {
-      return reply.code(502).send({
-        success: false,
-        error: result.error ?? 'Webhook test failed',
-      });
-    }
-
-    return { success: true };
   });
 
   /**
@@ -280,5 +167,13 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return { showWarning, stateHash };
+  });
+
+  /** GET /settings/image-cache - poster cache size, need, free disk, disk-limited flag */
+  app.get('/image-cache', { preHandler: [app.authenticate] }, async (request, reply) => {
+    if (request.user.role !== 'owner') {
+      return reply.forbidden('Only server owners can view settings');
+    }
+    return getImageCacheStatus();
   });
 };

@@ -78,13 +78,13 @@ export function useFilterOptions(params?: {
 }
 
 /**
- * Query for filter options for the rules builder.
+ * Query for filter options for the automation builder.
  * Returns all countries (with hasSessions indicator) and servers.
  */
-export function useRulesFilterOptions() {
+export function useAutomationFilterOptions() {
   return useQuery({
-    queryKey: ['sessions', 'filter-options', 'rules'],
-    queryFn: () => api.sessions.rulesFilterOptions(),
+    queryKey: ['sessions', 'filter-options', 'automations'],
+    queryFn: () => api.sessions.automationFilterOptions(),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }

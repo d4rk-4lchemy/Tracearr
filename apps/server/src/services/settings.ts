@@ -6,13 +6,7 @@
  */
 
 import { eq, inArray, sql } from 'drizzle-orm';
-import {
-  SESSION_LIMITS,
-  type Settings,
-  type WebhookFormat,
-  type UnitSystem,
-  type BackupScheduleType,
-} from '@tracearr/shared';
+import { SESSION_LIMITS, type Settings, type BackupScheduleType } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { settings } from '../db/schema.js';
 
@@ -21,13 +15,6 @@ const PUBLIC_DEFAULTS: Settings = {
   // Settings interface fields
   allowGuestAccess: false,
   unitSystem: 'metric',
-  discordWebhookUrl: null,
-  customWebhookUrl: null,
-  webhookFormat: null,
-  ntfyTopic: null,
-  ntfyAuthToken: null,
-  pushoverUserKey: null,
-  pushoverApiToken: null,
   pollerEnabled: true,
   pollerIntervalMs: 15000,
   usePlexGeoip: false,
@@ -46,6 +33,7 @@ const PUBLIC_DEFAULTS: Settings = {
   backupRetentionCount: 7,
   pluginUpdateCheckEnabled: true,
   pluginManifestUrl: null,
+  serverUpdateCheckEnabled: true,
   // Watch completion thresholds default to the shared industry-standard constant
   watchedThresholdMovie: Math.round(SESSION_LIMITS.WATCH_COMPLETION_THRESHOLD * 100),
   watchedThresholdTv: Math.round(SESSION_LIMITS.WATCH_COMPLETION_THRESHOLD * 100),
@@ -230,37 +218,6 @@ export async function getNetworkSettings(): Promise<{
   return {
     externalUrl: s.externalUrl,
     trustProxy: s.trustProxy,
-  };
-}
-
-export interface NotificationSettings {
-  discordWebhookUrl: string | null;
-  customWebhookUrl: string | null;
-  webhookFormat: WebhookFormat | null;
-  ntfyTopic: string | null;
-  ntfyAuthToken: string | null;
-  pushoverUserKey: string | null;
-  pushoverApiToken: string | null;
-  webhookSecret: string | null;
-  mobileEnabled: boolean;
-  unitSystem: UnitSystem;
-}
-
-export async function getNotificationSettings(): Promise<NotificationSettings> {
-  const s = await getSettings([
-    'discordWebhookUrl',
-    'customWebhookUrl',
-    'webhookFormat',
-    'ntfyTopic',
-    'ntfyAuthToken',
-    'pushoverUserKey',
-    'pushoverApiToken',
-    'mobileEnabled',
-    'unitSystem',
-  ]);
-  return {
-    ...s,
-    webhookSecret: null, // TODO: Phase 4
   };
 }
 

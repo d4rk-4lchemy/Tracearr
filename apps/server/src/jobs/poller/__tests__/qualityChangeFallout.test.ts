@@ -24,7 +24,7 @@ import type { ProcessedSession } from '../types.js';
 const mockDbSelect = vi.fn();
 const {
   mockCreateMediaServerClient,
-  mockGetActiveRulesV2,
+  mockGetActiveAutomations,
   mockFindActiveSession,
   mockStopSessionAtomic,
   mockCreateSessionWithRulesAtomic,
@@ -36,7 +36,7 @@ const {
   mockProcessPollResults,
 } = vi.hoisted(() => ({
   mockCreateMediaServerClient: vi.fn(),
-  mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
+  mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
   mockFindActiveSession: vi.fn().mockResolvedValue(null),
   mockStopSessionAtomic: vi.fn(),
   mockCreateSessionWithRulesAtomic: vi.fn(),
@@ -99,8 +99,9 @@ vi.mock('../../notificationQueue.js', () => ({
 }));
 
 vi.mock('../database.js', () => ({
+  onActiveAutomationsRefill: vi.fn(),
   getCachedServers: () => mockDbSelect().from(servers),
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
   batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
@@ -122,9 +123,13 @@ vi.mock('../sessionLifecycle.js', () => ({
   handleMediaChangeAtomic: (...args: unknown[]) => mockHandleMediaChangeAtomic(...args),
   handleQualityChangeFallout: (...args: unknown[]) => mockHandleQualityChangeFallout(...args),
   processPollResults: (...args: unknown[]) => mockProcessPollResults(...args),
-  reEvaluateRulesOnPauseState: vi.fn(),
-  reEvaluateRulesOnTranscodeChange: vi.fn(),
   stopSessionAtomic: (...args: unknown[]) => mockStopSessionAtomic(...args),
+}));
+
+const mockDispatch = vi.fn().mockResolvedValue({ violations: [], outcomes: [] });
+vi.mock('../../../services/automations/events/dispatcher.js', () => ({
+  dispatch: (...args: unknown[]) => mockDispatch(...args),
+  subscribe: vi.fn(),
 }));
 
 vi.mock('../stateTracker.js', async (importOriginal) => {

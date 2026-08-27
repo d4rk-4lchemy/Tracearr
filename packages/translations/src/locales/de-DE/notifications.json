@@ -60,6 +60,14 @@
         "title": "Plex-Konto getrennt",
         "message": "Ihr Plex-Konto wurde getrennt"
       },
+      "plexAccountReauthorized": {
+        "title": "",
+        "message_one": "",
+        "message_other": "",
+        "messageNoServers": "",
+        "partial": "",
+        "unmatched": ""
+      },
       "agentAdded": {
         "title": "Agent hinzugefügt",
         "message": "Der Benachrichtigungs-Agent wurde hinzugefügt"
@@ -76,17 +84,17 @@
         "title": "Aufgabe abgeschlossen",
         "message": "{{name}} erfolgreich abgeschlossen"
       },
-      "ruleCreated": {
-        "title": "Regel erstellt",
-        "message": "Regel erfolgreich erstellt"
+      "automationCreated": {
+        "title": "",
+        "message": ""
       },
-      "ruleUpdated": {
-        "title": "Regel aktualisiert",
-        "message": "Regel erfolgreich aktualisiert"
+      "automationUpdated": {
+        "title": "",
+        "message": ""
       },
-      "ruleDeleted": {
-        "title": "Regel gelöscht",
-        "message": "Regel erfolgreich gelöscht"
+      "automationDeleted": {
+        "title": "",
+        "message": ""
       },
       "streamTerminated": {
         "title": "Stream beendet",
@@ -147,12 +155,15 @@
         "message": "Sie können nun mit dem Setup fortfahren"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "",
+        "automationsKept": ""
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": ""
+      },
+      "destinationSaved": "",
+      "destinationDeleted": "",
+      "destinationTestSent": ""
     },
     "error": {
       "serverAddFailed": "Server hinzufügen fehlgeschlagen",
@@ -164,9 +175,9 @@
       "dismissFailed": "Verstoß verwerfen fehlgeschlagen",
       "authFailed": "Authentifizierung fehlgeschlagen",
       "webhookTestFailed": "Webhook-Test fehlgeschlagen",
-      "ruleCreateFailed": "Regel erstellen fehlgeschlagen",
-      "ruleUpdateFailed": "Regel aktualisieren fehlgeschlagen",
-      "ruleDeleteFailed": "Regel löschen fehlgeschlagen",
+      "automationCreateFailed": "",
+      "automationUpdateFailed": "",
+      "automationDeleteFailed": "",
       "streamTerminateFailed": "Stream konnte nicht beendet werden",
       "serverUrlUpdateFailed": "Server-URL aktualisieren fehlgeschlagen",
       "serverUpdateFailed": "Server aktualisieren fehlgeschlagen",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "Routing aktualisieren fehlgeschlagen",
       "clipboardFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
       "plexUnlinkFailed": "Plex-Konto trennen fehlgeschlagen",
+      "plexReauthorizeFailed": "",
       "agentAddFailed": "Agent hinzufügen fehlgeschlagen",
       "agentUpdateFailed": "Agent aktualisieren fehlgeschlagen",
       "agentRemoveFailed": "Agent entfernen fehlgeschlagen",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "Wartungsaufgaben laden fehlgeschlagen",
       "invalidUrl": "Ungültige URL",
       "plexDirectUrl": "plex.direct URLs sind Relayadressen, die hier nicht verwendet werden können. Bitte verwenden Sie stattdessen eine direkte IP-Adresse oder einen Hostnamen.",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "",
+      "serverUserSplitFailed": "",
       "invalidClaimCode": {
         "title": "Ungültiger Claim Code",
         "message": "Bitte überprüfen Sie die Server Logs"
-      }
+      },
+      "destinationSaveFailed": "",
+      "destinationDeleteFailed": "",
+      "destinationTestFailed": "",
+      "destinationInUse": ""
     },
     "warning": {
       "jobFailed": {
@@ -207,25 +223,9 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "Neuer Stream gestartet",
-        "message": "{{user}} schaut jetzt {{media}}"
-      },
-      "streamStopped": {
-        "title": "Stream beendet",
-        "message": "{{user}} schaut nicht mehr"
-      },
       "updateAvailable": {
         "title": "Update verfügbar",
         "message": "Tracearr {{version}} ist verfügbar"
-      },
-      "serverOffline": {
-        "title": "Server offline",
-        "message": "{{name}} ist nicht erreichbar"
-      },
-      "serverOnline": {
-        "title": "Server online",
-        "message": "{{name}} ist wieder online"
       },
       "violationDetected": {
         "title": "Neuer Verstoß: {{ruleName}}",

@@ -60,6 +60,14 @@
         "title": "Plex-account ontkoppeld",
         "message": "Je Plex-account is ontkoppeld"
       },
+      "plexAccountReauthorized": {
+        "title": "Plex account opnieuw geautoriseerd",
+        "message_one": "{{count}} server opnieuw verbonden",
+        "message_other": "{{count}} servers hebben opnieuw verbinding gemaakt",
+        "messageNoServers": "Accounttoken bijgewerkt",
+        "partial": "Token bijgewerkt, maar {{names}} weigerde het nog steeds",
+        "unmatched": "Token bijgewerkt, maar {{names}} kon niet opnieuw gekoppeld worden"
+      },
       "agentAdded": {
         "title": "Agent toegevoegd",
         "message": "De meldings-agent is toegevoegd"
@@ -76,17 +84,17 @@
         "title": "Taak voltooid",
         "message": "{{name}} is succesvol voltooid"
       },
-      "ruleCreated": {
-        "title": "Regel aangemaakt",
-        "message": "De regel is succesvol aangemaakt"
+      "automationCreated": {
+        "title": "Automatisering gemaakt",
+        "message": "De automatisering is succesvol aangemaakt"
       },
-      "ruleUpdated": {
-        "title": "Regel bijgewerkt",
-        "message": "De regel is succesvol bijgewerkt"
+      "automationUpdated": {
+        "title": "Automatisering geüpdatet",
+        "message": "De automatisering is succesvol aangemaakt"
       },
-      "ruleDeleted": {
-        "title": "Regel verwijderd",
-        "message": "De regel is succesvol verwijderd"
+      "automationDeleted": {
+        "title": "Automatisering verwijderd",
+        "message": "De automatisering is succesvol verwijdert"
       },
       "streamTerminated": {
         "title": "Stream afgebroken",
@@ -147,12 +155,15 @@
         "message": "Je kunt nu doorgaan met instellen"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "Gebruikers samengevoegd",
+        "automationsKept": "Versie van doel verwijderd: {{names}}"
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": "Account opgesplitst naar een aparte gebruiker"
+      },
+      "destinationSaved": "Bestemming opgeslagen",
+      "destinationDeleted": "Bestemming verwijdert",
+      "destinationTestSent": "Test notificatie verzonden"
     },
     "error": {
       "serverAddFailed": "Server toevoegen mislukt",
@@ -164,9 +175,9 @@
       "dismissFailed": "Overtreding negeren mislukt",
       "authFailed": "Authenticatie mislukt",
       "webhookTestFailed": "Webhook-test mislukt",
-      "ruleCreateFailed": "Regel aanmaken mislukt",
-      "ruleUpdateFailed": "Regel bijwerken mislukt",
-      "ruleDeleteFailed": "Regel verwijderen mislukt",
+      "automationCreateFailed": "Automatisering aanmaken is mislukt",
+      "automationUpdateFailed": "Automatisering bijwerken is mislukt",
+      "automationDeleteFailed": "Automatisering verwijderen is mislukt",
       "streamTerminateFailed": "Stream afbreken mislukt",
       "serverUrlUpdateFailed": "Server-URL bijwerken mislukt",
       "serverUpdateFailed": "Server bijwerken mislukt",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "Routering bijwerken mislukt",
       "clipboardFailed": "Kopiëren naar klembord mislukt",
       "plexUnlinkFailed": "Ontkoppelen Plex-account mislukt",
+      "plexReauthorizeFailed": "Het opnieuw autoriseren van het Plex account is mislukt",
       "agentAddFailed": "Agent toevoegen mislukt",
       "agentUpdateFailed": "Agent bijwerken mislukt",
       "agentRemoveFailed": "Agent verwijderen mislukt",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "Onderhoudstaken laden mislukt",
       "invalidUrl": "Ongeldige URL",
       "plexDirectUrl": "Een plex.direct-URL is een relay-adres dat hier niet gebruikt kan worden. Gebruik een direct IP-adres of hostnaam.",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "Het samenvoegen van gebruikers is mislukt",
+      "serverUserSplitFailed": "Splitsen van het account is mislukt",
       "invalidClaimCode": {
         "title": "Ongeldige claimcode",
         "message": "Controleer het serverlogboek"
-      }
+      },
+      "destinationSaveFailed": "Niet gelukt bestemming op te slaan: {{error}}",
+      "destinationDeleteFailed": "Niet gelukt bestemming te verwijderen: {{error}}",
+      "destinationTestFailed": "Test niet geslaagd: {{error}}",
+      "destinationInUse": "Nog in gebruik door: {{rules}}"
     },
     "warning": {
       "jobFailed": {
@@ -207,25 +223,9 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "Nieuwe stream gestart",
-        "message": "{{user}} is begonnen met kijken naar {{media}}"
-      },
-      "streamStopped": {
-        "title": "Stream gestopt",
-        "message": "{{user}} is gestopt met kijken"
-      },
       "updateAvailable": {
         "title": "Update beschikbaar",
         "message": "Tracearr {{version}} is beschikbaar"
-      },
-      "serverOffline": {
-        "title": "Server offline",
-        "message": "{{name}} is onbereikbaar"
-      },
-      "serverOnline": {
-        "title": "Server online",
-        "message": "{{name}} is weer online"
       },
       "violationDetected": {
         "title": "Nieuwe overtreding: {{ruleName}}",

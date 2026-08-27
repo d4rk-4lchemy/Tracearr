@@ -8,7 +8,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(() => true),
@@ -21,7 +21,6 @@ vi.mock('node:fs/promises', () => ({
   rename: vi.fn(),
   stat: vi.fn(),
   unlink: vi.fn(),
-  utimes: vi.fn(),
   readdir: vi.fn(),
   mkdir: vi.fn(),
 }));
@@ -33,32 +32,27 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-import {
-  readFile,
-  writeFile,
-  rename,
-  stat,
-  unlink,
-  utimes,
-  readdir,
-  mkdir,
-} from 'node:fs/promises';
+vi.mock('../imageCacheGuard.js', () => ({
+  cacheWriteAllowed: vi.fn(async () => true),
+  noteCacheWrite: vi.fn(),
+}));
+
+import { readFile, writeFile, rename, stat, unlink, mkdir } from 'node:fs/promises';
 import sharp from 'sharp';
 import { db } from '../../db/client.js';
+import { cacheWriteAllowed } from '../imageCacheGuard.js';
 import {
   proxyImage,
   posterVersionFor,
   posterCacheEntryExists,
-  cleanupCache,
+  posterCacheFileName,
   buildLqipPlaceholder,
   buildUpstreamRequest,
   persistDominantColorIfNeeded,
-  stopImageCacheCleanup,
   _resetServerRowCacheForTests,
 } from '../imageProxy.js';
 
 const CACHE_DIR = join(process.cwd(), 'data', 'image-cache');
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function mockSelectChain(rows: unknown[]) {
   const chain = {
@@ -78,10 +72,6 @@ function mockUpdateChain() {
   vi.mocked(db.update).mockReturnValue(chain as never);
   return chain;
 }
-
-afterAll(() => {
-  stopImageCacheCleanup();
-});
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -123,89 +113,59 @@ describe('posterCacheEntryExists', () => {
   const serverId = 'server-1';
   const thumbPath = '/library/metadata/123/thumb/456';
 
-  it('returns true when the versioned 240 cache file exists on disk', async () => {
+  it('returns true when the versioned poster cache file exists on disk', async () => {
     vi.mocked(stat).mockResolvedValue({ size: 100, mtimeMs: Date.now() } as never);
 
-    await expect(posterCacheEntryExists(serverId, thumbPath, 240)).resolves.toBe(true);
-    expect(vi.mocked(stat)).toHaveBeenCalledWith(expectedCachePath(serverId, thumbPath, 240, 360));
+    await expect(posterCacheEntryExists(serverId, thumbPath)).resolves.toBe(true);
+    expect(vi.mocked(stat)).toHaveBeenCalledWith(expectedCachePath(serverId, thumbPath, 360, 540));
   });
 
   it('returns false when the cache file is missing', async () => {
     vi.mocked(stat).mockRejectedValue(new Error('ENOENT'));
 
-    await expect(posterCacheEntryExists(serverId, thumbPath, 360)).resolves.toBe(false);
-  });
-
-  it('checks distinct paths for the 160, 240, and 360 buckets', async () => {
-    const seen: string[] = [];
-    vi.mocked(stat).mockImplementation(async (path: unknown) => {
-      seen.push(path as string);
-      return { size: 100, mtimeMs: Date.now() } as never;
-    });
-
-    await posterCacheEntryExists(serverId, thumbPath, 160);
-    await posterCacheEntryExists(serverId, thumbPath, 240);
-    await posterCacheEntryExists(serverId, thumbPath, 360);
-
-    expect(seen).toEqual([
-      expectedCachePath(serverId, thumbPath, 160, 240),
-      expectedCachePath(serverId, thumbPath, 240, 360),
-      expectedCachePath(serverId, thumbPath, 360, 540),
-    ]);
+    await expect(posterCacheEntryExists(serverId, thumbPath)).resolves.toBe(false);
   });
 });
 
-describe('cleanupCache', () => {
-  it('exempts versioned entries from the TTL sweep while deleting an unversioned same-age entry', async () => {
-    const now = Date.now();
-    const staleMtime = now - (DAY_MS + 1000);
-    const versionedFile = 'abcd1234567890ab:v11223344.webp';
-    const unversionedFile = 'ef567890abcdef12.webp';
-    const shardPath = join(CACHE_DIR, 'ab');
-
-    vi.mocked(readdir).mockImplementation(async (path: unknown, opts?: unknown) => {
-      if (path === CACHE_DIR && (opts as { withFileTypes?: boolean } | undefined)?.withFileTypes) {
-        return [{ name: 'ab', isDirectory: () => true, isFile: () => false }] as never;
-      }
-      if (path === shardPath) {
-        return [versionedFile, unversionedFile] as never;
-      }
-      return [] as never;
+describe('posterCacheFileName', () => {
+  it('matches the pipeline derivation', () => {
+    const serverId = randomUUID();
+    const path = '/library/metadata/9/thumb/9';
+    const baseHash = createHash('sha256')
+      .update(`${serverId}:${path}:360:540`)
+      .digest('hex')
+      .slice(0, 16);
+    expect(posterCacheFileName(serverId, path)).toEqual({
+      fileName: `${baseHash}:v${posterVersionFor(path)}.webp`,
+      shard: baseHash.slice(0, 2),
     });
+  });
+});
 
-    vi.mocked(stat).mockResolvedValue({ size: 1000, mtimeMs: staleMtime } as never);
-    vi.mocked(unlink).mockResolvedValue(undefined);
-
-    await cleanupCache();
-
-    expect(vi.mocked(unlink)).toHaveBeenCalledWith(join(shardPath, unversionedFile));
-    expect(vi.mocked(unlink)).not.toHaveBeenCalledWith(join(shardPath, versionedFile));
+describe('proxyImage poster fingerprint derivation', () => {
+  it('derives the fingerprint for a 360x540 poster even when no version was passed', async () => {
+    const serverId = randomUUID();
+    const path = '/library/metadata/1/thumb/2';
+    const version = posterVersionFor(path);
+    const baseHash = createHash('sha256')
+      .update(`${serverId}:${path}:360:540`)
+      .digest('hex')
+      .slice(0, 16);
+    vi.mocked(stat).mockResolvedValue({ mtimeMs: Date.now() } as never);
+    vi.mocked(readFile).mockResolvedValue(Buffer.from('webp'));
+    const result = await proxyImage({ serverId, imagePath: path, width: 360, height: 540 });
+    expect(result.cached).toBe(true);
+    expect(vi.mocked(readFile).mock.calls[0]?.[0]).toBe(
+      join(CACHE_DIR, baseHash.slice(0, 2), `${baseHash}:v${version}.webp`)
+    );
   });
 
-  it('treats a versioned-looking orphan tmp file as TTL-eligible, not immutable', async () => {
-    const now = Date.now();
-    const staleMtime = now - (DAY_MS + 1000);
-    // A tmp file left behind by a failed write for a versioned entry inherits
-    // the `:v<hash>` substring in its name but must still be swept.
-    const versionedTmpFile = 'abcd1234567890ab:v11223344.webp.tmp.99999';
-    const shardPath = join(CACHE_DIR, 'ab');
-
-    vi.mocked(readdir).mockImplementation(async (path: unknown, opts?: unknown) => {
-      if (path === CACHE_DIR && (opts as { withFileTypes?: boolean } | undefined)?.withFileTypes) {
-        return [{ name: 'ab', isDirectory: () => true, isFile: () => false }] as never;
-      }
-      if (path === shardPath) {
-        return [versionedTmpFile] as never;
-      }
-      return [] as never;
-    });
-
-    vi.mocked(stat).mockResolvedValue({ size: 1000, mtimeMs: staleMtime } as never);
-    vi.mocked(unlink).mockResolvedValue(undefined);
-
-    await cleanupCache();
-
-    expect(vi.mocked(unlink)).toHaveBeenCalledWith(join(shardPath, versionedTmpFile));
+  it('does not derive a fingerprint for another size or fallback', async () => {
+    const serverId = randomUUID();
+    vi.mocked(stat).mockRejectedValue(new Error('ENOENT'));
+    mockSelectChain([]); // no server row → fallback svg
+    await proxyImage({ serverId, imagePath: '/x', width: 300, height: 450 });
+    expect(String(vi.mocked(stat).mock.calls[0]?.[0]).includes(':v')).toBe(false);
   });
 });
 
@@ -245,8 +205,7 @@ describe('proxyImage cache-miss pipeline', () => {
     vi.mocked(writeFile).mockResolvedValue(undefined);
     vi.mocked(rename).mockResolvedValue(undefined);
     vi.mocked(readFile).mockResolvedValue(Buffer.from(''));
-    vi.mocked(utimes).mockResolvedValue(undefined);
-    vi.mocked(readdir).mockResolvedValue([] as never);
+    vi.mocked(cacheWriteAllowed).mockResolvedValue(true);
 
     mockUpdateChain();
 
@@ -417,7 +376,7 @@ describe('proxyImage cache-miss pipeline', () => {
     );
   });
 
-  it('with skipLqipRace, waits for the real pipeline instead of returning the LQIP placeholder once the wait timeout elapses', async () => {
+  it('with lqip, races the miss against the LQIP placeholder once the semaphore wait timeout elapses', async () => {
     vi.useFakeTimers();
     try {
       mockSelectChain([
@@ -432,37 +391,35 @@ describe('proxyImage cache-miss pipeline', () => {
           })
       );
 
-      let settled = false;
       const resultPromise = proxyImage({
         serverId: randomUUID(),
         imagePath: '/library/metadata/9/thumb/9',
-        width: 240,
-        height: 360,
-        skipLqipRace: true,
-      }).then((result) => {
-        settled = true;
-        return result;
+        width: 360,
+        height: 540,
+        lqip: true,
       });
 
-      // Past the 2s semaphore-wait timeout that would otherwise trigger the LQIP race.
+      // Past the 2s semaphore-wait timeout: the race resolves with the
+      // placeholder instead of waiting on the still-unsettled upstream fetch.
       await vi.advanceTimersByTimeAsync(2100);
-      expect(settled).toBe(false);
-
-      resolveFetch(new Response(testImage, { status: 200 }));
       const result = await resultPromise;
 
-      expect(settled).toBe(true);
       expect(result.contentType).toBe('image/webp');
-      expect(result.data.byteLength).toBeGreaterThan(50);
+      // A 1x1 LQIP placeholder is a handful of bytes; a real resized poster is much bigger.
+      expect(result.data.byteLength).toBeLessThan(50);
+
+      resolveFetch(new Response(testImage, { status: 200 }));
     } finally {
       vi.useRealTimers();
     }
+    // The background pipeline is still resolving after the race returned;
+    // drain its write so it doesn't leak into a later test.
+    await vi.waitFor(() => expect(vi.mocked(writeFile)).toHaveBeenCalled());
   });
 
-  it('without a version fingerprint, waits for the real pipeline past the semaphore wait timeout instead of racing the LQIP placeholder', async () => {
-    // A client caching by URL alone (no v=) can't revalidate a 200 LQIP
-    // placeholder later, so it must never be served one - only the real
-    // image, or the short-lived degraded fallback on an actual error.
+  it('without lqip, waits for the real pipeline past the semaphore wait timeout instead of racing the LQIP placeholder', async () => {
+    // Everything except the web grid's lqip:true request must get the real
+    // image; a client caching by URL alone can't revalidate a placeholder later.
     vi.useFakeTimers();
     try {
       mockSelectChain([
@@ -502,6 +459,25 @@ describe('proxyImage cache-miss pipeline', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('serves the resized image without writing to disk when the guard refuses the write', async () => {
+    mockSelectChain([
+      { id: 'server-11', type: 'plex', url: 'http://localhost:32400', token: 'token' },
+    ]);
+    vi.mocked(cacheWriteAllowed).mockResolvedValueOnce(false);
+
+    const result = await proxyImage({
+      serverId: randomUUID(),
+      imagePath: '/library/metadata/11/thumb/11',
+      width: 240,
+      height: 360,
+    });
+
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+    expect(result.cached).toBe(false);
+    expect(result.contentType).toBe('image/webp');
+    expect(result.data.byteLength).toBeGreaterThan(50);
   });
 });
 

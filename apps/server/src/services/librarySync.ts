@@ -25,6 +25,18 @@ import {
 } from './mediaServer/index.js';
 import { resolveMediaBatch, reconcileMediaDuplicates } from './library/mediaResolutionService.js';
 import {
+  MEDIA_ANNOUNCE_CAP,
+  MEDIA_BUFFER_CAP,
+  collectMediaChanges,
+  createAnnounceRun,
+  createMediaAnnounce,
+  flushMediaAnnounceRun,
+  type MediaAnnounce,
+  type MediaAnnounceRun,
+  type PriorMediaRow,
+  type SyncedMediaRow,
+} from './library/mediaAnnounce.js';
+import {
   backfillSessionIdentityBatch,
   hasStampableSessionsBefore,
 } from '../jobs/sessionIdentityBackfill.js';
@@ -214,6 +226,22 @@ function toPgTextArrayLiteral(values: string[]): string {
  * Handles fetching library items from media servers, persisting to database,
  * creating snapshots with quality statistics, and detecting delta changes.
  */
+/** Everything one library's sync needs; the ids alone were a twelve-argument call. */
+interface LibrarySyncArgs {
+  serverId: string;
+  serverName: string;
+  libraryId: string;
+  libraryName: string;
+  libraryType: string;
+  client: ReturnType<typeof createMediaServerClient>;
+  onProgress: OnProgressCallback | undefined;
+  totalLibraries: number;
+  processedLibraries: number;
+  startedAt: string;
+  triggeredBy: 'manual' | 'scheduled';
+  mediaRun: MediaAnnounceRun;
+}
+
 export class LibrarySyncService {
   // Snapshot-rebuild throttle, per library. In-process is enough: the Redis
   // leader lease means one instance runs syncs, and a restart just allows one
@@ -307,6 +335,8 @@ export class LibrarySyncService {
     if (!supportsMediaLibrary(server.type)) return results;
 
     const startedAt = new Date().toISOString();
+    // One budget for the whole run: five libraries rebuilt at once is not five floods.
+    const mediaRun = createAnnounceRun({ id: server.id, name: server.name, type: server.type });
 
     // Create media server client
     const client = createMediaServerClient({
@@ -360,21 +390,32 @@ export class LibrarySyncService {
     for (let i = 0; i < libraries.length; i++) {
       const library = libraries[i]!;
 
-      const result = await this.syncLibrary(
+      const result = await this.syncLibrary({
         serverId,
-        server.name,
-        library.id,
-        library.name,
-        library.type,
+        serverName: server.name,
+        libraryId: library.id,
+        libraryName: library.name,
+        libraryType: library.type,
         client,
         onProgress,
         totalLibraries,
-        i,
+        processedLibraries: i,
         startedAt,
-        triggeredBy
-      );
+        triggeredBy,
+        mediaRun,
+      });
 
       results.push(result);
+    }
+
+    // Every library is in, so a season can now absorb the episodes that arrived with it.
+    await flushMediaAnnounceRun(mediaRun);
+
+    if (mediaRun.budget.suppressed > 0) {
+      console.log(
+        `[LibrarySync] Announced ${MEDIA_ANNOUNCE_CAP} media changes for ${server.name}, ` +
+          `suppressed at least ${mediaRun.budget.suppressed} more`
+      );
     }
 
     // Clean up items and snapshots for libraries that no longer exist on the server.
@@ -502,36 +543,11 @@ export class LibrarySyncService {
    *
    * Recomputes latest_added_at once per library, even on failure, never per batch.
    */
-  private async syncLibrary(
-    serverId: string,
-    serverName: string,
-    libraryId: string,
-    libraryName: string,
-    libraryType: string,
-    client: ReturnType<typeof createMediaServerClient>,
-    onProgress: OnProgressCallback | undefined,
-    totalLibraries: number,
-    processedLibraries: number,
-    startedAt: string,
-    triggeredBy: 'manual' | 'scheduled'
-  ): Promise<SyncResult> {
+  private async syncLibrary(args: LibrarySyncArgs): Promise<SyncResult> {
     const touchedMediaIds = new Set<string>();
     let result: SyncResult;
     try {
-      result = await this.runLibrarySync(
-        serverId,
-        serverName,
-        libraryId,
-        libraryName,
-        libraryType,
-        client,
-        onProgress,
-        totalLibraries,
-        processedLibraries,
-        startedAt,
-        triggeredBy,
-        touchedMediaIds
-      );
+      result = await this.runLibrarySync(args, touchedMediaIds);
     } catch (err) {
       await this.recomputeLatestAddedAt([...touchedMediaIds]).catch(() => undefined);
       throw err;
@@ -541,19 +557,23 @@ export class LibrarySyncService {
   }
 
   private async runLibrarySync(
-    serverId: string,
-    serverName: string,
-    libraryId: string,
-    libraryName: string,
-    libraryType: string,
-    client: ReturnType<typeof createMediaServerClient>,
-    onProgress: OnProgressCallback | undefined,
-    totalLibraries: number,
-    processedLibraries: number,
-    startedAt: string,
-    triggeredBy: 'manual' | 'scheduled',
+    args: LibrarySyncArgs,
     touchedMediaIds: Set<string>
   ): Promise<SyncResult> {
+    const {
+      serverId,
+      serverName,
+      libraryId,
+      libraryName,
+      libraryType,
+      client,
+      onProgress,
+      totalLibraries,
+      processedLibraries,
+      startedAt,
+      triggeredBy,
+      mediaRun,
+    } = args;
     // Music skips the undercount check only - overcount stays on since it's structurally safe there.
     const isMusicLibrary = MUSIC_LIBRARY_TYPES.has(libraryType.toLowerCase());
 
@@ -562,6 +582,14 @@ export class LibrarySyncService {
 
     // Load sync state from Redis
     const syncState = await this.getSyncState(serverId, libraryId);
+
+    // Decided once per library, before any page is upserted: a paged first sync
+    // must not start announcing on page two.
+    const announce = await createMediaAnnounce({
+      run: mediaRun,
+      libraryName,
+      isFirstSync: () => this.isFirstLibrarySync(serverId, libraryId),
+    });
 
     // Overcount-only pre-sync check (see COUNT_MISMATCH_* doc comment above).
     // Cooled down: a null countTolerance also disables the undercount checks
@@ -744,7 +772,8 @@ export class LibrarySyncService {
             serverId,
             libraryId,
             batch,
-            touchedMediaIds
+            touchedMediaIds,
+            announce
           );
           totalSkippedEmpty += skippedEmpty;
 
@@ -858,7 +887,13 @@ export class LibrarySyncService {
       }
 
       // Upsert batch to database
-      const itemsRes = await this.upsertItems(serverId, libraryId, items, touchedMediaIds);
+      const itemsRes = await this.upsertItems(
+        serverId,
+        libraryId,
+        items,
+        touchedMediaIds,
+        announce
+      );
       totalSkippedEmpty += itemsRes.skippedEmpty;
 
       processedItems += items.length;
@@ -930,7 +965,13 @@ export class LibrarySyncService {
         }
 
         // Upsert episodes to database
-        const epRes = await this.upsertItems(serverId, libraryId, episodes, touchedMediaIds);
+        const epRes = await this.upsertItems(
+          serverId,
+          libraryId,
+          episodes,
+          touchedMediaIds,
+          announce
+        );
         totalSkippedEmpty += epRes.skippedEmpty;
 
         episodesProcessed += episodes.length;
@@ -985,7 +1026,13 @@ export class LibrarySyncService {
           noteItem(season);
         }
 
-        const seasonRes = await this.upsertItems(serverId, libraryId, seasons, touchedMediaIds);
+        const seasonRes = await this.upsertItems(
+          serverId,
+          libraryId,
+          seasons,
+          touchedMediaIds,
+          announce
+        );
         totalSkippedEmpty += seasonRes.skippedEmpty;
 
         seasonsProcessed += seasons.length;
@@ -1042,7 +1089,13 @@ export class LibrarySyncService {
         }
 
         // Upsert tracks to database
-        const trkRes = await this.upsertItems(serverId, libraryId, tracks, touchedMediaIds);
+        const trkRes = await this.upsertItems(
+          serverId,
+          libraryId,
+          tracks,
+          touchedMediaIds,
+          announce
+        );
         totalSkippedEmpty += trkRes.skippedEmpty;
 
         tracksProcessed += tracks.length;
@@ -1307,6 +1360,54 @@ export class LibrarySyncService {
   }
 
   /**
+   * Whether this library has no rows at all. Durable on purpose: the Redis sync
+   * state would make a flushed cache re-announce a whole library.
+   */
+  private async isFirstLibrarySync(serverId: string, libraryId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: libraryItems.id })
+      .from(libraryItems)
+      .where(and(eq(libraryItems.serverId, serverId), eq(libraryItems.libraryId, libraryId)))
+      .limit(1);
+    return row === undefined;
+  }
+
+  /** The quality signature these rating keys held before the upsert, on the unique index. */
+  private async readPriorQuality(
+    serverId: string,
+    ratingKeys: string[]
+  ): Promise<Map<string, PriorMediaRow>> {
+    const rows = await db
+      .select({
+        ratingKey: libraryItems.ratingKey,
+        resolution: libraryItems.videoResolution,
+        dynamicRange: libraryItems.videoDynamicRange,
+        videoCodec: libraryItems.videoCodec,
+        audioCodec: libraryItems.audioCodec,
+        audioChannels: libraryItems.audioChannels,
+        fileSize: libraryItems.fileSize,
+      })
+      .from(libraryItems)
+      .where(and(eq(libraryItems.serverId, serverId), inArray(libraryItems.ratingKey, ratingKeys)));
+
+    return new Map(
+      rows.map((row) => [
+        row.ratingKey,
+        {
+          quality: {
+            resolution: row.resolution,
+            dynamicRange: row.dynamicRange,
+            videoCodec: row.videoCodec,
+            audioCodec: row.audioCodec,
+            audioChannels: row.audioChannels,
+            fileSize: row.fileSize,
+          },
+        },
+      ])
+    );
+  }
+
+  /**
    * Upsert items to libraryItems table
    *
    * Uses Drizzle's onConflictDoUpdate for atomic bulk upserts.
@@ -1317,7 +1418,8 @@ export class LibrarySyncService {
     serverId: string,
     libraryId: string,
     items: MediaLibraryItem[],
-    touchedMediaIds?: Set<string>
+    touchedMediaIds?: Set<string>,
+    announce?: MediaAnnounce | null
   ): Promise<{ skippedEmpty: number; collapsedDuplicates: number }> {
     if (items.length === 0) return { skippedEmpty: 0, collapsedDuplicates: 0 };
 
@@ -1368,10 +1470,24 @@ export class LibrarySyncService {
       }))
     );
 
+    // Past the cap the run announces nothing more, so it stops reading and diffing too;
+    // the suppressed count then reports the batch that hit the cap, not every later one.
+    // The cap is spent at flush, so what gates the prior-quality read here is buffer room.
+    const announcing =
+      announce && announce.run.collected.length < MEDIA_BUFFER_CAP ? announce : null;
+    // Read before the upsert overwrites it; without a listener the diff costs nothing.
+    const prior = announcing
+      ? await this.readPriorQuality(
+          serverId,
+          uniqueItems.map((item) => item.ratingKey)
+        )
+      : null;
+
     // Bulk upsert with transaction for atomicity
     const firstSeen = new Date();
+    let changed: SyncedMediaRow[] = [];
     await db.transaction(async (tx) => {
-      const changedRows = await tx
+      const upsert = tx
         .insert(libraryItems)
         .values(
           uniqueItems.map((item) => {
@@ -1494,16 +1610,85 @@ export class LibrarySyncService {
             ${libraryItems.createdAt} IS DISTINCT FROM excluded.created_at OR
             ${libraryItems.removedAt} IS NOT NULL
           `,
-        })
-        // Only inserted/updated rows return; the versions_fingerprint clause
-        // above means version-only changes are among them, so the diff below
-        // runs exactly for items whose version set may have changed.
-        .returning({ id: libraryItems.id, ratingKey: libraryItems.ratingKey });
+        });
+
+      // Only inserted/updated rows return, and the versions_fingerprint clause above
+      // puts version-only changes among them. A run with nothing to announce ships
+      // just the two columns the version reconcile needs.
+      const changedRows = announcing
+        ? await upsert
+            .returning({
+              id: libraryItems.id,
+              ratingKey: libraryItems.ratingKey,
+              mediaId: libraryItems.mediaId,
+              firstSeenAt: libraryItems.firstSeenAt,
+              title: libraryItems.title,
+              grandparentTitle: libraryItems.grandparentTitle,
+              parentTitle: libraryItems.parentTitle,
+              grandparentRatingKey: libraryItems.grandparentRatingKey,
+              parentRatingKey: libraryItems.parentRatingKey,
+              parentIndex: libraryItems.parentIndex,
+              itemIndex: libraryItems.itemIndex,
+              mediaType: libraryItems.mediaType,
+              year: libraryItems.year,
+              imdbId: libraryItems.imdbId,
+              tmdbId: libraryItems.tmdbId,
+              tvdbId: libraryItems.tvdbId,
+              thumbPath: libraryItems.thumbPath,
+              resolution: libraryItems.videoResolution,
+              dynamicRange: libraryItems.videoDynamicRange,
+              videoCodec: libraryItems.videoCodec,
+              audioCodec: libraryItems.audioCodec,
+              audioChannels: libraryItems.audioChannels,
+              fileSize: libraryItems.fileSize,
+            })
+            .then((rows) => {
+              changed = rows.map((row) => ({
+                id: row.id,
+                ratingKey: row.ratingKey,
+                mediaId: row.mediaId,
+                firstSeenAt: row.firstSeenAt,
+                title: row.title,
+                grandparentTitle: row.grandparentTitle,
+                parentTitle: row.parentTitle,
+                grandparentRatingKey: row.grandparentRatingKey,
+                parentRatingKey: row.parentRatingKey,
+                parentIndex: row.parentIndex,
+                itemIndex: row.itemIndex,
+                mediaType: row.mediaType,
+                year: row.year,
+                imdbId: row.imdbId,
+                tmdbId: row.tmdbId,
+                tvdbId: row.tvdbId,
+                thumbPath: row.thumbPath,
+                quality: {
+                  resolution: row.resolution,
+                  dynamicRange: row.dynamicRange,
+                  videoCodec: row.videoCodec,
+                  audioCodec: row.audioCodec,
+                  audioChannels: row.audioChannels,
+                  fileSize: row.fileSize,
+                },
+              }));
+              return rows;
+            })
+        : await upsert.returning({ id: libraryItems.id, ratingKey: libraryItems.ratingKey });
 
       if (changedRows.length > 0) {
         await this.reconcileItemVersions(tx, changedRows, deduped);
       }
     });
+
+    // After the commit: an automation acting on a row the transaction rolled back would be a lie.
+    if (announcing && prior) {
+      collectMediaChanges({
+        announce: announcing,
+        libraryId,
+        rows: changed,
+        prior,
+        firstSeen,
+      });
+    }
 
     const genreRows = uniqueItems
       .filter((i) => i.genres?.length && mediaIdByRatingKey.get(i.ratingKey))

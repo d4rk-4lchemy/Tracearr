@@ -6,7 +6,7 @@
   "activity": "Activity",
   "library": "Library",
   "users": "Users",
-  "rules": "Rules",
+  "automations": "Automations",
   "violations": "Violations",
   "alerts": "Alerts",
   "settings": "Settings",
@@ -24,5 +24,9 @@
   "mediaGenres": "Genres",
   "session": "Session",
   "user": "User",
-  "violation": "Violation"
+  "violation": "Violation",
+  "monitor": "Monitor",
+  "manage": "Manage",
+  "userStats": "By User",
+  "toggleSidebar": "Toggle navigation"
 }

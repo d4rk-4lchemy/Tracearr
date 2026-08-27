@@ -106,6 +106,40 @@ export function pickStreamDetailFields(source: StreamDetailFields): StreamDetail
   };
 }
 
+/**
+ * The subset of Session that changes while a session is live and that
+ * re-evaluation reads from the fresh poll/SSE payload rather than the stored row.
+ */
+export function pickLiveSessionFields(processed: ProcessedSession): Partial<Session> {
+  return {
+    state: processed.state,
+    mediaType: processed.mediaType,
+    mediaTitle: processed.mediaTitle,
+    grandparentTitle: processed.grandparentTitle || null,
+    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
+    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
+    year: processed.year || null,
+    thumbPath: processed.thumbPath || null,
+    totalDurationMs: processed.totalDurationMs || null,
+    progressMs: processed.progressMs || null,
+    playerName: processed.playerName,
+    deviceId: processed.deviceId || null,
+    product: processed.product || null,
+    device: processed.device || null,
+    platform: processed.platform,
+    quality: processed.quality,
+    isTranscode: processed.isTranscode,
+    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
+    dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
+    dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
+    dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
+    videoDecision: processed.videoDecision,
+    audioDecision: processed.audioDecision,
+    bitrate: processed.bitrate,
+    ...pickStreamDetailFields(processed),
+  };
+}
+
 // ============================================================================
 // MediaSession → ProcessedSession Mapping
 // ============================================================================

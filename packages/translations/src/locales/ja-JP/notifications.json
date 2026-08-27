@@ -60,6 +60,14 @@
         "title": "プレックスアカウントのリンクが解除されました",
         "message": "プレックスアカウントが切断されました"
       },
+      "plexAccountReauthorized": {
+        "title": "",
+        "message_one": "",
+        "message_other": "",
+        "messageNoServers": "",
+        "partial": "",
+        "unmatched": ""
+      },
       "agentAdded": {
         "title": "エージェントが追加されました",
         "message": "通知エージェントが追加されました"
@@ -76,17 +84,17 @@
         "title": "作業完了",
         "message": "{{name}} が正常に終了しました"
       },
-      "ruleCreated": {
-        "title": "作成されたルール",
-        "message": "ルールが正常に作成されました"
+      "automationCreated": {
+        "title": "",
+        "message": ""
       },
-      "ruleUpdated": {
-        "title": "ルールが更新されました",
-        "message": "ルールが正常に更新されました"
+      "automationUpdated": {
+        "title": "",
+        "message": ""
       },
-      "ruleDeleted": {
-        "title": "ルールを削除しました",
-        "message": "ルールが正常に削除されました"
+      "automationDeleted": {
+        "title": "",
+        "message": ""
       },
       "streamTerminated": {
         "title": "配信が終了しました",
@@ -98,7 +106,7 @@
       },
       "serverUpdated": {
         "title": "サーバー更新",
-        "message": "The server has been updated successfully"
+        "message": ""
       },
       "syncCompletedWithErrors": {
         "title": "同期がエラーと共に完了しました"
@@ -147,12 +155,15 @@
         "message": "セットアップを続けることができます"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "",
+        "automationsKept": ""
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": ""
+      },
+      "destinationSaved": "",
+      "destinationDeleted": "",
+      "destinationTestSent": ""
     },
     "error": {
       "serverAddFailed": "サーバーの追加に失敗しました",
@@ -164,9 +175,9 @@
       "dismissFailed": "違反を解除できませんでした",
       "authFailed": "認証に失敗しました",
       "webhookTestFailed": "Webhookテストに失敗しました",
-      "ruleCreateFailed": "ルールの作成に失敗しました",
-      "ruleUpdateFailed": "ルールの更新に失敗しました",
-      "ruleDeleteFailed": "ルールの削除に失敗しました",
+      "automationCreateFailed": "",
+      "automationUpdateFailed": "",
+      "automationDeleteFailed": "",
       "streamTerminateFailed": "配信の終了に失敗しました",
       "serverUrlUpdateFailed": "サーバー URL の更新に失敗しました",
       "serverUpdateFailed": "サーバーの更新に失敗しました",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "ルーティングの更新に失敗しました",
       "clipboardFailed": "クリップボードにコピーできませんでした",
       "plexUnlinkFailed": "プレックスアカウントのリンクを解除できませんでした",
+      "plexReauthorizeFailed": "",
       "agentAddFailed": "エージェントの追加に失敗しました",
       "agentUpdateFailed": "エージェントの更新に失敗しました",
       "agentRemoveFailed": "エージェントの削除に失敗しました",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "メンテナンスジョブの読み込みに失敗しました",
       "invalidUrl": "無効な URL",
       "plexDirectUrl": "plex.directのURLはここでは使用できないリレーアドレスです。代わりにIPアドレスまたはホスト名を使用してください。",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "",
+      "serverUserSplitFailed": "",
       "invalidClaimCode": {
         "title": "無効な請求コードです",
         "message": "サーバーのログを確認してください"
-      }
+      },
+      "destinationSaveFailed": "",
+      "destinationDeleteFailed": "",
+      "destinationTestFailed": "",
+      "destinationInUse": ""
     },
     "warning": {
       "jobFailed": {
@@ -207,25 +223,9 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "新しいストリームを開始",
-        "message": "{{user}} が {{media}} の視聴を開始しました"
-      },
-      "streamStopped": {
-        "title": "配信を停止しました",
-        "message": "{{user}} が視聴を停止しました"
-      },
       "updateAvailable": {
         "title": "アップデートがあります",
         "message": "Tracearr {{version}} が利用できます"
-      },
-      "serverOffline": {
-        "title": "サーバーオフライン",
-        "message": "{{name}} に到達できません"
-      },
-      "serverOnline": {
-        "title": "サーバーオンライン",
-        "message": "{{name}} がオンラインに戻りました"
       },
       "violationDetected": {
         "title": "新しい違反: {{ruleName}}",
@@ -240,7 +240,7 @@
     "serverDown": "サーバー接続が失われました",
     "serverUp": "サーバーバックオンライン",
     "newDevice": "新しいデバイス",
-    "trustScoreChanged": "Trust Score Changed"
+    "trustScoreChanged": ""
   },
   "settings": {
     "title": "通知設定",
@@ -263,7 +263,7 @@
     "concurrentStreamsDesc": "最大配信制限を超えた場合",
     "newDevice": "新しいデバイス",
     "newDeviceDesc": "新しいデバイスが接続されたとき",
-    "trustScoreChanged": "Trust Score Changed",
+    "trustScoreChanged": "",
     "trustScoreChangedDesc": "ユーザーの信頼スコアが変更されたとき",
     "serverDown": "サーバーダウン",
     "serverDownDesc": "メディアサーバーがオフラインになったとき",

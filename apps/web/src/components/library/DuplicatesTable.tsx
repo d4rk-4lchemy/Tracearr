@@ -5,7 +5,7 @@ import { formatMediaTech, type DuplicatesResponse } from '@tracearr/shared';
 import { cn } from '@/lib/utils';
 import { formatBytes } from '@/lib/formatters';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { DataTablePager } from '@/components/ui/data-table';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import {
   Table,
@@ -15,7 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MatchTypeBadge, EmptyState, InlineErrorState } from '@/components/library';
+import { MatchTypeBadge, InlineErrorState } from '@/components/library';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface DuplicatesTableProps {
   data: DuplicatesResponse | undefined;
@@ -203,32 +204,21 @@ export function DuplicatesTable({
         </TableBody>
       </Table>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-2">
-          <span className="text-muted-foreground text-sm">
-            {t('library.storage.pageOf', { page, totalPages })}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onPageChange(page - 1)}
-              disabled={page <= 1}
-            >
-              {t('common:actions.previous')}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onPageChange(page + 1)}
-              disabled={page >= totalPages}
-            >
-              {t('common:actions.next')}
-            </Button>
-          </div>
-        </div>
-      )}
+      <DataTablePager
+        page={page}
+        pageCount={totalPages}
+        canPrevious={page > 1}
+        canNext={page < totalPages}
+        onPrevious={() => onPageChange(page - 1)}
+        onNext={() => onPageChange(page + 1)}
+        labels={{
+          navigation: t('common:table.pagination'),
+          status: t('common:table.pageOf', { page, total: totalPages }),
+          previous: t('common:actions.previous'),
+          next: t('common:actions.next'),
+        }}
+        className="px-2"
+      />
     </div>
   );
 }

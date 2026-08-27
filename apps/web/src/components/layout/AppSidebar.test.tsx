@@ -1,21 +1,10 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { ThemeProvider } from '@/components/theme-provider';
 import { AppSidebar } from './AppSidebar';
-
-beforeAll(() => {
-  window.matchMedia ||= vi.fn().mockImplementation((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  }));
-});
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -35,20 +24,33 @@ vi.mock('@/hooks/useServer', () => ({
 }));
 
 vi.mock('@/hooks/useSocket', () => ({
-  useSocket: () => ({ serverConnectionStatuses: new Map() }),
+  useSocket: () => ({ serverConnectionStatuses: new Map(), isConnected: false }),
 }));
 
 vi.mock('@/hooks/queries', () => ({
   useVersion: () => ({ data: undefined, isLoading: true }),
 }));
 
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({
+    user: { username: 'tester', email: 'tester@example.test', thumbUrl: null },
+    logout: vi.fn(),
+  }),
+}));
+
 function renderSidebar(initialPath = '/media') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>
-      <SidebarProvider>
-        <AppSidebar />
-      </SidebarProvider>
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <SidebarProvider>
+            <AppSidebar />
+          </SidebarProvider>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 

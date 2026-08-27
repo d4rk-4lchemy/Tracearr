@@ -78,7 +78,31 @@
     "watchedThresholdSuffix": "%",
     "apiRateLimit": "API Rate Limit",
     "apiRateLimitDesc": "Maximum public API requests per minute per key. Restart required to apply.",
-    "apiRateLimitSuffix": "/min"
+    "apiRateLimitSuffix": "/min",
+    "updateChecks": {
+      "title": "Update checks",
+      "description": "Tracearr looks for new releases every six hours. Notifications come from whatever automation listens for the update triggers.",
+      "plugin": "Realtime plugin",
+      "pluginDesc": "Check for new releases of the Tracearr plugin your Jellyfin and Emby servers stream events through.",
+      "server": "Media servers",
+      "serverDesc": "Compare what each Plex, Jellyfin and Emby server runs with the newest release its makers publish."
+    },
+    "imageCache": {
+      "title": "Poster cache",
+      "description": "One copy of each poster, kept on disk until the poster changes. Nothing here is evicted to make room; when the disk runs low the cache stops growing and says so.",
+      "size": "On disk",
+      "files": "Files",
+      "need": "Estimated need",
+      "needHint": "{{count}} posters × 18 KB",
+      "free": "Free disk",
+      "freeOf": "of {{total}}",
+      "floor": "Keeps free",
+      "ceiling": "Ceiling",
+      "lastSweep": "Last sweep",
+      "never": "not yet",
+      "diskLimited": "Disk-limited since {{since}}: about {{shortfall}} of posters are not cached.",
+      "loadError": "Could not load the cache status."
+    }
   },
   "servers": {
     "title": "Connected Servers",
@@ -161,6 +185,11 @@
       "description": "When a title is on more than one server, use this server's poster. If it doesn't have one, we'll fall back to the most recently added copy.",
       "automatic": "Automatic (most recent)",
       "emptyHint": "Add a server to choose a preferred poster source."
+    },
+    "version": {
+      "installed": "Version {{version}}",
+      "upToDate": "up to date",
+      "updateAvailable": "update {{version}} available"
     }
   },
   "mobile": {
@@ -247,14 +276,6 @@
       "exitNodeFailed": "Failed to set exit node"
     }
   },
-  "webhooks": {
-    "title": "Webhook Configuration",
-    "discordWebhook": "Discord Webhook URL",
-    "ntfyTopic": "Ntfy Topic",
-    "customWebhook": "Custom Webhook URL",
-    "webhookFormat": "Webhook Format",
-    "testWebhook": "Test Webhook"
-  },
   "jobs": {
     "title": "Maintenance Jobs",
     "description": "Manage background tasks that keep your data accurate and optimized.",
@@ -279,24 +300,6 @@
     "mayTakeAWhile": "This may take a while",
     "mayTakeAWhileDesc": "This job may take several minutes to complete depending on the size of your library.",
     "startJob": "Start Job"
-  },
-  "notifications": {
-    "routing": {
-      "event": "Event",
-      "web": "Web",
-      "discord": "Discord",
-      "webhook": "Webhook",
-      "webNote": "Push notifications are configured per-device in the mobile app.",
-      "webToastNote": "shows toast notifications in this browser."
-    },
-    "agentCard": {
-      "saved": "Saved",
-      "default": "Default",
-      "events": "Events",
-      "sendTest": "Send Test",
-      "notConfigured": "Not fully configured.",
-      "editSettings": "Edit settings"
-    }
   },
   "advanced": {
     "title": "Advanced Settings",
@@ -475,7 +478,7 @@
       "sessions": "Sessions",
       "users": "Users",
       "servers": "Servers",
-      "rules": "Rules",
+      "automations": "Automations",
       "libraryItems": "Library Items",
       "tables": "Tables",
       "warning": "Restoring will replace all existing data. You will need to re-login after the restore completes.",

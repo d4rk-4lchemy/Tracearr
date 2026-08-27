@@ -282,7 +282,7 @@ export function LibraryEmptyState({ onComplete, serverIds, servers }: LibraryEmp
             onClick={() => void handleSync(selectedServerId)}
             disabled={!selectedServerId}
           >
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <RefreshCw />
             {t('library.emptyState.syncNow')}
           </Button>
         </div>
@@ -304,7 +304,7 @@ export function LibraryEmptyState({ onComplete, serverIds, servers }: LibraryEmp
           onClick={() => void handleSync(selectedServerId)}
           disabled={!selectedServerId}
         >
-          <RefreshCw className="mr-2 h-4 w-4" />
+          <RefreshCw />
           {t('library.emptyState.syncNow')}
         </Button>
       </div>

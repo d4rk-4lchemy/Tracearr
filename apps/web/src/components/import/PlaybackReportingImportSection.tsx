@@ -245,7 +245,7 @@ export function PlaybackReportingImportSection({
         <Button onClick={handleStart} disabled={!selectedServerId || isImporting} size="lg">
           {isImporting ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="animate-spin" />
               {t('import.importing')}
             </>
           ) : (

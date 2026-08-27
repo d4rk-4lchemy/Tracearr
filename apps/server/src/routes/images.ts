@@ -9,7 +9,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { POSTER_BUCKET_WIDTHS, posterVersionFor, proxyImage } from '../services/imageProxy.js';
+import { POSTER_IMAGE_SIZE } from '@tracearr/shared';
+import { posterVersionFor, proxyImage } from '../services/imageProxy.js';
 
 // Static Tracearr logo paths (check for custom logo first, then use default)
 const CUSTOM_LOGO_PATH = join(process.cwd(), 'data', 'logo.png');
@@ -39,20 +40,20 @@ const proxyQuerySchema = z
     height: z.coerce.number().int().min(10).max(2000).optional().default(450),
     fallback: z.enum(['poster', 'avatar', 'art']).optional().default('poster'),
     // Cache-busting fingerprint (posterVersionFor output). Presence marks the
-    // response cache as long-lived/immutable, so only the fixed poster grid
-    // widths are allowed - anything else can't be trusted to stay in sync.
+    // response cache as long-lived/immutable, so only the one poster size is allowed.
     v: z
       .string()
       .regex(/^[0-9a-f]{8}$/i)
       .optional(),
+    // Web grid only: allow the LQIP placeholder race. Absent for every other consumer.
+    lqip: z.enum(['1']).optional(),
   })
   .refine(
     (data) =>
       data.v === undefined ||
-      ((POSTER_BUCKET_WIDTHS as readonly number[]).includes(data.width) &&
-        data.height === Math.round(data.width * 1.5)),
+      (data.width === POSTER_IMAGE_SIZE.width && data.height === POSTER_IMAGE_SIZE.height),
     {
-      message: `Versioned requests must use one of these widths: ${POSTER_BUCKET_WIDTHS.join(', ')}, with height = width * 1.5`,
+      message: `Versioned requests must be ${POSTER_IMAGE_SIZE.width}x${POSTER_IMAGE_SIZE.height}`,
       path: ['width'],
     }
   )
@@ -79,6 +80,7 @@ export const imageRoutes: FastifyPluginAsync = async (app) => {
    * - fallback: Placeholder type if image fails (poster, avatar, art)
    * - v: Optional cache-busting fingerprint; when present the response is
    *   cached as long-lived/immutable instead of the default short cache
+   * - lqip=1: Web grid only; race the miss against the LQIP placeholder
    */
   app.get('/proxy', async (request, reply) => {
     const parseResult = proxyQuerySchema.safeParse(request.query);
@@ -90,7 +92,7 @@ export const imageRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    const { server, url, width, height, fallback, v } = parseResult.data;
+    const { server, url, width, height, fallback, v, lqip } = parseResult.data;
 
     const result = await proxyImage({
       serverId: server,
@@ -99,6 +101,7 @@ export const imageRoutes: FastifyPluginAsync = async (app) => {
       height,
       fallback: fallback,
       version: v,
+      lqip: lqip === '1',
     });
 
     // Set cache headers

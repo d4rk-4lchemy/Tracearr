@@ -37,6 +37,15 @@ vi.mock('../library/mediaResolutionService.js', () => ({
   reconcileMediaDuplicates: vi.fn().mockResolvedValue(0),
 }));
 
+const mockHasMediaListeners = vi.fn().mockResolvedValue(false);
+const mockDispatchMediaAdded = vi.fn();
+const mockDispatchMediaUpgraded = vi.fn();
+vi.mock('../automations/events/producers.js', () => ({
+  hasMediaListeners: (...args: unknown[]) => mockHasMediaListeners(...args),
+  dispatchMediaAdded: (...args: unknown[]) => mockDispatchMediaAdded(...args),
+  dispatchMediaUpgraded: (...args: unknown[]) => mockDispatchMediaUpgraded(...args),
+}));
+
 vi.mock('../../jobs/sessionIdentityBackfill.js', () => ({
   backfillSessionIdentityBatch: vi.fn().mockResolvedValue({ updated: 0, oldest: null }),
   hasStampableSessionsBefore: vi.fn().mockResolvedValue(false),
@@ -72,6 +81,7 @@ import {
   _resetAutoBackfillThrottleForTests,
   _resetReconcileThrottleForTests,
 } from '../librarySync.js';
+import { MEDIA_BUFFER_CAP, flushMediaAnnounceRun } from '../library/mediaAnnounce.js';
 import type { MediaLibraryItem } from '../mediaServer/types.js';
 import type { LibrarySyncProgress } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
@@ -152,6 +162,53 @@ function mockSelectChain(result: unknown[]) {
   };
   vi.mocked(db.select).mockReturnValue(chain as never);
   return chain;
+}
+
+/** One row as the item upsert returns it: already 4K, and larger than the copy it replaced. */
+function changedRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'library-item-1',
+    ratingKey: 'rk-1',
+    mediaId: null,
+    firstSeenAt: new Date('2026-01-01T00:00:00Z'),
+    title: 'Cars',
+    grandparentTitle: null,
+    parentTitle: null,
+    grandparentRatingKey: null,
+    parentRatingKey: null,
+    parentIndex: null,
+    itemIndex: null,
+    mediaType: 'movie',
+    year: 2006,
+    imdbId: null,
+    tmdbId: null,
+    tvdbId: null,
+    thumbPath: null,
+    resolution: '4k',
+    dynamicRange: null,
+    videoCodec: 'H264',
+    audioCodec: 'AC3',
+    audioChannels: 6,
+    fileSize: 9_000_000_000,
+    ...overrides,
+  };
+}
+
+/** A buffered change, only ever counted, so its contents do not matter. */
+function fakeCollected() {
+  return {
+    change: { kind: 'added' as const, row: changedRow() as never },
+    libraryId: '1',
+    libraryName: 'Movies',
+  };
+}
+
+/** The announce path's prior read ends at .where(), with no limit. */
+function mockPriorQuality(rows: unknown[]) {
+  vi.mocked(db.select).mockReturnValue({
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockResolvedValue(rows),
+  } as never);
 }
 
 function mockInsertChain(result: unknown[] = []) {
@@ -977,6 +1034,108 @@ describe('LibrarySyncService', () => {
       }>;
       expect(valuesArg).toHaveLength(1);
       expect(valuesArg[0]!.ratingKey).toBe('real');
+    });
+
+    it('reads no prior quality and announces nothing without an announce context', async () => {
+      const service = new LibrarySyncService();
+      const { insertChain } = mockTransaction();
+      insertChain.returning.mockResolvedValue([changedRow()]);
+
+      await service.upsertItems(randomUUID(), '1', [createMockLibraryItem({ ratingKey: 'rk-1' })]);
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(mockDispatchMediaUpgraded).not.toHaveBeenCalled();
+    });
+
+    it('reads nothing more once the run has filled its buffer', async () => {
+      const service = new LibrarySyncService();
+      const run = {
+        server: { id: 'server-1', name: 'Basement', type: 'plex' as const },
+        budget: { remaining: 20, suppressed: 4 },
+        collected: Array.from({ length: MEDIA_BUFFER_CAP }, () => fakeCollected()),
+      };
+      const announce = { ...run, libraryName: 'Movies', run };
+      const { insertChain } = mockTransaction();
+      insertChain.returning.mockResolvedValue([changedRow()]);
+
+      await service.upsertItems(
+        randomUUID(),
+        '1',
+        [createMockLibraryItem({ ratingKey: 'rk-1' })],
+        undefined,
+        announce
+      );
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(mockDispatchMediaUpgraded).not.toHaveBeenCalled();
+    });
+
+    it('announces the quality a changed row moved to, once the run flushes', async () => {
+      const service = new LibrarySyncService();
+      const run = {
+        server: { id: 'server-1', name: 'Basement', type: 'plex' as const },
+        budget: { remaining: 20, suppressed: 0 },
+        collected: [],
+      };
+      const announce = { ...run, libraryName: 'Movies', run };
+      mockPriorQuality([
+        {
+          ratingKey: 'rk-1',
+          mediaId: null,
+          resolution: '1080p',
+          dynamicRange: null,
+          videoCodec: 'H264',
+          audioCodec: 'AC3',
+          audioChannels: 6,
+          fileSize: 8_000_000_000,
+        },
+      ]);
+      const { insertChain } = mockTransaction();
+      insertChain.returning.mockResolvedValue([changedRow()]);
+
+      await service.upsertItems(
+        randomUUID(),
+        '1',
+        [createMockLibraryItem({ ratingKey: 'rk-1' })],
+        undefined,
+        announce
+      );
+
+      // Nothing leaves upsertItems: the run holds it until every library is in.
+      expect(mockDispatchMediaUpgraded).not.toHaveBeenCalled();
+      await flushMediaAnnounceRun(run);
+
+      expect(mockDispatchMediaUpgraded).toHaveBeenCalledWith({
+        server: announce.server,
+        media: expect.objectContaining({
+          libraryItemId: 'library-item-1',
+          ratingKey: 'rk-1',
+          mediaId: null,
+          title: 'Cars',
+          type: 'movie',
+          year: 2006,
+          libraryId: '1',
+          libraryName: 'Movies',
+          quality: {
+            resolution: '4k',
+            dynamicRange: null,
+            videoCodec: 'H264',
+            audioCodec: 'AC3',
+            audioChannels: 6,
+            fileSize: 9_000_000_000,
+          },
+        }),
+        from: {
+          resolution: '1080p',
+          dynamicRange: null,
+          videoCodec: 'H264',
+          audioCodec: 'AC3',
+          audioChannels: 6,
+          fileSize: 8_000_000_000,
+        },
+        changed: ['resolution', 'fileSize'],
+      });
+      expect(run.budget).toEqual({ remaining: 19, suppressed: 0 });
     });
   });
 

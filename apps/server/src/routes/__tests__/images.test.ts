@@ -15,7 +15,6 @@ import { randomUUID } from 'node:crypto';
 // requests are a "matching" v vs a mismatch without depending on the real hash.
 vi.mock('../../services/imageProxy.js', () => ({
   proxyImage: vi.fn(),
-  POSTER_BUCKET_WIDTHS: [160, 240, 360],
   posterVersionFor: vi.fn(() => 'abcd1234'),
 }));
 
@@ -87,6 +86,8 @@ describe('Image Routes', () => {
         width: 300,
         height: 450,
         fallback: 'poster',
+        version: undefined,
+        lqip: false,
       });
     });
 
@@ -290,7 +291,7 @@ describe('Image Routes', () => {
       expect(response.statusCode).toBe(400);
     });
 
-    it('sets an immutable long-lived Cache-Control when v is present with an allowed width', async () => {
+    it('sets an immutable long-lived Cache-Control when v is present at the poster size', async () => {
       app = await buildTestApp();
 
       mockProxyImage.mockResolvedValue({
@@ -305,8 +306,8 @@ describe('Image Routes', () => {
         query: {
           server: validServerId,
           url: '/path',
-          width: '240',
-          height: '360',
+          width: '360',
+          height: '540',
           v: 'abcd1234',
         },
       });
@@ -314,11 +315,11 @@ describe('Image Routes', () => {
       expect(response.statusCode).toBe(200);
       expect(response.headers['cache-control']).toBe('public, max-age=31536000, immutable');
       expect(mockProxyImage).toHaveBeenCalledWith(
-        expect.objectContaining({ width: 240, height: 360, version: 'abcd1234' })
+        expect.objectContaining({ width: 360, height: 540, version: 'abcd1234' })
       );
     });
 
-    it('rejects v with a width outside the poster bucket allow-list', async () => {
+    it('rejects v with a width outside the one allowed poster size', async () => {
       app = await buildTestApp();
 
       const response = await app.inject({
@@ -327,7 +328,8 @@ describe('Image Routes', () => {
         query: {
           server: validServerId,
           url: '/path',
-          width: '300',
+          width: '240',
+          height: '360',
           v: 'abcd1234',
         },
       });
@@ -351,8 +353,8 @@ describe('Image Routes', () => {
         query: {
           server: validServerId,
           url: '/path',
-          width: '240',
-          height: '360',
+          width: '360',
+          height: '540',
           v: 'abcd1234',
         },
       });
@@ -377,8 +379,8 @@ describe('Image Routes', () => {
         query: {
           server: validServerId,
           url: '/path',
-          width: '240',
-          height: '360',
+          width: '360',
+          height: '540',
           v: 'abcd1234',
         },
       });
@@ -398,8 +400,8 @@ describe('Image Routes', () => {
         query: {
           server: validServerId,
           url: '/path',
-          width: '240',
-          height: '360',
+          width: '360',
+          height: '540',
           v: 'deadbeef',
         },
       });
@@ -408,7 +410,7 @@ describe('Image Routes', () => {
       expect(mockProxyImage).not.toHaveBeenCalled();
     });
 
-    it('rejects a versioned request whose height is not width * 1.5', async () => {
+    it('rejects a versioned request whose height does not match the poster size', async () => {
       app = await buildTestApp();
 
       const response = await app.inject({
@@ -417,14 +419,33 @@ describe('Image Routes', () => {
         query: {
           server: validServerId,
           url: '/path',
-          width: '240',
-          height: '400',
+          width: '360',
+          height: '500',
           v: 'abcd1234',
         },
       });
 
       expect(response.statusCode).toBe(400);
       expect(mockProxyImage).not.toHaveBeenCalled();
+    });
+
+    it('passes lqip through only when the query says 1', async () => {
+      app = await buildTestApp();
+      mockProxyImage.mockResolvedValue({
+        data: Buffer.from('x'),
+        contentType: 'image/webp',
+        cached: true,
+      });
+      await app.inject({
+        method: 'GET',
+        url: `/images/proxy?server=${validServerId}&url=/p&width=360&height=540&lqip=1`,
+      });
+      expect(mockProxyImage).toHaveBeenLastCalledWith(expect.objectContaining({ lqip: true }));
+      await app.inject({
+        method: 'GET',
+        url: `/images/proxy?server=${validServerId}&url=/p&width=360&height=540`,
+      });
+      expect(mockProxyImage).toHaveBeenLastCalledWith(expect.objectContaining({ lqip: false }));
     });
   });
 

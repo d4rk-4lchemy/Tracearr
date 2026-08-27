@@ -110,15 +110,16 @@ describe('DeadWeightTable', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('requests the thumbnail at a valid bucket width (regression: 48 gets 400d by the versioned proxy)', () => {
+  it('requests the one cached poster size, not an arbitrary thumbnail width', () => {
     const { container } = renderTable();
 
     const thumb = container.querySelector<HTMLImageElement>(
       'a[href="/media/dw-1"][aria-hidden="true"] img'
     );
     expect(thumb).not.toBeNull();
-    expect(thumb!.src).toContain('width=160');
-    expect(thumb!.src).not.toContain('width=48');
+    expect(thumb!.src).toContain('width=360');
+    expect(thumb!.src).toContain('height=540');
+    expect(thumb!.src).not.toContain('lqip');
   });
 
   it('falls back to the titled placeholder when the thumbnail fails to load', () => {

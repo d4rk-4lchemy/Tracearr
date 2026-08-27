@@ -18,10 +18,19 @@ export const PRECACHE_FULL_PASS_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 // pass itself must not fall before the watermark stored for next time.
 export const PRECACHE_WATERMARK_SAFETY_MARGIN_MS = 5 * 60 * 1000; // 5 minutes
 
+export interface PrecachePassDecision {
+  /** Null scopes the pass to a full walk; otherwise the stored watermark. */
+  sinceUpdatedAt: string | null;
+  /** Writes the stamps this pass consumed. Call it only once the pass is
+   *  really queued - stamps that move for a pass nobody runs lose coverage. */
+  commit: () => Promise<void>;
+}
+
 /**
- * Decide whether the image precache pass that follows a sync should be a
- * full walk, a watermark-limited walk, or skipped outright, and persists the
- * new watermark for next time.
+ * Decide whether the image precache pass that follows a sync should be a full
+ * walk, a watermark-limited walk, or skipped outright. Deciding writes
+ * nothing: the caller enqueues the pass and then calls commit(), so a pass
+ * that never queued leaves the watermark where the last one left it.
  *
  * Returns null when the pass should be skipped entirely: the sync touched
  * nothing (every library's isIncremental "no changes" path short-circuited
@@ -39,8 +48,8 @@ export async function resolvePrecachePass(
   serverId: string,
   triggeredBy: 'manual' | 'scheduled',
   hadChanges: boolean
-): Promise<{ sinceUpdatedAt: string | null } | null> {
-  if (!redis) return { sinceUpdatedAt: null };
+): Promise<PrecachePassDecision | null> {
+  if (!redis) return { sinceUpdatedAt: null, commit: () => Promise.resolve() };
 
   const lastFullStr = await redis.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId));
   const lastFull = lastFullStr ? new Date(lastFullStr).getTime() : 0;
@@ -55,15 +64,20 @@ export async function resolvePrecachePass(
     return null;
   }
 
-  let sinceUpdatedAt: string | null = null;
-  if (dueForFullPass) {
-    await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId), new Date().toISOString());
-  } else {
-    sinceUpdatedAt = await redis.get(REDIS_KEYS.LIBRARY_PRECACHE_WATERMARK(serverId));
-  }
+  const sinceUpdatedAt = dueForFullPass
+    ? null
+    : await redis.get(REDIS_KEYS.LIBRARY_PRECACHE_WATERMARK(serverId));
 
-  const safeTimestamp = new Date(Date.now() - PRECACHE_WATERMARK_SAFETY_MARGIN_MS).toISOString();
-  await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_WATERMARK(serverId), safeTimestamp);
-
-  return { sinceUpdatedAt };
+  return {
+    sinceUpdatedAt,
+    commit: async () => {
+      if (dueForFullPass) {
+        await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId), new Date().toISOString());
+      }
+      const safeTimestamp = new Date(
+        Date.now() - PRECACHE_WATERMARK_SAFETY_MARGIN_MS
+      ).toISOString();
+      await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_WATERMARK(serverId), safeTimestamp);
+    },
+  };
 }

@@ -15,6 +15,7 @@
     "scripts/migrate.ts",
     "scripts/createForkMigration.ts",
     "scripts/unsupportedDbCommand.ts",
+    "scripts/imageCacheSweepScale.ts",
     "scripts/lib/**/*"
   ],
   "exclude": ["node_modules", "dist", "scripts/__tests__"]

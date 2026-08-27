@@ -59,26 +59,35 @@ export {
   useSplitServerUser,
 } from './useUsers';
 
-// Rule hooks
+// Automation hooks
 export {
-  useRules,
-  useCreateRule,
-  useUpdateRule,
-  useDeleteRule,
-  useToggleRule,
-  useBulkToggleRules,
-  useBulkDeleteRules,
-} from './useRules';
+  AUTOMATIONS_KEY,
+  useAutomation,
+  useAutomations,
+  useBulkDeleteAutomations,
+  useBulkToggleAutomations,
+  useCreateAutomation,
+  useDeleteAutomation,
+  useDetachAutomation,
+  useRebindAutomation,
+  useToggleAutomation,
+  useUpdateAutomation,
+  useUpgradeAutomation,
+} from './useAutomations';
 
-// Rule V2 hooks
+// Automation template hooks
 export {
-  useCreateRuleV2,
-  useUpdateRuleV2,
-  useMigrationPreview,
-  useMigrateRules,
-  useMigrateOneRule,
-  isRuleV2,
-} from './useRulesV2';
+  TEMPLATES_KEY,
+  useImportTemplate,
+  useInstantiateTemplate,
+  usePreviewTemplate,
+  useTemplate,
+  useTemplates,
+  useTemplateVersion,
+} from './useTemplates';
+
+// Automation run hooks
+export { RUNS_KEY, useAutomationEvaluations, useAutomationRuns, useRun } from './useRuns';
 
 // Violation hooks
 export {
@@ -104,10 +113,23 @@ export {
 } from './useServers';
 
 // Settings hooks
-export { useSettings, useUpdateSettings, useApiKey, useRegenerateApiKey } from './useSettings';
+export {
+  useSettings,
+  useUpdateSettings,
+  useApiKey,
+  useRegenerateApiKey,
+  useImageCacheStatus,
+} from './useSettings';
 
-// Channel Routing hooks
-export { useChannelRouting, useUpdateChannelRouting } from './useChannelRouting';
+// Destination hooks
+export {
+  useDestinations,
+  useCreateDestination,
+  useUpdateDestination,
+  useDeleteDestination,
+  useTestDestination,
+  useTestUnsavedDestination,
+} from './useDestinations';
 
 // Mobile hooks
 export {

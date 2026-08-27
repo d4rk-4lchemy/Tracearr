@@ -132,7 +132,7 @@ function HeroPoster({
           </div>
         ) : (
           <img
-            src={buildPosterSrc(posterUrl, 360, posterVersion)}
+            src={buildPosterSrc(posterUrl, posterVersion)}
             alt=""
             loading="eager"
             fetchPriority="high"

@@ -408,11 +408,7 @@ export function Login() {
                 <p className="text-muted-foreground text-xs">{t('pages:login.claimCodeHint')}</p>
               </div>
               <Button type="submit" className="w-full" disabled={claimCodeLoading}>
-                {claimCodeLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <KeyRound className="mr-2 h-4 w-4" />
-                )}
+                {claimCodeLoading ? <Loader2 className="animate-spin" /> : <KeyRound />}
                 {t('pages:login.validateClaimCode')}
               </Button>
             </form>
@@ -495,7 +491,7 @@ export function Login() {
         <CardContent className="space-y-6">
           {oidcError && (
             <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
+              <AlertTriangle />
               <AlertDescription>{oidcError}</AlertDescription>
             </Alert>
           )}
@@ -529,7 +525,7 @@ export function Login() {
             <>
               {authMethods.plex && (
                 <Button className={`w-full ${PLEX_COLOR} text-white`} onClick={handlePlexLogin}>
-                  <MediaServerIcon type="plex" className="mr-2 h-4 w-4" />
+                  <MediaServerIcon type="plex" className="h-4 w-4" />
                   {needsSetup
                     ? t('settings:plex.signUpWithPlex')
                     : t('settings:plex.signInWithPlex')}
@@ -632,11 +628,7 @@ export function Login() {
                       </p>
                     )}
                     <Button type="submit" className="w-full" disabled={localPending}>
-                      {localPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <User className="mr-2 h-4 w-4" />
-                      )}
+                      {localPending ? <Loader2 className="animate-spin" /> : <User />}
                       {t('settings:account.createAccount')}
                     </Button>
                   </form>
@@ -678,11 +670,7 @@ export function Login() {
                       </p>
                     )}
                     <Button type="submit" className="w-full" disabled={localPending}>
-                      {localPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <KeyRound className="mr-2 h-4 w-4" />
-                      )}
+                      {localPending ? <Loader2 className="animate-spin" /> : <KeyRound />}
                       {t('common:actions.signIn')}
                     </Button>
                   </form>

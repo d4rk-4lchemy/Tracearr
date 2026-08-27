@@ -62,12 +62,15 @@ async function createPlexSession(ctx: PlexEndpointCtx, userId: string) {
   return { session, user };
 }
 
-interface PlexTokenMetadata {
+export interface PlexTokenMetadata {
   token: string;
   tokenKind: 'jwt' | 'legacy';
   refreshToken: string | null;
   expiresAt: Date | null;
 }
+
+// Transaction handle, or the plain db client when there's no surrounding transaction
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0] | typeof db;
 
 /**
  * Ensure the auth_accounts plex row exists for this (user, plex.tv account).
@@ -78,16 +81,17 @@ interface PlexTokenMetadata {
  * stored so the daily refresh job can renew them. Legacy tokens have no
  * expiry, so those columns stay null and the row is just a long-lived token.
  */
-async function upsertPlexAuthAccount(
+export async function upsertPlexAuthAccount(
   userId: string,
   plexAccountId: string,
-  tokenInfo: PlexTokenMetadata
+  tokenInfo: PlexTokenMetadata,
+  tx: Tx = db
 ) {
   const isJwt = tokenInfo.tokenKind === 'jwt';
   const refreshToken = isJwt ? tokenInfo.refreshToken : null;
   const accessTokenExpiresAt = isJwt ? tokenInfo.expiresAt : null;
 
-  await db
+  await tx
     .insert(authAccounts)
     .values({
       id: randomUUID(),

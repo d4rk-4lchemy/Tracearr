@@ -1,11 +1,14 @@
 /**
  * Image Precache Queue tests.
  *
- * Covers the enabled-setting gate, batch/cursor re-enqueue, the pause-while-
- * sync branch, and the <=2 concurrent warm bound.
+ * Covers the enabled-setting gate, the one-pass-per-server guard and its
+ * backlog sweep, batch/cursor re-enqueue, the pause-while-sync branch, the
+ * <=2 concurrent warm bound, and the disk-limited flag the guard threads
+ * through a pass.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Worker } from 'bullmq';
 import type { Job } from 'bullmq';
 
 const mockGetSetting = vi.fn();
@@ -13,6 +16,12 @@ const mockGetLibrarySyncStatus = vi.fn();
 const mockProxyImage = vi.fn();
 const mockPosterCacheEntryExists = vi.fn();
 const mockDbSelect = vi.fn();
+const mockTakeRefusedWrites = vi.fn();
+const mockWriteDiskLimited = vi.fn();
+const mockClearDiskLimited = vi.fn();
+const mockReadDiskLimited = vi.fn();
+const mockReconcileImagePrecacheOnBoot = vi.fn();
+const mockSweepImageCache = vi.fn();
 
 vi.mock('../../services/settings.js', () => ({
   getSetting: (...args: unknown[]) => mockGetSetting(...args),
@@ -25,12 +34,25 @@ vi.mock('../librarySyncQueue.js', () => ({
 vi.mock('../../services/imageProxy.js', () => ({
   proxyImage: (...args: unknown[]) => mockProxyImage(...args),
   posterCacheEntryExists: (...args: unknown[]) => mockPosterCacheEntryExists(...args),
-  IMAGE_SIZES: {
-    posterGrid160: { width: 160, height: 240 },
-    posterGrid240: { width: 240, height: 360 },
-    posterGrid360: { width: 360, height: 540 },
-  },
-  posterVersionFor: (path: string) => `v-${path}`,
+}));
+
+vi.mock('../../services/imageCacheGuard.js', () => ({
+  takeRefusedWrites: (...args: unknown[]) => mockTakeRefusedWrites(...args),
+  writeDiskLimited: (...args: unknown[]) => mockWriteDiskLimited(...args),
+  clearDiskLimited: (...args: unknown[]) => mockClearDiskLimited(...args),
+  readDiskLimited: (...args: unknown[]) => mockReadDiskLimited(...args),
+}));
+
+vi.mock('../../lib/redisShared.js', () => ({
+  getRedis: () => ({}) as never,
+}));
+
+vi.mock('../../services/imageCacheSweep.js', () => ({
+  sweepImageCache: (...args: unknown[]) => mockSweepImageCache(...args),
+}));
+
+vi.mock('../imagePrecacheBoot.js', () => ({
+  reconcileImagePrecacheOnBoot: (...args: unknown[]) => mockReconcileImagePrecacheOnBoot(...args),
 }));
 
 vi.mock('../../db/client.js', () => ({
@@ -42,6 +64,7 @@ vi.mock('../../serverState.js', () => ({
 }));
 
 const mockQueueAdd = vi.fn();
+const mockQueueGetJobs = vi.fn();
 const mockQueueClose = vi.fn();
 const mockWorkerClose = vi.fn();
 
@@ -49,6 +72,7 @@ vi.mock('bullmq', () => ({
   Queue: vi.fn().mockImplementation(function MockQueue() {
     return {
       add: mockQueueAdd,
+      getJobs: mockQueueGetJobs,
       close: mockQueueClose,
       on: vi.fn(),
     };
@@ -66,6 +90,7 @@ import {
   enqueueImagePrecache,
   processImagePrecacheJob,
   shutdownImagePrecacheQueue,
+  startImagePrecacheWorker,
   type ImagePrecacheJobData,
 } from '../imagePrecacheQueue.js';
 
@@ -97,6 +122,61 @@ function makeItemRow(id: string, thumbPath: string | null = '/thumb') {
   return { id, thumbPath };
 }
 
+/** A pass start as the queue hands it back: no passStartedAt, which is what
+ *  separates an externally enqueued start from the chain's own jobs. */
+function startJob(
+  id: string,
+  serverId: string,
+  timestamp: number,
+  sinceUpdatedAt = '2026-08-22T00:00:00.000Z'
+) {
+  return {
+    id,
+    timestamp,
+    data: { serverId, cursor: null, sinceUpdatedAt },
+    remove: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+/** A job of a pass already under way: cursor-advanced and carrying passStartedAt. */
+function chainedJob(id: string, serverId: string, timestamp: number) {
+  return {
+    id,
+    timestamp,
+    data: { serverId, cursor: 'item-49', passStartedAt: '2026-08-22T00:00:00.000Z' },
+    remove: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+/** A 2.0.x continuation: cursor-advanced, but no passStartedAt - that field
+ *  only ships from 2.1.0, so a backlog banked by 2.0.x has jobs shaped this way. */
+function legacyChainedJob(id: string, serverId: string, timestamp: number) {
+  return {
+    id,
+    timestamp,
+    data: { serverId, cursor: 'item-49' },
+    remove: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+/** getJobs(['active']) and getJobs(['waiting','delayed']) answer separately. */
+function queueHolds(held: { active?: unknown[]; pending?: unknown[] }) {
+  mockQueueGetJobs.mockImplementation((states: string[]) =>
+    Promise.resolve(states.includes('active') ? (held.active ?? []) : (held.pending ?? []))
+  );
+}
+
+/** An empty queue for the pre-add guard, then the given jobs for the sweep -
+ *  what a second sync adding in the same tick looks like from in here. */
+function queueFillsAfterAdd(pending: unknown[]) {
+  let pendingReads = 0;
+  mockQueueGetJobs.mockImplementation((states: string[]) => {
+    if (states.includes('active')) return Promise.resolve([]);
+    pendingReads++;
+    return Promise.resolve(pendingReads === 1 ? [] : pending);
+  });
+}
+
 describe('imagePrecacheQueue', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -109,9 +189,13 @@ describe('imagePrecacheQueue', () => {
       contentType: 'image/webp',
       cached: false,
     });
-    // Every width missing by default, so pre-existing tests that assume every
-    // candidate item gets fully warmed keep passing unchanged.
+    // Missing by default, so pre-existing tests that assume every candidate
+    // item gets warmed keep passing unchanged.
     mockPosterCacheEntryExists.mockResolvedValue(false);
+    mockTakeRefusedWrites.mockReturnValue(0);
+    mockReadDiskLimited.mockResolvedValue(null);
+    mockReconcileImagePrecacheOnBoot.mockResolvedValue({ ran: false, passes: 0 });
+    queueHolds({});
   });
 
   describe('enqueueImagePrecache', () => {
@@ -135,6 +219,155 @@ describe('imagePrecacheQueue', () => {
 
       expect(mockQueueAdd).not.toHaveBeenCalled();
       expect(result).toBeUndefined();
+    });
+
+    it('adds nothing while a pass for the server is waiting', async () => {
+      queueHolds({ pending: [startJob('precache-server-1-start-1', 'server-1', 1000)] });
+
+      const result = await enqueueImagePrecache('server-1', '2026-08-22T10:00:00.000Z');
+
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+      expect(result).toBeUndefined();
+    });
+
+    it('adds nothing while a pass for the server is active', async () => {
+      queueHolds({ active: [chainedJob('precache-server-1-item-49-1', 'server-1', 1000)] });
+
+      const result = await enqueueImagePrecache('server-1', '2026-08-22T10:00:00.000Z');
+
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+      expect(result).toBeUndefined();
+    });
+
+    it('adds nothing while the running pass sits in its sync-active backoff', async () => {
+      queueHolds({ pending: [chainedJob('precache-server-1-item-49-1', 'server-1', 1000)] });
+
+      const result = await enqueueImagePrecache('server-1');
+
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+      expect(result).toBeUndefined();
+    });
+
+    it('adds when only another server has a pass queued', async () => {
+      queueHolds({ pending: [startJob('precache-server-2-start-1', 'server-2', 1000)] });
+      mockQueueAdd.mockResolvedValue({ id: 'job-1' });
+
+      const result = await enqueueImagePrecache('server-1', '2026-08-22T10:00:00.000Z');
+
+      expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+      const [, jobData] = mockQueueAdd.mock.calls[0]!;
+      expect(jobData).toEqual({
+        serverId: 'server-1',
+        cursor: null,
+        sinceUpdatedAt: '2026-08-22T10:00:00.000Z',
+      });
+      expect(result).toBe('job-1');
+    });
+
+    it('reports nothing when a same-tick add for the server won the sweep', async () => {
+      const racer = startJob('precache-server-1-start-1', 'server-1', 1000);
+      const ours = startJob('precache-server-1-start-2', 'server-1', 2000);
+      queueFillsAfterAdd([racer, ours]);
+      mockQueueAdd.mockResolvedValue({ id: ours.id });
+
+      const result = await enqueueImagePrecache('server-1');
+
+      // One start survives whoever sweeps first; the caller whose own start went
+      // has no queued pass to stamp for.
+      expect(racer.remove).not.toHaveBeenCalled();
+      expect(ours.remove).toHaveBeenCalledTimes(1);
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('startImagePrecacheWorker backlog sweep', () => {
+    it('leaves only the oldest of 16 queued passes for a server, and other servers alone', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const oldest = startJob(
+        'precache-server-1-start-0',
+        'server-1',
+        1000,
+        '2026-08-01T00:00:00.000Z'
+      );
+      const newer = Array.from({ length: 15 }, (_, i) =>
+        startJob(
+          `precache-server-1-start-${i + 1}`,
+          'server-1',
+          2000 + i,
+          `2026-08-0${(i % 8) + 2}T00:00:00.000Z`
+        )
+      );
+      const otherServer = startJob('precache-server-2-start-0', 'server-2', 500);
+      queueHolds({ pending: [...newer, oldest, otherServer] });
+
+      await startImagePrecacheWorker();
+
+      expect(oldest.remove).not.toHaveBeenCalled();
+      for (const job of newer) {
+        expect(job.remove).toHaveBeenCalledTimes(1);
+        // Why the oldest is the keeper: every dropped pass starts later, so the
+        // survivor's window is the only one that covers all of theirs.
+        expect(job.data.sinceUpdatedAt > oldest.data.sinceUpdatedAt).toBe(true);
+      }
+      expect(otherServer.remove).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledWith(
+        '[ImagePrecache] dropped 15 duplicate passes for server-1'
+      );
+      logSpy.mockRestore();
+    });
+
+    it('leaves a pre-2.1 backlog continuation alone and drops the start beside it', async () => {
+      // Queued later than the start it continues past, which is what a running
+      // pass looks like: on age alone the sweep would take it, not the start.
+      const legacy = legacyChainedJob('precache-server-1-item-49-1', 'server-1', 3000);
+      const queued = startJob('precache-server-1-start-1', 'server-1', 1000);
+      queueHolds({ pending: [legacy, queued] });
+
+      await startImagePrecacheWorker();
+
+      expect(legacy.remove).not.toHaveBeenCalled();
+      // It is a pass in flight, so no start keeps its place beside it either.
+      expect(queued.remove).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts the worker anyway when the sweep cannot reach the queue', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockQueueGetJobs.mockRejectedValue(new Error('redis unavailable'));
+
+      await startImagePrecacheWorker();
+
+      expect(vi.mocked(Worker)).toHaveBeenCalledTimes(1);
+      errorSpy.mockRestore();
+    });
+
+    it('leaves no queued pass for a server whose pass is already active', async () => {
+      const queued = startJob('precache-server-1-start-1', 'server-1', 2000);
+      queueHolds({
+        active: [chainedJob('precache-server-1-item-49-1', 'server-1', 1000)],
+        pending: [queued],
+      });
+
+      await startImagePrecacheWorker();
+
+      expect(queued.remove).toHaveBeenCalledTimes(1);
+    });
+
+    it('constructs the worker only after boot reconciliation resolves', async () => {
+      let resolveReconcile: (() => void) | undefined;
+      mockReconcileImagePrecacheOnBoot.mockReturnValue(
+        new Promise((resolve) => {
+          resolveReconcile = () => resolve({ ran: true, passes: 1 });
+        })
+      );
+
+      const startPromise = startImagePrecacheWorker();
+
+      expect(vi.mocked(Worker)).not.toHaveBeenCalled();
+
+      resolveReconcile?.();
+      await startPromise;
+
+      expect(vi.mocked(Worker)).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -171,17 +404,23 @@ describe('imagePrecacheQueue', () => {
       expect(opts.delay).toBe(60000);
     });
 
-    it('processes a full batch of 50 and re-enqueues itself with the next cursor', async () => {
-      const rows = Array.from({ length: 50 }, (_, i) => makeItemRow(`item-${i}`));
+    it('warms only the items missing their poster cache entry, at 360x540, and re-enqueues with the next cursor', async () => {
+      const rows = Array.from({ length: 50 }, (_, i) => makeItemRow(`item-${i}`, `/thumb-${i}`));
       mockBatchQuery(rows);
       mockQueueAdd.mockResolvedValue({ id: 'job-next' });
+      // The last 10 rows are missing their cache entry; the other 40 already have one.
+      const missingPaths = new Set(rows.slice(40).map((row) => row.thumbPath));
+      mockPosterCacheEntryExists.mockImplementation(
+        async (_serverId: string, thumbPath: string) => !missingPaths.has(thumbPath)
+      );
 
       const result = await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
 
       expect(result).toEqual({ processed: 50 });
-      // Each item warms three widths (160 + 240 + 360).
-      expect(mockProxyImage).toHaveBeenCalledTimes(150);
-      expect(mockProxyImage).toHaveBeenCalledWith(expect.objectContaining({ skipLqipRace: true }));
+      expect(mockProxyImage).toHaveBeenCalledTimes(10);
+      expect(mockProxyImage).toHaveBeenCalledWith(
+        expect.objectContaining({ width: 360, height: 540, fallback: 'poster' })
+      );
       expect(mockQueueAdd).toHaveBeenCalledTimes(1);
       const [, jobData] = mockQueueAdd.mock.calls[0]!;
       expect(jobData).toEqual({
@@ -190,6 +429,7 @@ describe('imagePrecacheQueue', () => {
         totalItems: 50,
         processedItems: 50,
         passStartedAt: expect.any(String),
+        refusedWrites: 0,
       });
     });
 
@@ -211,6 +451,7 @@ describe('imagePrecacheQueue', () => {
         totalItems: 50,
         processedItems: 50,
         passStartedAt: expect.any(String),
+        refusedWrites: 0,
       });
     });
 
@@ -240,7 +481,68 @@ describe('imagePrecacheQueue', () => {
         totalItems: 500,
         processedItems: 150,
         passStartedAt: '2026-08-09T00:00:00.000Z',
+        refusedWrites: 0,
       });
+    });
+
+    it('threads refused writes through the chain', async () => {
+      const rows = Array.from({ length: 50 }, (_, i) => makeItemRow(`item-${i}`));
+      mockBatchQuery(rows);
+      mockQueueAdd.mockResolvedValue({ id: 'job-next' });
+      mockTakeRefusedWrites.mockReturnValue(3);
+
+      await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
+
+      expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+      const [, jobData] = mockQueueAdd.mock.calls[0]!;
+      expect(jobData).toEqual({
+        serverId: 'server-1',
+        cursor: 'item-49',
+        totalItems: 50,
+        processedItems: 50,
+        passStartedAt: expect.any(String),
+        refusedWrites: 3,
+      });
+    });
+
+    it('sets disk-limited when the final batch ends a pass with refusals', async () => {
+      const rows = [makeItemRow('item-0'), makeItemRow('item-1')];
+      mockBatchQuery(rows);
+      mockTakeRefusedWrites.mockReturnValue(1);
+
+      const result = await processImagePrecacheJob(
+        makeJob({ serverId: 'server-1', cursor: null, refusedWrites: 3 })
+      );
+
+      expect(result).toEqual({ processed: 2 });
+      expect(mockWriteDiskLimited).toHaveBeenCalledTimes(1);
+      expect(mockWriteDiskLimited).toHaveBeenCalledWith(expect.anything(), 4);
+      expect(mockClearDiskLimited).not.toHaveBeenCalled();
+    });
+
+    it('clears disk-limited when a pass ends clean', async () => {
+      const rows = [makeItemRow('item-0'), makeItemRow('item-1')];
+      mockBatchQuery(rows);
+      mockTakeRefusedWrites.mockReturnValue(0);
+
+      const result = await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
+
+      expect(result).toEqual({ processed: 2 });
+      expect(mockClearDiskLimited).toHaveBeenCalledTimes(1);
+      expect(mockWriteDiskLimited).not.toHaveBeenCalled();
+    });
+
+    it('chains the next batch with its own unique id even though the pass is active', async () => {
+      queueHolds({ active: [chainedJob('precache-server-1-item-0-1', 'server-1', 1000)] });
+      const rows = Array.from({ length: 50 }, (_, i) => makeItemRow(`item-${i}`));
+      mockBatchQuery(rows);
+      mockQueueAdd.mockResolvedValue({ id: 'job-next' });
+
+      await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
+
+      expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+      const [, , opts] = mockQueueAdd.mock.calls[0]!;
+      expect(opts.jobId).toMatch(/^precache-server-1-item-49-\d+$/);
     });
 
     it('does not re-enqueue when the batch is smaller than 50 (cursor exhausted)', async () => {
@@ -279,7 +581,7 @@ describe('imagePrecacheQueue', () => {
 
       await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
 
-      expect(mockProxyImage).toHaveBeenCalledTimes(15); // 5 items x 3 widths
+      expect(mockProxyImage).toHaveBeenCalledTimes(5); // 5 missing items, one warm each
       expect(peak).toBeLessThanOrEqual(2);
       expect(peak).toBe(2); // confirms the pool actually parallelizes, not serialized to 1
     });
@@ -294,7 +596,7 @@ describe('imagePrecacheQueue', () => {
       const result = await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
 
       expect(result).toEqual({ processed: 2 });
-      expect(mockProxyImage).toHaveBeenCalledTimes(6); // 2 items x 3 widths, despite the first rejecting
+      expect(mockProxyImage).toHaveBeenCalledTimes(2); // 2 items, one warm each, despite the first rejecting
     });
   });
 });

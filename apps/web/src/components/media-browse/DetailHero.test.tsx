@@ -108,6 +108,10 @@ describe('DetailHero', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Severance' })).toBeInTheDocument();
     const img = container.querySelector('img');
     expect(img?.src).toContain('width=360');
+    expect(img?.src).toContain('height=540');
+    expect(img?.src).toContain('v=v1');
+    expect(img?.src).not.toContain('lqip');
+    expect(img?.hasAttribute('srcset')).toBe(false);
   });
 
   it('shows a section skeleton for meta/availability/actions while only the stub has painted', () => {

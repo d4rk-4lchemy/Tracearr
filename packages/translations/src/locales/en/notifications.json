@@ -60,6 +60,14 @@
         "title": "Plex Account Unlinked",
         "message": "Your Plex account has been disconnected"
       },
+      "plexAccountReauthorized": {
+        "title": "Plex Account Reauthorized",
+        "message_one": "{{count}} server reconnected",
+        "message_other": "{{count}} servers reconnected",
+        "messageNoServers": "Account token updated",
+        "partial": "Token updated, but {{names}} still refused it",
+        "unmatched": "Token updated, but {{names}} could not be re-linked"
+      },
       "agentAdded": {
         "title": "Agent Added",
         "message": "The notification agent has been added"
@@ -76,17 +84,17 @@
         "title": "Job Completed",
         "message": "{{name}} finished successfully"
       },
-      "ruleCreated": {
-        "title": "Rule Created",
-        "message": "The rule has been created successfully"
+      "automationCreated": {
+        "title": "Automation Created",
+        "message": "The automation has been created successfully"
       },
-      "ruleUpdated": {
-        "title": "Rule Updated",
-        "message": "The rule has been updated successfully"
+      "automationUpdated": {
+        "title": "Automation Updated",
+        "message": "The automation has been updated successfully"
       },
-      "ruleDeleted": {
-        "title": "Rule Deleted",
-        "message": "The rule has been deleted successfully"
+      "automationDeleted": {
+        "title": "Automation Deleted",
+        "message": "The automation has been deleted successfully"
       },
       "streamTerminated": {
         "title": "Stream Terminated",
@@ -148,11 +156,14 @@
       },
       "usersMerged": {
         "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "automationsKept": "Kept target's version of: {{names}}"
       },
       "serverUserSplit": {
         "title": "Account split into a separate user"
-      }
+      },
+      "destinationSaved": "Destination saved",
+      "destinationDeleted": "Destination deleted",
+      "destinationTestSent": "Test notification sent"
     },
     "error": {
       "serverAddFailed": "Failed to add server",
@@ -164,9 +175,9 @@
       "dismissFailed": "Failed to dismiss violation",
       "authFailed": "Authentication failed",
       "webhookTestFailed": "Webhook test failed",
-      "ruleCreateFailed": "Failed to create rule",
-      "ruleUpdateFailed": "Failed to update rule",
-      "ruleDeleteFailed": "Failed to delete rule",
+      "automationCreateFailed": "Failed to create automation",
+      "automationUpdateFailed": "Failed to update automation",
+      "automationDeleteFailed": "Failed to delete automation",
       "streamTerminateFailed": "Failed to terminate stream",
       "serverUrlUpdateFailed": "Failed to update server URL",
       "serverUpdateFailed": "Failed to update server",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "Failed to update routing",
       "clipboardFailed": "Failed to copy to clipboard",
       "plexUnlinkFailed": "Failed to unlink Plex account",
+      "plexReauthorizeFailed": "Failed to reauthorize Plex account",
       "agentAddFailed": "Failed to add agent",
       "agentUpdateFailed": "Failed to update agent",
       "agentRemoveFailed": "Failed to remove agent",
@@ -198,7 +210,11 @@
       "invalidClaimCode": {
         "title": "Invalid claim code",
         "message": "Please check the server logs"
-      }
+      },
+      "destinationSaveFailed": "Failed to save destination: {{error}}",
+      "destinationDeleteFailed": "Failed to delete destination: {{error}}",
+      "destinationTestFailed": "Test failed: {{error}}",
+      "destinationInUse": "Still used by: {{rules}}"
     },
     "warning": {
       "jobFailed": {
@@ -207,25 +223,9 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "New Stream Started",
-        "message": "{{user}} started watching {{media}}"
-      },
-      "streamStopped": {
-        "title": "Stream Stopped",
-        "message": "{{user}} stopped watching"
-      },
       "updateAvailable": {
         "title": "Update Available",
         "message": "Tracearr {{version}} is available"
-      },
-      "serverOffline": {
-        "title": "Server Offline",
-        "message": "{{name}} is unreachable"
-      },
-      "serverOnline": {
-        "title": "Server Online",
-        "message": "{{name}} is back online"
       },
       "violationDetected": {
         "title": "New Violation: {{ruleName}}",

@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch/SHA after this upstream merge: `feature/prepare-for-2.1.0` at `d084d0c1`
+- Fork branch: `feature/prepare-for-2.2.0`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `cd08ec94`
-- Last shared upstream commit found during inspection: `22199d26`
-- Latest upstream commit merged into the current working tree: `cd08ec94`
+- Source branch/SHA inspected: `main` at `64401f0c`
+- Last shared upstream commit found during inspection: `8cec50d3`
+- Latest upstream commit merged into the current working tree: `64401f0c`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -65,6 +65,9 @@ The fork also carries local maintenance/distribution changes:
   2.29) is intentionally not part of GitHub PR CI. Run it manually when
   validating database, migration, or integration-test changes.
 - Release automation is manual-only, so merging to `main` does not create a release, push Docker images, or post to Reddit.
+- The manual release workflow's `bump-helm-chart` job is disabled with
+  `if: false`; this fork does not use upstream's `RELEASE_PAT` path to bypass
+  branch protection and push chart-version commits directly to `main`.
 - Local Husky hooks were removed.
 - `.tmp/`, `.plans/`, `AGENTS.md`, and this `FORK_INFO.md` are ignored locally.
 - `AGENTS.md` documents the Pull Request CI workflow warning baseline. Read both `AGENTS.md` and this file before making changes, and update either file when a change affects repo instructions, fork overlay behavior, validation workflow expectations, warning counts, or future merge guidance.
@@ -215,6 +218,50 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `64401f0c` (Tracearr `v2.2.0`) was merged into
+  `feature/prepare-for-2.2.0` on August 27, 2026. The built-in MapLibre/PMTiles
+  map, richer media-added and media-upgraded notifications, Fastify 5.12.1,
+  translation refresh, and release/Helm maintenance were retained. The merge
+  added no upstream migrations. Translation conflicts were resolved with the
+  refreshed upstream locales as the baseline and the fork's channel-count,
+  VOD/TV dashboard, no-library, and upstream-version keys restored as English
+  fallbacks in every locale. Dispatcharr remains excluded from media-library
+  synchronization while retaining session, history, realtime, resource, and
+  dashboard support; the fork's PR-only CI and manual-only release policy also
+  remain intact. The upstream Helm-chart push job was subsequently disabled in
+  the fork so it cannot use a release PAT to write directly to `main`.
+
+- Upstream `main` at `6fc80e54` was merged into `feature/prepare-for-2.2.0`
+  on August 20, 2026. The upstream `0089_zippy_frank_castle` migration,
+  user identity rollups, server-list filtering, dashboard/navigation refresh,
+  dependency/toolchain updates, and translation refresh were retained.
+  Dispatcharr remains present in shared server contracts and settings; its
+  fork migrations remain in the separate `fork-migrations` ledger. The History
+  table now uses upstream's data-table structure while preserving Dispatcharr
+  Live TV labels and the catch-up indicator. A post-`develop` shared-session
+  mapper refactor had dropped Catch-up classification between `ProcessedSession`,
+  active/pending cache entries, and session persistence; the fork restores
+  `dispatcharrPlaybackKind` and active-card EPG fields across those boundaries.
+
+- Upstream `main` at `bf662a89` was merged into `feature/prepare-for-2.2.0`
+  on August 18, 2026. The upstream Plex re-authentication/token-reconciliation
+  flow, dependency updates, Docker image refreshes, and translation fallbacks
+  were retained. The `sseManager` conflict preserves the fork's leader-owned
+  Dispatcharr-aware configuration comparison (type, name, normalized URL,
+  token, and anonymous-stream setting), so it still replaces stale connectors
+  after edits. GitHub Actions retain fork policy: CI is PR-only, Renovate is
+  disabled, release is manual-only, and the integration matrix remains a
+  manual validation path; upstream action/image pin updates were accepted.
+
+- Upstream `main` at `da2828d1` was merged into `feature/prepare-for-2.2.0`
+  on August 17, 2026. Upstream migration `0088`, the destinations-based
+  notification system, and the rule lifecycle changes were retained.
+  Dispatcharr continues to be included in the shared server and rule types;
+  its WebSocket processor remains leader-lease owned, and authoritative stops
+  retain the exact active-session ID through cache and notification handling.
+  Upstream removed the mobile application, so the former mobile Dispatcharr
+  presentation overlay was removed with it.
 
 - Upstream `main` at `22199d26` (Tracearr `v2.1.0-beta.8`) was merged into
   `feature/prepare-for-2.1.0` on Friday, August 14, 2026 (merge commit

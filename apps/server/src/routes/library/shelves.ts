@@ -16,6 +16,7 @@ import {
   shelvesQuerySchema,
   REDIS_KEYS,
   CACHE_TTL,
+  POSTER_IMAGE_SIZE,
   type ShelfRow,
   type RecentlyAddedShelfRow,
   type MostPopularShelfRow,
@@ -78,17 +79,17 @@ type CachedDeadWeightRow = CachedShelfRow & Pick<DeadWeightRow, 'fileBytes' | 'a
 function toShelfRowBase(row: RawShelfRow): CachedShelfRow {
   const servers = row.servers ?? [];
   const poster = row.poster_copy;
+  const posterVersion = poster?.thumbPath ? posterVersionFor(poster.thumbPath) : null;
   const posterUrl =
-    poster?.thumbPath && poster.serverId
+    poster?.thumbPath && poster.serverId && posterVersion
       ? buildProxyUrl({
           serverId: poster.serverId,
           path: poster.thumbPath,
-          width: 240,
-          height: 360,
+          ...POSTER_IMAGE_SIZE,
+          version: posterVersion,
           fallback: 'poster',
         })
       : null;
-  const posterVersion = poster?.thumbPath ? posterVersionFor(poster.thumbPath) : null;
 
   return {
     mediaId: row.id,

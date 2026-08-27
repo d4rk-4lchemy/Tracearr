@@ -62,24 +62,24 @@
     "unsavedChanges": "У вас є незбережені зміни. Ви впевнені, що хочете вийти?"
   },
   "count": {
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices",
+    "alert_one": "",
+    "alert_other": "",
+    "automation_one": "",
+    "automation_other": "",
+    "channel_one": "",
+    "channel_other": "",
+    "device_one": "",
+    "device_other": "",
     "error_one": "{{count}} помилка",
     "error_other": "{{count}} помилок",
     "item_one": "{{count}} елемент",
     "item_other": "{{count}} елементів",
     "library_one": "{{count}} бібліотека",
     "library_other": "{{count}} бібліотеки",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
+    "location_one": "",
+    "location_other": "",
     "result_one": "{{count}} результат",
     "result_other": "{{count}} результатів",
-    "rule_one": "{{count}} правило",
-    "rule_other": "{{count}} правила",
     "selected_one": "Вибрано {{count}}",
     "selected_other": "Вибрано {{count}}",
     "server_one": "{{count}} сервер",
@@ -137,6 +137,19 @@
     "unauthorized": "Ви не маєте прав на виконання цієї дії",
     "unexpectedError": "Сталася неочікувана помилка. Спробуйте ще раз."
   },
+  "filters": {
+    "anyDate": "",
+    "clearAll": "",
+    "clearDates": "",
+    "clearEndDate": "",
+    "clearSearch": "",
+    "clearStartDate": "",
+    "dateAfter": "",
+    "dateBefore": "",
+    "dateBetween": "",
+    "done": "",
+    "remove": ""
+  },
   "labels": {
     "actions": "Дії",
     "active": "Активний",
@@ -144,12 +157,12 @@
     "apiKey": "Ключ API",
     "bandwidth": "Пропускна здатність",
     "content": "Контент",
-    "created": "Created",
+    "created": "",
     "data": "Дані",
     "date": "Дата",
     "days": "днів",
     "device": "Пристрій",
-    "deviceId": "Device ID",
+    "deviceId": "",
     "disabled": "Вимкнено",
     "duration": "Тривалість",
     "filters": "Фільтри",
@@ -157,16 +170,16 @@
     "items": "Елементи",
     "joined": "Приєднався",
     "lastActivity": "Остання активність",
-    "loadMore": "Load More",
+    "loadMore": "",
     "location": "Розташування",
     "media": "Медіа",
-    "mediaLength": "Media length",
+    "mediaLength": "",
     "name": "Ім'я",
     "never": "Ніколи",
     "pausedTime": "Час призупинення",
     "platform": "Платформа",
     "player": "Плеєр",
-    "product": "Product",
+    "product": "",
     "progress": "Прогрес",
     "quality": "Якість",
     "rank": "Ранг",
@@ -174,7 +187,7 @@
     "recentSessions": "Нещодавні сеанси",
     "resolution": "Роздільна здатність",
     "rule": "Правило",
-    "segments": "segments",
+    "segments": "",
     "server": "Сервер",
     "serverOwner": "Власник сервера",
     "sessionDetails": "Деталі сеансу",
@@ -184,10 +197,10 @@
     "started": "Розпочато",
     "status": "Статус",
     "stopped": "Зупинено",
-    "streamDetails": "Stream Details",
-    "total": "total",
+    "streamDetails": "",
+    "total": "",
     "totalSessions": "Всього сесій",
-    "transcodeReason": "Transcode Reason",
+    "transcodeReason": "",
     "trustScore": "Рейтинг довіри",
     "type": "Тип",
     "unknown": "Невідомо",
@@ -249,10 +262,16 @@
     "searchTitles": "Пошук назв, користувачів...",
     "searchUsers": "Пошук користувачів..."
   },
+  "serverSelector": {
+    "all": "",
+    "noMatches": "",
+    "search": "",
+    "some": ""
+  },
   "servers": {
-    "emby": "Emby",
-    "jellyfin": "Jellyfin",
-    "plex": "Plex"
+    "emby": "",
+    "jellyfin": "",
+    "plex": ""
   },
   "severity": {
     "high": "Висока",
@@ -282,9 +301,17 @@
     "success": "Успішно"
   },
   "table": {
+    "pageOf": "",
+    "pagination": "",
     "selectAllOnPage": "Вибрати все на сторінці",
-    "selectAllTotal": "Select all {{total}} items",
     "selectRow": "Виберіть рядок"
+  },
+  "tasks": {
+    "queued": "",
+    "running": "",
+    "startedAgo": "",
+    "title": "",
+    "waiting": ""
   },
   "time": {
     "allTime": "За весь час",
@@ -293,6 +320,11 @@
     "thisWeek": "Цього тижня",
     "today": "Сьогодні",
     "yesterday": "Вчора"
+  },
+  "trust": {
+    "caution": "",
+    "trusted": "",
+    "untrusted": ""
   },
   "units": {
     "km": "км",

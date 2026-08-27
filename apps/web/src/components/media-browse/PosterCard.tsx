@@ -1,45 +1,32 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { normalizeResolutionLabel, resolutionTierRank, type WatchedState } from '@tracearr/shared';
+import {
+  normalizeResolutionLabel,
+  resolutionTierRank,
+  POSTER_IMAGE_SIZE,
+  type WatchedState,
+} from '@tracearr/shared';
 import { cn } from '@/lib/utils';
 import { WatchedBadge, watchedLabelKey } from './WatchedBadge';
 import { ServerDots } from './ServerDots';
 import { dedupeServersById } from './dedupeServersById';
 import { HoverOverlay, type HoverOverlayServer } from './HoverOverlay';
 
-const POSTER_BUCKET_WIDTHS = [160, 240, 360] as const;
-const POSTER_ASPECT_RATIO = 1.5; // aspect-[2/3]: height = width * 1.5
-
-/**
- * Rewrites the proxy's `width`/`height` query params for one bucket size,
- * preserving every other param (server, url, fallback) via the URL API -
- * the caller's posterUrl shape is never assumed beyond "has a width param".
- */
+/** One URL per poster: the server keeps one cached copy at 360x540. The grid alone asks for the LQIP race. */
 export function buildPosterSrc(
   posterUrl: string,
-  width: number,
-  posterVersion: string | null
+  posterVersion: string | null,
+  options: { lqip?: boolean } = {}
 ): string {
   const url = new URL(posterUrl, window.location.origin);
-  url.searchParams.set('width', String(width));
-  url.searchParams.set('height', String(Math.round(width * POSTER_ASPECT_RATIO)));
-  if (posterVersion) {
-    url.searchParams.set('v', posterVersion);
-  } else {
-    url.searchParams.delete('v');
-  }
+  url.searchParams.set('width', String(POSTER_IMAGE_SIZE.width));
+  url.searchParams.set('height', String(POSTER_IMAGE_SIZE.height));
+  if (posterVersion) url.searchParams.set('v', posterVersion);
+  else url.searchParams.delete('v');
+  if (options.lqip) url.searchParams.set('lqip', '1');
+  else url.searchParams.delete('lqip');
   return `${url.pathname}${url.search}`;
-}
-
-export function buildPosterSrcSet(
-  posterUrl: string | null,
-  posterVersion: string | null
-): string | undefined {
-  if (!posterUrl) return undefined;
-  return POSTER_BUCKET_WIDTHS.map(
-    (width) => `${buildPosterSrc(posterUrl, width, posterVersion)} ${width}w`
-  ).join(', ');
 }
 
 /**
@@ -252,10 +239,7 @@ export function PosterCard({
             </div>
           ) : (
             <img
-              src={buildPosterSrc(posterUrl, 240, posterVersion)}
-              srcSet={buildPosterSrcSet(posterUrl, posterVersion)}
-              // Below 768px the grid clamps to a 2-column minimum (~44vw/card), not 30vw.
-              sizes="(min-width: 1024px) 152px, (min-width: 768px) 30vw, 45vw"
+              src={buildPosterSrc(posterUrl, posterVersion, { lqip: true })}
               alt=""
               loading={loading}
               decoding="async"

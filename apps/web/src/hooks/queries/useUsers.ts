@@ -5,26 +5,16 @@ import {
   MERGE_SAME_SERVER_CONFIRMATION_REQUIRED,
   serverScopeFromIds,
   serverScopeKey,
-  type UserSortField,
+  type UserRosterFilters,
 } from '@tracearr/shared';
-import { api } from '@/lib/api';
+import { api, type UserListParams } from '@/lib/api';
 
-export function useUsers(
-  params: {
-    page?: number;
-    pageSize?: number;
-    serverId?: string;
-    serverIds?: string[];
-    includeRemoved?: boolean;
-    search?: string;
-    orderBy?: UserSortField;
-    orderDir?: 'asc' | 'desc';
-  } = {}
-) {
+export function useUsers(params: UserListParams = {}, options: { enabled?: boolean } = {}) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(params.serverIds));
   return useQuery({
     queryKey: ['users', 'list', { ...params, serverIds: serverIdsKey }],
     queryFn: () => api.users.list(params),
+    enabled: options.enabled ?? true,
     // A search query changes often as the user types (debounced upstream) and
     // shouldn't linger stale as long as the default roster listing does.
     staleTime: params.search ? 1000 * 10 : 1000 * 60 * 5,
@@ -137,7 +127,11 @@ export function useUserTerminations(
 export interface BulkResetTrustParams {
   ids?: string[];
   selectAll?: boolean;
-  filters?: { serverId?: string; serverIds?: string[]; includeRemoved?: boolean };
+  /**
+   * Every filter the roster was narrowed by. Sending a subset makes "select all
+   * N" reset people the table never showed.
+   */
+  filters?: Partial<UserRosterFilters>;
 }
 
 export function useBulkResetTrust() {
@@ -193,7 +187,7 @@ export function useMergeUsers() {
       toast.success(t('toast.success.usersMerged.title'), {
         description:
           data.droppedRuleNames.length > 0
-            ? t('toast.success.usersMerged.rulesKept', {
+            ? t('toast.success.usersMerged.automationsKept', {
                 names: data.droppedRuleNames.join(', '),
               })
             : undefined,

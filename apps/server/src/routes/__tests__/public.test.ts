@@ -1,255 +1,350 @@
 /**
- * Public API route tests
+ * Public API v1 contract tests
  *
- * Covers response mapping used by third-party integrations.
+ * `/api/v1/public` is frozen: third-party integrations read these payloads, so a
+ * renamed, added or dropped key is a break. Every key is spelled out here rather
+ * than matched loosely, and the assertions run against the serialized response,
+ * not the handler's return value.
+ *
+ * The violation endpoints read `automation_runs`, which also holds notification
+ * runs and runs that stopped or errored, so each query's WHERE is rendered and
+ * checked for the alias filter.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
-import { createMockActiveSession } from '../../test/fixtures.js';
+import { queryChain, renderCall } from '../../test/helpers.js';
 
-const mocks = vi.hoisted(() => ({
-  dbExecute: vi.fn(),
-  dbSelect: vi.fn(),
-  getAllActiveSessions: vi.fn(),
-  buildAvatarUrl: vi.fn((serverId: string | null | undefined, thumbUrl: string | null | undefined) =>
-    serverId && thumbUrl ? `/avatar?server=${serverId}&url=${encodeURIComponent(thumbUrl)}` : null
-  ),
-  buildPosterUrl: vi.fn((serverId: string | null | undefined, thumbPath: string | null | undefined) =>
-    serverId && thumbPath ? `/poster?server=${serverId}&url=${encodeURIComponent(thumbPath)}` : null
-  ),
-  normalizeDispatcharrImagePath: vi.fn((thumbPath: string | null | undefined) => {
-    if (!thumbPath) return null;
-    try {
-      const parsed = new URL(thumbPath);
-      return `${parsed.pathname}${parsed.search}`;
-    } catch {
-      return thumbPath.startsWith('/') ? thumbPath : `/${thumbPath}`;
-    }
-  }),
-}));
+const mockGetDashboardStats = vi.hoisted(() => vi.fn());
 
 vi.mock('../../db/client.js', () => ({
   db: {
-    execute: (...args: unknown[]) => mocks.dbExecute(...args),
-    select: (...args: unknown[]) => mocks.dbSelect(...args),
+    select: vi.fn(),
+    execute: vi.fn(),
   },
 }));
 
 vi.mock('../../services/cache.js', () => ({
-  getCacheService: vi.fn(() => ({
-    getAllActiveSessions: mocks.getAllActiveSessions,
-    getServerHealth: vi.fn().mockResolvedValue(null),
-  })),
-}));
-
-vi.mock('../../services/imageProxy.js', () => ({
-  buildAvatarUrl: mocks.buildAvatarUrl,
-  buildPosterUrl: mocks.buildPosterUrl,
-  normalizeDispatcharrImagePath: mocks.normalizeDispatcharrImagePath,
+  getCacheService: vi.fn(() => null),
 }));
 
 vi.mock('../../services/dashboardStats.js', () => ({
-  getDashboardStats: vi.fn(),
-}));
-
-vi.mock('../../services/termination.js', () => ({
-  terminateSession: vi.fn(),
+  getDashboardStats: mockGetDashboardStats,
 }));
 
 vi.mock('../stats/queries.js', () => ({
-  queryConcurrentStreams: vi.fn(),
-  queryPlatforms: vi.fn(),
-  queryPlaysByDayOfWeek: vi.fn(),
-  queryPlaysByHourOfDay: vi.fn(),
-  queryPlaysOverTime: vi.fn(),
-  queryQualityBreakdown: vi.fn(),
+  queryPlaysOverTime: vi.fn(async () => []),
+  queryConcurrentStreams: vi.fn(async () => []),
+  queryPlaysByDayOfWeek: vi.fn(async () => []),
+  queryPlaysByHourOfDay: vi.fn(async () => []),
+  queryPlatforms: vi.fn(async () => []),
+  queryQualityBreakdown: vi.fn(async () => []),
 }));
 
+import { db } from '../../db/client.js';
 import { publicRoutes } from '../public.js';
+
+/** Completed policy runs: nothing else is a violation. */
+function expectAliasFilter(where: { text: string; params: unknown[] }) {
+  expect(where.text).toContain('automation_runs.kind =');
+  expect(where.params).toContain('policy');
+  expect(where.text).toContain('automation_runs.outcome =');
+  expect(where.params).toContain('completed');
+}
 
 async function buildTestApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
-
   await app.register(sensible);
-
-  app.decorate('authenticatePublicApi', async () => undefined);
-  await app.register(publicRoutes, { prefix: '/public' });
-
+  app.decorate('authenticatePublicApi', async (request: FastifyRequest) => {
+    request.publicApiContext = { userId: 'owner-1' };
+  });
+  await app.register(publicRoutes, { prefix: '/api/v1/public' });
   return app;
 }
 
-describe('Public API Routes', () => {
+describe('GET /api/v1/public/violations', () => {
   let app: FastifyInstance;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getAllActiveSessions.mockResolvedValue([]);
-    mocks.dbExecute.mockResolvedValue({ rows: [] });
-    mocks.dbSelect.mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        orderBy: vi.fn().mockResolvedValue([]),
-      }),
-    });
   });
 
   afterEach(async () => {
-    if (app) {
-      await app.close();
-    }
+    await app.close();
   });
 
-  describe('GET /public/streams', () => {
-    it('maps Dispatcharr live channel data as the primary media title and uses channel logo', async () => {
-      const serverId = randomUUID();
-      const session = createMockActiveSession({
-        serverId,
-        mediaType: 'live',
-        mediaTitle: 'Evening Movie',
-        grandparentTitle: null,
-        thumbPath: '/fallback/program.png',
-        channelTitle: 'Classic Hits TV',
-        channelThumb: 'https://dispatcharr.example.com/api/channels/logos/4671/cache/',
-        server: {
-          id: serverId,
-          name: 'Dispatcharr',
-          type: 'dispatcharr',
+  const serverId = randomUUID();
+  const ruleId = randomUUID();
+  const userId = randomUUID();
+  const violationId = randomUUID();
+
+  function enrichedRow() {
+    return {
+      id: violationId,
+      serverId,
+      serverName: 'Living Room Plex',
+      severity: 'high',
+      acknowledgedAt: null,
+      data: { maxStreams: 2, actualStreams: 4 },
+      createdAt: new Date('2026-01-02T03:04:05.000Z'),
+      ruleId,
+      ruleType: null,
+      ruleName: 'Max 2 concurrent streams',
+      userId,
+      serverUsername: 'ada_plex',
+      thumbUrl: 'https://plex.tv/users/ada/avatar',
+      userName: 'Ada Lovelace',
+      userUsername: 'ada',
+    };
+  }
+
+  it('serializes one enriched row with exactly the documented keys', async () => {
+    app = await buildTestApp();
+    vi.mocked((db as any).select)
+      .mockReturnValueOnce(queryChain(vi.fn, [{ count: 1 }]))
+      .mockReturnValueOnce(queryChain(vi.fn, [enrichedRow()]));
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/public/violations' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      data: [
+        {
+          id: violationId,
+          serverId,
+          serverName: 'Living Room Plex',
+          severity: 'high',
+          acknowledged: false,
+          data: { maxStreams: 2, actualStreams: 4 },
+          createdAt: '2026-01-02T03:04:05.000Z',
+          rule: {
+            id: ruleId,
+            type: null,
+            name: 'Max 2 concurrent streams',
+          },
+          user: {
+            id: userId,
+            username: 'Ada Lovelace',
+            thumbUrl: 'https://plex.tv/users/ada/avatar',
+            avatarUrl: 'https://plex.tv/users/ada/avatar',
+          },
         },
-      });
-      mocks.getAllActiveSessions.mockResolvedValueOnce([session]);
-      app = await buildTestApp();
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/public/streams',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.data[0]).toMatchObject({
-        mediaType: 'live',
-        mediaTitle: 'Classic Hits TV',
-        thumbPath: '/api/channels/logos/4671/cache/',
-        posterUrl: `/poster?server=${serverId}&url=%2Fapi%2Fchannels%2Flogos%2F4671%2Fcache%2F`,
-      });
-      expect(body.data[0]).not.toHaveProperty('showTitle');
-    });
-
-    it('keeps non-live media mapping unchanged', async () => {
-      const serverId = randomUUID();
-      const session = createMockActiveSession({
-        serverId,
-        mediaType: 'episode',
-        mediaTitle: 'Pilot',
-        grandparentTitle: 'Great Show',
-        thumbPath: '/Items/show/Images/Primary',
-        channelTitle: 'Should Not Be Used',
-        channelThumb: '/channel/logo.png',
-        server: {
-          id: serverId,
-          name: 'Jellyfin',
-          type: 'jellyfin',
-        },
-      });
-      mocks.getAllActiveSessions.mockResolvedValueOnce([session]);
-      app = await buildTestApp();
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/public/streams',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.data[0]).toMatchObject({
-        mediaType: 'episode',
-        mediaTitle: 'Pilot',
-        showTitle: 'Great Show',
-        thumbPath: '/Items/show/Images/Primary',
-      });
+      ],
+      meta: { total: 1, page: 1, pageSize: 25 },
     });
   });
 
-  describe('GET /public/history', () => {
-    it('maps live channel fields from history rows', async () => {
-      const serverId = randomUUID();
-      mocks.dbExecute
-        .mockResolvedValueOnce({ rows: [{ count: 1 }] })
-        .mockResolvedValueOnce({
-          rows: [
-            {
-              id: randomUUID(),
-              started_at: new Date('2026-07-06T10:00:00Z'),
-              stopped_at: new Date('2026-07-06T10:30:00Z'),
-              duration_ms: '1800000',
-              progress_ms: 1800000,
-              total_duration_ms: 0,
-              segment_count: '1',
-              watched: true,
-              state: 'stopped',
-              server_id: serverId,
-              server_name: 'Dispatcharr',
-              server_type: 'dispatcharr',
-              media_type: 'live',
-              media_title: 'Evening Movie',
-              grandparent_title: null,
-              season_number: null,
-              episode_number: null,
-              year: null,
-              artist_name: null,
-              album_name: null,
-              track_number: null,
-              disc_number: null,
-              channel_title: 'Classic Hits TV',
-              channel_thumb: 'https://dispatcharr.example.com/api/channels/logos/4671/cache/',
-              thumb_path: '/fallback/program.png',
-              device: 'Chrome',
-              player_name: 'Dispatcharr Client',
-              product: 'Dispatcharr Client',
-              platform: 'Dispatcharr',
-              is_transcode: false,
-              video_decision: 'directplay',
-              audio_decision: 'directplay',
-              bitrate: 0,
-              source_video_codec: null,
-              source_audio_codec: null,
-              source_audio_channels: null,
-              source_video_width: null,
-              source_video_height: null,
-              source_video_details: null,
-              source_audio_details: null,
-              stream_video_codec: null,
-              stream_audio_codec: null,
-              stream_video_details: null,
-              stream_audio_details: null,
-              transcode_info: null,
-              subtitle_info: null,
-              user_id: randomUUID(),
-              server_username: 'viewer',
-              user_thumb_url: null,
-              user_name: null,
-              user_username: 'viewer',
-            },
-          ],
-        });
-      app = await buildTestApp();
+  it('names every key of the row, its rule, its user and the envelope', async () => {
+    app = await buildTestApp();
+    vi.mocked((db as any).select)
+      .mockReturnValueOnce(queryChain(vi.fn, [{ count: 1 }]))
+      .mockReturnValueOnce(queryChain(vi.fn, [enrichedRow()]));
 
-      const response = await app.inject({
-        method: 'GET',
-        url: '/public/history',
-      });
+    const body = await app
+      .inject({ method: 'GET', url: '/api/v1/public/violations' })
+      .then((r) => r.json());
 
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.data[0]).toMatchObject({
-        mediaType: 'live',
-        mediaTitle: 'Classic Hits TV',
-        thumbPath: '/api/channels/logos/4671/cache/',
-        posterUrl: `/poster?server=${serverId}&url=%2Fapi%2Fchannels%2Flogos%2F4671%2Fcache%2F`,
-      });
-      expect(body.data[0]).not.toHaveProperty('showTitle');
+    expect(Object.keys(body).sort()).toEqual(['data', 'meta']);
+    expect(Object.keys(body.meta).sort()).toEqual(['page', 'pageSize', 'total']);
+    expect(Object.keys(body.data[0]).sort()).toEqual([
+      'acknowledged',
+      'createdAt',
+      'data',
+      'id',
+      'rule',
+      'serverId',
+      'serverName',
+      'severity',
+      'user',
+    ]);
+    expect(Object.keys(body.data[0].rule).sort()).toEqual(['id', 'name', 'type']);
+    expect(Object.keys(body.data[0].user).sort()).toEqual([
+      'avatarUrl',
+      'id',
+      'thumbUrl',
+      'username',
+    ]);
+  });
+
+  it('serves a null rule.type, which V2 automations have always produced', async () => {
+    app = await buildTestApp();
+    vi.mocked((db as any).select)
+      .mockReturnValueOnce(queryChain(vi.fn, [{ count: 1 }]))
+      .mockReturnValueOnce(queryChain(vi.fn, [{ ...enrichedRow(), ruleType: null }]));
+
+    const body = await app
+      .inject({ method: 'GET', url: '/api/v1/public/violations' })
+      .then((r) => r.json());
+
+    expect(body.data[0].rule.type).toBeNull();
+  });
+
+  it('counts and lists the same alias-filtered rows', async () => {
+    app = await buildTestApp();
+    const countChain = queryChain(vi.fn, [{ count: 0 }]);
+    const rowsChain = queryChain(vi.fn, []);
+    vi.mocked((db as any).select)
+      .mockReturnValueOnce(countChain)
+      .mockReturnValueOnce(rowsChain);
+
+    await app.inject({ method: 'GET', url: '/api/v1/public/violations' });
+
+    const countWhere = renderCall(countChain);
+    const rowsWhere = renderCall(rowsChain);
+    expectAliasFilter(countWhere);
+    expect(countWhere.text).toContain('automation_runs.server_user_id is not null');
+    expect(rowsWhere.text).toBe(countWhere.text);
+    expect(rowsWhere.params).toEqual(countWhere.params);
+  });
+
+  it('keeps the severity, acknowledged and serverId filters working alongside the alias', async () => {
+    app = await buildTestApp();
+    const countChain = queryChain(vi.fn, [{ count: 0 }]);
+    vi.mocked((db as any).select)
+      .mockReturnValueOnce(countChain)
+      .mockReturnValueOnce(queryChain(vi.fn, []));
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/public/violations?serverId=${serverId}&severity=high&acknowledged=true&page=2&pageSize=5`,
     });
+
+    expect(response.json().meta).toEqual({ total: 0, page: 2, pageSize: 5 });
+    const where = renderCall(countChain);
+    expect(where.text).toContain('server_users.server_id =');
+    expect(where.text).toContain('automation_runs.severity =');
+    expect(where.text).toContain('automation_runs.acknowledged_at is not null');
+    expect(where.params).toContain(serverId);
+    expectAliasFilter(where);
+  });
+});
+
+describe('GET /api/v1/public/stats', () => {
+  let app: FastifyInstance;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('keeps its five keys and counts violations under the alias', async () => {
+    app = await buildTestApp();
+    const violationChain = queryChain(vi.fn, [{ count: 3 }]);
+    vi.mocked((db as any).select)
+      .mockReturnValueOnce(queryChain(vi.fn, [{ count: 7 }]))
+      .mockReturnValueOnce(queryChain(vi.fn, [{ count: 42 }]))
+      .mockReturnValueOnce(violationChain);
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/public/stats' });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(Object.keys(body).sort()).toEqual([
+      'activeStreams',
+      'recentViolations',
+      'timestamp',
+      'totalSessions',
+      'totalUsers',
+    ]);
+    expect(body.activeStreams).toBe(0);
+    expect(body.totalUsers).toBe(7);
+    expect(body.totalSessions).toBe(42);
+    expect(body.recentViolations).toBe(3);
+    expect(new Date(body.timestamp).toISOString()).toBe(body.timestamp);
+
+    expectAliasFilter(renderCall(violationChain));
+  });
+});
+
+describe('GET /api/v1/public/stats/today', () => {
+  let app: FastifyInstance;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('keeps the fork TV metrics alongside the v1 daily-stat keys', async () => {
+    app = await buildTestApp();
+    mockGetDashboardStats.mockResolvedValueOnce({
+      alertsLast24h: 4,
+      todayPlays: 9,
+      todaySessions: 5,
+      watchTimeHours: 2,
+      tvSessions: 3,
+      tvChannels: 2,
+      tvWatchTimeHours: 1.5,
+      activeUsersToday: 2,
+      activeStreams: 0,
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/public/stats/today?serverId=${randomUUID()}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(Object.keys(body).sort()).toEqual([
+      'activeStreams',
+      'activeUsersToday',
+      'alertsLast24h',
+      'todayPlays',
+      'todaySessions',
+      'tvChannels',
+      'tvSessions',
+      'tvWatchTimeHours',
+      'watchTimeHours',
+    ]);
+    expect(body.alertsLast24h).toBe(4);
+    expect(body.todayPlays).toBe(9);
+    expect(body.todaySessions).toBe(5);
+    expect(body.watchTimeHours).toBe(2);
+    expect(body.tvSessions).toBe(3);
+    expect(body.tvChannels).toBe(2);
+    expect(body.tvWatchTimeHours).toBe(1.5);
+    expect(body.activeUsersToday).toBe(2);
+    expect(body.activeStreams).toBe(0);
+  });
+});
+
+describe('GET /api/v1/public/activity', () => {
+  let app: FastifyInstance;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('keeps its eight keys, none of which is a violation count', async () => {
+    app = await buildTestApp();
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/public/activity' });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(Object.keys(body).sort()).toEqual([
+      'byDayOfWeek',
+      'byHourOfDay',
+      'concurrent',
+      'period',
+      'platforms',
+      'plays',
+      'quality',
+      'range',
+    ]);
+    expect(Object.keys(body.range).sort()).toEqual(['end', 'start']);
+    expect(body.period).toBe('month');
   });
 });

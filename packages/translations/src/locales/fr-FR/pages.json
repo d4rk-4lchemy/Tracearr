@@ -17,10 +17,1168 @@
     "apiKeyAutoLoaded": "Clé API chargée automatiquement",
     "backToSettings": "Retour aux paramètres",
     "noApiKey": "Aucune clé API générée - créez une clé dans les paramètres pour tester les terminaux",
-    "specLoadError": "Failed to load the API specification. Check your API key and try again.",
-    "versionSwitcherLabel": "API documentation version",
-    "versionV1": "API v1",
-    "versionV2": "API v2"
+    "specLoadError": "",
+    "versionSwitcherLabel": "",
+    "versionV1": "",
+    "versionV2": ""
+  },
+  "automations": {
+    "actions": {
+      "kill_stream": {
+        "description": "",
+        "fields": {
+          "cooldown_minutes": {
+            "description": ""
+          },
+          "delay_seconds": {
+            "description": "",
+            "label": ""
+          },
+          "message": {
+            "placeholder": ""
+          },
+          "target": {
+            "description": ""
+          }
+        },
+        "label": "",
+        "ran": ""
+      },
+      "message_client": {
+        "description": "",
+        "fields": {
+          "message": {
+            "placeholder": ""
+          },
+          "target": {
+            "description": ""
+          }
+        },
+        "hint": "",
+        "label": "",
+        "ran": ""
+      },
+      "send": {
+        "description": "",
+        "fields": {
+          "cooldown_minutes": {
+            "description": ""
+          }
+        },
+        "label": "",
+        "ran": ""
+      },
+      "trust": {
+        "description": "",
+        "fields": {
+          "amount": {
+            "description": "",
+            "label": ""
+          },
+          "mode": {
+            "label": ""
+          },
+          "value": {
+            "label": ""
+          }
+        },
+        "label": "",
+        "ran": ""
+      }
+    },
+    "activity": {
+      "branch": {
+        "else": "",
+        "then": ""
+      },
+      "description": "",
+      "empty": "",
+      "emptyDescription": "",
+      "emptyRan": "",
+      "emptyRanDescription_one": "",
+      "emptyRanDescription_other": "",
+      "finished": "",
+      "from": "",
+      "group": "",
+      "item": "",
+      "noSummary": "",
+      "openInEditor": "",
+      "outcome": "",
+      "outcomes": {
+        "completed": "",
+        "error": "",
+        "stopped_by_condition": ""
+      },
+      "playing": "",
+      "recordedViolation": "",
+      "runLoading": "",
+      "runTitle": "",
+      "started": "",
+      "summary": "",
+      "tabs": {
+        "all": "",
+        "completed": "",
+        "error": "",
+        "stopped_by_condition": ""
+      },
+      "tabsLabel": "",
+      "title": "",
+      "triggeredBy": "",
+      "unknownStep": "",
+      "where": "",
+      "who": "",
+      "whyBranch": ""
+    },
+    "allKinds": "",
+    "allSeverities": "",
+    "allStatuses": "",
+    "bind": {
+      "accountLabel": "",
+      "activeLabel": "Active",
+      "anyServer": "",
+      "back": "",
+      "created": "",
+      "createdOff": "",
+      "customize": "",
+      "destinationsLabel": "",
+      "doors": {
+        "helper": ""
+      },
+      "failed": "",
+      "helper": {
+        "clientMessage": "",
+        "killMessage": ""
+      },
+      "nameHelper": "",
+      "namePlaceholder": "",
+      "needs": {
+        "title": ""
+      },
+      "noInputs": "",
+      "personLabel": "",
+      "required": "",
+      "serverHelper": "",
+      "serverLabel": "",
+      "submit": "",
+      "submitting": ""
+    },
+    "builder": {
+      "actions": {
+        "add": "Add action",
+        "addBranch": "Add action",
+        "branchElse": "Otherwise…",
+        "branchElseEmpty": "",
+        "branchName": "",
+        "branchThen": "then",
+        "collapseBranch": "",
+        "confirmRemoveDescription": "",
+        "confirmRemoveTitle": "",
+        "emptyAction": "",
+        "emptyDescription": "",
+        "emptyTitle": "",
+        "expandBranch": "",
+        "helper": "",
+        "ifAddCheck": "",
+        "ifNothing": "nothing yet",
+        "ifTitle": "",
+        "menu": "",
+        "moveDown": "",
+        "moveUp": "",
+        "policyNote": "",
+        "sectionTitle": "Do this…"
+      },
+      "activeLabel": "",
+      "clearSelection": "",
+      "conditions": {
+        "addAnother": "Add another condition",
+        "addFirst": "Add a condition",
+        "addGroup": "",
+        "all": "all of these",
+        "allCountries": "",
+        "allDeviceTypes": "",
+        "allHint": "",
+        "any": "any of these",
+        "anyHint": "",
+        "canNeverPass": "",
+        "deviceTypesHint": "",
+        "emptyLine": "",
+        "fieldLabel": "Condition",
+        "fieldPlaceholder": "Select field",
+        "groupSeparator": "",
+        "helper": "",
+        "matchLabel": "",
+        "no": "",
+        "noFields": "",
+        "operatorLabel": "Comparison",
+        "optional": "",
+        "recentlySeen": "",
+        "removeGroup": "",
+        "sectionTitle": "Only when…",
+        "uniqueDevices": "",
+        "uniqueDevicesHint": "",
+        "uniqueIps": "",
+        "uniqueIpsHint": "",
+        "valueLabel": "",
+        "windowPrefix": "",
+        "windowUnit": "",
+        "yes": ""
+      },
+      "destinationDisabled": "",
+      "errors": {
+        "actionUnavailable": "",
+        "daysRange": "",
+        "fieldNotAvailableFor": "",
+        "fieldUnavailable": "",
+        "measureInvalid": "",
+        "messageRequired": "",
+        "minutesRange": "",
+        "nameRequired": "",
+        "operatorInvalid": "",
+        "policyNeedsSubject": "",
+        "scopeIncomplete": "",
+        "sendNeedsDestination": "",
+        "tooLong": "",
+        "triggerRequired": "",
+        "trustAmountRange": "",
+        "trustValueRange": "",
+        "valueInvalid": "",
+        "variableUnavailable": ""
+      },
+      "footer": {
+        "problems_one": "{{count}} problem",
+        "problems_other": "{{count}} problems",
+        "ready": "",
+        "remaining_one": "",
+        "remaining_other": "",
+        "search": ""
+      },
+      "heldFor": {
+        "current": "",
+        "measureLabel": "",
+        "minutesLabel": "",
+        "prefix": "",
+        "total": "",
+        "unit": ""
+      },
+      "inactiveFor": {
+        "daysLabel": "",
+        "prefix": "",
+        "unit": ""
+      },
+      "leave": {
+        "confirm": "",
+        "title": ""
+      },
+      "liveCheck": {
+        "actual": "",
+        "backToLive": "",
+        "checking": "",
+        "empty": "",
+        "expand": "",
+        "failed": "",
+        "footnote": "",
+        "notPassed": "",
+        "passed": "",
+        "paused": "",
+        "sampleGone": "",
+        "sampleTitle": "",
+        "title": "",
+        "unfinished": ""
+      },
+      "newDestination": "",
+      "noDestinations": "",
+      "noMatches": "",
+      "picker": {
+        "close": "",
+        "empty": "",
+        "navigate": "",
+        "searchPlaceholder": "",
+        "select": ""
+      },
+      "recordAs": {
+        "label": "",
+        "notification": "",
+        "notificationDescription": "",
+        "policy": "",
+        "policyDescription": ""
+      },
+      "rows": {
+        "expandHint": "",
+        "moveHint": "",
+        "remove": "",
+        "removeHint": "",
+        "skipped": "",
+        "toggle": "",
+        "toggleHint": ""
+      },
+      "saving": "",
+      "scope": {
+        "account": "Specific account",
+        "accountLabel": "",
+        "accountPlaceholder": "",
+        "enforceAcrossServers": "Enforce across servers",
+        "enforceAcrossServersDescription": "",
+        "global": "Global",
+        "label": "Scope",
+        "noServers": "",
+        "person": "",
+        "personHelper": "",
+        "personLabel": "",
+        "personPlaceholder": "",
+        "server": "Specific server",
+        "serverLabel": "",
+        "serverPlaceholder": ""
+      },
+      "searchPlaceholder": "",
+      "selectPlaceholder": "",
+      "selectedCount": "",
+      "sentence": {
+        "label": "",
+        "placeholderAction": "",
+        "placeholderTrigger": ""
+      },
+      "severityLabel": "Severity",
+      "when": {
+        "add": "Add trigger",
+        "emptyAction": "",
+        "emptyDescription": "",
+        "emptyTitle": "",
+        "helper": "",
+        "or": "",
+        "title": ""
+      }
+    },
+    "catalog": {
+      "actions": {
+        "if": {
+          "description": "",
+          "label": "",
+          "synonyms": ""
+        },
+        "kill_stream": {
+          "synonyms": ""
+        },
+        "message_client": {
+          "synonyms": ""
+        },
+        "send": {
+          "synonyms": ""
+        },
+        "trust": {
+          "synonyms": ""
+        }
+      },
+      "groups": {
+        "accounts": "",
+        "control": "Control flow",
+        "library": "",
+        "notify": "",
+        "policy": "Policy",
+        "servers": "",
+        "sessions": "",
+        "updates": ""
+      },
+      "suggested": "",
+      "triggers": {
+        "accountInactiveFor": {
+          "description": "",
+          "label": "",
+          "synonyms": ""
+        },
+        "accountNewDevice": {
+          "description": "",
+          "synonyms": ""
+        },
+        "accountTrustChanged": {
+          "description": "",
+          "synonyms": ""
+        },
+        "mediaAdded": {
+          "description": "",
+          "synonyms": ""
+        },
+        "mediaUpgraded": {
+          "description": "",
+          "synonyms": ""
+        },
+        "pluginUpdateAvailable": {
+          "description": "",
+          "synonyms": ""
+        },
+        "serverDown": {
+          "description": "",
+          "synonyms": ""
+        },
+        "serverUp": {
+          "description": "",
+          "synonyms": ""
+        },
+        "serverUpdateAvailable": {
+          "description": "",
+          "synonyms": ""
+        },
+        "sessionHeldFor": {
+          "description": "",
+          "label": "",
+          "synonyms": ""
+        },
+        "sessionPaused": {
+          "description": "",
+          "synonyms": ""
+        },
+        "sessionStarted": {
+          "description": "",
+          "synonyms": ""
+        },
+        "sessionStopped": {
+          "description": "",
+          "synonyms": ""
+        },
+        "sessionTranscodeChanged": {
+          "description": "",
+          "synonyms": ""
+        },
+        "tracearrUpdateAvailable": {
+          "description": "",
+          "synonyms": ""
+        }
+      }
+    },
+    "categories": {
+      "device_client": "",
+      "media": "",
+      "network_location": "",
+      "scope": "Scope",
+      "session_behavior": "",
+      "stream_quality": "",
+      "user_attributes": ""
+    },
+    "configFields": {
+      "cooldown_minutes": {
+        "label": ""
+      },
+      "message": {
+        "label": ""
+      },
+      "target": {
+        "label": ""
+      }
+    },
+    "cooldownInvalid": "",
+    "cooldownLabel": "",
+    "createAutomation": "Create Automation",
+    "customAutomation": "",
+    "deleteAutomationConfirm": "",
+    "deleteAutomation_one": "Delete {{count}} Automation",
+    "deleteAutomation_other": "",
+    "deleteAutomationsConfirm": "",
+    "describe": {
+      "actions": {
+        "doNothing": "",
+        "flagIt": "",
+        "if": "",
+        "kill_stream": "",
+        "message_client": "",
+        "send": "",
+        "sendAnywhere": "",
+        "trustAdjust": "",
+        "trustDown": "",
+        "trustReset": "",
+        "trustSet": "",
+        "trustUp": ""
+      },
+      "allOf": "",
+      "andAlso": "",
+      "anyOf": "",
+      "appliesTo": "",
+      "deviceTypesOnly": "",
+      "duration": {
+        "days_one": "",
+        "days_other": "",
+        "minutes_one": "",
+        "minutes_other": ""
+      },
+      "fields": {
+        "account_age_days": "",
+        "active_session_distance_km": "",
+        "audio_channels_after": "",
+        "client_name": "",
+        "concurrent_streams": "",
+        "country": "",
+        "current_pause_minutes": "",
+        "device_type": "",
+        "dynamic_range_after": "",
+        "file_size_after": "",
+        "inactive_days": "",
+        "ip_in_range": "",
+        "is_local_network": "",
+        "is_transcode_downgrade": "",
+        "is_transcoding": "",
+        "library_item_type": "",
+        "library_name": "",
+        "media_type": "",
+        "output_resolution": "",
+        "platform": "",
+        "resolution_after": "",
+        "server_id": "",
+        "source_bitrate_mbps": "",
+        "source_resolution": "",
+        "total_pause_minutes": "",
+        "travel_speed_kmh": "",
+        "trust_score": "",
+        "unique_devices_in_window": "",
+        "unique_ips_in_window": "",
+        "user_id": "",
+        "video_codec_after": ""
+      },
+      "includesSameDevice": "",
+      "joinAll": "",
+      "joinAny": "",
+      "more_one": "",
+      "more_other": "",
+      "noValues": "",
+      "nothing": "",
+      "onlyWhen": "only when",
+      "operators": {
+        "contains": "",
+        "eq": "",
+        "gt": "",
+        "gte": "",
+        "in": "",
+        "lt": "",
+        "lte": "",
+        "neq": "",
+        "not_contains": "",
+        "not_in": ""
+      },
+      "or": "",
+      "otherwise": "",
+      "sameDeviceInput": "",
+      "scope": {
+        "account": "",
+        "person": "",
+        "server": ""
+      },
+      "states": {
+        "is_local_network": {
+          "no": "",
+          "yes": ""
+        },
+        "is_transcode_downgrade": {
+          "no": "",
+          "yes": ""
+        },
+        "is_transcoding": {
+          "audio": {
+            "no": "",
+            "yes": ""
+          },
+          "neither": {
+            "no": "",
+            "yes": ""
+          },
+          "video": {
+            "no": "",
+            "yes": ""
+          },
+          "video_or_audio": {
+            "no": "",
+            "yes": ""
+          }
+        }
+      },
+      "then": "",
+      "triggers": {
+        "accountInactiveFor": "",
+        "accountNewDevice": "",
+        "accountTrustChanged": "",
+        "mediaAdded": "",
+        "mediaUpgraded": "",
+        "pluginUpdateAvailable": "",
+        "serverDown": "",
+        "serverUp": "",
+        "serverUpdateAvailable": "",
+        "sessionHeldFor": "",
+        "sessionHeldForTotal": "",
+        "sessionPaused": "",
+        "sessionStarted": "",
+        "sessionStopped": "",
+        "sessionTranscodeChanged": "",
+        "tracearrUpdateAvailable": ""
+      },
+      "unbound": {
+        "account": "",
+        "boolean": "",
+        "destinations": "",
+        "duration": "",
+        "field_value": "",
+        "listed": "",
+        "number": "",
+        "person": "",
+        "select": "",
+        "server": "",
+        "text": ""
+      },
+      "uniqueIps": "",
+      "uniqueIpsInput": "",
+      "when": ""
+    },
+    "description": "",
+    "descriptionLabel": "",
+    "descriptionPlaceholder": "",
+    "detail": {
+      "noRuns": "",
+      "notFound": "",
+      "runsLine_one": "",
+      "runsLine_other": "",
+      "title": "",
+      "unsaved": ""
+    },
+    "disable": "",
+    "editAutomation": "Edit Automation",
+    "effects": {
+      "allServers": "",
+      "everyServer": "",
+      "kill": "",
+      "message": "",
+      "oneServer": "",
+      "tellsOnly": "",
+      "title": "",
+      "trust": "",
+      "violation": ""
+    },
+    "emptyDescription": "",
+    "emptySeeAll": "",
+    "emptySeeAllLoading": "",
+    "emptyTitle": "",
+    "enable": "",
+    "evaluations": {
+      "disclosure": "",
+      "reasons": {
+        "cooldown_active": "",
+        "edge_replayed": "",
+        "gate_blocked": "",
+        "trigger_filter_failed": ""
+      }
+    },
+    "export": {
+      "authorHelper": "",
+      "authorInCode": "",
+      "authorLabel": "Made by",
+      "authorPlaceholder": "",
+      "carries": "",
+      "copyCode": "",
+      "copyJson": "",
+      "description": "",
+      "failed": "",
+      "gallery": {
+        "body": "",
+        "trigger": ""
+      },
+      "groupHelper": "",
+      "groupLabel": "",
+      "openRepository": "",
+      "save": "",
+      "saveFailed": "",
+      "saveHelper": "",
+      "saved": "",
+      "title": ""
+    },
+    "fields": {
+      "account_age_days": {
+        "description": "",
+        "label": ""
+      },
+      "active_session_distance_km": {
+        "description": "",
+        "label": ""
+      },
+      "audio_channels_after": {
+        "description": "",
+        "label": ""
+      },
+      "client_name": {
+        "description": "",
+        "label": "",
+        "placeholder": ""
+      },
+      "concurrent_streams": {
+        "description": "",
+        "label": ""
+      },
+      "country": {
+        "description": "",
+        "label": "",
+        "placeholder": ""
+      },
+      "current_pause_minutes": {
+        "description": "",
+        "label": ""
+      },
+      "device_type": {
+        "description": "",
+        "label": ""
+      },
+      "dynamic_range_after": {
+        "description": "",
+        "label": ""
+      },
+      "file_size_after": {
+        "description": "",
+        "label": ""
+      },
+      "inactive_days": {
+        "description": "",
+        "label": ""
+      },
+      "ip_in_range": {
+        "description": "",
+        "label": "",
+        "placeholder": ""
+      },
+      "is_local_network": {
+        "description": "",
+        "label": ""
+      },
+      "is_transcode_downgrade": {
+        "description": "",
+        "label": ""
+      },
+      "is_transcoding": {
+        "description": "",
+        "label": ""
+      },
+      "library_item_type": {
+        "description": "",
+        "label": ""
+      },
+      "library_name": {
+        "description": "",
+        "label": "",
+        "placeholder": ""
+      },
+      "media_type": {
+        "description": "",
+        "label": ""
+      },
+      "output_resolution": {
+        "description": "",
+        "label": ""
+      },
+      "platform": {
+        "description": "",
+        "label": ""
+      },
+      "resolution_after": {
+        "description": "",
+        "label": ""
+      },
+      "server_id": {
+        "description": "",
+        "label": "",
+        "placeholder": ""
+      },
+      "source_bitrate_mbps": {
+        "description": "",
+        "label": ""
+      },
+      "source_resolution": {
+        "description": "",
+        "label": ""
+      },
+      "total_pause_minutes": {
+        "description": "",
+        "label": ""
+      },
+      "travel_speed_kmh": {
+        "description": "",
+        "label": ""
+      },
+      "trust_score": {
+        "description": "",
+        "label": ""
+      },
+      "unique_devices_in_window": {
+        "description": "",
+        "label": ""
+      },
+      "unique_ips_in_window": {
+        "description": "",
+        "label": ""
+      },
+      "user_id": {
+        "description": "",
+        "label": "",
+        "placeholder": ""
+      },
+      "video_codec_after": {
+        "description": "",
+        "label": ""
+      }
+    },
+    "filters": {
+      "allSources": "",
+      "allTriggers": "",
+      "source": "",
+      "sources": {
+        "builtin": "",
+        "import": "",
+        "local": "",
+        "own": ""
+      },
+      "trigger": ""
+    },
+    "gallery": {
+      "builtin": "",
+      "description": "",
+      "failed": "",
+      "group": {
+        "housekeeping": "",
+        "notifications": "",
+        "other": "",
+        "policies": "",
+        "server_health": ""
+      },
+      "hint": {
+        "close": "",
+        "move": "",
+        "use": ""
+      },
+      "kind": {
+        "notification": "",
+        "policy": ""
+      },
+      "loading": "",
+      "missing": "",
+      "noMatches": "",
+      "noMatchesHint": "",
+      "paste": {
+        "description": "",
+        "title": ""
+      },
+      "retry": "",
+      "scratch": {
+        "description": "",
+        "title": ""
+      },
+      "searchPlaceholder": "",
+      "title": ""
+    },
+    "import": {
+      "adding": "",
+      "builtinMatch": "",
+      "check": "",
+      "checking": "",
+      "codeShort": "",
+      "collision": {
+        "add": "",
+        "replace": "",
+        "title": ""
+      },
+      "description": "",
+      "errors": {
+        "notACode": "",
+        "notACodeHint": "",
+        "rejected": "",
+        "rejectedHint": "",
+        "tooBig": "",
+        "tooBigHint": "",
+        "tooMany": "",
+        "tooManyHint": "",
+        "tooNew": "",
+        "tooNewHint": "",
+        "truncated": "",
+        "truncatedHint": ""
+      },
+      "existing": "",
+      "existingUse": "",
+      "formatHint": "",
+      "madeBy": "Made by {{author}}",
+      "paused": {
+        "helper": "",
+        "label": ""
+      },
+      "placeholder": "",
+      "raw": "",
+      "reviewDescription": "",
+      "source": "",
+      "submit": "",
+      "title": "",
+      "valid": "",
+      "validCaveat": ""
+    },
+    "kind": {
+      "notification": "Notification",
+      "policy": ""
+    },
+    "kindColumn": "",
+    "name": "Automation Name",
+    "nameInvalid": "",
+    "namePlaceholder": "",
+    "newAutomation": "",
+    "noAutomationsFound": "",
+    "openGallery": "",
+    "operators": {
+      "contains": "",
+      "eq": "",
+      "gt": "",
+      "gte": "",
+      "in": "",
+      "lt": "",
+      "lte": "",
+      "neq": "",
+      "not_contains": "",
+      "not_in": ""
+    },
+    "options": {
+      "1080p": "",
+      "1440p": "",
+      "480p": "",
+      "4K": "",
+      "720p": "",
+      "8K": "",
+      "SD": "",
+      "android": "",
+      "androidtv": "",
+      "audio": "",
+      "browser": "",
+      "desktop": "",
+      "dolby vision": "",
+      "episode": "",
+      "hdr": "",
+      "hdr10": "",
+      "hdr10+": "",
+      "hlg": "",
+      "ios": "",
+      "libraryItemType": {
+        "album": "",
+        "artist": "",
+        "episode": "",
+        "movie": "",
+        "photo": "",
+        "season": "",
+        "show": "",
+        "track": ""
+      },
+      "linux": "",
+      "live": "",
+      "macos": "",
+      "mobile": "",
+      "movie": "",
+      "neither": "",
+      "photo": "",
+      "roku": "",
+      "sdr": "",
+      "tablet": "",
+      "tizen": "",
+      "track": "",
+      "trailer": "",
+      "tv": "",
+      "tvos": "",
+      "unknown": "",
+      "video": "",
+      "video_or_audio": "",
+      "webos": "",
+      "windows": ""
+    },
+    "provenance": {
+      "builtin": "",
+      "customized": "",
+      "customizedFromRemoved": "",
+      "imported": "",
+      "importedBy": "",
+      "saved": ""
+    },
+    "recordsOnly": "",
+    "retentionInvalid": "",
+    "retentionLabel": "",
+    "retentionPlaceholder": "",
+    "scope": {
+      "account": "",
+      "crossServer": "",
+      "global": "",
+      "person": ""
+    },
+    "searchPlaceholder": "",
+    "sessionTargets": {
+      "all_except_one": {
+        "label": "",
+        "tooltip": ""
+      },
+      "all_user": {
+        "label": "",
+        "tooltip": ""
+      },
+      "newest": {
+        "label": "",
+        "tooltip": ""
+      },
+      "oldest": {
+        "label": "",
+        "tooltip": ""
+      },
+      "triggering": {
+        "label": "",
+        "tooltip": ""
+      }
+    },
+    "severity": {
+      "high": "",
+      "low": "",
+      "warning": ""
+    },
+    "template": {
+      "after": "",
+      "before": "",
+      "customize": "Customize",
+      "customizeConfirm": "",
+      "customizeConfirmAction": "Customize it",
+      "customizeFailed": "",
+      "customizeFirst": "",
+      "customizeTitle": "",
+      "doorsHelper": "",
+      "gone": "",
+      "review": "",
+      "save": "",
+      "updateAvailable": "",
+      "updatedBody": "",
+      "updatedTitle": "",
+      "upgradeFailed": "",
+      "version": ""
+    },
+    "templates": {
+      "account-inactivity": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "concurrent-streams": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "device-velocity": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "geo-restriction": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "impossible-travel": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "kill-paused-streams": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "media-added": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "media-upgraded": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "new-device": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "no-4k-transcodes": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "paused-too-long": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "plugin-update": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "server-down": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "server-up": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "server-update": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "simultaneous-locations": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "stream-ended": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "stream-started": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "tracearr-update": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "transcode-started": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      },
+      "trust-score-changed": {
+        "description": "",
+        "keywords": "",
+        "name": ""
+      }
+    },
+    "thisAutomation": "",
+    "title": "",
+    "toggleAutomation": "",
+    "trustModes": {
+      "adjust": {
+        "label": ""
+      },
+      "reset": {
+        "label": ""
+      },
+      "set": {
+        "label": ""
+      }
+    },
+    "tryAdjustingFilters": "",
+    "units": {
+      "days": "",
+      "gb": "",
+      "hours": "",
+      "km": "",
+      "kmh": "",
+      "mbps": "",
+      "minutes": "",
+      "seconds": ""
+    },
+    "updateAutomation": "Update Automation"
   },
   "dashboard": {
     "activeUsers": "Utilisateurs actifs",
@@ -32,17 +1190,18 @@
     "serverResources": "Ressources du serveur",
     "streamLocations": "Emplacements des lectures",
     "streamsAppearHere": "Les lectures actives apparaîtront ici lorsque les utilisateurs commenceront à regarder",
-    "tvSessions": "TV Sessions",
-    "tvWatchTime": "TV Watch Time",
-    "vodPlays": "VOD Plays",
-    "vodWatchTime": "VOD Watch Time",
+    "tvSessions": "",
+    "tvWatchTime": "",
+    "vodPlays": "",
+    "vodWatchTime": "",
     "watchTime": "Temps de visionnage"
   },
   "debug": {
+    "clearAutomations": "",
+    "clearAutomationsConfirm": "",
     "clearLibraryCache": "Vider le cache de la bibliothèque",
     "clearMobileDevices": "Effacer les appareils mobiles",
     "clearQueryCache": "Vider le cache des requêtes",
-    "clearRules": "Effacer les règles",
     "clearServers": "Effacer les serveurs",
     "clearSessions": "Effacer les sessions",
     "clearStuckJobs": "Effacer les tâches bloquées",
@@ -50,7 +1209,7 @@
     "clearUsers": "Effacer les utilisateurs",
     "clearViolations": "Effacer les violations",
     "clickLoadToView": "Cliquez sur \"Charger\" pour voir les instantanés",
-    "cpu": "CPU",
+    "cpu": "",
     "database": "Base de données",
     "databaseDesc": "Taille de la base de données et statistiques du tableau",
     "deleteAllSuspicious": "Supprimer tous les suspects",
@@ -75,7 +1234,7 @@
     "plexAccounts": "Comptes Plex",
     "refreshAggregates": "Actualiser les agrégats",
     "selected": "slectionns",
-    "snapshots": "snapshot(s)",
+    "snapshots": "",
     "suspicious": "Soudain",
     "suspiciousOnly": "Suspicieux seulement",
     "systemInformation": "Informations du système",
@@ -86,8 +1245,8 @@
     "uptime": "Délai de disponibilité"
   },
   "devices": {
-    "analyzedSessions": "Analyzed Sessions",
-    "analyzedSessionsTooltip": "Sessions in device + codec combinations with at least {{count}} sessions and a known codec. Rare combinations and sessions with no codec info aren't counted.",
+    "analyzedSessions": "Sessions analysées",
+    "analyzedSessionsTooltip": "Sessions correspondant à des combinaisons « appareil + codec » comportant au moins {{count}} sessions et dont le codec est connu. Les combinaisons rares et les sessions pour lesquelles aucune information sur le codec n'est disponible ne sont pas prises en compte.",
     "compatibilityMatrix": "Matrice de compatibilité",
     "compatibilityMatrixDesc": "Taux de lecture directe par appareil et codec vidéo. Trié par volume de session.",
     "description": "Voir quels périphériques jouent directement vs transcoder chaque codec",
@@ -95,8 +1254,8 @@
     "deviceHealth": "Santé de l'appareil",
     "deviceHealthDesc": "Taux de lecture directe par type d'appareil",
     "directPlayHigh": "<unk> 80% Direct",
-    "directPlayLow": "<50%",
-    "directPlayMid": "50-79%",
+    "directPlayLow": "",
+    "directPlayMid": "",
     "directPlayRate": "Taux de lecture directe",
     "legend": "Légende :",
     "noDeviceDataPeriod": "Aucune donnée de l'appareil pendant cette période",
@@ -108,7 +1267,7 @@
     "topTranscodingUsersDesc": "Utilisateurs causant le plus de transcodes sur votre serveur",
     "transcodeHotspots": "Transcoder les hotspots",
     "transcodeHotspotsDesc": "Combinaisons causant le plus de transcodes",
-    "transcodes": "Transcodes",
+    "transcodes": "",
     "uniqueCodecs": "Codecs uniques",
     "uniqueDevices": "Appareils uniques",
     "videoAndAudio": "Vidéo + audio"
@@ -184,7 +1343,7 @@
       "failedToLoadDesc": "Impossible de récupérer les données de la bibliothèque. Veuillez réessayer.",
       "lastUpdated": "Dernière mise à jour :",
       "libraryGrowth": "Développement de la bibliothèque",
-      "serversNeedSync": "These servers need to sync:",
+      "serversNeedSync": "Ces serveurs doivent être synchronisés :",
       "shows": "séries",
       "thisMonth": "ce mois-ci",
       "thisPeriod": "cette période",
@@ -202,38 +1361,37 @@
     },
     "storage": {
       "avgHoursPerGB": "heure moyenne/Go",
-      "colCopies": "Copies",
-      "colMatchType": "Match Type",
-      "colRecoverable": "Recoverable Space",
-      "colTitle": "Title",
+      "colCopies": "",
+      "colMatchType": "",
+      "colRecoverable": "",
+      "colTitle": "",
       "confidence": "Confiance",
       "confidenceHigh": "Élevée",
       "confidenceLow": "Faible",
       "confidenceMedium": "Moyenne",
-      "contentROI": "Content ROI",
+      "contentROI": "",
       "contentROIDesc": "Regarder la valeur par coût de stockage",
       "days": "jours",
       "description": "Consommation de stockage, prédictions et optimisation",
       "duplicates": "Doublons",
-      "duplicatesFailed": "Failed to load duplicates",
-      "duplicatesSubtitle": "Titles with more than one copy or file, across servers, libraries, and versions",
-      "duplicatesTitle": "Duplicates",
+      "duplicatesFailed": "",
+      "duplicatesSubtitle": "",
+      "duplicatesTitle": "Doublons",
       "failedToLoad": "Impossible de charger les données de stockage",
       "failedToLoadDesc": "Impossible de récupérer les données de stockage. Veuillez réessayer.",
       "groups": "Groupes",
-      "growthPreChangeover": "based on pre-update history",
+      "growthPreChangeover": "",
       "growthRate": "Taux de croissance",
       "insufficientData": "Données insuffisantes",
       "items": "Eléments",
-      "loadingDuplicates": "Loading duplicates...",
-      "mirror": "Mirror",
-      "noDuplicatesDesc": "No titles with more than one physical file detected.",
-      "noDuplicatesTitle": "No duplicates found",
+      "loadingDuplicates": "",
+      "mirror": "",
+      "noDuplicatesDesc": "",
+      "noDuplicatesTitle": "",
       "of": "de",
-      "pageOf": "Page {{page}} of {{totalPages}}",
       "predictions": "Prédictions",
       "recoverable": "récupérable",
-      "sameServer": "Same server",
+      "sameServer": "",
       "staleContent": "Contenu de l'histoire",
       "staleContentDesc": "Contenu pouvant être des candidats à la suppression",
       "storageTrend": "Tendance de stockage",
@@ -246,17 +1404,17 @@
     "topMovies": "Meilleurs films",
     "topShows": "Meilleures séries",
     "versionsBackfill": {
-      "action": "Sync now",
-      "banner": "File version data is still being collected for this server. Run a library sync to finish.",
-      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
-      "syncStarted": "Library sync started."
+      "action": "Synchroniser maintenant",
+      "banner": "",
+      "syncFailed": "",
+      "syncStarted": ""
     },
     "watch": {
       "avgPerItem": "moy par élément",
       "bingeHighlights": "Surbrillances du Binge",
       "bingeHighlightsDesc": "Montre avec les modèles de visualisation les plus intenses",
       "bingeSessions": "sessions de binge",
-      "busiest": "Busiest:",
+      "busiest": "Mouvementé:",
       "completed": "Terminé",
       "description": "Visualisation du comportement et de l'engagement de contenu",
       "failedToLoad": "Impossible de charger l'analytique de la montre",
@@ -283,18 +1441,18 @@
     "claimCodeSecurityNote": "Cette mesure de sécurité garantit que seuls les utilisateurs autorisés peuvent effectuer la configuration initiale",
     "completeInPopup": "Finalisez la connexion dans la fenêtre qui s’est ouverte",
     "connectedTo": "Connecté à {{name}}",
-    "continueWith": "Continue with {{provider}}",
+    "continueWith": "Continuer avec {{provider}}",
     "createAccountDescription": "Créez un compte pour gérer vos serveurs multimédias",
     "createAccountFailed": "Échec de la création du compte",
     "createAccountHeading": "Créez votre compte pour démarrer",
     "displayNamePlaceholder": "Choisissez un nom d'utilisateur",
     "emailPlaceholder": "votre@courriel.fr",
     "enterClaimCode": "Entrez le code de réclamation",
-    "identifierPlaceholder": "Username or email address",
+    "identifierPlaceholder": "Nom d'utilisateur ou adresse email",
     "invalidCredentials": "Adresse email ou mot de passe invalide",
-    "localDisabledHint": "Local sign-in is disabled for this instance. Ask an admin to run `enable-local-login` from the Tracearr CLI to re-enable it.",
+    "localDisabledHint": "La connexion locale est désactivée pour cette instance. Demandez à un administrateur d'exécuter \"enable-local-login\" depuis la ligne de commande Tracearr pour la réactiver.",
     "loginFailed": "Échec de la connexion",
-    "oidcError": "Single sign-on failed. Please try again or use another sign-in method.",
+    "oidcError": "Échec de l'authentification unique. Veuillez réessayer ou utiliser une autre méthode de connexion disponible.",
     "passwordPlaceholder": "8 caractères minimum",
     "plexAuthFailed": "Échec de l'authentification à Plex",
     "plexStartFailed": "Échec du démarrage de la connexion à Plex",
@@ -306,20 +1464,20 @@
     "signInHeading": "Connectez-vous à votre compte",
     "signupFailed": "Échec de l'inscription",
     "tagline": "Tracearr - Gestion d'accès aux lectures",
-    "title": "Tracearr",
-    "username": "Username",
-    "usernameOrEmail": "Username or Email",
-    "usernamePlaceholder": "yourusername",
+    "title": "",
+    "username": "Nom d'utilisateur",
+    "usernameOrEmail": "Nom d'utilisateur ou email",
+    "usernamePlaceholder": "votrenomdutilisateur",
     "validateClaimCode": "Valider le code de réclamation",
     "waitingForPlex": "En attente d'autorisation de Plex...",
     "yourPasswordPlaceholder": "Votre mot de passe"
   },
   "maintenance": {
-    "doNotRestart": "Do not restart or stop the server while this runs. Interrupting it can leave the database half-upgraded.",
+    "doNotRestart": "",
     "initStep": {
-      "migrations": "Applying database migrations",
-      "services": "Starting services",
-      "timescale": "Preparing TimescaleDB (this can take a while after an upgrade)"
+      "migrations": "",
+      "services": "",
+      "timescale": ""
     },
     "interruptionDescription": "Un ou plusieurs services backend sont actuellement indisponibles. Cette page s’actualisera automatiquement lorsque la connexion sera rétablie.",
     "interruptionTitle": "Interruption de service",
@@ -336,12 +1494,14 @@
     },
     "restoreTitle": "Restauration de la sauvegarde...",
     "startingDescription": "Le serveur attend que les services backend soient disponibles. Cette page s’actualisera automatiquement quand tout sera prêt.",
-    "startingTitle": "Démarrage de Tracearr..."
+    "startingTitle": "Démarrage de Tracearr...",
+    "unreachable": ""
   },
   "map": {
     "allActivity": "Toutes les activités",
     "allTypes": "Tous les types",
     "allUsers": "Tous les utilisateurs",
+    "basemapMissing": "Basemap not installed",
     "circles": "Cercles",
     "heatmap": "Carte de chaleur",
     "locations": "emplacements",
@@ -350,217 +1510,216 @@
   "media": {
     "detail": {
       "breadcrumb": {
-        "ariaLabel": "Breadcrumb"
+        "ariaLabel": "Fil d'ariane"
       },
       "copies": {
         "columns": {
-          "added": "Added",
-          "episodes": "Episodes",
-          "library": "Library",
-          "quality": "Quality",
-          "server": "Server",
-          "size": "Size"
+          "added": "Ajouté",
+          "episodes": "Épisodes",
+          "library": "Bibliothèque",
+          "quality": "Qualité",
+          "server": "Serveur",
+          "size": "Taille"
         },
-        "loadError": "Couldn't load copies",
-        "title": "Copies",
-        "unknownLibrary": "Unknown library",
-        "versionLabel": "File {{index}}"
+        "loadError": "Échec du chargement des copies",
+        "title": "",
+        "unknownLibrary": "Bibliothèque inconnue",
+        "versionLabel": "Fichier {{index}}"
       },
       "hero": {
         "actions": {
-          "fullHistory": "Full history",
-          "openOnServer": "Open on server"
+          "fullHistory": "Historique complet",
+          "openOnServer": "Ouvrir sur le serveur"
         },
         "availability": {
-          "added": "added {{date}}",
-          "addedRemoved": "added {{added}} – removed {{removed}}",
-          "removed": "removed {{date}}",
-          "replaced": "replaced {{date}}"
+          "added": "ajouté {{date}}",
+          "addedRemoved": "a ajouté {{added}} - a supprimé {{removed}}",
+          "replaced": ""
         },
-        "loadError": "Couldn't load this title",
+        "loadError": "Échec du chargement de ce titre",
         "meta": {
-          "episodes_one": "{{count}} episode",
-          "episodes_other": "{{count}} episodes",
-          "seasons_one": "{{count}} season",
-          "seasons_other": "{{count}} seasons"
+          "episodes_one": "{{count}} épisode",
+          "episodes_other": "{{count}} épisodes",
+          "seasons_one": "{{count}} saison",
+          "seasons_other": "{{count}} saisons"
         },
         "removedEverywhere": {
-          "caption": "No longer available on any connected server"
+          "caption": ""
         }
       },
       "history": {
         "columns": {
-          "content": "Content",
-          "date": "Date",
-          "duration": "Duration",
-          "server": "Server",
-          "user": "User"
+          "content": "Contenu",
+          "date": "",
+          "duration": "Durée",
+          "server": "Serveur",
+          "user": "Utilisateur"
         },
-        "empty": "No plays recorded yet",
-        "loadError": "Couldn't load history",
-        "notWatched": "Not finished",
-        "title": "History",
-        "watched": "Watched"
+        "empty": "Aucune lecture enregistrée pour le moment",
+        "loadError": "",
+        "notWatched": "",
+        "title": "Historique",
+        "watched": ""
       },
       "kpis": {
-        "ariaLabel": "Watch statistics",
+        "ariaLabel": "Statistiques de lecture",
         "completion": {
-          "detail": "{{finished}} of {{total}} finished every episode",
-          "detailMovie": "{{finished}} of {{total}} watched to completion",
-          "label": "Avg completion"
+          "detail": "",
+          "detailMovie": "",
+          "label": "Avancement moyen"
         },
-        "completionLoadError": "Couldn't load completion",
-        "loadError": "Couldn't load watch statistics",
+        "completionLoadError": "",
+        "loadError": "Échec du chargement des statistiques de lecture",
         "plays": {
-          "caption": "resume chains, short sessions excluded",
-          "label": "Plays, all time"
+          "caption": "",
+          "label": ""
         },
         "viewers": {
-          "detail": "across all servers",
-          "label": "Viewers"
+          "detail": "sur tous les serveurs",
+          "label": ""
         },
         "watchTime": {
-          "detail": "+{{hours}}h in the last 30 days",
-          "label": "Watch time"
+          "detail": "+{{hours}} heures dans les 30 derniers jours",
+          "label": ""
         }
       },
       "notFound": {
-        "backLink": "Back to Media",
-        "message": "This title doesn't exist or you don't have access to it.",
-        "title": "Media not found"
+        "backLink": "Retour au média",
+        "message": "Vous n'avez pas accès à ce titre ou il n'existe pas.",
+        "title": "Média introuvable"
       },
       "platforms": {
         "columns": {
-          "platform": "Platform",
-          "plays": "Plays",
-          "watchTime": "Watch time"
+          "platform": "Plateforme",
+          "plays": "Lectures",
+          "watchTime": "Temps de visionnage"
         },
-        "empty": "No platform data yet",
-        "loadError": "Couldn't load platform breakdown",
-        "title": "Platforms",
-        "unknown": "Unknown"
+        "empty": "Aucune donnée de plateforme pour le moment",
+        "loadError": "",
+        "title": "Plateformes",
+        "unknown": "Inconnu"
       },
       "seasons": {
-        "empty": "No season data yet",
-        "episodeCount_one": "{{count}} episode",
-        "episodeCount_other": "{{count}} episodes",
+        "empty": "Aucune donnée de saison pour le moment",
+        "episodeCount_one": "{{count}} épisode",
+        "episodeCount_other": "{{count}} épisodes",
         "episodeLabel": {
-          "partial": "{{code}}: partially watched",
-          "unwatched": "{{code}}: unwatched",
-          "watched": "{{code}}: watched"
+          "partial": "{{code}} : partiellement vu",
+          "unwatched": "{{code}} : non vu",
+          "watched": "{{code}} : vu"
         },
-        "loadError": "Couldn't load season data",
-        "stripSummary": "{{season}}: {{percent}}% watched",
-        "title": "Seasons",
-        "watchedPct": "{{percent}}% watched"
+        "loadError": "",
+        "stripSummary": "{{season}} : {{percent}} % vu",
+        "title": "Saisons",
+        "watchedPct": "{{percent}} % vu"
       },
       "title": "Détails du média",
       "watchers": {
         "columns": {
-          "completion": "Completion",
-          "episodes": "Episodes",
-          "lastWatched": "Last watched",
-          "plays": "Plays",
-          "user": "User"
+          "completion": "Avancement",
+          "episodes": "Épisodes",
+          "lastWatched": "",
+          "plays": "Lectures",
+          "user": "Utilisateurs"
         },
-        "completionLabel": "{{percent}}% complete",
-        "empty": "No one has watched this yet.",
-        "lastWatchedAgo": "{{age}} ago",
-        "loadError": "Couldn't load watchers",
-        "title": "Watchers"
+        "completionLabel": "{{percent}} % terminé",
+        "empty": "Personne n'a encore regardé ça.",
+        "lastWatchedAgo": "il y a {{age}}",
+        "loadError": "",
+        "title": ""
       }
     },
     "genres": {
       "chart": {
-        "ariaLabel": "Bar chart of plays by genre, sorted highest to lowest. The full breakdown is available in the table below.",
-        "itemCount_one": "{{count}} title",
-        "itemCount_other": "{{count}} titles",
-        "title": "Plays by genre",
-        "valueLabel": "Plays"
+        "ariaLabel": "",
+        "itemCount_one": "{{count}} titre",
+        "itemCount_other": "{{count}} titres",
+        "title": "Lectures par genre",
+        "valueLabel": "Lectures"
       },
       "empty": {
-        "description": "Genres come from your media servers' metadata sync. Check back after the next sync completes.",
-        "title": "No genres captured yet"
+        "description": "",
+        "title": ""
       },
-      "loadError": "Couldn't load genres",
-      "subtitle": "Plays and watch time by genre, across every server in view.",
+      "loadError": "Échec du chargement des genres",
+      "subtitle": "Lectures et temps de visionnage par genre, sur l'ensemble des serveurs affichés.",
       "table": {
-        "browseMovies": "Browse {{genre}} movies",
-        "browseShows": "Browse {{genre}} shows",
+        "browseMovies": "Parcourir les films du genre {{genre}}",
+        "browseShows": "Parcourir les séries du genre {{genre}}",
         "columns": {
-          "genre": "Genre",
-          "items": "Items",
-          "plays": "Plays",
-          "watchTime": "Watch time"
+          "genre": "",
+          "items": "Éléments",
+          "plays": "Lectures",
+          "watchTime": "Temps de visionnage"
         },
-        "title": "Genre breakdown"
+        "title": ""
       },
-      "title": "Genres"
+      "title": ""
     },
     "grid": {
-      "clearJumpAction": "Clear",
-      "emptyAnchored": "Nothing at or after \"{{letter}}\" under these filters",
-      "emptyFilter": "No titles match these filters",
-      "emptySearch": "No titles match \"{{query}}\"",
-      "loadError": "Couldn't load the catalog",
-      "loaderError": "Couldn't load more titles",
-      "retry": "Retry",
+      "clearJumpAction": "Effacer",
+      "emptyAnchored": "Rien à ou après « {{letter}} » dans ces filtres",
+      "emptyFilter": "Aucun titre ne correspond à ces filtres",
+      "emptySearch": "Aucun utilisateur ne correspond à « {{query}} »",
+      "loadError": "Échec du chargement du catalogue",
+      "loaderError": "Échec du chargement des titres",
+      "retry": "Réessayer",
       "scrubber": {
-        "current": "Letter {{letter}}",
-        "label": "Jump to letter"
+        "current": "Lettre {{letter}}",
+        "label": "Aller à la lettre"
       },
-      "showAll": "Show all",
-      "showingFrom": "Showing from {{letter}}",
+      "showAll": "Tout afficher",
+      "showingFrom": "",
       "toolbar": {
-        "ariaLabel": "Filters and sort",
-        "count": "{{loaded}} of {{total}} titles · {{size}}",
-        "countTotal_one": "{{count}} title · {{size}}",
-        "countTotal_other": "{{count}} titles · {{size}}",
-        "done": "Done",
-        "filtersLabel": "Filters",
-        "filtersSheetTitle": "Filters",
-        "genreAll": "Any genre",
-        "genreLabel": "Genre",
-        "hdrAll": "Any",
-        "hdrChip": "HDR",
-        "hdrLabel": "Dynamic range",
-        "hdrOnly": "HDR only",
-        "libraryAll": "Any library",
-        "libraryLabel": "Library",
-        "moviesToggle": "Movies",
-        "removeFilter": "Remove {{label}} filter",
-        "resolutionAll": "Any resolution",
-        "resolutionLabel": "Resolution",
-        "searchLabel": "Search titles",
-        "searchPlaceholder": "Search titles…",
-        "serverAll": "Any server",
-        "serverLabel": "Server",
-        "showsToggle": "Shows",
-        "sizeChipAtLeast": "≥ {{min}} GB",
-        "sizeChipAtMost": "≤ {{max}} GB",
-        "sizeChipRange": "{{min}}–{{max}} GB",
-        "sizeGbMaxLabel": "Max size (GB)",
-        "sizeGbMinLabel": "Min size (GB)",
+        "ariaLabel": "",
+        "count": "{{loaded}} sur {{total}} titres · {{size}}",
+        "countTotal_one": "{{count}} titre · {{size}}",
+        "countTotal_other": "{{count}} titres · {{size}}",
+        "done": "Terminé",
+        "filtersLabel": "Filtres",
+        "filtersSheetTitle": "Filtres",
+        "genreAll": "Tous les genres",
+        "genreLabel": "",
+        "hdrAll": "",
+        "hdrChip": "",
+        "hdrLabel": "Plage dynamique",
+        "hdrOnly": "HDR seulement",
+        "libraryAll": "Toutes les bibliothèques",
+        "libraryLabel": "Bibliothèque",
+        "moviesToggle": "Films",
+        "removeFilter": "Supprimer le filtre {{label}}",
+        "resolutionAll": "Toutes les résolutions",
+        "resolutionLabel": "Résolution",
+        "searchLabel": "Rechercher des titres",
+        "searchPlaceholder": "Rechercher des titres…",
+        "serverAll": "Tous les serveurs",
+        "serverLabel": "Serveur",
+        "showsToggle": "Séries",
+        "sizeChipAtLeast": "≥ {{min}} Go",
+        "sizeChipAtMost": "≤ {{max}} Go",
+        "sizeChipRange": "{{min}}–{{max}} Go",
+        "sizeGbMaxLabel": "Taille max. (Go)",
+        "sizeGbMinLabel": "Taille min. (Go)",
         "sort": {
-          "added": "Recently added",
-          "plays": "Plays",
-          "title": "Title A–Z",
-          "viewers": "Viewers",
-          "watch_time": "Watch time",
-          "year": "Year"
+          "added": "Récemment ajouté",
+          "plays": "Lectures",
+          "title": "Titre A–Z",
+          "viewers": "Spectateurs",
+          "watch_time": "Temps de visionnage",
+          "year": "Année"
         },
-        "sortLabel": "Sort",
-        "typeLabel": "Media type",
-        "unwatchedByLens": "Unwatched by {{name}}",
+        "sortLabel": "Trier",
+        "typeLabel": "Type de média",
+        "unwatchedByLens": "",
         "watched": {
-          "all": "All",
-          "partial": "Partially watched",
-          "unwatched": "Unwatched",
-          "watched": "Watched"
+          "all": "Tous",
+          "partial": "",
+          "unwatched": "",
+          "watched": ""
         },
-        "watchedLabel": "Watched",
-        "yearFromLabel": "From year",
-        "yearToLabel": "To year"
+        "watchedLabel": "",
+        "yearFromLabel": "Depuis l'année",
+        "yearToLabel": "Vers l'année"
       }
     },
     "landing": {
@@ -573,17 +1732,17 @@
       },
       "deadWeight": {
         "columns": {
-          "added": "Added",
-          "poster": "Poster",
-          "servers": "Servers",
-          "size": "Size",
-          "title": "Title"
+          "added": "Ajouté",
+          "poster": "Affiche",
+          "servers": "Serveurs",
+          "size": "Taille",
+          "title": "Titre"
         },
-        "empty": "Nothing to reclaim - everything in your library has been watched",
-        "summary": "{{count}} never-watched titles · {{size}}",
-        "title": "Dead Weight",
-        "viewAll": "View all",
-        "viewAllTooltip": "Coming soon"
+        "empty": "",
+        "summary": "",
+        "title": "",
+        "viewAll": "Voir tout",
+        "viewAllTooltip": "Bientôt"
       },
       "lens": {
         "allUsers": "Tous les utilisateurs",
@@ -592,36 +1751,36 @@
       "loadError": "Impossible de charger votre bibliothèque multimédia",
       "shelves": {
         "captionMostPopular": {
-          "all": "all time",
-          "custom": "selected date range",
-          "day": "today",
-          "month": "last 30 days",
-          "week": "last 7 days",
-          "year": "last 12 months"
+          "all": "tout le temps",
+          "custom": "plage de dates sélectionnée",
+          "day": "aujourd'hui",
+          "month": "30 derniers jours",
+          "week": "7 derniers jours",
+          "year": "12 derniers mois"
         },
-        "captionRecentlyAdded": "deduped across servers",
-        "emptyMostPopular": "No plays in this period",
-        "emptyRecentlyAdded": "Nothing added in this period",
-        "mostPopularMovies": "Most Popular Movies",
-        "mostPopularShows": "Most Popular Shows",
-        "recentlyAddedMovies": "Recently Added Movies",
-        "recentlyAddedShows": "Recently Added Shows"
+        "captionRecentlyAdded": "",
+        "emptyMostPopular": "Aucune lecture durant cette période",
+        "emptyRecentlyAdded": "",
+        "mostPopularMovies": "Films les plus populaires",
+        "mostPopularShows": "Séries les plus populaires",
+        "recentlyAddedMovies": "Films récemment ajoutés",
+        "recentlyAddedShows": "Séries récemment ajoutées"
       },
       "title": "Médias"
     },
     "movies": {
       "title": "Films"
     },
-    "noLibraryServers": "No media library available.",
+    "noLibraryServers": "",
     "posterCard": {
       "addedLabel": "Ajouté {{date}}",
-      "moreServers": "+{{count}} more",
+      "moreServers": "",
       "onServers": "Sur {{servers}}",
       "playsCompact_one": "{{compact}} lecture",
       "playsCompact_other": "{{compact}} lectures",
       "plays_one": "{{count}} lecture",
       "plays_other": "{{count}} lectures",
-      "rankChip": "#{{rank}}",
+      "rankChip": "",
       "rankSuffix": ", rang {{rank}}",
       "tileLabel": {
         "added": "ajouté",
@@ -629,16 +1788,16 @@
         "resolution": "résolution",
         "viewers": "spectateurs"
       },
-      "versionsChip": "{{count}}×",
-      "versions_one": "{{count}} version",
-      "versions_other": "{{count}} versions",
+      "versionsChip": "",
+      "versions_one": "",
+      "versions_other": "",
       "viewers_one": "{{count}} spectateur",
       "viewers_other": "{{count}} spectateurs",
       "watchedState": {
         "partial": "Partiellement vu",
         "watched": "Vu",
-        "watchedByOthers": "Watched by others",
-        "watchedByYou": "Watched by you"
+        "watchedByOthers": "",
+        "watchedByYou": ""
       }
     },
     "shows": {
@@ -648,83 +1807,58 @@
   "notFound": {
     "description": "La page que vous cherchez n'existe pas ou a été déplacée.",
     "heading": "Page introuvable",
-    "title": "404"
+    "title": "Erreur 404"
   },
   "plexCallback": {
     "authComplete": "Authentification terminée",
     "windowWillClose": "Cette fenêtre se fermera automatiquement..."
   },
-  "rules": {
-    "accountInactivity": "Inactivité du compte",
-    "accountInactivityDesc": "Recevoir une notification lorsqu'un utilisateur n'a lancé aucune lecture pendant une période déterminée",
-    "addRule": "Ajouter une règle",
-    "allowed": "Autorisé",
-    "allowedCountries": "Pays autorisés",
-    "allowlist": "Liste d'autorisation (autoriser uniquement ces pays)",
-    "allowlistNote": "Toute lecture depuis un autre pays déclenchera une violation.",
-    "blocked": "Bloqué",
-    "blockedCountries": "Pays bloqués",
-    "blocklist": "Liste de blocage (bloquer ces pays)",
-    "chooseTemplate": "Choisir un modèle de règle",
-    "chooseTemplateDesc": "Sélectionnez un type de règle pré-configuré pour commencer rapidement.",
-    "classicRule": "Règle classique",
-    "concurrentStreams": "Lectures simultanées",
-    "concurrentStreamsDesc": "Limiter le nombre de lectures simultanées par utilisateur",
-    "createDescription": "Configurez une nouvelle règle de détection pour vos serveurs multimédias.",
-    "createFirstRule": "Créez votre première règle de détection pour commencer à surveiller les partages de compte.",
-    "createRule": "Créer une règle",
-    "customRule": "Règle personnalisée",
-    "days": "Jours",
-    "deleteRule": "Supprimer la règle",
-    "deleteRuleConfirm": "Êtes-vous sûr de vouloir supprimer cette règle ? Cette action est irréversible.",
-    "deleteRule_one": "Supprimer {{count}} règle",
-    "deleteRule_other": "Supprimer {{count}} règles",
-    "deleteRulesConfirm": "Êtes-vous sûr de vouloir supprimer ceci ? Cette action est irréversible.",
-    "description": "Configurer les règles de détection pour le partage de compte et les violations de politique",
-    "deviceVelocity": "Vitesse de l'appareil",
-    "deviceVelocityDesc": "Détecte lorsqu'un utilisateur se connecte à partir d'un trop grand nombre d'adresses IP dans une fenêtre définie de temps",
-    "disable": "Désactiver",
-    "editRule": "Modifier la règle",
-    "enable": "Activer",
-    "excludeLocalNetwork": "Exclure le réseau local",
-    "excludeLocalNetworkDesc": "Ignorer les sessions des adresses IP locales ou privées (ex. 192.168.x.x, 10.x.x.x)",
-    "geoRestriction": "Restriction géographique",
-    "geoRestrictionDesc": "Bloquer la lecture depuis des pays spécifiques",
-    "groupByDevice": "Grouper par appareil",
-    "groupByDeviceDesc": "Compter par appareil plutôt que par IP. Permet d’éviter les faux positifs liés aux VPN, au DHCP ou aux canaux virtuels.",
-    "impossibleTravel": "Voyage impossible",
-    "impossibleTravelDesc": "Détecter lorsqu’un utilisateur lance des lectures depuis des lieux trop éloignés sur une courte période",
-    "inactiveFor": "Inactif pendant {{value}} {{unit}}",
-    "inactivityNote": "Crée une alerte lorsqu’un utilisateur n’a lancé aucune lecture durant cette période. Les vérifications sont effectuées toutes les heures.",
-    "inactivityPeriod": "Période d'inactivité",
-    "maxIps": "IP maximum",
-    "maxIpsDefault": "Nombre maximum d'adresses IP uniques autorisées dans la fenêtre de temps. Par défaut : 5 adresses IP en 24 heures",
-    "maxSpeed": "Vitesse maximum ({{unit}})",
-    "maxSpeedDefault": "Vitesse de déplacement maximum réaliste. Par défaut : {{value}} {{unit}} (vitesse d'un avion)",
-    "maxStreams": "Lectures maximum",
-    "maxStreamsDefault": "Nombre maximum de lectures simultanées par utilisateur. Par défaut : 3",
-    "minDistance": "Distance minimum ({{unit}})",
-    "minDistanceDefault": "Distance minimum entre les emplacements pour le déclenchement. Par défaut : {{value}} {{unit}}",
-    "mode": "Mode",
-    "months": "Mois",
-    "noRulesConfigured": "Aucune règle configurée",
-    "none": "Aucun",
-    "recordsOnly": "Records violations only",
-    "ruleName": "Nom de la règle",
-    "ruleNamePlaceholder": "ex. : Limite de lecture simultanée",
-    "ruleType": "Type de la règle",
-    "selectAllowedCountries": "Sélectionner les pays autorisés...",
-    "selectCountriesToBlock": "Sélectionner les pays à bloquer...",
-    "simultaneousLocations": "Emplacements simultanés",
-    "simultaneousLocationsDesc": "Détecter lorsqu’un utilisateur lance des lectures simultanées depuis des lieux géographiquement éloignés",
-    "timeWindow": "Fenêtre de temps (en heures)",
-    "title": "Règles",
-    "unit": "Unité",
-    "updateDescription": "Mettez à jour la configuration de la règle ci-dessous.",
-    "updateRule": "Mettre à jour la règle",
-    "weeks": "Semaines"
-  },
   "settings": {
+    "destinations": {
+      "add": "",
+      "builtinNote": "",
+      "clearSecret": "",
+      "delete": "",
+      "deleteConfirm": "",
+      "description": "",
+      "empty": "",
+      "fields": {
+        "apiToken": "",
+        "apiUrl": "",
+        "authToken": "",
+        "serverUrl": "",
+        "topic": "",
+        "url": "",
+        "userKey": "",
+        "webhookUrl": ""
+      },
+      "hints": {
+        "authTokenOptional": ""
+      },
+      "ownerOnly": "",
+      "pushNote": "",
+      "receiveViolations": "",
+      "receiveViolationsHint": "",
+      "reencrypt": "",
+      "secretSet": "",
+      "test": "",
+      "testHint": "",
+      "testNeedsForm": "",
+      "title": "",
+      "types": {
+        "apprise": "",
+        "discord": "",
+        "gotify": "",
+        "jsonWebhook": "",
+        "ntfy": "",
+        "push": "",
+        "pushover": "",
+        "webToast": ""
+      },
+      "usedBy": "Used by {{count}} rule",
+      "usedBy_other": "Used by {{count}} rules",
+      "webToastNote": ""
+    },
     "jobs": {
       "lastRun": "Dernier lancement",
       "nextRun": "Prochain lancement",
@@ -739,45 +1873,15 @@
       "editDisplayNameDesc": "Modifier la façon dont cet appareil apparaît dans votre liste d’appareils",
       "updating": "Mise à jour en cours..."
     },
-    "notifications": {
-      "addAgent": "Ajouter un agent de notification",
-      "addAgentDesc": "Choisissez un service de notification et configurez-le.",
-      "agentType": "Type d'agent",
-      "allAgentsConfigured": "Tous les agents de notifications sont déjà configurés.",
-      "allEvents": "Tous les événements",
-      "currentlyConfigured": "{{name}} est actuellement configuré.",
-      "customEvents": "Événements personnalisés",
-      "description": "Configurer les canaux de notification et sélectionner les événements que chaque agent doit recevoir.",
-      "editAgent": "Modifier un agent de notification",
-      "editAgentDesc": "Mettre à jour la configuration de l'agent de notification.",
-      "eventSelection": "Sélection d'événement",
-      "loadingSettings": "Chargement des réglages de notification en cours...",
-      "noAgents": "Aucun agent de notification configuré",
-      "noAgentsHint": "Ajouter un agent pour recevoir des notifications concernant les violations de partage et les événements de lecture.",
-      "noConfigNeeded": "Aucune configuration requise pour cet agent.",
-      "oneWebhookLimit": "Un seul agent webhook peut être actif à la fois.",
-      "removeAgentDesc": "Cela supprimera {{name}} et désactivera toutes ses notifications. Vous pourrez le rajouter plus tard.",
-      "removeAgentTitle": "Supprimer {{name}} ?",
-      "saveAgent": "Ajouter un agent",
-      "selectType": "Sélectionner le type...",
-      "testAgent": "Agent de test",
-      "testingAgent": "Test en cours...",
-      "title": "Agents de notification",
-      "triggerEvents": "Déclencher des événements",
-      "updateAgent": "Mettre à jour l'agent",
-      "webhookAgents": "Agents webhook",
-      "webhookUrl": "URL du webhook",
-      "webhookUrlPlaceholder": "https://..."
-    },
     "plex": {
       "accountsLinked_one": "{{count}} compte Plex lié",
       "accountsLinked_other": "{{count}} comptes Plex liés",
       "connectingTo": "Connexion à {{name}} en cours...",
       "connectionError": {
         "dns": "Erreur DNS",
-        "http": "HTTP {{status}}",
+        "http": "",
         "refused": "Connexion refusée",
-        "reset": "Connection reset",
+        "reset": "Connexion réinitialisée",
         "timeout": "Expiré",
         "tls": "Erreur TLS",
         "unknown": "Connexion échouée",
@@ -785,7 +1889,7 @@
       },
       "connectionsAvailable": "{{count}} connexions disponibles",
       "connectionsReachable": "{{reachable}} connexions joignables sur {{total}}",
-      "custom": "Custom",
+      "custom": "Personnalisé",
       "customUrl": "URL personnalisée",
       "deleteServersFirst": "Supprimez d’abord les serveurs connectés pour pouvoir dissocier ce compte",
       "hideFiltered": "Masquer les éléments filtrés",
@@ -794,7 +1898,7 @@
       "linkedAccounts": "Comptes Plex liés",
       "linkedAccountsDesc": "Gérez les comptes Plex à partir desquels vous pouvez ajouter des serveurs.",
       "linking": "Liaison en cours...",
-      "local": "Local",
+      "local": "",
       "loginEnabled": "Connexion activée",
       "mayNotConnect": "Peut ne pas se connecter",
       "moreConnections": "Plus de {{count}} connexions supplémentaires",
@@ -805,6 +1909,7 @@
       "noReachableConnections": "Aucune connexion accessible",
       "noServersFound": "Aucun serveur Plex trouvé",
       "noServersFoundHint": "Assurez-vous d'être propriétaire d'au moins un serveur Plex",
+      "reauthorizeAccount": "",
       "recommended": "Recommandé",
       "remote": "Distant",
       "secure": "Sécurisé",
@@ -835,7 +1940,7 @@
     "noActivity": "Pas encore d'activité",
     "noActivityDesc": "Commencez à diffuser pour voir vos meilleurs utilisateurs ici",
     "runnersUp": "Finalistes vers le haut",
-    "top3": "Top 3"
+    "top3": ""
   },
   "terminateStream": {
     "killStream": "Interrompre la lecture",
@@ -847,48 +1952,50 @@
     "title": "Interrompre la lecture"
   },
   "userDetail": {
-    "acrossAllServers": "Across all linked accounts:",
+    "acrossAllServers": "À travers tous les comptes liés :",
     "adjustTrustScore": "Ajuster le score de confiance",
-    "allServers": "All servers",
+    "allServers": "Tous les serveurs",
     "backToUsers": "Retour aux utilisateurs",
     "byRule": "Par / Règle",
-    "linkedAccounts": "Linked accounts",
-    "locations": "Emplacements",
+    "linkedAccounts": "Comptes liés",
     "manual": "Manuel",
-    "noSessionsFound": "Aucune session trouvée pour cet utilisateur.",
     "noTerminationsFound": "Aucune interruption de lecture pour cet utilisateur.",
     "noViolationsFound": "Aucune violation pour cet utilisateur.",
-    "overallTrust": "Overall Trust",
-    "serverScope": "Server",
-    "sessions": "Sessions",
-    "splitAccount": "Split into separate user",
-    "splitConfirmDescription": "Detach this server account into its own user. Its watch history and violations move with it.",
-    "splitConfirmLoading": "Splitting...",
-    "splitConfirmTitle": "Split server account",
+    "overallTrust": "Confiance globale",
+    "serverScope": "Serveur",
+    "sessions": "",
+    "splitAccount": "Séparer en un utilisateur distinct",
+    "splitConfirmDescription": "Détachez ce compte serveur pour en faire un utilisateur distinct. Son historique de surveillance et ses infractions seront transférés avec lui.",
+    "splitConfirmLoading": "Séparation en cours...",
+    "splitConfirmTitle": "Séparer le compte serveur",
     "statistics": "Statistiques",
     "terminationHistory": "Historique des interruptions",
+    "title": "",
     "unknownRule": "Règle inconnue",
     "userInfo": "Informations de l'utilisateur",
     "userNotFound": "Utilisateur introuvable",
-    "violations": "Violations"
+    "violations": ""
   },
   "users": {
-    "mergeConfirm": "Merge",
-    "mergeDialogDescription": "Every server account, session, and violation from the duplicate moves to the primary. The duplicate identity is deleted.",
-    "mergeDialogTitle": "Merge users",
-    "mergePickPrimary": "Choose the primary identity",
-    "mergePrimaryBadge": "Primary",
-    "mergePrimaryForced": "This account can log in, so it must stay the primary.",
-    "mergeSameIdentity": "These accounts already belong to the same user",
-    "mergeSameServerAcknowledge": "I understand the same-server history combine cannot be undone",
-    "mergeSameServerDialogDescription": "This merge permanently combines both accounts on the same server. It cannot be undone.",
-    "mergeSameServerFallbackName": "this server",
-    "mergeSameServerWarning": "Both identities already have an account on the same server. Merging will permanently combine their session history, violations, and trust score into a single account on that server. This cannot be undone, and splitting the account afterward will not restore the original two accounts.",
-    "mergeSameServerWarningTitle": "This action is irreversible",
-    "mergeSelectAllActive": "Clear the select-all selection and pick exactly two users to merge",
-    "mergeSelectTwo": "Select exactly two users to merge",
-    "mergeServerAccountRemoved": "Removed",
-    "mergeUsers": "Merge users",
+    "filterHasAccessTo": "",
+    "filterHasAccessToHint": "",
+    "filterHasAccessToPlaceholder": "",
+    "mergeConfirm": "Fusionner",
+    "mergeDialogDescription": "Chaque compte serveur, session et infraction du serveur secondaire est transféré vers le serveur principal. L'identité dupliquée est supprimée.",
+    "mergeDialogTitle": "Fusionner les utilisateurs",
+    "mergePickPrimary": "Choisir l'identité principale",
+    "mergePrimaryBadge": "Principal",
+    "mergePrimaryForced": "Ce compte permet de se connecter ; il doit donc rester le compte principal.",
+    "mergeSameIdentity": "Ces comptes appartiennent déjà au même utilisateur",
+    "mergeSameServerAcknowledge": "Je comprends que la fusion de l'historique sur un même serveur ne peut pas être annulée",
+    "mergeSameServerDialogDescription": "Cette fusion regroupe définitivement les deux comptes sur le même serveur. Elle est irréversible.",
+    "mergeSameServerFallbackName": "ce serveur",
+    "mergeSameServerWarning": "Ces deux identités disposent déjà d'un compte sur le même serveur. La fusion entraînera la combinaison définitive de leur historique de session, de leurs infractions et de leur score de confiance en un seul compte sur ce serveur. Cette opération est irréversible, et la séparation ultérieure du compte ne permettra pas de rétablir les deux comptes d'origine.",
+    "mergeSameServerWarningTitle": "Cette action est irréversible",
+    "mergeSelectAllActive": "Désélectionnez tous les éléments et choisissez exactement deux utilisateurs à fusionner",
+    "mergeSelectTwo": "Sélectionnez exactement deux utilisateurs à fusionner",
+    "mergeServerAccountRemoved": "Supprimé",
+    "mergeUsers": "Fusionner les utilisateurs",
     "noUsersFound": "Aucun utilisateur trouvé.",
     "resetTrustScore": "Réinitialiser le score de confiance",
     "resetTrustScoreConfirm": "Êtes-vous sûr de vouloir réinitialiser le score de confiance à 100 ? Cette action est irréversible.",
@@ -896,19 +2003,19 @@
     "resetTrustScoreTitle_other": "Réinitialiser le score de confiance pour {{count}} utilisateurs",
     "searchPlaceholder": "Rechercher des utilisateurs...",
     "selectAllUsers": "Sélectionner les {{count}} utilisateurs",
-    "serversColumn": "Servers",
-    "showRemoved": "Show removed",
-    "suggestionsDescription": "These identities look like the same person across servers. Review and merge them if they match.",
-    "suggestionsError": "Could not load merge suggestions",
-    "suggestionsMatchEmail": "Same email",
-    "suggestionsMatchUsername": "Same username",
-    "suggestionsReview": "Review",
-    "suggestionsTitle": "Possible duplicate users",
+    "serversColumn": "Serveurs",
+    "showRemoved": "Afficher les utilisateurs supprimés",
+    "suggestionsDescription": "Ces identités semblent correspondre à la même personne sur l'ensemble des serveurs. Vérifiez-les et fusionnez-les si elles correspondent.",
+    "suggestionsError": "Impossible de charger les suggestions de fusion",
+    "suggestionsMatchEmail": "Même adresse email",
+    "suggestionsMatchUsername": "Nom d'utilisateur identique",
+    "suggestionsReview": "Vérification",
+    "suggestionsTitle": "Utilisateurs potentiellement en double",
     "title": "Utilisateurs"
   },
   "violations": {
-    "allClear": "Tout effacer",
-    "allPeople": "All people",
+    "allPeople": "Toutes les personnes",
+    "allRules": "",
     "allSeverities": "Toutes les gravités",
     "allStatuses": "Tous les états",
     "detail": {
@@ -930,7 +2037,7 @@
       "relatedSessions": "{{count}} sessions liées",
       "relatedSessions_one": "{{count}} session liée",
       "relatedSessions_other": "{{count}} sessions liées",
-      "sessions": "Sessions",
+      "sessions": "",
       "threshold": "Seuil",
       "timestamps": "Horodatage",
       "trigger": "Déclencheur",
@@ -942,19 +2049,16 @@
     "dismissViolation_one": "Ignorer {{count}} violation",
     "dismissViolation_other": "Ignorer {{count}} violations",
     "dismissViolationsConfirm": "Êtes-vous sûr de vouloir l'ignorer ? Elle sera définitivement supprimée du journal de violation et les scores de confiance associés seront restaurés.",
-    "filterByPerson": "Filter violations by this person",
-    "filterPeople": "People",
-    "noMatches": "Aucune correspondance",
-    "noViolationsDetected": "Aucune violation de règle détectée",
+    "filterByPerson": "Filtrer les violations par cette personne",
+    "filterPeople": "Personne",
     "noViolationsFound": "Aucune violation trouvée",
     "noViolationsRecorded": "Il n'y a pas encore de violation enregistrée.",
-    "peopleSelectedCount": "{{count}} people",
-    "personFilterEmpty": "No matching people found",
-    "personFilterError": "Failed to load people",
-    "personFilterPlaceholder": "Filter by person",
+    "peopleSelectedCount": "{{count}} personne",
+    "personFilterEmpty": "Aucune personne trouvée",
+    "personFilterError": "Échec du chargement de la personne",
+    "personFilterPlaceholder": "Filtrer par personne",
     "selectAllViolations": "Sélectionner les {{count}} violations correspondant aux filtres",
-    "title": "Violations",
-    "tryAdjustingFilters": "Essayez d'ajuster vos filtres",
-    "violationLog": "Journal de violation"
+    "title": "",
+    "tryAdjustingFilters": "Essayez d'ajuster vos filtres"
   }
 }

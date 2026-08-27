@@ -60,6 +60,14 @@
         "title": "Cont Plex Nelegat",
         "message": "Contul tău Plex a fost deconectat"
       },
+      "plexAccountReauthorized": {
+        "title": "",
+        "message_one": "",
+        "message_other": "",
+        "messageNoServers": "",
+        "partial": "",
+        "unmatched": ""
+      },
       "agentAdded": {
         "title": "Agent adăugat",
         "message": "Agentul de notificare a fost adăugat"
@@ -76,17 +84,17 @@
         "title": "Lucrare Finalizată",
         "message": "{{name}} s-a terminat cu succes"
       },
-      "ruleCreated": {
-        "title": "Regulă creată",
-        "message": "Regula a fost creată cu succes"
+      "automationCreated": {
+        "title": "",
+        "message": ""
       },
-      "ruleUpdated": {
-        "title": "Regulă actualizată",
-        "message": "Regula a fost actualizată cu succes"
+      "automationUpdated": {
+        "title": "",
+        "message": ""
       },
-      "ruleDeleted": {
-        "title": "Regulă ștearsă",
-        "message": "Regula a fost ștearsă cu succes"
+      "automationDeleted": {
+        "title": "",
+        "message": ""
       },
       "streamTerminated": {
         "title": "Stream oprit",
@@ -147,12 +155,15 @@
         "message": "Acum puteţi continua cu configurarea"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "",
+        "automationsKept": ""
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": ""
+      },
+      "destinationSaved": "",
+      "destinationDeleted": "",
+      "destinationTestSent": ""
     },
     "error": {
       "serverAddFailed": "Adăugarea serverului a eșuat",
@@ -164,9 +175,9 @@
       "dismissFailed": "Eroare la respingerea încălcării",
       "authFailed": "Autentificare eșuată",
       "webhookTestFailed": "Testul Webhook a eșuat",
-      "ruleCreateFailed": "Crearea regulii a eșuat",
-      "ruleUpdateFailed": "Actualizarea regulii a eșuat",
-      "ruleDeleteFailed": "Ștergerea regulii a eșuat",
+      "automationCreateFailed": "",
+      "automationUpdateFailed": "",
+      "automationDeleteFailed": "",
       "streamTerminateFailed": "Nu s-a putut termina transmisiunea",
       "serverUrlUpdateFailed": "Actualizarea adresei serverului a eșuat",
       "serverUpdateFailed": "Actualizarea serverului a eșuat",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "Nu s-a reușit actualizarea rutării",
       "clipboardFailed": "Copierea în clipboard a eșuat",
       "plexUnlinkFailed": "Deconectarea contului Plex a eșuat",
+      "plexReauthorizeFailed": "",
       "agentAddFailed": "Adăugarea agentului a eșuat",
       "agentUpdateFailed": "Actualizarea agentului a eșuat",
       "agentRemoveFailed": "Nu s-a reușit eliminarea agentului",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "Încărcarea lucrărilor de întreținere a eșuat",
       "invalidUrl": "URL invalid",
       "plexDirectUrl": "URL-urile plex.direct sunt adrese de releu care nu pot fi folosite aici. Vă rugăm să folosiți o adresă IP directă sau numele gazdei.",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "",
+      "serverUserSplitFailed": "",
       "invalidClaimCode": {
         "title": "Cod de solicitare nevalid",
         "message": "Vă rugăm să verificaţi jurnalele serverului"
-      }
+      },
+      "destinationSaveFailed": "",
+      "destinationDeleteFailed": "",
+      "destinationTestFailed": "",
+      "destinationInUse": ""
     },
     "warning": {
       "jobFailed": {
@@ -207,25 +223,9 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "A început un nou flux",
-        "message": "{{user}} a început urmărirea {{media}}"
-      },
-      "streamStopped": {
-        "title": "Stream oprit",
-        "message": "{{user}} a oprit vizionarea"
-      },
       "updateAvailable": {
         "title": "Actualizare disponibilă",
         "message": "Tracearr {{version}} este disponibil"
-      },
-      "serverOffline": {
-        "title": "Server offline",
-        "message": "{{name}} este inaccesibil"
-      },
-      "serverOnline": {
-        "title": "Server Online",
-        "message": "{{name}} este din nou online"
       },
       "violationDetected": {
         "title": "Incalcare noua: {{ruleName}}",

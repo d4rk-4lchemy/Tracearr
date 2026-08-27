@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { SeasonHeatEpisode, SeasonHeatSeason } from '@tracearr/shared';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { cn } from '@/lib/utils';
 
@@ -64,9 +65,7 @@ export function SeasonHeatPanel({ seasons, isLoading, isError, onRetry }: Season
       ) : isLoading || seasons === undefined ? (
         <SeasonHeatSkeleton />
       ) : seasons.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          {t('media.detail.seasons.empty')}
-        </p>
+        <EmptyState title={t('media.detail.seasons.empty')} className="py-6" />
       ) : (
         <div>
           {seasons.map((season) => {

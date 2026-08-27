@@ -60,6 +60,14 @@
         "title": "Account Plex Scollegato",
         "message": "Il tuo account Plex è stato disconnesso"
       },
+      "plexAccountReauthorized": {
+        "title": "",
+        "message_one": "",
+        "message_other": "",
+        "messageNoServers": "",
+        "partial": "",
+        "unmatched": ""
+      },
       "agentAdded": {
         "title": "Agente Aggiunto",
         "message": "L'agente di notifica è stato aggiunto"
@@ -76,17 +84,17 @@
         "title": "Lavoro Completato",
         "message": "{{name}} completato con successo"
       },
-      "ruleCreated": {
-        "title": "Regola Creata",
-        "message": "La regola è stata creata con successo"
+      "automationCreated": {
+        "title": "",
+        "message": ""
       },
-      "ruleUpdated": {
-        "title": "Regola Aggiornata",
-        "message": "La regola è stata aggiornata con successo"
+      "automationUpdated": {
+        "title": "",
+        "message": ""
       },
-      "ruleDeleted": {
-        "title": "Regola Eliminata",
-        "message": "La regola è stata eliminata con successo"
+      "automationDeleted": {
+        "title": "",
+        "message": ""
       },
       "streamTerminated": {
         "title": "Stream Terminato",
@@ -105,13 +113,13 @@
       },
       "sessionsDeleted": {
         "title": "Sessioni Eliminate",
-        "message_one": "{{count}} session deleted",
-        "message_other": "{{count}} sessions deleted"
+        "message_one": "",
+        "message_other": ""
       },
       "violationsAcknowledged": {
         "title": "Violazioni Riconosciute",
-        "message_one": "{{count}} violation acknowledged",
-        "message_other": "{{count}} violations acknowledged"
+        "message_one": "",
+        "message_other": ""
       },
       "violationsDismissed": {
         "title": "Violazioni Rimosse",
@@ -147,12 +155,15 @@
         "message": "Ora puoi procedere con la configurazione"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "",
+        "automationsKept": ""
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": ""
+      },
+      "destinationSaved": "",
+      "destinationDeleted": "",
+      "destinationTestSent": ""
     },
     "error": {
       "serverAddFailed": "Impossibile aggiungere il server",
@@ -164,9 +175,9 @@
       "dismissFailed": "Impossibile annullare la violazione",
       "authFailed": "Autenticazione non riuscita",
       "webhookTestFailed": "Test Webhook fallito",
-      "ruleCreateFailed": "Impossibile creare la regola",
-      "ruleUpdateFailed": "Impossibile aggiornare la regola",
-      "ruleDeleteFailed": "Impossibile eliminare la regola",
+      "automationCreateFailed": "",
+      "automationUpdateFailed": "",
+      "automationDeleteFailed": "",
       "streamTerminateFailed": "Terminazione dello stream non riuscita",
       "serverUrlUpdateFailed": "Impossibile aggiornare l'URL del server",
       "serverUpdateFailed": "Aggiornamento del server non riuscito",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "Impossibile aggiornare il routing",
       "clipboardFailed": "Impossibile copiare negli appunti",
       "plexUnlinkFailed": "Scollegamento account Plex non riuscito",
+      "plexReauthorizeFailed": "",
       "agentAddFailed": "Impossibile aggiungere l'agente",
       "agentUpdateFailed": "Impossibile aggiornare l'agente",
       "agentRemoveFailed": "Impossibile rimuovere l'agente",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "Impossibile caricare i lavori di manutenzione",
       "invalidUrl": "Url Non Valido",
       "plexDirectUrl": "Gli URL plex.direct sono indirizzi relè che non possono essere utilizzati qui. Utilizza invece un indirizzo IP diretto o un nome host.",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "",
+      "serverUserSplitFailed": "",
       "invalidClaimCode": {
         "title": "Codice sinistro non valido",
         "message": "Controlla i log del server"
-      }
+      },
+      "destinationSaveFailed": "",
+      "destinationDeleteFailed": "",
+      "destinationTestFailed": "",
+      "destinationInUse": ""
     },
     "warning": {
       "jobFailed": {
@@ -207,25 +223,9 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "Nuovo Stream Iniziato",
-        "message": "{{user}} ha iniziato a guardare {{media}}"
-      },
-      "streamStopped": {
-        "title": "Stream Fermato",
-        "message": "{{user}} ha smesso di guardare"
-      },
       "updateAvailable": {
         "title": "Aggiornamento Disponibile",
         "message": "Tracearr {{version}} disponibile"
-      },
-      "serverOffline": {
-        "title": "Server Offline",
-        "message": "{{name}} è irraggiungibile"
-      },
-      "serverOnline": {
-        "title": "Server Online",
-        "message": "{{name}} è tornato online"
       },
       "violationDetected": {
         "title": "Nuova Violazione: {{ruleName}}",

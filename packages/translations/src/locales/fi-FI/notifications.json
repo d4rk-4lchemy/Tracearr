@@ -60,6 +60,14 @@
         "title": "Plex Tili Linkittämätön",
         "message": "Yhteys Plex-tiliisi on katkaistu"
       },
+      "plexAccountReauthorized": {
+        "title": "",
+        "message_one": "",
+        "message_other": "",
+        "messageNoServers": "",
+        "partial": "",
+        "unmatched": ""
+      },
       "agentAdded": {
         "title": "Agentin Lisätty",
         "message": "Ilmoituksen tekijä on lisätty"
@@ -76,17 +84,17 @@
         "title": "Työ Suoritettu",
         "message": "{{name}} suoritettiin onnistuneesti"
       },
-      "ruleCreated": {
-        "title": "Sääntö Luotu",
-        "message": "Sääntöä on luotu onnistuneesti"
+      "automationCreated": {
+        "title": "",
+        "message": ""
       },
-      "ruleUpdated": {
-        "title": "Sääntö Päivitetty",
-        "message": "Sääntöä on päivitetty onnistuneesti"
+      "automationUpdated": {
+        "title": "",
+        "message": ""
       },
-      "ruleDeleted": {
-        "title": "Sääntö Poistettu",
-        "message": "Sääntöä on poistettu onnistuneesti"
+      "automationDeleted": {
+        "title": "",
+        "message": ""
       },
       "streamTerminated": {
         "title": "Virta Päätetty",
@@ -147,12 +155,15 @@
         "message": "Voit nyt jatkaa asetuksia"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "",
+        "automationsKept": ""
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": ""
+      },
+      "destinationSaved": "",
+      "destinationDeleted": "",
+      "destinationTestSent": ""
     },
     "error": {
       "serverAddFailed": "Palvelimen lisääminen epäonnistui",
@@ -164,9 +175,9 @@
       "dismissFailed": "Rikkomuksen hylkääminen epäonnistui",
       "authFailed": "Todennus epäonnistui",
       "webhookTestFailed": "Webkoukkutesti epäonnistui",
-      "ruleCreateFailed": "Sääntöä ei voitu luoda",
-      "ruleUpdateFailed": "Sääntöä ei voitu päivittää",
-      "ruleDeleteFailed": "Sääntöä ei voitu poistaa",
+      "automationCreateFailed": "",
+      "automationUpdateFailed": "",
+      "automationDeleteFailed": "",
       "streamTerminateFailed": "Virran lopettaminen epäonnistui",
       "serverUrlUpdateFailed": "Palvelimen URL-osoitteen päivitys epäonnistui",
       "serverUpdateFailed": "Palvelimen päivitys epäonnistui",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "Reitityksen päivitys epäonnistui",
       "clipboardFailed": "Kopiointi leikepöydälle epäonnistui",
       "plexUnlinkFailed": "Plex tilin poisto epäonnistui",
+      "plexReauthorizeFailed": "",
       "agentAddFailed": "Edustajan lisääminen epäonnistui",
       "agentUpdateFailed": "Agenttia ei voitu päivittää",
       "agentRemoveFailed": "Ei voitu poistaa agenttia",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "Huoltotehtävien lataaminen epäonnistui",
       "invalidUrl": "Virheellinen URL",
       "plexDirectUrl": "plex.direct URL-osoitteet ovat releosoitteita, joita ei voi käyttää tässä. Käytä sen sijaan suoraa IP-osoitetta tai isäntänimeä.",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "",
+      "serverUserSplitFailed": "",
       "invalidClaimCode": {
         "title": "Virheellinen korvauskoodi",
         "message": "Ole hyvä ja tarkista palvelimen lokit"
-      }
+      },
+      "destinationSaveFailed": "",
+      "destinationDeleteFailed": "",
+      "destinationTestFailed": "",
+      "destinationInUse": ""
     },
     "warning": {
       "jobFailed": {
@@ -207,29 +223,13 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "Uusi Virta Aloitettu",
-        "message": "{{user}} started watching {{media}}"
-      },
-      "streamStopped": {
-        "title": "Virta Pysäytetty",
-        "message": "{{user}} pysäytti katselun"
-      },
       "updateAvailable": {
         "title": "Päivitys Saatavilla",
         "message": "Seuraa {{version}} on saatavilla"
       },
-      "serverOffline": {
-        "title": "Palvelin Offline-tilassa",
-        "message": "{{name}} ei ole tavoitettavissa"
-      },
-      "serverOnline": {
-        "title": "Palvelin Paikalla",
-        "message": "{{name}} on taas verkossa"
-      },
       "violationDetected": {
         "title": "Uusi Väkivalta: {{ruleName}}",
-        "message": "{{user}} triggered {{ruleType}}"
+        "message": ""
       }
     }
   },

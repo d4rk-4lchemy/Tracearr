@@ -5,26 +5,26 @@
  * Includes batch loading for performance optimization and rule fetching.
  */
 
-import { eq, and, desc, gte, inArray, isNotNull } from 'drizzle-orm';
+import { eq, and, desc, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import {
   TIME_MS,
   SESSION_LIMITS,
+  WS_EVENTS,
   type Session,
-  type RuleV2,
-  type RuleConditions,
-  type RuleActions,
-  type ViolationSeverity,
+  type EngineAutomation,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import {
   sessions,
-  rules,
+  automations,
   servers,
   serverUsers,
   terminationLogs,
   libraryItems,
   media,
 } from '../../db/schema.js';
+import { automationsLogger, createLogger } from '../../utils/logger.js';
+import { getPubSubService } from '../../services/cache.js';
 import { mapSessionRow } from './sessionMapper.js';
 
 /** Canonical media identity for a library item, stamped onto sessions at insert. */
@@ -90,14 +90,14 @@ export async function batchGetLibraryItemIdentity(
 
 // Fetch-window ceiling: 7 days keeps the query inside the uncompressed
 // chunks of the sessions hypertable and matches the builder's largest window.
-const MAX_RULE_WINDOW_HOURS = 168;
+const MAX_AUTOMATION_WINDOW_HOURS = 168;
 
 /**
  * Largest window_hours any of the given rules asks for, floored at 24 so
  * evaluators without windows keep their day of context, capped at
- * MAX_RULE_WINDOW_HOURS.
+ * MAX_AUTOMATION_WINDOW_HOURS.
  */
-export function maxWindowHoursFromRules(rulesList: RuleV2[]): number {
+export function maxWindowHoursFromAutomations(rulesList: EngineAutomation[]): number {
   let max = 24;
   for (const rule of rulesList) {
     for (const group of rule.conditions?.groups ?? []) {
@@ -107,12 +107,13 @@ export function maxWindowHoursFromRules(rulesList: RuleV2[]): number {
       }
     }
   }
-  return Math.min(max, MAX_RULE_WINDOW_HOURS);
+  return Math.min(max, MAX_AUTOMATION_WINDOW_HOURS);
 }
 
-// Refreshed on every rules-cache fill; read synchronously by the history
-// fetch below so a 72h unique-IP rule really evaluates over 72h.
-let activeRuleMaxWindowHours = 24;
+/** History window implied by the cached active automations; 24h until the cache fills. */
+export function defaultRecentSessionWindowHours(): number {
+  return automationsCache ? maxWindowHoursFromAutomations(automationsCache.data) : 24;
+}
 
 /**
  * Batch load recent sessions for multiple server users (eliminates N+1 in polling loop)
@@ -135,7 +136,7 @@ export async function batchGetRecentUserSessions(
 ): Promise<Map<string, Session[]>> {
   if (serverUserIds.length === 0) return new Map();
 
-  const windowHours = hours ?? activeRuleMaxWindowHours;
+  const windowHours = hours ?? defaultRecentSessionWindowHours();
   const since = new Date(Date.now() - windowHours * TIME_MS.HOUR);
   // The per-user cap scales with the window so a longer window doesn't
   // silently truncate at one day's worth of rows
@@ -327,28 +328,54 @@ export async function getSessionsTerminatedByViolation(violationId: string): Pro
 }
 
 // ============================================================================
-// Rule Loading
+// Automation Loading
 // ============================================================================
 
-// TTL fallback for multi-instance deployments: another instance's invalidation isn't visible here, so a rule change can take up to this long to apply.
-const RULES_CACHE_TTL_MS = 10_000;
+// TTL fallback for multi-instance deployments: another instance's invalidation isn't visible here, so an automation change can take up to this long to apply.
+const AUTOMATIONS_CACHE_TTL_MS = 10_000;
 
-let rulesCache: { data: RuleV2[]; expiresAt: number } | null = null;
+let automationsCache: { data: EngineAutomation[]; expiresAt: number } | null = null;
 
-/** Invalidate the active V2 rules cache. Call from every rule create/update/delete/toggle path. */
-export function invalidateRulesCache(): void {
-  rulesCache = null;
+/** Invalidate the active automations cache. Call from every automation create/update/delete/toggle path. */
+export function invalidateAutomationsCache(): void {
+  automationsCache = null;
 }
 
-// Same TTL story as the rules cache: a server change on another instance can
+type AutomationsRefillListener = (rules: EngineAutomation[]) => void;
+const refillListeners: AutomationsRefillListener[] = [];
+
+/** Called after every automations-cache fill on this instance; listeners must not throw. */
+export function onActiveAutomationsRefill(listener: AutomationsRefillListener): void {
+  refillListeners.push(listener);
+}
+
+// Same TTL story as the automations cache: a server change on another instance can
 // take up to this long to reach this instance's poll loop.
 const SERVERS_CACHE_TTL_MS = 10_000;
 
 let serversCache: { data: (typeof servers.$inferSelect)[]; expiresAt: number } | null = null;
 
+// The servers cache is the poller's, not the engine's.
+const serversLogger = createLogger('servers');
+
 /** Invalidate the servers cache. Call from every server create/update/delete path. */
 export function invalidateServersCache(): void {
   serversCache = null;
+}
+
+/** Drop this instance's servers cache and tell the others to do the same. */
+export async function publishServersChanged(): Promise<void> {
+  invalidateServersCache();
+  await getPubSubService()
+    ?.publish(WS_EVENTS.SERVERS_CHANGED, {})
+    .catch((error: unknown) => {
+      serversLogger.warn(
+        'servers:changed publish failed; other instances fall back to the cache TTL',
+        {
+          error,
+        }
+      );
+    });
 }
 
 /**
@@ -366,24 +393,25 @@ export async function getCachedServers(): Promise<(typeof servers.$inferSelect)[
   return rows;
 }
 
+// A row the boot migration never stamped matches no trigger, so warn once per id rather than per tick.
+const warnedUntriggeredAutomationIds = new Set<string>();
+
 /**
- * Get all active V2 rules (rules with conditions/actions defined).
- *
- * V2 rules use the new conditions/actions format instead of the legacy type/params.
- * These rules are evaluated by the session lifecycle event system.
- *
- * @returns Array of active RuleV2 objects
- *
- * @example
- * const rulesV2 = await getActiveRulesV2();
- * // Evaluate session events against these rules
+ * Map an `automations` row to the shared EngineAutomation shape. Shared by
+ * getActiveAutomations and the kill-queue reverify path so both build an
+ * identical EngineAutomation from the same row.
  */
-/**
- * Map a raw `rules` table row (V2 columns) to the shared RuleV2 shape.
- * Shared by getActiveRulesV2 and the kill-queue reverify path so both build
- * an identical RuleV2 from the same row.
- */
-export function mapRuleRowToRuleV2(r: typeof rules.$inferSelect): RuleV2 {
+export function mapAutomationRow(
+  r: typeof automations.$inferSelect,
+  currentVersionId: string | null
+): EngineAutomation {
+  if (!r.triggers && !warnedUntriggeredAutomationIds.has(r.id)) {
+    warnedUntriggeredAutomationIds.add(r.id);
+    automationsLogger.warn('Automation has no stored triggers and will never evaluate', {
+      automationId: r.id,
+      name: r.name,
+    });
+  }
   return {
     id: r.id,
     name: r.name,
@@ -393,28 +421,52 @@ export function mapRuleRowToRuleV2(r: typeof rules.$inferSelect): RuleV2 {
     userId: r.userId,
     enforceAcrossServers: r.enforceAcrossServers,
     isActive: r.isActive,
-    severity: (r.severity ?? 'warning') as ViolationSeverity,
-    conditions: r.conditions as RuleConditions,
-    actions: r.actions as RuleActions,
+    severity: r.severity,
+    kind: r.kind,
+    // Both columns are nullable jsonb; a row that never held either reads as empty.
+    conditions: r.conditions ?? { groups: [] },
+    actions: r.actions ?? { actions: [] },
+    triggers: r.triggers ?? [],
+    currentVersionId,
+    cooldownMinutes: r.cooldownMinutes,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
 }
 
-export async function getActiveRulesV2(): Promise<RuleV2[]> {
+/**
+ * The version a run records. One index lookup per rule on a 10s cache fill.
+ * The outer column is named in full: a table selection renders its columns
+ * unqualified, and a bare `id` here would bind to the subquery's own table.
+ */
+const CURRENT_VERSION_ID = sql<string | null>`(
+  SELECT v.id FROM automation_versions v
+  WHERE v.automation_id = automations.id
+  ORDER BY v.version DESC
+  LIMIT 1
+)`;
+
+/**
+ * Active automations with conditions defined, evaluated by the session
+ * lifecycle event system. Cached in-process for AUTOMATIONS_CACHE_TTL_MS.
+ */
+export async function getActiveAutomations(): Promise<EngineAutomation[]> {
   const now = Date.now();
-  if (rulesCache && rulesCache.expiresAt > now) {
-    return rulesCache.data;
+  if (automationsCache && automationsCache.expiresAt > now) {
+    return automationsCache.data;
   }
 
+  // Ordered so every evaluation takes its per-run advisory locks in the same
+  // sequence; two dispatches for one subject cannot then deadlock each other.
   const activeRules = await db
-    .select()
-    .from(rules)
-    .where(and(eq(rules.isActive, true), isNotNull(rules.conditions)));
+    .select({ automation: automations, currentVersionId: CURRENT_VERSION_ID })
+    .from(automations)
+    .where(and(eq(automations.isActive, true), isNotNull(automations.conditions)))
+    .orderBy(automations.id);
 
-  const mapped = activeRules.map(mapRuleRowToRuleV2);
+  const mapped = activeRules.map((row) => mapAutomationRow(row.automation, row.currentVersionId));
 
-  rulesCache = { data: mapped, expiresAt: now + RULES_CACHE_TTL_MS };
-  activeRuleMaxWindowHours = maxWindowHoursFromRules(mapped);
+  automationsCache = { data: mapped, expiresAt: now + AUTOMATIONS_CACHE_TTL_MS };
+  for (const listener of refillListeners) listener(mapped);
   return mapped;
 }

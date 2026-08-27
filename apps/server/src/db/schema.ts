@@ -25,7 +25,16 @@ import {
   check,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
-import { MEDIA_TYPES } from '@tracearr/shared';
+import {
+  MEDIA_TYPES,
+  type AutomationKind,
+  type NotificationEventType,
+  type RunOutcome,
+  type TEMPLATE_GROUPS,
+  type TemplateDefinition,
+  type TemplateInput,
+  type TriggerNode,
+} from '@tracearr/shared';
 
 // Server types enum
 export const serverTypeEnum = ['plex', 'jellyfin', 'emby', 'dispatcharr'] as const;
@@ -35,16 +44,6 @@ export const sessionStateEnum = ['playing', 'paused', 'stopped'] as const;
 
 // Media type enum - imported from shared package
 export const mediaTypeEnum = MEDIA_TYPES;
-
-// Rule type enum
-export const ruleTypeEnum = [
-  'impossible_travel',
-  'simultaneous_locations',
-  'device_velocity',
-  'concurrent_streams',
-  'geo_restriction',
-  'account_inactivity',
-] as const;
 
 // Violation severity enum
 export const violationSeverityEnum = ['low', 'warning', 'high'] as const;
@@ -60,8 +59,8 @@ import type {
   StreamAudioDetails,
   TranscodeInfo,
   SubtitleInfo,
-  RuleConditions,
-  RuleActions,
+  AutomationConditions,
+  AutomationActions,
 } from '@tracearr/shared';
 
 // Re-export for consumers of this module
@@ -89,6 +88,9 @@ export const servers = pgTable(
     displayOrder: integer('display_order').default(0).notNull(),
     ignoreAnonymousStreams: boolean('ignore_anonymous_streams').default(true).notNull(),
     color: varchar('color', { length: 7 }), // Hex color like #3b82f6
+    // The version the media server reports, and the newest release known for it.
+    version: text('version'),
+    latestVersion: text('latest_version'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -144,6 +146,12 @@ export const users = pgTable(
     aggregateTrustScore: integer('aggregate_trust_score').notNull().default(100),
     totalViolations: integer('total_violations').notNull().default(0),
 
+    // Identity-level date rollups over ALL of the person's accounts, removed
+    // ones included: removing an account does not un-happen its history. Trust
+    // deliberately does not follow that rule (it prefers active accounts).
+    firstJoinedAt: timestamp('first_joined_at', { withTimezone: true }),
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
+
     // Timestamps
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -159,6 +167,15 @@ export const users = pgTable(
     uniqueIndex('users_email_unique').on(table.email),
     index('users_plex_account_id_idx').on(table.plexAccountId),
     index('users_role_idx').on(table.role),
+    // Roster sort orders. Each one has to match the ORDER BY in
+    // routes/users/list.ts key for key, direction for direction, nulls for
+    // nulls, or the plan drops from an index scan to an incremental sort.
+    index('users_display_name_idx').on(sql`coalesce(${table.name}, ${table.username})`, table.id),
+    index('users_aggregate_trust_idx').on(table.aggregateTrustScore.desc(), table.id),
+    index('users_first_joined_idx').on(table.firstJoinedAt.desc().nullsLast(), table.id),
+    index('users_last_activity_idx').on(table.lastActivityAt.desc().nullsLast(), table.id),
+    // Roster search matches users.name or any account's username
+    index('users_name_trgm_idx').using('gin', sql`${table.name} gin_trgm_ops`),
   ]
 );
 
@@ -251,6 +268,7 @@ export const serverUsers = pgTable(
     index('server_users_user_idx').on(table.userId),
     index('server_users_server_idx').on(table.serverId),
     index('server_users_username_idx').on(table.username),
+    index('server_users_username_trgm_idx').using('gin', sql`${table.username} gin_trgm_ops`),
     // For Plex sync matching by plex.tv account ID
     index('server_users_plex_account_idx').on(table.serverId, table.plexAccountId),
     // For account inactivity rule queries
@@ -410,20 +428,59 @@ export const sessions = pgTable(
   ]
 );
 
-// Sharing detection rules
-export const rules = pgTable(
-  'rules',
+// A parameterized automation blueprint; instances bind its inputs and point back at it
+export const automationTemplates = pgTable('automation_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slug: text('slug').notNull().unique(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  group: text('group').notNull().$type<(typeof TEMPLATE_GROUPS)[number]>(),
+  kind: text('kind').notNull().$type<AutomationKind>(),
+  builtin: boolean('builtin').notNull().default(false),
+  source: text('source').notNull().$type<'builtin' | 'import' | 'local'>(),
+  author: text('author'),
+  minServerVersion: text('min_server_version'),
+  currentVersion: integer('current_version').notNull().default(1),
+  fingerprint: text('fingerprint').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Immutable per-version payload; a fingerprint change appends a row rather than editing one
+export const automationTemplateVersions = pgTable(
+  'automation_template_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => automationTemplates.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    inputs: jsonb('inputs').$type<TemplateInput[]>().notNull(),
+    definition: jsonb('definition').$type<TemplateDefinition>().notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('automation_template_versions_template_version_uq').on(table.templateId, table.version),
+  ]
+);
+
+// Automations (sharing detection policies and notification housekeeping)
+export const automations = pgTable(
+  'automations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     name: varchar('name', { length: 100 }).notNull(),
     description: text('description'),
-    // Legacy columns - will be removed after migration
-    type: varchar('type', { length: 50 }).$type<(typeof ruleTypeEnum)[number]>(),
-    params: jsonb('params').$type<Record<string, unknown>>(),
-    // New V2 columns
-    conditions: jsonb('conditions').$type<RuleConditions>(),
-    actions: jsonb('actions').$type<RuleActions>(),
-    severity: varchar('severity', { length: 20 }).notNull().default('warning'),
+    conditions: jsonb('conditions').$type<AutomationConditions>(),
+    actions: jsonb('actions').$type<AutomationActions>(),
+    kind: text('kind').notNull().default('policy').$type<AutomationKind>(),
+    // The NOT NULL lands at runtime once the boot pass has backfilled every row.
+    triggers: jsonb('triggers').$type<TriggerNode[]>().notNull().default([]),
+    severity: varchar('severity', { length: 20 })
+      .notNull()
+      .default('warning')
+      .$type<(typeof violationSeverityEnum)[number]>(),
     // Scope - at most one of serverId, serverUserId, userId is ever set
     // (enforced in the Zod schema/route validation, not a DB constraint - this
     // table has no other CHECK constraints today).
@@ -434,40 +491,74 @@ export const rules = pgTable(
     // Opt-in cross-server enforcement for identity-aware rules. Defaults false
     // so every existing rule keeps today's single-account behavior.
     enforceAcrossServers: boolean('enforce_across_servers').notNull().default(false),
+    // Null falls back to the per-kind default in the retention worker.
+    cooldownMinutes: integer('cooldown_minutes'),
+    retentionDays: integer('retention_days'),
+    templateId: uuid('template_id').references(() => automationTemplates.id, {
+      onDelete: 'restrict',
+    }),
+    templateVersion: integer('template_version'),
+    templateInputs: jsonb('template_inputs').$type<Record<string, unknown>>(),
+    // Where a detached instance came from; kept for provenance, so no FK.
+    originTemplateId: uuid('origin_template_id'),
+    originTemplateVersion: integer('origin_template_version'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('rules_active_idx').on(table.isActive),
-    index('rules_server_id_idx').on(table.serverId),
-    index('rules_server_user_id_idx').on(table.serverUserId),
-    index('rules_user_id_idx').on(table.userId),
+    index('automations_active_idx').on(table.isActive),
+    index('automations_server_id_idx').on(table.serverId),
+    index('automations_server_user_id_idx').on(table.serverUserId),
+    index('automations_user_id_idx').on(table.userId),
+    index('automations_template_id_idx').on(table.templateId),
   ]
 );
 
-// Rule violations
-export const violations = pgTable(
-  'violations',
+// Immutable snapshot of an automation's definition; runs point at the version they ran
+export const automationVersions = pgTable(
+  'automation_versions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    ruleId: uuid('rule_id')
+    automationId: uuid('automation_id')
       .notNull()
-      .references(() => rules.id, { onDelete: 'cascade' }),
+      .references(() => automations.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    definition: jsonb('definition').notNull().$type<Record<string, unknown>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('automation_versions_automation_version_uq').on(table.automationId, table.version),
+  ]
+);
+
+// One row per automation run; policy runs that completed are what the UI calls violations
+export const automationRuns = pgTable(
+  'automation_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // The physical column is still rule_id; only the drizzle property carries the new name.
+    automationId: uuid('rule_id')
+      .notNull()
+      .references(() => automations.id, { onDelete: 'cascade' }),
     // Links to server_users for per-server tracking
-    serverUserId: uuid('server_user_id')
-      .notNull()
-      .references(() => serverUsers.id, { onDelete: 'cascade' }),
+    serverUserId: uuid('server_user_id').references(() => serverUsers.id, { onDelete: 'cascade' }),
     // Nullable: null for account_inactivity rules (no associated session)
-    sessionId: uuid('session_id').references(() => sessions.id, { onDelete: 'cascade' }),
-    severity: varchar('severity', { length: 20 })
-      .notNull()
-      .$type<(typeof violationSeverityEnum)[number]>(),
-    // Denormalized rule type for unique constraint (rules.type copied here)
-    // This enables the partial unique index without requiring a join
-    // Nullable for V2 rules which don't have a type field
-    ruleType: varchar('rule_type', { length: 50 }).$type<(typeof ruleTypeEnum)[number] | null>(),
+    // No FK: sessions is a hypertable, so timescale.ts drops the constraint at boot.
+    sessionId: uuid('session_id'),
+    severity: varchar('severity', { length: 20 }).$type<(typeof violationSeverityEnum)[number]>(),
+    // The server the run acted on; no FK, so a deleted server leaves its runs readable.
+    serverId: uuid('server_id'),
     data: jsonb('data').notNull().$type<Record<string, unknown>>(),
+    kind: text('kind').notNull().default('policy').$type<AutomationKind>(),
+    outcome: text('outcome').notNull().default('completed').$type<RunOutcome>(),
+    humanSummary: text('human_summary'),
+    definitionVersionId: uuid('definition_version_id').references(() => automationVersions.id),
+    steps: jsonb('steps').$type<unknown[]>(),
+    // What the run was about, by scope: session id, server user id, `server:<id>` or `install`.
+    subjectKey: text('subject_key'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
     // Soft delete. Dismiss keeps the row so dedup still sees it and the same
@@ -478,26 +569,46 @@ export const violations = pgTable(
     dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
   },
   (table) => [
-    index('violations_server_user_id_idx').on(table.serverUserId),
-    index('violations_rule_id_idx').on(table.ruleId),
-    index('violations_created_at_idx').on(table.createdAt),
+    index('automation_runs_server_user_id_idx').on(table.serverUserId),
+    index('automation_runs_rule_id_idx').on(table.automationId),
+    index('automation_runs_created_at_idx').on(table.createdAt),
     // Composite index for deduplication queries:
     // SELECT ... WHERE serverUserId = ? AND acknowledgedAt IS NULL AND createdAt >= ?
-    index('violations_dedup_idx').on(table.serverUserId, table.acknowledgedAt, table.createdAt),
+    index('automation_runs_dedup_idx').on(
+      table.serverUserId,
+      table.acknowledgedAt,
+      table.createdAt
+    ),
     // Partial unique index to prevent duplicate unacknowledged session-based violations
     // Defense-in-depth: catches race conditions that bypass application-level dedup
-    // Only applies to violations with a session (session-based rules)
-    // Uses ruleId instead of ruleType because V2 rules don't have a type field (ruleType is null)
-    uniqueIndex('violations_unique_active_user_session_rule')
-      .on(table.serverUserId, table.sessionId, table.ruleId)
-      .where(sql`${table.acknowledgedAt} IS NULL AND ${table.sessionId} IS NOT NULL`),
+    // Notification runs stay out of it: they accumulate completed rows per subject.
+    uniqueIndex('automation_runs_unique_active_subject')
+      .on(table.automationId, table.subjectKey)
+      .where(
+        sql`kind = 'policy' AND outcome = 'completed' AND acknowledged_at IS NULL AND session_id IS NOT NULL`
+      ),
     // Index for inactivity rule deduplication queries
     // SELECT ... WHERE serverUserId = ? AND ruleId = ? AND acknowledgedAt IS NULL
-    index('violations_inactivity_dedup_idx').on(
+    index('automation_runs_inactivity_dedup_idx').on(
       table.serverUserId,
-      table.ruleId,
+      table.automationId,
       table.acknowledgedAt
     ),
+    // The retention purge scans by kind and age.
+    index('automation_runs_retention_idx').on(table.kind, table.finishedAt),
+    // The notification gate reads (automation, subject) and filters the edge out of data.
+    index('automation_runs_notification_gate_idx')
+      .on(table.automationId, table.subjectKey)
+      .where(sql`kind = 'notification' AND outcome = 'completed'`),
+    // Every violation count and list composes the alias; diagnostics outnumber it 20:1.
+    // The id column is the list's paging tiebreak, so the scan needs no sort on top.
+    index('automation_runs_violation_alias_idx')
+      .on(table.createdAt.desc().nullsFirst(), table.id)
+      .where(sql`kind = 'policy' AND outcome = 'completed'`),
+    // The runs list default sort; null placement and tiebreak match its ORDER BY.
+    index('automation_runs_started_at_idx').on(table.startedAt.desc().nullsLast(), table.id),
+    // Every runs list narrows by the caller's servers before it sorts.
+    index('automation_runs_server_started_idx').on(table.serverId, table.startedAt.desc()),
   ]
 );
 
@@ -506,8 +617,8 @@ export const ruleActionResults = pgTable(
   'rule_action_results',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    violationId: uuid('violation_id').references(() => violations.id, { onDelete: 'cascade' }),
-    ruleId: uuid('rule_id').references(() => rules.id, { onDelete: 'cascade' }),
+    violationId: uuid('violation_id').references(() => automationRuns.id, { onDelete: 'cascade' }),
+    ruleId: uuid('rule_id').references(() => automations.id, { onDelete: 'cascade' }),
     actionType: varchar('action_type', { length: 50 }).notNull(),
     success: boolean('success').notNull(),
     skipped: boolean('skipped').default(false),
@@ -617,41 +728,40 @@ export const notificationPreferences = pgTable(
   ]
 );
 
-// Notification event type enum
-export const notificationEventTypeEnum = [
-  'violation_detected',
-  'stream_started',
-  'stream_stopped',
-  'concurrent_streams',
-  'new_device',
-  'trust_score_changed',
-  'server_down',
-  'server_up',
-  'plugin_update_available',
+export const destinationKindEnum = [
+  'discord',
+  'json_webhook',
+  'ntfy',
+  'gotify',
+  'apprise',
+  'pushover',
+  'push',
+  'web_toast',
 ] as const;
 
-// Notification channel routing configuration
-// Controls which channels receive which event types (web admin configurable)
-export const notificationChannelRouting = pgTable(
-  'notification_channel_routing',
+// Outbound notification destinations; config is AES-GCM ciphertext (destinationCrypto), NULL for built-ins.
+export const destinations = pgTable(
+  'destinations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    eventType: varchar('event_type', { length: 50 })
+    name: text('name').notNull().unique(),
+    type: varchar('type', { length: 30 }).notNull().$type<(typeof destinationKindEnum)[number]>(),
+    config: text('config'),
+    events: jsonb('events').notNull().default([]).$type<NotificationEventType[]>(),
+    enabled: boolean('enabled').notNull().default(true),
+    builtin: boolean('builtin').notNull().default(false),
+    configStatus: varchar('config_status', { length: 20 })
       .notNull()
-      .unique()
-      .$type<(typeof notificationEventTypeEnum)[number]>(),
-
-    // Channel toggles
-    discordEnabled: boolean('discord_enabled').notNull().default(true),
-    webhookEnabled: boolean('webhook_enabled').notNull().default(true),
-    pushEnabled: boolean('push_enabled').notNull().default(true),
-    webToastEnabled: boolean('web_toast_enabled').notNull().default(true),
-
-    // Timestamps
+      .default('ok')
+      .$type<'ok' | 'reencrypt'>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('notification_channel_routing_event_type_idx').on(table.eventType)]
+  (table) => [
+    uniqueIndex('destinations_builtin_type_uidx')
+      .on(table.type)
+      .where(sql`${table.builtin} = true`),
+  ]
 );
 
 // Termination trigger type enum
@@ -687,8 +797,8 @@ export const terminationLogs = pgTable(
     }),
 
     // What rule triggered it (for rule-triggered) - nullable for manual
-    ruleId: uuid('rule_id').references(() => rules.id, { onDelete: 'set null' }),
-    violationId: uuid('violation_id').references(() => violations.id, { onDelete: 'set null' }),
+    ruleId: uuid('rule_id').references(() => automations.id, { onDelete: 'set null' }),
+    violationId: uuid('violation_id').references(() => automationRuns.id, { onDelete: 'set null' }),
 
     // Message shown to user (Plex only)
     reason: text('reason'),
@@ -864,8 +974,8 @@ export const serverUsersRelations = relations(serverUsers, ({ one, many }) => ({
     references: [servers.id],
   }),
   sessions: many(sessions),
-  rules: many(rules),
-  violations: many(violations),
+  automations: many(automations),
+  automationRuns: many(automationRuns),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({
@@ -877,46 +987,58 @@ export const sessionsRelations = relations(sessions, ({ one, many }) => ({
     fields: [sessions.serverUserId],
     references: [serverUsers.id],
   }),
-  violations: many(violations),
+  automationRuns: many(automationRuns),
 }));
 
-export const rulesRelations = relations(rules, ({ one, many }) => ({
+export const automationsRelations = relations(automations, ({ one, many }) => ({
   server: one(servers, {
-    fields: [rules.serverId],
+    fields: [automations.serverId],
     references: [servers.id],
   }),
   serverUser: one(serverUsers, {
-    fields: [rules.serverUserId],
+    fields: [automations.serverUserId],
     references: [serverUsers.id],
   }),
-  violations: many(violations),
+  runs: many(automationRuns),
+  versions: many(automationVersions),
   actionResults: many(ruleActionResults),
 }));
 
-export const violationsRelations = relations(violations, ({ one, many }) => ({
-  rule: one(rules, {
-    fields: [violations.ruleId],
-    references: [rules.id],
+export const automationVersionsRelations = relations(automationVersions, ({ one }) => ({
+  automation: one(automations, {
+    fields: [automationVersions.automationId],
+    references: [automations.id],
+  }),
+}));
+
+export const automationRunsRelations = relations(automationRuns, ({ one, many }) => ({
+  automation: one(automations, {
+    fields: [automationRuns.automationId],
+    references: [automations.id],
   }),
   serverUser: one(serverUsers, {
-    fields: [violations.serverUserId],
+    fields: [automationRuns.serverUserId],
     references: [serverUsers.id],
   }),
   session: one(sessions, {
-    fields: [violations.sessionId],
+    fields: [automationRuns.sessionId],
     references: [sessions.id],
+  }),
+  definitionVersion: one(automationVersions, {
+    fields: [automationRuns.definitionVersionId],
+    references: [automationVersions.id],
   }),
   actionResults: many(ruleActionResults),
 }));
 
 export const ruleActionResultsRelations = relations(ruleActionResults, ({ one }) => ({
-  violation: one(violations, {
+  violation: one(automationRuns, {
     fields: [ruleActionResults.violationId],
-    references: [violations.id],
+    references: [automationRuns.id],
   }),
-  rule: one(rules, {
+  rule: one(automations, {
     fields: [ruleActionResults.ruleId],
-    references: [rules.id],
+    references: [automations.id],
   }),
 }));
 
@@ -962,13 +1084,13 @@ export const terminationLogsRelations = relations(terminationLogs, ({ one }) => 
     fields: [terminationLogs.triggeredByUserId],
     references: [users.id],
   }),
-  rule: one(rules, {
+  rule: one(automations, {
     fields: [terminationLogs.ruleId],
-    references: [rules.id],
+    references: [automations.id],
   }),
-  violation: one(violations, {
+  violation: one(automationRuns, {
     fields: [terminationLogs.violationId],
-    references: [violations.id],
+    references: [automationRuns.id],
   }),
 }));
 

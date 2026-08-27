@@ -4,62 +4,7 @@
 
 import { classifyByDimensions, type ResolutionLabel } from './resolution.js';
 
-// Rule type definitions with default parameters
-export const RULE_DEFAULTS = {
-  impossible_travel: {
-    maxSpeedKmh: 500,
-    ignoreVpnRanges: false,
-    excludePrivateIps: false,
-  },
-  simultaneous_locations: {
-    minDistanceKm: 100,
-    excludePrivateIps: false,
-  },
-  device_velocity: {
-    maxIps: 5,
-    windowHours: 24,
-    excludePrivateIps: false,
-    groupByDevice: false,
-  },
-  concurrent_streams: {
-    maxStreams: 3,
-    excludePrivateIps: false,
-  },
-  geo_restriction: {
-    mode: 'blocklist',
-    countries: [],
-    excludePrivateIps: false,
-  },
-  account_inactivity: {
-    inactivityValue: 30,
-    inactivityUnit: 'days',
-  },
-} as const;
-
-// Rule type display names
-export const RULE_DISPLAY_NAMES = {
-  impossible_travel: 'Impossible Travel',
-  simultaneous_locations: 'Simultaneous Locations',
-  device_velocity: 'Device Velocity',
-  concurrent_streams: 'Concurrent Streams',
-  geo_restriction: 'Geo Restriction',
-  account_inactivity: 'Account Inactivity',
-} as const;
-
-// Condition fields whose evaluators are identity-aware (see belongsToIdentity in
-// services/rules/evaluators/index.ts): they aggregate across every server_user id
-// belonging to the same identity when the evaluation context carries
-// identityServerUserIds. The UI (RuleBuilder) offers enforceAcrossServers as soon
-// as ANY condition on the rule uses a field from this set, not only when every
-// field does - one identity-aware condition is enough for cross-server action
-// reach to make sense for the rule as a whole.
-export const IDENTITY_AWARE_CONDITION_FIELDS = [
-  'concurrent_streams',
-  'active_session_distance_km',
-  'travel_speed_kmh',
-  'unique_ips_in_window',
-  'unique_devices_in_window',
-] as const;
+export { IDENTITY_AWARE_CONDITION_FIELDS } from './automations/conditions.js';
 
 // Severity levels
 export const SEVERITY_LEVELS = {
@@ -82,6 +27,7 @@ export const WS_EVENTS = {
   SESSION_STOPPED: 'session:stopped',
   SESSION_UPDATED: 'session:updated',
   VIOLATION_NEW: 'violation:new',
+  RUN_FINISHED: 'run:finished',
   STATS_UPDATED: 'stats:updated',
   IMPORT_PROGRESS: 'import:progress',
   IMPORT_JELLYSTAT_PROGRESS: 'import:jellystat:progress',
@@ -97,6 +43,9 @@ export const WS_EVENTS = {
   SERVER_DOWN: 'server:down',
   SERVER_UP: 'server:up',
   SERVER_CONNECTION: 'server:connection',
+  NOTIFICATION_TOAST: 'notification:toast',
+  DESTINATIONS_CHANGED: 'destinations:changed',
+  SERVERS_CHANGED: 'servers:changed',
 } as const;
 
 // Redis key prefix (set at startup via setRedisPrefix)
@@ -282,6 +231,11 @@ export const REDIS_KEYS = {
     `${_redisPrefix}tracearr:library:precache:watermark:${serverId}`,
   LIBRARY_PRECACHE_LAST_FULL: (serverId: string) =>
     `${_redisPrefix}tracearr:library:precache:last-full:${serverId}`,
+  // Poster cache: one-time boot reconciliation marker, the last sweep's tally,
+  // and the disk-limited flag the precache sets when the guard refused writes.
+  IMAGE_CACHE_SCHEMA: `${_redisPrefix}tracearr:image-cache:schema`,
+  IMAGE_CACHE_TALLY: `${_redisPrefix}tracearr:image-cache:tally`,
+  IMAGE_CACHE_DISK_LIMITED: `${_redisPrefix}tracearr:image-cache:disk-limited`,
   // Auth tokens
   REFRESH_TOKEN: (hash: string) => `${_redisPrefix}tracearr:refresh:${hash}`,
   PLEX_TEMP_TOKEN: (token: string) => `${_redisPrefix}tracearr:plex_temp:${token}`,
@@ -306,9 +260,16 @@ export const REDIS_KEYS = {
     ratingKey: string
   ) =>
     `${_redisPrefix}termination:cooldown:composite:${serverId}:${serverUserId}:${deviceId}:${ratingKey}`,
-  // Rule cooldowns
-  RULE_COOLDOWN: (ruleId: string, targetId: string) =>
-    `${_redisPrefix}tracearr:rule:cooldown:${ruleId}:${targetId}`,
+  // Per-action cooldown on one target. The key string keeps its v1 shape so
+  // cooldowns already armed in Redis stay honoured.
+  ACTION_COOLDOWN: (automationId: string, targetId: string) =>
+    `${_redisPrefix}tracearr:rule:cooldown:${automationId}:${targetId}`,
+  // Automation-level cooldown, keyed on the run's subject
+  AUTOMATION_COOLDOWN: (automationId: string, subjectKey: string) =>
+    `${_redisPrefix}tracearr:automation:cooldown:${automationId}:${subjectKey}`,
+  // Capped ring of evaluations that matched a trigger but recorded no run
+  AUTOMATION_EVALS: (automationId: string) =>
+    `${_redisPrefix}tracearr:automation:evals:${automationId}`,
   // Session write retry queue (for failed DB writes)
   SESSION_WRITE_RETRY: (sessionId: string) =>
     `${_redisPrefix}tracearr:session:write-retry:${sessionId}`,
@@ -376,13 +337,19 @@ export const NOTIFICATION_EVENTS = {
   VIOLATION_DETECTED: 'violation_detected',
   STREAM_STARTED: 'stream_started',
   STREAM_STOPPED: 'stream_stopped',
-  CONCURRENT_STREAMS: 'concurrent_streams',
-  NEW_DEVICE: 'new_device',
-  TRUST_SCORE_CHANGED: 'trust_score_changed',
   SERVER_DOWN: 'server_down',
   SERVER_UP: 'server_up',
   PLUGIN_UPDATE_AVAILABLE: 'plugin_update_available',
+  SERVER_UPDATE_AVAILABLE: 'server_update_available',
+  TRACEARR_UPDATE_AVAILABLE: 'tracearr_update_available',
+  MEDIA_ADDED: 'media_added',
+  MEDIA_UPGRADED: 'media_upgraded',
+  NEW_DEVICE: 'new_device',
+  TRUST_SCORE_CHANGED: 'trust_score_changed',
 } as const;
+
+/** The one size a poster is cached at. Every poster URL the server hands out uses it. */
+export const POSTER_IMAGE_SIZE = { width: 360, height: 540 } as const;
 
 // API version
 /**
@@ -483,6 +450,9 @@ export const UNIT_CONVERSION = {
   KM_TO_MILES: 0.621371,
   MILES_TO_KM: 1.60934,
 } as const;
+
+/** Base 1024, matching the byte formatter the dashboard renders file sizes with. */
+export const BYTES_PER_GB = 1024 ** 3;
 
 // Unit system types and utilities
 export type UnitSystem = 'metric' | 'imperial';

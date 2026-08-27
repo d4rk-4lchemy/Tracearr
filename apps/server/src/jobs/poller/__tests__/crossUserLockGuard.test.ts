@@ -18,9 +18,9 @@ import type { ProcessedSession } from '../types.js';
 
 const mockDbSelect = vi.fn();
 const mockTouchReturning = vi.fn().mockResolvedValue([{ id: 'foreign-id' }]);
-const { mockCreateMediaServerClient, mockGetActiveRulesV2 } = vi.hoisted(() => ({
+const { mockCreateMediaServerClient, mockGetActiveAutomations } = vi.hoisted(() => ({
   mockCreateMediaServerClient: vi.fn(),
-  mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
+  mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../../db/client.js', () => ({
@@ -74,8 +74,9 @@ vi.mock('../../notificationQueue.js', () => ({
 }));
 
 vi.mock('../database.js', () => ({
+  onActiveAutomationsRefill: vi.fn(),
   getCachedServers: () => mockDbSelect().from(servers),
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
   batchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
@@ -102,9 +103,13 @@ vi.mock('../sessionLifecycle.js', () => ({
   handleMediaChangeAtomic: (...args: unknown[]) => mockHandleMediaChangeAtomic(...args),
   handleQualityChangeFallout: vi.fn(),
   processPollResults: vi.fn().mockResolvedValue(undefined),
-  reEvaluateRulesOnPauseState: vi.fn(),
-  reEvaluateRulesOnTranscodeChange: vi.fn(),
   stopSessionAtomic: vi.fn(),
+}));
+
+const mockDispatch = vi.fn().mockResolvedValue({ violations: [], outcomes: [] });
+vi.mock('../../../services/automations/events/dispatcher.js', () => ({
+  dispatch: (...args: unknown[]) => mockDispatch(...args),
+  subscribe: vi.fn(),
 }));
 
 vi.mock('../violations.js', () => ({
@@ -296,7 +301,7 @@ describe('poller in-lock cross-user sessionKey guards', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     stopPoller();
-    mockGetActiveRulesV2.mockResolvedValue([]);
+    mockGetActiveAutomations.mockResolvedValue([]);
     mockCreateMediaServerClient.mockReturnValue({
       getSessions: vi.fn().mockResolvedValue([createMockProcessedSession()]),
     });

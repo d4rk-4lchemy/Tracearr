@@ -79,7 +79,8 @@ vi.mock('ioredis', () => ({
 
 import { Worker } from 'bullmq';
 import { librarySyncService } from '../../services/librarySync.js';
-import type { SyncResult } from '../../services/librarySync.js';
+import { enqueueImagePrecache } from '../imagePrecacheQueue.js';
+import { resolvePrecachePass } from '../precachePassPolicy.js';
 import {
   initLibrarySyncQueue,
   enqueueLibrarySync,
@@ -90,6 +91,7 @@ import {
   startLibrarySyncWorker,
   invalidateLibraryCaches,
 } from '../librarySyncQueue.js';
+import type { SyncResult } from '../../services/librarySync.js';
 
 /**
  * A job as BullMQ hands it back from getJobs for a job scheduler: id shaped
@@ -555,5 +557,49 @@ describe('invalidateLibraryCaches - collapsed single-cursor scan', () => {
     await invalidateLibraryCaches('server-1');
 
     expect(mockRedisDel).not.toHaveBeenCalled();
+  });
+});
+
+describe('library sync worker - precache pass stamps', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockRedisScan.mockResolvedValue(['0', []]);
+    mockRedisDel.mockResolvedValue(0);
+    await shutdownLibrarySyncQueue();
+    initLibrarySyncQueue('redis://localhost:6379');
+  });
+
+  /** Runs one sync whose precache pass is due, with the enqueue reporting
+   *  either the job it added or nothing (a pass was already queued). */
+  async function runSyncWithPass(enqueuedJobId: string | undefined) {
+    const commit = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(resolvePrecachePass).mockResolvedValue({
+      sinceUpdatedAt: '2026-08-01T00:00:00.000Z',
+      commit,
+    });
+    vi.mocked(enqueueImagePrecache).mockResolvedValue(enqueuedJobId);
+    vi.mocked(librarySyncService.syncServer).mockResolvedValue([
+      fakeSyncResult({ itemsProcessed: 5, itemsAdded: 5 }),
+    ]);
+
+    startLibrarySyncWorker();
+    const processor = vi.mocked(Worker).mock.calls[0]![1] as (job: unknown) => Promise<unknown>;
+    await processor({
+      id: 'job-1',
+      data: { serverId: 'srv-1', triggeredBy: 'scheduled' },
+      updateProgress: vi.fn(),
+    });
+    return commit;
+  }
+
+  it('stamps the window once the pass is queued', async () => {
+    const commit = await runSyncWithPass('precache-srv-1-start-1');
+    expect(enqueueImagePrecache).toHaveBeenCalledWith('srv-1', '2026-08-01T00:00:00.000Z');
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the watermark where it is when a pass was already queued for the server', async () => {
+    const commit = await runSyncWithPass(undefined);
+    expect(commit).not.toHaveBeenCalled();
   });
 });

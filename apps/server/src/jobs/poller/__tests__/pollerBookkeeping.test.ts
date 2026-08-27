@@ -24,11 +24,13 @@ import { POLLING_INTERVALS, type ActiveSession } from '@tracearr/shared';
 import type { CacheService, PubSubService } from '../../../services/cache.js';
 
 const mockDbSelect = vi.fn();
-const { mockCreateMediaServerClient, mockGetActiveRulesV2, mockIsInFallback } = vi.hoisted(() => ({
-  mockCreateMediaServerClient: vi.fn(),
-  mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
-  mockIsInFallback: vi.fn().mockReturnValue(true),
-}));
+const { mockCreateMediaServerClient, mockGetActiveAutomations, mockIsInFallback } = vi.hoisted(
+  () => ({
+    mockCreateMediaServerClient: vi.fn(),
+    mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
+    mockIsInFallback: vi.fn().mockReturnValue(true),
+  })
+);
 
 vi.mock('../../../db/client.js', () => ({
   db: { select: (...args: unknown[]) => mockDbSelect(...args) },
@@ -77,8 +79,9 @@ vi.mock('../../notificationQueue.js', () => ({
 }));
 
 vi.mock('../database.js', () => ({
+  onActiveAutomationsRefill: vi.fn(),
   getCachedServers: () => mockDbSelect().from(servers),
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   batchGetIdentityServerUserIds: vi.fn().mockResolvedValue(new Map()),
   batchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
   widenRecentSessionsForMergedIdentities: vi.fn(),
@@ -99,9 +102,13 @@ vi.mock('../sessionLifecycle.js', () => ({
   findActiveSessionByComposite: vi.fn(),
   handleMediaChangeAtomic: vi.fn(),
   processPollResults: (...args: unknown[]) => mockProcessPollResults(...args),
-  reEvaluateRulesOnPauseState: vi.fn(),
-  reEvaluateRulesOnTranscodeChange: vi.fn(),
   stopSessionAtomic: vi.fn(),
+}));
+
+const mockDispatch = vi.fn().mockResolvedValue({ violations: [], outcomes: [] });
+vi.mock('../../../services/automations/events/dispatcher.js', () => ({
+  dispatch: (...args: unknown[]) => mockDispatch(...args),
+  subscribe: vi.fn(),
 }));
 
 vi.mock('../violations.js', () => ({
@@ -227,7 +234,7 @@ let pubSubService: ReturnType<typeof createPubSubService>;
 beforeEach(() => {
   vi.clearAllMocks();
   stopPoller();
-  mockGetActiveRulesV2.mockResolvedValue([]);
+  mockGetActiveAutomations.mockResolvedValue([]);
   mockIsInFallback.mockReturnValue(true);
   allServersRows = [serverRow1];
   currentCachedSessions = [];
@@ -255,7 +262,7 @@ describe('(a) missedPollTracking pruning for servers no longer polled', () => {
     await triggerReconciliationPoll();
 
     expect(mockCreateMediaServerClient).not.toHaveBeenCalled();
-    expect(mockGetActiveRulesV2).not.toHaveBeenCalled();
+    expect(mockGetActiveAutomations).not.toHaveBeenCalled();
   });
 
   it('leaves the grace-period entry for reconciliation when its server exits fallback to SSE', async () => {
@@ -274,9 +281,7 @@ describe('(a) missedPollTracking pruning for servers no longer polled', () => {
     await triggerPoll();
 
     expect(gracePeriodSessionIds().has('active-1-id')).toBe(true);
-    expect(mockEnqueueNotification.mock.calls.some(([arg]) => arg.type === 'session_stopped')).toBe(
-      false
-    );
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
     expect(cacheService.removeActiveSession).not.toHaveBeenCalled();
     expect(pubSubService.publish).not.toHaveBeenCalledWith('session:stopped', 'active-1-id');
   });
@@ -297,9 +302,7 @@ describe('(a) missedPollTracking pruning for servers no longer polled', () => {
     // confirm, so pruning here makes the confirm step unreachable.
     await triggerPoll();
     expect(gracePeriodSessionIds().has('active-1-id')).toBe(true);
-    expect(mockEnqueueNotification.mock.calls.some(([arg]) => arg.type === 'session_stopped')).toBe(
-      false
-    );
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
     expect(cacheService.removeActiveSession).not.toHaveBeenCalled();
 
     // Second reconciliation pass confirms the stop from the surviving entry.
@@ -317,18 +320,15 @@ describe('(a) missedPollTracking pruning for servers no longer polled', () => {
     await triggerReconciliationPoll();
 
     expect(gracePeriodSessionIds().has('active-1-id')).toBe(false);
-    const stopNotification = mockEnqueueNotification.mock.calls.find(
-      ([arg]) => arg.type === 'session_stopped'
-    );
-    expect(stopNotification).toBeDefined();
-    expect(stopNotification![0].payload.id).toBe('active-1-id');
+    // The confirmed stop goes through stopSessionAtomic, which dispatches session.stopped.
+    expect(stopSessionAtomic).toHaveBeenCalled();
     expect(cacheService.removeActiveSession).toHaveBeenCalledWith('active-1-id', {
       skipDashboardInvalidation: true,
     });
     expect(pubSubService.publish).toHaveBeenCalledWith('session:stopped', 'active-1-id');
   });
 
-  it('fires the stop notification from the snapshot when its server is removed from the DB', async () => {
+  it('clears the cached session when its server is removed from the DB', async () => {
     allServersRows = [serverRow1, serverRow2];
     currentCachedSessions = [activeSessionOnServer1, activeSessionOnServer2];
     mockIsInFallback.mockReturnValue(true);
@@ -338,18 +338,14 @@ describe('(a) missedPollTracking pruning for servers no longer polled', () => {
     expect(gracePeriodSessionIds().has('active-2-id')).toBe(true);
 
     // server-2 deleted; server-1 keeps being polled normally. The row backing
-    // active-2-id is gone (cascade delete), so this is the only remaining
-    // chance to tell the user that session stopped.
+    // active-2-id is gone (cascade delete), so there is nothing left to stop
+    // or to build an evaluation context from - only the cache is cleaned up.
     allServersRows = [serverRow1];
     currentCachedSessions = [activeSessionOnServer1];
     await triggerPoll();
 
     expect(gracePeriodSessionIds().has('active-2-id')).toBe(false);
-    const stopNotification = mockEnqueueNotification.mock.calls.find(
-      ([arg]) => arg.type === 'session_stopped'
-    );
-    expect(stopNotification).toBeDefined();
-    expect(stopNotification![0].payload.id).toBe('active-2-id');
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
     expect(cacheService.removeActiveSession).toHaveBeenCalledWith('active-2-id', {
       skipDashboardInvalidation: true,
     });
@@ -445,7 +441,7 @@ describe('(d) allServers empty (last server deleted)', () => {
     setIntervalSpy.mockRestore();
   });
 
-  it('resets cadence to idle and fires the stop notification when the last server is deleted', async () => {
+  it('resets cadence to idle and clears the cached session when the last server is deleted', async () => {
     allServersRows = [serverRow1];
     currentCachedSessions = [activeSessionOnServer1];
     mockIsInFallback.mockReturnValue(true);
@@ -459,10 +455,9 @@ describe('(d) allServers empty (last server deleted)', () => {
     );
     expect(gracePeriodSessionIds().has('active-1-id')).toBe(true);
 
-    // Last server deleted: allServers comes back empty. The stale Redis
-    // entry for its session is still in cache (deleting a server doesn't
-    // clean that up), and the grace-period snapshot is the only place left
-    // that knows this session ever existed.
+    // Last server deleted: allServers comes back empty. The stale Redis entry
+    // for its session is still in cache (deleting a server doesn't clean that
+    // up), and the grace-period snapshot is what clears it.
     setIntervalSpy.mockClear();
     allServersRows = [];
 
@@ -473,11 +468,7 @@ describe('(d) allServers empty (last server deleted)', () => {
       POLLING_INTERVALS.SESSIONS_IDLE
     );
     expect(gracePeriodSessionIds().has('active-1-id')).toBe(false);
-    const stopNotification = mockEnqueueNotification.mock.calls.find(
-      ([arg]) => arg.type === 'session_stopped'
-    );
-    expect(stopNotification).toBeDefined();
-    expect(stopNotification![0].payload.id).toBe('active-1-id');
+    expect(mockEnqueueNotification).not.toHaveBeenCalled();
     expect(cacheService.removeActiveSession).toHaveBeenCalledWith('active-1-id', {
       skipDashboardInvalidation: true,
     });

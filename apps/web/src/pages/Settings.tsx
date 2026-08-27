@@ -15,8 +15,9 @@ import { TailscaleSettings } from '@/components/settings/TailscaleSettings';
 import { ImportSettings } from '@/components/settings/ImportSettings';
 import { JobsSettings } from '@/components/settings/JobsSettings';
 import { BackupSettings } from '@/components/settings/BackupSettings';
-import { NotificationAgentsManager } from '@/components/settings/notification-agents';
+import { DestinationsManager } from '@/components/settings/destinations';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useAuth } from '@/hooks/useAuth';
 import { Bell } from 'lucide-react';
 
 function SettingsNav() {
@@ -57,18 +58,24 @@ function SettingsNav() {
 
 function NotificationSettings() {
   const { t } = useTranslation('pages');
+  const { user } = useAuth();
+  const isOwner = user?.role === 'owner';
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bell className="h-5 w-5" />
-          {t('settings.notifications.title')}
+          {t('settings.destinations.title')}
         </CardTitle>
-        <CardDescription>{t('settings.notifications.description')}</CardDescription>
+        <CardDescription>{t('settings.destinations.description')}</CardDescription>
       </CardHeader>
       <CardContent>
-        <NotificationAgentsManager />
+        {isOwner ? (
+          <DestinationsManager />
+        ) : (
+          <p className="text-muted-foreground text-sm">{t('settings.destinations.ownerOnly')}</p>
+        )}
       </CardContent>
     </Card>
   );

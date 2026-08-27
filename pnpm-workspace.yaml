@@ -2,10 +2,6 @@ packages:
   - "apps/*"
   - "packages/*"
 overrides:
-  # react-native-css 3.0.7 visitors only work against lightningcss ~1.30.1
-  # (1.30.2 and >=1.32 both break its serde contract); scoped so tailwind's
-  # own exact lightningcss pin stays current.
-  '@expo/metro-config>lightningcss': 1.30.1
   hono: '>=4.12.34'
   '@hono/node-server': '>=2.0.10'
   fast-jwt: '>=6.2.2'
@@ -24,14 +20,12 @@ overrides:
   bn.js@<5: '>=4.12.3'
   minimatch@<4: '>=3.1.3'
   js-yaml@>=4: '^4.3.1'
-  nanoid@<4: '^3.3.17'
-  '@esbuild-kit/core-utils>esbuild': '^0.25.0'
+  nanoid@<4: '^5.0.0'
+  '@esbuild-kit/core-utils>esbuild': '^0.28.0'
 publicHoistPattern:
   - '@babel/types'
 allowBuilds:
-  '@shopify/react-native-skia': true
   esbuild: true
-  react-native-nitro-modules: true
   '@scarf/scarf': false
   '@tree-sitter-grammars/tree-sitter-yaml': false
   bcrypt: false
@@ -43,21 +37,10 @@ allowBuilds:
   tree-sitter-json: false
   vue-demi: false
 minimumReleaseAgeExclude:
-  - '@fastify/swagger@9.8.1'
-  - '@turbo/darwin-64@2.10.5'
-  - '@turbo/darwin-arm64@2.10.5'
-  - '@turbo/linux-64@2.10.5'
-  - '@turbo/linux-arm64@2.10.5'
-  - '@turbo/windows-64@2.10.5'
-  - '@turbo/windows-arm64@2.10.5'
-  - turbo@2.10.5
-  - '@expo/cli@57.0.12'
-  - '@expo/router-server@57.0.5'
-  - expo-constants@57.0.9
-  - expo-modules-core@57.0.9
-  - expo@57.0.10
-  - '@expo/ui@57.0.9'
-  - expo-image@57.0.2
-  - expo-linking@57.0.5
-  - expo-router@57.0.10
-  - expo-updates@57.0.12
+  - '@turbo/darwin-64@2.10.11'
+  - '@turbo/darwin-arm64@2.10.11'
+  - '@turbo/linux-64@2.10.11'
+  - '@turbo/linux-arm64@2.10.11'
+  - '@turbo/windows-64@2.10.11'
+  - '@turbo/windows-arm64@2.10.11'
+  - turbo@2.10.11

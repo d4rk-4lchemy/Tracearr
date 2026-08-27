@@ -60,6 +60,14 @@
         "title": "Αποσύνδεση Λογαριασμού Plex",
         "message": "Ο λογαριασμός σας στο Plex έχει αποσυνδεθεί"
       },
+      "plexAccountReauthorized": {
+        "title": "",
+        "message_one": "",
+        "message_other": "",
+        "messageNoServers": "",
+        "partial": "",
+        "unmatched": ""
+      },
       "agentAdded": {
         "title": "Προστέθηκε Πράκτορας",
         "message": "Ο πράκτορας ειδοποιήσεων έχει προστεθεί"
@@ -76,17 +84,17 @@
         "title": "Η Εργασία Ολοκληρώθηκε",
         "message": "Το {{name}} ολοκληρώθηκε με επιτυχία"
       },
-      "ruleCreated": {
-        "title": "Ο Κανόνας Δημιουργήθηκε",
-        "message": "Ο κανόνας έχει δημιουργηθεί με επιτυχία"
+      "automationCreated": {
+        "title": "",
+        "message": ""
       },
-      "ruleUpdated": {
-        "title": "Κανόνας Ενημερώθηκε",
-        "message": "Ο κανόνας έχει ενημερωθεί με επιτυχία"
+      "automationUpdated": {
+        "title": "",
+        "message": ""
       },
-      "ruleDeleted": {
-        "title": "Κανόνας Διαγράφηκε",
-        "message": "Ο κανόνας έχει διαγραφεί με επιτυχία"
+      "automationDeleted": {
+        "title": "",
+        "message": ""
       },
       "streamTerminated": {
         "title": "Η Ροή Τερματίστηκε",
@@ -106,16 +114,16 @@
       "sessionsDeleted": {
         "title": "Οι Συνεδρίες Διαγράφηκαν",
         "message_one": "Η συνεδρία {{count}} διαγράφηκε",
-        "message_other": "{{count}} sessions deleted"
+        "message_other": ""
       },
       "violationsAcknowledged": {
         "title": "Παραβιάσεις Που Αναγνωρίζονται",
-        "message_one": "{{count}} violation acknowledged",
-        "message_other": "{{count}} violations acknowledged"
+        "message_one": "",
+        "message_other": ""
       },
       "violationsDismissed": {
         "title": "Παραβιάσεις Απορρίφθηκαν",
-        "message_one": "{{count}} violation dismissed",
+        "message_one": "",
         "message_other": "Οι παραβιάσεις {{count}} απορρίφθηκαν"
       },
       "apiKeyGenerated": {
@@ -140,19 +148,22 @@
       "trustScoresReset": {
         "title": "Επαναφορά Βαθμών Εμπιστοσύνης",
         "message_one": "Επαναφορά του {{count}} χρήστη στο 100",
-        "message_other": "{{count}} users reset to 100"
+        "message_other": ""
       },
       "claimCodeValidated": {
         "title": "Επικυρωμένος κωδικός αξίωσης",
         "message": "Τώρα μπορείτε να προχωρήσετε με την εγκατάσταση"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "",
+        "automationsKept": ""
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": ""
+      },
+      "destinationSaved": "",
+      "destinationDeleted": "",
+      "destinationTestSent": ""
     },
     "error": {
       "serverAddFailed": "Αποτυχία προσθήκης διακομιστή",
@@ -164,9 +175,9 @@
       "dismissFailed": "Αποτυχία απόρριψης παραβίασης",
       "authFailed": "Αποτυχία ταυτοποίησης",
       "webhookTestFailed": "Το τεστ Webhook απέτυχε",
-      "ruleCreateFailed": "Αποτυχία δημιουργίας κανόνα",
-      "ruleUpdateFailed": "Αποτυχία ενημέρωσης κανόνα",
-      "ruleDeleteFailed": "Αποτυχία διαγραφής κανόνα",
+      "automationCreateFailed": "",
+      "automationUpdateFailed": "",
+      "automationDeleteFailed": "",
       "streamTerminateFailed": "Αποτυχία τερματισμού ροής",
       "serverUrlUpdateFailed": "Αποτυχία ενημέρωσης του διακομιστή URL",
       "serverUpdateFailed": "Αποτυχία ενημέρωσης διακομιστή",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "Αποτυχία ενημέρωσης δρομολόγησης",
       "clipboardFailed": "Αποτυχία αντιγραφής στο πρόχειρο",
       "plexUnlinkFailed": "Αποτυχία αποσύνδεσης του λογαριασμού Plex",
+      "plexReauthorizeFailed": "",
       "agentAddFailed": "Αποτυχία προσθήκης πράκτορα",
       "agentUpdateFailed": "Αποτυχία ενημέρωσης πράκτορα",
       "agentRemoveFailed": "Αποτυχία κατάργησης πράκτορα",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "Αποτυχία φόρτωσης εργασιών συντήρησης",
       "invalidUrl": "Μη Έγκυρο URL",
       "plexDirectUrl": "Οι διευθύνσεις URL plex.direct είναι διευθύνσεις ρελέ που δεν μπορούν να χρησιμοποιηθούν εδώ. Παρακαλώ χρησιμοποιήστε μια άμεση διεύθυνση IP ή όνομα κεντρικού υπολογιστή.",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "",
+      "serverUserSplitFailed": "",
       "invalidClaimCode": {
         "title": "Μη έγκυρος κωδικός απαίτησης",
         "message": "Παρακαλούμε ελέγξτε τα αρχεία καταγραφής του διακομιστή"
-      }
+      },
+      "destinationSaveFailed": "",
+      "destinationDeleteFailed": "",
+      "destinationTestFailed": "",
+      "destinationInUse": ""
     },
     "warning": {
       "jobFailed": {
@@ -207,29 +223,13 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "Ξεκίνησε Η Νέα Ροή",
-        "message": "Ο {{user}} άρχισε να βλέπει {{media}}"
-      },
-      "streamStopped": {
-        "title": "Η Ροή Σταμάτησε",
-        "message": "Το {{user}} σταμάτησε να παρακολουθεί"
-      },
       "updateAvailable": {
         "title": "Διαθέσιμη Ενημέρωση",
         "message": "Το Tracearr {{version}} είναι διαθέσιμο"
       },
-      "serverOffline": {
-        "title": "Διακομιστής Χωρίς Σύνδεση",
-        "message": "Το {{name}} δεν είναι προσβάσιμο"
-      },
-      "serverOnline": {
-        "title": "Συνδεδεμένος Διακομιστής",
-        "message": "Το {{name}} είναι ξανά συνδεδεμένο"
-      },
       "violationDetected": {
-        "title": "New Violation: {{ruleName}}",
-        "message": "{{user}} triggered {{ruleType}}"
+        "title": "",
+        "message": ""
       }
     }
   },

@@ -12,7 +12,7 @@ import {
   POLLING_INTERVALS,
   SESSION_LIMITS,
   type ActiveSession,
-  type RuleV2,
+  type EngineAutomation,
   type Session,
 } from '@tracearr/shared';
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
@@ -27,20 +27,30 @@ import { type GeoLocation } from '../../services/geoip.js';
 import { createMediaServerClient } from '../../services/mediaServer/index.js';
 import type { MediaSession } from '../../services/mediaServer/types.js';
 import { lookupGeoIP } from '../../services/plexGeoip.js';
+import {
+  fetchRecentSessionsForIdentity,
+  setContextAssemblyDeps,
+  toRuleSession,
+} from '../../services/automations/events/contextAssembly.js';
+import { dispatch } from '../../services/automations/events/dispatcher.js';
+import { dispatchServerHealth } from '../../services/automations/events/producers.js';
+import { registerRuleSubscribers } from '../../services/automations/events/subscribers.js';
+import {
+  registerPauseWakeSubscriptions,
+  setPauseWakeDeps,
+} from '../../services/automations/wakes/pauseWakes.js';
 import { registerService, unregisterService } from '../../services/serviceTracker.js';
 import { getWatchedThreshold } from '../../services/settings.js';
 import { sseManager } from '../../services/sseManager.js';
 import { registerLiveTvEpgPollTrigger } from '../../services/mediaServer/shared/liveTvEpg.js';
 import { createLogger } from '../../utils/logger.js';
 
-import { enqueueNotification } from '../notificationQueue.js';
 import {
   batchGetIdentityServerUserIds,
   batchGetLibraryItemIdentity,
   batchGetRecentUserSessions,
-  getActiveRulesV2,
+  getActiveAutomations,
   getCachedServers,
-  mergeRecentSessionsForIdentity,
   widenRecentSessionsForMergedIdentities,
 } from './database.js';
 import {
@@ -62,15 +72,12 @@ import {
   handleMediaChangeAtomic,
   handleQualityChangeFallout,
   processPollResults,
-  reEvaluateRulesOnPauseState,
-  reEvaluateRulesOnTranscodeChange,
   stopSessionAtomic,
 } from './sessionLifecycle.js';
-import { mapMediaSession, pickStreamDetailFields } from './sessionMapper.js';
+import { mapMediaSession, pickLiveSessionFields, pickStreamDetailFields } from './sessionMapper.js';
 import {
   buildCompositeKey,
   calculatePauseAccumulation,
-  calculateStopDuration,
   checkWatchCompletion,
   createInitialConfirmationState,
   detectMediaChange,
@@ -227,7 +234,11 @@ async function handleFirstMisses(
     if (missedPollTracking.has(cachedKey)) continue; // Already in grace period
 
     const cachedActiveSession = activeSessions.find((s) => {
-      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as 'plex' | 'jellyfin' | 'emby';
+      const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as
+        | 'plex'
+        | 'jellyfin'
+        | 'emby'
+        | 'dispatcharr';
       return (
         buildCompositeKey({
           serverType: sType,
@@ -256,50 +267,6 @@ async function handleFirstMisses(
 }
 
 /**
- * Send the deferred session_stopped notification for a confirmed grace-period
- * stop. Shared by sweepGracePeriod (DB-confirmed stop) and
- * pruneMissedPollTracking (server deleted, so there is no DB row left to
- * confirm against - the notification comes from the retained snapshot alone).
- */
-async function sendGracePeriodStopNotification(
-  key: string,
-  snapshot: ActiveSession,
-  durationMs: number | null
-): Promise<void> {
-  try {
-    await enqueueNotification({
-      type: 'session_stopped',
-      payload: { ...snapshot, durationMs },
-    });
-  } catch (notifErr) {
-    console.error(`[Poller] Failed to enqueue stop notification for ${key}:`, notifErr);
-  }
-}
-
-/**
- * Fetch recent sessions for windowed rule evaluation, widened to every
- * server_user id of the same identity when merged. Mirrors sseProcessor's
- * fetchRecentSessionsForRules so both confirm paths see identical history.
- */
-async function fetchRecentSessionsForRules(
-  serverUserId: string,
-  identityServerUserIds: string[]
-): Promise<Session[]> {
-  const ids = identityServerUserIds.length > 1 ? identityServerUserIds : [serverUserId];
-  try {
-    const recentSessionsMap = await batchGetRecentUserSessions(ids);
-    return mergeRecentSessionsForIdentity(recentSessionsMap, ids);
-  } catch (error) {
-    console.error(
-      `[Poller] Failed to fetch recent sessions for ${serverUserId}, falling back to this server only:`,
-      error
-    );
-    const fallbackMap = await batchGetRecentUserSessions([serverUserId]);
-    return fallbackMap.get(serverUserId) ?? [];
-  }
-}
-
-/**
  * Lazily backfill recentSessionsMap for a server user absent from the
  * new-session batch (e.g. a pending session confirming on a later tick, so
  * its key already reads as "not new"). Writes back into the map so repeat
@@ -324,16 +291,14 @@ async function resolveVanishedPendingSession(
   serverId: string,
   serverType: string,
   pendingKeySource: string
-): Promise<{ notify: boolean; durationMs: number | null }> {
-  if (!cacheService) return { notify: false, durationMs: null };
+): Promise<void> {
+  if (!cacheService) return;
   const cache = cacheService;
   const pendingKey =
     serverType === 'plex' ? pendingKeySource.slice(serverId.length + 1) : pendingKeySource;
 
   const pendingData = await cache.getPendingSession(serverId, pendingKey);
-  if (!pendingData) {
-    return { notify: false, durationMs: null };
-  }
+  if (!pendingData) return;
 
   const { maxViewOffset, initialViewOffset } = pendingData.confirmation;
   const progress = maxViewOffset - (initialViewOffset ?? maxViewOffset);
@@ -344,7 +309,7 @@ async function resolveVanishedPendingSession(
       `[Poller] Discarded phantom pending session ${pendingKey} (id: ${pendingData.id}) ` +
         `(vanished before confirmation)`
     );
-    return { notify: false, durationMs: null };
+    return;
   }
 
   const lockResult = await cache.withSessionCreateLock(
@@ -372,19 +337,19 @@ async function resolveVanishedPendingSession(
         return null;
       }
 
-      const activeRulesV2 = await getActiveRulesV2();
+      const activeAutomations = await getActiveAutomations();
       const activeSessions = excludeUncountableSessions(
         await cache.getAllActiveSessions(),
         gracePeriodSessionIds()
       );
-      const recentSessions = await fetchRecentSessionsForRules(
+      const recentSessions = await fetchRecentSessionsForIdentity(
         stillPending.serverUser.id,
         stillPending.serverUser.identityServerUserIds
       );
 
       const persisted = await confirmAndPersistSession({
         pendingData: stillPending,
-        activeRulesV2,
+        activeAutomations,
         activeSessions,
         recentSessions,
       });
@@ -394,9 +359,7 @@ async function resolveVanishedPendingSession(
     }
   );
 
-  if (!lockResult) {
-    return { notify: false, durationMs: null };
-  }
+  if (!lockResult) return;
 
   if (lockResult.qualityChange) {
     await handleQualityChangeFallout(lockResult.qualityChange, cache, pubSubService);
@@ -412,9 +375,7 @@ async function resolveVanishedPendingSession(
       console.error('[Poller] Failed to broadcast violations for vanished pending session:', err);
     }
   }
-  if (lockResult.wasTerminatedByRule) {
-    return { notify: false, durationMs: null };
-  }
+  if (lockResult.wasTerminatedByRule) return;
 
   const stopResult = await stopSessionAtomic({
     session: lockResult.insertedSession,
@@ -429,8 +390,6 @@ async function resolveVanishedPendingSession(
     `[Poller] Persisted vanished pending session ${lockResult.insertedSession.id} ` +
       `(${Math.round(progress / 1000)}s progress before disappearing)`
   );
-
-  return { notify: stopResult.wasUpdated, durationMs: stopResult.durationMs };
 }
 
 /**
@@ -472,14 +431,7 @@ async function sweepGracePeriod(
             continue;
           }
 
-          const { durationMs, notify } = await resolveVanishedPendingSession(
-            serverId,
-            pendingServerType,
-            key
-          );
-          if (notify) {
-            await sendGracePeriodStopNotification(key, snapshot, durationMs);
-          }
+          await resolveVanishedPendingSession(serverId, pendingServerType, key);
         } else {
           const serverType = serverTypeMap.get(serverId);
           const session =
@@ -501,16 +453,13 @@ async function sweepGracePeriod(
             // session.lastSeenAt is the last poll that confirmed this session
             // alive - it vanished 1-2 polls before this sweep, so `new Date()`
             // would bill the grace-period gap itself as watch time.
-            const { wasUpdated, durationMs, needsRetry, retryData } = await stopSessionAtomic({
+            const { needsRetry, retryData } = await stopSessionAtomic({
               session,
               stoppedAt: session.lastSeenAt,
             });
             clearDbWriteTracking(session.id);
             if (needsRetry && retryData && cacheService) {
               await cacheService.addSessionWriteRetry(session.id, retryData);
-            }
-            if (wasUpdated) {
-              await sendGracePeriodStopNotification(key, snapshot, durationMs);
             }
           } else {
             console.log(
@@ -552,13 +501,11 @@ async function sweepGracePeriod(
  *    30s reconciliation passes, so it must leave the entry alone; pruning
  *    here makes the confirm step unreachable and strands the session in
  *    cache (counted by rules) until the stale sweep. stopSessionAtomic's
- *    isNull(stoppedAt) guard already prevents any double-notify with SSE.
+ *    isNull(stoppedAt) guard already prevents any double-stop with SSE.
  *  - Removed from the DB: sessions.server_id is ON DELETE CASCADE, so the
- *    session row is already gone and no other path (sweepStaleSessions
- *    included, since it also reads from that now-deleted row) will ever
- *    send this stop's notification. There is nothing left to write to the
- *    DB, but the notification still fires from the retained ActiveSession
- *    snapshot, and the cache/pubsub entry is cleared the same way
+ *    session row is already gone and there is nothing left to write or to
+ *    build an evaluation context from - a stream-ended automation does not
+ *    fire for it. The cache/pubsub entry is cleared the same way
  *    sweepGracePeriod clears a DB-confirmed stop.
  * Runs unprotected by serverPollLocks: the entries pruned belong to servers
  * this tick will not touch, and sweepGracePeriod already tolerates a
@@ -571,7 +518,6 @@ async function pruneMissedPollTracking(
 ): Promise<void> {
   const pollableServerIds = new Set(serversNeedingPoll.map((server) => server.id));
   const existingServerIds = new Set(allServers.map((server) => server.id));
-  const now = new Date();
   // Same deferred-invalidation shape as sweepGracePeriod: one flush after the
   // loop, kept behind try/finally so a throw partway through still flushes
   // whatever was already removed.
@@ -584,17 +530,6 @@ async function pruneMissedPollTracking(
       // SSE-covered server still in the DB: leave the entry for reconciliation.
       if (existingServerIds.has(snapshot.serverId)) continue;
 
-      const { durationMs } = calculateStopDuration(
-        {
-          startedAt: snapshot.startedAt,
-          lastPausedAt: snapshot.lastPausedAt,
-          pausedDurationMs: snapshot.pausedDurationMs ?? 0,
-          progressMs: snapshot.progressMs,
-          totalDurationMs: snapshot.totalDurationMs,
-        },
-        now
-      );
-      await sendGracePeriodStopNotification(key, snapshot, durationMs);
       if (cacheService) {
         await cacheService.removeActiveSession(snapshot.id, { skipDashboardInvalidation: true });
         dashboardStatsDirty = true;
@@ -630,7 +565,7 @@ async function resolvePendingSession(
     pendingKey,
     processed,
     userDetail,
-    activeRulesV2,
+    activeAutomations,
     activeSessions,
     recentSessions,
     usePlexGeoip,
@@ -687,8 +622,8 @@ async function resolvePendingSession(
       // updatedData's stale snapshot from pending creation; confirmAndPersistSession
       // corrects startedAt/pausedDurationMs/progressMs from updatedData's own fields.
       return confirmAndPersistSession({
-        pendingData: { ...updatedData, server, serverUser: userDetail, geo },
-        activeRulesV2,
+        pendingData: { ...updatedData, processed, server, serverUser: userDetail, geo },
+        activeAutomations,
         activeSessions,
         recentSessions,
       });
@@ -826,7 +761,7 @@ async function stopMissingSessionsImmediately(
 
 export async function processServerSessions(
   server: ServerWithToken,
-  activeRulesV2: RuleV2[],
+  activeAutomations: EngineAutomation[],
   cachedSessionKeys: Set<string>,
   activeSessions: ActiveSession[] = [],
   options: { mediaSessions?: MediaSession[]; immediateStops?: boolean } = {}
@@ -1088,7 +1023,7 @@ export async function processServerSessions(
     // Skipped when there are no V2 rules to evaluate.
     const identityUserIds = [...new Set(Array.from(serverUserById.values()).map((u) => u.userId))];
     const identityServerUserIdsMap =
-      activeRulesV2.length > 0
+      activeAutomations.length > 0
         ? await batchGetIdentityServerUserIds(identityUserIds)
         : new Map<string, string[]>();
 
@@ -1192,7 +1127,7 @@ export async function processServerSessions(
             pendingKey,
             processed,
             userDetail,
-            activeRulesV2,
+            activeAutomations,
             activeSessions: ruleEvalSessions,
             recentSessions: recentSessionsMap.get(serverUserId) ?? [],
             usePlexGeoip,
@@ -1335,7 +1270,6 @@ export async function processServerSessions(
             await cacheService.addActiveSession(activeSession);
             if (pubSubService) {
               await pubSubService.publish('session:started', activeSession);
-              await enqueueNotification({ type: 'session_started', payload: activeSession });
             }
             continue;
           }
@@ -1398,7 +1332,7 @@ export async function processServerSessions(
               pendingKey,
               processed,
               userDetail,
-              activeRulesV2,
+              activeAutomations,
               activeSessions: ruleEvalSessions,
               recentSessions: await getOrFetchRecentSessions(recentSessionsMap, serverUserId),
               usePlexGeoip,
@@ -1562,7 +1496,7 @@ export async function processServerSessions(
                   server: { id: server.id, name: server.name, type: server.type },
                   serverUser: userDetail,
                   geo,
-                  activeRulesV2,
+                  activeAutomations,
                   activeSessions: ruleEvalSessions,
                   recentSessions,
                 });
@@ -1639,7 +1573,7 @@ export async function processServerSessions(
               server: { id: server.id, name: server.name, type: server.type },
               serverUser: userDetail,
               geo,
-              activeRulesV2,
+              activeAutomations,
               activeSessions: ruleEvalSessions,
               recentSessions,
             });
@@ -1724,6 +1658,7 @@ export async function processServerSessions(
             quality: processed.quality,
             bitrate: processed.bitrate,
             progressMs: processed.progressMs || null,
+            dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
             lastSeenAt: now,
             plexSessionId: processed.plexSessionId || null,
             isTranscode: processed.isTranscode,
@@ -1812,60 +1747,67 @@ export async function processServerSessions(
           // If transcode state changed, re-evaluate rules that have transcode-related conditions.
           // Gated by the wasStoppedConcurrently guard above (like the pause re-eval below) so a
           // session stopped mid-tick cannot still earn a violation row or a kill enqueue.
-          if (transcodeStateChanged) {
-            // Re-evaluate V2 rules that have transcode-related conditions.
-            // At session creation, transcode state might not be known yet (especially Plex SSE),
-            // so rules like "block 4K transcoding" need a second chance when transcode starts.
-            if (activeRulesV2.length > 0) {
-              try {
-                const recentSessions = await getOrFetchRecentSessions(
-                  recentSessionsMap,
-                  serverUserId
-                );
-                const violationResults = await reEvaluateRulesOnTranscodeChange({
-                  existingSession,
-                  processed,
-                  server: { id: server.id, name: server.name, type: server.type },
-                  serverUser: userDetail,
-                  activeRulesV2,
-                  activeSessions: ruleEvalSessions,
-                  recentSessions,
-                });
-
-                if (violationResults.length > 0 && pubSubService) {
-                  await broadcastViolations(violationResults, existingSession.id, pubSubService);
-                }
-              } catch (error) {
-                console.error(
-                  `[Poller] Error re-evaluating rules on transcode change for session ${existingSession.id}:`,
-                  error
-                );
-              }
-            }
-          }
-
-          if (newState === 'paused' && activeRulesV2.length > 0) {
+          if (transcodeStateChanged && activeAutomations.length > 0) {
             try {
               const recentSessions = await getOrFetchRecentSessions(
                 recentSessionsMap,
                 serverUserId
               );
-              const violationResults = await reEvaluateRulesOnPauseState({
-                existingSession,
-                processed,
-                pauseData: {
-                  lastPausedAt: pauseResult.lastPausedAt,
-                  pausedDurationMs: pauseResult.pausedDurationMs,
+              const { violations } = await dispatch(
+                {
+                  type: 'session.transcode_changed',
+                  at: now,
+                  server: { id: server.id, name: server.name, type: server.type },
+                  serverUser: userDetail,
+                  previous: {
+                    videoDecision: existingSession.videoDecision,
+                    audioDecision: existingSession.audioDecision,
+                  },
+                  next: {
+                    videoDecision: processed.videoDecision,
+                    audioDecision: processed.audioDecision,
+                  },
+                  session: toRuleSession(existingSession, pickLiveSessionFields(processed)),
                 },
-                server: { id: server.id, name: server.name, type: server.type },
-                serverUser: userDetail,
-                activeRulesV2,
-                activeSessions: ruleEvalSessions,
-                recentSessions,
-              });
+                { activeAutomations, activeSessions: ruleEvalSessions, recentSessions }
+              );
+              if (violations.length > 0 && pubSubService) {
+                await broadcastViolations(violations, existingSession.id, pubSubService);
+              }
+            } catch (error) {
+              console.error(
+                `[Poller] Error re-evaluating rules on transcode change for session ${existingSession.id}:`,
+                error
+              );
+            }
+          }
 
-              if (violationResults.length > 0 && pubSubService) {
-                await broadcastViolations(violationResults, existingSession.id, pubSubService);
+          if (previousState !== 'paused' && newState === 'paused' && activeAutomations.length > 0) {
+            try {
+              const recentSessions = await getOrFetchRecentSessions(
+                recentSessionsMap,
+                serverUserId
+              );
+              const { violations } = await dispatch(
+                {
+                  type: 'session.paused',
+                  at: now,
+                  server: { id: server.id, name: server.name, type: server.type },
+                  serverUser: userDetail,
+                  pauseData: {
+                    lastPausedAt: pauseResult.lastPausedAt,
+                    pausedDurationMs: pauseResult.pausedDurationMs,
+                  },
+                  session: toRuleSession(existingSession, {
+                    ...pickLiveSessionFields(processed),
+                    lastPausedAt: pauseResult.lastPausedAt,
+                    pausedDurationMs: pauseResult.pausedDurationMs,
+                  }),
+                },
+                { activeAutomations, activeSessions: ruleEvalSessions, recentSessions }
+              );
+              if (violations.length > 0 && pubSubService) {
+                await broadcastViolations(violations, existingSession.id, pubSubService);
               }
             } catch (error) {
               console.error(
@@ -1873,6 +1815,13 @@ export async function processServerSessions(
                 error
               );
             }
+          } else if (previousState === 'paused' && newState === 'playing') {
+            await dispatch({
+              type: 'session.resumed',
+              at: now,
+              sessionId: existingSession.id,
+              serverId: server.id,
+            });
           }
 
           // Build active session for cache/broadcast (with updated pause tracking values)
@@ -2044,7 +1993,7 @@ async function pollServers(): Promise<void> {
     );
 
     // Get active V2 rules
-    const activeRulesV2 = await getActiveRulesV2();
+    const activeAutomations = await getActiveAutomations();
 
     // Collect results from all servers
     const allNewSessions: ActiveSession[] = [];
@@ -2078,13 +2027,14 @@ async function pollServers(): Promise<void> {
           confirmedFromPendingIds,
         } = await processServerSessions(
           serverWithToken,
-          activeRulesV2,
+          activeAutomations,
           cachedSessionKeys,
           cachedSessions
         );
 
         // Track health state and notify on transitions (with consecutive-failure threshold)
         if (cacheService) {
+          const healthServer = { id: server.id, name: server.name, type: server.type };
           if (success) {
             const wasDown = wasHealthy === false;
             await cacheService.setServerHealth(server.id, true);
@@ -2092,10 +2042,7 @@ async function pollServers(): Promise<void> {
 
             if (wasDown) {
               console.log(`[Poller] Server ${server.name} is back UP`);
-              await enqueueNotification({
-                type: 'server_up',
-                payload: { serverName: server.name, serverId: server.id },
-              });
+              await dispatchServerHealth('server.up', healthServer, new Date());
             }
           } else {
             const failCount = await cacheService.incrServerFailCount(server.id);
@@ -2107,10 +2054,7 @@ async function pollServers(): Promise<void> {
                 console.log(
                   `[Poller] Server ${server.name} is DOWN (${failCount} consecutive failures)`
                 );
-                await enqueueNotification({
-                  type: 'server_down',
-                  payload: { serverName: server.name, serverId: server.id },
-                });
+                await dispatchServerHealth('server.down', healthServer, new Date());
               }
             }
           }
@@ -2142,7 +2086,6 @@ async function pollServers(): Promise<void> {
       cachedSessions,
       cacheService,
       pubSubService,
-      enqueueNotification,
       confirmedFromPendingIds: allConfirmedFromPendingIds,
     });
 
@@ -2247,31 +2190,6 @@ export async function sweepStaleSessions(): Promise<number> {
 
     const now = new Date();
 
-    // The stop notification needs the user/server shape ActiveSession carries,
-    // which the sessions row doesn't have inline - batched once for all stale
-    // sessions rather than joined into the query above (that query's shape is
-    // shared with the stale-session filtering logic and stays untouched).
-    const staleServerIds = [...new Set(staleSessions.map((s) => s.serverId))];
-    const staleServerUserIds = [...new Set(staleSessions.map((s) => s.serverUserId))];
-    const [staleServerRows, staleServerUserRows] = await Promise.all([
-      db
-        .select({ id: servers.id, name: servers.name, type: servers.type })
-        .from(servers)
-        .where(inArray(servers.id, staleServerIds)),
-      db
-        .select({
-          id: serverUsers.id,
-          username: serverUsers.username,
-          thumbUrl: serverUsers.thumbUrl,
-          identityName: users.name,
-        })
-        .from(serverUsers)
-        .innerJoin(users, eq(serverUsers.userId, users.id))
-        .where(inArray(serverUsers.id, staleServerUserIds)),
-    ]);
-    const staleServerById = new Map(staleServerRows.map((row) => [row.id, row]));
-    const staleServerUserById = new Map(staleServerUserRows.map((row) => [row.id, row]));
-
     // Dashboard invalidation is deferred to one call after the loop (instead
     // of one SCAN per force-stopped session); try/finally so the flag still
     // flushes if a later iteration throws.
@@ -2284,7 +2202,7 @@ export async function sweepStaleSessions(): Promise<number> {
           continue;
         }
 
-        const { wasUpdated, durationMs, needsRetry, retryData } = await stopSessionAtomic({
+        const { wasUpdated, needsRetry, retryData } = await stopSessionAtomic({
           session: staleSession,
           stoppedAt: now,
           forceStopped: true,
@@ -2308,27 +2226,6 @@ export async function sweepStaleSessions(): Promise<number> {
 
         if (pubSubService) {
           await pubSubService.publish('session:stopped', staleSession.id);
-        }
-
-        const server = staleServerById.get(staleSession.serverId);
-        const user = staleServerUserById.get(staleSession.serverUserId);
-        if (server && user) {
-          const snapshot = {
-            ...staleSession,
-            stoppedAt: now,
-            user,
-            server,
-            canTerminate: server.type !== 'plex' || !!staleSession.plexSessionId,
-          } as unknown as ActiveSession;
-          await sendGracePeriodStopNotification(
-            `${staleSession.serverId}:${staleSession.sessionKey}`,
-            snapshot,
-            durationMs
-          );
-        } else {
-          console.error(
-            `[Poller] Missing server/user for stale session ${staleSession.id}, skipping stop notification`
-          );
         }
       }
     } finally {
@@ -2356,6 +2253,13 @@ export async function sweepStaleSessions(): Promise<number> {
 export function initializePoller(cache: CacheService, pubSub: PubSubService): void {
   cacheService = cache;
   pubSubService = pubSub;
+  setContextAssemblyDeps({
+    getAllActiveSessions: () => cache.getAllActiveSessions(),
+    gracePeriodSessionIds,
+  });
+  registerRuleSubscribers();
+  setPauseWakeDeps({ pubSubService });
+  registerPauseWakeSubscriptions();
 }
 
 /**
@@ -2483,14 +2387,14 @@ export async function triggerServerPoll(
       })
     );
 
-    const activeRulesV2 = await getActiveRulesV2();
+    const activeAutomations = await getActiveAutomations();
     const {
       newSessions,
       stoppedSessions,
       updatedSessions,
       watchedTransitionOccurred,
       confirmedFromPendingIds,
-    } = await processServerSessions(server, activeRulesV2, cachedSessionKeys, cachedSessions, {
+    } = await processServerSessions(server, activeAutomations, cachedSessionKeys, cachedSessions, {
       immediateStops: options.immediateStops,
     });
 
@@ -2503,7 +2407,6 @@ export async function triggerServerPoll(
         cachedSessions,
         cacheService,
         pubSubService,
-        enqueueNotification,
         confirmedFromPendingIds,
       });
     }
@@ -2568,7 +2471,7 @@ export async function triggerReconciliationPoll(): Promise<void> {
     );
 
     // Get active V2 rules
-    const activeRulesV2 = await getActiveRulesV2();
+    const activeAutomations = await getActiveAutomations();
 
     // Collect results from all SSE servers
     const allNewSessions: ActiveSession[] = [];
@@ -2597,7 +2500,7 @@ export async function triggerReconciliationPoll(): Promise<void> {
           confirmedFromPendingIds,
         } = await processServerSessions(
           serverWithToken,
-          activeRulesV2,
+          activeAutomations,
           cachedSessionKeys,
           cachedSessions
         );
@@ -2624,7 +2527,6 @@ export async function triggerReconciliationPoll(): Promise<void> {
         cachedSessions,
         cacheService,
         pubSubService,
-        enqueueNotification,
         confirmedFromPendingIds: allConfirmedFromPendingIds,
       });
 

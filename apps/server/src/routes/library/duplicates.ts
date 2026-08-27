@@ -314,12 +314,11 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
         return result.rows as unknown as RawGroupRow[];
       };
 
-      let groupRows = await runGroupQuery((page - 1) * pageSize);
+      const groupRows = await runGroupQuery((page - 1) * pageSize);
       // A page past the end returns no rows and loses the window summary;
       // refetch page 1 for the totals and serve an empty page honestly
       if (groupRows.length === 0 && page > 1) {
         const firstPage = await runGroupQuery(0);
-        groupRows = [];
         const summarySource = firstPage[0];
         const response = buildResponse([], summarySource, page, pageSize);
         await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_DUPLICATES, JSON.stringify(response));

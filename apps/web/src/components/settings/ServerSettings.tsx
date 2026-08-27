@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { CopyButton } from '@/components/ui/copy-button';
 import {
   Select,
   SelectContent,
@@ -38,7 +39,6 @@ import {
   Check,
   Zap,
   Radio,
-  Copy,
   ArrowUpCircle,
   Image as ImageIcon,
 } from 'lucide-react';
@@ -54,6 +54,7 @@ import { AutosaveSelectField } from '@/components/ui/autosave-field';
 import { toast } from 'sonner';
 import { PlexServerSelector } from '@/components/auth/PlexServerSelector';
 import { PlexAccountsManager } from '@/components/settings/PlexAccountsManager';
+import { ServerVersionLine } from '@/components/settings/ServerVersionLine';
 import { SERVER_COLOR_PALETTE, pickServerColor } from '@tracearr/shared';
 import type { Server, ServerConnectionStatus } from '@tracearr/shared';
 import {
@@ -421,7 +422,7 @@ export function ServerSettings() {
               setShowAddDialog(true);
             }}
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus />
             {t('servers.addServer')}
           </Button>
         </CardHeader>
@@ -482,7 +483,12 @@ export function ServerSettings() {
             <CardDescription>{t('pages:settings.plex.linkedAccountsDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <PlexAccountsManager onAccountLinked={() => void fetchPlexServers()} />
+            <PlexAccountsManager
+              onAccountLinked={(accountId) => {
+                setSelectedPlexAccountId(accountId);
+                void fetchPlexServers(accountId);
+              }}
+            />
           </CardContent>
         </Card>
       )}
@@ -845,7 +851,7 @@ export function ServerSettings() {
               <Button onClick={handleAddServer} disabled={isConnecting}>
                 {isConnecting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="animate-spin" />
                     {t('servers.connecting')}
                   </>
                 ) : (
@@ -1327,7 +1333,7 @@ function EditServerDialog({
           <Button onClick={handleSave} disabled={isUpdating || !canSave}>
             {isUpdating ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="animate-spin" />
                 {t('servers.updating')}
               </>
             ) : (
@@ -1354,7 +1360,6 @@ function RealtimeSetupDialog({
   connectionStatus?: ServerConnectionStatus;
 }) {
   const { t } = useTranslation(['settings']);
-  const [copied, setCopied] = useState(false);
   const repoUrl = t('servers.realtimeDialog.jellyfinRepoUrl');
   const dispatcharrReleasesUrl =
     'https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics/releases/latest';
@@ -1368,13 +1373,6 @@ function RealtimeSetupDialog({
         : connectionStatus?.pluginIssue === 'malfunctioned'
           ? t('servers.realtimeDialog.issueMalfunctioned')
           : null;
-
-  const handleCopy = (text: string) => {
-    void navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -1470,18 +1468,13 @@ function RealtimeSetupDialog({
                   <code className="bg-muted flex-1 truncate rounded px-2 py-1 text-xs">
                     {repoUrl}
                   </code>
-                  <button
-                    type="button"
-                    aria-label={t('servers.realtimeDialog.copyUrl')}
-                    className="hover:text-foreground shrink-0"
-                    onClick={() => handleCopy(repoUrl)}
-                  >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </button>
+                  <CopyButton
+                    value={repoUrl}
+                    label={t('servers.realtimeDialog.copyUrl')}
+                    variant="ghost"
+                    size="icon-sm"
+                    className="shrink-0"
+                  />
                 </div>
               </div>
             </>
@@ -1605,6 +1598,7 @@ function SortableServerCard({
             <p className="text-muted-foreground text-xs">
               {t('servers.added', { date: format(new Date(server.createdAt), 'MMM d, yyyy') })}
             </p>
+            <ServerVersionLine server={server} />
             {/* Connection status — only shown for Jellyfin and Emby */}
             {server.type !== 'plex' && (
               <div className="mt-1">
@@ -1671,7 +1665,7 @@ function SortableServerCard({
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={onSync} disabled={isSyncing}>
-            <RefreshCw className={cn('mr-1 h-4 w-4', isSyncing && 'animate-spin')} />
+            <RefreshCw className={cn(isSyncing && 'animate-spin')} />
             {t('common:actions.sync')}
           </Button>
           <Button variant="ghost" size="sm" onClick={onDelete}>

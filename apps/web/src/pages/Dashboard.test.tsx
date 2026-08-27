@@ -39,7 +39,7 @@ vi.mock('@/components/history/SessionDetailSheet', () => ({
   SessionDetailSheet: () => null,
 }));
 
-vi.mock('@/components/map', () => ({
+vi.mock('@/components/map/StreamCard', () => ({
   StreamCard: () => null,
 }));
 

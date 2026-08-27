@@ -135,12 +135,10 @@ export async function schedulePlexTokenRefresh(): Promise<void> {
     return;
   }
 
-  // Remove any existing job schedulers (repeatable jobs)
+  // Remove any existing job schedulers; BullMQ reports them by key, not id.
   const schedulers = await refreshQueue.getJobSchedulers();
   for (const scheduler of schedulers) {
-    if (scheduler.id) {
-      await refreshQueue.removeJobScheduler(scheduler.id);
-    }
+    await refreshQueue.removeJobScheduler(scheduler.key);
   }
 
   await refreshQueue.add(

@@ -9,26 +9,23 @@ import {
   SESSION_WRITE_RETRY,
   TIME_MS,
   type ActiveSession,
-  type RuleV2,
-  type Server,
-  type ServerUser,
+  type EngineAutomation,
   type Session,
   type StreamDetailFields,
 } from '@tracearr/shared';
-import { and, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { serverUsers, sessions, violations } from '../../db/schema.js';
+import { serverUsers, sessions, users } from '../../db/schema.js';
 import type { GeoLocation } from '../../services/geoip.js';
+import { toRuleSession } from '../../services/automations/events/contextAssembly.js';
+import { dispatch } from '../../services/automations/events/dispatcher.js';
+import { matchesTrigger } from '../../services/automations/events/evaluate.js';
 import {
-  evaluateRulesAsync,
-  hasPauseConditions,
-  hasTranscodeConditions,
-} from '../../services/rules/engine.js';
-import { executeActions, type ActionResult } from '../../services/rules/executors/index.js';
-import type { EvaluationContext, EvaluationResult } from '../../services/rules/types.js';
-import { storeActionResults } from '../../services/rules/v2Integration.js';
+  dispatchNewDevice,
+  dispatchSessionStopped,
+} from '../../services/automations/events/producers.js';
+import type { ActionResult } from '../../services/automations/executors/index.js';
 import { getWatchedThreshold } from '../../services/settings.js';
-import { recomputeIdentityAggregatesForServerUser } from '../../services/userService.js';
 import { clearDbWriteTracking } from './dbWriteThrottle.js';
 import { pickStreamDetailFields } from './sessionMapper.js';
 import {
@@ -36,12 +33,12 @@ import {
   checkWatchCompletion,
   shouldRecordSession,
 } from './stateTracker.js';
+import type { DbTx } from '../../services/automations/events/types.js';
 import type { SessionIdentity as MediaItemIdentity } from './database.js';
 import type {
   CompositeSessionIdentity,
   MediaChangeInput,
   MediaChangeResult,
-  PauseReEvalInput,
   PendingSessionData,
   QualityChangeResult,
   SessionCreationInput,
@@ -50,9 +47,7 @@ import type {
   SessionStopInput,
   SessionStopResult,
   StoppedSessionRef,
-  TranscodeReEvalInput,
 } from './types.js';
-import type { ViolationInsertResult } from './violations.js';
 
 // ============================================================================
 // Serialization Retry Logic
@@ -188,9 +183,8 @@ export interface BuildActiveSessionInput {
  */
 export function buildActiveSession(input: BuildActiveSessionInput): ActiveSession {
   const { session, processed, user, geo, server, overrides } = input;
-  const progressUpdatedAt = new Date();
 
-  const activeSession: ActiveSession = {
+  return {
     // Core identifiers
     id: session.id,
     serverId: server.id,
@@ -229,7 +223,7 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     // Progress
     totalDurationMs: processed.totalDurationMs || null,
     progressMs: processed.progressMs || null,
-    progressUpdatedAt,
+    progressUpdatedAt: new Date(),
 
     // Pause tracking (can be overridden for updates)
     lastPausedAt:
@@ -265,7 +259,7 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     // Quality/transcode info
     quality: processed.quality,
     isTranscode: processed.isTranscode,
-    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
+    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
     dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
     dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
     dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
@@ -293,8 +287,6 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     // Termination capability - Plex requires Session.id, some clients (like Plexamp) don't provide it
     canTerminate: server.type !== 'plex' || !!processed.plexSessionId,
   };
-
-  return activeSession;
 }
 
 /**
@@ -307,7 +299,6 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
  */
 export function buildPendingActiveSession(pendingData: PendingSessionData): ActiveSession {
   const { processed, serverUser, geo, server } = pendingData;
-  const progressUpdatedAt = new Date();
 
   return {
     // Core identifiers - use pre-generated UUID (stable from creation to DB persistence)
@@ -318,6 +309,9 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
 
     // State
     state: pendingData.currentState,
+
+    // Progress timestamps remain meaningful before pending playback is confirmed.
+    progressUpdatedAt: new Date(),
 
     // Media metadata
     mediaType: processed.mediaType,
@@ -348,7 +342,6 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     // Progress
     totalDurationMs: processed.totalDurationMs || null,
     progressMs: processed.progressMs || null,
-    progressUpdatedAt,
 
     // Pause tracking
     lastPausedAt: pendingData.lastPausedAt ? new Date(pendingData.lastPausedAt) : null,
@@ -380,7 +373,7 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     // Quality/transcode info
     quality: processed.quality,
     isTranscode: processed.isTranscode,
-    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
+    dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
     dispatcharrCatchupAnchorAt: processed.dispatcharrCatchupAnchorAt ?? null,
     dispatcharrCatchupEpgStartAt: processed.dispatcharrCatchupEpgStartAt ?? null,
     dispatcharrCatchupEpgEndAt: processed.dispatcharrCatchupEpgEndAt ?? null,
@@ -591,24 +584,53 @@ export async function batchFindActiveSessionsByComposite(
 // ============================================================================
 
 /**
- * Build the session list used for rule evaluation context.
- *
- * Excludes stoppedTwinId (the quality-change twin stopped earlier in the
- * same operation but still present in the caller's cache snapshot) and
- * appends triggeringSession unless a session with that id is already
- * present.
+ * What a device is known by. An empty deviceId falls through to the player name rather than
+ * probing for '', which the insert could never have written: it stores `deviceId || null`.
  */
-export function buildRuleContextSessions(
-  activeSessions: Session[],
-  triggeringSession: Session,
-  stoppedTwinId: string | null | undefined
-): Session[] {
-  const countableSessions = stoppedTwinId
-    ? activeSessions.filter((s) => s.id !== stoppedTwinId)
-    : activeSessions;
-  return countableSessions.some((s) => s.id === triggeringSession.id)
-    ? countableSessions
-    : [...countableSessions, triggeringSession];
+export function deviceKeyOf(session: {
+  deviceId?: string | null;
+  playerName?: string | null;
+}): { column: 'deviceId' | 'playerName'; value: string } | null {
+  if (session.deviceId) return { column: 'deviceId', value: session.deviceId };
+  if (session.playerName) return { column: 'playerName', value: session.playerName };
+  return null;
+}
+
+/** City and region as a message names them, or null when the session carries no geo columns. */
+export function sessionLocation(session: {
+  geoCity: string | null;
+  geoRegion: string | null;
+  geoCountry: string | null;
+}): string | null {
+  const parts = [session.geoCity, session.geoRegion ?? session.geoCountry].filter(
+    (part): part is string => part !== null && part !== ''
+  );
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+/**
+ * Whether this account has ever streamed from the device. Ordered append visits the newest
+ * chunk first and stops at the first row, so a device already on file never fans out.
+ */
+async function accountHasSeenDevice(
+  tx: DbTx,
+  serverUserId: string,
+  key: { column: 'deviceId' | 'playerName'; value: string }
+): Promise<boolean> {
+  const seen = await tx
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.serverUserId, serverUserId),
+        key.column === 'deviceId'
+          ? eq(sessions.deviceId, key.value)
+          : and(isNull(sessions.deviceId), eq(sessions.playerName, key.value))
+      )
+    )
+    .orderBy(desc(sessions.startedAt))
+    .limit(1);
+  return seen.length > 0;
 }
 
 /**
@@ -664,7 +686,7 @@ export async function createSessionWithRulesAtomic(
     server,
     serverUser,
     geo,
-    activeRulesV2,
+    activeAutomations,
     activeSessions,
     recentSessions,
     preGeneratedId,
@@ -709,6 +731,7 @@ export async function createSessionWithRulesAtomic(
         session: existingActiveSession,
         stoppedAt: now,
         preserveWatched: true,
+        reason: 'quality_change',
       });
 
       // Only proceed with quality change if we actually stopped the session
@@ -781,8 +804,8 @@ export async function createSessionWithRulesAtomic(
 
   for (let attempt = 1; attempt <= MAX_SERIALIZATION_RETRIES; attempt++) {
     try {
-      const { insertedSession, violationResults, pendingSideEffects } = await db.transaction(
-        async (tx) => {
+      const { insertedSession, violationResults, deferredActions, newDevice } =
+        await db.transaction(async (tx) => {
           // Set SERIALIZABLE isolation to prevent duplicate violations from concurrent polls
           // This ensures that if two transactions read the violations table simultaneously,
           // one will be forced to retry after the other commits
@@ -793,6 +816,17 @@ export async function createSessionWithRulesAtomic(
           await tx.execute(
             sql`SET LOCAL statement_timeout = ${sql.raw(String(TRANSACTION_TIMEOUT_MS))}`
           );
+
+          // Before the insert: after it the new row would match itself. The rules are in
+          // hand, so an install with no such automation never issues the query.
+          const deviceKey = activeAutomations.some((candidate) =>
+            matchesTrigger(candidate, 'account.new_device')
+          )
+            ? deviceKeyOf(processed)
+            : null;
+          const isNewDevice = deviceKey
+            ? !(await accountHasSeenDevice(tx, serverUser.id, deviceKey))
+            : false;
 
           const insertedRows = await tx
             .insert(sessions)
@@ -851,7 +885,7 @@ export async function createSessionWithRulesAtomic(
               platform: processed.platform,
               quality: processed.quality,
               isTranscode: processed.isTranscode,
-              dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
+              dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
               videoDecision: processed.videoDecision,
               audioDecision: processed.audioDecision,
               bitrate: processed.bitrate,
@@ -881,235 +915,65 @@ export async function createSessionWithRulesAtomic(
             })
             .where(eq(serverUsers.id, serverUser.id));
 
-          // Build session object for rule evaluation (matches Session type)
-          const session = {
-            id: inserted.id,
-            serverId: server.id,
-            serverUserId: serverUser.id,
-            sessionKey: processed.sessionKey,
-            state: processed.state,
-            mediaType: processed.mediaType,
-            mediaTitle: processed.mediaTitle,
-            grandparentTitle: processed.grandparentTitle || null,
-            seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
-            episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
-            year: processed.year || null,
-            thumbPath: processed.thumbPath || null,
-            ratingKey: processed.ratingKey || null,
-            serverVersionKey: processed.serverVersionKey ?? null,
-            parentRatingKey: processed.identity?.parentRatingKey ?? null,
-            grandparentRatingKey: processed.identity?.grandparentRatingKey ?? null,
-            mediaId: processed.identity?.mediaId ?? null,
-            showMediaId: processed.identity?.showMediaId ?? null,
-            imdbId: processed.identity?.imdbId ?? null,
-            tmdbId: processed.identity?.tmdbId ?? null,
-            tvdbId: processed.identity?.tvdbId ?? null,
-            externalSessionId: null,
-            startedAt: inserted.startedAt,
-            stoppedAt: null,
-            durationMs: null,
-            totalDurationMs: processed.totalDurationMs || null,
-            progressMs: processed.progressMs || null,
-            lastPausedAt: inserted.lastPausedAt,
-            pausedDurationMs: inserted.pausedDurationMs,
-            referenceId: inserted.referenceId,
-            watched: inserted.watched,
-            ipAddress: processed.ipAddress,
-            geoCity: geo.city,
-            geoRegion: geo.region,
-            geoCountry: geo.countryCode ?? geo.country,
-            geoContinent: geo.continent,
-            geoPostal: geo.postal,
-            geoLat: geo.lat,
-            geoLon: geo.lon,
-            geoAsnNumber: geo.asnNumber,
-            geoAsnOrganization: geo.asnOrganization,
-            playerName: processed.playerName,
-            deviceId: processed.deviceId || null,
-            product: processed.product || null,
-            device: processed.device || null,
-            platform: processed.platform,
-            quality: processed.quality,
-            isTranscode: processed.isTranscode,
-            dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind,
-            videoDecision: processed.videoDecision,
-            audioDecision: processed.audioDecision,
-            bitrate: processed.bitrate,
-            // Stream details (source media, stream output, transcode/subtitle info)
-            ...pickStreamDetailFields(processed),
-            // Live TV specific fields
-            channelTitle: processed.channelTitle,
-            channelIdentifier: processed.channelIdentifier,
-            channelThumb: processed.channelThumb,
-            // Music track metadata
-            artistName: processed.artistName,
-            albumName: processed.albumName,
-            trackNumber: processed.trackNumber,
-            discNumber: processed.discNumber,
-          } as Session;
+          // Mirror of the account bump above, not recomputeIdentityAggregates:
+          // this is the poller hot path and the rollup only ever moves forward.
+          await tx
+            .update(users)
+            .set({
+              lastActivityAt: sql`GREATEST(COALESCE(${users.lastActivityAt}, ${inserted.startedAt}), ${inserted.startedAt})`,
+            })
+            .where(eq(users.id, serverUser.userId));
 
-          // Build V2 evaluation context
-          const serverObj: Server = {
-            id: server.id,
-            name: server.name,
-            type: server.type,
-            url: '', // Not needed for rule evaluation
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
-
-          const serverUserObj: ServerUser = {
-            id: serverUser.id,
-            userId: serverUser.userId,
-            serverId: server.id,
-            externalId: '',
-            username: serverUser.username,
-            email: null,
-            thumbUrl: serverUser.thumbUrl,
-            isServerAdmin: false,
-            trustScore: serverUser.trustScore,
-            joinedAt: null,
-            lastActivityAt: serverUser.lastActivityAt,
-            createdAt: serverUser.createdAt,
-            removedAt: null,
-            updatedAt: new Date(),
-            identityName: serverUser.identityName,
-          };
-
-          // The quality-change twin was stopped in STEP 1 but still sits in the
-          // caller's cache snapshot; counting it doubles this viewer.
-          const activeSessionsWithNew = buildRuleContextSessions(
-            activeSessions,
-            session,
-            qualityChange?.stoppedSession.id
-          );
-
-          const baseContext: Omit<EvaluationContext, 'rule'> = {
-            session,
-            serverUser: serverUserObj,
-            server: serverObj,
-            activeSessions: activeSessionsWithNew,
+          const session = toRuleSession(inserted);
+          const ruleServer = { id: server.id, name: server.name, type: server.type };
+          const inputs = {
+            activeAutomations,
+            // The quality-change twin was stopped in STEP 1 but still sits in the caller's snapshot.
+            activeSessions: qualityChange
+              ? activeSessions.filter((s) => s.id !== qualityChange.stoppedSession.id)
+              : activeSessions,
             recentSessions,
             identityServerUserIds: serverUser.identityServerUserIds,
           };
-
-          // Evaluate V2 rules
-          const ruleResults = await evaluateRulesAsync(baseContext, activeRulesV2);
-
-          // Process matched rules - create violations within transaction, queue side effects
-          const createdViolations: ViolationInsertResult[] = [];
-          const pendingSideEffects: Array<{
-            context: EvaluationContext;
-            result: EvaluationResult;
-            rule: RuleV2;
-          }> = [];
-
-          for (const result of ruleResults) {
-            if (!result.matched) continue;
-
-            // Find the rule that produced this result
-            const rule = activeRulesV2.find((r) => r.id === result.ruleId);
-            if (!rule) continue;
-
-            // Every rule match auto-creates a violation. Severity from rule.
+          const { violations: violationResults, deferredActions } = await dispatch(
             {
-              const severity = rule.severity ?? 'warning';
+              type: 'session.started',
+              at: inserted.startedAt,
+              server: ruleServer,
+              serverUser,
+              session,
+            },
+            inputs,
+            { tx, deferActions: true }
+          );
 
-              // Collect related session IDs from evidence
-              const allRelatedSessionIds = new Set<string>();
-              for (const group of result.evidence ?? []) {
-                for (const cond of group.conditions) {
-                  for (const id of cond.relatedSessionIds ?? []) {
-                    allRelatedSessionIds.add(id);
-                  }
-                }
-              }
-
-              // Insert violation
-              const insertedViolations = await tx
-                .insert(violations)
-                .values({
-                  ruleId: rule.id,
-                  serverUserId: serverUser.id,
-                  sessionId: inserted.id,
-                  severity,
-                  ruleType: null, // V2 rules don't have a type field
-                  data: {
-                    evidence: result.evidence,
-                    relatedSessionIds: Array.from(allRelatedSessionIds),
-                    ruleName: rule.name,
-                    matchedGroups: result.matchedGroups,
-                    sessionKey: session.sessionKey,
-                    mediaTitle: session.mediaTitle,
-                    ipAddress: session.ipAddress,
+          const newDevice = isNewDevice
+            ? {
+                event: {
+                  at: inserted.startedAt,
+                  server: ruleServer,
+                  serverUser,
+                  session,
+                  device: {
+                    name: inserted.playerName ?? inserted.device ?? inserted.product ?? '',
+                    platform: inserted.platform,
+                    product: inserted.product,
+                    location: sessionLocation(inserted),
                   },
-                })
-                .onConflictDoNothing()
-                .returning();
-
-              const violation = insertedViolations[0];
-
-              if (violation) {
-                await recomputeIdentityAggregatesForServerUser(serverUser.id, tx);
-
-                // Create rule info for ViolationInsertResult (V2 rules don't have type)
-                const ruleInfo = {
-                  id: rule.id,
-                  name: rule.name,
-                  type: null, // V2 rules don't have a type
-                };
-
-                createdViolations.push({
-                  violation,
-                  rule: ruleInfo,
-                });
+                },
+                inputs,
               }
-            }
+            : null;
 
-            // Queue actions for execution after transaction
-            if (result.actions.length > 0) {
-              pendingSideEffects.push({
-                context: { ...baseContext, rule },
-                result,
-                rule,
-              });
-            }
-          }
+          return { insertedSession: inserted, violationResults, deferredActions, newDevice };
+        });
 
-          return {
-            insertedSession: inserted,
-            violationResults: createdViolations,
-            pendingSideEffects,
-          };
-        }
+      const actionResults = deferredActions ? await deferredActions() : [];
+      if (newDevice) await dispatchNewDevice(newDevice.event, newDevice.inputs);
+      const wasTerminatedByRule = wasTriggeringSessionTargetedForKill(
+        actionResults,
+        insertedSession.id
       );
-
-      // Execute side effect actions after transaction commits
-      let wasTerminatedByRule = false;
-
-      for (const { context, result, rule } of pendingSideEffects) {
-        // Find violation ID if one was created for this rule - kill_stream needs
-        // it before executing so the kill queue can attribute its eventual
-        // outcome (killed/skipped/failed) back to the right violation.
-        const violationId =
-          violationResults.find((v) => v.rule.id === rule.id)?.violation.id ?? null;
-
-        const actionResults: ActionResult[] = await executeActions(
-          { ...context, violationId },
-          result.actions
-        );
-
-        // A kill job was actually enqueued for the triggering session - not a
-        // prediction made before actions ran, so it stays accurate even if
-        // reverify later aborts the kill (the session just gets re-added on
-        // the next poll tick since it's still in the server's response).
-        if (wasTriggeringSessionTargetedForKill(actionResults, insertedSession.id)) {
-          wasTerminatedByRule = true;
-        }
-
-        // Store results for UI
-        await storeActionResults(violationId, result.ruleId, actionResults);
-      }
 
       console.log(
         `[SessionLifecycle] Session started: ${processed.mediaType} "${processed.grandparentTitle ? `${processed.grandparentTitle} - ` : ''}${processed.mediaTitle}" by ${serverUser.username} on ${server.name} (${processed.playerName ?? 'unknown player'}, key ${processed.sessionKey})`
@@ -1157,7 +1021,7 @@ export interface ConfirmPendingSessionInput {
   /** Pending session data from Redis */
   pendingData: PendingSessionData;
   /** Active V2 rules to evaluate */
-  activeRulesV2: RuleV2[];
+  activeAutomations: EngineAutomation[];
   /** Active sessions for rule context */
   activeSessions: Session[];
   /** Recent sessions for rule evaluation */
@@ -1177,7 +1041,7 @@ export interface ConfirmPendingSessionInput {
 export async function confirmAndPersistSession(
   input: ConfirmPendingSessionInput
 ): Promise<SessionCreationResult> {
-  const { pendingData, activeRulesV2, activeSessions, recentSessions } = input;
+  const { pendingData, activeAutomations, activeSessions, recentSessions } = input;
   const { processed, server, serverUser, geo } = pendingData;
 
   // Delegate to createSessionWithRulesAtomic for atomic rule evaluation
@@ -1194,7 +1058,7 @@ export async function confirmAndPersistSession(
     server,
     serverUser,
     geo,
-    activeRulesV2,
+    activeAutomations,
     activeSessions,
     recentSessions,
     // Use the pre-generated UUID - ensures same ID from pending to confirmed state
@@ -1252,7 +1116,13 @@ export async function confirmAndPersistSession(
  * Implements bounded retry logic for transient DB failures.
  */
 export async function stopSessionAtomic(input: SessionStopInput): Promise<SessionStopResult> {
-  const { session, stoppedAt, forceStopped = false, preserveWatched = false } = input;
+  const {
+    session,
+    stoppedAt,
+    forceStopped = false,
+    preserveWatched = false,
+    reason = 'ended',
+  } = input;
 
   const { durationMs, finalPausedDurationMs } = calculateStopDuration(
     {
@@ -1281,6 +1151,8 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
 
   // Retry loop for transient DB failures (connection errors, timeouts, etc.)
   let lastError: unknown;
+  // null until a write attempt lands; then whether this call is the one that stopped the row.
+  let wasUpdated: boolean | null = null;
   for (let attempt = 1; attempt <= SESSION_WRITE_RETRY.IMMEDIATE_RETRIES; attempt++) {
     try {
       // Use conditional update for idempotency - only stop if not already stopped
@@ -1300,16 +1172,8 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
         .where(and(eq(sessions.id, session.id), isNull(sessions.stoppedAt)))
         .returning({ id: sessions.id });
 
-      // Return whether the update was applied (for caller to skip cache/broadcast if already stopped)
-      const wasUpdated = result.length > 0;
-
-      if (wasUpdated) {
-        console.log(
-          `[SessionLifecycle] Session stopped: "${session.mediaTitle}" after ${Math.round(durationMs / 1000)}s (watched=${watched}${forceStopped ? ', forced' : ''})`
-        );
-      }
-
-      return { durationMs, watched, shortSession, wasUpdated };
+      wasUpdated = result.length > 0;
+      break;
     } catch (error) {
       lastError = error;
       if (attempt < SESSION_WRITE_RETRY.IMMEDIATE_RETRIES) {
@@ -1322,20 +1186,44 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
     }
   }
 
-  // All retries failed - return needsRetry for caller to queue for later processing
-  console.error(
-    `[SessionLifecycle] All ${SESSION_WRITE_RETRY.IMMEDIATE_RETRIES} attempts failed for session ${session.id}:`,
-    lastError
-  );
+  if (wasUpdated === null) {
+    // All retries failed - return needsRetry for caller to queue for later processing
+    console.error(
+      `[SessionLifecycle] All ${SESSION_WRITE_RETRY.IMMEDIATE_RETRIES} attempts failed for session ${session.id}:`,
+      lastError
+    );
 
-  return {
-    durationMs,
-    watched,
-    shortSession,
-    wasUpdated: false,
-    needsRetry: true,
-    retryData: { stoppedAt: stoppedAt.getTime(), forceStopped },
-  };
+    return {
+      durationMs,
+      watched,
+      shortSession,
+      wasUpdated: false,
+      needsRetry: true,
+      retryData: { stoppedAt: stoppedAt.getTime(), forceStopped },
+    };
+  }
+
+  if (wasUpdated) {
+    console.log(
+      `[SessionLifecycle] Session stopped: "${session.mediaTitle}" after ${Math.round(durationMs / 1000)}s (watched=${watched}${forceStopped ? ', forced' : ''})`
+    );
+    // Outside the retry loop: the row is stopped, and a failed dispatch must not re-run the write.
+    await dispatchSessionStopped(
+      toRuleSession(session, {
+        state: 'stopped',
+        stoppedAt,
+        durationMs,
+        pausedDurationMs: finalPausedDurationMs,
+        lastPausedAt: null,
+        watched,
+      }),
+      durationMs,
+      stoppedAt,
+      reason
+    );
+  }
+
+  return { durationMs, watched, shortSession, wasUpdated };
 }
 
 // ============================================================================
@@ -1362,7 +1250,7 @@ export async function handleMediaChangeAtomic(
     server,
     serverUser,
     geo,
-    activeRulesV2,
+    activeAutomations,
     activeSessions,
     recentSessions,
   } = input;
@@ -1376,6 +1264,7 @@ export async function handleMediaChangeAtomic(
   const { wasUpdated } = await stopSessionAtomic({
     session: existingSession,
     stoppedAt: now,
+    reason: 'media_change',
   });
 
   if (!wasUpdated) {
@@ -1385,6 +1274,13 @@ export async function handleMediaChangeAtomic(
     return null;
   }
 
+  await dispatch({
+    type: 'session.media_changed',
+    at: now,
+    sessionId: existingSession.id,
+    serverId: existingSession.serverId,
+  });
+
   // STEP 2: Create new session for the new media
   const { insertedSession, violationResults, wasTerminatedByRule, qualityChange } =
     await createSessionWithRulesAtomic({
@@ -1392,7 +1288,7 @@ export async function handleMediaChangeAtomic(
       server,
       serverUser,
       geo,
-      activeRulesV2,
+      activeAutomations,
       // The old-media session was stopped above; the caller's snapshot
       // predates that stop.
       activeSessions: activeSessions.filter((s) => s.id !== existingSession.id),
@@ -1417,19 +1313,12 @@ export async function handleMediaChangeAtomic(
 // ============================================================================
 
 /**
- * Notification types used during poll processing
- */
-type PollNotification =
-  | { type: 'session_started'; payload: ActiveSession }
-  | { type: 'session_stopped'; payload: ActiveSession };
-
-/**
  * Input for processing poll results
  */
 export interface PollResultsInput {
   /** Newly created sessions */
   newSessions: ActiveSession[];
-  /** Exact references for stopped sessions */
+  /** Exact references for stopped sessions. Do not reduce these to provider keys. */
   stoppedSessions: StoppedSessionRef[];
   /** Sessions that were updated */
   updatedSessions: ActiveSession[];
@@ -1450,12 +1339,10 @@ export interface PollResultsInput {
   pubSubService: {
     publish: (event: string, data: unknown) => Promise<void>;
   } | null;
-  /** Notification enqueue function */
-  enqueueNotification: (notification: PollNotification) => Promise<unknown>;
   /**
    * IDs (subset of newSessions) confirmed from a pending entry rather than
-   * created fresh. The pending create already published session:started and
-   * enqueued session_started, so both are skipped here for these ids.
+   * created fresh. The pending create already published session:started, so
+   * it is skipped here for these ids.
    */
   confirmedFromPendingIds?: Set<string>;
 }
@@ -1472,14 +1359,11 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     cachedSessions,
     cacheService,
     pubSubService,
-    enqueueNotification,
     confirmedFromPendingIds,
   } = input;
 
   const uniqueStoppedSessions = [
-    ...new Map(
-      stoppedSessions.map((stoppedSession) => [stoppedSession.id, stoppedSession])
-    ).values(),
+    ...new Map(stoppedSessions.map((stoppedSession) => [stoppedSession.id, stoppedSession])).values(),
   ];
   const stoppedSessionIds = uniqueStoppedSessions.map((stoppedSession) => stoppedSession.id);
   const cachedSessionsById = new Map(cachedSessions.map((session) => [session.id, session]));
@@ -1497,20 +1381,17 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
 
   // Publish events via pub/sub
   if (pubSubService) {
-    const confirmedPendingSessions = confirmedFromPendingIds
-      ? newSessions.filter((session) => confirmedFromPendingIds.has(session.id))
-      : [];
-
     for (const session of newSessions) {
-      // Sessions confirmed from a pending entry already got both of these
-      // at pending create - re-sending here would double the SSE event and
-      // the user-facing notification.
+      // A session confirmed from a pending entry was already published at pending
+      // create; re-sending here would double the SSE event.
       if (confirmedFromPendingIds?.has(session.id)) continue;
       await pubSubService.publish('session:started', session);
-      await enqueueNotification({ type: 'session_started', payload: session });
     }
 
     // No consumer reads the payload, so one tick's updates collapse to a single publish.
+    const confirmedPendingSessions = confirmedFromPendingIds
+      ? newSessions.filter((session) => confirmedFromPendingIds.has(session.id))
+      : [];
     const sessionToUpdate = updatedSessions[0] ?? confirmedPendingSessions[0];
     if (sessionToUpdate) {
       await pubSubService.publish('session:updated', sessionToUpdate);
@@ -1519,500 +1400,8 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
     for (const stoppedRef of uniqueStoppedSessions) {
       const stoppedSession = cachedSessionsById.get(stoppedRef.id);
       if (stoppedSession) {
-        // Fetch the computed durationMs from DB since the cached session has stale data
-        const [dbSession] = await db
-          .select({ durationMs: sessions.durationMs })
-          .from(sessions)
-          .where(eq(sessions.id, stoppedSession.id));
-        const durationMs = dbSession?.durationMs ?? stoppedSession.durationMs;
         await pubSubService.publish('session:stopped', stoppedSession.id);
-        await enqueueNotification({
-          type: 'session_stopped',
-          payload: { ...stoppedSession, durationMs },
-        });
       }
     }
   }
-}
-
-// ============================================================================
-// Transcode State Change Re-evaluation
-// ============================================================================
-
-/**
- * Re-evaluate V2 rules when an existing session's transcode state changes.
- *
- * Only rules containing transcode-related conditions (is_transcoding, is_transcode_downgrade,
- * output_resolution) are evaluated. This prevents false positives from rules that only check
- * conditions like concurrent_streams which are already evaluated at session creation.
- *
- * Deduplication: checks for existing violations per (ruleId, sessionId) before inserting,
- * since the DB unique index uses ruleType which is NULL for V2 rules.
- */
-export async function reEvaluateRulesOnTranscodeChange(
-  input: TranscodeReEvalInput
-): Promise<ViolationInsertResult[]> {
-  const {
-    existingSession,
-    processed,
-    server,
-    serverUser,
-    activeRulesV2,
-    activeSessions,
-    recentSessions,
-  } = input;
-
-  // Filter to only rules that have transcode-related conditions
-  const transcodeRules = activeRulesV2.filter(hasTranscodeConditions);
-  if (transcodeRules.length === 0) return [];
-
-  // Build Session object from existing session + updated transcode fields
-  const session: Session = {
-    id: existingSession.id,
-    serverId: existingSession.serverId,
-    serverUserId: existingSession.serverUserId,
-    sessionKey: existingSession.sessionKey,
-    externalSessionId: existingSession.externalSessionId,
-    state: processed.state,
-    mediaType: processed.mediaType,
-    mediaTitle: processed.mediaTitle,
-    grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
-    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
-    year: processed.year || null,
-    thumbPath: processed.thumbPath || null,
-    ratingKey: existingSession.ratingKey,
-    serverVersionKey: existingSession.serverVersionKey,
-    parentRatingKey: existingSession.parentRatingKey,
-    grandparentRatingKey: existingSession.grandparentRatingKey,
-    mediaId: existingSession.mediaId,
-    showMediaId: existingSession.showMediaId,
-    imdbId: existingSession.imdbId,
-    tmdbId: existingSession.tmdbId,
-    tvdbId: existingSession.tvdbId,
-    startedAt: existingSession.startedAt,
-    stoppedAt: null,
-    durationMs: null,
-    totalDurationMs: processed.totalDurationMs || null,
-    progressMs: processed.progressMs || null,
-    lastPausedAt: existingSession.lastPausedAt,
-    pausedDurationMs: existingSession.pausedDurationMs,
-    referenceId: existingSession.referenceId,
-    watched: existingSession.watched,
-    ipAddress: existingSession.ipAddress,
-    geoCity: existingSession.geoCity,
-    geoRegion: existingSession.geoRegion,
-    geoCountry: existingSession.geoCountry,
-    geoContinent: existingSession.geoContinent,
-    geoPostal: existingSession.geoPostal,
-    geoLat: existingSession.geoLat,
-    geoLon: existingSession.geoLon,
-    geoAsnNumber: existingSession.geoAsnNumber,
-    geoAsnOrganization: existingSession.geoAsnOrganization,
-    playerName: processed.playerName,
-    deviceId: processed.deviceId || null,
-    product: processed.product || null,
-    device: processed.device || null,
-    platform: processed.platform,
-    quality: processed.quality,
-    // Updated transcode fields (the reason for re-evaluation)
-    isTranscode: processed.isTranscode,
-    videoDecision: processed.videoDecision,
-    audioDecision: processed.audioDecision,
-    bitrate: processed.bitrate,
-    ...pickStreamDetailFields(processed),
-    channelTitle: existingSession.channelTitle,
-    channelIdentifier: existingSession.channelIdentifier,
-    channelThumb: existingSession.channelThumb,
-    artistName: existingSession.artistName,
-    albumName: existingSession.albumName,
-    trackNumber: existingSession.trackNumber,
-    discNumber: existingSession.discNumber,
-  };
-
-  const serverObj: Server = {
-    id: server.id,
-    name: server.name,
-    type: server.type as Server['type'],
-    url: '',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const serverUserObj: ServerUser = {
-    id: serverUser.id,
-    userId: serverUser.userId,
-    serverId: server.id,
-    externalId: '',
-    username: serverUser.username,
-    email: null,
-    thumbUrl: serverUser.thumbUrl,
-    isServerAdmin: false,
-    trustScore: serverUser.trustScore,
-    joinedAt: null,
-    lastActivityAt: serverUser.lastActivityAt,
-    createdAt: serverUser.createdAt,
-    removedAt: null,
-    updatedAt: new Date(),
-    identityName: serverUser.identityName,
-  };
-
-  const baseContext: Omit<EvaluationContext, 'rule'> = {
-    session,
-    serverUser: serverUserObj,
-    server: serverObj,
-    // Append the re-evaluated session to its own context. Callers pass the
-    // grace-filtered active list (excludeUncountableSessions), which drops this
-    // session while it is grace-flagged, so without the append a trigger is
-    // absent from its own re-eval context and self-undercounts (missed kill).
-    activeSessions: buildRuleContextSessions(activeSessions, session, null),
-    recentSessions,
-    identityServerUserIds: serverUser.identityServerUserIds,
-  };
-
-  // Evaluate only transcode-related rules
-  const ruleResults = await evaluateRulesAsync(baseContext, transcodeRules);
-
-  const createdViolations: ViolationInsertResult[] = [];
-
-  for (const result of ruleResults) {
-    if (!result.matched) continue;
-
-    const rule = transcodeRules.find((r) => r.id === result.ruleId);
-    if (!rule) continue;
-
-    // Every rule match auto-creates a violation. Severity from rule.
-    const severity = rule.severity ?? 'warning';
-
-    // Use a transaction with advisory lock to prevent duplicate violations.
-    // The DB unique index uses ruleType (NULL for V2), and NULL != NULL in PG,
-    // so onConflictDoNothing can't catch V2 duplicates. The advisory lock
-    // serializes concurrent SSE + reconciliation poll attempts for the same
-    // session+rule pair, and the transaction ensures atomicity of the dedup check + insert.
-    const violationResult = await db.transaction(async (tx) => {
-      // Advisory lock scoped to this session+rule pair.
-      // Released automatically when the transaction commits/rolls back.
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${existingSession.id} || '::' || ${rule.id}))`
-      );
-
-      // Dedup check (now race-free under advisory lock). A dismissed row
-      // blocks re-creation regardless of whether it was acknowledged first:
-      // dismiss means "false positive", and re-detecting the same
-      // session+rule would re-run its actions.
-      const existing = await tx
-        .select({ id: violations.id })
-        .from(violations)
-        .where(
-          and(
-            eq(violations.ruleId, rule.id),
-            eq(violations.sessionId, existingSession.id),
-            or(isNull(violations.acknowledgedAt), isNotNull(violations.dismissedAt))
-          )
-        )
-        .limit(1);
-
-      if (existing[0]) return null; // Already has a violation for this rule + session
-
-      // Collect related session IDs from evidence
-      const allRelatedSessionIds = new Set<string>();
-      for (const group of result.evidence ?? []) {
-        for (const cond of group.conditions) {
-          for (const id of cond.relatedSessionIds ?? []) {
-            allRelatedSessionIds.add(id);
-          }
-        }
-      }
-
-      const insertedViolations = await tx
-        .insert(violations)
-        .values({
-          ruleId: rule.id,
-          serverUserId: serverUser.id,
-          sessionId: existingSession.id,
-          severity,
-          ruleType: null,
-          data: {
-            evidence: result.evidence,
-            relatedSessionIds: Array.from(allRelatedSessionIds),
-            ruleName: rule.name,
-            matchedGroups: result.matchedGroups,
-            sessionKey: session.sessionKey,
-            mediaTitle: session.mediaTitle,
-            ipAddress: session.ipAddress,
-            transcodeReEval: true,
-          },
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      const violation = insertedViolations[0];
-      if (!violation) return null;
-
-      await recomputeIdentityAggregatesForServerUser(serverUser.id, tx);
-      return violation;
-    });
-
-    if (violationResult) {
-      const ruleInfo = {
-        id: rule.id,
-        name: rule.name,
-        type: null,
-      };
-
-      createdViolations.push({ violation: violationResult, rule: ruleInfo });
-
-      console.log(
-        `[rules] Transcode re-eval: rule "${rule.name}" matched session ${existingSession.id}`
-      );
-
-      // Execute actions (e.g., kill_stream, send_notification) only when
-      // a new violation was created. Gating here prevents actions from firing
-      // on subsequent re-evaluations where the dedup check returns null.
-      if (result.actions.length > 0) {
-        const context: EvaluationContext = {
-          ...baseContext,
-          rule,
-          violationId: violationResult.id,
-        };
-        const actionResults: ActionResult[] = await executeActions(context, result.actions);
-        await storeActionResults(violationResult.id, result.ruleId, actionResults);
-      }
-    }
-  }
-
-  return createdViolations;
-}
-
-/**
- * Re-evaluate V2 rules that have pause-related conditions for a paused session.
- *
- * Only rules containing `current_pause_minutes` or `total_pause_minutes` conditions
- * are evaluated to minimize overhead.
- */
-export async function reEvaluateRulesOnPauseState(
-  input: PauseReEvalInput
-): Promise<ViolationInsertResult[]> {
-  const {
-    existingSession,
-    processed,
-    pauseData,
-    server,
-    serverUser,
-    activeRulesV2,
-    activeSessions,
-    recentSessions,
-  } = input;
-
-  // Filter to only rules that have pause-related conditions
-  const pauseRules = activeRulesV2.filter(hasPauseConditions);
-  if (pauseRules.length === 0) return [];
-
-  // Build Session object with updated pause fields
-  const session: Session = {
-    id: existingSession.id,
-    serverId: existingSession.serverId,
-    serverUserId: existingSession.serverUserId,
-    sessionKey: existingSession.sessionKey,
-    externalSessionId: existingSession.externalSessionId,
-    state: processed.state,
-    mediaType: processed.mediaType,
-    mediaTitle: processed.mediaTitle,
-    grandparentTitle: processed.grandparentTitle || null,
-    seasonNumber: processed.mediaType === 'episode' ? processed.seasonNumber : null,
-    episodeNumber: processed.mediaType === 'episode' ? processed.episodeNumber : null,
-    year: processed.year || null,
-    thumbPath: processed.thumbPath || null,
-    ratingKey: existingSession.ratingKey,
-    serverVersionKey: existingSession.serverVersionKey,
-    parentRatingKey: existingSession.parentRatingKey,
-    grandparentRatingKey: existingSession.grandparentRatingKey,
-    mediaId: existingSession.mediaId,
-    showMediaId: existingSession.showMediaId,
-    imdbId: existingSession.imdbId,
-    tmdbId: existingSession.tmdbId,
-    tvdbId: existingSession.tvdbId,
-    startedAt: existingSession.startedAt,
-    stoppedAt: null,
-    durationMs: null,
-    totalDurationMs: processed.totalDurationMs || null,
-    progressMs: processed.progressMs || null,
-    lastPausedAt: pauseData.lastPausedAt,
-    pausedDurationMs: pauseData.pausedDurationMs,
-    referenceId: existingSession.referenceId,
-    watched: existingSession.watched,
-    ipAddress: existingSession.ipAddress,
-    geoCity: existingSession.geoCity,
-    geoRegion: existingSession.geoRegion,
-    geoCountry: existingSession.geoCountry,
-    geoContinent: existingSession.geoContinent,
-    geoPostal: existingSession.geoPostal,
-    geoLat: existingSession.geoLat,
-    geoLon: existingSession.geoLon,
-    geoAsnNumber: existingSession.geoAsnNumber,
-    geoAsnOrganization: existingSession.geoAsnOrganization,
-    playerName: processed.playerName,
-    deviceId: processed.deviceId || null,
-    product: processed.product || null,
-    device: processed.device || null,
-    platform: processed.platform,
-    quality: processed.quality,
-    isTranscode: processed.isTranscode,
-    videoDecision: processed.videoDecision,
-    audioDecision: processed.audioDecision,
-    bitrate: processed.bitrate,
-    ...pickStreamDetailFields(processed),
-    channelTitle: existingSession.channelTitle,
-    channelIdentifier: existingSession.channelIdentifier,
-    channelThumb: existingSession.channelThumb,
-    artistName: existingSession.artistName,
-    albumName: existingSession.albumName,
-    trackNumber: existingSession.trackNumber,
-    discNumber: existingSession.discNumber,
-  };
-
-  const serverObj: Server = {
-    id: server.id,
-    name: server.name,
-    type: server.type as Server['type'],
-    url: '',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const serverUserObj: ServerUser = {
-    id: serverUser.id,
-    userId: serverUser.userId,
-    serverId: server.id,
-    externalId: '',
-    username: serverUser.username,
-    email: null,
-    thumbUrl: serverUser.thumbUrl,
-    isServerAdmin: false,
-    trustScore: serverUser.trustScore,
-    joinedAt: null,
-    lastActivityAt: serverUser.lastActivityAt,
-    createdAt: serverUser.createdAt,
-    removedAt: null,
-    updatedAt: new Date(),
-    identityName: serverUser.identityName,
-  };
-
-  const baseContext: Omit<EvaluationContext, 'rule'> = {
-    session,
-    serverUser: serverUserObj,
-    server: serverObj,
-    // Append the re-evaluated session to its own context. Callers pass the
-    // grace-filtered active list (excludeUncountableSessions), which drops this
-    // session while it is grace-flagged, so without the append a trigger is
-    // absent from its own re-eval context and self-undercounts (missed kill).
-    activeSessions: buildRuleContextSessions(activeSessions, session, null),
-    recentSessions,
-    identityServerUserIds: serverUser.identityServerUserIds,
-  };
-
-  // Evaluate only pause-related rules
-  const ruleResults = await evaluateRulesAsync(baseContext, pauseRules);
-
-  const createdViolations: ViolationInsertResult[] = [];
-
-  for (const result of ruleResults) {
-    if (!result.matched) continue;
-
-    const rule = pauseRules.find((r) => r.id === result.ruleId);
-    if (!rule) continue;
-
-    // Every rule match auto-creates a violation. Severity from rule.
-    const severity = rule.severity ?? 'warning';
-
-    const violationResult = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${existingSession.id} || '::' || ${rule.id}))`
-      );
-
-      // Dedup check, prevents duplicate violation for same session+rule.
-      // Dismissed rows block regardless of acknowledgement, same as the
-      // advisory-lock path above.
-      const existing = await tx
-        .select({ id: violations.id })
-        .from(violations)
-        .where(
-          and(
-            eq(violations.ruleId, rule.id),
-            eq(violations.sessionId, existingSession.id),
-            or(isNull(violations.acknowledgedAt), isNotNull(violations.dismissedAt))
-          )
-        )
-        .limit(1);
-
-      if (existing[0]) return null;
-
-      // Collect related session IDs from evidence
-      const allRelatedSessionIds = new Set<string>();
-      for (const group of result.evidence ?? []) {
-        for (const cond of group.conditions) {
-          for (const id of cond.relatedSessionIds ?? []) {
-            allRelatedSessionIds.add(id);
-          }
-        }
-      }
-
-      const insertedViolations = await tx
-        .insert(violations)
-        .values({
-          ruleId: rule.id,
-          serverUserId: serverUser.id,
-          sessionId: existingSession.id,
-          severity,
-          ruleType: null,
-          data: {
-            evidence: result.evidence,
-            relatedSessionIds: Array.from(allRelatedSessionIds),
-            ruleName: rule.name,
-            matchedGroups: result.matchedGroups,
-            sessionKey: session.sessionKey,
-            mediaTitle: session.mediaTitle,
-            ipAddress: session.ipAddress,
-            pauseReEval: true,
-          },
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      const violation = insertedViolations[0];
-      if (!violation) return null;
-
-      await recomputeIdentityAggregatesForServerUser(serverUser.id, tx);
-      return violation;
-    });
-
-    if (violationResult) {
-      const ruleInfo = {
-        id: rule.id,
-        name: rule.name,
-        type: null,
-      };
-
-      createdViolations.push({ violation: violationResult, rule: ruleInfo });
-
-      console.log(
-        `[rules] Pause re-eval: rule "${rule.name}" matched session ${existingSession.id}`
-      );
-
-      // Execute actions (e.g., kill_stream, send_notification) only when
-      // a new violation was created. The dedup check returns null on subsequent
-      // polls, so gating here prevents kill_stream from firing every poll cycle.
-      if (result.actions.length > 0) {
-        const context: EvaluationContext = {
-          ...baseContext,
-          rule,
-          violationId: violationResult.id,
-        };
-        const actionResults: ActionResult[] = await executeActions(context, result.actions);
-        await storeActionResults(violationResult.id, result.ruleId, actionResults);
-      }
-    }
-  }
-
-  return createdViolations;
 }

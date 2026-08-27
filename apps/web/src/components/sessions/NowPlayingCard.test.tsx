@@ -366,7 +366,7 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     const poster = container.querySelector('img[alt="Dispatch News"]');
     expect(poster).toBeTruthy();
     expect(poster?.getAttribute('src')).toBe(
-      '/api/v1/images/proxy?server=server-1&url=https%3A%2F%2Fdispatcharr.example.com%2Fapi%2Fchannels%2Flogos%2F4671%2Fcache%2F%3Fts%3D123%23ignored&width=200&height=300'
+      '/api/v1/images/proxy?server=server-1&url=https%3A%2F%2Fdispatcharr.example.com%2Fapi%2Fchannels%2Flogos%2F4671%2Fcache%2F%3Fts%3D123%23ignored&width=360&height=540'
     );
   });
 });

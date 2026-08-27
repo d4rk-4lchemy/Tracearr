@@ -23,6 +23,7 @@ import {
 import { LibraryEmptyState } from '@/components/library/LibraryEmptyState';
 import { ErrorState, InlineErrorState } from '@/components/library/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   useCatalogWindow,
   useCatalogLetters,
@@ -523,10 +524,13 @@ export function MediaGrid() {
           style={{ gridTemplateColumns: isMobile || !showScrubber ? '1fr' : '1fr 26px' }}
         >
           {emptyVariant ? (
-            <div className="text-muted-foreground rounded-xl border border-dashed p-12 text-center text-sm">
-              {emptyVariant === 'search' && t('media.grid.emptySearch', { query: search })}
-              {emptyVariant === 'filter' && t('media.grid.emptyFilter')}
-            </div>
+            <EmptyState
+              title={
+                emptyVariant === 'search'
+                  ? t('media.grid.emptySearch', { query: search })
+                  : t('media.grid.emptyFilter')
+              }
+            />
           ) : (
             <div className="min-w-0 space-y-3">
               <VirtualPosterGrid

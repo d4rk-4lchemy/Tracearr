@@ -695,7 +695,7 @@ const Violation = z
   .object({
     id: z.uuid(),
     ...ServerInfo.shape,
-    severity: SeverityEnum,
+    severity: SeverityEnum.nullable(),
     acknowledged: z.boolean(),
     data: z
       .record(z.string(), z.unknown())
@@ -703,7 +703,10 @@ const Violation = z
     createdAt: z.iso.datetime(),
     rule: z.object({
       id: z.uuid(),
-      type: z.string().openapi({ example: 'concurrent_streams' }),
+      type: z
+        .string()
+        .nullable()
+        .openapi({ example: null, description: 'Always null; the v1 rule type was removed.' }),
       name: z.string().openapi({ example: 'Max 2 concurrent streams' }),
     }),
     user: UserInfo,

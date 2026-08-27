@@ -77,6 +77,9 @@ let pool = createPool();
 // all modules importing `db` automatically see the new instance after reassignment.
 export let db: NodePgDatabase<typeof schema> = drizzle(pool, { schema });
 
+/** Transaction handle, or the plain client when there is no surrounding transaction. */
+export type Executor = Parameters<Parameters<typeof db.transaction>[0]>[0] | typeof db;
+
 /**
  * Resize the live pool. pg-pool reads options.max on every acquire;
  * connections above a lowered cap drain through idleTimeoutMillis.

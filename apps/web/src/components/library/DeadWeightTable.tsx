@@ -5,6 +5,7 @@ import type { CatalogRowServerEntry, DeadWeightRow, ServerType } from '@tracearr
 import { buildPosterSrc, type PosterCardServer } from '@/components/media-browse/PosterCard';
 import { ServerDots } from '@/components/media-browse/ServerDots';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   Table,
   TableBody,
@@ -58,10 +59,6 @@ export function DeadWeightTableSkeleton() {
   );
 }
 
-// The versioned image proxy only accepts POSTER_BUCKET_WIDTHS (160/240/360)
-// when a `v` param is present; a smaller width 400s. Display size stays 32x48 via CSS.
-const DEAD_WEIGHT_THUMB_WIDTH = 160;
-
 function DeadWeightThumb({ row }: { row: DeadWeightRow }) {
   const [imgError, setImgError] = useState(false);
 
@@ -82,7 +79,7 @@ function DeadWeightThumb({ row }: { row: DeadWeightRow }) {
   }
   return (
     <img
-      src={buildPosterSrc(row.posterUrl, DEAD_WEIGHT_THUMB_WIDTH, row.posterVersion)}
+      src={buildPosterSrc(row.posterUrl, row.posterVersion)}
       alt=""
       loading="lazy"
       decoding="async"
@@ -132,9 +129,7 @@ export function DeadWeightTable({
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-muted-foreground rounded-lg border border-dashed p-4 text-sm">
-          {t('media.landing.deadWeight.empty')}
-        </p>
+        <EmptyState title={t('media.landing.deadWeight.empty')} className="py-6" />
       ) : (
         <Table aria-label={t('media.landing.deadWeight.title')}>
           <TableCaption className="sr-only">{t('media.landing.deadWeight.title')}</TableCaption>

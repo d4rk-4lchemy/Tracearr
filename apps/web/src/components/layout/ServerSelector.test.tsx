@@ -1,205 +1,110 @@
-// @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { Server } from '@tracearr/shared';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { ServerSelector } from './ServerSelector';
 
-const useServerMock = vi.fn();
-
-vi.mock('@/hooks/useServer', () => ({
-  useServer: () => useServerMock(),
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@/components/ui/popover', () => ({
-  Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  PopoverTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}));
+vi.mock('@/hooks/useServer', () => ({ useServer: vi.fn() }));
 
-vi.mock('@/components/ui/checkbox', () => ({
-  Checkbox: ({
-    checked,
-    onCheckedChange,
-  }: {
-    checked?: boolean;
-    onCheckedChange?: (checked: boolean) => void;
-  }) => (
-    <button
-      type="button"
-      aria-pressed={checked}
-      onClick={() => onCheckedChange?.(!checked)}
-    >
-      checkbox
-    </button>
-  ),
-}));
+import { useServer } from '@/hooks/useServer';
 
-vi.mock('@/components/ui/button', () => ({
-  Button: ({
-    children,
-    onClick,
-  }: {
-    children: React.ReactNode;
-    onClick?: () => void;
-  }) => (
-    <button type="button" onClick={onClick}>
-      {children}
-    </button>
-  ),
-}));
-
-vi.mock('@/components/ui/skeleton', () => ({
-  Skeleton: () => <div>loading</div>,
-}));
-
-vi.mock('@/components/icons/MediaServerIcon', () => ({
-  MediaServerIcon: () => <span>icon</span>,
-}));
-
-vi.mock('lucide-react', () => ({
-  ChevronsUpDown: () => <span>chevrons</span>,
-}));
-
-const makeServer = (id: string, name: string, type: 'jellyfin' | 'dispatcharr' = 'jellyfin') => ({
-  id,
-  name,
-  type,
-  color: null,
-});
-
-function buildUseServerValue(overrides: Record<string, unknown> = {}) {
+function server(overrides: Partial<Server> = {}): Server {
   return {
-    servers: [makeServer('s1', 'One'), makeServer('s2', 'Two')],
-    selectedServerIds: ['s1'],
-    selectedServers: [makeServer('s1', 'One')],
-    isMultiServer: false,
-    isAllServersSelected: false,
-    toggleServer: vi.fn(),
-    setSelectedServers: vi.fn(),
-    selectAllServers: vi.fn(),
-    deselectAllExcept: vi.fn(),
-    isLoading: false,
-    isFetching: false,
-    refetch: vi.fn(),
-    selectedServerId: 's1',
-    selectedServer: makeServer('s1', 'One'),
-    selectServer: vi.fn(),
+    id: 'srv-plex',
+    name: 'Plex Box',
+    type: 'plex',
+    color: '#ff9900',
     ...overrides,
-  };
+  } as Server;
 }
 
+const jellyfin = server({ id: 'srv-jf', name: 'Jellyfin Box', type: 'jellyfin', color: '#00a4dc' });
+
+const toggleServer = vi.fn();
+const selectAllServers = vi.fn();
+const deselectAllExcept = vi.fn();
+
+function mockServers(servers: Server[], selectedServerIds: string[]) {
+  vi.mocked(useServer).mockReturnValue({
+    servers,
+    selectedServerIds,
+    isAllServersSelected: selectedServerIds.length === servers.length,
+    toggleServer,
+    selectAllServers,
+    deselectAllExcept,
+    isLoading: false,
+    isFetching: false,
+  } as unknown as ReturnType<typeof useServer>);
+}
+
+function renderSelector() {
+  return render(
+    <SidebarProvider>
+      <ServerSelector />
+    </SidebarProvider>
+  );
+}
+
+beforeEach(() => {
+  toggleServer.mockReset();
+  selectAllServers.mockReset();
+  deselectAllExcept.mockReset();
+});
+
 describe('ServerSelector', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it('renders a static label rather than a picker for a single server', () => {
+    mockServers([server()], ['srv-plex']);
+    renderSelector();
+
+    expect(screen.getByText('Plex Box')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('shows a loading skeleton while server data is loading', () => {
-    useServerMock.mockReturnValue(
-      buildUseServerValue({
-        servers: [],
-        selectedServers: [],
-        isLoading: true,
-      })
-    );
+  it('names the one selected server instead of summarising by count', () => {
+    mockServers([server(), jellyfin], ['srv-plex']);
+    renderSelector();
 
-    render(<ServerSelector />);
-
-    expect(screen.getByText('loading')).toBeTruthy();
+    expect(screen.getByText('Plex Box')).toBeInTheDocument();
   });
 
-  it('renders a static label when only one server is available', () => {
-    useServerMock.mockReturnValue(
-      buildUseServerValue({
-        servers: [makeServer('s1', 'Only Server', 'dispatcharr')],
-        selectedServerIds: ['s1'],
-        selectedServers: [makeServer('s1', 'Only Server', 'dispatcharr')],
-      })
-    );
+  it('toggles the server that was actually clicked', async () => {
+    const user = userEvent.setup();
+    mockServers([server(), jellyfin], ['srv-plex', 'srv-jf']);
+    renderSelector();
 
-    render(<ServerSelector />);
+    await user.click(screen.getByRole('button', { name: /serverSelector.all/ }));
+    await user.click(screen.getByText('Jellyfin Box'));
 
-    expect(screen.getByText('Only Server')).toBeTruthy();
-    expect(screen.queryByText('All servers')).toBeNull();
+    expect(toggleServer).toHaveBeenCalledTimes(1);
+    expect(toggleServer).toHaveBeenCalledWith('srv-jf');
   });
 
-  it('shows the selected server name in the trigger for single selection', () => {
-    useServerMock.mockReturnValue(buildUseServerValue());
+  it('collapses to the first server rather than clearing the selection', async () => {
+    const user = userEvent.setup();
+    mockServers([server(), jellyfin], ['srv-plex', 'srv-jf']);
+    renderSelector();
 
-    render(<ServerSelector />);
+    await user.click(screen.getByRole('button', { name: /serverSelector.all/ }));
+    await user.click(screen.getByRole('button', { name: 'actions.deselectAll' }));
 
-    const buttons = screen.getAllByRole('button');
-    expect(buttons[0]?.textContent).toContain('One');
+    expect(selectAllServers).not.toHaveBeenCalled();
+    expect(deselectAllExcept).toHaveBeenCalledWith('srv-plex');
   });
 
-  it('shows the all-servers label when all servers are selected', () => {
-    const servers = [makeServer('s1', 'One'), makeServer('s2', 'Two')];
+  it('filters the list by search text', async () => {
+    const user = userEvent.setup();
+    mockServers([server(), jellyfin], ['srv-plex', 'srv-jf']);
+    renderSelector();
 
-    useServerMock.mockReturnValue(
-      buildUseServerValue({
-        servers,
-        selectedServerIds: ['s1', 's2'],
-        selectedServers: servers,
-        isMultiServer: true,
-        isAllServersSelected: true,
-        selectedServerId: null,
-        selectedServer: null,
-      })
-    );
+    await user.click(screen.getByRole('button', { name: /serverSelector.all/ }));
+    await user.type(screen.getByPlaceholderText('serverSelector.search'), 'jelly');
 
-    render(<ServerSelector />);
-
-    expect(screen.getByText('All servers')).toBeTruthy();
-  });
-
-  it('calls selectAllServers from the action row when not all servers are selected', () => {
-    const selectAllServers = vi.fn();
-
-    useServerMock.mockReturnValue(
-      buildUseServerValue({
-        selectAllServers,
-      })
-    );
-
-    render(<ServerSelector />);
-    fireEvent.click(screen.getByText('Select all'));
-
-    expect(selectAllServers).toHaveBeenCalledTimes(1);
-  });
-
-  it('calls deselectAllExcept with the first server when all servers are selected', () => {
-    const deselectAllExcept = vi.fn();
-    const servers = [makeServer('s1', 'One'), makeServer('s2', 'Two')];
-
-    useServerMock.mockReturnValue(
-      buildUseServerValue({
-        servers,
-        selectedServerIds: ['s1', 's2'],
-        selectedServers: servers,
-        isMultiServer: true,
-        isAllServersSelected: true,
-        deselectAllExcept,
-        selectedServerId: null,
-        selectedServer: null,
-      })
-    );
-
-    render(<ServerSelector />);
-    fireEvent.click(screen.getByText('Deselect all'));
-
-    expect(deselectAllExcept).toHaveBeenCalledWith('s1');
-  });
-
-  it('calls toggleServer when a server checkbox is toggled', () => {
-    const toggleServer = vi.fn();
-
-    useServerMock.mockReturnValue(
-      buildUseServerValue({
-        toggleServer,
-      })
-    );
-
-    render(<ServerSelector />);
-    fireEvent.click(screen.getAllByText('checkbox')[1]!);
-
-    expect(toggleServer).toHaveBeenCalledWith('s2');
+    expect(screen.getByText('Jellyfin Box')).toBeInTheDocument();
+    expect(screen.queryByText('Plex Box')).not.toBeInTheDocument();
   });
 });

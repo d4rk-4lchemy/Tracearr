@@ -226,7 +226,8 @@ export async function runSessionIdentityBackfillWalk(deps: {
           // Plain Error, not BackfillRangeError: every catch above rethrows
           // anything that isn't a range failure, so this leaves the walk.
           throw new Error(
-            `Aborting walk: ${failedRanges.length} failed ranges - this looks like a systemic fault (connectivity, permissions), not per-chunk decompression`
+            `Aborting walk: ${failedRanges.length} failed ranges - this looks like a systemic fault (connectivity, permissions), not per-chunk decompression`,
+            { cause: err }
           );
         }
         return;

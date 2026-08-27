@@ -38,8 +38,7 @@ export type {
   TranscodeInfo,
   SubtitleInfo,
   StreamDetailFields,
-  // Rule
-  RuleType,
+  // V1 rule params, still read by the automation migration
   ImpossibleTravelParams,
   SimultaneousLocationsParams,
   DeviceVelocityParams,
@@ -48,41 +47,12 @@ export type {
   GeoRestrictionParams,
   AccountInactivityUnit,
   AccountInactivityParams,
-  RuleParams,
-  Rule,
-  // Rule V2
-  Operator,
-  ConditionField,
-  ConditionValue,
-  Condition,
-  ConditionGroup,
-  RuleConditions,
-  ActionType,
-  Action,
-  LogOnlyAction,
-  NotifyAction,
-  AdjustTrustAction,
-  SetTrustAction,
-  ResetTrustAction,
-  KillStreamAction,
-  MessageClientAction,
-  NotificationChannelV2,
-  RuleActions,
-  RuleV2,
-  ActionResult,
-  VideoResolution,
-  DeviceType,
-  Platform,
-  MediaTypeEnum,
-  TranscodingConditionValue,
+  EngineAutomation,
   // Violation
   ViolationSeverity,
   Violation,
   ViolationWithDetails,
   ViolationSessionInfo,
-  // Evidence
-  ConditionEvidence,
-  GroupEvidence,
   // Stats
   DashboardStats,
   PlayStats,
@@ -109,8 +79,8 @@ export type {
   ServerLiveStats,
   // Settings
   Settings,
-  WebhookFormat,
   UnitSystem,
+  ImageCacheStatus,
   // Tailscale
   TailscaleStatus,
   TailscaleExitNode,
@@ -151,7 +121,7 @@ export type {
   ServerFilterOption,
   CountryOption,
   HistoryFilterOptions,
-  RulesFilterOptions,
+  AutomationFilterOptions,
   // Mobile
   MobileToken,
   MobileSession,
@@ -164,8 +134,6 @@ export type {
   NotificationPreferences,
   RateLimitStatus,
   NotificationPreferencesWithStatus,
-  NotificationChannel,
-  NotificationChannelRouting,
   EncryptedPushPayload,
   PushNotificationPayload,
   // SSE (Server-Sent Events)
@@ -195,6 +163,9 @@ export type {
   LinkPlexAccountRequest,
   LinkPlexAccountResponse,
   UnlinkPlexAccountResponse,
+  ReauthorizePlexAccountResponse,
+  ReauthorizedServer,
+  ReauthorizedServerStatus,
   // Version
   VersionInfo,
   // Backup & Restore
@@ -322,6 +293,132 @@ export type {
   LibrariesResponse,
 } from './types.js';
 
+// Destination type exports
+export type {
+  DestinationKind,
+  DestinationFieldDescriptor,
+  DestinationDescriptor,
+  Destination,
+  CreateDestinationInput,
+  UpdateDestinationInput,
+  NotificationToast,
+} from './destinations.js';
+
+// Automation type exports
+export type {
+  AutomationKind,
+  TriggerContext,
+  TriggerGroup,
+  TriggerType,
+  TriggerNode,
+  RunOutcome,
+  Automation,
+  AutomationScopeRef,
+  AutomationTemplateRef,
+  AutomationOrigin,
+  AutomationRunSummary,
+  AutomationRun,
+  RunSubject,
+  RunSubjectKind,
+  RunSessionContext,
+  RunFinishedEvent,
+  CreateAutomationInput,
+  UpdateAutomationInput,
+  AutomationSortField,
+  AutomationSource,
+  AutomationListQuery,
+  RunSortField,
+  RunListQuery,
+  RunCounts,
+  NearMissReason,
+  NearMissEntry,
+  ConditionFieldDescriptor,
+  // Condition family
+  Operator,
+  ScopeField,
+  LibraryItemType,
+  ConditionField,
+  ConditionValue,
+  TranscodingConditionValue,
+  VideoResolution,
+  DeviceType,
+  Platform,
+  MediaTypeEnum,
+  NodeFields,
+  Condition,
+  ConditionGroup,
+  ConditionMatch,
+  AutomationConditions,
+  ConditionEvidence,
+  GroupEvidence,
+  ActionResult,
+  LeafActionType,
+  LeafAction,
+  IfAction,
+  TemplateInput,
+  TemplateDefinition,
+  TemplateEnvelope,
+  ShareCodeReason,
+  DryRunRequest,
+  DryRunSubject,
+  DryRunCondition,
+  DryRunAction,
+  DryRunSample,
+  DryRunResponse,
+} from './automations/index.js';
+
+// Automation constants and schemas
+export {
+  AUTOMATION_KINDS,
+  TRIGGERS,
+  TRIGGER_GROUPS,
+  TRIGGER_TYPES,
+  CONDITION_FIELDS,
+  operatorSchema,
+  conditionValueSchema,
+  conditionSchema,
+  ACTIONS,
+  ACTION_TYPES,
+  LEAF_ACTION_TYPES,
+  RUN_OUTCOMES,
+  RETENTION_DEFAULTS,
+  AUTOMATION_NAME_MAX,
+  AUTOMATION_DESCRIPTION_MAX,
+  AUTOMATION_SORT_FIELDS,
+  AUTOMATION_SOURCES,
+  RUN_SORT_FIELDS,
+  triggerNodeSchema,
+  heldForParamsSchema,
+  inactiveForParamsSchema,
+  conditionGroupSchema,
+  automationDefinitionSchema,
+  createAutomationSchema,
+  updateAutomationSchema,
+  automationListQuerySchema,
+  dryRunRequestSchema,
+  runListQuerySchema,
+  runCountsQuerySchema,
+  NEAR_MISS_REASONS,
+  nearMissEntrySchema,
+  contextOf,
+  contextSupplies,
+  fieldsAvailableFor,
+  TEMPLATE_GROUPS,
+  TEMPLATE_SCHEMA_VERSION,
+  TEMPLATE_MIN_SERVER_VERSION,
+  templateEnvelopeSchema,
+  materializeTemplate,
+  slotValueFor,
+  liftAutomation,
+  TemplateBindingError,
+  ShareCodeError,
+  assertShareDepth,
+  canonicalJson,
+  fingerprintOf,
+  encodeShareCode,
+  decodeShareCode,
+} from './automations/index.js';
+
 // Schema exports
 export {
   // Common
@@ -347,7 +444,10 @@ export {
   mergeUsersBodySchema,
   mergeUserParamSchema,
   splitServerUserParamSchema,
-  userSortFieldSchema,
+  USER_SORT_FIELDS,
+  userRosterFilterSchema,
+  userListQuerySchema,
+  bulkResetTrustBodySchema,
   // Session
   sessionQuerySchema,
   historyQuerySchema,
@@ -362,26 +462,24 @@ export {
   concurrentStreamsParamsSchema,
   geoRestrictionParamsSchema,
   accountInactivityParamsSchema,
-  ruleParamsSchema,
-  createRuleSchema,
-  updateRuleSchema,
-  ruleIdParamSchema,
   // Rule V2
-  createRuleV2Schema,
-  updateRuleV2Schema,
-  ruleConditionsSchema,
+  automationConditionsSchema,
+  actionTypeSchema,
+  actionSchema,
+  sendActionSchema,
+  trustActionSchema,
   hasAtMostOneScope,
-  RULE_SCOPE_ERROR_MESSAGE,
+  AUTOMATION_SCOPE_ERROR_MESSAGE,
   scopeAllowsCrossServerEnforcement,
-  RULE_CROSS_SERVER_ENFORCEMENT_ERROR_MESSAGE,
-  INACTIVITY_COMPATIBLE_FIELDS,
+  AUTOMATION_CROSS_SERVER_ENFORCEMENT_ERROR_MESSAGE,
   // Bulk operations
-  bulkUpdateRulesSchema,
-  bulkDeleteRulesSchema,
-  bulkMigrateRulesSchema,
+  bulkUpdateAutomationsSchema,
+  bulkDeleteAutomationsSchema,
   // Violation
-  violationSortFieldSchema,
+  VIOLATION_SORT_FIELDS,
+  violationRosterFilterSchema,
   violationQuerySchema,
+  violationBulkBodySchema,
   violationIdParamSchema,
   // Stats
   serverIdFilterSchema,
@@ -429,7 +527,21 @@ export {
   shelvesQuerySchema,
 } from './schemas.js';
 
+// Destination descriptors and schemas
+export {
+  DESTINATION_KINDS,
+  DESTINATION_TYPES,
+  NOTIFICATION_EVENT_TYPES,
+  SUBSCRIBABLE_EVENTS,
+  destinationConfigSchema,
+  notificationEventTypeSchema,
+  createDestinationSchema,
+  updateDestinationSchema,
+} from './destinations.js';
+
 // Schema input type exports
+export type { SubscribableEvent } from './destinations.js';
+
 export type {
   LoginInput,
   CallbackInput,
@@ -444,18 +556,14 @@ export type {
   HistoryQueryInput,
   HistoryAggregatesQueryInput,
   FilterOptionsQueryInput,
-  CreateRuleInput,
-  UpdateRuleInput,
-  // Rule V2 types
-  CreateRuleV2Input,
-  UpdateRuleV2Input,
   // Bulk operations types
-  BulkUpdateRulesInput,
-  BulkDeleteRulesInput,
-  BulkMigrateRulesInput,
-  ViolationQueryInput,
+  BulkUpdateAutomationsInput,
+  BulkDeleteAutomationsInput,
+  ViolationRosterFilters,
+  ViolationBulkBody,
   ViolationSortField,
   UserSortField,
+  UserRosterFilters,
   ServerIdFilterInput,
   DashboardQueryInput,
   StatPeriod,
@@ -489,12 +597,18 @@ export type {
   ShelvesQueryInput,
   // Session target type
   SessionTarget,
+  // Rule V2 action family
+  ActionType,
+  Action,
+  SendAction,
+  TrustAction,
+  KillStreamAction,
+  MessageClientAction,
+  AutomationActions,
 } from './schemas.js';
 
 // Constant exports
 export {
-  RULE_DEFAULTS,
-  RULE_DISPLAY_NAMES,
   IDENTITY_AWARE_CONDITION_FIELDS,
   SEVERITY_LEVELS,
   getSeverityPriority,
@@ -527,6 +641,7 @@ export {
   SSE_STATE,
   // Unit conversion
   UNIT_CONVERSION,
+  BYTES_PER_GB,
   kmToMiles,
   milesToKm,
   formatDistance,
@@ -551,6 +666,8 @@ export {
   isValidTimezone,
   // Multi-version media
   LEGACY_VERSION_SENTINEL,
+  // Poster cache
+  POSTER_IMAGE_SIZE,
 } from './constants.js';
 
 // Role helper exports
@@ -580,6 +697,10 @@ export { formatEpisodeLabel, type FormatEpisodeLabelOptions } from './media.js';
 
 // Alphabet rail letters
 export { LETTER_RAIL_ALPHABET } from './catalogLetters.js';
+
+// List-query contract
+export { listSortSchema, listDateBoundSchema, listPageCount } from './listQuery.js';
+export type { ListMeta, ListResponse } from './listQuery.js';
 
 // Resolution classification
 export {

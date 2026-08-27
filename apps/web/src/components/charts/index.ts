@@ -13,3 +13,4 @@ export { WatchCountChart } from './WatchCountChart';
 export { CompletionDonutChart } from './CompletionDonutChart';
 export { HourlyDistributionChart } from './HourlyDistributionChart';
 export { MonthlyTrendChart } from './MonthlyTrendChart';
+export { ChartEmpty } from './ChartEmpty';

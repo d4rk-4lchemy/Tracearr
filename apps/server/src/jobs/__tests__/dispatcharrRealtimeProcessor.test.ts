@@ -4,7 +4,7 @@ import type { MediaSession } from '../../services/mediaServer/types.js';
 const {
   mockSseManager,
   mockDb,
-  mockGetActiveRulesV2,
+  mockGetActiveAutomations,
   mockProcessServerSessions,
   mockProcessPollResults,
   mockRegisterService,
@@ -19,7 +19,7 @@ const {
     mockDb: {
       select: vi.fn(),
     },
-    mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
+    mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
     mockProcessServerSessions: vi.fn().mockResolvedValue({
       success: true,
       newSessions: [],
@@ -42,7 +42,7 @@ vi.mock('../../db/client.js', () => ({
 }));
 
 vi.mock('../poller/database.js', () => ({
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
 }));
 
 vi.mock('../poller/processor.js', () => ({
@@ -51,10 +51,6 @@ vi.mock('../poller/processor.js', () => ({
 
 vi.mock('../poller/sessionLifecycle.js', () => ({
   processPollResults: mockProcessPollResults,
-}));
-
-vi.mock('../notificationQueue.js', () => ({
-  enqueueNotification: vi.fn(),
 }));
 
 vi.mock('../../services/serviceTracker.js', () => ({

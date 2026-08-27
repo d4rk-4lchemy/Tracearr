@@ -31,7 +31,7 @@
     "previous": "Edellinen",
     "refresh": "Päivitä",
     "remove": "Poista",
-    "reset": "Reset",
+    "reset": "",
     "retry": "Yritä Uudelleen",
     "save": "Tallenna",
     "search": "Etsi",
@@ -55,31 +55,31 @@
     "viewOnGithub": "Näytä GitHubissa",
     "viewProfile": "Näytä Profiili"
   },
-  "beta": "beta",
+  "beta": "",
   "confirmations": {
     "deleteMessage": "Oletko varma, että haluat poistaa tämän? Tätä toimintoa ei voi perua.",
     "deleteTitle": "Vahvista Poisto",
     "unsavedChanges": "Sinulla on tallentamattomia muutoksia. Oletko varma, että haluat lähteä?"
   },
   "count": {
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices",
+    "alert_one": "",
+    "alert_other": "",
+    "automation_one": "",
+    "automation_other": "",
+    "channel_one": "",
+    "channel_other": "",
+    "device_one": "",
+    "device_other": "",
     "error_one": "{{count}} virhe",
     "error_other": "{{count}} virhettä",
     "item_one": "{{count}} kohde",
     "item_other": "{{count}} kohdetta",
     "library_one": "{{count}} kirjasto",
     "library_other": "{{count}} kirjastoa",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
+    "location_one": "",
+    "location_other": "",
     "result_one": "{{count}} tulosta",
     "result_other": "{{count}} tulosta",
-    "rule_one": "{{count}} sääntö",
-    "rule_other": "{{count}} sääntöä",
     "selected_one": "{{count}} valittu",
     "selected_other": "{{count}} valittu",
     "server_one": "{{count}} palvelin",
@@ -137,6 +137,19 @@
     "unauthorized": "Sinulla ei ole oikeutta suorittaa tätä toimintoa",
     "unexpectedError": "Odottamaton virhe tapahtui. Yritä uudelleen."
   },
+  "filters": {
+    "anyDate": "",
+    "clearAll": "",
+    "clearDates": "",
+    "clearEndDate": "",
+    "clearSearch": "",
+    "clearStartDate": "",
+    "dateAfter": "",
+    "dateBefore": "",
+    "dateBetween": "",
+    "done": "",
+    "remove": ""
+  },
   "labels": {
     "actions": "Toiminnot",
     "active": "Aktiivinen",
@@ -144,12 +157,12 @@
     "apiKey": "Api Avain",
     "bandwidth": "Kaistanleveys",
     "content": "Sisältö",
-    "created": "Created",
+    "created": "",
     "data": "Tiedot",
     "date": "Päivämäärä",
     "days": "päivää",
     "device": "Laite",
-    "deviceId": "Device ID",
+    "deviceId": "",
     "disabled": "Pois Käytöstä",
     "duration": "Kesto",
     "filters": "Suodattimet",
@@ -157,16 +170,16 @@
     "items": "Kohteet",
     "joined": "Liittynyt",
     "lastActivity": "Viimeisin Toiminta",
-    "loadMore": "Load More",
+    "loadMore": "",
     "location": "Sijainti",
-    "media": "Media",
-    "mediaLength": "Media length",
+    "media": "",
+    "mediaLength": "",
     "name": "Nimi",
     "never": "Ei Koskaan",
     "pausedTime": "Keskeytetty Aika",
     "platform": "Alusta",
     "player": "Pelaaja",
-    "product": "Product",
+    "product": "",
     "progress": "Edistyminen",
     "quality": "Laatu",
     "rank": "Sija",
@@ -174,7 +187,7 @@
     "recentSessions": "Viimeisimmät Istunnot",
     "resolution": "Resoluutio",
     "rule": "Sääntö",
-    "segments": "segments",
+    "segments": "",
     "server": "Palvelin",
     "serverOwner": "Palvelimen Omistaja",
     "sessionDetails": "Istunnon Tiedot",
@@ -184,10 +197,10 @@
     "started": "Aloitettu",
     "status": "Tila",
     "stopped": "Pysäytetty",
-    "streamDetails": "Stream Details",
-    "total": "total",
+    "streamDetails": "",
+    "total": "",
     "totalSessions": "Istuntoja Yhteensä",
-    "transcodeReason": "Transcode Reason",
+    "transcodeReason": "",
     "trustScore": "Luottamus Pisteet",
     "type": "Tyyppi",
     "unknown": "Tuntematon",
@@ -198,7 +211,7 @@
   "media": {
     "episode": "Jakso",
     "episode_plural": "Jaksot",
-    "liveTV": "Live TV",
+    "liveTV": "",
     "movie": "Elokuva",
     "movie_plural": "Elokuvat",
     "music": "Musiikki",
@@ -235,12 +248,12 @@
     "justNow": "Juuri nyt",
     "minute_one": "{{count}} minuuttia sitten",
     "minute_other": "{{count}} minuuttia sitten",
-    "month_one": "{{count}} month ago",
+    "month_one": "",
     "month_other": "{{count}} kuukautta sitten",
     "second_one": "{{count}} sekunti sitten",
     "second_other": "{{count}} sekuntia sitten",
-    "week_one": "{{count}} week ago",
-    "week_other": "{{count}} weeks ago",
+    "week_one": "",
+    "week_other": "",
     "year_one": "{{count}} vuotta sitten",
     "year_other": "{{count}} vuotta sitten"
   },
@@ -249,10 +262,16 @@
     "searchTitles": "Etsi otsikoita, käyttäjiä...",
     "searchUsers": "Etsi käyttäjiä..."
   },
+  "serverSelector": {
+    "all": "",
+    "noMatches": "",
+    "search": "",
+    "some": ""
+  },
   "servers": {
-    "emby": "Emby",
-    "jellyfin": "Jellyfin",
-    "plex": "Plex"
+    "emby": "",
+    "jellyfin": "",
+    "plex": ""
   },
   "severity": {
     "high": "Korkea",
@@ -282,9 +301,17 @@
     "success": "Onnistui"
   },
   "table": {
+    "pageOf": "",
+    "pagination": "",
     "selectAllOnPage": "Valitse kaikki sivulla",
-    "selectAllTotal": "Valitse kaikki {{total}} kohdetta",
     "selectRow": "Valitse rivi"
+  },
+  "tasks": {
+    "queued": "",
+    "running": "",
+    "startedAgo": "",
+    "title": "",
+    "waiting": ""
   },
   "time": {
     "allTime": "Koko Aika",
@@ -294,16 +321,21 @@
     "today": "Tänään",
     "yesterday": "Eilen"
   },
+  "trust": {
+    "caution": "",
+    "trusted": "",
+    "untrusted": ""
+  },
   "units": {
-    "km": "km",
-    "kmh": "km/h",
-    "mi": "mi",
-    "mph": "mph"
+    "km": "",
+    "kmh": "",
+    "mi": "",
+    "mph": ""
   },
   "validation": {
     "invalidEmail": "Syötä voimassa oleva sähköpostiosoite",
     "invalidUrl": "Anna kelvollinen URL-osoite",
-    "maxLength": "Must be at most {{max}} characters",
+    "maxLength": "",
     "minLength": "Täytyy olla vähintään {{min}} merkkiä",
     "required": "Tämä kenttä on pakollinen"
   }

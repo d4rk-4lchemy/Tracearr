@@ -13,6 +13,7 @@ import {
   zeroFillSeconds,
 } from './liveStatsAxis';
 import { ChartSkeleton } from '@/components/ui/skeleton';
+import { ChartEmpty } from './ChartEmpty';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowUpDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -258,12 +259,7 @@ export function ServerBandwidthChart({
       <Card>
         <CardHeader className="pb-2">{cardTitle}</CardHeader>
         <CardContent>
-          <div
-            className="text-muted-foreground flex items-center justify-center rounded-lg border border-dashed text-sm"
-            style={{ height: 180 }}
-          >
-            No data available
-          </div>
+          <ChartEmpty height={180} message="No data available" />
         </CardContent>
       </Card>
     );

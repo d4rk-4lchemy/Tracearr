@@ -62,24 +62,24 @@
     "unsavedChanges": "有尚未保存的更改，确定要离开吗？"
   },
   "count": {
-    "alert_one": "{{count}} alert",
-    "alert_other": "{{count}} alerts",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
-    "device_one": "{{count}} device",
-    "device_other": "{{count}} devices",
+    "alert_one": "{{count}} 警报",
+    "alert_other": "{{count}} 条警报",
+    "automation_one": "",
+    "automation_other": "",
+    "channel_one": "",
+    "channel_other": "",
+    "device_one": "{{count}} 已选",
+    "device_other": "{{count}} 已选",
     "error_one": "{{count}}错误",
     "error_other": "{{count}}错误",
     "item_one": "{{count}} 项",
     "item_other": "{{count}} 项",
     "library_one": "{{count}}媒体",
     "library_other": "{{count}}媒体库",
-    "location_one": "{{count}} location",
-    "location_other": "{{count}} locations",
+    "location_one": "{{count}}违反",
+    "location_other": "{{count}}条违反",
     "result_one": "{{count}} 个结果",
     "result_other": "{{count}} 个结果",
-    "rule_one": "{{count}}规则",
-    "rule_other": "{{count}}规则",
     "selected_one": "{{count}} 已选",
     "selected_other": "{{count}} 已选",
     "server_one": "{{count}}服务器",
@@ -137,6 +137,19 @@
     "unauthorized": "您未被授权来执行此操作",
     "unexpectedError": "发生意外错误。请重试。"
   },
+  "filters": {
+    "anyDate": "",
+    "clearAll": "",
+    "clearDates": "",
+    "clearEndDate": "",
+    "clearSearch": "",
+    "clearStartDate": "",
+    "dateAfter": "",
+    "dateBefore": "",
+    "dateBetween": "",
+    "done": "",
+    "remove": ""
+  },
   "labels": {
     "actions": "动作",
     "active": "活性",
@@ -144,12 +157,12 @@
     "apiKey": "API密钥",
     "bandwidth": "宽带",
     "content": "的内容",
-    "created": "Created",
+    "created": "已创建",
     "data": "数据",
     "date": "日期",
     "days": "天",
     "device": "设备",
-    "deviceId": "Device ID",
+    "deviceId": "设备 ID",
     "disabled": "禁用",
     "duration": "持续时长",
     "filters": "过滤器",
@@ -157,16 +170,16 @@
     "items": "项目",
     "joined": "已加入",
     "lastActivity": "最后一次活动于",
-    "loadMore": "Load More",
+    "loadMore": "载入更多",
     "location": "位置",
     "media": "媒体",
-    "mediaLength": "Media length",
+    "mediaLength": "媒体长度",
     "name": "名称",
     "never": "从不",
     "pausedTime": "暂停时间",
     "platform": "平台",
     "player": "播放器",
-    "product": "Product",
+    "product": "产品",
     "progress": "进度",
     "quality": "品质",
     "rank": "等级",
@@ -174,7 +187,7 @@
     "recentSessions": "最近会话",
     "resolution": "分辨率",
     "rule": "规则",
-    "segments": "segments",
+    "segments": "段数",
     "server": "服务器",
     "serverOwner": "服务器所有者",
     "sessionDetails": "会话详情",
@@ -184,10 +197,10 @@
     "started": "已开始",
     "status": "状态",
     "stopped": "已停止",
-    "streamDetails": "Stream Details",
-    "total": "total",
+    "streamDetails": "流详情",
+    "total": "总计",
     "totalSessions": "总会话",
-    "transcodeReason": "Transcode Reason",
+    "transcodeReason": "转码原因",
     "trustScore": "信任得分",
     "type": "类型",
     "unknown": "未知的",
@@ -249,10 +262,16 @@
     "searchTitles": "搜索标题，用户……",
     "searchUsers": "搜索用户……"
   },
+  "serverSelector": {
+    "all": "",
+    "noMatches": "",
+    "search": "",
+    "some": ""
+  },
   "servers": {
-    "emby": "Emby",
-    "jellyfin": "Jellyfin",
-    "plex": "Plex"
+    "emby": "",
+    "jellyfin": "",
+    "plex": ""
   },
   "severity": {
     "high": "高",
@@ -282,9 +301,17 @@
     "success": "成功"
   },
   "table": {
+    "pageOf": "",
+    "pagination": "",
     "selectAllOnPage": "选择页面上的所有内容",
-    "selectAllTotal": "选择所有{{total}}项目",
     "selectRow": "选择行"
+  },
+  "tasks": {
+    "queued": "",
+    "running": "",
+    "startedAgo": "",
+    "title": "",
+    "waiting": ""
   },
   "time": {
     "allTime": "所有时间",
@@ -294,11 +321,16 @@
     "today": "今天",
     "yesterday": "昨天"
   },
+  "trust": {
+    "caution": "",
+    "trusted": "",
+    "untrusted": ""
+  },
   "units": {
     "km": "千米",
     "kmh": "公里/小时",
     "mi": "米",
-    "mph": "mph"
+    "mph": ""
   },
   "validation": {
     "invalidEmail": "请输入有效的邮址",

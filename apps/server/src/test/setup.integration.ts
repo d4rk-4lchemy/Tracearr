@@ -35,7 +35,7 @@ if (!runToken) {
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-must-be-32-chars-min';
-process.env.ENCRYPTION_KEY = 'test-encryption-key-32-chars!!!';
+process.env.ENCRYPTION_KEY = 'a'.repeat(64);
 // Use port 5433 for test database (docker-compose.test.yml) to avoid conflicts with dev.
 // Each worker gets its own run-scoped, template-copied database.
 process.env.DATABASE_URL = `postgresql://test:test@localhost:5433/tracearr_test_r${runToken}_w${poolId}`;
@@ -44,6 +44,10 @@ process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
 process.env.REDIS_URL = `redis://localhost:6380/${poolId}`;
 process.env.DATABASE_POOL_MAX = '5';
 process.env.BETTER_AUTH_SECRET = 'test-better-auth-secret-32-chars!!';
+// The image cache guard's default floor can exceed actual free disk on a dev
+// box (Task 5 hit this); disable the guard for integration tests so it never
+// blocks a sweep or write on the machine running the suite.
+process.env.IMAGE_CACHE_MIN_FREE_PERCENT = '0';
 
 // Install custom vitest matchers from test-utils
 installMatchers();

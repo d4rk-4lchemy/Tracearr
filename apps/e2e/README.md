@@ -66,10 +66,10 @@ Environment variables are loaded from the root `.env` file. The following can be
 | `auth.setup.ts`         | Authentication setup project: handles first-time signup or login, saves auth state for other tests |
 | `media-browse.setup.ts` | Phase 2 of the media browse seed: links the just-created owner to a watched title (see below)      |
 | `auth.spec.ts`          | Login page, unauthenticated redirects, credential login                                            |
+| `automations.spec.ts`   | Create and delete template and custom automations, filter the list by kind                         |
 | `dashboard.spec.ts`     | Dashboard stat cards, sidebar navigation links                                                     |
 | `media-browse.spec.ts`  | Media landing shelves/KPIs, grid pagination, letter rail, filters, detail, watched markers         |
 | `navigation.spec.ts`    | Page navigation for all routes including collapsible sub-categories                                |
-| `rules.spec.ts`         | Create and delete classic (template) and custom rules                                              |
 | `settings.spec.ts`      | Settings page tabs and section content                                                             |
 
 ## Media browse seed

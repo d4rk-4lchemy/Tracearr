@@ -60,6 +60,14 @@
         "title": "Plex账户未链接",
         "message": "您的Plex帐户已断开连接"
       },
+      "plexAccountReauthorized": {
+        "title": "",
+        "message_one": "",
+        "message_other": "",
+        "messageNoServers": "",
+        "partial": "",
+        "unmatched": ""
+      },
       "agentAdded": {
         "title": "代理已添加",
         "message": "通知代理已添加"
@@ -76,17 +84,17 @@
         "title": "任务已完成",
         "message": "{{name}}成功完成"
       },
-      "ruleCreated": {
-        "title": "规则已创建",
-        "message": "已成功创建规则"
+      "automationCreated": {
+        "title": "",
+        "message": ""
       },
-      "ruleUpdated": {
-        "title": "规则已更新",
-        "message": "规则已成功更新"
+      "automationUpdated": {
+        "title": "",
+        "message": ""
       },
-      "ruleDeleted": {
-        "title": "规则已删除",
-        "message": "规则已成功删除"
+      "automationDeleted": {
+        "title": "",
+        "message": ""
       },
       "streamTerminated": {
         "title": "流已终止",
@@ -147,12 +155,15 @@
         "message": "您现在可以继续设置"
       },
       "usersMerged": {
-        "title": "Users merged",
-        "rulesKept": "Kept target's version of: {{names}}"
+        "title": "",
+        "automationsKept": ""
       },
       "serverUserSplit": {
-        "title": "Account split into a separate user"
-      }
+        "title": ""
+      },
+      "destinationSaved": "",
+      "destinationDeleted": "",
+      "destinationTestSent": ""
     },
     "error": {
       "serverAddFailed": "添加服务器失败",
@@ -164,9 +175,9 @@
       "dismissFailed": "未能删除违规行为",
       "authFailed": "验证失败",
       "webhookTestFailed": "Webhook 测试失败",
-      "ruleCreateFailed": "创建规则失败",
-      "ruleUpdateFailed": "更新规则失败",
-      "ruleDeleteFailed": "删除规则失败",
+      "automationCreateFailed": "",
+      "automationUpdateFailed": "",
+      "automationDeleteFailed": "",
       "streamTerminateFailed": "终止流失败",
       "serverUrlUpdateFailed": "无法更新服务器 URL",
       "serverUpdateFailed": "更新服务器失败",
@@ -184,6 +195,7 @@
       "routingUpdateFailed": "更新路由失败",
       "clipboardFailed": "复制到剪贴板失败",
       "plexUnlinkFailed": "取消链接Plex帐户失败",
+      "plexReauthorizeFailed": "",
       "agentAddFailed": "添加代理失败",
       "agentUpdateFailed": "更新代理失败",
       "agentRemoveFailed": "移除代理失败",
@@ -193,12 +205,16 @@
       "jobLoadFailed": "加载维护任务失败",
       "invalidUrl": "无效的 URL",
       "plexDirectUrl": "plex.direct URL是此处不能使用的中继地址。请使用直接IP地址或主机名。",
-      "userMergeFailed": "Failed to merge users",
-      "serverUserSplitFailed": "Failed to split account",
+      "userMergeFailed": "",
+      "serverUserSplitFailed": "",
       "invalidClaimCode": {
         "title": "无效的索赔码",
         "message": "请检查服务器日志"
-      }
+      },
+      "destinationSaveFailed": "",
+      "destinationDeleteFailed": "",
+      "destinationTestFailed": "",
+      "destinationInUse": ""
     },
     "warning": {
       "jobFailed": {
@@ -207,25 +223,9 @@
       }
     },
     "info": {
-      "streamStarted": {
-        "title": "新流已开始",
-        "message": "{{user}}开始观看{{media}}"
-      },
-      "streamStopped": {
-        "title": "流停止",
-        "message": "{{user}}停止观看"
-      },
       "updateAvailable": {
         "title": "有可用更新",
         "message": "Tracearr{{version}}可用"
-      },
-      "serverOffline": {
-        "title": "服务器离线",
-        "message": "{{name}} 无法联系"
-      },
-      "serverOnline": {
-        "title": "服务器在线",
-        "message": "{{name}} 已经上线了"
       },
       "violationDetected": {
         "title": "新违规：{{ruleName}}",

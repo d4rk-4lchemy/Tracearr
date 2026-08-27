@@ -691,7 +691,7 @@ export function CatalogToolbar({
         </ToggleGroup>
 
         <div className="relative max-w-[240px] min-w-[160px] flex-1">
-          <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
+          <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
           <Input
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}

@@ -489,6 +489,9 @@ export interface IMediaServerClient {
    */
   getServerIdentity?(): Promise<string | null>;
 
+  /** The version the server reports for itself, unnormalized (Plex carries a build hash). */
+  getSoftwareVersion?(): Promise<string | null>;
+
   /**
    * Terminate a playback session
    *

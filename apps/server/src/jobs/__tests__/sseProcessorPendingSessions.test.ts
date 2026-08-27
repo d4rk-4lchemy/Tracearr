@@ -29,7 +29,7 @@ const {
   mockCreateInitialConfirmationState,
   mockUpdateConfirmationState,
   mockDetectMediaChange,
-  mockGetActiveRulesV2,
+  mockGetActiveAutomations,
   mockBatchGetRecentUserSessions,
   mockBatchGetLibraryItemIdentity,
   mockBroadcastViolations,
@@ -37,6 +37,7 @@ const {
   mockCreateMediaServerClient,
   mockGetIdentityServerUserIds,
   mockDb,
+  mockDispatch,
 } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { EventEmitter: EE } = require('events');
@@ -65,7 +66,7 @@ const {
     }),
     mockUpdateConfirmationState: vi.fn().mockImplementation((state) => state),
     mockDetectMediaChange: vi.fn().mockReturnValue(false),
-    mockGetActiveRulesV2: vi.fn().mockResolvedValue([]),
+    mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
     mockBatchGetRecentUserSessions: vi.fn().mockResolvedValue(new Map()),
     mockBatchGetLibraryItemIdentity: vi.fn().mockResolvedValue(new Map()),
     mockBroadcastViolations: vi.fn(),
@@ -74,6 +75,7 @@ const {
       getSessions: vi.fn().mockResolvedValue([]),
     }),
     mockGetIdentityServerUserIds: vi.fn().mockResolvedValue([]),
+    mockDispatch: vi.fn().mockResolvedValue({ violations: [], outcomes: [] }),
     mockDb: {
       select: vi.fn().mockReturnValue({
         from: vi.fn().mockReturnValue({
@@ -151,7 +153,7 @@ vi.mock('../poller/database.js', () => ({
   getServerUserIdByExternalId: vi.fn(() => {
     throw new Error('getServerUserIdByExternalId not configured in this test');
   }),
-  getActiveRulesV2: mockGetActiveRulesV2,
+  getActiveAutomations: mockGetActiveAutomations,
   batchGetRecentUserSessions: mockBatchGetRecentUserSessions,
   batchGetLibraryItemIdentity: mockBatchGetLibraryItemIdentity,
   mergeRecentSessionsForIdentity: (map: Map<string, unknown[]>, ids: string[]) =>
@@ -170,8 +172,22 @@ vi.mock('../poller/sessionLifecycle.js', () => ({
   buildPendingActiveSession: mockBuildPendingActiveSession,
   handleMediaChangeAtomic: vi.fn(),
   handleQualityChangeFallout: vi.fn(),
-  reEvaluateRulesOnTranscodeChange: vi.fn(),
   confirmAndPersistSession: mockConfirmAndPersistSession,
+}));
+
+vi.mock('../../services/automations/events/dispatcher.js', () => ({
+  dispatch: (...args: unknown[]) => mockDispatch(...args),
+  subscribe: vi.fn(),
+}));
+vi.mock('../../services/automations/events/contextAssembly.js', () => ({
+  loadEvaluationContext: vi.fn().mockResolvedValue(null),
+  assembleEvaluationInputs: vi.fn().mockResolvedValue({
+    activeAutomations: [],
+    activeSessions: [],
+    recentSessions: [],
+    identityServerUserIds: [],
+  }),
+  setContextAssemblyDeps: vi.fn(),
 }));
 
 vi.mock('../../services/serviceTracker.js', () => ({
