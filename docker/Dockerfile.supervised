@@ -121,6 +121,8 @@ COPY --from=builder /app/apps/server/src/db/fork-migrations ./apps/server/src/db
 # GeoIP database (bundled for geolocation features)
 COPY data/GeoLite2-City.mmdb ./data/GeoLite2-City.mmdb
 COPY data/GeoLite2-ASN.mmdb ./data/GeoLite2-ASN.mmdb
+COPY data/basemap.pmtiles ./data/basemap.pmtiles
+COPY data/BASEMAP_NOTICE.txt ./data/BASEMAP_NOTICE.txt
 
 # Install production dependencies (ignore-scripts prevents prepare/husky from running)
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts
