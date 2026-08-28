@@ -5,11 +5,11 @@ This file documents the local fork overlay so future upstream updates can preser
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
-- Fork branch: `feature/prepare-for-2.2.0`
+- Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `64401f0c`
-- Last shared upstream commit found during inspection: `8cec50d3`
-- Latest upstream commit merged into the current working tree: `64401f0c`
+- Source branch/SHA inspected: `main` at `7066c7a9`
+- Last shared upstream commit found during inspection: `64401f0c`
+- Latest upstream commit merged into the current working tree: `7066c7a9`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -219,6 +219,17 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `7066c7a9` (Tracearr `v2.2.2`) was merged into
+  `develop` on August 28, 2026 (merge commit `f9552a54`). The web automation
+  builder now falls back to an RFC 4122 v4 UUID generated with
+  `crypto.getRandomValues()` when a plain-HTTP LAN origin lacks
+  `crypto.randomUUID`; the reducer regression coverage came with it. The
+  supervised Docker image already contained the upstream basemap update, and
+  the Helm chart version was advanced to 2.2.2. No migrations or
+  Dispatcharr-specific control paths changed. Fork CI remains PR-only,
+  Renovate remains disabled, and release automation remains manual-only with
+  the Helm-chart push job disabled.
 
 - Upstream `main` at `64401f0c` (Tracearr `v2.2.0`) was merged into
   `feature/prepare-for-2.2.0` on August 27, 2026. The built-in MapLibre/PMTiles
