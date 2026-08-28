@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { Automation, TriggerNode } from '@tracearr/shared';
 import {
   builderReducer,
@@ -327,5 +328,41 @@ describe('toCreateInput', () => {
     expect(
       toCreateInput(builderReducer(state, { type: 'setKind', value: 'policy' })).severity
     ).toBe('warning');
+  });
+});
+
+describe('builderReducer without crypto.randomUUID', () => {
+  // A LAN address over plain http is not a secure context, so the browser omits randomUUID.
+  const getRandomValues = crypto.getRandomValues.bind(crypto);
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('still stamps ids the server accepts as uuids', () => {
+    vi.stubGlobal('crypto', { getRandomValues });
+    expect(crypto.randomUUID).toBeUndefined();
+
+    const stored = builderStateFrom(
+      automation({
+        conditions: {
+          groups: [
+            {
+              enabled: true,
+              match: 'all',
+              conditions: [
+                { enabled: true, field: 'concurrent_streams', operator: 'gte', value: 2 },
+              ],
+            },
+          ],
+        },
+      })
+    );
+    const added = builderReducer(stored, { type: 'addTrigger', triggerType: 'session.started' });
+
+    const ids = [
+      stored.conditions.groups[0]?.id,
+      stored.conditions.groups[0]?.conditions[0]?.id,
+      added.triggers[1]?.id,
+    ];
+    for (const id of ids) expect(z.uuid().safeParse(id).success).toBe(true);
+    expect(new Set(ids).size).toBe(3);
   });
 });

@@ -33,6 +33,7 @@ import {
   type AutomationDraft,
   type AutomationScope,
 } from '@/lib/automations';
+import { randomUuid } from '@/lib/utils';
 
 export interface BuilderState {
   name: string;
@@ -127,10 +128,10 @@ function stampConditions(conditions: AutomationConditions): AutomationConditions
   return {
     groups: conditions.groups.map((group) => ({
       ...group,
-      id: group.id ?? crypto.randomUUID(),
+      id: group.id ?? randomUuid(),
       conditions: group.conditions.map((condition) => ({
         ...condition,
-        id: condition.id ?? crypto.randomUUID(),
+        id: condition.id ?? randomUuid(),
       })),
     })),
   };
@@ -139,13 +140,13 @@ function stampConditions(conditions: AutomationConditions): AutomationConditions
 function stampActions(actions: AutomationActions): AutomationActions {
   return {
     actions: actions.actions.map((action) => {
-      const stamped = { ...action, id: action.id ?? crypto.randomUUID() };
+      const stamped = { ...action, id: action.id ?? randomUuid() };
       if (stamped.type !== 'if') return stamped;
       return {
         ...stamped,
         conditions: stampConditions(stamped.conditions),
-        then: stamped.then.map((leaf) => ({ ...leaf, id: leaf.id ?? crypto.randomUUID() })),
-        else: stamped.else.map((leaf) => ({ ...leaf, id: leaf.id ?? crypto.randomUUID() })),
+        then: stamped.then.map((leaf) => ({ ...leaf, id: leaf.id ?? randomUuid() })),
+        else: stamped.else.map((leaf) => ({ ...leaf, id: leaf.id ?? randomUuid() })),
       };
     }),
   };
@@ -186,7 +187,7 @@ export function toCreateInput(state: BuilderState): CreateAutomationInput {
 }
 
 function newTrigger(triggerType: TriggerType): TriggerNode {
-  const node = { id: crypto.randomUUID(), enabled: true };
+  const node = { id: randomUuid(), enabled: true };
   if (triggerType === 'session.held_for') {
     return { ...node, type: triggerType, params: { ...HELD_FOR_DEFAULTS } };
   }
@@ -201,7 +202,7 @@ function newCondition(triggers: readonly TriggerNode[]): Condition {
   const field = fieldsAvailableFor(contextOf(triggers))[0] ?? 'concurrent_streams';
   const params = defaultParamsForField(field);
   return {
-    id: crypto.randomUUID(),
+    id: randomUuid(),
     enabled: true,
     field,
     operator: getDefaultOperatorForField(field),
@@ -212,7 +213,7 @@ function newCondition(triggers: readonly TriggerNode[]): Condition {
 
 function newGroup(triggers: readonly TriggerNode[]): ConditionGroup {
   return {
-    id: crypto.randomUUID(),
+    id: randomUuid(),
     enabled: true,
     match: 'all',
     conditions: [newCondition(triggers)],
@@ -220,7 +221,7 @@ function newGroup(triggers: readonly TriggerNode[]): ConditionGroup {
 }
 
 function newAction(actionType: ActionType): Action {
-  const node = { id: crypto.randomUUID(), enabled: true };
+  const node = { id: randomUuid(), enabled: true };
   if (actionType === 'if') {
     return { ...node, type: 'if', conditions: { groups: [] }, then: [], else: [] };
   }
