@@ -62,6 +62,8 @@ The fork also carries local maintenance/distribution changes:
 - Renovate scheduled execution is disabled in `.github/workflows/renovate.yml`.
 - CI runs only for pull requests; merges to `main` do not trigger a second CI run.
 - The Snyk security workflow and README badge are disabled in this fork.
+- The upstream `Vouch - Check PR` workflow is removed, so pull requests are
+  not auto-closed or gated by a Vouch check in this fork.
 - The Docker-backed integration matrix (PG15/Timescale 2.28 and PG18/Timescale
   2.29) is intentionally not part of GitHub PR CI. Run it manually when
   validating database, migration, or integration-test changes.
