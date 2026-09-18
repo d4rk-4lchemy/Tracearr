@@ -59,8 +59,12 @@ User-facing Dispatcharr behavior:
 The fork also carries local maintenance/distribution changes:
 
 - README has fork-specific warnings, Docker image names, and Dispatcharr feature notes.
-- Renovate scheduled execution is disabled in `.github/workflows/renovate.yml`.
-- CI runs only for pull requests; merges to `main` do not trigger a second CI run.
+- Renovate and the `Stale - needs-information` automation workflows are removed
+  from this fork, so GitHub does not create scheduled maintenance runs.
+- GitHub Actions policy is strictly limited to `.github/workflows/ci.yml` on
+  pull requests. Do not retain or reintroduce any other upstream workflow,
+  trigger, scheduled run, release automation, or manual-dispatch action;
+  merges to `main` do not trigger a second CI run.
 - The Snyk security workflow and README badge are disabled in this fork.
 - The upstream `Vouch - Check PR` workflow is removed, so pull requests are
   not auto-closed or gated by a Vouch check in this fork.
@@ -508,7 +512,7 @@ When merging or rebasing on source `main`, preserve the Dispatcharr overlay deli
   Compose port configuration fixes, dependency updates, and Crowdin translations.
   Locale conflicts were reconciled by key, retaining fork-only labels while
   accepting updated upstream translations. The Snyk modify/delete conflict
-  retains the fork's removal; PR-only CI, disabled Renovate, and manual-only
+  retains the fork's removal; PR-only CI, removed Renovate/Stale workflows, and manual-only
   releases with the Helm push job disabled remain intact. No migrations changed.
   Dispatcharr library-sync exclusions and API server types remain intact, and
   History retains its fixed column widths and mobile minimum table width.
@@ -540,7 +544,7 @@ When merging or rebasing on source `main`, preserve the Dispatcharr overlay deli
   supervised Docker image already contained the upstream basemap update, and
   the Helm chart version was advanced to 2.2.2. No migrations or
   Dispatcharr-specific control paths changed. Fork CI remains PR-only,
-  Renovate remains disabled, and release automation remains manual-only with
+  Renovate/Stale workflows remain removed, and release automation remains manual-only with
   the Helm-chart push job disabled.
 
 - Upstream `main` at `64401f0c` (Tracearr `v2.2.0`) was merged into
@@ -574,8 +578,8 @@ When merging or rebasing on source `main`, preserve the Dispatcharr overlay deli
   were retained. The `sseManager` conflict preserves the fork's leader-owned
   Dispatcharr-aware configuration comparison (type, name, normalized URL,
   token, and anonymous-stream setting), so it still replaces stale connectors
-  after edits. GitHub Actions retain fork policy: CI is PR-only, Renovate is
-  disabled, release is manual-only, and the integration matrix remains a
+  after edits. GitHub Actions retain fork policy: CI is PR-only,
+  Renovate/Stale workflows are removed, release is manual-only, and the integration matrix remains a
   manual validation path; upstream action/image pin updates were accepted.
 
 - Upstream `main` at `da2828d1` was merged into `feature/prepare-for-2.2.0`
