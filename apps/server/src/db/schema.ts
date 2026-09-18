@@ -1407,6 +1407,8 @@ export const libraryItems = pgTable(
     imdbId: varchar('imdb_id', { length: 20 }), // IMDB ID (tt1234567 format)
     tmdbId: integer('tmdb_id'), // TMDB ID
     tvdbId: integer('tvdb_id'), // TVDB ID
+    // Normalized plex://movie/<id> or plex://episode/<id> guid (see utils/plexGuid.ts). Plex only.
+    plexGuid: varchar('plex_guid', { length: 255 }),
 
     // Media metadata
     title: text('title').notNull(),
@@ -1476,6 +1478,9 @@ export const libraryItems = pgTable(
     index('idx_library_items_tvdb_partial')
       .on(table.tvdbId)
       .where(sql`${table.tvdbId} IS NOT NULL`),
+    index('library_items_server_plex_guid_idx')
+      .on(table.serverId, table.plexGuid)
+      .where(sql`${table.plexGuid} IS NOT NULL`),
 
     // Composite index for library-scoped queries
     index('idx_library_items_server_library').on(table.serverId, table.libraryId),
@@ -1688,9 +1693,12 @@ export const librarySnapshots = pgTable(
     musicCount: integer('music_count').notNull().default(0),
 
     // Resolution breakdown
+    count8k: integer('count_8k').notNull().default(0),
     count4k: integer('count_4k').notNull().default(0),
+    count1440p: integer('count_1440p').notNull().default(0),
     count1080p: integer('count_1080p').notNull().default(0),
     count720p: integer('count_720p').notNull().default(0),
+    count480p: integer('count_480p').notNull().default(0),
     countSd: integer('count_sd').notNull().default(0),
 
     // Codec breakdown

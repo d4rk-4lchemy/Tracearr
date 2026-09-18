@@ -4,6 +4,7 @@
  */
 
 import { lazy, memo, Suspense, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -38,13 +39,13 @@ import {
   ChevronRight,
   Clapperboard,
 } from 'lucide-react';
-import { cn, getCountryName, getMediaDisplay } from '@/lib/utils';
+import { cn, getCountryName, getMediaDisplay, getSessionProgress } from '@/lib/utils';
 import { imageProxyUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/formatters';
 import { getAvatarUrl } from '@/components/users/utils';
 import { StreamDetailsPanel } from './StreamDetailsPanel';
 
-import { POSTER_IMAGE_SIZE } from '@tracearr/shared';
+import { PLAYBACK_DECISION_LABEL_KEYS, POSTER_IMAGE_SIZE, playbackDecision } from '@tracearr/shared';
 import type {
   SessionWithDetails,
   ActiveSession,
@@ -109,14 +110,6 @@ function getWatchTime(session: SessionWithDetails | ActiveSession): number | nul
   }
 
   return null;
-}
-
-// Get progress percentage (playback position)
-// Uses progressMs (where in the video) not durationMs (how long watched)
-function getProgress(session: SessionWithDetails): number {
-  if (!session.totalDurationMs || session.totalDurationMs === 0) return 0;
-  const progress = session.progressMs ?? 0;
-  return Math.min(100, Math.round((progress / session.totalDurationMs) * 100));
 }
 
 const LazyMiniMap = lazy(() =>
@@ -215,6 +208,7 @@ function SegmentTable({
 
 // Inner content component - keeps state hooks and derived values together
 function SessionContent({ session }: { session: SessionWithDetails | ActiveSession }) {
+  const { t } = useTranslation();
   const [locationOpen, setLocationOpen] = useState(false);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
 
@@ -234,7 +228,7 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
     ...session,
     serverType: session.server.type,
   });
-  const progress = getProgress(session);
+  const progress = getSessionProgress(session);
   const geoCountryName = getCountryName(session.geoCountry);
   const geoCoordinates =
     session.geoLat !== null && session.geoLon !== null
@@ -305,11 +299,12 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
             {secondary && (
               <div className="text-muted-foreground mt-0.5 truncate text-sm">{secondary}</div>
             )}
-            {/* Progress inline */}
-            <div className="mt-2 flex items-center gap-2">
-              <Progress value={progress} className="h-1.5 flex-1" />
-              <span className="text-muted-foreground w-8 text-xs">{progress}%</span>
-            </div>
+            {progress !== null && (
+              <div className="mt-2 flex items-center gap-2">
+                <Progress value={progress} className="h-1.5 flex-1" />
+                <span className="text-muted-foreground w-8 text-xs">{progress}%</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -548,7 +543,7 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
                         <TooltipTrigger asChild>
                           <span className="flex items-center gap-1">
                             <TranscodeIcon className="h-3 w-3" />
-                            Transcode
+                            {t(PLAYBACK_DECISION_LABEL_KEYS.transcode)}
                           </span>
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-xs text-left">
@@ -559,7 +554,7 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
                   ) : (
                     <>
                       <TranscodeIcon className="h-3 w-3" />
-                      Transcode
+                      {t(PLAYBACK_DECISION_LABEL_KEYS.transcode)}
                     </>
                   )}
                 </Badge>
@@ -569,9 +564,7 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
             return (
               <Badge variant="success" className="gap-1 text-xs">
                 <MonitorPlay className="h-3 w-3" />
-                {session.videoDecision === 'copy' || session.audioDecision === 'copy'
-                  ? 'Direct Stream'
-                  : 'Direct Play'}
+                {t(PLAYBACK_DECISION_LABEL_KEYS[playbackDecision(session)])}
               </Badge>
             );
           })()}

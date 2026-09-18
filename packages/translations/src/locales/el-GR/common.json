@@ -84,7 +84,10 @@
     "stopped": "Διακόπηκε",
     "directPlay": "Άμεση Αναπαραγωγή",
     "directStream": "Άμεση Ροή",
-    "transcode": "Μετατροπή"
+    "transcode": "Μετατροπή",
+    "hwTranscode": "",
+    "burnIn": "",
+    "watched": ""
   },
   "severity": {
     "low": "Χαμηλή",
@@ -116,7 +119,12 @@
     "last30Days": "Τελευταίες 30 Ημέρες",
     "lastYear": "Προηγούμενο Έτος",
     "byDay": "Κατά Ημέρα",
-    "byHour": "Κατά Ώρα"
+    "byHour": "Κατά Ώρα",
+    "short7Days": "",
+    "short30Days": "",
+    "shortYear": "",
+    "shortAll": "",
+    "timeRange": ""
   },
   "units": {
     "km": "χλμ",
@@ -180,7 +188,8 @@
     "segments": "",
     "streamDetails": "",
     "transcodeReason": "",
-    "loadMore": ""
+    "loadMore": "",
+    "playback": ""
   },
   "search": {
     "placeholder": "Αναζήτηση...",
@@ -286,7 +295,11 @@
     "device_one": "",
     "device_other": "",
     "channel_one": "",
-    "channel_other": ""
+    "channel_other": "",
+    "play_one": "",
+    "play_other": "",
+    "segment_one": "",
+    "segment_other": ""
   },
   "messages": {
     "noChangesDetected": "Δεν εντοπίστηκαν αλλαγές"

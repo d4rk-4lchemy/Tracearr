@@ -84,7 +84,10 @@
     "stopped": "Arrêté",
     "directPlay": "Lecture directe",
     "directStream": "Flux direct",
-    "transcode": "Transcodage"
+    "transcode": "Transcodage",
+    "hwTranscode": "",
+    "burnIn": "",
+    "watched": ""
   },
   "severity": {
     "low": "Faible",
@@ -116,7 +119,12 @@
     "last30Days": "30 derniers jours",
     "lastYear": "L'année dernière",
     "byDay": "Par jour",
-    "byHour": "Par heure"
+    "byHour": "Par heure",
+    "short7Days": "",
+    "short30Days": "",
+    "shortYear": "",
+    "shortAll": "",
+    "timeRange": ""
   },
   "units": {
     "km": "kilomètres",
@@ -180,7 +188,8 @@
     "segments": "segments",
     "streamDetails": "Détails de la diffusion",
     "transcodeReason": "Raison du transcodage",
-    "loadMore": "Charger plus"
+    "loadMore": "Charger plus",
+    "playback": ""
   },
   "search": {
     "placeholder": "Rechercher...",
@@ -286,7 +295,11 @@
     "device_one": "{{count}} appareil",
     "device_other": "{{count}} appareils",
     "channel_one": "",
-    "channel_other": ""
+    "channel_other": "",
+    "play_one": "",
+    "play_other": "",
+    "segment_one": "",
+    "segment_other": ""
   },
   "messages": {
     "noChangesDetected": "Aucun changement détecté"

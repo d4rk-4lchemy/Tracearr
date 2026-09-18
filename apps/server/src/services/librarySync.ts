@@ -41,17 +41,32 @@ import {
   hasStampableSessionsBefore,
 } from '../jobs/sessionIdentityBackfill.js';
 import { maybeEnqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
+import {
+  AUTO_LINK_WINDOW_MS,
+  listPlexServers,
+  MAX_AUTO_LINK_ATTEMPTS,
+} from '../jobs/importedHistoryLinking.js';
 import { getSessionsCompressionHorizon, refreshAggregates } from '../db/timescale.js';
-import type { LibrarySyncProgress } from '@tracearr/shared';
+import type { LibrarySyncProgress, ServerType } from '@tracearr/shared';
 import {
   REDIS_KEYS,
   RESOLUTION_TIERS,
   LEGACY_VERSION_SENTINEL,
   supportsMediaLibrary,
 } from '@tracearr/shared';
-import { resolutionBucketPredicate, resolutionRankSql } from '../utils/resolutionBuckets.js';
+import {
+  bucketMembershipColumns,
+  perResolutionBucket,
+  readResolutionCounts,
+  resolutionRankSql,
+} from '../utils/resolutionBuckets.js';
 import { getHeavyOpsStatus } from '../jobs/heavyOpsLock.js';
 import { sanitizeText, scrubStringFields } from '../utils/sanitizeText.js';
+import {
+  getImportedHistoryLinkState,
+  getSettings,
+  setImportedHistoryLinkState,
+} from './settings.js';
 import type { Redis } from 'ioredis';
 
 // Constants for batching and rate limiting.
@@ -124,11 +139,14 @@ const COUNT_MISMATCH_RATIO = 0.01;
 const MUSIC_LIBRARY_TYPES = new Set(['music', 'artist']);
 
 /**
- * Bump when the listing query changes shape. A library stamped with an older
- * version gets one forced full scan, so items the old query left out come back
- * without anyone running a manual sync.
+ * Bump a server type's version when its listing query changes shape. A library
+ * stamped with an older version gets one forced full scan, so items the old
+ * query left out come back without anyone running a manual sync. Plex is at 2
+ * because its listing started storing plex_guid.
  */
-const LIBRARY_SCAN_VERSION = 1;
+function libraryScanVersionFor(serverType: ServerType): number {
+  return serverType === 'plex' ? 2 : 1;
+}
 
 // Auto-handoff throttles for the compressed-history identity backfill. The
 // probe decompress-scans all compressed history when it comes back false (the
@@ -151,6 +169,69 @@ let lastAutoBackfillEnqueueAt = 0;
 export function _resetAutoBackfillThrottleForTests(): void {
   lastAutoBackfillProbeAt = 0;
   lastAutoBackfillEnqueueAt = 0;
+}
+
+// The imported history link hand-off keeps its own throttle state on the same
+// intervals, so enqueueing it never holds back the identity backfill above.
+let lastLinkProbeAt = 0;
+let lastLinkEnqueueAt = 0;
+
+export function _resetImportedHistoryLinkThrottleForTests(): void {
+  lastLinkProbeAt = 0;
+  lastLinkEnqueueAt = 0;
+}
+
+/**
+ * Hand imported Plex history linking to the maintenance queue after a Plex
+ * library sync, until the job reports done, runs out of automatic attempts, or
+ * 14 days pass since linking was last re-armed.
+ * While any Plex server has a library sync pending the job would skip it, so
+ * the hand-off waits for a later sync without spending its throttle, as it
+ * does when the maintenance queue refuses the job.
+ */
+export async function maybeEnqueueImportedHistoryLink(
+  addedItems: boolean,
+  hasPendingLibrarySync: (serverId: string) => Promise<boolean>
+): Promise<void> {
+  const link = await getImportedHistoryLinkState();
+  if (link.state === 'done') {
+    return;
+  }
+
+  const plexServers = await listPlexServers();
+  const tautulli = await getSettings(['tautulliUrl', 'tautulliApiKey']);
+  if (!tautulli.tautulliUrl || !tautulli.tautulliApiKey) {
+    if (plexServers.every((server) => link.providerPassDoneServers.includes(server.id))) {
+      await setImportedHistoryLinkState(link.generation, {
+        ...link,
+        state: 'done',
+        autoAttempts: 0,
+      });
+      return;
+    }
+  }
+
+  if (
+    link.autoAttempts >= MAX_AUTO_LINK_ATTEMPTS ||
+    Date.now() - Date.parse(link.armedAt) > AUTO_LINK_WINDOW_MS
+  ) {
+    return;
+  }
+
+  const now = Date.now();
+  const allowed =
+    now - lastLinkEnqueueAt >= AUTO_BACKFILL_ENQUEUE_INTERVAL_MS &&
+    (addedItems || now - lastLinkProbeAt >= AUTO_BACKFILL_PROBE_INTERVAL_MS);
+  if (!allowed) return;
+  for (const server of plexServers) {
+    if (await hasPendingLibrarySync(server.id)) return;
+  }
+  const enqueued = await maybeEnqueueMaintenanceJob('link_imported_history', 'system', {
+    trigger: 'auto',
+  });
+  if (!enqueued) return;
+  lastLinkProbeAt = now;
+  lastLinkEnqueueAt = now;
 }
 
 // Reconcile throttle: same module-level pattern as the backfill probe above.
@@ -184,9 +265,12 @@ interface SnapshotStats {
   seasonCount: number;
   showCount: number;
   musicCount: number;
+  count8k: number;
   count4k: number;
+  count1440p: number;
   count1080p: number;
   count720p: number;
+  count480p: number;
   countSd: number;
   hevcCount: number;
   h264Count: number;
@@ -231,6 +315,7 @@ function delay(ms: number): Promise<void> {
 interface LibrarySyncArgs {
   serverId: string;
   serverName: string;
+  serverType: ServerType;
   libraryId: string;
   libraryName: string;
   libraryType: string;
@@ -394,6 +479,7 @@ export class LibrarySyncService {
       const result = await this.syncLibrary({
         serverId,
         serverName: server.name,
+        serverType: server.type,
         libraryId: library.id,
         libraryName: library.name,
         libraryType: library.type,
@@ -568,6 +654,7 @@ export class LibrarySyncService {
     const {
       serverId,
       serverName,
+      serverType,
       libraryId,
       libraryName,
       libraryType,
@@ -623,7 +710,7 @@ export class LibrarySyncService {
     const fullScanDue =
       syncState.lastFullScanAt !== null &&
       Date.now() - syncState.lastFullScanAt.getTime() >= FULL_SCAN_MAX_AGE_MS;
-    const scanQueryChanged = syncState.scanVersion !== LIBRARY_SCAN_VERSION;
+    const scanQueryChanged = syncState.scanVersion !== libraryScanVersionFor(serverType);
     const forceFullScan =
       triggeredBy === 'manual' || fullScanDue || overcountMismatch || scanQueryChanged;
 
@@ -748,6 +835,7 @@ export class LibrarySyncService {
           await this.saveSyncState(
             serverId,
             libraryId,
+            serverType,
             totalCount,
             syncState.lastFullScanAt ?? new Date()
           );
@@ -830,6 +918,7 @@ export class LibrarySyncService {
         await this.saveSyncState(
           serverId,
           libraryId,
+          serverType,
           totalCount,
           syncState.lastFullScanAt ?? new Date()
         );
@@ -1209,7 +1298,14 @@ export class LibrarySyncService {
         triggeredBy,
         syncState.acceptedShortfall
       );
-      await this.saveSyncState(serverId, libraryId, totalCount, new Date(), acceptedShortfall);
+      await this.saveSyncState(
+        serverId,
+        libraryId,
+        serverType,
+        totalCount,
+        new Date(),
+        acceptedShortfall
+      );
       return {
         serverId,
         libraryId,
@@ -1242,7 +1338,14 @@ export class LibrarySyncService {
       triggeredBy,
       syncState.acceptedShortfall
     );
-    await this.saveSyncState(serverId, libraryId, totalCount, new Date(), acceptedShortfall);
+    await this.saveSyncState(
+      serverId,
+      libraryId,
+      serverType,
+      totalCount,
+      new Date(),
+      acceptedShortfall
+    );
 
     return {
       serverId,
@@ -1307,6 +1410,7 @@ export class LibrarySyncService {
   private async saveSyncState(
     serverId: string,
     libraryId: string,
+    serverType: ServerType,
     itemCount: number,
     lastFullScanAt: Date,
     acceptedShortfall?: number
@@ -1336,7 +1440,7 @@ export class LibrarySyncService {
       ),
       redisClient.set(
         REDIS_KEYS.LIBRARY_SYNC_SCAN_VERSION(serverId, libraryId),
-        String(LIBRARY_SCAN_VERSION),
+        String(libraryScanVersionFor(serverType)),
         'EX',
         SYNC_STATE_TTL
       ),
@@ -1540,6 +1644,7 @@ export class LibrarySyncService {
               imdbId: item.imdbId ?? null,
               tmdbId: item.tmdbId ?? null,
               tvdbId: item.tvdbId ?? null,
+              plexGuid: item.plexGuid ?? null,
               videoResolution: item.videoResolution ?? null,
               videoCodec: item.videoCodec ?? null,
               videoDynamicRange: item.videoDynamicRange ?? null,
@@ -1576,6 +1681,7 @@ export class LibrarySyncService {
             imdbId: sql`excluded.imdb_id`,
             tmdbId: sql`excluded.tmdb_id`,
             tvdbId: sql`excluded.tvdb_id`,
+            plexGuid: sql`excluded.plex_guid`,
             videoResolution: sql`excluded.video_resolution`,
             videoCodec: sql`excluded.video_codec`,
             videoDynamicRange: sql`excluded.video_dynamic_range`,
@@ -1619,6 +1725,7 @@ export class LibrarySyncService {
             ${libraryItems.imdbId} IS DISTINCT FROM excluded.imdb_id OR
             ${libraryItems.tmdbId} IS DISTINCT FROM excluded.tmdb_id OR
             ${libraryItems.tvdbId} IS DISTINCT FROM excluded.tvdb_id OR
+            ${libraryItems.plexGuid} IS DISTINCT FROM excluded.plex_guid OR
             ${libraryItems.videoResolution} IS DISTINCT FROM excluded.video_resolution OR
             ${libraryItems.videoCodec} IS DISTINCT FROM excluded.video_codec OR
             ${libraryItems.videoDynamicRange} IS DISTINCT FROM excluded.video_dynamic_range OR
@@ -1899,9 +2006,12 @@ export class LibrarySyncService {
         seasonCount: librarySnapshots.seasonCount,
         showCount: librarySnapshots.showCount,
         musicCount: librarySnapshots.musicCount,
+        count8k: librarySnapshots.count8k,
         count4k: librarySnapshots.count4k,
+        count1440p: librarySnapshots.count1440p,
         count1080p: librarySnapshots.count1080p,
         count720p: librarySnapshots.count720p,
+        count480p: librarySnapshots.count480p,
         countSd: librarySnapshots.countSd,
         hevcCount: librarySnapshots.hevcCount,
         h264Count: librarySnapshots.h264Count,
@@ -1971,10 +2081,7 @@ export class LibrarySyncService {
           li.id,
           li.file_size,
           li.media_type,
-          BOOL_OR(${resolutionBucketPredicate('v.video_resolution', '4k')}) AS has_4k,
-          BOOL_OR(${resolutionBucketPredicate('v.video_resolution', '1080p')}) AS has_1080p,
-          BOOL_OR(${resolutionBucketPredicate('v.video_resolution', '720p')}) AS has_720p,
-          BOOL_OR(${resolutionBucketPredicate('v.video_resolution', 'sd')}) AS has_sd,
+          ${bucketMembershipColumns('v.video_resolution')},
           BOOL_OR(${resolutionRankSql('v.video_resolution')} >= ${RESOLUTION_TIERS['1080p']}) AS high_quality,
           BOOL_OR(v.video_codec IN ('hevc', 'h265', 'x265', 'HEVC', 'H265', 'X265')) AS has_hevc,
           BOOL_OR(v.video_codec IN ('h264', 'avc', 'x264', 'H264', 'AVC', 'X264')) AS has_h264,
@@ -1996,10 +2103,7 @@ export class LibrarySyncService {
         COUNT(*) FILTER (WHERE media_type = 'season')::int AS season_count,
         COUNT(*) FILTER (WHERE media_type = 'show')::int AS show_count,
         COUNT(*) FILTER (WHERE file_size > 0 AND media_type IN ('artist', 'album', 'track'))::int AS music_count,
-        COUNT(*) FILTER (WHERE file_size > 0 AND has_4k)::int AS count_4k,
-        COUNT(*) FILTER (WHERE file_size > 0 AND has_1080p)::int AS count_1080p,
-        COUNT(*) FILTER (WHERE file_size > 0 AND has_720p)::int AS count_720p,
-        COUNT(*) FILTER (WHERE file_size > 0 AND has_sd)::int AS count_sd,
+        ${perResolutionBucket((bucket) => `COUNT(*) FILTER (WHERE file_size > 0 AND has_${bucket})::int AS count_${bucket}`)},
         COUNT(*) FILTER (WHERE file_size > 0 AND high_quality)::int AS count_high_quality,
         COUNT(*) FILTER (WHERE file_size > 0 AND has_hevc)::int AS hevc_count,
         COUNT(*) FILTER (WHERE file_size > 0 AND has_h264)::int AS h264_count,
@@ -2017,10 +2121,6 @@ export class LibrarySyncService {
           season_count: number;
           show_count: number;
           music_count: number;
-          count_4k: number;
-          count_1080p: number;
-          count_720p: number;
-          count_sd: number;
           count_high_quality: number;
           hevc_count: number;
           h264_count: number;
@@ -2029,6 +2129,7 @@ export class LibrarySyncService {
         }
       | undefined;
     if (!row) return null;
+    const counts = readResolutionCounts(row);
 
     return this.writeSnapshot(serverId, libraryId, {
       itemCount: row.item_count,
@@ -2038,10 +2139,13 @@ export class LibrarySyncService {
       seasonCount: row.season_count,
       showCount: row.show_count,
       musicCount: row.music_count,
-      count4k: row.count_4k,
-      count1080p: row.count_1080p,
-      count720p: row.count_720p,
-      countSd: row.count_sd,
+      count8k: counts['8k'],
+      count4k: counts['4k'],
+      count1440p: counts['1440p'],
+      count1080p: counts['1080p'],
+      count720p: counts['720p'],
+      count480p: counts['480p'],
+      countSd: counts.sd,
       hevcCount: row.hevc_count,
       h264Count: row.h264_count,
       av1Count: row.av1_count,
@@ -2106,9 +2210,12 @@ export class LibrarySyncService {
         seasonCount: latest.seasonCount,
         showCount: latest.showCount,
         musicCount: latest.musicCount,
+        count8k: latest.count8k,
         count4k: latest.count4k,
+        count1440p: latest.count1440p,
         count1080p: latest.count1080p,
         count720p: latest.count720p,
+        count480p: latest.count480p,
         countSd: latest.countSd,
         hevcCount: latest.hevcCount,
         h264Count: latest.h264Count,

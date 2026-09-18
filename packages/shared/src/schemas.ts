@@ -894,8 +894,63 @@ export const jellystatPlaybackActivitySchema = z.looseObject({
 export const jellystatBackupSchema = z.array(
   z.object({
     jf_playback_activity: z.array(z.unknown()).optional(), // Validate records individually during import
+    jf_library_items: z.array(z.unknown()).optional(),
+    jf_library_episodes: z.array(z.unknown()).optional(),
+    jf_playback_reporting_plugin_data: z.array(z.unknown()).optional(),
   })
 );
+
+const jellystatNullableInt = z
+  .number()
+  .int()
+  .nullish()
+  .transform((v) => v ?? null);
+
+// Jellystat's remap only treats `archived = false` as still in the library, so a null flag counts as archived.
+const jellystatArchived = z
+  .boolean()
+  .nullish()
+  .transform((v) => v !== false);
+
+/**
+ * Library item row from a Jellystat backup, projected to the fields the remap veto reads
+ */
+export const jellystatLibraryItemSchema = z.object({
+  Id: z.string(),
+  Name: z.string(),
+  ProductionYear: jellystatNullableInt,
+  archived: jellystatArchived,
+});
+
+/**
+ * Library episode row from a Jellystat backup, projected to the fields the remap veto reads
+ */
+export const jellystatLibraryEpisodeSchema = z.object({
+  EpisodeId: z.string(),
+  SeriesId: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? null),
+  Name: z.string(),
+  SeriesName: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? null),
+  ParentIndexNumber: jellystatNullableInt,
+  IndexNumber: jellystatNullableInt,
+  archived: jellystatArchived,
+});
+
+/**
+ * Playback Reporting plugin row from a Jellystat backup (bigint rowid may arrive as a string)
+ */
+export const jellystatPluginRowSchema = z.object({
+  rowid: z.union([
+    z.number().int().nonnegative(),
+    z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int()),
+  ]),
+  ItemId: z.string(),
+});
 
 /**
  * Request body for Jellystat import (multipart form data is parsed separately)
@@ -1239,6 +1294,9 @@ export type JellystatPlayState = z.infer<typeof jellystatPlayStateSchema>;
 export type JellystatTranscodingInfo = z.infer<typeof jellystatTranscodingInfoSchema>;
 export type JellystatPlaybackActivity = z.infer<typeof jellystatPlaybackActivitySchema>;
 export type JellystatBackup = z.infer<typeof jellystatBackupSchema>;
+export type JellystatLibraryItem = z.infer<typeof jellystatLibraryItemSchema>;
+export type JellystatLibraryEpisode = z.infer<typeof jellystatLibraryEpisodeSchema>;
+export type JellystatPluginRow = z.infer<typeof jellystatPluginRowSchema>;
 export type JellystatImportBody = z.infer<typeof jellystatImportBodySchema>;
 export type ImportJobStatus = z.infer<typeof importJobStatusSchema>;
 

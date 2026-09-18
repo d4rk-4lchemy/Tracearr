@@ -4,6 +4,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Film,
   Tv,
@@ -39,7 +40,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { TimeRangePicker, type TimeRangeValue } from '@/components/ui/time-range-picker';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { HistoryFilters } from '@/hooks/queries/useHistory';
-import type { HistoryFilterOptions } from '@tracearr/shared';
+import { PLAYBACK_DECISION_LABEL_KEYS, type HistoryFilterOptions } from '@tracearr/shared';
 
 // Column definitions for visibility toggle
 export const HISTORY_COLUMNS = [
@@ -163,6 +164,7 @@ export function HistoryFiltersBar({
   onColumnVisibilityChange,
   isMultiServer = false,
 }: Props) {
+  const { t } = useTranslation();
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
 
   // Sync search input with filters
@@ -250,12 +252,9 @@ export function HistoryFiltersBar({
       });
     }
     if (filters.transcodeDecisions?.length) {
-      const labels = {
-        directplay: 'Direct Play',
-        copy: 'Direct Stream',
-        transcode: 'Transcode',
-      };
-      const decisionLabels = filters.transcodeDecisions.map((d) => labels[d]);
+      const decisionLabels = filters.transcodeDecisions.map((d) =>
+        t(PLAYBACK_DECISION_LABEL_KEYS[d])
+      );
       active.push({
         key: 'transcodeDecisions',
         label: 'Quality',
@@ -268,7 +267,7 @@ export function HistoryFiltersBar({
     }
 
     return active;
-  }, [filters, filterOptions?.users]);
+  }, [filters, filterOptions?.users, t]);
 
   // Debounced search effect
   useEffect(() => {
@@ -584,9 +583,21 @@ export function HistoryFiltersBar({
               ) : null}
             </DropdownMenuLabel>
             {[
-              { value: 'directplay' as const, label: 'Direct Play', icon: MonitorPlay },
-              { value: 'copy' as const, label: 'Direct Stream', icon: MonitorPlay },
-              { value: 'transcode' as const, label: 'Transcode', icon: Zap },
+              {
+                value: 'directplay' as const,
+                label: t(PLAYBACK_DECISION_LABEL_KEYS.directplay),
+                icon: MonitorPlay,
+              },
+              {
+                value: 'copy' as const,
+                label: t(PLAYBACK_DECISION_LABEL_KEYS.copy),
+                icon: MonitorPlay,
+              },
+              {
+                value: 'transcode' as const,
+                label: t(PLAYBACK_DECISION_LABEL_KEYS.transcode),
+                icon: Zap,
+              },
             ].map(({ value, label, icon: Icon }) => {
               const isSelected = filters.transcodeDecisions?.includes(value) ?? false;
               return (

@@ -39,6 +39,15 @@ const failedRun = {
   result: null,
 };
 
+const automaticRun = {
+  jobId: 'job-3',
+  type: 'link_imported_history',
+  state: 'completed',
+  createdAt: '2026-09-01T00:00:00.000Z',
+  trigger: 'auto',
+  result: { processed: 40, updated: 40, errors: 0, durationMs: 900 },
+};
+
 function withHistory(history: unknown[]) {
   vi.mocked(api.maintenance.getJobs).mockResolvedValue({ jobs: [] } as never);
   vi.mocked(api.maintenance.getHistory).mockResolvedValue({ history } as never);
@@ -62,8 +71,24 @@ const jobWithOption = {
   ],
 };
 
+const destructiveJob = {
+  type: 'remove_import_duplicates',
+  category: 'cleanup',
+  name: 'Remove imported duplicates',
+  description: 'Removes imported plays that duplicate a tracked play',
+  destructive: true,
+};
+
 function withJob() {
   vi.mocked(api.maintenance.getJobs).mockResolvedValue({ jobs: [jobWithOption] } as never);
+  vi.mocked(api.maintenance.getHistory).mockResolvedValue({ history: [] } as never);
+  vi.mocked(api.maintenance.getStats).mockResolvedValue({} as never);
+  vi.mocked(api.maintenance.getProgress).mockResolvedValue({} as never);
+  vi.mocked(api.maintenance.startJob).mockResolvedValue({} as never);
+}
+
+function withJobs(jobs: unknown[]) {
+  vi.mocked(api.maintenance.getJobs).mockResolvedValue({ jobs } as never);
   vi.mocked(api.maintenance.getHistory).mockResolvedValue({ history: [] } as never);
   vi.mocked(api.maintenance.getStats).mockResolvedValue({} as never);
   vi.mocked(api.maintenance.getProgress).mockResolvedValue({} as never);
@@ -119,5 +144,65 @@ describe('Jobs', () => {
     expect(api.maintenance.startJob).toHaveBeenCalledWith('normalize_players', {
       dryRun: true,
     });
+  });
+
+  it('warns that a destructive job deletes data instead of the may-take-a-while alert', async () => {
+    withJobs([destructiveJob]);
+    const user = userEvent.setup();
+
+    render(<Jobs />);
+
+    await user.click(await screen.findByRole('tab', { name: /jobs.cleanup/ }));
+    await user.click(await screen.findByRole('button', { name: 'jobs.runJob' }));
+
+    expect(await screen.findByText('jobs.deletesData')).toBeInTheDocument();
+    expect(screen.getByText('jobs.deletesDataDesc')).toBeInTheDocument();
+    expect(screen.queryByText('jobs.mayTakeAWhile')).not.toBeInTheDocument();
+  });
+
+  it('shows the may-take-a-while alert, not the deletes-data warning, for a non-destructive job', async () => {
+    withJob();
+    const user = userEvent.setup();
+
+    render(<Jobs />);
+
+    await user.click(await screen.findByRole('button', { name: 'jobs.runJob' }));
+
+    expect(await screen.findByText('jobs.mayTakeAWhile')).toBeInTheDocument();
+    expect(screen.queryByText('jobs.deletesData')).not.toBeInTheDocument();
+  });
+
+  it('shows a count with no total or percent while a job that reports no total runs', async () => {
+    withJobs([destructiveJob]);
+    vi.mocked(api.maintenance.getProgress).mockResolvedValue({
+      progress: {
+        type: 'remove_import_duplicates',
+        status: 'running',
+        totalRecords: 0,
+        processedRecords: 88,
+        updatedRecords: 0,
+        skippedRecords: 0,
+        errorRecords: 0,
+        message: 'Checked 88 duplicate pairs...',
+      },
+    } as never);
+    const user = userEvent.setup();
+    render(<Jobs />);
+    await user.click(await screen.findByRole('tab', { name: /jobs.cleanup/ }));
+
+    expect(await screen.findByText('Checked 88 duplicate pairs...')).toBeInTheDocument();
+    expect(screen.getByText('88')).toBeInTheDocument();
+    expect(screen.queryByText(/\/ 0/)).not.toBeInTheDocument();
+    expect(screen.queryByText('0%')).not.toBeInTheDocument();
+    expect(screen.queryByText('jobs.updated')).not.toBeInTheDocument();
+  });
+
+  it('marks an automatic history run with a badge', async () => {
+    withHistory([automaticRun]);
+
+    render(<Jobs />);
+
+    const row = (await screen.findByText('link imported history')).closest('[data-slot="item"]');
+    expect(row).toHaveTextContent('jobs.automatic');
   });
 });

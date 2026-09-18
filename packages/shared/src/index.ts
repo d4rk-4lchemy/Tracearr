@@ -287,7 +287,7 @@ export type {
   CodecEntry,
   CodecBreakdown,
   LibraryCodecsResponse,
-  ResolutionEntry,
+  ResolutionCounts,
   ResolutionBreakdown,
   LibraryResolutionResponse,
   LibraryOption,
@@ -410,6 +410,7 @@ export {
   TEMPLATE_GROUPS,
   TEMPLATE_SCHEMA_VERSION,
   TEMPLATE_MIN_SERVER_VERSION,
+  templateMinServerVersion,
   templateEnvelopeSchema,
   materializeTemplate,
   slotValueFor,
@@ -510,6 +511,9 @@ export {
   jellystatTranscodingInfoSchema,
   jellystatPlaybackActivitySchema,
   jellystatBackupSchema,
+  jellystatLibraryItemSchema,
+  jellystatLibraryEpisodeSchema,
+  jellystatPluginRowSchema,
   jellystatImportBodySchema,
   importJobStatusSchema,
   // Playback Reporting import
@@ -701,6 +705,9 @@ export type {
   JellystatTranscodingInfo,
   JellystatPlaybackActivity,
   JellystatBackup,
+  JellystatLibraryItem,
+  JellystatLibraryEpisode,
+  JellystatPluginRow,
   JellystatImportBody,
   ImportJobStatus,
   // Engagement tracking
@@ -830,6 +837,8 @@ export type { ListMeta, ListResponse } from './listQuery.js';
 // Resolution classification
 export {
   RESOLUTION_TIERS,
+  RESOLUTION_LABELS,
+  RESOLUTION_BUCKETS,
   classifyByDimensions,
   normalizeResolutionLabel,
   resolutionTierRank,
@@ -849,6 +858,22 @@ export {
   normalizeDynamicRange,
   type DynamicRangeToken,
 } from './dynamicRange.js';
+
+// Playback decision (Direct Play, Direct Stream, Transcode)
+export {
+  PLAYBACK_DECISION_LABEL_KEYS,
+  playbackDecision,
+  type PlaybackDecision,
+  type PlaybackDecisionInput,
+} from './playbackDecision.js';
+
+// Trust score levels
+export {
+  TRUST_LEVEL_THRESHOLDS,
+  TRUST_LEVEL_LABEL_KEYS,
+  trustLevel,
+  type TrustLevel,
+} from './trustLevel.js';
 
 // Server-scope selection (cache-key and query-param builders)
 export {

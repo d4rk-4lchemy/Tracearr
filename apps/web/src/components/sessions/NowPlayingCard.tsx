@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Monitor,
   MonitorPlay,
@@ -27,7 +28,12 @@ import { ServerColorAccent } from '@/components/server';
 import { TerminateSessionDialog } from './TerminateSessionDialog';
 import { CatchupIcon } from './CatchupIcon';
 import { formatDispatcharrCatchupClock } from './useDispatcharrCatchupCardProgress';
-import { POSTER_IMAGE_SIZE, type ActiveSession } from '@tracearr/shared';
+import {
+  PLAYBACK_DECISION_LABEL_KEYS,
+  POSTER_IMAGE_SIZE,
+  playbackDecision,
+  type ActiveSession,
+} from '@tracearr/shared';
 
 interface NowPlayingCardProps {
   session: ActiveSession;
@@ -118,6 +124,7 @@ function PlaybackOverlay({ isPaused }: { isPaused: boolean }) {
 export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
   const { title, subtitle } = getCardMediaDisplay(session);
   const { user } = useAuth();
+  const { t } = useTranslation();
   const { isMultiServer } = useServer();
   const [showTerminateDialog, setShowTerminateDialog] = useState(false);
 
@@ -254,13 +261,9 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                     session.isTranscode &&
                     !!(session.transcodeInfo?.hwEncoding || session.transcodeInfo?.hwDecoding);
 
-                  const label = session.isTranscode
-                    ? isHwTranscode
-                      ? 'HW Transcode'
-                      : 'Transcode'
-                    : session.videoDecision === 'copy' || session.audioDecision === 'copy'
-                      ? 'Direct Stream'
-                      : 'Direct Play';
+                  const label = isHwTranscode
+                    ? t('playback.hwTranscode')
+                    : t(PLAYBACK_DECISION_LABEL_KEYS[playbackDecision(session)]);
 
                   const icon = session.isTranscode ? (
                     isHwTranscode ? (

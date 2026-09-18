@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `452cef79`
-- Last shared upstream commit found during inspection: `9d2e17ab`
-- Latest upstream commit merged into the current working tree: `452cef79`
+- Source branch/SHA inspected: `main` at `19db484d`
+- Last shared upstream commit found during inspection: `b415b44e`
+- Latest upstream commit merged into the current working tree: `19db484d`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -247,6 +247,96 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `19db484d` (Tracearr 2.4.0) was merged into `develop`
+  on September 18, 2026. Jellystat uploads are spooled to disk rather than
+  carried in Redis, and JSONL imports retain only consumed tables. Imported
+  history keeps existing provider IDs when matched media lacks them. Shared
+  playback-decision/trust helpers, server-statistics access checks, ISO user
+  dates, mobile push/widget updates, map framing and job-progress fixes,
+  automation version requirements, translations and release notes are retained.
+  Conflicts preserve Dispatcharr channel/programme and Catch-up presentation,
+  Live TV engagement-badge exclusion and fixed History column widths while
+  adopting upstream's unknown-position behavior (no percentage/badge for null
+  progress; measured zero remains 0%). History tests cover both overlays.
+  Dashboard changes only relocate playback-decision imports; uncropped artwork,
+  transparent slots, fixed Play/Pause controls and cache markers are intact.
+  Dispatcharr auth/realtime/lifecycle, two-channel version API and fork CI/release
+  policy remain unchanged. Upstream migration history is unchanged and identical
+  to source; Dispatcharr migrations remain in their separate ledger.
+  Full non-Docker CI passed with Node 24 / pnpm 12.3.4, `HUSKY=0` and a
+  4 GB heap after clearing Turbo: frozen install, lint, typecheck, translations,
+  unit/services/routes/auth/security, web, coverage and build. The first lint
+  caught an unused conflict-resolution variable; the complete lint rerun passed.
+  Server groups plus web passed 8,807 tests with two skipped; shared passed 374.
+  Coverage passed 5,652 with two skipped (69.50% statements, 63.37% branches,
+  74.45% functions, 70.67% lines). Lint decreased from 754 to 753 warnings
+  because upstream map framing removes a non-null assertion. Other job warning
+  counts and normalized classes are unchanged. Automated Dispatcharr regressions
+  passed. Logs use `.tmp/github-ci-<job>-20260918-19db.log`, with `lint-final`
+  for the successful lint rerun; details are in the local warning reference.
+  Docker integration, E2E and image builds are omitted at the user's request;
+  real-provider manual smoke checks are not covered by this local run.
+
+
+- Upstream `main` at `b415b44e` was merged into `develop` on September 17,
+  2026. It adds Plex GUID library identity, imported-history linking and manual
+  duplicate cleanup, Jellystat JSONL/episode import improvements, tracking-time
+  cutoffs and runtime bounds, container-identity unlinking, and hidden progress
+  bars for sessions without a known duration. Migration `0106_smart_queen_noir`
+  is retained unchanged in the upstream ledger; the Dispatcharr ledger remains
+  separate. Server-route and library-sync conflicts combine upstream linking
+  hooks with Dispatcharr auth and library-capability guards; test mocks retain
+  both behaviors without duplicate SSE mocks. Duplicate cleanup explicitly
+  skips Dispatcharr, whose session keys have no supported history-import
+  format; a mixed-provider regression covers that boundary. Plex linking stays
+  Plex-only. Dispatcharr realtime/lifecycle, uncropped Dashboard artwork and
+  cache markers, two-channel version API and fork CI/release policy remain
+  intact. The upstream 2.4.0 release-note source and privacy policy are retained.
+  Full non-Docker CI passed with Node 24 / pnpm 12.3.4, `HUSKY=0` and a
+  4 GB Node heap after clearing Turbo: frozen install, lint, typecheck,
+  translations, unit/services/routes/auth/security, web, coverage and build.
+  Initial typecheck and services failures exposed the cleanup provider boundary
+  and queue mock mismatch above; all affected full jobs passed after repair.
+  Server groups plus web passed 8,775 tests with two skipped; shared passed 361.
+  Coverage passed 5,630 with two skipped (69.28% statements, 63.19% branches,
+  74.25% functions, 70.43% lines). Lint decreased from 755 to 754 warnings;
+  services/coverage each add three occurrences of existing warning classes.
+  Logs use `.tmp/github-ci-<job>-20260917-b415.log`; successful reruns are
+  `services-final`, `lint-recheck` and `typecheck-recheck`. See the local warning
+  reference for details. Docker integration, E2E and image builds were omitted
+  at the user's request; migration execution, database upgrade paths and
+  live-provider manual smoke checks remain unverified.
+
+
+- Upstream `main` at `89202893` was merged into `develop` on September 17,
+  2026. Resolution classification now prioritizes pixels, with separate 8K,
+  1440p and 480p library buckets, shared display casing and translated playback
+  labels. Migration `0105_breezy_wind_dancer` is unchanged in the upstream
+  ledger; aggregate schema version 16 adds the corresponding snapshot columns.
+  The Dispatcharr migration ledger remains separate. The library-sync import
+  conflict retains `supportsMediaLibrary()` and its Dispatcharr exclusion;
+  the concurrent-chart conflict combines upstream translations with the fork's
+  existing timestamp fallback. Dispatcharr session/catch-up presentation,
+  History column widths, permanent uncropped artwork and both cache markers
+  remain intact. Dockerfiles retain fork metadata and fork-migration copies
+  while adopting upstream's npm installation of pnpm. Fork PR-only CI and
+  manual-only releases are unchanged. Upstream privacy-policy updates are
+  retained.
+  Full non-Docker CI passed on its first run with Node 24 / pnpm 12.3.4,
+  `HUSKY=0` and a 4 GB Node heap after clearing Turbo: frozen install, lint,
+  typecheck, translations, unit/services/routes/auth/security, web, coverage
+  and build. Server groups plus web passed 8,605 tests with two skipped;
+  shared passed another 360. Coverage passed 5,468 with two skipped
+  (66.85% statements, 61.01% branches, 72.83% functions, 67.93% lines).
+  Lint retains 755 warnings; all jobs retain September 15 warning counts and
+  normalized message classes. Automated Dispatcharr auth/settings, lifecycle,
+  images and termination coverage passed. Details are recorded in
+  `.tmp/github-ci-warning-reference.md`; logs use
+  `.tmp/github-ci-<job>-20260917-8920.log`. Docker integration,
+  E2E and image builds are omitted at the user's request, so migration execution
+  and database upgrade paths are not validated by this run. Live-provider
+  Dispatcharr manual smoke checks are not covered by this local run.
 
 - Upstream `main` at `452cef79` (Tracearr 2.3.0) was merged into `develop`
   on September 15, 2026. It adds bundled release notes, the owner's What's New

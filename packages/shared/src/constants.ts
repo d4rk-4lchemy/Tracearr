@@ -2,7 +2,11 @@
  * Shared constants for Tracearr
  */
 
-import { classifyByDimensions, type ResolutionLabel } from './resolution.js';
+import {
+  classifyByDimensions,
+  normalizeResolutionLabel,
+  type ResolutionLabel,
+} from './resolution.js';
 
 export { IDENTITY_AWARE_CONDITION_FIELDS } from './automations/conditions.js';
 
@@ -116,6 +120,9 @@ export const REDIS_KEYS = {
   // Notification rate limiting (sliding window counters)
   PUSH_RATE_MINUTE: (sessionId: string) => `${_redisPrefix}tracearr:push:rate:minute:${sessionId}`,
   PUSH_RATE_HOUR: (sessionId: string) => `${_redisPrefix}tracearr:push:rate:hour:${sessionId}`,
+  // Held for CACHE_TTL.PUSH_SESSIONS_SYNC after a device is sent a silent sessions sync
+  PUSH_SESSIONS_SYNC: (sessionId: string) =>
+    `${_redisPrefix}tracearr:push:sync:sessions:${sessionId}`,
   // Location stats filter caching (includes serverIds hash for proper scoping)
   LOCATION_FILTERS: (userId: string, serverIds: string[]) => {
     // Sort and hash serverIds for stable cache key
@@ -337,6 +344,8 @@ export const CACHE_TTL = {
   LIBRARY_LIBRARIES: 300, // 5 minutes - library list changes only on sync
   LIBRARY_MEDIA_DETAIL: 60, // 1 minute, matches PUBLIC_MEDIA_STATS freshness
   MOBILE_LAST_SEEN: 300, // 5 minutes - throttle for device activity updates
+  // 20 minutes: iOS budgets an app two or three background pushes an hour
+  PUSH_SESSIONS_SYNC: 1200,
   // Filter options (dropdown values change infrequently)
   FILTER_OPTIONS: 120, // 2 minutes
   PLEX_GEOIP: 86400,
@@ -618,15 +627,6 @@ export function formatBitrate(kbps: number | null | undefined): string {
  * Keys are lowercase, values are proper display casing.
  */
 const MEDIA_TECH_DISPLAY: Record<string, string> = {
-  // Resolution
-  '4k': '4K',
-  '2k': '2K',
-  uhd: 'UHD',
-  sd: 'SD',
-  hd: 'HD',
-  '1080p': '1080p',
-  '720p': '720p',
-  '480p': '480p',
   // Dynamic range
   sdr: 'SDR',
   hdr: 'HDR',
@@ -714,21 +714,11 @@ const MEDIA_TECH_DISPLAY: Record<string, string> = {
   cc: 'CC',
 };
 
-/**
- * Format a media tech string (resolution, codec, dynamic range) for display.
- * Uses a lookup map for known values, falls back to uppercase for unknown.
- *
- * @param value - Tech string (e.g., "4k", "hevc", "truehd", "dolby vision")
- * @returns Formatted string with proper casing
- *
- * @example
- * formatMediaTech("4k")           // "4K"
- * formatMediaTech("hevc")         // "HEVC"
- * formatMediaTech("truehd")       // "TrueHD"
- * formatMediaTech("dolby vision") // "Dolby Vision"
- */
+/** Display casing for a resolution, codec or dynamic range; a resolution comes back as its tier name. */
 export function formatMediaTech(value: string | null | undefined): string {
   if (!value) return 'Unknown';
+  const tier = normalizeResolutionLabel(value);
+  if (tier) return tier;
   const lower = value.toLowerCase().trim();
   return MEDIA_TECH_DISPLAY[lower] ?? value.toUpperCase();
 }
