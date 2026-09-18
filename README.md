@@ -1,5 +1,5 @@
 <p align="center">
-  <b>This is AI slopped fork of Tracearr, that allows tracking of Dispatcharr streams.</b><br/>
+  <b>This is AI slopped fork of Tracearr (https://github.com/connorgallopo/Tracearr), that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
   <i>Current vesrion:</i> <b>2.4.0</b>
 </p>
@@ -61,7 +61,7 @@ tracearr:
 ```
 
 ---
-_Original README.md_
+_Original README.md from https://github.com/connorgallopo/Tracearr_
 
 ---
 
