@@ -59,22 +59,19 @@ User-facing Dispatcharr behavior:
 The fork also carries local maintenance/distribution changes:
 
 - README has fork-specific warnings, Docker image names, and Dispatcharr feature notes.
-- Renovate and the `Stale - needs-information` automation workflows are removed
-  from this fork, so GitHub does not create scheduled maintenance runs.
-- GitHub Actions policy is strictly limited to `.github/workflows/ci.yml` on
-  pull requests. Do not retain or reintroduce any other upstream workflow,
-  trigger, scheduled run, release automation, or manual-dispatch action;
-  merges to `main` do not trigger a second CI run.
+- The only GitHub Actions workflow retained in this fork is
+  `.github/workflows/ci.yml`, and it runs only for pull-request `opened` and
+  `synchronize` events. All other upstream workflows are removed: this
+  includes scheduled/nightly Docker builds, releases, insiders builds, issue
+  automation, Renovate, stale handling, and Vouch automation. Do not retain or
+  reintroduce any other workflow, trigger, scheduled run, release automation,
+  or manual-dispatch action; merges to `main` do not trigger a second CI run.
+- Consequently, GitHub Actions in this fork does not build or publish Docker
+  images. Docker image builds are a local/manual distribution responsibility.
 - The Snyk security workflow and README badge are disabled in this fork.
-- The upstream `Vouch - Check PR` workflow is removed, so pull requests are
-  not auto-closed or gated by a Vouch check in this fork.
 - The Docker-backed integration matrix (PG15/Timescale 2.28 and PG18/Timescale
   2.29) is intentionally not part of GitHub PR CI. Run it manually when
   validating database, migration, or integration-test changes.
-- Release automation is manual-only, so merging to `main` does not create a release, push Docker images, or post to Reddit.
-- The manual release workflow's `bump-helm-chart` job is disabled with
-  `if: false`; this fork does not use upstream's `RELEASE_PAT` path to bypass
-  branch protection and push chart-version commits directly to `main`.
 - Local Husky hooks were removed.
 - `.tmp/`, `.plans/`, `AGENTS.md`, and this `FORK_INFO.md` are ignored locally.
 - `AGENTS.md` documents the Pull Request CI workflow warning baseline. Read both `AGENTS.md` and this file before making changes, and update either file when a change affects repo instructions, fork overlay behavior, validation workflow expectations, warning counts, or future merge guidance.
