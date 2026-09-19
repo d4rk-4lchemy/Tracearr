@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `19db484d`
-- Last shared upstream commit found during inspection: `b415b44e`
-- Latest upstream commit merged into the current working tree: `19db484d`
+- Source branch/SHA inspected: `main` at `976d026f`
+- Last shared upstream commit found during inspection: `19db484d`
+- Latest upstream commit merged into the current working tree: `976d026f`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

@@ -107,7 +107,7 @@ When your backend triggers a notification, it sends the notification content to 
 ### PostHog
 
 **Purpose**: Product analytics and error reports, so we can see which parts of the app get used and fix what breaks
-**Data Shared**: Screen paths with route parameters stripped out, app lifecycle events (opened, backgrounded), uncaught errors, unhandled promise rejections, and messages the app logs at error level, plus app version and build number, device model, OS version, locale, timezone, and screen size. Reports are tied to a random identifier generated on your device for the app installation. We never call PostHog's identify API, so nothing connects this to a person, an account, or your media server data.
+**Data Shared**: Screen paths with route parameters stripped out, app lifecycle events (opened, backgrounded), uncaught errors, unhandled promise rejections, and messages the app logs at error level (which can include the status code and error text your Tracearr server replied with), plus app version and build number, the version number of the Tracearr server you are paired with, device model, OS version, locale, timezone, and screen size. Reports are tied to a random identifier generated on your device for the app installation. We never call PostHog's identify API, so nothing connects this to a person, an account, or your media server data.
 **Region**: United States
 **Privacy Policy**: [https://posthog.com/privacy](https://posthog.com/privacy)
 
