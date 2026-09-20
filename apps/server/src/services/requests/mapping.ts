@@ -53,8 +53,22 @@ function toDate(value: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-export function mapSeerrRequest(row: SeerrRequest): MappedRequest {
+const MEDIA_AVAILABLE = 5;
+
+/**
+ * Seerr writes COMPLETED only on a media status change seen while the request
+ * is approved, and versions from before COMPLETED existed left finished
+ * requests approved with no backfill. Seerr's own "available" count is
+ * approved plus available media, so that counts as completed here too.
+ */
+function effectiveStatus(row: SeerrRequest): MediaRequestStatus {
   const status = mapRequestStatus(row.status);
+  const mediaStatus = row.is4k ? row.media.status4k : row.media.status;
+  return status === 'approved' && mediaStatus === MEDIA_AVAILABLE ? 'completed' : status;
+}
+
+export function mapSeerrRequest(row: SeerrRequest): MappedRequest {
+  const status = effectiveStatus(row);
   const requestedAt = new Date(row.createdAt);
   const remoteUpdatedAt = new Date(row.updatedAt);
   const seasons: RequestSeason[] | null =

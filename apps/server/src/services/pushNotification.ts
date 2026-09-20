@@ -997,8 +997,9 @@ export class PushNotificationService {
 
   /**
    * Wake backgrounded iOS apps so the home screen widget reloads the active
-   * sessions. Runs on every stream start and stop, so each device is claimed
-   * through the rate limiter first; without Redis nothing is sent.
+   * sessions. Runs on every stream start, stop and widget-visible change, so
+   * each device is claimed through the rate limiter first; without Redis
+   * nothing is sent.
    */
   async triggerSessionsSync(): Promise<void> {
     const rateLimiter = getPushRateLimiter();
@@ -1007,7 +1008,13 @@ export class PushNotificationService {
     await this.sendSilentNotification(
       { syncType: 'sessions', timestamp: Date.now() },
       async (session) =>
-        session.platform === 'ios' && (await rateLimiter.claimSessionsSync(session.mobileSessionId))
+        session.platform === 'ios' &&
+        (await rateLimiter.claimSessionsSync(session.mobileSessionId, () =>
+          this.sendSilentNotification(
+            { syncType: 'sessions', timestamp: Date.now() },
+            async (device) => device.mobileSessionId === session.mobileSessionId
+          )
+        ))
     );
   }
 

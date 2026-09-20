@@ -228,7 +228,22 @@ describe('silent sessions sync', () => {
 
     await pushNotificationService.triggerSessionsSync();
 
-    expect(claimSessionsSync).toHaveBeenCalledWith('mob-ios-1');
+    expect(claimSessionsSync).toHaveBeenCalledWith('mob-ios-1', expect.any(Function));
     expect(sent).toHaveLength(0);
+  });
+
+  it('sends the trailing sync to that device only', async () => {
+    rows.push(device({ expoPushToken: 'ExponentPushToken[ios-2]', mobileSessionId: 'mob-ios-2' }));
+    claimSessionsSync.mockResolvedValue(false);
+    await pushNotificationService.triggerSessionsSync();
+
+    const sendTrailing = claimSessionsSync.mock.calls[0]?.[1] as () => Promise<void>;
+    await sendTrailing();
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      to: 'ExponentPushToken[ios-1]',
+      data: { type: 'data_sync', syncType: 'sessions' },
+    });
   });
 });

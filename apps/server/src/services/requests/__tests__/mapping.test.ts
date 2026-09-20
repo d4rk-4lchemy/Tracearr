@@ -93,4 +93,33 @@ describe('mapSeerrRequest', () => {
   it('stores null seasons for movies', () => {
     expect(mapSeerrRequest({ ...base, type: 'movie', seasons: [] }).seasons).toBeNull();
   });
+
+  it('counts an approved request whose media is available as completed', () => {
+    const mapped = mapSeerrRequest({
+      ...base,
+      status: 2,
+      type: 'movie',
+      seasons: [],
+      media: { ...base.media, mediaType: 'movie', status: 5 },
+    });
+    expect(mapped.status).toBe('completed');
+    expect(mapped.availableAt).toEqual(new Date('2026-09-07T21:01:26.000Z'));
+  });
+
+  it('keeps a 4k request approved while only the standard copy is available', () => {
+    const mapped = mapSeerrRequest({
+      ...base,
+      status: 2,
+      is4k: true,
+      media: { ...base.media, status: 5, status4k: 3 },
+    });
+    expect(mapped.status).toBe('approved');
+    expect(mapped.availableAt).toBeNull();
+  });
+
+  it('keeps an approved request with partially available media approved', () => {
+    const mapped = mapSeerrRequest({ ...base, status: 2, media: { ...base.media, status: 4 } });
+    expect(mapped.status).toBe('approved');
+    expect(mapped.availableAt).toBeNull();
+  });
 });

@@ -1,0 +1,23 @@
+{
+  "version": "2.4.1",
+  "date": "2026-09-19",
+  "changes": [
+    {
+      "type": "improved",
+      "text": "the iOS widget also refreshes on pause, resume, transcode and quality changes, at most every 10 minutes"
+    },
+    {
+      "type": "improved",
+      "text": "the map's dark and light basemaps look like the pre-2.2 map again"
+    },
+    {
+      "type": "fix",
+      "text": "Seerr requests still marked approved once their media is available now count as landed",
+      "refs": ["#1202"]
+    },
+    {
+      "type": "note",
+      "text": "older requests flip to landed on the nightly request sync, or run Sync now from the server's Requests menu"
+    }
+  ]
+}

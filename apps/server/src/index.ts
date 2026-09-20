@@ -98,6 +98,7 @@ import { createCacheService, createPubSubService } from './services/cache.js';
 import { initializePoller, startPoller, stopPoller } from './jobs/poller/index.js';
 import { invalidateServersCache } from './jobs/poller/database.js';
 import { sseManager } from './services/sseManager.js';
+import { WidgetSessionTracker } from './services/widgetSessions.js';
 import {
   initializeSSEProcessor,
   startSSEProcessor,
@@ -1201,6 +1202,7 @@ async function initializePostListen(app: FastifyInstance) {
     }
   });
 
+  const widgetSessions = new WidgetSessionTracker();
   const wakeMobileWidgets = () => {
     pushNotificationService.triggerSessionsSync().catch((err: unknown) => {
       app.log.error({ err }, 'Silent sessions sync push failed');
@@ -1219,14 +1221,17 @@ async function initializePostListen(app: FastifyInstance) {
       switch (event) {
         case WS_EVENTS.SESSION_STARTED:
           broadcastToSessions('session:started', data as ActiveSession);
+          widgetSessions.started(data as ActiveSession);
           wakeMobileWidgets();
           break;
         case WS_EVENTS.SESSION_STOPPED:
           broadcastToSessions('session:stopped', data as string);
+          widgetSessions.stopped(data as string);
           wakeMobileWidgets();
           break;
         case WS_EVENTS.SESSION_UPDATED:
           broadcastToSessions('session:updated', data as ActiveSession);
+          if (widgetSessions.updated(data as ActiveSession)) wakeMobileWidgets();
           break;
         case WS_EVENTS.VIOLATION_NEW:
           broadcastToSessions('violation:new', data as ViolationWithDetails);
