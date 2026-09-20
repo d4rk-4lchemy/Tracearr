@@ -134,9 +134,19 @@ async function upsertBatch(
       server_user_id = COALESCE(EXCLUDED.server_user_id, media_requests.server_user_id),
       remote_user_id = EXCLUDED.remote_user_id, remote_username = EXCLUDED.remote_username,
       remote_plex_id = EXCLUDED.remote_plex_id, remote_jellyfin_user_id = EXCLUDED.remote_jellyfin_user_id,
-      status = EXCLUDED.status, seasons = EXCLUDED.seasons,
+      -- A request counted as landed only because its media was available stays
+      -- landed if the media later goes away, as a Seerr COMPLETED request does.
+      status = CASE
+        WHEN EXCLUDED.status = 'approved' AND media_requests.available_at IS NOT NULL THEN 'completed'
+        ELSE EXCLUDED.status
+      END,
+      seasons = EXCLUDED.seasons,
       is_4k = EXCLUDED.is_4k, is_auto_request = EXCLUDED.is_auto_request,
-      requested_at = EXCLUDED.requested_at, available_at = EXCLUDED.available_at,
+      requested_at = EXCLUDED.requested_at,
+      available_at = CASE
+        WHEN EXCLUDED.status IN ('approved', 'completed') THEN COALESCE(EXCLUDED.available_at, media_requests.available_at)
+        ELSE EXCLUDED.available_at
+      END,
       remote_updated_at = EXCLUDED.remote_updated_at, synced_at = EXCLUDED.synced_at,
       deleted_at = NULL, updated_at = now()
   `);

@@ -17,6 +17,7 @@ const seerrMediaSchema = z.object({
   tvdbId: z.number().int().nullish(),
   imdbId: z.string().nullish(),
   status: z.number().int(),
+  status4k: z.number().int().nullish(),
   mediaAddedAt: z.string().nullish(),
   ratingKey: z.string().nullish(),
   jellyfinMediaId: z.string().nullish(),

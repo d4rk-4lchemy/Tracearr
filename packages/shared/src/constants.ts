@@ -123,6 +123,9 @@ export const REDIS_KEYS = {
   // Held for CACHE_TTL.PUSH_SESSIONS_SYNC after a device is sent a silent sessions sync
   PUSH_SESSIONS_SYNC: (sessionId: string) =>
     `${_redisPrefix}tracearr:push:sync:sessions:${sessionId}`,
+  // Held until that window ends while one instance has the trailing sync scheduled
+  PUSH_SESSIONS_SYNC_PENDING: (sessionId: string) =>
+    `${_redisPrefix}tracearr:push:sync:sessions:pending:${sessionId}`,
   // Location stats filter caching (includes serverIds hash for proper scoping)
   LOCATION_FILTERS: (userId: string, serverIds: string[]) => {
     // Sort and hash serverIds for stable cache key
@@ -344,7 +347,9 @@ export const CACHE_TTL = {
   LIBRARY_LIBRARIES: 300, // 5 minutes - library list changes only on sync
   LIBRARY_MEDIA_DETAIL: 60, // 1 minute, matches PUBLIC_MEDIA_STATS freshness
   MOBILE_LAST_SEEN: 300, // 5 minutes - throttle for device activity updates
-  // 20 minutes: iOS budgets an app two or three background pushes an hour
+  // 20 minutes: Apple asks for no more than two or three background pushes an
+  // hour, drops the rest, and each one that lands also spends one of the 40 to
+  // 70 daily widget reloads, so three an hour is the fastest that stays honest
   PUSH_SESSIONS_SYNC: 1200,
   // Filter options (dropdown values change infrequently)
   FILTER_OPTIONS: 120, // 2 minutes

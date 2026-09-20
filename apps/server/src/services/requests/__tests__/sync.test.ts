@@ -178,6 +178,17 @@ describe('runRequestSync', () => {
     );
   });
 
+  it('keeps a landed request landed when a later sync reports it approved without a landing time', async () => {
+    store.getRequestService.mockResolvedValue(serviceRow());
+    const c = client([[request(1, '2026-09-03T00:00:00.000Z')]]);
+    await runRequestSync('svc', 'full', { clientFor: () => c });
+    const sqlText = upserts.map((q) => JSON.stringify(q)).join('\n');
+    expect(sqlText).toContain(
+      "WHEN EXCLUDED.status = 'approved' AND media_requests.available_at IS NOT NULL THEN 'completed'"
+    );
+    expect(sqlText).toContain('COALESCE(EXCLUDED.available_at, media_requests.available_at)');
+  });
+
   it('does not soft-delete every request when a full sync fetches zero rows but the service still reports requests', async () => {
     store.getRequestService.mockResolvedValue(serviceRow());
     const c = client([]);
