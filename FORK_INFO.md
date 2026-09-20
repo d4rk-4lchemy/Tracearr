@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `976d026f`
-- Last shared upstream commit found during inspection: `19db484d`
-- Latest upstream commit merged into the current working tree: `976d026f`
+- Source branch/SHA inspected: `main` at `7ad41635`
+- Last shared upstream commit found during inspection: `7ad41635`
+- Latest upstream commit merged into the current working tree: `7ad41635`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -248,6 +248,26 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `7ad41635` (Tracearr 2.4.1) was merged into `develop`
+  on September 20, 2026 without textual conflicts. It adds state-aware iOS
+  widget wake pushes and their distributed rate limiting, restores Seerr
+  requests to landed status when approved media is available, updates map
+  basemap styling, Helm metadata, shared release/version constants, and the
+  2.4.1 release notes. The merge retains the Dispatcharr-only server type
+  color and cache keys, leader-gated Dispatcharr realtime lifecycle and
+  fork-migration wiring in startup, the request-service exclusion of
+  Dispatcharr from Seerr/library behavior, uncropped Dashboard artwork, and
+  the PR-only CI policy. Upstream migrations are unchanged and the separate
+  Dispatcharr migration ledger is untouched.
+  Full non-Docker CI passed with Node 24 / pnpm 12.3.4, `HUSKY=0`, and a 4 GB
+  Node heap after moving the local Turbo cache aside and performing a frozen
+  install: lint (753 known warnings), typecheck, translations,
+  unit/services/routes/auth/security, web, coverage, and build. Web passed
+  1,728 tests; coverage passed 5,665 with two skipped (69.53% statements,
+  63.41% branches, 74.51% functions, 70.70% lines). Docker integration,
+  E2E, image builds, database-upgrade checks, and live-provider manual smoke
+  tests were intentionally omitted at the user's request.
 
 - Upstream `main` at `19db484d` (Tracearr 2.4.0) was merged into `develop`
   on September 18, 2026. Jellystat uploads are spooled to disk rather than
