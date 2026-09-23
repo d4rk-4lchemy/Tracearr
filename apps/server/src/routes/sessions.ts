@@ -39,6 +39,7 @@ import {
   buildMultiServerFragment,
 } from '../utils/serverFiltering.js';
 import { representativeAccountOrderSql } from '../utils/representativeAccount.js';
+import { isLocalSession, localSessionSql } from '../utils/localSession.js';
 import { terminateSession } from '../services/termination.js';
 import { getCacheService } from '../services/cache.js';
 import { createHash } from 'node:crypto';
@@ -87,6 +88,7 @@ function buildHistoryFilterConditions(
     geoCountries,
     geoCity,
     geoRegion,
+    network,
     transcodeDecisions,
     watched,
     excludeShortSessions,
@@ -182,6 +184,8 @@ function buildHistoryFilterConditions(
   }
   if (geoCity) conditions.push(sql`s.geo_city = ${geoCity}`);
   if (geoRegion) conditions.push(sql`s.geo_region = ${geoRegion}`);
+  if (network === 'local') conditions.push(localSessionSql('s'));
+  if (network === 'remote') conditions.push(sql`NOT ${localSessionSql('s')}`);
 
   if (transcodeDecisions && transcodeDecisions.length > 0 && transcodeDecisions.length < 3) {
     const decisions = transcodeDecisions as string[];
@@ -361,6 +365,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.geo_lon,
           s.geo_asn_number,
           s.geo_asn_organization,
+          ${localSessionSql('s')} AS is_local,
           s.player_name,
           s.device_id,
           s.product,
@@ -437,6 +442,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         geo_lon: number | null;
         geo_asn_number: number | null;
         geo_asn_organization: string | null;
+        is_local: boolean;
         player_name: string | null;
         device_id: string | null;
         product: string | null;
@@ -510,6 +516,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       geoLon: row.geo_lon,
       geoAsnNumber: row.geo_asn_number,
       geoAsnOrganization: row.geo_asn_organization,
+      isLocal: row.is_local === true,
       playerName: row.player_name,
       deviceId: row.device_id,
       product: row.product,
@@ -706,6 +713,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.geo_lon,
           s.geo_asn_number,
           s.geo_asn_organization,
+          ${localSessionSql('s')} AS is_local,
           s.player_name,
           s.device_id,
           s.product,
@@ -812,6 +820,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         geo_lon: number | null;
         geo_asn_number: number | null;
         geo_asn_organization: string | null;
+        is_local: boolean;
         player_name: string | null;
         device_id: string | null;
         product: string | null;
@@ -891,6 +900,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       geoLon: row.geo_lon,
       geoAsnNumber: row.geo_asn_number,
       geoAsnOrganization: row.geo_asn_organization,
+      isLocal: row.is_local === true,
       playerName: row.player_name,
       deviceId: row.device_id,
       product: row.product,
@@ -1406,6 +1416,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         geoLon: sessions.geoLon,
         geoAsnNumber: sessions.geoAsnNumber,
         geoAsnOrganization: sessions.geoAsnOrganization,
+        isLocal: sessions.isLocal,
         playerName: sessions.playerName,
         deviceId: sessions.deviceId,
         product: sessions.product,
@@ -1492,6 +1503,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       geoLon: row.geoLon,
       geoAsnNumber: row.geoAsnNumber,
       geoAsnOrganization: row.geoAsnOrganization,
+      isLocal: isLocalSession(row),
       playerName: row.playerName,
       deviceId: row.deviceId,
       product: row.product,

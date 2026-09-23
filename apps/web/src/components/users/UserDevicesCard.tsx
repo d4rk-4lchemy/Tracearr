@@ -22,6 +22,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import type { UserDevice } from '@tracearr/shared';
 import { formatLocationCompact, getDeviceDisplayName } from '@/lib/utils';
+import { LocalBadge } from '@/components/sessions/LocalBadge';
 
 interface UserDevicesCardProps {
   devices: UserDevice[];
@@ -219,7 +220,10 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
                                       key={locIndex}
                                       className="flex items-center justify-between gap-4 text-xs"
                                     >
-                                      <span>{formatLocationShort(loc)}</span>
+                                      <span className="flex items-center gap-1">
+                                        {formatLocationShort(loc)}
+                                        <LocalBadge isLocal={loc.isLocal} country={loc.country} />
+                                      </span>
                                       <span className="text-muted-foreground tabular-nums">
                                         {loc.sessionCount}
                                       </span>
@@ -232,6 +236,10 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
                             <span className="flex items-center gap-1">
                               <MapPin className="h-3 w-3 shrink-0" />
                               {formatLocationShort(primaryLocation)}
+                              <LocalBadge
+                                isLocal={primaryLocation.isLocal}
+                                country={primaryLocation.country}
+                              />
                             </span>
                           )}
                         </>

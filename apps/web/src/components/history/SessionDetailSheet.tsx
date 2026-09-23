@@ -43,6 +43,7 @@ import { cn, getCountryName, getMediaDisplay, getSessionProgress } from '@/lib/u
 import { imageProxyUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/formatters';
 import { getAvatarUrl } from '@/components/users/utils';
+import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { StreamDetailsPanel } from './StreamDetailsPanel';
 
 import { PLAYBACK_DECISION_LABEL_KEYS, POSTER_IMAGE_SIZE, playbackDecision } from '@tracearr/shared';
@@ -444,6 +445,7 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
               <div className="flex items-center gap-1.5 text-sm">
                 <Globe className="text-muted-foreground h-3.5 w-3.5 flex-shrink-0" />
                 <span>{locationString}</span>
+                <LocalBadge isLocal={session.isLocal} country={session.geoCountry} />
               </div>
             )}
             <CollapsibleContent className="space-y-2">

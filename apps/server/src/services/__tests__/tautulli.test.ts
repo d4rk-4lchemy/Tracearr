@@ -30,7 +30,11 @@ import {
 } from '../tautulli.js';
 import { getSettings, rearmImportedHistoryLink } from '../settings.js';
 import { db } from '../../db/client.js';
-import { refreshAggregates } from '../../db/timescale.js';
+import { checkAggregateNeedsRebuild, refreshAggregates } from '../../db/timescale.js';
+import {
+  enqueueMaintenanceJob,
+  enqueueServerLocationSyncIfBehind,
+} from '../../jobs/maintenanceQueue.js';
 import {
   batchGetLibraryItemIdentity,
   batchResolveMediaByPlexGuid,
@@ -59,6 +63,7 @@ vi.mock('../geoip.js', () => ({
       lat: null,
       lon: null,
     })),
+    isPrivateIP: vi.fn(() => false),
   },
 }));
 
@@ -78,6 +83,11 @@ vi.mock('../../db/timescale.js', () => ({
 
 vi.mock('../../jobs/maintenanceQueue.js', () => ({
   enqueueMaintenanceJob: vi.fn().mockResolvedValue('job-1'),
+  enqueueServerLocationSyncIfBehind: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../serverLocations.js', () => ({
+  markImportedServerLocations: vi.fn(),
 }));
 
 vi.mock('../../jobs/poller/database.js', () => ({
@@ -2452,6 +2462,24 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
       startTime: new Date(startedAt.getTime() - 24 * 60 * 60 * 1000),
       endTime: new Date(startedAt.getTime() + 24 * 60 * 60 * 1000),
     });
+  });
+
+  it('queues the aggregate rebuild before the server location sync', async () => {
+    mockFetch = mockTautulliFetch([makeRecord({ reference_id: 1 })], 1);
+    global.fetch = mockFetch as typeof global.fetch;
+    vi.mocked(checkAggregateNeedsRebuild).mockResolvedValueOnce({
+      needsRebuild: true,
+      reason: 'No aggregate data exists',
+    });
+
+    const result = await TautulliService.importHistory(SERVER_ID);
+
+    expect(result.success).toBe(true);
+    expect(enqueueMaintenanceJob).toHaveBeenCalledWith('full_aggregate_rebuild', 'system');
+    const rebuildOrder = vi.mocked(enqueueMaintenanceJob).mock.invocationCallOrder[0] ?? Infinity;
+    const syncOrder =
+      vi.mocked(enqueueServerLocationSyncIfBehind).mock.invocationCallOrder[0] ?? -Infinity;
+    expect(rebuildOrder).toBeLessThan(syncOrder);
   });
 });
 

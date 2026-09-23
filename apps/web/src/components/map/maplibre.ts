@@ -216,6 +216,7 @@ export interface LocationFeatureProps {
   count: number;
   city: string | null;
   country: string | null;
+  isLocal: boolean;
   serverId: string | null;
   servers: { serverId: string; count: number }[] | null;
 }
@@ -234,6 +235,7 @@ export function locationsGeojson(
       count,
       city: l.city,
       country: l.country,
+      isLocal: l.isLocal,
       serverId: serverId ?? l.servers?.[0]?.serverId ?? null,
       servers: l.servers ?? null,
     } satisfies LocationFeatureProps,

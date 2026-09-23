@@ -19,6 +19,7 @@ export interface HistoryFilters {
   geoCountries?: string[];
   geoCity?: string;
   geoRegion?: string;
+  network?: 'local' | 'remote';
   transcodeDecisions?: ('directplay' | 'copy' | 'transcode')[];
   watched?: boolean;
   excludeShortSessions?: boolean;

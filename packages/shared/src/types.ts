@@ -67,6 +67,27 @@ export interface Server {
   updatedAt: Date;
 }
 
+export interface ServerLocationEntry {
+  /** ISO datetime the location took effect; null covers everything before the first dated entry */
+  effectiveFrom: string | null;
+  lat: number;
+  lon: number;
+  city: string | null;
+  region: string | null;
+  /** ISO 3166-1 alpha-2 */
+  country: string;
+}
+
+export interface ServerLocationsResponse {
+  entries: ServerLocationEntry[];
+  /** Entries changed since the location sync last applied them */
+  syncPending: boolean;
+}
+
+export interface UpdateServerLocationsResponse extends ServerLocationsResponse {
+  syncQueued: boolean;
+}
+
 // User types - Identity layer (the real human)
 export interface User {
   id: string;
@@ -459,6 +480,8 @@ export interface Session extends StreamDetailFields {
   geoLon: number | null;
   geoAsnNumber: number | null;
   geoAsnOrganization: string | null;
+  // A local network session; its geo fields hold its server's location when one is set
+  isLocal: boolean;
   playerName: string | null; // Friendly device name
   deviceId: string | null; // Unique device identifier (machineIdentifier)
   product: string | null; // Product/app name (e.g., "Plex for iOS")
@@ -623,6 +646,7 @@ export interface ViolationSessionInfo {
   geoCity: string | null;
   geoRegion: string | null;
   geoCountry: string | null;
+  isLocal: boolean;
   geoContinent: string | null;
   geoPostal: string | null;
   geoLat: number | null;
@@ -694,6 +718,7 @@ export interface LocationStats {
   city: string | null;
   region: string | null; // State/province
   country: string | null;
+  isLocal: boolean;
   lat: number;
   lon: number;
   count: number;
@@ -1191,6 +1216,7 @@ export interface UserLocation {
   city: string | null;
   region: string | null; // State/province/subdivision
   country: string | null;
+  isLocal: boolean;
   lat: number | null;
   lon: number | null;
   sessionCount: number;
@@ -1203,6 +1229,7 @@ export interface DeviceLocation {
   city: string | null;
   region: string | null;
   country: string | null;
+  isLocal: boolean;
   sessionCount: number;
   lastSeenAt: Date;
 }
@@ -1796,7 +1823,8 @@ export type MaintenanceJobType =
   | 'repair_corrupted_chunks'
   | 'backfill_session_identity'
   | 'remove_import_duplicates'
-  | 'link_imported_history';
+  | 'link_imported_history'
+  | 'sync_server_locations';
 
 export type MaintenanceJobStatus = 'idle' | 'waiting' | 'running' | 'complete' | 'error';
 

@@ -72,6 +72,7 @@ function makeSession(overrides: Partial<SessionWithDetails> = {}): SessionWithDe
     geoLon: null,
     geoAsnNumber: null,
     geoAsnOrganization: null,
+    isLocal: false,
     playerName: 'Player',
     deviceId: 'device-1',
     product: 'App',

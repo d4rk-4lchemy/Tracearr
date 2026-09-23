@@ -19,7 +19,10 @@ import { parseJellystatPlayMethod } from '../utils/transcodeNormalizer.js';
 import { wallTimeToUtc } from '../utils/wallClock.js';
 import { servers, sessions } from '../db/schema.js';
 import { checkAggregateNeedsRebuild, refreshAggregates } from '../db/timescale.js';
-import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
+import {
+  enqueueMaintenanceJob,
+  enqueueServerLocationSyncIfBehind,
+} from '../jobs/maintenanceQueue.js';
 import type { PubSubService } from './cache.js';
 import { geoasnService } from './geoasn.js';
 import { geoipService } from './geoip.js';
@@ -37,6 +40,7 @@ import {
 import { EmbyClient } from './mediaServer/emby/client.js';
 import { JellyfinClient } from './mediaServer/jellyfin/client.js';
 import { parseMediaType } from './mediaServer/shared/jellyfinEmbyUtils.js';
+import { markImportedServerLocations } from './serverLocations.js';
 import { getWatchedThresholds, watchedThresholdFor, type WatchedThresholds } from './settings.js';
 
 const PAGE_SIZE = 5000;
@@ -249,6 +253,7 @@ export function transformPlaybackReportingRow(
     geoLon: ctx.geo.lon,
     geoAsnNumber: ctx.geo.asnNumber,
     geoAsnOrganization: ctx.geo.asnOrganization,
+    isLocal: geoipService.isPrivateIP(ipAddress),
     playerName: (deviceName || clientName || 'Unknown').slice(0, 255),
     device: normalized.device.slice(0, 255),
     deviceId: null,
@@ -580,6 +585,12 @@ export async function importPlaybackReporting(
     progress.message = 'Refreshing aggregates...';
     publishProgress(progress);
     await refreshImportAggregates(minImportDate, maxImportDate);
+    try {
+      await markImportedServerLocations(serverId);
+      await enqueueServerLocationSyncIfBehind();
+    } catch (err) {
+      console.error('[PlaybackReporting] Could not queue the server location sync:', err);
+    }
 
     let message =
       `Import complete: ${progress.importedRecords} imported, ` +

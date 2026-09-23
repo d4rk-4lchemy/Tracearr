@@ -12,7 +12,10 @@ import {
   refreshAggregates,
   uncapDecompressionForTx,
 } from '../db/timescale.js';
-import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
+import {
+  enqueueMaintenanceJob,
+  enqueueServerLocationSyncIfBehind,
+} from '../jobs/maintenanceQueue.js';
 import {
   batchGetLibraryItemIdentity,
   batchResolveMediaByPlexGuid,
@@ -38,6 +41,7 @@ import {
   type SessionUpdate,
   type TimeBounds,
 } from './import/index.js';
+import { markImportedServerLocations } from './serverLocations.js';
 import { getSettings, rearmImportedHistoryLink } from './settings.js';
 
 const PAGE_SIZE = 5000; // Larger batches = fewer API calls (tested up to 10k, scales linearly)
@@ -1289,6 +1293,7 @@ export class TautulliService {
             geoLon: geo.lon,
             geoAsnNumber: geo.asnNumber,
             geoAsnOrganization: geo.asnOrganization,
+            isLocal: geoipService.isPrivateIP(extractIpFromEndpoint(record.ip_address)),
             playerName: (record.player || record.product)?.slice(0, 255) ?? null,
             deviceId: record.machine_id?.slice(0, 255) || null,
             product: record.product?.slice(0, 255) || null,
@@ -1466,6 +1471,12 @@ export class TautulliService {
       }
     } catch (err) {
       console.warn('Failed to refresh aggregates after import:', err);
+    }
+    try {
+      await markImportedServerLocations(serverId);
+      await enqueueServerLocationSyncIfBehind();
+    } catch (err) {
+      console.error('[Import] Could not queue the server location sync:', err);
     }
 
     // Update joinedAt for users based on their earliest session

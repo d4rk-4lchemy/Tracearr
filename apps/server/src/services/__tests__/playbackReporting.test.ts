@@ -42,6 +42,7 @@ vi.mock('../geoip.js', () => ({
       lat: null,
       lon: null,
     })),
+    isPrivateIP: vi.fn(() => false),
   },
 }));
 
@@ -63,6 +64,11 @@ vi.mock('../../db/timescale.js', () => ({
 
 vi.mock('../../jobs/maintenanceQueue.js', () => ({
   enqueueMaintenanceJob: vi.fn().mockResolvedValue('job-1'),
+  enqueueServerLocationSyncIfBehind: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../serverLocations.js', () => ({
+  markImportedServerLocations: vi.fn(),
 }));
 
 vi.mock('../../jobs/poller/database.js', () => ({

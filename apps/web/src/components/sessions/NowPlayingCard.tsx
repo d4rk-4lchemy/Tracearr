@@ -28,6 +28,7 @@ import { ServerColorAccent } from '@/components/server';
 import { TerminateSessionDialog } from './TerminateSessionDialog';
 import { CatchupIcon } from './CatchupIcon';
 import { formatDispatcharrCatchupClock } from './useDispatcharrCatchupCardProgress';
+import { LocalBadge } from './LocalBadge';
 import {
   PLAYBACK_DECISION_LABEL_KEYS,
   POSTER_IMAGE_SIZE,
@@ -361,6 +362,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
               {formatLocationCompact(session.geoCity, session.geoRegion, session.geoCountry) ??
                 'Unknown location'}
             </span>
+            <LocalBadge isLocal={session.isLocal} country={session.geoCountry} />
           </span>
           <span className="flex-shrink-0">{session.quality ?? 'Unknown quality'}</span>
         </div>

@@ -10,10 +10,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { DEFAULT_STREAM_DETAILS } from '@tracearr/shared';
 import type { ActionResult } from '../../../services/automations/executors/index.js';
-import type { GeoLocation } from '../../../services/geoip.js';
+import type { SessionGeo } from '../../../services/serverLocations.js';
 import type { BuildActiveSessionInput } from '../sessionLifecycle.js';
 
-const NULL_GEO: GeoLocation = {
+const NULL_GEO: SessionGeo = {
   city: null,
   region: null,
   country: null,
@@ -24,6 +24,7 @@ const NULL_GEO: GeoLocation = {
   lon: null,
   asnNumber: null,
   asnOrganization: null,
+  isLocal: false,
 };
 
 function createMockBuildActiveSessionInput(
@@ -781,16 +782,64 @@ describe('sessionLocation', () => {
     const { sessionLocation } = await import('../sessionLifecycle.js');
 
     expect(
-      sessionLocation({ geoCity: 'Boston', geoRegion: 'Massachusetts', geoCountry: 'US' })
+      sessionLocation({
+        geoCity: 'Boston',
+        geoRegion: 'Massachusetts',
+        geoCountry: 'US',
+        geoLat: null,
+      })
     ).toBe('Boston, Massachusetts');
-    expect(sessionLocation({ geoCity: 'Boston', geoRegion: null, geoCountry: null })).toBe(
-      'Boston'
-    );
-    expect(sessionLocation({ geoCity: null, geoRegion: null, geoCountry: 'US' })).toBe('US');
-    expect(sessionLocation({ geoCity: 'Boston', geoRegion: null, geoCountry: 'US' })).toBe(
-      'Boston, US'
-    );
-    expect(sessionLocation({ geoCity: null, geoRegion: null, geoCountry: null })).toBeNull();
+    expect(
+      sessionLocation({ geoCity: 'Boston', geoRegion: null, geoCountry: null, geoLat: null })
+    ).toBe('Boston');
+    expect(
+      sessionLocation({ geoCity: null, geoRegion: null, geoCountry: 'US', geoLat: null })
+    ).toBe('US');
+    expect(
+      sessionLocation({ geoCity: 'Boston', geoRegion: null, geoCountry: 'US', geoLat: null })
+    ).toBe('Boston, US');
+    expect(
+      sessionLocation({ geoCity: null, geoRegion: null, geoCountry: null, geoLat: null })
+    ).toBeNull();
+  });
+
+  it('suffixes a local session placed at its server', async () => {
+    const { sessionLocation } = await import('../sessionLifecycle.js');
+    expect(
+      sessionLocation({
+        geoCity: 'Chicago',
+        geoRegion: 'Illinois',
+        geoCountry: 'US',
+        geoLat: 41.88,
+        isLocal: true,
+      })
+    ).toBe('Chicago, Illinois (Local Network)');
+  });
+
+  it('keeps an unplaced local session reading Local Network', async () => {
+    const { sessionLocation } = await import('../sessionLifecycle.js');
+    expect(
+      sessionLocation({
+        geoCity: null,
+        geoRegion: null,
+        geoCountry: 'Local Network',
+        geoLat: null,
+        isLocal: true,
+      })
+    ).toBe('Local Network');
+  });
+
+  it('leaves a remote session unchanged', async () => {
+    const { sessionLocation } = await import('../sessionLifecycle.js');
+    expect(
+      sessionLocation({
+        geoCity: 'Boston',
+        geoRegion: 'Massachusetts',
+        geoCountry: 'US',
+        geoLat: 42.36,
+        isLocal: false,
+      })
+    ).toBe('Boston, Massachusetts');
   });
 });
 

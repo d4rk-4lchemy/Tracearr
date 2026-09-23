@@ -936,5 +936,41 @@ describe('Session Routes', () => {
         true
       );
     });
+
+    it('filters to local sessions with the shared local definition', async () => {
+      app = await buildTestApp(createOwnerUser());
+      mockDb.execute.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
+
+      await app.inject({ method: 'GET', url: '/sessions/history' });
+      await app.inject({ method: 'GET', url: '/sessions/history?network=local' });
+
+      const queryAt = (call: number) => renderSql(mockDb.execute.mock.calls[call][0] as SQL).sql;
+      const occurrences = (query: string) =>
+        query.split('s.is_local IS TRUE OR (s.is_local IS NULL').length - 1;
+      // The select list carries the fragment too; the filter adds it to both page CTEs.
+      expect(occurrences(queryAt(1)) - occurrences(queryAt(0))).toBe(2);
+      expect(queryAt(1)).not.toContain('NOT (s.is_local');
+    });
+
+    it('filters to remote sessions with the negated local definition', async () => {
+      app = await buildTestApp(createOwnerUser());
+      mockDb.execute.mockResolvedValueOnce({ rows: [] });
+
+      await app.inject({ method: 'GET', url: '/sessions/history?network=remote' });
+
+      const { sql: query } = renderSql(mockDb.execute.mock.calls[0][0] as SQL);
+      expect(query).toContain('NOT (s.is_local IS TRUE');
+    });
+
+    it('returns the flag on each history row', async () => {
+      app = await buildTestApp(createOwnerUser());
+      mockDb.execute.mockResolvedValueOnce({
+        rows: [createMockHistoryRow({ is_local: true, geo_city: 'Chicago', geo_country: 'US' })],
+      });
+
+      const response = await app.inject({ method: 'GET', url: '/sessions/history' });
+
+      expect(JSON.parse(response.body).data[0].isLocal).toBe(true);
+    });
   });
 });

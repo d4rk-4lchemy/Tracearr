@@ -123,6 +123,36 @@ describe('discordType.render', () => {
     expect(embed.fields?.[4]?.value).toBe('New York, US');
   });
 
+  it('marks a placed local session in the Location field', async () => {
+    const local = createMockActiveSession({ isLocal: true, geoCity: 'Chicago', geoCountry: 'US' });
+    const embed = await render({ type: 'session_started', payload: local });
+    expect(embed.fields?.find((f) => f.name === 'Location')?.value).toBe(
+      'Chicago, US (Local Network)'
+    );
+  });
+
+  it('shows the country alone when the placed location has no city', async () => {
+    const local = createMockActiveSession({ isLocal: true, geoCity: null, geoCountry: 'US' });
+    const embed = await render({ type: 'session_started', payload: local });
+    expect(embed.fields?.find((f) => f.name === 'Location')?.value).toBe('US (Local Network)');
+  });
+
+  it('still omits Location for an unplaced local session', async () => {
+    const local = createMockActiveSession({
+      isLocal: true,
+      geoCity: null,
+      geoCountry: 'Local Network',
+    });
+    const embed = await render({ type: 'session_started', payload: local });
+    expect(fieldNames(embed)).not.toContain('Location');
+  });
+
+  it('omits Location for a local session with no country', async () => {
+    const local = createMockActiveSession({ isLocal: true, geoCity: null, geoCountry: null });
+    const embed = await render({ type: 'session_started', payload: local });
+    expect(fieldNames(embed)).not.toContain('Location');
+  });
+
   it('builds the stream stopped embed with a formatted duration', async () => {
     const embed = await render({ type: 'session_stopped', payload: session });
 

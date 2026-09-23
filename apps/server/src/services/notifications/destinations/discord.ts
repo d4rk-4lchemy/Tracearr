@@ -1,4 +1,9 @@
-import { DESTINATION_TYPES, POSTER_IMAGE_SIZE } from '@tracearr/shared';
+import {
+  DESTINATION_TYPES,
+  isPlacedLocal,
+  LOCAL_NETWORK_COUNTRY,
+  POSTER_IMAGE_SIZE,
+} from '@tracearr/shared';
 import { proxyImage } from '../../imageProxy.js';
 import { mediaHeadline, mediaSubtitle, qualityMoves } from '../formatters/media.js';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
@@ -135,12 +140,13 @@ function buildSessionStartedEmbed(payload: NotificationPayload, ctx: SessionCont
 
   fields.push({ name: 'Playback', value: playbackType, inline: true });
 
-  if (session.geoCity && session.geoCountry) {
-    fields.push({
-      name: 'Location',
-      value: `${session.geoCity}, ${session.geoCountry}`,
-      inline: true,
-    });
+  const location = isPlacedLocal({ isLocal: session.isLocal, country: session.geoCountry })
+    ? `${[session.geoCity, session.geoCountry].filter(Boolean).join(', ')} (${LOCAL_NETWORK_COUNTRY})`
+    : session.geoCity && session.geoCountry
+      ? `${session.geoCity}, ${session.geoCountry}`
+      : null;
+  if (location) {
+    fields.push({ name: 'Location', value: location, inline: true });
   }
 
   fields.push({

@@ -11,7 +11,14 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { Queue, Worker, UnrecoverableError, type Job, type ConnectionOptions } from 'bullmq';
+import {
+  Queue,
+  Worker,
+  UnrecoverableError,
+  type Job,
+  type ConnectionOptions,
+  type JobsOptions,
+} from 'bullmq';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { getRedisPrefix } from '@tracearr/shared';
@@ -29,7 +36,7 @@ import type {
   MaintenanceJobType,
 } from '@tracearr/shared';
 import { WS_EVENTS, classifyByDimensions, RESOLUTION_TIERS } from '@tracearr/shared';
-import { sql, isNotNull, isNull, inArray, or, and, eq } from 'drizzle-orm';
+import { sql, isNotNull, isNull, inArray, or, and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { servers, sessions, serverUsers } from '../db/schema.js';
 import { normalizeClient, normalizePlatformName } from '../utils/platformNormalizer.js';
@@ -59,6 +66,7 @@ import {
   runImportedHistoryLinkingWalk,
   type ImportedHistoryLinkDeps,
 } from './importedHistoryLinking.js';
+import { runServerLocationSyncWalk } from './serverLocationSync.js';
 import {
   INVALID_SNAPSHOT_CONDITION,
   VALID_LIBRARY_ITEM_CONDITION,
@@ -94,6 +102,7 @@ function getMaintenanceJobDescription(type: MaintenanceJobType): string {
     backfill_session_identity: 'Media identity backfill',
     remove_import_duplicates: 'Import duplicate cleanup',
     link_imported_history: 'Imported history linking',
+    sync_server_locations: 'Server location sync',
   };
   return descriptions[type] || type;
 }
@@ -105,7 +114,7 @@ export interface MaintenanceJobData {
   options?: {
     /** For rebuild_timescale_views: refresh all historical data (slow but complete) */
     fullRefresh?: boolean;
-    /** For link_imported_history: 'auto' when a library sync enqueued it; missing means manual */
+    /** For link_imported_history and sync_server_locations: 'auto' when the server enqueued it; missing means manual */
     trigger?: 'manual' | 'auto';
   };
 }
@@ -331,6 +340,13 @@ export function startMaintenanceWorker(): void {
         message: `Job failed: ${error?.message || 'Unknown error'}`,
       });
     }
+
+    // A failed location sync waits for the next startup or save instead of retrying in a loop.
+    if (job.data.type !== 'sync_server_locations') void checkServerLocationSync();
+  });
+
+  maintenanceWorker.on('completed', () => {
+    void checkServerLocationSync();
   });
 
   maintenanceWorker.on('error', (error) => {
@@ -375,6 +391,8 @@ async function processMaintenanceJob(job: Job<MaintenanceJobData>): Promise<Main
       return runImportDuplicateCleanup(job);
     case 'link_imported_history':
       return runImportedHistoryLinking(job, await importedHistoryLinkDeps(job.data.options));
+    case 'sync_server_locations':
+      return processSyncServerLocationsJob(job);
     default:
       throw new Error(`Unknown maintenance job type: ${job.data.type}`);
   }
@@ -1205,6 +1223,31 @@ async function processBackfillSessionIdentityJob(
         getCompressedRanges: getCompressedSessionChunkRanges,
         onBatch,
         onCommit,
+      })),
+      details: '',
+    }),
+  });
+}
+
+/**
+ * Writes each server's location entries onto its local sessions, or the Local Network label where
+ * none applies. Automatic runs walk the servers whose entries changed; a manual run walks every server.
+ */
+async function processSyncServerLocationsJob(
+  job: Job<MaintenanceJobData>
+): Promise<MaintenanceJobResult> {
+  return runSessionMaintenanceWalk(job, {
+    type: 'sync_server_locations',
+    startMessage: 'Applying server locations to local sessions...',
+    progressMessage: (total) => `Updated ${total.toLocaleString()} local sessions...`,
+    completeMessage: (total) => `Completed! Updated ${total.toLocaleString()} local sessions`,
+    resultMessage: (total) => `Updated ${total} local sessions`,
+    failurePrefix: 'Server location sync skipped',
+    totalCountsUpdates: true,
+    walk: async (onBatch) => ({
+      ...(await runServerLocationSyncWalk({
+        scope: job.data.options?.trigger === 'auto' ? 'behind' : 'all',
+        onBatch,
       })),
       details: '',
     }),
@@ -2974,7 +3017,8 @@ export async function processNormalizeLibrarySnapshotsJob(
 export async function maybeEnqueueMaintenanceJob(
   type: MaintenanceJobType,
   userId: string,
-  options?: MaintenanceJobData['options']
+  options?: MaintenanceJobData['options'],
+  jobOptions?: Omit<JobsOptions, 'jobId'>
 ): Promise<string | null> {
   if (!maintenanceQueue) {
     return null;
@@ -2996,14 +3040,37 @@ export async function maybeEnqueueMaintenanceJob(
       userId,
       options,
     },
-    {
-      jobId: newJobId,
-    }
+    { ...jobOptions, jobId: newJobId }
   );
 
   const jobId = job.id ?? newJobId;
   console.log(`[Maintenance] Enqueued job ${jobId} (${type})`);
   return jobId;
+}
+
+/** Queues the location sync when some server's entries changed since it last ran. False when nothing is behind or the queue is busy. */
+export async function enqueueServerLocationSyncIfBehind(): Promise<boolean> {
+  const [behind] = await db
+    .select({ id: servers.id })
+    .from(servers)
+    .where(ne(servers.locationVersion, servers.locationSyncedVersion))
+    .limit(1);
+  if (!behind) return false;
+  // One attempt: a walk that fails the same way would otherwise run three times per trigger.
+  const jobId = await maybeEnqueueMaintenanceJob(
+    'sync_server_locations',
+    'system',
+    { trigger: 'auto' },
+    { attempts: 1 }
+  );
+  return jobId !== null;
+}
+
+function checkServerLocationSync(): Promise<void> {
+  return enqueueServerLocationSyncIfBehind().then(
+    () => undefined,
+    (err: unknown) => console.error('[Maintenance] Server location sync check failed:', err)
+  );
 }
 
 /**

@@ -41,6 +41,7 @@ import {
   type SortKey,
 } from '../utils/listQuery.js';
 import { buildMultiServerCondition, resolveServerIds } from '../utils/serverFiltering.js';
+import { isLocalSession } from '../utils/localSession.js';
 import type { PgSelect } from 'drizzle-orm/pg-core';
 
 const runIdParamSchema = z.object({ id: uuidSchema });
@@ -224,11 +225,19 @@ async function loadSessionContext(sessionId: string | null): Promise<RunSessionC
       ipAddress: sessions.ipAddress,
       city: sessions.geoCity,
       country: sessions.geoCountry,
+      isLocal: sessions.isLocal,
+      geoLat: sessions.geoLat,
     })
     .from(sessions)
     .where(eq(sessions.id, sessionId))
     .limit(1);
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  const { isLocal, geoLat, ...context } = row;
+  return {
+    ...context,
+    isLocal: isLocalSession({ isLocal, geoCountry: row.country, geoCity: row.city, geoLat }),
+  };
 }
 
 /** The two fields the recorder copies onto the run, so a missing session still says something. */
@@ -248,6 +257,7 @@ function storedSessionContext(row: {
     ipAddress: row.storedIpAddress,
     city: null,
     country: null,
+    isLocal: false,
   };
 }
 

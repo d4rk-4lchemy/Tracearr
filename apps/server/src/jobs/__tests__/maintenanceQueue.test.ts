@@ -4,18 +4,19 @@
  * The shared tail of the session walks refreshes the continuous aggregates
  * from the earliest committed started_at, including when the walk throws
  * after committing batches, unless the job lost its lock. Job history marks
- * system and auto-triggered jobs as automatic.
+ * system and auto-triggered jobs as automatic. The automatic location sync is
+ * queued with a single attempt, and only when a server is behind.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Job } from 'bullmq';
 
-const { mockGetJobs } = vi.hoisted(() => ({ mockGetJobs: vi.fn() }));
+const { mockGetJobs, mockAdd } = vi.hoisted(() => ({ mockGetJobs: vi.fn(), mockAdd: vi.fn() }));
 
 vi.mock('bullmq', async (importOriginal) => ({
   ...(await importOriginal<typeof import('bullmq')>()),
   Queue: vi.fn(function () {
-    return { on: vi.fn(), getJobs: mockGetJobs };
+    return { on: vi.fn(), getJobs: mockGetJobs, add: mockAdd };
   }),
 }));
 
@@ -39,9 +40,13 @@ vi.mock('../lockUtils.js', () => ({
   MAINTENANCE_LOCK_DURATION_MS: 300_000,
 }));
 
+import { db } from '../../db/client.js';
 import { getTimescaleStatus, safeFullRefreshAggregate } from '../../db/timescale.js';
+import { queryChain } from '../../test/helpers.js';
 import { extendJobLock } from '../lockUtils.js';
 import {
+  enqueueMaintenanceJob,
+  enqueueServerLocationSyncIfBehind,
   getMaintenanceJobHistory,
   initMaintenanceQueue,
   runSessionMaintenanceWalk,
@@ -162,5 +167,51 @@ describe('getMaintenanceJobHistory', () => {
       ['manual', 'manual'],
       ['plain', 'manual'],
     ]);
+  });
+});
+
+describe('enqueueServerLocationSyncIfBehind', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    initMaintenanceQueue('redis://localhost:6379');
+    mockGetJobs.mockResolvedValue([]);
+    mockAdd.mockImplementation(async (_name: string, _data: unknown, opts: { jobId: string }) => ({
+      id: opts.jobId,
+    }));
+    vi.mocked(db.select).mockReturnValue(queryChain(vi.fn, [{ id: 'server-1' }]));
+  });
+
+  it('queues a single-attempt automatic run when a server is behind', async () => {
+    await expect(enqueueServerLocationSyncIfBehind()).resolves.toBe(true);
+
+    expect(mockAdd).toHaveBeenCalledWith(
+      'maintenance-sync_server_locations',
+      { type: 'sync_server_locations', userId: 'system', options: { trigger: 'auto' } },
+      { jobId: expect.any(String), attempts: 1 }
+    );
+  });
+
+  it('queues nothing when every server is synced', async () => {
+    vi.mocked(db.select).mockReturnValue(queryChain(vi.fn, []));
+
+    await expect(enqueueServerLocationSyncIfBehind()).resolves.toBe(false);
+
+    expect(mockAdd).not.toHaveBeenCalled();
+  });
+
+  it('returns false when another maintenance job holds the queue', async () => {
+    mockGetJobs.mockResolvedValue([{ id: 'busy' }]);
+
+    await expect(enqueueServerLocationSyncIfBehind()).resolves.toBe(false);
+
+    expect(mockAdd).not.toHaveBeenCalled();
+  });
+
+  it('leaves a manual run on the queue default attempts', async () => {
+    await enqueueMaintenanceJob('sync_server_locations', 'owner');
+
+    expect(mockAdd).toHaveBeenCalledWith('maintenance-sync_server_locations', expect.anything(), {
+      jobId: expect.any(String),
+    });
   });
 });

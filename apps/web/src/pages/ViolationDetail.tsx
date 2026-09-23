@@ -34,6 +34,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { SeverityBadge } from '@/components/violations/SeverityBadge';
 import { ActionResultsList } from '@/components/violations/ActionResultsList';
 import { getAvatarUrl } from '@/components/users/utils';
+import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { fieldLabel, operatorLabel } from '@/lib/automations';
 import { getCountryName, getMediaDisplay } from '@/lib/utils';
 import { ServerBadge } from '@/components/server';
@@ -231,7 +232,7 @@ export function ViolationDetail() {
 
     for (const session of allSessions) {
       if (session.geoLat == null || session.geoLon == null) continue;
-      const key = `${session.geoLat},${session.geoLon}`;
+      const key = `${session.geoLat},${session.geoLon},${session.isLocal}`;
       const existing = locationMap.get(key);
       if (existing) {
         existing.count += 1;
@@ -240,6 +241,7 @@ export function ViolationDetail() {
           city: session.geoCity,
           region: session.geoRegion,
           country: session.geoCountry,
+          isLocal: session.isLocal,
           lat: session.geoLat,
           lon: session.geoLon,
           count: 1,
@@ -299,6 +301,11 @@ export function ViolationDetail() {
               <span className="text-sm">
                 {session.geoCity && `${session.geoCity}, `}
                 {getCountryName(session.geoCountry) ?? ''}
+                <LocalBadge
+                  isLocal={session.isLocal}
+                  country={session.geoCountry}
+                  className="ml-1.5 align-middle"
+                />
               </span>
             );
           },

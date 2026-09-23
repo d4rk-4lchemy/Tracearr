@@ -1597,6 +1597,7 @@ vi.mock('../geoip.js', () => ({
       asnNumber: null,
       asnOrganization: null,
     })),
+    isPrivateIP: vi.fn(() => false),
   },
 }));
 
@@ -1631,6 +1632,15 @@ vi.mock('../../jobs/poller/database.js', () => ({
 vi.mock('../settings.js', async (importActual) => ({
   ...(await importActual<typeof import('../settings.js')>()),
   getWatchedThresholds: vi.fn().mockResolvedValue({ movie: 0.85, episode: 0.85, track: 0.85 }),
+}));
+
+vi.mock('../../jobs/maintenanceQueue.js', () => ({
+  enqueueMaintenanceJob: vi.fn().mockResolvedValue('job-1'),
+  enqueueServerLocationSyncIfBehind: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../serverLocations.js', () => ({
+  markImportedServerLocations: vi.fn(),
 }));
 
 // Shared mock for JellyfinClient.getItems - can be configured per test

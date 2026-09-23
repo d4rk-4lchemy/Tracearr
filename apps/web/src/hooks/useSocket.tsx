@@ -401,6 +401,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
             void queryClient.invalidateQueries({ queryKey: ['library'] });
             void queryClient.invalidateQueries({ queryKey: ['media'] });
             break;
+          case 'sync_server_locations':
+            void queryClient.invalidateQueries({ queryKey: ['sessions'] });
+            void queryClient.invalidateQueries({ queryKey: ['stats'] });
+            void queryClient.invalidateQueries({ queryKey: ['users'] });
+            void queryClient.invalidateQueries({ queryKey: ['servers', 'locations'] });
+            break;
           default:
             // Unknown job type - invalidate common caches as fallback
             void queryClient.invalidateQueries({ queryKey: ['sessions'] });

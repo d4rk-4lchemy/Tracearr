@@ -87,6 +87,9 @@ import type {
   SetupStatus,
   MediaType,
   ServerConnectionStatus,
+  ServerLocationEntry,
+  ServerLocationsResponse,
+  UpdateServerLocationsResponse,
   // New analytics types
   DeviceCompatibilityResponse,
   DeviceCompatibilityMatrix,
@@ -290,6 +293,38 @@ function listSearchParams(params: Record<string, unknown>): string {
     }
   }
   return searchParams.toString();
+}
+
+/** The filters /sessions/history and /sessions/history/aggregates share. */
+function appendHistoryFilterParams(
+  searchParams: URLSearchParams,
+  params: Partial<HistoryAggregatesQueryInput> & { serverIds?: string[] }
+): void {
+  if (params.serverUserIds?.length)
+    searchParams.set('serverUserIds', params.serverUserIds.join(','));
+  if (params.serverIds?.length) {
+    for (const id of params.serverIds) {
+      searchParams.append('serverIds', id);
+    }
+  }
+  if (params.state) searchParams.set('state', params.state);
+  if (params.mediaTypes?.length) searchParams.set('mediaTypes', params.mediaTypes.join(','));
+  if (params.startDate) searchParams.set('startDate', params.startDate.toISOString());
+  if (params.endDate) searchParams.set('endDate', params.endDate.toISOString());
+  if (params.search) searchParams.set('search', params.search);
+  if (params.platforms?.length) searchParams.set('platforms', params.platforms.join(','));
+  if (params.product) searchParams.set('product', params.product);
+  if (params.device) searchParams.set('device', params.device);
+  if (params.playerName) searchParams.set('playerName', params.playerName);
+  if (params.ipAddress) searchParams.set('ipAddress', params.ipAddress);
+  if (params.geoCountries?.length) searchParams.set('geoCountries', params.geoCountries.join(','));
+  if (params.geoCity) searchParams.set('geoCity', params.geoCity);
+  if (params.geoRegion) searchParams.set('geoRegion', params.geoRegion);
+  if (params.network) searchParams.set('network', params.network);
+  if (params.transcodeDecisions?.length)
+    searchParams.set('transcodeDecisions', params.transcodeDecisions.join(','));
+  if (params.watched !== undefined) searchParams.set('watched', String(params.watched));
+  if (params.excludeShortSessions) searchParams.set('excludeShortSessions', 'true');
 }
 
 export interface BulkViolationParams {
@@ -764,6 +799,12 @@ class ApiClient {
       );
       return response.data;
     },
+    locations: (id: string) => this.request<ServerLocationsResponse>(`/servers/${id}/locations`),
+    updateLocations: (id: string, entries: ServerLocationEntry[]) =>
+      this.request<UpdateServerLocationsResponse>(`/servers/${id}/locations`, {
+        method: 'PUT',
+        body: JSON.stringify({ entries }),
+      }),
   };
 
   // Users
@@ -902,31 +943,7 @@ class ApiClient {
       const searchParams = new URLSearchParams();
       if (params.cursor) searchParams.set('cursor', params.cursor);
       if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
-      if (params.serverUserIds?.length)
-        searchParams.set('serverUserIds', params.serverUserIds.join(','));
-      if (params.serverIds?.length) {
-        for (const id of params.serverIds) {
-          searchParams.append('serverIds', id);
-        }
-      }
-      if (params.state) searchParams.set('state', params.state);
-      if (params.mediaTypes?.length) searchParams.set('mediaTypes', params.mediaTypes.join(','));
-      if (params.startDate) searchParams.set('startDate', params.startDate.toISOString());
-      if (params.endDate) searchParams.set('endDate', params.endDate.toISOString());
-      if (params.search) searchParams.set('search', params.search);
-      if (params.platforms?.length) searchParams.set('platforms', params.platforms.join(','));
-      if (params.product) searchParams.set('product', params.product);
-      if (params.device) searchParams.set('device', params.device);
-      if (params.playerName) searchParams.set('playerName', params.playerName);
-      if (params.ipAddress) searchParams.set('ipAddress', params.ipAddress);
-      if (params.geoCountries?.length)
-        searchParams.set('geoCountries', params.geoCountries.join(','));
-      if (params.geoCity) searchParams.set('geoCity', params.geoCity);
-      if (params.geoRegion) searchParams.set('geoRegion', params.geoRegion);
-      if (params.transcodeDecisions?.length)
-        searchParams.set('transcodeDecisions', params.transcodeDecisions.join(','));
-      if (params.watched !== undefined) searchParams.set('watched', String(params.watched));
-      if (params.excludeShortSessions) searchParams.set('excludeShortSessions', 'true');
+      appendHistoryFilterParams(searchParams, params);
       if (params.orderBy) searchParams.set('orderBy', params.orderBy);
       if (params.orderDir) searchParams.set('orderDir', params.orderDir);
       return this.request<HistorySessionResponse>(`/sessions/history?${searchParams.toString()}`);
@@ -939,31 +956,7 @@ class ApiClient {
       params: Partial<HistoryAggregatesQueryInput> & { serverIds?: string[] }
     ) => {
       const searchParams = new URLSearchParams();
-      if (params.serverUserIds?.length)
-        searchParams.set('serverUserIds', params.serverUserIds.join(','));
-      if (params.serverIds?.length) {
-        for (const id of params.serverIds) {
-          searchParams.append('serverIds', id);
-        }
-      }
-      if (params.state) searchParams.set('state', params.state);
-      if (params.mediaTypes?.length) searchParams.set('mediaTypes', params.mediaTypes.join(','));
-      if (params.startDate) searchParams.set('startDate', params.startDate.toISOString());
-      if (params.endDate) searchParams.set('endDate', params.endDate.toISOString());
-      if (params.search) searchParams.set('search', params.search);
-      if (params.platforms?.length) searchParams.set('platforms', params.platforms.join(','));
-      if (params.product) searchParams.set('product', params.product);
-      if (params.device) searchParams.set('device', params.device);
-      if (params.playerName) searchParams.set('playerName', params.playerName);
-      if (params.ipAddress) searchParams.set('ipAddress', params.ipAddress);
-      if (params.geoCountries?.length)
-        searchParams.set('geoCountries', params.geoCountries.join(','));
-      if (params.geoCity) searchParams.set('geoCity', params.geoCity);
-      if (params.geoRegion) searchParams.set('geoRegion', params.geoRegion);
-      if (params.transcodeDecisions?.length)
-        searchParams.set('transcodeDecisions', params.transcodeDecisions.join(','));
-      if (params.watched !== undefined) searchParams.set('watched', String(params.watched));
-      if (params.excludeShortSessions) searchParams.set('excludeShortSessions', 'true');
+      appendHistoryFilterParams(searchParams, params);
       return this.request<HistoryAggregates>(
         `/sessions/history/aggregates?${searchParams.toString()}`
       );

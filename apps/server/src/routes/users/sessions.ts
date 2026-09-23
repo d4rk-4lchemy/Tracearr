@@ -12,6 +12,7 @@ import { sessions } from '../../db/schema.js';
 import { PLAY_COUNT } from '../../constants/index.js';
 import { resolveIdentityScopedServerUserIds, serverUserIdAnyFragment } from './queries.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
+import { localSessionSql } from '../../utils/localSession.js';
 
 export const sessionsRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -117,6 +118,7 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
         s.geo_lon,
         s.geo_asn_number,
         s.geo_asn_organization,
+        ${localSessionSql('s')} AS is_local,
         s.player_name,
         s.device_id,
         s.product,
@@ -167,6 +169,7 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
         geo_lon: number | null;
         geo_asn_number: number | null;
         geo_asn_organization: string | null;
+        is_local: boolean;
         player_name: string | null;
         device_id: string | null;
         product: string | null;
@@ -214,6 +217,7 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
       geoLon: row.geo_lon,
       geoAsnNumber: row.geo_asn_number,
       geoAsnOrganization: row.geo_asn_organization,
+      isLocal: row.is_local === true,
       playerName: row.player_name,
       deviceId: row.device_id,
       product: row.product,

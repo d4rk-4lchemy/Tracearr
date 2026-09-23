@@ -106,6 +106,9 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
   ] as const);
   if (transcodeDecisions) filters.transcodeDecisions = transcodeDecisions;
 
+  const network = searchParams.get('network');
+  if (network === 'local' || network === 'remote') filters.network = network;
+
   const platforms = parseCommaSeparated<string>(searchParams.get('platforms'));
   if (platforms) filters.platforms = platforms;
 
@@ -164,6 +167,7 @@ function filtersToUrlParams(filters: HistoryFilters): URLSearchParams {
   if (filters.state) params.set('state', filters.state);
   if (filters.transcodeDecisions?.length)
     params.set('transcodeDecisions', filters.transcodeDecisions.join(','));
+  if (filters.network) params.set('network', filters.network);
   if (filters.platforms?.length) params.set('platforms', filters.platforms.join(','));
   if (filters.geoCountries?.length) params.set('countries', filters.geoCountries.join(','));
   if (filters.search) params.set('search', filters.search);

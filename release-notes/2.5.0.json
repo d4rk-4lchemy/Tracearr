@@ -1,8 +1,13 @@
 {
   "version": "2.5.0",
-  "date": "2026-09-21",
-  "headline": "Duplicates, upgrades, and automations that read the stream",
+  "date": "2026-09-23",
+  "headline": "Local plays on the map, duplicates, upgrades, and stream-aware automations",
   "highlights": [
+    {
+      "title": "Local plays on the map",
+      "body": "Give a server a location in Edit Server: drop a pin or type coordinates, then pick the country and add a city and region. Local network plays on that server land on the stream map at that spot with a Local badge, and a background job fills in its past sessions. Add a dated move if the server changed homes. Rules still treat these plays as local, and removing the location puts them back.",
+      "docs": "https://docs.tracearr.com/configuration/servers#server-location"
+    },
     {
       "title": "Upgrades are not new",
       "body": "A Radarr or Sonarr upgrade deletes the old file and imports the new one, so the server hands Tracearr a fresh item and the title reappeared as newly added. Newsletters and the Recently Added shelves now leave those out, and a Recently Updated shelf on the library page lists them instead. Titles reacquired more than a week after the old copy left still count as new."
@@ -36,6 +41,10 @@
     {
       "type": "new",
       "text": "Settings → Notifications → Email takes a system title for the header beside the logo"
+    },
+    {
+      "type": "new",
+      "text": "Edit Server takes a location with dated moves that shows local network plays on the map, badged Local, until removed"
     },
     {
       "type": "improved",

@@ -750,6 +750,13 @@
       "when": 1789591729841,
       "tag": "0106_smart_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1790179427916,
+      "tag": "0107_eager_maggott",
+      "breakpoints": true
     }
   ]
 }

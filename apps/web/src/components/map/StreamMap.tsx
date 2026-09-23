@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import type { LocationStats } from '@tracearr/shared';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/components/theme-provider';
+import { LocalBadge } from '@/components/sessions/LocalBadge';
 import type { FitPoint } from './autoFitBounds';
 import { MapUnavailable } from './MapUnavailable';
 import {
@@ -229,6 +230,11 @@ function LocationPopupContent({
       <div className="font-semibold">
         {props.city ? `${props.city}, ` : ''}
         {props.country || 'Unknown'}
+        <LocalBadge
+          isLocal={props.isLocal}
+          country={props.country}
+          className="ml-1.5 align-middle"
+        />
       </div>
       <div className="text-muted-foreground">
         {props.count.toLocaleString()} stream{props.count !== 1 ? 's' : ''}

@@ -6,6 +6,8 @@
  */
 
 import {
+  isPlacedLocal,
+  LOCAL_NETWORK_COUNTRY,
   SESSION_WRITE_RETRY,
   TIME_MS,
   type ActiveSession,
@@ -16,7 +18,6 @@ import {
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { serverUsers, sessions, users } from '../../db/schema.js';
-import type { GeoLocation } from '../../services/geoip.js';
 import { toRuleSession } from '../../services/automations/events/contextAssembly.js';
 import { dispatch } from '../../services/automations/events/dispatcher.js';
 import { matchesTrigger } from '../../services/automations/events/evaluate.js';
@@ -26,6 +27,12 @@ import {
 } from '../../services/automations/events/producers.js';
 import type { ActionResult } from '../../services/automations/executors/index.js';
 import { getWatchedThreshold } from '../../services/settings.js';
+import {
+  resolveSessionGeo,
+  type SessionGeo,
+  withLocalFlag,
+} from '../../services/serverLocations.js';
+import { isLocalSession } from '../../utils/localSession.js';
 import { clearDbWriteTracking } from './dbWriteThrottle.js';
 import { pickStreamDetailFields } from './sessionMapper.js';
 import {
@@ -160,7 +167,7 @@ export interface BuildActiveSessionInput {
   };
 
   /** GeoIP location data */
-  geo: GeoLocation;
+  geo: SessionGeo;
 
   /** Server info */
   server: {
@@ -250,6 +257,7 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     geoLon: geo.lon,
     geoAsnNumber: geo.asnNumber,
     geoAsnOrganization: geo.asnOrganization,
+    isLocal: geo.isLocal,
     playerName: processed.playerName,
     deviceId: processed.deviceId || null,
     product: processed.product || null,
@@ -364,6 +372,7 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     geoLon: geo.lon,
     geoAsnNumber: geo.asnNumber,
     geoAsnOrganization: geo.asnOrganization,
+    isLocal: withLocalFlag(geo, processed.ipAddress).isLocal,
     playerName: processed.playerName,
     deviceId: processed.deviceId || null,
     product: processed.product || null,
@@ -601,11 +610,17 @@ export function sessionLocation(session: {
   geoCity: string | null;
   geoRegion: string | null;
   geoCountry: string | null;
+  geoLat: number | null;
+  isLocal?: boolean | null;
 }): string | null {
   const parts = [session.geoCity, session.geoRegion ?? session.geoCountry].filter(
     (part): part is string => part !== null && part !== ''
   );
-  return parts.length > 0 ? parts.join(', ') : null;
+  if (parts.length === 0) return null;
+  const place = parts.join(', ');
+  return isPlacedLocal({ isLocal: isLocalSession(session), country: session.geoCountry })
+    ? `${place} (${LOCAL_NETWORK_COUNTRY})`
+    : place;
 }
 
 /**
@@ -878,6 +893,7 @@ export async function createSessionWithRulesAtomic(
               geoLon: geo.lon,
               geoAsnNumber: geo.asnNumber,
               geoAsnOrganization: geo.asnOrganization,
+              isLocal: geo.isLocal,
               playerName: processed.playerName,
               deviceId: processed.deviceId || null,
               product: processed.product || null,
@@ -1036,13 +1052,20 @@ export interface ConfirmPendingSessionInput {
  * the startedAt reflects when the session actually started (not when confirmed).
  *
  * @param input - Pending session data and rule context
- * @returns Session creation result with any violations
+ * @returns Session creation result with any violations, and the geo the row was inserted with
  */
 export async function confirmAndPersistSession(
   input: ConfirmPendingSessionInput
-): Promise<SessionCreationResult> {
+): Promise<SessionCreationResult & { geo: SessionGeo }> {
   const { pendingData, activeAutomations, activeSessions, recentSessions } = input;
-  const { processed, server, serverUser, geo } = pendingData;
+  const { processed, server, serverUser } = pendingData;
+  const actualStartedAt = new Date(pendingData.startedAt);
+  const seenGeo = withLocalFlag(pendingData.geo, processed.ipAddress);
+  // The pending entry holds the placement from first sight; a location saved while it waited
+  // still applies, as of when the session started. Private IPs never reach Plex GeoIP.
+  const geo = seenGeo.isLocal
+    ? await resolveSessionGeo(processed.ipAddress, server.id, false, actualStartedAt)
+    : seenGeo;
 
   // Delegate to createSessionWithRulesAtomic for atomic rule evaluation
   // The session will be created with current state from the pending data
@@ -1069,7 +1092,6 @@ export async function confirmAndPersistSession(
   // - startedAt: When the session actually started (not when confirmed)
   // - pausedDurationMs: Accumulated pause time while pending
   // This ensures accurate watch duration calculations
-  const actualStartedAt = new Date(pendingData.startedAt);
   const timeDriftMs = Date.now() - pendingData.startedAt;
 
   // Only update if there's meaningful drift (> 1 second)
@@ -1104,7 +1126,7 @@ export async function confirmAndPersistSession(
     );
   }
 
-  return result;
+  return { ...result, geo };
 }
 
 // ============================================================================

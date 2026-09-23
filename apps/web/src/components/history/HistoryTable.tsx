@@ -40,6 +40,7 @@ import {
 } from '@/lib/utils';
 import { formatDuration } from '@/lib/formatters';
 import { getAvatarUrl } from '@/components/users/utils';
+import { LocalBadge } from '@/components/sessions/LocalBadge';
 import {
   PLAYBACK_DECISION_LABEL_KEYS,
   playbackDecision,
@@ -369,6 +370,7 @@ export const HistoryTableRow = memo(
                           session.geoCountry
                         )}
                       </span>
+                      <LocalBadge isLocal={session.isLocal} country={session.geoCountry} />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>

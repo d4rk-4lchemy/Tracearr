@@ -33,6 +33,7 @@ import {
   resolveServerIds,
   buildMultiServerCondition,
 } from '../utils/serverFiltering.js';
+import { isLocalSession } from '../utils/localSession.js';
 import { violationAliasConditions } from '../services/automations/aliasFilter.js';
 import { dispatchTrustMoves } from '../services/automations/events/producers.js';
 import {
@@ -250,6 +251,7 @@ interface ViolationRow {
   geoCity: string | null;
   geoRegion: string | null;
   geoCountry: string | null;
+  isLocal: boolean | null;
   geoContinent: string | null;
   geoPostal: string | null;
   geoLat: number | null;
@@ -298,6 +300,7 @@ async function enrichViolations(violationData: ViolationRow[]) {
           geoCity: sessions.geoCity,
           geoRegion: sessions.geoRegion,
           geoCountry: sessions.geoCountry,
+          isLocal: sessions.isLocal,
           geoContinent: sessions.geoContinent,
           geoPostal: sessions.geoPostal,
           geoLat: sessions.geoLat,
@@ -314,7 +317,7 @@ async function enrichViolations(violationData: ViolationRow[]) {
         .where(inArray(sessions.id, Array.from(allRelatedSessionIds)));
 
       for (const s of relatedSessionsResult) {
-        sessionsById.set(s.id, { ...s, deviceId: s.deviceId ?? null });
+        sessionsById.set(s.id, { ...s, deviceId: s.deviceId ?? null, isLocal: isLocalSession(s) });
       }
     } catch (error) {
       console.error('[Violations] Failed to batch fetch related sessions by ID:', error);
@@ -414,6 +417,7 @@ async function enrichViolations(violationData: ViolationRow[]) {
         geoCity: v.geoCity,
         geoRegion: v.geoRegion,
         geoCountry: v.geoCountry,
+        isLocal: isLocalSession(v),
         geoContinent: v.geoContinent,
         geoPostal: v.geoPostal,
         geoLat: v.geoLat,
@@ -483,6 +487,7 @@ function buildViolationPageQuery(params: {
       geoCity: sessions.geoCity,
       geoRegion: sessions.geoRegion,
       geoCountry: sessions.geoCountry,
+      isLocal: sessions.isLocal,
       geoContinent: sessions.geoContinent,
       geoPostal: sessions.geoPostal,
       geoLat: sessions.geoLat,
@@ -602,6 +607,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         geoCity: sessions.geoCity,
         geoRegion: sessions.geoRegion,
         geoCountry: sessions.geoCountry,
+        isLocal: sessions.isLocal,
         geoContinent: sessions.geoContinent,
         geoPostal: sessions.geoPostal,
         geoLat: sessions.geoLat,

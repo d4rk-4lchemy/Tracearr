@@ -2,7 +2,15 @@ import { MonitorOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
-export function MapUnavailable({ className, compact }: { className?: string; compact?: boolean }) {
+export function MapUnavailable({
+  className,
+  compact,
+  message,
+}: {
+  className?: string;
+  compact?: boolean;
+  message?: string;
+}) {
   const { t } = useTranslation(['pages']);
   return (
     <div
@@ -12,8 +20,8 @@ export function MapUnavailable({ className, compact }: { className?: string; com
       )}
     >
       <MonitorOff className={compact ? 'h-4 w-4' : 'h-6 w-6'} />
-      <p className="text-sm font-medium">{t('map.webglUnavailable')}</p>
-      {!compact && <p className="max-w-xs text-xs">{t('map.webglHint')}</p>}
+      <p className="text-sm font-medium">{message ?? t('map.webglUnavailable')}</p>
+      {!compact && !message && <p className="max-w-xs text-xs">{t('map.webglHint')}</p>}
     </div>
   );
 }

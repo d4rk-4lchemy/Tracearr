@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `ae9b34fe`
-- Last shared upstream commit found during inspection: `7ad41635` (before merge)
-- Latest upstream commit merged into the current working tree: `ae9b34fe`
+- Source branch/SHA inspected: `main` at `86db792d`
+- Last shared upstream commit found during inspection: `ae9b34fe` (before merge)
+- Latest upstream commit merged into the current working tree: `86db792d`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -263,6 +263,32 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `86db792d` was merged into `develop` on September 23,
+  2026. It adds dated server locations, a local/remote classification for
+  sessions, a location backfill job, local badges and History filters, and
+  location editing in server settings. The upstream `0107` migration and
+  snapshot are preserved byte-for-byte in the upstream migration history;
+  the Dispatcharr fork migration ledger is unchanged. Poller changes combine
+  upstream location placement with the fork's Dispatcharr realtime/polling
+  lifecycle. The Dashboard card retains uncropped artwork and Catch-up
+  presentation alongside the new local badge. The server editor keeps
+  Dispatcharr token/credentials and anonymous-stream settings while adding
+  location editing, with a regression test for saving both together.
+  Fork-only History and Now Playing fixtures now provide the required
+  `isLocal` field. The two-workflow policy remains intact. Full non-Docker CI
+  passed with Node 24 / pnpm 12.4.2: lint, typecheck, translations, all five
+  server test groups, web, coverage and build. Server groups plus web passed
+  9,005 tests with two skipped; coverage passed 5,782 with two skipped
+  (70.36% statements, 64.23% branches, 74.54% functions, 71.59% lines).
+  The first typecheck caught the two fork-only fixtures; after repair the full
+  typecheck passed. Lint has 753 warnings, one more than the preceding run,
+  from upstream `LocationPicker.tsx` accessing a ref during render. Services
+  and coverage each logged one extra instance of an existing warning class;
+  the other job warning counts match the prior baseline. Logs and counts are
+  in `.tmp/github-ci-warning-reference.md`. Docker integration, E2E, image
+  builds, database upgrades and live-provider checks were omitted at the
+  user's request.
 
 - Upstream `main` at `ae9b34fe` was merged into `develop` on September 23,
   2026. It adds persistent image-cache configuration, adaptive background

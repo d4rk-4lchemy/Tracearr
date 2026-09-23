@@ -111,7 +111,7 @@ Screenshots and the feature tour are at [tracearr.com](https://tracearr.com), th
 
 **Live TV & Music** - Track live TV sessions and music playback alongside movies and shows.
 
-**Stream Map** - Where your streams come from, on a world map you host yourself. The vector basemap ships inside the container, so there are no tile keys and no requests to a third-party tile service.
+**Stream Map** - Where your streams come from, on a world map you host yourself. The vector basemap ships inside the container, so there are no tile keys and no requests to a third-party tile service. Give a server a location and its local network plays show there too.
 
 **Automations** - A trigger fires, conditions decide whether it matters, actions run. Eighteen triggers cover sessions, accounts, library changes, server health, update availability, and newsletter results. Actions send a notification, adjust trust, message the client, or stop the stream, and an `if` action branches on conditions. Twenty-two templates ship built in, among them impossible travel, too many streams at once, simultaneous locations, device velocity, geo restrictions, account inactivity, no 4K transcodes, and stop paused streams. Any automation exports to a share code another instance can paste in.
 

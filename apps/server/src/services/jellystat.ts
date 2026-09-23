@@ -40,7 +40,10 @@ import {
   refreshAggregates,
   uncapDecompressionForTx,
 } from '../db/timescale.js';
-import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
+import {
+  enqueueMaintenanceJob,
+  enqueueServerLocationSyncIfBehind,
+} from '../jobs/maintenanceQueue.js';
 import { batchGetLibraryItemIdentity, type SessionIdentity } from '../jobs/poller/database.js';
 import { sanitizeCodec } from '../utils/codecNormalizer.js';
 import { extractIpFromEndpoint } from '../utils/parsing.js';
@@ -71,6 +74,7 @@ import {
 import { EmbyClient } from './mediaServer/emby/client.js';
 import { JellyfinClient } from './mediaServer/jellyfin/client.js';
 import { parseMediaType } from './mediaServer/shared/jellyfinEmbyUtils.js';
+import { markImportedServerLocations } from './serverLocations.js';
 import { getWatchedThresholds, watchedThresholdFor, type WatchedThresholds } from './settings.js';
 
 const BATCH_SIZE = 500;
@@ -537,6 +541,7 @@ export function transformActivityToSession(
     geoLon: geo.lon,
     geoAsnNumber: geo.asnNumber,
     geoAsnOrganization: geo.asnOrganization,
+    isLocal: geoipService.isPrivateIP(extractIpFromEndpoint(activity.RemoteEndPoint)),
     // Normalize client info for consistency with live sessions
     // normalizeClient handles "AndroidTv" → "Android TV", "Emby for Kodi Next Gen" → "Kodi", etc.
     ...(() => {
@@ -999,6 +1004,12 @@ export async function importJellystatBackup(
       }
     } catch (err) {
       console.warn('[Jellystat] Failed to refresh aggregates after import:', err);
+    }
+    try {
+      await markImportedServerLocations(serverId);
+      await enqueueServerLocationSyncIfBehind();
+    } catch (err) {
+      console.error('[Jellystat] Could not queue the server location sync:', err);
     }
 
     let message = `Import complete: ${imported} imported, ${updated} updated, ${skipped} skipped, ${errors} errors`;

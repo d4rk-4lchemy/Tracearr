@@ -75,6 +75,7 @@ function createMockSession(overrides: Partial<Session> = {}): Session {
     geoLon: -74.006,
     geoAsnNumber: 7922,
     geoAsnOrganization: 'Comcast',
+    isLocal: false,
     playerName: 'Living Room TV',
     deviceId: 'device-123',
     product: 'Plex Web',

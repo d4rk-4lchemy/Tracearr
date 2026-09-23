@@ -17,6 +17,7 @@ import {
   ListFilter,
   User,
   Globe,
+  Wifi,
   Monitor,
   ChevronDown,
   Columns3,
@@ -263,6 +264,14 @@ export function HistoryFiltersBar({
             ? `${decisionLabels.length} selected`
             : decisionLabels.join(', '),
         icon: filters.transcodeDecisions.includes('transcode') ? Zap : MonitorPlay,
+      });
+    }
+    if (filters.network) {
+      active.push({
+        key: 'network',
+        label: 'Network',
+        value: filters.network === 'local' ? 'Local' : 'Remote',
+        icon: filters.network === 'local' ? Wifi : Globe,
       });
     }
 
@@ -621,6 +630,27 @@ export function HistoryFiltersBar({
                 </DropdownMenuCheckboxItem>
               );
             })}
+
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Network</DropdownMenuLabel>
+            {(['local', 'remote'] as const).map((value) => (
+              <DropdownMenuCheckboxItem
+                key={value}
+                checked={filters.network === value}
+                onCheckedChange={(checked) => {
+                  const { network: _, ...rest } = filters;
+                  onFiltersChange(checked ? { ...rest, network: value } : rest);
+                }}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {value === 'local' ? (
+                  <Wifi className="mr-2 h-4 w-4" />
+                ) : (
+                  <Globe className="mr-2 h-4 w-4" />
+                )}
+                {value === 'local' ? 'Local' : 'Remote'}
+              </DropdownMenuCheckboxItem>
+            ))}
 
             {/* Clear all button */}
             {hasActiveFilters && (

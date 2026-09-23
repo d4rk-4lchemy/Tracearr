@@ -1,11 +1,11 @@
 import countries from 'i18n-iso-countries';
 import countriesEn from 'i18n-iso-countries/langs/en.json' with { type: 'json' };
+import { LOCAL_NETWORK_COUNTRY } from '@tracearr/shared';
+
+export { LOCAL_NETWORK_COUNTRY };
 
 // Register English locale for country name lookups
 countries.registerLocale(countriesEn);
-
-/** Constant for local network country value - must match geoip service */
-export const LOCAL_NETWORK_COUNTRY = 'Local Network';
 
 /**
  * Normalize a country value to ISO 3166-1 alpha-2 code.
@@ -34,4 +34,9 @@ export function normalizeToCountryCode(country: string): string | null {
 
   // Fallback: return the original value uppercase (might be a valid code)
   return country.length === 2 ? country.toUpperCase() : null;
+}
+
+/** Whether code is an ISO 3166-1 code; normalizeToCountryCode passes any two-letter value through. */
+export function isCountryCode(code: string): boolean {
+  return countries.isValid(code);
 }

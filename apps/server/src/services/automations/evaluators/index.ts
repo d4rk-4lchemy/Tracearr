@@ -11,6 +11,7 @@ import type {
 import { isIpInCidr, toNetworkKey, unmapIpv4Mapped } from '../../../utils/ip.js';
 import { automationsLogger } from '../../../utils/logger.js';
 import { LOCAL_NETWORK_COUNTRY, normalizeToCountryCode } from '../../../utils/country.js';
+import { isLocalSession } from '../../../utils/localSession.js';
 import { normalizeResolution } from '../../../utils/resolutionNormalizer.js';
 import { geoipService } from '../../geoip.js';
 import { compare } from '../comparisons.js';
@@ -55,6 +56,12 @@ function calculateDistanceKm(
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return EARTH_RADIUS_KM * c;
+}
+
+/** Rules give a local session no location, even when its server's location is on the row. */
+function sessionDistanceKm(a: Session, b: Session): number | null {
+  if (isLocalSession(a) || isLocalSession(b)) return null;
+  return calculateDistanceKm(a.geoLat, a.geoLon, b.geoLat, b.geoLon);
 }
 
 /**
@@ -322,12 +329,7 @@ const evaluateActiveSessionDistanceKm: ConditionEvaluator = (
   let maxDistance = 0;
   const distances: Record<string, number> = {};
   for (const other of otherSessions) {
-    const distance = calculateDistanceKm(
-      session.geoLat,
-      session.geoLon,
-      other.geoLat,
-      other.geoLon
-    );
+    const distance = sessionDistanceKm(session, other);
     if (distance !== null) {
       distances[other.id] = Math.round(distance * 100) / 100;
       if (distance > maxDistance) {
@@ -380,12 +382,7 @@ const evaluateTravelSpeedKmh: ConditionEvaluator = (
     };
   }
 
-  const distance = calculateDistanceKm(
-    session.geoLat,
-    session.geoLon,
-    previous.geoLat,
-    previous.geoLon
-  );
+  const distance = sessionDistanceKm(session, previous);
 
   if (distance === null) {
     return {
@@ -952,10 +949,10 @@ const evaluateCountry: ConditionEvaluator = (
   const { session } = context;
   const raw = session.geoCountry;
 
-  // LAN sessions store the 'Local Network' sentinel and sessions without geo
-  // data store null; neither has a meaningful country, so never match - a
-  // "country neq US" rule must not fire on them regardless of operator.
-  if (!raw || raw === LOCAL_NETWORK_COUNTRY) {
+  // Local sessions (flagged, or still carrying the Local Network sentinel) and sessions without
+  // geo data have no meaningful country, so never match: a "country neq US" rule must not fire
+  // on them regardless of operator.
+  if (!raw || raw === LOCAL_NETWORK_COUNTRY || isLocalSession(session)) {
     if (!raw) {
       automationsLogger.debug(
         `country condition skipped: session ${session.id} has no geo data (ip: ${session.ipAddress ?? 'unknown'})`
