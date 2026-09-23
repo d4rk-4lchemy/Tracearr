@@ -1,0 +1,95 @@
+# FORK-OWNED: never replace with upstream release automation. See FORK_INFO.md.
+name: Fork GHCR release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+# Serialize publications of the shared stable aliases without cancelling a build.
+concurrency:
+  group: fork-ghcr-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'd4rk-4lchemy/Tracearr' && !github.event.release.prerelease
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/d4rk-4lchemy/distracearr
+      FORK_REPO: d4rk-4lchemy/Tracearr
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate release tag
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-r([1-9][0-9]*)$ ]]; then
+            echo '::error::Expected a fork release tag such as v2.4.1-r1.'
+            exit 1
+          fi
+          {
+            echo "UPSTREAM_VERSION=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+            echo "FORK_REVISION=${BASH_REMATCH[4]}"
+            echo "FORK_VERSION=${RELEASE_TAG#v}"
+          } >> "$GITHUB_ENV"
+
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+          persist-credentials: false
+
+      - name: Build both images
+        run: |
+          commit="$(git rev-parse --short HEAD)"
+          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          common_args=(
+            --no-cache
+            --platform linux/amd64
+            --build-arg "APP_VERSION=$UPSTREAM_VERSION"
+            --build-arg "APP_UPSTREAM_VERSION=$UPSTREAM_VERSION"
+            --build-arg "APP_FORK_REVISION=$FORK_REVISION"
+            --build-arg "APP_FORK_VERSION=$FORK_VERSION"
+            --build-arg "APP_FORK_RELEASE_TAG=$RELEASE_TAG"
+            --build-arg "APP_FORK_REPO=$FORK_REPO"
+            --build-arg "APP_IMAGE_REPO=$IMAGE"
+            --build-arg "APP_COMMIT=$commit"
+            --build-arg "APP_BUILD_DATE=$build_date"
+            --label "org.opencontainers.image.source=https://github.com/$FORK_REPO"
+            --label "org.opencontainers.image.url=https://github.com/$FORK_REPO"
+            --label 'org.opencontainers.image.vendor=d4rk-4lchemy'
+            --label "org.opencontainers.image.version=$FORK_VERSION"
+          )
+          docker build "${common_args[@]}" \
+            -f docker/Dockerfile \
+            -t "$IMAGE:$FORK_VERSION" -t "$IMAGE:latest" -t "$IMAGE:standalone" \
+            --build-arg "APP_TAG=$RELEASE_TAG" .
+          # Reclaim intermediate layers before the larger supervised build.
+          docker builder prune --all --force
+          docker build "${common_args[@]}" \
+            -f docker/Dockerfile.supervised \
+            -t "$IMAGE:supervised-$FORK_VERSION" -t "$IMAGE:supervised" \
+            --build-arg "APP_TAG=supervised-$FORK_VERSION" .
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push versioned images and stable aliases
+        run: |
+          for tag in "$FORK_VERSION" "supervised-$FORK_VERSION" latest standalone supervised; do
+            docker push "$IMAGE:$tag"
+          done
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io

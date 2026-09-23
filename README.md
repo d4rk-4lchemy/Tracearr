@@ -26,6 +26,27 @@
 - `darkalchemy2137/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` - supervised image
 
+**GHCR releases (this fork):** Publishing a stable GitHub release tagged
+`vX.Y.Z-rN` (for example `v2.4.1-r1`) automatically builds and pushes
+`ghcr.io/d4rk-4lchemy/distracearr`:
+
+| Variant | Tags for `v2.4.1-r1` |
+| --- | --- |
+| Standalone | `2.4.1-r1`, `latest`, `standalone` |
+| Supervised | `supervised-2.4.1-r1`, `supervised` |
+
+Images are built without cache for `linux/amd64` from the release tag, with
+upstream/fork version metadata derived from that tag. Prereleases are skipped;
+invalid stable tags fail before building. Docker Hub publication stays manual.
+The workflow must be present in the tagged commit. It uses the repository's
+built-in `GITHUB_TOKEN` with package-write permission; no extra secret is needed.
+After the first publication, set the GHCR package visibility to **Public** if
+anonymous pulls are desired (new packages default to private).
+
+```bash
+docker pull ghcr.io/d4rk-4lchemy/distracearr:supervised
+```
+
 I tested it on **Supervised image**, so keep that in mind.
 You can also build your own Docker image.<br>
 Example docker build commands:

@@ -59,15 +59,27 @@ User-facing Dispatcharr behavior:
 The fork also carries local maintenance/distribution changes:
 
 - README has fork-specific warnings, Docker image names, and Dispatcharr feature notes.
-- The only GitHub Actions workflow retained in this fork is
-  `.github/workflows/ci.yml`, and it runs only for pull-request `opened` and
-  `synchronize` events. All other upstream workflows are removed: this
-  includes scheduled/nightly Docker builds, releases, insiders builds, issue
-  automation, Renovate, stale handling, and Vouch automation. Do not retain or
-  reintroduce any other workflow, trigger, scheduled run, release automation,
-  or manual-dispatch action; merges to `main` do not trigger a second CI run.
-- Consequently, GitHub Actions in this fork does not build or publish Docker
-  images. Docker image builds are a local/manual distribution responsibility.
+- Exactly two GitHub Actions workflows are allowed: `.github/workflows/ci.yml`
+  (only PR `opened` / `synchronize`) and the fork-owned
+  `.github/workflows/fork-ghcr-release.yml` (only `release: published`).
+  GHCR publication is the sole allowed automation outside PR validation.
+  Never delete, replace, or overwrite this workflow with upstream automation.
+  Follow `MERGE_INSTRUCTION.md` when reconciling upstream workflows; verify
+  manually that exactly these two workflows remain after every merge.
+- Releases are still created manually. A published stable `vX.Y.Z-rN` release
+  (N >= 1) builds both existing Dockerfiles, without cache, for `linux/amd64`,
+  from the release tag. Both builds must succeed before any push. It publishes
+  `ghcr.io/d4rk-4lchemy/distracearr` tags `X.Y.Z-rN`, `latest`, `standalone`,
+  `supervised-X.Y.Z-rN`, and `supervised`, with fork version metadata and GHCR
+  as `APP_IMAGE_REPO`. Prereleases are skipped; malformed stable tags fail.
+  Authentication uses `GITHUB_TOKEN` with `contents: read` / `packages: write`.
+  Docker Hub remains entirely manual; do not introduce Docker Hub credentials,
+  scheduled/nightly/insiders builds, manual-dispatch, tag-push, release creation,
+  Helm pushes, issue automation, Renovate, stale, or Vouch workflows.
+- Preservation is documented in `MERGE_INSTRUCTION.md` and this file; no
+  CODEOWNERS changes or extra CI policy checks are required. Historical merge
+  notes below describe the earlier CI-only/manual-release policy; this policy
+  takes precedence.
 - The Snyk security workflow and README badge are disabled in this fork.
 - The Docker-backed integration matrix (PG15/Timescale 2.28 and PG18/Timescale
   2.29) is intentionally not part of GitHub PR CI. Run it manually when
