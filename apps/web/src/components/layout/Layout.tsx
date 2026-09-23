@@ -5,8 +5,11 @@ import { AppSidebar } from './AppSidebar';
 import { SiteHeader } from './SiteHeader';
 import { StatusBanners } from './StatusBanners';
 import { WhatsNewAutoOpen } from '@/components/whats-new/WhatsNewAutoOpen';
+import { useStreamCountTitle } from '@/hooks/useDocumentTitle';
 
 export function Layout() {
+  useStreamCountTitle();
+
   return (
     <SidebarProvider>
       <AppSidebar />

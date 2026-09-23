@@ -24,7 +24,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:8-alpine@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
+    image: redis:8-alpine@sha256:ef216d85ec44f4fdf7c0e6df2d1757a4734ed32fbb278cabd3181b5a27353b79
     ports:
       - '6379:6379'
     volumes:
@@ -37,7 +37,7 @@ services:
 
   # Dev-only SMTP sink: point an email destination at 127.0.0.1:1025 (security none) and read the inbox at http://localhost:8025.
   mailpit:
-    image: axllent/mailpit:v1.31.1@sha256:98b916bd3c8d61f7633a52d3ea2f58d00620cb01ca57ab59edde68c347a95365
+    image: axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
     ports:
       - '127.0.0.1:1025:1025'
       - '127.0.0.1:8025:8025'

@@ -29,6 +29,10 @@ vi.mock('../../../db/client.js', () => ({
   },
 }));
 
+vi.mock('../../../services/settings.js', () => ({
+  getSetting: vi.fn().mockResolvedValue(null),
+}));
+
 import { db } from '../../../db/client.js';
 import { libraryMediaRoute } from '../media.js';
 
@@ -113,6 +117,7 @@ describe('GET /library/media/:id and sub-resources', () => {
 
   beforeEach(() => {
     dbExecute.mockReset();
+    dbExecute.mockResolvedValue({ rows: [] } as never);
     vi.mocked(db.select).mockReset();
   });
 
@@ -150,6 +155,9 @@ describe('GET /library/media/:id and sub-resources', () => {
         },
       ],
     } as never);
+    dbExecute.mockResolvedValueOnce({
+      rows: [{ thumb_path: '/library/thumb/1', dominant_color: '#334455', server_id: 'srv-1' }],
+    } as never);
 
     const response = await app.inject({ method: 'GET', url: `/library/media/${row.id}` });
     expect(response.statusCode).toBe(200);
@@ -162,7 +170,10 @@ describe('GET /library/media/:id and sub-resources', () => {
       mergedIds: [],
       seasonCount: null,
       episodeCount: null,
+      dominantColor: '#334455',
     });
+    expect(body.posterUrl).toContain('server=srv-1');
+    expect(body.posterUrl).toContain(`v=${body.posterVersion}`);
     expect(body.availability).toEqual([
       {
         serverId: expect.any(String),
@@ -631,6 +642,7 @@ describe('GET /library/media/:id and sub-resources', () => {
     await appA.close();
 
     dbExecute.mockReset();
+    dbExecute.mockResolvedValue({ rows: [] } as never);
     const appB = await buildTestApp(createViewerUser([serverB]), redisB);
     queueSelect([row], [{ id: row.id }]);
     dbExecute.mockResolvedValueOnce({ rows: [] } as never);

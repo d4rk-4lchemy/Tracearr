@@ -2016,6 +2016,99 @@ describe('Stream Quality Evaluators', () => {
     });
   });
 
+  describe('source_dynamic_range', () => {
+    const evaluate = (
+      label: string | null,
+      operator: 'eq' | 'neq' | 'in' | 'not_in',
+      value: string | string[]
+    ) =>
+      evaluatorRegistry.source_dynamic_range(
+        createTestContext({
+          session: createMockSession({
+            sourceVideoDetails: label === null ? null : { dynamicRange: label },
+          }),
+        }),
+        createCondition({ field: 'source_dynamic_range', operator, value })
+      ) as EvaluatorResult;
+
+    it('matches the server label against the token the picker offers', () => {
+      const result = evaluate('Dolby Vision', 'eq', 'dolby vision');
+      expect(result.matched).toBe(true);
+      expect(result.actual).toBe('dolby vision');
+    });
+
+    it('reads "is not SDR" as any HDR flavour', () => {
+      expect(evaluate('HDR10', 'neq', 'sdr').matched).toBe(true);
+      expect(evaluate('SDR', 'neq', 'sdr').matched).toBe(false);
+    });
+
+    it('picks specific formats out of a list', () => {
+      expect(evaluate('HDR10', 'in', ['hdr10', 'dolby vision']).matched).toBe(true);
+      expect(evaluate('HLG', 'in', ['hdr10', 'dolby vision']).matched).toBe(false);
+    });
+
+    it('never matches a session that reported no range, even for "is not"', () => {
+      expect(evaluate(null, 'eq', 'sdr').matched).toBe(false);
+      expect(evaluate(null, 'neq', 'sdr').matched).toBe(false);
+    });
+  });
+
+  describe('source_video_codec', () => {
+    const evaluate = (
+      codec: string | null,
+      operator: 'eq' | 'neq' | 'contains' | 'not_contains',
+      value: string
+    ) =>
+      evaluatorRegistry.source_video_codec(
+        createTestContext({ session: createMockSession({ sourceVideoCodec: codec }) }),
+        createCondition({ field: 'source_video_codec', operator, value })
+      ) as EvaluatorResult;
+
+    it('folds case on both sides', () => {
+      expect(evaluate('AV1', 'eq', 'av1').matched).toBe(true);
+      expect(evaluate('HEVC', 'contains', 'hev').matched).toBe(true);
+    });
+
+    it('reports the codec as the server spelled it', () => {
+      expect(evaluate('HEVC', 'eq', 'hevc').actual).toBe('HEVC');
+    });
+
+    it('never matches a session with no codec', () => {
+      expect(evaluate(null, 'eq', 'av1').matched).toBe(false);
+      expect(evaluate(null, 'neq', 'av1').matched).toBe(false);
+    });
+  });
+
+  describe('season_number and episode_number', () => {
+    const evaluate = (
+      field: 'season_number' | 'episode_number',
+      session: Partial<Session>,
+      operator: Operator,
+      value: number
+    ) =>
+      evaluatorRegistry[field](
+        createTestContext({ session: createMockSession(session) }),
+        createCondition({ field, operator, value })
+      ) as EvaluatorResult;
+
+    const premiere = { mediaType: 'episode' as const, seasonNumber: 2, episodeNumber: 1 };
+
+    it('spots a season premiere', () => {
+      expect(evaluate('episode_number', premiere, 'eq', 1).matched).toBe(true);
+      expect(evaluate('season_number', premiere, 'gte', 2).matched).toBe(true);
+    });
+
+    it('leaves the rest of the season alone', () => {
+      const midSeason = { ...premiere, episodeNumber: 6 };
+      expect(evaluate('episode_number', midSeason, 'eq', 1).matched).toBe(false);
+    });
+
+    it('stays quiet on a movie, which would otherwise answer every "is not"', () => {
+      expect(evaluate('episode_number', { mediaType: 'movie' }, 'neq', 1).matched).toBe(false);
+      expect(evaluate('season_number', { mediaType: 'movie' }, 'neq', 1).matched).toBe(false);
+    });
+  });
+
   describe('is_transcoding', () => {
     it('evaluates "video" - matches when video is transcoding', () => {
       const session = createMockSession({

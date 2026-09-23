@@ -14,6 +14,7 @@ import { db } from '../../db/client.js';
 import { media, servers } from '../../db/schema.js';
 import { buildMultiServerFragment } from '../../utils/serverFiltering.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
+import { buildPosterOrderFragment } from '../../routes/library/catalog.js';
 import { parseMediaRef } from './mediaRef.js';
 import { resolveMediaAliases } from './mediaResolutionService.js';
 import { resolveWatchedStates } from './mediaWatchedService.js';
@@ -148,6 +149,39 @@ export interface AvailabilityRow {
   replaces_removed_at: Date | null;
   replaces_video_resolution: string | null;
   replaces_file_size: string | number | null;
+}
+
+export interface PosterCopy {
+  thumbPath: string;
+  dominantColor: string | null;
+  serverId: string;
+}
+
+/** Ordered the same way the catalog picks its poster, so the two never disagree. */
+export async function getPosterCopy(
+  mediaId: string,
+  serverIds: string[] | undefined,
+  preferredServerId: string | null | undefined
+): Promise<PosterCopy | null> {
+  const serverFragmentLi = buildMultiServerFragment(serverIds, 'li.server_id');
+  const result = await db.execute(sql`
+    SELECT li.thumb_path, li.dominant_color, li.server_id
+    FROM library_items li
+    WHERE li.media_id = ${mediaId}
+      AND li.removed_at IS NULL
+      AND li.thumb_path IS NOT NULL
+      ${serverFragmentLi}
+    ${buildPosterOrderFragment(preferredServerId)}
+    LIMIT 1
+  `);
+  const row = result.rows[0] as
+    { thumb_path: string; dominant_color: string | null; server_id: string } | undefined;
+  if (!row) return null;
+  return {
+    thumbPath: row.thumb_path,
+    dominantColor: row.dominant_color,
+    serverId: row.server_id,
+  };
 }
 
 export interface MediaAvailabilityResult {

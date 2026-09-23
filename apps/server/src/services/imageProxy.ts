@@ -23,9 +23,12 @@ import { cacheWriteAllowed, noteCacheWrite } from './imageCacheGuard.js';
 sharp.concurrency(1);
 // Token encryption removed - tokens now stored in plain text (DB is localhost-only)
 
-// Cache directory (in project root/data/image-cache), sharded by the first two
-// hex chars of the cache key so no single directory holds every cached file.
-export const IMAGE_CACHE_DIR = join(process.cwd(), 'data', 'image-cache');
+// Cache directory, sharded by the first two hex chars of the cache key so no
+// single directory holds every cached file. The Docker images set
+// IMAGE_CACHE_DIR to a mounted volume; without it the cache lives on the
+// container's writable layer and is lost on recreate.
+export const IMAGE_CACHE_DIR =
+  process.env.IMAGE_CACHE_DIR ?? join(process.cwd(), 'data', 'image-cache');
 const CACHE_TTL_MS = TIME_MS.DAY;
 
 // Ensure cache directory exists
@@ -83,6 +86,10 @@ interface ProxyOptions {
   version?: string;
   /** Web grid only: race the miss against the LQIP placeholder after 2 s. Everything else waits for the real image. */
   lqip?: boolean;
+  /** Background warms: skip the original-size retry. A struggling transcoder
+   *  must not be answered with a larger request; the next pass re-warms
+   *  whatever this one missed. */
+  resizedOnly?: boolean;
 }
 
 interface ProxyResult {
@@ -91,6 +98,9 @@ interface ProxyResult {
   cached: boolean;
   /** Overrides the caller's default Cache-Control (used for the LQIP degraded response). */
   cacheControl?: string;
+  /** The upstream fetch failed and this is a placeholder. Background warms
+   *  turn it into an error; live requests render it. */
+  degraded?: boolean;
 }
 
 /**
@@ -417,6 +427,7 @@ interface MissPipelineArgs {
   fallback: FallbackType;
   cachePath: string;
   shardDir: string;
+  resizedOnly: boolean;
 }
 
 /**
@@ -444,7 +455,7 @@ async function getServerRow(serverId: string): Promise<typeof servers.$inferSele
 }
 
 async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
-  const { serverId, imagePath, width, height, fallback, cachePath, shardDir } = args;
+  const { serverId, imagePath, width, height, fallback, cachePath, shardDir, resizedOnly } = args;
 
   const server = await getServerRow(serverId);
   if (!server) {
@@ -481,7 +492,7 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
         height,
         preserveAspectRatio: fallback === 'poster',
       }),
-      buildUpstreamRequest(server, effectiveImagePath),
+      ...(resizedOnly ? [] : [buildUpstreamRequest(server, effectiveImagePath)]),
     ];
     let imageBuffer: Buffer | null = null;
     let lastError: unknown = null;
@@ -534,7 +545,11 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
   } catch {
     // Return fallback on any error, capped at a short cache lifetime so an
     // upstream blip (e.g. a Plex restart) can't pin "No Image" for a year.
+    // Flagged degraded so a background warm can tell a dead transcoder from a
+    // real image; the pipeline itself must not reject, because live requests
+    // coalesce onto this same promise and would get a 500 instead.
     return {
+      degraded: true,
       data: getFallbackImage(fallback, width, height),
       contentType: 'image/svg+xml',
       cached: false,
@@ -606,6 +621,7 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     fallback = 'poster',
     version,
     lqip = false,
+    resizedOnly = false,
   } = options;
 
   // A 360x540 poster is always the one versioned entry, whether or not the URL
@@ -641,6 +657,7 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
       fallback,
       cachePath,
       shardDir,
+      resizedOnly,
     }).finally(() => {
       inFlightMisses.delete(fileName);
     });

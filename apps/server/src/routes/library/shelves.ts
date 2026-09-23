@@ -19,6 +19,7 @@ import {
   POSTER_IMAGE_SIZE,
   type ShelfRow,
   type RecentlyAddedShelfRow,
+  type RecentlyUpdatedShelfRow,
   type MostPopularShelfRow,
   type DeadWeightRow,
   type ShelvesResponse,
@@ -38,6 +39,7 @@ import {
   resolveWatchedStates,
 } from '../../services/library/mediaWatchedService.js';
 import { buildProxyUrl, posterVersionFor } from '../../services/imageProxy.js';
+import { reAddedPredicate } from '../../services/library/reAdded.js';
 import { getSetting } from '../../services/settings.js';
 import { resolveDateRange, type DateRange } from '../stats/utils.js';
 import { buildLibraryCacheKey, mediaSizeSubquery, withComputeSingleFlight } from './utils.js';
@@ -70,10 +72,16 @@ interface RawRecentlyAddedShowRow extends RawShelfRow {
   added_at: string;
 }
 
+/** How many candidates the movie shelf reads before splitting them: two thirds of a busy week's arrivals replace a copy the server already had. */
+const MOVIE_CANDIDATE_LIMIT = SHELF_LIMIT * 6;
+
 /** ShelfRow minus watchedState: resolved once (all-users aggregate) and attached after fetch. */
 type CachedShelfRow = Omit<ShelfRow, 'watchedState'>;
 
-type CachedRecentlyAddedRow = CachedShelfRow & Pick<RecentlyAddedShelfRow, 'newEpisodes'>;
+type CachedRecentlyAddedRow = CachedShelfRow &
+  Pick<RecentlyAddedShelfRow, 'newEpisodes' | 'newestEpisodeAt'>;
+type CachedRecentlyUpdatedRow = CachedShelfRow &
+  Pick<RecentlyUpdatedShelfRow, 'replacedEpisodes' | 'newestEpisodeAt'> & { sortAt: string | null };
 type CachedMostPopularRow = CachedShelfRow &
   Pick<MostPopularShelfRow, 'plays' | 'viewers' | 'rank'>;
 type CachedDeadWeightRow = CachedShelfRow & Pick<DeadWeightRow, 'fileBytes' | 'addedAt'>;
@@ -107,11 +115,37 @@ function toShelfRowBase(row: RawShelfRow): CachedShelfRow {
   };
 }
 
-/** Newest active copy per canonical movie, latest-added-first. */
+/** Media whose newest live copy replaces one this server lost. */
+async function findReAddedMedia(
+  mediaIds: string[],
+  serverIds: string[] | undefined
+): Promise<Set<string>> {
+  if (mediaIds.length === 0) return new Set();
+  const serverFragmentLi = buildMultiServerFragment(serverIds, 'li.server_id');
+  const result = await db.execute(sql`
+    SELECT media_id FROM (
+      SELECT DISTINCT ON (li.media_id) li.media_id, ${reAddedPredicate('li')} AS re_added
+      FROM library_items li
+      WHERE li.media_id IN (${sql.join(
+        mediaIds.map((id) => sql`${id}::uuid`),
+        sql`, `
+      )})
+        AND li.removed_at IS NULL ${serverFragmentLi}
+      ORDER BY li.media_id, li.created_at DESC
+    ) newest
+    WHERE re_added
+  `);
+  return new Set((result.rows as unknown as { media_id: string }[]).map((row) => row.media_id));
+}
+
+/**
+ * Newest active copy per canonical movie, latest-added-first, split by whether
+ * that copy is the title's first here or replaces one the server lost.
+ */
 async function fetchRecentlyAddedMovies(
   serverIds: string[] | undefined,
   preferredPosterServerId: string | null
-): Promise<CachedRecentlyAddedRow[]> {
+): Promise<{ added: CachedRecentlyAddedRow[]; updated: CachedRecentlyUpdatedRow[] }> {
   const movieQuery = buildCatalogPageQuery({
     type: 'movie',
     sort: 'added',
@@ -127,41 +161,64 @@ async function fetchRecentlyAddedMovies(
     sizeGbMin: null,
     sizeGbMax: null,
     serverIds,
-    pageSize: SHELF_LIMIT,
+    pageSize: MOVIE_CANDIDATE_LIMIT,
     preferredPosterServerId,
   });
   const movieResult = await db.execute(movieQuery);
-  return (movieResult.rows as unknown as RawShelfRow[]).slice(0, SHELF_LIMIT).map((row) => ({
-    ...toShelfRowBase(row),
-    newEpisodes: null,
-  }));
+  const candidates = movieResult.rows as unknown as RawShelfRow[];
+  const reAdded = await findReAddedMedia(
+    candidates.map((row) => row.id),
+    serverIds
+  );
+
+  const added: CachedRecentlyAddedRow[] = [];
+  const updated: CachedRecentlyUpdatedRow[] = [];
+  for (const row of candidates) {
+    if (reAdded.has(row.id)) {
+      if (updated.length < SHELF_LIMIT) {
+        updated.push({
+          ...toShelfRowBase(row),
+          replacedEpisodes: null,
+          newestEpisodeAt: null,
+          sortAt: row.latest_added_at,
+        });
+      }
+      continue;
+    }
+    if (added.length < SHELF_LIMIT)
+      added.push({ ...toShelfRowBase(row), newEpisodes: null, newestEpisodeAt: null });
+  }
+  return { added, updated };
 }
 
 /**
- * Shows whose newly-tracked episodes group under the show's own card
- * (newEpisodes chip), latest-episode-added-first. The card itself always
- * ranks by each show's own most-recent episode add (unbounded, so the shelf
- * keeps showing its top SHELF_LIMIT regardless of the request's period), but
- * the "N new" count is scoped to the request's dateRange - otherwise a show
- * that has aired for years reports every active episode it has ever had as
- * "new" the moment any one of them is added.
+ * Shows whose episodes group under the show's own card, latest-episode-first.
+ * 'added' counts episodes new to this server, 'updated' counts the ones that
+ * replaced a copy it lost, and each mode ranks a show by its own newest
+ * qualifying episode. The count is scoped to the request's dateRange while the
+ * rank is not - otherwise a show that has aired for years reports every active
+ * episode it has ever had as "new" the moment any one of them is added.
  */
-async function fetchRecentlyAddedShows(
+async function fetchShowShelf(
+  mode: 'added' | 'updated',
   serverIds: string[] | undefined,
   dateRange: DateRange,
   preferredPosterServerId: string | null
-): Promise<CachedRecentlyAddedRow[]> {
+): Promise<RawRecentlyAddedShowRow[]> {
   const serverFragmentLi = buildMultiServerFragment(serverIds, 'li.server_id');
   const posterOrderFragment = buildPosterOrderFragment(preferredPosterServerId);
-  const newEpisodeWindow = buildTimestampWindowCondition(sql`li.created_at`, dateRange);
+  const episodeWindow = buildTimestampWindowCondition(sql`li.created_at`, dateRange);
+  const qualifies =
+    mode === 'updated' ? reAddedPredicate('li') : sql`NOT ${reAddedPredicate('li')}`;
   const showResult = await db.execute(sql`
     WITH added_episodes AS (
       SELECT e.show_media_id AS show_id,
-             COUNT(DISTINCT e.id) FILTER (WHERE ${newEpisodeWindow})::int AS new_episodes,
+             COUNT(DISTINCT e.id) FILTER (WHERE ${episodeWindow})::int AS new_episodes,
              MAX(li.created_at) AS added_at
       FROM library_items li
       JOIN media e ON e.id = li.media_id
       WHERE li.removed_at IS NULL AND e.media_type = 'episode' AND e.show_media_id IS NOT NULL
+        AND ${qualifies}
         ${serverFragmentLi}
       GROUP BY e.show_media_id
     )
@@ -184,9 +241,33 @@ async function fetchRecentlyAddedShows(
     ORDER BY ae.added_at DESC
     LIMIT ${SHELF_LIMIT}
   `);
-  return (showResult.rows as unknown as RawRecentlyAddedShowRow[]).map((row) => ({
+  return showResult.rows as unknown as RawRecentlyAddedShowRow[];
+}
+
+async function fetchRecentlyAddedShows(
+  serverIds: string[] | undefined,
+  dateRange: DateRange,
+  preferredPosterServerId: string | null
+): Promise<CachedRecentlyAddedRow[]> {
+  const rows = await fetchShowShelf('added', serverIds, dateRange, preferredPosterServerId);
+  return rows.map((row) => ({
     ...toShelfRowBase(row),
     newEpisodes: row.new_episodes,
+    newestEpisodeAt: row.added_at,
+  }));
+}
+
+async function fetchRecentlyUpdatedShows(
+  serverIds: string[] | undefined,
+  dateRange: DateRange,
+  preferredPosterServerId: string | null
+): Promise<CachedRecentlyUpdatedRow[]> {
+  const rows = await fetchShowShelf('updated', serverIds, dateRange, preferredPosterServerId);
+  return rows.map((row) => ({
+    ...toShelfRowBase(row),
+    replacedEpisodes: row.new_episodes,
+    newestEpisodeAt: row.added_at,
+    sortAt: row.added_at,
   }));
 }
 
@@ -558,14 +639,26 @@ async function computeShelves(
   // Eight independent whole-catalog aggregate queries, split into two ~5-wide
   // Promise.all batches rather than one batch of 8 - a single request should
   // not be able to fire every heavy aggregate at the connection pool at once.
-  const [recentlyAddedMovies, recentlyAddedShows, mostPopularMovies, mostPopularShows, deadWeight] =
-    await Promise.all([
-      fetchRecentlyAddedMovies(serverIds, preferredPosterServerId),
-      fetchRecentlyAddedShows(serverIds, dateRange, preferredPosterServerId),
-      fetchMostPopular('movie', serverIds, dateRange, preferredPosterServerId),
-      fetchMostPopular('show', serverIds, dateRange, preferredPosterServerId),
-      includeDeadWeight ? fetchDeadWeight(serverIds, preferredPosterServerId) : null,
-    ]);
+  const [
+    movies,
+    recentlyAddedShows,
+    updatedShows,
+    mostPopularMovies,
+    mostPopularShows,
+    deadWeight,
+  ] = await Promise.all([
+    fetchRecentlyAddedMovies(serverIds, preferredPosterServerId),
+    fetchRecentlyAddedShows(serverIds, dateRange, preferredPosterServerId),
+    fetchRecentlyUpdatedShows(serverIds, dateRange, preferredPosterServerId),
+    fetchMostPopular('movie', serverIds, dateRange, preferredPosterServerId),
+    fetchMostPopular('show', serverIds, dateRange, preferredPosterServerId),
+    includeDeadWeight ? fetchDeadWeight(serverIds, preferredPosterServerId) : null,
+  ]);
+  const recentlyAddedMovies = movies.added;
+  // One row for both types, so the two lists interleave on when the copy landed
+  const recentlyUpdated = [...movies.updated, ...updatedShows]
+    .sort((a, b) => (b.sortAt ?? '').localeCompare(a.sortAt ?? ''))
+    .slice(0, SHELF_LIMIT);
   const [newlyAdded, watchedAgg, meta] = await Promise.all([
     fetchNewlyAdded(serverIds, dateRange),
     fetchWatchedAggregate(serverIds, dateRange),
@@ -576,6 +669,10 @@ async function computeShelves(
   const showIds = new Set<string>();
   for (const row of [...recentlyAddedMovies, ...mostPopularMovies]) movieIds.add(row.mediaId);
   for (const row of [...recentlyAddedShows, ...mostPopularShows]) showIds.add(row.mediaId);
+  for (const row of recentlyUpdated) {
+    if (row.mediaType === 'show') showIds.add(row.mediaId);
+    else movieIds.add(row.mediaId);
+  }
   const showIdList = [...showIds];
   const episodeCounts = await fetchEpisodeCounts(showIdList, serverIds);
   const watchedStates = await resolveWatchedStates({
@@ -590,6 +687,9 @@ async function computeShelves(
     period,
     recentlyAddedMovies: recentlyAddedMovies.map((row) => withWatched(row, watchedStates)),
     recentlyAddedShows: recentlyAddedShows.map((row) => withWatched(row, watchedStates)),
+    recentlyUpdated: recentlyUpdated.map(({ sortAt: _sortAt, ...row }) =>
+      withWatched(row, watchedStates)
+    ),
     mostPopularMovies: mostPopularMovies.map((row) => withWatched(row, watchedStates)),
     mostPopularShows: mostPopularShows.map((row) => withWatched(row, watchedStates)),
     // Dead weight is never-watched by definition - no probe needed.
@@ -663,8 +763,10 @@ export const libraryShelvesRoute: FastifyPluginAsync = async (app) => {
       // v5: recentlyAddedShows.newEpisodes is now a distinct, period-windowed
       // episode count instead of an unbounded per-copy count, so a v4-cached
       // payload's chip numbers are stale and must not be served as v5.
+      // v8: the recently-added shelves drop copies that replace one the server
+      // lost, and those move to recentlyUpdated, which a v7 payload lacks.
       const cacheKey = buildLibraryCacheKey(
-        `${REDIS_KEYS.LIBRARY_SHELVES}:v7`,
+        `${REDIS_KEYS.LIBRARY_SHELVES}:v9`,
         serverCacheKey,
         periodCacheKey,
         undefined,

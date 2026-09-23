@@ -66,7 +66,9 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
         data-slot="tabs-trigger"
         data-variant="outline"
         data-spacing={0}
-        className={cn(toggleGroupItemVariants({ variant: 'outline' }), 'flex-1', className)}
+        // No flex-1: equal-width segments centre their labels, so a trigger's
+        // apparent padding came from how long its neighbour's label was.
+        className={cn(toggleGroupItemVariants({ variant: 'outline' }), className)}
         {...props}
       />
     );

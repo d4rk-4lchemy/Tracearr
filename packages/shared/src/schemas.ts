@@ -1130,6 +1130,13 @@ export const libraryDuplicatesQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+// Capped because every id costs a media server lookup; one page of duplicates fits.
+export const libraryDuplicateFilesQuerySchema = z.object({
+  itemIds: z
+    .union([uuidSchema.transform((id) => [id]), z.array(uuidSchema)])
+    .refine((ids) => ids.length <= 50, { message: 'At most 50 items per request' }),
+});
+
 // Library stale content query schema
 export const libraryStaleQuerySchema = z.object({
   serverId: z.uuid().optional(),
@@ -1261,6 +1268,7 @@ export type LibraryGrowthQueryInput = z.infer<typeof libraryGrowthQuerySchema>;
 export type LibraryQualityQueryInput = z.infer<typeof libraryQualityQuerySchema>;
 export type LibraryStorageQueryInput = z.infer<typeof libraryStorageQuerySchema>;
 export type LibraryDuplicatesQueryInput = z.infer<typeof libraryDuplicatesQuerySchema>;
+export type LibraryDuplicateFilesQueryInput = z.infer<typeof libraryDuplicateFilesQuerySchema>;
 export type LibraryStaleQueryInput = z.infer<typeof libraryStaleQuerySchema>;
 export type LibraryWatchQueryInput = z.infer<typeof libraryWatchQuerySchema>;
 export type LibraryRoiQueryInput = z.infer<typeof libraryRoiQuerySchema>;

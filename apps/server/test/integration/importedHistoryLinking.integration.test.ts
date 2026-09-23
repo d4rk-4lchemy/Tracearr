@@ -18,6 +18,7 @@ import {
   createTestLibraryItem,
 } from '@tracearr/test-utils/factories';
 import { db, recreatePool } from '../../src/db/client.js';
+import { compressSessionChunks } from '../../src/test/compressChunks.js';
 import { libraries, media } from '../../src/db/schema.js';
 import { getRedis } from '../../src/lib/redisShared.js';
 import {
@@ -151,13 +152,8 @@ describe('link_imported_history on a compressed chunk', { timeout: 120_000 }, ()
       ).plays;
     expect(await plays()).toBe(0);
 
-    const compressed = await db.execute(sql`
-      SELECT compress_chunk(c, true) FROM show_chunks(
-        'sessions',
-        older_than => NOW() - INTERVAL '${sql.raw(String(CHUNK_AGE_DAYS - 30))} days'
-      ) AS c
-    `);
-    expect(compressed.rows.length).toBeGreaterThanOrEqual(1);
+    const compressed = await compressSessionChunks(CHUNK_AGE_DAYS - 30);
+    expect(compressed.length).toBeGreaterThanOrEqual(1);
 
     const dbName = (
       (await db.execute(sql`SELECT current_database() AS db`)).rows[0] as { db: string }

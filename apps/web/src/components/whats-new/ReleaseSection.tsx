@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import {
   parseVersion,
+  releaseLinkLabel,
   RELEASE_CHANGE_TYPES,
   type ReleaseChangeType,
   type ReleaseNotesFile,
@@ -104,7 +105,9 @@ export function ReleaseSection({ notes, defaultOpen, installed, latest }: Releas
                     rel="noopener noreferrer"
                     className="text-primary mt-2 inline-flex items-center gap-1 text-xs hover:underline"
                   >
-                    {t('settings:whatsNew.docs')}
+                    {t(
+                      `settings:whatsNew.${releaseLinkLabel(highlight.docs) === 'GitHub' ? 'source' : 'docs'}`
+                    )}
                     <ExternalLink className="size-3" />
                   </a>
                 )}
@@ -150,7 +153,9 @@ export function ReleaseSection({ notes, defaultOpen, installed, latest }: Releas
                       rel="noopener noreferrer"
                       className="text-primary inline-flex items-center gap-0.5 text-xs whitespace-nowrap hover:underline"
                     >
-                      {t('settings:whatsNew.docs')}
+                      {t(
+                        `settings:whatsNew.${releaseLinkLabel(change.docs) === 'GitHub' ? 'source' : 'docs'}`
+                      )}
                       <ExternalLink className="size-3" />
                     </a>
                   </span>

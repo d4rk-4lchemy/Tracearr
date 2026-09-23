@@ -2,7 +2,7 @@
 # Runs TimescaleDB, Redis, and Tracearr in a single container
 # Ideal for simple deployments, Unraid, Synology, etc.
 
-FROM node:24-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553 AS builder
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS builder
 
 # Build arguments for version info
 ARG APP_VERSION=0.0.0
@@ -18,7 +18,7 @@ ARG APP_IMAGE_REPO=darkalchemy2137/distracearr
 
 # pnpm's install script is what puts its native binary in place. corepack never runs it,
 # and npm 12 blocks it unless allowed, so both leave pnpm's shebang-less fallback shim instead.
-RUN npm install -g --allow-scripts=pnpm pnpm@12.3.4
+RUN npm install -g --allow-scripts=pnpm pnpm@12.4.2
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --f
 # =============================================================================
 # Production All-in-One Image
 # =============================================================================
-FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 # Install dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -60,7 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Node.js 24
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g --allow-scripts=pnpm pnpm@12.3.4 \
+    && npm install -g --allow-scripts=pnpm pnpm@12.4.2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PostgreSQL 15 + TimescaleDB
@@ -193,6 +193,10 @@ EXPOSE 3000
 
 # Volumes for persistent data
 VOLUME ["/data/postgres", "/data/redis", "/data/tracearr", "/data/backup"]
+
+# Inside the already-mounted /data/tracearr volume, so existing installs keep
+# their poster cache across a recreate without editing their compose file.
+ENV IMAGE_CACHE_DIR=/data/tracearr/image-cache
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://127.0.0.1:3000/health || exit 1

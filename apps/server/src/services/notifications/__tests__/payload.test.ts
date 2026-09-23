@@ -212,6 +212,57 @@ describe('toNotificationPayload with an automation source', () => {
     expect(payload.message).toBe('Living Room / emby');
   });
 
+  it('prints what the stream is playing, straight off a native event', () => {
+    const episode = createMockActiveSession({
+      mediaType: 'episode',
+      mediaTitle: 'Grilled',
+      seasonNumber: 2,
+      episodeNumber: 2,
+      sourceVideoCodec: 'HEVC',
+      sourceVideoDetails: { dynamicRange: 'Dolby Vision' },
+    });
+
+    const payload = toNotificationPayload(
+      { type: 'session_started', payload: episode },
+      automation({
+        body: 'S{{session.seasonNumber}}E{{session.episodeNumber}} in {{session.sourceDynamicRange}} ({{session.sourceVideoCodec}})',
+      })
+    );
+
+    expect(payload.message).toBe('S2E2 in Dolby Vision (HEVC)');
+  });
+
+  it('leaves a movie blank rather than printing a season it does not have', () => {
+    const payload = toNotificationPayload(
+      { type: 'session_started', payload: createMockActiveSession({ mediaType: 'movie' }) },
+      automation({ body: 'season [{{session.seasonNumber}}]' })
+    );
+
+    expect(payload.message).toBe('season []');
+  });
+
+  it('reads the same stream variables off a violation-shaped run', () => {
+    const payload = toNotificationPayload(
+      {
+        type: 'violation',
+        payload: {
+          ...violation,
+          data: {
+            ...violation.data,
+            sourceDynamicRange: 'HDR10',
+            sourceVideoCodec: 'AV1',
+            episodeNumber: 1,
+          },
+        },
+      },
+      automation({
+        body: '{{session.sourceDynamicRange}} / {{session.sourceVideoCodec}} / {{session.episodeNumber}}',
+      })
+    );
+
+    expect(payload.message).toBe('HDR10 / AV1 / 1');
+  });
+
   it('reads the account name and media title off a violation-shaped run', () => {
     const payload = toNotificationPayload(
       {

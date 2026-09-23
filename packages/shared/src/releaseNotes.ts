@@ -10,7 +10,21 @@ export const WHATS_NEW_LEGACY = 'legacy';
 const DOCS_PREFIX = 'https://docs.tracearr.com/';
 const RELEASES_TAG_URL = 'https://github.com/connorgallopo/Tracearr/releases/tag';
 
-const docsUrl = z.string().startsWith(DOCS_PREFIX);
+const GITHUB_PREFIX = 'https://github.com/connorgallopo/Tracearr/';
+
+/** Either the docs site or this repo: a note telling an operator to edit their
+ *  compose file is best served by the file itself. Anywhere else is off-limits,
+ *  since these links go out in the release body and the what's-new dialog. */
+const docsUrl = z
+  .string()
+  .refine(
+    (url) => url.startsWith(DOCS_PREFIX) || url.startsWith(GITHUB_PREFIX),
+    `must start with ${DOCS_PREFIX} or ${GITHUB_PREFIX}`
+  );
+
+export function releaseLinkLabel(url: string): 'docs' | 'GitHub' {
+  return url.startsWith(GITHUB_PREFIX) ? 'GitHub' : 'docs';
+}
 
 export const releaseChangeSchema = z.strictObject({
   type: z.enum(RELEASE_CHANGE_TYPES),
@@ -109,7 +123,7 @@ function capitalize(text: string): string {
 function renderChange(change: ReleaseChange): string {
   let line = `- ${capitalize(change.text)}`;
   if (change.refs?.length) line += ` (${change.refs.join(', ')})`;
-  if (change.docs) line += ` ([docs](${change.docs}))`;
+  if (change.docs) line += ` ([${releaseLinkLabel(change.docs)}](${change.docs}))`;
   return line;
 }
 
@@ -125,7 +139,9 @@ export function renderReleaseNotesMarkdown(file: ReleaseNotesFile, tag?: string)
     lines.push(
       '',
       `### ${highlight.title}`,
-      highlight.docs ? `${highlight.body} [Docs](${highlight.docs})` : highlight.body
+      highlight.docs
+        ? `${highlight.body} [${capitalize(releaseLinkLabel(highlight.docs))}](${highlight.docs})`
+        : highlight.body
     );
   }
   for (const type of RELEASE_CHANGE_TYPES) {

@@ -15,6 +15,7 @@ import {
   createTestSession,
 } from '@tracearr/test-utils/factories';
 import { db, recreatePool } from '../../src/db/client.js';
+import { compressSessionChunks } from '../../src/test/compressChunks.js';
 import { media } from '../../src/db/schema.js';
 import {
   runImportDuplicateCleanup,
@@ -129,9 +130,7 @@ async function existing(ids: string[]): Promise<string[]> {
 }
 
 async function runCleanup() {
-  await db.execute(sql`
-    SELECT compress_chunk(c, true) FROM show_chunks('sessions') AS c
-  `);
+  await compressSessionChunks();
   const dbName = (
     (await db.execute(sql`SELECT current_database() AS db`)).rows[0] as { db: string }
   ).db;

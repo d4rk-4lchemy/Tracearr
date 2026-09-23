@@ -1,4 +1,4 @@
-import { BYTES_PER_GB, TIME_MS, resolutionTierRank } from '@tracearr/shared';
+import { BYTES_PER_GB, TIME_MS, normalizeDynamicRange, resolutionTierRank } from '@tracearr/shared';
 import type {
   Condition,
   ConditionField,
@@ -646,6 +646,47 @@ const evaluateOutputResolution: ConditionEvaluator = (
   };
 };
 
+/** Sessions store the server's own label ("Dolby Vision"); the picker offers tokens. */
+const evaluateSourceDynamicRange: ConditionEvaluator = (
+  context: SessionEvaluationContext,
+  condition: Condition
+): EvaluatorResult => {
+  const actual = normalizeDynamicRange(context.session.sourceVideoDetails?.dynamicRange);
+  if (actual === null) return { matched: false, actual };
+  return { matched: compare(actual, condition.operator, condition.value), actual };
+};
+
+/** Both parsers upper-case the codec, so the comparison folds case on both sides. */
+const evaluateSourceVideoCodec: ConditionEvaluator = (
+  context: SessionEvaluationContext,
+  condition: Condition
+): EvaluatorResult => {
+  const actual = context.session.sourceVideoCodec;
+  if (actual === null) return { matched: false, actual };
+  const value =
+    typeof condition.value === 'string' ? condition.value.toLowerCase() : condition.value;
+  return { matched: compare(actual.toLowerCase(), condition.operator, value), actual };
+};
+
+/** A movie has no season or episode, and must not answer "is not 1" with a match. */
+const evaluateSeasonNumber: ConditionEvaluator = (
+  context: SessionEvaluationContext,
+  condition: Condition
+): EvaluatorResult => {
+  const actual = context.session.seasonNumber;
+  if (actual === null) return { matched: false, actual };
+  return { matched: compare(actual, condition.operator, condition.value), actual };
+};
+
+const evaluateEpisodeNumber: ConditionEvaluator = (
+  context: SessionEvaluationContext,
+  condition: Condition
+): EvaluatorResult => {
+  const actual = context.session.episodeNumber;
+  if (actual === null) return { matched: false, actual };
+  return { matched: compare(actual, condition.operator, condition.value), actual };
+};
+
 const evaluateIsTranscoding: ConditionEvaluator = (
   context: SessionEvaluationContext,
   condition: Condition
@@ -1117,6 +1158,8 @@ export const evaluatorRegistry: Record<ConditionField, ConditionEvaluator> = {
   // Stream quality
   source_resolution: evaluateSourceResolution,
   output_resolution: evaluateOutputResolution,
+  source_dynamic_range: evaluateSourceDynamicRange,
+  source_video_codec: evaluateSourceVideoCodec,
   is_transcoding: evaluateIsTranscoding,
   is_transcode_downgrade: evaluateIsTranscodeDowngrade,
   source_bitrate_mbps: evaluateSourceBitrateMbps,
@@ -1141,6 +1184,8 @@ export const evaluatorRegistry: Record<ConditionField, ConditionEvaluator> = {
   media_type: evaluateMediaType,
 
   // Media
+  season_number: evaluateSeasonNumber,
+  episode_number: evaluateEpisodeNumber,
   library_item_type: evaluateLibraryItemType,
   library_name: evaluateLibraryName,
   resolution_after: evaluateResolutionAfter,

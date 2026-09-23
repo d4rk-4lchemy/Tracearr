@@ -1734,6 +1734,32 @@ export function parseRatingKeys(data: unknown, sectionId: string): string[] {
   return keys;
 }
 
+/**
+ * Per-version file existence from a batched /library/metadata/{keys}?checkFiles=1
+ * response. Version keys match parseLibraryItem's, so the two join. A version
+ * whose parts carry neither attribute reads as present: servers that skip the
+ * check must not make every file look missing.
+ */
+export function parseFileExistence(data: unknown): Map<string, Map<string, boolean>> {
+  const container = data as { MediaContainer?: { Metadata?: unknown[] } };
+  const byRatingKey = new Map<string, Map<string, boolean>>();
+  for (const raw of container?.MediaContainer?.Metadata ?? []) {
+    const item = raw as Record<string, unknown>;
+    const key = parseString(item.ratingKey);
+    if (key === '') continue;
+    const versions = new Map<string, boolean>();
+    const mediaArray = (item.Media as Array<Record<string, unknown>> | undefined) ?? [];
+    for (const [index, media] of mediaArray.entries()) {
+      if (media == null || typeof media !== 'object') continue;
+      const parts = (media.Part as Array<Record<string, unknown>> | undefined) ?? [];
+      const exists = parts.every((part) => part?.exists !== false && part?.accessible !== false);
+      versions.set(media.id != null ? String(media.id) : `idx:${index}`, exists);
+    }
+    byRatingKey.set(key, versions);
+  }
+  return byRatingKey;
+}
+
 /** Full genre lists keyed by ratingKey, from a batched /library/metadata/{keys} response. */
 export function parseGenresByRatingKey(data: unknown): Map<string, string[]> {
   const container = data as { MediaContainer?: { Metadata?: unknown[] } };

@@ -7,6 +7,7 @@ import type {
   GrowthDataPoint,
   LibraryGrowthResponse,
   MostPopularShelfRow,
+  RecentlyUpdatedShelfRow,
   RecentlyAddedShelfRow,
   Server,
   ServerType,
@@ -154,7 +155,9 @@ function RecentlyAddedCard({
   serverById: Map<string, ServerLookupEntry>;
 }) {
   const { t } = useTranslation('pages');
-  const addedAt = mostRecentAddedAt(row.servers);
+  // A show's own copy date is when the series first appeared, not when the
+  // episodes counted above arrived.
+  const addedAt = row.newestEpisodeAt ?? mostRecentAddedAt(row.servers);
 
   const meta = joinMeta([
     addedAt ? t('media.landing.card.addedCompactAgo', { age: formatCompactAge(addedAt) }) : null,
@@ -173,6 +176,42 @@ function RecentlyAddedCard({
         resolutionBest={row.resolutionBest}
         watchedState={row.watchedState}
         newEpisodes={row.newEpisodes ?? undefined}
+      />
+      <CardMeta>{meta}</CardMeta>
+    </div>
+  );
+}
+
+/** The copy on this server replaced an earlier one, so the meta line says what changed rather than how new it is. */
+function RecentlyUpdatedCard({
+  row,
+  serverById,
+}: {
+  row: RecentlyUpdatedShelfRow;
+  serverById: Map<string, ServerLookupEntry>;
+}) {
+  const { t } = useTranslation('pages');
+  const addedAt = row.newestEpisodeAt ?? mostRecentAddedAt(row.servers);
+
+  const meta = joinMeta([
+    row.replacedEpisodes
+      ? t('media.landing.card.replacedEpisodes', { count: row.replacedEpisodes })
+      : null,
+    addedAt ? t('media.landing.card.addedCompactAgo', { age: formatCompactAge(addedAt) }) : null,
+  ]);
+
+  return (
+    <div className="space-y-1.5">
+      <PosterCard
+        mediaId={row.mediaId}
+        title={row.title}
+        year={row.year}
+        posterUrl={row.posterUrl}
+        posterVersion={row.posterVersion}
+        dominantColor={row.dominantColor}
+        servers={resolvePosterCardServers(row.servers, serverById)}
+        resolutionBest={row.resolutionBest}
+        watchedState={row.watchedState}
       />
       <CardMeta>{meta}</CardMeta>
     </div>
@@ -526,6 +565,7 @@ export function MediaOverview() {
         <div className="space-y-8" data-testid="media-landing-skeleton">
           <ShelfSkeleton title={t('media.landing.shelves.recentlyAddedMovies')} />
           <ShelfSkeleton title={t('media.landing.shelves.recentlyAddedShows')} />
+          <ShelfSkeleton title={t('media.landing.shelves.recentlyUpdated')} />
           <ShelfSkeleton title={t('media.landing.shelves.mostPopularMovies')} />
           <ShelfSkeleton title={t('media.landing.shelves.mostPopularShows')} />
         </div>
@@ -570,6 +610,25 @@ export function MediaOverview() {
                 id="recently-added-shows"
                 title={t('media.landing.shelves.recentlyAddedShows')}
                 message={t('media.landing.shelves.emptyRecentlyAdded')}
+              />
+            )}
+            {shelves.recentlyUpdated.length > 0 ? (
+              <Shelf
+                id="recently-updated"
+                title={t('media.landing.shelves.recentlyUpdated')}
+                caption={t('media.landing.shelves.captionRecentlyUpdated')}
+                viewAllHref="/media/browse"
+                viewAllLabel={shelfViewAllLabel}
+              >
+                {shelves.recentlyUpdated.map((row) => (
+                  <RecentlyUpdatedCard key={row.mediaId} row={row} serverById={serverById} />
+                ))}
+              </Shelf>
+            ) : (
+              <EmptyShelf
+                id="recently-updated"
+                title={t('media.landing.shelves.recentlyUpdated')}
+                message={t('media.landing.shelves.emptyRecentlyUpdated')}
               />
             )}
             {shelves.mostPopularMovies.length > 0 ? (

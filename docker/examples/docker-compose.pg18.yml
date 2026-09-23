@@ -48,6 +48,7 @@ services:
         condition: service_healthy
     volumes:
       - tracearr_backups:/data/backup
+      - tracearr_images:/data/tracearr/image-cache
     restart: unless-stopped
     networks:
       - tracearr-network
@@ -103,5 +104,6 @@ networks:
 
 volumes:
   tracearr_backups:
+  tracearr_images:
   timescale_data:
   redis_data:

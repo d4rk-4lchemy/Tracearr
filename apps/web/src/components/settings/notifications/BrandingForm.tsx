@@ -87,6 +87,18 @@ function BrandingFields({ stored }: { stored: EmailBrandingSettings }) {
           </Field>
         )}
       </Field>
+      <Field>
+        <FieldLabel htmlFor="branding-system-title">{t('email.branding.systemTitle')}</FieldLabel>
+        <Input
+          id="branding-system-title"
+          maxLength={120}
+          value={state.systemTitle ?? ''}
+          onChange={(event) =>
+            patch({ systemTitle: event.target.value === '' ? null : event.target.value })
+          }
+        />
+        <FieldDescription>{t('email.branding.systemTitleHelp')}</FieldDescription>
+      </Field>
       <Field className="max-w-xs" data-invalid={errors.accentColor !== undefined}>
         <FieldLabel htmlFor="branding-accent">{t('email.branding.accent')}</FieldLabel>
         <InputGroup>

@@ -640,10 +640,10 @@ describe('newsletter routes', () => {
     });
     mockResolve.mockResolvedValue({ recipients: [], missing: [], excluded: [] });
     const fallback = await app.inject({ method: 'POST', url: `/newsletters/${ID}/preview` });
-    expect(fallback.json().variants[0].html).toContain('Sent by Tracearr for <!-- -->Basement');
+    expect(fallback.json().variants[0].html).toContain('Sent by Tracearr for Basement');
     store.getNewsletter.mockResolvedValue({ ...row, senderName: 'Family Media' });
     const named = await app.inject({ method: 'POST', url: `/newsletters/${ID}/preview` });
-    expect(named.json().variants[0].html).toContain('Sent by Tracearr for <!-- -->Family Media');
+    expect(named.json().variants[0].html).toContain('Sent by Tracearr for Family Media');
   });
 
   it('preview trims the way a send would and reports what it removed', async () => {

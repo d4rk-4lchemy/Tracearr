@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   isMinorRelease,
+  releaseLinkLabel,
   releaseNotesFileSchema,
   releaseTagIssues,
   renderReleaseNotesMarkdown,
@@ -184,5 +185,55 @@ describe('renderReleaseNotesMarkdown', () => {
     expect(renderReleaseNotesMarkdown(patch, 'v2.3.1')).toBe(
       '# Tracearr v2.3.1\n\n### Fixes\n- A fix\n\nOther release notes: https://github.com/connorgallopo/Tracearr/releases/tag/v2.3.0\n'
     );
+  });
+});
+
+describe('change links', () => {
+  function withDocs(docs: string) {
+    return releaseNotesFileSchema.safeParse({
+      version: '2.5.1',
+      date: '2026-09-21',
+      changes: [{ type: 'note', text: 'add the volume', docs }],
+    });
+  }
+
+  it('accepts a docs page', () => {
+    expect(withDocs('https://docs.tracearr.com/getting-started/installation').success).toBe(true);
+  });
+
+  it('accepts a link into this repo, so a compose note can point at the file itself', () => {
+    expect(
+      withDocs(
+        'https://github.com/connorgallopo/Tracearr/blob/v2.5.0/docker/examples/docker-compose.pg18.yml#L51'
+      ).success
+    ).toBe(true);
+  });
+
+  it('rejects anywhere else, since these links go out in the release body', () => {
+    expect(withDocs('https://example.com/whatever').success).toBe(false);
+    expect(withDocs('https://github.com/someone-else/repo').success).toBe(false);
+  });
+
+  it('labels the link by where it points', () => {
+    expect(releaseLinkLabel('https://docs.tracearr.com/x')).toBe('docs');
+    expect(releaseLinkLabel('https://github.com/connorgallopo/Tracearr/blob/main/x')).toBe(
+      'GitHub'
+    );
+  });
+
+  it('renders the matching label in the markdown body', () => {
+    const md = renderReleaseNotesMarkdown({
+      version: '2.5.1',
+      date: '2026-09-21',
+      changes: [
+        {
+          type: 'note',
+          text: 'add the volume',
+          docs: 'https://github.com/connorgallopo/Tracearr/blob/v2.5.0/docker/examples/docker-compose.pg18.yml#L51',
+        },
+      ],
+    });
+    expect(md).toContain('([GitHub](https://github.com/connorgallopo/Tracearr/blob/v2.5.0');
+    expect(md).not.toContain('([docs]');
   });
 });

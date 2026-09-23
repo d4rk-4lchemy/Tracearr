@@ -199,6 +199,7 @@ describe('emailBrandingSchema', () => {
     expect(emailBrandingSchema.parse({})).toEqual({
       logo: { mode: 'tracearr' },
       accentColor: '#0ea0b3',
+      systemTitle: null,
       footerText: null,
       postalAddress: null,
       mailtoUnsubscribe: false,
@@ -242,6 +243,14 @@ describe('emailBrandingSchema', () => {
     expect(emailBrandingSchema.safeParse({ footerText: 'x'.repeat(501) }).success).toBe(false);
   });
 
+  it('trims and caps the system title, and reads a blob saved before it existed', () => {
+    expect(emailBrandingSchema.parse({ systemTitle: '  Tracearr for Emby  ' }).systemTitle).toBe(
+      'Tracearr for Emby'
+    );
+    expect(emailBrandingSchema.safeParse({ systemTitle: 'x'.repeat(121) }).success).toBe(false);
+    expect(emailBrandingReadSchema.parse({ accentColor: '#123456' }).systemTitle).toBeNull();
+  });
+
   it('rejects unknown keys on write and strips them on read', () => {
     expect(emailBrandingSchema.safeParse({ theme: 'dark' }).success).toBe(false);
     expect(emailBrandingSchema.safeParse({ senderName: 'Movies' }).success).toBe(false);
@@ -249,6 +258,7 @@ describe('emailBrandingSchema', () => {
       {
         logo: { mode: 'tracearr' },
         accentColor: '#123456',
+        systemTitle: null,
         footerText: null,
         postalAddress: null,
         mailtoUnsubscribe: false,

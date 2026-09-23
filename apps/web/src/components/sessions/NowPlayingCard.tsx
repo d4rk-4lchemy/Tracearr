@@ -18,7 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { cn, formatLocationCompact } from '@/lib/utils';
+import { cn, formatLocationCompact, getDeviceDisplayName } from '@/lib/utils';
 import { imageProxyUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/formatters';
 import { useEstimatedProgress } from '@/hooks/useEstimatedProgress';
@@ -159,6 +159,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
   // User avatar URL (proxied for Jellyfin/Emby)
   const avatarUrl = getAvatarUrl(session.serverId, session.user.thumbUrl, 28) ?? undefined;
 
+  const deviceName = getDeviceDisplayName(session);
   const isPaused = session.state === 'paused';
   const dispatcharrLiveSpeed =
     !isDispatcharrCatchup &&
@@ -287,9 +288,10 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                   );
                 })()}
 
-                {/* Device icon */}
+                {/* Device icon - names the client on hover, like the quality badge */}
                 <div
                   className="bg-muted flex h-6 w-6 items-center justify-center rounded-md"
+                  title={deviceName ?? undefined}
                   data-testid="device-badge"
                 >
                   <DeviceIcon session={session} className="text-muted-foreground h-3.5 w-3.5" />

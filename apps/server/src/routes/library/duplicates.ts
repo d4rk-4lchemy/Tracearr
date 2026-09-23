@@ -70,12 +70,16 @@ interface ItemDetailsRow {
   title: string;
   year: number | null;
   media_type: string;
+  grandparent_title: string | null;
+  parent_index: number | null;
+  item_index: number | null;
   file_size: string | null;
   video_resolution: string | null;
 }
 
 interface VersionRow {
   library_item_id: string;
+  server_version_key: string;
   video_resolution: string | null;
   video_codec: string | null;
   file_size: string | null;
@@ -342,6 +346,9 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
             li.title,
             li.year,
             li.media_type,
+            li.grandparent_title,
+            li.parent_index,
+            li.item_index,
             li.file_size::text AS file_size,
             li.video_resolution
           FROM library_items li
@@ -359,6 +366,7 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
         const versionsResult = await db.execute(sql`
           SELECT
             library_item_id,
+            server_version_key,
             video_resolution,
             video_codec,
             file_size::text AS file_size,
@@ -371,6 +379,7 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
         for (const row of versionsResult.rows as unknown as VersionRow[]) {
           const list = versionsByItem.get(row.library_item_id) ?? [];
           list.push({
+            serverVersionKey: row.server_version_key,
             resolution: row.video_resolution,
             videoCodec: row.video_codec,
             fileSize: row.file_size ? parseInt(row.file_size, 10) : null,
@@ -389,6 +398,9 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
         title: details.title,
         year: details.year,
         mediaType: details.media_type,
+        grandparentTitle: details.grandparent_title,
+        seasonNumber: details.parent_index,
+        episodeNumber: details.item_index,
         fileSize: details.file_size ? parseInt(details.file_size, 10) : null,
         resolution: details.video_resolution,
         versions: versionsByItem.get(details.id) ?? [],

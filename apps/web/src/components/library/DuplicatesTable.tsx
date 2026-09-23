@@ -1,10 +1,12 @@
-import { useState, Fragment } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, Copy } from 'lucide-react';
-import { formatMediaTech, type DuplicatesResponse } from '@tracearr/shared';
-import { cn } from '@/lib/utils';
+import { formatMediaTech, type DuplicateGroup, type DuplicatesResponse } from '@tracearr/shared';
+import { cn, getMediaDisplay } from '@/lib/utils';
 import { formatBytes } from '@/lib/formatters';
+import { useDuplicateFiles } from '@/hooks/queries/useLibrary';
 import { Badge } from '@/components/ui/badge';
+import { CopyButton } from '@/components/ui/copy-button';
 import { DataTablePager } from '@/components/ui/data-table';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import {
@@ -15,8 +17,117 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MatchTypeBadge, InlineErrorState } from '@/components/library';
+import { MatchTypeBadge, MediaTypeBadge, InlineErrorState } from '@/components/library';
 import { EmptyState } from '@/components/ui/empty-state';
+
+/** Last path segment, for both posix and windows library roots */
+function fileName(path: string): string {
+  const segments = path.split(/[\\/]/);
+  return segments[segments.length - 1] || path;
+}
+
+/**
+ * One expanded group: every physical file of every copy, and whether the
+ * server still has it. The existence check runs only while the group is open.
+ */
+function DuplicateGroupFiles({ group, expanded }: { group: DuplicateGroup; expanded: boolean }) {
+  const { t } = useTranslation(['pages', 'common']);
+  const itemIds = useMemo(() => group.items.map((item) => item.id), [group.items]);
+  const { data } = useDuplicateFiles(itemIds, expanded);
+
+  const missingFiles = useMemo(() => {
+    const missing = new Set<string>();
+    for (const file of data?.files ?? []) {
+      if (!file.exists) missing.add(`${file.itemId}:${file.serverVersionKey}`);
+    }
+    return missing;
+  }, [data]);
+
+  return (
+    <div className="space-y-2">
+      {group.items.map((item) => {
+        // An item with no version rows still has one file, described by its own columns
+        const files =
+          item.versions.length > 0
+            ? item.versions
+            : [
+                {
+                  serverVersionKey: '',
+                  resolution: item.resolution,
+                  videoCodec: null,
+                  fileSize: item.fileSize,
+                  filePath: null,
+                  isMirror: false,
+                },
+              ];
+
+        return (
+          <div key={item.id} className="space-y-1">
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <div className="flex items-center gap-3">
+                <Badge variant="outline">{item.serverName}</Badge>
+                {item.libraryName && <Badge variant="secondary">{item.libraryName}</Badge>}
+                <span className="text-muted-foreground">{formatMediaTech(item.resolution)}</span>
+              </div>
+              <span className="text-muted-foreground">{formatBytes(item.fileSize)}</span>
+            </div>
+            {files.map((file, index) => {
+              const tech =
+                [
+                  file.resolution ? formatMediaTech(file.resolution) : null,
+                  file.videoCodec ? formatMediaTech(file.videoCodec) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || '—';
+              const isMissing = missingFiles.has(`${item.id}:${file.serverVersionKey}`);
+
+              return (
+                <div
+                  key={`${item.id}-v${index}`}
+                  className="text-muted-foreground flex items-center justify-between gap-4 pl-6 text-xs"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="shrink-0">{tech}</span>
+                    {file.filePath && (
+                      <span className="truncate font-mono" title={file.filePath}>
+                        {fileName(file.filePath)}
+                      </span>
+                    )}
+                    {file.isMirror && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {t('library.storage.mirror')}
+                      </Badge>
+                    )}
+                    {isMissing && (
+                      <Badge
+                        variant="destructive"
+                        className="text-[10px]"
+                        title={t('library.storage.missingOnServerHint')}
+                      >
+                        {t('library.storage.missingOnServer')}
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    {formatBytes(file.fileSize)}
+                    {file.filePath && (
+                      <CopyButton
+                        value={file.filePath}
+                        label={t('library.storage.copyPath')}
+                        variant="ghost"
+                        className="size-6"
+                      />
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 interface DuplicatesTableProps {
   data: DuplicatesResponse | undefined;
@@ -81,6 +192,7 @@ export function DuplicatesTable({
         <TableHeader>
           <TableRow>
             <TableHead className="w-10" />
+            <TableHead className="w-24">{t('library.storage.colType')}</TableHead>
             <TableHead>{t('library.storage.colTitle')}</TableHead>
             <TableHead>{t('library.storage.colMatchType')}</TableHead>
             <TableHead className="text-right">{t('library.storage.colCopies')}</TableHead>
@@ -90,9 +202,17 @@ export function DuplicatesTable({
         <TableBody>
           {data.duplicates.map((group) => {
             const isExpanded = expandedGroups.has(group.matchKey);
-            // Get representative title from first item
-            const displayTitle = group.items[0]?.title ?? t('common:labels.unknown');
-            const displayYear = group.items[0]?.year;
+            // Every item in a group shares a title and a media type, so the first speaks for it
+            const first = group.items[0];
+            // No year here: the second line is for a parent title, and the year stays inline
+            const { title: primary, subtitle: secondary } = getMediaDisplay({
+              mediaType: first?.mediaType ?? null,
+              mediaTitle: first?.title ?? t('common:labels.unknown'),
+              grandparentTitle: first?.grandparentTitle,
+              artistName: first?.grandparentTitle,
+              seasonNumber: first?.seasonNumber,
+              episodeNumber: first?.episodeNumber,
+            });
 
             return (
               <Fragment key={group.matchKey}>
@@ -113,10 +233,20 @@ export function DuplicatesTable({
                           />
                         </TableCell>
                         <TableCell>
-                          <div>
-                            <span className="font-medium">{displayTitle}</span>
-                            {displayYear && (
-                              <span className="text-muted-foreground ml-1">({displayYear})</span>
+                          <MediaTypeBadge mediaType={first?.mediaType ?? ''} />
+                        </TableCell>
+                        <TableCell>
+                          <div className="min-w-0">
+                            <div className="truncate">
+                              <span className="font-medium">{primary}</span>
+                              {first?.year && (
+                                <span className="text-muted-foreground ml-1">({first.year})</span>
+                              )}
+                            </div>
+                            {secondary && (
+                              <div className="text-muted-foreground truncate text-xs">
+                                {secondary}
+                              </div>
                             )}
                           </div>
                         </TableCell>
@@ -146,54 +276,9 @@ export function DuplicatesTable({
                     </CollapsibleTrigger>
                     <CollapsibleContent asChild>
                       <tr>
-                        <td colSpan={5} className="p-0">
+                        <td colSpan={6} className="p-0">
                           <div className="bg-muted/30 border-b px-4 py-3">
-                            <div className="space-y-2">
-                              {group.items.map((item) => (
-                                <div key={item.id} className="space-y-1">
-                                  <div className="flex items-center justify-between gap-4 text-sm">
-                                    <div className="flex items-center gap-3">
-                                      <Badge variant="outline">{item.serverName}</Badge>
-                                      {item.libraryName && (
-                                        <Badge variant="secondary">{item.libraryName}</Badge>
-                                      )}
-                                      <span className="text-muted-foreground">
-                                        {formatMediaTech(item.resolution)}
-                                      </span>
-                                    </div>
-                                    <span className="text-muted-foreground">
-                                      {formatBytes(item.fileSize)}
-                                    </span>
-                                  </div>
-                                  {item.versions.length > 1 &&
-                                    item.versions.map((version, index) => (
-                                      <div
-                                        key={`${item.id}-v${index}`}
-                                        className="text-muted-foreground flex items-center justify-between gap-4 pl-6 text-xs"
-                                      >
-                                        <span className="flex items-center gap-2">
-                                          {[
-                                            version.resolution
-                                              ? formatMediaTech(version.resolution)
-                                              : null,
-                                            version.videoCodec
-                                              ? formatMediaTech(version.videoCodec)
-                                              : null,
-                                          ]
-                                            .filter(Boolean)
-                                            .join(' · ') || '—'}
-                                          {version.isMirror && (
-                                            <Badge variant="outline" className="text-[10px]">
-                                              {t('library.storage.mirror')}
-                                            </Badge>
-                                          )}
-                                        </span>
-                                        <span>{formatBytes(version.fileSize)}</span>
-                                      </div>
-                                    ))}
-                                </div>
-                              ))}
-                            </div>
+                            <DuplicateGroupFiles group={group} expanded={isExpanded} />
                           </div>
                         </td>
                       </tr>

@@ -52,6 +52,15 @@ describe('trigger contexts', () => {
   it('offers no variables when nothing is enabled', () => {
     expect(variablesFor([])).toEqual([]);
   });
+
+  it('offers the stream variables only where a whole stream is in hand', () => {
+    expect(variablesFor([started])).toContain('session.sourceDynamicRange');
+    expect(variablesFor([started])).toContain('session.episodeNumber');
+    expect(variablesFor([newDevice])).not.toContain('session.sourceDynamicRange');
+    // An automation on both renders whichever fired, so it keeps only the shared names
+    expect(variablesFor([started, newDevice])).not.toContain('session.episodeNumber');
+    expect(variablesFor([started, newDevice])).toContain('session.mediaTitle');
+  });
 });
 
 describe('newsletter triggers', () => {

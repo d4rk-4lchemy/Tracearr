@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { UserDevice } from '@tracearr/shared';
-import { formatLocationCompact } from '@/lib/utils';
+import { formatLocationCompact, getDeviceDisplayName } from '@/lib/utils';
 
 interface UserDevicesCardProps {
   devices: UserDevice[];
@@ -88,32 +88,6 @@ function getDeviceIcon(device: UserDevice) {
 
   // Default
   return HardDrive;
-}
-
-function getDeviceDisplayName(device: UserDevice): string {
-  // Prefer playerName if available
-  if (device.playerName) {
-    return device.playerName;
-  }
-
-  // Build from product + device
-  const parts: string[] = [];
-  if (device.product) {
-    parts.push(device.product);
-  }
-  if (device.device) {
-    const deviceName = device.device.toLowerCase();
-    if (!parts.some((p) => p.toLowerCase().includes(deviceName))) {
-      parts.push(device.device);
-    }
-  }
-
-  if (parts.length > 0) {
-    return parts.join(' - ');
-  }
-
-  // Fall back to platform or unknown
-  return device.platform ?? 'Unknown Device';
 }
 
 function formatLocationShort(loc: {
@@ -196,7 +170,7 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
               const percentage =
                 totalSessions > 0 ? Math.round((device.sessionCount / totalSessions) * 100) : 0;
               const DeviceIcon = getDeviceIcon(device);
-              const displayName = getDeviceDisplayName(device);
+              const displayName = getDeviceDisplayName(device) ?? 'Unknown Device';
               const locations = device.locations ?? [];
               const hasMultipleLocations = locations.length > 1;
               const primaryLocation = locations[0];

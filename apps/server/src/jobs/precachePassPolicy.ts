@@ -21,8 +21,10 @@ export const PRECACHE_WATERMARK_SAFETY_MARGIN_MS = 5 * 60 * 1000; // 5 minutes
 export interface PrecachePassDecision {
   /** Null scopes the pass to a full walk; otherwise the stored watermark. */
   sinceUpdatedAt: string | null;
-  /** Writes the stamps this pass consumed. Call it only once the pass is
-   *  really queued - stamps that move for a pass nobody runs lose coverage. */
+  /** Writes the watermark this pass consumed. Call it only once the pass is
+   *  really queued - a watermark that moves for a pass nobody runs loses
+   *  coverage. The full-pass stamp is written by commitFullPass when the pass
+   *  actually terminates. */
   commit: () => Promise<void>;
 }
 
@@ -71,13 +73,20 @@ export async function resolvePrecachePass(
   return {
     sinceUpdatedAt,
     commit: async () => {
-      if (dueForFullPass) {
-        await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId), new Date().toISOString());
-      }
       const safeTimestamp = new Date(
         Date.now() - PRECACHE_WATERMARK_SAFETY_MARGIN_MS
       ).toISOString();
       await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_WATERMARK(serverId), safeTimestamp);
     },
   };
+}
+
+/**
+ * Written only when a pass runs out of rows. Stamping at enqueue instead
+ * records a pass that was interrupted as complete, and the backstop then
+ * withholds the retry for PRECACHE_FULL_PASS_INTERVAL_MS - on a library that
+ * takes longer to walk than the host stays up, that means never.
+ */
+export async function commitFullPass(redis: Redis, serverId: string): Promise<void> {
+  await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId), new Date().toISOString());
 }

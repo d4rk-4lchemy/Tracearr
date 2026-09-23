@@ -8,7 +8,9 @@ import { statfs } from 'node:fs/promises';
 import { REDIS_KEYS } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
 
-export const ESTIMATED_POSTER_BYTES = 18 * 1024;
+/** Mean of a real 9.7k-poster library at 360x540. The distribution is
+ *  right-skewed (p50 18 KB, p90 33 KB), so the median undercounts a total. */
+export const ESTIMATED_POSTER_BYTES = 20 * 1024;
 const DISK_SPACE_MEMO_MS = 30_000;
 
 function readConfig(): { minFreePercent: number; maxBytes: number | null } {

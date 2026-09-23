@@ -402,3 +402,28 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     );
   });
 });
+
+function renderCard(overrides: Partial<ActiveSession>) {
+  render(<NowPlayingCard session={makeSession({ playerName: null, ...overrides })} />);
+  return screen.getByTestId('device-badge');
+}
+
+describe('NowPlayingCard device icon', () => {
+  it('names the client on hover', () => {
+    expect(renderCard({ playerName: "Emily's Fire TV" })).toHaveAttribute(
+      'title',
+      "Emily's Fire TV"
+    );
+  });
+
+  it('builds a name from the app and hardware when the client sent none', () => {
+    expect(renderCard({ product: 'Plex for Roku', device: '50S425' })).toHaveAttribute(
+      'title',
+      'Plex for Roku - 50S425'
+    );
+  });
+
+  it('carries no hover text when the session reports no device at all', () => {
+    expect(renderCard({})).not.toHaveAttribute('title');
+  });
+});

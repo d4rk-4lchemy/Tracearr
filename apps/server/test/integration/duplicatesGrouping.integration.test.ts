@@ -221,6 +221,33 @@ describe('GET /library/duplicates (real SQL)', () => {
     expect(body.summary.totalGroups).toBe(0);
   });
 
+  it('hydrates the show, season and episode numbers for episode duplicates', async () => {
+    const server = await createTestServer();
+    const tvdb = Math.floor(Date.now() / 1000) + 1;
+    for (const size of [100, 60]) {
+      await createTestLibraryItem({
+        serverId: server.id,
+        title: 'Grilled',
+        mediaType: 'episode',
+        year: null,
+        tvdbId: tvdb,
+        grandparentTitle: 'Breaking Bad',
+        parentIndex: 2,
+        itemIndex: 2,
+        fileSize: size,
+      });
+    }
+
+    const app = await buildApp(ownerUser());
+    const body = await requestDuplicates(app, [server.id]);
+
+    expect(body.summary.totalGroups).toBe(1);
+    const item = body.duplicates[0]!.items[0]!;
+    expect(item.grandparentTitle).toBe('Breaking Bad');
+    expect(item.seasonNumber).toBe(2);
+    expect(item.episodeNumber).toBe(2);
+  });
+
   it('orders by reclaimable bytes and sums the summary over all groups', async () => {
     const server = await createTestServer();
     const seedVersionPair = async (sizes: [number, number]) => {

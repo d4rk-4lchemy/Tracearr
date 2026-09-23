@@ -549,8 +549,11 @@ async function processTautulliImportJob(
       activeImportProgress.progress = progress;
     }
 
-    // Extend locks - fails fast if lock is lost to avoid wasted work on large imports
-    await extendJobLock(job, 5 * 60 * 1000);
+    // Extend locks - fails fast if lock is lost to avoid wasted work on large imports.
+    // The aggregate refresh at the end of an import runs one CALL per aggregate over
+    // the whole import range with no progress ticks of its own, so the last tick before
+    // it has to cover that on its own.
+    await extendJobLock(job, 30 * 60 * 1000);
     await extendHeavyOpsLock(job.id!);
 
     // Publish to WebSocket for UI
@@ -567,7 +570,7 @@ async function processTautulliImportJob(
     serverId,
     pubSubService ?? undefined,
     onProgress,
-    { overwriteFriendlyNames, skipRefresh: includeStreamDetails }
+    { overwriteFriendlyNames }
   );
 
   // (BETA) Enrich sessions with detailed stream data

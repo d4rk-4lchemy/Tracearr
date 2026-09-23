@@ -127,7 +127,7 @@
       "size": "디스크 사용량",
       "files": "파일 수",
       "need": "예상 필요 용량",
-      "needHint": "포스터 {{count}}개 × 18KB",
+      "needHint": "포스터 {{count}}개 × {{size}}",
       "free": "남은 디스크 공간",
       "freeOf": "전체 {{total}} 중",
       "floor": "확보할 여유 공간",
@@ -960,6 +960,8 @@
         "url": ""
       },
       "logoUrl": "",
+      "systemTitle": "",
+      "systemTitleHelp": "",
       "accent": "",
       "accentPicker": "",
       "footerText": "",

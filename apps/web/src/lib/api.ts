@@ -102,6 +102,7 @@ import type {
   LibraryQualityResponse,
   LibraryStorageResponse,
   DuplicatesResponse,
+  DuplicateFilesResponse,
   StaleResponse,
   WatchResponse,
   CompletionResponse,
@@ -1466,6 +1467,13 @@ class ApiClient {
       params.set('page', String(page));
       params.set('pageSize', String(pageSize));
       return this.request<DuplicatesResponse>(`/library/duplicates?${params.toString()}`);
+    },
+    duplicateFiles: (itemIds: string[]) => {
+      const params = new URLSearchParams();
+      for (const id of itemIds) {
+        params.append('itemIds', id);
+      }
+      return this.request<DuplicateFilesResponse>(`/library/duplicates/files?${params.toString()}`);
     },
     stale: (
       serverIds?: string[],

@@ -256,6 +256,8 @@ export const emailBrandingSchema = z.strictObject({
     ])
     .default({ mode: 'tracearr' }),
   accentColor: hexColor.default(DEFAULT_ACCENT_COLOR),
+  /** Header name beside the logo. Null keeps the per-send name (the server or newsletter). */
+  systemTitle: z.string().trim().max(120).nullable().default(null),
   footerText: z.string().trim().max(500).nullable().default(null),
   postalAddress: z.string().trim().max(500).nullable().default(null),
   mailtoUnsubscribe: z.boolean().default(false),

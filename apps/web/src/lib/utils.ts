@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getName as getCountryNameFromCode } from 'country-list';
-import { formatEpisodeLabel, type MediaType } from '@tracearr/shared';
+import { formatEpisodeLabel } from '@tracearr/shared';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -37,7 +37,8 @@ export function formatLocationCompact(
  * Media display fields interface for formatting media titles
  */
 interface MediaDisplayFields {
-  mediaType: MediaType | null;
+  /** Sessions say episode/track; library items add show, artist and album */
+  mediaType: string | null;
   mediaTitle: string | null;
   grandparentTitle?: string | null;
   seasonNumber?: number | null;
@@ -111,6 +112,29 @@ export function getMediaDisplay(media: MediaDisplayFields): {
     title: media.mediaTitle ?? '',
     subtitle: media.year ? `${media.year}` : null,
   };
+}
+
+/**
+ * What a client calls itself, else the app and hardware it reports. Null when
+ * the server sent nothing identifying, so callers pick their own fallback.
+ */
+export function getDeviceDisplayName(device: {
+  playerName?: string | null;
+  product?: string | null;
+  device?: string | null;
+  platform?: string | null;
+}): string | null {
+  if (device.playerName) return device.playerName;
+
+  const hardware = device.device;
+  const parts: string[] = [];
+  if (device.product) parts.push(device.product);
+  if (hardware && !parts.some((part) => part.toLowerCase().includes(hardware.toLowerCase()))) {
+    parts.push(hardware);
+  }
+  if (parts.length > 0) return parts.join(' - ');
+
+  return device.platform ?? null;
 }
 
 /** crypto.randomUUID needs a secure context; a LAN address over plain http only has getRandomValues. */

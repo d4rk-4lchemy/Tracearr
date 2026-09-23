@@ -42,6 +42,7 @@ export async function resolveEmailBranding(): Promise<ResolvedEmailBranding> {
   return {
     branding: {
       accentColor: stored.accentColor,
+      systemTitle: stored.systemTitle,
       footerText: stored.footerText,
       postalAddress: stored.postalAddress,
     },

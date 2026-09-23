@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `7ad41635`
-- Last shared upstream commit found during inspection: `7ad41635`
-- Latest upstream commit merged into the current working tree: `7ad41635`
+- Source branch/SHA inspected: `main` at `ae9b34fe`
+- Last shared upstream commit found during inspection: `7ad41635` (before merge)
+- Latest upstream commit merged into the current working tree: `ae9b34fe`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -155,8 +155,11 @@ Server routes and services:
   poster cache entries preserve the full image with Sharp `fit: inside` for
   every provider; avatars/art retain their prior sizing behavior. Jellyfin/Emby
   thumbnails constrain both dimensions, while Plex posters use the source
-  image to avoid fill-transcoder cropping. Cache keys and the cache directory
-  are unchanged. Startup removes recognized cached WebP files once, before
+  image to avoid fill-transcoder cropping, including background warming.
+  Background warming suppresses the retry while preserving these request shapes.
+  Cache keys are unchanged. The cache directory follows `IMAGE_CACHE_DIR`, with
+  `/data/tracearr/image-cache` in Docker images and the original working-directory
+  `data/image-cache` fallback elsewhere. Startup removes recognized cached WebP files once, before
   serving requests, then writes `.uncropped-artwork-v1` in the image-cache
   directory. Later starts retain the regenerated files. Dashboard URLs append
   `artwork=2` only to refresh browser caches; this is not a server cache variant.
@@ -248,6 +251,38 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `ae9b34fe` was merged into `develop` on September 23,
+  2026. It adds persistent image-cache configuration, adaptive background
+  warming, cache estimates and sweep diagnostics; duplicate-file existence
+  checks; recently updated library shelves and newsletter corrections;
+  stream metadata in automation conditions/notifications; configurable email
+  system titles; active-stream counts in the browser title; device hover text;
+  import aggregate refreshes, dependency updates, translations and 2.5.0 notes.
+  Image-proxy conflicts combine upstream's single-attempt warm requests with
+  the fork's normalized Dispatcharr paths and uncropped poster requests.
+  Dashboard conflicts retain all artwork/Catch-up behavior and add device
+  hover text, with both upstream and fork regression coverage. Locale conflicts
+  retain upstream translations and the fork's English key delta. Only PR CI
+  remains; removed workflows and Vouch metadata stay removed. Upstream and
+  fork migration histories are unchanged. Dispatcharr auth, leader-owned
+  realtime, session lifecycle, library exclusions and two-channel versions
+  remain intact. CI now selects Node 24 / pnpm 12.4.2; local instructions and
+  both Docker images' explicit pnpm installations match that version.
+  Full non-Docker CI passed on the first run with Node 24.21.0 / pnpm 12.4.2,
+  `HUSKY=0` and a 4 GB heap after moving Turbo's cache aside and a frozen
+  install: lint, typecheck, translations, unit/services/routes/auth/security,
+  web, coverage and build. Server groups plus web passed 8,922 tests with two
+  skipped; shared passed another 384. Coverage passed 5,729 with two skipped
+  (70.27% statements, 64.10% branches, 74.78% functions, 71.49% lines).
+  Lint has 752 warnings, down from 753; the removed warning is the upstream
+  DuplicatesTable accessibility diagnostic, and Oxlint rewords an existing IP
+  utility diagnostic. Services and coverage each add two occurrences of
+  existing warning classes; all other warning counts/classes are unchanged.
+  Logs use `.tmp/github-ci-<job>-20260923.log`; the runner exits zero.
+  Validation results are recorded in `.tmp/github-ci-warning-reference.md`.
+  Docker integration, E2E and image builds are omitted at the user's request;
+  live-provider manual smoke tests and database upgrades are not exercised.
 
 - Upstream `main` at `7ad41635` (Tracearr 2.4.1) was merged into `develop`
   on September 20, 2026 without textual conflicts. It adds state-aware iOS
