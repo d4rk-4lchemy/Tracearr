@@ -4,6 +4,7 @@ import { Cell } from '../components/Cell.js';
 import { Columns } from '../components/Columns.js';
 import { Document } from '../components/Document.js';
 import { RichText } from '../components/RichText.js';
+import { SentBy, headerName } from '../components/SentBy.js';
 import { colors, link } from '../styles.js';
 import type {
   DigestArtist,
@@ -461,7 +462,7 @@ export function DigestEmail({ input, branding }: { input: DigestInput; branding:
   return (
     <Document preview={preheader(input, counts)}>
       <Masthead
-        senderName={branding.senderName}
+        senderName={headerName(branding)}
         logoRef={input.logoRef}
         viewUrl={input.viewUrl}
         accent={accent}
@@ -554,9 +555,7 @@ export function DigestEmail({ input, branding }: { input: DigestInput; branding:
         </Text>
         {branding.footerText && <Text style={footNote}>{branding.footerText}</Text>}
         {branding.postalAddress && <Text style={footNote}>{branding.postalAddress}</Text>}
-        <Text style={{ ...footNote, marginBottom: 0 }}>
-          Sent by Tracearr for {branding.senderName}.
-        </Text>
+        <SentBy branding={branding} style={{ ...footNote, marginBottom: 0 }} />
       </Cell>
     </Document>
   );

@@ -11,8 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineAutomation } from '@tracearr/shared';
 import type { sessions } from '../../../db/schema.js';
-import type { GeoLocation } from '../../../services/geoip.js';
-import type { ProcessedSession } from '../types.js';
+import type { SessionGeo } from '../../../services/serverLocations.js';
+import type { PendingSessionData, ProcessedSession } from '../types.js';
 
 // ============================================================================
 // Module Mocks
@@ -97,11 +97,13 @@ const insertedRow = {
 /** What the device probe finds: a row means this account has streamed from it before. */
 let deviceProbeRows: Array<{ id: string }> = [];
 
+const insertValues = vi.fn((_values: Record<string, unknown>) => ({
+  returning: vi.fn().mockResolvedValue([{ ...insertedRow }]),
+}));
+
 const fakeTx = {
   execute: vi.fn(),
-  insert: vi.fn(() => ({
-    values: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([insertedRow]) })),
-  })),
+  insert: vi.fn(() => ({ values: insertValues })),
   update: vi.fn(() => ({
     set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
   })),
@@ -125,7 +127,10 @@ const mockTransaction = vi.fn(async (cb: (tx: typeof fakeTx) => Promise<unknown>
 });
 
 vi.mock('../../../db/client.js', () => ({
-  db: { transaction: (...args: unknown[]) => mockTransaction(...(args as [never])) },
+  db: {
+    transaction: (...args: unknown[]) => mockTransaction(...(args as [never])),
+    update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+  },
 }));
 
 vi.mock('../../../db/schema.js', async (importOriginal) => ({
@@ -179,7 +184,13 @@ vi.mock('../../../services/geoip.js', () => ({
   geoipService: { isPrivateIP: (ip: string) => ip.startsWith('192.168.') },
 }));
 
-import { createSessionWithRulesAtomic } from '../sessionLifecycle.js';
+const mockResolveSessionGeo = vi.fn();
+vi.mock('../../../services/serverLocations.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveSessionGeo: (...args: unknown[]) => mockResolveSessionGeo(...args) as unknown,
+}));
+
+import { confirmAndPersistSession, createSessionWithRulesAtomic } from '../sessionLifecycle.js';
 import { resetDispatcherForTests } from '../../../services/automations/events/dispatcher.js';
 import {
   registerRuleSubscribers,
@@ -214,7 +225,7 @@ const serverUser = {
   identityServerUserIds: ['su1'],
 };
 
-const geo: GeoLocation = {
+const geo: SessionGeo = {
   city: null,
   region: null,
   country: null,
@@ -225,6 +236,7 @@ const geo: GeoLocation = {
   lon: null,
   asnNumber: null,
   asnOrganization: null,
+  isLocal: false,
 };
 
 const rule: EngineAutomation = {
@@ -416,5 +428,106 @@ describe('createSessionWithRulesAtomic dispatch contract', () => {
     expect(mockTransaction).toHaveBeenCalledTimes(3);
     expect(mockRecordRun).not.toHaveBeenCalled();
     expect(mockExecuteActions).not.toHaveBeenCalled();
+  });
+
+  it('writes the local flag from the geo onto the row', async () => {
+    await createSessionWithRulesAtomic({
+      processed,
+      server,
+      serverUser,
+      geo: { ...geo, isLocal: true },
+      activeAutomations: [],
+      activeSessions: [],
+      recentSessions: [],
+    });
+
+    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ isLocal: true }));
+  });
+});
+
+describe('confirmAndPersistSession geo', () => {
+  const startedAt = Date.now() - 45_000;
+
+  const pending = (overrides: Partial<PendingSessionData>): PendingSessionData => ({
+    id: 'sess-1',
+    confirmation: {
+      confirmedPlayback: true,
+      firstSeenAt: startedAt,
+      maxViewOffset: 0,
+      initialViewOffset: null,
+    },
+    processed,
+    server,
+    serverUser,
+    geo,
+    startedAt,
+    lastSeenAt: Date.now(),
+    currentState: 'playing',
+    pausedDurationMs: 0,
+    lastPausedAt: null,
+    ...overrides,
+  });
+
+  it('inserts a local session with the placement in effect when it started, not the cached one', async () => {
+    const placed: SessionGeo = {
+      ...geo,
+      city: 'Chicago',
+      region: 'Illinois',
+      country: 'US',
+      countryCode: 'US',
+      lat: 41.88,
+      lon: -87.63,
+      isLocal: true,
+    };
+    mockResolveSessionGeo.mockResolvedValue(placed);
+
+    const result = await confirmAndPersistSession({
+      pendingData: pending({
+        processed: { ...processed, ipAddress: '192.168.1.20' },
+        geo: { ...geo, country: 'Local Network', isLocal: true },
+      }),
+      activeAutomations: [],
+      activeSessions: [],
+      recentSessions: [],
+    });
+
+    expect(mockResolveSessionGeo).toHaveBeenCalledWith(
+      '192.168.1.20',
+      'srv1',
+      false,
+      new Date(startedAt)
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        geoCity: 'Chicago',
+        geoCountry: 'US',
+        geoLat: 41.88,
+        isLocal: true,
+      })
+    );
+    expect(result.geo).toEqual(placed);
+  });
+
+  it('keeps the geo a remote pending session was seen with', async () => {
+    const seen: SessionGeo = {
+      ...geo,
+      city: 'Boston',
+      country: 'US',
+      countryCode: 'US',
+      lat: 42.36,
+      lon: -71.06,
+    };
+
+    await confirmAndPersistSession({
+      pendingData: pending({ geo: seen }),
+      activeAutomations: [],
+      activeSessions: [],
+      recentSessions: [],
+    });
+
+    expect(mockResolveSessionGeo).not.toHaveBeenCalled();
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ geoCity: 'Boston', geoCountry: 'US', isLocal: false })
+    );
   });
 });

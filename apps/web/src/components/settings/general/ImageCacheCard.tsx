@@ -4,6 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useImageCacheStatus } from '@/hooks/queries';
 import { formatBytes, safeFormatDistanceToNow } from '@/lib/formatters';
+import type { ImageCacheStatus } from '@tracearr/shared';
+
+/** Read back off the payload rather than hardcoded, so the hint can never
+ *  disagree with the per-poster figure the server used for the total. */
+function perPosterBytes(status: ImageCacheStatus): number {
+  return status.postersWithThumb > 0 ? status.estimatedNeedBytes / status.postersWithThumb : 0;
+}
 
 /**
  * What the poster cache holds on disk, what it estimates it needs, and whether the
@@ -40,7 +47,12 @@ export function ImageCacheCard() {
               <dd>
                 {formatBytes(status.estimatedNeedBytes)}{' '}
                 <span className="text-muted-foreground">
-                  ({t('general.imageCache.needHint', { count: status.postersWithThumb })})
+                  (
+                  {t('general.imageCache.needHint', {
+                    count: status.postersWithThumb,
+                    size: formatBytes(perPosterBytes(status)),
+                  })}
+                  )
                 </span>
               </dd>
 
@@ -68,7 +80,19 @@ export function ImageCacheCard() {
                   ? safeFormatDistanceToNow(status.sweptAt)
                   : t('general.imageCache.never')}
               </dd>
+
+              <dt className="text-muted-foreground">{t('general.imageCache.swept')}</dt>
+              <dd>{status.deletedFilesLastSweep}</dd>
+
+              <dt className="text-muted-foreground">{t('general.imageCache.freed')}</dt>
+              <dd>{formatBytes(status.freedBytesLastSweep)}</dd>
             </dl>
+
+            {status.notPersisting && (
+              <p className="text-destructive mt-3 text-sm">
+                {t('general.imageCache.notPersisting')}
+              </p>
+            )}
 
             {status.diskLimitedSince && (
               <p className="text-destructive mt-3 text-sm">

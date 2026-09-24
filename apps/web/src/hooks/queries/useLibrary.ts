@@ -17,6 +17,7 @@ import type {
   LibraryQualityResponse,
   LibraryStorageResponse,
   DuplicatesResponse,
+  DuplicateFilesResponse,
   StaleResponse,
   WatchResponse,
   CompletionResponse,
@@ -139,6 +140,20 @@ export function useLibraryDuplicates(
     queryFn: () => api.library.duplicates(serverIds, page, pageSize),
     staleTime: LIBRARY_STALE_TIME,
     enabled,
+  });
+}
+
+/**
+ * Ask the media server whether a duplicate group's files are still there.
+ * Enabled per expanded group, so nothing is probed until someone looks.
+ */
+export function useDuplicateFiles(itemIds: string[], enabled: boolean) {
+  const key = itemIds.slice().sort().join(',');
+  return useQuery<DuplicateFilesResponse>({
+    queryKey: ['library', 'duplicate-files', key],
+    queryFn: () => api.library.duplicateFiles(itemIds),
+    staleTime: 60_000,
+    enabled: enabled && itemIds.length > 0,
   });
 }
 

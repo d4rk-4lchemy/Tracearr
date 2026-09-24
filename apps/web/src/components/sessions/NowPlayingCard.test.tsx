@@ -76,6 +76,7 @@ function makeSession(overrides: Partial<ActiveSession> = {}): ActiveSession {
     geoLon: null,
     geoAsnNumber: null,
     geoAsnOrganization: null,
+    isLocal: false,
     playerName: 'Player',
     deviceId: 'device-1',
     product: null,
@@ -400,5 +401,30 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     expect(poster?.getAttribute('src')).toBe(
       '/api/v1/images/proxy?server=server-1&url=https%3A%2F%2Fdispatcharr.example.com%2Fapi%2Fchannels%2Flogos%2F4671%2Fcache%2F%3Fts%3D123%23ignored&width=360&height=540&artwork=2'
     );
+  });
+});
+
+function renderCard(overrides: Partial<ActiveSession>) {
+  render(<NowPlayingCard session={makeSession({ playerName: null, ...overrides })} />);
+  return screen.getByTestId('device-badge');
+}
+
+describe('NowPlayingCard device icon', () => {
+  it('names the client on hover', () => {
+    expect(renderCard({ playerName: "Emily's Fire TV" })).toHaveAttribute(
+      'title',
+      "Emily's Fire TV"
+    );
+  });
+
+  it('builds a name from the app and hardware when the client sent none', () => {
+    expect(renderCard({ product: 'Plex for Roku', device: '50S425' })).toHaveAttribute(
+      'title',
+      'Plex for Roku - 50S425'
+    );
+  });
+
+  it('carries no hover text when the session reports no device at all', () => {
+    expect(renderCard({})).not.toHaveAttribute('title');
   });
 });

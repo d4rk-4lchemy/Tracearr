@@ -1,7 +1,9 @@
+import { z } from 'zod';
 import {
   createRequestServiceSchema,
   testRequestServiceSchema,
   updateRequestServiceSchema,
+  uuidSchema,
   type RequestServiceProbeResult,
 } from '@tracearr/shared';
 import { isUniqueViolation } from '../db/pg.js';
@@ -24,6 +26,7 @@ import {
   toPublicRequestService,
   updateRequestService,
 } from '../services/requests/store.js';
+import { SsrfBlockedError } from '../utils/ssrf.js';
 import { firstIssueMessage } from '../utils/zod.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
@@ -38,7 +41,7 @@ async function probeOr502(
     if (error instanceof SeerrProbeError || error instanceof SeerrApiError) {
       return reply.code(502).send({ error: error.message });
     }
-    if (error instanceof Error && /blocked|link-local|scheme/i.test(error.message)) {
+    if (error instanceof SsrfBlockedError) {
       return reply.badRequest(error.message);
     }
     throw error;
@@ -56,6 +59,8 @@ function mismatch(
     matchedServerId: probe.matchedServerId,
   });
 }
+
+const idParamSchema = z.object({ id: uuidSchema });
 
 export async function requestServiceRoutes(app: FastifyInstance): Promise<void> {
   const owner = { preHandler: [app.requireOwner] };
@@ -97,7 +102,7 @@ export async function requestServiceRoutes(app: FastifyInstance): Promise<void> 
       });
       await scheduleRequestSync();
       await enqueueRequestSync(row.id, 'full');
-      return reply.code(201).send(toPublicRequestService(row, EMPTY_COUNTS));
+      return await reply.code(201).send(toPublicRequestService(row, EMPTY_COUNTS));
     } catch (error) {
       if (isUniqueViolation(error)) {
         return reply.conflict('This server already has a request service linked');
@@ -107,11 +112,13 @@ export async function requestServiceRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.patch<{ Params: { id: string } }>('/:id', owner, async (request, reply) => {
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.badRequest('Invalid request service id');
     const parsed = updateRequestServiceSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.badRequest(`Invalid request body: ${firstIssueMessage(parsed.error)}`);
     }
-    const current = await getRequestService(request.params.id);
+    const current = await getRequestService(params.data.id);
     if (!current) return reply.notFound('Request service not found');
 
     let probe: RequestServiceProbeResult | null = null;
@@ -139,15 +146,20 @@ export async function requestServiceRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.delete<{ Params: { id: string } }>('/:id', owner, async (request, reply) => {
-    const deleted = await deleteRequestService(request.params.id);
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.badRequest('Invalid request service id');
+    const deleted = await deleteRequestService(params.data.id);
     if (!deleted) return reply.notFound('Request service not found');
     await scheduleRequestSync();
     return reply.code(204).send();
   });
 
   app.post<{ Params: { id: string } }>('/:id/sync', owner, async (request, reply) => {
-    const current = await getRequestService(request.params.id);
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) return reply.badRequest('Invalid request service id');
+    const current = await getRequestService(params.data.id);
     if (!current) return reply.notFound('Request service not found');
+    if (!current.enabled) return reply.conflict('Sync is disabled for this service');
     if (await isRequestSyncActive(current.id)) {
       return reply.conflict('A sync is already in progress for this service');
     }

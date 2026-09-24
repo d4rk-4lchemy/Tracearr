@@ -30,7 +30,11 @@ import {
 } from '../tautulli.js';
 import { getSettings, rearmImportedHistoryLink } from '../settings.js';
 import { db } from '../../db/client.js';
-import { refreshAggregates } from '../../db/timescale.js';
+import { checkAggregateNeedsRebuild, refreshAggregates } from '../../db/timescale.js';
+import {
+  enqueueMaintenanceJob,
+  enqueueServerLocationSyncIfBehind,
+} from '../../jobs/maintenanceQueue.js';
 import {
   batchGetLibraryItemIdentity,
   batchResolveMediaByPlexGuid,
@@ -59,6 +63,7 @@ vi.mock('../geoip.js', () => ({
       lat: null,
       lon: null,
     })),
+    isPrivateIP: vi.fn(() => false),
   },
 }));
 
@@ -67,7 +72,7 @@ vi.mock('../geoasn.js', () => ({
 }));
 
 vi.mock('../../db/client.js', () => ({
-  db: { execute: vi.fn(), select: vi.fn(), update: vi.fn() },
+  db: { execute: vi.fn(), select: vi.fn(), update: vi.fn(), transaction: vi.fn() },
 }));
 
 vi.mock('../../db/timescale.js', () => ({
@@ -78,6 +83,11 @@ vi.mock('../../db/timescale.js', () => ({
 
 vi.mock('../../jobs/maintenanceQueue.js', () => ({
   enqueueMaintenanceJob: vi.fn().mockResolvedValue('job-1'),
+  enqueueServerLocationSyncIfBehind: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../serverLocations.js', () => ({
+  markImportedServerLocations: vi.fn(),
 }));
 
 vi.mock('../../jobs/poller/database.js', () => ({
@@ -2262,6 +2272,9 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
       pausedDurationMs: 0,
       watched: false,
       sourceVideoCodec: null,
+      mediaType: 'movie',
+      mediaId: null,
+      showMediaId: null,
       ...overrides,
     };
   }
@@ -2452,6 +2465,24 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
       startTime: new Date(startedAt.getTime() - 24 * 60 * 60 * 1000),
       endTime: new Date(startedAt.getTime() + 24 * 60 * 60 * 1000),
     });
+  });
+
+  it('queues the aggregate rebuild before the server location sync', async () => {
+    mockFetch = mockTautulliFetch([makeRecord({ reference_id: 1 })], 1);
+    global.fetch = mockFetch as typeof global.fetch;
+    vi.mocked(checkAggregateNeedsRebuild).mockResolvedValueOnce({
+      needsRebuild: true,
+      reason: 'No aggregate data exists',
+    });
+
+    const result = await TautulliService.importHistory(SERVER_ID);
+
+    expect(result.success).toBe(true);
+    expect(enqueueMaintenanceJob).toHaveBeenCalledWith('full_aggregate_rebuild', 'system');
+    const rebuildOrder = vi.mocked(enqueueMaintenanceJob).mock.invocationCallOrder[0] ?? Infinity;
+    const syncOrder =
+      vi.mocked(enqueueServerLocationSyncIfBehind).mock.invocationCallOrder[0] ?? -Infinity;
+    expect(rebuildOrder).toBeLessThan(syncOrder);
   });
 });
 
@@ -2711,5 +2742,62 @@ describe('TautulliService.importHistory Plex guid fallback', () => {
     await TautulliService.importHistory(SERVER_ID);
 
     expect(batchResolveMediaByPlexGuid).toHaveBeenCalledWith(SERVER_ID, []);
+  });
+});
+
+describe('TautulliService.enrichStreamDetails', () => {
+  const SERVER_ID = 'server-uuid-1234';
+  const STARTED_AT = new Date('2023-04-05T12:00:00Z');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    vi.mocked(getSettings).mockResolvedValue({
+      tautulliUrl: 'http://localhost:8181',
+      tautulliApiKey: 'test-key',
+    } as Awaited<ReturnType<typeof getSettings>>);
+
+    vi.mocked(db.select).mockReturnValue(
+      queryChain(vi.fn, [
+        { id: 'session-1', externalSessionId: '7', sessionKey: null, startedAt: STARTED_AT },
+      ])
+    );
+    vi.mocked(db.transaction).mockImplementation((async (callback: (tx: unknown) => unknown) =>
+      callback({ update: () => queryChain(vi.fn, undefined) })) as never);
+
+    global.fetch = vi.fn(async (url: string) => {
+      const cmd = new URL(url).searchParams.get('cmd');
+      if (cmd === 'arnold')
+        return { ok: true, json: async () => ({ response: { result: 'success' } }) };
+      if (cmd === 'get_stream_data') {
+        return {
+          ok: true,
+          json: async () => ({
+            response: {
+              result: 'success',
+              message: null,
+              data: { video_codec: 'h264', audio_codec: 'aac' },
+            },
+          }),
+        };
+      }
+      throw new Error(`Unexpected Tautulli cmd in test: ${cmd}`);
+    }) as unknown as typeof global.fetch;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('refreshes the days it rewrote, not the default window', async () => {
+    const result = await TautulliService.enrichStreamDetails(SERVER_ID);
+
+    expect(result.enriched).toBe(1);
+    expect(refreshAggregates).toHaveBeenCalledWith({
+      startTime: new Date(STARTED_AT.getTime() - 24 * 60 * 60 * 1000),
+      endTime: new Date(STARTED_AT.getTime() + 24 * 60 * 60 * 1000),
+    });
   });
 });

@@ -5,6 +5,7 @@ import {
   BANDWIDTH_STATS_CONFIG,
   liveStatsRetentionSeconds,
   type Server,
+  type ServerLocationEntry,
   type ServerResourceDataPoint,
   type ServerBandwidthDataPoint,
 } from '@tracearr/shared';
@@ -116,6 +117,41 @@ export function useUpdateServer() {
     },
     onError: (error: Error) => {
       toast.error(t('toast.error.serverUpdateFailed'), { description: error.message });
+    },
+  });
+}
+
+export function useServerLocations(serverId: string | undefined) {
+  return useQuery({
+    queryKey: ['servers', 'locations', serverId],
+    queryFn: () =>
+      serverId ? api.servers.locations(serverId) : Promise.reject(new Error('No server selected')),
+    enabled: !!serverId,
+    // Opening the editor switches this key on a mounted observer, which refetches only stale data.
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
+}
+
+export function useUpdateServerLocations() {
+  const { t } = useTranslation('notifications');
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, entries }: { id: string; entries: ServerLocationEntry[] }) =>
+      api.servers.updateLocations(id, entries),
+    onSuccess: (data, { id }) => {
+      queryClient.setQueryData(['servers', 'locations', id], data);
+      toast.success(t('toast.success.serverLocationSaved.title'), {
+        description: t(
+          data.syncQueued
+            ? 'toast.success.serverLocationSaved.queued'
+            : 'toast.success.serverLocationSaved.waiting'
+        ),
+      });
+    },
+    onError: (error: Error) => {
+      toast.error(t('toast.error.serverLocationSaveFailed'), { description: error.message });
     },
   });
 }

@@ -111,6 +111,7 @@ describe('RunDetail', () => {
           ipAddress: '10.0.0.9',
           city: null,
           country: null,
+          isLocal: false,
         },
       })
     );

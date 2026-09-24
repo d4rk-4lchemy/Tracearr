@@ -66,3 +66,78 @@ describe('PlexClient findExistingRatingKeys', () => {
     ).rejects.toThrow('ECONNRESET');
   });
 });
+
+describe('PlexClient checkFilesExist', () => {
+  it('reports each version by Media id and asks with checkFiles', async () => {
+    mockFetchJson.mockResolvedValue({
+      MediaContainer: {
+        Metadata: [
+          {
+            ratingKey: '2733',
+            Media: [
+              { id: 42858, Part: [{ file: '/data/a.mkv', accessible: true, exists: true }] },
+              { id: 42859, Part: [{ file: '/data/b.mkv', accessible: false, exists: false }] },
+            ],
+          },
+        ],
+      },
+    });
+
+    const result = await makeClient().checkFilesExist(['2733']);
+
+    expect(mockFetchJson.mock.calls[0]?.[0]).toBe(
+      'http://plex.local:32400/library/metadata/2733?checkFiles=1'
+    );
+    expect([...(result.get('2733') ?? [])]).toEqual([
+      ['42858', true],
+      ['42859', false],
+    ]);
+  });
+
+  // Plex omits the attributes on servers that don't run the check; a file we
+  // cannot prove missing must read as present.
+  it('treats a version with no exists attribute as present', async () => {
+    mockFetchJson.mockResolvedValue({
+      MediaContainer: {
+        Metadata: [{ ratingKey: '7', Media: [{ id: 11, Part: [{ file: '/data/c.mkv' }] }] }],
+      },
+    });
+
+    const result = await makeClient().checkFilesExist(['7']);
+
+    expect(result.get('7')?.get('11')).toBe(true);
+  });
+
+  it('counts a multi-part version as missing when any part is gone', async () => {
+    mockFetchJson.mockResolvedValue({
+      MediaContainer: {
+        Metadata: [
+          {
+            ratingKey: '9',
+            Media: [
+              {
+                id: 21,
+                Part: [
+                  { file: '/data/cd1.avi', exists: true, accessible: true },
+                  { file: '/data/cd2.avi', exists: false, accessible: false },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const result = await makeClient().checkFilesExist(['9']);
+
+    expect(result.get('9')?.get('21')).toBe(false);
+  });
+
+  it('returns nothing for a batch the server 404s instead of failing the check', async () => {
+    mockFetchJson.mockRejectedValue(notFound());
+
+    const result = await makeClient().checkFilesExist(['1', '2']);
+
+    expect(result.size).toBe(0);
+  });
+});

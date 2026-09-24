@@ -69,7 +69,7 @@ export async function topWatched(opts: TopWatchedOptions): Promise<{
         ${libraryJoin}
         WHERE ${range} AND s.media_type = 'movie' ${serverFilter}
         GROUP BY s.media_title
-        ORDER BY plays DESC, title ASC
+        ORDER BY plays DESC, lower(s.media_title) ASC
         LIMIT ${opts.limit}
       ),
       latest AS (
@@ -82,7 +82,7 @@ export async function topWatched(opts: TopWatchedOptions): Promise<{
       )
       SELECT p.title, p.year, p.plays, l.server_id, l.rating_key, l.thumb_path
       FROM plays p JOIN latest l ON l.title = p.title
-      ORDER BY p.plays DESC, p.title ASC
+      ORDER BY p.plays DESC, lower(p.title) ASC
     `),
     db.execute(sql`
       WITH plays AS (
@@ -92,7 +92,7 @@ export async function topWatched(opts: TopWatchedOptions): Promise<{
         ${libraryJoin}
         WHERE ${range} AND s.media_type = 'episode' AND s.grandparent_title IS NOT NULL ${serverFilter}
         GROUP BY s.grandparent_title
-        ORDER BY plays DESC, title ASC
+        ORDER BY plays DESC, lower(s.grandparent_title) ASC
         LIMIT ${opts.limit}
       ),
       latest AS (
@@ -105,7 +105,7 @@ export async function topWatched(opts: TopWatchedOptions): Promise<{
       )
       SELECT p.title, p.year, p.plays, l.server_id, l.rating_key, l.thumb_path
       FROM plays p JOIN latest l ON l.title = p.title
-      ORDER BY p.plays DESC, p.title ASC
+      ORDER BY p.plays DESC, lower(p.title) ASC
     `),
   ]);
   return {

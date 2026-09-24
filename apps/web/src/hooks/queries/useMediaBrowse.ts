@@ -304,9 +304,8 @@ export interface MediaDetailStub {
 
 /**
  * The detail hook's data shape: the full detail response's fields are
- * optional (undefined while only the stub has painted) plus the poster
- * fields a catalog/shelf row supplies that MediaDetailResponse itself never
- * carries (the detail endpoint has no poster data of its own).
+ * optional (undefined while only the stub has painted), with the poster
+ * fields required so a stub alone can paint them.
  */
 export type MediaDetailData = Partial<MediaDetailResponse> & {
   posterUrl: string | null;
@@ -338,13 +337,7 @@ export function useMediaDetail(
     queryKey: ['media', 'detail', id, sortedServerIds.join(','), lens],
     queryFn: async (): Promise<MediaDetailData> => {
       const detail = await api.library.media.detail(id, sortedServerIds);
-      return {
-        ...detail,
-        posterUrl: null,
-        posterVersion: null,
-        dominantColor: null,
-        servers: [],
-      };
+      return { ...detail, servers: [] };
     },
     staleTime: 60_000,
     placeholderData: stub && (() => detailFromStub(stub)),
@@ -355,9 +348,8 @@ export function useMediaDetail(
 /**
  * Looks up an already-cached catalog/shelf row for a media id so the detail
  * page's hero can paint a poster and dominant-color tint on the very first
- * render, without ever fetching one - MediaDetailResponse carries no poster
- * fields of its own (media detail endpoint is identity + availability only).
- * A cache miss (e.g. a direct URL visit) simply yields no stub.
+ * render, before the detail response (which carries the same poster fields)
+ * lands. A cache miss (e.g. a direct URL visit) simply yields no stub.
  */
 export function findCachedMediaStub(
   queryClient: QueryClient,

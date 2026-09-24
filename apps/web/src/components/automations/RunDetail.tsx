@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
 import { Check, ChevronDown, CircleDot, MinusCircle, PencilRuler, X, XCircle } from 'lucide-react';
-import type { AutomationRun, GroupEvidence, RunSessionContext } from '@tracearr/shared';
+import {
+  isPlacedLocal,
+  LOCAL_NETWORK_COUNTRY,
+  type AutomationRun,
+  type GroupEvidence,
+  type RunSessionContext,
+} from '@tracearr/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -196,7 +202,11 @@ function playingText(session: RunSessionContext): string | null {
 /** The client, then where it was streaming from. */
 function fromText(session: RunSessionContext): string | null {
   const client = session.player ?? session.product ?? session.device ?? session.platform;
-  const place = [session.city, session.country].filter((part) => part !== null).join(', ');
+  const joined = [session.city, session.country].filter((part) => part !== null).join(', ');
+  const place =
+    joined && isPlacedLocal({ isLocal: session.isLocal, country: session.country })
+      ? `${joined} (${LOCAL_NETWORK_COUNTRY})`
+      : joined;
   const parts = [client, session.ipAddress, place || null].filter((part) => part !== null);
   return parts.length === 0 ? null : parts.join(' · ');
 }

@@ -273,6 +273,7 @@ describe('browse hooks forward the full serverIds selection', () => {
         period: 'month',
         recentlyAddedMovies: [],
         recentlyAddedShows: [],
+        recentlyUpdated: [],
         mostPopularMovies: [],
         mostPopularShows: [],
         deadWeight: [],
@@ -439,7 +440,7 @@ describe('findCachedMediaStub', () => {
   function shelfRow(
     overrides: Partial<ShelvesResponse['recentlyAddedMovies'][number]> = {}
   ): ShelvesResponse['recentlyAddedMovies'][number] {
-    return { ...stubFields, newEpisodes: null, ...overrides };
+    return { ...stubFields, newEpisodes: null, newestEpisodeAt: null, ...overrides };
   }
 
   it('finds a row cached under a catalog window query and maps it to a stub', () => {
@@ -471,6 +472,7 @@ describe('findCachedMediaStub', () => {
       period: 'month',
       recentlyAddedMovies: [shelfRow({ mediaId: 'media-2', title: 'Shogun' })],
       recentlyAddedShows: [],
+      recentlyUpdated: [],
       mostPopularMovies: [],
       mostPopularShows: [],
       deadWeight: [],

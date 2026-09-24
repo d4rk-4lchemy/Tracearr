@@ -40,7 +40,10 @@ import {
   refreshAggregates,
   uncapDecompressionForTx,
 } from '../db/timescale.js';
-import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
+import {
+  enqueueMaintenanceJob,
+  enqueueServerLocationSyncIfBehind,
+} from '../jobs/maintenanceQueue.js';
 import { batchGetLibraryItemIdentity, type SessionIdentity } from '../jobs/poller/database.js';
 import { sanitizeCodec } from '../utils/codecNormalizer.js';
 import { extractIpFromEndpoint } from '../utils/parsing.js';
@@ -71,6 +74,7 @@ import {
 import { EmbyClient } from './mediaServer/emby/client.js';
 import { JellyfinClient } from './mediaServer/jellyfin/client.js';
 import { parseMediaType } from './mediaServer/shared/jellyfinEmbyUtils.js';
+import { markImportedServerLocations } from './serverLocations.js';
 import { getWatchedThresholds, watchedThresholdFor, type WatchedThresholds } from './settings.js';
 
 const BATCH_SIZE = 500;
@@ -537,6 +541,7 @@ export function transformActivityToSession(
     geoLon: geo.lon,
     geoAsnNumber: geo.asnNumber,
     geoAsnOrganization: geo.asnOrganization,
+    isLocal: geoipService.isPrivateIP(extractIpFromEndpoint(activity.RemoteEndPoint)),
     // Normalize client info for consistency with live sessions
     // normalizeClient handles "AndroidTv" → "Android TV", "Emby for Kodi Next Gen" → "Kodi", etc.
     ...(() => {
@@ -571,6 +576,56 @@ export function transformActivityToSession(
  * @param pubSubService - Optional pub/sub service for progress updates
  * @param options - Additional import options
  */
+interface ActivityLink {
+  keyChoice: ReturnType<typeof chooseJellystatItemKey>;
+  ratingKey: string;
+  identity: SessionIdentity | undefined;
+  rewrittenPluginRow: boolean;
+  isVetoed: boolean;
+}
+
+function resolveActivityLink(
+  activity: JellystatPlaybackActivity,
+  remapIndex: Parameters<typeof chooseJellystatItemKey>[1],
+  identityByRatingKey: Map<string, SessionIdentity>
+): ActivityLink {
+  const keyChoice = chooseJellystatItemKey(activity, remapIndex);
+  const { ratingKey, identity } = resolveJellystatItemKey(keyChoice, identityByRatingKey);
+  const rewrittenPluginRow = isImportedEpisodeRowRewritten(activity, keyChoice);
+  const isVetoed =
+    rewrittenPluginRow ||
+    (keyChoice.source === 'native' &&
+      keyChoice.checked &&
+      isRemapVetoed(activity, ratingKey, Boolean(activity.EpisodeId), remapIndex));
+  return { keyChoice, ratingKey, identity, rewrittenPluginRow, isVetoed };
+}
+
+/**
+ * Imports before 2.4.0 stored an episode play under its series id, so the row
+ * links to the show and never counts toward the episode. A later backup that
+ * names the episode moves only that row shape, an episode with no show link,
+ * and only when the id resolves to a library episode.
+ */
+function episodeRelink(
+  existing: ExistingSession,
+  link: ActivityLink
+): Partial<typeof sessions.$inferInsert> | null {
+  if (existing.mediaType !== 'episode' || existing.showMediaId !== null) return null;
+  const { identity } = link;
+  if (link.isVetoed || !identity || identity.itemMediaType !== 'episode') return null;
+  if (identity.mediaId === null || identity.mediaId === existing.mediaId) return null;
+  return {
+    ratingKey: link.ratingKey,
+    mediaId: identity.mediaId,
+    showMediaId: identity.showMediaId,
+    parentRatingKey: identity.parentRatingKey,
+    grandparentRatingKey: identity.grandparentRatingKey,
+    ...(identity.imdbId !== null && { imdbId: identity.imdbId }),
+    ...(identity.tmdbId !== null && { tmdbId: identity.tmdbId }),
+    ...(identity.tvdbId !== null && { tvdbId: identity.tvdbId }),
+  };
+}
+
 export async function importJellystatBackup(
   serverId: string,
   backupJson: string,
@@ -719,8 +774,11 @@ export async function importJellystatBackup(
     const updateStreamDetails = options?.updateStreamDetails ?? false;
 
     // Track date range of imported data for bounded aggregate refresh
-    let minImportDate: Date | null = null;
-    let maxImportDate: Date | null = null;
+    const importRange: { min: Date | null; max: Date | null } = { min: null, max: null };
+    const trackImportDate = (date: Date) => {
+      if (!importRange.min || date < importRange.min) importRange.min = date;
+      if (!importRange.max || date > importRange.max) importRange.max = date;
+    };
 
     let imported = 0;
     let updated = 0;
@@ -729,6 +787,7 @@ export async function importJellystatBackup(
     let errors = 0;
     let unchecked = 0;
     let unlinkedEpisodes = 0;
+    let relinked = 0;
     let vetoed = 0;
     let pluginUnchecked = 0;
     let overlong = 0;
@@ -753,10 +812,10 @@ export async function importJellystatBackup(
             }
           : undefined;
 
-      let existingMap = new Map<string, ExistingSession>();
-      if (chunkIds.length > 0) {
-        existingMap = await queryExistingByExternalIds(serverId, chunkIds, chunkTimeBounds);
-      }
+      const existingMap =
+        chunkIds.length > 0
+          ? await queryExistingByExternalIds(serverId, chunkIds, chunkTimeBounds)
+          : new Map<string, ExistingSession>();
 
       const chunkRatingKeys = [
         ...new Set(chunk.flatMap((a) => chooseJellystatItemKey(a, remapIndex).candidates)),
@@ -801,7 +860,16 @@ export async function importJellystatBackup(
           // Check if record exists in database
           const existingSession = existingMap.get(activity.Id);
           if (existingSession) {
-            // Record exists - check if we should update stream details
+            const data: Partial<typeof sessions.$inferInsert> = {};
+            const relink = episodeRelink(
+              existingSession,
+              resolveActivityLink(activity, remapIndex, identityByRatingKey)
+            );
+            if (relink) {
+              Object.assign(data, relink);
+              relinked++;
+              if (existingSession.startedAt) trackImportDate(existingSession.startedAt);
+            }
             if (updateStreamDetails && !existingSession.sourceVideoCodec) {
               // Extract stream details from this activity
               const activityRecord = activity as Record<string, unknown>;
@@ -826,18 +894,14 @@ export async function importJellystatBackup(
                     : streamDetails.sourceVideoDetails?.bitrate
                       ? Math.floor(streamDetails.sourceVideoDetails.bitrate / 1000)
                       : null;
-
-                  updateBatch.push({
-                    id: existingSession.id,
-                    data: {
-                      ...streamDetails,
-                      bitrate,
-                    },
-                  });
-                  updated++;
-                  continue;
+                  Object.assign(data, streamDetails, { bitrate });
                 }
               }
+            }
+            if (Object.keys(data).length > 0) {
+              updateBatch.push({ id: existingSession.id, data });
+              updated++;
+              continue;
             }
             // No update needed - skip
             skipped++;
@@ -858,14 +922,8 @@ export async function importJellystatBackup(
             geoCache.set(ipAddress, geo);
           }
 
-          const keyChoice = chooseJellystatItemKey(activity, remapIndex);
-          const { ratingKey, identity } = resolveJellystatItemKey(keyChoice, identityByRatingKey);
-          const rewrittenPluginRow = isImportedEpisodeRowRewritten(activity, keyChoice);
-          const isVetoed =
-            rewrittenPluginRow ||
-            (keyChoice.source === 'native' &&
-              keyChoice.checked &&
-              isRemapVetoed(activity, ratingKey, Boolean(activity.EpisodeId), remapIndex));
+          const { keyChoice, ratingKey, identity, rewrittenPluginRow, isVetoed } =
+            resolveActivityLink(activity, remapIndex, identityByRatingKey);
           const enrichment = isVetoed ? undefined : enrichmentMap.get(ratingKey);
 
           // Skip theme songs, theme videos, trailers, etc.
@@ -914,13 +972,7 @@ export async function importJellystatBackup(
             progress.uncheckedRecords = unchecked;
           }
 
-          // Track date range for bounded aggregate refresh
-          if (sessionData.startedAt) {
-            if (!minImportDate || sessionData.startedAt < minImportDate)
-              minImportDate = sessionData.startedAt;
-            if (!maxImportDate || sessionData.startedAt > maxImportDate)
-              maxImportDate = sessionData.startedAt;
-          }
+          if (sessionData.startedAt) trackImportDate(sessionData.startedAt);
 
           insertedInThisImport.add(activity.Id);
 
@@ -970,9 +1022,9 @@ export async function importJellystatBackup(
     try {
       // Use bounded refresh based on actual import date range (memory-efficient)
       // Add 1 day buffer on each side for timezone edge cases
-      if (minImportDate && maxImportDate) {
-        const startTime = new Date(minImportDate.getTime() - 24 * 60 * 60 * 1000);
-        const endTime = new Date(maxImportDate.getTime() + 24 * 60 * 60 * 1000);
+      if (importRange.min && importRange.max) {
+        const startTime = new Date(importRange.min.getTime() - 24 * 60 * 60 * 1000);
+        const endTime = new Date(importRange.max.getTime() + 24 * 60 * 60 * 1000);
         console.log(
           `[Jellystat] Refreshing aggregates for date range: ${startTime.toISOString()} to ${endTime.toISOString()}`
         );
@@ -1000,6 +1052,12 @@ export async function importJellystatBackup(
     } catch (err) {
       console.warn('[Jellystat] Failed to refresh aggregates after import:', err);
     }
+    try {
+      await markImportedServerLocations(serverId);
+      await enqueueServerLocationSyncIfBehind();
+    } catch (err) {
+      console.error('[Jellystat] Could not queue the server location sync:', err);
+    }
 
     let message = `Import complete: ${imported} imported, ${updated} updated, ${skipped} skipped, ${errors} errors`;
     if (filtered > 0) {
@@ -1009,6 +1067,9 @@ export async function importJellystatBackup(
       message += `, ${enrichmentMap.size} media items enriched`;
     }
     const plays = (count: number) => (count === 1 ? 'play' : 'plays');
+    if (relinked > 0) {
+      message += `, ${relinked} episode ${plays(relinked)} relinked to the episode`;
+    }
     if (unlinkedEpisodes > 0) {
       message += `. ${unlinkedEpisodes} episode ${plays(unlinkedEpisodes)} not linked because the backup left out jf_library_episodes; importing ${unlinkedEpisodes === 1 ? 'it' : 'them'} again will not link ${unlinkedEpisodes === 1 ? 'it' : 'them'}`;
     }

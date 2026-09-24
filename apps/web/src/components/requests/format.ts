@@ -34,6 +34,10 @@ export function heroRequestLine(
   dateFormat: string
 ): string {
   const date = format(new Date(entry.requestedAt), dateFormat);
-  const tail = formatWait(entry.waitMs, entry.status, t);
+  const tail = DECLINED_STATUSES.includes(entry.status)
+    ? t('requests.wait.declined')
+    : entry.waitMs === null
+      ? t('requests.hero.waiting')
+      : t('requests.hero.landed', { wait: formatDuration(entry.waitMs, { style: 'compactDays' }) });
   return t('requests.hero.line', { name, date, tail });
 }

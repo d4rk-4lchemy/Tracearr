@@ -109,6 +109,8 @@ export {
   useDeleteServer,
   useSyncServer,
   useUpdateServer,
+  useServerLocations,
+  useUpdateServerLocations,
   useServerLiveStats,
   useMultiServerLiveStats,
   usePlexServerConnections,

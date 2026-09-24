@@ -133,9 +133,12 @@
       "floor": "Houd vrij",
       "ceiling": "Plafond",
       "lastSweep": "Laatste schoonmaak",
+      "swept": "",
+      "freed": "",
       "never": "nog niet",
       "diskLimited": "Disk gelimiteerd sinds {{since}}: ongeveer {{shortfall}} posters worden niet gecached.",
-      "loadError": "Kon de cache-status niet laden."
+      "loadError": "Kon de cache-status niet laden.",
+      "notPersisting": ""
     }
   },
   "servers": {
@@ -198,6 +201,26 @@
     "checkingConnection": "Connectie controleren…",
     "pluginVersion": "",
     "pluginUpdateAvailable": "Plug-in update beschikbaar",
+    "location": {
+      "title": "",
+      "description": "",
+      "set": "",
+      "addMove": "",
+      "fromBeginning": "",
+      "movedOn": "",
+      "remove": "",
+      "latitude": "",
+      "longitude": "",
+      "country": "",
+      "countryPlaceholder": "",
+      "countrySearch": "",
+      "countryEmpty": "",
+      "city": "",
+      "region": "",
+      "pickHint": "",
+      "incomplete": "",
+      "syncPending": ""
+    },
     "realtimeDialog": {
       "title": "Real-time updates aanzetten",
       "updateTitle": "Update de Tracearr SSE plugin",
@@ -474,6 +497,7 @@
     "changeCount_other": "",
     "series": "",
     "docs": "",
+    "source": "",
     "empty": "",
     "types": {
       "new": "",
@@ -960,6 +984,8 @@
         "url": ""
       },
       "logoUrl": "",
+      "systemTitle": "",
+      "systemTitleHelp": "",
       "accent": "",
       "accentPicker": "",
       "footerText": "",

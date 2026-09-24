@@ -156,7 +156,7 @@
     "contactEmailLabel": "",
     "contactEmailNone": "",
     "contactEmailNoLogin": "",
-    "locations": ""
+    "locations": "Místa"
   },
   "history": {
     "title": "Historie",
@@ -236,11 +236,15 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
+      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
       "sameServer": "",
-      "mirror": ""
+      "mirror": "",
+      "missingOnServer": "",
+      "missingOnServerHint": "",
+      "copyPath": ""
     },
     "watch": {
       "title": "Sledujte analytiku",
@@ -258,7 +262,7 @@
       "quietest": "Nejvíce ticho:",
       "bingeHighlights": "Zvýraznění Binge",
       "bingeHighlightsDesc": "Zobrazí s nejintenzivnějším obrazcem",
-      "bingeSessions": "binge relace",
+      "bingeSessions": "",
       "noData": "Zatím žádná sledovaná data",
       "noDataDesc": "Analytika se zobrazí zde, jakmile bude obsah přehrán. Po nějaké aktivitě se vraťte zpět.",
       "failedToLoad": "Nepodařilo se načíst analýzu hodinek",
@@ -512,7 +516,7 @@
       "destinationsLabel": "",
       "required": "",
       "needs": {
-        "title": "Fill in"
+        "title": ""
       },
       "helper": {
         "killMessage": "",
@@ -565,7 +569,7 @@
       "selectedCount": "",
       "scope": {
         "label": "",
-        "global": "Global",
+        "global": "",
         "server": "",
         "account": "",
         "person": "",
@@ -794,6 +798,8 @@
         "total_pause_minutes": "",
         "source_resolution": "",
         "output_resolution": "",
+        "source_dynamic_range": "",
+        "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
         "source_bitrate_mbps": "",
@@ -808,6 +814,8 @@
         "ip_in_range": "",
         "server_id": "",
         "media_type": "",
+        "season_number": "",
+        "episode_number": "",
         "library_item_type": "",
         "library_name": "",
         "resolution_after": "",
@@ -921,7 +929,7 @@
       "carries": "",
       "copyCode": "",
       "copyJson": "",
-      "authorLabel": "Made by",
+      "authorLabel": "",
       "authorPlaceholder": "",
       "authorHelper": "",
       "save": "",
@@ -976,6 +984,14 @@
         "description": ""
       },
       "output_resolution": {
+        "label": "",
+        "description": ""
+      },
+      "source_dynamic_range": {
+        "label": "",
+        "description": ""
+      },
+      "source_video_codec": {
         "label": "",
         "description": ""
       },
@@ -1037,6 +1053,14 @@
         "placeholder": ""
       },
       "media_type": {
+        "label": "",
+        "description": ""
+      },
+      "season_number": {
+        "label": "",
+        "description": ""
+      },
+      "episode_number": {
         "label": "",
         "description": ""
       },
@@ -1115,7 +1139,7 @@
       "check": "",
       "checking": "",
       "valid": "",
-      "madeBy": "Made by {{author}}",
+      "madeBy": "",
       "codeShort": "",
       "paused": {
         "label": "",
@@ -1649,7 +1673,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1661,7 +1685,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",
@@ -1904,11 +1928,14 @@
       "shelves": {
         "recentlyAddedMovies": "",
         "recentlyAddedShows": "",
+        "recentlyUpdated": "",
         "mostPopularMovies": "",
         "mostPopularShows": "",
         "emptyRecentlyAdded": "",
+        "emptyRecentlyUpdated": "",
         "emptyMostPopular": "",
         "captionRecentlyAdded": "",
+        "captionRecentlyUpdated": "",
         "captionMostPopular": {
           "day": "",
           "week": "",
@@ -1921,6 +1948,8 @@
       "card": {
         "newEpisodes_one": "{{count}} nová epizoda",
         "newEpisodes_other": "{{count}} nových epizod",
+        "replacedEpisodes_one": "",
+        "replacedEpisodes_other": "",
         "addedAgo": "přidáno {{date}}",
         "addedCompactAgo": "",
         "newEpisodesChip": ""

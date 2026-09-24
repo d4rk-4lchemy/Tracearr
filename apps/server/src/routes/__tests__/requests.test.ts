@@ -6,10 +6,10 @@ import type { AuthUser } from '@tracearr/shared';
 import type { RequestsAnalyticsData } from '../../services/requests/analytics.js';
 
 vi.mock('../../services/requests/analytics.js', () => ({ getRequestsAnalytics: vi.fn() }));
-vi.mock('../../services/requests/store.js', () => ({ anyRequestServiceEnabled: vi.fn() }));
+vi.mock('../../services/requests/store.js', () => ({ anyRequestServiceLinked: vi.fn() }));
 
 import { getRequestsAnalytics } from '../../services/requests/analytics.js';
-import { anyRequestServiceEnabled } from '../../services/requests/store.js';
+import { anyRequestServiceLinked } from '../../services/requests/store.js';
 import { requestRoutes } from '../requests.js';
 
 const SERVER_ID = '0c1f1c5a-2b3d-4e5f-8a9b-0c1d2e3f4a5b';
@@ -63,7 +63,7 @@ describe('GET /requests/status', () => {
   });
 
   it('reports no Seerr when nothing is linked', async () => {
-    vi.mocked(anyRequestServiceEnabled).mockResolvedValue(false);
+    vi.mocked(anyRequestServiceLinked).mockResolvedValue(false);
     const app = await buildTestApp(owner(), createSpyRedis());
 
     const response = await app.inject({ method: 'GET', url: '/requests/status' });
@@ -72,7 +72,7 @@ describe('GET /requests/status', () => {
   });
 
   it('answers a non-owner too, since the nav entry depends on it', async () => {
-    vi.mocked(anyRequestServiceEnabled).mockResolvedValue(true);
+    vi.mocked(anyRequestServiceLinked).mockResolvedValue(true);
     const app = await buildTestApp(admin([SERVER_ID]), createSpyRedis());
 
     const response = await app.inject({ method: 'GET', url: '/requests/status' });

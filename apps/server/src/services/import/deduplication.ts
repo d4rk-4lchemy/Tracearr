@@ -34,6 +34,9 @@ export interface ExistingSession {
   pausedDurationMs: number | null;
   watched: boolean | null;
   sourceVideoCodec: string | null;
+  mediaType: string;
+  mediaId: string | null;
+  showMediaId: string | null;
 }
 
 /**
@@ -134,6 +137,9 @@ export async function queryExistingByExternalIds(
         pausedDurationMs: sessions.pausedDurationMs,
         watched: sessions.watched,
         sourceVideoCodec: sessions.sourceVideoCodec,
+        mediaType: sessions.mediaType,
+        mediaId: sessions.mediaId,
+        showMediaId: sessions.showMediaId,
       })
       .from(sessions)
       .where(and(...conditions));
@@ -193,6 +199,9 @@ export async function queryExistingByTimeKeys(
         pausedDurationMs: sessions.pausedDurationMs,
         watched: sessions.watched,
         sourceVideoCodec: sessions.sourceVideoCodec,
+        mediaType: sessions.mediaType,
+        mediaId: sessions.mediaId,
+        showMediaId: sessions.showMediaId,
       })
       .from(sessions)
       .where(

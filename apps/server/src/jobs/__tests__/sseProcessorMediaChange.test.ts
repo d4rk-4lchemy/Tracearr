@@ -88,6 +88,11 @@ vi.mock('../../services/plexGeoip.js', () => ({
   lookupGeoIP: mockLookupGeoIP,
 }));
 
+vi.mock('../../services/serverLocations.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveSessionGeo: vi.fn().mockResolvedValue({ city: null, country: null, isLocal: true }),
+}));
+
 vi.mock('../../routes/settings.js', () => ({
   getGeoIPSettings: mockGetGeoIPSettings,
 }));

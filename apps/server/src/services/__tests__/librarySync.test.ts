@@ -2111,7 +2111,8 @@ describe('LibrarySyncService', () => {
       expect(client.getLibraryItemsSince).toHaveBeenCalledWith('1', expect.any(Date), {
         libraryType: 'movie',
       });
-      expect(client.getLibraryLeavesSince).toHaveBeenCalled();
+      // A movie section's leaves are its items, so asking for both would upsert each twice
+      expect(client.getLibraryLeavesSince).not.toHaveBeenCalled();
       expect(results[0]!.itemsAdded).toBe(1);
       expect(results[0]!.itemsRemoved).toBe(0);
       expect(results[0]!.snapshotId).toBe(snapshotId);
@@ -2149,7 +2150,7 @@ describe('LibrarySyncService', () => {
       expect(results[0]!.snapshotId).toBeNull();
       expect(db.transaction).not.toHaveBeenCalled();
       expect(client.getLibraryItemsSince).toHaveBeenCalledTimes(1);
-      expect(client.getLibraryLeavesSince).toHaveBeenCalledTimes(1);
+      expect(client.getLibraryLeavesSince).not.toHaveBeenCalled();
       expect(mockRedis.set).toHaveBeenCalled();
     });
 
@@ -2170,7 +2171,7 @@ describe('LibrarySyncService', () => {
       mockTransaction();
 
       const client = mockMediaServerClient({
-        libraries: [createMockLibrary()],
+        libraries: [createMockLibrary({ name: 'TV Shows', type: 'show' })],
         items: [],
         totalCount: 5, // same as lastItemCount — no new shows
         itemsSince: [], // no new top-level items

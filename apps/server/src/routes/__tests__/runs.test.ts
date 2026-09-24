@@ -69,6 +69,7 @@ const SESSION_CONTEXT = {
   ipAddress: '10.0.0.9',
   city: 'Boston',
   country: 'United States',
+  isLocal: false,
 };
 
 /** The run query, then the session lookup the detail route makes when it has one. */
@@ -602,6 +603,7 @@ describe('Run routes', () => {
         ipAddress: '10.0.0.9',
         city: null,
         country: null,
+        isLocal: false,
       });
       expect(body.subject.name).toBe('ada@plex');
     });

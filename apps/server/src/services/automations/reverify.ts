@@ -62,6 +62,7 @@ import { gracePeriodSessionIds } from '../../jobs/poller/processor.js';
 import { buildRuleContextSessions } from './events/contextAssembly.js';
 import { terminateSession } from '../termination.js';
 import { automationsLogger } from '../../utils/logger.js';
+import { isLocalSession } from '../../utils/localSession.js';
 import { evaluateRulesAsync } from './engine.js';
 import type { EvaluationContext } from './types.js';
 
@@ -119,14 +120,15 @@ export async function reverifyKillCondition(
 
   // The TARGET decides the already-stopped short-circuit and is the session we
   // actually terminate.
-  const targetRow = await db.query.sessions.findFirst({
+  const targetFound = await db.query.sessions.findFirst({
     where: eq(sessions.id, targetSessionId),
     with: { server: true, serverUser: true },
   });
 
-  if (!targetRow) {
+  if (!targetFound) {
     return { outcome: 'skipped_already_stopped' };
   }
+  const targetRow = { ...targetFound, isLocal: isLocalSession(targetFound) };
 
   if (targetRow.stoppedAt) {
     // A retry only happens after a prior attempt of this exact job got past
@@ -167,10 +169,11 @@ export async function reverifyKillCondition(
   // self-abort every time.
   let contextSession = targetRow;
   if (triggeringSessionId !== targetSessionId) {
-    const triggerRow = await db.query.sessions.findFirst({
+    const triggerFound = await db.query.sessions.findFirst({
       where: eq(sessions.id, triggeringSessionId),
       with: { server: true, serverUser: true },
     });
+    const triggerRow = triggerFound && { ...triggerFound, isLocal: isLocalSession(triggerFound) };
 
     if (triggerRow && !triggerRow.stoppedAt) {
       contextSession = triggerRow;

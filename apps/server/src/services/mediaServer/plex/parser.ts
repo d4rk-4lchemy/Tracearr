@@ -1498,6 +1498,10 @@ export function parseStatisticsBandwidthResponse(data: unknown): PlexBandwidthSt
  * External IDs (IMDB, TMDB, TVDB) are in nested Guid elements requiring `includeGuids=1`.
  *
  * Guid array format: [{ id: "imdb://tt1234567" }, { id: "tmdb://12345" }, ...]
+ *
+ * The first id per provider wins. Plex's agents sometimes append a second id
+ * for the same provider that belongs to a different item (another episode of
+ * the show, or another show entirely); the first is the one the agent matched.
  */
 function parseExternalIds(guids: Array<{ id: string }> | undefined): {
   imdbId?: string;
@@ -1512,15 +1516,15 @@ function parseExternalIds(guids: Array<{ id: string }> | undefined): {
   for (const guid of guids) {
     const id = guid.id;
     if (id?.startsWith('imdb://')) {
-      result.imdbId = id.replace('imdb://', '');
+      result.imdbId ??= id.replace('imdb://', '');
     } else if (id?.startsWith('tmdb://')) {
       const parsed = parseInt(id.replace('tmdb://', ''), 10);
-      if (!isNaN(parsed)) result.tmdbId = parsed;
+      if (!isNaN(parsed)) result.tmdbId ??= parsed;
     } else if (id?.startsWith('tvdb://')) {
       const parsed = parseInt(id.replace('tvdb://', ''), 10);
-      if (!isNaN(parsed)) result.tvdbId = parsed;
+      if (!isNaN(parsed)) result.tvdbId ??= parsed;
     } else if (id?.startsWith('mbid://')) {
-      result.musicBrainzId = id.replace('mbid://', '');
+      result.musicBrainzId ??= id.replace('mbid://', '');
     }
   }
 
@@ -1732,6 +1736,32 @@ export function parseRatingKeys(data: unknown, sectionId: string): string[] {
     keys.push(key);
   }
   return keys;
+}
+
+/**
+ * Per-version file existence from a batched /library/metadata/{keys}?checkFiles=1
+ * response. Version keys match parseLibraryItem's, so the two join. A version
+ * whose parts carry neither attribute reads as present: servers that skip the
+ * check must not make every file look missing.
+ */
+export function parseFileExistence(data: unknown): Map<string, Map<string, boolean>> {
+  const container = data as { MediaContainer?: { Metadata?: unknown[] } };
+  const byRatingKey = new Map<string, Map<string, boolean>>();
+  for (const raw of container?.MediaContainer?.Metadata ?? []) {
+    const item = raw as Record<string, unknown>;
+    const key = parseString(item.ratingKey);
+    if (key === '') continue;
+    const versions = new Map<string, boolean>();
+    const mediaArray = (item.Media as Array<Record<string, unknown>> | undefined) ?? [];
+    for (const [index, media] of mediaArray.entries()) {
+      if (media == null || typeof media !== 'object') continue;
+      const parts = (media.Part as Array<Record<string, unknown>> | undefined) ?? [];
+      const exists = parts.every((part) => part?.exists !== false && part?.accessible !== false);
+      versions.set(media.id != null ? String(media.id) : `idx:${index}`, exists);
+    }
+    byRatingKey.set(key, versions);
+  }
+  return byRatingKey;
 }
 
 /** Full genre lists keyed by ratingKey, from a batched /library/metadata/{keys} response. */

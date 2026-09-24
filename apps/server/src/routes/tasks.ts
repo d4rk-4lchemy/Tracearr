@@ -181,6 +181,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
       normalize_resolutions: 'Normalize Resolutions',
       backfill_user_dates: 'Backfill User Dates',
       backfill_library_snapshots: 'Generate Library History',
+      sync_server_locations: 'Apply Server Locations',
     };
 
     for (const job of maintenanceJobs) {

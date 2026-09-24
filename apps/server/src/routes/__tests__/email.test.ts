@@ -206,6 +206,7 @@ describe('branding', () => {
     expect(branding.saveEmailBranding).toHaveBeenCalledWith({
       logo: { mode: 'tracearr' },
       accentColor: '#123456',
+      systemTitle: null,
       footerText: 'Family Media',
       postalAddress: null,
       mailtoUnsubscribe: false,

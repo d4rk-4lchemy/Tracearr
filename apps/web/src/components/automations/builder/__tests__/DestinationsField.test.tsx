@@ -75,16 +75,16 @@ beforeEach(() => {
 });
 
 describe('DestinationsField', () => {
-  it('lists built-ins before the rest and marks the selected ones', () => {
+  it('lists destinations in the order the server sends and marks the selected ones', () => {
     setDestinations([destination(), pushRow]);
     render(<DestinationsField value={['dest-push']} onChange={onChange} label="Destinations" />);
 
     const toggles = screen.getAllByRole('button', { name: /Discord|Push/ });
-    expect(toggles.map((b) => b.textContent)).toEqual(['Zed Push', 'Alpha Discord']);
-    expect(toggles[0]).toHaveAttribute('aria-pressed', 'true');
-    expect(toggles[0]).toHaveAttribute('data-state', 'on');
-    expect(toggles[1]).toHaveAttribute('aria-pressed', 'false');
-    expect(toggles[1]).toHaveAttribute('data-state', 'off');
+    expect(toggles.map((b) => b.textContent)).toEqual(['Alpha Discord', 'Zed Push']);
+    expect(toggles[0]).toHaveAttribute('aria-pressed', 'false');
+    expect(toggles[0]).toHaveAttribute('data-state', 'off');
+    expect(toggles[1]).toHaveAttribute('aria-pressed', 'true');
+    expect(toggles[1]).toHaveAttribute('data-state', 'on');
   });
 
   it('keeps an id that has no row of its own when a listed one is toggled', async () => {

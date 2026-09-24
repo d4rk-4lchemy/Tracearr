@@ -103,8 +103,8 @@
     "suggestionsPairEmailMore_one": "",
     "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairEmailUsernameMore_one": "{{first}} und {{second}} verwenden die gleiche Adresse wie eine Benutzername oder Konto-E-Mail, plus {{count}} mehr",
+    "suggestionsPairEmailUsernameMore_other": "{{first}} und {{second}} verwenden die gleiche Adresse wie eine Benutzername oder Konto-E-Mail, plus {{count}} mehr",
     "suggestionsPairUsername": "",
     "suggestionsPairUsernameMore_one": "",
     "suggestionsPairUsernameMore_other": "",
@@ -156,7 +156,7 @@
     "contactEmailLabel": "",
     "contactEmailNone": "",
     "contactEmailNoLogin": "",
-    "locations": ""
+    "locations": "Standorte"
   },
   "history": {
     "title": "Historie",
@@ -236,11 +236,15 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
+      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
       "sameServer": "",
-      "mirror": ""
+      "mirror": "",
+      "missingOnServer": "",
+      "missingOnServerHint": "",
+      "copyPath": ""
     },
     "watch": {
       "title": "Analytik beobachten",
@@ -462,7 +466,7 @@
       "outcomes": {
         "completed": "",
         "stopped_by_condition": "",
-        "error": "Error"
+        "error": ""
       },
       "empty": "",
       "emptyDescription": "",
@@ -564,8 +568,8 @@
       "clearSelection": "",
       "selectedCount": "",
       "scope": {
-        "label": "Scope",
-        "global": "Global",
+        "label": "",
+        "global": "",
         "server": "",
         "account": "",
         "person": "",
@@ -716,7 +720,7 @@
       "user_attributes": "",
       "device_client": "",
       "network_location": "",
-      "scope": "Scope",
+      "scope": "",
       "media": ""
     },
     "createAutomation": "",
@@ -794,6 +798,8 @@
         "total_pause_minutes": "",
         "source_resolution": "",
         "output_resolution": "",
+        "source_dynamic_range": "",
+        "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
         "source_bitrate_mbps": "",
@@ -808,6 +814,8 @@
         "ip_in_range": "",
         "server_id": "",
         "media_type": "",
+        "season_number": "",
+        "episode_number": "",
         "library_item_type": "",
         "library_name": "",
         "resolution_after": "",
@@ -889,7 +897,7 @@
       "noRuns": ""
     },
     "disable": "",
-    "editAutomation": "Edit Automation",
+    "editAutomation": "",
     "effects": {
       "title": "",
       "kill": "",
@@ -979,6 +987,14 @@
         "label": "",
         "description": ""
       },
+      "source_dynamic_range": {
+        "label": "",
+        "description": ""
+      },
+      "source_video_codec": {
+        "label": "",
+        "description": ""
+      },
       "is_transcoding": {
         "label": "",
         "description": ""
@@ -1037,6 +1053,14 @@
         "placeholder": ""
       },
       "media_type": {
+        "label": "",
+        "description": ""
+      },
+      "season_number": {
+        "label": "",
+        "description": ""
+      },
+      "episode_number": {
         "label": "",
         "description": ""
       },
@@ -1150,11 +1174,11 @@
       "builtinMatch": ""
     },
     "kind": {
-      "policy": "Policy",
+      "policy": "",
       "notification": ""
     },
     "kindColumn": "",
-    "name": "Automation Name",
+    "name": "",
     "newAutomation": "",
     "namePlaceholder": "",
     "nameInvalid": "",
@@ -1439,7 +1463,7 @@
       "gb": "",
       "seconds": ""
     },
-    "updateAutomation": "Update Automation",
+    "updateAutomation": "",
     "catalog": {
       "groups": {
         "sessions": "",
@@ -1449,7 +1473,7 @@
         "updates": "",
         "notifications": "",
         "notify": "",
-        "policy": "Policy",
+        "policy": "",
         "control": ""
       },
       "suggested": "",
@@ -1649,7 +1673,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1661,7 +1685,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",
@@ -1904,11 +1928,14 @@
       "shelves": {
         "recentlyAddedMovies": "",
         "recentlyAddedShows": "",
+        "recentlyUpdated": "",
         "mostPopularMovies": "",
         "mostPopularShows": "",
         "emptyRecentlyAdded": "",
+        "emptyRecentlyUpdated": "",
         "emptyMostPopular": "",
         "captionRecentlyAdded": "",
+        "captionRecentlyUpdated": "",
         "captionMostPopular": {
           "day": "",
           "week": "",
@@ -1921,6 +1948,8 @@
       "card": {
         "newEpisodes_one": "{{count}} neue Folge",
         "newEpisodes_other": "{{count}} neue Folgen",
+        "replacedEpisodes_one": "",
+        "replacedEpisodes_other": "",
         "addedAgo": "hinzugefügt {{date}}",
         "addedCompactAgo": "vor {{age}} hinzugefügt",
         "newEpisodesChip": "{{count}} neu"

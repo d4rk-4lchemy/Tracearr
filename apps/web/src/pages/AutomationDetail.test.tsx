@@ -545,6 +545,7 @@ describe('AutomationDetail run sheet', () => {
       ipAddress: '10.0.0.9',
       city: 'Boston',
       country: 'United States',
+      isLocal: false,
     },
     evidence: [],
     ...overrides,

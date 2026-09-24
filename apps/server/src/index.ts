@@ -50,6 +50,7 @@ import { closeAuth } from './lib/auth.js';
 import { authRoutes } from './routes/auth/index.js';
 import { setupRoutes } from './routes/setup.js';
 import { serverRoutes } from './routes/servers.js';
+import { serverLocationRoutes } from './routes/serverLocations.js';
 import { userRoutes } from './routes/users/index.js';
 import { serverUserRoutes } from './routes/serverUsers.js';
 import { sessionRoutes } from './routes/sessions.js';
@@ -136,6 +137,7 @@ import {
   initMaintenanceQueue,
   startMaintenanceWorker,
   shutdownMaintenanceQueue,
+  enqueueServerLocationSyncIfBehind,
 } from './jobs/maintenanceQueue.js';
 import {
   initLibrarySyncQueue,
@@ -508,6 +510,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
 
   await app.register(authRoutes, { prefix: `${API_BASE_PATH}/auth` });
   await app.register(serverRoutes, { prefix: `${API_BASE_PATH}/servers` });
+  await app.register(serverLocationRoutes, { prefix: `${API_BASE_PATH}/servers` });
   await app.register(userRoutes, { prefix: `${API_BASE_PATH}/users` });
   await app.register(serverUserRoutes, { prefix: `${API_BASE_PATH}/server-users` });
   await app.register(sessionRoutes, { prefix: `${API_BASE_PATH}/sessions` });
@@ -962,6 +965,11 @@ async function initializeServices(app: FastifyInstance) {
   // Initialize heavy operations lock (coordinates import + maintenance jobs)
   await initHeavyOpsLock(app.redis);
   app.log.info('Heavy operations lock initialized');
+
+  // Picks up a sync lost to a restart or a busy queue, and the first run after upgrading
+  void enqueueServerLocationSyncIfBehind().catch((err: unknown) => {
+    app.log.error({ err }, 'Failed to check for a pending server location sync');
+  });
 
   // Size the pg pool from the server's real max_connections and the live
   // instance count (no-op when DATABASE_POOL_MAX is set explicitly)

@@ -11,6 +11,7 @@ import type {
   RequestSeason,
   UserRequestEntry,
   UserRequestsResponse,
+  WatchedState,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { buildMultiServerFragment } from '../../utils/serverFiltering.js';
@@ -26,6 +27,9 @@ import type { SQL } from 'drizzle-orm';
 
 /** Bounds the never-watched scan so a heavy requester cannot turn a page into a full-history probe. */
 const NEVER_WATCHED_SCAN_LIMIT = 500;
+
+const started = (state: WatchedState | undefined): boolean =>
+  state === 'watched' || state === 'partial';
 
 const EMPTY_SUMMARY: UserRequestsResponse['summary'] = {
   total: 0,
@@ -195,7 +199,7 @@ export async function listUserRequests(args: ListUserRequestsArgs): Promise<User
   }
 
   const ids = uuidArraySql(serverUserIds);
-  const scoped = sql`mr.server_user_id = ANY(${ids}) AND mr.deleted_at IS NULL`;
+  const scoped = sql`mr.server_user_id = ANY(${ids})`;
 
   const [pageResult, summaryResult, completedResult] = await Promise.all([
     db.execute(sql`
@@ -274,7 +278,7 @@ export async function listUserRequests(args: ListUserRequestsArgs): Promise<User
     total: summaryRow?.total ?? 0,
     approvalRate: decided > 0 ? (summaryRow?.approved_or_completed ?? 0) / decided : null,
     completed: summaryRow?.completed ?? 0,
-    neverWatched: completed.filter((row) => states.get(row.id)?.requester !== 'watched').length,
+    neverWatched: completed.filter((row) => !started(states.get(row.id)?.requester)).length,
     medianWaitMs: medianWaitMs == null ? null : Number(medianWaitMs),
   };
 

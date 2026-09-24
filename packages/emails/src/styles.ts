@@ -21,7 +21,13 @@ export const colors = {
 export const font = "'Open Sans', Helvetica, Arial, sans-serif";
 
 export function defaultBranding(senderName: string): EmailBranding {
-  return { senderName, accentColor: DEFAULT_ACCENT, footerText: null, postalAddress: null };
+  return {
+    senderName,
+    systemTitle: null,
+    accentColor: DEFAULT_ACCENT,
+    footerText: null,
+    postalAddress: null,
+  };
 }
 
 export const body: CSSProperties = {

@@ -1,11 +1,12 @@
 /** Shared User Query Functions **/
 
-import type { UserDevice, AuthUser } from '@tracearr/shared';
+import type { UserDevice, AuthUser, UserLocation } from '@tracearr/shared';
 import { sql, eq, and, inArray } from 'drizzle-orm';
 import type { db as defaultDb } from '../../db/client.js';
 import { serverUsers } from '../../db/schema.js';
 import { buildServerAccessCondition, hasServerAccess } from '../../utils/serverFiltering.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
+import { localSessionSql } from '../../utils/localSession.js';
 
 // Accept either the default db or a transaction context
 type DbOrTx = typeof defaultDb;
@@ -93,6 +94,64 @@ export function serverUserIdAnyFragment(ids: string[], columnRef = 'server_user_
   return sql`${sql.raw(columnRef)} = ANY(${uuidArraySql(ids)})`;
 }
 
+/**
+ * Deduplicate to one row per play, then aggregate by location.
+ * Each play is assigned to its most recent segment's location.
+ */
+export async function queryUserLocations(
+  dbOrTx: DbOrTx,
+  serverUserIds: string[],
+  window?: { start: Date; end: Date }
+): Promise<UserLocation[]> {
+  const bounds = window
+    ? sql`AND started_at >= ${window.start} AND started_at <= ${window.end}`
+    : sql``;
+  const result = await dbOrTx.execute(sql`
+    WITH plays AS (
+      SELECT DISTINCT ON (COALESCE(reference_id, id))
+        geo_city, geo_region, geo_country, geo_lat, geo_lon,
+        ${localSessionSql('sessions')} AS local_flag,
+        ip_address, started_at
+      FROM sessions
+      WHERE ${serverUserIdAnyFragment(serverUserIds)}
+        ${bounds}
+      ORDER BY COALESCE(reference_id, id), started_at DESC
+    )
+    SELECT
+      geo_city AS city, geo_region AS region, geo_country AS country,
+      geo_lat AS lat, geo_lon AS lon, local_flag AS is_local,
+      count(*)::int AS session_count,
+      max(started_at) AS last_seen_at,
+      array_agg(DISTINCT ip_address) AS ip_addresses
+    FROM plays
+    GROUP BY geo_city, geo_region, geo_country, geo_lat, geo_lon, local_flag
+    ORDER BY max(started_at) DESC
+  `);
+  return (
+    result.rows as {
+      city: string | null;
+      region: string | null;
+      country: string | null;
+      lat: number | null;
+      lon: number | null;
+      is_local: boolean;
+      session_count: number;
+      last_seen_at: Date;
+      ip_addresses: string[];
+    }[]
+  ).map((loc) => ({
+    city: loc.city,
+    region: loc.region,
+    country: loc.country,
+    lat: loc.lat,
+    lon: loc.lon,
+    isLocal: loc.is_local,
+    sessionCount: loc.session_count,
+    lastSeenAt: loc.last_seen_at,
+    ipAddresses: loc.ip_addresses ?? [],
+  }));
+}
+
 interface DeviceSessionRow {
   device_id: string | null;
   player_name: string | null;
@@ -103,6 +162,24 @@ interface DeviceSessionRow {
   geo_city: string | null;
   geo_region: string | null;
   geo_country: string | null;
+  is_local: boolean;
+}
+
+type DeviceLocation = UserDevice['locations'][number];
+
+function deviceLocationKey(session: DeviceSessionRow): string {
+  return `${session.geo_city ?? ''}-${session.geo_region ?? ''}-${session.geo_country ?? ''}-${session.is_local}`;
+}
+
+function newDeviceLocation(session: DeviceSessionRow & { started_at: Date }) {
+  return {
+    city: session.geo_city,
+    region: session.geo_region,
+    country: session.geo_country,
+    isLocal: session.is_local,
+    sessionCount: 1,
+    lastSeenAt: session.started_at,
+  };
 }
 
 /**
@@ -118,7 +195,8 @@ export async function queryUserDevices(
   const result = await dbOrTx.execute(sql`
     SELECT DISTINCT ON (COALESCE(reference_id, id))
       device_id, player_name, product, device, platform, started_at,
-      geo_city, geo_region, geo_country
+      geo_city, geo_region, geo_country,
+      ${localSessionSql('sessions')} AS is_local
     FROM sessions
     WHERE ${serverUserIdAnyFragment(ids)}
     ORDER BY COALESCE(reference_id, id), started_at DESC
@@ -140,16 +218,7 @@ export async function queryUserDevices(
       platform: string | null;
       sessionCount: number;
       lastSeenAt: Date;
-      locationMap: Map<
-        string,
-        {
-          city: string | null;
-          region: string | null;
-          country: string | null;
-          sessionCount: number;
-          lastSeenAt: Date;
-        }
-      >;
+      locationMap: Map<string, DeviceLocation>;
     }
   >();
 
@@ -170,7 +239,7 @@ export async function queryUserDevices(
         existing.platform = session.platform ?? existing.platform;
       }
 
-      const locKey = `${session.geo_city ?? ''}-${session.geo_region ?? ''}-${session.geo_country ?? ''}`;
+      const locKey = deviceLocationKey(session);
       const existingLoc = existing.locationMap.get(locKey);
       if (existingLoc) {
         existingLoc.sessionCount++;
@@ -178,33 +247,11 @@ export async function queryUserDevices(
           existingLoc.lastSeenAt = session.started_at;
         }
       } else {
-        existing.locationMap.set(locKey, {
-          city: session.geo_city,
-          region: session.geo_region,
-          country: session.geo_country,
-          sessionCount: 1,
-          lastSeenAt: session.started_at,
-        });
+        existing.locationMap.set(locKey, newDeviceLocation(session));
       }
     } else {
-      const locationMap = new Map<
-        string,
-        {
-          city: string | null;
-          region: string | null;
-          country: string | null;
-          sessionCount: number;
-          lastSeenAt: Date;
-        }
-      >();
-      const locKey = `${session.geo_city ?? ''}-${session.geo_region ?? ''}-${session.geo_country ?? ''}`;
-      locationMap.set(locKey, {
-        city: session.geo_city,
-        region: session.geo_region,
-        country: session.geo_country,
-        sessionCount: 1,
-        lastSeenAt: session.started_at,
-      });
+      const locationMap = new Map<string, DeviceLocation>();
+      locationMap.set(deviceLocationKey(session), newDeviceLocation(session));
 
       deviceMap.set(key, {
         deviceId: session.device_id,

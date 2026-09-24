@@ -43,6 +43,7 @@ import {
   CopyMinus,
   FingerprintPattern,
   Link2,
+  MapPin,
   type LucideIcon,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -125,6 +126,7 @@ const JOB_ICONS = {
   backfill_session_identity: FingerprintPattern,
   remove_import_duplicates: CopyMinus,
   link_imported_history: Link2,
+  sync_server_locations: MapPin,
 } satisfies Partial<Record<MaintenanceJobType, LucideIcon>>;
 
 const CATEGORY_CONFIG = {

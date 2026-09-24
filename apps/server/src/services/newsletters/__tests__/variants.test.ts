@@ -44,7 +44,7 @@ const extra = (address: string): ResolvedRecipient => ({
 });
 
 describe('orderServers', () => {
-  it('follows the scope list, and keeps name order when the scope names none', () => {
+  it('follows the scope list, and keeps server order when the scope names none', () => {
     expect(orderServers({ serverIds: [B, A] }, [attic, basement]).map((s) => s.name)).toEqual([
       'Basement',
       'Attic',

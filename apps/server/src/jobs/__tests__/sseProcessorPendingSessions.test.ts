@@ -124,6 +124,11 @@ vi.mock('../../services/plexGeoip.js', () => ({
   }),
 }));
 
+vi.mock('../../services/serverLocations.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveSessionGeo: vi.fn().mockResolvedValue({ city: null, country: null, isLocal: true }),
+}));
+
 vi.mock('../../routes/settings.js', () => ({
   getGeoIPSettings: vi.fn().mockResolvedValue({ usePlexGeoip: false }),
 }));
@@ -870,6 +875,7 @@ describe('SSE Processor - Pending Session Flow', () => {
       // First call returns true (threshold exceeded)
       mockIsPlaybackConfirmed.mockReturnValueOnce(true);
 
+      const insertedGeo = { city: 'Chicago', country: 'US', isLocal: true };
       // Mock confirmation result
       mockConfirmAndPersistSession.mockResolvedValueOnce({
         insertedSession: {
@@ -884,6 +890,7 @@ describe('SSE Processor - Pending Session Flow', () => {
         qualityChange: null,
         referenceId: null,
         wasTerminatedByRule: false,
+        geo: insertedGeo,
       });
 
       mockBuildActiveSession.mockReturnValueOnce({
@@ -914,6 +921,9 @@ describe('SSE Processor - Pending Session Flow', () => {
 
       // Should have updated the session in cache (same ID, just confirming status)
       expect(mockCacheService.updateActiveSession).toHaveBeenCalled();
+      expect(mockBuildActiveSession).toHaveBeenCalledWith(
+        expect.objectContaining({ geo: insertedGeo })
+      );
 
       // Confirmed sessions carry no pending flag, so rule evaluation counts them
       const confirmedSession = mockCacheService.updateActiveSession.mock.calls[0]?.[0];

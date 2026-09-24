@@ -1522,20 +1522,61 @@ describe('Mobile Routes', () => {
       expect(db.update).toHaveBeenCalled();
     });
 
-    it('rejects invalid push token format', async () => {
+    it('accepts the ExpoPushToken prefix', async () => {
+      app = await buildTestApp(mobileUser);
+
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: randomUUID() }]),
+          }),
+        }),
+      } as never);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mobile/push-token',
+        payload: {
+          expoPushToken: 'ExpoPushToken[abc123]',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('rejects a raw APNs token and names expoPushToken', async () => {
+      app = await buildTestApp(mobileUser);
+      const apnsToken = 'a1b2c3d4'.repeat(8);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/mobile/push-token',
+        payload: {
+          expoPushToken: apnsToken,
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = response.json();
+      expect(body.message).toBe('Invalid push token: expoPushToken: not an Expo push token');
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a short device secret and names deviceSecret', async () => {
       app = await buildTestApp(mobileUser);
 
       const response = await app.inject({
         method: 'POST',
         url: '/mobile/push-token',
         payload: {
-          expoPushToken: 'invalid-token-format',
+          expoPushToken: 'ExponentPushToken[abc123]',
+          deviceSecret: 'a'.repeat(31),
         },
       });
 
       expect(response.statusCode).toBe(400);
       const body = response.json();
-      expect(body.message).toContain('Invalid push token format');
+      expect(body.message).toBe('Invalid push token: deviceSecret: must be 32 to 64 characters');
     });
 
     it('rejects when deviceId missing from JWT', async () => {

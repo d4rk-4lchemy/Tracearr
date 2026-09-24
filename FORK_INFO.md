@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `7ad41635`
-- Last shared upstream commit found during inspection: `7ad41635`
-- Latest upstream commit merged into the current working tree: `7ad41635`
+- Source branch/SHA inspected: `main` at `db54cfb1`
+- Last shared upstream commit found during inspection: `86db792d` (before merge)
+- Latest upstream commit merged into the current working tree: `db54cfb1`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -20,6 +20,39 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## September 24, 2026 upstream merge
+
+Upstream `main` at `db54cfb1` (Tracearr 2.5.0) brings deterministic,
+case-insensitive list ordering, History sort-aware pagination, Jellystat
+episode relinking, Plex duplicate-identity fixes, Seerr request corrections,
+Expo push-token validation, persistent-cache diagnostics, dependency updates
+and translations. Migration `0108_warm_toad` remains identical to upstream;
+Dispatcharr migrations stay in their separate, unchanged ledger.
+
+Library query conflicts adopt upstream first-row guards; Jellystat retains
+both upstream relinking and the fork's media-stream array validation. Locale
+conflicts retain upstream translations plus the fork's channel-count and
+upstream-version keys. Dispatcharr auth, session metadata, library/Seerr
+exclusions, uncropped artwork and cache markers remain intact. Exactly the
+PR-only CI and fork GHCR release workflows remain, unchanged; upstream
+Renovate and Vouch metadata stay removed. Both Dockerfiles retain fork
+metadata and fork migrations while adopting server-only runtime dependencies.
+
+Full non-Docker validation passed on the first run with Node 24 / pnpm 12.4.2,
+`HUSKY=0`, a 4 GB heap, a clean Turbo cache and frozen-lockfile install:
+lint, typecheck, translations, unit/services/routes/auth/security, web,
+coverage and build. Server groups plus web passed 9,037 tests with no skips;
+shared passed another 384. Coverage passed 5,796 tests (70.40% statements,
+64.21% branches, 74.58% functions, 71.63% lines). Upstream fixes the previously
+skipped Plex auth test and removes an empty poller placeholder. Lint reports
+751 warnings, down two; runtime/build counts and normalized warning classes
+match the preceding baseline. Automated Dispatcharr auth/settings, lifecycle,
+images, termination and History regressions passed. Logs use
+`.tmp/github-ci-<job>-20260924.log`; the runner exits 0 with `FAILED_JOBS=0`.
+Docker integration, E2E and image builds are omitted at the user's request;
+migration execution and database upgrade paths are not covered. Live-provider
+manual smoke checks have not been performed.
 
 ## What This Fork Adds
 
@@ -59,15 +92,27 @@ User-facing Dispatcharr behavior:
 The fork also carries local maintenance/distribution changes:
 
 - README has fork-specific warnings, Docker image names, and Dispatcharr feature notes.
-- The only GitHub Actions workflow retained in this fork is
-  `.github/workflows/ci.yml`, and it runs only for pull-request `opened` and
-  `synchronize` events. All other upstream workflows are removed: this
-  includes scheduled/nightly Docker builds, releases, insiders builds, issue
-  automation, Renovate, stale handling, and Vouch automation. Do not retain or
-  reintroduce any other workflow, trigger, scheduled run, release automation,
-  or manual-dispatch action; merges to `main` do not trigger a second CI run.
-- Consequently, GitHub Actions in this fork does not build or publish Docker
-  images. Docker image builds are a local/manual distribution responsibility.
+- Exactly two GitHub Actions workflows are allowed: `.github/workflows/ci.yml`
+  (only PR `opened` / `synchronize`) and the fork-owned
+  `.github/workflows/fork-ghcr-release.yml` (only `release: published`).
+  GHCR publication is the sole allowed automation outside PR validation.
+  Never delete, replace, or overwrite this workflow with upstream automation.
+  Follow `MERGE_INSTRUCTION.md` when reconciling upstream workflows; verify
+  manually that exactly these two workflows remain after every merge.
+- Releases are still created manually. A published stable `vX.Y.Z-rN` release
+  (N >= 1) builds both existing Dockerfiles, without cache, for `linux/amd64`,
+  from the release tag. Both builds must succeed before any push. It publishes
+  `ghcr.io/d4rk-4lchemy/distracearr` tags `X.Y.Z-rN`, `latest`, `standalone`,
+  `supervised-X.Y.Z-rN`, and `supervised`, with fork version metadata and GHCR
+  as `APP_IMAGE_REPO`. Prereleases are skipped; malformed stable tags fail.
+  Authentication uses `GITHUB_TOKEN` with `contents: read` / `packages: write`.
+  Docker Hub remains entirely manual; do not introduce Docker Hub credentials,
+  scheduled/nightly/insiders builds, manual-dispatch, tag-push, release creation,
+  Helm pushes, issue automation, Renovate, stale, or Vouch workflows.
+- Preservation is documented in `MERGE_INSTRUCTION.md` and this file; no
+  CODEOWNERS changes or extra CI policy checks are required. Historical merge
+  notes below describe the earlier CI-only/manual-release policy; this policy
+  takes precedence.
 - The Snyk security workflow and README badge are disabled in this fork.
 - The Docker-backed integration matrix (PG15/Timescale 2.28 and PG18/Timescale
   2.29) is intentionally not part of GitHub PR CI. Run it manually when
@@ -155,8 +200,11 @@ Server routes and services:
   poster cache entries preserve the full image with Sharp `fit: inside` for
   every provider; avatars/art retain their prior sizing behavior. Jellyfin/Emby
   thumbnails constrain both dimensions, while Plex posters use the source
-  image to avoid fill-transcoder cropping. Cache keys and the cache directory
-  are unchanged. Startup removes recognized cached WebP files once, before
+  image to avoid fill-transcoder cropping, including background warming.
+  Background warming suppresses the retry while preserving these request shapes.
+  Cache keys are unchanged. The cache directory follows `IMAGE_CACHE_DIR`, with
+  `/data/tracearr/image-cache` in Docker images and the original working-directory
+  `data/image-cache` fallback elsewhere. Startup removes recognized cached WebP files once, before
   serving requests, then writes `.uncropped-artwork-v1` in the image-cache
   directory. Later starts retain the regenerated files. Dashboard URLs append
   `artwork=2` only to refresh browser caches; this is not a server cache variant.
@@ -248,6 +296,64 @@ Dispatcharr differs from the original supported media servers in several ways:
 When merging or rebasing on source `main`, preserve the Dispatcharr overlay deliberately instead of treating it as incidental drift.
 
 ### Latest upstream merge
+
+- Upstream `main` at `86db792d` was merged into `develop` on September 23,
+  2026. It adds dated server locations, a local/remote classification for
+  sessions, a location backfill job, local badges and History filters, and
+  location editing in server settings. The upstream `0107` migration and
+  snapshot are preserved byte-for-byte in the upstream migration history;
+  the Dispatcharr fork migration ledger is unchanged. Poller changes combine
+  upstream location placement with the fork's Dispatcharr realtime/polling
+  lifecycle. The Dashboard card retains uncropped artwork and Catch-up
+  presentation alongside the new local badge. The server editor keeps
+  Dispatcharr token/credentials and anonymous-stream settings while adding
+  location editing, with a regression test for saving both together.
+  Fork-only History and Now Playing fixtures now provide the required
+  `isLocal` field. The two-workflow policy remains intact. Full non-Docker CI
+  passed with Node 24 / pnpm 12.4.2: lint, typecheck, translations, all five
+  server test groups, web, coverage and build. Server groups plus web passed
+  9,005 tests with two skipped; coverage passed 5,782 with two skipped
+  (70.36% statements, 64.23% branches, 74.54% functions, 71.59% lines).
+  The first typecheck caught the two fork-only fixtures; after repair the full
+  typecheck passed. Lint has 753 warnings, one more than the preceding run,
+  from upstream `LocationPicker.tsx` accessing a ref during render. Services
+  and coverage each logged one extra instance of an existing warning class;
+  the other job warning counts match the prior baseline. Logs and counts are
+  in `.tmp/github-ci-warning-reference.md`. Docker integration, E2E, image
+  builds, database upgrades and live-provider checks were omitted at the
+  user's request.
+
+- Upstream `main` at `ae9b34fe` was merged into `develop` on September 23,
+  2026. It adds persistent image-cache configuration, adaptive background
+  warming, cache estimates and sweep diagnostics; duplicate-file existence
+  checks; recently updated library shelves and newsletter corrections;
+  stream metadata in automation conditions/notifications; configurable email
+  system titles; active-stream counts in the browser title; device hover text;
+  import aggregate refreshes, dependency updates, translations and 2.5.0 notes.
+  Image-proxy conflicts combine upstream's single-attempt warm requests with
+  the fork's normalized Dispatcharr paths and uncropped poster requests.
+  Dashboard conflicts retain all artwork/Catch-up behavior and add device
+  hover text, with both upstream and fork regression coverage. Locale conflicts
+  retain upstream translations and the fork's English key delta. Only PR CI
+  remains; removed workflows and Vouch metadata stay removed. Upstream and
+  fork migration histories are unchanged. Dispatcharr auth, leader-owned
+  realtime, session lifecycle, library exclusions and two-channel versions
+  remain intact. CI now selects Node 24 / pnpm 12.4.2; local instructions and
+  both Docker images' explicit pnpm installations match that version.
+  Full non-Docker CI passed on the first run with Node 24.21.0 / pnpm 12.4.2,
+  `HUSKY=0` and a 4 GB heap after moving Turbo's cache aside and a frozen
+  install: lint, typecheck, translations, unit/services/routes/auth/security,
+  web, coverage and build. Server groups plus web passed 8,922 tests with two
+  skipped; shared passed another 384. Coverage passed 5,729 with two skipped
+  (70.27% statements, 64.10% branches, 74.78% functions, 71.49% lines).
+  Lint has 752 warnings, down from 753; the removed warning is the upstream
+  DuplicatesTable accessibility diagnostic, and Oxlint rewords an existing IP
+  utility diagnostic. Services and coverage each add two occurrences of
+  existing warning classes; all other warning counts/classes are unchanged.
+  Logs use `.tmp/github-ci-<job>-20260923.log`; the runner exits zero.
+  Validation results are recorded in `.tmp/github-ci-warning-reference.md`.
+  Docker integration, E2E and image builds are omitted at the user's request;
+  live-provider manual smoke tests and database upgrades are not exercised.
 
 - Upstream `main` at `7ad41635` (Tracearr 2.4.1) was merged into `develop`
   on September 20, 2026 without textual conflicts. It adds state-aware iOS

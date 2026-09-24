@@ -6,6 +6,7 @@ import {
   type NewsletterRecipientsView,
   type NewsletterResolvedRecipient,
 } from '@tracearr/shared';
+import { compareText } from '@/lib/collation';
 
 export interface RecipientPartition {
   receive: NewsletterResolvedRecipient[];
@@ -161,6 +162,11 @@ export function groupByVariant<T extends { userId: string | null; serverIds: str
     groups.set(key, group);
   }
   return [...groups.values()].sort((a, b) =>
-    a.key === unionKey ? -1 : b.key === unionKey ? 1 : a.key.localeCompare(b.key)
+    a.key === unionKey
+      ? -1
+      : b.key === unionKey
+        ? 1
+        : compareText(a.serverNames.join(', '), b.serverNames.join(', ')) ||
+          a.key.localeCompare(b.key)
   );
 }

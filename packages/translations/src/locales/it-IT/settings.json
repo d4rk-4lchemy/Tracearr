@@ -133,9 +133,12 @@
       "floor": "",
       "ceiling": "",
       "lastSweep": "",
+      "swept": "",
+      "freed": "",
       "never": "",
       "diskLimited": "",
-      "loadError": ""
+      "loadError": "",
+      "notPersisting": ""
     }
   },
   "servers": {
@@ -198,6 +201,26 @@
     "checkingConnection": "",
     "pluginVersion": "",
     "pluginUpdateAvailable": "",
+    "location": {
+      "title": "",
+      "description": "",
+      "set": "",
+      "addMove": "",
+      "fromBeginning": "",
+      "movedOn": "",
+      "remove": "",
+      "latitude": "",
+      "longitude": "",
+      "country": "",
+      "countryPlaceholder": "",
+      "countrySearch": "",
+      "countryEmpty": "",
+      "city": "",
+      "region": "",
+      "pickHint": "",
+      "incomplete": "",
+      "syncPending": ""
+    },
     "realtimeDialog": {
       "title": "",
       "updateTitle": "",
@@ -474,6 +497,7 @@
     "changeCount_other": "",
     "series": "",
     "docs": "",
+    "source": "",
     "empty": "",
     "types": {
       "new": "",
@@ -960,6 +984,8 @@
         "url": ""
       },
       "logoUrl": "",
+      "systemTitle": "",
+      "systemTitleHelp": "",
       "accent": "",
       "accentPicker": "",
       "footerText": "",

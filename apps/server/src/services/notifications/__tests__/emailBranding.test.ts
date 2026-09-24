@@ -59,7 +59,12 @@ describe('resolveEmailBranding', () => {
   it('returns the block without a sender name, with the logo and mailto settings beside it', async () => {
     mockGetSetting.mockResolvedValue(null);
     expect(await resolveEmailBranding()).toEqual({
-      branding: { accentColor: '#0ea0b3', footerText: null, postalAddress: null },
+      branding: {
+        accentColor: '#0ea0b3',
+        systemTitle: null,
+        footerText: null,
+        postalAddress: null,
+      },
       logo: { mode: 'tracearr' },
       mailtoUnsubscribe: false,
     });
@@ -69,6 +74,7 @@ describe('resolveEmailBranding', () => {
     mockGetSetting.mockResolvedValue({
       logo: { mode: 'url', url: 'https://x.test/logo.png' },
       accentColor: '#123456',
+      systemTitle: 'Tracearr for Emby',
       footerText: 'see you next week',
       postalAddress: '1 Main St',
       mailtoUnsubscribe: true,
@@ -76,6 +82,7 @@ describe('resolveEmailBranding', () => {
     expect(await resolveEmailBranding()).toEqual({
       branding: {
         accentColor: '#123456',
+        systemTitle: 'Tracearr for Emby',
         footerText: 'see you next week',
         postalAddress: '1 Main St',
       },

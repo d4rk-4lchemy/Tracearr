@@ -22,7 +22,7 @@ import { TableRowSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { UserCell } from '@/components/users/UserCell';
+import { RequesterCell } from '@/components/requests/RequesterCell';
 import { WatchedBadge } from '@/components/media-browse/WatchedBadge';
 import { RequestStatusBadge } from '@/components/requests/RequestStatusBadge';
 import { formatSeasons, formatWait, type Translate } from '@/components/requests/format';
@@ -85,27 +85,9 @@ function RequestFlags({ is4k, isAutoRequest }: { is4k: boolean; isAutoRequest: b
 }
 
 function MediaLeadingCell({ row }: { row: MediaRequestEntry }) {
-  const { t } = useTranslation('pages');
-  const { requester } = row;
-
-  if (requester.serverUserId === null) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="text-muted-foreground truncate">
-          {requester.username ?? t('requests.unattributed')}
-        </span>
-        <RequestFlags is4k={row.is4k} isAutoRequest={row.isAutoRequest} />
-      </div>
-    );
-  }
-
   return (
-    <UserCell
-      serverUserId={requester.serverUserId}
-      username={requester.username}
-      identityName={requester.identityName}
-      thumbUrl={requester.thumb}
-      serverId={requester.serverId}
+    <RequesterCell
+      requester={row.requester}
       trailing={<RequestFlags is4k={row.is4k} isAutoRequest={row.isAutoRequest} />}
     />
   );

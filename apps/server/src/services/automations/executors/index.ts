@@ -400,6 +400,12 @@ function violationEventFor(context: EvaluationContext): NotificationEvent | null
               mediaTitle: session.mediaTitle,
               mediaType: session.mediaType,
               thumbPath: session.thumbPath,
+              // A pause or a transcode change sends this shape, and its template
+              // offers the same stream variables a native session event does
+              sourceDynamicRange: session.sourceVideoDetails?.dynamicRange ?? null,
+              sourceVideoCodec: session.sourceVideoCodec,
+              seasonNumber: session.seasonNumber,
+              episodeNumber: session.episodeNumber,
             }
           : {}),
         ...triggerNumbers(context),

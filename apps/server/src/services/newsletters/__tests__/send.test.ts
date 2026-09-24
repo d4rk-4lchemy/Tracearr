@@ -307,7 +307,7 @@ describe('runNewsletter', () => {
     expect(snapshot.subject).toMatch(/^What's new on Family Media \(\w{3} \d{1,2}, \d{4}\) 1$/);
     const html = snapshot.html;
     expect(html).toContain('#123456');
-    expect(html).toContain('Sent by Tracearr for <!-- -->Family Media');
+    expect(html).toContain('Sent by Tracearr for Family Media.');
     expect(html).toContain('The house server');
     expect(html).toContain('1 Main St');
   });

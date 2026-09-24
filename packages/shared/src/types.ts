@@ -67,6 +67,27 @@ export interface Server {
   updatedAt: Date;
 }
 
+export interface ServerLocationEntry {
+  /** ISO datetime the location took effect; null covers everything before the first dated entry */
+  effectiveFrom: string | null;
+  lat: number;
+  lon: number;
+  city: string | null;
+  region: string | null;
+  /** ISO 3166-1 alpha-2 */
+  country: string;
+}
+
+export interface ServerLocationsResponse {
+  entries: ServerLocationEntry[];
+  /** Entries changed since the location sync last applied them */
+  syncPending: boolean;
+}
+
+export interface UpdateServerLocationsResponse extends ServerLocationsResponse {
+  syncQueued: boolean;
+}
+
 // User types - Identity layer (the real human)
 export interface User {
   id: string;
@@ -459,6 +480,8 @@ export interface Session extends StreamDetailFields {
   geoLon: number | null;
   geoAsnNumber: number | null;
   geoAsnOrganization: string | null;
+  // A local network session; its geo fields hold its server's location when one is set
+  isLocal: boolean;
   playerName: string | null; // Friendly device name
   deviceId: string | null; // Unique device identifier (machineIdentifier)
   product: string | null; // Product/app name (e.g., "Plex for iOS")
@@ -623,6 +646,7 @@ export interface ViolationSessionInfo {
   geoCity: string | null;
   geoRegion: string | null;
   geoCountry: string | null;
+  isLocal: boolean;
   geoContinent: string | null;
   geoPostal: string | null;
   geoLat: number | null;
@@ -694,6 +718,7 @@ export interface LocationStats {
   city: string | null;
   region: string | null; // State/province
   country: string | null;
+  isLocal: boolean;
   lat: number;
   lon: number;
   count: number;
@@ -941,9 +966,13 @@ export interface ImageCacheStatus {
   sweptAt: string | null;
   freedBytesLastSweep: number;
   deletedFilesLastSweep: number;
-  /** Rows in library_items with a thumb path, removed ones included. */
+  /** A full pass this process completed was followed by an empty cache, so the
+   *  directory is not surviving restarts. */
+  notPersisting: boolean;
+  /** Distinct (server, thumb path) pairs in library_items, removed rows
+   *  included: one cache file each, however many rows share the image. */
   postersWithThumb: number;
-  /** postersWithThumb × 18 KB. */
+  /** postersWithThumb × ESTIMATED_POSTER_BYTES. */
   estimatedNeedBytes: number;
   freeBytes: number;
   totalBytes: number;
@@ -1187,6 +1216,7 @@ export interface UserLocation {
   city: string | null;
   region: string | null; // State/province/subdivision
   country: string | null;
+  isLocal: boolean;
   lat: number | null;
   lon: number | null;
   sessionCount: number;
@@ -1199,6 +1229,7 @@ export interface DeviceLocation {
   city: string | null;
   region: string | null;
   country: string | null;
+  isLocal: boolean;
   sessionCount: number;
   lastSeenAt: Date;
 }
@@ -1792,7 +1823,8 @@ export type MaintenanceJobType =
   | 'repair_corrupted_chunks'
   | 'backfill_session_identity'
   | 'remove_import_duplicates'
-  | 'link_imported_history';
+  | 'link_imported_history'
+  | 'sync_server_locations';
 
 export type MaintenanceJobStatus = 'idle' | 'waiting' | 'running' | 'complete' | 'error';
 
@@ -2326,6 +2358,8 @@ export type MatchType = 'imdb' | 'tmdb' | 'tvdb' | 'fuzzy' | 'version';
 
 /** One physical file of a duplicate item */
 export interface DuplicateItemVersion {
+  /** The server's own id for this file, what a file-existence check answers by */
+  serverVersionKey: string;
   resolution: string | null;
   videoCodec: string | null;
   fileSize: number | null;
@@ -2348,6 +2382,10 @@ export interface DuplicateItem {
   title: string;
   year: number | null;
   mediaType: string;
+  /** Show for an episode, artist for a track; null for anything flat */
+  grandparentTitle: string | null;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
   fileSize: number | null;
   resolution: string | null;
   versions: DuplicateItemVersion[];
@@ -2384,6 +2422,23 @@ export interface DuplicatesResponse {
   duplicates: DuplicateGroup[];
   summary: DuplicatesSummary;
   pagination: { page: number; pageSize: number; total: number };
+}
+
+// Duplicate file existence (GET /library/duplicates/files)
+/** One file the server was asked about, by the item it belongs to and its version key */
+export interface DuplicateFileStatus {
+  itemId: string;
+  serverVersionKey: string;
+  exists: boolean;
+}
+
+export interface DuplicateFilesResponse {
+  /**
+   * False when no server in the requested set can answer (only Plex can) or
+   * the probe failed. Callers show nothing rather than guess at a missing file.
+   */
+  checked: boolean;
+  files: DuplicateFileStatus[];
 }
 
 // Library Stale Content Response (GET /library/stale)
@@ -2619,6 +2674,18 @@ export type ShelvesPeriod = z.infer<typeof statPeriodSchema>;
 export interface RecentlyAddedShelfRow extends ShelfRow {
   /** Newly-tracked episode count for a show card; always null for movies. */
   newEpisodes: number | null;
+  /** When the newest qualifying episode arrived. Null for movies, whose own
+   *  copy date already says it; a show's copy date is when the series first
+   *  appeared, which is years off once episodes keep arriving. */
+  newestEpisodeAt: string | null;
+}
+
+/** A title whose file this server replaced: the old copy left and a new one took its place. */
+export interface RecentlyUpdatedShelfRow extends ShelfRow {
+  /** Replaced episode count for a show card; always null for movies. */
+  replacedEpisodes: number | null;
+  /** When the newest replaced episode arrived; null for movies. */
+  newestEpisodeAt: string | null;
 }
 
 export interface MostPopularShelfRow extends ShelfRow {
@@ -2674,6 +2741,7 @@ export interface ShelvesResponse {
   period: ShelvesPeriod;
   recentlyAddedMovies: RecentlyAddedShelfRow[];
   recentlyAddedShows: RecentlyAddedShelfRow[];
+  recentlyUpdated: RecentlyUpdatedShelfRow[];
   mostPopularMovies: MostPopularShelfRow[];
   mostPopularShows: MostPopularShelfRow[];
   deadWeight?: DeadWeightRow[];
@@ -2750,6 +2818,9 @@ export interface MediaDetailResponse {
   availability: MediaAvailabilityEntry[];
   seasonCount: number | null;
   episodeCount: number | null;
+  posterUrl: string | null;
+  posterVersion: string | null;
+  dominantColor: string | null;
 }
 
 export interface MediaChildEntry {

@@ -30,10 +30,10 @@ import { getGeoIPSettings } from '../../routes/settings.js';
 import { isMaintenance } from '../../serverState.js';
 import { isLeader } from '../../services/leaderLease.js';
 import type { CacheService, PubSubService } from '../../services/cache.js';
-import { type GeoLocation } from '../../services/geoip.js';
+import { geoipService } from '../../services/geoip.js';
 import { createMediaServerClient } from '../../services/mediaServer/index.js';
 import type { MediaSession } from '../../services/mediaServer/types.js';
-import { lookupGeoIP } from '../../services/plexGeoip.js';
+import { resolveSessionGeo, type SessionGeo } from '../../services/serverLocations.js';
 import {
   fetchRecentSessionsForIdentity,
   setContextAssemblyDeps,
@@ -600,7 +600,7 @@ async function resolvePendingSession(
     return { status: 'still-pending', updatedSession: buildPendingActiveSession(updatedData) };
   }
 
-  const geo: GeoLocation = await lookupGeoIP(processed.ipAddress, usePlexGeoip);
+  const geo = await resolveSessionGeo(processed.ipAddress, server.id, usePlexGeoip);
   const createResult = await cacheService.withSessionCreateLock(
     server.id,
     processed.sessionKey,
@@ -645,7 +645,13 @@ async function resolvePendingSession(
   }
 
   await cacheService.deletePendingSession(server.id, pendingKey);
-  const { insertedSession, violationResults, qualityChange, wasTerminatedByRule } = createResult;
+  const {
+    insertedSession,
+    violationResults,
+    qualityChange,
+    wasTerminatedByRule,
+    geo: insertedGeo,
+  } = createResult;
 
   if (qualityChange) {
     await handleQualityChangeFallout(qualityChange, cacheService, pubSubService);
@@ -657,7 +663,7 @@ async function resolvePendingSession(
       session: insertedSession,
       processed: updatedData.processed,
       user: userDetail,
-      geo,
+      geo: insertedGeo,
       server,
     });
     recordDbWrite(insertedSession.id, Date.now());
@@ -1203,7 +1209,7 @@ export async function processServerSessions(
           }
 
           // Get GeoIP location (uses Plex API if enabled, falls back to MaxMind)
-          const geo: GeoLocation = await lookupGeoIP(processed.ipAddress, usePlexGeoip);
+          const geo = await resolveSessionGeo(processed.ipAddress, server.id, usePlexGeoip);
 
           const createResult = await cacheService.withSessionCreateLock<
             | { rediscovered: typeof sessions.$inferSelect }
@@ -1439,7 +1445,7 @@ export async function processServerSessions(
             existingRow && existingRow.serverUserId !== userDetail.id ? null : existingRow;
 
           // Skip the GeoIP lookup when the IP matches the existing row - reuse its geo data.
-          const geo: GeoLocation =
+          const geo: SessionGeo =
             existingSession?.ipAddress === processed.ipAddress
               ? {
                   city: existingSession.geoCity,
@@ -1452,8 +1458,9 @@ export async function processServerSessions(
                   lon: existingSession.geoLon,
                   asnNumber: existingSession.geoAsnNumber,
                   asnOrganization: existingSession.geoAsnOrganization,
+                  isLocal: existingSession.isLocal ?? geoipService.isPrivateIP(processed.ipAddress),
                 }
-              : await lookupGeoIP(processed.ipAddress, usePlexGeoip);
+              : await resolveSessionGeo(processed.ipAddress, server.id, usePlexGeoip);
 
           if (!existingSession) {
             // Issue #120: Stale cache entry - session key is in Redis but no active session exists in DB

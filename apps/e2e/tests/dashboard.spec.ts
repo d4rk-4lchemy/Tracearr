@@ -23,6 +23,9 @@ test.describe('Dashboard', () => {
     await expect(page.getByText('Now Playing')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Now Playing' })).toBeVisible();
     await expect(page.getByText('No active streams')).toBeVisible();
+
+    // The stream counter prefixes this only while something is playing
+    await expect(page).toHaveTitle('Dashboard | Tracearr');
   });
 
   test('sidebar navigation is visible', async ({ page }) => {

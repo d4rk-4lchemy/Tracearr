@@ -309,6 +309,25 @@ describe('listUserRequests', () => {
     expect(result.summary.neverWatched).toBe(2);
   });
 
+  it('does not count a request the requester has started as never watched', async () => {
+    mockDb.execute
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [summaryRow({ total: 1, completed: 1, decided: 1 })] })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'c1', media_id: SHOW_ID, media_type: 'show', lens_user_id: USER_ID }],
+      });
+    watched.resolveWatchedStates.mockResolvedValue(new Map([[SHOW_ID, 'partial']]));
+
+    const result = await listUserRequests({
+      serverUserIds: [SERVER_USER_ID],
+      serverIds: undefined,
+      page: 1,
+      pageSize: 5,
+    });
+
+    expect(result.summary.neverWatched).toBe(0);
+  });
+
   it('probes watched state through the server scope it was handed', async () => {
     mockDb.execute
       .mockResolvedValueOnce({

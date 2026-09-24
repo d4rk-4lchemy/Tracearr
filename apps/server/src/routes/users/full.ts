@@ -17,7 +17,7 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, and, desc, isNull, sql } from 'drizzle-orm';
-import { userIdParamSchema, identityScopeQuerySchema, type UserLocation } from '@tracearr/shared';
+import { userIdParamSchema, identityScopeQuerySchema } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import {
   serverUsers,
@@ -30,9 +30,11 @@ import {
 } from '../../db/schema.js';
 import { violationAliasConditions } from '../../services/automations/aliasFilter.js';
 import { hasServerAccess, buildServerAccessCondition } from '../../utils/serverFiltering.js';
+import { serverOrderBy } from '../../utils/serverOrder.js';
 import { PLAY_COUNT } from '../../constants/index.js';
-import { queryUserDevices, serverUserIdAnyFragment } from './queries.js';
+import { queryUserDevices, queryUserLocations, serverUserIdAnyFragment } from './queries.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
+import { localSessionSql } from '../../utils/localSession.js';
 
 export const fullRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -136,7 +138,8 @@ export const fullRoutes: FastifyPluginAsync = async (app) => {
         })
         .from(serverUsers)
         .innerJoin(servers, eq(serverUsers.serverId, servers.id))
-        .where(identityWhere);
+        .where(identityWhere)
+        .orderBy(...serverOrderBy(), serverUsers.id);
 
       const identityIds = identityServerUserRows.map((su) => su.id);
 
@@ -211,6 +214,7 @@ export const fullRoutes: FastifyPluginAsync = async (app) => {
           s.reference_id, s.ip_address, s.geo_city, s.geo_region, s.geo_country,
           s.geo_continent, s.geo_postal, s.geo_lat, s.geo_lon,
           s.geo_asn_number, s.geo_asn_organization,
+          ${localSessionSql('s')} AS is_local,
           s.player_name, s.device_id, s.product, s.device, s.platform,
           s.quality, s.is_transcode, s.bitrate, s.last_paused_at
         FROM grouped_sessions gs
@@ -255,6 +259,7 @@ export const fullRoutes: FastifyPluginAsync = async (app) => {
         geoLon: row.geo_lon as number | null,
         geoAsnNumber: row.geo_asn_number as number | null,
         geoAsnOrganization: row.geo_asn_organization as string | null,
+        isLocal: row.is_local === true,
         playerName: row.player_name as string | null,
         deviceId: row.device_id as string | null,
         product: row.product as string | null,
@@ -265,50 +270,11 @@ export const fullRoutes: FastifyPluginAsync = async (app) => {
         bitrate: row.bitrate as number | null,
       }));
 
-      // 4. Get locations — deduplicate to one row per play, then aggregate by location
-      const locationResult = await tx.execute(sql`
-        WITH plays AS (
-          SELECT DISTINCT ON (COALESCE(reference_id, id))
-            geo_city, geo_region, geo_country, geo_lat, geo_lon,
-            ip_address, started_at
-          FROM sessions
-          WHERE ${serverUserIdAnyFragment(scopedIds)}
-            AND started_at >= ${tenYearsAgo}
-            AND started_at <= ${nowDate}
-          ORDER BY COALESCE(reference_id, id), started_at DESC
-        )
-        SELECT
-          geo_city AS city, geo_region AS region, geo_country AS country,
-          geo_lat AS lat, geo_lon AS lon,
-          count(*)::int AS session_count,
-          max(started_at) AS last_seen_at,
-          array_agg(DISTINCT ip_address) AS ip_addresses
-        FROM plays
-        GROUP BY geo_city, geo_region, geo_country, geo_lat, geo_lon
-        ORDER BY max(started_at) DESC
-      `);
-
-      const locations: UserLocation[] = (
-        locationResult.rows as {
-          city: string | null;
-          region: string | null;
-          country: string | null;
-          lat: number | null;
-          lon: number | null;
-          session_count: number;
-          last_seen_at: Date;
-          ip_addresses: string[];
-        }[]
-      ).map((loc) => ({
-        city: loc.city,
-        region: loc.region,
-        country: loc.country,
-        lat: loc.lat,
-        lon: loc.lon,
-        sessionCount: loc.session_count,
-        lastSeenAt: loc.last_seen_at,
-        ipAddresses: loc.ip_addresses ?? [],
-      }));
+      // 4. Get locations
+      const locations = await queryUserLocations(tx, scopedIds, {
+        start: tenYearsAgo,
+        end: nowDate,
+      });
 
       // 5. Get devices (shared query handles dedup and aggregation)
       const devices = await queryUserDevices(tx, scopedIds);

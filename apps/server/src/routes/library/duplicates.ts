@@ -9,7 +9,9 @@
  *
  * Matching hierarchy: imdb 100 > tmdb 95 > tvdb 90 > fuzzy 60-100;
  * single-item groups present as 'version' at 100. Reclaimable = deduped
- * total minus the best-quality file.
+ * total minus the best-quality file. An episode's key also carries its
+ * season and episode number: Plex's agents attach another episode's id to
+ * an item often enough that the id alone pairs two different episodes (#1223).
  *
  * Grouping, the gate, and the summary run in one SQL statement and the route
  * hydrates one page only - building every group in Node exceeded postgres's
@@ -70,12 +72,16 @@ interface ItemDetailsRow {
   title: string;
   year: number | null;
   media_type: string;
+  grandparent_title: string | null;
+  parent_index: number | null;
+  item_index: number | null;
   file_size: string | null;
   video_resolution: string | null;
 }
 
 interface VersionRow {
   library_item_id: string;
+  server_version_key: string;
   video_resolution: string | null;
   video_codec: string | null;
   file_size: string | null;
@@ -174,13 +180,20 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
        * One statement: membership -> per-group distinct-file math -> gate ->
        * summary via window aggregates -> one ordered page. media_type is
        * folded into the id key so a show and an episode sharing a TVDB id
-       * cannot collapse; fuzzy only feeds items with no external IDs.
+       * cannot collapse, and an episode's season and episode number are
+       * folded in so a foreign id on one episode cannot pair it with another;
+       * fuzzy only feeds items with no external IDs.
        */
       const runGroupQuery = async (offset: number) => {
         const result = await db.execute(sql`
           WITH scoped AS (
             SELECT id, server_id, media_type, title, year,
-                   imdb_id, tmdb_id, tvdb_id, file_size, video_resolution
+                   imdb_id, tmdb_id, tvdb_id, file_size, video_resolution,
+                   CASE
+                     WHEN media_type = 'episode' AND parent_index IS NOT NULL AND item_index IS NOT NULL
+                       THEN ':s' || parent_index || 'e' || item_index
+                     ELSE ''
+                   END AS episode_key
             FROM library_items
             WHERE removed_at IS NULL
               AND media_type != 'season'
@@ -192,11 +205,13 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
               fuzzyEnabled
                 ? sql`
             SELECT a.id AS item_a_id, b.id AS item_b_id, a.title AS title_a,
+                   a.episode_key AS episode_key_a,
                    ROUND(similarity(a.title, b.title) * 100)::int AS confidence
             FROM scoped a
             JOIN scoped b ON a.id < b.id
               AND a.media_type = b.media_type
               AND a.year = b.year
+              AND a.episode_key = b.episode_key
             WHERE a.imdb_id IS NULL AND a.tmdb_id IS NULL AND a.tvdb_id IS NULL
               AND b.imdb_id IS NULL AND b.tmdb_id IS NULL AND b.tvdb_id IS NULL
               AND similarity(a.title, b.title) >= 0.6
@@ -204,7 +219,8 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
             LIMIT 100`
                 : sql`
             SELECT NULL::uuid AS item_a_id, NULL::uuid AS item_b_id,
-                   NULL::text AS title_a, NULL::int AS confidence
+                   NULL::text AS title_a, NULL::text AS episode_key_a,
+                   NULL::int AS confidence
             WHERE false`
             }
           ),
@@ -212,10 +228,10 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
             SELECT item_id, MIN(fuzzy_key) AS fuzzy_key, MAX(confidence) AS confidence
             FROM (
               SELECT item_a_id AS item_id,
-                     'fuzzy:' || lower(left(title_a, 50)) AS fuzzy_key, confidence
+                     'fuzzy:' || lower(left(title_a, 50)) || episode_key_a AS fuzzy_key, confidence
               FROM fuzzy_pairs
               UNION ALL
-              SELECT item_b_id, 'fuzzy:' || lower(left(title_a, 50)), confidence
+              SELECT item_b_id, 'fuzzy:' || lower(left(title_a, 50)) || episode_key_a, confidence
               FROM fuzzy_pairs
             ) fp
             GROUP BY item_id
@@ -223,9 +239,9 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
           membership AS (
             SELECT s.id, s.server_id, s.file_size, s.video_resolution,
               CASE
-                WHEN s.imdb_id IS NOT NULL THEN 'imdb:' || s.media_type || ':' || s.imdb_id
-                WHEN s.tmdb_id IS NOT NULL THEN 'tmdb:' || s.media_type || ':' || s.tmdb_id::text
-                WHEN s.tvdb_id IS NOT NULL THEN 'tvdb:' || s.media_type || ':' || s.tvdb_id::text
+                WHEN s.imdb_id IS NOT NULL THEN 'imdb:' || s.media_type || ':' || s.imdb_id || s.episode_key
+                WHEN s.tmdb_id IS NOT NULL THEN 'tmdb:' || s.media_type || ':' || s.tmdb_id::text || s.episode_key
+                WHEN s.tvdb_id IS NOT NULL THEN 'tvdb:' || s.media_type || ':' || s.tvdb_id::text || s.episode_key
                 WHEN fk.fuzzy_key IS NOT NULL THEN fk.fuzzy_key
                 ELSE 'version:' || s.id::text
               END AS group_key,
@@ -342,6 +358,9 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
             li.title,
             li.year,
             li.media_type,
+            li.grandparent_title,
+            li.parent_index,
+            li.item_index,
             li.file_size::text AS file_size,
             li.video_resolution
           FROM library_items li
@@ -359,6 +378,7 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
         const versionsResult = await db.execute(sql`
           SELECT
             library_item_id,
+            server_version_key,
             video_resolution,
             video_codec,
             file_size::text AS file_size,
@@ -366,11 +386,12 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
           FROM library_item_versions
           WHERE library_item_id = ANY(${idsArray}::uuid[])
             AND removed_at IS NULL
-          ORDER BY file_size DESC NULLS LAST
+          ORDER BY library_item_versions.file_size DESC NULLS LAST, library_item_versions.server_version_key ASC
         `);
         for (const row of versionsResult.rows as unknown as VersionRow[]) {
           const list = versionsByItem.get(row.library_item_id) ?? [];
           list.push({
+            serverVersionKey: row.server_version_key,
             resolution: row.video_resolution,
             videoCodec: row.video_codec,
             fileSize: row.file_size ? parseInt(row.file_size, 10) : null,
@@ -389,6 +410,9 @@ export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
         title: details.title,
         year: details.year,
         mediaType: details.media_type,
+        grandparentTitle: details.grandparent_title,
+        seasonNumber: details.parent_index,
+        episodeNumber: details.item_index,
         fileSize: details.file_size ? parseInt(details.file_size, 10) : null,
         resolution: details.video_resolution,
         versions: versionsByItem.get(details.id) ?? [],

@@ -286,12 +286,14 @@ describe('poller isNew branch defers to a pending session', () => {
       isConfirmed: true,
     });
 
+    const insertedGeo = { city: 'Chicago', country: 'US', isLocal: true };
     mockConfirmAndPersistSession.mockResolvedValue({
       insertedSession: { id: 'pending-uuid-123', sessionKey: 'test-session-key' },
       violationResults: [],
       qualityChange: null,
       referenceId: null,
       wasTerminatedByRule: false,
+      geo: insertedGeo,
     });
 
     mockBuildActiveSession.mockReturnValue({
@@ -315,6 +317,9 @@ describe('poller isNew branch defers to a pending session', () => {
     );
 
     expect(cacheService.deletePendingSession).toHaveBeenCalledWith('server-1', 'test-session-key');
+    expect(mockBuildActiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ geo: insertedGeo })
+    );
 
     expect(mockProcessPollResults).toHaveBeenCalledTimes(1);
     const pollCall = mockProcessPollResults.mock.calls[0]?.[0];

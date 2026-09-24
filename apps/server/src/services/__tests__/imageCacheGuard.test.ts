@@ -4,6 +4,7 @@ vi.mock('node:fs/promises', () => ({ statfs: vi.fn() }));
 
 import { statfs } from 'node:fs/promises';
 import {
+  ESTIMATED_POSTER_BYTES,
   cacheWriteAllowed,
   noteCacheWrite,
   setCacheTallyBytes,
@@ -100,7 +101,7 @@ describe('imageCacheGuard', () => {
     await writeDiskLimited(redis, 3, new Date('2026-08-23T10:00:00Z'));
     expect(await readDiskLimited(redis)).toEqual({
       since: '2026-08-23T10:00:00.000Z',
-      shortfallBytes: 3 * 18 * 1024,
+      shortfallBytes: 3 * ESTIMATED_POSTER_BYTES,
     });
     await writeDiskLimited(redis, 5, new Date('2026-08-23T11:00:00Z'));
     expect((await readDiskLimited(redis))?.since).toBe('2026-08-23T10:00:00.000Z');

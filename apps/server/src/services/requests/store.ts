@@ -1,9 +1,14 @@
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import { WS_EVENTS, type RequestService, type RequestServiceType } from '@tracearr/shared';
+import {
+  REDIS_KEYS,
+  WS_EVENTS,
+  type RequestService,
+  type RequestServiceType,
+} from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { mediaRequests, requestServices } from '../../db/schema.js';
 import { createLogger } from '../../utils/logger.js';
-import { getPubSubService } from '../cache.js';
+import { getCacheService, getPubSubService } from '../cache.js';
 import { decryptConfig, encryptConfig } from '../notifications/destinationCrypto.js';
 
 const logger = createLogger('request-services');
@@ -12,6 +17,11 @@ export type RequestServiceRow = typeof requestServices.$inferSelect;
 export type MediaRequestRow = typeof mediaRequests.$inferSelect;
 
 export async function publishRequestsChanged(serviceId: string): Promise<void> {
+  await getCacheService()
+    ?.invalidatePattern(`${REDIS_KEYS.REQUESTS_ANALYTICS}:*`)
+    .catch((error: unknown) => {
+      logger.warn('requests analytics cache invalidation failed', { error });
+    });
   await getPubSubService()
     ?.publish(WS_EVENTS.REQUESTS_CHANGED, { serviceId })
     .catch((error: unknown) => {
@@ -23,12 +33,8 @@ export async function listRequestServices(): Promise<RequestServiceRow[]> {
   return db.select().from(requestServices).orderBy(requestServices.createdAt, requestServices.id);
 }
 
-export async function anyRequestServiceEnabled(): Promise<boolean> {
-  const rows = await db
-    .select({ id: requestServices.id })
-    .from(requestServices)
-    .where(eq(requestServices.enabled, true))
-    .limit(1);
+export async function anyRequestServiceLinked(): Promise<boolean> {
+  const rows = await db.select({ id: requestServices.id }).from(requestServices).limit(1);
   return rows.length > 0;
 }
 

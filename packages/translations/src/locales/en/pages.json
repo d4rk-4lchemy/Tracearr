@@ -236,11 +236,15 @@
       "noDuplicatesTitle": "No duplicates found",
       "noDuplicatesDesc": "No titles with more than one physical file detected.",
       "colTitle": "Title",
+      "colType": "Type",
       "colMatchType": "Match Type",
       "colCopies": "Copies",
       "colRecoverable": "Recoverable Space",
       "sameServer": "Same server",
-      "mirror": "Mirror"
+      "mirror": "Mirror",
+      "missingOnServer": "Missing on server",
+      "missingOnServerHint": "The server still lists this file but cannot find it on disk. On Plex, empty the library trash to clear it.",
+      "copyPath": "Copy file path"
     },
     "watch": {
       "title": "Watch Analytics",
@@ -794,6 +798,8 @@
         "total_pause_minutes": "the total pause time",
         "source_resolution": "the source resolution",
         "output_resolution": "the output resolution",
+        "source_dynamic_range": "the source dynamic range",
+        "source_video_codec": "the source video codec",
         "is_transcoding": "the transcoding",
         "is_transcode_downgrade": "the downgrade",
         "source_bitrate_mbps": "the source bitrate",
@@ -808,6 +814,8 @@
         "ip_in_range": "the IP address",
         "server_id": "the server",
         "media_type": "the media type",
+        "season_number": "the season number",
+        "episode_number": "the episode number",
         "library_item_type": "the item type",
         "library_name": "the library",
         "resolution_after": "the resolution",
@@ -979,6 +987,14 @@
         "label": "Output Resolution",
         "description": "Transcoded or delivered resolution"
       },
+      "source_dynamic_range": {
+        "label": "Source Dynamic Range",
+        "description": "HDR format of the file being played; unknown never matches, even for \"is not\""
+      },
+      "source_video_codec": {
+        "label": "Source Video Codec",
+        "description": "Video codec of the file being played, such as HEVC or AV1"
+      },
       "is_transcoding": {
         "label": "Is Transcoding",
         "description": "Whether video or audio streams are being transcoded"
@@ -1039,6 +1055,14 @@
       "media_type": {
         "label": "Media Type",
         "description": "Type of content"
+      },
+      "season_number": {
+        "label": "Season Number",
+        "description": "Season the episode belongs to; anything that is not an episode never matches"
+      },
+      "episode_number": {
+        "label": "Episode Number",
+        "description": "Episode within its season; anything that is not an episode never matches"
       },
       "library_item_type": {
         "label": "Item Type",
@@ -1904,11 +1928,14 @@
       "shelves": {
         "recentlyAddedMovies": "Recently Added Movies",
         "recentlyAddedShows": "Recently Added Shows",
+        "recentlyUpdated": "Recently Updated",
         "mostPopularMovies": "Most Popular Movies",
         "mostPopularShows": "Most Popular Shows",
         "emptyRecentlyAdded": "Nothing added in this period",
+        "emptyRecentlyUpdated": "Nothing replaced in this period",
         "emptyMostPopular": "No plays in this period",
         "captionRecentlyAdded": "deduped across servers",
+        "captionRecentlyUpdated": "a better copy replaced the one here",
         "captionMostPopular": {
           "day": "today",
           "week": "last 7 days",
@@ -1921,6 +1948,8 @@
       "card": {
         "newEpisodes_one": "{{count}} new episode",
         "newEpisodes_other": "{{count}} new episodes",
+        "replacedEpisodes_one": "{{count}} episode replaced",
+        "replacedEpisodes_other": "{{count}} episodes replaced",
         "addedAgo": "added {{date}}",
         "addedCompactAgo": "added {{age}} ago",
         "newEpisodesChip": "{{count}} new"
@@ -2222,7 +2251,9 @@
       "auto": "Auto-requested from a watchlist"
     },
     "hero": {
-      "line": "Requested by {{name}} · {{date}} · {{tail}}"
+      "line": "Requested by {{name}} · {{date}} · {{tail}}",
+      "landed": "landed {{wait}} later",
+      "waiting": "still waiting"
     },
     "mediaPanel": {
       "title": "Requests",

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { colors, muted, paragraph } from '../styles.js';
 import type { EmailBranding } from '../types.js';
 import { Cell } from './Cell.js';
+import { SentBy, headerName } from './SentBy.js';
 import { Document } from './Document.js';
 
 interface LayoutProps {
@@ -36,7 +37,7 @@ export function Layout({ preview, branding, logoRef, children, footer }: LayoutP
             marginBottom: 0,
           }}
         >
-          {branding.senderName}
+          {headerName(branding)}
         </Text>
       </Cell>
       {children}
@@ -45,7 +46,7 @@ export function Layout({ preview, branding, logoRef, children, footer }: LayoutP
         {footer}
         {branding.footerText && <Text style={muted}>{branding.footerText}</Text>}
         {branding.postalAddress && <Text style={muted}>{branding.postalAddress}</Text>}
-        <Text style={muted}>Sent by Tracearr for {branding.senderName}.</Text>
+        <SentBy branding={branding} style={muted} />
       </Cell>
     </Document>
   );

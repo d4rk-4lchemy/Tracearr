@@ -287,6 +287,31 @@ describe('Plex Auth Routes', () => {
   });
 
   describe('GET /plex/available-servers', () => {
+    // The token lookup ends in orderBy().limit(); the connected-server lookup
+    // awaits where() directly and yields the one connected machine id.
+    const mockAvailableServersDb = (connectedMachineId: string) => {
+      const makeChain = (result: unknown[]) => {
+        const chain: Record<string, unknown> = {
+          limit: vi.fn().mockResolvedValue(result),
+        };
+        chain.orderBy = vi.fn().mockReturnValue(chain);
+        return chain;
+      };
+
+      const selectMock = {
+        from: vi.fn().mockReturnThis(),
+        where: vi
+          .fn()
+          .mockImplementation(() =>
+            Object.assign(
+              Promise.resolve([{ machineIdentifier: connectedMachineId }]),
+              makeChain([{ plexToken: mockExistingServer.token }])
+            )
+          ),
+      };
+      vi.mocked(db.select).mockReturnValue(selectMock as never);
+    };
+
     it('returns 403 for non-owner users', async () => {
       app = await buildTestApp(viewerUser);
 
@@ -324,39 +349,13 @@ describe('Plex Auth Routes', () => {
       expect(body.servers).toEqual([]);
     });
 
-    // TODO: Fix this test - the DB mock chain is complex due to multiple query patterns
-    it.skip('returns empty servers when all owned servers are connected', async () => {
+    it('returns empty servers when all owned servers are connected', async () => {
       app = await buildTestApp(ownerUser);
 
       // Mock getUserById to return the user
       vi.mocked(getUserById).mockResolvedValue(mockDbUser as never);
 
-      // Create a flexible mock that handles various query chain patterns
-      // Route queries: 1) servers for token, 2) servers for connected list
-      const makeChain = (result: unknown[]) => ({
-        limit: vi.fn().mockResolvedValue(result),
-        // For queries that don't use limit (just .where())
-        then: vi.fn((resolve: (v: unknown[]) => void) => resolve(result)),
-        [Symbol.toStringTag]: 'Promise',
-      });
-
-      const selectMock = {
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockImplementation(() => {
-          // First call for token, returns existing server token
-          // Subsequent calls return connected servers list
-          return Object.assign(
-            Promise.resolve([
-              {
-                token: mockExistingServer.token,
-                machineIdentifier: mockExistingServer.machineIdentifier,
-              },
-            ]),
-            makeChain([{ token: mockExistingServer.token }])
-          );
-        }),
-      };
-      vi.mocked(db.select).mockReturnValue(selectMock as never);
+      mockAvailableServersDb(mockExistingServer.machineIdentifier);
 
       // Mock PlexClient.getServers to return only the existing server
       vi.mocked(PlexClient.getServers).mockResolvedValue([
@@ -384,25 +383,7 @@ describe('Plex Auth Routes', () => {
       // Mock getUserById to return the user
       vi.mocked(getUserById).mockResolvedValue(mockDbUser as never);
 
-      // Create a flexible mock
-      const makeChain = (result: unknown[]) => {
-        const chain: Record<string, unknown> = {
-          limit: vi.fn().mockResolvedValue(result),
-        };
-        chain.orderBy = vi.fn().mockReturnValue(chain);
-        return chain;
-      };
-
-      const selectMock = {
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockImplementation(() => {
-          return Object.assign(
-            Promise.resolve([{ machineIdentifier: 'other-machine-id' }]), // Connected server
-            makeChain([{ plexToken: mockExistingServer.token }]) // For limit() queries
-          );
-        }),
-      };
-      vi.mocked(db.select).mockReturnValue(selectMock as never);
+      mockAvailableServersDb('other-machine-id');
 
       // Return a new server not yet connected
       vi.mocked(PlexClient.getServers).mockResolvedValue([mockPlexServer]);

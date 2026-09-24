@@ -481,17 +481,6 @@ describe('resolveRecipients', () => {
     expect(out.recipients.map((r) => r.address)).toEqual(['one@x.com']);
     expect(out.excluded).toEqual([
       {
-        userId: 'u2',
-        serverUserId: 'su-u2',
-        name: 'Two',
-        username: 'two',
-        serverId: 's1',
-        serverName: 'Server',
-        serverIds: ['s1'],
-        thumbUrl: null,
-        reason: 'excluded',
-      },
-      {
         userId: 'u3',
         serverUserId: 'su-u3',
         name: 'Three',
@@ -502,6 +491,59 @@ describe('resolveRecipients', () => {
         thumbUrl: null,
         reason: 'banned',
       },
+      {
+        userId: 'u2',
+        serverUserId: 'su-u2',
+        name: 'Two',
+        username: 'two',
+        serverId: 's1',
+        serverName: 'Server',
+        serverIds: ['s1'],
+        thumbUrl: null,
+        reason: 'excluded',
+      },
     ]);
+  });
+
+  it('lists identities, extras and missing by name while a shared address keeps the oldest identity', async () => {
+    const row = (userId: string, name: string, email: string | null, serverId: string) => ({
+      user_id: userId,
+      server_user_id: `su-${userId}`,
+      name,
+      contact_email: email,
+      identity_email: null,
+      account_emails: null,
+      usernames: [userId],
+      server_ids: [serverId],
+      server_names: ['Server'],
+      thumb_urls: [null],
+    });
+    mockExecute.mockResolvedValue({
+      rows: [
+        row('u-zed', 'Zed', 'same@x.com', 's1'),
+        row('u-alice', 'alice', 'same@x.com', 's2'),
+        row('u-bob', 'Bob', 'bob@x.com', 's1'),
+        row('u-zoe', 'Zoe', null, 's1'),
+        row('u-eve', 'eve', null, 's1'),
+      ],
+    });
+    const out = await resolveRecipients({
+      scope: { serverIds: [], libraries: [] },
+      recipients: {
+        members: true,
+        extraAddresses: [
+          { address: 'mo@x.com', name: 'Mo' },
+          { address: 'al@x.com', name: 'Al' },
+        ],
+        excludeUserIds: [],
+      },
+    });
+    expect(out.recipients.map((r) => [r.address, r.name, r.serverIds])).toEqual([
+      ['bob@x.com', 'Bob', ['s1']],
+      ['same@x.com', 'Zed', ['s1', 's2']],
+      ['al@x.com', 'Al', []],
+      ['mo@x.com', 'Mo', []],
+    ]);
+    expect(out.missing.map((m) => m.name)).toEqual(['eve', 'Zoe']);
   });
 });

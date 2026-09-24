@@ -44,9 +44,10 @@ const opts = (): DigestInputOptions => ({
   serversById: new Map([[JELLYFIN_SERVER.id, JELLYFIN_SERVER]]),
   memberSend: true,
 });
-/** The branding block at its schema limits: 500-character footer and postal address. */
+/** The branding block at its schema limits: 120-character title, 500-character footer and postal address. */
 const branding: EmailBranding = {
   senderName: 'Basement Jellyfin',
+  systemTitle: 't'.repeat(120),
   accentColor: '#0ea0b3',
   footerText: 'f'.repeat(500),
   postalAddress: 'p'.repeat(500),

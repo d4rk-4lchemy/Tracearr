@@ -138,13 +138,16 @@ function setupDbSelectMocks(mockServer: {
   });
 }
 
-function makeMockClient(opts: { totalCount?: number; itemsSinceCount?: number } = {}) {
+function makeMockClient(
+  opts: { totalCount?: number; itemsSinceCount?: number; libraryType?: string } = {}
+) {
   const totalCount = opts.totalCount ?? 100;
   const itemsSinceCount = opts.itemsSinceCount ?? 0;
+  const libraryType = opts.libraryType ?? 'movie';
 
   return {
     serverType: 'plex' as const,
-    getLibraries: vi.fn().mockResolvedValue([{ id: '1', name: 'Movies', type: 'movie' }]),
+    getLibraries: vi.fn().mockResolvedValue([{ id: '1', name: 'Movies', type: libraryType }]),
     getLibraryItems: vi.fn().mockResolvedValue({ items: [], totalCount }),
     getLibraryItemsSince: vi.fn().mockResolvedValue({
       items: Array.from({ length: itemsSinceCount }, (_, i) => ({
@@ -206,6 +209,38 @@ describe('LibrarySyncService full-scan cycle', () => {
 
     expect(client.getLibraryItemsSince).toHaveBeenCalled();
   });
+
+  // Plex serves a flat section's leaves from the same listing as its items, so
+  // asking for both hands every movie to the upsert twice.
+  it.each([
+    { libraryType: 'movie', leafCalls: 0 },
+    { libraryType: 'movies', leafCalls: 0 },
+    { libraryType: 'show', leafCalls: 1 },
+    { libraryType: 'artist', leafCalls: 1 },
+  ])(
+    'incremental sync of a $libraryType library makes $leafCalls leaf fetch(es)',
+    async ({ libraryType, leafCalls }) => {
+      const client = makeMockClient({ totalCount: 100, itemsSinceCount: 5, libraryType });
+      mockCreateClient.mockReturnValue(client);
+
+      const lastSyncedAt = new Date(Date.now() - 3600000);
+      await mockRedis.set('tracearr:library:sync:last:srv-1:1', lastSyncedAt.toISOString());
+      await mockRedis.set('tracearr:library:sync:count:srv-1:1', '100');
+      await mockRedis.set('tracearr:library:sync:scanversion:srv-1:1', '2');
+      await mockRedis.set(
+        'tracearr:library:sync:fullscan:srv-1:1',
+        new Date(Date.now() - 3600000).toISOString()
+      );
+
+      await service.syncServer('srv-1', undefined, 'scheduled');
+
+      expect(client.getLibraryItemsSince).toHaveBeenCalledTimes(1);
+      expect(client.getLibraryLeavesSince).toHaveBeenCalledTimes(leafCalls);
+      if (leafCalls > 0) {
+        expect(client.getLibraryLeavesSince).toHaveBeenCalledWith('1', lastSyncedAt);
+      }
+    }
+  );
 
   it('forces full scan when the last full scan is older than FULL_SCAN_MAX_AGE_MS', async () => {
     const client = makeMockClient({ totalCount: 100 });

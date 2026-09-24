@@ -1228,13 +1228,13 @@ describe('GET /violations ORDER BY', () => {
 
   it('tiebreaks the user branch on the id, not on created_at', async () => {
     expect(await orderClause('orderBy=user&orderDir=asc')).toBe(
-      'server_users.username ASC, automation_runs.id ASC'
+      'lower(coalesce(users.name, server_users.username)) ASC, automation_runs.id ASC'
     );
   });
 
   it('tiebreaks the rule branch on the id, not on created_at', async () => {
     expect(await orderClause('orderBy=rule&orderDir=asc')).toBe(
-      'automations.name ASC, automation_runs.id ASC'
+      'lower(automations.name) ASC, automation_runs.id ASC'
     );
   });
 });

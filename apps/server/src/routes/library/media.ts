@@ -16,6 +16,7 @@ import {
   serverIdsQuerySchema,
   REDIS_KEYS,
   CACHE_TTL,
+  POSTER_IMAGE_SIZE,
   type MediaAvailabilityEntry,
   type MediaDetailResponse,
   type MediaChildEntry,
@@ -33,7 +34,9 @@ import { resolveServerIds } from '../../utils/serverFiltering.js';
 import { decodeCursor } from '../../utils/cursor.js';
 import { cursorPage, cursorPaginationSchema } from '../publicV2/shared.js';
 import { resolveMediaAliases } from '../../services/library/mediaResolutionService.js';
+import { buildProxyUrl, posterVersionFor } from '../../services/imageProxy.js';
 import { listMediaRequests } from '../../services/requests/reads.js';
+import { getSetting } from '../../services/settings.js';
 import {
   buildMediaScope,
   getAvailability,
@@ -42,6 +45,7 @@ import {
   getMediaPlatformBreakdown,
   getMediaStats,
   getMediaWatchers,
+  getPosterCopy,
   getSeasonHeat,
   resolveCanonicalMediaByRef,
   type AvailabilityRow,
@@ -201,8 +205,8 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
     const canonical = await resolveCanonicalMediaByRef(id);
     if (!canonical) return reply.notFound();
 
-    // detail-v3: availability rows gained replaced-copy info
-    const cacheKey = mediaCacheKey(canonical.id, 'detail-v3', resolvedIds);
+    // detail-v4: response gained the poster fields
+    const cacheKey = mediaCacheKey(canonical.id, 'detail-v4', resolvedIds);
     const cached = await readCache<MediaDetailResponse>(app.redis, cacheKey);
     if (cached) return cached;
 
@@ -213,6 +217,12 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
       canonical.mediaType,
       resolvedIds
     );
+    const poster = await getPosterCopy(
+      canonical.id,
+      resolvedIds,
+      await getSetting('preferredPosterServerId')
+    );
+    const posterVersion = poster ? posterVersionFor(poster.thumbPath) : null;
 
     const response: MediaDetailResponse = {
       id: canonical.id,
@@ -228,6 +238,18 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
       availability: availability.map(toAvailabilityEntry),
       seasonCount,
       episodeCount,
+      posterUrl:
+        poster && posterVersion
+          ? buildProxyUrl({
+              serverId: poster.serverId,
+              path: poster.thumbPath,
+              ...POSTER_IMAGE_SIZE,
+              version: posterVersion,
+              fallback: 'poster',
+            })
+          : null,
+      posterVersion,
+      dominantColor: poster?.dominantColor ?? null,
     };
     await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_MEDIA_DETAIL, JSON.stringify(response));
     return response;

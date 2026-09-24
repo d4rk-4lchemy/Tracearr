@@ -1,5 +1,5 @@
 # Build stage
-FROM node:24-alpine3.23@sha256:838d276a37a1e42da2a5d01e0ecbb4401ca4147728f62ca2eba6d023a352f88f AS builder
+FROM node:24-alpine3.23@sha256:9ec4a2e289874ed0d722e1772ec2de45d2801541db8612f3638b26f128c69ac2 AS builder
 
 # Build arguments for version info
 ARG APP_VERSION=0.0.0
@@ -15,7 +15,7 @@ ARG APP_IMAGE_REPO=darkalchemy2137/distracearr
 
 # pnpm's install script is what puts its native binary in place. corepack never runs it,
 # and npm 12 blocks it unless allowed, so both leave pnpm's shebang-less fallback shim instead.
-RUN npm install -g --allow-scripts=pnpm pnpm@12.3.4
+RUN npm install -g --allow-scripts=pnpm pnpm@12.4.2
 
 WORKDIR /app
 
@@ -38,7 +38,7 @@ COPY . .
 RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --filter=@tracearr/web
 
 # Production stage
-FROM node:24-alpine3.23@sha256:838d276a37a1e42da2a5d01e0ecbb4401ca4147728f62ca2eba6d023a352f88f AS runner
+FROM node:24-alpine3.23@sha256:9ec4a2e289874ed0d722e1772ec2de45d2801541db8612f3638b26f128c69ac2 AS runner
 
 # Build arguments for version info (must redeclare in each stage)
 ARG APP_VERSION=0.0.0
@@ -52,12 +52,17 @@ ARG APP_FORK_RELEASE_TAG=
 ARG APP_FORK_REPO=d4rk-4lchemy/Tracearr
 ARG APP_IMAGE_REPO=darkalchemy2137/distracearr
 
-RUN npm install -g --allow-scripts=pnpm pnpm@12.3.4
+RUN npm install -g --allow-scripts=pnpm pnpm@12.4.2
 
 # Tailscale VPN binary (userspace networking, no root required)
 RUN apk add --no-cache tailscale postgresql-client
 
 WORKDIR /app
+
+# Helm pins this to its own PVC mountPath; plain Docker installs mount a named
+# volume here. Must stay a path the image creates and chowns, since the server
+# mkdirs it at startup and cannot recover from EACCES.
+ENV IMAGE_CACHE_DIR=/data/tracearr/image-cache
 
 ARG CACHE_BUST
 # Write build info to JSON file - can't be overridden by compose ENV vars
@@ -112,10 +117,10 @@ COPY data/basemap.pmtiles ./data/basemap.pmtiles
 COPY data/BASEMAP_NOTICE.txt ./data/BASEMAP_NOTICE.txt
 
 # Create image cache and backup directories
-RUN mkdir -p /app/data/image-cache /data/backup
+RUN mkdir -p /app/data/image-cache /data/tracearr/image-cache /data/backup
 
-# Install production dependencies only (ignore-scripts prevents prepare/husky from running)
-RUN pnpm install --prod --frozen-lockfile --ignore-scripts
+# Server runtime deps only: the web app ships as static files, so its packages never load here (ignore-scripts keeps prepare/husky out)
+RUN pnpm install --prod --frozen-lockfile --ignore-scripts --filter @tracearr/server...
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -125,7 +130,7 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 tracearr
 
 # Set ownership
-RUN chown -R tracearr:nodejs /app /data/backup
+RUN chown -R tracearr:nodejs /app /data/tracearr /data/backup
 
 USER tracearr
 

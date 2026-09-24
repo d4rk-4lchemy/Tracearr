@@ -134,7 +134,16 @@ describe('jsonWebhookType.render', () => {
       quality: '1080p',
       player: 'Plex Web',
     });
-    expect(body.data.location).toEqual({ city: 'New York', country: 'US' });
+    expect(body.data.location).toEqual({ city: 'New York', country: 'US', isLocal: false });
+  });
+
+  it('flags a local session in the location block', async () => {
+    const body = await render({
+      type: 'session_started',
+      payload: createMockActiveSession({ isLocal: true, geoCity: 'Chicago', geoCountry: 'US' }),
+    });
+
+    expect(body.data.location).toEqual({ city: 'Chicago', country: 'US', isLocal: true });
   });
 
   it('normalizes an empty ratingKey to null', async () => {

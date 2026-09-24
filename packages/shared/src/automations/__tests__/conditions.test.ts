@@ -43,6 +43,14 @@ describe('condition field descriptors', () => {
     ]);
     expect(fieldsAvailableFor('server')).toEqual(['server_id']);
   });
+
+  it('splits the media group by context, so neither side sees the other half', () => {
+    const session = fieldsAvailableFor('session');
+    expect(session).toContain('season_number');
+    expect(session).toContain('episode_number');
+    expect(session).not.toContain('dynamic_range_after');
+    expect(fieldsAvailableFor('media')).not.toContain('episode_number');
+  });
 });
 
 describe('condition nodes', () => {

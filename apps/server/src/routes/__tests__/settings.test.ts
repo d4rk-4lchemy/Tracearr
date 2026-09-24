@@ -86,6 +86,7 @@ const mockImageCacheStatus: ImageCacheStatus = {
   sweptAt: '2026-08-23T00:00:00.000Z',
   freedBytesLastSweep: 500,
   deletedFilesLastSweep: 2,
+  notPersisting: false,
   postersWithThumb: 42,
   estimatedNeedBytes: 42 * 18 * 1024,
   freeBytes: 50 * 1024 ** 3,

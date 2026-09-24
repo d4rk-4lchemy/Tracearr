@@ -429,6 +429,7 @@ export interface RunSessionContext {
   ipAddress: string | null;
   city: string | null;
   country: string | null;
+  isLocal: boolean;
 }
 
 export interface AutomationRunSummary {

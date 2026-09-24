@@ -92,7 +92,9 @@ describe('heroRequestLine', () => {
     const entry = makeEntry();
     const line = heroRequestLine(entry, 'Alice', t, 'MMM d, yyyy');
     const date = format(new Date(entry.requestedAt), 'MMM d, yyyy');
-    expect(line).toBe(`requests.hero.line:{"name":"Alice","date":"${date}","tail":"1d"}`);
+    expect(line).toBe(
+      `requests.hero.line:{"name":"Alice","date":"${date}","tail":"requests.hero.landed:{\\"wait\\":\\"1d\\"}"}`
+    );
   });
 
   it('fills the declined tail for a declined request', () => {
@@ -112,6 +114,6 @@ describe('heroRequestLine', () => {
       t,
       'MMM d, yyyy'
     );
-    expect(line).toContain('"tail":"requests.wait.pending"');
+    expect(line).toContain('"tail":"requests.hero.waiting"');
   });
 });

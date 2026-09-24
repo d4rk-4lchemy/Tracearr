@@ -12,7 +12,10 @@ import {
   refreshAggregates,
   uncapDecompressionForTx,
 } from '../db/timescale.js';
-import { enqueueMaintenanceJob } from '../jobs/maintenanceQueue.js';
+import {
+  enqueueMaintenanceJob,
+  enqueueServerLocationSyncIfBehind,
+} from '../jobs/maintenanceQueue.js';
 import {
   batchGetLibraryItemIdentity,
   batchResolveMediaByPlexGuid,
@@ -38,6 +41,7 @@ import {
   type SessionUpdate,
   type TimeBounds,
 } from './import/index.js';
+import { markImportedServerLocations } from './serverLocations.js';
 import { getSettings, rearmImportedHistoryLink } from './settings.js';
 
 const PAGE_SIZE = 5000; // Larger batches = fewer API calls (tested up to 10k, scales linearly)
@@ -706,7 +710,7 @@ export class TautulliService {
     serverId: string,
     pubSubService?: PubSubService,
     onProgress?: (progress: TautulliImportProgress) => Promise<void>,
-    options?: { overwriteFriendlyNames?: boolean; skipRefresh?: boolean }
+    options?: { overwriteFriendlyNames?: boolean }
   ): Promise<TautulliImportResult> {
     const changes = { imported: 0, updated: 0, complete: false };
     try {
@@ -726,11 +730,10 @@ export class TautulliService {
     serverId: string,
     pubSubService: PubSubService | undefined,
     onProgress: ((progress: TautulliImportProgress) => Promise<void>) | undefined,
-    options: { overwriteFriendlyNames?: boolean; skipRefresh?: boolean } | undefined,
+    options: { overwriteFriendlyNames?: boolean } | undefined,
     changes: { imported: number; updated: number; complete: boolean }
   ): Promise<TautulliImportResult> {
     const overwriteFriendlyNames = options?.overwriteFriendlyNames ?? false;
-    const skipRefresh = options?.skipRefresh ?? false;
 
     // Get Tautulli settings
     const config = await getSettings(['tautulliUrl', 'tautulliApiKey']);
@@ -1290,6 +1293,7 @@ export class TautulliService {
             geoLon: geo.lon,
             geoAsnNumber: geo.asnNumber,
             geoAsnOrganization: geo.asnOrganization,
+            isLocal: geoipService.isPrivateIP(extractIpFromEndpoint(record.ip_address)),
             playerName: (record.player || record.product)?.slice(0, 255) ?? null,
             deviceId: record.machine_id?.slice(0, 255) || null,
             product: record.product?.slice(0, 255) || null,
@@ -1429,44 +1433,50 @@ export class TautulliService {
       }
     }
 
-    // Refresh TimescaleDB aggregates so imported data appears in stats immediately
-    // Skip if enrichment will follow (it will refresh after updating bitrate data)
-    if (!skipRefresh) {
-      progress.message = 'Refreshing aggregates...';
-      publishProgress(progress);
-      try {
-        // Use bounded refresh based on actual import date range (memory-efficient)
-        // Add 1 day buffer on each side for timezone edge cases
-        if (minImportDate && maxImportDate) {
-          const startTime = new Date(minImportDate.getTime() - 24 * 60 * 60 * 1000);
-          const endTime = new Date(maxImportDate.getTime() + 24 * 60 * 60 * 1000);
-          console.log(
-            `[Import] Refreshing aggregates for date range: ${startTime.toISOString()} to ${endTime.toISOString()}`
-          );
-          await refreshAggregates({ startTime, endTime });
-        } else {
-          // Fallback to default 7-day bounded refresh if no dates tracked
-          await refreshAggregates();
-        }
-
-        // Check if this is a fresh install that needs full aggregate rebuild
-        // (aggregates missing >7 days of historical data)
-        const rebuildStatus = await checkAggregateNeedsRebuild();
-        if (rebuildStatus.needsRebuild) {
-          console.log(
-            `[Import] Fresh install detected - queueing safe aggregate rebuild: ${rebuildStatus.reason}`
-          );
-          try {
-            await enqueueMaintenanceJob('full_aggregate_rebuild', 'system');
-            console.log('[Import] Safe aggregate rebuild job queued');
-          } catch {
-            // Job might already be running/queued - that's fine
-            console.log('[Import] Could not queue aggregate rebuild (may already be running)');
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to refresh aggregates after import:', err);
+    // An imported day only reaches the aggregates if a refresh covers it: once the
+    // refresh policy advances the watermark past it, the real-time union stops
+    // reading raw sessions for that day and the plays are invisible to every
+    // aggregate-backed read (watchers, watched state, request lenses).
+    progress.message = 'Refreshing aggregates...';
+    publishProgress(progress);
+    try {
+      // Use bounded refresh based on actual import date range (memory-efficient)
+      // Add 1 day buffer on each side for timezone edge cases
+      if (minImportDate && maxImportDate) {
+        const startTime = new Date(minImportDate.getTime() - 24 * 60 * 60 * 1000);
+        const endTime = new Date(maxImportDate.getTime() + 24 * 60 * 60 * 1000);
+        console.log(
+          `[Import] Refreshing aggregates for date range: ${startTime.toISOString()} to ${endTime.toISOString()}`
+        );
+        await refreshAggregates({ startTime, endTime });
+      } else {
+        // Fallback to default 7-day bounded refresh if no dates tracked
+        await refreshAggregates();
       }
+
+      // Check if this is a fresh install that needs full aggregate rebuild
+      // (aggregates missing >7 days of historical data)
+      const rebuildStatus = await checkAggregateNeedsRebuild();
+      if (rebuildStatus.needsRebuild) {
+        console.log(
+          `[Import] Fresh install detected - queueing safe aggregate rebuild: ${rebuildStatus.reason}`
+        );
+        try {
+          await enqueueMaintenanceJob('full_aggregate_rebuild', 'system');
+          console.log('[Import] Safe aggregate rebuild job queued');
+        } catch {
+          // Job might already be running/queued - that's fine
+          console.log('[Import] Could not queue aggregate rebuild (may already be running)');
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to refresh aggregates after import:', err);
+    }
+    try {
+      await markImportedServerLocations(serverId);
+      await enqueueServerLocationSyncIfBehind();
+    } catch (err) {
+      console.error('[Import] Could not queue the server location sync:', err);
     }
 
     // Update joinedAt for users based on their earliest session
@@ -1619,6 +1629,8 @@ export class TautulliService {
     let totalEnriched = 0;
     let totalFailed = 0;
     let totalSkipped = 0;
+    let minEnrichedDate: Date | null = null;
+    let maxEnrichedDate: Date | null = null;
     let lastProgressTime = Date.now();
     let chunkNumber = 0;
     let cursor: number | undefined;
@@ -1636,6 +1648,7 @@ export class TautulliService {
           id: sessions.id,
           externalSessionId: sessions.externalSessionId,
           sessionKey: sessions.sessionKey,
+          startedAt: sessions.startedAt,
         })
         .from(sessions)
         .where(
@@ -1664,6 +1677,7 @@ export class TautulliService {
         // Process batch with concurrency limit
         const pendingUpdates: Array<{
           id: string;
+          startedAt: Date;
           data: ReturnType<typeof mapStreamDataToSession>;
         }> = [];
 
@@ -1701,7 +1715,12 @@ export class TautulliService {
                 mappedData.sourceAudioCodec ||
                 mappedData.bitrate
               ) {
-                return { status: 'enriched' as const, id: session.id, data: mappedData };
+                return {
+                  status: 'enriched' as const,
+                  id: session.id,
+                  startedAt: session.startedAt,
+                  data: mappedData,
+                };
               }
               return { status: 'skipped' as const, id: session.id };
             })
@@ -1714,7 +1733,11 @@ export class TautulliService {
             if (result.status === 'fulfilled') {
               const value = result.value;
               if (value.status === 'enriched' && value.data) {
-                pendingUpdates.push({ id: value.id, data: value.data });
+                pendingUpdates.push({
+                  id: value.id,
+                  startedAt: value.startedAt,
+                  data: value.data,
+                });
               } else {
                 totalSkipped++;
                 progress.skippedRecords++;
@@ -1740,6 +1763,12 @@ export class TautulliService {
               await tx.update(sessions).set(update.data).where(eq(sessions.id, update.id));
             }
           });
+          for (const update of pendingUpdates) {
+            if (!minEnrichedDate || update.startedAt < minEnrichedDate)
+              minEnrichedDate = update.startedAt;
+            if (!maxEnrichedDate || update.startedAt > maxEnrichedDate)
+              maxEnrichedDate = update.startedAt;
+          }
           totalEnriched += pendingUpdates.length;
           progress.updatedRecords += pendingUpdates.length;
         }
@@ -1766,14 +1795,20 @@ export class TautulliService {
       }
     }
 
-    // Refresh aggregates so updated bitrate data appears in bandwidth stats
-    // Enrichment only updates existing sessions, doesn't add new dates, so default bounded refresh is fine
+    // Bitrate lands on sessions that are already years old, so the refresh has to
+    // cover the days it just rewrote - a 7-day window leaves every older bucket
+    // holding the pre-enrichment bitrate.
     if (totalEnriched > 0) {
       progress.message = 'Refreshing aggregates...';
       publishProgress(progress);
       try {
-        // Default 7-day bounded refresh is sufficient for enrichment updates
-        await refreshAggregates();
+        if (minEnrichedDate && maxEnrichedDate) {
+          const startTime = new Date(minEnrichedDate.getTime() - 24 * 60 * 60 * 1000);
+          const endTime = new Date(maxEnrichedDate.getTime() + 24 * 60 * 60 * 1000);
+          await refreshAggregates({ startTime, endTime });
+        } else {
+          await refreshAggregates();
+        }
       } catch (err) {
         console.warn('[Tautulli] Failed to refresh aggregates after enrichment:', err);
       }

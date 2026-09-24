@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { MapPin, ChevronDown, ChevronUp, Globe } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { UserLocation } from '@tracearr/shared';
+import { LocalBadge } from '@/components/sessions/LocalBadge';
 
 interface UserLocationsCardProps {
   locations: UserLocation[];
@@ -86,7 +87,7 @@ export function UserLocationsCard({
       <CardContent>
         <div className="space-y-3">
           {displayedLocations.map((location) => {
-            const locationKey = `${location.city ?? 'unknown'}-${location.country ?? 'unknown'}-${location.lat}-${location.lon}`;
+            const locationKey = `${location.city ?? 'unknown'}-${location.country ?? 'unknown'}-${location.lat}-${location.lon}-${location.isLocal}`;
             const percentage =
               totalSessions > 0 ? Math.round((location.sessionCount / totalSessions) * 100) : 0;
 
@@ -108,6 +109,7 @@ export function UserLocationsCard({
                     </p>
                     <div className="text-muted-foreground flex items-center gap-2 text-xs">
                       <span>{location.country ?? 'Unknown'}</span>
+                      <LocalBadge isLocal={location.isLocal} country={location.country} />
                       <span>·</span>
                       <span>
                         {location.sessionCount} session{location.sessionCount !== 1 ? 's' : ''}

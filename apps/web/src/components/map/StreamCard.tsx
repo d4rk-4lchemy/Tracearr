@@ -4,6 +4,7 @@ import { Marker, type StyleSpecification } from 'maplibre-gl';
 import { formatEpisodeLabel, type ActiveSession, type LocationStats } from '@tracearr/shared';
 import { cn, formatLocationCompact } from '@/lib/utils';
 import { ActiveSessionBadge } from '@/components/sessions/ActiveSessionBadge';
+import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { ServerLegend } from '@/components/server';
 import { User, MapPin } from 'lucide-react';
 import { getAvatarUrl } from '@/components/users/utils';
@@ -252,6 +253,7 @@ function SessionPopupContent({ session }: { session: ActiveSession }) {
             <span className="truncate">
               {formatLocationCompact(session.geoCity, session.geoRegion, session.geoCountry)}
             </span>
+            <LocalBadge isLocal={session.isLocal} country={session.geoCountry} />
           </>
         )}
         {(session.product || session.platform) && (

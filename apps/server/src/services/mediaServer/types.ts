@@ -616,6 +616,17 @@ export interface IMediaServerClient {
     since: Date,
     options?: { offset?: number; limit?: number }
   ): Promise<{ items: MediaLibraryItem[]; totalCount: number }>;
+
+  /**
+   * Ask the server whether each item's files are still on disk. Plex-only:
+   * its listings keep reporting a file until the library trash is emptied, and
+   * only the metadata endpoint says whether the file is really there. JF/Emby
+   * drop the item instead, so they leave this undefined.
+   *
+   * @param ratingKeys - Server item identifiers to check
+   * @returns Rating key -> version key -> whether the file exists
+   */
+  checkFilesExist?(ratingKeys: string[]): Promise<Map<string, Map<string, boolean>>>;
 }
 
 /**

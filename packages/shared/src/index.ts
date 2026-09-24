@@ -8,6 +8,9 @@ export type {
   ServerType,
   DispatcharrAuthMode,
   Server,
+  ServerLocationEntry,
+  ServerLocationsResponse,
+  UpdateServerLocationsResponse,
   // User
   User,
   ServerUser,
@@ -219,6 +222,8 @@ export type {
   DuplicateGroup,
   DuplicatesSummary,
   DuplicatesResponse,
+  DuplicateFileStatus,
+  DuplicateFilesResponse,
   StaleCategory,
   StaleItem,
   StaleSummary,
@@ -242,6 +247,7 @@ export type {
   CatalogLettersResponse,
   ShelfRow,
   RecentlyAddedShelfRow,
+  RecentlyUpdatedShelfRow,
   MostPopularShelfRow,
   DeadWeightRow,
   ShelvesKpiWatchedInPeriod,
@@ -443,6 +449,8 @@ export {
   serverIdParamSchema,
   reorderServersSchema,
   updateServerSchema,
+  serverLocationEntrySchema,
+  serverLocationsSchema,
   // User
   updateUserSchema,
   updateUserIdentitySchema,
@@ -531,6 +539,7 @@ export {
   libraryQualityQuerySchema,
   libraryStorageQuerySchema,
   libraryDuplicatesQuerySchema,
+  libraryDuplicateFilesQuerySchema,
   libraryStaleQuerySchema,
   libraryWatchQuerySchema,
   libraryRoiQuerySchema,
@@ -648,6 +657,8 @@ export type {
 // User merge
 export { rankMergeTarget, type MergeRankInput } from './merge.js';
 
+export { LOCAL_NETWORK_COUNTRY, isPlacedLocal } from './localNetwork.js';
+
 export { isEmailAddress, usernameAsEmail } from './emailAddress.js';
 
 // Rich text for newsletter intro and outro
@@ -720,6 +731,7 @@ export type {
   LibraryQualityQueryInput,
   LibraryStorageQueryInput,
   LibraryDuplicatesQueryInput,
+  LibraryDuplicateFilesQueryInput,
   LibraryStaleQueryInput,
   LibraryWatchQueryInput,
   LibraryRoiQueryInput,
@@ -952,6 +964,7 @@ export {
   releaseChangeSchema,
   releaseHighlightSchema,
   releaseNotesFileSchema,
+  releaseLinkLabel,
   isMinorRelease,
   releaseTagIssues,
   renderReleaseNotesMarkdown,

@@ -17,12 +17,12 @@
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import { and, asc, eq, gt, gte, isNotNull, isNull, sql } from 'drizzle-orm';
-import { POSTER_IMAGE_SIZE } from '@tracearr/shared';
+import { POSTER_IMAGE_SIZE, REDIS_KEYS } from '@tracearr/shared';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
 import { libraryItems, servers } from '../db/schema.js';
-import { proxyImage, posterCacheEntryExists } from '../services/imageProxy.js';
+import { IMAGE_CACHE_DIR, proxyImage, posterCacheEntryExists } from '../services/imageProxy.js';
 import {
   takeRefusedWrites,
   writeDiskLimited,
@@ -34,6 +34,15 @@ import { getRedis } from '../lib/redisShared.js';
 import { getSetting } from '../services/settings.js';
 import { getLibrarySyncStatus } from './librarySyncQueue.js';
 import { reconcileImagePrecacheOnBoot } from './imagePrecacheBoot.js';
+import { commitFullPass } from './precachePassPolicy.js';
+import {
+  streamPressure,
+  warmConcurrencyFor,
+  backoffDelayMs,
+  WARM_CONCURRENCY_HEAVY,
+  FAILURE_BACKOFF_BATCHES,
+} from './warmConcurrency.js';
+import { getCacheService } from '../services/cache.js';
 
 export interface ImagePrecacheJobData {
   serverId: string;
@@ -56,10 +65,72 @@ export interface ImagePrecacheJobData {
 
 const QUEUE_NAME = 'image-precache';
 const BATCH_SIZE = 50;
-// Self-limits to at most 2 of the global 6 fetch-semaphore slots (imageProxy.ts)
-// so a precache pass never starves live poster requests from real browsing.
-const MAX_CONCURRENT_WARMS = 2;
 const SYNC_ACTIVE_RETRY_DELAY_MS = 60 * 1000;
+
+// Per-server, in-process on purpose: a restart means the operator changed
+// something, so probe at full rate again rather than inherit a stale pause.
+// Two counters, because the delay has to keep growing across a pause that
+// resets the failure count so the next attempt can actually warm.
+const failingBatches = new Map<string, number>();
+const backoffRounds = new Map<string, number>();
+
+const PERSISTENCE_SAMPLE = 20;
+/** Below this share of a sample present on disk, a full pass this process
+ *  completed cannot explain what is there, so the directory is not surviving. */
+const PERSISTENCE_MIN_PRESENT = 0.2;
+
+/**
+ * A completed full pass means these posters were on disk. If they have since
+ * vanished, the cache directory is not on a volume. Only a stamp taken against
+ * the directory this process uses counts: a stamp from another path (the
+ * default moved in an upgrade, or the operator changed IMAGE_CACHE_DIR) sits
+ * beside a legitimately empty cache, and so does one from before the path was
+ * recorded at all.
+ */
+async function checkPersistence(
+  serverId: string,
+  batch: ReadonlyArray<PrecacheBatchRow>
+): Promise<void> {
+  const redis = getRedis();
+  const [lastFull, stampedDir] = await Promise.all([
+    redis.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId)),
+    redis.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL_DIR(serverId)),
+  ]);
+  if (!lastFull || stampedDir !== IMAGE_CACHE_DIR) return;
+
+  const sample = batch.slice(0, PERSISTENCE_SAMPLE);
+  if (sample.length === 0) return;
+  const present = (
+    await Promise.all(sample.map((item) => posterCacheEntryExists(serverId, item.thumbPath)))
+  ).filter(Boolean).length;
+
+  if (present / sample.length < PERSISTENCE_MIN_PRESENT) {
+    await redis.set(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING, new Date().toISOString());
+    console.warn(
+      `[ImagePrecache] poster cache is not persisting: ${present}/${sample.length} of a sample survived a completed full pass`
+    );
+  } else {
+    await redis.del(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING);
+  }
+}
+
+/** Module state outlives a single job, so tests must be able to clear it. */
+export function _resetWarmBackoffForTests(): void {
+  failingBatches.clear();
+  backoffRounds.clear();
+}
+
+/** Fails toward the floor: without a session view we slow down, never speed up. */
+async function warmConcurrencyForServer(serverId: string): Promise<number> {
+  const cache = getCacheService();
+  if (!cache) return WARM_CONCURRENCY_HEAVY;
+  try {
+    const sessions = await cache.getAllActiveSessions();
+    return warmConcurrencyFor(streamPressure(sessions.filter((s) => s.serverId === serverId)));
+  } catch {
+    return WARM_CONCURRENCY_HEAVY;
+  }
+}
 
 let connectionOptions: ConnectionOptions | null = null;
 let imagePrecacheQueue: Queue<ImagePrecacheJobData> | null = null;
@@ -329,7 +400,19 @@ async function fetchBatch(
  *  concurrent tasks to MAX_CONCURRENT_WARMS bounds concurrent semaphore
  *  slots the same way. */
 async function runWarmTask(serverId: string, thumbPath: string): Promise<void> {
-  await proxyImage({ serverId, imagePath: thumbPath, ...POSTER_IMAGE_SIZE, fallback: 'poster' });
+  const result = await proxyImage({
+    serverId,
+    imagePath: thumbPath,
+    ...POSTER_IMAGE_SIZE,
+    fallback: 'poster',
+    resizedOnly: true,
+  });
+  // proxyImage answers a failed fetch with a placeholder rather than rejecting,
+  // because live requests share the same in-flight promise. Without this the
+  // pass cannot tell a dead transcoder from a warm cache and never backs off.
+  if (result.degraded) {
+    throw new Error(`upstream returned no image for ${thumbPath}`);
+  }
 }
 
 /**
@@ -380,8 +463,12 @@ export async function processImagePrecacheJob(
 
   const batch = await fetchBatch(serverId, cursor, sinceUpdatedAt);
   if (batch.length === 0) {
-    await recordPassOutcome(job.data.refusedWrites ?? 0);
+    await recordPassOutcome(serverId, sinceUpdatedAt, job.data.refusedWrites ?? 0);
     return { done: true };
+  }
+
+  if (cursor === null && sinceUpdatedAt == null) {
+    await checkPersistence(serverId, batch);
   }
 
   const missing = (
@@ -392,6 +479,22 @@ export async function processImagePrecacheJob(
     )
   ).filter((item): item is PrecacheBatchRow => item !== null);
 
+  if ((failingBatches.get(serverId) ?? 0) >= FAILURE_BACKOFF_BATCHES) {
+    const round = backoffRounds.get(serverId) ?? 0;
+    const delay = backoffDelayMs(round);
+    backoffRounds.set(serverId, round + 1);
+    // Back below the threshold so the delayed retry actually warms. Returning
+    // here without this leaves the chain re-enqueueing forever, never running
+    // the warm that would record the success and clear the pause.
+    failingBatches.set(serverId, FAILURE_BACKOFF_BATCHES - 1);
+    await enqueueChained({ ...job.data, passStartedAt }, delay);
+    console.warn(`[ImagePrecache] backing off ${serverId} for ${delay}ms after failing batches`);
+    return { skipped: true, reason: 'backing off' };
+  }
+
+  const concurrency = await warmConcurrencyForServer(serverId);
+  let warmSuccesses = 0;
+  let warmFailures = 0;
   let nextIndex = 0;
   async function warmPoolWorker(): Promise<void> {
     while (nextIndex < missing.length) {
@@ -399,14 +502,23 @@ export async function processImagePrecacheJob(
       // Fail-open: a single warm failing must not fail the batch or the job.
       try {
         await runWarmTask(serverId, item.thumbPath);
+        warmSuccesses++;
       } catch (err) {
+        warmFailures++;
         console.error(`[ImagePrecache] Failed to warm item ${item.id}:`, err);
       }
     }
   }
   await Promise.all(
-    Array.from({ length: Math.min(MAX_CONCURRENT_WARMS, missing.length) }, () => warmPoolWorker())
+    Array.from({ length: Math.min(concurrency, missing.length) }, () => warmPoolWorker())
   );
+
+  if (warmSuccesses > 0) {
+    failingBatches.delete(serverId);
+    backoffRounds.delete(serverId);
+  } else if (warmFailures > 0) {
+    failingBatches.set(serverId, (failingBatches.get(serverId) ?? 0) + 1);
+  }
 
   const refusedWrites = (job.data.refusedWrites ?? 0) + takeRefusedWrites();
   if (batch.length === BATCH_SIZE) {
@@ -422,7 +534,7 @@ export async function processImagePrecacheJob(
     });
     return { processed: batch.length };
   }
-  await recordPassOutcome(refusedWrites);
+  await recordPassOutcome(serverId, sinceUpdatedAt, refusedWrites);
   return { processed: batch.length };
 }
 
@@ -431,8 +543,18 @@ export async function processImagePrecacheJob(
  * next, and a clean pass clears what a still-refusing pass re-sets on its own end.
  * Accepted, since one pass heals it either way.
  */
-async function recordPassOutcome(refusedWrites: number): Promise<void> {
+async function recordPassOutcome(
+  serverId: string,
+  sinceUpdatedAt: string | null | undefined,
+  refusedWrites: number
+): Promise<void> {
   const redis = getRedis();
+  // A null/absent watermark is exactly what resolvePrecachePass returns for a
+  // full walk, and fetchBatch drops the predicate for both, so this is the
+  // pass that really covered every row.
+  if (sinceUpdatedAt == null) {
+    await commitFullPass(redis, serverId, IMAGE_CACHE_DIR);
+  }
   if (refusedWrites > 0) {
     await writeDiskLimited(redis, refusedWrites);
     console.warn(`[ImagePrecache] pass ended disk-limited: ${refusedWrites} writes refused`);

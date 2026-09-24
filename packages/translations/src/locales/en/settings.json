@@ -127,15 +127,18 @@
       "size": "On disk",
       "files": "Files",
       "need": "Estimated need",
-      "needHint": "{{count}} posters × 18 KB",
+      "needHint": "{{count}} posters × {{size}}",
       "free": "Free disk",
       "freeOf": "of {{total}}",
       "floor": "Keeps free",
       "ceiling": "Ceiling",
       "lastSweep": "Last sweep",
+      "swept": "Removed last sweep",
+      "freed": "Freed last sweep",
       "never": "not yet",
       "diskLimited": "Disk-limited since {{since}}: about {{shortfall}} of posters are not cached.",
-      "loadError": "Could not load the cache status."
+      "loadError": "Could not load the cache status.",
+      "notPersisting": "The poster cache is not surviving restarts. Mount a volume at the cache directory, or every poster is downloaded again after each container recreate."
     }
   },
   "servers": {
@@ -198,6 +201,26 @@
     "checkingConnection": "Checking connection…",
     "pluginVersion": "plugin v{{version}}",
     "pluginUpdateAvailable": "Plugin update available",
+    "location": {
+      "title": "Location",
+      "description": "Optional. Places this server's local network sessions on the map. Nothing is looked up online; you set it here.",
+      "set": "Set location",
+      "addMove": "Add a move",
+      "fromBeginning": "From the beginning",
+      "movedOn": "From",
+      "remove": "Remove",
+      "latitude": "Latitude",
+      "longitude": "Longitude",
+      "country": "Country",
+      "countryPlaceholder": "Select a country",
+      "countrySearch": "Search countries...",
+      "countryEmpty": "No country found",
+      "city": "City",
+      "region": "Region",
+      "pickHint": "Click the map to place the server, or type coordinates.",
+      "incomplete": "Each location needs a country and valid coordinates.",
+      "syncPending": "Past sessions are still being updated."
+    },
     "realtimeDialog": {
       "title": "Enable real-time updates",
       "updateTitle": "Update the Tracearr SSE plugin",
@@ -474,6 +497,7 @@
     "changeCount_other": "{{count}} changes",
     "series": "Tracearr {{series}}",
     "docs": "Docs",
+    "source": "GitHub",
     "empty": "No release notes are bundled with this version.",
     "types": {
       "new": "New",
@@ -960,6 +984,8 @@
         "url": "An image at a URL"
       },
       "logoUrl": "Logo URL",
+      "systemTitle": "System title",
+      "systemTitleHelp": "Shown beside the logo at the top of every email, for example \"Tracearr for Emby\". Leave blank to use the server or newsletter name.",
       "accent": "Accent color",
       "accentPicker": "Pick the accent color",
       "footerText": "Footer text",

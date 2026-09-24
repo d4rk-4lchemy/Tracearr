@@ -17,7 +17,8 @@ import {
   getRequestsAnalytics,
   type RequestsAnalyticsData,
 } from '../services/requests/analytics.js';
-import { anyRequestServiceEnabled } from '../services/requests/store.js';
+import { anyRequestServiceLinked } from '../services/requests/store.js';
+import { compareNames } from '../utils/collation.js';
 import { resolveServerIds } from '../utils/serverFiltering.js';
 
 type SortValue = string | number | null;
@@ -44,7 +45,7 @@ function compare(a: SortValue, b: SortValue, order: 'asc' | 'desc'): number {
   if (a === null) return 1;
   if (b === null) return -1;
   const delta =
-    typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b));
+    typeof a === 'number' && typeof b === 'number' ? a - b : compareNames(String(a), String(b));
   return order === 'asc' ? delta : -delta;
 }
 
@@ -87,7 +88,7 @@ export const requestRoutes: FastifyPluginAsync = async (app) => {
   }
 
   app.get('/status', { preHandler: [app.authenticate] }, async (): Promise<RequestsStatus> => {
-    return { configured: await anyRequestServiceEnabled() };
+    return { configured: await anyRequestServiceLinked() };
   });
 
   app.get<{ Querystring: Record<string, unknown> }>(

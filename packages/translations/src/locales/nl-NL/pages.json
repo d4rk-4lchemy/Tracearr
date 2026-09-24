@@ -156,7 +156,7 @@
     "contactEmailLabel": "",
     "contactEmailNone": "",
     "contactEmailNoLogin": "",
-    "locations": ""
+    "locations": "Locaties"
   },
   "history": {
     "title": "Geschiedenis",
@@ -236,11 +236,15 @@
       "noDuplicatesTitle": "Geen duplicaten gevonden",
       "noDuplicatesDesc": "Er zijn geen titels gevonden met meer dan een fysiek bestand.",
       "colTitle": "Titel",
+      "colType": "",
       "colMatchType": "Overeenkomsttype",
       "colCopies": "Kopieën",
       "colRecoverable": "Herstelbare ruimte",
       "sameServer": "Zelfde server",
-      "mirror": "Spiegel"
+      "mirror": "Spiegel",
+      "missingOnServer": "",
+      "missingOnServerHint": "",
+      "copyPath": ""
     },
     "watch": {
       "title": "Bekijk Analytics",
@@ -462,7 +466,7 @@
       "outcomes": {
         "completed": "",
         "stopped_by_condition": "",
-        "error": "Error"
+        "error": ""
       },
       "empty": "Nog geen uitvoeringen",
       "emptyDescription": "",
@@ -564,7 +568,7 @@
       "clearSelection": "Selectie wissen",
       "selectedCount": "{{count}} geselecteerd",
       "scope": {
-        "label": "Scope",
+        "label": "",
         "global": "",
         "server": "",
         "account": "",
@@ -582,7 +586,7 @@
       },
       "conditions": {
         "addGroup": "",
-        "fieldPlaceholder": "Select field",
+        "fieldPlaceholder": "",
         "windowPrefix": "",
         "windowUnit": "uren",
         "uniqueDevices": "Unieke apparaten",
@@ -599,7 +603,7 @@
         "optional": "optioneel",
         "helper": "Controles die eerst moeten worden uitgevoerd. Leeg betekent dat het elke keer wordt uitgevoerd.",
         "emptyLine": "",
-        "all": "all of these",
+        "all": "",
         "any": "",
         "allHint": "",
         "anyHint": "",
@@ -716,13 +720,13 @@
       "user_attributes": "",
       "device_client": "",
       "network_location": "",
-      "scope": "Scope",
+      "scope": "",
       "media": ""
     },
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "Delete {{count}} Automation",
+    "deleteAutomation_one": "",
     "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
@@ -794,6 +798,8 @@
         "total_pause_minutes": "de totale pauzetijd",
         "source_resolution": "de bronresolutie",
         "output_resolution": "de uitvoerresolutie",
+        "source_dynamic_range": "",
+        "source_video_codec": "",
         "is_transcoding": "de transcodering",
         "is_transcode_downgrade": "de downgrade",
         "source_bitrate_mbps": "de bron bitrate",
@@ -808,6 +814,8 @@
         "ip_in_range": "",
         "server_id": "",
         "media_type": "",
+        "season_number": "",
+        "episode_number": "",
         "library_item_type": "",
         "library_name": "",
         "resolution_after": "",
@@ -889,7 +897,7 @@
       "noRuns": "Nog geen uitvoeringen"
     },
     "disable": "Uitschakelen",
-    "editAutomation": "Edit Automation",
+    "editAutomation": "",
     "effects": {
       "title": "",
       "kill": "Kan een stream die speelt stoppen.",
@@ -979,6 +987,14 @@
         "label": "",
         "description": ""
       },
+      "source_dynamic_range": {
+        "label": "",
+        "description": ""
+      },
+      "source_video_codec": {
+        "label": "",
+        "description": ""
+      },
       "is_transcoding": {
         "label": "",
         "description": ""
@@ -1037,6 +1053,14 @@
         "placeholder": ""
       },
       "media_type": {
+        "label": "",
+        "description": ""
+      },
+      "season_number": {
+        "label": "",
+        "description": ""
+      },
+      "episode_number": {
         "label": "",
         "description": ""
       },
@@ -1150,7 +1174,7 @@
       "builtinMatch": ""
     },
     "kind": {
-      "policy": "Policy",
+      "policy": "",
       "notification": ""
     },
     "kindColumn": "",
@@ -1304,7 +1328,7 @@
       "after": "",
       "review": "",
       "save": "",
-      "customize": "Customize",
+      "customize": "",
       "customizeTitle": "",
       "customizeConfirm": "",
       "customizeConfirmAction": "",
@@ -1439,7 +1463,7 @@
       "gb": "",
       "seconds": ""
     },
-    "updateAutomation": "Update Automation",
+    "updateAutomation": "",
     "catalog": {
       "groups": {
         "sessions": "",
@@ -1449,7 +1473,7 @@
         "updates": "",
         "notifications": "",
         "notify": "",
-        "policy": "Policy",
+        "policy": "",
         "control": ""
       },
       "suggested": "",
@@ -1649,7 +1673,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1661,7 +1685,7 @@
       },
       "hints": {
         "authTokenOptional": "Optioneel voor openbare onderwerpen",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",
@@ -1829,7 +1853,7 @@
   },
   "statsUsers": {
     "noActivity": "Nog geen activiteit",
-    "noActivityDesc": "Start met streamen om je top gebruikers hier te zien",
+    "noActivityDesc": "",
     "top3": "",
     "runnersUp": "Runners Omhoog"
   },
@@ -1904,11 +1928,14 @@
       "shelves": {
         "recentlyAddedMovies": "Recent toegevoegde films",
         "recentlyAddedShows": "Recent toegevoegde Shows",
+        "recentlyUpdated": "",
         "mostPopularMovies": "Meest Populaire Films",
         "mostPopularShows": "Meest Populaire Series",
         "emptyRecentlyAdded": "Niks toegevoegd in deze periode",
+        "emptyRecentlyUpdated": "",
         "emptyMostPopular": "Geen afspeelmomenten in deze periode",
         "captionRecentlyAdded": "gededupliceerd over servers",
+        "captionRecentlyUpdated": "",
         "captionMostPopular": {
           "day": "vandaag",
           "week": "laatste 7 dagen",
@@ -1921,6 +1948,8 @@
       "card": {
         "newEpisodes_one": "{{count}} nieuwe aflevering",
         "newEpisodes_other": "{{count}} nieuwe afleveringen",
+        "replacedEpisodes_one": "",
+        "replacedEpisodes_other": "",
         "addedAgo": "toegevoegd {{date}}",
         "addedCompactAgo": "toegevoegd {{age}} geleden",
         "newEpisodesChip": "{{count}} nieuw"

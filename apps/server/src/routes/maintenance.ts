@@ -104,6 +104,14 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
             'Run this if imported Tautulli plays do not show as watched or do not count in stats. ' +
             'A play is linked only when it matches exactly one item in your library. Also runs after Plex library syncs, for up to 14 days after a Tautulli import.',
         },
+        {
+          type: 'sync_server_locations',
+          category: 'backfill',
+          name: 'Apply Server Locations',
+          description:
+            "Writes each server's location onto its local network sessions, or puts the Local Network label back where a location was removed. " +
+            'Runs by itself after a server location changes; run it here to recheck every server.',
+        },
         // Cleanup jobs - database maintenance and optimization
         {
           type: 'rebuild_timescale_views',
@@ -186,6 +194,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
         'backfill_session_identity',
         'remove_import_duplicates',
         'link_imported_history',
+        'sync_server_locations',
       ];
       if (!validTypes.includes(type as MaintenanceJobType)) {
         return reply.badRequest(`Invalid job type: ${type}`);

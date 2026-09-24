@@ -51,6 +51,7 @@ describe('BrandingForm', () => {
       {
         logo: { mode: 'url', url: 'https://x.test/logo.png' },
         accentColor: '#123456',
+        systemTitle: null,
         footerText: 'See you next week',
         postalAddress: null,
         mailtoUnsubscribe: true,
@@ -69,6 +70,26 @@ describe('BrandingForm', () => {
     await userEvent.type(hex, 'teal');
     expect(screen.getByRole('alert')).toHaveTextContent('Expected a hex color like #0ea0b3');
     expect(screen.getByRole('button', { name: 'email.branding.save' })).toBeDisabled();
+  });
+
+  it('sends a typed system title', async () => {
+    renderForm();
+    await userEvent.type(screen.getByLabelText('email.branding.systemTitle'), 'Tracearr for Emby');
+    await userEvent.click(screen.getByRole('button', { name: 'email.branding.save' }));
+    expect(saveMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ systemTitle: 'Tracearr for Emby' }),
+      expect.anything()
+    );
+  });
+
+  it('sends null when a stored title is cleared', async () => {
+    renderForm({ ...stored, systemTitle: 'Tracearr for Emby' });
+    await userEvent.clear(screen.getByLabelText('email.branding.systemTitle'));
+    await userEvent.click(screen.getByRole('button', { name: 'email.branding.save' }));
+    expect(saveMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ systemTitle: null }),
+      expect.anything()
+    );
   });
 
   it('shows a skeleton while loading', () => {

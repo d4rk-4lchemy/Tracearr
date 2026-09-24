@@ -111,12 +111,41 @@ export const servers = pgTable(
     // The version the media server reports, and the newest release known for it.
     version: text('version'),
     latestVersion: text('latest_version'),
+    // Bumped on every save of this server's server_locations; the sync job records the version it applied
+    locationVersion: integer('location_version').notNull().default(1),
+    locationSyncedVersion: integer('location_synced_version').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('servers_plex_account_idx').on(table.plexAccountId),
     index('servers_display_order_idx').on(table.displayOrder),
+  ]
+);
+
+// Where a server sits over time; each local session takes the entry in effect when it started
+export const serverLocations = pgTable(
+  'server_locations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    // Null covers everything before the first dated entry
+    effectiveFrom: timestamp('effective_from', { withTimezone: true }),
+    lat: real('lat').notNull(),
+    lon: real('lon').notNull(),
+    city: varchar('city', { length: 255 }),
+    region: varchar('region', { length: 255 }),
+    country: varchar('country', { length: 2 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('server_locations_server_from_uidx').on(table.serverId, table.effectiveFrom),
+    // The unique index above treats nulls as distinct, so it alone would allow two undated entries
+    uniqueIndex('server_locations_server_undated_uidx')
+      .on(table.serverId)
+      .where(sql`effective_from IS NULL`),
   ]
 );
 
@@ -192,7 +221,10 @@ export const users = pgTable(
     // Roster sort orders. Each one has to match the ORDER BY in
     // routes/users/list.ts key for key, direction for direction, nulls for
     // nulls, or the plan drops from an index scan to an incremental sort.
-    index('users_display_name_idx').on(sql`coalesce(${table.name}, ${table.username})`, table.id),
+    index('users_display_name_idx').on(
+      sql`lower(coalesce(${table.name}, ${table.username}))`,
+      table.id
+    ),
     index('users_aggregate_trust_idx').on(table.aggregateTrustScore.desc(), table.id),
     index('users_first_joined_idx').on(table.firstJoinedAt.desc().nullsLast(), table.id),
     index('users_last_activity_idx').on(table.lastActivityAt.desc().nullsLast(), table.id),
@@ -402,6 +434,8 @@ export const sessions = pgTable(
     geoLon: real('geo_lon'),
     geoAsnNumber: integer('geo_asn_number'),
     geoAsnOrganization: varchar('geo_asn_organization', { length: 255 }),
+    // From the IP at insert; null on rows the location sync has not classified yet
+    isLocal: boolean('is_local'),
     playerName: varchar('player_name', { length: 255 }), // Player title/friendly name
     deviceId: varchar('device_id', { length: 255 }), // Machine identifier (unique device UUID)
     product: varchar('product', { length: 255 }), // Product name (e.g., "Plex for iOS")
@@ -571,6 +605,8 @@ export const automations = pgTable(
     index('automations_server_user_id_idx').on(table.serverUserId),
     index('automations_user_id_idx').on(table.userId),
     index('automations_template_id_idx').on(table.templateId),
+    // Matches the name sort in routes/automations.ts key for key.
+    index('automations_name_idx').on(sql`lower(${table.name})`, table.id),
   ]
 );
 

@@ -278,6 +278,40 @@ export const updateServerSchema = z
     }
   });
 
+const locationTextSchema = z
+  .string()
+  .trim()
+  .max(255)
+  .nullable()
+  .transform((value) => (value ? value : null));
+
+export const serverLocationEntrySchema = z.object({
+  effectiveFrom: z.iso.datetime({ offset: true }).nullable(),
+  lat: z.number().min(-90).max(90),
+  lon: z.number().min(-180).max(180),
+  city: locationTextSchema,
+  region: locationTextSchema,
+  country: z.string().regex(/^[A-Z]{2}$/, 'Country must be a two-letter ISO code'),
+});
+
+export const serverLocationsSchema = z
+  .object({ entries: z.array(serverLocationEntrySchema).max(20) })
+  .superRefine(({ entries }, ctx) => {
+    const undated = entries.filter((entry) => entry.effectiveFrom === null).length;
+    if (undated > 1) {
+      ctx.addIssue({ code: 'custom', message: 'Only one location can apply from the beginning' });
+    }
+    const dated = entries.flatMap((entry) =>
+      entry.effectiveFrom === null ? [] : [new Date(entry.effectiveFrom).getTime()]
+    );
+    if (new Set(dated).size !== dated.length) {
+      ctx.addIssue({ code: 'custom', message: 'Two locations share a start date' });
+    }
+    if (dated.some((time) => time > Date.now())) {
+      ctx.addIssue({ code: 'custom', message: 'A location cannot start in the future' });
+    }
+  });
+
 // ============================================================================
 // User Schemas
 // ============================================================================
@@ -431,6 +465,7 @@ export const historyQuerySchema = z.object({
   geoCountries: commaSeparatedArray(z.string().max(100)),
   geoCity: z.string().max(255).optional(), // City name
   geoRegion: z.string().max(255).optional(), // State/province
+  network: z.enum(['local', 'remote']).optional(),
 
   transcodeDecisions: commaSeparatedArray(z.enum(['directplay', 'copy', 'transcode'])),
 
@@ -1130,6 +1165,13 @@ export const libraryDuplicatesQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+// Capped because every id costs a media server lookup; one page of duplicates fits.
+export const libraryDuplicateFilesQuerySchema = z.object({
+  itemIds: z
+    .union([uuidSchema.transform((id) => [id]), z.array(uuidSchema)])
+    .refine((ids) => ids.length <= 50, { message: 'At most 50 items per request' }),
+});
+
 // Library stale content query schema
 export const libraryStaleQuerySchema = z.object({
   serverId: z.uuid().optional(),
@@ -1261,6 +1303,7 @@ export type LibraryGrowthQueryInput = z.infer<typeof libraryGrowthQuerySchema>;
 export type LibraryQualityQueryInput = z.infer<typeof libraryQualityQuerySchema>;
 export type LibraryStorageQueryInput = z.infer<typeof libraryStorageQuerySchema>;
 export type LibraryDuplicatesQueryInput = z.infer<typeof libraryDuplicatesQuerySchema>;
+export type LibraryDuplicateFilesQueryInput = z.infer<typeof libraryDuplicateFilesQuerySchema>;
 export type LibraryStaleQueryInput = z.infer<typeof libraryStaleQuerySchema>;
 export type LibraryWatchQueryInput = z.infer<typeof libraryWatchQuerySchema>;
 export type LibraryRoiQueryInput = z.infer<typeof libraryRoiQuerySchema>;

@@ -20,6 +20,8 @@ import {
   servers,
   type PosterRef,
 } from '../../db/schema.js';
+import { compareNames } from '../../utils/collation.js';
+import { serverOrderBy } from '../../utils/serverOrder.js';
 
 export type NewsletterRow = typeof newsletters.$inferSelect;
 export type SendRow = typeof newsletterSends.$inferSelect;
@@ -50,7 +52,9 @@ export class OpenSendConflict extends Error {
 }
 
 export async function listNewsletters(): Promise<NewsletterRow[]> {
-  return db.select().from(newsletters).orderBy(newsletters.name);
+  return (await db.select().from(newsletters)).sort(
+    (a, b) => compareNames(a.name, b.name) || a.id.localeCompare(b.id)
+  );
 }
 
 export async function getNewsletter(id: string): Promise<NewsletterRow | null> {
@@ -475,8 +479,8 @@ export async function loadServerLinks(serverIds: string[]): Promise<ServerLink[]
     })
     .from(servers);
   return serverIds.length === 0
-    ? base.orderBy(servers.name)
-    : base.where(inArray(servers.id, serverIds)).orderBy(servers.name);
+    ? base.orderBy(...serverOrderBy())
+    : base.where(inArray(servers.id, serverIds)).orderBy(...serverOrderBy());
 }
 
 export function toSendSummary(row: SendView): NewsletterSendSummary {

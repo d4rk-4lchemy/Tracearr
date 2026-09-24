@@ -106,7 +106,6 @@ export const importRoutes: FastifyPluginAsync = async (app) => {
       // Start import in background (non-blocking)
       TautulliService.importHistory(serverId, pubSubService ?? undefined, undefined, {
         overwriteFriendlyNames,
-        skipRefresh: includeStreamDetails, // Skip refresh if enrichment will follow
       })
         .then(async (result) => {
           console.log(`[Import] Tautulli import completed:`, result);

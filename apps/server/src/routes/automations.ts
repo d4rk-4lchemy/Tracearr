@@ -112,7 +112,7 @@ const templateInputsSchema = z.object({
 const upgradeBodySchema = z.object({ inputs: z.record(z.string(), z.unknown()).optional() });
 
 const AUTOMATION_SORT_KEYS: Record<AutomationSortField, SortKey> = {
-  name: { key: sql`${automations.name}`, defaultDir: 'asc' },
+  name: { key: sql`lower(${automations.name})`, defaultDir: 'asc' },
   createdAt: { key: sql`${automations.createdAt}`, defaultDir: 'desc' },
   updatedAt: { key: sql`${automations.updatedAt}`, defaultDir: 'desc' },
   kind: { key: sql`${automations.kind}`, defaultDir: 'asc' },

@@ -640,10 +640,10 @@ describe('newsletter routes', () => {
     });
     mockResolve.mockResolvedValue({ recipients: [], missing: [], excluded: [] });
     const fallback = await app.inject({ method: 'POST', url: `/newsletters/${ID}/preview` });
-    expect(fallback.json().variants[0].html).toContain('Sent by Tracearr for <!-- -->Basement');
+    expect(fallback.json().variants[0].html).toContain('Sent by Tracearr for Basement');
     store.getNewsletter.mockResolvedValue({ ...row, senderName: 'Family Media' });
     const named = await app.inject({ method: 'POST', url: `/newsletters/${ID}/preview` });
-    expect(named.json().variants[0].html).toContain('Sent by Tracearr for <!-- -->Family Media');
+    expect(named.json().variants[0].html).toContain('Sent by Tracearr for Family Media');
   });
 
   it('preview trims the way a send would and reports what it removed', async () => {
@@ -704,7 +704,7 @@ describe('newsletter routes', () => {
         }) => [v.key, v.serverNames, v.recipientCount, v.counts.movies]
       )
     ).toEqual([
-      // The scope names no server, so the union follows loadServerLinks' name order while its key sorts by id.
+      // The scope names no server, so the union follows loadServerLinks' server order while its key sorts by id.
       // Nobody is on both servers, so the union carries no recipients; bob (Attic-only) lands in the Attic group.
       [`${S1.id},${S2.id}`, ['Attic', 'Basement'], 0, 1],
       [S1.id, ['Basement'], 1, 1],

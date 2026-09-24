@@ -5,12 +5,14 @@
  * Run with: pnpm --filter @tracearr/server test:integration -- newsletterAssemble
  */
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DEFAULT_NEWSLETTER_SECTIONS } from '@tracearr/shared';
 import { seedBasicOwner } from '@tracearr/test-utils';
 import { db } from '../../src/db/client.js';
 import { libraryItems, servers } from '../../src/db/schema.js';
 import {
+  WINDOW_TYPE_ROW_LIMIT,
   assembleDigest,
   loadItemRows,
   loadWindowItems,
@@ -103,6 +105,101 @@ describe('loadWindowItems', () => {
     expect(rows.map((r) => r.ratingKey)).toEqual(['a', 'b', 'd']);
   });
 
+  it('drops a copy that replaces one this server just lost, and keeps a long-ago reacquisition', async () => {
+    const replaced = randomUUID();
+    const reacquired = randomUUID();
+    const hourBefore = new Date(inside.getTime() - 60 * 60 * 1000);
+    const longBefore = new Date(inside.getTime() - 30 * 24 * 60 * 60 * 1000);
+    await db.insert(libraryItems).values([
+      {
+        serverId,
+        libraryId: '1',
+        ratingKey: 'upgrade-old',
+        title: 'Upgraded',
+        mediaType: 'movie',
+        mediaId: replaced,
+        createdAt: before,
+        firstSeenAt: before,
+        removedAt: hourBefore,
+      },
+      {
+        serverId,
+        libraryId: '1',
+        ratingKey: 'upgrade-new',
+        title: 'Upgraded',
+        mediaType: 'movie',
+        mediaId: replaced,
+        createdAt: inside,
+        firstSeenAt: inside,
+      },
+      {
+        serverId,
+        libraryId: '1',
+        ratingKey: 'gone-old',
+        title: 'Reacquired',
+        mediaType: 'movie',
+        mediaId: reacquired,
+        createdAt: before,
+        firstSeenAt: before,
+        removedAt: longBefore,
+      },
+      {
+        serverId,
+        libraryId: '1',
+        ratingKey: 'gone-new',
+        title: 'Reacquired',
+        mediaType: 'movie',
+        mediaId: reacquired,
+        createdAt: inside,
+        firstSeenAt: inside,
+      },
+    ]);
+
+    const keys = (
+      await loadWindowItems({ serverIds: [], libraries: [] }, { start: START, end: END })
+    ).map((r) => r.ratingKey);
+
+    expect(keys).not.toContain('upgrade-new');
+    expect(keys).toContain('gone-new');
+  });
+
+  it('counts a title arriving on a second server as new there, however long the first has had it', async () => {
+    const heat = randomUUID();
+    const [attic] = await db
+      .insert(servers)
+      .values({ name: 'Attic', type: 'plex', url: 'http://attic:32400', token: 'tok' })
+      .returning({ id: servers.id });
+    await db.insert(libraryItems).values([
+      {
+        serverId,
+        libraryId: '1',
+        ratingKey: 'heat-first',
+        title: 'Heat',
+        mediaType: 'movie',
+        mediaId: heat,
+        createdAt: before,
+        firstSeenAt: before,
+        removedAt: new Date(inside.getTime() - 60 * 60 * 1000),
+      },
+      {
+        serverId: attic!.id,
+        libraryId: '1',
+        ratingKey: 'heat-second',
+        title: 'Heat',
+        mediaType: 'movie',
+        mediaId: heat,
+        createdAt: inside,
+        firstSeenAt: inside,
+      },
+    ]);
+
+    const keys = (
+      await loadWindowItems({ serverIds: [], libraries: [] }, { start: START, end: END })
+    ).map((r) => r.ratingKey);
+
+    expect(keys).toContain('heat-second');
+  });
+
   it('pairs a library with its server, so the same section id on another server stays out', async () => {
     const [other] = await db
       .insert(servers)
@@ -143,6 +240,34 @@ describe('loadWindowItems', () => {
       window
     );
     expect(none).toEqual([]);
+  });
+
+  it('caps each media type on its own, so newer episodes cannot crowd out the movies', async () => {
+    const episodes = WINDOW_TYPE_ROW_LIMIT + 1;
+    // Every episode is stamped after the newest movie, so a single window-wide
+    // cap would hand back episodes only and the movies section would render empty.
+    const episodeBase = new Date('2026-08-31T01:00:00Z');
+    await db.execute(sql`
+      INSERT INTO library_items (server_id, library_id, rating_key, title, media_type,
+                                 created_at, first_seen_at)
+      SELECT ${serverId}::uuid, '1', 'ep-' || g, 'Episode ' || g, 'episode',
+             ${episodeBase}::timestamptz + make_interval(secs => g),
+             ${episodeBase}::timestamptz + make_interval(secs => g)
+      FROM generate_series(1, ${episodes}::int) AS g
+    `);
+
+    const rows = await loadWindowItems(
+      { serverIds: [], libraries: [] },
+      { start: START, end: END }
+    );
+
+    expect(rows.filter((r) => r.mediaType === 'movie').map((r) => r.ratingKey)).toEqual([
+      'a',
+      'b',
+      'd',
+    ]);
+    expect(rows.filter((r) => r.mediaType === 'episode')).toHaveLength(WINDOW_TYPE_ROW_LIMIT);
+    expect(rows.map((r) => r.mediaType).indexOf('movie')).toBe(WINDOW_TYPE_ROW_LIMIT);
   });
 });
 

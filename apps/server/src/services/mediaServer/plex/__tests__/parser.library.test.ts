@@ -97,6 +97,32 @@ describe('parseRatingKeys', () => {
   });
 });
 
+describe('parseLibraryItemsResponse - external ids', () => {
+  it('keeps the first id per provider when the agent lists a second one', () => {
+    const [item] = parseLibraryItemsResponse(
+      musicResponse([
+        {
+          ratingKey: '491536',
+          title: 'Windows of Opportunity',
+          type: 'episode',
+          addedAt: 1700000000,
+          Guid: [
+            { id: 'imdb://tt32227355' },
+            { id: 'imdb://tt32429838' },
+            { id: 'tmdb://5175710' },
+            { id: 'tmdb://6086713' },
+            { id: 'tvdb://10339871' },
+          ],
+        },
+      ])
+    );
+
+    expect(item!.imdbId).toBe('tt32227355');
+    expect(item!.tmdbId).toBe(5175710);
+    expect(item!.tvdbId).toBe(10339871);
+  });
+});
+
 describe('parseLibraryItemsResponse - plexGuid', () => {
   it('normalizes the main guid attribute for a movie', () => {
     const [item] = parseLibraryItemsResponse(

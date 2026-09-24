@@ -105,4 +105,26 @@ describe('HistoryFiltersBar', () => {
 
     expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
   });
+
+  it('sets the network filter from the menu', async () => {
+    const { onFiltersChange } = renderBar({});
+
+    await userEvent.click(screen.getByRole('button', { name: /filters/i }));
+    await waitFor(() => expect(screen.getByText('Network')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Local' }));
+
+    expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({ network: 'local' }));
+  });
+
+  it('clears the network filter when the selected option is clicked again', async () => {
+    const { onFiltersChange } = renderBar({ network: 'local' });
+
+    await userEvent.click(screen.getByRole('button', { name: /filters/i }));
+    await waitFor(() => expect(screen.getByText('Network')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Local' }));
+
+    const calls = onFiltersChange.mock.calls;
+    const lastCall = calls[calls.length - 1]?.[0] as HistoryFilters;
+    expect(lastCall.network).toBeUndefined();
+  });
 });

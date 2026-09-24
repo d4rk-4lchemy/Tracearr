@@ -138,6 +138,9 @@ const COUNT_MISMATCH_RATIO = 0.01;
 /** Music-type library sections: their server totalCount spans a different item universe than we store, so the undercount check is skipped for them. */
 const MUSIC_LIBRARY_TYPES = new Set(['music', 'artist']);
 
+/** Sections whose items are their own leaves - Plex serves /allLeaves from the same listing as /all, so a leaf fetch returns every item twice. Plex says 'movie', JF/Emby say 'movies'. */
+const FLAT_LIBRARY_TYPES = new Set(['movie', 'movies']);
+
 /**
  * Bump a server type's version when its listing query changes shape. A library
  * stamped with an older version gets one forced full scan, so items the old
@@ -776,7 +779,7 @@ export class LibrarySyncService {
         // Check for new episodes/tracks independently — new episodes can arrive
         // for shows that were added months ago (no new Series in the result).
         let newLeaves: MediaLibraryItem[] = [];
-        if (client.getLibraryLeavesSince) {
+        if (client.getLibraryLeavesSince && !FLAT_LIBRARY_TYPES.has(libraryType.toLowerCase())) {
           try {
             const { items: leaves } = await client.getLibraryLeavesSince(
               libraryId,

@@ -27,7 +27,7 @@ export function DestinationsManager() {
     );
   }
 
-  const rows = [...(destinations ?? [])].sort((a, b) => Number(b.builtin) - Number(a.builtin));
+  const rows = destinations ?? [];
 
   const addButton = (
     <Button onClick={() => setDialog({ mode: 'create' })}>

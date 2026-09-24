@@ -90,6 +90,7 @@ function buildSessionStarted(payload: NotificationPayload, ctx: SessionContext):
       location: {
         city: session.geoCity,
         country: session.geoCountry,
+        isLocal: session.isLocal,
       },
     },
   };

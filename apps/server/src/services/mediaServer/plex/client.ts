@@ -36,6 +36,7 @@ import {
   parseStatisticsBandwidthResponse,
   parseMediaMetadataResponse,
   parseLibraryItemsResponse,
+  parseFileExistence,
   parseGenresByRatingKey,
   parseRatingKeys,
   getTranscodingSessionRatingKeys,
@@ -335,6 +336,29 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
       }
     }
     return existing;
+  }
+
+  /**
+   * Whether each item's files are still on disk, by version key. Only the
+   * metadata endpoint with checkFiles=1 answers this: section listings keep
+   * reporting a file until the library trash is emptied.
+   */
+  async checkFilesExist(ratingKeys: string[]): Promise<Map<string, Map<string, boolean>>> {
+    const byRatingKey = new Map<string, Map<string, boolean>>();
+    for (let start = 0; start < ratingKeys.length; start += METADATA_BATCH_SIZE) {
+      const batch = ratingKeys.slice(start, start + METADATA_BATCH_SIZE);
+      try {
+        const data = await fetchJson<unknown>(
+          `${this.baseUrl}/library/metadata/${batch.join(',')}?checkFiles=1`,
+          { headers: this.buildHeaders(), service: 'plex', timeout: 30000 }
+        );
+        for (const [key, versions] of parseFileExistence(data)) byRatingKey.set(key, versions);
+      } catch (err) {
+        if (err instanceof HttpClientError && err.statusCode === 404) continue;
+        throw err;
+      }
+    }
+    return byRatingKey;
   }
 
   /**
