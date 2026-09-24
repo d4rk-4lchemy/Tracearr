@@ -24,11 +24,6 @@ interface DestinationsFieldProps {
   labelledBy?: string;
 }
 
-function byBuiltinThenName(a: Destination, b: Destination): number {
-  if (a.builtin !== b.builtin) return Number(b.builtin) - Number(a.builtin);
-  return a.name.localeCompare(b.name);
-}
-
 function lacksAlertRecipients(row: Destination): boolean {
   return (
     row.type === 'email' && row.config !== null && addressList(row.config.to ?? '').length === 0
@@ -46,7 +41,7 @@ export function DestinationsField({ value, onChange, label, labelledBy }: Destin
     return <Skeleton className="h-8 w-64" />;
   }
 
-  const rows = [...(destinations ?? [])].sort(byBuiltinThenName);
+  const rows = destinations ?? [];
   // A rule can outlive the destination it sends to; keep those ids visible so they can be dropped.
   const missingIds = value.filter((id) => !rows.some((row) => row.id === id));
 

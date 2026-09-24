@@ -17,7 +17,7 @@ interface DbChain {
   rows: unknown[];
 }
 
-const { chain, mockPublish } = vi.hoisted(() => {
+const { chain, mockPublish, mockInvalidatePattern } = vi.hoisted(() => {
   const rows: unknown[] = [];
   const chain: Record<string, ReturnType<typeof vi.fn>> = {};
   for (const name of [
@@ -40,11 +40,19 @@ const { chain, mockPublish } = vi.hoisted(() => {
   return {
     chain: Object.assign(chain, { rows }),
     mockPublish: vi.fn().mockResolvedValue(undefined),
+    mockInvalidatePattern: vi.fn().mockResolvedValue(undefined),
   };
-}) as unknown as { chain: DbChain; mockPublish: ReturnType<typeof vi.fn> };
+}) as unknown as {
+  chain: DbChain;
+  mockPublish: ReturnType<typeof vi.fn>;
+  mockInvalidatePattern: ReturnType<typeof vi.fn>;
+};
 
 vi.mock('../../../db/client.js', () => ({ db: chain }));
-vi.mock('../../cache.js', () => ({ getPubSubService: () => ({ publish: mockPublish }) }));
+vi.mock('../../cache.js', () => ({
+  getPubSubService: () => ({ publish: mockPublish }),
+  getCacheService: () => ({ invalidatePattern: mockInvalidatePattern }),
+}));
 vi.mock('../../notifications/destinationCrypto.js', () => ({
   encryptConfig: vi.fn(
     (config: Record<string, unknown>) =>
@@ -111,6 +119,7 @@ describe('request service store', () => {
     expect(values.config).toBe('enc:eyJhcGlLZXkiOiJrIn0=');
     expect(values.config).not.toContain('apiKey');
     expect(mockPublish).toHaveBeenCalledWith('requests:changed', { serviceId: 'svc-1' });
+    expect(mockInvalidatePattern).toHaveBeenCalledWith('tracearr:requests:analytics:*');
   });
 
   it('reads the key back and reports a failed decrypt', () => {

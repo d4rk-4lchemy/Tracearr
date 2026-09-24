@@ -146,6 +146,21 @@ describe('data-table manual mode', () => {
     expect(rowNames()).toEqual(['Alpha', 'Bravo', 'Charlie']);
   });
 
+  it('sorts case and accents together by the collator', async () => {
+    const user = userEvent.setup();
+    const collated: Person[] = [
+      { id: 'a', name: 'Zed', age: 1 },
+      { id: 'b', name: 'alice', age: 2 },
+      { id: 'c', name: 'Émile', age: 3 },
+      { id: 'd', name: 'Bob', age: 4 },
+    ];
+    render(<Harness data={collated} />);
+
+    await user.click(screen.getByRole('button', { name: 'Name' }));
+
+    expect(rowNames()).toEqual(['alice', 'Bob', 'Émile', 'Zed']);
+  });
+
   it('reports the flipped sort direction to the server callback', async () => {
     const user = userEvent.setup();
     const onSortingChange = vi.fn<(sorting: SortingState) => void>();

@@ -133,10 +133,15 @@ export function RequestServiceLine({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => syncService.mutate(service.id)} disabled={isSyncing}>
-              <RefreshCw className={cn(isSyncing && 'animate-spin')} />
-              {t('requests.syncNow')}
-            </DropdownMenuItem>
+            {service.enabled && (
+              <DropdownMenuItem
+                onSelect={() => syncService.mutate(service.id)}
+                disabled={isSyncing}
+              >
+                <RefreshCw className={cn(isSyncing && 'animate-spin')} />
+                {t('requests.syncNow')}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={() => setLinkOpen(true)}>
               {t('common:actions.edit')}
             </DropdownMenuItem>

@@ -305,11 +305,11 @@ async function executeItemLevel(
 ) {
   // Sort column mapping
   const sortColumnMap: Record<string, ReturnType<typeof sql>> = {
-    completion_pct: sql`completion_pct`,
-    title: sql`title`,
-    last_watched: sql`last_watched_at`,
+    completion_pct: sql`with_completion.completion_pct`,
+    title: sql`with_completion.sort_key`,
+    last_watched: sql`with_completion.last_watched_at`,
   };
-  const sortColumn = sortColumnMap[sortBy] || sql`completion_pct`;
+  const sortColumn = sortColumnMap[sortBy] || sql`with_completion.completion_pct`;
   const sortDir = sortOrder === 'asc' ? sql`ASC NULLS LAST` : sql`DESC NULLS FIRST`;
 
   // Main query: join library_items with content_engagement_summary (aggregated across users)
@@ -321,6 +321,7 @@ async function executeItemLevel(
         s.name AS server_name,
         li.title,
         li.media_type,
+        COALESCE(m.sort_title, lower(li.title)) AS sort_key,
         -- Aggregate engagement across all users for this content
         COALESCE(SUM(ces.cumulative_watched_ms), 0) AS watched_ms,
         COALESCE(MAX(ces.content_duration_ms), 0) AS runtime_ms,
@@ -332,6 +333,7 @@ async function executeItemLevel(
         BOOL_OR(ces.engagement_tier IN ('watched', 'rewatched')) AS has_completion
       FROM library_items li
       JOIN servers s ON li.server_id = s.id
+      LEFT JOIN media m ON m.id = li.media_id
       LEFT JOIN content_engagement_summary ces
         ON ces.rating_key = li.rating_key
         AND ces.server_id = li.server_id
@@ -340,7 +342,7 @@ async function executeItemLevel(
         ${serverFilter}
         ${libraryFilter}
         ${mediaTypeFilter}
-      GROUP BY li.id, li.server_id, s.name, li.title, li.media_type
+      GROUP BY li.id, li.server_id, s.name, li.title, li.media_type, m.sort_title
     ),
     with_completion AS (
       SELECT
@@ -349,6 +351,7 @@ async function executeItemLevel(
         server_name,
         title,
         media_type,
+        sort_key,
         watched_ms,
         runtime_ms,
         show_title,
@@ -385,7 +388,7 @@ async function executeItemLevel(
       ${statusFilterSql}
       ${minCompletionFilter}
       ${maxCompletionFilter}
-    ORDER BY ${sortColumn} ${sortDir}
+    ORDER BY ${sortColumn} ${sortDir}, with_completion.id ASC
     LIMIT ${pageSize} OFFSET ${offset}
   `);
 
@@ -491,11 +494,11 @@ async function executeSeasonLevel(
 ) {
   // Sort column mapping (different columns for season view)
   const sortColumnMap: Record<string, ReturnType<typeof sql>> = {
-    completion_pct: sql`completion_pct`,
-    title: sql`show_title`,
-    last_watched: sql`show_title`, // No last_watched at season level, fall back to title
+    completion_pct: sql`with_completion.completion_pct`,
+    title: sql`lower(with_completion.show_title)`,
+    last_watched: sql`lower(with_completion.show_title)`, // No last_watched at season level, fall back to title
   };
-  const sortColumn = sortColumnMap[sortBy] || sql`completion_pct`;
+  const sortColumn = sortColumnMap[sortBy] || sql`with_completion.completion_pct`;
   const sortDir = sortOrder === 'asc' ? sql`ASC NULLS LAST` : sql`DESC NULLS FIRST`;
 
   const seasonsResult = await db.execute(sql`
@@ -556,7 +559,7 @@ async function executeSeasonLevel(
       ${statusFilterSql}
       ${minCompletionFilter}
       ${maxCompletionFilter}
-    ORDER BY ${sortColumn} ${sortDir}
+    ORDER BY ${sortColumn} ${sortDir}, with_completion.server_id, with_completion.show_title, with_completion.season_number
     LIMIT ${pageSize} OFFSET ${offset}
   `);
 
@@ -660,11 +663,11 @@ async function executeSeriesLevel(
 ) {
   // Sort column mapping for series
   const sortColumnMap: Record<string, ReturnType<typeof sql>> = {
-    completion_pct: sql`avg_season_completion_pct`,
-    title: sql`show_title`,
-    last_watched: sql`show_title`, // Fall back to title
+    completion_pct: sql`with_status.avg_season_completion_pct`,
+    title: sql`lower(with_status.show_title)`,
+    last_watched: sql`lower(with_status.show_title)`, // Fall back to title
   };
-  const sortColumn = sortColumnMap[sortBy] || sql`avg_season_completion_pct`;
+  const sortColumn = sortColumnMap[sortBy] || sql`with_status.avg_season_completion_pct`;
   const sortDir = sortOrder === 'asc' ? sql`ASC NULLS LAST` : sql`DESC NULLS FIRST`;
 
   const seriesResult = await db.execute(sql`
@@ -744,7 +747,7 @@ async function executeSeriesLevel(
     FROM with_status
     WHERE 1=1
       ${statusFilterSql}
-    ORDER BY ${sortColumn} ${sortDir}
+    ORDER BY ${sortColumn} ${sortDir}, with_status.server_id, with_status.show_title
     LIMIT ${pageSize} OFFSET ${offset}
   `);
 

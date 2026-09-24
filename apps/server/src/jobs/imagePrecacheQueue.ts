@@ -22,7 +22,7 @@ import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
 import { libraryItems, servers } from '../db/schema.js';
-import { proxyImage, posterCacheEntryExists } from '../services/imageProxy.js';
+import { IMAGE_CACHE_DIR, proxyImage, posterCacheEntryExists } from '../services/imageProxy.js';
 import {
   takeRefusedWrites,
   writeDiskLimited,
@@ -78,23 +78,25 @@ const PERSISTENCE_SAMPLE = 20;
 /** Below this share of a sample present on disk, a full pass this process
  *  completed cannot explain what is there, so the directory is not surviving. */
 const PERSISTENCE_MIN_PRESENT = 0.2;
-const processStartedAt = Date.now();
 
 /**
  * A completed full pass means these posters were on disk. If they have since
- * vanished, the cache directory is not on a volume. Only a stamp this process
- * wrote counts: on upgrade every install carries one from the old enqueue-time
- * commit, with a legitimately empty cache because the path moved.
+ * vanished, the cache directory is not on a volume. Only a stamp taken against
+ * the directory this process uses counts: a stamp from another path (the
+ * default moved in an upgrade, or the operator changed IMAGE_CACHE_DIR) sits
+ * beside a legitimately empty cache, and so does one from before the path was
+ * recorded at all.
  */
 async function checkPersistence(
   serverId: string,
   batch: ReadonlyArray<PrecacheBatchRow>
 ): Promise<void> {
   const redis = getRedis();
-  const lastFull = await redis.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId));
-  if (!lastFull) return;
-  const stampedAt = new Date(lastFull).getTime();
-  if (Number.isNaN(stampedAt) || stampedAt < processStartedAt) return;
+  const [lastFull, stampedDir] = await Promise.all([
+    redis.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId)),
+    redis.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL_DIR(serverId)),
+  ]);
+  if (!lastFull || stampedDir !== IMAGE_CACHE_DIR) return;
 
   const sample = batch.slice(0, PERSISTENCE_SAMPLE);
   if (sample.length === 0) return;
@@ -551,7 +553,7 @@ async function recordPassOutcome(
   // full walk, and fetchBatch drops the predicate for both, so this is the
   // pass that really covered every row.
   if (sinceUpdatedAt == null) {
-    await commitFullPass(redis, serverId);
+    await commitFullPass(redis, serverId, IMAGE_CACHE_DIR);
   }
   if (refusedWrites > 0) {
     await writeDiskLimited(redis, refusedWrites);

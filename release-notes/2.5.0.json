@@ -1,30 +1,30 @@
 {
   "version": "2.5.0",
-  "date": "2026-09-23",
+  "date": "2026-09-24",
   "headline": "Local plays on the map, duplicates, upgrades, and stream-aware automations",
   "highlights": [
     {
       "title": "Local plays on the map",
-      "body": "Give a server a location in Edit Server: drop a pin or type coordinates, then pick the country and add a city and region. Local network plays on that server land on the stream map at that spot with a Local badge, and a background job fills in its past sessions. Add a dated move if the server changed homes. Rules still treat these plays as local, and removing the location puts them back.",
+      "body": "Give a server a location in Edit Server: drop a pin or type coordinates and pick the country; city and region are optional. Local network plays on that server land on the stream map there with a Local badge, and a background job fills in past sessions. Add a dated move if the server changed homes. Rules still treat these plays as local, and removing the location puts them back to Local Network.",
       "docs": "https://docs.tracearr.com/configuration/servers#server-location"
     },
     {
       "title": "Upgrades are not new",
-      "body": "A Radarr or Sonarr upgrade deletes the old file and imports the new one, so the server hands Tracearr a fresh item and the title reappeared as newly added. Newsletters and the Recently Added shelves now leave those out, and a Recently Updated shelf on the library page lists them instead. Titles reacquired more than a week after the old copy left still count as new."
+      "body": "A Radarr or Sonarr upgrade deletes the old file and imports the new one, so the server hands Tracearr a fresh item and the title reappeared as newly added. Newsletters and the Recently Added shelves now leave those out, and a Recently Updated shelf on Media → Overview lists them instead. Titles reacquired more than a week after the old copy left still count as new."
     },
     {
       "title": "Duplicates",
-      "body": "The Storage duplicates tab shows every file's path with a copy button, flags a file the server still lists but cannot find on disk, and names the series behind an episode. Each group is marked Movie, TV or Music."
+      "body": "The Storage duplicates tab shows every file's path with a copy button, flags a Plex file the server still lists but cannot find on disk, and names the series behind an episode or the artist behind a track. Each group is marked Movie, TV or Music."
     },
     {
       "title": "Automations know the stream",
-      "body": "Four new conditions: source dynamic range, source video codec, season number and episode number. Tell a stream in Dolby Vision from one in SDR, catch AV1 before a remote viewer does, or fire on the first episode of a season."
+      "body": "Four new conditions: source dynamic range, source video codec, season number and episode number. Tell a stream in Dolby Vision from one in SDR, flag an AV1 stream to a remote viewer, or fire on the first episode of a season. Notification text can print all four."
     }
   ],
   "changes": [
     {
       "type": "new",
-      "text": "Recently Updated shelf on the library page lists titles whose file was replaced"
+      "text": "an upgraded title moves from Recently Added to a Recently Updated shelf on Media → Overview and skips newsletters"
     },
     {
       "type": "new",
@@ -32,7 +32,11 @@
     },
     {
       "type": "new",
-      "text": "the Storage duplicates tab shows each file's path and flags files the server cannot find"
+      "text": "an automation's notification text can print the stream's HDR format, video codec, season and episode number"
+    },
+    {
+      "type": "new",
+      "text": "the Storage duplicates tab shows each file's path and flags Plex files that are gone from disk"
     },
     {
       "type": "new",
@@ -44,24 +48,20 @@
     },
     {
       "type": "new",
-      "text": "Edit Server takes a location with dated moves that shows local network plays on the map, badged Local, until removed"
+      "text": "Edit Server takes a location, with dated moves, that puts that server's local network plays on the map"
+    },
+    {
+      "type": "new",
+      "text": "History has a Network filter that lists only local or only remote plays"
     },
     {
       "type": "improved",
-      "text": "the Storage duplicates tab names the series and marks each group Movie, TV or Music"
+      "text": "the Storage duplicates tab names the series or artist and marks each group Movie, TV or Music"
     },
     {
       "type": "improved",
-      "text": "an upgraded title no longer counts as newly added in newsletters or on the library page"
-    },
-    {
-      "type": "improved",
-      "text": "hovering the device icon on a stream card names the client"
-    },
-    {
-      "type": "improved",
-      "text": "the poster cache survives a container restart instead of re-downloading every poster",
-      "docs": "https://docs.tracearr.com/configuration/environment"
+      "text": "the supervised image keeps the poster cache across container recreates instead of re-downloading every poster",
+      "docs": "https://docs.tracearr.com/configuration/environment#poster-cache"
     },
     {
       "type": "improved",
@@ -69,19 +69,19 @@
     },
     {
       "type": "fix",
-      "text": "incremental syncs no longer list every movie in a library twice"
+      "text": "a media page opened from a link or a refresh shows its poster"
     },
     {
       "type": "fix",
-      "text": "a media page opened directly shows its poster instead of waiting for a browse visit"
+      "text": "a Tautulli import with detailed stream data shows its older plays in stats without a Full aggregate rebuild"
     },
     {
       "type": "fix",
-      "text": "imported Tautulli plays reach the stats without waiting for nightly maintenance"
+      "text": "a Jellystat re-import with the Episodes table relinks episode plays an earlier import stored against the show"
     },
     {
       "type": "fix",
-      "text": "a digest caps rows per media type, so a large show library cannot crowd out movies"
+      "text": "newsletters no longer drop new movies when more than 5,000 episodes or tracks arrive in one window"
     },
     {
       "type": "fix",
@@ -100,8 +100,49 @@
       "text": "the poster cache size estimate counts one poster per image, not one per library row"
     },
     {
+      "type": "fix",
+      "text": "mobile push registration accepts every token format Expo delivers to"
+    },
+    {
+      "type": "fix",
+      "text": "people, rules and every other name list sort with capitals and lowercase together"
+    },
+    {
+      "type": "fix",
+      "text": "History sorts by title or duration on every page, with episodes under their show"
+    },
+    {
+      "type": "fix",
+      "text": "the Storage and Watch tables keep their sort across pages, and titles skip a leading The"
+    },
+    {
+      "type": "fix",
+      "text": "the Watch page ranks binge shows by their score"
+    },
+    {
+      "type": "fix",
+      "text": "duplicates no longer pair two different episodes that Plex tagged with the same id",
+      "refs": ["#1223"]
+    },
+    {
+      "type": "fix",
+      "text": "a paused Seerr link keeps the Requests page and its history instead of reading as unlinked"
+    },
+    {
+      "type": "fix",
+      "text": "Sync now refreshes the Requests page numbers right away instead of after a five-minute cache"
+    },
+    {
+      "type": "fix",
+      "text": "a user's Requests card keeps requests Seerr deleted, and Never watched skips titles they started"
+    },
+    {
+      "type": "fix",
+      "text": "the Requests page goes back to page 1 when the server picker changes"
+    },
+    {
       "type": "note",
-      "text": "standard Docker installs should add the tracearr_images volume to keep the poster cache",
+      "text": "standard image installs should mount a volume at /data/tracearr/image-cache to keep the poster cache",
       "docs": "https://github.com/connorgallopo/Tracearr/blob/076d7ce30eac5bab25656a1ad5d8c0444b989253/docker/examples/docker-compose.pg18.yml#L51"
     }
   ]

@@ -7,15 +7,15 @@ import {
   rowPaginationFeature,
   rowSelectionFeature,
   rowSortingFeature,
-  sortFn_alphanumeric,
   sortFn_alphanumericCaseSensitive,
   sortFn_basic,
   sortFn_datetime,
-  sortFn_text,
   sortFn_textCaseSensitive,
   tableFeatures,
   type useTable,
 } from '@tanstack/react-table';
+
+import { compareText } from '@/lib/collation';
 
 /**
  * Per-column presentation hints. This is the `columnMeta` feature slot rather
@@ -44,11 +44,12 @@ export const dataTableFeatures = tableFeatures({
   rowSortingFeature,
   sortedRowModel: createSortedRowModel(),
   sortFns: {
-    alphanumeric: sortFn_alphanumeric,
+    alphanumeric: (rowA, rowB, columnId) =>
+      compareText(rowA.getValue(columnId), rowB.getValue(columnId)),
     alphanumericCaseSensitive: sortFn_alphanumericCaseSensitive,
     basic: sortFn_basic,
     datetime: sortFn_datetime,
-    text: sortFn_text,
+    text: (rowA, rowB, columnId) => compareText(rowA.getValue(columnId), rowB.getValue(columnId)),
     textCaseSensitive: sortFn_textCaseSensitive,
   },
   rowPaginationFeature,

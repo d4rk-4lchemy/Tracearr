@@ -1941,6 +1941,90 @@ describe('importJellystatBackup', () => {
       expect(result.imported).toBe(0);
       expect(result.skipped).toBe(1);
     });
+
+    it('relinks an episode play stored against its show once the backup names the episode', async () => {
+      const { db } = await import('../../db/client.js');
+      const { batchGetLibraryItemIdentity } = await import('../../jobs/poller/database.js');
+      vi.mocked(batchGetLibraryItemIdentity).mockResolvedValue(
+        new Map([
+          [
+            REAL_BACKUP_ACTIVITY_1.EpisodeId,
+            {
+              mediaId: 'episode-media',
+              showMediaId: 'show-media',
+              imdbId: null,
+              tmdbId: null,
+              tvdbId: 12345,
+              parentRatingKey: 'season-key',
+              grandparentRatingKey: 'show-key',
+              itemMediaType: 'episode',
+            },
+          ],
+        ])
+      );
+      const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+      (db as unknown as { update: unknown }).update = vi.fn().mockReturnValue({ set });
+
+      let callCount = 0;
+      (db.select as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        callCount++;
+        const mockLimit = vi.fn();
+        const mockWhere = vi.fn().mockReturnValue({ limit: mockLimit });
+        const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
+
+        if (callCount === 1) {
+          mockLimit.mockResolvedValue([mockServer]);
+        } else if (callCount === 2) {
+          mockWhere.mockResolvedValue([mockServerUser]);
+        } else {
+          mockWhere.mockResolvedValue([
+            {
+              id: 'existing-1',
+              externalSessionId: '1305',
+              mediaType: 'episode',
+              mediaId: 'show-media',
+              showMediaId: null,
+              startedAt: new Date('2025-04-05T10:00:00Z'),
+              sourceVideoCodec: null,
+            },
+          ]);
+        }
+
+        return { from: mockFrom };
+      });
+
+      const backup = JSON.stringify([
+        { jf_playback_activity: [REAL_BACKUP_ACTIVITY_1] },
+        {
+          jf_library_episodes: [
+            {
+              EpisodeId: REAL_BACKUP_ACTIVITY_1.EpisodeId,
+              SeriesId: 'series-1',
+              Name: 'Pilot',
+              SeriesName: 'Code Black',
+              ParentIndexNumber: 1,
+              IndexNumber: 1,
+              archived: false,
+            },
+          ],
+        },
+      ]);
+
+      const result = await importJellystatBackup(serverId, backup, false);
+
+      expect(result.success).toBe(true);
+      expect(result.updated).toBe(1);
+      expect(result.imported).toBe(0);
+      expect(set).toHaveBeenCalledWith({
+        ratingKey: REAL_BACKUP_ACTIVITY_1.EpisodeId,
+        mediaId: 'episode-media',
+        showMediaId: 'show-media',
+        parentRatingKey: 'season-key',
+        grandparentRatingKey: 'show-key',
+        tvdbId: 12345,
+      });
+      expect(result.message).toContain('1 episode play relinked to the episode');
+    });
   });
 
   describe('successful import', () => {

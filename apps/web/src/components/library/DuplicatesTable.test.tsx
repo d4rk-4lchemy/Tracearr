@@ -149,6 +149,21 @@ describe('DuplicatesTable', () => {
     expect(screen.getByText('TV')).toBeInTheDocument();
   });
 
+  it('labels each copy in an episode group with its own season and episode', async () => {
+    renderTable({
+      title: 'Grilled',
+      mediaType: 'episode',
+      grandparentTitle: 'Breaking Bad',
+      seasonNumber: 2,
+      episodeNumber: 2,
+      year: null,
+    });
+
+    await userEvent.click(screen.getByText('Breaking Bad'));
+
+    expect(screen.getByText('S02 E02')).toBeInTheDocument();
+  });
+
   it('heads a music group with the artist under the track', () => {
     renderTable({
       title: 'Redbone',

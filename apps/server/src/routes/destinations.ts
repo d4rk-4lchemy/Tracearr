@@ -33,6 +33,7 @@ import {
   closeTransporter,
 } from '../services/notifications/destinations/emailTransport.js';
 import { getDestinationType } from '../services/notifications/destinations/registry.js';
+import { compareNames } from '../utils/collation.js';
 import { assertSafeProbeUrl } from '../utils/ssrf.js';
 import { firstIssueMessage } from '../utils/zod.js';
 
@@ -112,6 +113,7 @@ export async function destinationRoutes(app: FastifyInstance): Promise<void> {
       automationsReferencingDestinations(),
       newslettersReferencingDestinations(),
     ]);
+    rows.sort((a, b) => compareNames(a.name, b.name) || a.id.localeCompare(b.id));
     return rows.map((row) =>
       toPublicDestination(
         row,

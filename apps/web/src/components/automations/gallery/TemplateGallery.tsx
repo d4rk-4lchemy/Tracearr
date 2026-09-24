@@ -19,6 +19,7 @@ import {
   templateName,
   type DescribeRefs,
 } from '@/lib/automations';
+import { compareText } from '@/lib/collation';
 import type { AutomationTemplate, TemplateGroup } from '@/lib/api';
 import { GalleryRow, TemplateCard } from './TemplateCard';
 
@@ -155,6 +156,9 @@ export function TemplateGallery({
             <CommandGroup key={group} heading={t(`automations.gallery.group.${group}`)}>
               {entries
                 .filter((entry) => entry.template.group === group)
+                .sort((a, b) =>
+                  compareText(templateName(t, a.template), templateName(t, b.template))
+                )
                 .map(({ template, haystack }) => (
                   <CommandItem
                     key={template.id}

@@ -2272,6 +2272,9 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
       pausedDurationMs: 0,
       watched: false,
       sourceVideoCodec: null,
+      mediaType: 'movie',
+      mediaId: null,
+      showMediaId: null,
       ...overrides,
     };
   }

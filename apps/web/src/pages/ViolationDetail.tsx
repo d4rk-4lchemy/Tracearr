@@ -258,7 +258,8 @@ export function ViolationDetail() {
   const sessionColumns = useMemo(
     () =>
       sessionColumn.columns([
-        sessionColumn.accessor('mediaTitle', {
+        sessionColumn.accessor((session) => getMediaDisplay(session).title, {
+          id: 'media',
           header: t('common:labels.media'),
           cell: ({ row }) => {
             const session = row.original;
@@ -290,27 +291,33 @@ export function ViolationDetail() {
           header: t('common:labels.ipAddress'),
           cell: ({ row }) => <span className="font-mono text-sm">{row.original.ipAddress}</span>,
         }),
-        sessionColumn.accessor('geoCity', {
-          header: t('common:labels.location'),
-          cell: ({ row }) => {
-            const session = row.original;
-            if (!session.geoCity && !session.geoCountry) {
-              return <span className="text-muted-foreground">—</span>;
-            }
-            return (
-              <span className="text-sm">
-                {session.geoCity && `${session.geoCity}, `}
-                {getCountryName(session.geoCountry) ?? ''}
-                <LocalBadge
-                  isLocal={session.isLocal}
-                  country={session.geoCountry}
-                  className="ml-1.5 align-middle"
-                />
-              </span>
-            );
-          },
-        }),
-        sessionColumn.accessor('device', {
+        sessionColumn.accessor(
+          (session) =>
+            [session.geoCity, getCountryName(session.geoCountry)].filter(Boolean).join(', '),
+          {
+            id: 'location',
+            header: t('common:labels.location'),
+            cell: ({ row }) => {
+              const session = row.original;
+              if (!session.geoCity && !session.geoCountry) {
+                return <span className="text-muted-foreground">—</span>;
+              }
+              return (
+                <span className="text-sm">
+                  {session.geoCity && `${session.geoCity}, `}
+                  {getCountryName(session.geoCountry) ?? ''}
+                  <LocalBadge
+                    isLocal={session.isLocal}
+                    country={session.geoCountry}
+                    className="ml-1.5 align-middle"
+                  />
+                </span>
+              );
+            },
+          }
+        ),
+        sessionColumn.accessor((session) => session.device || session.platform || '', {
+          id: 'device',
           header: t('common:labels.device'),
           cell: ({ row }) => {
             const session = row.original;

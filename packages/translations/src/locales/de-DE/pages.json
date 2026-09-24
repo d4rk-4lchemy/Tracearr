@@ -103,8 +103,8 @@
     "suggestionsPairEmailMore_one": "",
     "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairEmailUsernameMore_one": "{{first}} und {{second}} verwenden die gleiche Adresse wie eine Benutzername oder Konto-E-Mail, plus {{count}} mehr",
+    "suggestionsPairEmailUsernameMore_other": "{{first}} und {{second}} verwenden die gleiche Adresse wie eine Benutzername oder Konto-E-Mail, plus {{count}} mehr",
     "suggestionsPairUsername": "",
     "suggestionsPairUsernameMore_one": "",
     "suggestionsPairUsernameMore_other": "",
@@ -156,7 +156,7 @@
     "contactEmailLabel": "",
     "contactEmailNone": "",
     "contactEmailNoLogin": "",
-    "locations": ""
+    "locations": "Standorte"
   },
   "history": {
     "title": "Historie",
@@ -466,7 +466,7 @@
       "outcomes": {
         "completed": "",
         "stopped_by_condition": "",
-        "error": "Error"
+        "error": ""
       },
       "empty": "",
       "emptyDescription": "",
@@ -568,8 +568,8 @@
       "clearSelection": "",
       "selectedCount": "",
       "scope": {
-        "label": "Scope",
-        "global": "Global",
+        "label": "",
+        "global": "",
         "server": "",
         "account": "",
         "person": "",
@@ -720,7 +720,7 @@
       "user_attributes": "",
       "device_client": "",
       "network_location": "",
-      "scope": "Scope",
+      "scope": "",
       "media": ""
     },
     "createAutomation": "",
@@ -897,7 +897,7 @@
       "noRuns": ""
     },
     "disable": "",
-    "editAutomation": "Edit Automation",
+    "editAutomation": "",
     "effects": {
       "title": "",
       "kill": "",
@@ -1174,11 +1174,11 @@
       "builtinMatch": ""
     },
     "kind": {
-      "policy": "Policy",
+      "policy": "",
       "notification": ""
     },
     "kindColumn": "",
-    "name": "Automation Name",
+    "name": "",
     "newAutomation": "",
     "namePlaceholder": "",
     "nameInvalid": "",
@@ -1463,7 +1463,7 @@
       "gb": "",
       "seconds": ""
     },
-    "updateAutomation": "Update Automation",
+    "updateAutomation": "",
     "catalog": {
       "groups": {
         "sessions": "",
@@ -1473,7 +1473,7 @@
         "updates": "",
         "notifications": "",
         "notify": "",
-        "policy": "Policy",
+        "policy": "",
         "control": ""
       },
       "suggested": "",
@@ -1673,7 +1673,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1685,7 +1685,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",

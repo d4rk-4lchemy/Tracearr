@@ -828,7 +828,7 @@ export async function getMediaPlatformBreakdown(
       ${serverFragment}
     GROUP BY s.platform, s.player_name
     HAVING COUNT(DISTINCT COALESCE(s.reference_id, s.id)) FILTER (WHERE COALESCE(s.duration_ms, 0) >= 120000) > 0
-    ORDER BY plays DESC, s.platform NULLS LAST, s.player_name NULLS LAST
+    ORDER BY plays DESC, lower(s.platform) NULLS LAST, lower(s.player_name) NULLS LAST
   `);
   return (
     result.rows as unknown as {

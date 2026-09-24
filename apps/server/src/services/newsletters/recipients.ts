@@ -6,6 +6,7 @@ import type {
   NewsletterScope,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
+import { compareNames } from '../../utils/collation.js';
 import { lastDeliveredUserIds } from './store.js';
 import { normalizeAddress, suppressedAmong } from './suppressions.js';
 
@@ -50,6 +51,19 @@ export interface RecipientResolution {
   recipients: ResolvedRecipient[];
   missing: NewsletterRecipientPerson[];
   excluded: NewsletterExcludedPerson[];
+}
+
+type NamedPerson = { name: string | null; username: string | null; userId: string | null };
+
+function byName(a: NamedPerson, b: NamedPerson): number {
+  return (
+    compareNames(a.name ?? a.username ?? '', b.name ?? b.username ?? '') ||
+    (a.userId ?? '').localeCompare(b.userId ?? '')
+  );
+}
+
+function byRecipientName(a: ResolvedRecipient, b: ResolvedRecipient): number {
+  return byName(a, b) || a.address.localeCompare(b.address);
 }
 
 function firstAddress(candidate: RecipientCandidate): string | null {
@@ -222,7 +236,15 @@ export async function resolveRecipients(
     suppressedAmong(addresses),
     members && newSinceLastSendOf !== undefined ? lastDeliveredUserIds(newSinceLastSendOf) : null,
   ]);
-  const resolution = mergeRecipients(candidates, extraAddresses, suppressed, excludeUserIds);
+  const merged = mergeRecipients(candidates, extraAddresses, suppressed, excludeUserIds);
+  const resolution: RecipientResolution = {
+    recipients: [
+      ...merged.recipients.filter((r) => r.userId !== null).sort(byRecipientName),
+      ...merged.recipients.filter((r) => r.userId === null).sort(byRecipientName),
+    ],
+    missing: merged.missing.sort(byName),
+    excluded: merged.excluded.sort(byName),
+  };
   if (!reached) return resolution;
   return {
     ...resolution,

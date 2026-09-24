@@ -40,6 +40,7 @@ vi.mock('../librarySyncQueue.js', () => ({
 }));
 
 vi.mock('../../services/imageProxy.js', () => ({
+  IMAGE_CACHE_DIR: '/cache',
   proxyImage: (...args: unknown[]) => mockProxyImage(...args),
   posterCacheEntryExists: (...args: unknown[]) => mockPosterCacheEntryExists(...args),
 }));
@@ -415,6 +416,7 @@ describe('imagePrecacheQueue', () => {
       mockBatchQuery([{ id: 'item-50', thumbPath: '/t/50' }]);
       await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: 'item-49' }));
       expect(redisStore.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL('server-1'))).toBeDefined();
+      expect(redisStore.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL_DIR('server-1'))).toBe('/cache');
     });
 
     it('does not stamp a watermark-scoped pass, which walked only recent rows', async () => {
@@ -433,17 +435,18 @@ describe('imagePrecacheQueue', () => {
   });
 
   describe('persistence detection', () => {
-    function freshFullPassStamp() {
+    function fullPassStamp(dir = '/cache') {
       redisStore.set(
         REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL('server-1'),
-        new Date(Date.now() + 1000).toISOString()
+        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
       );
+      redisStore.set(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL_DIR('server-1'), dir);
     }
 
-    it('flags a cache that lost everything since a full pass this process completed', async () => {
+    it('flags a cache that lost everything since a full pass against this directory, even one a previous process completed', async () => {
       mockBatchQuery([makeItemRow('item-0')]);
       mockPosterCacheEntryExists.mockResolvedValue(false);
-      freshFullPassStamp();
+      fullPassStamp();
 
       await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
 
@@ -454,7 +457,7 @@ describe('imagePrecacheQueue', () => {
       mockBatchQuery([makeItemRow('item-0')]);
       mockPosterCacheEntryExists.mockResolvedValue(true);
       redisStore.set(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING, 'stale');
-      freshFullPassStamp();
+      fullPassStamp();
 
       await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
 
@@ -470,7 +473,7 @@ describe('imagePrecacheQueue', () => {
       expect(redisStore.get(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING)).toBeUndefined();
     });
 
-    it('does not flag on a stamp from a previous process, which every upgrade carries', async () => {
+    it('does not flag on a stamp with no recorded directory, which every upgrade carries', async () => {
       mockBatchQuery([makeItemRow('item-0')]);
       mockPosterCacheEntryExists.mockResolvedValue(false);
       redisStore.set(
@@ -483,10 +486,20 @@ describe('imagePrecacheQueue', () => {
       expect(redisStore.get(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING)).toBeUndefined();
     });
 
+    it('does not flag on a stamp taken against another directory', async () => {
+      mockBatchQuery([makeItemRow('item-0')]);
+      mockPosterCacheEntryExists.mockResolvedValue(false);
+      fullPassStamp('/app/data/image-cache');
+
+      await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
+
+      expect(redisStore.get(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING)).toBeUndefined();
+    });
+
     it('does not sample a watermark-scoped pass, which only walks recent rows', async () => {
       mockBatchQuery([makeItemRow('item-0')]);
       mockPosterCacheEntryExists.mockResolvedValue(false);
-      freshFullPassStamp();
+      fullPassStamp();
 
       await processImagePrecacheJob(
         makeJob({ serverId: 'server-1', cursor: null, sinceUpdatedAt: new Date().toISOString() })

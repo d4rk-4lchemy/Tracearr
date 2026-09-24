@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `86db792d`
-- Last shared upstream commit found during inspection: `ae9b34fe` (before merge)
-- Latest upstream commit merged into the current working tree: `86db792d`
+- Source branch/SHA inspected: `main` at `db54cfb1`
+- Last shared upstream commit found during inspection: `86db792d` (before merge)
+- Latest upstream commit merged into the current working tree: `db54cfb1`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -20,6 +20,39 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## September 24, 2026 upstream merge
+
+Upstream `main` at `db54cfb1` (Tracearr 2.5.0) brings deterministic,
+case-insensitive list ordering, History sort-aware pagination, Jellystat
+episode relinking, Plex duplicate-identity fixes, Seerr request corrections,
+Expo push-token validation, persistent-cache diagnostics, dependency updates
+and translations. Migration `0108_warm_toad` remains identical to upstream;
+Dispatcharr migrations stay in their separate, unchanged ledger.
+
+Library query conflicts adopt upstream first-row guards; Jellystat retains
+both upstream relinking and the fork's media-stream array validation. Locale
+conflicts retain upstream translations plus the fork's channel-count and
+upstream-version keys. Dispatcharr auth, session metadata, library/Seerr
+exclusions, uncropped artwork and cache markers remain intact. Exactly the
+PR-only CI and fork GHCR release workflows remain, unchanged; upstream
+Renovate and Vouch metadata stay removed. Both Dockerfiles retain fork
+metadata and fork migrations while adopting server-only runtime dependencies.
+
+Full non-Docker validation passed on the first run with Node 24 / pnpm 12.4.2,
+`HUSKY=0`, a 4 GB heap, a clean Turbo cache and frozen-lockfile install:
+lint, typecheck, translations, unit/services/routes/auth/security, web,
+coverage and build. Server groups plus web passed 9,037 tests with no skips;
+shared passed another 384. Coverage passed 5,796 tests (70.40% statements,
+64.21% branches, 74.58% functions, 71.63% lines). Upstream fixes the previously
+skipped Plex auth test and removes an empty poller placeholder. Lint reports
+751 warnings, down two; runtime/build counts and normalized warning classes
+match the preceding baseline. Automated Dispatcharr auth/settings, lifecycle,
+images, termination and History regressions passed. Logs use
+`.tmp/github-ci-<job>-20260924.log`; the runner exits 0 with `FAILED_JOBS=0`.
+Docker integration, E2E and image builds are omitted at the user's request;
+migration execution and database upgrade paths are not covered. Live-provider
+manual smoke checks have not been performed.
 
 ## What This Fork Adds
 

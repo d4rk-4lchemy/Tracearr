@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Film, Tv } from 'lucide-react';
@@ -15,7 +16,7 @@ import {
   type SortingState,
 } from '@/components/ui/data-table';
 import { InlineErrorState } from '@/components/library/ErrorState';
-import { UserCell } from '@/components/users/UserCell';
+import { RequesterCell } from '@/components/requests/RequesterCell';
 import { formatSeasons, formatWait, type Translate } from '@/components/requests/format';
 import { formatBytes } from '@/lib/formatters';
 
@@ -87,18 +88,7 @@ export function RequestOutcomeTable({
           id: 'requester',
           header: t('pages:requests.outcomes.requester'),
           enableSorting: false,
-          cell: (info) => {
-            const { requester } = info.row.original;
-            return (
-              <UserCell
-                serverUserId={requester.serverUserId}
-                username={requester.username}
-                identityName={requester.identityName}
-                thumbUrl={requester.thumb}
-                serverId={requester.serverId}
-              />
-            );
-          },
+          cell: (info) => <RequesterCell requester={info.row.original.requester} />,
         }),
         columnHelper.accessor((row) => row.waitMs, {
           id: 'waitMs',
@@ -110,7 +100,7 @@ export function RequestOutcomeTable({
           id: 'requestedAt',
           header: t('pages:requests.outcomes.requested'),
           meta: { numeric: true },
-          cell: (info) => new Date(info.row.original.requestedAt).toLocaleDateString(),
+          cell: (info) => format(new Date(info.row.original.requestedAt), 'MMM d, yyyy'),
         }),
         columnHelper.accessor((row) => row.fileSizeBytes, {
           id: 'fileSizeBytes',

@@ -14,7 +14,7 @@ import {
   type SortingState,
 } from '@/components/ui/data-table';
 import { InlineErrorState } from '@/components/library/ErrorState';
-import { UserCell } from '@/components/users/UserCell';
+import { RequesterCell } from '@/components/requests/RequesterCell';
 import { formatDuration } from '@/lib/formatters';
 
 interface RequesterFollowThroughTableProps {
@@ -56,18 +56,7 @@ export function RequesterFollowThroughTable({
         columnHelper.accessor((row) => row.requester.identityName ?? row.requester.username, {
           id: 'name',
           header: t('pages:requests.followThrough.person'),
-          cell: (info) => {
-            const { requester } = info.row.original;
-            return (
-              <UserCell
-                serverUserId={requester.serverUserId}
-                username={requester.username}
-                identityName={requester.identityName}
-                thumbUrl={requester.thumb}
-                serverId={requester.serverId}
-              />
-            );
-          },
+          cell: (info) => <RequesterCell requester={info.row.original.requester} />,
         }),
         columnHelper.accessor((row) => row.requested, {
           id: 'requested',

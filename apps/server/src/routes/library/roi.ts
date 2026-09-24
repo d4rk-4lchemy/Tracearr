@@ -206,11 +206,12 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
         watch_hours_per_gb: 'watch_hours_per_gb',
         value_score: 'value_score',
         file_size: 'file_size_bytes',
-        title: 'title',
+        title: 'sort_key',
       };
       const sortColumnName = sortColumnMap[sortBy] || 'watch_hours_per_gb';
       const sortDirStr = sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS FIRST';
-      const orderByClause = sql.raw(`${sortColumnName} ${sortDirStr}`);
+      const orderByClause = sql.raw(`${sortColumnName} ${sortDirStr}, id`);
+      const outerOrderByClause = sql.raw(`pi.${sortColumnName} ${sortDirStr}, pi.id`);
 
       const offset = (page - 1) * pageSize;
 
@@ -223,8 +224,10 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
           -- ident; unmatched items fall back to their own id.
           SELECT li.id, li.server_id, li.library_id, li.rating_key, li.title,
                  li.media_type, li.year, li.created_at,
+                 COALESCE(m.sort_title, lower(li.title)) AS sort_key,
                  COALESCE(li.media_id::text, li.id::text) AS ident
           FROM library_items li
+          LEFT JOIN media m ON m.id = li.media_id
           WHERE li.media_type NOT IN ('episode', 'track', 'season', 'album')  -- Exclude children/containers, only show content
             AND li.removed_at IS NULL
             ${serverFilter}
@@ -269,7 +272,7 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
         ),
         ident_reps AS (
           -- One representative entry per identity for display fields
-          SELECT DISTINCT ON (ident) ident, id, server_id, title, media_type, year, created_at
+          SELECT DISTINCT ON (ident) ident, id, server_id, title, sort_key, media_type, year, created_at
           FROM top_items
           ORDER BY ident, created_at ASC NULLS LAST, id
         ),
@@ -279,6 +282,7 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
             r.server_id,
             s.name AS server_name,
             r.title,
+            r.sort_key,
             r.media_type,
             r.year,
             isz.file_size AS file_size_bytes,
@@ -396,6 +400,7 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
           ss.potential_savings_gb::text AS _potential_savings_gb
         FROM paginated_items pi
         CROSS JOIN summary_stats ss
+        ORDER BY ${outerOrderByClause}
       `);
 
       // Extract items and summary from combined result
@@ -437,11 +442,8 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
       let summary: RoiSummary;
       let total: number;
 
-      if (rows.length > 0) {
-        const firstRow = rows[0];
-        if (!firstRow) {
-          throw new Error('ROI query returned inconsistent row set');
-        }
+      const firstRow = rows[0];
+      if (firstRow) {
         summary = {
           totalItems: parseInt(firstRow._total_items, 10) || 0,
           totalStorageGb: parseFloat(firstRow._total_storage_gb) || 0,

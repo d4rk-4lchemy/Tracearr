@@ -157,12 +157,13 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
       const sortColumnMap: Record<string, string> = {
         size: 'file_size',
         days_stale: 'days_stale',
-        title: 'title',
+        title: 'sort_key',
         added_at: 'added_at',
       };
       const sortColumnName = sortColumnMap[sortBy] || 'file_size';
       const sortDirStr = sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS FIRST';
-      const orderByClause = sql.raw(`${sortColumnName} ${sortDirStr}`);
+      const orderByClause = sql.raw(`${sortColumnName} ${sortDirStr}, id`);
+      const outerOrderByClause = sql.raw(`pi.${sortColumnName} ${sortDirStr}, pi.id`);
 
       const offset = (page - 1) * pageSize;
 
@@ -175,8 +176,10 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
           -- ident; unmatched items fall back to their own id.
           SELECT li.id, li.server_id, li.library_id, li.rating_key, li.title,
                  li.media_type, li.year, li.video_resolution, li.created_at,
+                 COALESCE(m.sort_title, lower(li.title)) AS sort_key,
                  COALESCE(li.media_id::text, li.id::text) AS ident
           FROM library_items li
+          LEFT JOIN media m ON m.id = li.media_id
           WHERE li.media_type NOT IN ('episode', 'track', 'season', 'album')  -- Exclude children/containers, only show content
             AND li.removed_at IS NULL
             ${serverFilter}
@@ -230,7 +233,7 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
         ident_reps AS (
           -- One representative entry per identity for display fields
           SELECT DISTINCT ON (ident) ident, id, server_id, library_id, rating_key,
-                 title, media_type, year, video_resolution, created_at
+                 title, sort_key, media_type, year, video_resolution, created_at
           FROM top_items
           ORDER BY ident, created_at ASC NULLS LAST, id
         ),
@@ -242,6 +245,7 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
             r.library_id,
             s.name AS library_name,
             r.title,
+            r.sort_key,
             r.media_type,
             r.year,
             isz.file_size,
@@ -268,6 +272,7 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
             library_id,
             library_name,
             title,
+            sort_key,
             media_type,
             year,
             file_size,
@@ -338,6 +343,7 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
           ss.total_stale_bytes::text AS _total_stale_bytes
         FROM paginated_items pi
         CROSS JOIN summary_stats ss
+        ORDER BY ${outerOrderByClause}
       `);
 
       // Extract items and summary from combined result
@@ -372,11 +378,8 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
 
       // Extract summary from first row (or fetch separately if no items)
       let summary: StaleSummary;
-      if (rows.length > 0) {
-        const firstRow = rows[0];
-        if (!firstRow) {
-          throw new Error('Stale query returned inconsistent row set');
-        }
+      const firstRow = rows[0];
+      if (firstRow) {
         summary = {
           neverWatched: {
             count: parseInt(firstRow._never_watched_count, 10) || 0,

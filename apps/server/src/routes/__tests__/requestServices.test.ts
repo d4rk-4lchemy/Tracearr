@@ -65,6 +65,7 @@ import {
   updateRequestService,
   type RequestServiceRow,
 } from '../../services/requests/store.js';
+import { SsrfBlockedError } from '../../utils/ssrf.js';
 import { requestServiceRoutes } from '../requestServices.js';
 
 const SERVICE_ID = '6d3a3f0e-9f4e-4a2a-8a1a-3b7a5c2d1e00';
@@ -228,6 +229,20 @@ describe('Request Service Routes', () => {
       expect(response.statusCode).toBe(502);
       expect(response.json()).toEqual({ error: 'x' });
     });
+
+    it('400s a url the probe guard refuses', async () => {
+      app = await buildTestApp(ownerUser);
+      vi.mocked(probeSeerr).mockRejectedValue(new SsrfBlockedError('Malformed URL: not a url'));
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/request-services/test',
+        payload: { url: 'https://seerr.example.com', apiKey: 'secret' },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().message).toBe('Malformed URL: not a url');
+    });
   });
 
   describe('POST /request-services', () => {
@@ -390,6 +405,29 @@ describe('Request Service Routes', () => {
       expect(response.statusCode).toBe(202);
       expect(response.json()).toEqual({ jobId: 'job-1' });
       expect(enqueueRequestSync).toHaveBeenCalledWith(SERVICE_ID, 'full');
+    });
+
+    it('400s an id that is not a uuid', async () => {
+      app = await buildTestApp(ownerUser);
+
+      const response = await app.inject({ method: 'POST', url: '/request-services/abc/sync' });
+
+      expect(response.statusCode).toBe(400);
+      expect(getRequestService).not.toHaveBeenCalled();
+    });
+
+    it('409s when sync is disabled for the service', async () => {
+      app = await buildTestApp(ownerUser);
+      vi.mocked(getRequestService).mockResolvedValue(makeRow({ enabled: false }));
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/request-services/${SERVICE_ID}/sync`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().message).toBe('Sync is disabled for this service');
+      expect(enqueueRequestSync).not.toHaveBeenCalled();
     });
 
     it('409s while a sync is already running', async () => {

@@ -133,9 +133,12 @@
       "floor": "保持闲置",
       "ceiling": "极限",
       "lastSweep": "上次扫描",
+      "swept": "",
+      "freed": "",
       "never": "尚未完成",
       "diskLimited": "",
-      "loadError": "无法加载缓存状态。"
+      "loadError": "无法加载缓存状态。",
+      "notPersisting": ""
     }
   },
   "servers": {
@@ -198,6 +201,26 @@
     "checkingConnection": "检查连接中…",
     "pluginVersion": "插件{{version}}",
     "pluginUpdateAvailable": "\"插件更新可用\"",
+    "location": {
+      "title": "",
+      "description": "",
+      "set": "",
+      "addMove": "",
+      "fromBeginning": "",
+      "movedOn": "",
+      "remove": "",
+      "latitude": "",
+      "longitude": "",
+      "country": "",
+      "countryPlaceholder": "",
+      "countrySearch": "",
+      "countryEmpty": "",
+      "city": "",
+      "region": "",
+      "pickHint": "",
+      "incomplete": "",
+      "syncPending": ""
+    },
     "realtimeDialog": {
       "title": "启用实时更新",
       "updateTitle": "更新 Tracearr SSE 插件",
@@ -474,6 +497,7 @@
     "changeCount_other": "",
     "series": "",
     "docs": "",
+    "source": "",
     "empty": "",
     "types": {
       "new": "",

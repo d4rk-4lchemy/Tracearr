@@ -125,7 +125,9 @@ describe('roster search', () => {
 
 describe('roster ORDER BY', () => {
   it('sorts by the identity display name by default, ascending, tiebroken on the identity id', () => {
-    expect(orderClause('username')).toBe('coalesce(u.name, u.username) ASC NULLS LAST, u.id ASC');
+    expect(orderClause('username')).toBe(
+      'lower(coalesce(u.name, u.username)) ASC NULLS LAST, u.id ASC'
+    );
   });
 
   it('sorts trust by the identity aggregate, worst-first default', () => {
@@ -143,7 +145,7 @@ describe('roster ORDER BY', () => {
   it('honours an explicit direction and keeps NULLS LAST in both', () => {
     expect(orderClause('joinedAt', 'asc')).toBe('u.first_joined_at ASC NULLS LAST, u.id ASC');
     expect(orderClause('username', 'desc')).toBe(
-      'coalesce(u.name, u.username) DESC NULLS LAST, u.id ASC'
+      'lower(coalesce(u.name, u.username)) DESC NULLS LAST, u.id ASC'
     );
   });
 });

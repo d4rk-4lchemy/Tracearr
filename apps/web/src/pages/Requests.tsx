@@ -66,6 +66,14 @@ export function Requests() {
   const shareOfLanded = (count: number) =>
     landed === 0 ? '—' : formatPercent(count / landed, 0, true);
 
+  const serverScope = selectedServerIds.join(',');
+  const [pagedScope, setPagedScope] = useState(serverScope);
+  if (pagedScope !== serverScope) {
+    setPagedScope(serverScope);
+    setUnplayedPage(1);
+    setRequesterPage(1);
+  }
+
   const onUnplayedSort = (sorting: SortingState) => {
     setUnplayedSorting(sorting);
     setUnplayedPage(1);
@@ -99,14 +107,15 @@ export function Requests() {
     );
   }
 
-  if (analytics.isError) {
+  const failed = status.isError ? status : analytics.isError ? analytics : null;
+  if (failed) {
     return (
       <div className="space-y-6">
         {header}
         <ErrorState
           title={t('requests.page.failedToLoad')}
-          message={analytics.error.message}
-          onRetry={() => void analytics.refetch()}
+          message={failed.error.message}
+          onRetry={() => void failed.refetch()}
         />
       </div>
     );

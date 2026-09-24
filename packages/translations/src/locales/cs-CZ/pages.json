@@ -156,7 +156,7 @@
     "contactEmailLabel": "",
     "contactEmailNone": "",
     "contactEmailNoLogin": "",
-    "locations": ""
+    "locations": "Místa"
   },
   "history": {
     "title": "Historie",
@@ -262,7 +262,7 @@
       "quietest": "Nejvíce ticho:",
       "bingeHighlights": "Zvýraznění Binge",
       "bingeHighlightsDesc": "Zobrazí s nejintenzivnějším obrazcem",
-      "bingeSessions": "binge relace",
+      "bingeSessions": "",
       "noData": "Zatím žádná sledovaná data",
       "noDataDesc": "Analytika se zobrazí zde, jakmile bude obsah přehrán. Po nějaké aktivitě se vraťte zpět.",
       "failedToLoad": "Nepodařilo se načíst analýzu hodinek",
@@ -516,7 +516,7 @@
       "destinationsLabel": "",
       "required": "",
       "needs": {
-        "title": "Fill in"
+        "title": ""
       },
       "helper": {
         "killMessage": "",
@@ -569,7 +569,7 @@
       "selectedCount": "",
       "scope": {
         "label": "",
-        "global": "Global",
+        "global": "",
         "server": "",
         "account": "",
         "person": "",
@@ -929,7 +929,7 @@
       "carries": "",
       "copyCode": "",
       "copyJson": "",
-      "authorLabel": "Made by",
+      "authorLabel": "",
       "authorPlaceholder": "",
       "authorHelper": "",
       "save": "",
@@ -1139,7 +1139,7 @@
       "check": "",
       "checking": "",
       "valid": "",
-      "madeBy": "Made by {{author}}",
+      "madeBy": "",
       "codeShort": "",
       "paused": {
         "label": "",
@@ -1673,7 +1673,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1685,7 +1685,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",

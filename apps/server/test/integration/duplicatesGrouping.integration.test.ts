@@ -221,6 +221,55 @@ describe('GET /library/duplicates (real SQL)', () => {
     expect(body.summary.totalGroups).toBe(0);
   });
 
+  it('does not pair two episodes of one show that share an id but differ in episode number', async () => {
+    const server = await createTestServer();
+    for (const [season, episode, size] of [
+      [1, 2, 918_142_971],
+      [2, 1, 934_866_823],
+    ] as const) {
+      await createTestLibraryItem({
+        serverId: server.id,
+        mediaType: 'episode',
+        imdbId: 'tt32429838',
+        grandparentTitle: 'Tires',
+        parentIndex: season,
+        itemIndex: episode,
+        fileSize: size,
+      });
+    }
+
+    const app = await buildApp(ownerUser());
+    const body = await requestDuplicates(app, [server.id]);
+
+    expect(body.summary.totalGroups).toBe(0);
+  });
+
+  it('pairs the same episode across servers by id and episode number', async () => {
+    const serverA = await createTestServer();
+    const serverB = await createTestServer();
+    const tvdb = Math.floor(Date.now() / 1000) + 2;
+    for (const [serverId, size] of [
+      [serverA.id, 100],
+      [serverB.id, 60],
+    ] as const) {
+      await createTestLibraryItem({
+        serverId,
+        mediaType: 'episode',
+        tvdbId: tvdb,
+        grandparentTitle: 'Breaking Bad',
+        parentIndex: 2,
+        itemIndex: 2,
+        fileSize: size,
+      });
+    }
+
+    const app = await buildApp(ownerUser());
+    const body = await requestDuplicates(app, [serverA.id, serverB.id]);
+
+    expect(body.summary.totalGroups).toBe(1);
+    expect(body.duplicates[0]!.items).toHaveLength(2);
+  });
+
   it('hydrates the show, season and episode numbers for episode duplicates', async () => {
     const server = await createTestServer();
     const tvdb = Math.floor(Date.now() / 1000) + 1;

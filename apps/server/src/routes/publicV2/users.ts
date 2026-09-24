@@ -245,7 +245,7 @@ export function registerUsersRoutes(app: FastifyInstance, routeConfig: RouteConf
         CROSS JOIN LATERAL unnest(m.genres) AS g
         WHERE ${scope}
         GROUP BY g
-        ORDER BY plays DESC, g ASC
+        ORDER BY plays DESC, lower(g) ASC
         LIMIT 10
       `);
       const topGenres = (genreResult.rows as unknown as { genre: string; plays: number }[]).map(

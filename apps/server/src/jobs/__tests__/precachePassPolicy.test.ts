@@ -179,14 +179,15 @@ describe('full pass stamping', () => {
     expect(await get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(SERVER_ID))).toBeNull();
   });
 
-  it('commitFullPass writes a parseable full-pass stamp', async () => {
+  it('commitFullPass writes a parseable full-pass stamp and the directory it walked', async () => {
     const redis = makeMockRedis();
-    await commitFullPass(redis, SERVER_ID);
+    await commitFullPass(redis, SERVER_ID, '/cache');
 
     const get = redis.get as unknown as (k: string) => Promise<string | null>;
     const stamp = await get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(SERVER_ID));
     expect(stamp).not.toBeNull();
     expect(Number.isNaN(new Date(stamp!).getTime())).toBe(false);
+    expect(await get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL_DIR(SERVER_ID))).toBe('/cache');
   });
 
   it('leaves a server whose pass never terminated still due for a full pass', async () => {

@@ -895,7 +895,8 @@ describe('Session Routes', () => {
       expect(normalized).toContain(
         'MIN(s.started_at) DESC, COALESCE(s.reference_id, s.id)::text DESC'
       );
-      expect(normalized).toContain('ORDER BY gs.started_at DESC, gs.play_id::text DESC');
+      expect(normalized).toContain('JOIN history_page_ids hp ON hp.play_id = gs.play_id');
+      expect(normalized).toContain('ORDER BY hp.rn');
     });
 
     it('paginates two plays with an identical started_at without duplicating or dropping either', async () => {

@@ -156,7 +156,7 @@
     "contactEmailLabel": "",
     "contactEmailNone": "",
     "contactEmailNoLogin": "",
-    "locations": ""
+    "locations": "Lokalizacje"
   },
   "history": {
     "title": "Historia",
@@ -466,7 +466,7 @@
       "outcomes": {
         "completed": "",
         "stopped_by_condition": "",
-        "error": "Error"
+        "error": ""
       },
       "empty": "",
       "emptyDescription": "",
@@ -686,7 +686,7 @@
         "placeholderAction": ""
       },
       "footer": {
-        "problems_one": "{{count}} problem",
+        "problems_one": "",
         "problems_other": "",
         "remaining_one": "",
         "remaining_other": "",
@@ -929,7 +929,7 @@
       "carries": "",
       "copyCode": "",
       "copyJson": "",
-      "authorLabel": "Made by",
+      "authorLabel": "",
       "authorPlaceholder": "",
       "authorHelper": "",
       "save": "",
@@ -1139,7 +1139,7 @@
       "check": "",
       "checking": "",
       "valid": "",
-      "madeBy": "Made by {{author}}",
+      "madeBy": "",
       "codeShort": "",
       "paused": {
         "label": "",
@@ -1174,7 +1174,7 @@
       "builtinMatch": ""
     },
     "kind": {
-      "policy": "Policy",
+      "policy": "",
       "notification": ""
     },
     "kindColumn": "",
@@ -1473,8 +1473,8 @@
         "updates": "",
         "notifications": "",
         "notify": "",
-        "policy": "Policy",
-        "control": "Control flow"
+        "policy": "",
+        "control": ""
       },
       "suggested": "",
       "triggers": {
@@ -1673,7 +1673,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1685,7 +1685,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",

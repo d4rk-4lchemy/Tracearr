@@ -156,7 +156,7 @@
     "contactEmailLabel": "",
     "contactEmailNone": "",
     "contactEmailNoLogin": "",
-    "locations": ""
+    "locations": "Platser"
   },
   "history": {
     "title": "Historik",
@@ -569,7 +569,7 @@
       "selectedCount": "",
       "scope": {
         "label": "",
-        "global": "Global",
+        "global": "",
         "server": "",
         "account": "",
         "person": "",
@@ -686,8 +686,8 @@
         "placeholderAction": ""
       },
       "footer": {
-        "problems_one": "{{count}} problem",
-        "problems_other": "{{count}} problems",
+        "problems_one": "",
+        "problems_other": "",
         "remaining_one": "",
         "remaining_other": "",
         "ready": "",
@@ -897,7 +897,7 @@
       "noRuns": ""
     },
     "disable": "",
-    "editAutomation": "Edit Automation",
+    "editAutomation": "",
     "effects": {
       "title": "",
       "kill": "",
@@ -1174,7 +1174,7 @@
       "builtinMatch": ""
     },
     "kind": {
-      "policy": "Policy",
+      "policy": "",
       "notification": ""
     },
     "kindColumn": "",
@@ -1473,7 +1473,7 @@
         "updates": "",
         "notifications": "",
         "notify": "",
-        "policy": "Policy",
+        "policy": "",
         "control": ""
       },
       "suggested": "",
@@ -1673,7 +1673,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1685,7 +1685,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",

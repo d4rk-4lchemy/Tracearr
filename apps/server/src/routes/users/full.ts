@@ -30,6 +30,7 @@ import {
 } from '../../db/schema.js';
 import { violationAliasConditions } from '../../services/automations/aliasFilter.js';
 import { hasServerAccess, buildServerAccessCondition } from '../../utils/serverFiltering.js';
+import { serverOrderBy } from '../../utils/serverOrder.js';
 import { PLAY_COUNT } from '../../constants/index.js';
 import { queryUserDevices, queryUserLocations, serverUserIdAnyFragment } from './queries.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
@@ -137,7 +138,8 @@ export const fullRoutes: FastifyPluginAsync = async (app) => {
         })
         .from(serverUsers)
         .innerJoin(servers, eq(serverUsers.serverId, servers.id))
-        .where(identityWhere);
+        .where(identityWhere)
+        .orderBy(...serverOrderBy(), serverUsers.id);
 
       const identityIds = identityServerUserRows.map((su) => su.id);
 

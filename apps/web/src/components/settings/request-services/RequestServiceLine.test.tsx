@@ -132,6 +132,16 @@ describe('RequestServiceLine', () => {
     expect(syncMutate).toHaveBeenCalledWith('rs-1');
   });
 
+  it('offers no Sync now while sync is disabled', async () => {
+    const user = userEvent.setup();
+    renderLine(service({ enabled: false }));
+
+    await user.click(screen.getByRole('button', { name: MENU }));
+
+    expect(screen.queryByRole('menuitem', { name: 'requests.syncNow' })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'requests.enable' })).toBeInTheDocument();
+  });
+
   it('flips the enabled flag from the menu', async () => {
     const user = userEvent.setup();
     renderLine(service());

@@ -87,6 +87,11 @@ export async function resolvePrecachePass(
  * withholds the retry for PRECACHE_FULL_PASS_INTERVAL_MS - on a library that
  * takes longer to walk than the host stays up, that means never.
  */
-export async function commitFullPass(redis: Redis, serverId: string): Promise<void> {
+export async function commitFullPass(
+  redis: Redis,
+  serverId: string,
+  cacheDir: string
+): Promise<void> {
   await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL(serverId), new Date().toISOString());
+  await redis.set(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL_DIR(serverId), cacheDir);
 }

@@ -15,6 +15,12 @@ vi.mock('@/lib/api', () => ({
     },
     library: { media: { requests: vi.fn() } },
     users: { requests: vi.fn() },
+    requests: {
+      status: vi.fn(),
+      analytics: vi.fn(),
+      unplayed: vi.fn(),
+      requesters: vi.fn(),
+    },
   },
 }));
 
@@ -35,6 +41,10 @@ import {
   REQUESTS_KEY,
   useMediaRequests,
   useUserRequests,
+  useRequestsConfigured,
+  useRequestsAnalytics,
+  useRequestsUnplayed,
+  useRequesters,
   useRequestServices,
   useTestRequestService,
   useCreateRequestService,
@@ -51,6 +61,10 @@ const mockServicesRemove = vi.mocked(api.requestServices.remove);
 const mockServicesSync = vi.mocked(api.requestServices.sync);
 const mockMediaRequests = vi.mocked(api.library.media.requests);
 const mockUserRequests = vi.mocked(api.users.requests);
+const mockRequestsStatus = vi.mocked(api.requests.status);
+const mockRequestsAnalytics = vi.mocked(api.requests.analytics);
+const mockRequestsUnplayed = vi.mocked(api.requests.unplayed);
+const mockRequesters = vi.mocked(api.requests.requesters);
 const mockToastError = vi.mocked(toast.error);
 const mockToastSuccess = vi.mocked(toast.success);
 
@@ -110,6 +124,116 @@ describe('useUserRequests', () => {
   });
 });
 
+describe('Requests page hooks', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('useRequestsConfigured returns the status payload', async () => {
+    mockRequestsStatus.mockResolvedValueOnce({ configured: true });
+
+    const client = new QueryClient();
+    const { result } = renderHook(() => useRequestsConfigured(), { wrapper: wrapper(client) });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockRequestsStatus).toHaveBeenCalledTimes(1);
+    expect(result.current.data).toEqual({ configured: true });
+  });
+
+  it('useRequestsAnalytics fetches for the sorted server scope', async () => {
+    const analytics = {
+      funnel: { requested: 12, landed: 8, watched: 6 },
+      unplayed: { count: 3, bytes: 1024 },
+      requesterCount: 4,
+    };
+    mockRequestsAnalytics.mockResolvedValueOnce(analytics);
+
+    const client = new QueryClient();
+    const { result } = renderHook(() => useRequestsAnalytics(['s2', 's1']), {
+      wrapper: wrapper(client),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockRequestsAnalytics).toHaveBeenCalledWith(['s1', 's2']);
+    expect(result.current.data).toEqual(analytics);
+  });
+
+  it('useRequestsUnplayed sends paging and sort with the sorted scope, not the enabled flag', async () => {
+    const response = { data: [], total: 41, page: 2, pageSize: 20 };
+    mockRequestsUnplayed.mockResolvedValueOnce(response);
+
+    const client = new QueryClient();
+    const { result } = renderHook(
+      () =>
+        useRequestsUnplayed(['s2', 's1'], {
+          page: 2,
+          pageSize: 20,
+          sortBy: 'waitMs',
+          sortOrder: 'asc',
+          enabled: true,
+        }),
+      { wrapper: wrapper(client) }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockRequestsUnplayed).toHaveBeenCalledWith({
+      page: 2,
+      pageSize: 20,
+      sortBy: 'waitMs',
+      sortOrder: 'asc',
+      serverIds: ['s1', 's2'],
+    });
+    expect(result.current.data).toEqual(response);
+  });
+
+  it('useRequesters sends paging and sort with the sorted scope, not the enabled flag', async () => {
+    const response = { data: [], total: 120, page: 3, pageSize: 50 };
+    mockRequesters.mockResolvedValueOnce(response);
+
+    const client = new QueryClient();
+    const { result } = renderHook(
+      () =>
+        useRequesters(['s2', 's1'], {
+          page: 3,
+          pageSize: 50,
+          sortBy: 'name',
+          sortOrder: 'desc',
+          enabled: true,
+        }),
+      { wrapper: wrapper(client) }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockRequesters).toHaveBeenCalledWith({
+      page: 3,
+      pageSize: 50,
+      sortBy: 'name',
+      sortOrder: 'desc',
+      serverIds: ['s1', 's2'],
+    });
+    expect(result.current.data).toEqual(response);
+  });
+
+  it('never calls the client for the data hooks while disabled', () => {
+    const listOptions = { page: 1, pageSize: 20, sortOrder: 'desc' as const, enabled: false };
+
+    const client = new QueryClient();
+    const { result } = renderHook(
+      () => [
+        useRequestsAnalytics(['s1'], { enabled: false }),
+        useRequestsUnplayed(['s1'], { ...listOptions, sortBy: 'fileSizeBytes' }),
+        useRequesters(['s1'], { ...listOptions, sortBy: 'watched' }),
+      ],
+      { wrapper: wrapper(client) }
+    );
+
+    expect(result.current.map((query) => query.fetchStatus)).toEqual(['idle', 'idle', 'idle']);
+    expect(mockRequestsAnalytics).not.toHaveBeenCalled();
+    expect(mockRequestsUnplayed).not.toHaveBeenCalled();
+    expect(mockRequesters).not.toHaveBeenCalled();
+  });
+});
+
 describe('useRequestServices', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -131,7 +255,7 @@ describe('request service mutations', () => {
     vi.clearAllMocks();
   });
 
-  it('invalidates requests and toasts after a test call', async () => {
+  it('sends the url and key to the test endpoint', async () => {
     mockServicesTest.mockResolvedValueOnce({
       applicationTitle: 'Overseerr',
       version: '1.0.0',
@@ -161,6 +285,11 @@ describe('request service mutations', () => {
     result.current.mutate({ serverId: 's1', url: 'https://seerr.example', apiKey: 'k' });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockServicesCreate).toHaveBeenCalledWith({
+      serverId: 's1',
+      url: 'https://seerr.example',
+      apiKey: 'k',
+    });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: REQUESTS_KEY });
     expect(mockToastSuccess).toHaveBeenCalledWith('requests.toast.saved');
   });
@@ -176,6 +305,7 @@ describe('request service mutations', () => {
     result.current.mutate({ id: 'rs1', data: { enabled: false } });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockServicesUpdate).toHaveBeenCalledWith('rs1', { enabled: false });
     expect(mockToastSuccess).toHaveBeenCalledWith('requests.toast.saved');
   });
 
@@ -188,6 +318,7 @@ describe('request service mutations', () => {
     result.current.mutate('rs1');
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockServicesRemove).toHaveBeenCalledWith('rs1');
     expect(mockToastSuccess).toHaveBeenCalledWith('requests.toast.removed');
   });
 
@@ -200,6 +331,7 @@ describe('request service mutations', () => {
     result.current.mutate('rs1');
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockServicesSync).toHaveBeenCalledWith('rs1');
     expect(mockToastSuccess).toHaveBeenCalledWith('requests.toast.syncStarted');
   });
 

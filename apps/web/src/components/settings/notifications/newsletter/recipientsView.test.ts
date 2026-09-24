@@ -129,8 +129,28 @@ describe('groupByVariant', () => {
     ]);
     expect(groups.map((g) => [g.key, g.serverNames, g.rows.map((r) => r.userId)])).toEqual([
       ['s1,s2', ['Attic', 'Home Plex'], [null, 'u2']],
-      ['s1', ['Home Plex'], ['u1']],
       ['s2', ['Attic'], ['u3']],
+      ['s1', ['Home Plex'], ['u1']],
+    ]);
+  });
+
+  it('orders single-server groups by the server name, union first', () => {
+    const rows = [
+      { userId: null, serverIds: [] },
+      { userId: 'u1', serverIds: ['zed'] },
+      { userId: 'u2', serverIds: ['alice'] },
+      { userId: 'u3', serverIds: ['bob'] },
+    ];
+    const groups = groupByVariant(rows, [
+      { id: 'zed', name: 'Zed' },
+      { id: 'alice', name: 'alice' },
+      { id: 'bob', name: 'Bob' },
+    ]);
+    expect(groups.map((g) => g.serverNames)).toEqual([
+      ['Zed', 'alice', 'Bob'],
+      ['alice'],
+      ['Bob'],
+      ['Zed'],
     ]);
   });
 });

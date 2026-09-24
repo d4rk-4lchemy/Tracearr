@@ -221,7 +221,10 @@ export const users = pgTable(
     // Roster sort orders. Each one has to match the ORDER BY in
     // routes/users/list.ts key for key, direction for direction, nulls for
     // nulls, or the plan drops from an index scan to an incremental sort.
-    index('users_display_name_idx').on(sql`coalesce(${table.name}, ${table.username})`, table.id),
+    index('users_display_name_idx').on(
+      sql`lower(coalesce(${table.name}, ${table.username}))`,
+      table.id
+    ),
     index('users_aggregate_trust_idx').on(table.aggregateTrustScore.desc(), table.id),
     index('users_first_joined_idx').on(table.firstJoinedAt.desc().nullsLast(), table.id),
     index('users_last_activity_idx').on(table.lastActivityAt.desc().nullsLast(), table.id),
@@ -602,6 +605,8 @@ export const automations = pgTable(
     index('automations_server_user_id_idx').on(table.serverUserId),
     index('automations_user_id_idx').on(table.userId),
     index('automations_template_id_idx').on(table.templateId),
+    // Matches the name sort in routes/automations.ts key for key.
+    index('automations_name_idx').on(sql`lower(${table.name})`, table.id),
   ]
 );
 

@@ -1,7 +1,12 @@
 import { useState, useMemo, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronRight, Copy } from 'lucide-react';
-import { formatMediaTech, type DuplicateGroup, type DuplicatesResponse } from '@tracearr/shared';
+import {
+  formatEpisodeLabel,
+  formatMediaTech,
+  type DuplicateGroup,
+  type DuplicatesResponse,
+} from '@tracearr/shared';
 import { cn, getMediaDisplay } from '@/lib/utils';
 import { formatBytes } from '@/lib/formatters';
 import { useDuplicateFiles } from '@/hooks/queries/useLibrary';
@@ -61,12 +66,18 @@ function DuplicateGroupFiles({ group, expanded }: { group: DuplicateGroup; expan
                 },
               ];
 
+        const episodeLabel = formatEpisodeLabel(item.seasonNumber, item.episodeNumber, {
+          spaced: true,
+          mediaType: item.mediaType,
+        });
+
         return (
           <div key={item.id} className="space-y-1">
             <div className="flex items-center justify-between gap-4 text-sm">
               <div className="flex items-center gap-3">
                 <Badge variant="outline">{item.serverName}</Badge>
                 {item.libraryName && <Badge variant="secondary">{item.libraryName}</Badge>}
+                {episodeLabel && <span className="font-medium">{episodeLabel}</span>}
                 <span className="text-muted-foreground">{formatMediaTech(item.resolution)}</span>
               </div>
               <span className="text-muted-foreground">{formatBytes(item.fileSize)}</span>

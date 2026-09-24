@@ -119,8 +119,8 @@ COPY data/BASEMAP_NOTICE.txt ./data/BASEMAP_NOTICE.txt
 # Create image cache and backup directories
 RUN mkdir -p /app/data/image-cache /data/tracearr/image-cache /data/backup
 
-# Install production dependencies only (ignore-scripts prevents prepare/husky from running)
-RUN pnpm install --prod --frozen-lockfile --ignore-scripts
+# Server runtime deps only: the web app ships as static files, so its packages never load here (ignore-scripts keeps prepare/husky out)
+RUN pnpm install --prod --frozen-lockfile --ignore-scripts --filter @tracearr/server...
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
