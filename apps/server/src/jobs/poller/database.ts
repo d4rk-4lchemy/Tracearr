@@ -5,7 +5,20 @@
  * Includes batch loading for performance optimization and rule fetching.
  */
 
-import { eq, and, or, desc, gte, inArray, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { dispatcharrDeviceIdSql } from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
+import {
+  getTableColumns,
+  eq,
+  and,
+  or,
+  desc,
+  gte,
+  inArray,
+  isNull,
+  isNotNull,
+  notInArray,
+  sql,
+} from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import {
   TIME_MS,
@@ -250,7 +263,7 @@ export async function batchGetRecentUserSessions(
   // The LIMIT bounds the transfer; per-user fairness comes from the JS cap
   // below (newest-first ordering means a capped-out user loses old rows).
   const recentSessions = await db
-    .select()
+    .select({ ...getTableColumns(sessions), dispatcharrDeviceId: dispatcharrDeviceIdSql() })
     .from(sessions)
     .where(and(inArray(sessions.serverUserId, serverUserIds), gte(sessions.startedAt, since)))
     .orderBy(desc(sessions.startedAt))

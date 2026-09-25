@@ -46,7 +46,11 @@ import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { StreamDetailsPanel } from './StreamDetailsPanel';
 
-import { PLAYBACK_DECISION_LABEL_KEYS, POSTER_IMAGE_SIZE, playbackDecision } from '@tracearr/shared';
+import {
+  PLAYBACK_DECISION_LABEL_KEYS,
+  POSTER_IMAGE_SIZE,
+  playbackDecision,
+} from '@tracearr/shared';
 import type {
   SessionWithDetails,
   ActiveSession,
@@ -517,10 +521,12 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
                 <span>{session.playerName}</span>
               </div>
             )}
-            {session.deviceId && (
+            {(session.dispatcharrDeviceId || session.deviceId) && (
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Device ID</span>
-                <span className="max-w-[160px] truncate font-mono text-xs">{session.deviceId}</span>
+                <span className="max-w-[160px] truncate font-mono text-xs">
+                  {session.dispatcharrDeviceId ?? session.deviceId}
+                </span>
               </div>
             )}
           </div>

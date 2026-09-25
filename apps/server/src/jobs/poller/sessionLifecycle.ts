@@ -6,6 +6,11 @@
  */
 
 import {
+  dispatcharrDeviceId,
+  dispatcharrUserAgent,
+  dispatcharrUserAgentSql,
+} from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
+import {
   isPlacedLocal,
   LOCAL_NETWORK_COUNTRY,
   SESSION_WRITE_RETRY,
@@ -133,6 +138,7 @@ export interface BuildActiveSessionInput {
     ipAddress: string;
     playerName: string;
     deviceId: string;
+    dispatcharrUserAgent?: string | null;
     product: string;
     device: string;
     platform: string;
@@ -260,6 +266,15 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     isLocal: geo.isLocal,
     playerName: processed.playerName,
     deviceId: processed.deviceId || null,
+    ...(server.type === 'dispatcharr'
+      ? {
+          dispatcharrDeviceId: dispatcharrDeviceId({
+            ...processed,
+            serverId: server.id,
+            serverUserId: user.id,
+          }),
+        }
+      : {}),
     product: processed.product || null,
     device: processed.device || null,
     platform: processed.platform,
@@ -375,6 +390,15 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     isLocal: withLocalFlag(geo, processed.ipAddress).isLocal,
     playerName: processed.playerName,
     deviceId: processed.deviceId || null,
+    ...(server.type === 'dispatcharr'
+      ? {
+          dispatcharrDeviceId: dispatcharrDeviceId({
+            ...processed,
+            serverId: server.id,
+            serverUserId: serverUser.id,
+          }),
+        }
+      : {}),
     product: processed.product || null,
     device: processed.device || null,
     platform: processed.platform,
@@ -630,7 +654,7 @@ export function sessionLocation(session: {
 async function accountHasSeenDevice(
   tx: DbTx,
   serverUserId: string,
-  key: { column: 'deviceId' | 'playerName'; value: string }
+  key: { column: 'deviceId' | 'playerName' | 'dispatcharrUserAgent'; value: string }
 ): Promise<boolean> {
   const seen = await tx
     .select({ id: sessions.id })
@@ -638,9 +662,11 @@ async function accountHasSeenDevice(
     .where(
       and(
         eq(sessions.serverUserId, serverUserId),
-        key.column === 'deviceId'
-          ? eq(sessions.deviceId, key.value)
-          : and(isNull(sessions.deviceId), eq(sessions.playerName, key.value))
+        key.column === 'dispatcharrUserAgent'
+          ? sql`${dispatcharrUserAgentSql()} = ${key.value}`
+          : key.column === 'deviceId'
+            ? eq(sessions.deviceId, key.value)
+            : and(isNull(sessions.deviceId), eq(sessions.playerName, key.value))
       )
     )
     .orderBy(desc(sessions.startedAt))
@@ -837,7 +863,9 @@ export async function createSessionWithRulesAtomic(
           const deviceKey = activeAutomations.some((candidate) =>
             matchesTrigger(candidate, 'account.new_device')
           )
-            ? deviceKeyOf(processed)
+            ? server.type === 'dispatcharr'
+              ? { column: 'dispatcharrUserAgent' as const, value: dispatcharrUserAgent(processed) }
+              : deviceKeyOf(processed)
             : null;
           const isNewDevice = deviceKey
             ? !(await accountHasSeenDevice(tx, serverUser.id, deviceKey))
@@ -902,6 +930,9 @@ export async function createSessionWithRulesAtomic(
               quality: processed.quality,
               isTranscode: processed.isTranscode,
               dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
+              ...(server.type === 'dispatcharr'
+                ? { dispatcharrUserAgent: dispatcharrUserAgent(processed) }
+                : {}),
               videoDecision: processed.videoDecision,
               audioDecision: processed.audioDecision,
               bitrate: processed.bitrate,
@@ -1385,7 +1416,9 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
   } = input;
 
   const uniqueStoppedSessions = [
-    ...new Map(stoppedSessions.map((stoppedSession) => [stoppedSession.id, stoppedSession])).values(),
+    ...new Map(
+      stoppedSessions.map((stoppedSession) => [stoppedSession.id, stoppedSession])
+    ).values(),
   ];
   const stoppedSessionIds = uniqueStoppedSessions.map((stoppedSession) => stoppedSession.id);
   const cachedSessionsById = new Map(cachedSessions.map((session) => [session.id, session]));

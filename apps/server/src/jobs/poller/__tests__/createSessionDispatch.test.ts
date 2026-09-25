@@ -409,6 +409,30 @@ describe('createSessionWithRulesAtomic dispatch contract', () => {
     expect(runs[0]?.scope).toEqual({ kind: 'session', sessionId: 'sess-1' });
   });
 
+  it('uses the full agent for the Dispatcharr new-device probe and leaves client identity intact', async () => {
+    const agent = 'VLC/' + 'x'.repeat(300);
+    deviceProbeRows = [{ id: 'legacy-session' }];
+    await createSessionWithRulesAtomic({
+      processed: { ...processed, deviceId: 'new-client', dispatcharrUserAgent: agent },
+      server: { ...server, type: 'dispatcharr' },
+      serverUser,
+      geo,
+      activeAutomations: [newDeviceRule],
+      activeSessions: [],
+      recentSessions: [],
+    });
+    const values = insertValues.mock.calls[0]?.[0];
+    expect(values).toMatchObject({ deviceId: 'new-client', dispatcharrUserAgent: agent });
+    expect(runsFor('account.new_device')).toHaveLength(0);
+    const from = fakeTx.select.mock.results[0]!.value.from;
+    const where = from.mock.results[0]!.value.where;
+    const { PgDialect } = await import('drizzle-orm/pg-core');
+    const query = new PgDialect().sqlToQuery(where.mock.calls[0]![0]);
+    expect(query.sql).toContain('dispatcharr_user_agent');
+    expect(query.params).toContain(agent);
+    expect(query.params).not.toContain('new-client');
+  });
+
   it('stays quiet when a session for the device is already on file', async () => {
     deviceProbeRows = [{ id: 'sess-0' }];
 

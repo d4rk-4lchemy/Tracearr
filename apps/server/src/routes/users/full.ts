@@ -15,6 +15,7 @@
  * and reducing TimescaleDB query planning overhead.
  */
 
+import { dispatcharrDeviceIdSql } from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, and, desc, isNull, sql } from 'drizzle-orm';
 import { userIdParamSchema, identityScopeQuerySchema } from '@tracearr/shared';
@@ -215,7 +216,7 @@ export const fullRoutes: FastifyPluginAsync = async (app) => {
           s.geo_continent, s.geo_postal, s.geo_lat, s.geo_lon,
           s.geo_asn_number, s.geo_asn_organization,
           ${localSessionSql('s')} AS is_local,
-          s.player_name, s.device_id, s.product, s.device, s.platform,
+          s.player_name, s.device_id, ${dispatcharrDeviceIdSql('s')} AS dispatcharr_device_id, s.product, s.device, s.platform,
           s.quality, s.is_transcode, s.bitrate, s.last_paused_at
         FROM grouped_sessions gs
         JOIN sessions s ON s.id = gs.first_session_id
@@ -262,6 +263,7 @@ export const fullRoutes: FastifyPluginAsync = async (app) => {
         isLocal: row.is_local === true,
         playerName: row.player_name as string | null,
         deviceId: row.device_id as string | null,
+        dispatcharrDeviceId: row.dispatcharr_device_id as string | null,
         product: row.product as string | null,
         device: row.device as string | null,
         platform: row.platform as string | null,

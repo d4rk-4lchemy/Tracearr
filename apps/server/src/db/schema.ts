@@ -443,6 +443,8 @@ export const sessions = pgTable(
     platform: varchar('platform', { length: 100 }),
     quality: varchar('quality', { length: 100 }),
     isTranscode: boolean('is_transcode').notNull().default(false),
+    // Full Dispatcharr agent; NULL is legacy data, empty string is a missing agent.
+    dispatcharrUserAgent: text('dispatcharr_user_agent'),
     dispatcharrPlaybackKind: varchar('dispatcharr_playback_kind', { length: 20 }).$type<
       'live' | 'vod' | 'catchup' | null
     >(),

@@ -7,6 +7,7 @@
  * - Lifecycle management: start, stop, trigger
  */
 
+import { dispatcharrDeviceId } from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
 import {
   POLLER_CONFIG,
   POLLING_INTERVALS,
@@ -245,10 +246,7 @@ async function handleFirstMisses(
 
     const cachedActiveSession = activeSessions.find((s) => {
       const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as
-        | 'plex'
-        | 'jellyfin'
-        | 'emby'
-        | 'dispatcharr';
+        'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
       return (
         buildCompositeKey({
           serverType: sType,
@@ -1138,6 +1136,13 @@ export async function processServerSessions(
           console.error('Failed to get/create server user for session');
           continue;
         }
+        if (server.type === 'dispatcharr') {
+          processed.dispatcharrDeviceId = dispatcharrDeviceId({
+            ...processed,
+            serverId: server.id,
+            serverUserId,
+          });
+        }
 
         // Get server user details from cache
         const serverUserFromCache = serverUserById.get(serverUserId);
@@ -1736,6 +1741,9 @@ export async function processServerSessions(
             bitrate: processed.bitrate,
             progressMs: processed.progressMs || null,
             dispatcharrPlaybackKind: processed.dispatcharrPlaybackKind ?? null,
+            ...(server.type === 'dispatcharr' && processed.dispatcharrUserAgent !== undefined
+              ? { dispatcharrUserAgent: processed.dispatcharrUserAgent }
+              : {}),
             lastSeenAt: now,
             plexSessionId: processed.plexSessionId || null,
             isTranscode: processed.isTranscode,

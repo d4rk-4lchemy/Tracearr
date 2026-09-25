@@ -1,5 +1,6 @@
 /** Shared User Query Functions **/
 
+import { dispatcharrDeviceIdSql } from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
 import type { UserDevice, AuthUser, UserLocation } from '@tracearr/shared';
 import { sql, eq, and, inArray } from 'drizzle-orm';
 import type { db as defaultDb } from '../../db/client.js';
@@ -154,6 +155,7 @@ export async function queryUserLocations(
 
 interface DeviceSessionRow {
   device_id: string | null;
+  dispatcharr_device_id?: string | null;
   player_name: string | null;
   product: string | null;
   device: string | null;
@@ -194,7 +196,7 @@ export async function queryUserDevices(
   const ids = Array.isArray(serverUserIds) ? serverUserIds : [serverUserIds];
   const result = await dbOrTx.execute(sql`
     SELECT DISTINCT ON (COALESCE(reference_id, id))
-      device_id, player_name, product, device, platform, started_at,
+      device_id, ${dispatcharrDeviceIdSql()} AS dispatcharr_device_id, player_name, product, device, platform, started_at,
       geo_city, geo_region, geo_country,
       ${localSessionSql('sessions')} AS is_local
     FROM sessions
@@ -224,6 +226,7 @@ export async function queryUserDevices(
 
   for (const session of sessionData) {
     const key =
+      session.dispatcharr_device_id ??
       session.device_id ??
       session.player_name ??
       `${session.product ?? 'unknown'}-${session.device ?? 'unknown'}-${session.platform ?? 'unknown'}`;
@@ -254,7 +257,7 @@ export async function queryUserDevices(
       locationMap.set(deviceLocationKey(session), newDeviceLocation(session));
 
       deviceMap.set(key, {
-        deviceId: session.device_id,
+        deviceId: session.dispatcharr_device_id ?? session.device_id,
         playerName: session.player_name,
         product: session.product,
         device: session.device,

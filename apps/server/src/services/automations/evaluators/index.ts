@@ -1,3 +1,4 @@
+import { deviceIdentity } from '../../mediaServer/dispatcharr/deviceIdentity.js';
 import { BYTES_PER_GB, TIME_MS, normalizeDynamicRange, resolutionTierRank } from '@tracearr/shared';
 import type {
   Condition,
@@ -274,7 +275,12 @@ const evaluateConcurrentStreams: ConditionEvaluator = (
   if (excludeSameDevice) {
     userActiveSessions = userActiveSessions.filter(
       (s) =>
-        s.id === session.id || !(session.deviceId && s.deviceId && session.deviceId === s.deviceId)
+        s.id === session.id ||
+        !(
+          deviceIdentity(session) &&
+          deviceIdentity(s) &&
+          deviceIdentity(session) === deviceIdentity(s)
+        )
     );
   }
 
@@ -313,7 +319,12 @@ const evaluateActiveSessionDistanceKm: ConditionEvaluator = (
   // Same device = same physical location, so distance comparison doesn't make sense.
   if (excludeSameDevice) {
     otherSessions = otherSessions.filter(
-      (s) => !(session.deviceId && s.deviceId && session.deviceId === s.deviceId)
+      (s) =>
+        !(
+          deviceIdentity(session) &&
+          deviceIdentity(s) &&
+          deviceIdentity(session) === deviceIdentity(s)
+        )
     );
   }
 
@@ -363,7 +374,12 @@ const evaluateTravelSpeedKmh: ConditionEvaluator = (
   // VPN switches on the same device are not "impossible travel" - the device didn't move.
   if (excludeSameDevice) {
     previousSessions = previousSessions.filter(
-      (s) => !(session.deviceId && s.deviceId && session.deviceId === s.deviceId)
+      (s) =>
+        !(
+          deviceIdentity(session) &&
+          deviceIdentity(s) &&
+          deviceIdentity(session) === deviceIdentity(s)
+        )
     );
   }
 
@@ -492,9 +508,9 @@ const evaluateUniqueDevicesInWindow: ConditionEvaluator = (
     devices.add(identifier);
   };
 
-  addDevice(session.deviceId, session.playerName);
+  addDevice(deviceIdentity(session), session.playerName);
   for (const s of sessionsInWindow) {
-    addDevice(s.deviceId, s.playerName);
+    addDevice(deviceIdentity(s), s.playerName);
   }
 
   return {

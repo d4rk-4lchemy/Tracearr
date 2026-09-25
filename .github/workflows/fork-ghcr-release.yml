@@ -8,38 +8,43 @@ on:
 permissions:
   contents: read
 
+env:
+  IMAGE: ghcr.io/d4rk-4lchemy/distracearr
+  FORK_REPO: d4rk-4lchemy/Tracearr
+  RELEASE_TAG: ${{ github.event.release.tag_name }}
+
 # Serialize publications of the shared stable aliases without cancelling a build.
 concurrency:
   group: fork-ghcr-release
   cancel-in-progress: false
 
 jobs:
-  publish:
+  prepare:
     if: github.repository == 'd4rk-4lchemy/Tracearr' && !github.event.release.prerelease
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    permissions:
-      contents: read
-      packages: write
-    env:
-      IMAGE: ghcr.io/d4rk-4lchemy/distracearr
-      FORK_REPO: d4rk-4lchemy/Tracearr
-      RELEASE_TAG: ${{ github.event.release.tag_name }}
+    timeout-minutes: 5
+    outputs:
+      upstream-version: ${{ steps.version.outputs.upstream-version }}
+      fork-revision: ${{ steps.version.outputs.fork-revision }}
+      fork-version: ${{ steps.version.outputs.fork-version }}
+      commit: ${{ steps.source.outputs.commit }}
+      build-date: ${{ steps.source.outputs.build-date }}
     defaults:
       run:
         shell: bash
     steps:
       - name: Validate release tag
+        id: version
         run: |
           if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-r([1-9][0-9]*)$ ]]; then
             echo '::error::Expected a fork release tag such as v2.4.1-r1.'
             exit 1
           fi
           {
-            echo "UPSTREAM_VERSION=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
-            echo "FORK_REVISION=${BASH_REMATCH[4]}"
-            echo "FORK_VERSION=${RELEASE_TAG#v}"
-          } >> "$GITHUB_ENV"
+            echo "upstream-version=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+            echo "fork-revision=${BASH_REMATCH[4]}"
+            echo "fork-version=${RELEASE_TAG#v}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Checkout release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -47,49 +52,144 @@ jobs:
           ref: refs/tags/${{ github.event.release.tag_name }}
           persist-credentials: false
 
-      - name: Build both images
+      - name: Resolve release source and build date
+        id: source
         run: |
-          commit="$(git rev-parse --short HEAD)"
-          build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          common_args=(
-            --no-cache
-            --platform linux/amd64
-            --build-arg "APP_VERSION=$UPSTREAM_VERSION"
-            --build-arg "APP_UPSTREAM_VERSION=$UPSTREAM_VERSION"
-            --build-arg "APP_FORK_REVISION=$FORK_REVISION"
-            --build-arg "APP_FORK_VERSION=$FORK_VERSION"
-            --build-arg "APP_FORK_RELEASE_TAG=$RELEASE_TAG"
-            --build-arg "APP_FORK_REPO=$FORK_REPO"
-            --build-arg "APP_IMAGE_REPO=$IMAGE"
-            --build-arg "APP_COMMIT=$commit"
-            --build-arg "APP_BUILD_DATE=$build_date"
-            --label "org.opencontainers.image.source=https://github.com/$FORK_REPO"
-            --label "org.opencontainers.image.url=https://github.com/$FORK_REPO"
-            --label 'org.opencontainers.image.vendor=d4rk-4lchemy'
-            --label "org.opencontainers.image.version=$FORK_VERSION"
-          )
-          docker build "${common_args[@]}" \
-            -f docker/Dockerfile \
-            -t "$IMAGE:$FORK_VERSION" -t "$IMAGE:latest" -t "$IMAGE:standalone" \
-            --build-arg "APP_TAG=$RELEASE_TAG" .
-          # Reclaim intermediate layers before the larger supervised build.
-          docker builder prune --all --force
-          docker build "${common_args[@]}" \
-            -f docker/Dockerfile.supervised \
-            -t "$IMAGE:supervised-$FORK_VERSION" -t "$IMAGE:supervised" \
-            --build-arg "APP_TAG=supervised-$FORK_VERSION" .
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.variant.name }} (${{ matrix.target.arch }})
+    needs: prepare
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+        variant:
+          - name: standalone
+            file: docker/Dockerfile
+          - name: supervised
+            file: docker/Dockerfile.supervised
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to GHCR
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push versioned images and stable aliases
+      # Publish content only; user-facing tags wait for all four builds.
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ${{ matrix.variant.file }}
+          platforms: linux/${{ matrix.target.arch }}
+          no-cache: true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ env.FORK_REPO }}
+            org.opencontainers.image.url=https://github.com/${{ env.FORK_REPO }}
+            org.opencontainers.image.vendor=d4rk-4lchemy
+            org.opencontainers.image.version=${{ needs.prepare.outputs.fork-version }}
+          build-args: |
+            APP_VERSION=${{ needs.prepare.outputs.upstream-version }}
+            APP_UPSTREAM_VERSION=${{ needs.prepare.outputs.upstream-version }}
+            APP_FORK_REVISION=${{ needs.prepare.outputs.fork-revision }}
+            APP_FORK_VERSION=${{ needs.prepare.outputs.fork-version }}
+            APP_FORK_RELEASE_TAG=${{ env.RELEASE_TAG }}
+            APP_FORK_REPO=${{ env.FORK_REPO }}
+            APP_IMAGE_REPO=${{ env.IMAGE }}
+            APP_COMMIT=${{ needs.prepare.outputs.commit }}
+            APP_BUILD_DATE=${{ needs.prepare.outputs.build-date }}
+            APP_TAG=${{ matrix.variant.name == 'supervised' && format('supervised-{0}', needs.prepare.outputs.fork-version) || env.RELEASE_TAG }}
+
+      - name: Export digest
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          mkdir -p "$RUNNER_TEMP/digests"
+          printf '%s\n' "$DIGEST" > "$RUNNER_TEMP/digests/digest"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: digests-${{ matrix.variant.name }}-${{ matrix.target.arch }}
+          path: ${{ runner.temp }}/digests/digest
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    env:
+      FORK_VERSION: ${{ needs.prepare.outputs.fork-version }}
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish multi-platform manifests
+        shell: bash
+        run: |
+          # Validate the complete artifact set before updating any tag.
+          declare -A digests
+          for variant in standalone supervised; do
+            for arch in amd64 arm64; do
+              digest="$(cat "$RUNNER_TEMP/digests/digests-$variant-$arch/digest")"
+              [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+              digests["$variant-$arch"]="$IMAGE@$digest"
+            done
+          done
+          docker buildx imagetools create \
+            -t "$IMAGE:$FORK_VERSION" -t "$IMAGE:latest" -t "$IMAGE:standalone" \
+            "${digests[standalone-amd64]}" "${digests[standalone-arm64]}"
+          docker buildx imagetools create \
+            -t "$IMAGE:supervised-$FORK_VERSION" -t "$IMAGE:supervised" \
+            "${digests[supervised-amd64]}" "${digests[supervised-arm64]}"
+
+      - name: Verify published platforms
+        shell: bash
         run: |
           for tag in "$FORK_VERSION" "supervised-$FORK_VERSION" latest standalone supervised; do
-            docker push "$IMAGE:$tag"
+            docker buildx imagetools inspect "$IMAGE:$tag" --raw | jq -e '
+              [.manifests[].platform | select(.os == "linux") | .architecture]
+              | sort | unique == ["amd64", "arm64"]'
           done
-
-      - name: Log out of GHCR
-        if: always()
-        run: docker logout ghcr.io

@@ -878,6 +878,23 @@ describe('CacheService', () => {
   });
 
   describe('getAllActiveSessions', () => {
+    it('upgrades legacy Dispatcharr cache entries without changing connection keys', async () => {
+      const old = createTestActiveSession('legacy');
+      old.server.type = 'dispatcharr';
+      old.product = 'VLC/3.0';
+      old.deviceId = 'client-1';
+      const other = { ...old, id: 'other', deviceId: 'client-2', ipAddress: '8.8.8.8' };
+      await cache.addActiveSession(old);
+      await cache.addActiveSession(other);
+      const all = await cache.getAllActiveSessions();
+      expect(all[0]?.dispatcharrDeviceId).toMatch(/^dispatcharr:v1:/);
+      expect(all[0]?.dispatcharrDeviceId).toBe(all[1]?.dispatcharrDeviceId);
+      expect(new Set(all.map((s) => s.deviceId)).size).toBe(2);
+      expect((await cache.getSessionById('legacy'))?.dispatcharrDeviceId).toBe(
+        all[0]?.dispatcharrDeviceId
+      );
+    });
+
     it('should return empty array when no sessions exist', async () => {
       const result = await cache.getAllActiveSessions();
 

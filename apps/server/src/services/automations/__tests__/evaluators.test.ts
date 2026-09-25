@@ -3403,3 +3403,67 @@ describe('Media Evaluators', () => {
     expect(run('resolution_after', { operator: 'gte', value: '4K' }, session).actual).toBeNull();
   });
 });
+
+describe('Dispatcharr logical devices in automations', () => {
+  it('counts reconnects at different IPs once while honoring concurrent-stream exclusions', async () => {
+    const current = createMockSession({
+      deviceId: 'client-2',
+      dispatcharrDeviceId: 'dispatcharr:v1:same',
+      ipAddress: '8.8.8.8',
+    });
+    const other = createMockSession({
+      id: 'other',
+      deviceId: 'client-1',
+      dispatcharrDeviceId: 'dispatcharr:v1:same',
+      ipAddress: '1.1.1.1',
+    });
+    const context = createTestContext({
+      session: current,
+      activeSessions: [current, other],
+      recentSessions: [other],
+    });
+    expect(
+      (
+        await evaluatorRegistry.unique_devices_in_window!(
+          context,
+          createCondition({ field: 'unique_devices_in_window', operator: 'eq', value: 1 })
+        )
+      ).actual
+    ).toBe(1);
+    expect(
+      (
+        await evaluatorRegistry.concurrent_streams!(
+          context,
+          createCondition({
+            field: 'concurrent_streams',
+            operator: 'eq',
+            value: 1,
+            params: { exclude_same_device: true },
+          })
+        )
+      ).actual
+    ).toBe(1);
+    expect(
+      (
+        await evaluatorRegistry.concurrent_streams!(
+          context,
+          createCondition({
+            field: 'concurrent_streams',
+            operator: 'eq',
+            value: 2,
+            params: { exclude_same_device: false },
+          })
+        )
+      ).actual
+    ).toBe(2);
+    other.dispatcharrDeviceId = 'dispatcharr:v1:other-account';
+    expect(
+      (
+        await evaluatorRegistry.unique_devices_in_window!(
+          context,
+          createCondition({ field: 'unique_devices_in_window', operator: 'eq', value: 2 })
+        )
+      ).actual
+    ).toBe(2);
+  });
+});

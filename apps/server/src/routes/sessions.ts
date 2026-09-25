@@ -6,6 +6,7 @@
  * are aggregated into a single row with combined duration.
  */
 
+import { dispatcharrDeviceIdSql } from '../services/mediaServer/dispatcharr/deviceIdentity.js';
 import { createHash } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, sql, inArray } from 'drizzle-orm';
@@ -369,7 +370,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.geo_asn_organization,
           ${localSessionSql('s')} AS is_local,
           s.player_name,
-          s.device_id,
+          s.device_id, ${dispatcharrDeviceIdSql('s')} AS dispatcharr_device_id,
           s.product,
           s.device,
           s.platform,
@@ -447,6 +448,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         is_local: boolean;
         player_name: string | null;
         device_id: string | null;
+        dispatcharr_device_id?: string | null;
         product: string | null;
         device: string | null;
         platform: string | null;
@@ -521,6 +523,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       isLocal: row.is_local === true,
       playerName: row.player_name,
       deviceId: row.device_id,
+      dispatcharrDeviceId: row.dispatcharr_device_id,
       product: row.product,
       device: row.device,
       platform: row.platform,
@@ -753,7 +756,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
           s.geo_asn_organization,
           ${localSessionSql('s')} AS is_local,
           s.player_name,
-          s.device_id,
+          s.device_id, ${dispatcharrDeviceIdSql('s')} AS dispatcharr_device_id,
           s.product,
           s.device,
           s.platform,
@@ -862,6 +865,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         is_local: boolean;
         player_name: string | null;
         device_id: string | null;
+        dispatcharr_device_id?: string | null;
         product: string | null;
         device: string | null;
         platform: string | null;
@@ -942,6 +946,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       isLocal: row.is_local === true,
       playerName: row.player_name,
       deviceId: row.device_id,
+      dispatcharrDeviceId: row.dispatcharr_device_id,
       product: row.product,
       device: row.device,
       platform: row.platform,
@@ -1473,6 +1478,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
         isLocal: sessions.isLocal,
         playerName: sessions.playerName,
         deviceId: sessions.deviceId,
+        dispatcharrDeviceId: dispatcharrDeviceIdSql(),
         product: sessions.product,
         device: sessions.device,
         platform: sessions.platform,
@@ -1560,6 +1566,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       isLocal: isLocalSession(row),
       playerName: row.playerName,
       deviceId: row.deviceId,
+      dispatcharrDeviceId: row.dispatcharrDeviceId,
       product: row.product,
       device: row.device,
       platform: row.platform,
