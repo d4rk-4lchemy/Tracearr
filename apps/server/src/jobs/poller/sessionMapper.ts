@@ -6,6 +6,7 @@
  * - Database row → Session type (for application use)
  */
 
+import { dispatcharrDeviceId } from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
 import { type Session, type StreamDetailFields, MEDIA_TYPES } from '@tracearr/shared';
 import type { MediaSession } from '../../services/mediaServer/types.js';
 import type { ProcessedSession } from './types.js';
@@ -125,6 +126,9 @@ export function pickLiveSessionFields(processed: ProcessedSession): Partial<Sess
     progressMs: processed.progressMs || null,
     playerName: processed.playerName,
     deviceId: processed.deviceId || null,
+    ...(processed.dispatcharrDeviceId
+      ? { dispatcharrDeviceId: processed.dispatcharrDeviceId }
+      : {}),
     product: processed.product || null,
     device: processed.device || null,
     platform: processed.platform,
@@ -212,6 +216,9 @@ export function mapMediaSession(
     ipAddress,
     playerName: session.player.name?.slice(0, 255) ?? '',
     deviceId: session.player.deviceId?.slice(0, 255),
+    ...(serverType === 'dispatcharr'
+      ? { dispatcharrUserAgent: session.player.product?.trim() ?? '' }
+      : {}),
     product: session.player.product?.slice(0, 255) ?? '',
     device,
     platform,
@@ -251,7 +258,9 @@ export function mapMediaSession(
  * const rows = await db.select().from(sessions).where(...);
  * const sessionObjects = rows.map(mapSessionRow);
  */
-export function mapSessionRow(s: typeof sessions.$inferSelect): Session {
+export function mapSessionRow(
+  s: typeof sessions.$inferSelect & { dispatcharrDeviceId?: string | null }
+): Session {
   const session: Session = {
     id: s.id,
     serverId: s.serverId,
@@ -297,6 +306,9 @@ export function mapSessionRow(s: typeof sessions.$inferSelect): Session {
     isLocal: isLocalSession(s),
     playerName: s.playerName,
     deviceId: s.deviceId,
+    ...(s.dispatcharrDeviceId != null || s.dispatcharrUserAgent != null
+      ? { dispatcharrDeviceId: s.dispatcharrDeviceId ?? dispatcharrDeviceId(s) }
+      : {}),
     product: s.product,
     device: s.device,
     platform: s.platform,

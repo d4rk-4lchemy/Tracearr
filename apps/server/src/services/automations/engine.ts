@@ -1,3 +1,4 @@
+import { dispatcharrDeviceId } from '../mediaServer/dispatcharr/deviceIdentity.js';
 import {
   CONDITION_FIELDS,
   CONDITION_FIELD_LABELS,
@@ -201,6 +202,14 @@ export async function evaluateAllGroupsAsync(
   context: EvaluationContext,
   conditions: AutomationConditions
 ): Promise<AllGroupsResult> {
+  // Only enrich this server's legacy rows; sibling providers retain their own identity.
+  if (context.server?.type === 'dispatcharr') {
+    for (const session of [context.session, ...context.activeSessions, ...context.recentSessions]) {
+      if (session && session.serverId === context.server.id && !session.dispatcharrDeviceId) {
+        session.dispatcharrDeviceId = dispatcharrDeviceId(session);
+      }
+    }
+  }
   if (conditions.groups.length === 0) {
     return { matchedGroups: [], evidence: [] };
   }

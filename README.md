@@ -23,6 +23,8 @@
 - Support for Catch-Up (Timeshift) sessions, with small badge and custom card.
 
 **Docker images:**
+
+**GHCR image supports ARM, Dockerhub DOES NOT!**
 - `darkalchemy2137/distracearr:latest` or `ghcr.io/d4rk-4lchemy/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` or `ghcr.io/d4rk-4lchemy/distracearr:supervised` - supervised image
 

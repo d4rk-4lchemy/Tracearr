@@ -7,6 +7,7 @@
  * the other active filters. Runs 2 parallel queries per request.
  */
 
+import { dispatcharrDeviceIdSql } from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { locationStatsQuerySchema } from '@tracearr/shared';
@@ -177,7 +178,7 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
             ${localSessionSql('s')} AS local_flag,
             MAX(s.started_at) AS last_activity,
             MIN(s.started_at) AS first_activity,
-            COUNT(DISTINCT COALESCE(s.device_id, s.player_name))::int AS device_count,
+            COUNT(DISTINCT COALESCE(${dispatcharrDeviceIdSql('s')}, s.device_id, s.player_name))::int AS device_count,
             JSON_AGG(DISTINCT jsonb_build_object('id', su.id, 'username', su.username, 'thumbUrl', su.thumb_url))
               FILTER (WHERE su.id IS NOT NULL) AS user_info
           FROM sessions s

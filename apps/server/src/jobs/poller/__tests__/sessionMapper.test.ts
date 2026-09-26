@@ -587,3 +587,30 @@ describe('sessionMapper', () => {
     });
   });
 });
+
+describe('Dispatcharr agent persistence', () => {
+  it('retains the full agent separately from display fields and connection identity', () => {
+    const agent = 'VLC/' + 'a'.repeat(300);
+    const source = createBaseMediaSession({
+      player: { name: agent, product: agent, deviceId: 'client-1' },
+    });
+    const mapped = mapMediaSession(source, 'dispatcharr');
+    expect(mapped.dispatcharrUserAgent).toBe(agent);
+    expect(mapped.product).toHaveLength(255);
+    expect(mapped.deviceId).toBe('client-1');
+    expect(mapped.sessionKey).toBe(source.sessionKey);
+    for (const type of ['plex', 'jellyfin', 'emby'] as const) {
+      expect(mapMediaSession(source, type)).not.toHaveProperty('dispatcharrUserAgent');
+    }
+  });
+
+  it('records a missing agent as empty rather than a display placeholder', () => {
+    const mapped = mapMediaSession(
+      createBaseMediaSession({
+        player: { name: 'Dispatcharr VOD Client', deviceId: 'client-1' },
+      }),
+      'dispatcharr'
+    );
+    expect(mapped.dispatcharrUserAgent).toBe('');
+  });
+});

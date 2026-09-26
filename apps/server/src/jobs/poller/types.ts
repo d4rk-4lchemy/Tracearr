@@ -154,6 +154,9 @@ export interface ProcessedSession extends StreamDetailFields {
   ipAddress: string;
   /** Player/device name */
   playerName: string;
+  /** Full Dispatcharr agent, kept separately from connection identity. */
+  dispatcharrUserAgent?: string | null;
+  dispatcharrDeviceId?: string | null;
   /** Unique device identifier */
   deviceId: string;
   /** Product/app name (e.g., "Plex for iOS") */

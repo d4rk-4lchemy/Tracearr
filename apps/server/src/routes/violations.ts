@@ -2,6 +2,7 @@
  * Violation management routes
  */
 
+import { dispatcharrDeviceIdSql } from '../services/mediaServer/dispatcharr/deviceIdentity.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, and, count, gte, lt, isNull, isNotNull, sql, inArray, type SQL } from 'drizzle-orm';
 import {
@@ -259,6 +260,7 @@ interface ViolationRow {
   playerName: string | null;
   device: string | null;
   deviceId: string | null;
+  dispatcharrDeviceId?: string | null;
   platform: string | null;
   product: string | null;
   quality: string | null;
@@ -308,6 +310,7 @@ async function enrichViolations(violationData: ViolationRow[]) {
           playerName: sessions.playerName,
           device: sessions.device,
           deviceId: sessions.deviceId,
+          dispatcharrDeviceId: dispatcharrDeviceIdSql(),
           platform: sessions.platform,
           product: sessions.product,
           quality: sessions.quality,
@@ -425,6 +428,7 @@ async function enrichViolations(violationData: ViolationRow[]) {
         playerName: v.playerName,
         device: v.device,
         deviceId: v.deviceId ?? null,
+        dispatcharrDeviceId: v.dispatcharrDeviceId,
         platform: v.platform,
         product: v.product,
         quality: v.quality,
@@ -495,6 +499,7 @@ function buildViolationPageQuery(params: {
       playerName: sessions.playerName,
       device: sessions.device,
       deviceId: sessions.deviceId,
+      dispatcharrDeviceId: dispatcharrDeviceIdSql(),
       platform: sessions.platform,
       product: sessions.product,
       quality: sessions.quality,
@@ -615,6 +620,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
         playerName: sessions.playerName,
         device: sessions.device,
         deviceId: sessions.deviceId,
+        dispatcharrDeviceId: dispatcharrDeviceIdSql(),
         platform: sessions.platform,
         product: sessions.product,
         quality: sessions.quality,

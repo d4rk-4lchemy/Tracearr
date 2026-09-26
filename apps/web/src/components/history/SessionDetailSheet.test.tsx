@@ -36,6 +36,17 @@ function renderSheet(overrides: Partial<SessionWithDetails>) {
 }
 
 describe('SessionDetailSheet', () => {
+  it('shows the Dispatcharr device identity instead of its per-connection ID', () => {
+    renderSheet({ deviceId: 'client-123', dispatcharrDeviceId: 'dispatcharr:v1:stable' });
+    expect(screen.getByText('dispatcharr:v1:stable')).toBeInTheDocument();
+    expect(screen.queryByText('client-123')).not.toBeInTheDocument();
+  });
+
+  it('keeps other providers device IDs unchanged', () => {
+    renderSheet({ deviceId: 'jellyfin-machine' });
+    expect(screen.getByText('jellyfin-machine')).toBeInTheDocument();
+  });
+
   it('shows no progress percentage for a play without a total', () => {
     renderSheet({ progressMs: 3_600_000, totalDurationMs: null });
 

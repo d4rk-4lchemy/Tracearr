@@ -4,6 +4,7 @@
  * GET /:id/sessions - Get user's session history (grouped by play)
  */
 
+import { dispatcharrDeviceIdSql } from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { sql } from 'drizzle-orm';
 import { userIdParamSchema, identityScopedPaginationSchema } from '@tracearr/shared';
@@ -120,7 +121,7 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
         s.geo_asn_organization,
         ${localSessionSql('s')} AS is_local,
         s.player_name,
-        s.device_id,
+        s.device_id, ${dispatcharrDeviceIdSql('s')} AS dispatcharr_device_id,
         s.product,
         s.device,
         s.platform,
@@ -172,6 +173,7 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
         is_local: boolean;
         player_name: string | null;
         device_id: string | null;
+        dispatcharr_device_id?: string | null;
         product: string | null;
         device: string | null;
         platform: string | null;
@@ -220,6 +222,7 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
       isLocal: row.is_local === true,
       playerName: row.player_name,
       deviceId: row.device_id,
+      dispatcharrDeviceId: row.dispatcharr_device_id,
       product: row.product,
       device: row.device,
       platform: row.platform,

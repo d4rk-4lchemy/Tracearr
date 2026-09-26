@@ -3,6 +3,7 @@
  * Handles caching of active sessions, dashboard stats, and other frequently accessed data
  */
 
+import { dispatcharrDeviceId } from './mediaServer/dispatcharr/deviceIdentity.js';
 import type { ActiveSession, DashboardStats, ServerConnectionStatus } from '@tracearr/shared';
 import { CACHE_TTL, REDIS_KEYS } from '@tracearr/shared';
 import { randomUUID } from 'node:crypto';
@@ -23,6 +24,9 @@ function hydrateActiveSession(session: ActiveSession): ActiveSession {
 
   return {
     ...session,
+    ...(session.server?.type === 'dispatcharr' && !session.dispatcharrDeviceId
+      ? { dispatcharrDeviceId: dispatcharrDeviceId(session) }
+      : {}),
     startedAt: asDate(session.startedAt) as Date,
     stoppedAt: asDate(session.stoppedAt) as Date | null,
     lastPausedAt: asDate(session.lastPausedAt) as Date | null,

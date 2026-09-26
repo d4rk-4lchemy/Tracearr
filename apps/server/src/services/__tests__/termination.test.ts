@@ -606,6 +606,34 @@ describe('terminateSession', () => {
     });
   });
 
+  it('terminates and cools down the Dispatcharr connection, never the logical device', async () => {
+    const cooldown = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(getCacheService).mockReturnValue({
+      removeActiveSession: vi.fn().mockResolvedValue(undefined),
+      setTerminationCooldownComposite: cooldown,
+    } as never);
+    vi.mocked(getPubSubService).mockReturnValue({
+      publish: vi.fn().mockResolvedValue(undefined),
+    } as never);
+    const session = createMockSession({
+      server: { type: 'dispatcharr', url: 'http://dispatcharr.local', token: 'token' },
+      deviceId: 'client-1',
+      sessionKey: 'channel:client-1',
+      ratingKey: 'channel',
+      dispatcharrDeviceId: 'dispatcharr:v1:shared-device',
+    });
+    mockSessionFindFirst.mockResolvedValue(session);
+    mockMediaClient.terminateSession.mockResolvedValue(true);
+    await terminateSession({ sessionId: session.id, trigger: 'manual' });
+    expect(mockMediaClient.terminateSession).toHaveBeenCalledWith('channel:client-1', undefined);
+    expect(cooldown).toHaveBeenCalledWith(
+      session.serverId,
+      session.serverUserId,
+      'client-1',
+      'channel'
+    );
+  });
+
   describe('rule-triggered termination', () => {
     it('should log rule information for rule-triggered terminations', async () => {
       const mockSession = createMockSession();

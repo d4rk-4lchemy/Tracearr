@@ -54,6 +54,58 @@ Docker integration, E2E and image builds are omitted at the user's request;
 migration execution and database upgrade paths are not covered. Live-provider
 manual smoke checks have not been performed.
 
+## September 25, 2026 — Dispatcharr device identity
+
+Dispatcharr `client_id` identifies a connection, not a physical device. Keep
+its existing `deviceId`, `sessionKey` and termination/cooldown keys intact.
+Device views and automation comparisons instead use `dispatcharrDeviceId`,
+a versioned SHA-256 of the JSON tuple `[serverId, serverUserId, trimmedUserAgent]`.
+IP, media and playback kind are deliberately excluded. The exact same agent
+on one server account is one logical device, including parallel connections;
+a different agent/version or account/server is a different device.
+
+Fork migration `0005_dispatcharr_user_agent` adds nullable text to sessions.
+New Dispatcharr sessions store their full agent (empty string for missing);
+other providers leave this column NULL. Read-time SQL recovers older agents
+from product/player_name and treats the three parser placeholder names as
+missing. Previously truncated agents cannot be recovered. This groups the
+entire history without rewriting connection IDs or compressed chunks. New
+missing-agent sessions share one unknown device per server account.
+
+History/detail APIs and active sessions add optional `dispatcharrDeviceId`;
+existing `deviceId` retains its provider meaning. User Devices returns the
+stable identity in its existing deviceId field. The raw text column is not
+part of session API payloads. SQL and TypeScript helpers must stay equivalent.
+Device counts, new-device triggers and same-device exclusions use this identity;
+concurrent playback lifecycle and termination still use connection identity.
+Plex/Jellyfin/Emby retain their previous behavior. Old active cache entries are
+enriched from their server type and preserved agent on read.
+
+Validation passed with Node 24 / pnpm 12.4.2: lint (751 warnings), typecheck,
+translations, unit/services/routes/auth/security/web (9,051 tests), coverage
+(5,807 tests; 70.42% statements, 64.28% branches, 74.65% functions, 71.64% lines)
+and build. Focused PG18/Timescale 2.29.1 integration passed: three device/upgrade
+cases and three location-reader cases. E2E exited 0 with 55 passes and one
+automation-editor retry. Logs: `.tmp/github-ci-devices-<job>-20260925.log`.
+The broad integration attempt ran out of disk during the large catalog fixture;
+it is incomplete. No PG15 or live-provider manual smoke was performed. Test
+containers/volumes were cleaned up. Services/coverage have one additional
+existing MaxListenersExceededWarning each; no new normalized warning class.
+
+## September 26, 2026 — CI fixture repair
+
+Newsletter send tests now freeze Date around their fixed watermark. Media E2E
+seeding explicitly refreshes library_stats_daily after commit so fresh databases
+expose the overview without waiting for background aggregation. Production
+behavior, Dispatcharr overlay and both GitHub workflows are unchanged.
+Local validation must run heavy jobs sequentially on the 8 GB LXC, with one
+Vitest worker and Turbo concurrency one; see AGENTS.md and the warning reference.
+Validation passed with Node 24 / pnpm 12.4.2: services 3,917/3,917, fresh-volume
+E2E 56 passed / 26 skipped without retries, lint (751 existing warnings), and
+typecheck (11 tasks, nine cached). Services retains 108 warning-like messages.
+Test containers and volumes were removed. The initial concurrent run was
+interrupted by host exhaustion and is not counted as validation.
+
 ## What This Fork Adds
 
 The primary fork-owned change is first-class Dispatcharr support. The fork lets Tracearr track Dispatcharr Live TV and VOD streams alongside Plex, Jellyfin, and Emby.
@@ -100,8 +152,13 @@ The fork also carries local maintenance/distribution changes:
   Follow `MERGE_INSTRUCTION.md` when reconciling upstream workflows; verify
   manually that exactly these two workflows remain after every merge.
 - Releases are still created manually. A published stable `vX.Y.Z-rN` release
-  (N >= 1) builds both existing Dockerfiles, without cache, for `linux/amd64`,
-  from the release tag. Both builds must succeed before any push. It publishes
+  (N >= 1) builds both existing Dockerfiles, without cache, for `linux/amd64`
+  and `linux/arm64` on native `ubuntu-24.04` and `ubuntu-24.04-arm` runners.
+  All four builds use the same resolved release commit and build timestamp.
+  Like upstream, Buildx pushes images by digest, then assembles multi-platform
+  manifests. All four builds and digest artifacts must succeed before any
+  versioned tag or stable alias is published; failed builds may leave untagged
+  content in GHCR. It publishes
   `ghcr.io/d4rk-4lchemy/distracearr` tags `X.Y.Z-rN`, `latest`, `standalone`,
   `supervised-X.Y.Z-rN`, and `supervised`, with fork version metadata and GHCR
   as `APP_IMAGE_REPO`. Prereleases are skipped; malformed stable tags fail.
@@ -109,6 +166,14 @@ The fork also carries local maintenance/distribution changes:
   Docker Hub remains entirely manual; do not introduce Docker Hub credentials,
   scheduled/nightly/insiders builds, manual-dispatch, tag-push, release creation,
   Helm pushes, issue automation, Renovate, stale, or Vouch workflows.
+- GHCR manifest publication checks all five tags for both Linux architectures.
+  Preserve the variant/architecture artifact names and the shared publication
+  gate when merging upstream changes. Registry updates across tags are not
+  atomic; a publication failure can require rerunning the failed job.
+  The September 25 workflow change passed actionlint, Prettier and local
+  mocked-Docker checks for metadata, digest handling, publication gating and
+  platform verification. Actual native builds and registry publication were
+  not run locally; verify them in the next GitHub release run.
 - Preservation is documented in `MERGE_INSTRUCTION.md` and this file; no
   CODEOWNERS changes or extra CI policy checks are required. Historical merge
   notes below describe the earlier CI-only/manual-release policy; this policy
@@ -169,7 +234,7 @@ Database:
   - `dispatcharr_playback_kind varchar(20)`
   - `progress_estimated boolean default false not null`
 - `apps/server/src/db/migrations/` is the upstream-only migration history. It must remain directly mergeable with the source repository.
-- `apps/server/src/db/fork-migrations/` is the Dispatcharr overlay, with its own `meta/_journal.json` and `tracearr_fork.__drizzle_migrations` database ledger. Its current files `0000`–`0004` replace the historical main-ledger migrations `0067`–`0069`; `0004` removes the retired Dispatcharr live-history column.
+- `apps/server/src/db/fork-migrations/` is the Dispatcharr overlay, with its own `meta/_journal.json` and `tracearr_fork.__drizzle_migrations` database ledger. Its current files `0000`–`0005` replace the historical main-ledger migrations `0067`–`0069`; `0004` removes the retired Dispatcharr live-history column and `0005` adds full User-Agent storage for device identity.
 - Before upstream migrations, the runtime removes the exact legacy `0069_steady_squadron_supreme` ledger entry only when `media` is absent. This is a one-time compatibility bridge: its timestamp would otherwise cause Drizzle to skip upstream `0067_cold_maggott`, which creates `media`.
 - The overlay runs after upstream migrations. Its SQL is idempotent so installations that previously ran `0067`–`0069`, installations where they were skipped, and original Tracearr databases all converge without data loss.
 

@@ -483,6 +483,8 @@ export interface Session extends StreamDetailFields {
   // A local network session; its geo fields hold its server's location when one is set
   isLocal: boolean;
   playerName: string | null; // Friendly device name
+  /** Stable Dispatcharr device identity; deviceId remains the provider connection ID. */
+  dispatcharrDeviceId?: string | null;
   deviceId: string | null; // Unique device identifier (machineIdentifier)
   product: string | null; // Product/app name (e.g., "Plex for iOS")
   device: string | null; // Device type (e.g., "iPhone")
@@ -653,6 +655,8 @@ export interface ViolationSessionInfo {
   geoLon: number | null;
   playerName: string | null;
   device: string | null;
+  /** Stable Dispatcharr device identity; deviceId remains the provider connection ID. */
+  dispatcharrDeviceId?: string | null;
   deviceId: string | null;
   platform: string | null;
   product: string | null;

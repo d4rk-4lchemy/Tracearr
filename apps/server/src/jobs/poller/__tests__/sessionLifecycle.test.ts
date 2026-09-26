@@ -844,6 +844,33 @@ describe('sessionLocation', () => {
 });
 
 describe('buildActiveSession identity passthrough', () => {
+  it('gives parallel Dispatcharr connections one device without altering connection identity', async () => {
+    const { buildActiveSession } = await import('../sessionLifecycle.js');
+    const first = createMockBuildActiveSessionInput({
+      deviceId: 'client-1',
+      sessionKey: 'channel:client-1',
+      dispatcharrUserAgent: 'VLC/3.0',
+    });
+    first.server.type = 'dispatcharr';
+    const second = {
+      ...first,
+      processed: {
+        ...first.processed,
+        deviceId: 'client-2',
+        sessionKey: 'channel:client-2',
+        ipAddress: '8.8.8.8',
+      },
+    };
+    const a = buildActiveSession(first);
+    const b = buildActiveSession(second);
+    expect(a.dispatcharrDeviceId).toMatch(/^dispatcharr:v1:/);
+    expect(a.dispatcharrDeviceId).toBe(b.dispatcharrDeviceId);
+    expect(a.deviceId).toBe('client-1');
+    expect(b.deviceId).toBe('client-2');
+    expect(a.sessionKey).not.toBe(b.sessionKey);
+    expect(a).not.toHaveProperty('dispatcharrUserAgent');
+  });
+
   it('preserves Dispatcharr Catch-up metadata for active cards and cache', async () => {
     const { buildActiveSession } = await import('../sessionLifecycle.js');
 
