@@ -92,6 +92,20 @@ it is incomplete. No PG15 or live-provider manual smoke was performed. Test
 containers/volumes were cleaned up. Services/coverage have one additional
 existing MaxListenersExceededWarning each; no new normalized warning class.
 
+## September 26, 2026 — CI fixture repair
+
+Newsletter send tests now freeze Date around their fixed watermark. Media E2E
+seeding explicitly refreshes library_stats_daily after commit so fresh databases
+expose the overview without waiting for background aggregation. Production
+behavior, Dispatcharr overlay and both GitHub workflows are unchanged.
+Local validation must run heavy jobs sequentially on the 8 GB LXC, with one
+Vitest worker and Turbo concurrency one; see AGENTS.md and the warning reference.
+Validation passed with Node 24 / pnpm 12.4.2: services 3,917/3,917, fresh-volume
+E2E 56 passed / 26 skipped without retries, lint (751 existing warnings), and
+typecheck (11 tasks, nine cached). Services retains 108 warning-like messages.
+Test containers and volumes were removed. The initial concurrent run was
+interrupted by host exhaustion and is not counted as validation.
+
 ## What This Fork Adds
 
 The primary fork-owned change is first-class Dispatcharr support. The fork lets Tracearr track Dispatcharr Live TV and VOD streams alongside Plex, Jellyfin, and Emby.

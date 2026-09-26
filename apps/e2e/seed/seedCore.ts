@@ -390,4 +390,11 @@ export async function seedCore(client: Client): Promise<void> {
     await client.query('ROLLBACK');
     throw error;
   }
+
+  // Library readiness reads the daily aggregate, not the raw snapshots.
+  // Refresh outside the transaction so a fresh CI database is ready immediately,
+  // without waiting for Timescale's background refresh policy.
+  await client.query(
+    `CALL refresh_continuous_aggregate('library_stats_daily'::regclass, NULL, NULL)`
+  );
 }

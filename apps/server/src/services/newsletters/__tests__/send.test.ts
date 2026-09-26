@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_NEWSLETTER_SECTIONS } from '@tracearr/shared';
 
 const store = vi.hoisted(() => ({
@@ -162,6 +162,9 @@ function twoServers() {
 }
 
 beforeEach(() => {
+  // Keep the watermark within the 31-day window regardless of the runner's date.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-02T18:00:00.000Z'));
   vi.clearAllMocks();
   mockLogoPng.mockReturnValue(Buffer.from('png'));
   mockBranding.mockResolvedValue({
@@ -208,6 +211,10 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 function firstSend(): Record<string, unknown> {
   const [first] = store.insertSend.mock.calls[0] ?? [];
   expect(first).toBeDefined();
@@ -246,6 +253,7 @@ describe('runNewsletter', () => {
       destinationId: NEWSLETTER.destinationId,
       trigger: 'schedule',
       windowStart: new Date('2026-08-26T00:00:00Z'),
+      windowEnd: new Date('2026-09-02T18:00:00.000Z'),
       outcome: 'rendering',
       itemCounts: ONE_MOVIE.counts,
       variants: [
@@ -276,7 +284,10 @@ describe('runNewsletter', () => {
     expect(store.markSendSending).toHaveBeenCalledWith('send-1', 1);
     expect(mockAssemble).toHaveBeenCalledWith(
       { scope: { serverIds: ['s1'], libraries: [] }, sections: NEWSLETTER.sections },
-      { start: new Date('2026-08-26T00:00:00Z'), end: expect.any(Date) },
+      {
+        start: new Date('2026-08-26T00:00:00Z'),
+        end: new Date('2026-09-02T18:00:00.000Z'),
+      },
       {}
     );
     expect(mockDestination).toHaveBeenCalledWith(NEWSLETTER.destinationId);
