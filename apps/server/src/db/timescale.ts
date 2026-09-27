@@ -49,8 +49,11 @@ import { PRIMARY_MEDIA_TYPES_SQL_LITERAL } from '../constants/mediaTypes.js';
  *       the deleted account.
  * - 16: Added count_8k, count_1440p and count_480p to library_stats_daily and
  *       content_quality_daily; every resolution tier has its own bucket.
+ * - 17: user_media_plays_daily is grouped by resume chain (chain_id) and the
+ *       plays count became a counted flag. A chain counts when any segment
+ *       passes the 120s gate, once, instead of only when its head does.
  */
-export const AGGREGATE_SCHEMA_VERSION = 16;
+export const AGGREGATE_SCHEMA_VERSION = 17;
 
 /** Config for a continuous aggregate view */
 interface AggregateDefinition {
@@ -116,7 +119,9 @@ function getAggregateDefinitions(): AggregateDefinition[] {
       },
     },
     {
-      // Identity-aware plays: one row per user-media-day actually watched
+      // Identity-aware plays: one row per user, media, resume chain and UTC day.
+      // Readers count DISTINCT chain_id FILTER (WHERE counted); a chain that
+      // crosses UTC midnight is two rows and one play.
       name: 'user_media_plays_daily',
       sql: `
         CREATE MATERIALIZED VIEW IF NOT EXISTS user_media_plays_daily
@@ -126,16 +131,17 @@ function getAggregateDefinitions(): AggregateDefinition[] {
           server_user_id,
           server_id,
           media_id,
+          COALESCE(reference_id, id) AS chain_id,
           MAX(show_media_id::text)::uuid AS show_media_id,
           MAX(media_type) AS media_type,
-          COUNT(*) FILTER (WHERE reference_id IS NULL AND COALESCE(duration_ms, 0) >= 120000) AS plays,
+          BOOL_OR(COALESCE(duration_ms, 0) >= 120000) AS counted,
           SUM(CASE WHEN duration_ms >= 120000 THEN duration_ms ELSE 0 END) AS watched_ms,
           MAX(progress_ms) AS max_progress_ms,
           MAX(total_duration_ms) AS content_duration_ms,
           BOOL_OR(watched) AS any_watched
         FROM sessions
         WHERE media_id IS NOT NULL
-        GROUP BY day, server_user_id, server_id, media_id
+        GROUP BY day, server_user_id, server_id, media_id, COALESCE(reference_id, id)
         WITH NO DATA
       `,
       refreshPolicy: {
@@ -2307,12 +2313,12 @@ async function engagementViewsExist(): Promise<boolean> {
 // media_id-leading composite for per-item watched probes; the cagg's default (media_id, day) can't serve it
 async function ensureUserMediaPlaysIndex(): Promise<void> {
   await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_user_media_plays_media_user
-    ON user_media_plays_daily (media_id, server_user_id)
+    CREATE INDEX IF NOT EXISTS idx_user_media_plays_media_user_chain
+    ON user_media_plays_daily (media_id, server_user_id, chain_id)
   `);
   await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS idx_user_media_plays_show_user
-    ON user_media_plays_daily (show_media_id, server_user_id)
+    CREATE INDEX IF NOT EXISTS idx_user_media_plays_show_user_chain
+    ON user_media_plays_daily (show_media_id, server_user_id, chain_id)
     WHERE show_media_id IS NOT NULL
   `);
 }
@@ -2384,7 +2390,7 @@ async function ensureEngagementViews(): Promise<void> {
       media_id,
       MAX(show_media_id::text)::uuid AS show_media_id,
       MAX(media_type) AS media_type,
-      SUM(plays) AS plays,
+      COUNT(DISTINCT chain_id) FILTER (WHERE counted) AS plays,
       SUM(watched_ms) AS watched_ms,
       COUNT(DISTINCT server_user_id) AS unique_users
     FROM user_media_plays_daily

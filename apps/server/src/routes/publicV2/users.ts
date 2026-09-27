@@ -226,7 +226,7 @@ export function registerUsersRoutes(app: FastifyInstance, routeConfig: RouteConf
       for (const win of STATS_WINDOWS) {
         const result = await db.execute(sql`
           SELECT
-            COALESCE(SUM(p.plays), 0) AS plays,
+            COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted) AS plays,
             COALESCE(SUM(p.watched_ms), 0) AS watch_time_ms
           FROM user_media_plays_daily p
           WHERE ${scope}${windowDayFilter(sql`p.day`, win.days)}
@@ -239,7 +239,7 @@ export function registerUsersRoutes(app: FastifyInstance, routeConfig: RouteConf
       }
 
       const genreResult = await db.execute(sql`
-        SELECT g AS genre, COALESCE(SUM(p.plays), 0)::int AS plays
+        SELECT g AS genre, COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted)::int AS plays
         FROM user_media_plays_daily p
         JOIN media m ON m.id = p.media_id
         CROSS JOIN LATERAL unnest(m.genres) AS g

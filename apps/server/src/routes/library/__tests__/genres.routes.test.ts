@@ -129,7 +129,7 @@ describe('GET /library/genres', () => {
     expect(normalize(itemCountQuery.sql)).toContain('m.media_type =');
     expect(itemCountQuery.params).toContain('show');
     expect(normalize(engagementQuery.sql)).toContain('p.show_media_id IS NOT NULL');
-    expect(normalize(engagementQuery.sql)).toContain('pm.id = p.show_media_id');
+    expect(normalize(engagementQuery.sql)).toContain('SELECT p.show_media_id AS media_id');
   });
 
   it('caches the computed genres per (scope, type) and skips recompute on a hit', async () => {

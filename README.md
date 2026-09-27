@@ -241,6 +241,9 @@ cp .env.example .env
 # Run migrations
 pnpm --filter @tracearr/server db:migrate
 
+# Build the stream map basemap (about 550 MB, once)
+pnpm basemap
+
 # Start dev servers
 pnpm dev
 ```
@@ -266,7 +269,7 @@ Frontend runs at `localhost:5173`, API at `localhost:3000`.
 
 **Fastify** over Express because it's measurably faster and schema validation catches bad requests before they hit handlers.
 
-**MapLibre with a bundled PMTiles basemap** replaces the old raster tiles. The archive ships in the image, so the map works on an instance with no outbound internet access.
+**MapLibre with a bundled PMTiles basemap** replaces the old raster tiles. The archive is a zoom 8 extract of the Protomaps planet build, made at image build time by `scripts/fetch-basemap.sh`, and ships in the image, so the map works on an instance with no outbound internet access.
 
 **SSE for instant sessions** - Plex streams session updates in real-time via Server-Sent Events, so streams appear the moment they start. Jellyfin and Emby get the same through the [Tracearr SSE plugin](https://github.com/Tracearr/Media-Server-SSE); without it they fall back to polling.
 

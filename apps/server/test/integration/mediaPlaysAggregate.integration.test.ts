@@ -1,12 +1,13 @@
 /**
  * Identity-aware plays aggregate integration test.
  *
- * user_media_plays_daily counts one play per user-media-day that was actually
- * watched: a chain start (reference_id null) past the 120s play gate. Chained
- * continuations and short sessions must not add plays. media_plays_daily rolls
- * the per-user cagg up to per-media-day with a distinct-user count.
+ * user_media_plays_daily has one row per user, media, chain and UTC day. A chain
+ * (COALESCE(reference_id, id)) is counted when any segment reaches the 120s play
+ * gate; readers count distinct counted chain_ids, so a chain that crosses UTC
+ * midnight is one play. media_plays_daily rolls the per-user cagg up to
+ * per-media-day with a distinct-user count.
  *
- * Run with: pnpm --filter @tracearr/server test:integration -- mediaPlaysAggregate
+ * Run with: pnpm --filter @tracearr/server test:integration mediaPlaysAggregate
  */
 
 import { describe, it, expect } from 'vitest';
@@ -20,8 +21,28 @@ import {
 import { db } from '../../src/db/client.js';
 import { resolveMediaForItem } from '../../src/services/library/mediaResolutionService.js';
 
+const DAY_MS = 86_400_000;
+// Midday UTC, well inside the refresh window
+const BASE = new Date(Math.floor(Date.now() / DAY_MS) * DAY_MS - 2 * DAY_MS + DAY_MS / 2);
+const at = (offsetMs: number) => new Date(BASE.getTime() + offsetMs);
+
+async function refresh() {
+  await db.execute(
+    sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
+  );
+}
+
+async function countedChains(serverUserId: string, mediaId: string): Promise<number> {
+  const result = await db.execute(sql`
+    SELECT COUNT(DISTINCT chain_id) FILTER (WHERE counted)::int AS plays
+    FROM user_media_plays_daily
+    WHERE server_user_id = ${serverUserId} AND media_id = ${mediaId}
+  `);
+  return (result.rows[0] as { plays: number }).plays;
+}
+
 describe('identity-aware plays aggregates', () => {
-  it('counts one play per watched chain start, excluding continuations and short sessions', async () => {
+  it('counts a chain once when any segment passes the gate, and not at all when none does', async () => {
     const server = await createTestServer({ type: 'plex' });
     const user = await createTestUser({ role: 'member' });
     const account = await createTestServerUser({ userId: user.id, serverId: server.id });
@@ -35,11 +56,13 @@ describe('identity-aware plays aggregates', () => {
       ratingKey: 'rk-1',
     });
 
-    const chainStart = await createTestSession({
+    // Chain A: long head plus long continuation, one play
+    const chainA = await createTestSession({
       serverId: server.id,
       serverUserId: account.id,
       mediaId,
       ratingKey: 'rk-1',
+      startedAt: at(0),
       durationMs: 1_800_000,
       totalDurationMs: 7_200_000,
       referenceId: null,
@@ -49,32 +72,56 @@ describe('identity-aware plays aggregates', () => {
       serverUserId: account.id,
       mediaId,
       ratingKey: 'rk-1',
+      startedAt: at(40 * 60_000),
       durationMs: 1_800_000,
       totalDurationMs: 7_200_000,
-      referenceId: chainStart.id,
+      referenceId: chainA.id,
+    });
+    // Chain B: 60 s head, 30 min continuation, one play (issue #1232)
+    const chainB = await createTestSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaId,
+      ratingKey: 'rk-1',
+      startedAt: at(2 * 60 * 60_000),
+      durationMs: 60_000,
+      totalDurationMs: 7_200_000,
+      referenceId: null,
+      shortSession: true,
     });
     await createTestSession({
       serverId: server.id,
       serverUserId: account.id,
       mediaId,
       ratingKey: 'rk-1',
+      startedAt: at(2 * 60 * 60_000 + 5 * 60_000),
+      durationMs: 1_800_000,
+      totalDurationMs: 7_200_000,
+      referenceId: chainB.id,
+    });
+    // Chain C: lone 60 s poke, no play
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaId,
+      ratingKey: 'rk-1',
+      startedAt: at(4 * 60 * 60_000),
       durationMs: 60_000,
       totalDurationMs: 7_200_000,
       referenceId: null,
       shortSession: true,
     });
 
-    await db.execute(
-      sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
-    );
+    await refresh();
 
-    const userRows = await db.execute(sql`
-      SELECT plays::int AS plays
+    expect(await countedChains(account.id, mediaId)).toBe(2);
+
+    const rowCount = await db.execute(sql`
+      SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE counted)::int AS counted_rows
       FROM user_media_plays_daily
       WHERE server_user_id = ${account.id} AND media_id = ${mediaId}
     `);
-    expect(userRows.rows).toHaveLength(1);
-    expect((userRows.rows[0] as { plays: number }).plays).toBe(1);
+    expect(rowCount.rows[0]).toEqual({ n: 3, counted_rows: 2 });
 
     const mediaRows = await db.execute(sql`
       SELECT plays::int AS plays, unique_users::int AS unique_users
@@ -82,9 +129,56 @@ describe('identity-aware plays aggregates', () => {
       WHERE server_id = ${server.id} AND media_id = ${mediaId}
     `);
     expect(mediaRows.rows).toHaveLength(1);
-    const row = mediaRows.rows[0] as { plays: number; unique_users: number };
-    expect(row.plays).toBe(1);
-    expect(row.unique_users).toBe(1);
+    expect(mediaRows.rows[0]).toEqual({ plays: 2, unique_users: 1 });
+  });
+
+  it('counts a chain that crosses UTC midnight once', async () => {
+    const server = await createTestServer({ type: 'plex' });
+    const user = await createTestUser({ role: 'member' });
+    const account = await createTestServerUser({ userId: user.id, serverId: server.id });
+
+    const mediaId = await resolveMediaForItem({
+      mediaType: 'movie',
+      tmdbId: 27208,
+      title: 'Inception 4',
+      year: 2010,
+      serverId: server.id,
+      ratingKey: 'rk-4',
+    });
+
+    // Head at 23:30 UTC, continuation at 00:30 UTC the next day, both over the gate
+    const head = await createTestSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaId,
+      ratingKey: 'rk-4',
+      startedAt: at(DAY_MS / 2 - 30 * 60_000),
+      durationMs: 1_500_000,
+      totalDurationMs: 7_200_000,
+      referenceId: null,
+    });
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaId,
+      ratingKey: 'rk-4',
+      startedAt: at(DAY_MS / 2 + 30 * 60_000),
+      durationMs: 1_500_000,
+      totalDurationMs: 7_200_000,
+      referenceId: head.id,
+    });
+
+    await refresh();
+
+    const rows = await db.execute(sql`
+      SELECT day, counted
+      FROM user_media_plays_daily
+      WHERE server_user_id = ${account.id} AND media_id = ${mediaId}
+      ORDER BY day
+    `);
+    expect(rows.rows).toHaveLength(2);
+    expect((rows.rows as { counted: boolean }[]).every((r) => r.counted)).toBe(true);
+    expect(await countedChains(account.id, mediaId)).toBe(1);
   });
 
   it('tracks any_watched per user-media-day', async () => {

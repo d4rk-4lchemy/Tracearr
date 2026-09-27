@@ -215,7 +215,7 @@ export function Map() {
           value={filters.mediaType ?? '_all'}
           onValueChange={(v) => setFilter('mediaType', v === '_all' ? null : v)}
         >
-          <SelectTrigger className="h-8 w-[100px] text-sm">
+          <SelectTrigger className="h-8 min-w-[100px] text-sm">
             <SelectValue placeholder={t('map.allTypes')} />
           </SelectTrigger>
           <SelectContent>

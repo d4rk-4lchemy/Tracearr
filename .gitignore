@@ -46,12 +46,11 @@ AGENTS.md
 COMMON_REGRESSIONS.md
 MERGE_INSTRUCTION.md
 
-# Database (keep GeoLite2 database and the built-in basemap committed)
+# Database (keep GeoLite2 database committed; pnpm basemap builds the pmtiles archive)
 data/*.mmdb
 data/*.pmtiles
 !data/GeoLite2-City.mmdb
 !data/GeoLite2-ASN.mmdb
-!data/basemap.pmtiles
 
 # Poster/avatar cache the image proxy writes at runtime
 data/image-cache/

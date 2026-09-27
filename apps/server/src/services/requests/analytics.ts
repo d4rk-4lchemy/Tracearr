@@ -181,18 +181,18 @@ async function fetchRequestPlays(
       END AS watched
     FROM alias al
     CROSS JOIN LATERAL (
-      SELECT p2.media_id, p2.plays, p2.any_watched, p2.server_user_id
+      SELECT p2.media_id, p2.counted, p2.any_watched, p2.server_user_id
       FROM user_media_plays_daily p2
       WHERE al.media_type = 'show' AND p2.show_media_id = al.any_id ${playFragment}
       UNION ALL
-      SELECT p2.media_id, p2.plays, p2.any_watched, p2.server_user_id
+      SELECT p2.media_id, p2.counted, p2.any_watched, p2.server_user_id
       FROM user_media_plays_daily p2
       WHERE al.media_type <> 'show' AND p2.media_id = al.any_id ${playFragment}
       OFFSET 0
     ) p
     JOIN server_users vsu ON vsu.id = p.server_user_id
     LEFT JOIN episodes ep ON ep.id = al.id
-    WHERE (p.plays > 0 OR p.any_watched)
+    WHERE (p.counted OR p.any_watched)
       AND (
         al.media_type <> 'show'
         OR COALESCE(jsonb_array_length(al.seasons), 0) = 0

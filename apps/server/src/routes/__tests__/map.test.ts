@@ -127,6 +127,17 @@ describe('GET /map/basemap', () => {
     expect(res.headers['content-range']).toBe(`bytes */${CONTENT.length}`);
   });
 
+  it('lets the browser keep range responses for a day', async () => {
+    process.env.MAP_BASEMAP_PATH = join(dir, 'basemap.pmtiles');
+    const res = await app.inject({
+      method: 'GET',
+      url: '/map/basemap',
+      headers: { range: 'bytes=0-3' },
+    });
+    expect(res.headers['cache-control']).toBe('private, max-age=86400');
+    expect(res.headers.etag).toBeDefined();
+  });
+
   it('answers a matching if-none-match with 304', async () => {
     process.env.MAP_BASEMAP_PATH = join(dir, 'basemap.pmtiles');
     const first = await app.inject({ method: 'GET', url: '/map/basemap' });

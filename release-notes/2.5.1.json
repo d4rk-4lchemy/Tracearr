@@ -1,0 +1,31 @@
+{
+  "version": "2.5.1",
+  "date": "2026-09-26",
+  "changes": [
+    {
+      "type": "fix",
+      "text": "a failed Postgres connection logs the pg error code and message instead of only db:false"
+    },
+    {
+      "type": "fix",
+      "text": "a title watched after a short first sitting counts as a play and lists its watcher on the media page",
+      "refs": ["#1232"]
+    },
+    {
+      "type": "note",
+      "text": "plays on media, genre and catalog pages rebuild in the background after updating and show 7 days until done"
+    },
+    {
+      "type": "improved",
+      "text": "the stream map shows towns, parks, rivers and detailed coastlines up to zoom 10"
+    },
+    {
+      "type": "note",
+      "text": "the image is about 500 MB larger, all of it the bundled stream map"
+    },
+    {
+      "type": "fix",
+      "text": "clicking a stream map location shared by more than one server no longer blanks the page"
+    }
+  ]
+}

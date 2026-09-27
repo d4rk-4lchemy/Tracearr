@@ -7,9 +7,9 @@ This file documents the local fork overlay so future upstream updates can preser
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `db54cfb1`
-- Last shared upstream commit found during inspection: `86db792d` (before merge)
-- Latest upstream commit merged into the current working tree: `db54cfb1`
+- Source branch/SHA inspected: `main` at `ef0fb45f`
+- Last shared upstream commit found during inspection: `db54cfb1` (before merge)
+- Latest upstream commit merged into the current working tree: `ef0fb45f`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -20,6 +20,45 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## September 27, 2026 upstream merge
+
+Upstream `main` at `ef0fb45f` (Tracearr 2.5.1) changes play counting in
+`user_media_plays_daily`: aggregate schema version 17 groups by resume chain
+and UTC day, marks a chain counted when any segment reaches two minutes, and
+readers count distinct chain IDs across days. Import duplicate cleanup now
+requires a counted segment on the imported session's UTC day. The upstream
+aggregate is rebuilt on upgrade; the upstream migration ledger and separate
+Dispatcharr fork migrations are unchanged. Keep the distinct-chain readers in
+library, request analytics, and public V2 queries together with this schema.
+
+The map now uses an extracted zoom-8 Protomaps archive and adjusts maximum zoom
+to its header; it also decodes multi-server popup properties returned by the
+map worker. The archive is no longer committed. The fork GHCR release workflow
+must run `.github/actions/fetch-basemap` after checkout in each native build job
+before either Dockerfile copies `data/basemap.pmtiles`. Both variants still use
+uncached AMD64/ARM64 builds, digest artifacts, a four-build publication gate,
+and five multi-platform GHCR tags. Upstream release, nightly, insiders, Discord,
+Vouch, and Helm changes remain excluded; exactly the PR CI and fork GHCR
+workflows remain. Dispatcharr auth, identity, lifecycle, uncropped artwork and
+two-channel version behavior remain intact. Newsletter tests retain their
+fixed clock and watermark; upstream's relative watermark would fall outside
+the frozen test window.
+
+Full non-Docker validation passed with Node 24 / pnpm 12.4.2, a clean Turbo
+cache, frozen install, 4 GB heap, one Vitest worker, and Turbo concurrency one:
+lint, typecheck, translations, all five server test groups, web, coverage and
+build. Server groups plus web passed 9,058 tests; coverage passed 5,809 tests
+(70.42% statements, 64.27% branches, 74.65% functions, 71.64% lines).
+Lint retained 751 warnings. Routes and coverage logged one extra occurrence
+of the existing MaxListenersExceededWarning; no new warning class appeared.
+The translation checker still reports seven pre-existing absent keys in
+`uk-UA/nav.json`. The GHCR mocked publication check, shell syntax check and
+Prettier check passed. Logs: `.tmp/github-ci-<job>-20260927.log`.
+Docker integration (including both TimescaleDB versions), E2E, image builds,
+database upgrade execution and live-provider smoke checks were omitted at the
+user's request. The aggregate rebuild and basemap download in a live image
+remain unverified.
 
 ## September 24, 2026 upstream merge
 

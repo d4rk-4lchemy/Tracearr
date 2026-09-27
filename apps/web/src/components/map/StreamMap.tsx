@@ -21,6 +21,7 @@ import {
   hsl,
   isWebglSupported,
   locationsGeojson,
+  readLocationFeature,
   type LocationFeatureProps,
 } from './maplibre';
 import {
@@ -146,7 +147,7 @@ export function StreamMap({
     if (!f) return;
     setPopup({
       lngLat: [e.lngLat.lng, e.lngLat.lat],
-      props: f.properties as LocationFeatureProps,
+      props: readLocationFeature(f.properties),
     });
   }, []);
 

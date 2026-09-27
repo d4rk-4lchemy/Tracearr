@@ -145,7 +145,7 @@ describe('link_imported_history on a compressed chunk', { timeout: 120_000 }, ()
       (
         (
           await db.execute(sql`
-            SELECT COALESCE(SUM(plays), 0)::int AS plays FROM user_media_plays_daily
+            SELECT COUNT(DISTINCT chain_id) FILTER (WHERE counted)::int AS plays FROM user_media_plays_daily
             WHERE server_id = ${server.id}::uuid AND media_id = ${mediaId}::uuid
           `)
         ).rows[0] as { plays: number }
@@ -285,7 +285,7 @@ describe('link_imported_history on a compressed chunk', { timeout: 120_000 }, ()
           sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
         );
         const result = await db.execute(sql`
-          SELECT COALESCE(SUM(plays), 0)::int AS plays FROM user_media_plays_daily
+          SELECT COUNT(DISTINCT chain_id) FILTER (WHERE counted)::int AS plays FROM user_media_plays_daily
           WHERE server_user_id = ${account.id}::uuid AND media_id = ${mediaId}::uuid
             AND day = time_bucket('1 day', ${trackedStart.toISOString()}::timestamptz)
         `);

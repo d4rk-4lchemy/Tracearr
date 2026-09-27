@@ -124,7 +124,7 @@ async function fetchMovieWatchedRows(
   const serverFragment = buildMultiServerFragment(serverIds, 'p.server_id');
   // A direct JOIN from alias_map to the cagg (a materialized_only=false view)
   // makes the planner seq-scan the whole cagg instead of probing
-  // idx_user_media_plays_media_user per alias row. CROSS JOIN LATERAL with
+  // idx_user_media_plays_media_user_chain per alias row. CROSS JOIN LATERAL with
   // OFFSET 0 blocks the planner from flattening the subquery back into that
   // same join, which is what actually forces the index scan (bare JOIN and
   // LATERAL without OFFSET 0 both flatten to the same seq-scanning plan).
@@ -132,10 +132,10 @@ async function fetchMovieWatchedRows(
     ${aliasCte}
     SELECT a.canonical_id,
            BOOL_OR(p.any_watched) AS watched,
-           COALESCE(SUM(p.plays), 0) > 0 AS has_plays
+           BOOL_OR(p.counted) AS has_plays
     FROM alias_map a
     CROSS JOIN LATERAL (
-      SELECT p2.any_watched, p2.plays, p2.server_user_id, p2.server_id
+      SELECT p2.any_watched, p2.counted, p2.server_user_id, p2.server_id
       FROM user_media_plays_daily p2
       WHERE p2.media_id = a.any_id
       OFFSET 0
@@ -157,7 +157,7 @@ async function fetchShowWatchedRows(
   const serverFragment = buildMultiServerFragment(serverIds, 'p.server_id');
   const serverFragmentLi = buildMultiServerFragment(serverIds, 'li.server_id');
   const seasonFilter = seasonFragment(seasons);
-  // Unfiltered, SUM(plays) spans the whole show and a watched season 1 reads as
+  // Unfiltered, BOOL_OR(counted) spans the whole show and a watched season 1 reads as
   // a partial season 2.
   const playsFilter =
     !seasons || seasons.length === 0
@@ -183,10 +183,10 @@ async function fetchShowWatchedRows(
                    ${serverFragmentLi} ${seasonFilter}
                )
            )::int AS eps_watched,
-           COALESCE(SUM(p.plays) ${playsFilter}, 0) > 0 AS has_plays
+           COALESCE(BOOL_OR(p.counted) ${playsFilter}, false) AS has_plays
     FROM alias_map a
     CROSS JOIN LATERAL (
-      SELECT p2.media_id, p2.any_watched, p2.plays, p2.server_user_id, p2.server_id
+      SELECT p2.media_id, p2.any_watched, p2.counted, p2.server_user_id, p2.server_id
       FROM user_media_plays_daily p2
       WHERE p2.show_media_id = a.any_id
       OFFSET 0
@@ -374,8 +374,8 @@ export function buildMovieCandidateQuery(args: ListWatchedMediaArgs): SQL {
     WITH counted AS (
       SELECT COALESCE(am.merged_into_id, p.media_id) AS canonical_id,
              BOOL_OR(p.any_watched) AS watched_any,
-             COALESCE(SUM(p.plays), 0) > 0 AS has_plays_any,
-             COALESCE(SUM(p.plays), 0)::bigint AS plays,
+             BOOL_OR(p.counted) AS has_plays_any,
+             COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted)::bigint AS plays,
              MAX(p.day) AS last_day
       FROM user_media_plays_daily p
       JOIN media am ON am.id = p.media_id
@@ -427,8 +427,8 @@ export function buildShowCandidateQuery(args: ListWatchedMediaArgs): SQL {
              COUNT(DISTINCT p.media_id) FILTER (
                WHERE p.any_watched AND ae.media_id IS NOT NULL
              )::int AS eps_watched_any,
-             COALESCE(SUM(p.plays), 0) > 0 AS has_plays_any,
-             COALESCE(SUM(p.plays), 0)::bigint AS plays,
+             BOOL_OR(p.counted) AS has_plays_any,
+             COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted)::bigint AS plays,
              MAX(p.day) AS last_day
       FROM user_media_plays_daily p
       JOIN media am ON am.id = p.show_media_id

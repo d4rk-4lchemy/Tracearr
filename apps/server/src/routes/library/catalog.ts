@@ -251,7 +251,7 @@ export function buildValueRollupCte(
   return sql`
     value_rollup AS (
       SELECT COALESCE(am.merged_into_id, ${mediaCol}) AS canonical_id,
-             SUM(p.plays)::bigint AS plays,
+             COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted)::bigint AS plays,
              SUM(p.watched_ms)::bigint AS watch_time_ms,
              COUNT(DISTINCT su.user_id)::bigint AS viewers
       FROM user_media_plays_daily p

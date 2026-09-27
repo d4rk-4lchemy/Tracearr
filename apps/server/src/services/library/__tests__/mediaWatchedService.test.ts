@@ -158,6 +158,13 @@ describe('buildMovieCandidateQuery', () => {
     expect(render({ minState: 'partial' })).toContain('WHERE (c.watched_any OR c.has_plays_any)');
   });
 
+  it('counts distinct counted chains rather than summing per-day rows', () => {
+    const text = render();
+    expect(text).toContain('COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted)::bigint AS plays');
+    expect(text).toContain('BOOL_OR(p.counted) AS has_plays_any');
+    expect(text).not.toContain('p.plays');
+  });
+
   it('orders the whole candidate set so the cached list can be sliced by cursor', () => {
     // No LIMIT and no keyset predicate: the aggregate reads MAX()/BOOL_OR(), so
     // paging it directly would re-aggregate the cagg once per page.

@@ -2251,7 +2251,9 @@
       "auto": "Sol·licitat automàticament des d'una llista de seguiment"
     },
     "hero": {
-      "line": "Sol·licitat per {{name}} · {{date}} · {{tail}}"
+      "line": "Sol·licitat per {{name}} · {{date}} · {{tail}}",
+      "landed": "va arribar {{wait}} més tard",
+      "waiting": "encara en espera"
     },
     "mediaPanel": {
       "title": "Sol·licituds",

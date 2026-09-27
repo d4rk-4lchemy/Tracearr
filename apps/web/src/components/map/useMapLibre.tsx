@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { recordClientError } from '@/lib/clientErrors';
 import { useTheme } from '@/components/theme-provider';
 import { autoFitBounds, type FitPoint } from './autoFitBounds';
-import { checkBasemap, isWebglSupported } from './maplibre';
+import { checkBasemap, isWebglSupported, mapMaxZoom } from './maplibre';
 
 export function useResolvedDark(): boolean {
   const { theme } = useTheme();
@@ -68,7 +68,7 @@ export function useMapLibre(
       center,
       zoom,
       minZoom,
-      maxZoom: 14,
+      maxZoom: mapMaxZoom(),
       interactive,
       attributionControl: false,
       fadeDuration: 200,

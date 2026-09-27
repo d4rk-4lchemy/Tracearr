@@ -501,7 +501,7 @@ describe('catalog EXPLAIN gate at scale', () => {
       // shape) - idsFilter is alias-expanded first (expandMediaAliases), so
       // buildValueRollupCte filters p.media_id directly instead of through
       // COALESCE(am.merged_into_id, p.media_id). That keeps the cagg scan
-      // bounded by the page's ~60 ids via idx_user_media_plays_media_user,
+      // bounded by the page's ~60 ids via idx_user_media_plays_media_user_chain,
       // instead of a full scan of the 30-day plays window per page. ====
       const pageIdsResult = await db.execute(sql`
         SELECT id FROM media WHERE media_type = 'movie' ORDER BY id LIMIT 60
@@ -596,10 +596,10 @@ describe('catalog EXPLAIN gate at scale', () => {
                      WHERE li.media_id = p.media_id AND li.removed_at IS NULL ${serverFragmentLi}
                    )
                )::int AS eps_watched,
-               COALESCE(SUM(p.plays), 0) > 0 AS has_plays
+               COALESCE(BOOL_OR(p.counted), false) AS has_plays
         FROM alias_map a
         CROSS JOIN LATERAL (
-          SELECT p2.media_id, p2.any_watched, p2.plays, p2.server_user_id, p2.server_id
+          SELECT p2.media_id, p2.any_watched, p2.counted, p2.server_user_id, p2.server_id
           FROM user_media_plays_daily p2
           WHERE p2.show_media_id = a.any_id
           OFFSET 0
@@ -609,7 +609,7 @@ describe('catalog EXPLAIN gate at scale', () => {
         GROUP BY a.canonical_id
       `;
       const showProbePlan = flattenPlan(await explainPlan(showProbeQuery));
-      expect(usesIndexScan(showProbePlan, 'idx_user_media_plays_show_user')).toBe(true);
+      expect(usesIndexScan(showProbePlan, 'idx_user_media_plays_show_user_chain')).toBe(true);
 
       // ==== Assertion 5: never-watched anti-joins (movies and shows) ====
       const movieAntiJoinQuery = sql`

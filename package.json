@@ -11,6 +11,7 @@
     "docker:up": "docker compose -f docker/docker-compose.dev.yml up -d --build",
     "docker:down": "docker compose -f docker/docker-compose.dev.yml down",
     "build": "turbo build",
+    "basemap": "scripts/fetch-basemap.sh",
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
