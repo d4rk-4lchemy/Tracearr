@@ -569,7 +569,7 @@
       "selectedCount": "",
       "scope": {
         "label": "",
-        "global": "",
+        "global": "Global",
         "server": "",
         "account": "",
         "person": "",
@@ -686,7 +686,7 @@
         "placeholderAction": ""
       },
       "footer": {
-        "problems_one": "",
+        "problems_one": "{{count}} problem",
         "problems_other": "",
         "remaining_one": "",
         "remaining_other": "",
@@ -1673,7 +1673,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "",
+        "to": "Recipients",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1685,7 +1685,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "",
+        "smtpPreset": "Fills the host, port and security for common providers",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",
@@ -2251,7 +2251,9 @@
       "auto": ""
     },
     "hero": {
-      "line": ""
+      "line": "",
+      "landed": "",
+      "waiting": ""
     },
     "mediaPanel": {
       "title": "",

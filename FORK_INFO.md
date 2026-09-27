@@ -2,14 +2,40 @@
 
 This file documents the local fork overlay so future upstream updates can preserve the fork-specific behavior intentionally.
 
+## Dual-registry fork releases
+
+The fork-owned `fork-ghcr-release.yml` workflow now publishes each stable fork
+release to GHCR and Docker Hub. Four uncached native builds produce standalone
+and supervised AMD64/ARM64 digests in GHCR. After all four builds succeed, the
+workflow creates five multi-platform GHCR tags, copies both indexes to
+`darkalchemy2137/distracearr` with the same tags, and verifies both
+architectures on all ten tags. Docker Hub authentication uses the repository
+Actions secret `DOCKERHUB_TOKEN`. A failure between registries can leave GHCR
+tags updated while Docker Hub remains on the previous release; rerun the failed
+release workflow after correcting the cause.
+
+The Docker Hub images are copies of GHCR images and retain
+`APP_IMAGE_REPO=ghcr.io/d4rk-4lchemy/distracearr` in their build metadata.
+`UpdateDialog` therefore shows explicit GHCR and Docker Hub pull commands for
+the same standalone or supervised tag, independent of `current.imageRepo`.
+Preserve this dual-registry publication and UI during upstream merges; releases
+are still created manually and prereleases remain excluded.
+
+Local validation passed with Node 24 / pnpm 12.4.2: 1,803 web tests,
+typecheck, lint (751 existing warnings), translations check (seven existing
+missing `uk-UA/nav.json` keys), and web build. The mocked release check covered
+the four-build gate, matching Docker Hub tags, and both-platform verification
+on all ten tags; workflow Bash syntax and Prettier also passed. No image was
+pushed or release created in this validation.
+
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `db54cfb1`
-- Last shared upstream commit found during inspection: `86db792d` (before merge)
-- Latest upstream commit merged into the current working tree: `db54cfb1`
+- Source branch/SHA inspected: `main` at `ef0fb45f`
+- Last shared upstream commit found during inspection: `db54cfb1` (before merge)
+- Latest upstream commit merged into the current working tree: `ef0fb45f`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -20,6 +46,59 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## September 27, 2026 upstream merge
+
+Upstream `main` at `ef0fb45f` (Tracearr 2.5.1) changes play counting in
+`user_media_plays_daily`: aggregate schema version 17 groups by resume chain
+and UTC day, marks a chain counted when any segment reaches two minutes, and
+readers count distinct chain IDs across days. Import duplicate cleanup now
+requires a counted segment on the imported session's UTC day. The upstream
+aggregate is rebuilt on upgrade; the upstream migration ledger and separate
+Dispatcharr fork migrations are unchanged. Keep the distinct-chain readers in
+library, request analytics, and public V2 queries together with this schema.
+
+The map now uses an extracted zoom-8 Protomaps archive and adjusts maximum zoom
+to its header; it also decodes multi-server popup properties returned by the
+map worker. The archive is no longer committed. The fork GHCR release workflow
+must run `.github/actions/fetch-basemap` after checkout in each native build job
+before either Dockerfile copies `data/basemap.pmtiles`. Both variants still use
+uncached AMD64/ARM64 builds, digest artifacts, a four-build publication gate,
+and five multi-platform GHCR tags. Upstream release, nightly, insiders, Discord,
+Vouch, and Helm changes remain excluded; exactly the PR CI and fork GHCR
+workflows remain. Dispatcharr auth, identity, lifecycle, uncropped artwork and
+two-channel version behavior remain intact. Newsletter tests retain their
+fixed clock and watermark; upstream's relative watermark would fall outside
+the frozen test window.
+
+Full non-Docker validation passed with Node 24 / pnpm 12.4.2, a clean Turbo
+cache, frozen install, 4 GB heap, one Vitest worker, and Turbo concurrency one:
+lint, typecheck, translations, all five server test groups, web, coverage and
+build. Server groups plus web passed 9,058 tests; coverage passed 5,809 tests
+(70.42% statements, 64.27% branches, 74.65% functions, 71.64% lines).
+Lint retained 751 warnings. Routes and coverage logged one extra occurrence
+of the existing MaxListenersExceededWarning; no new warning class appeared.
+The translation checker still reports seven pre-existing absent keys in
+`uk-UA/nav.json`. The GHCR mocked publication check, shell syntax check and
+Prettier check passed. Logs: `.tmp/github-ci-<job>-20260927.log`.
+Docker integration (including both TimescaleDB versions), E2E, image builds,
+database upgrade execution and live-provider smoke checks were omitted at the
+user's request. The aggregate rebuild and basemap download in a live image
+remain unverified.
+
+Follow-up after the merge: plain local Docker builds failed when the generated
+`data/basemap.pmtiles` was absent. Both Dockerfile builder stages now generate
+the archive on demand and copy it from the builder stage; the GHCR workflow
+continues to prefetch and cache it before Buildx. This keeps a fresh checkout
+buildable without a separate host-side `pnpm basemap` step. The first uncached
+build requires network access and downloads roughly 550 MB.
+Both full Docker images built successfully from a checkout without the archive
+using the local AMD64 Docker daemon, and each runtime image contained the
+generated ~530 MB file. The supervised builder was also checked separately.
+Build logs: `.tmp/docker-basemap-standalone.log`,
+`.tmp/docker-basemap-supervised-builder.log`, and
+`.tmp/docker-basemap-supervised.log`. Test image tags were removed. ARM64 and
+GHCR publication were not exercised locally.
 
 ## September 24, 2026 upstream merge
 
@@ -147,7 +226,7 @@ The fork also carries local maintenance/distribution changes:
 - Exactly two GitHub Actions workflows are allowed: `.github/workflows/ci.yml`
   (only PR `opened` / `synchronize`) and the fork-owned
   `.github/workflows/fork-ghcr-release.yml` (only `release: published`).
-  GHCR publication is the sole allowed automation outside PR validation.
+  This dual-registry publication is the sole allowed automation outside PR validation.
   Never delete, replace, or overwrite this workflow with upstream automation.
   Follow `MERGE_INSTRUCTION.md` when reconciling upstream workflows; verify
   manually that exactly these two workflows remain after every merge.
@@ -161,12 +240,13 @@ The fork also carries local maintenance/distribution changes:
   content in GHCR. It publishes
   `ghcr.io/d4rk-4lchemy/distracearr` tags `X.Y.Z-rN`, `latest`, `standalone`,
   `supervised-X.Y.Z-rN`, and `supervised`, with fork version metadata and GHCR
-  as `APP_IMAGE_REPO`. Prereleases are skipped; malformed stable tags fail.
-  Authentication uses `GITHUB_TOKEN` with `contents: read` / `packages: write`.
-  Docker Hub remains entirely manual; do not introduce Docker Hub credentials,
+  as `APP_IMAGE_REPO`, then copies the same five tags to
+  `darkalchemy2137/distracearr`. Prereleases are skipped; malformed stable tags fail.
+  GHCR authentication uses `GITHUB_TOKEN` with `contents: read` / `packages: write`;
+  Docker Hub uses `DOCKERHUB_TOKEN`. Do not introduce separate release workflows,
   scheduled/nightly/insiders builds, manual-dispatch, tag-push, release creation,
   Helm pushes, issue automation, Renovate, stale, or Vouch workflows.
-- GHCR manifest publication checks all five tags for both Linux architectures.
+- Manifest publication checks all five tags in both registries for both Linux architectures.
   Preserve the variant/architecture artifact names and the shared publication
   gate when merging upstream changes. Registry updates across tags are not
   atomic; a publication failure can require rerunning the failed job.

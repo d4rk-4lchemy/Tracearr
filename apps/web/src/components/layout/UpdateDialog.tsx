@@ -26,7 +26,6 @@ interface UpdateDialogProps {
 export function UpdateDialog({ open, onOpenChange, version }: UpdateDialogProps) {
   const { t } = useTranslation(['settings', 'common']);
   const { current } = version;
-  const imageRepo = current.imageRepo;
   const latest = version.fork.latest;
   const upstreamAhead = version.recommended.kind === 'upstream-ahead';
 
@@ -56,8 +55,8 @@ export function UpdateDialog({ open, onOpenChange, version }: UpdateDialogProps)
     return { label: t('settings:update.newVersion'), variant: 'default' as const, icon: Sparkles };
   }, [current, latest, upstreamAhead, t]);
 
-  // Format the docker pull command
-  const dockerCommand = useMemo(() => {
+  // Use the same channel and variant tag for both published registries.
+  const dockerTag = useMemo(() => {
     if (!latest) return '';
 
     // Check if user is running supervised image (tag starts with "supervised-")
@@ -71,8 +70,8 @@ export function UpdateDialog({ open, onOpenChange, version }: UpdateDialogProps)
       tag = latest.isPrerelease ? 'next' : 'latest';
     }
 
-    return `docker pull ${imageRepo}:${tag}`;
-  }, [current.tag, imageRepo, latest]);
+    return tag;
+  }, [current.tag, latest]);
 
   if (upstreamAhead) {
     const upstream = version.upstream.latest;
@@ -165,10 +164,20 @@ export function UpdateDialog({ open, onOpenChange, version }: UpdateDialogProps)
             <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
               {t('settings:update.updateCommand')}
             </div>
-            <div className="bg-muted flex items-center gap-2 rounded-md p-3 font-mono text-sm">
-              <Terminal className="text-muted-foreground h-4 w-4 shrink-0" />
-              <code className="flex-1 select-all">{dockerCommand}</code>
-            </div>
+            {[
+              { label: 'GHCR', image: 'ghcr.io/d4rk-4lchemy/distracearr' },
+              { label: 'Docker Hub', image: 'darkalchemy2137/distracearr' },
+            ].map(({ label, image }) => (
+              <div key={label} className="space-y-1">
+                <div className="text-muted-foreground text-xs">{label}</div>
+                <div className="bg-muted flex items-center gap-2 rounded-md p-3 font-mono text-sm">
+                  <Terminal className="text-muted-foreground h-4 w-4 shrink-0" />
+                  <code className="min-w-0 flex-1 break-all select-all">
+                    docker pull {image}:{dockerTag}
+                  </code>
+                </div>
+              </div>
+            ))}
             <p className="text-muted-foreground text-xs">{t('settings:update.pullInstructions')}</p>
           </div>
 

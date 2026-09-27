@@ -516,7 +516,7 @@ export interface SeasonHeatSeasonRow {
  *
  * Episode ids are passed through resolveWatchedStates' movieIds path rather
  * than a separate episode probe: that path resolves watched/partial purely
- * from a media id's own plays (BOOL_OR(watched)/SUM(plays) keyed on
+ * from a media id's own plays (BOOL_OR(any_watched)/BOOL_OR(counted) keyed on
  * media_id, no media_type predicate), which is exactly an episode's
  * direct-media state - the same shape the movieIds path already computes.
  */
@@ -621,7 +621,7 @@ export async function getMediaStats(
         : await db.execute(sql`
             SELECT
               p.server_id,
-              SUM(p.plays) AS plays,
+              COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted) AS plays,
               SUM(p.watched_ms) AS watch_time_ms,
               COUNT(DISTINCT su.user_id) FILTER (WHERE p.watched_ms > 0)::int AS unique_users
             FROM user_media_plays_daily p
@@ -742,19 +742,19 @@ export async function getMediaWatchers(args: GetMediaWatchersArgs): Promise<Medi
         su.username,
         u.name AS identity_name,
         COALESCE(u.thumbnail, su.thumb_url) AS thumb,
-        SUM(p.plays) AS plays,
+        COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted) AS plays,
         SUM(p.watched_ms) AS watch_time_ms,
         CASE WHEN MAX(p.max_progress_ms) IS NULL OR COALESCE(MAX(p.content_duration_ms), 0) = 0 THEN NULL
              ELSE LEAST(100, round(100.0 * MAX(p.max_progress_ms) / MAX(p.content_duration_ms), 1))
         END::float8 AS completion_pct,
         MAX((p.day AT TIME ZONE 'utc')::date)::text AS last_watched_day,
-        COUNT(DISTINCT p.media_id) FILTER (WHERE p.plays > 0)::int AS distinct_episodes_watched
+        COUNT(DISTINCT p.media_id) FILTER (WHERE p.counted)::int AS distinct_episodes_watched
       FROM user_media_plays_daily p
       JOIN server_users su ON su.id = p.server_user_id
       LEFT JOIN users u ON u.id = su.user_id
       WHERE ${scopeFilter}${windowDayFilter(sql`p.day`, days)} ${serverFilter} ${authFragment}
       GROUP BY p.server_user_id, su.user_id, su.server_id, su.username, u.name, COALESCE(u.thumbnail, su.thumb_url)
-      HAVING SUM(p.plays) > 0
+      HAVING BOOL_OR(p.counted)
       ORDER BY watch_time_ms DESC, p.server_user_id
     `);
     rows = result.rows as unknown as WatcherAggRow[];

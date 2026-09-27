@@ -1,0 +1,21 @@
+name: Fetch basemap
+description: Restores data/basemap.pmtiles from the cache or extracts it for the image build
+
+runs:
+  using: composite
+  steps:
+    - name: Restore basemap
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: data/basemap.pmtiles
+        key: basemap-${{ hashFiles('scripts/fetch-basemap.sh') }}
+
+    - name: Extract basemap
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: scripts/fetch-basemap.sh
+
+    - name: Show basemap
+      shell: bash
+      run: ls -la data/basemap.pmtiles

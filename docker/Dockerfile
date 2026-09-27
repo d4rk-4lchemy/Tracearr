@@ -34,6 +34,12 @@ RUN pnpm install --frozen-lockfile
 # Copy source code
 COPY . .
 
+# The basemap is generated rather than committed. Reuse a prepared build-context
+# copy (for example from the GHCR workflow), or fetch it for a plain Docker build.
+RUN if [ ! -s data/basemap.pmtiles ]; then \
+      apk add --no-cache curl && scripts/fetch-basemap.sh; \
+    fi
+
 # Build only production packages (excludes test-utils)
 RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --filter=@tracearr/web
 
@@ -113,7 +119,7 @@ COPY --from=builder /app/assets/logo.png ./assets/logo.png
 # GeoIP database (if exists in build context)
 COPY data/GeoLite2-City.mmdb ./data/GeoLite2-City.mmdb
 COPY data/GeoLite2-ASN.mmdb ./data/GeoLite2-ASN.mmdb
-COPY data/basemap.pmtiles ./data/basemap.pmtiles
+COPY --from=builder /app/data/basemap.pmtiles ./data/basemap.pmtiles
 COPY data/BASEMAP_NOTICE.txt ./data/BASEMAP_NOTICE.txt
 
 # Create image cache and backup directories

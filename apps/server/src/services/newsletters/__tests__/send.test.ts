@@ -53,6 +53,8 @@ import { runNewsletter } from '../send.js';
 import { EMAIL_CLIP_FIT_BYTES, deliveredBytes } from '../fit.js';
 import { EXTERNAL_URL, JELLYFIN_SERVER, heaviestDigest, heaviestRuns } from './heaviestDigest.js';
 
+const WATERMARK = new Date('2026-08-26T00:00:00Z');
+
 const NEWSLETTER = {
   id: '11111111-1111-4111-8111-111111111111',
   name: 'Weekly',
@@ -175,7 +177,7 @@ beforeEach(() => {
   store.getNewsletter.mockResolvedValue(NEWSLETTER);
   store.findOpenSend.mockResolvedValue(null);
   store.closeStaleSend.mockResolvedValue(false);
-  store.lastWatermark.mockResolvedValue(new Date('2026-08-26T00:00:00Z'));
+  store.lastWatermark.mockResolvedValue(WATERMARK);
   store.insertSend.mockImplementation(async (v: Record<string, unknown>) => ({
     id: 'send-1',
     ...v,
@@ -252,7 +254,7 @@ describe('runNewsletter', () => {
       newsletterId: NEWSLETTER.id,
       destinationId: NEWSLETTER.destinationId,
       trigger: 'schedule',
-      windowStart: new Date('2026-08-26T00:00:00Z'),
+      windowStart: WATERMARK,
       windowEnd: new Date('2026-09-02T18:00:00.000Z'),
       outcome: 'rendering',
       itemCounts: ONE_MOVIE.counts,
@@ -285,7 +287,7 @@ describe('runNewsletter', () => {
     expect(mockAssemble).toHaveBeenCalledWith(
       { scope: { serverIds: ['s1'], libraries: [] }, sections: NEWSLETTER.sections },
       {
-        start: new Date('2026-08-26T00:00:00Z'),
+        start: WATERMARK,
         end: new Date('2026-09-02T18:00:00.000Z'),
       },
       {}

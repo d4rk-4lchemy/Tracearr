@@ -37,6 +37,14 @@ RUN pnpm install --frozen-lockfile
 # Copy source code
 COPY . .
 
+# The basemap is generated rather than committed. Reuse a prepared build-context
+# copy (for example from the GHCR workflow), or fetch it for a plain Docker build.
+RUN if [ ! -s data/basemap.pmtiles ]; then \
+      apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+      && scripts/fetch-basemap.sh \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 # Build only production packages
 RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --filter=@tracearr/web
 
@@ -126,7 +134,7 @@ COPY --from=builder /app/assets/logo.png ./assets/logo.png
 # GeoIP database (bundled for geolocation features)
 COPY data/GeoLite2-City.mmdb ./data/GeoLite2-City.mmdb
 COPY data/GeoLite2-ASN.mmdb ./data/GeoLite2-ASN.mmdb
-COPY data/basemap.pmtiles ./data/basemap.pmtiles
+COPY --from=builder /app/data/basemap.pmtiles ./data/basemap.pmtiles
 COPY data/BASEMAP_NOTICE.txt ./data/BASEMAP_NOTICE.txt
 
 # Server runtime deps only: the web app ships as static files, so its packages never load here (ignore-scripts keeps prepare/husky out)

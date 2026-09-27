@@ -24,13 +24,26 @@ const basemapArchive = new PMTiles(BASEMAP_URL);
 protocol.add(basemapArchive);
 
 let basemapCheck: Promise<boolean> | null = null;
+let archiveMaxZoom: number | null = null;
 
 export function checkBasemap(): Promise<boolean> {
   basemapCheck ??= basemapArchive
     .getHeader()
-    .then(() => true)
+    .then((header) => {
+      archiveMaxZoom = header.maxZoom;
+      return true;
+    })
     .catch(() => false);
   return basemapCheck;
+}
+
+// Vector tiles overzoom cleanly for a level or two; past that the coastlines
+// turn to polygons. The floor keeps the heat to circle crossfade reachable on
+// a shallow archive.
+const MAX_OVERZOOM = 2;
+
+export function mapMaxZoom(archiveZoom = archiveMaxZoom): number {
+  return archiveZoom === null ? 14 : Math.max(HEAT_FADE.end, archiveZoom + MAX_OVERZOOM);
 }
 
 let webglSupport: boolean | null = null;
@@ -219,6 +232,26 @@ export interface LocationFeatureProps {
   isLocal: boolean;
   serverId: string | null;
   servers: { serverId: string; count: number }[] | null;
+}
+
+// Nested GeoJSON properties cross the tile worker as JSON strings and come
+// back that way from map events.
+export function readLocationFeature(props: Record<string, unknown>): LocationFeatureProps {
+  const { servers } = props;
+  return {
+    w: Number(props.w),
+    count: Number(props.count),
+    city: typeof props.city === 'string' ? props.city : null,
+    country: typeof props.country === 'string' ? props.country : null,
+    isLocal: props.isLocal === true,
+    serverId: typeof props.serverId === 'string' ? props.serverId : null,
+    servers:
+      typeof servers === 'string'
+        ? (JSON.parse(servers) as LocationFeatureProps['servers'])
+        : Array.isArray(servers)
+          ? (servers as LocationFeatureProps['servers'])
+          : null,
+  };
 }
 
 export function locationsGeojson(

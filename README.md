@@ -1,7 +1,7 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr (https://github.com/connorgallopo/Tracearr), that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
-  <i>Current vesrion:</i> <b>2.5.0</b>
+  <i>Current vesrion:</i> <b>2.5.1</b>
 </p>
 
 > [!WARNING]  
@@ -24,13 +24,18 @@
 
 **Docker images:**
 
-**GHCR image supports ARM, Dockerhub DOES NOT!**
 - `darkalchemy2137/distracearr:latest` or `ghcr.io/d4rk-4lchemy/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` or `ghcr.io/d4rk-4lchemy/distracearr:supervised` - supervised image
 
 I tested it on **Supervised image**, so keep that in mind.
 You can also build your own Docker image.<br>
 Example docker build commands:
+
+The stream map basemap is generated during a local Docker build if
+`data/basemap.pmtiles` is missing. The first build downloads the pinned
+Protomaps extract (about 550 MB) and needs network access; run `pnpm basemap`
+beforehand if you want to reuse the archive across image builds.
+
 ```bash
 # Regular Image
 docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=2.4.0  --build-arg APP_TAG=2.4.0 --build-arg APP_UPSTREAM_VERSION=2.4.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.4.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
@@ -241,6 +246,9 @@ cp .env.example .env
 # Run migrations
 pnpm --filter @tracearr/server db:migrate
 
+# Build the stream map basemap (about 550 MB, once)
+pnpm basemap
+
 # Start dev servers
 pnpm dev
 ```
@@ -266,7 +274,7 @@ Frontend runs at `localhost:5173`, API at `localhost:3000`.
 
 **Fastify** over Express because it's measurably faster and schema validation catches bad requests before they hit handlers.
 
-**MapLibre with a bundled PMTiles basemap** replaces the old raster tiles. The archive ships in the image, so the map works on an instance with no outbound internet access.
+**MapLibre with a bundled PMTiles basemap** replaces the old raster tiles. The archive is a zoom 8 extract of the Protomaps planet build, made at image build time by `scripts/fetch-basemap.sh`, and ships in the image, so the map works on an instance with no outbound internet access.
 
 **SSE for instant sessions** - Plex streams session updates in real-time via Server-Sent Events, so streams appear the moment they start. Jellyfin and Emby get the same through the [Tracearr SSE plugin](https://github.com/Tracearr/Media-Server-SSE); without it they fall back to polling.
 

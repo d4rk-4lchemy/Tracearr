@@ -26,7 +26,7 @@ const DAY_MS = 86_400_000;
 const MIN_MS = 60_000;
 const HISTORY_AGE_DAYS = 20;
 const FILLER_SESSIONS = 40;
-// Midday UTC so no scenario straddles a UTC day boundary.
+// Midday UTC so a scenario straddles a UTC day boundary only on purpose.
 const BASE = new Date(
   Math.floor((Date.now() - HISTORY_AGE_DAYS * DAY_MS) / DAY_MS) * DAY_MS + DAY_MS / 2
 );
@@ -166,7 +166,7 @@ describe('remove_import_duplicates on a compressed chunk', { timeout: 120_000 },
     const plays = async () =>
       (
         await db.execute(sql`
-          SELECT COALESCE(SUM(plays), 0)::int AS plays FROM user_media_plays_daily
+          SELECT COUNT(DISTINCT chain_id) FILTER (WHERE counted)::int AS plays FROM user_media_plays_daily
           WHERE server_id = ${ctx.server.id}::uuid AND media_id = ${ctx.mediaId}::uuid
         `)
       ).rows[0] as { plays: number };
@@ -192,10 +192,25 @@ describe('remove_import_duplicates on a compressed chunk', { timeout: 120_000 },
     expect(await existing([importId])).toEqual([importId]);
   });
 
-  it('keeps an import with a counted play when the tracked root runs 90 s', async () => {
+  it('deletes an import with a counted play when the tracked chain counts through a 3 minute child', async () => {
     const ctx = await setup();
     const rootId = await tracked(ctx, { startedAt: at(0), durationMs: 90_000 });
     await tracked(ctx, { startedAt: at(10 * MIN_MS), durationMs: 3 * MIN_MS, referenceId: rootId });
+    const importId = await tautulliImport(ctx, { startedAt: at(3000), durationMs: 3 * MIN_MS });
+
+    expect((await runCleanup()).message).toBe(removed(1, 0, 0));
+    expect(await existing([importId])).toEqual([]);
+  });
+
+  it('keeps an import with a counted play when the tracked chain only counts on the next UTC day', async () => {
+    const ctx = await setup();
+    // BASE is midday UTC; the child starts 13 hours later, past midnight
+    const rootId = await tracked(ctx, { startedAt: at(0), durationMs: 90_000 });
+    await tracked(ctx, {
+      startedAt: at(13 * 60 * MIN_MS),
+      durationMs: 3 * MIN_MS,
+      referenceId: rootId,
+    });
     const importId = await tautulliImport(ctx, { startedAt: at(3000), durationMs: 3 * MIN_MS });
 
     expect((await runCleanup()).message).toBe(removed(0, 1, 0));

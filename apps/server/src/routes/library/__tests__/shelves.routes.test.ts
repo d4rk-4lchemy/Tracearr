@@ -118,7 +118,7 @@ const isWatchedAggregate = (text: string) =>
 const isMeta = (text: string) => text.includes("COUNT(*) FILTER (WHERE m.media_type = 'movie')");
 const isEpisodeCounts = (text: string) => text.includes('episode_count');
 const isMovieWatchedProbe = (text: string) =>
-  text.includes('alias_map') && text.includes('BOOL_OR');
+  text.includes('alias_map') && text.includes('p2.media_id = a.any_id');
 const isShowWatchedProbe = (text: string) => text.includes('eps_watched');
 
 describe('GET /library/shelves', () => {

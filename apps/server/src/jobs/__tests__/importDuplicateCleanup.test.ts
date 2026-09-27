@@ -254,7 +254,7 @@ describe('removeImportDuplicatesBatch nothing-lost rules', () => {
 
     expect(verdict.sql).toContain('r.media_id IS NOT DISTINCT FROM i.media_id');
     expect(verdict.sql).toContain(
-      'LEFT JOIN chain_totals t ON t.root_id = r.id AND t.media_id IS NOT DISTINCT FROM i.media_id'
+      'LEFT JOIN chain_totals t ON t.i_id = p.i_id AND t.root_id = r.id AND t.media_id IS NOT DISTINCT FROM i.media_id'
     );
     expect(verdict.sql).toMatch(
       /JOIN sessions c ON c\.reference_id = root\.id WHERE c\.reference_id = ANY\(\$\d+::uuid\[\]\) AND c\.external_session_id IS NULL/
@@ -264,22 +264,25 @@ describe('removeImportDuplicatesBatch nothing-lost rules', () => {
   it('keeps a watched import unless a tracked chain row is watched', async () => {
     const verdict = await renderVerdict();
 
-    expect(verdict.sql).toContain('bool_or(watched) AS any_watched');
+    expect(verdict.sql).toContain('bool_or(c.watched) AS any_watched');
     expect(verdict.sql).toContain('AND (NOT i.watched OR t.any_watched)');
   });
 
-  it('keeps an import with a counted play unless the root counts one on the same UTC day', async () => {
+  it('keeps an import with a counted play unless the tracked chain counts one on the same UTC day', async () => {
     const verdict = await renderVerdict();
 
     expect(verdict.sql).toContain(
-      "AND (NOT (i.reference_id IS NULL AND COALESCE(i.duration_ms, 0) >= 120000) OR (r.reference_id IS NULL AND r.duration_ms >= 120000 AND (r.started_at AT TIME ZONE 'UTC')::date = (i.started_at AT TIME ZONE 'UTC')::date))"
+      "bool_or(c.duration_ms >= 120000 AND (c.started_at AT TIME ZONE 'UTC')::date = (i.started_at AT TIME ZONE 'UTC')::date) AS counted_on_import_day"
+    );
+    expect(verdict.sql).toContain(
+      'AND (i.reference_id IS NOT NULL OR COALESCE(i.duration_ms, 0) < 120000 OR t.counted_on_import_day)'
     );
   });
 
   it('keeps an import longer than the whole tracked chain', async () => {
     const verdict = await renderVerdict();
 
-    expect(verdict.sql).toContain('SUM(COALESCE(duration_ms, 0)) AS total_ms');
+    expect(verdict.sql).toContain('SUM(COALESCE(c.duration_ms, 0)) AS total_ms');
     expect(verdict.sql).toContain(
       'AND COALESCE(i.duration_ms, 0) <= COALESCE(t.total_ms, 0) + 15000'
     );
@@ -289,7 +292,7 @@ describe('removeImportDuplicatesBatch nothing-lost rules', () => {
     const verdict = await renderVerdict();
 
     expect(verdict.sql).toContain(
-      'SUM(duration_ms) FILTER (WHERE duration_ms >= 120000) AS counted_ms'
+      'SUM(c.duration_ms) FILTER (WHERE c.duration_ms >= 120000) AS counted_ms'
     );
     expect(verdict.sql).toContain(
       'AND (COALESCE(i.duration_ms, 0) < 120000 OR i.duration_ms <= COALESCE(t.counted_ms, 0) + 15000)'

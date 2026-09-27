@@ -152,12 +152,15 @@ export async function removeImportDuplicatesBatch(
           AND c.started_at >= ${ts(server.cutoff)}
       ),
       chain_totals AS (
-        SELECT root_id, media_id,
-          bool_or(watched) AS any_watched,
-          SUM(COALESCE(duration_ms, 0)) AS total_ms,
-          SUM(duration_ms) FILTER (WHERE duration_ms >= 120000) AS counted_ms
-        FROM chain
-        GROUP BY root_id, media_id
+        SELECT pr.i_id, c.root_id, c.media_id,
+          bool_or(c.watched) AS any_watched,
+          SUM(COALESCE(c.duration_ms, 0)) AS total_ms,
+          SUM(c.duration_ms) FILTER (WHERE c.duration_ms >= 120000) AS counted_ms,
+          bool_or(c.duration_ms >= 120000 AND (c.started_at AT TIME ZONE 'UTC')::date = (i.started_at AT TIME ZONE 'UTC')::date) AS counted_on_import_day
+        FROM chain c
+        JOIN unnest(${uuids(pairIds)}, ${uuids(rootIds)}) AS pr(i_id, root_id) ON pr.root_id = c.root_id
+        JOIN sessions i ON i.id = pr.i_id AND ${candidateBounds('i', server, window)}
+        GROUP BY pr.i_id, c.root_id, c.media_id
       ),
       chain_span AS (
         SELECT root_id, min(started_at) AS chain_start, max(started_at) AS chain_end
@@ -169,7 +172,7 @@ export async function removeImportDuplicatesBatch(
         AND r.reference_id IS DISTINCT FROM i.id
         AND r.media_id IS NOT DISTINCT FROM i.media_id
         AND (NOT i.watched OR t.any_watched)
-        AND (NOT (i.reference_id IS NULL AND COALESCE(i.duration_ms, 0) >= 120000) OR (r.reference_id IS NULL AND r.duration_ms >= 120000 AND (r.started_at AT TIME ZONE 'UTC')::date = (i.started_at AT TIME ZONE 'UTC')::date))
+        AND (i.reference_id IS NOT NULL OR COALESCE(i.duration_ms, 0) < 120000 OR t.counted_on_import_day)
         AND COALESCE(i.duration_ms, 0) <= COALESCE(t.total_ms, 0) + 15000
         AND (COALESCE(i.duration_ms, 0) < 120000 OR i.duration_ms <= COALESCE(t.counted_ms, 0) + 15000)
         AND NOT EXISTS (SELECT 1 FROM automation_runs ar WHERE ar.session_id = i.id)
@@ -179,7 +182,7 @@ export async function removeImportDuplicatesBatch(
       FROM unnest(${uuids(pairIds)}, ${uuids(rootIds)}) AS p(i_id, root_id)
       JOIN sessions i ON i.id = p.i_id
       LEFT JOIN root r ON r.id = p.root_id
-      LEFT JOIN chain_totals t ON t.root_id = r.id AND t.media_id IS NOT DISTINCT FROM i.media_id
+      LEFT JOIN chain_totals t ON t.i_id = p.i_id AND t.root_id = r.id AND t.media_id IS NOT DISTINCT FROM i.media_id
       LEFT JOIN chain_span cs ON cs.root_id = r.id
       WHERE ${candidateBounds('i', server, window)}
     `);

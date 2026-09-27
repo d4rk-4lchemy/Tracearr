@@ -120,7 +120,10 @@ export async function checkDatabaseConnection(): Promise<boolean> {
     client = await pool.connect();
     await client.query('SELECT 1');
     return true;
-  } catch {
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[DB Connect Error]', code ? `${code} ${message}` : message);
     return false;
   } finally {
     if (client) {

@@ -381,11 +381,11 @@ async function fetchDeadWeightCandidatesForType(
       )
       AND NOT EXISTS (
         SELECT 1 FROM user_media_plays_daily p
-        WHERE p.${mediaCol} = m.id AND (p.plays > 0 OR p.any_watched) ${serverFragmentSelf}
+        WHERE p.${mediaCol} = m.id AND (p.counted OR p.any_watched) ${serverFragmentSelf}
         UNION ALL
         SELECT 1 FROM media loser
         JOIN user_media_plays_daily p2 ON p2.${mediaCol} = loser.id
-        WHERE loser.merged_into_id = m.id AND (p2.plays > 0 OR p2.any_watched) ${serverFragmentLoser}
+        WHERE loser.merged_into_id = m.id AND (p2.counted OR p2.any_watched) ${serverFragmentLoser}
       )
   `);
   return (result.rows as { canonical_id: string; total_file_size: string | number }[]).map(
