@@ -1,7 +1,7 @@
 <p align="center">
   <b>This is AI slopped fork of Tracearr (https://github.com/connorgallopo/Tracearr), that allows tracking of Dispatcharr streams.</b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
-  <i>Current vesrion:</i> <b>2.5.0</b>
+  <i>Current vesrion:</i> <b>2.5.1</b>
 </p>
 
 > [!WARNING]  
@@ -24,7 +24,6 @@
 
 **Docker images:**
 
-**GHCR image supports ARM, Dockerhub DOES NOT!**
 - `darkalchemy2137/distracearr:latest` or `ghcr.io/d4rk-4lchemy/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` or `ghcr.io/d4rk-4lchemy/distracearr:supervised` - supervised image
 

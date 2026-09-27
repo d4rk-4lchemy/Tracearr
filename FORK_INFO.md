@@ -2,6 +2,32 @@
 
 This file documents the local fork overlay so future upstream updates can preserve the fork-specific behavior intentionally.
 
+## Dual-registry fork releases
+
+The fork-owned `fork-ghcr-release.yml` workflow now publishes each stable fork
+release to GHCR and Docker Hub. Four uncached native builds produce standalone
+and supervised AMD64/ARM64 digests in GHCR. After all four builds succeed, the
+workflow creates five multi-platform GHCR tags, copies both indexes to
+`darkalchemy2137/distracearr` with the same tags, and verifies both
+architectures on all ten tags. Docker Hub authentication uses the repository
+Actions secret `DOCKERHUB_TOKEN`. A failure between registries can leave GHCR
+tags updated while Docker Hub remains on the previous release; rerun the failed
+release workflow after correcting the cause.
+
+The Docker Hub images are copies of GHCR images and retain
+`APP_IMAGE_REPO=ghcr.io/d4rk-4lchemy/distracearr` in their build metadata.
+`UpdateDialog` therefore shows explicit GHCR and Docker Hub pull commands for
+the same standalone or supervised tag, independent of `current.imageRepo`.
+Preserve this dual-registry publication and UI during upstream merges; releases
+are still created manually and prereleases remain excluded.
+
+Local validation passed with Node 24 / pnpm 12.4.2: 1,803 web tests,
+typecheck, lint (751 existing warnings), translations check (seven existing
+missing `uk-UA/nav.json` keys), and web build. The mocked release check covered
+the four-build gate, matching Docker Hub tags, and both-platform verification
+on all ten tags; workflow Bash syntax and Prettier also passed. No image was
+pushed or release created in this validation.
+
 ## Comparison Snapshot
 
 - Fork working tree: `/home/dev/work/Tracearr`
@@ -200,7 +226,7 @@ The fork also carries local maintenance/distribution changes:
 - Exactly two GitHub Actions workflows are allowed: `.github/workflows/ci.yml`
   (only PR `opened` / `synchronize`) and the fork-owned
   `.github/workflows/fork-ghcr-release.yml` (only `release: published`).
-  GHCR publication is the sole allowed automation outside PR validation.
+  This dual-registry publication is the sole allowed automation outside PR validation.
   Never delete, replace, or overwrite this workflow with upstream automation.
   Follow `MERGE_INSTRUCTION.md` when reconciling upstream workflows; verify
   manually that exactly these two workflows remain after every merge.
@@ -214,12 +240,13 @@ The fork also carries local maintenance/distribution changes:
   content in GHCR. It publishes
   `ghcr.io/d4rk-4lchemy/distracearr` tags `X.Y.Z-rN`, `latest`, `standalone`,
   `supervised-X.Y.Z-rN`, and `supervised`, with fork version metadata and GHCR
-  as `APP_IMAGE_REPO`. Prereleases are skipped; malformed stable tags fail.
-  Authentication uses `GITHUB_TOKEN` with `contents: read` / `packages: write`.
-  Docker Hub remains entirely manual; do not introduce Docker Hub credentials,
+  as `APP_IMAGE_REPO`, then copies the same five tags to
+  `darkalchemy2137/distracearr`. Prereleases are skipped; malformed stable tags fail.
+  GHCR authentication uses `GITHUB_TOKEN` with `contents: read` / `packages: write`;
+  Docker Hub uses `DOCKERHUB_TOKEN`. Do not introduce separate release workflows,
   scheduled/nightly/insiders builds, manual-dispatch, tag-push, release creation,
   Helm pushes, issue automation, Renovate, stale, or Vouch workflows.
-- GHCR manifest publication checks all five tags for both Linux architectures.
+- Manifest publication checks all five tags in both registries for both Linux architectures.
   Preserve the variant/architecture artifact names and the shared publication
   gate when merging upstream changes. Registry updates across tags are not
   atomic; a publication failure can require rerunning the failed job.

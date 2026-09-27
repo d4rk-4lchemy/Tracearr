@@ -1,5 +1,5 @@
 # FORK-OWNED: never replace with upstream release automation. See FORK_INFO.md.
-name: Fork GHCR release
+name: Fork image release
 
 on:
   release:
@@ -10,6 +10,7 @@ permissions:
 
 env:
   IMAGE: ghcr.io/d4rk-4lchemy/distracearr
+  DOCKERHUB_IMAGE: darkalchemy2137/distracearr
   FORK_REPO: d4rk-4lchemy/Tracearr
   RELEASE_TAG: ${{ github.event.release.tag_name }}
 
@@ -169,6 +170,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: darkalchemy2137
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Publish multi-platform manifests
         shell: bash
         run: |
@@ -188,11 +195,26 @@ jobs:
             -t "$IMAGE:supervised-$FORK_VERSION" -t "$IMAGE:supervised" \
             "${digests[supervised-amd64]}" "${digests[supervised-arm64]}"
 
+      - name: Copy multi-platform images to Docker Hub
+        shell: bash
+        run: |
+          docker buildx imagetools create \
+            -t "$DOCKERHUB_IMAGE:$FORK_VERSION" \
+            -t "$DOCKERHUB_IMAGE:latest" \
+            -t "$DOCKERHUB_IMAGE:standalone" \
+            "$IMAGE:$FORK_VERSION"
+          docker buildx imagetools create \
+            -t "$DOCKERHUB_IMAGE:supervised-$FORK_VERSION" \
+            -t "$DOCKERHUB_IMAGE:supervised" \
+            "$IMAGE:supervised-$FORK_VERSION"
+
       - name: Verify published platforms
         shell: bash
         run: |
-          for tag in "$FORK_VERSION" "supervised-$FORK_VERSION" latest standalone supervised; do
-            docker buildx imagetools inspect "$IMAGE:$tag" --raw | jq -e '
-              [.manifests[].platform | select(.os == "linux") | .architecture]
-              | sort | unique == ["amd64", "arm64"]'
+          for image in "$IMAGE" "$DOCKERHUB_IMAGE"; do
+            for tag in "$FORK_VERSION" "supervised-$FORK_VERSION" latest standalone supervised; do
+              docker buildx imagetools inspect "$image:$tag" --raw | jq -e '
+                [.manifests[].platform | select(.os == "linux") | .architecture]
+                | sort | unique == ["amd64", "arm64"]'
+            done
           done
