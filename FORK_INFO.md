@@ -60,6 +60,20 @@ database upgrade execution and live-provider smoke checks were omitted at the
 user's request. The aggregate rebuild and basemap download in a live image
 remain unverified.
 
+Follow-up after the merge: plain local Docker builds failed when the generated
+`data/basemap.pmtiles` was absent. Both Dockerfile builder stages now generate
+the archive on demand and copy it from the builder stage; the GHCR workflow
+continues to prefetch and cache it before Buildx. This keeps a fresh checkout
+buildable without a separate host-side `pnpm basemap` step. The first uncached
+build requires network access and downloads roughly 550 MB.
+Both full Docker images built successfully from a checkout without the archive
+using the local AMD64 Docker daemon, and each runtime image contained the
+generated ~530 MB file. The supervised builder was also checked separately.
+Build logs: `.tmp/docker-basemap-standalone.log`,
+`.tmp/docker-basemap-supervised-builder.log`, and
+`.tmp/docker-basemap-supervised.log`. Test image tags were removed. ARM64 and
+GHCR publication were not exercised locally.
+
 ## September 24, 2026 upstream merge
 
 Upstream `main` at `db54cfb1` (Tracearr 2.5.0) brings deterministic,

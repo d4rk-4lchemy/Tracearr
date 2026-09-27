@@ -31,6 +31,12 @@
 I tested it on **Supervised image**, so keep that in mind.
 You can also build your own Docker image.<br>
 Example docker build commands:
+
+The stream map basemap is generated during a local Docker build if
+`data/basemap.pmtiles` is missing. The first build downloads the pinned
+Protomaps extract (about 550 MB) and needs network access; run `pnpm basemap`
+beforehand if you want to reuse the archive across image builds.
+
 ```bash
 # Regular Image
 docker build  -f docker/Dockerfile  -t distracearr-standalone  --build-arg APP_VERSION=2.4.0  --build-arg APP_TAG=2.4.0 --build-arg APP_UPSTREAM_VERSION=2.4.0 --build-arg APP_FORK_REVISION=1 --build-arg APP_FORK_VERSION=2.4.0-r1 --build-arg APP_COMMIT="$(git rev-parse --short HEAD)"  --build-arg APP_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
