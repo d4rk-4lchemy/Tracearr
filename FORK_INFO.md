@@ -21,6 +21,12 @@ the same standalone or supervised tag, independent of `current.imageRepo`.
 Preserve this dual-registry publication and UI during upstream merges; releases
 are still created manually and prereleases remain excluded.
 
+Docker Hub registry copies retry up to four times with quadratic backoff. A
+copy can intermittently fail after the Hub accepts some blobs (for example an
+HTTP/2 `PROTOCOL_ERROR`); `imagetools create` is idempotent, so the retry also
+repairs partially updated tags. If all attempts fail, rerun the release
+workflow: GHCR content is already complete and no image rebuild is needed.
+
 Local validation passed with Node 24 / pnpm 12.4.2: 1,803 web tests,
 typecheck, lint (751 existing warnings), translations check (seven existing
 missing `uk-UA/nav.json` keys), and web build. The mocked release check covered
@@ -207,7 +213,17 @@ User-facing Dispatcharr behavior:
 - Dispatcharr does not provide a Media library catalog or VOD library synchronization; it remains supported for sessions, history, Live TV/VOD streams, and user synchronization.
 - Optionally ignore streams reported as anonymous.
 - Terminate Dispatcharr live/VOD streams from Tracearr.
-- Display Live TV channel/programme information, channel logos, stream bitrate, codecs, resolution, and FFmpeg speed where available.
+- Display Live TV channel/programme information, channel logos, stream bitrate, codecs, resolution, and FFmpeg speed where available. Live TV clients with
+  `output_profile_id` retain the same channel-level `ffmpeg_speed` as clients
+  without an output profile, even when profile details are unavailable. This
+  value describes the channel input process; it is not a separate measurement
+  of the output-profile process. Preserve this mapping in REST and realtime.
+  September 28 validation passed: 60 focused Dispatcharr parser/client/realtime
+  and realtime-processor tests, 20 NowPlayingCard tests, server typecheck,
+  lint (751 existing warnings), and changed TypeScript formatting. Jobs ran
+  sequentially with Node 24 / pnpm 12.4.2 and one Vitest worker on the 8 GB LXC.
+  Live-provider smoke, Docker jobs and full builds were not run for this
+  metadata-only change.
 - Jellyfin and Emby Live TV sessions are enriched from `/LiveTv/Programs`; the current programme is stored in `mediaTitle` while the channel remains in `live.*`. The EPG cache is shared per server/channel and refreshes the existing poller at programme boundaries. Web and mobile Live TV cards use the same channel-title/programme-subtitle layout as Dispatcharr; Plex keeps its legacy Live TV card for now.
 - Show Dispatcharr active sessions immediately from healthy WebSocket snapshots.
 - When a Dispatcharr Live TV channel gains its first client, enrich its card
@@ -243,7 +259,8 @@ The fork also carries local maintenance/distribution changes:
   as `APP_IMAGE_REPO`, then copies the same five tags to
   `darkalchemy2137/distracearr`. Prereleases are skipped; malformed stable tags fail.
   GHCR authentication uses `GITHUB_TOKEN` with `contents: read` / `packages: write`;
-  Docker Hub uses `DOCKERHUB_TOKEN`. Do not introduce separate release workflows,
+  Docker Hub uses `DOCKERHUB_TOKEN`; its idempotent image-copy operation retries
+  transient registry failures four times before the job fails. Do not introduce separate release workflows,
   scheduled/nightly/insiders builds, manual-dispatch, tag-push, release creation,
   Helm pushes, issue automation, Renovate, stale, or Vouch workflows.
 - Manifest publication checks all five tags in both registries for both Linux architectures.

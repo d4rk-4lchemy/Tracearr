@@ -198,12 +198,32 @@ jobs:
       - name: Copy multi-platform images to Docker Hub
         shell: bash
         run: |
-          docker buildx imagetools create \
+          # Registry copies occasionally lose their HTTP/2 stream after Docker Hub
+          # has accepted some blobs. Repeating an imagetools copy is idempotent and
+          # repairs any partially updated tags without rebuilding the images.
+          copy_to_docker_hub() {
+            local attempt=1
+            local max_attempts=4
+
+            until docker buildx imagetools create "$@"; do
+              if (( attempt == max_attempts )); then
+                echo "::error::Docker Hub image copy failed after $max_attempts attempts."
+                return 1
+              fi
+
+              local delay=$((attempt * attempt * 5))
+              echo "::warning::Docker Hub image copy failed; retrying in ${delay}s (attempt $((attempt + 1))/$max_attempts)."
+              sleep "$delay"
+              ((attempt += 1))
+            done
+          }
+
+          copy_to_docker_hub \
             -t "$DOCKERHUB_IMAGE:$FORK_VERSION" \
             -t "$DOCKERHUB_IMAGE:latest" \
             -t "$DOCKERHUB_IMAGE:standalone" \
             "$IMAGE:$FORK_VERSION"
-          docker buildx imagetools create \
+          copy_to_docker_hub \
             -t "$DOCKERHUB_IMAGE:supervised-$FORK_VERSION" \
             -t "$DOCKERHUB_IMAGE:supervised" \
             "$IMAGE:supervised-$FORK_VERSION"
