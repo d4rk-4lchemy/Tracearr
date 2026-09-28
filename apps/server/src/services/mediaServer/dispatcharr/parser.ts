@@ -945,8 +945,9 @@ export function parseSessionsFromChannels(
       const streamProfile = (channel.streamProfile ?? '').toLowerCase();
       const fallbackIsTranscode = streamProfile.includes('transcod');
       const resolution = parseResolutionDimensions(channel.resolution);
-      const hasOutputProfile = outputProfileId !== undefined;
-      const transcodeSpeed = hasOutputProfile ? undefined : channel.ffmpegSpeed;
+      // Dispatcharr reports channel-level FFmpeg speed for every client,
+      // including clients with an additional output profile.
+      const transcodeSpeed = channel.ffmpegSpeed;
       const inferredContainer = outputProfile?.streamContainer ?? clientOutputFormat;
       const containerChanged = inferredContainer === 'FMP4';
       const conservativeUnknownProfile = outputProfileId !== undefined && !outputProfile;

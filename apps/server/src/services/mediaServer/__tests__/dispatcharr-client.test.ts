@@ -261,7 +261,7 @@ describe('DispatcharrClient', () => {
       streamContainer: 'MPEGTS',
       reasons: ['Dispatcharr output profile: Web Player'],
     });
-    expect(sessions[0]?.quality.transcodeInfo?.speed).toBeUndefined();
+    expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(0.94);
   });
 
   it('does not fetch output profiles when sessions do not use output_profile_id', async () => {

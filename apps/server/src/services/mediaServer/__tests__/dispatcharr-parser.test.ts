@@ -219,7 +219,7 @@ describe('Dispatcharr parser', () => {
       expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(1.11);
     });
 
-    it('maps fmp4 output format without profile as a container change and hides channel speed', () => {
+    it('maps fmp4 output format without profile as a container change and keeps channel speed', () => {
       const normalized = normalizeDispatcharrChannel({
         channel_id: 'channel-1',
         channel_name: 'News HD',
@@ -242,7 +242,7 @@ describe('Dispatcharr parser', () => {
       expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(0.88);
     });
 
-    it('maps recognized output profile details and hides channel speed for profile sessions', () => {
+    it('maps recognized output profile details and keeps channel speed for profile sessions', () => {
       const normalized = normalizeDispatcharrChannel({
         channel_id: 'channel-1',
         channel_name: 'News HD',
@@ -255,6 +255,7 @@ describe('Dispatcharr parser', () => {
             output_format: 'mpegts',
             output_profile_id: 5,
           },
+          { client_id: 'client-2', user_id: '7', output_format: 'mpegts' },
         ],
       });
       const sessions = parseSessionsFromChannels(
@@ -295,7 +296,9 @@ describe('Dispatcharr parser', () => {
         streamContainer: 'MPEGTS',
         reasons: ['Dispatcharr output profile: Web Player'],
       });
-      expect(sessions[0]?.quality.transcodeInfo?.speed).toBeUndefined();
+      expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(0.92);
+      expect(sessions[1]?.quality.transcodeInfo?.speed).toBe(0.92);
+      expect(sessions[1]?.quality.isTranscode).toBe(false);
     });
 
     it('falls back conservatively when output profile details are unavailable', () => {
@@ -325,7 +328,7 @@ describe('Dispatcharr parser', () => {
         streamContainer: 'MPEGTS',
         reasons: ['Dispatcharr output profile active'],
       });
-      expect(sessions[0]?.quality.transcodeInfo?.speed).toBeUndefined();
+      expect(sessions[0]?.quality.transcodeInfo?.speed).toBe(1.05);
     });
 
     it('maps string audio_channels value "stereo" to 2 channels', () => {
