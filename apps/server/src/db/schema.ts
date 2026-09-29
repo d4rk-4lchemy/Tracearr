@@ -1130,6 +1130,7 @@ export const userMergeAudits = pgTable(
       // Absent on audits written before merges carried the contact email
       contactEmail?: string | null;
       contactEmailCarried?: boolean;
+      nameSetOnTarget?: string | null;
     }>(),
     // Which plex_accounts / mobile_sessions / mobile_tokens rows repointIdentityRows
     // moved off the source identity during this merge, so a later split can move

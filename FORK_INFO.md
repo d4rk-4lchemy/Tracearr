@@ -39,9 +39,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `ef0fb45f`
-- Last shared upstream commit found during inspection: `db54cfb1` (before merge)
-- Latest upstream commit merged into the current working tree: `ef0fb45f`
+- Source branch/SHA inspected: `main` at `762c15e45`
+- Last shared upstream commit found during inspection: `ef0fb45f` (before merge)
+- Latest upstream commit merged into the current working tree: `762c15e45`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -52,6 +52,38 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## September 29, 2026 upstream merge
+
+Upstream `main` at `762c15e45` (Tracearr 2.5.2) adds an audit-backed
+`mergedIn` flag so only accounts actually moved by a user merge offer Split.
+Merging preserves the kept user's displayed name, and undo clears only a name
+that the merge itself set. Plex bandwidth history is trimmed to the live
+window without spreading a very large sample array onto the JavaScript stack.
+The image proxy applies EXIF orientation before converting phone photos to
+WebP; the fork's uncropped poster and Dispatcharr image fit remains in place.
+The merge also brings dependency updates, interface layout changes, Crowdin
+translations and 2.5.2 release notes. The Polish translation conflict retains
+upstream's new translated library strings and the fork's `noLibraryServers`
+key. Upstream migrations and Dispatcharr fork migrations are unchanged.
+
+Exactly the PR-only CI and fork dual-registry release workflows remain.
+Dispatcharr auth, identity, realtime/polling, session lifecycle, two-channel
+version API, and permanent artwork cache markers remain intact. Docker-backed
+integration and E2E were omitted at the user's request; the new merge/split
+queries have not been exercised against PostgreSQL in this run.
+
+Full non-Docker CI-equivalent validation passed with Node 24 / pnpm 12.4.2,
+a clean Turbo cache, frozen install, 4 GB heap, one Vitest worker, and Turbo
+concurrency one: lint, typecheck, translations, unit/services/routes/auth/
+security, web, coverage and build. The server groups plus web passed 9,064
+tests; coverage passed 5,813 tests (70.41% statements, 64.23% branches,
+74.68% functions, 71.63% lines). Lint retained 751 warnings. All
+warning-like counts match the September 27 reference, including seven
+existing absent `uk-UA/nav.json` translation keys. Logs:
+`.tmp/github-ci-<job>-20260929.log`; the runner reports `FAILED_JOBS=0`.
+No live-provider Dispatcharr smoke checks, database upgrade execution,
+Docker image builds, or registry publication were performed.
 
 ## September 27, 2026 upstream merge
 

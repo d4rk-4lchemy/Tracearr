@@ -4,7 +4,14 @@ import { useTranslation } from 'react-i18next';
 import type { ParseKeys } from 'i18next';
 import { ExternalLink, Gauge, KeyRound, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { CopyButton } from '@/components/ui/copy-button';
 import { FieldGroup } from '@/components/ui/field';
@@ -28,21 +35,19 @@ function ApiKeyCard() {
     <>
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5" />
-                {t('common:labels.apiKey')}
-              </CardTitle>
-              <CardDescription>{t('general.apiKeyDesc')}</CardDescription>
-            </div>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5" />
+            {t('common:labels.apiKey')}
+          </CardTitle>
+          <CardDescription>{t('general.apiKeyDesc')}</CardDescription>
+          <CardAction>
             <RouterLink to="/api-docs">
               <Button variant="outline" size="sm" className="gap-1.5">
                 <ExternalLink className="h-3.5 w-3.5" />
                 {t('general.apiDocs')}
               </Button>
             </RouterLink>
-          </div>
+          </CardAction>
         </CardHeader>
         <CardContent className="space-y-4">
           {isLoading ? (

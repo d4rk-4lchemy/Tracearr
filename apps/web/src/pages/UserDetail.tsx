@@ -768,7 +768,7 @@ export function UserDetail() {
                       {t('userDetail.adjustTrustScore')}
                     </Button>
                   )}
-                  {isOwner && account.id !== user.id && (
+                  {isOwner && account.mergedIn && (
                     <Button
                       size="sm"
                       variant="outline"

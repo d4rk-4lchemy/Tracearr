@@ -112,12 +112,12 @@
     "suggestionsReview": "审查",
     "suggestionsNotSame": "不是同一个人",
     "suggestionsMatchEmail": "相同的邮件",
-    "suggestionsMatchEmailUsername": "",
+    "suggestionsMatchEmailUsername": "两者都使用 {{value}} 作为用户名或账户邮箱",
     "suggestionsMatchUsername": "相同的用户名",
     "suggestionsEmpty": "没有待处理的发现。",
-    "suggestionsDismissed": "",
-    "suggestionsDismissedPair": "",
-    "suggestionsDismissedAt": "",
+    "suggestionsDismissed": "已忽略 ({{count}})",
+    "suggestionsDismissedPair": "{{first}} 和 {{second}}",
+    "suggestionsDismissedAt": "已忽略 {{relative}}",
     "suggestionsRestore": "还原",
     "suggestionsError": "无法加载合并建议",
     "filterHasAccessTo": "有访问权限",
@@ -160,7 +160,7 @@
   },
   "history": {
     "title": "历史记录",
-    "description": "使用强大过滤器浏览所有流媒体会话",
+    "description": "",
     "loadingMore": "加载更多……",
     "scrollForMore": "滚动获得更多",
     "showingAllResults": "显示所有{{total}}个结果",
@@ -173,13 +173,13 @@
   },
   "library": {
     "title": "媒体库",
-    "description": "您服务器上的热门电影和节目",
+    "description": "",
     "topMovies": "热门电影",
     "topShows": "热门电视节目",
     "noMoviePlays": "此期间没有电影播放",
     "noShowPlays": "此期间没有电视节目播放",
     "overview": {
-      "description": "图书馆健康和增长指标",
+      "description": "",
       "lastUpdated": "最后更新：",
       "totalItems": "项目总数",
       "shows": "剧集",
@@ -195,7 +195,7 @@
     },
     "quality": {
       "title": "品质",
-      "description": "分辨率和编码分布",
+      "description": "",
       "qualityEvolution": "质量进化",
       "all": "所有的",
       "failedToLoad": "加载质量数据失败",
@@ -203,14 +203,14 @@
     },
     "storage": {
       "title": "存储",
-      "description": "存储使用、预测和优化",
+      "description": "",
       "totalStorage": "总存储",
       "growthRate": "增长",
       "duplicates": "重复项",
       "groups": "组",
       "recoverable": "可恢复",
       "staleContent": "陈旧内容",
-      "staleContentDesc": "可选除名的内容",
+      "staleContentDesc": "",
       "items": "项目",
       "unused": "未使用",
       "storageTrend": "存储趋势",
@@ -221,7 +221,7 @@
       "zeroGrowth": "0 GB/月",
       "predictions": "预测",
       "contentROI": "Content ROI",
-      "contentROIDesc": "每个存储成本的观察值",
+      "contentROIDesc": "",
       "avgHoursPerGB": "avg小时/GB",
       "insufficientData": "数据不足",
       "of": "共",
@@ -229,7 +229,7 @@
       "failedToLoad": "加载存储数据失败",
       "failedToLoadDesc": "无法获取存储数据。请重试。",
       "duplicatesTitle": "副本",
-      "duplicatesSubtitle": "在服务器、 库和版本之间具有多个副本或文件的标题",
+      "duplicatesSubtitle": "",
       "growthPreChangeover": "基于预更新历史",
       "loadingDuplicates": "正在加载复制……",
       "duplicatesFailed": "加载质量数据失败",
@@ -248,7 +248,7 @@
     },
     "watch": {
       "title": "观察分析",
-      "description": "查看行为和内容接触",
+      "description": "",
       "watched": "观看了",
       "percentWatched": "%已观看",
       "totalWatchTime": "总观察时间",
@@ -261,7 +261,7 @@
       "busiest": "最重要的版本：",
       "quietest": "安静：",
       "bingeHighlights": "Binge 高光",
-      "bingeHighlightsDesc": "显示最密集视图模式",
+      "bingeHighlightsDesc": "",
       "bingeSessions": "Binge 会话",
       "noData": "尚无观察数据",
       "noDataDesc": "一旦播放了内容后，观察分析将会显示在这里。请在查看某些活动后再查看。",
@@ -327,7 +327,7 @@
   },
   "activity": {
     "title": "活动",
-    "description": "播放趋势、模式和流媒体行为",
+    "description": "",
     "playsOverTime": "一段时间后播放",
     "concurrentStreams": "并发流",
     "engagementBreakdown": "参与度分析",
@@ -543,7 +543,7 @@
         "valueInvalid": "此值不适合检查",
         "actionUnavailable": "这些触发器不提供此操作所需的内容",
         "variableUnavailable": "消息指名的不是每个触发器都在这里提供",
-        "minutesRange": "",
+        "minutesRange": "{{min}} 至 {{max}} 分钟之间",
         "daysRange": "",
         "measureInvalid": "选择如何计算分钟",
         "fieldNotAvailableFor": "",
@@ -653,8 +653,8 @@
       },
       "heldFor": {
         "prefix": "",
-        "minutesLabel": "",
-        "unit": "",
+        "minutesLabel": "分钟",
+        "unit": "分钟",
         "measureLabel": "",
         "current": "",
         "total": ""
@@ -749,8 +749,8 @@
       "otherwise": "",
       "appliesTo": "",
       "duration": {
-        "minutes_one": "",
-        "minutes_other": "",
+        "minutes_one": "{{count}} 分钟",
+        "minutes_other": "{{count}} 分钟",
         "days_one": "",
         "days_other": ""
       },
@@ -763,7 +763,7 @@
         "sessionHeldFor": "",
         "sessionHeldForTotal": "",
         "accountInactiveFor": "",
-        "accountNewDevice": "",
+        "accountNewDevice": "一个帐户从新设备播放",
         "accountTrustChanged": "",
         "mediaAdded": "",
         "mediaUpgraded": "",
@@ -856,7 +856,7 @@
         "if": "",
         "flagIt": "",
         "doNothing": "",
-        "send": "",
+        "send": "发送至 {{destinations}}",
         "sendAnywhere": "",
         "kill_stream": "",
         "message_client": "",
@@ -1380,9 +1380,9 @@
         "keywords": ""
       },
       "new-device": {
-        "name": "",
-        "description": "",
-        "keywords": ""
+        "name": "新设备",
+        "description": "当一个账户首次从你未见过的设备进行流媒体播放时，告诉你。",
+        "keywords": "设备 新的 未知 未识别 手机 登录 分享 通知 Discord 邮件 Webhook"
       },
       "newsletter-failed": {
         "name": "",
@@ -1509,8 +1509,8 @@
           "synonyms": ""
         },
         "accountNewDevice": {
-          "description": "",
-          "synonyms": ""
+          "description": "首次从设备上进行流媒体传输。",
+          "synonyms": "设备，新的，未知，未识别，电话，登录，共享"
         },
         "accountTrustChanged": {
           "description": "",
@@ -1810,17 +1810,17 @@
   },
   "devices": {
     "title": "设备兼容性",
-    "description": "查看哪些设备直接播放与转码每个编解码器",
+    "description": "",
     "analyzedSessions": "",
     "analyzedSessionsTooltip": "",
     "directPlayRate": "直播速率",
-    "videoAndAudio": "视频 + 音频",
+    "videoAndAudio": "",
     "uniqueDevices": "唯一设备",
     "uniqueCodecs": "唯一编解码器",
     "deviceHealth": "设备健康",
-    "deviceHealthDesc": "按设备类型直接播放速率",
+    "deviceHealthDesc": "",
     "transcodeHotspots": "转码热点",
-    "transcodeHotspotsDesc": "混合产生最多的转码",
+    "transcodeHotspotsDesc": "",
     "deviceAndCodec": "设备 + 解码器",
     "transcodes": "转码",
     "pctOfTotal": "占总计",
@@ -1833,12 +1833,12 @@
     "directPlayMid": "",
     "directPlayLow": "",
     "topTranscodingUsers": "热门转码用户",
-    "topTranscodingUsersDesc": "用户在您的服务器上产生了最多的转码。",
+    "topTranscodingUsersDesc": "",
     "noTranscodingUsers": "未找到转码用户"
   },
   "statsBandwidth": {
     "title": "带宽",
-    "description": "流传带宽使用率和比特率分析",
+    "description": "",
     "dataTransferred": "已传输数据",
     "avgBitrate": "平均比特率",
     "avgBitrateMbps": "平均比特率 (Mbps)",
@@ -1846,9 +1846,9 @@
     "totalWatchTime": "总观察时间",
     "uniqueUsers": "唯一用户",
     "dailyUsage": "每日带宽使用",
-    "dailyUsageDesc": "随着时间的推移，平均比特率和会话计数",
+    "dailyUsageDesc": "",
     "topUsers": "顶部带宽用户",
-    "topUsersDesc": "消耗最多带宽的用户",
+    "topUsersDesc": "",
     "noData": "没有可用的带宽数据"
   },
   "statsUsers": {
@@ -1872,7 +1872,7 @@
   },
   "debug": {
     "title": "调试工具",
-    "description": "故障排除和数据管理的行政工具",
+    "description": "",
     "overview": "概览",
     "librarySnapshots": "书库快照",
     "tasks": "任务",
@@ -1886,7 +1886,7 @@
     "memory": "内存",
     "uptime": "运行时间",
     "database": "数据库",
-    "databaseDesc": "数据库大小和表统计",
+    "databaseDesc": "",
     "totalSize": "总大小",
     "maintenance": "维护费",
     "destructiveActions": "破坏性操作",
@@ -1951,7 +1951,7 @@
         "replacedEpisodes_one": "",
         "replacedEpisodes_other": "",
         "addedAgo": "{{date}}添加",
-        "addedCompactAgo": "",
+        "addedCompactAgo": "{{age}}前添加",
         "newEpisodesChip": ""
       },
       "deadWeight": {
@@ -2060,7 +2060,7 @@
         "title": "观看者",
         "loadError": "无法加载观看者",
         "empty": "目前还没有人看到这一点。",
-        "lastWatchedAgo": "",
+        "lastWatchedAgo": "{{age}} 以前",
         "completionLabel": "",
         "columns": {
           "user": "用户",

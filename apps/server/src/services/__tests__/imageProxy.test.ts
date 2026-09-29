@@ -332,6 +332,39 @@ describe('proxyImage cache-miss pipeline', () => {
     );
   });
 
+  it('applies EXIF orientation before the tag is dropped, so a phone photo avatar stays upright', async () => {
+    // Stored red-over-blue, tagged "rotate 180": displayed as blue over red
+    const pixels = Buffer.alloc(8 * 8 * 3);
+    for (let i = 0; i < 64; i++) pixels.set(i < 32 ? [255, 0, 0] : [0, 0, 255], i * 3);
+    const tagged = await sharp(pixels, { raw: { width: 8, height: 8, channels: 3 } })
+      .jpeg()
+      .withMetadata({ orientation: 3 })
+      .toBuffer();
+    fetchSpy.mockResolvedValue(
+      new Response(tagged, { status: 200, headers: { 'content-type': 'image/jpeg' } })
+    );
+    mockSelectChain([
+      { id: 'server-4', type: 'jellyfin', url: 'http://localhost:8096', token: 'token' },
+    ]);
+
+    const result = await proxyImage({
+      serverId: randomUUID(),
+      imagePath: '/Users/abc/Images/Primary',
+      width: 40,
+      height: 40,
+      fallback: 'avatar',
+    });
+
+    const { data } = await sharp(result.data)
+      .extract({ left: 0, top: 0, width: 1, height: 1 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    expect(data[2]).toBeGreaterThan(200);
+    expect(data[0]).toBeLessThan(60);
+
+    await vi.waitFor(() => expect(vi.mocked(db.update)).toHaveBeenCalledTimes(1));
+  });
+
   it('falls back to the SVG placeholder with a short, non-immutable cacheControl and drains the body on an upstream HTTP error', async () => {
     mockSelectChain([
       { id: 'server-8', type: 'plex', url: 'http://localhost:32400', token: 'token' },

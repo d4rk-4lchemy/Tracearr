@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -446,7 +453,7 @@ export function Jobs() {
                   </ItemMedia>
                   <ItemContent>
                     <ItemTitle>{job.name}</ItemTitle>
-                    <ItemDescription>{job.description}</ItemDescription>
+                    <ItemDescription className="line-clamp-none">{job.description}</ItemDescription>
                   </ItemContent>
                   <ItemActions>
                     <Button
@@ -562,14 +569,12 @@ export function Jobs() {
       {/* Job History */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                {t('jobs.jobHistory')}
-              </CardTitle>
-              <CardDescription>{t('jobs.jobHistoryDesc')}</CardDescription>
-            </div>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            {t('jobs.jobHistory')}
+          </CardTitle>
+          <CardDescription>{t('jobs.jobHistoryDesc')}</CardDescription>
+          <CardAction>
             <Button
               variant="ghost"
               size="sm"
@@ -583,7 +588,7 @@ export function Jobs() {
               <RefreshCw className={cn('h-3.5 w-3.5', isLoadingHistory && 'animate-spin')} />
               {t('common:actions.refresh')}
             </Button>
-          </div>
+          </CardAction>
         </CardHeader>
         <CardContent>
           {isLoadingHistory ? (

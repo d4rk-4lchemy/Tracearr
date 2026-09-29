@@ -28,6 +28,7 @@ import {
   automationRuns,
   automations,
   terminationLogs,
+  userMergeAudits,
 } from '../../db/schema.js';
 import { violationAliasConditions } from '../../services/automations/aliasFilter.js';
 import { hasServerAccess, buildServerAccessCondition } from '../../utils/serverFiltering.js';
@@ -136,6 +137,12 @@ export const fullRoutes: FastifyPluginAsync = async (app) => {
           trustScore: serverUsers.trustScore,
           sessionCount: sql<number>`(select count(*)::int from ${sessions} where ${sessions.serverUserId} = ${serverUsers.id})`,
           removedAt: serverUsers.removedAt,
+          mergedIn: sql<boolean>`exists (
+            select 1 from ${userMergeAudits}
+            where ${userMergeAudits.targetUserId} = ${serverUsers.userId}
+              and ${userMergeAudits.undoneAt} is null
+              and ${userMergeAudits.movedServerUserIds} @> jsonb_build_array(${serverUsers.id}::text)
+          )`,
         })
         .from(serverUsers)
         .innerJoin(servers, eq(serverUsers.serverId, servers.id))

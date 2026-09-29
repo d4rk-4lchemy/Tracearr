@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HardDrive, TrendingUp, Copy, Archive } from 'lucide-react';
 import { StatCard } from '@/components/ui/stat-card';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TimeRangePicker } from '@/components/ui/time-range-picker';
 import { Button } from '@/components/ui/button';
@@ -494,24 +494,14 @@ export function LibraryStorage() {
       {/* ROI Section */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base font-medium">
-                {t('library.storage.contentROI')}
-              </CardTitle>
-              <p className="text-muted-foreground text-sm">{t('library.storage.contentROIDesc')}</p>
-            </div>
-            {roi.data?.summary && (
-              <div className="text-right">
-                <p className="text-2xl font-bold">
-                  {roi.data.summary.avgWatchHoursPerGb.toFixed(2)}
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  {t('library.storage.avgHoursPerGB')}
-                </p>
-              </div>
-            )}
-          </div>
+          <CardTitle className="text-base font-medium">{t('library.storage.contentROI')}</CardTitle>
+          <p className="text-muted-foreground text-sm">{t('library.storage.contentROIDesc')}</p>
+          {roi.data?.summary && (
+            <CardAction className="text-right">
+              <p className="text-2xl font-bold">{roi.data.summary.avgWatchHoursPerGb.toFixed(2)}</p>
+              <p className="text-muted-foreground text-sm">{t('library.storage.avgHoursPerGB')}</p>
+            </CardAction>
+          )}
         </CardHeader>
         <CardContent>
           <RoiTable

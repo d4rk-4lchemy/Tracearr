@@ -8,6 +8,7 @@ import type { Redis } from 'ioredis';
 import {
   BANDWIDTH_STATS_CONFIG,
   CACHE_TTL,
+  liveStatsRetentionSeconds,
   REDIS_KEYS,
   SERVER_STATS_CONFIG,
 } from '@tracearr/shared';
@@ -103,11 +104,48 @@ export async function getServerBandwidthStats(
     redis,
     REDIS_KEYS.SERVER_STATS_BANDWIDTH(server.id),
     CACHE_TTL.SERVER_STATS_BANDWIDTH,
-    () =>
-      new PlexClient({ url: server.url, token: server.token }).getServerBandwidth(
-        BANDWIDTH_STATS_CONFIG.TIMESPAN_PARAM
+    async () =>
+      trimBandwidthStats(
+        await new PlexClient({ url: server.url, token: server.token }).getServerBandwidth(
+          BANDWIDTH_STATS_CONFIG.TIMESPAN_PARAM
+        ),
+        liveStatsRetentionSeconds(BANDWIDTH_STATS_CONFIG.WINDOW_SECONDS)
       )
   );
+}
+
+// Plex answers with its whole per-second history, which can run past a day of
+// rows; clients only chart the live window. Measured from Plex's own newest
+// point, so a server with a wrong clock keeps its window.
+export function trimBandwidthStats(
+  stats: PlexBandwidthStats,
+  windowSeconds: number
+): PlexBandwidthStats {
+  const newest = newestAt(stats.points);
+  if (newest === 0) return stats;
+
+  const cutoff = newest - windowSeconds;
+  const samples = stats.samples.filter((s) => s.at >= cutoff);
+  const accountIds = new Set(samples.map((s) => s.accountId));
+  const deviceIds = new Set(samples.map((s) => s.deviceId));
+
+  return {
+    points: stats.points.filter((p) => p.at >= cutoff),
+    samples,
+    accounts: stats.accounts.filter((a) => accountIds.has(a.id)),
+    devices: stats.devices.filter((d) => deviceIds.has(d.id)),
+  };
+}
+
+// A loop, not Math.max(...): spreading ~124k points overflows the call stack
+function newestAt(...series: { at: number }[][]): number {
+  let newest = 0;
+  for (const points of series) {
+    for (const p of points) {
+      if (p.at > newest) newest = p.at;
+    }
+  }
+  return newest;
 }
 
 // A corrupt entry must not block the write
@@ -234,7 +272,7 @@ const MAX_PLAUSIBLE_LAG_SECONDS = 15;
 /** Seconds to shift a Plex server's timestamps onto our clock. Zero when the
  *  gap reads as sampling lag, so a synced server keeps its own timestamps. */
 export function plexClockShift(...series: { at: number }[][]): number {
-  const newest = Math.max(...series.flat().map((p) => p.at), 0);
+  const newest = newestAt(...series);
   if (newest === 0) return 0;
 
   const lag = Math.floor(Date.now() / 1000) - newest;

@@ -528,7 +528,9 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
         : new Error(String(lastError ?? 'upstream fetch failed'));
     }
 
-    const resized = await sharp(imageBuffer)
+    // Phone photos store their rotation as an EXIF tag, and the webp output
+    // drops EXIF, so the tag has to be applied to the pixels first
+    const resized = await sharp(imageBuffer, { autoOrient: true })
       .resize(width, height, {
         fit: fallback === 'poster' || server.type === 'dispatcharr' ? 'inside' : 'cover',
         position: 'center',
