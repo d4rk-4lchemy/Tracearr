@@ -271,6 +271,37 @@ describe('buildCatalogPageQuery', () => {
     expect(text).not.toContain('liva.audio_atmos');
   });
 
+  it('codec filters bind the raw codec values on movie versions', () => {
+    const { sql, params } = renderSql(
+      buildCatalogPageQuery({
+        type: 'movie',
+        sort: 'title',
+        offset: 0,
+        ...baseFilterParams,
+        videoCodecs: ['H264', 'AVC1'],
+        pageSize: 60,
+      })
+    );
+    expect(normalize(sql)).toContain('livc.video_codec IN');
+    expect(params).toEqual(expect.arrayContaining(['H264', 'AVC1']));
+  });
+
+  it('show codec filters check episode versions, and a name matching nothing matches no rows', () => {
+    const { sql } = renderSql(
+      buildCatalogPageQuery({
+        type: 'show',
+        sort: 'title',
+        offset: 0,
+        ...baseFilterParams,
+        audioCodecs: [],
+        pageSize: 60,
+      })
+    );
+    const text = normalize(sql);
+    expect(text).toContain('em.show_media_id = m.id');
+    expect(text).toContain('AND FALSE');
+  });
+
   it('show pages decorate copies with episode-derived resolution and size', () => {
     const { sql } = renderSql(
       buildCatalogPageQuery({
@@ -810,6 +841,49 @@ describe('GET /library/catalog', () => {
     expect(normalize(pageCall!.sql)).toContain('liva.audio_atmos');
   });
 
+  it('expands a codec display name to every raw value the charts fold into it', async () => {
+    app = await buildTestApp(createOwnerUser());
+    dbExecute.mockImplementation(
+      dispatchBySql([
+        { match: isTotalsQuery, rows: [{ total_items: '0', total_file_size: '0' }] },
+        {
+          match: (text) => text.includes('SELECT DISTINCT video_codec'),
+          rows: [{ codec: 'H264' }, { codec: 'HEVC' }, { codec: 'AVC1' }],
+        },
+      ]) as never
+    );
+
+    await app.inject({ method: 'GET', url: '/library/catalog?type=movie&videoCodec=H.264' });
+
+    const pageCall = dbExecute.mock.calls
+      .map((call) => renderSql(call[0] as never))
+      .find(({ sql }) => isPageQuery(normalize(sql)));
+    expect(pageCall!.params).toEqual(expect.arrayContaining(['H264', 'AVC1']));
+    expect(pageCall!.params).not.toContain('HEVC');
+  });
+
+  it('filters audio channels by the chart name, binding the raw channel count', async () => {
+    app = await buildTestApp(createOwnerUser());
+    dbExecute.mockImplementation(
+      dispatchBySql([
+        { match: isTotalsQuery, rows: [{ total_items: '0', total_file_size: '0' }] },
+        {
+          match: (text) => text.includes('SELECT DISTINCT audio_channels'),
+          rows: [{ codec: 2 }, { codec: 6 }, { codec: 8 }],
+        },
+      ]) as never
+    );
+
+    await app.inject({ method: 'GET', url: '/library/catalog?type=movie&audioChannels=5.1' });
+
+    const pageCall = dbExecute.mock.calls
+      .map((call) => renderSql(call[0] as never))
+      .find(({ sql }) => isPageQuery(normalize(sql)));
+    expect(normalize(pageCall!.sql)).toContain('livc.audio_channels IN');
+    expect(pageCall!.params).toContain(6);
+    expect(pageCall!.params).not.toContain(2);
+  });
+
   it('a punctuation-only search binds no search param instead of an empty-string LIKE', async () => {
     app = await buildTestApp(createOwnerUser());
     dbExecute.mockImplementation(
@@ -1276,5 +1350,47 @@ describe('GET /library/catalog/letters', () => {
     expect(letters.find((b) => b.letter === 'B')).toEqual({ letter: 'B', count: 1 });
     expect(letters.reduce((sum, b) => sum + b.count, 0)).toBe(1);
     expect(candidateCalls()).toBe(1);
+  });
+});
+
+describe('GET /library/catalog/codecs', () => {
+  let app: FastifyInstance;
+  const dbExecute = vi.mocked(db.execute);
+
+  beforeEach(() => {
+    dbExecute.mockReset();
+  });
+
+  afterEach(async () => {
+    if (app) await app.close();
+  });
+
+  it('merges raw codecs under their chart names, most common first', async () => {
+    app = await buildTestApp(createOwnerUser());
+    dbExecute.mockImplementation(
+      dispatchBySql([
+        {
+          match: (text) => text.includes('v.video_codec AS codec'),
+          rows: [
+            { codec: 'HEVC', count: 3 },
+            { codec: 'H264', count: 2 },
+            { codec: 'AVC1', count: 2 },
+          ],
+        },
+        {
+          match: (text) => text.includes('v.audio_codec AS codec'),
+          rows: [{ codec: 'EAC3', count: 1 }],
+        },
+      ]) as never
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/library/catalog/codecs?type=show' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ video: ['H.264', 'HEVC'], audio: ['EAC3'], channels: [] });
+    const videoCall = dbExecute.mock.calls
+      .map((call) => renderSql(call[0] as never))
+      .find(({ sql }) => sql.includes('v.video_codec AS codec'));
+    expect(videoCall!.params).toContain('episode');
   });
 });

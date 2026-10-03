@@ -247,6 +247,7 @@ export {
   CATALOG_PAGE_SIZE,
   useShelves,
   useGenres,
+  useCatalogCodecs,
   useLibraries,
   useMediaDetail,
   useMediaStats,

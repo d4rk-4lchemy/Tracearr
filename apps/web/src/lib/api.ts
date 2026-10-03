@@ -134,6 +134,7 @@ import type {
   WatchedState,
   CatalogResponse,
   CatalogLettersResponse,
+  CatalogCodecOptionsResponse,
   ShelvesResponse,
   GenresResponse,
   LibrariesResponse,
@@ -1642,6 +1643,9 @@ class ApiClient {
       atmos?: boolean;
       sizeGbMin?: number;
       sizeGbMax?: number;
+      videoCodec?: string;
+      audioCodec?: string;
+      audioChannels?: string;
     }) => {
       const searchParams = new URLSearchParams();
       searchParams.set('type', params.type);
@@ -1665,6 +1669,9 @@ class ApiClient {
       if (params.atmos) searchParams.set('atmos', 'true');
       if (params.sizeGbMin !== undefined) searchParams.set('sizeGbMin', String(params.sizeGbMin));
       if (params.sizeGbMax !== undefined) searchParams.set('sizeGbMax', String(params.sizeGbMax));
+      if (params.videoCodec) searchParams.set('videoCodec', params.videoCodec);
+      if (params.audioCodec) searchParams.set('audioCodec', params.audioCodec);
+      if (params.audioChannels) searchParams.set('audioChannels', params.audioChannels);
       return this.request<CatalogResponse>(`/library/catalog?${searchParams.toString()}`);
     },
     catalogLetters: (params: {
@@ -1683,6 +1690,9 @@ class ApiClient {
       atmos?: boolean;
       sizeGbMin?: number;
       sizeGbMax?: number;
+      videoCodec?: string;
+      audioCodec?: string;
+      audioChannels?: string;
     }) => {
       const searchParams = new URLSearchParams();
       searchParams.set('type', params.type);
@@ -1704,6 +1714,9 @@ class ApiClient {
       if (params.atmos) searchParams.set('atmos', 'true');
       if (params.sizeGbMin !== undefined) searchParams.set('sizeGbMin', String(params.sizeGbMin));
       if (params.sizeGbMax !== undefined) searchParams.set('sizeGbMax', String(params.sizeGbMax));
+      if (params.videoCodec) searchParams.set('videoCodec', params.videoCodec);
+      if (params.audioCodec) searchParams.set('audioCodec', params.audioCodec);
+      if (params.audioChannels) searchParams.set('audioChannels', params.audioChannels);
       return this.request<CatalogLettersResponse>(
         `/library/catalog/letters?${searchParams.toString()}`
       );
@@ -1726,6 +1739,14 @@ class ApiClient {
         }
       }
       return this.request<ShelvesResponse>(`/library/shelves?${searchParams.toString()}`);
+    },
+    catalogCodecs: (type: 'movie' | 'show', serverIds?: string[]) => {
+      const searchParams = new URLSearchParams();
+      searchParams.set('type', type);
+      for (const id of serverIds ?? []) searchParams.append('serverIds', id);
+      return this.request<CatalogCodecOptionsResponse>(
+        `/library/catalog/codecs?${searchParams.toString()}`
+      );
     },
     genres: (type: 'movie' | 'show', serverIds?: string[]) => {
       const searchParams = new URLSearchParams();

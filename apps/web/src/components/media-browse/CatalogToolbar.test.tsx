@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { formatMediaTech } from '@tracearr/shared';
 import {
   CatalogToolbar,
   DEFAULT_GRID_FILTERS,
@@ -157,6 +158,9 @@ describe('CatalogToolbar', () => {
     genres: [],
     servers: [{ id: 'srv-1', name: 'Plex' }],
     libraries: [],
+    videoCodecs: ['HEVC', 'H.264'],
+    audioCodecs: ['EAC3', 'TRUEHD'],
+    audioChannelOptions: ['Stereo', '5.1'],
     loadedCount: 10,
     totalItems: 100,
     totalFileSize: 5_000_000_000,
@@ -247,6 +251,26 @@ describe('CatalogToolbar', () => {
       })
     );
     expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ atmos: undefined }));
+  });
+
+  it('renders a codec chip with the chart display name and removes it', async () => {
+    const onFiltersChange = vi.fn();
+    const user = userEvent.setup();
+    const label = formatMediaTech('TRUEHD');
+    render(
+      <CatalogToolbar
+        {...baseProps}
+        filters={{ ...DEFAULT_GRID_FILTERS, audioCodec: 'TRUEHD' }}
+        onFiltersChange={onFiltersChange}
+      />
+    );
+    expect(screen.getByText(label)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: `common:filters.remove:{"label":"${label}"}` })
+    );
+    expect(onFiltersChange).toHaveBeenCalledWith(
+      expect.objectContaining({ audioCodec: undefined })
+    );
   });
 
   it('renders a library chip using the server and library name, and removes it', async () => {

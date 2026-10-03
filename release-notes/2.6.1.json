@@ -1,0 +1,34 @@
+{
+  "version": "2.6.1",
+  "date": "2026-10-03",
+  "changes": [
+    {
+      "type": "new",
+      "text": "Media → Browse filters by video codec, audio codec and audio channels",
+      "refs": ["#1240"]
+    },
+    {
+      "type": "new",
+      "text": "clicking a resolution, codec or audio channel bar on the Quality page opens Browse filtered to it",
+      "refs": ["#659"]
+    },
+    {
+      "type": "improved",
+      "text": "the Other bar on the Quality page codec charts lists the codecs it groups",
+      "refs": ["#408"]
+    },
+    {
+      "type": "fix",
+      "text": "Proxmox installs and upgrades get the stream map again instead of failing on a deleted Protomaps build"
+    },
+    {
+      "type": "fix",
+      "text": "the public API's watched-media keeps season and episode numbers for watched episodes deleted from the server",
+      "refs": ["#1283"]
+    },
+    {
+      "type": "fix",
+      "text": "now playing labels trailers, so a trailer Plex names after its movie no longer looks like the movie"
+    }
+  ]
+}

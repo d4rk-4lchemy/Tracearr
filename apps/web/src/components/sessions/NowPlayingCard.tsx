@@ -91,15 +91,7 @@ function DeviceIcon({ session, className }: { session: ActiveSession; className?
   return <Monitor className={className} />;
 }
 
-function PlaybackOverlay({
-  isPaused,
-  artworkUrl,
-  roundedArtwork = false,
-}: {
-  isPaused: boolean;
-  artworkUrl?: string;
-  roundedArtwork?: boolean;
-}) {
+function PlaybackOverlay({ isPaused }: { isPaused: boolean }) {
   return (
     <div
       data-testid="artwork-playback-overlay"
@@ -108,24 +100,6 @@ function PlaybackOverlay({
         isPaused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
       )}
     >
-      {artworkUrl && (
-        <span
-          aria-hidden="true"
-          data-testid="artwork-dimmer"
-          className={cn('pointer-events-none absolute bg-black/50', roundedArtwork && 'rounded-lg')}
-          style={{
-            // Cover subpixel seams where the image and its alpha mask rasterize differently.
-            inset: -1,
-            maskImage: `url(${JSON.stringify(artworkUrl)})`,
-            maskMode: 'alpha',
-            maskSize: '100% 100%',
-            maskRepeat: 'no-repeat',
-            WebkitMaskImage: `url(${JSON.stringify(artworkUrl)})`,
-            WebkitMaskSize: '100% 100%',
-            WebkitMaskRepeat: 'no-repeat',
-          }}
-        />
-      )}
       {isPaused ? (
         <Pause className="relative h-8 w-8 shrink-0 text-white" />
       ) : (
@@ -136,9 +110,13 @@ function PlaybackOverlay({
 }
 
 export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
-  const { title, subtitle } = getCardMediaDisplay(session);
+  const { title, subtitle: mediaSubtitle } = getCardMediaDisplay(session);
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'pages']);
+  const subtitle =
+    session.mediaType === 'trailer'
+      ? [t('pages:automations.options.trailer'), mediaSubtitle].filter(Boolean).join(' · ')
+      : mediaSubtitle;
   const { isMultiServer } = useServer();
   const [showTerminateDialog, setShowTerminateDialog] = useState(false);
 
@@ -223,17 +201,16 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                     src={posterUrl}
                     alt={title}
                     className={cn(
-                      'block h-auto max-h-28 w-auto max-w-20',
+                      // Dim source colors directly, preserving alpha at antialiased logo edges.
+                      // A separate alpha mask leaves these pixels too bright during hover scaling.
+                      'block h-auto max-h-28 w-auto max-w-20 transition-[filter]',
+                      isPaused ? 'brightness-50' : 'group-hover:brightness-50',
                       session.mediaType !== 'live' && 'rounded-lg'
                     )}
                     loading="lazy"
                   />
                   {/* No overflow clipping: a tiny source must not crop the fixed-size control. */}
-                  <PlaybackOverlay
-                    isPaused={isPaused}
-                    artworkUrl={posterUrl}
-                    roundedArtwork={session.mediaType !== 'live'}
-                  />
+                  <PlaybackOverlay isPaused={isPaused} />
                 </div>
               </div>
             ) : (

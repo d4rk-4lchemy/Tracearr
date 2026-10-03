@@ -46,9 +46,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `dd6818583`
-- Last shared upstream commit found during inspection: `762c15e45` (before merge)
-- Latest upstream commit merged into the current working tree: `dd6818583`
+- Source branch/SHA inspected: `main` at `7eb029ab6`
+- Last shared upstream commit found during inspection: `dd6818583` (before merge)
+- Latest upstream commit merged into the current working tree: `7eb029ab6`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -59,6 +59,54 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## October 3, 2026 — Tracearr 2.6.1 upstream merge
+
+Upstream `main` at `7eb029ab6` adds catalog video/audio codec and channel
+filters, links from quality charts into filtered browsing, episode numbering
+for watched items removed from the library, explicit trailer labels, and
+Crowdin updates. The new codec-options query uses `mediaLibraryServerIds`,
+preserving Dispatcharr's exclusion from library browsing. Dashboard trailer
+labels are applied after the fork's channel/programme title mapping; uncropped
+artwork, brightness dimming, transparent slots and Catch-up presentation remain
+intact. The mixed-server codec scope and trailer/year cases have regression
+coverage alongside the existing Dispatcharr and artwork tests.
+
+The basemap conflict combines upstream's three-newest-build fallback with the
+fork's v4 metadata selection, explicit build-pin validation and atomic output.
+Each failed attempt removes its partial file before trying the next archive;
+an exhausted download leaves any existing output intact. A pinned build never
+falls back to another date. Ten stubbed script checks and shell syntax validation
+passed without contacting Protomaps. Both Dockerfiles remain unchanged.
+
+Exactly the PR-only CI and fork dual-registry release workflows remain
+unchanged, including the four native build publication gate. Helm version
+changes were excluded per MERGE_INSTRUCTION.md. Upstream migrations remain
+byte-for-byte aligned with the source checkout, and fork migrations are unchanged.
+
+Full non-Docker validation passed with Node 24.21.0 / pnpm 12.4.2, a cleared
+Turbo cache, frozen-lockfile install, 4 GB heap, two Vitest workers and Turbo
+concurrency one. Heavy jobs ran sequentially on the 8 GB LXC. Lint, typecheck,
+translations, unit/services/routes/auth/security, web, coverage and build all
+passed. The five server groups plus web passed 9,340 tests; coverage passed
+6,000 tests (71.12% statements, 65.00% branches, 75.33% functions, 72.33% lines).
+The first web run caught missing translation setup in the two new trailer
+tests; after fixing the fixture, all 1,873 web tests passed. Final lint has
+764 warnings, down two from the previous 766 baseline; upstream removed two
+non-null assertions in watched-media pagination. Initial lint ran against
+stale shared declarations and reported 777 warnings; rebuilding dependencies
+and rerunning the full lint removed those transient diagnostics.
+Translations reports 290 absent keys (ten new codec/browse labels in each of
+29 locales), with English fallback; no translation-check errors. Warning
+counts and logs are recorded in `.tmp/github-ci-warning-reference.md` and
+`.tmp/merge-261-<job>-20261003.log` (successful web/lint/typecheck reruns use
+`-final`). Changed conflict-resolution files also passed Prettier.
+
+Docker integration and E2E were explicitly omitted at the user's request.
+Docker image builds, live-provider smoke checks and database upgrade execution
+were not performed. SQL changes to catalog filters and removed-episode
+numbering therefore have automated unit/route coverage but were not executed
+against PostgreSQL in this validation.
 
 ## October 3, 2026 upstream merge
 
@@ -75,9 +123,10 @@ types remain present.
 
 The shared image proxy retains uncropped `inside` resizing for every provider.
 Upstream image-path restrictions remain for Plex/Jellyfin/Emby; Dispatcharr
-images remain pinned to the configured origin without auth headers and accept
-provider-relative VOD poster paths as well as channel logos. Both Dockerfiles
-retain fork migrations, fork build metadata, and builder-generated basemap
+channel logos and relative images remain pinned to the configured origin without
+auth headers. Public TMDB VOD image URLs retain their CDN origin through the
+narrow exception documented below. Both Dockerfiles retain fork migrations,
+fork build metadata, and builder-generated basemap
 copies. The release workflow can still prefetch the basemap into the build
 context. Exactly the PR-only CI and fork dual-registry release workflows
 remain; upstream release, geoip, nightly and insiders workflows were excluded.
@@ -440,6 +489,26 @@ Server routes and services:
 - `apps/server/src/services/sync.ts` syncs Dispatcharr users through the generic user sync path.
 - `apps/server/src/services/termination.ts` passes Dispatcharr config into session termination.
 - `apps/server/src/services/imageProxy.ts` normalizes Dispatcharr image paths, supports Dispatcharr channel logos, and uses `inside` resize fit for Dispatcharr images.
+- Dispatcharr VOD posters may use the public TMDB CDN. Preserve absolute HTTPS
+  `image.tmdb.org/t/p/<size>/<image>` URLs with raster filenames and no query,
+  fragment or credentials. Fetch with empty headers and reject redirects;
+  never allow arbitrary external origins or extend the exception to other
+  providers. Relative posters and absolute channel logos still normalize onto
+  the configured Dispatcharr origin. A live October 3 investigation of
+  2.6.0-r1 confirmed that stripping the TMDB origin caused Dispatcharr's SPA
+  HTML to be fetched instead of the available JPEG. Existing history paths
+  already contain the full URL, so this needs no data migration or cache purge.
+  Validation passed with Node 24 / pnpm 12.4.2: 258 selected image/cache,
+  image/public API, security, Dispatcharr parser/client, SSRF and Dashboard
+  tests, server typecheck/build, and lint (766 existing warnings). Heavy jobs
+  ran sequentially with two Vitest workers. An isolated process in the live
+  container exercised the compiled patch on three actual VOD posters and a
+  channel logo, producing uncropped WebPs and cache hits. Server configuration
+  was read from the live DB; writes used a stub and a temporary cache, which
+  was removed. The running application was not patched or restarted.
+  Full CI, Docker builds/E2E and complete provider smoke were not run.
+  The absent local warning reference was restored as a scoped summary rather
+  than claiming historical per-job warning counts.
 - Dispatcharr channel-logo proxy requests must use the configured server origin
   and an empty header set. Do not reintroduce generic `Accept` or auth headers
   when refactoring the shared image-proxy request builder; preserve URL
@@ -468,11 +537,12 @@ Server routes and services:
   The artwork container is transparent when an image exists, exposing the
   card's blurred backdrop in letterbox/pillarbox space; it keeps `bg-muted`
   only for the missing-image server-icon placeholder. Real artwork has no
-  shadow. On hover or while paused, the dimmer uses the same proxied image
-  as an alpha mask, so transparent pixels and reserved padding stay clear.
-  The mask covers only the dimmer, never the Play/Pause icon, and follows the
-  image's aspect ratio and corner radius, with 1px of overdraw on each side
-  to cover bright subpixel seams along the image edge.
+  shadow. On hover or while paused, `brightness(0.5)` dims only the image
+  element's source colors, preserving its alpha channel and transparent padding.
+  The Play/Pause icon is a separate sibling and stays white. Do not restore a
+  separate alpha-masked black dimmer: it applies alpha twice at partially
+  transparent edges, leaving a bright fringe even with matching bounds.
+  Enlarging that mask by 1px also misaligns transparent logo details on hover.
   Images with `mediaType === 'live'` (including Dispatcharr catch-up) have
   square corners for every provider; other artwork remains rounded.
   Outer card corners and the missing-image placeholder remain unchanged.
@@ -494,6 +564,20 @@ Server routes and services:
   and lint passed with two Vitest workers and Turbo concurrency one.
   Chromium checked transparent and opaque pixels before/after hover;
   the icon remains unmasked and transparent pixels remain unchanged.
+  The final hover alignment follow-up replaces the separate alpha-masked
+  dimmer with an image-only brightness filter. Removing the 1px margin fixed
+  stretched lettering, but the separate mask still left semitransparent edge
+  pixels too bright. The filter preserves source alpha and leaves the sibling
+  Play/Pause icon and transparent backdrop unchanged.
+  Validation passed with Node 24 / pnpm 12.4.2: 30 focused component tests,
+  all 1,868 web tests, full typecheck, lint (766 warnings) and web build.
+  Heavy jobs ran sequentially, with two Vitest workers and Turbo concurrency
+  one. Chromium checked the actual proxied TVN 7 logo at scales 1, 1.01 and
+  1.02 against independently darkened source RGB with unchanged alpha;
+  transparent samples were identical and color differences stayed within
+  one channel value of rounding. Paused catch-up, VOD corners, the placeholder
+  and undimmed controls also passed. Sessions were mocked for these browser
+  fixtures; live-provider smoke and Docker jobs were not run.
 - `apps/server/src/routes/public.ts` and `apps/server/src/routes/public.openapi.ts` expose Dispatcharr-aware live media fields in public API responses.
 - Dashboard daily stats keep `todayPlays`, `todaySessions`, and `watchTimeHours` as VOD-only metrics, add `tvSessions`, `tvChannels`, and `tvWatchTimeHours` for `mediaType === 'live'`, and count `activeUsersToday` across all media types so Dispatcharr Live TV/catch-up activity is no longer invisible on the homepage.
 - Dispatcharr Server Resources are supplied by the separate `Dispatcharr-Metrics` v1 plugin. The plugin broadcasts sanitized `tracearr_server_stats` schema version `1` messages on the existing authenticated `updates` WebSocket; Tracearr accepts only finite timestamps and 0–100 utilization values. `process*` samples describe the complete Docker `web` container cgroup (including FFmpeg and cache-backed memory), not the host. If Docker has no explicit memory limit, the container memory percentage uses host-visible `MemTotal` as denominator, matching Docker Stats' no-limit behavior. `host*` samples are true host-wide CPU and memory utilization via Dispatcharr's bundled `psutil`, constrained to `0.00–100.00%`; they include every process visible to the host. The same plugin publishes `tracearr_bandwidth_stats` schema version `1` aggregate one-second samples (`lanBytes` and `wanBytes`) for the dashboard Bandwidth card; Tracearr retains 156 samples. A zero-valued sample is valid and shows the card; missing or invalid fields do not. Username/password authentication is required to keep the Dispatcharr WebSocket; API-key mode remains REST-only and has no resource or bandwidth samples. v1 supports Docker AIO and modular `web` deployments only; bare-metal/systemd is intentionally unsupported.

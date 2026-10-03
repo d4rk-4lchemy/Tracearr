@@ -5,6 +5,12 @@ import { setTimeFormat } from '@/lib/timeFormat';
 import { NowPlayingCard } from './NowPlayingCard';
 import type { ActiveSession } from '@tracearr/shared';
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => (key === 'pages:automations.options.trailer' ? 'Trailer' : key),
+  }),
+}));
+
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { role: 'user' } }),
 }));
@@ -133,6 +139,21 @@ function getProgressTranslatePercent(container: HTMLElement): number | null {
 describe('NowPlayingCard ffmpeg speed display', () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  it.each([null, 2026])('labels a Plex trailer with year %s without changing its title', (year) => {
+    render(
+      <NowPlayingCard
+        session={makeSession({
+          mediaType: 'trailer',
+          mediaTitle: 'Movie title',
+          year,
+          server: { id: 'plex-1', name: 'Plex', type: 'plex' },
+        })}
+      />
+    );
+    expect(screen.getByText('Movie title')).toBeTruthy();
+    expect(screen.getByText(year ? `Trailer · ${year}` : 'Trailer')).toBeTruthy();
   });
 
   it('shows a catch-up icon for Dispatcharr catch-up cards', () => {
@@ -382,20 +403,10 @@ describe('NowPlayingCard ffmpeg speed display', () => {
         'overflow-visible'
       );
       expect(container.querySelector('svg.lucide-play')).toHaveClass('h-8', 'w-8', 'shrink-0');
-      const dimmer = screen.getByTestId('artwork-dimmer');
-      expect(dimmer.style.maskImage).toBe(`url(${JSON.stringify(poster?.getAttribute('src'))})`);
-      expect(dimmer).toHaveStyle({
-        inset: '-1px',
-        maskMode: 'alpha',
-        maskSize: '100% 100%',
-        maskRepeat: 'no-repeat',
-      });
-      expect(dimmer).toHaveClass('pointer-events-none', 'bg-black/50');
-      if (mediaType === 'live') {
-        expect(dimmer).not.toHaveClass('rounded-lg');
-      } else {
-        expect(dimmer).toHaveClass('rounded-lg');
-      }
+      expect(poster).toHaveClass('transition-[filter]', 'group-hover:brightness-50');
+      expect(poster).not.toHaveClass('brightness-50');
+      expect(screen.queryByTestId('artwork-dimmer')).toBeNull();
+      expect(screen.getByTestId('artwork-playback-overlay')).not.toHaveClass('brightness-50');
       expect(container.querySelector('svg.lucide-play')?.parentElement).toBe(
         screen.getByTestId('artwork-playback-overlay')
       );
@@ -444,8 +455,9 @@ describe('NowPlayingCard ffmpeg speed display', () => {
       'w-8',
       'shrink-0'
     );
-    expect(screen.getByTestId('artwork-dimmer')).not.toHaveClass('rounded-lg');
-    expect(screen.getByTestId('artwork-dimmer').style.maskMode).toBe('alpha');
+    expect(container.querySelector('img[src*="images/proxy"]')).toHaveClass('brightness-50');
+    expect(screen.queryByTestId('artwork-dimmer')).toBeNull();
+    expect(screen.getByTestId('artwork-playback-overlay')).not.toHaveClass('brightness-50');
     expect(screen.getByTestId('card-artwork')).not.toHaveClass('bg-muted', 'overflow-hidden');
   });
 

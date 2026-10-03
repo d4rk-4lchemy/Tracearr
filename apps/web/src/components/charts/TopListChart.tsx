@@ -20,6 +20,10 @@ interface TopListChartProps {
   colorful?: boolean;
   /** How many leading rows of `data` to plot; the rest is omitted. */
   limit?: number;
+  /** Makes bars clickable; `point` is the click position inside the chart container. */
+  onItemClick?: (index: number, point: { x: number; y: number }) => void;
+  /** Rows that stay inert when onItemClick is set, e.g. an aggregated "Other". */
+  isItemClickable?: (index: number) => boolean;
 }
 
 // Colorblind-friendly palette for distinct items
@@ -44,6 +48,8 @@ export function TopListChart({
   color = 'hsl(var(--primary))',
   colorful = false,
   limit = 10,
+  onItemClick,
+  isItemClickable,
 }: TopListChartProps) {
   const options = useMemo<Highcharts.Options>(() => {
     if (!data || data.length === 0) {
@@ -53,9 +59,11 @@ export function TopListChart({
     const top10 = data.slice(0, limit);
 
     // Build series data with optional per-bar colors
+    const clickable = (i: number) => !!onItemClick && (isItemClickable?.(i) ?? true);
     const seriesData = top10.map((d, i) => ({
       y: d.value,
       color: colorful ? CHART_COLORS[i % CHART_COLORS.length] : color,
+      className: clickable(i) ? 'cursor-pointer' : undefined,
     }));
 
     return {
@@ -116,6 +124,14 @@ export function TopListChart({
               brightness: 0.15,
             },
           },
+          point: {
+            events: {
+              click: function (event) {
+                if (!clickable(this.index)) return;
+                onItemClick?.(this.index, { x: event.chartX, y: event.chartY });
+              },
+            },
+          },
         },
       },
       tooltip: {
@@ -143,7 +159,7 @@ export function TopListChart({
         },
       ],
     };
-  }, [data, height, valueLabel, color, colorful, limit]);
+  }, [data, height, valueLabel, color, colorful, limit, onItemClick, isItemClickable]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;

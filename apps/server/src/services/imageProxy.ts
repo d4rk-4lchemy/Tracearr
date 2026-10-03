@@ -65,9 +65,34 @@ const FALLBACK_ART = `<svg xmlns="http://www.w3.org/2000/svg" width="500" height
 
 export type FallbackType = 'poster' | 'avatar' | 'art';
 
+// Dispatcharr VOD metadata can point directly at TMDB's public image CDN.
+// This is a narrow exception to origin pinning, never a general URL proxy.
+function dispatcharrTmdbImageUrl(imagePath: string): string | null {
+  try {
+    const parsed = new URL(imagePath);
+    if (
+      parsed.origin === 'https://image.tmdb.org' &&
+      !parsed.username &&
+      !parsed.password &&
+      !parsed.search &&
+      !parsed.hash &&
+      /^\/t\/p\/(?:original|w\d+(?:_and_h\d+_bestv2)?)\/[a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp)$/.test(
+        parsed.pathname
+      )
+    ) {
+      return parsed.href;
+    }
+  } catch {
+    // Relative paths continue through the configured Dispatcharr server.
+  }
+  return null;
+}
+
 export function normalizeDispatcharrImagePath(imagePath: string | null | undefined): string | null {
   const trimmed = imagePath?.trim();
   if (!trimmed) return null;
+  const tmdbUrl = dispatcharrTmdbImageUrl(trimmed);
+  if (tmdbUrl) return tmdbUrl;
   try {
     const parsed = new URL(trimmed);
     return `${parsed.pathname}${parsed.search}`;
@@ -369,6 +394,14 @@ export function buildUpstreamRequest(
 ): { imageUrl: string; headers: Record<string, string> } {
   const baseUrl = server.url.replace(/\/$/, '');
 
+  if (server.type === 'dispatcharr') {
+    const tmdbUrl = dispatcharrTmdbImageUrl(imagePath);
+    if (tmdbUrl) {
+      assertSafeProbeUrl(baseUrl);
+      return { imageUrl: tmdbUrl, headers: {} };
+    }
+  }
+
   // Origin pinning makes the configured server the only reachable host, so one
   // check on the base URL covers every request shape built below.
   assertSameOrigin(baseUrl, imagePath);
@@ -512,6 +545,10 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
       try {
         const response = await fetch(imageUrl, {
           headers,
+          // The CDN exception must not redirect to an unapproved origin.
+          ...(server.type === 'dispatcharr' && dispatcharrTmdbImageUrl(imageUrl)
+            ? { redirect: 'error' as const }
+            : {}),
           signal: AbortSignal.timeout(10000), // 10 second timeout
         });
 

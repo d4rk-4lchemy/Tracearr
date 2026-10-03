@@ -27,6 +27,7 @@ vi.mock('@/hooks/queries', async () => {
     useCatalogWindow: vi.fn(),
     useCatalogLetters: vi.fn(),
     useGenres: vi.fn(),
+    useCatalogCodecs: vi.fn(() => ({ data: { video: ['HEVC'], audio: [] } })),
     useLibraries: vi.fn(),
     buildLetterOffsets: actual.buildLetterOffsets,
     activeLetterForItem: actual.activeLetterForItem,
@@ -75,7 +76,13 @@ vi.mock('@/components/media-browse/VirtualPosterGrid', async () => {
   };
 });
 
-import { useCatalogWindow, useCatalogLetters, useGenres, useLibraries } from '@/hooks/queries';
+import {
+  useCatalogWindow,
+  useCatalogLetters,
+  useGenres,
+  useCatalogCodecs,
+  useLibraries,
+} from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
 
 const mockUseCatalogWindow = vi.mocked(useCatalogWindow);
@@ -163,6 +170,23 @@ describe('MediaGrid', () => {
     scrollToItemMock.mockClear();
     gridPropsSpy.mockClear();
     window.history.replaceState(null, '');
+  });
+
+  it('scopes codec choices to library servers in a mixed Dispatcharr selection', () => {
+    mockUseServer.mockReturnValue(
+      serverReturn({
+        selectedServerIds: ['srv-1', 'dispatcharr-1'],
+        mediaLibraryServerIds: ['srv-1'],
+      })
+    );
+    mockUseCatalogWindow.mockReturnValue(windowResult());
+    renderGrid();
+    expect(useCatalogCodecs).toHaveBeenLastCalledWith('movie', ['srv-1']);
+    expect(mockUseLibraries).toHaveBeenLastCalledWith(['srv-1']);
+    expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ serverIds: ['srv-1'] }),
+      expect.anything()
+    );
   });
 
   it('always requests the anyone-grain catalog window - the per-identity lens picker is gone', () => {
@@ -285,6 +309,21 @@ describe('MediaGrid', () => {
     expect(JSON.parse(localStorage.getItem('tracearr_media_filters_movie') ?? '{}')).toMatchObject({
       genre: 'Comedy',
     });
+  });
+
+  it('applies codec query params from a Quality page chart link on arrival', () => {
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
+
+    renderGrid('/media/browse?type=shows&videoCodec=HEVC');
+
+    expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: 'show',
+        filters: expect.objectContaining({ videoCodec: 'HEVC' }),
+      }),
+      expect.anything()
+    );
   });
 
   it('drops a server filter that leaves the global selection instead of widening scope', () => {

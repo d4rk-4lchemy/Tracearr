@@ -467,8 +467,8 @@ export function buildHydrationQuery(
       ? sql`LEFT JOIN LATERAL (
             SELECT li.parent_index, li.item_index
             FROM library_items li
-            WHERE li.media_id = m.id AND li.removed_at IS NULL ${serverFragmentLi}
-            ORDER BY (li.parent_index IS NULL), (li.item_index IS NULL), li.id
+            WHERE li.media_id = m.id ${serverFragmentLi}
+            ORDER BY (li.removed_at IS NOT NULL), (li.parent_index IS NULL), (li.item_index IS NULL), li.id
             LIMIT 1
           ) ep ON true`
       : sql``;
@@ -564,14 +564,15 @@ export async function listWatchedMedia(
   // The cursor stays a keyset value rather than an offset, so it survives the
   // list being recomputed mid-walk: the position is found by value, and a
   // title that gained activity since simply sorts ahead of where we are.
-  const start = args.cursorValue
-    ? candidates.findIndex(([id, day]) => {
-        const cursorTime = args.cursorValue!.startedAt.getTime();
-        const cursorId = args.cursorValue!.id.toLowerCase();
-        const rowTime = new Date(day).getTime();
-        return rowTime < cursorTime || (rowTime === cursorTime && id < cursorId);
-      })
-    : 0;
+  let start = 0;
+  if (args.cursorValue) {
+    const cursorTime = args.cursorValue.startedAt.getTime();
+    const cursorId = args.cursorValue.id.toLowerCase();
+    start = candidates.findIndex(([id, day]) => {
+      const rowTime = new Date(day).getTime();
+      return rowTime < cursorTime || (rowTime === cursorTime && id < cursorId);
+    });
+  }
   const window = start === -1 ? [] : candidates.slice(start, start + args.pageSize);
 
   if (window.length === 0) return { data: [], nextCursor: null };
