@@ -273,8 +273,9 @@ Newsletter send tests now freeze Date around their fixed watermark. Media E2E
 seeding explicitly refreshes library_stats_daily after commit so fresh databases
 expose the overview without waiting for background aggregation. Production
 behavior, Dispatcharr overlay and both GitHub workflows are unchanged.
-Local validation must run heavy jobs sequentially on the 8 GB LXC, with one
-Vitest worker and Turbo concurrency one; see AGENTS.md and the warning reference.
+Local validation must run heavy jobs sequentially on the 8 GB LXC, with up to two
+Vitest/Playwright workers and Turbo concurrency one (user-approved October 3);
+see AGENTS.md and the warning reference.
 Validation passed with Node 24 / pnpm 12.4.2: services 3,917/3,917, fresh-volume
 E2E 56 passed / 26 skipped without retries, lint (751 existing warnings), and
 typecheck (11 tasks, nine cached). Services retains 108 warning-like messages.
@@ -444,6 +445,10 @@ Server routes and services:
   when refactoring the shared image-proxy request builder; preserve URL
   normalization and `fit: inside` while retaining upstream cache/LQIP behavior
   for other server types.
+- Session Details artwork uses `object-contain` in its existing fixed image
+  slot, so Live TV logos and VOD posters remain fully visible. Preserve this
+  fit when merging the shared active/history detail panel; it has no artwork
+  mask or playback overlay.
 - Uncropped Dashboard artwork is a permanent, intentional fork behavior,
   not a temporary workaround:
   preserve it when merging upstream image-proxy or Dashboard changes.
@@ -462,13 +467,33 @@ Server routes and services:
   `artwork=2` only to refresh browser caches; this is not a server cache variant.
   The artwork container is transparent when an image exists, exposing the
   card's blurred backdrop in letterbox/pillarbox space; it keeps `bg-muted`
-  only for the missing-image server-icon placeholder. The shadow and hover
-  dimmer belong to that inner visual element, never to the fixed poster slot.
+  only for the missing-image server-icon placeholder. Real artwork has no
+  shadow. On hover or while paused, the dimmer uses the same proxied image
+  as an alpha mask, so transparent pixels and reserved padding stay clear.
+  The mask covers only the dimmer, never the Play/Pause icon, and follows the
+  image's aspect ratio and corner radius, with 1px of overdraw on each side
+  to cover bright subpixel seams along the image edge.
+  Images with `mediaType === 'live'` (including Dispatcharr catch-up) have
+  square corners for every provider; other artwork remains rounded.
+  Outer card corners and the missing-image placeholder remain unchanged.
+  Play appears on hover; Pause stays visible while paused.
   The `32px` Play/Pause icon is `shrink-0` and may extend past an extremely
   small image, so it must never be clipped by the artwork container.
   Validated with Node 24 / pnpm 12.3.4: services (3,347 passed, one skipped),
   web (1,224 passed with two workers), typecheck, lint (754 warnings, unchanged),
   and build. Docker and live-provider manual smoke checks were not run.
+  October 3 artwork follow-up: removed image shadows and playback dimming,
+  and made Live TV/catch-up image corners square. Validation passed on Node 24 /
+  pnpm 12.4.2: 30 component tests, 1,868 web tests, full typecheck and lint
+  (766 existing warnings). Heavy jobs ran sequentially; the full web run
+  started with one worker before the user approved two. Chromium fixture
+  inspection covered transparent logos before/after hover, paused catch-up,
+  rounded VOD and the no-image placeholder. No live-provider smoke was run.
+  Subsequent alpha-mask follow-up restores hover/paused dimming only over
+  visible artwork pixels. The same 30 component / 1,868 web tests, typecheck
+  and lint passed with two Vitest workers and Turbo concurrency one.
+  Chromium checked transparent and opaque pixels before/after hover;
+  the icon remains unmasked and transparent pixels remain unchanged.
 - `apps/server/src/routes/public.ts` and `apps/server/src/routes/public.openapi.ts` expose Dispatcharr-aware live media fields in public API responses.
 - Dashboard daily stats keep `todayPlays`, `todaySessions`, and `watchTimeHours` as VOD-only metrics, add `tvSessions`, `tvChannels`, and `tvWatchTimeHours` for `mediaType === 'live'`, and count `activeUsersToday` across all media types so Dispatcharr Live TV/catch-up activity is no longer invisible on the homepage.
 - Dispatcharr Server Resources are supplied by the separate `Dispatcharr-Metrics` v1 plugin. The plugin broadcasts sanitized `tracearr_server_stats` schema version `1` messages on the existing authenticated `updates` WebSocket; Tracearr accepts only finite timestamps and 0–100 utilization values. `process*` samples describe the complete Docker `web` container cgroup (including FFmpeg and cache-backed memory), not the host. If Docker has no explicit memory limit, the container memory percentage uses host-visible `MemTotal` as denominator, matching Docker Stats' no-limit behavior. `host*` samples are true host-wide CPU and memory utilization via Dispatcharr's bundled `psutil`, constrained to `0.00–100.00%`; they include every process visible to the host. The same plugin publishes `tracearr_bandwidth_stats` schema version `1` aggregate one-second samples (`lanBytes` and `wanBytes`) for the dashboard Bandwidth card; Tracearr retains 156 samples. A zero-valued sample is valid and shows the card; missing or invalid fields do not. Username/password authentication is required to keep the Dispatcharr WebSocket; API-key mode remains REST-only and has no resource or bandwidth samples. v1 supports Docker AIO and modular `web` deployments only; bare-metal/systemd is intentionally unsupported.

@@ -280,7 +280,7 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
             <img
               src={posterUrl}
               alt={primary}
-              className="h-20 w-14 flex-shrink-0 rounded object-cover"
+              className="h-20 w-14 flex-shrink-0 rounded object-contain"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
               }}

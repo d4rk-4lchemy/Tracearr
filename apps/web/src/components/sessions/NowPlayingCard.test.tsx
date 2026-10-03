@@ -367,19 +367,93 @@ describe('NowPlayingCard ffmpeg speed display', () => {
       expect(screen.getByTestId('card-artwork')).not.toHaveClass('overflow-hidden');
       expect(poster).toHaveClass('max-h-28');
       expect(poster).toHaveClass('max-w-20');
-      expect(poster).toHaveClass('shadow-lg');
+      expect(poster).not.toHaveClass('shadow-lg');
+      if (mediaType === 'live') {
+        expect(poster).not.toHaveClass('rounded-lg');
+      } else {
+        expect(poster).toHaveClass('rounded-lg');
+      }
+      expect(screen.getByTestId('artwork-playback-overlay')).not.toHaveClass('bg-black/50');
+      expect(screen.getByTestId('artwork-playback-overlay')).toHaveClass(
+        'opacity-0',
+        'group-hover:opacity-100'
+      );
       expect(screen.getByTestId('artwork-playback-overlay').parentElement).toHaveClass(
         'overflow-visible'
       );
       expect(container.querySelector('svg.lucide-play')).toHaveClass('h-8', 'w-8', 'shrink-0');
+      const dimmer = screen.getByTestId('artwork-dimmer');
+      expect(dimmer.style.maskImage).toBe(`url(${JSON.stringify(poster?.getAttribute('src'))})`);
+      expect(dimmer).toHaveStyle({
+        inset: '-1px',
+        maskMode: 'alpha',
+        maskSize: '100% 100%',
+        maskRepeat: 'no-repeat',
+      });
+      expect(dimmer).toHaveClass('pointer-events-none', 'bg-black/50');
+      if (mediaType === 'live') {
+        expect(dimmer).not.toHaveClass('rounded-lg');
+      } else {
+        expect(dimmer).toHaveClass('rounded-lg');
+      }
+      expect(container.querySelector('svg.lucide-play')?.parentElement).toBe(
+        screen.getByTestId('artwork-playback-overlay')
+      );
       expect(poster?.getAttribute('src')).toContain('&artwork=2');
     }
   );
+
+  it.each(['dispatcharr', 'plex', 'jellyfin', 'emby'] as const)(
+    'keeps live artwork square and the outer card rounded for %s',
+    (type) => {
+      const { container } = render(
+        <NowPlayingCard
+          session={makeSession({
+            thumbPath: '/logo.png',
+            server: { id: 'server-1', name: type, type },
+          })}
+        />
+      );
+      expect(container.querySelector('img[src*="images/proxy"]')).not.toHaveClass('rounded-lg');
+      expect(container.firstElementChild).toHaveClass('rounded-xl');
+    }
+  );
+
+  it('keeps paused catch-up artwork square with a visible, undimmed Pause icon', () => {
+    const { container } = render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          state: 'paused',
+          thumbPath: '/catchup.png',
+        })}
+      />
+    );
+    expect(container.querySelector('img[src*="images/proxy"]')).not.toHaveClass(
+      'rounded-lg',
+      'shadow-lg'
+    );
+    expect(screen.getByTestId('artwork-playback-overlay')).toHaveClass('opacity-100');
+    expect(screen.getByTestId('artwork-playback-overlay')).not.toHaveClass(
+      'bg-black/50',
+      'opacity-0'
+    );
+    expect(container.querySelector('svg.lucide-pause')).toHaveClass(
+      'relative',
+      'h-8',
+      'w-8',
+      'shrink-0'
+    );
+    expect(screen.getByTestId('artwork-dimmer')).not.toHaveClass('rounded-lg');
+    expect(screen.getByTestId('artwork-dimmer').style.maskMode).toBe('alpha');
+    expect(screen.getByTestId('card-artwork')).not.toHaveClass('bg-muted', 'overflow-hidden');
+  });
 
   it('keeps the gray artwork placeholder when no image exists', () => {
     render(<NowPlayingCard session={makeSession({ thumbPath: null })} />);
 
     expect(screen.getByTestId('card-artwork')).toHaveClass('bg-muted');
+    expect(screen.queryByTestId('artwork-dimmer')).toBeNull();
   });
 
   it('proxies absolute Dispatcharr live channel logos for card artwork', () => {

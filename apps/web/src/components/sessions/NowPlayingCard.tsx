@@ -91,19 +91,45 @@ function DeviceIcon({ session, className }: { session: ActiveSession; className?
   return <Monitor className={className} />;
 }
 
-function PlaybackOverlay({ isPaused }: { isPaused: boolean }) {
+function PlaybackOverlay({
+  isPaused,
+  artworkUrl,
+  roundedArtwork = false,
+}: {
+  isPaused: boolean;
+  artworkUrl?: string;
+  roundedArtwork?: boolean;
+}) {
   return (
     <div
       data-testid="artwork-playback-overlay"
       className={cn(
-        'absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 transition-opacity',
+        'absolute inset-0 flex items-center justify-center transition-opacity',
         isPaused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
       )}
     >
+      {artworkUrl && (
+        <span
+          aria-hidden="true"
+          data-testid="artwork-dimmer"
+          className={cn('pointer-events-none absolute bg-black/50', roundedArtwork && 'rounded-lg')}
+          style={{
+            // Cover subpixel seams where the image and its alpha mask rasterize differently.
+            inset: -1,
+            maskImage: `url(${JSON.stringify(artworkUrl)})`,
+            maskMode: 'alpha',
+            maskSize: '100% 100%',
+            maskRepeat: 'no-repeat',
+            WebkitMaskImage: `url(${JSON.stringify(artworkUrl)})`,
+            WebkitMaskSize: '100% 100%',
+            WebkitMaskRepeat: 'no-repeat',
+          }}
+        />
+      )}
       {isPaused ? (
-        <Pause className="h-8 w-8 shrink-0 text-white" />
+        <Pause className="relative h-8 w-8 shrink-0 text-white" />
       ) : (
-        <Play className="h-8 w-8 shrink-0 text-white" />
+        <Play className="relative h-8 w-8 shrink-0 text-white" />
       )}
     </div>
   );
@@ -191,17 +217,23 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
           >
             {posterUrl ? (
               <div className="absolute inset-0 flex items-center justify-center">
-                {/* The inner element takes the image's actual aspect ratio.
-                    Effects apply here rather than to the reserved poster slot. */}
+                {/* Keep the playback icon centered on the image's actual aspect ratio. */}
                 <div className="relative max-h-full max-w-full overflow-visible">
                   <img
                     src={posterUrl}
                     alt={title}
-                    className="block h-auto max-h-28 w-auto max-w-20 rounded-lg shadow-lg"
+                    className={cn(
+                      'block h-auto max-h-28 w-auto max-w-20',
+                      session.mediaType !== 'live' && 'rounded-lg'
+                    )}
                     loading="lazy"
                   />
                   {/* No overflow clipping: a tiny source must not crop the fixed-size control. */}
-                  <PlaybackOverlay isPaused={isPaused} />
+                  <PlaybackOverlay
+                    isPaused={isPaused}
+                    artworkUrl={posterUrl}
+                    roundedArtwork={session.mediaType !== 'live'}
+                  />
                 </div>
               </div>
             ) : (
