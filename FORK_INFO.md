@@ -468,12 +468,12 @@ Server routes and services:
   The artwork container is transparent when an image exists, exposing the
   card's blurred backdrop in letterbox/pillarbox space; it keeps `bg-muted`
   only for the missing-image server-icon placeholder. Real artwork has no
-  shadow. On hover or while paused, the dimmer uses the same proxied image
-  as an alpha mask, so transparent pixels and reserved padding stay clear.
-  The mask covers only the dimmer, never the Play/Pause icon, and follows the
-  image's exact bounds, aspect ratio and corner radius. Do not enlarge the
-  mask: a 1px outward margin stretches transparent logo details away from
-  the underlying image, especially during card hover scaling.
+  shadow. On hover or while paused, `brightness(0.5)` dims only the image
+  element's source colors, preserving its alpha channel and transparent padding.
+  The Play/Pause icon is a separate sibling and stays white. Do not restore a
+  separate alpha-masked black dimmer: it applies alpha twice at partially
+  transparent edges, leaving a bright fringe even with matching bounds.
+  Enlarging that mask by 1px also misaligns transparent logo details on hover.
   Images with `mediaType === 'live'` (including Dispatcharr catch-up) have
   square corners for every provider; other artwork remains rounded.
   Outer card corners and the missing-image placeholder remain unchanged.
