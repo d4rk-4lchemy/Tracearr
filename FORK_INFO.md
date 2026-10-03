@@ -75,9 +75,10 @@ types remain present.
 
 The shared image proxy retains uncropped `inside` resizing for every provider.
 Upstream image-path restrictions remain for Plex/Jellyfin/Emby; Dispatcharr
-images remain pinned to the configured origin without auth headers and accept
-provider-relative VOD poster paths as well as channel logos. Both Dockerfiles
-retain fork migrations, fork build metadata, and builder-generated basemap
+channel logos and relative images remain pinned to the configured origin without
+auth headers. Public TMDB VOD image URLs retain their CDN origin through the
+narrow exception documented below. Both Dockerfiles retain fork migrations,
+fork build metadata, and builder-generated basemap
 copies. The release workflow can still prefetch the basemap into the build
 context. Exactly the PR-only CI and fork dual-registry release workflows
 remain; upstream release, geoip, nightly and insiders workflows were excluded.
@@ -440,6 +441,26 @@ Server routes and services:
 - `apps/server/src/services/sync.ts` syncs Dispatcharr users through the generic user sync path.
 - `apps/server/src/services/termination.ts` passes Dispatcharr config into session termination.
 - `apps/server/src/services/imageProxy.ts` normalizes Dispatcharr image paths, supports Dispatcharr channel logos, and uses `inside` resize fit for Dispatcharr images.
+- Dispatcharr VOD posters may use the public TMDB CDN. Preserve absolute HTTPS
+  `image.tmdb.org/t/p/<size>/<image>` URLs with raster filenames and no query,
+  fragment or credentials. Fetch with empty headers and reject redirects;
+  never allow arbitrary external origins or extend the exception to other
+  providers. Relative posters and absolute channel logos still normalize onto
+  the configured Dispatcharr origin. A live October 3 investigation of
+  2.6.0-r1 confirmed that stripping the TMDB origin caused Dispatcharr's SPA
+  HTML to be fetched instead of the available JPEG. Existing history paths
+  already contain the full URL, so this needs no data migration or cache purge.
+  Validation passed with Node 24 / pnpm 12.4.2: 258 selected image/cache,
+  image/public API, security, Dispatcharr parser/client, SSRF and Dashboard
+  tests, server typecheck/build, and lint (766 existing warnings). Heavy jobs
+  ran sequentially with two Vitest workers. An isolated process in the live
+  container exercised the compiled patch on three actual VOD posters and a
+  channel logo, producing uncropped WebPs and cache hits. Server configuration
+  was read from the live DB; writes used a stub and a temporary cache, which
+  was removed. The running application was not patched or restarted.
+  Full CI, Docker builds/E2E and complete provider smoke were not run.
+  The absent local warning reference was restored as a scoped summary rather
+  than claiming historical per-job warning counts.
 - Dispatcharr channel-logo proxy requests must use the configured server origin
   and an empty header set. Do not reintroduce generic `Accept` or auth headers
   when refactoring the shared image-proxy request builder; preserve URL
@@ -495,6 +516,20 @@ Server routes and services:
   and lint passed with two Vitest workers and Turbo concurrency one.
   Chromium checked transparent and opaque pixels before/after hover;
   the icon remains unmasked and transparent pixels remain unchanged.
+  The final hover alignment follow-up replaces the separate alpha-masked
+  dimmer with an image-only brightness filter. Removing the 1px margin fixed
+  stretched lettering, but the separate mask still left semitransparent edge
+  pixels too bright. The filter preserves source alpha and leaves the sibling
+  Play/Pause icon and transparent backdrop unchanged.
+  Validation passed with Node 24 / pnpm 12.4.2: 30 focused component tests,
+  all 1,868 web tests, full typecheck, lint (766 warnings) and web build.
+  Heavy jobs ran sequentially, with two Vitest workers and Turbo concurrency
+  one. Chromium checked the actual proxied TVN 7 logo at scales 1, 1.01 and
+  1.02 against independently darkened source RGB with unchanged alpha;
+  transparent samples were identical and color differences stayed within
+  one channel value of rounding. Paused catch-up, VOD corners, the placeholder
+  and undimmed controls also passed. Sessions were mocked for these browser
+  fixtures; live-provider smoke and Docker jobs were not run.
 - `apps/server/src/routes/public.ts` and `apps/server/src/routes/public.openapi.ts` expose Dispatcharr-aware live media fields in public API responses.
 - Dashboard daily stats keep `todayPlays`, `todaySessions`, and `watchTimeHours` as VOD-only metrics, add `tvSessions`, `tvChannels`, and `tvWatchTimeHours` for `mediaType === 'live'`, and count `activeUsersToday` across all media types so Dispatcharr Live TV/catch-up activity is no longer invisible on the homepage.
 - Dispatcharr Server Resources are supplied by the separate `Dispatcharr-Metrics` v1 plugin. The plugin broadcasts sanitized `tracearr_server_stats` schema version `1` messages on the existing authenticated `updates` WebSocket; Tracearr accepts only finite timestamps and 0–100 utilization values. `process*` samples describe the complete Docker `web` container cgroup (including FFmpeg and cache-backed memory), not the host. If Docker has no explicit memory limit, the container memory percentage uses host-visible `MemTotal` as denominator, matching Docker Stats' no-limit behavior. `host*` samples are true host-wide CPU and memory utilization via Dispatcharr's bundled `psutil`, constrained to `0.00–100.00%`; they include every process visible to the host. The same plugin publishes `tracearr_bandwidth_stats` schema version `1` aggregate one-second samples (`lanBytes` and `wanBytes`) for the dashboard Bandwidth card; Tracearr retains 156 samples. A zero-valued sample is valid and shows the card; missing or invalid fields do not. Username/password authentication is required to keep the Dispatcharr WebSocket; API-key mode remains REST-only and has no resource or bandwidth samples. v1 supports Docker AIO and modular `web` deployments only; bare-metal/systemd is intentionally unsupported.

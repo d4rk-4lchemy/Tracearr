@@ -49,11 +49,14 @@ import {
   posterCacheFileName,
   buildLqipPlaceholder,
   buildUpstreamRequest,
+  normalizeDispatcharrImagePath,
   persistDominantColorIfNeeded,
   _resetServerRowCacheForTests,
 } from '../imageProxy.js';
 
 const CACHE_DIR = join(process.cwd(), 'data', 'image-cache');
+const TMDB_POSTER =
+  'https://image.tmdb.org/t/p/w600_and_h900_bestv2/X5FFkfGVxEvjYT6zL2g3UMQYXC.jpg';
 
 function mockSelectChain(rows: unknown[]) {
   const chain = {
@@ -91,6 +94,22 @@ describe('posterVersionFor', () => {
 
   it('produces different fingerprints for different paths', () => {
     expect(posterVersionFor('/a')).not.toBe(posterVersionFor('/b'));
+  });
+});
+
+describe('normalizeDispatcharrImagePath', () => {
+  it('preserves the public TMDB poster URL supplied by VOD metadata', () => {
+    expect(normalizeDispatcharrImagePath(` ${TMDB_POSTER} `)).toBe(TMDB_POSTER);
+  });
+
+  it('still pins absolute channel logos to the configured Dispatcharr server', () => {
+    expect(
+      normalizeDispatcharrImagePath('https://provider.example/api/channels/logos/1/cache/?v=2')
+    ).toBe('/api/channels/logos/1/cache/?v=2');
+    expect(normalizeDispatcharrImagePath('api/channels/logos/1/cache/')).toBe(
+      '/api/channels/logos/1/cache/'
+    );
+    expect(normalizeDispatcharrImagePath(' ')).toBeNull();
   });
 });
 
@@ -219,6 +238,60 @@ describe('proxyImage cache-miss pipeline', () => {
 
   afterEach(() => {
     fetchSpy.mockRestore();
+  });
+
+  it('fetches and caches a Dispatcharr VOD poster from TMDB without provider credentials', async () => {
+    const updates = mockUpdateChain();
+    const serverId = randomUUID();
+    mockSelectChain([
+      { id: serverId, type: 'dispatcharr', url: 'https://dispatcharr.example', token: 'secret' },
+    ]);
+    const input = await sharp({
+      create: { width: 200, height: 800, channels: 4, background: '#ff000080' },
+    })
+      .png()
+      .toBuffer();
+    fetchSpy.mockResolvedValue(new Response(input, { headers: { 'content-type': 'image/png' } }));
+
+    const result = await proxyImage({
+      serverId,
+      imagePath: TMDB_POSTER,
+      width: 360,
+      height: 540,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledExactlyOnceWith(TMDB_POSTER, {
+      headers: {},
+      redirect: 'error',
+      signal: expect.any(AbortSignal),
+    });
+    expect(result.contentType).toBe('image/webp');
+    expect(result.degraded).toBeUndefined();
+    const meta = await sharp(result.data).metadata();
+    expect(meta.width).toBe(135);
+    expect(meta.height).toBe(540);
+    expect(meta.hasAlpha).toBe(true);
+    expect(rename).toHaveBeenCalledWith(
+      expect.any(String),
+      expectedCachePath(serverId, TMDB_POSTER, 360, 540)
+    );
+    await vi.waitFor(() => expect(updates.set).toHaveBeenCalledOnce());
+  });
+
+  it('degrades a failed TMDB redirect without caching the placeholder', async () => {
+    mockSelectChain([{ type: 'dispatcharr', url: 'https://dispatcharr.example', token: 'secret' }]);
+    fetchSpy.mockRejectedValue(new TypeError('fetch failed: unexpected redirect'));
+
+    const result = await proxyImage({ serverId: randomUUID(), imagePath: TMDB_POSTER });
+
+    expect(result.degraded).toBe(true);
+    expect(result.contentType).toBe('image/svg+xml');
+    expect(result.cacheControl).toBe('public, max-age=15');
+    expect(writeFile).not.toHaveBeenCalled();
+    for (const [url, options] of fetchSpy.mock.calls) {
+      expect(url).toBe(TMDB_POSTER);
+      expect(options).toMatchObject({ headers: {}, redirect: 'error' });
+    }
   });
 
   it.each(['jellyfin', 'emby', 'plex'])(
@@ -698,6 +771,46 @@ describe('buildUpstreamRequest', () => {
     url: 'http://media:1234/',
     token: 'tok123',
   };
+
+  it.each([
+    TMDB_POSTER,
+    'https://image.tmdb.org/t/p/w500/poster.jpg',
+    'https://image.tmdb.org/t/p/original/still.png',
+  ])('allows a public TMDB image for Dispatcharr: %s', (imagePath) => {
+    expect(
+      buildUpstreamRequest({ ...baseServer, type: 'dispatcharr' } as never, imagePath)
+    ).toEqual({
+      imageUrl: imagePath,
+      headers: {},
+    });
+  });
+
+  it.each([
+    'http://image.tmdb.org/t/p/w500/poster.jpg',
+    'https://image.tmdb.org:8443/t/p/w500/poster.jpg',
+    'https://image.tmdb.org.evil.example/t/p/w500/poster.jpg',
+    'https://image.tmdb.org@127.0.0.1/t/p/w500/poster.jpg',
+    'https://user:secret@image.tmdb.org/t/p/w500/poster.jpg',
+    'https://image.tmdb.org/api/configuration',
+    'https://image.tmdb.org/t/p/w500/poster.jpg?redirect=http://127.0.0.1',
+    'https://image.tmdb.org/t/p/w500/poster.jpg#fragment',
+    'https://image.tmdb.org/t/p/w500/../../../api/configuration',
+    'https://image.tmdb.org/t/p/w500/poster.svg',
+    'https://169.254.169.254/latest/meta-data',
+    '//image.tmdb.org/t/p/w500/poster.jpg',
+  ])('rejects an unapproved external Dispatcharr image URL: %s', (imagePath) => {
+    expect(() =>
+      buildUpstreamRequest({ ...baseServer, type: 'dispatcharr' } as never, imagePath)
+    ).toThrow(SsrfBlockedError);
+    const normalized = normalizeDispatcharrImagePath(imagePath);
+    expect(normalized).not.toMatch(/^https?:/);
+  });
+
+  it.each(['plex', 'jellyfin', 'emby'])('keeps external CDN URLs blocked for %s', (type) => {
+    expect(() => buildUpstreamRequest({ ...baseServer, type } as never, TMDB_POSTER)).toThrow(
+      SsrfBlockedError
+    );
+  });
 
   it('fetches the Plex source for uncropped posters without the fill transcoder', () => {
     const server = { ...baseServer, type: 'plex' } as never;
