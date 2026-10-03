@@ -22,7 +22,14 @@ import {
   Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -871,39 +878,33 @@ export function Debug() {
           {/* Snapshot Management */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Camera className="h-5 w-5" />
-                    {t('debug.librarySnapshots')}
-                  </CardTitle>
-                  <CardDescription>{t('debug.manageSnapshots')}</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="h-5 w-5" />
+                {t('debug.librarySnapshots')}
+              </CardTitle>
+              <CardDescription>{t('debug.manageSnapshots')}</CardDescription>
+              <CardAction className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="suspicious-only"
+                    checked={showSuspiciousOnly}
+                    onCheckedChange={setShowSuspiciousOnly}
+                  />
+                  <Label htmlFor="suspicious-only" className="text-sm">
+                    {t('debug.suspiciousOnly')}
+                  </Label>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="suspicious-only"
-                      checked={showSuspiciousOnly}
-                      onCheckedChange={setShowSuspiciousOnly}
-                    />
-                    <Label htmlFor="suspicious-only" className="text-sm">
-                      {t('debug.suspiciousOnly')}
-                    </Label>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void fetchSnapshots()}
-                    disabled={isLoadingSnapshots}
-                    className="gap-1.5"
-                  >
-                    <RefreshCw
-                      className={cn('h-3.5 w-3.5', isLoadingSnapshots && 'animate-spin')}
-                    />
-                    {t('debug.load')}
-                  </Button>
-                </div>
-              </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void fetchSnapshots()}
+                  disabled={isLoadingSnapshots}
+                  className="gap-1.5"
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', isLoadingSnapshots && 'animate-spin')} />
+                  {t('debug.load')}
+                </Button>
+              </CardAction>
             </CardHeader>
             <CardContent>
               {snapshots.length === 0 && !isLoadingSnapshots ? (

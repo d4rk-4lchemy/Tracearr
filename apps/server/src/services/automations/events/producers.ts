@@ -1,7 +1,13 @@
-import { WS_EVENTS, type EngineAutomation, type Session } from '@tracearr/shared';
+import {
+  WS_EVENTS,
+  type EngineAutomation,
+  type ServerDownReason,
+  type Session,
+} from '@tracearr/shared';
 import { getActiveAutomations } from '../../../jobs/poller/database.js';
 import { automationsLogger } from '../../../utils/logger.js';
 import { getPubSubService } from '../../cache.js';
+import { isLiveServer } from '../../liveServers.js';
 import {
   assembleEvaluationInputs,
   installInputs,
@@ -199,11 +205,16 @@ export async function dispatchTrustMoves(moves: TrustMove[], reason: string): Pr
  */
 async function publishServerHealth(
   type: 'server.down' | 'server.up',
-  server: EvaluationServer
+  server: EvaluationServer,
+  reason?: ServerDownReason
 ): Promise<void> {
   const event = type === 'server.down' ? WS_EVENTS.SERVER_DOWN : WS_EVENTS.SERVER_UP;
   try {
-    await getPubSubService()?.publish(event, { serverId: server.id, serverName: server.name });
+    await getPubSubService()?.publish(event, {
+      serverId: server.id,
+      serverName: server.name,
+      ...(reason && { reason }),
+    });
   } catch (error) {
     automationsLogger.warn('Server health publish failed', { event, serverId: server.id, error });
   }
@@ -213,10 +224,12 @@ async function publishServerHealth(
 export async function dispatchServerHealth(
   type: 'server.down' | 'server.up',
   server: EvaluationServer,
-  at: Date
+  at: Date,
+  reason?: ServerDownReason
 ): Promise<void> {
   await guarded(type, async () => {
-    await publishServerHealth(type, server);
+    if (!(await isLiveServer(server.id))) return;
+    await publishServerHealth(type, server, reason);
     const rules = await serverListeningRules(type, server.id);
     if (!rules) return;
     const { inputs } = await serverContextFor(server, rules);
@@ -231,6 +244,7 @@ export async function dispatchServerHealthById(
   at: Date
 ): Promise<void> {
   await guarded(type, async () => {
+    if (!(await isLiveServer(serverId))) return;
     const rules = await serverListeningRules(type, serverId);
     // The banner needs the name either way, so the row is read whether or not anything listens.
     const context = await loadServerContext(serverId, rules ?? []);

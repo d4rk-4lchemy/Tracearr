@@ -183,13 +183,18 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
 
       if (!session) {
         automationsLogger.warn('Cannot send message: session not found', { sessionId });
-        return;
+        return undefined;
+      }
+
+      if (session.server.historicalAt) {
+        automationsLogger.debug('Skipping message_client for a historical server', { sessionId });
+        return { skipReason: 'server_historical' };
       }
 
       // Plex doesn't support client messaging
       if (session.server.type === 'plex') {
         automationsLogger.debug('Skipping message_client for Plex (not supported)', { sessionId });
-        return;
+        return undefined;
       }
 
       // Dynamic import to avoid circular dependency
@@ -205,6 +210,7 @@ export function createActionExecutorDeps(redis: Redis): ActionExecutorDeps {
         await client.sendMessage(session.sessionKey, message, 'Tracearr', 10000);
         automationsLogger.debug('Client message sent', { sessionId, message });
       }
+      return undefined;
     },
 
     /**

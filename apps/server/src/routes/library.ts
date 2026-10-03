@@ -16,6 +16,9 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { servers } from '../db/schema.js';
 import { enqueueLibrarySync, getLibrarySyncStatus } from '../jobs/librarySyncQueue.js';
 import { libraryStatsRoutes } from './library/index.js';
 
@@ -43,6 +46,15 @@ export const libraryRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const { serverId } = parseResult.data;
+
+      const [server] = await db
+        .select({ historicalAt: servers.historicalAt })
+        .from(servers)
+        .where(eq(servers.id, serverId))
+        .limit(1);
+      if (server?.historicalAt) {
+        return reply.conflict('Resume this server to sync it');
+      }
 
       try {
         const jobId = await enqueueLibrarySync(serverId, authUser.userId);

@@ -107,7 +107,7 @@ export function DeadWeightTable({
   serverById: Map<string, ServerLookupEntry>;
   allTimeLabel: string;
 }) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const headingId = 'dead-weight-heading';
 
   return (
@@ -142,7 +142,7 @@ export function DeadWeightTable({
                 {t('media.landing.deadWeight.columns.title')}
               </TableHead>
               <TableHead className="text-muted-foreground text-right text-[10.5px] font-semibold tracking-[0.07em] uppercase">
-                {t('media.landing.deadWeight.columns.size')}
+                {t('common:labels.size')}
               </TableHead>
               <TableHead className="text-muted-foreground text-right text-[10.5px] font-semibold tracking-[0.07em] uppercase">
                 {t('media.landing.deadWeight.columns.added')}

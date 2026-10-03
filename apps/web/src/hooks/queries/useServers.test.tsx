@@ -1,16 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 vi.mock('@/lib/api', () => ({
-  api: { servers: { locations: vi.fn() } },
+  api: { servers: { locations: vi.fn(), setHistorical: vi.fn() } },
 }));
 
 import { api } from '@/lib/api';
-import { useServerLocations } from './useServers';
+import { useServerLocations, useSetServerHistorical } from './useServers';
 
 const mockLocations = vi.mocked(api.servers.locations);
+const mockSetHistorical = vi.mocked(api.servers.setHistorical);
 
 function wrapper(client: QueryClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -37,5 +38,20 @@ describe('useServerLocations', () => {
     await waitFor(() => expect(result.current.isFetchedAfterMount).toBe(true));
     expect(mockLocations).toHaveBeenCalledWith('server-1');
     expect(result.current.data?.entries).toEqual([saved]);
+  });
+});
+
+describe('useSetServerHistorical', () => {
+  it('refetches the server list when the switch fails after the row was updated', async () => {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    mockSetHistorical.mockRejectedValue(new Error('Internal Server Error'));
+
+    const { result } = renderHook(() => useSetServerHistorical(), { wrapper: wrapper(client) });
+    await act(async () => {
+      await result.current.mutateAsync({ id: 'server-1', historical: true }).catch(() => {});
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['servers', 'list'] });
   });
 });

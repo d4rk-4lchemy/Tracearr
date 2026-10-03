@@ -78,6 +78,7 @@ function Section({
       actions={actions}
       kind={kind}
       severity="warning"
+      variables={[]}
       refs={refs}
       issues={new Map()}
       pulseId={null}

@@ -5,3 +5,4 @@ export { ProvenanceLine } from './ProvenanceLine';
 export { RunDetail } from './RunDetail';
 export { ScopeChip } from './ScopeChip';
 export { TemplateBadge } from './TemplateBadge';
+export { NotificationTextField } from './NotificationTextField';

@@ -35,6 +35,7 @@ import { eq } from 'drizzle-orm';
 import type { z } from 'zod';
 import { db } from '../db/client.js';
 import { servers, sessions } from '../db/schema.js';
+import { ServerHistoricalError } from './liveServers.js';
 import {
   checkAggregateNeedsRebuild,
   refreshAggregates,
@@ -718,6 +719,10 @@ export async function importJellystatBackup(
 
     if (!server) {
       throw new Error(`Server not found: ${serverId}`);
+    }
+
+    if (server.historicalAt) {
+      throw new ServerHistoricalError(serverId);
     }
 
     if (server.type !== 'jellyfin' && server.type !== 'emby') {

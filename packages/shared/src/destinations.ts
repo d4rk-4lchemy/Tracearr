@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { isEmailAddress } from './emailAddress.js';
+import { SEND_BODY_MAX, SEND_TITLE_MAX } from './automations/actions.js';
+import type { TextLimit } from './automations/template.js';
 import type { NotificationEventType, ViolationSeverity } from './types.js';
 
 export const DESTINATION_KINDS = [
@@ -391,6 +393,55 @@ export const DESTINATION_TYPES = {
     fields: [],
   },
 } as const satisfies Record<DestinationKind, DestinationDescriptor>;
+
+export interface DestinationTextProfile {
+  escape: 'none' | 'discordMarkdown';
+  title: TextLimit | null;
+  body: TextLimit | null;
+}
+
+const plain = (
+  title: TextLimit = { max: SEND_TITLE_MAX, unit: 'chars' },
+  body: TextLimit = { max: SEND_BODY_MAX, unit: 'chars' }
+): DestinationTextProfile => ({ escape: 'none', title, body });
+
+export const DESTINATION_TEXT_PROFILES: Readonly<Record<DestinationKind, DestinationTextProfile>> =
+  {
+    discord: {
+      escape: 'discordMarkdown',
+      title: { max: 256, unit: 'chars' },
+      body: { max: 4096, unit: 'chars' },
+    },
+    json_webhook: { escape: 'none', title: null, body: null },
+    ntfy: plain(undefined, { max: 4096, unit: 'bytes' }),
+    gotify: plain(),
+    apprise: plain(),
+    pushover: plain({ max: 250, unit: 'chars' }, { max: 1024, unit: 'chars' }),
+    email: plain(),
+    push: plain(undefined, { max: 1024, unit: 'chars' }),
+    web_toast: plain(),
+  };
+
+const DISCORD_SPECIAL = /[\\*_~`|>#\-[\]()]/g;
+const URL_RUN = /https?:\/\/\S+/g;
+
+/** Backslashes inside a URL turn into slashes in Discord's autolink, so URLs pass through. */
+export function escapeDiscordMarkdown(value: string): string {
+  let out = '';
+  let last = 0;
+  for (const match of value.matchAll(URL_RUN)) {
+    out += value.slice(last, match.index).replace(DISCORD_SPECIAL, '\\$&');
+    out += match[0];
+    last = match.index + match[0].length;
+  }
+  return out + value.slice(last).replace(DISCORD_SPECIAL, '\\$&');
+}
+
+const identity = (value: string): string => value;
+
+export function escapeFor(profile: DestinationTextProfile): (value: string) => string {
+  return profile.escape === 'discordMarkdown' ? escapeDiscordMarkdown : identity;
+}
 
 const httpUrl = z
   .string()

@@ -166,7 +166,10 @@ describe('fetchJson', () => {
     const result = await fetchJson<typeof responseData>('https://api.example.com/data');
 
     expect(result).toEqual(responseData);
-    expect(mockFetch).toHaveBeenCalledWith('https://api.example.com/data', {});
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.example.com/data',
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
   });
 
   it('should pass headers to fetch', async () => {

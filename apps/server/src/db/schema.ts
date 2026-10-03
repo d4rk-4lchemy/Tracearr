@@ -114,6 +114,8 @@ export const servers = pgTable(
     // Bumped on every save of this server's server_locations; the sync job records the version it applied
     locationVersion: integer('location_version').notNull().default(1),
     locationSyncedVersion: integer('location_synced_version').notNull().default(0),
+    // Set when Tracearr stops contacting this server; its history stays. Null while live.
+    historicalAt: timestamp('historical_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -478,7 +480,7 @@ export const sessions = pgTable(
     // ============ Detailed JSONB Fields ============
     // Source video: bitrate, framerate, dynamicRange, aspectRatio, profile, level, colorSpace, colorDepth
     sourceVideoDetails: jsonb('source_video_details').$type<SourceVideoDetails>(),
-    // Source audio: bitrate, channelLayout, language, sampleRate
+    // Source audio: bitrate, channelLayout, language, sampleRate, profile, atmos
     sourceAudioDetails: jsonb('source_audio_details').$type<SourceAudioDetails>(),
     // Stream video: bitrate, width, height, framerate, dynamicRange
     streamVideoDetails: jsonb('stream_video_details').$type<StreamVideoDetails>(),
@@ -1130,6 +1132,7 @@ export const userMergeAudits = pgTable(
       // Absent on audits written before merges carried the contact email
       contactEmail?: string | null;
       contactEmailCarried?: boolean;
+      nameSetOnTarget?: string | null;
     }>(),
     // Which plex_accounts / mobile_sessions / mobile_tokens rows repointIdentityRows
     // moved off the source identity during this merge, so a later split can move
@@ -1598,6 +1601,8 @@ export const libraryItemVersions = pgTable(
     videoDynamicRange: varchar('video_dynamic_range', { length: 20 }),
     audioCodec: varchar('audio_codec', { length: 50 }),
     audioChannels: integer('audio_channels'),
+    audioAtmos: boolean('audio_atmos').notNull().default(false),
+    editionTitle: varchar('edition_title', { length: 100 }),
     container: varchar('container', { length: 50 }),
     bitrate: integer('bitrate'), // kbps
 

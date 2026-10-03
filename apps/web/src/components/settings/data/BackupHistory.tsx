@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
-import { Download, MoreHorizontal, Trash2 } from 'lucide-react';
+import { ArchiveRestore, Download, MoreHorizontal, Trash2 } from 'lucide-react';
 import type { BackupListItem } from '@tracearr/shared';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -84,6 +84,7 @@ export function BackupHistory({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={() => onRestore(row.item)}>
+          <ArchiveRestore />
           {t('backup.restoreAction')}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void api.backup.download(row.filename)}>
@@ -120,9 +121,9 @@ export function BackupHistory({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t('backup.date')}</TableHead>
-              <TableHead>{t('backup.type')}</TableHead>
-              <TableHead>{t('backup.size')}</TableHead>
+              <TableHead>{t('common:labels.date')}</TableHead>
+              <TableHead>{t('common:labels.type')}</TableHead>
+              <TableHead>{t('common:labels.size')}</TableHead>
               <TableHead>{t('backup.version')}</TableHead>
               <TableHead className="text-right">{t('backup.actions')}</TableHead>
             </TableRow>

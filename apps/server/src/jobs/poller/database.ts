@@ -14,6 +14,7 @@ import {
   desc,
   gte,
   inArray,
+  ne,
   isNull,
   isNotNull,
   notInArray,
@@ -265,7 +266,13 @@ export async function batchGetRecentUserSessions(
   const recentSessions = await db
     .select({ ...getTableColumns(sessions), dispatcharrDeviceId: dispatcharrDeviceIdSql() })
     .from(sessions)
-    .where(and(inArray(sessions.serverUserId, serverUserIds), gte(sessions.startedAt, since)))
+    .where(
+      and(
+        inArray(sessions.serverUserId, serverUserIds),
+        gte(sessions.startedAt, since),
+        ne(sessions.mediaType, 'trailer')
+      )
+    )
     .orderBy(desc(sessions.startedAt))
     .limit(serverUserIds.length * perUserCap);
 

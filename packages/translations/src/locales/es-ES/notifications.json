@@ -10,24 +10,27 @@
         "message": "El servidor se ha eliminado correctamente"
       },
       "serverSynced": {
-        "title": "Servidor sincronizado",
-        "message": "Los datos del servidor han sido sincronizados"
+        "title": "Servidor sincronizado"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "Ajustes Actualizados.",
         "message": "Su configuración ha sido guardada."
       },
-      "tokenCopied": {
-        "title": "Token copiado",
-        "message": "Token de emparejamiento copiado al portapapeles"
-      },
       "violationAcknowledged": {
-        "title": "Infracción de política reconocida",
+        "title": "Infracción reconocida",
         "message": "La infracción ha sido marcada como reconocida"
       },
       "violationDismissed": {
-        "title": "Infracción rechazada",
-        "message": "La infracción ha sido rechazada"
+        "title": "Infracción descartada",
+        "message": "La infracción ha sido descartada"
       },
       "deviceRemoved": {
         "title": "Dispositivo eliminado",
@@ -38,19 +41,11 @@
         "message": "El nombre del dispositivo ha sido actualizado"
       },
       "sessionsRevoked": {
-        "title": "Sesiones revocadas",
-        "message": "Todas las sesiones móviles han sido revocadas"
+        "title": "Sesiones revocadas"
       },
       "loggedIn": {
         "title": "Correcto",
         "message": "Sesión iniciada correctamente"
-      },
-      "webhookTest": {
-        "title": "Test satisfactorio",
-        "message": "Webhook está funcionando correctamente"
-      },
-      "copiedToClipboard": {
-        "title": "Copiado al portapapeles"
       },
       "plexAccountLinked": {
         "title": "Cuenta Plex vinculada",
@@ -62,27 +57,14 @@
       },
       "plexAccountReauthorized": {
         "title": "",
-        "message_one": "",
-        "message_other": "",
         "messageNoServers": "",
         "partial": "",
-        "unmatched": ""
-      },
-      "agentAdded": {
-        "title": "Agente añadido",
-        "message": "El agente de notificaciones ha sido añadido"
-      },
-      "agentUpdated": {
-        "title": "Agente actualizado",
-        "message": "El agente de notificaciones ha sido actualizado"
-      },
-      "agentRemoved": {
-        "title": "Agente eliminado",
-        "message": "El agente de notificación ha sido eliminado"
+        "unmatched": "",
+        "message_one": "",
+        "message_other": ""
       },
       "jobCompleted": {
-        "title": "Trabajo completado",
-        "message": "{{name}} finalizado correctamente"
+        "title": "Trabajo completado"
       },
       "automationCreated": {
         "title": "",
@@ -97,7 +79,7 @@
         "message": ""
       },
       "streamTerminated": {
-        "title": "Reproducción finalizada",
+        "title": "Reproducción terminada",
         "message": "Se detuvo la sesión de reproducción"
       },
       "serverUrlUpdated": {
@@ -118,8 +100,8 @@
       },
       "sessionsDeleted": {
         "title": "Sesiones eliminadas",
-        "message_one": "Sesión de {{count}} eliminada",
-        "message_other": "Sesión de {{count}} eliminada"
+        "message_one": "{{count}} sesión eliminada",
+        "message_other": "{{count}} sesiones eliminadas"
       },
       "violationsAcknowledged": {
         "title": "Infracción reconocidas",
@@ -127,7 +109,7 @@
         "message_other": "{{count}} infracciones reconocidas"
       },
       "violationsDismissed": {
-        "title": "Infracciones rechazadas",
+        "title": "Infracciones descartadas",
         "message_one": "{{count}} infracción descartada",
         "message_other": "{{count}} infracciones descartadas"
       },
@@ -149,9 +131,9 @@
       },
       "identityUpdated": "",
       "trustScoresReset": {
-        "title": "Restablecer puntuaciones de confianza",
-        "message_one": "Usuario {{count}} restablecido a 100",
-        "message_other": "Usuario {{count}} restablecido a 100"
+        "title": "Puntuaciones de confianza restablecidas",
+        "message_one": "{{count}} usuario restablecido a 100",
+        "message_other": "{{count}} usuarios restablecidos a 100"
       },
       "claimCodeValidated": {
         "title": "Código CLAIM validado",
@@ -175,21 +157,22 @@
       "newsletterDuplicated": "",
       "newsletterTestQueued": "",
       "newsletterSendQueued": "",
-      "newsletterRetryQueued": "",
       "brandingSaved": "",
       "suppressionAdded": "",
-      "suppressionRemoved": ""
+      "suppressionRemoved": "",
+      "newsletterRetryQueued_one": "",
+      "newsletterRetryQueued_other": ""
     },
     "error": {
       "serverAddFailed": "Error al añadir el servidor",
       "serverRemoveFailed": "Error al eliminar el servidor",
       "serverSyncFailed": "Error al sincronizar el servidor",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Error al actualizar ajustes",
       "copyFailed": "No se ha podido copiar en el portapapeles",
       "acknowledgeFailed": "Fallo al reconocer infracción",
       "dismissFailed": "Error al descartar la infracción",
       "authFailed": "Autenticación fallida",
-      "webhookTestFailed": "Prueba de Webhook fallida",
       "automationCreateFailed": "",
       "automationUpdateFailed": "",
       "automationDeleteFailed": "",
@@ -208,14 +191,8 @@
       "sessionsRevokeFailed": "Error al revocar las sesiones",
       "identityUpdateFailed": "",
       "trustScoresResetFailed": "Error al restablecer las puntuaciones de confianza",
-      "routingUpdateFailed": "Error al actualizar la regla",
-      "clipboardFailed": "Error al copiar al portapapeles",
       "plexUnlinkFailed": "Error al desvincular la cuenta de Plex",
       "plexReauthorizeFailed": "",
-      "agentAddFailed": "Error al añadir el agente",
-      "agentUpdateFailed": "Error al actualizar el agente",
-      "agentRemoveFailed": "Error al eliminar el agente",
-      "agentTestFailed": "Test fallido",
       "jobAlreadyRunning": "Trabajo ya en ejecución",
       "jobStartFailed": "Error al iniciar el trabajo",
       "jobLoadFailed": "Error al cargar los trabajos de mantenimiento",
@@ -248,8 +225,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "Tarea fallida",
-        "message": "{{name}} encontró un error"
+        "title": "Tarea fallida"
       }
     },
     "info": {
@@ -263,43 +239,23 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "Infracción de compartir detectada",
-    "streamStarted": "Reproducción iniciada",
-    "streamEnded": "Reproducción finalizada",
-    "serverDown": "Conexión con el servidor perdida",
-    "serverUp": "Regreso del servidor en línea",
-    "newDevice": "Nuevo dispositivo",
-    "trustScoreChanged": "Puntuación de confianza cambiada"
-  },
   "settings": {
-    "title": "Ajustes de notificaciones",
     "allSeverity": "Todo (Arriba, Advertencia, Alta)",
     "warningAndHigh": "Advertencia y solo alta",
     "highOnly": "Sólo alta gravedad",
-    "allTypes": "Todos los tipos",
     "rateLimit": "Estado actual del límite de tasa",
     "perMinute": "Por minuto",
     "perHour": "Por hora",
     "enablePushNotifications": "Activar Notificaciones Push",
     "notificationEvents": "Eventos de notificaciones",
     "violationDetected": "Infracción detectada",
-    "violationDetectedDesc": "Cuando se activa una violación de compartir",
     "streamStarted": "Reproducción iniciada",
-    "streamStartedDesc": "Cuando un usuario empieza a ver",
     "streamStopped": "Reproducción detenida",
-    "streamStoppedDesc": "Cuando un usuario deja de ver",
-    "concurrentStreams": "Reproducciones simultaneas",
-    "concurrentStreamsDesc": "Cuando se exceda el límite máximo de flujo",
+    "concurrentStreams": "Reproducciones simultáneas",
     "newDevice": "Nuevo dispositivo",
-    "newDeviceDesc": "Cuando un nuevo dispositivo se conecta",
     "trustScoreChanged": "Puntuación de confianza modificada",
-    "trustScoreChangedDesc": "Cuando cambia la puntuación de confianza de un usuario",
     "serverDown": "Servidor fuera de línea",
-    "serverDownDesc": "Cuando un servidor multimedia está desconectado",
     "serverUp": "Servidor en línea",
-    "serverUpDesc": "Cuando un servidor multimedia vuelve a estar en línea",
-    "violationFilters": "Filtros de infracción",
     "minimumSeverity": "Gravedad mínima",
     "quietHours": "Horario de silencio",
     "enableQuietHours": "Activar horas de silencio",

@@ -270,7 +270,7 @@ describe('enqueueNotification - subscriber resolution', () => {
 
     const count = await mod.enqueueNotification(violation(), {
       to: ['ok', 'off', 'stale', 'gone'],
-      source: { kind: 'rule', title: 'Rule Triggered', message: 'alice tripped it' },
+      source: { kind: 'automation', automationId: 'a-1', automationName: 'Alert' },
     });
 
     expect(mockFindDestinationsForEvent).not.toHaveBeenCalled();
@@ -280,7 +280,7 @@ describe('enqueueNotification - subscriber resolution', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.data).toMatchObject({
       destinationId: 'ok',
-      source: { kind: 'rule', title: 'Rule Triggered', message: 'alice tripped it' },
+      source: { kind: 'automation', automationId: 'a-1', automationName: 'Alert' },
     });
   });
 
@@ -313,20 +313,6 @@ describe('enqueueNotification - dedupe ids', () => {
 
     const jobId = bulkEntries()[0]?.opts.jobId;
     expect(jobId).toBe(`d1|violation-su-1-rule-1-auto-${bucket()}`);
-    expect(jobId).not.toMatch(/:/);
-  });
-
-  it('keys a rule send as notify so it never collides with the routed violation', async () => {
-    const mod = await loadInitializedQueue();
-    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
-
-    await mod.enqueueNotification(violation(), {
-      to: ['d1'],
-      source: { kind: 'rule', title: 't', message: 'm' },
-    });
-
-    const jobId = bulkEntries()[0]?.opts.jobId;
-    expect(jobId).toBe(`d1|violation-su-1-rule-1-notify-${bucket()}`);
     expect(jobId).not.toMatch(/:/);
   });
 

@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Bun venit la Tracearr",
-    "addServer": "Adaugă server",
     "connectToServer": "Conectează-te la Server",
     "enterServerDetails": "Introduceți URL-ul serverului Tracearr și indicativul de acces mobil",
     "serverUrl": "URL Server",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "Câmpuri lipsă",
-    "pleaseEnterBothFields": "Vă rugăm să introduceţi atât URL-ul serverului cât şi codul",
     "invalidUrl": "URL invalid",
-    "serverUrlMustStartWith": "URL-ul serverului trebuie să înceapă cu http:// sau http://",
     "pleaseEnterValidUrl": "Te rog introdu un URL de server valid",
     "pairingFailed": "Asociere eșuată",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Format de cod QR invalid. Vă rugăm să generați un nou cod.",
     "invalidQrCodeMissingUrl": "Cod QR nevalid: URL-ul serverului lipsă",
     "invalidQrCodeMissingToken": "Cod QR invalid: token lipsă de asociere",
-    "invalidServerUrlInQr": "URL server nevalid în codul QR",
-    "tooManyPairingAttempts": "Prea multe încercări de împerechere. Vă rugăm așteptați câteva minute.",
-    "invalidOrExpiredToken": "Token de asociere invalid sau expirat.",
-    "invalidPairingRequest": "Cerere de asociere nevalidă. Verificați tokenul.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -57,16 +48,14 @@
     "disconnect": "",
     "disconnectServer": "Deconectare server",
     "disconnectConfirm": "Ești sigur că vrei să te deconectezi de la \"{{serverName}}\"? Va trebui să asociezi din nou pentru a utiliza aplicația.",
-    "disconnectConfirmGeneric": "Sunteți sigur că doriți să vă deconectați? Va trebui să vă conectați din nou pentru a utiliza aplicația.",
+    "disconnectConfirmGeneric": "Sunteți sigur că doriți să vă deconectați? Va trebui să asociați din nou aplicația pentru a o utiliza.",
     "currentlyConnected": "Conectat în prezent la {{serverName}}",
     "version": "",
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Selectare server",
-    "server": "",
-    "navigation": ""
+    "server": ""
   },
   "resources": {
     "cpu": "procesor",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,18 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_few": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_few": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +135,17 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_few": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_few": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +158,9 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_few": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -176,7 +173,7 @@
     "sortTrust": ""
   },
   "activity": {
-    "playsOverTime": "Joacă în timp",
+    "playsOverTime": "Vizionări în timp",
     "concurrentStreams": "Stream-uri Concurente",
     "platforms": "Platforme",
     "playbackQuality": ""
@@ -193,28 +190,27 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_few": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_few": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +223,10 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_few": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,10 +260,12 @@
   },
   "widget": {
     "asOf": "",
-    "serversDown_one": "",
-    "serversDown_other": "",
     "signedOut": "",
+    "serversDown_one": "",
+    "serversDown_few": "",
+    "serversDown_other": "",
     "transcodes_one": "",
+    "transcodes_few": "",
     "transcodes_other": ""
   }
 }

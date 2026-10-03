@@ -12,7 +12,7 @@ import { EditorCard } from './EditorCard';
 import { NEWSLETTER_FIELD_IDS, type FieldsetProps } from './newsletterForm';
 
 export function IdentityFields({ state, onChange, errors, mode, touch }: FieldsetProps) {
-  const { t } = useTranslation('settings');
+  const { t } = useTranslation(['settings', 'common']);
   return (
     <EditorCard title={t('newsletters.editor.basics')}>
       <div className="grid items-start gap-4 @md/field-group:grid-cols-2 @md/field-group:gap-x-6">
@@ -34,7 +34,7 @@ export function IdentityFields({ state, onChange, errors, mode, touch }: Fieldse
         <Field orientation="horizontal">
           <FieldContent>
             <FieldLabel htmlFor={NEWSLETTER_FIELD_IDS.enabled}>
-              {mode === 'create' ? t('newsletters.editor.turnOnNow') : t('newsletters.enabled')}
+              {mode === 'create' ? t('newsletters.editor.turnOnNow') : t('common:states.enabled')}
             </FieldLabel>
             <FieldDescription>{t('newsletters.editor.enabledHelp')}</FieldDescription>
           </FieldContent>

@@ -15,7 +15,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
-import { queryChain, renderCall } from '../../test/helpers.js';
+import { queryChain, renderCall, renderSql } from '../../test/helpers.js';
+import type { SQL } from 'drizzle-orm';
 
 const mockGetDashboardStats = vi.hoisted(() => vi.fn());
 
@@ -34,6 +35,10 @@ vi.mock('../../services/dashboardStats.js', () => ({
   getDashboardStats: mockGetDashboardStats,
 }));
 
+vi.mock('../../services/termination.js', () => ({
+  terminateSession: vi.fn(),
+}));
+
 vi.mock('../stats/queries.js', () => ({
   queryPlaysOverTime: vi.fn(async () => []),
   queryConcurrentStreams: vi.fn(async () => []),
@@ -44,6 +49,8 @@ vi.mock('../stats/queries.js', () => ({
 }));
 
 import { db } from '../../db/client.js';
+import { getCacheService } from '../../services/cache.js';
+import { terminateSession } from '../../services/termination.js';
 import { publicRoutes } from '../public.js';
 
 /** Completed policy runs: nothing else is a violation. */
@@ -346,5 +353,108 @@ describe('GET /api/v1/public/activity', () => {
     ]);
     expect(Object.keys(body.range).sort()).toEqual(['end', 'start']);
     expect(body.period).toBe('month');
+  });
+});
+
+describe('GET /api/v1/public/health', () => {
+  let app: FastifyInstance;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('reports a historical server as historical and offline, with exactly the documented keys', async () => {
+    const live = randomUUID();
+    const gone = randomUUID();
+    vi.mocked(db.select).mockReturnValue(
+      queryChain(vi.fn, [
+        { id: live, name: 'Attic', type: 'jellyfin', historicalAt: null },
+        {
+          id: gone,
+          name: 'Old Plex',
+          type: 'plex',
+          historicalAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      ])
+    );
+    app = await buildTestApp();
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/public/health' });
+
+    expect(response.statusCode).toBe(200);
+    const servers = response.json().servers as Record<string, unknown>[];
+    expect(servers.map((s) => Object.keys(s).sort())).toEqual([
+      ['activeStreams', 'historical', 'id', 'name', 'online', 'type'],
+      ['activeStreams', 'historical', 'id', 'name', 'online', 'type'],
+    ]);
+    expect(servers[0]).toMatchObject({ id: live, online: true, historical: false });
+    expect(servers[1]).toMatchObject({ id: gone, online: false, historical: true });
+  });
+});
+
+describe('GET /api/v1/public/history', () => {
+  let app: FastifyInstance;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.execute).mockResolvedValue({ rows: [] } as never);
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  async function countQueryWhere(query: string) {
+    app = await buildTestApp();
+    const response = await app.inject({ method: 'GET', url: `/api/v1/public/history${query}` });
+    expect(response.statusCode).toBe(200);
+    const rendered = renderSql(vi.mocked(db.execute).mock.calls[0]![0] as SQL);
+    return { text: rendered.sql.replace(/\s+/g, ' '), params: rendered.params };
+  }
+
+  it('leaves trailers out when no media type is given', async () => {
+    const where = await countQueryWhere('');
+    expect(where.text).toContain("s.media_type <> 'trailer'");
+  });
+
+  it('returns trailer rows when mediaType is trailer', async () => {
+    const where = await countQueryWhere('?mediaType=trailer');
+    expect(where.text).not.toContain("<> 'trailer'");
+    expect(where.text).toContain('s.media_type =');
+    expect(where.params).toContain('trailer');
+  });
+});
+
+describe('POST /api/v1/public/streams/:id/terminate', () => {
+  let app: FastifyInstance;
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it('returns 409 with the resume message when the server is historical', async () => {
+    const sessionId = randomUUID();
+    vi.mocked(getCacheService).mockReturnValueOnce({
+      getAllActiveSessions: vi.fn().mockResolvedValue([{ id: sessionId }]),
+    } as never);
+    vi.mocked(terminateSession).mockResolvedValue({
+      success: false,
+      error: 'Server is historical',
+      outcome: 'server_historical',
+    } as never);
+    app = await buildTestApp();
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/public/streams/${sessionId}/terminate`,
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toBe('Resume this server to end its streams');
   });
 });

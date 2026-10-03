@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Bienvenue sur Tracearr",
-    "addServer": "Ajouter un serveur",
     "connectToServer": "Se connecter au serveur",
     "enterServerDetails": "Entrez l'URL de votre serveur Tracearr et le jeton d'accès mobile",
     "serverUrl": "URL du serveur",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": "Veuillez entrer votre jeton d'accès"
   },
   "errors": {
-    "missingFields": "Champs manquants",
-    "pleaseEnterBothFields": "Veuillez entrer à la fois l'URL du serveur et le jeton",
     "invalidUrl": "URL invalide",
-    "serverUrlMustStartWith": "L'URL du serveur doit commencer par http:// ou https://",
     "pleaseEnterValidUrl": "Veuillez entrer une URL de serveur valide",
     "pairingFailed": "Échec de l'appairage",
     "unableToPair": "Impossible d'appairer avec le serveur",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Format du code QR invalide : veuillez générer un nouveau code.",
     "invalidQrCodeMissingUrl": "Code QR invalide : URL du serveur manquante",
     "invalidQrCodeMissingToken": "Code QR invalide : jeton d'appairage manquant",
-    "invalidServerUrlInQr": "URL du serveur invalide dans le code QR",
-    "tooManyPairingAttempts": "Trop de tentatives d'appairage. Veuillez patienter quelques minutes.",
-    "invalidOrExpiredToken": "Jeton d'appairage invalide ou expiré.",
-    "invalidPairingRequest": "Requête d'appairage invalide. Vérifiez votre jeton.",
     "errorDetails": "Détails de l'erreur :",
-    "componentStack": "Pile de composants :",
     "connectionLost": "Connexion perdue",
     "failedToLoadSession": "Échec du chargement de la session"
   },
@@ -63,17 +54,15 @@
     "build": "Version {{build}}"
   },
   "navigation": {
-    "home": "Accueil",
     "selectServer": "Sélectionner un serveur",
-    "server": "Serveur",
-    "navigation": "Navigation"
+    "server": "Serveur"
   },
   "resources": {
     "cpu": "CPU",
     "ram": "RAM",
     "item": "",
     "noData": "",
-    "system": "",
+    "system": "Système",
     "waiting": ""
   },
   "notifications": {
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "Violation de règle déclenchée",
     "newPlaybackBegan": "Nouvelle lecture commencée",
     "playbackEnded": "Lecture terminée",
-    "exceededStreamLimit": "Un utilisateur a dépassé la limite de diffusions",
     "newDeviceDetected": "Nouvel appareil détecté pour un utilisateur",
     "trustScoreDegraded": "Le score de confiance d'un utilisateur a été dégradé",
     "serverUnreachable": "Serveur multimédia inaccessible",
@@ -117,7 +105,7 @@
     "violationTypes": ""
   },
   "session": {
-    "streamTerminated": "Diffusion interrompue",
+    "streamTerminated": "Lecture interrompue",
     "sessionStopped": "La session de lecture a été interrompue.",
     "failedToTerminate": "Échec de l'interruption"
   },
@@ -125,14 +113,16 @@
     "userMayBeRemoved": "Cet utilisateur a peut-être été supprimé.",
     "noLocationsRecorded": "Aucun emplacement enregistré",
     "noDevicesRecorded": "Aucun appareil enregistré",
-    "moreLocations": "+{{count}} emplacements en plus",
-    "moreDevices": "+{{count}} appareils en plus",
     "noViolations": "Aucune violation",
     "noTerminations": "Aucune interruption de lecture",
     "lastSeen": "",
-    "terminatedBy": "",
+    "terminatedBy": "Par @{{username}}",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_other": "+{{count}} emplacements en plus",
+    "moreDevices_one": "",
+    "moreDevices_other": "+{{count}} appareils en plus"
   },
   "violation": {
     "violationNotFoundDesc": "Cette violation a peut-être été ignorée ou n'est plus disponible.",
@@ -143,27 +133,29 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "Essayez d'ajuster vos filtres",
     "historyWillAppear": "L'historique des sessions apparaîtra ici lorsque les utilisateurs commenceront à lancer des lectures",
     "filters": {
       "clearCount": "",
-      "countries": "",
-      "filterBy": "",
-      "mediaType": "",
-      "noCountries": "",
-      "noPlatforms": "",
-      "noUsers": "",
-      "sectionSelected": ""
+      "countries": "Pays",
+      "filterBy": "Filtrer par",
+      "mediaType": "Type de média",
+      "noCountries": "Aucun pays disponible",
+      "noPlatforms": "Aucune plateforme disponible",
+      "noUsers": "Aucun utilisateur disponible",
+      "sectionSelected_one": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -177,7 +169,7 @@
   },
   "activity": {
     "playsOverTime": "Lectures au fil du temps",
-    "concurrentStreams": "Lectures simultanées",
+    "concurrentStreams": "Flux simultanés",
     "platforms": "Plateformes",
     "playbackQuality": "Qualité de lecture"
   },
@@ -193,32 +185,29 @@
     "allServers": "Tous les serveurs"
   },
   "reconnected": "Reconnecté",
-  "serverScope": {
-    "single": "Affichage de {{name}} uniquement"
-  },
   "a11y": {
     "selectServer": "Sélectionner le serveur",
     "alerts": "Alertes",
-    "alertsCount": "{{count}} alertes non lues",
     "settings": "Paramètres",
     "trustScore": "Score de confiance : {{score}}",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_other": "{{count}} alertes non lues",
+    "filtersActive_one": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "Aucune donnée d'emplacement disponible",
     "unavailable": "Carte indisponible"
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
-      "notification": "",
+      "notification": "Notification",
       "policy": ""
     },
     "lastRun": "",
@@ -227,7 +216,9 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -242,29 +233,29 @@
     "color": "",
     "container": "",
     "forced": "",
-    "format": "",
+    "format": "Format :",
     "framerate": "",
     "hwDecode": "",
     "hwEncode": "",
     "mono": "",
     "noDetails": "",
     "notAvailable": "",
-    "profile": "",
+    "profile": "Profil",
     "sampleRate": "",
-    "source": "",
-    "speed": "",
-    "stereo": "",
+    "source": "Source",
+    "speed": "Vitesse",
+    "stereo": "Stéréo",
     "stream": "",
-    "subtitles": "",
+    "subtitles": "Sous-titres",
     "throttled": "",
-    "transcodeDetails": ""
+    "transcodeDetails": "Détails du transcodage"
   },
   "widget": {
     "asOf": "",
-    "serversDown_one": "",
-    "serversDown_other": "",
     "signedOut": "",
-    "transcodes_one": "",
-    "transcodes_other": ""
+    "serversDown_one": "{{count}} serveur hors ligne",
+    "serversDown_other": "{{count}} serveurs hors ligne",
+    "transcodes_one": "{{count}} transcodage",
+    "transcodes_other": "{{count}} transcodages"
   }
 }

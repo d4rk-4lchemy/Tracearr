@@ -281,6 +281,8 @@ function sessionRules(marker?: Record<string, true>, fresh?: boolean) {
     opts: DispatchOptions
   ) => {
     if (!inputs) return;
+    // new_device still runs: accountHasSeenDevice counts a preroll's row, so skipping it would silence the movie's alert
+    if (event.session.mediaType === 'trailer' && event.type !== 'account.new_device') return;
     return runRulePipeline(
       event,
       inputs,

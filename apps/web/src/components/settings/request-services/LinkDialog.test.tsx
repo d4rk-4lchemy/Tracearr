@@ -106,7 +106,7 @@ describe('LinkDialog', () => {
     const user = userEvent.setup();
     renderDialog();
 
-    const save = screen.getByRole('button', { name: 'requests.dialog.save' });
+    const save = screen.getByRole('button', { name: 'common:actions.save' });
     expect(save).toBeDisabled();
     expect(screen.getByText('requests.dialog.saveHint')).toBeInTheDocument();
 
@@ -155,7 +155,7 @@ describe('LinkDialog', () => {
     await user.type(screen.getByLabelText('requests.dialog.url'), 'https://seerr.example.com');
     await user.type(screen.getByLabelText('requests.dialog.apiKey'), 'key-1');
     await user.click(screen.getByRole('button', { name: 'requests.dialog.test' }));
-    await user.click(screen.getByRole('button', { name: 'requests.dialog.save' }));
+    await user.click(screen.getByRole('button', { name: 'common:actions.save' }));
 
     expect(createMutate).toHaveBeenCalledWith(
       { serverId: 'srv-1', url: 'https://seerr.example.com', apiKey: 'key-1' },
@@ -178,7 +178,7 @@ describe('LinkDialog', () => {
     ).toBeInTheDocument();
     expect(alert).toHaveTextContent(/remote-zzz/);
     expect(alert).toHaveTextContent(/local-abc/);
-    expect(screen.getByRole('button', { name: 'requests.dialog.save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'common:actions.save' })).toBeDisabled();
   });
 
   it('shows a failed test plainly', async () => {
@@ -202,7 +202,7 @@ describe('LinkDialog', () => {
 
     await user.clear(url);
     await user.type(url, 'https://seerr.internal');
-    await user.click(screen.getByRole('button', { name: 'requests.dialog.save' }));
+    await user.click(screen.getByRole('button', { name: 'common:actions.save' }));
 
     expect(updateMutate).toHaveBeenCalledWith(
       { id: 'rs-1', data: { url: 'https://seerr.internal' } },
@@ -215,7 +215,7 @@ describe('LinkDialog', () => {
     renderDialog({ existing });
 
     await user.type(screen.getByLabelText('requests.dialog.apiKey'), 'key-2');
-    const save = screen.getByRole('button', { name: 'requests.dialog.save' });
+    const save = screen.getByRole('button', { name: 'common:actions.save' });
     expect(save).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'requests.dialog.test' }));

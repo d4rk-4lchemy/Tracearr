@@ -102,6 +102,11 @@ export function normalizeVideoCodec(codec: string | null | undefined): string {
   return codec.toUpperCase();
 }
 
+/** Atmos is never in the codec: Plex and Jellyfin put it in the stream profile, Emby only in the stream title. */
+export function isAtmos(...labels: Array<string | null | undefined>): boolean {
+  return labels.some((l) => l?.toLowerCase().includes('atmos'));
+}
+
 /**
  * Normalize audio codec to display-friendly name
  */
@@ -142,16 +147,17 @@ export function normalizeAudioCodec(codec: string | null | undefined): string {
     return 'TrueHD';
   }
 
-  // Dolby Atmos (usually TrueHD or EAC3 with Atmos metadata)
-  if (lower.includes('atmos')) {
-    return 'Atmos';
-  }
-
   // DTS variants
-  if (lower === 'dts') {
+  if (lower === 'dts' || lower === 'dca') {
     return 'DTS';
   }
-  if (lower === 'dts-hd ma' || lower === 'dtshd_ma' || lower === 'dts-hd' || lower === 'dtshd') {
+  if (
+    lower === 'dca-ma' ||
+    lower === 'dts-hd ma' ||
+    lower === 'dtshd_ma' ||
+    lower === 'dts-hd' ||
+    lower === 'dtshd'
+  ) {
     return 'DTS-HD MA';
   }
   if (lower === 'dts-hd hra' || lower === 'dts-hd hi res' || lower === 'dtshd_hra') {

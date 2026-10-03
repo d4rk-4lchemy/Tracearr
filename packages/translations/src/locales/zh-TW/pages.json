@@ -27,9 +27,7 @@
     "plexAuthFailed": "Plex 認證失敗",
     "plexStartFailed": "無法啟動 Plex 登入",
     "serverConnectFailed": "無法連接至伺服器",
-    "signupFailed": "註冊失敗",
     "createAccountFailed": "建立帳號失敗",
-    "loginFailed": "登入失敗",
     "invalidCredentials": "",
     "claimCodeRequired": "首次設定需要申請碼",
     "enterClaimCode": "輸入申請碼",
@@ -57,13 +55,9 @@
     "title": "使用者",
     "showRemoved": "",
     "noUsersFound": "找不到使用者。",
-    "searchPlaceholder": "搜尋使用者……",
-    "selectAllUsers": "選擇所有 {{count}} 個使用者",
     "serversColumn": "",
-    "resetTrustScore": "重置信任評分",
-    "resetTrustScoreTitle_one": "重置 {{count}} 位使用者的信任評分",
-    "resetTrustScoreTitle_other": "重置 {{count}} 位使用者的信任評分",
-    "resetTrustScoreConfirm": "您確定要將信任評分重置為 100 嗎？此操作無法撤銷。",
+    "resetTrustScore": "重置信任分數",
+    "resetTrustScoreConfirm": "您確定要將信任分數重置為 100 嗎？此操作無法復原。",
     "mergeUsers": "",
     "mergeTitleSuggestion": "",
     "mergeTitleBulk": "",
@@ -76,12 +70,8 @@
     "mergeRequired": "",
     "mergeLastActive": "",
     "mergeNeverActive": "",
-    "mergeSessions_one": "",
-    "mergeSessions_other": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -97,17 +87,9 @@
     "mergeSameIdentity": "",
     "mergeSelectAllActive": "",
     "suggestionsTitle": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -122,7 +104,14 @@
     "suggestionsError": "",
     "filterHasAccessTo": "",
     "filterHasAccessToPlaceholder": "",
-    "filterHasAccessToHint": ""
+    "filterHasAccessToHint": "",
+    "selectAllUsers_other": "選擇所有 {{count}} 個使用者",
+    "resetTrustScoreTitle_other": "重置 {{count}} 位使用者的信任分數",
+    "mergeMoves_other": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairUsernameMore_other": ""
   },
   "userDetail": {
     "backToUsers": "返回使用者頁面",
@@ -160,20 +149,14 @@
   },
   "history": {
     "title": "歷史紀錄",
-    "description": "使用強大的篩選功能瀏覽所有串流會話",
-    "loadingMore": "正在載入更多內容……",
-    "scrollForMore": "向下滾動查看更多",
-    "showingAllResults": "顯示全部 {{total}} 個結果",
-    "deleteSession_one": "刪除 {{count}} 個會話",
-    "deleteSession_other": "刪除 {{count}} 個會話",
-    "deleteSessionsConfirm": "您確定要刪除嗎？此操作無法撤銷。",
+    "description": "",
     "totalPlays": "",
     "uniqueTitles": "",
     "uniqueUsers": ""
   },
   "library": {
     "title": "媒體庫",
-    "description": "伺服器上的熱門電影和劇集",
+    "description": "",
     "topMovies": "熱門電影",
     "topShows": "熱門電視節目",
     "noMoviePlays": "此期間沒有電影播放",
@@ -236,7 +219,6 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
-      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
@@ -298,7 +280,7 @@
         "title": "",
         "fallbackBody": "",
         "progress": "",
-        "snapshotsSuffix": ""
+        "snapshotsSuffix_other": ""
       },
       "multiServer": {
         "title": "",
@@ -321,18 +303,18 @@
     "versionsBackfill": {
       "banner": "",
       "action": "",
-      "syncFailed": "",
-      "syncStarted": ""
+      "syncStarted": "",
+      "syncFailed_other": ""
     }
   },
   "activity": {
     "title": "活動",
-    "description": "播放趨勢、模式和串流行為",
-    "playsOverTime": "一段時間後播放",
+    "description": "",
+    "playsOverTime": "播放次數趨勢",
     "concurrentStreams": "並行串流",
     "engagementBreakdown": "參與度分析",
     "howUsersEngage": "使用者如何參與內容",
-    "playsVsSessions": "播放 vs 會話",
+    "playsVsSessions": "播放次數 vs 會話",
     "playsVsSessionsDesc": "完整觀看次數 — 當總觀看時間涵蓋內容的整個播放時間時計為一次播放",
     "activityByDayOfWeek": "每週活躍度",
     "activityByHourOfDay": "每小時活躍度",
@@ -342,12 +324,9 @@
   "violations": {
     "title": "違規",
     "tryAdjustingFilters": "嘗試調整篩選條件",
-    "selectAllViolations": "選擇所有符合篩選條件的 {{count}} 個違規項目",
-    "dismissViolation": "撤銷違規行為",
-    "dismissViolationConfirm": "你確定你想要清除這個違規？這將永久從違規紀錄中移除。",
-    "dismissViolation_one": "撤銷 {{count}} 個違規",
-    "dismissViolation_other": "撤銷 {{count}} 個違規",
-    "dismissViolationsConfirm": "您確定要撤銷此操作嗎？此操作會將違規記錄永久刪除，並恢復相關的信任評分。",
+    "dismissViolation": "忽略違規",
+    "dismissViolationConfirm": "確定要忽略此違規嗎？它將從違規紀錄中永久移除。",
+    "dismissViolationsConfirm": "確定要忽略嗎？這會將它們從違規紀錄中永久移除，並恢復相關的信任分數。",
     "noViolationsFound": "未發現違規行為",
     "noViolationsRecorded": "還沒有記錄到任何違規行為。",
     "allSeverities": "所有嚴重程度",
@@ -355,7 +334,6 @@
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
-    "peopleSelectedCount": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -382,18 +360,141 @@
       "conditionGroup": "",
       "matched": "",
       "actual": "",
-      "relatedSessions": "",
-      "relatedSessions_one": "",
       "relatedSessions_other": ""
-    }
+    },
+    "selectAllViolations_other": "選擇所有符合篩選條件的 {{count}} 個違規項目",
+    "dismissViolations_other": "忽略 {{count}} 個違規",
+    "peopleSelectedCount_other": ""
   },
   "automations": {
+    "message": {
+      "heading": "",
+      "defaultText": "",
+      "title": "",
+      "body": "",
+      "blankHint": "",
+      "insertVariable": "",
+      "searchVariables": "",
+      "noVariables": "",
+      "preview": "",
+      "previewSamples": "",
+      "previewDefault": "",
+      "previewDefaultHint": "",
+      "previewPickDestination": "",
+      "fieldTitle": "",
+      "fieldMessage": "",
+      "fieldSubject": "",
+      "fieldHeading": "",
+      "fieldEmbedTitle": "",
+      "fieldDescription": "",
+      "addedDiscord": "",
+      "addedEmail": "",
+      "addedPushSubtitle": "",
+      "previewCount": "",
+      "previewCountBytes": "",
+      "previewCut": "",
+      "previewPriority": "",
+      "previewEscapeHint": "",
+      "webhookNotSent": ""
+    },
+    "priorities": {
+      "automatic": "",
+      "lowest": "",
+      "low": "",
+      "normal": "",
+      "high": "",
+      "urgent": ""
+    },
+    "variableGroups": {
+      "account": "",
+      "stream": "",
+      "server": "",
+      "media": "",
+      "device": "",
+      "trust": "",
+      "newsletter": "",
+      "event": ""
+    },
+    "variables": {
+      "user": {
+        "username": "",
+        "identityName": ""
+      },
+      "session": {
+        "mediaTitle": "",
+        "mediaType": "",
+        "sourceDynamicRange": "",
+        "sourceVideoCodec": "",
+        "seasonNumber": "",
+        "episodeNumber": "",
+        "name": ""
+      },
+      "server": {
+        "name": "",
+        "type": ""
+      },
+      "device": {
+        "name": "",
+        "platform": "",
+        "product": "",
+        "location": ""
+      },
+      "trust": {
+        "previous": "",
+        "new": "",
+        "reason": ""
+      },
+      "media": {
+        "title": "",
+        "name": "",
+        "show": "",
+        "season": "",
+        "episode": "",
+        "episodeCount": "",
+        "type": "",
+        "year": "",
+        "library": "",
+        "server": "",
+        "from": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        },
+        "to": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        }
+      },
+      "newsletter": {
+        "name": "",
+        "outcome": "",
+        "recipientCount": "",
+        "error": ""
+      },
+      "durationMinutes": "",
+      "minutes": "",
+      "days": "",
+      "installedVersion": "",
+      "latestVersion": "",
+      "downloadUrl": "",
+      "releaseUrl": ""
+    },
     "actions": {
       "send": {
         "label": "",
         "description": "",
         "fields": {
           "cooldown_minutes": {
+            "description": ""
+          },
+          "priority": {
             "description": ""
           }
         },
@@ -489,10 +590,9 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_other": "",
       "item": "",
-      "recordedViolation": ""
+      "recordedViolation": "",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -501,7 +601,6 @@
       "nameHelper": "",
       "namePlaceholder": "",
       "activeLabel": "",
-      "back": "",
       "submit": "",
       "submitting": "",
       "customize": "",
@@ -550,7 +649,16 @@
         "trustAmountRange": "",
         "trustValueRange": "",
         "messageRequired": "",
-        "tooLong": ""
+        "tooLong": "",
+        "template": {
+          "unclosed": "",
+          "invalidOutput": "",
+          "invalidTag": "",
+          "unexpectedElse": "",
+          "unexpectedEndif": "",
+          "missingEndif": ""
+        },
+        "templateVariable": ""
       },
       "recordAs": {
         "label": "",
@@ -566,7 +674,6 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
-      "selectedCount": "",
       "scope": {
         "label": "",
         "global": "",
@@ -581,6 +688,7 @@
         "personPlaceholder": "",
         "personHelper": "",
         "noServers": "",
+        "historicalNote": "",
         "enforceAcrossServers": "",
         "enforceAcrossServersDescription": ""
       },
@@ -686,12 +794,10 @@
         "placeholderAction": ""
       },
       "footer": {
-        "problems_one": "",
-        "problems_other": "",
-        "remaining_one": "",
-        "remaining_other": "",
         "ready": "",
-        "search": ""
+        "search": "",
+        "problems_other": "",
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -712,7 +818,8 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -726,12 +833,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_one": "",
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -749,9 +852,7 @@
       "otherwise": "",
       "appliesTo": "",
       "duration": {
-        "minutes_one": "",
         "minutes_other": "",
-        "days_one": "",
         "days_other": ""
       },
       "triggers": {
@@ -802,6 +903,7 @@
         "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
+        "is_subtitle_burn_in": "",
         "source_bitrate_mbps": "",
         "user_id": "",
         "trust_score": "",
@@ -830,6 +932,10 @@
           "no": ""
         },
         "is_transcode_downgrade": {
+          "yes": "",
+          "no": ""
+        },
+        "is_subtitle_burn_in": {
           "yes": "",
           "no": ""
         },
@@ -885,16 +991,16 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
-      "runsLine_one": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "noRuns": "",
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1000,6 +1106,10 @@
         "description": ""
       },
       "is_transcode_downgrade": {
+        "label": "",
+        "description": ""
+      },
+      "is_subtitle_burn_in": {
         "label": "",
         "description": ""
       },
@@ -1296,6 +1406,9 @@
       "cooldown_minutes": {
         "label": ""
       },
+      "priority": {
+        "label": ""
+      },
       "target": {
         "label": ""
       },
@@ -1585,7 +1698,8 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
     "title": "終止串流",
@@ -1593,13 +1707,7 @@
     "messageLabel": "給使用者發送訊息（可選）",
     "messagePlaceholder": "例如：請勿共享您的帳號",
     "messageHint": "播放過程中會向他們顯示此訊息",
-    "terminating": "正在終止……",
-    "killStream": "結束串流"
-  },
-  "notFound": {
-    "title": "",
-    "heading": "找不到頁面",
-    "description": "你要尋找的頁面不存在或已被移動。"
+    "terminating": "正在終止……"
   },
   "settings": {
     "plex": {
@@ -1624,10 +1732,8 @@
         "unknown": ""
       },
       "connectionsReachable": "{{total}} 個其中 {{reachable}} 個可以連接",
-      "connectionsAvailable": "{{count}} 個可以連接",
       "hideFiltered": "隱藏已過濾",
       "showAll": "顯示所有",
-      "moreConnections": "+{{count}} 個更多連接",
       "connectingTo": "正在連接到 {{name}}……",
       "ownerOnly": "",
       "noAccountsLinked": "沒有已連接的 Plex 帳號",
@@ -1636,21 +1742,19 @@
       "linkAnotherAccount": "連接另一個 Plex 帳號",
       "linking": "正在連接……",
       "loginEnabled": "登入已啟用",
-      "serversConnected_one": "{{count}} 個伺服器已連接",
-      "serversConnected_other": "{{count}} 個伺服器已連接",
       "unlinkAccount": "取消連接此 Plex 帳號",
       "reauthorizeAccount": "",
-      "deleteServersFirst": "先刪除已連接的伺服器才能取消連接此帳號",
+      "deleteServersFirst": "請先刪除透過此帳號連接的使用中伺服器，或將其標記為歷史伺服器",
       "unlinkPlexAccount": "取消連接 Plex 帳號",
-      "unlinkConfirm": "您確定要取消連接此 Plex 帳號嗎？取消連接後，您將無法使用此帳號新增伺服器，直到您重新連接為止。"
+      "unlinkConfirm": "您確定要取消連接此 Plex 帳號嗎？取消連接後，您將無法使用此帳號新增伺服器，直到您重新連接為止。",
+      "connectionsAvailable_other": "{{count}} 個可以連接",
+      "moreConnections_other": "+{{count}} 個更多連接",
+      "serversConnected_other": "{{count}} 個伺服器已連接"
     },
     "destinations": {
       "add": "",
-      "alertsGoTo": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
-      "delete": "",
       "deleteConfirm": "",
       "description": "",
       "emailDescription": "",
@@ -1673,7 +1777,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1685,7 +1789,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",
@@ -1746,13 +1850,12 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy": "",
-      "usedBy_other": "",
-      "usedByNewsletters": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
+      "webToastNote": "",
+      "alertsGoTo_other": "",
+      "usedBy_other": "",
+      "usedByNewsletters_other": ""
     },
     "jobs": {
       "runNow": "立即執行",
@@ -1805,14 +1908,12 @@
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "basemapShadowed": "",
     "badMounts": ""
   },
   "devices": {
     "title": "",
     "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip": "",
     "directPlayRate": "",
     "videoAndAudio": "",
     "uniqueDevices": "",
@@ -1834,7 +1935,8 @@
     "directPlayLow": "",
     "topTranscodingUsers": "",
     "topTranscodingUsersDesc": "",
-    "noTranscodingUsers": ""
+    "noTranscodingUsers": "",
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
     "title": "",
@@ -1882,9 +1984,6 @@
     "libraryItems": "",
     "environment": "",
     "systemInformation": "",
-    "cpu": "處理器",
-    "memory": "",
-    "uptime": "",
     "database": "",
     "databaseDesc": "",
     "totalSize": "",
@@ -1946,27 +2045,24 @@
         }
       },
       "card": {
-        "newEpisodes_one": "{{count}} 集新內容",
-        "newEpisodes_other": "{{count}} 集新內容",
-        "replacedEpisodes_one": "",
-        "replacedEpisodes_other": "",
         "addedAgo": "{{date}}新增",
         "addedCompactAgo": "",
-        "newEpisodesChip": ""
+        "newEpisodes_other": "{{count}} 集新內容",
+        "replacedEpisodes_other": "",
+        "newEpisodesChip_other": ""
       },
       "deadWeight": {
         "title": "",
-        "summary": "",
         "empty": "",
         "columns": {
           "poster": "",
           "title": "",
-          "size": "",
           "added": "",
           "servers": ""
         },
         "viewAll": "",
-        "viewAllTooltip": ""
+        "viewAllTooltip": "",
+        "summary_other": ""
       },
       "loadError": ""
     },
@@ -1982,15 +2078,13 @@
       "chart": {
         "title": "",
         "valueLabel": "",
-        "itemCount_one": "",
-        "itemCount_other": "",
-        "ariaLabel": ""
+        "ariaLabel": "",
+        "itemCount_other": ""
       },
       "table": {
         "title": "",
         "columns": {
           "genre": "",
-          "items": "",
           "plays": "",
           "watchTime": ""
         },
@@ -2016,9 +2110,7 @@
       "hero": {
         "loadError": "",
         "meta": {
-          "seasons_one": "",
           "seasons_other": "",
-          "episodes_one": "",
           "episodes_other": ""
         },
         "availability": {
@@ -2063,7 +2155,6 @@
         "lastWatchedAgo": "",
         "completionLabel": "",
         "columns": {
-          "user": "",
           "plays": "",
           "episodes": "",
           "completion": "",
@@ -2074,15 +2165,14 @@
         "title": "",
         "loadError": "",
         "empty": "",
-        "episodeCount_one": "",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
-        }
+        },
+        "episodeCount_other": ""
       },
       "platforms": {
         "title": "",
@@ -2090,7 +2180,6 @@
         "empty": "",
         "unknown": "",
         "columns": {
-          "platform": "",
           "plays": "",
           "watchTime": ""
         }
@@ -2102,10 +2191,6 @@
         "watched": "",
         "notWatched": "",
         "columns": {
-          "date": "",
-          "user": "",
-          "content": "",
-          "server": "",
           "duration": ""
         }
       },
@@ -2114,11 +2199,8 @@
         "loadError": "",
         "unknownLibrary": "",
         "columns": {
-          "server": "",
           "library": "",
-          "quality": "",
           "episodes": "",
-          "size": "",
           "added": ""
         },
         "versionLabel": ""
@@ -2128,10 +2210,6 @@
       "rankSuffix": "",
       "onServers": "可在 {{servers}} 觀看",
       "addedLabel": "{{date}}新增",
-      "plays_one": "",
-      "plays_other": "",
-      "viewers_one": "{{count}} 位觀眾",
-      "viewers_other": "{{count}} 位觀眾",
       "watchedState": {
         "watched": "已觀看",
         "partial": "部分觀看",
@@ -2145,12 +2223,11 @@
         "resolution": ""
       },
       "rankChip": "",
-      "playsCompact_one": "",
-      "playsCompact_other": "",
       "versionsChip": "",
-      "versions_one": "",
-      "versions_other": "",
-      "moreServers": ""
+      "moreServers": "",
+      "viewers_other": "{{count}} 位觀眾",
+      "playsCompact_other": "",
+      "versions_other": ""
     },
     "grid": {
       "toolbar": {
@@ -2160,7 +2237,6 @@
         "showsToggle": "",
         "searchPlaceholder": "",
         "searchLabel": "",
-        "removeFilter": "",
         "filtersLabel": "",
         "filtersSheetTitle": "",
         "done": "",
@@ -2178,6 +2254,10 @@
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "atmosLabel": "",
+        "atmosAll": "",
+        "atmosOnly": "",
+        "atmosChip": "",
         "genreLabel": "",
         "genreAll": "",
         "serverLabel": "",
@@ -2201,7 +2281,6 @@
           "viewers": ""
         },
         "count": "",
-        "countTotal_one": "",
         "countTotal_other": ""
       },
       "scrubber": {
@@ -2232,7 +2311,6 @@
     "columns": {
       "requester": "",
       "title": "",
-      "status": "",
       "requested": "",
       "wait": "",
       "seasons": "",
@@ -2287,11 +2365,11 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
-        "landedOf": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": ""
+        "onDisk": "",
+        "landedOf_other": ""
       }
     },
     "funnel": {

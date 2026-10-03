@@ -13,6 +13,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { db } from '../../db/client.js';
 import { servers } from '../../db/schema.js';
 import { generateOpenAPIDocumentV2 } from '../publicV2.openapi.js';
+import { serverOrderBy } from '../../utils/serverOrder.js';
 import { getPublicApiRateLimit } from './rateLimitCache.js';
 import type { RouteConfig } from './shared.js';
 import { registerHistoryRoutes } from './history.js';
@@ -56,7 +57,7 @@ export const publicV2Routes: FastifyPluginAsync = async (app) => {
       const allServers = await db
         .select({ id: servers.id, name: servers.name })
         .from(servers)
-        .orderBy(servers.displayOrder);
+        .orderBy(...serverOrderBy());
 
       if (allServers.length > 0) {
         const serverIds = allServers.map((s) => s.id);

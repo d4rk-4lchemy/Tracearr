@@ -12,6 +12,8 @@ import { servers } from '../../db/schema.js';
 import { invalidateServersCache } from '../../jobs/poller/database.js';
 import { EmbyClient } from '../../services/mediaServer/index.js';
 import { syncServer } from '../../services/sync.js';
+import { HISTORICAL_EDIT_MESSAGE } from '../../services/liveServers.js';
+import { rebuildAutoSyncSchedules } from '../../jobs/librarySyncQueue.js';
 
 export const embyRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -33,6 +35,16 @@ export const embyRoutes: FastifyPluginAsync = async (app) => {
     const { serverUrl, serverName, apiKey, publicUrl } = body.data;
 
     try {
+      let server = await db
+        .select()
+        .from(servers)
+        .where(and(eq(servers.url, serverUrl), eq(servers.type, 'emby')))
+        .limit(1);
+
+      if (server[0]?.historicalAt) {
+        return reply.conflict(HISTORICAL_EDIT_MESSAGE);
+      }
+
       const adminCheck = await EmbyClient.verifyServerAdmin(apiKey, serverUrl);
 
       if (!adminCheck.success) {
@@ -44,13 +56,6 @@ export const embyRoutes: FastifyPluginAsync = async (app) => {
         }
         return reply.forbidden(adminCheck.message);
       }
-
-      // Create or update server
-      let server = await db
-        .select()
-        .from(servers)
-        .where(and(eq(servers.url, serverUrl), eq(servers.type, 'emby')))
-        .limit(1);
 
       if (server.length === 0) {
         const inserted = await db
@@ -64,6 +69,12 @@ export const embyRoutes: FastifyPluginAsync = async (app) => {
           })
           .returning();
         server = inserted;
+        rebuildAutoSyncSchedules().catch((error: unknown) => {
+          app.log.error(
+            { err: error, serverId: inserted[0]?.id },
+            'Auto-sync schedule failed for new server'
+          );
+        });
       } else {
         const existingServer = server[0];
         if (!existingServer) {

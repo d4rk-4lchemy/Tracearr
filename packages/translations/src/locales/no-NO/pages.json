@@ -4,7 +4,7 @@
     "tagline": "Tracearr - Adgangsledelse for Stream",
     "createAccountHeading": "Opprett din konto for å komme i gang",
     "signInHeading": "Logg inn på kontoen din",
-    "createAccountDescription": "Opprett en konto for å administrere mediesererverene dine",
+    "createAccountDescription": "Opprett en konto for å administrere medieserverne dine",
     "signInDescription": "Logg inn for å få tilgang til dashbordet ditt",
     "selectPlexServer": "Velg din Plex server",
     "waitingForPlex": "Venter på Plex autorisasjon...",
@@ -27,9 +27,7 @@
     "plexAuthFailed": "Plex-autentisering mislyktes",
     "plexStartFailed": "Kunne ikke starte Plex innlogging",
     "serverConnectFailed": "Kan ikke koble til serveren",
-    "signupFailed": "Registrering mislyktes",
     "createAccountFailed": "Kunne ikke opprette konto",
-    "loginFailed": "Påloggingen mislyktes",
     "invalidCredentials": "Ugyldig epostadresse eller passord",
     "claimCodeRequired": "Første gangs oppsett krever en kravkode",
     "enterClaimCode": "Skriv inn kravkode",
@@ -41,13 +39,15 @@
   },
   "dashboard": {
     "alerts": "Varsler",
+    "plays": "Avspillinger",
+    "watchTime": "Visningstid",
     "activeUsers": "Aktive brukere",
     "nowPlaying": "Spiller nå",
-    "streamLocations": "Steder i strømmen",
+    "streamLocations": "Strømplasseringer",
     "serverResources": "Server ressurser",
     "bandwidth": "Båndbredde",
     "noActiveStreams": "Ingen aktive strømminger",
-    "streamsAppearHere": "Aktive streamer vises her når brukere begynner å se",
+    "streamsAppearHere": "Aktive strømmer vises her når brukere begynner å se",
     "vodPlays": "",
     "vodWatchTime": "",
     "tvSessions": "",
@@ -57,12 +57,8 @@
     "title": "Brukere",
     "showRemoved": "",
     "noUsersFound": "Ingen brukere funnet.",
-    "searchPlaceholder": "Søk etter brukere...",
-    "selectAllUsers": "Velg alle {{count}} brukere",
     "serversColumn": "",
-    "resetTrustScore": "Tilbakestill tillitssum",
-    "resetTrustScoreTitle_one": "Tilbakestillingsresultatet for {{count}} Bruker",
-    "resetTrustScoreTitle_other": "Tilbakestillingsscore for {{count}} Brukere",
+    "resetTrustScore": "Tilbakestill tillitsscore",
     "resetTrustScoreConfirm": "Er du sikker på at du vil tilbakestille tilliten til 100? Denne handlingen kan ikke angres.",
     "mergeUsers": "",
     "mergeTitleSuggestion": "",
@@ -76,12 +72,8 @@
     "mergeRequired": "",
     "mergeLastActive": "",
     "mergeNeverActive": "",
-    "mergeSessions_one": "",
-    "mergeSessions_other": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -97,17 +89,9 @@
     "mergeSameIdentity": "",
     "mergeSelectAllActive": "",
     "suggestionsTitle": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -122,7 +106,21 @@
     "suggestionsError": "",
     "filterHasAccessTo": "",
     "filterHasAccessToPlaceholder": "",
-    "filterHasAccessToHint": ""
+    "filterHasAccessToHint": "",
+    "selectAllUsers_one": "",
+    "selectAllUsers_other": "Velg alle {{count}} brukere",
+    "resetTrustScoreTitle_one": "Tilbakestill tillitsscore for {{count}} bruker",
+    "resetTrustScoreTitle_other": "Tilbakestill tillitsscore for {{count}} brukere",
+    "mergeMoves_one": "",
+    "mergeMoves_other": "",
+    "suggestionsCount_one": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_one": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_one": "",
+    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairUsernameMore_one": "",
+    "suggestionsPairUsernameMore_other": ""
   },
   "userDetail": {
     "backToUsers": "Tilbake til brukere",
@@ -133,11 +131,11 @@
     "violations": "Brudd",
     "terminationHistory": "Avslutnings historikk",
     "noViolationsFound": "Ingen brudd for denne brukeren.",
-    "noTerminationsFound": "Ingen strømopphør for denne brukeren.",
+    "noTerminationsFound": "Ingen avsluttede strømmer for denne brukeren.",
     "byRule": "Av / Regel",
     "manual": "Manuell",
     "unknownRule": "Ukjent regel",
-    "adjustTrustScore": "Juster tillitssum",
+    "adjustTrustScore": "Juster tillitsscore",
     "linkedAccounts": "",
     "splitAccount": "",
     "splitConfirmTitle": "",
@@ -160,26 +158,20 @@
   },
   "history": {
     "title": "Historikk",
-    "description": "Bla gjennom alle strømmeøkter med kraftig filtrering",
-    "loadingMore": "Laster mer...",
-    "scrollForMore": "Rull for mer",
-    "showingAllResults": "Viser alle {{total}} resultater",
-    "deleteSession_one": "Slett {{count}} sesjon",
-    "deleteSession_other": "Slett {{count}} Økter",
-    "deleteSessionsConfirm": "Er du sikker på at du vil slette? Denne handlingen kan ikke angres.",
+    "description": "",
     "totalPlays": "",
     "uniqueTitles": "",
     "uniqueUsers": ""
   },
   "library": {
     "title": "Bibliotek",
-    "description": "Topp filmer og serier på serveren din",
+    "description": "",
     "topMovies": "Flest filmer",
     "topShows": "Topp TV-serier",
-    "noMoviePlays": "Ingen filmer spiller i denne perioden",
-    "noShowPlays": "Ingen TV-serie spiller i denne perioden",
+    "noMoviePlays": "Ingen filmavspillinger i denne perioden",
+    "noShowPlays": "Ingen TV-serieavspillinger i denne perioden",
     "overview": {
-      "description": "Bibliotek health and growth metrics",
+      "description": "",
       "lastUpdated": "Sist oppdatert:",
       "totalItems": "Totalt antall elementer",
       "shows": "serier",
@@ -195,7 +187,7 @@
     },
     "quality": {
       "title": "Kvalitet",
-      "description": "Oppløsning og kodek distribusjon",
+      "description": "",
       "qualityEvolution": "Kvalitetsutvikling",
       "all": "Alle",
       "failedToLoad": "Kan ikke laste kvalitetsdata",
@@ -203,14 +195,14 @@
     },
     "storage": {
       "title": "Lagring",
-      "description": "Lagringsbruk, forutsigelser og optimalisering",
+      "description": "",
       "totalStorage": "Totalt lager",
       "growthRate": "Vekstrate",
       "duplicates": "Duplikater",
       "groups": "grupper",
       "recoverable": "Gjenvinnbart",
       "staleContent": "Gammelt innhold",
-      "staleContentDesc": "Innhold som kan være kandidater for fjerning",
+      "staleContentDesc": "",
       "items": "elementer",
       "unused": "Ubrukt",
       "storageTrend": "Trend lagringsplass",
@@ -221,7 +213,7 @@
       "zeroGrowth": "",
       "predictions": "Forutsigelser",
       "contentROI": "",
-      "contentROIDesc": "Se verdi per lagringskostnad",
+      "contentROIDesc": "",
       "avgHoursPerGB": "bruk timer/GB",
       "insufficientData": "Utilstrekkelige data",
       "of": "av",
@@ -236,7 +228,6 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
-      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
@@ -247,11 +238,11 @@
       "copyPath": ""
     },
     "watch": {
-      "title": "Se analyser",
-      "description": "Vise atferd og involvering av innhold",
+      "title": "Visningsanalyse",
+      "description": "",
       "watched": "Sett",
       "percentWatched": "% sett",
-      "totalWatchTime": "Total klokketid",
+      "totalWatchTime": "Total visningstid",
       "avgPerItem": "bruk per element",
       "completed": "Fullført",
       "peakHour": "Topp time",
@@ -260,13 +251,13 @@
       "monthlyTrends": "Månedlige Trender",
       "busiest": "Kjøpest:",
       "quietest": "Stillevær:",
-      "bingeHighlights": "Binge markeringer",
-      "bingeHighlightsDesc": "Viser med de mest intensive visningsmønstrene",
-      "bingeSessions": "grener for grener",
-      "noData": "Ingen overvåkningsdata ennå",
-      "noDataDesc": "Se analyser vil vises her når innholdet er spillt. Sjekk tilbake etter at du har sett på aktivitet.",
-      "failedToLoad": "Kan ikke laste inn overvåkningsanalyser",
-      "failedToLoadDesc": "Kan ikke hente klokkedata."
+      "bingeHighlights": "Høydepunkter fra maratontitting",
+      "bingeHighlightsDesc": "",
+      "bingeSessions": "Maratonøkter",
+      "noData": "Ingen visningsdata ennå",
+      "noDataDesc": "Visningsanalysen vises her når innhold er spilt av. Sjekk igjen etter litt seeraktivitet.",
+      "failedToLoad": "Kunne ikke laste inn visningsanalyse",
+      "failedToLoadDesc": "Kunne ikke hente visningsdata."
     },
     "emptyState": {
       "checkingStatus": "",
@@ -298,7 +289,8 @@
         "title": "",
         "fallbackBody": "",
         "progress": "",
-        "snapshotsSuffix": ""
+        "snapshotsSuffix_one": "",
+        "snapshotsSuffix_other": ""
       },
       "multiServer": {
         "title": "",
@@ -321,19 +313,20 @@
     "versionsBackfill": {
       "banner": "",
       "action": "",
-      "syncFailed": "",
-      "syncStarted": ""
+      "syncStarted": "",
+      "syncFailed_one": "",
+      "syncFailed_other": ""
     }
   },
   "activity": {
     "title": "Aktivitet",
-    "description": "Spill trend, mønstre og strømmeadferd",
-    "playsOverTime": "Spiller over tid",
+    "description": "",
+    "playsOverTime": "Avspillinger over tid",
     "concurrentStreams": "Samtidige strømmer",
     "engagementBreakdown": "Bryt ned Engagement",
     "howUsersEngage": "Hvordan brukere deltar i innhold",
-    "playsVsSessions": "Spiller vs Økter",
-    "playsVsSessionsDesc": "Fullstendige fullføring bare — teller en lek når total klokke dekker hele kjøretiden",
+    "playsVsSessions": "Avspillinger vs. økter",
+    "playsVsSessionsDesc": "Kun fullførte avspillinger: teller en avspilling når total visningstid dekker hele spilletiden til innholdet",
     "activityByDayOfWeek": "Aktivitet per uke",
     "activityByHourOfDay": "Aktivitet per time på dagen",
     "platforms": "Plattformer",
@@ -342,11 +335,8 @@
   "violations": {
     "title": "Brudd",
     "tryAdjustingFilters": "Prøv å justere filtrene dine",
-    "selectAllViolations": "Velg alle overtredelser av {{count}} som matcher filtre",
     "dismissViolation": "Avvis brudd",
     "dismissViolationConfirm": "Er du sikker på at du vil avvise dette bruddet? Dette vil fjerne det fra overtredelsesloggen permanent.",
-    "dismissViolation_one": "Avvis {{count}} Brudd",
-    "dismissViolation_other": "Avvis {{count}} avvik",
     "dismissViolationsConfirm": "Er du sikker på at du vil avvise? Dette vil fjerne dem fra voldsloggen permanent og gjenopprette tilknyttede tillitspoeng.",
     "noViolationsFound": "Ingen brudd funnet",
     "noViolationsRecorded": "Ingen brudd er registrert ennå.",
@@ -355,7 +345,6 @@
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
-    "peopleSelectedCount": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -365,35 +354,162 @@
       "violationDetails": "Brudd detaljer",
       "userInfo": "Bruker",
       "sessions": "Økter",
-      "noSessions": "Ingen økter tilknyttet dette forholdet",
+      "noSessions": "Ingen økter tilknyttet dette bruddet",
       "trigger": "Utløser",
       "map": "Økt Steder",
       "actions": "Handlinger tatt",
       "timestamps": "Tidsstempler",
       "created": "Opprettet",
-      "acknowledged": "Godkjent",
+      "acknowledged": "Bekreftet",
       "detected": "Oppdaget",
       "inactivity": "Detaljer om innaktivitet",
       "daysInactive": "Dager Inaktive",
       "threshold": "Terskel",
       "lastActivity": "Siste aktivitet",
       "neverActive": "Aldri aktiv",
-      "conditionEvidence": "Tilstand Bevis",
-      "conditionGroup": "Tilstandsgruppe {{index}}",
+      "conditionEvidence": "Bevis for betingelse",
+      "conditionGroup": "Betingelsesgruppe {{index}}",
       "matched": "{{matched}}/{{total}} matchet",
       "actual": "Faktisk",
-      "relatedSessions": "{{count}} relatert økt",
       "relatedSessions_one": "{{count}} relatert økt",
       "relatedSessions_other": "{{count}} relaterte økter"
-    }
+    },
+    "selectAllViolations_one": "",
+    "selectAllViolations_other": "Velg alle {{count}} brudd som samsvarer med filtrene",
+    "dismissViolations_one": "Avvis {{count}} Brudd",
+    "dismissViolations_other": "Avvis {{count}} brudd",
+    "peopleSelectedCount_one": "",
+    "peopleSelectedCount_other": ""
   },
   "automations": {
+    "message": {
+      "heading": "",
+      "defaultText": "",
+      "title": "",
+      "body": "",
+      "blankHint": "",
+      "insertVariable": "",
+      "searchVariables": "",
+      "noVariables": "",
+      "preview": "",
+      "previewSamples": "",
+      "previewDefault": "",
+      "previewDefaultHint": "",
+      "previewPickDestination": "",
+      "fieldTitle": "",
+      "fieldMessage": "",
+      "fieldSubject": "",
+      "fieldHeading": "",
+      "fieldEmbedTitle": "",
+      "fieldDescription": "",
+      "addedDiscord": "",
+      "addedEmail": "",
+      "addedPushSubtitle": "",
+      "previewCount": "",
+      "previewCountBytes": "",
+      "previewCut": "",
+      "previewPriority": "",
+      "previewEscapeHint": "",
+      "webhookNotSent": ""
+    },
+    "priorities": {
+      "automatic": "",
+      "lowest": "",
+      "low": "",
+      "normal": "",
+      "high": "",
+      "urgent": ""
+    },
+    "variableGroups": {
+      "account": "",
+      "stream": "",
+      "server": "",
+      "media": "",
+      "device": "",
+      "trust": "",
+      "newsletter": "",
+      "event": ""
+    },
+    "variables": {
+      "user": {
+        "username": "",
+        "identityName": ""
+      },
+      "session": {
+        "mediaTitle": "",
+        "mediaType": "",
+        "sourceDynamicRange": "",
+        "sourceVideoCodec": "",
+        "seasonNumber": "",
+        "episodeNumber": "",
+        "name": ""
+      },
+      "server": {
+        "name": "",
+        "type": ""
+      },
+      "device": {
+        "name": "",
+        "platform": "",
+        "product": "",
+        "location": ""
+      },
+      "trust": {
+        "previous": "",
+        "new": "",
+        "reason": ""
+      },
+      "media": {
+        "title": "",
+        "name": "",
+        "show": "",
+        "season": "",
+        "episode": "",
+        "episodeCount": "",
+        "type": "",
+        "year": "",
+        "library": "",
+        "server": "",
+        "from": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        },
+        "to": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        }
+      },
+      "newsletter": {
+        "name": "",
+        "outcome": "",
+        "recipientCount": "",
+        "error": ""
+      },
+      "durationMinutes": "",
+      "minutes": "",
+      "days": "",
+      "installedVersion": "",
+      "latestVersion": "",
+      "downloadUrl": "",
+      "releaseUrl": ""
+    },
     "actions": {
       "send": {
         "label": "",
         "description": "",
         "fields": {
           "cooldown_minutes": {
+            "description": ""
+          },
+          "priority": {
             "description": ""
           }
         },
@@ -489,10 +605,10 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_other": "",
       "item": "",
-      "recordedViolation": ""
+      "recordedViolation": "",
+      "emptyRanDescription_one": "",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -501,7 +617,6 @@
       "nameHelper": "",
       "namePlaceholder": "",
       "activeLabel": "",
-      "back": "",
       "submit": "",
       "submitting": "",
       "customize": "",
@@ -550,7 +665,16 @@
         "trustAmountRange": "",
         "trustValueRange": "",
         "messageRequired": "",
-        "tooLong": ""
+        "tooLong": "",
+        "template": {
+          "unclosed": "",
+          "invalidOutput": "",
+          "invalidTag": "",
+          "unexpectedElse": "",
+          "unexpectedEndif": "",
+          "missingEndif": ""
+        },
+        "templateVariable": ""
       },
       "recordAs": {
         "label": "",
@@ -566,7 +690,6 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
-      "selectedCount": "",
       "scope": {
         "label": "",
         "global": "",
@@ -581,6 +704,7 @@
         "personPlaceholder": "",
         "personHelper": "",
         "noServers": "",
+        "historicalNote": "",
         "enforceAcrossServers": "",
         "enforceAcrossServersDescription": ""
       },
@@ -686,12 +810,12 @@
         "placeholderAction": ""
       },
       "footer": {
+        "ready": "",
+        "search": "",
         "problems_one": "",
         "problems_other": "",
         "remaining_one": "",
-        "remaining_other": "",
-        "ready": "",
-        "search": ""
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -712,7 +836,9 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_one": "",
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -726,12 +852,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_one": "",
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -802,6 +924,7 @@
         "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
+        "is_subtitle_burn_in": "",
         "source_bitrate_mbps": "",
         "user_id": "",
         "trust_score": "",
@@ -830,6 +953,10 @@
           "no": ""
         },
         "is_transcode_downgrade": {
+          "yes": "",
+          "no": ""
+        },
+        "is_subtitle_burn_in": {
           "yes": "",
           "no": ""
         },
@@ -885,16 +1012,18 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_one": "",
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
+      "noRuns": "",
       "runsLine_one": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1000,6 +1129,10 @@
         "description": ""
       },
       "is_transcode_downgrade": {
+        "label": "",
+        "description": ""
+      },
+      "is_subtitle_burn_in": {
         "label": "",
         "description": ""
       },
@@ -1296,6 +1429,9 @@
       "cooldown_minutes": {
         "label": ""
       },
+      "priority": {
+        "label": ""
+      },
       "target": {
         "label": ""
       },
@@ -1585,7 +1721,9 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_one": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
     "title": "Avslutt strømmingen",
@@ -1593,13 +1731,7 @@
     "messageLabel": "Melding til bruker (valgfritt)",
     "messagePlaceholder": "F.eks. ikke del kontoen din",
     "messageHint": "Denne meldingen vil bli vist til dem under avspilling",
-    "terminating": "Avslutter...",
-    "killStream": "Drap Strøm"
-  },
-  "notFound": {
-    "title": "",
-    "heading": "Side ikke funnet",
-    "description": "Siden du leter etter finnes ikke eller har blitt flyttet."
+    "terminating": "Avslutter..."
   },
   "settings": {
     "plex": {
@@ -1624,10 +1756,8 @@
         "unknown": ""
       },
       "connectionsReachable": "{{reachable}} av {{total}} forbindelser tilgjengelig",
-      "connectionsAvailable": "{{count}} tilkoblinger tilgjengelig",
       "hideFiltered": "Skjul filtrerte",
       "showAll": "Vis alle",
-      "moreConnections": "+{{count}} flere tilkoblinger",
       "connectingTo": "Kobler til {{name}}...",
       "ownerOnly": "",
       "noAccountsLinked": "Ingen Plex-kontoer koblet til",
@@ -1636,21 +1766,22 @@
       "linkAnotherAccount": "Koble til en annen Plex konto",
       "linking": "Lenker...",
       "loginEnabled": "Innlogging aktivert",
-      "serversConnected_one": "{{count}} server tilkoblet",
-      "serversConnected_other": "{{count}} servere tilkoblet",
       "unlinkAccount": "Frakoble denne Plex kontoen",
       "reauthorizeAccount": "",
-      "deleteServersFirst": "Slett tilkoblede servere først for å fjerne denne kontoen",
+      "deleteServersFirst": "Slett først de aktive serverne som er koblet til via denne kontoen, eller merk dem som historiske",
       "unlinkPlexAccount": "Koble fra Plex konto",
-      "unlinkConfirm": "Er du sikker på at du vil koble fra denne Plex kontoen? Du kan ikke legge til servere fra denne kontoen frem til du kobler den til igjen."
+      "unlinkConfirm": "Er du sikker på at du vil koble fra denne Plex kontoen? Du kan ikke legge til servere fra denne kontoen frem til du kobler den til igjen.",
+      "connectionsAvailable_one": "",
+      "connectionsAvailable_other": "{{count}} tilkoblinger tilgjengelig",
+      "moreConnections_one": "",
+      "moreConnections_other": "+{{count}} flere tilkoblinger",
+      "serversConnected_one": "{{count}} server tilkoblet",
+      "serversConnected_other": "{{count}} servere tilkoblet"
     },
     "destinations": {
       "add": "",
-      "alertsGoTo": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
-      "delete": "",
       "deleteConfirm": "",
       "description": "",
       "emailDescription": "",
@@ -1746,13 +1877,15 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy": "",
-      "usedBy_other": "",
-      "usedByNewsletters": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
+      "webToastNote": "",
+      "alertsGoTo_one": "",
+      "alertsGoTo_other": "",
+      "usedBy_one": "",
+      "usedBy_other": "",
+      "usedByNewsletters_one": "",
+      "usedByNewsletters_other": ""
     },
     "jobs": {
       "runNow": "Kjør nå",
@@ -1805,22 +1938,20 @@
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "basemapShadowed": "",
     "badMounts": ""
   },
   "devices": {
     "title": "Enhetens kompatibilitet",
-    "description": "Se hvilke enheter som spiller direkte mot transkode hver kodek",
+    "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip": "",
-    "directPlayRate": "Direkte spill-vurdering",
-    "videoAndAudio": "Video + lyd",
+    "directPlayRate": "Andel direkte avspilling",
+    "videoAndAudio": "",
     "uniqueDevices": "Unike enheter",
     "uniqueCodecs": "Unike kodere",
     "deviceHealth": "Enhetens helse",
-    "deviceHealthDesc": "Direkte avspilling etter enhetstype",
-    "transcodeHotspots": "Konverter hotspots",
-    "transcodeHotspotsDesc": "Kombinasjoner som forårsaker flest transkoder",
+    "deviceHealthDesc": "",
+    "transcodeHotspots": "Transkodings-hotspots",
+    "transcodeHotspotsDesc": "",
     "deviceAndCodec": "Enhet + kodek",
     "transcodes": "Transkoder",
     "pctOfTotal": "% av totalt",
@@ -1833,22 +1964,24 @@
     "directPlayMid": "",
     "directPlayLow": "",
     "topTranscodingUsers": "Topp transkodingsbrukere",
-    "topTranscodingUsersDesc": "Brukere som forårsaker mest transkoder på serveren din",
-    "noTranscodingUsers": "Ingen transkodingsbrukere funnet"
+    "topTranscodingUsersDesc": "",
+    "noTranscodingUsers": "Ingen transkodingsbrukere funnet",
+    "analyzedSessionsTooltip_one": "",
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
     "title": "Båndbredde",
-    "description": "Streaming båndbredde bruk og bitrate analyse",
+    "description": "",
     "dataTransferred": "Data overført",
     "avgBitrate": "Snitt bitrate",
     "avgBitrateMbps": "Gj.snittlig bitfrekvens (Mbps)",
     "peakBitrate": "Topp: {{value}} MB",
-    "totalWatchTime": "Total klokketid",
+    "totalWatchTime": "Total visningstid",
     "uniqueUsers": "Unike brukere",
     "dailyUsage": "Daglig bruk av Båndbredde",
-    "dailyUsageDesc": "Gjennomsnittlig bithastighet og antall økter over tid",
+    "dailyUsageDesc": "",
     "topUsers": "Brukere med høyest båndbredde",
-    "topUsersDesc": "Brukerne bruker mest båndbredde",
+    "topUsersDesc": "",
     "noData": "Det finnes ingen data om båndbredde"
   },
   "statsUsers": {
@@ -1872,9 +2005,9 @@
   },
   "debug": {
     "title": "Verktøy for feilsøk",
-    "description": "Administrative hjelpemidler for feilsøking og datastyring",
+    "description": "",
     "overview": "Oversikt",
-    "librarySnapshots": "Snapshots bibliotek",
+    "librarySnapshots": "Øyeblikksbilder av bibliotek",
     "tasks": "Oppgaver",
     "logs": "Logger",
     "plexAccounts": "Plex kontoer",
@@ -1882,11 +2015,8 @@
     "libraryItems": "Bibliotek elementer",
     "environment": "Miljø",
     "systemInformation": "System Informasjon",
-    "cpu": "Prosessor",
-    "memory": "Minne",
-    "uptime": "Oppetid",
     "database": "Databasen",
-    "databaseDesc": "Databasestørrelse og tabell statistikk",
+    "databaseDesc": "",
     "totalSize": "Total størrelse",
     "maintenance": "Vedlikehold",
     "destructiveActions": "Destruktiv handling",
@@ -1904,11 +2034,11 @@
     "clearUsers": "Tøm brukere",
     "clearServers": "Tøm servere",
     "factoryReset": "Gjenopprett fabrikkinnstillinger",
-    "manageSnapshots": "Administrere biblioteksbilder brukt til trend- og kvalitets utvikling-diagrammer",
+    "manageSnapshots": "Administrer øyeblikksbilder av bibliotek brukt i diagrammene Storage Trend og Quality Evolution",
     "suspiciousOnly": "Bare mistenkelig",
     "load": "Last",
-    "noSuspiciousSnapshots": "Ingen mistenkelige bilder funnet",
-    "clickLoadToView": "Klikk på \"Last\" for å vise skjermbilder",
+    "noSuspiciousSnapshots": "Ingen mistenkelige øyeblikksbilder funnet",
+    "clickLoadToView": "Klikk på «Last» for å vise øyeblikksbilder",
     "deleteSelected": "Slett valgte",
     "deleteAllSuspicious": "Slett alle mistenkelige",
     "suspicious": "Mistenkelig",
@@ -1946,27 +2076,28 @@
         }
       },
       "card": {
+        "addedAgo": "lagt til {{date}}",
+        "addedCompactAgo": "",
         "newEpisodes_one": "{{count}} ny episode",
         "newEpisodes_other": "{{count}} nye episoder",
         "replacedEpisodes_one": "",
         "replacedEpisodes_other": "",
-        "addedAgo": "lagt til {{date}}",
-        "addedCompactAgo": "",
-        "newEpisodesChip": ""
+        "newEpisodesChip_one": "",
+        "newEpisodesChip_other": ""
       },
       "deadWeight": {
         "title": "",
-        "summary": "",
         "empty": "",
         "columns": {
           "poster": "",
           "title": "",
-          "size": "",
           "added": "",
           "servers": ""
         },
         "viewAll": "",
-        "viewAllTooltip": ""
+        "viewAllTooltip": "",
+        "summary_one": "",
+        "summary_other": ""
       },
       "loadError": ""
     },
@@ -1982,15 +2113,14 @@
       "chart": {
         "title": "",
         "valueLabel": "",
+        "ariaLabel": "",
         "itemCount_one": "",
-        "itemCount_other": "",
-        "ariaLabel": ""
+        "itemCount_other": ""
       },
       "table": {
         "title": "",
         "columns": {
           "genre": "",
-          "items": "",
           "plays": "",
           "watchTime": ""
         },
@@ -2063,7 +2193,6 @@
         "lastWatchedAgo": "",
         "completionLabel": "",
         "columns": {
-          "user": "",
           "plays": "",
           "episodes": "",
           "completion": "",
@@ -2074,15 +2203,15 @@
         "title": "",
         "loadError": "",
         "empty": "",
-        "episodeCount_one": "",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
-        }
+        },
+        "episodeCount_one": "",
+        "episodeCount_other": ""
       },
       "platforms": {
         "title": "",
@@ -2090,7 +2219,6 @@
         "empty": "",
         "unknown": "",
         "columns": {
-          "platform": "",
           "plays": "",
           "watchTime": ""
         }
@@ -2102,10 +2230,6 @@
         "watched": "",
         "notWatched": "",
         "columns": {
-          "date": "",
-          "user": "",
-          "content": "",
-          "server": "",
           "duration": ""
         }
       },
@@ -2114,11 +2238,8 @@
         "loadError": "",
         "unknownLibrary": "",
         "columns": {
-          "server": "",
           "library": "",
-          "quality": "",
           "episodes": "",
-          "size": "",
           "added": ""
         },
         "versionLabel": ""
@@ -2128,10 +2249,6 @@
       "rankSuffix": ", rang {{rank}}",
       "onServers": "På {{servers}}",
       "addedLabel": "Lagt til {{date}}",
-      "plays_one": "{{count}} avspilling",
-      "plays_other": "{{count}} avspillinger",
-      "viewers_one": "{{count}} seer",
-      "viewers_other": "{{count}} seere",
       "watchedState": {
         "watched": "Sett",
         "partial": "Delvis sett",
@@ -2145,12 +2262,14 @@
         "resolution": ""
       },
       "rankChip": "",
+      "versionsChip": "",
+      "moreServers": "",
+      "viewers_one": "{{count}} seer",
+      "viewers_other": "{{count}} seere",
       "playsCompact_one": "",
       "playsCompact_other": "",
-      "versionsChip": "",
       "versions_one": "",
-      "versions_other": "",
-      "moreServers": ""
+      "versions_other": ""
     },
     "grid": {
       "toolbar": {
@@ -2160,7 +2279,6 @@
         "showsToggle": "",
         "searchPlaceholder": "",
         "searchLabel": "",
-        "removeFilter": "",
         "filtersLabel": "",
         "filtersSheetTitle": "",
         "done": "",
@@ -2178,6 +2296,10 @@
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "atmosLabel": "",
+        "atmosAll": "",
+        "atmosOnly": "",
+        "atmosChip": "",
         "genreLabel": "",
         "genreAll": "",
         "serverLabel": "",
@@ -2232,7 +2354,6 @@
     "columns": {
       "requester": "",
       "title": "",
-      "status": "",
       "requested": "",
       "wait": "",
       "seasons": "",
@@ -2287,11 +2408,12 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
-        "landedOf": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": ""
+        "onDisk": "",
+        "landedOf_one": "",
+        "landedOf_other": ""
       }
     },
     "funnel": {

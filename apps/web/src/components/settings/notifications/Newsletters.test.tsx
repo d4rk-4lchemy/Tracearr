@@ -151,7 +151,7 @@ describe('Newsletters section', () => {
   it('lists rows, toggles enabled with a patch, and confirms before deleting', async () => {
     renderPage({ newsletters: [newsletter] });
     expect(screen.getByRole('list')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('switch', { name: 'newsletters.enabled' }));
+    await userEvent.click(screen.getByRole('switch', { name: 'common:states.enabled' }));
     expect(updateMutate).toHaveBeenCalledWith({ id: 'n-1', data: { enabled: false } });
 
     await userEvent.click(screen.getByRole('button', { name: 'newsletters.rowActions' }));

@@ -24,6 +24,7 @@ export interface CatalogFilters {
   /** `${serverId}:${libraryId}` - see CatalogToolbar. */
   libraryKey?: string;
   hdr?: boolean;
+  atmos?: boolean;
   sizeGbMin?: number;
   sizeGbMax?: number;
 }
@@ -94,6 +95,7 @@ function catalogRequestParams(args: UseCatalogArgs & { sortedServerIds: string[]
     sort,
     libraryKey: filters.libraryKey,
     hdr: filters.hdr,
+    atmos: filters.atmos,
     sizeGbMin: filters.sizeGbMin,
     sizeGbMax: filters.sizeGbMax,
   };

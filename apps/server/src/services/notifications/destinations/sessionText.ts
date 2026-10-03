@@ -1,4 +1,4 @@
-import { formatEpisodeLabel } from '@tracearr/shared';
+import { formatEpisodeLabel, type PlaybackDecision, playbackDecision } from '@tracearr/shared';
 import type { ActiveSession } from '../types.js';
 
 export function formatDuration(ms: number): string {
@@ -36,15 +36,15 @@ export function getMediaDisplay(session: ActiveSession): {
   };
 }
 
-/** Get playback type (matches UI badge logic) */
+const PLAYBACK_TYPE_LABELS: Record<PlaybackDecision, string> = {
+  directplay: 'Direct Play',
+  copy: 'Direct Stream',
+  audio_transcode: 'Audio Transcode',
+  transcode: 'Transcode',
+};
+
 export function getPlaybackType(session: ActiveSession): string {
-  if (session.isTranscode) {
-    return 'Transcode';
-  }
-  if (session.videoDecision === 'copy' || session.audioDecision === 'copy') {
-    return 'Direct Stream';
-  }
-  return 'Direct Play';
+  return PLAYBACK_TYPE_LABELS[playbackDecision(session)];
 }
 
 export function getUserDisplayName(session: ActiveSession): string {

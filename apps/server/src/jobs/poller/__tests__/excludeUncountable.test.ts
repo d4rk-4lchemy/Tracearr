@@ -33,6 +33,13 @@ describe('excludeUncountableSessions', () => {
     expect(excludeUncountableSessions([confirmed, pending], new Set())).toEqual([confirmed]);
   });
 
+  it('leaves trailers out of the countable sessions', () => {
+    const movie = session({ id: 'a', mediaType: 'movie' });
+    const trailer = session({ id: 'b', mediaType: 'trailer' });
+
+    expect(excludeUncountableSessions([movie, trailer], new Set())).toEqual([movie]);
+  });
+
   it('returns the same array when nothing is excluded', () => {
     const a = session({ id: 'a' });
     const input = [a];

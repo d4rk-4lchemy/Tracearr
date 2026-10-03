@@ -4,7 +4,7 @@
  * Provides a consistent interface for making HTTP requests with:
  * - Automatic error handling and typed errors
  * - Service-specific error codes integration
- * - Support for JSON, text, and raw response handling
+ * - Support for JSON and text response handling
  * - Request timeout support
  */
 
@@ -66,7 +66,7 @@ export class HttpClientError extends Error {
 export interface HttpRequestOptions extends Omit<RequestInit, 'signal'> {
   /** Service name for error messages */
   service?: string;
-  /** Request timeout in milliseconds */
+  /** Request timeout in milliseconds. Defaults to 30 s; 0 disables it. */
   timeout?: number;
   /** Whether to include response body in errors */
   includeBodyInError?: boolean;
@@ -117,7 +117,7 @@ function createTimeoutSignal(timeoutMs: number): AbortSignal {
  * });
  */
 export async function fetchJson<T>(url: string, options: HttpRequestOptions = {}): Promise<T> {
-  const { timeout, ...fetchOptions } = options;
+  const { timeout = 30_000, ...fetchOptions } = options;
 
   const response = await fetch(url, {
     ...fetchOptions,
@@ -138,7 +138,7 @@ export async function fetchJson<T>(url: string, options: HttpRequestOptions = {}
  * });
  */
 export async function fetchText(url: string, options: HttpRequestOptions = {}): Promise<string> {
-  const { timeout, ...fetchOptions } = options;
+  const { timeout = 30_000, ...fetchOptions } = options;
 
   const response = await fetch(url, {
     ...fetchOptions,

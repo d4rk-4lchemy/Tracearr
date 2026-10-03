@@ -1,26 +1,14 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Monitor,
-  MonitorPlay,
-  Smartphone,
-  Tablet,
-  Tv,
-  Play,
-  Pause,
-  Zap,
-  Cpu,
-  Server,
-  X,
-} from 'lucide-react';
+import { Monitor, Smartphone, Tablet, Tv, Play, Pause, Server, Subtitles, X } from 'lucide-react';
 import { getAvatarUrl } from '@/components/users/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { cn, formatLocationCompact, getDeviceDisplayName } from '@/lib/utils';
+import { cn, formatLocationCompact, getBufferedPercent, getDeviceDisplayName } from '@/lib/utils';
 import { imageProxyUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/formatters';
+import { playbackBadge } from '@/lib/playbackBadge';
 import { useEstimatedProgress } from '@/hooks/useEstimatedProgress';
 import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
@@ -32,7 +20,6 @@ import { LocalBadge } from './LocalBadge';
 import {
   PLAYBACK_DECISION_LABEL_KEYS,
   POSTER_IMAGE_SIZE,
-  playbackDecision,
   type ActiveSession,
 } from '@tracearr/shared';
 
@@ -104,19 +91,45 @@ function DeviceIcon({ session, className }: { session: ActiveSession; className?
   return <Monitor className={className} />;
 }
 
-function PlaybackOverlay({ isPaused }: { isPaused: boolean }) {
+function PlaybackOverlay({
+  isPaused,
+  artworkUrl,
+  roundedArtwork = false,
+}: {
+  isPaused: boolean;
+  artworkUrl?: string;
+  roundedArtwork?: boolean;
+}) {
   return (
     <div
       data-testid="artwork-playback-overlay"
       className={cn(
-        'absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 transition-opacity',
+        'absolute inset-0 flex items-center justify-center transition-opacity',
         isPaused ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
       )}
     >
+      {artworkUrl && (
+        <span
+          aria-hidden="true"
+          data-testid="artwork-dimmer"
+          className={cn('pointer-events-none absolute bg-black/50', roundedArtwork && 'rounded-lg')}
+          style={{
+            // Cover subpixel seams where the image and its alpha mask rasterize differently.
+            inset: -1,
+            maskImage: `url(${JSON.stringify(artworkUrl)})`,
+            maskMode: 'alpha',
+            maskSize: '100% 100%',
+            maskRepeat: 'no-repeat',
+            WebkitMaskImage: `url(${JSON.stringify(artworkUrl)})`,
+            WebkitMaskSize: '100% 100%',
+            WebkitMaskRepeat: 'no-repeat',
+          }}
+        />
+      )}
       {isPaused ? (
-        <Pause className="h-8 w-8 shrink-0 text-white" />
+        <Pause className="relative h-8 w-8 shrink-0 text-white" />
       ) : (
-        <Play className="h-8 w-8 shrink-0 text-white" />
+        <Play className="relative h-8 w-8 shrink-0 text-white" />
       )}
     </div>
   );
@@ -204,17 +217,23 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
           >
             {posterUrl ? (
               <div className="absolute inset-0 flex items-center justify-center">
-                {/* The inner element takes the image's actual aspect ratio.
-                    Effects apply here rather than to the reserved poster slot. */}
+                {/* Keep the playback icon centered on the image's actual aspect ratio. */}
                 <div className="relative max-h-full max-w-full overflow-visible">
                   <img
                     src={posterUrl}
                     alt={title}
-                    className="block h-auto max-h-28 w-auto max-w-20 rounded-lg shadow-lg"
+                    className={cn(
+                      'block h-auto max-h-28 w-auto max-w-20',
+                      session.mediaType !== 'live' && 'rounded-lg'
+                    )}
                     loading="lazy"
                   />
                   {/* No overflow clipping: a tiny source must not crop the fixed-size control. */}
-                  <PlaybackOverlay isPaused={isPaused} />
+                  <PlaybackOverlay
+                    isPaused={isPaused}
+                    artworkUrl={posterUrl}
+                    roundedArtwork={session.mediaType !== 'live'}
+                  />
                 </div>
               </div>
             ) : (
@@ -259,43 +278,38 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
 
                 {/* Quality badge - icon only with tooltip */}
                 {(() => {
-                  const isHwTranscode =
-                    session.isTranscode &&
-                    !!(session.transcodeInfo?.hwEncoding || session.transcodeInfo?.hwDecoding);
-
+                  const { decision, Icon, variant, isHwTranscode, isBurnIn } =
+                    playbackBadge(session);
                   const label = isHwTranscode
                     ? t('playback.hwTranscode')
-                    : t(PLAYBACK_DECISION_LABEL_KEYS[playbackDecision(session)]);
-
-                  const icon = session.isTranscode ? (
-                    isHwTranscode ? (
-                      <Cpu className="h-3.5 w-3.5" />
-                    ) : (
-                      <Zap className="h-3.5 w-3.5" />
-                    )
-                  ) : (
-                    <MonitorPlay className="h-3.5 w-3.5" />
-                  );
+                    : t(PLAYBACK_DECISION_LABEL_KEYS[decision]);
 
                   return (
-                    <Badge
-                      variant={session.isTranscode ? 'warning' : 'success'}
-                      className="h-6 w-6 justify-center p-0"
-                      title={label}
+                    <span
+                      className={cn(
+                        'relative flex h-6 w-6 items-center justify-center',
+                        variant === 'warning' ? 'text-warning' : 'text-success'
+                      )}
                       data-testid="quality-badge"
+                      title={isBurnIn ? `${label} · ${t('playback.burnIn')}` : label}
                     >
-                      {icon}
-                    </Badge>
+                      <Icon className="h-4 w-4" />
+                      {isBurnIn && (
+                        <span className="bg-card absolute -right-1 -bottom-1 flex h-3.5 w-3.5 items-center justify-center rounded-full">
+                          <Subtitles className="text-warning h-2.5 w-2.5" />
+                        </span>
+                      )}
+                    </span>
                   );
                 })()}
 
                 {/* Device icon - names the client on hover, like the quality badge */}
                 <div
-                  className="bg-muted flex h-6 w-6 items-center justify-center rounded-md"
+                  className="flex h-6 w-6 items-center justify-center"
                   title={deviceName ?? undefined}
                   data-testid="device-badge"
                 >
-                  <DeviceIcon session={session} className="text-muted-foreground h-3.5 w-3.5" />
+                  <DeviceIcon session={session} className="text-muted-foreground h-4 w-4" />
                 </div>
 
                 {/* Terminate button - admin/owner only */}
@@ -310,7 +324,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                     }}
                     title="Terminate stream"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-4 w-4" />
                   </Button>
                 )}
               </div>
@@ -326,7 +340,11 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
 
             {/* Bottom: Progress */}
             <div className="mt-3 space-y-1">
-              <Progress value={progressPercent} className="h-1.5" />
+              <Progress
+                value={progressPercent}
+                buffered={getBufferedPercent(session)}
+                className="h-1.5"
+              />
               <div className="text-muted-foreground flex justify-between text-[10px]">
                 <span>
                   {isDispatcharrCatchup ? catchupStartLabel : formatDuration(estimatedProgressMs)}
@@ -334,8 +352,10 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                 <span>
                   {isDispatcharrCatchup ? (
                     catchupEndLabel
-                  ) : isPaused ? (
-                    <span className="font-medium text-yellow-500">Paused</span>
+                  ) : isPaused || session.buffering ? (
+                    <span className="font-medium text-yellow-500">
+                      {session.buffering ? t('playback.buffering') : t('playback.paused')}
+                    </span>
                   ) : dispatcharrLiveSpeed ? (
                     dispatcharrLiveSpeed
                   ) : remaining ? (

@@ -1,4 +1,5 @@
 import { Column, Img, Link, Row, Text } from '@react-email/components';
+import { Fragment } from 'react';
 import { Cell } from '../components/Cell.js';
 import { Layout } from '../components/Layout.js';
 import { card, colors, heading, link, muted, paragraph } from '../styles.js';
@@ -102,7 +103,14 @@ export function EventEmail({
       <Cell style={card}>
         <Text style={heading(branding.accentColor)}>{input.title}</Text>
         <Text style={severityStyle(input.severity)}>{SEVERITY_LABEL[input.severity]}</Text>
-        <Text style={paragraph}>{input.message}</Text>
+        <Text style={paragraph}>
+          {input.message.split('\n').map((line, i) => (
+            <Fragment key={i}>
+              {i > 0 && <br />}
+              {line}
+            </Fragment>
+          ))}
+        </Text>
         {input.card?.kind === 'media' && (
           <MediaCardView card={input.card} accent={branding.accentColor} />
         )}

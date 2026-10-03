@@ -27,6 +27,13 @@ HTTP/2 `PROTOCOL_ERROR`); `imagetools create` is idempotent, so the retry also
 repairs partially updated tags. If all attempts fail, rerun the release
 workflow: GHCR content is already complete and no image rebuild is needed.
 
+The publish job allows 30 minutes for registry copies and verification. The
+`v2.5.1-r2` release run on September 28, 2026 spent 9 minutes 37 seconds in a
+successful Docker Hub copy; its former 10-minute job limit then cancelled the
+platform check after all ten manifest checks printed `true`. This was a job
+timeout, not a failed `jq` check. Keep enough headroom for slow copies and
+verification when changing the release workflow.
+
 Local validation passed with Node 24 / pnpm 12.4.2: 1,803 web tests,
 typecheck, lint (751 existing warnings), translations check (seven existing
 missing `uk-UA/nav.json` keys), and web build. The mocked release check covered
@@ -39,9 +46,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `ef0fb45f`
-- Last shared upstream commit found during inspection: `db54cfb1` (before merge)
-- Latest upstream commit merged into the current working tree: `ef0fb45f`
+- Source branch/SHA inspected: `main` at `dd6818583`
+- Last shared upstream commit found during inspection: `762c15e45` (before merge)
+- Latest upstream commit merged into the current working tree: `dd6818583`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -52,6 +59,89 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## October 3, 2026 upstream merge
+
+Upstream `main` at `dd6818583` (Tracearr 2.6.0) adds historical servers,
+audio/Atmos and edition metadata, buffering and transcoder presentation,
+subtitle burn-in, trailer handling, notification previews, import corrections,
+new translations, and image-path checks. Upstream migrations `0109` and
+`0110` are byte-for-byte aligned with the source checkout; the Dispatcharr
+fork-migration ledger remains separate and unchanged. Historical Dispatcharr
+servers now stop polling and realtime work, while live Dispatcharr servers
+remain excluded from library auto-sync schedules. Dispatcharr authentication,
+device identity, session lifecycle, termination, settings, and public API
+types remain present.
+
+The shared image proxy retains uncropped `inside` resizing for every provider.
+Upstream image-path restrictions remain for Plex/Jellyfin/Emby; Dispatcharr
+images remain pinned to the configured origin without auth headers and accept
+provider-relative VOD poster paths as well as channel logos. Both Dockerfiles
+retain fork migrations, fork build metadata, and builder-generated basemap
+copies. The release workflow can still prefetch the basemap into the build
+context. Exactly the PR-only CI and fork dual-registry release workflows
+remain; upstream release, geoip, nightly and insiders workflows were excluded.
+
+Full non-Docker validation passed with Node 24 / pnpm 12.4.2, a clean Turbo
+cache, frozen install, 4 GB heap, one Vitest worker, and Turbo concurrency
+one: lint, typecheck, translations, unit/services/routes/auth/security, web,
+coverage, and build. The five server groups plus web passed 9,302 tests;
+coverage passed 5,972 tests (71.06% statements, 64.89% branches, 75.27%
+functions, 72.26% lines). The final Dispatcharr VOD poster regression passed
+in a focused 54-test image-proxy run. Lint has 766 warnings, 15 more than the
+previous baseline, all from upstream-touched files. Runtime warning counts
+and translation results are recorded in `.tmp/github-ci-warning-reference.md`.
+Logs: `.tmp/merge-<job>-20261003.log` (final reruns include `-final`).
+Docker integration, E2E, image builds, database upgrade execution, and
+live-provider smoke checks were omitted at the user's request; the new
+historical-server migrations and runtime behavior have not been checked
+against a running database.
+
+Follow-up on October 3: the fallback basemap fetch in both Docker builders
+failed because `scripts/fetch-basemap.sh` pinned `20260926.pmtiles`, which
+Protomaps now returns as 404. When no archive is already in the build context,
+the script now selects the newest published v4 build from the Protomaps builds
+metadata. `BASEMAP_BUILD=YYYYMMDD` can pin a build manually, including through
+the Docker build arguments. Extraction writes a temporary file and moves it
+into place only after success; an interrupted or failed fetch cannot look like
+a valid cached archive. The script hash change also rotates the release
+workflow's basemap cache key. An actual zoom-8 extract of `20261003.pmtiles`
+completed (556,799,472 bytes, PMTiles header); the validation file was
+removed. A forced stale-build fetch returned nonzero and left no output or
+partial file. Buildx `--check` passed for both Dockerfiles. Full Docker image
+builds were not rerun on this 95%-full host.
+
+## September 29, 2026 upstream merge
+
+Upstream `main` at `762c15e45` (Tracearr 2.5.2) adds an audit-backed
+`mergedIn` flag so only accounts actually moved by a user merge offer Split.
+Merging preserves the kept user's displayed name, and undo clears only a name
+that the merge itself set. Plex bandwidth history is trimmed to the live
+window without spreading a very large sample array onto the JavaScript stack.
+The image proxy applies EXIF orientation before converting phone photos to
+WebP; the fork's uncropped poster and Dispatcharr image fit remains in place.
+The merge also brings dependency updates, interface layout changes, Crowdin
+translations and 2.5.2 release notes. The Polish translation conflict retains
+upstream's new translated library strings and the fork's `noLibraryServers`
+key. Upstream migrations and Dispatcharr fork migrations are unchanged.
+
+Exactly the PR-only CI and fork dual-registry release workflows remain.
+Dispatcharr auth, identity, realtime/polling, session lifecycle, two-channel
+version API, and permanent artwork cache markers remain intact. Docker-backed
+integration and E2E were omitted at the user's request; the new merge/split
+queries have not been exercised against PostgreSQL in this run.
+
+Full non-Docker CI-equivalent validation passed with Node 24 / pnpm 12.4.2,
+a clean Turbo cache, frozen install, 4 GB heap, one Vitest worker, and Turbo
+concurrency one: lint, typecheck, translations, unit/services/routes/auth/
+security, web, coverage and build. The server groups plus web passed 9,064
+tests; coverage passed 5,813 tests (70.41% statements, 64.23% branches,
+74.68% functions, 71.63% lines). Lint retained 751 warnings. All
+warning-like counts match the September 27 reference, including seven
+existing absent `uk-UA/nav.json` translation keys. Logs:
+`.tmp/github-ci-<job>-20260929.log`; the runner reports `FAILED_JOBS=0`.
+No live-provider Dispatcharr smoke checks, database upgrade execution,
+Docker image builds, or registry publication were performed.
 
 ## September 27, 2026 upstream merge
 
@@ -183,8 +273,9 @@ Newsletter send tests now freeze Date around their fixed watermark. Media E2E
 seeding explicitly refreshes library_stats_daily after commit so fresh databases
 expose the overview without waiting for background aggregation. Production
 behavior, Dispatcharr overlay and both GitHub workflows are unchanged.
-Local validation must run heavy jobs sequentially on the 8 GB LXC, with one
-Vitest worker and Turbo concurrency one; see AGENTS.md and the warning reference.
+Local validation must run heavy jobs sequentially on the 8 GB LXC, with up to two
+Vitest/Playwright workers and Turbo concurrency one (user-approved October 3);
+see AGENTS.md and the warning reference.
 Validation passed with Node 24 / pnpm 12.4.2: services 3,917/3,917, fresh-volume
 E2E 56 passed / 26 skipped without retries, lint (751 existing warnings), and
 typecheck (11 tasks, nine cached). Services retains 108 warning-like messages.
@@ -354,6 +445,10 @@ Server routes and services:
   when refactoring the shared image-proxy request builder; preserve URL
   normalization and `fit: inside` while retaining upstream cache/LQIP behavior
   for other server types.
+- Session Details artwork uses `object-contain` in its existing fixed image
+  slot, so Live TV logos and VOD posters remain fully visible. Preserve this
+  fit when merging the shared active/history detail panel; it has no artwork
+  mask or playback overlay.
 - Uncropped Dashboard artwork is a permanent, intentional fork behavior,
   not a temporary workaround:
   preserve it when merging upstream image-proxy or Dashboard changes.
@@ -372,13 +467,33 @@ Server routes and services:
   `artwork=2` only to refresh browser caches; this is not a server cache variant.
   The artwork container is transparent when an image exists, exposing the
   card's blurred backdrop in letterbox/pillarbox space; it keeps `bg-muted`
-  only for the missing-image server-icon placeholder. The shadow and hover
-  dimmer belong to that inner visual element, never to the fixed poster slot.
+  only for the missing-image server-icon placeholder. Real artwork has no
+  shadow. On hover or while paused, the dimmer uses the same proxied image
+  as an alpha mask, so transparent pixels and reserved padding stay clear.
+  The mask covers only the dimmer, never the Play/Pause icon, and follows the
+  image's aspect ratio and corner radius, with 1px of overdraw on each side
+  to cover bright subpixel seams along the image edge.
+  Images with `mediaType === 'live'` (including Dispatcharr catch-up) have
+  square corners for every provider; other artwork remains rounded.
+  Outer card corners and the missing-image placeholder remain unchanged.
+  Play appears on hover; Pause stays visible while paused.
   The `32px` Play/Pause icon is `shrink-0` and may extend past an extremely
   small image, so it must never be clipped by the artwork container.
   Validated with Node 24 / pnpm 12.3.4: services (3,347 passed, one skipped),
   web (1,224 passed with two workers), typecheck, lint (754 warnings, unchanged),
   and build. Docker and live-provider manual smoke checks were not run.
+  October 3 artwork follow-up: removed image shadows and playback dimming,
+  and made Live TV/catch-up image corners square. Validation passed on Node 24 /
+  pnpm 12.4.2: 30 component tests, 1,868 web tests, full typecheck and lint
+  (766 existing warnings). Heavy jobs ran sequentially; the full web run
+  started with one worker before the user approved two. Chromium fixture
+  inspection covered transparent logos before/after hover, paused catch-up,
+  rounded VOD and the no-image placeholder. No live-provider smoke was run.
+  Subsequent alpha-mask follow-up restores hover/paused dimming only over
+  visible artwork pixels. The same 30 component / 1,868 web tests, typecheck
+  and lint passed with two Vitest workers and Turbo concurrency one.
+  Chromium checked transparent and opaque pixels before/after hover;
+  the icon remains unmasked and transparent pixels remain unchanged.
 - `apps/server/src/routes/public.ts` and `apps/server/src/routes/public.openapi.ts` expose Dispatcharr-aware live media fields in public API responses.
 - Dashboard daily stats keep `todayPlays`, `todaySessions`, and `watchTimeHours` as VOD-only metrics, add `tvSessions`, `tvChannels`, and `tvWatchTimeHours` for `mediaType === 'live'`, and count `activeUsersToday` across all media types so Dispatcharr Live TV/catch-up activity is no longer invisible on the homepage.
 - Dispatcharr Server Resources are supplied by the separate `Dispatcharr-Metrics` v1 plugin. The plugin broadcasts sanitized `tracearr_server_stats` schema version `1` messages on the existing authenticated `updates` WebSocket; Tracearr accepts only finite timestamps and 0–100 utilization values. `process*` samples describe the complete Docker `web` container cgroup (including FFmpeg and cache-backed memory), not the host. If Docker has no explicit memory limit, the container memory percentage uses host-visible `MemTotal` as denominator, matching Docker Stats' no-limit behavior. `host*` samples are true host-wide CPU and memory utilization via Dispatcharr's bundled `psutil`, constrained to `0.00–100.00%`; they include every process visible to the host. The same plugin publishes `tracearr_bandwidth_stats` schema version `1` aggregate one-second samples (`lanBytes` and `wanBytes`) for the dashboard Bandwidth card; Tracearr retains 156 samples. A zero-valued sample is valid and shows the card; missing or invalid fields do not. Username/password authentication is required to keep the Dispatcharr WebSocket; API-key mode remains REST-only and has no resource or bandwidth samples. v1 supports Docker AIO and modular `web` deployments only; bare-metal/systemd is intentionally unsupported.

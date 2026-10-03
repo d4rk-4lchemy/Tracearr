@@ -284,7 +284,7 @@ describe('MediaDetail page', () => {
 
     renderPage();
 
-    expect(screen.getByText('media.detail.history.columns.user')).toBeInTheDocument();
+    expect(screen.getByText('common:labels.user')).toBeInTheDocument();
     expect(screen.getByText('ari')).toBeInTheDocument();
   });
 

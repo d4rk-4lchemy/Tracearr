@@ -281,3 +281,42 @@ describe('issuesByNode', () => {
     expect(byNode.get('nothing')).toBeUndefined();
   });
 });
+
+describe('send text issues', () => {
+  const trigger = {
+    id: '11111111-1111-4111-8111-111111111111',
+    type: 'server.down',
+    enabled: true,
+  } as const;
+  const stateWith = (send: Record<string, unknown>) =>
+    builderStateFrom(
+      automation({
+        triggers: [trigger],
+        actions: {
+          actions: [
+            {
+              id: '22222222-2222-4222-8222-222222222222',
+              type: 'send',
+              to: ['33333333-3333-4333-8333-333333333333'],
+              ...send,
+            },
+          ],
+        },
+      } as Partial<Automation>)
+    );
+
+  it('translates a parse error with its line', () => {
+    const [issue] = builderIssues(stateWith({ body: 'x\n{% if server.name %}' }), t);
+    expect(issue?.message).toBe('The if on line 2 needs an endif');
+  });
+
+  it('names an unavailable variable', () => {
+    const [issue] = builderIssues(stateWith({ body: '{{ user.username }}' }), t);
+    expect(issue?.message).toBe("{{ user.username }} isn't available for every trigger here");
+  });
+
+  it('reads a length issue as too long with the field max', () => {
+    const [issue] = builderIssues(stateWith({ title: 'x'.repeat(201) }), t);
+    expect(issue?.message).toBe(t('automations.builder.errors.tooLong', { max: 200 }));
+  });
+});

@@ -73,6 +73,10 @@ vi.mock('../../../services/sseManager.js', () => ({
   },
 }));
 
+vi.mock('../../../services/leaderLease.js', () => ({
+  isLeader: () => true,
+}));
+
 const mockEnqueueNotification = vi.fn();
 vi.mock('../../notificationQueue.js', () => ({
   enqueueNotification: (...args: unknown[]) => mockEnqueueNotification(...args),
@@ -129,6 +133,7 @@ import {
   stopPoller,
   triggerPoll,
   triggerReconciliationPoll,
+  triggerServerPoll,
 } from '../processor.js';
 
 const serverRow1 = {
@@ -137,6 +142,7 @@ const serverRow1 = {
   type: 'plex' as const,
   url: 'http://localhost:32400',
   token: 'token-1',
+  historicalAt: null as Date | null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -146,6 +152,7 @@ const serverRow2 = {
   type: 'plex' as const,
   url: 'http://localhost:32401',
   token: 'token-2',
+  historicalAt: null as Date | null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -184,7 +191,11 @@ let currentCachedSessions: ActiveSession[] = [];
 
 mockDbSelect.mockImplementation((_cols?: unknown) => ({
   from: (table: unknown) => {
-    if (table === servers) return Promise.resolve(allServersRows);
+    if (table === servers) {
+      return Object.assign(Promise.resolve(allServersRows), {
+        where: () => Promise.resolve(allServersRows.slice(0, 1)),
+      });
+    }
     if (table === serverUsers) {
       return { innerJoin: () => ({ where: () => Promise.resolve([]) }) };
     }
@@ -474,5 +485,36 @@ describe('(d) allServers empty (last server deleted)', () => {
     });
     expect(cacheService.invalidateDashboardStatsCache).toHaveBeenCalled();
     expect(pubSubService.publish).toHaveBeenCalledWith('session:stopped', 'active-1-id');
+  });
+});
+
+describe('(c) historical servers', () => {
+  it('skips an on-demand poll for a historical server', async () => {
+    allServersRows = [{ ...serverRow1, historicalAt: new Date() }];
+
+    await triggerServerPoll('server-1');
+
+    expect(mockCreateMediaServerClient).not.toHaveBeenCalled();
+  });
+
+  it('never polls a historical server even while it sits in fallback', async () => {
+    allServersRows = [serverRow1, { ...serverRow2, historicalAt: new Date() }];
+    mockIsInFallback.mockReturnValue(true);
+
+    await triggerPoll();
+
+    const polledUrls = mockCreateMediaServerClient.mock.calls.map(
+      (call) => (call[0] as { url: string }).url
+    );
+    expect(polledUrls).toEqual(['http://localhost:32400']);
+  });
+
+  it('leaves a historical server out of the reconciliation poll', async () => {
+    allServersRows = [{ ...serverRow1, historicalAt: new Date() }];
+    mockIsInFallback.mockReturnValue(false);
+
+    await triggerReconciliationPoll();
+
+    expect(mockCreateMediaServerClient).not.toHaveBeenCalled();
   });
 });

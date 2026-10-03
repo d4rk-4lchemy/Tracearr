@@ -1,7 +1,7 @@
+import { renderText } from '@tracearr/shared';
 import type { PosterRef } from '../../db/schema.js';
 import type { ResolvedEmailBranding } from '../notifications/emailBranding.js';
 import { readLogoPng } from '../notifications/emailLogo.js';
-import { renderTemplate } from '../notifications/types.js';
 import { assembleDigest, groupDigest, type DigestData } from './assemble.js';
 import { renderDigestToFit, type FitResult } from './fit.js';
 import {
@@ -63,12 +63,17 @@ export async function renderVariant(
   const senderName = variantSenderName(newsletter, variant.serverNames);
   const mode = resolveImageMode(newsletter.imageMode, externalUrl);
   const origin = externalUrl?.replace(/\/$/, '') ?? '';
-  const subject = renderTemplate(newsletter.subject, {
+  const subjectValues: Record<string, string> = {
     server_name: senderName,
     start_date: formatWindowDate(window.start, newsletter.timezone),
     end_date: formatWindowDate(window.end, newsletter.timezone),
     item_count: String(data.counts.movies + data.counts.episodes + data.counts.albums),
-  });
+  };
+  const subject = renderText(
+    newsletter.subject,
+    (name) => subjectValues[name],
+    (value) => value
+  );
   const serversById = new Map(
     ctx.servers.filter((s) => variant.serverIds.includes(s.id)).map((s) => [s.id, s])
   );

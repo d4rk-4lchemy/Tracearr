@@ -32,6 +32,7 @@ export const streamQualityFieldSchema = z.enum([
   'source_video_codec',
   'is_transcoding',
   'is_transcode_downgrade',
+  'is_subtitle_burn_in',
   'source_bitrate_mbps',
 ]);
 
@@ -372,6 +373,14 @@ export const CONDITION_FIELDS: Record<ConditionField, ConditionFieldDescriptor> 
     identityAware: false,
   },
   is_transcode_downgrade: {
+    category: 'stream_quality',
+    requires: 'session',
+    operators: EQUALITY_OPERATORS,
+    valueType: 'boolean',
+    flags: {},
+    identityAware: false,
+  },
+  is_subtitle_burn_in: {
     category: 'stream_quality',
     requires: 'session',
     operators: EQUALITY_OPERATORS,

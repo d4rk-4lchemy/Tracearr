@@ -37,7 +37,7 @@ export function NewAutomationDialog({
   templateId,
   initialView = 'gallery',
 }: NewAutomationDialogProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -111,7 +111,7 @@ export function NewAutomationDialog({
                   variant="ghost"
                   size="icon"
                   className="-ml-2 size-7"
-                  aria-label={t('automations.bind.back')}
+                  aria-label={t('common:actions.back')}
                   onClick={goBack}
                 >
                   <ChevronLeft />
@@ -195,7 +195,7 @@ export function NewAutomationDialog({
             onChecked={setChecked}
             onExit={backToGallery}
             onDone={() => onOpenChange(false)}
-            backLabel={t('automations.bind.back')}
+            backLabel={t('common:actions.back')}
           />
         )}
       </DialogContent>

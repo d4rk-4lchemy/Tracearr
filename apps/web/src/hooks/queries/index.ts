@@ -109,6 +109,7 @@ export {
   useDeleteServer,
   useSyncServer,
   useUpdateServer,
+  useSetServerHistorical,
   useServerLocations,
   useUpdateServerLocations,
   useServerLiveStats,

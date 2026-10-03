@@ -8,6 +8,7 @@ import { eq, isNull, and } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { servers } from '../db/schema.js';
 import { createMediaServerClient } from './mediaServer/index.js';
+import { isLiveServer, liveServerCondition } from './liveServers.js';
 import { invalidateServersCache } from '../jobs/poller/database.js';
 import type { ServerType } from '@tracearr/shared';
 
@@ -43,6 +44,7 @@ export async function ensureServerIdentifier(
   log?: { debug: (obj: unknown, msg: string) => void }
 ): Promise<string | null> {
   if (server.machineIdentifier) return server.machineIdentifier;
+  if (!(await isLiveServer(server.id))) return null;
 
   try {
     const identity = await readServerIdentity(server);
@@ -73,7 +75,7 @@ export async function backfillMissingServerIdentifiers(log?: {
       machineIdentifier: servers.machineIdentifier,
     })
     .from(servers)
-    .where(isNull(servers.machineIdentifier));
+    .where(and(isNull(servers.machineIdentifier), liveServerCondition));
 
   let filled = 0;
   for (const row of rows) {

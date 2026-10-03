@@ -1,9 +1,13 @@
-import { DESTINATION_TYPES } from '@tracearr/shared';
+import { DESTINATION_TEXT_PROFILES, DESTINATION_TYPES, escapeFor, fitText } from '@tracearr/shared';
 import { pushNotificationService } from '../../pushNotification.js';
 import { eventTypeOf } from '../events.js';
 import { toNotificationPayload } from '../types.js';
 import type { NotificationEvent } from '../events.js';
 import type { DestinationType } from './types.js';
+
+const PROFILE = DESTINATION_TEXT_PROFILES.push;
+const fitTitle = (text: string) => (PROFILE.title ? fitText(text, PROFILE.title) : text);
+const fitBody = (text: string) => (PROFILE.body ? fitText(text, PROFILE.body) : text);
 
 export interface PushOverride {
   title?: string;
@@ -41,7 +45,7 @@ export const pushType: DestinationType<Record<string, never>, PushRendered> = {
   render(event, _config, ctx) {
     // An automation asking for these is the opt-in; nothing else produces them.
     if (ctx.source.kind === 'automation' && TEXT_RENDERED_EVENTS.has(event.type)) {
-      const payload = toNotificationPayload(event, ctx.source);
+      const payload = toNotificationPayload(event, ctx.source, escapeFor(PROFILE));
       return {
         kind: 'text',
         subject:
@@ -50,17 +54,17 @@ export const pushType: DestinationType<Record<string, never>, PushRendered> = {
             : LIBRARY_EVENTS.has(event.type)
               ? 'library'
               : 'update',
-        title: payload.title,
-        body: payload.message,
+        title: fitTitle(payload.title),
+        body: fitBody(payload.message),
         // The discriminator goes last: a payload key named `type` must never replace it.
         data: { ...event.payload, type: eventTypeOf(event) },
       };
     }
     if (ctx.source.kind !== 'automation') return { kind: 'event', event };
-    const { automation } = toNotificationPayload(event, ctx.source);
+    const { automation } = toNotificationPayload(event, ctx.source, escapeFor(PROFILE));
     const override: PushOverride = {
-      ...(automation?.title !== undefined && { title: automation.title }),
-      ...(automation?.message !== undefined && { body: automation.message }),
+      ...(automation?.title !== undefined && { title: fitTitle(automation.title) }),
+      ...(automation?.message !== undefined && { body: fitBody(automation.message) }),
     };
     return {
       kind: 'event',

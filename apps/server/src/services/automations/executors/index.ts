@@ -22,7 +22,7 @@ import type {
   NotificationSource,
   ServerEventPayload,
 } from '../../notifications/events.js';
-import type { ActionExecutor, EvaluationContext } from '../types.js';
+import type { ActionExecutor, ActionExecutorResult, EvaluationContext } from '../types.js';
 
 /**
  * Result of executing an action.
@@ -79,7 +79,7 @@ export interface ActionExecutorDeps {
     // Returns the kill queue job id when a job was created or already exists,
     // or undefined when the enqueue was dropped (queue not initialized).
   ) => Promise<string | undefined>;
-  sendClientMessage: (sessionId: string, message: string) => Promise<void>;
+  sendClientMessage: (sessionId: string, message: string) => Promise<void | { skipReason: string }>;
   checkCooldown: (ruleId: string, targetId: string, cooldownMinutes: number) => Promise<boolean>;
   setCooldown: (ruleId: string, targetId: string, cooldownMinutes: number) => Promise<void>;
 }
@@ -406,6 +406,7 @@ function violationEventFor(context: EvaluationContext): NotificationEvent | null
               sourceVideoCodec: session.sourceVideoCodec,
               seasonNumber: session.seasonNumber,
               episodeNumber: session.episodeNumber,
+              grandparentTitle: session.grandparentTitle,
             }
           : {}),
         ...triggerNumbers(context),
@@ -449,13 +450,15 @@ const executeSend: ActionExecutor = async (
   const event = native ?? violationEventFor(context);
   if (!event) return { skipReason: 'No account to notify about' };
 
-  const body = typedAction.body ?? defaultBodyFor(context);
+  const defaultBody = defaultBodyFor(context);
   const source: NotificationSource = {
     kind: 'automation',
     automationId: rule.id,
     automationName: rule.name,
     ...(typedAction.title !== undefined && { title: typedAction.title }),
-    ...(body !== undefined && { body }),
+    ...(typedAction.body !== undefined && { body: typedAction.body }),
+    ...(defaultBody !== undefined && { defaultBody }),
+    ...(typedAction.priority !== undefined && { priority: typedAction.priority }),
   };
 
   const enqueued = await currentDeps.enqueueAutomationNotification({ to, event, source });
@@ -578,7 +581,7 @@ const executeKillStream: ActionExecutor = async (
 const executeMessageClient: ActionExecutor = async (
   context: EvaluationContext,
   action: Action
-): Promise<void> => {
+): Promise<ActionExecutorResult> => {
   const { session, activeSessions, rule, identityServerUserIds } = context;
   if (!session) return;
   const typedAction = action as MessageClientAction;
@@ -606,8 +609,13 @@ const executeMessageClient: ActionExecutor = async (
     identityServerUserIds: rule.enforceAcrossServers ? identityServerUserIds : undefined,
   });
 
+  let historicalTargets = 0;
   for (const targetSession of sessionsToMessage) {
-    await currentDeps.sendClientMessage(targetSession.id, message);
+    const outcome = await currentDeps.sendClientMessage(targetSession.id, message);
+    if (outcome?.skipReason === 'server_historical') historicalTargets += 1;
+  }
+  if (sessionsToMessage.length > 0 && historicalTargets === sessionsToMessage.length) {
+    return { skipReason: 'server_historical' };
   }
 };
 

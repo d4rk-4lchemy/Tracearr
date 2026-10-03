@@ -439,6 +439,7 @@ describe('sessionMapper', () => {
         const result = mapMediaSession(session, 'plex');
 
         expect(result.state).toBe('playing');
+        expect(result.buffering).toBe(false);
       });
 
       it('should map paused state', () => {
@@ -459,6 +460,7 @@ describe('sessionMapper', () => {
         const result = mapMediaSession(session, 'plex');
 
         expect(result.state).toBe('playing');
+        expect(result.buffering).toBe(true);
       });
     });
 

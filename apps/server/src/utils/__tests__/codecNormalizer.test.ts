@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeCodec } from '../codecNormalizer.js';
+import { isAtmos, normalizeAudioCodec, sanitizeCodec } from '../codecNormalizer.js';
 
 describe('sanitizeCodec', () => {
   it('returns null for null/undefined input', () => {
@@ -31,5 +31,20 @@ describe('sanitizeCodec', () => {
   it('returns null for strings at 51 characters', () => {
     const exactly51 = 'A'.repeat(51);
     expect(sanitizeCodec(exactly51)).toBeNull();
+  });
+});
+
+describe('normalizeAudioCodec', () => {
+  it('folds Plex dca variants into DTS labels', () => {
+    expect(normalizeAudioCodec('dca')).toBe('DTS');
+    expect(normalizeAudioCodec('DCA-MA')).toBe('DTS-HD MA');
+  });
+});
+
+describe('isAtmos', () => {
+  it('matches the profile or title, never the codec', () => {
+    expect(isAtmos('dolby truehd + dolby atmos')).toBe(true);
+    expect(isAtmos(undefined, 'TrueHD Atmos 7.1')).toBe(true);
+    expect(isAtmos('ma', 'truehd')).toBe(false);
   });
 });

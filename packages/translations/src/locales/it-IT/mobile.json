@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Benvenuto su Tracearr",
-    "addServer": "Aggiungi Server",
     "connectToServer": "Connetti al server",
     "enterServerDetails": "Inserisci l'URL del tuo server Tracearr e il token di accesso mobile",
     "serverUrl": "Url Del Server",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "Campi Mancanti",
-    "pleaseEnterBothFields": "Inserisci l'URL e il token del server",
     "invalidUrl": "Url Non Valido",
-    "serverUrlMustStartWith": "L'URL del server deve iniziare con http:// o ↓ ://",
     "pleaseEnterValidUrl": "Inserisci un URL valido del server",
     "pairingFailed": "Accoppiamento Fallito",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Formato del codice QR non valido. Si prega di generare un nuovo codice.",
     "invalidQrCodeMissingUrl": "Codice QR non valido: URL server mancante",
     "invalidQrCodeMissingToken": "Codice QR non valido: token di accoppiamento mancante",
-    "invalidServerUrlInQr": "URL server non valido nel codice QR",
-    "tooManyPairingAttempts": "Troppi tentativi di accoppiamento. Attendere qualche minuto.",
-    "invalidOrExpiredToken": "Token di accoppiamento non valido o scaduto.",
-    "invalidPairingRequest": "Richiesta di accoppiamento non valida. Controlla il tuo token.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Seleziona Server",
-    "server": "",
-    "navigation": ""
+    "server": ""
   },
   "resources": {
     "cpu": "",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,16 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +133,15 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +154,8 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -176,8 +168,8 @@
     "sortTrust": ""
   },
   "activity": {
-    "playsOverTime": "Riproduce Nel Tempo",
-    "concurrentStreams": "Flussi Concorrenti",
+    "playsOverTime": "Riproduzioni Nel Tempo",
+    "concurrentStreams": "Stream Simultanei",
     "platforms": "Piattaforme",
     "playbackQuality": ""
   },
@@ -193,28 +185,25 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +216,9 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,9 +252,9 @@
   },
   "widget": {
     "asOf": "",
+    "signedOut": "",
     "serversDown_one": "",
     "serversDown_other": "",
-    "signedOut": "",
     "transcodes_one": "",
     "transcodes_other": ""
   }

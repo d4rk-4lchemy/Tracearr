@@ -689,6 +689,36 @@ describe('terminateSession', () => {
     });
   });
 
+  describe('historical server', () => {
+    it('logs a refused attempt and never builds a client', async () => {
+      const mockSession = createMockSession({
+        server: {
+          id: randomUUID(),
+          type: 'plex',
+          url: 'http://localhost:32400',
+          token: 'test-token',
+          historicalAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      });
+      mockSessionFindFirst.mockResolvedValue(mockSession);
+      const insertChain = mockDbInsertChain('log-h');
+
+      const result = await terminateSession({ sessionId: mockSession.id, trigger: 'manual' });
+
+      expect(result).toEqual({
+        success: false,
+        terminationLogId: 'log-h',
+        error: 'Server is historical',
+        outcome: 'server_historical',
+      });
+      expect(createMediaServerClient).not.toHaveBeenCalled();
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({ success: false, errorMessage: 'Server is historical' })
+      );
+      expect(db.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('termination reason', () => {
     it('should pass reason to media server client', async () => {
       const mockSession = createMockSession();

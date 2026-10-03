@@ -7,7 +7,18 @@ const where = vi.fn(async (_cond: unknown) => undefined);
 const set = vi.fn((_values: unknown) => ({ where }));
 const update = vi.fn((_table: unknown) => ({ set }));
 
-vi.mock('../../db/client.js', () => ({ db: { update: (arg: unknown) => update(arg) } }));
+const isLiveServer = vi.fn(async (_id: string) => true);
+vi.mock('../liveServers.js', async (importActual) => ({
+  ...(await importActual<typeof import('../liveServers.js')>()),
+  isLiveServer: (id: string) => isLiveServer(id),
+}));
+const selectWhere = vi.fn(async (_cond: unknown) => [] as unknown[]);
+vi.mock('../../db/client.js', () => ({
+  db: {
+    update: (arg: unknown) => update(arg),
+    select: () => ({ from: () => ({ where: (cond: unknown) => selectWhere(cond) }) }),
+  },
+}));
 vi.mock('../mediaServer/index.js', () => ({
   createMediaServerClient: (arg: unknown) => createMediaServerClient(arg),
 }));
@@ -15,7 +26,11 @@ vi.mock('../../jobs/poller/database.js', () => ({
   invalidateServersCache: () => invalidateServersCache(),
 }));
 
-const { ensureServerIdentifier } = await import('../serverIdentity.js');
+import { renderSql } from '../../test/helpers.js';
+import type { SQL } from 'drizzle-orm';
+
+const { backfillMissingServerIdentifiers, ensureServerIdentifier } =
+  await import('../serverIdentity.js');
 
 const server = {
   id: 'srv-1',
@@ -28,6 +43,7 @@ const server = {
 describe('ensureServerIdentifier', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isLiveServer.mockReset().mockResolvedValue(true);
   });
 
   it('stores the fetched identifier and invalidates the cache', async () => {
@@ -56,6 +72,21 @@ describe('ensureServerIdentifier', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('reads nothing from a historical server and leaves its identifier alone', async () => {
+    isLiveServer.mockResolvedValueOnce(false);
+
+    expect(await ensureServerIdentifier(server)).toBeNull();
+    expect(createMediaServerClient).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('still returns a stored identifier for a historical row without a request', async () => {
+    isLiveServer.mockResolvedValueOnce(false);
+
+    expect(await ensureServerIdentifier({ ...server, machineIdentifier: 'kept' })).toBe('kept');
+    expect(createMediaServerClient).not.toHaveBeenCalled();
+  });
+
   it('writes nothing when the server reports no identifier', async () => {
     getServerIdentity.mockResolvedValueOnce(null);
 
@@ -74,5 +105,15 @@ describe('ensureServerIdentifier', () => {
       expect.objectContaining({ serverId: 'srv-1' }),
       expect.any(String)
     );
+  });
+});
+
+describe('backfillMissingServerIdentifiers', () => {
+  it('sweeps only live rows that still lack an identifier', async () => {
+    await backfillMissingServerIdentifiers();
+
+    const rendered = renderSql(selectWhere.mock.calls[0]?.[0] as SQL);
+    expect(rendered.sql).toContain('servers.machine_identifier is null');
+    expect(rendered.sql).toContain('servers.historical_at is null');
   });
 });

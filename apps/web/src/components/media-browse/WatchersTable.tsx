@@ -51,7 +51,7 @@ export function WatchersTable({
   mediaType,
   episodeCount,
 }: WatchersTableProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const showEpisodes = mediaType === 'show';
 
   return (
@@ -75,7 +75,7 @@ export function WatchersTable({
             <TableCaption className="sr-only">{t('media.detail.watchers.title')}</TableCaption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>{t('media.detail.watchers.columns.user')}</TableHead>
+                <TableHead>{t('common:labels.user')}</TableHead>
                 <TableHead className="text-right">
                   {t('media.detail.watchers.columns.plays')}
                 </TableHead>

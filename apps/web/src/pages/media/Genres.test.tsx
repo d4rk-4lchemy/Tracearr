@@ -93,7 +93,7 @@ describe('MediaGenres', () => {
     const headers = table.querySelectorAll('th');
     expect(Array.from(headers).map((h) => h.textContent)).toEqual([
       'media.genres.table.columns.genre',
-      'media.genres.table.columns.items',
+      'common:labels.items',
       'media.genres.table.columns.plays',
       'media.genres.table.columns.watchTime',
     ]);

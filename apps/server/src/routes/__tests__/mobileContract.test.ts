@@ -207,9 +207,11 @@ describe('mobile contract freeze', () => {
           txSelectCallCount++;
           if (txSelectCallCount === 3) {
             return {
-              from: vi
-                .fn()
-                .mockResolvedValue([{ id: mockServerId, name: 'MyServer', type: 'plex' }]),
+              from: vi.fn().mockReturnValue({
+                orderBy: vi
+                  .fn()
+                  .mockResolvedValue([{ id: mockServerId, name: 'MyServer', type: 'plex' }]),
+              }),
             };
           }
           return {

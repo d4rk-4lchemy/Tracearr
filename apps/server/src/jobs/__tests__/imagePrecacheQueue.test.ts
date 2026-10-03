@@ -30,6 +30,12 @@ const mockClearDiskLimited = vi.fn();
 const mockReadDiskLimited = vi.fn();
 const mockReconcileImagePrecacheOnBoot = vi.fn();
 const mockSweepImageCache = vi.fn();
+const mockIsLiveServer = vi.fn().mockResolvedValue(true);
+const mockLiveServers = vi.fn().mockResolvedValue([]);
+vi.mock('../../services/liveServers.js', () => ({
+  isLiveServer: (...args: unknown[]) => mockIsLiveServer(...args),
+  liveServers: (...args: unknown[]) => mockLiveServers(...args),
+}));
 
 vi.mock('../../services/settings.js', () => ({
   getSetting: (...args: unknown[]) => mockGetSetting(...args),
@@ -510,6 +516,17 @@ describe('imagePrecacheQueue', () => {
   });
 
   describe('processImagePrecacheJob', () => {
+    it('skips a batch for a server that turned historical after it was queued', async () => {
+      mockIsLiveServer.mockResolvedValueOnce(false);
+
+      const result = await processImagePrecacheJob(makeJob({ serverId: 'srv-h', cursor: null }));
+
+      expect(result).toEqual({ skipped: true, reason: 'server historical' });
+      expect(mockGetLibrarySyncStatus).not.toHaveBeenCalled();
+      expect(mockDbSelect).not.toHaveBeenCalled();
+      expect(mockProxyImage).not.toHaveBeenCalled();
+    });
+
     it('no-ops without touching the database when disabled', async () => {
       mockGetSetting.mockResolvedValue(false);
 

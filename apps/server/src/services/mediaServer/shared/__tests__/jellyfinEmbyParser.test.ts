@@ -1073,6 +1073,23 @@ describe('extractVersions', () => {
     expect(versions[0]).toMatchObject({ serverVersionKey: 'item-9', videoCodec: 'HEVC' });
   });
 
+  it('flags audioAtmos from the first audio stream Title or Profile', () => {
+    const source = (audio: Record<string, unknown>) => [
+      { Id: 's', MediaStreams: [{ Type: 'Audio', Codec: 'truehd', ...audio }] },
+    ];
+
+    expect(
+      extractVersions(source({ Title: 'TrueHD Atmos 7.1' }), undefined, 'i')[0]?.audioAtmos
+    ).toBe(true);
+    expect(
+      extractVersions(source({ Profile: 'Dolby TrueHD + Dolby Atmos' }), undefined, 'i')[0]
+        ?.audioAtmos
+    ).toBe(true);
+    expect(extractVersions(source({ Title: 'TrueHD 7.1' }), undefined, 'i')[0]?.audioAtmos).toBe(
+      false
+    );
+  });
+
   it('returns empty for containers with no sources or streams', () => {
     expect(extractVersions(undefined, undefined, 'series-1')).toEqual([]);
     expect(extractVersions([], [], 'series-1')).toEqual([]);

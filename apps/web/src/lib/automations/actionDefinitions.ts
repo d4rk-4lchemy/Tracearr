@@ -2,8 +2,12 @@
 
 import {
   LEAF_ACTION_TYPES,
+  NOTIFICATION_PRIORITIES,
   type LeafAction,
   type LeafActionType,
+  type NotificationPriority,
+  type SendAction,
+  type TemplateVariable,
   type TrustAction,
   type ViolationSeverity,
 } from '@tracearr/shared';
@@ -32,7 +36,7 @@ export interface ConfigField {
   unitKey?: PagesTextKey;
   required?: boolean;
   /** Options this field takes from a translated catalog instead of carrying inline. */
-  optionSource?: 'sessionTargets' | 'trustModes';
+  optionSource?: 'sessionTargets' | 'trustModes' | 'priorities';
   min?: number;
   max?: number;
   step?: number;
@@ -89,6 +93,11 @@ export function configFieldOptions(t: Translate, field: ConfigField): ConfigFiel
         value,
         label: t(`automations.trustModes.${value}.label`),
       }));
+    case 'priorities':
+      return (['automatic', ...NOTIFICATION_PRIORITIES] as const).map((value) => ({
+        value,
+        label: t(`automations.priorities.${value}`),
+      }));
     default:
       return [];
   }
@@ -115,6 +124,14 @@ const ACTION_DEFINITIONS: Record<LeafActionType, ActionDefinition> = {
         max: 1440,
         step: 5,
         unitKey: 'automations.units.minutes',
+      },
+      {
+        name: 'priority',
+        labelKey: 'automations.configFields.priority.label',
+        descriptionKey: 'automations.actions.send.fields.priority.description',
+        placeholderKey: 'automations.priorities.automatic',
+        type: 'select',
+        optionSource: 'priorities',
       },
     ],
   },
@@ -260,7 +277,39 @@ export function applyActionFieldChange(
     if (cooldown_minutes !== undefined) next.cooldown_minutes = cooldown_minutes;
     return next;
   }
+  if (action.type === 'send' && name === 'priority') {
+    const { priority: _dropped, ...rest } = action;
+    return value === 'automatic' ? rest : { ...rest, priority: value as NotificationPriority };
+  }
   return { ...action, [name]: value };
+}
+
+/** A cleared title or body is absent, which the schema reads as "use the default". */
+export function setSendText(
+  action: SendAction,
+  field: 'title' | 'body',
+  value: string
+): SendAction {
+  const { [field]: _dropped, ...rest } = action;
+  return value === '' ? rest : { ...rest, [field]: value };
+}
+
+export type VariableGroup =
+  'account' | 'stream' | 'server' | 'media' | 'device' | 'trust' | 'newsletter' | 'event';
+
+const GROUP_BY_PREFIX: Record<string, VariableGroup> = {
+  user: 'account',
+  session: 'stream',
+  server: 'server',
+  media: 'media',
+  device: 'device',
+  trust: 'trust',
+  newsletter: 'newsletter',
+};
+
+export function variableGroup(name: TemplateVariable): VariableGroup {
+  const prefix = name.includes('.') ? name.slice(0, name.indexOf('.')) : '';
+  return GROUP_BY_PREFIX[prefix] ?? 'event';
 }
 
 /** Create a default action of a given type. */

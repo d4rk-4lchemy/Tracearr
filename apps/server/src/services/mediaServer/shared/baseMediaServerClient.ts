@@ -677,6 +677,7 @@ export abstract class BaseMediaServerClient
         headers: { ...this.buildHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ CustomQueryString: query }),
         service: this.serverType,
+        timeout: 120_000,
       }
     );
     const results = Array.isArray(data.results) ? (data.results as string[][]) : [];

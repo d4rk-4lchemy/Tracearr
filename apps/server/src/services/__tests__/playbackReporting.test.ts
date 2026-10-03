@@ -432,6 +432,17 @@ describe('importPlaybackReporting', () => {
     mockDbSelects([JF_SERVER], [{ min: new Date('2026-01-01T00:00:00Z') }]);
   });
 
+  it('refuses a historical server before contacting it', async () => {
+    mockDbSelects([{ ...JF_SERVER, historicalAt: new Date('2026-09-01T00:00:00Z') }]);
+
+    const result = await importPlaybackReporting(SERVER_ID, defaultOptions);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain(`Server ${SERVER_ID} is historical`);
+    expect(constructedClients).toHaveLength(0);
+    expect(mockGetPlaybackReportingInfo).not.toHaveBeenCalled();
+  });
+
   it('fails with a plugin-not-installed message and inserts nothing', async () => {
     mockGetPlaybackReportingInfo = vi.fn().mockResolvedValue({ installed: false });
 

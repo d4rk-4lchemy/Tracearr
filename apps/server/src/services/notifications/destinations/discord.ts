@@ -1,5 +1,8 @@
 import {
+  DESTINATION_TEXT_PROFILES,
   DESTINATION_TYPES,
+  escapeFor,
+  fitText,
   isPlacedLocal,
   LOCAL_NETWORK_COUNTRY,
   POSTER_IMAGE_SIZE,
@@ -35,6 +38,9 @@ import type {
   ViolationContext,
 } from '../types.js';
 import type { DeliverContext, DestinationType } from './types.js';
+
+const PROFILE = DESTINATION_TEXT_PROFILES.discord;
+const EMBED_TOTAL = 6000;
 
 export interface DiscordConfig {
   webhookUrl: string;
@@ -381,12 +387,40 @@ async function buildMediaMessage(
   return { embed: { ...embed, thumbnail: { url: `attachment://${filename}` } }, poster };
 }
 
-/** Media events fetch a poster and their links; everything else renders from the payload alone. */
-function buildMessage(payload: NotificationPayload): Promise<DiscordMessage> | DiscordMessage {
-  if (payload.context.type === 'media_added' || payload.context.type === 'media_upgraded') {
-    return buildMediaMessage(payload, payload.context);
+function embedChars(embed: DiscordEmbed): number {
+  const fields = (embed.fields ?? []).reduce(
+    (sum, field) => sum + [...field.name].length + [...field.value].length,
+    0
+  );
+  return (
+    [...embed.title].length +
+    [...(embed.description ?? '')].length +
+    fields +
+    [...(embed.footer?.text ?? '')].length +
+    [...(embed.author?.name ?? '')].length
+  );
+}
+
+/** Discord rejects an embed over its limits rather than cutting it, so the text is cut here. */
+export function fitEmbed(embed: DiscordEmbed): DiscordEmbed {
+  const { description, ...rest } = embed;
+  const title = PROFILE.title ? fitText(embed.title, PROFILE.title) : embed.title;
+  let body = description && PROFILE.body ? fitText(description, PROFILE.body) : description;
+  const fitted: DiscordEmbed = { ...rest, title };
+  if (body) {
+    const room = EMBED_TOTAL - embedChars(fitted);
+    body = room > 1 ? fitText(body, { max: room, unit: 'chars' }) : undefined;
   }
-  return { embed: buildEmbed(payload) };
+  return body ? { ...fitted, description: body } : fitted;
+}
+
+/** Media events fetch a poster and their links; everything else renders from the payload alone. */
+async function buildMessage(payload: NotificationPayload): Promise<DiscordMessage> {
+  const message =
+    payload.context.type === 'media_added' || payload.context.type === 'media_upgraded'
+      ? await buildMediaMessage(payload, payload.context)
+      : { embed: buildEmbed(payload) };
+  return { ...message, embed: fitEmbed(message.embed) };
 }
 
 function buildEmbed(payload: NotificationPayload): DiscordEmbed {
@@ -434,6 +468,7 @@ async function post(
   const payload = {
     username: 'Tracearr',
     avatar_url: AVATAR_URL,
+    allowed_mentions: { parse: [] },
     embeds: [{ ...message.embed, timestamp: new Date().toISOString() }],
     ...(filename && { attachments: [{ id: 0, filename }] }),
   };
@@ -464,7 +499,8 @@ async function post(
 export const discordType: DestinationType<DiscordConfig, DiscordMessage> = {
   kind: 'discord',
   events: DESTINATION_TYPES.discord.events,
-  render: (event, _config, ctx) => buildMessage(toNotificationPayload(event, ctx.source)),
+  render: (event, _config, ctx) =>
+    buildMessage(toNotificationPayload(event, ctx.source, escapeFor(PROFILE))),
   deliver: (message, config, ctx) => post(config.webhookUrl, message, ctx),
   test: (config, ctx) =>
     post(

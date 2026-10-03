@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { ViolationWithDetails } from '@tracearr/shared';
+import { TRIGGERS, type TriggerType, type ViolationWithDetails } from '@tracearr/shared';
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { PayloadBuilders, toNotificationPayload } from '../types.js';
+import type { NotificationEvent } from '../events.js';
 
 const system = { kind: 'system' } as const;
 
@@ -117,22 +118,9 @@ describe('toNotificationPayload', () => {
       )
     );
   });
-
-  it('lets a rule source override title and message but keeps the event severity', () => {
-    const payload = toNotificationPayload(
-      { type: 'session_started', payload: session },
-      { kind: 'rule', title: 'Rule fired', message: 'Too many streams' }
-    );
-
-    expect(payload.title).toBe('Rule fired');
-    expect(payload.message).toBe('Too many streams');
-    expect(payload.severity).toBe('low');
-    expect(payload.event).toBe('stream_started');
-    expect(payload.context).toEqual({ type: 'stream_started', session });
-  });
 });
 
-const automation = (over: { title?: string; body?: string } = {}) =>
+const automation = (over: { title?: string; body?: string; defaultBody?: string } = {}) =>
   ({ kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over }) as const;
 
 describe('toNotificationPayload with an automation source', () => {
@@ -276,6 +264,106 @@ describe('toNotificationPayload with an automation source', () => {
     );
 
     expect(payload.message).toBe('Test User / Arrival / 45');
+  });
+
+  it('renders if blocks and defaults', () => {
+    const payload = toNotificationPayload(
+      { type: 'session_started', payload: session },
+      automation({
+        body: '{{ user.username }}{% if session.sourceVideoCodec %} in {{ session.sourceVideoCodec }}{% endif %} on {{ server.type | default: "?" }}',
+      })
+    );
+    expect(payload.message).toBe(
+      `${session.user.username}${session.sourceVideoCodec ? ` in ${session.sourceVideoCodec}` : ''} on ${session.server.type}`
+    );
+  });
+
+  it('falls back to the builtin text when a template renders blank', () => {
+    const payload = toNotificationPayload(
+      { type: 'violation', payload: violation },
+      automation({ title: '   ', body: '{{ session.sourceVideoCodec }}' })
+    );
+    expect(payload.title).toBe(PayloadBuilders.fromViolation(violation).title);
+    expect(payload.message).toBe(PayloadBuilders.fromViolation(violation).message);
+    expect(payload.automation).toEqual({ id: 'a-1', name: 'Now playing' });
+  });
+
+  it('uses defaultBody unparsed when the send has no body or it renders blank', () => {
+    const risky = 'Account "{{ x }} {% if" has been inactive for 45 days';
+    for (const over of [{ defaultBody: risky }, { body: ' ', defaultBody: risky }]) {
+      const payload = toNotificationPayload(
+        { type: 'violation', payload: violation },
+        automation(over)
+      );
+      expect(payload.message).toBe(risky);
+      expect(payload.automation?.message).toBe(risky);
+    }
+  });
+
+  it('escapes inserted values with the escape it is given, not the template text', () => {
+    const payload = toNotificationPayload(
+      { type: 'session_started', payload: session },
+      automation({ body: '**{{ user.username }}**' }),
+      (value) => `<${value}>`
+    );
+    expect(payload.message).toBe(`**<${session.user.username}>**`);
+  });
+
+  it('renders stored text the grammar rejects the way it used to', () => {
+    const payload = toNotificationPayload(
+      { type: 'session_started', payload: session },
+      automation({ body: '{{ a b }} {{user.username}}' })
+    );
+    expect(payload.message).toBe(`{{ a b }} ${session.user.username}`);
+  });
+
+  it('offers the tracearr update versions under the new names and the old ones', () => {
+    const payload = toNotificationPayload(
+      {
+        type: 'tracearr_update_available',
+        payload: { current: '2.5.1', latest: '2.5.2', releaseUrl: 'https://x.test/r' },
+      },
+      automation({ body: '{{ installedVersion }}>{{ latestVersion }} {{ current }}>{{ latest }}' })
+    );
+    expect(payload.message).toBe('2.5.1>2.5.2 2.5.1>2.5.2');
+  });
+
+  it('names an episode session by show and code, and anything else by title', () => {
+    const episode = createMockActiveSession({
+      mediaType: 'episode',
+      grandparentTitle: 'The Bear',
+      mediaTitle: 'Fish',
+      seasonNumber: 1,
+      episodeNumber: 6,
+    });
+    const named = toNotificationPayload(
+      { type: 'session_started', payload: episode },
+      automation({ body: '{{ session.name }}' })
+    );
+    expect(named.message).toBe(
+      toNotificationPayload(
+        {
+          type: 'media_added',
+          payload: {
+            ...mediaPayload,
+            mediaType: 'episode',
+            title: 'Fish',
+            grandparentTitle: 'The Bear',
+            parentIndex: 1,
+            itemIndex: 6,
+          },
+        },
+        automation({ body: '{{ media.name }}' })
+      ).message
+    );
+    const movie = toNotificationPayload(
+      {
+        type: 'session_started',
+        payload: createMockActiveSession({ mediaType: 'movie', mediaTitle: 'Dune' }),
+      },
+      automation({ body: '{{ session.name }}' })
+    );
+    expect(movie.message).toBe('Dune');
   });
 });
 
@@ -511,4 +599,159 @@ describe('media events', () => {
       ).message
     ).toBe('Cars was added to Movies on Basement');
   });
+});
+
+describe('variables per trigger', () => {
+  const stream = createMockActiveSession({
+    mediaType: 'episode',
+    grandparentTitle: 'The Bear',
+    mediaTitle: 'Fish',
+    seasonNumber: 1,
+    episodeNumber: 6,
+    sourceVideoCodec: 'HEVC',
+    sourceVideoDetails: { dynamicRange: 'HDR10' },
+    durationMs: 600_000,
+  });
+  const fullViolation: ViolationWithDetails = {
+    ...violation,
+    server: { id: 'server-1', name: 'Basement', type: 'plex' },
+    data: {
+      mediaTitle: 'Fish',
+      mediaType: 'episode',
+      grandparentTitle: 'The Bear',
+      sourceDynamicRange: 'HDR10',
+      sourceVideoCodec: 'HEVC',
+      seasonNumber: 1,
+      episodeNumber: 6,
+      durationMinutes: 10,
+      minutes: 30,
+      days: 45,
+    },
+  };
+  const episodeMedia = {
+    ...mediaPayload,
+    mediaType: 'episode',
+    title: 'Fish',
+    grandparentTitle: 'The Bear',
+    parentIndex: 1,
+    itemIndex: 6,
+    addedEpisodeCount: 3,
+  };
+  const events: Record<string, NotificationEvent> = {
+    session_started: { type: 'session_started', payload: stream },
+    session_stopped: { type: 'session_stopped', payload: stream },
+    violation: { type: 'violation', payload: fullViolation },
+    new_device: {
+      type: 'new_device',
+      payload: {
+        serverId: 'server-1',
+        serverName: 'Basement',
+        serverType: 'plex',
+        serverUserId: 'su-1',
+        sessionId: 'sess-1',
+        userName: 'Test User',
+        username: 'testuser',
+        identityName: 'Test User',
+        mediaTitle: 'Cars',
+        mediaType: 'movie',
+        deviceName: 'Living Room TV',
+        platform: 'Roku',
+        product: 'Plex for Roku',
+        location: 'Boston, US',
+      },
+    },
+    trust_score_changed: {
+      type: 'trust_score_changed',
+      payload: {
+        serverId: 'server-1',
+        serverName: 'Basement',
+        serverType: 'plex',
+        serverUserId: 'su-1',
+        userName: 'Test User',
+        username: 'testuser',
+        identityName: 'Test User',
+        previousScore: 100,
+        newScore: 90,
+        reason: 'new device',
+      },
+    },
+    media_added: { type: 'media_added', payload: episodeMedia },
+    media_upgraded: {
+      type: 'media_upgraded',
+      payload: { ...upgradedPayload, ...episodeMedia },
+    },
+    server_down: {
+      type: 'server_down',
+      payload: { serverName: 'Basement', serverId: 'server-1', serverType: 'plex' },
+    },
+    server_up: {
+      type: 'server_up',
+      payload: { serverName: 'Basement', serverId: 'server-1', serverType: 'plex' },
+    },
+    plugin_update_available: { type: 'plugin_update_available', payload: pluginPayload },
+    server_update_available: {
+      type: 'server_update_available',
+      payload: {
+        serverId: 'server-1',
+        serverName: 'Basement',
+        serverType: 'plex',
+        installedVersion: '1.0.0',
+        latestVersion: '1.1.0',
+        releaseUrl: 'https://x.test/r',
+      },
+    },
+    tracearr_update_available: {
+      type: 'tracearr_update_available',
+      payload: { current: '2.5.1', latest: '2.5.2', releaseUrl: 'https://x.test/r' },
+    },
+    newsletter_send: {
+      type: 'newsletter_send',
+      payload: {
+        newsletterId: 'n-1',
+        sendId: 's-1',
+        name: 'Weekly',
+        outcome: 'failed',
+        trigger: 'schedule',
+        recipientCount: 4,
+        itemCounts: {},
+        error: 'smtp refused',
+        windowStart: '2026-01-01T00:00:00.000Z',
+        windowEnd: '2026-01-08T00:00:00.000Z',
+        historyUrl: null,
+      },
+    },
+  };
+  const eventsFor: Record<TriggerType, string[]> = {
+    'session.started': ['session_started', 'violation'],
+    'session.first_seen': ['session_started', 'violation'],
+    'session.stopped': ['session_stopped', 'violation'],
+    'session.transcode_changed': ['session_started', 'violation'],
+    'session.paused': ['session_started', 'violation'],
+    'session.held_for': ['violation'],
+    'account.inactive_for': ['violation'],
+    'account.new_device': ['new_device'],
+    'account.trust_changed': ['trust_score_changed'],
+    'media.added': ['media_added'],
+    'media.upgraded': ['media_upgraded'],
+    'server.down': ['server_down'],
+    'server.up': ['server_up'],
+    'plugin.update_available': ['plugin_update_available'],
+    'server.update_available': ['server_update_available'],
+    'tracearr.update_available': ['tracearr_update_available'],
+    'newsletter.sent': ['newsletter_send'],
+    'newsletter.failed': ['newsletter_send'],
+  };
+
+  for (const [trigger, names] of Object.entries(eventsFor) as [TriggerType, string[]][]) {
+    it(`renders every variable ${trigger} offers`, () => {
+      for (const eventName of names) {
+        const event = events[eventName];
+        if (!event) throw new Error(`no fixture for ${eventName}`);
+        for (const name of TRIGGERS[trigger].variables) {
+          const rendered = toNotificationPayload(event, automation({ body: `{{ ${name} }}` }));
+          expect(rendered.automation?.message, `${trigger} ${eventName} ${name}`).toBeTruthy();
+        }
+      }
+    });
+  }
 });

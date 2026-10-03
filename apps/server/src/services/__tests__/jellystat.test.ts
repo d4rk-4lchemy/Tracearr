@@ -1801,6 +1801,21 @@ describe('importJellystatBackup', () => {
       expect(result.message).toContain('Server not found');
     });
 
+    it('should refuse to import into a historical server', async () => {
+      const { db } = await import('../../db/client.js');
+      const mockLimit = vi.fn().mockResolvedValue([{ ...mockServer, historicalAt: new Date() }]);
+      const mockWhere = vi.fn().mockReturnValue({ limit: mockLimit });
+      const mockFrom = vi.fn().mockReturnValue({ where: mockWhere });
+      (db.select as ReturnType<typeof vi.fn>).mockReturnValue({ from: mockFrom });
+
+      const backup = JSON.stringify([{ jf_playback_activity: [REAL_BACKUP_ACTIVITY_1] }]);
+
+      const result = await importJellystatBackup(serverId, backup, false);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain(`Server ${serverId} is historical`);
+    });
+
     it('should throw error for Plex server type', async () => {
       const { db } = await import('../../db/client.js');
       const mockLimit = vi.fn().mockResolvedValue([mockPlexServer]);

@@ -150,6 +150,7 @@ export type {
   PlexTimelineEntry,
   SSEConnectionStatus,
   ServerConnectionStatus,
+  ServerDownReason,
   PluginIssue,
   PluginFamily,
   // Termination logs
@@ -312,6 +313,7 @@ export type {
   UpdateDestinationInput,
   NotificationToast,
   EmailSecurity,
+  DestinationTextProfile,
 } from './destinations.js';
 
 // Automation type exports
@@ -375,6 +377,13 @@ export type {
   DryRunAction,
   DryRunSample,
   DryRunResponse,
+  TemplateNode,
+  TemplateErrorCode,
+  TemplateError,
+  ParseResult,
+  TextLimit,
+  TemplateVariable,
+  NotificationPriority,
 } from './automations/index.js';
 
 // Automation constants and schemas
@@ -413,6 +422,20 @@ export {
   contextOf,
   contextSupplies,
   fieldsAvailableFor,
+  TEMPLATE_ERROR_CODES,
+  parseTemplate,
+  templateVariables,
+  renderTemplate,
+  renderText,
+  fitText,
+  textSize,
+  VARIABLE_ALIASES,
+  VARIABLE_SAMPLES,
+  resolveVariable,
+  variablesFor,
+  SEND_TITLE_MAX,
+  SEND_BODY_MAX,
+  NOTIFICATION_PRIORITIES,
   TEMPLATE_GROUPS,
   TEMPLATE_SCHEMA_VERSION,
   TEMPLATE_MIN_SERVER_VERSION,
@@ -448,6 +471,7 @@ export {
   publicUrlSchema,
   serverIdParamSchema,
   reorderServersSchema,
+  setServerHistoricalSchema,
   updateServerSchema,
   serverLocationEntrySchema,
   serverLocationsSchema,
@@ -563,6 +587,9 @@ export {
   EMAIL_SECURITY,
   EMAIL_SMTP_PRESETS,
   addressList,
+  DESTINATION_TEXT_PROFILES,
+  escapeDiscordMarkdown,
+  escapeFor,
 } from './destinations.js';
 
 // Schema input type exports
@@ -871,12 +898,15 @@ export {
   type DynamicRangeToken,
 } from './dynamicRange.js';
 
-// Playback decision (Direct Play, Direct Stream, Transcode)
+// Playback decision (Direct Play, Direct Stream, Audio Transcode, Transcode)
 export {
+  PLAYBACK_DECISIONS,
   PLAYBACK_DECISION_LABEL_KEYS,
+  isSubtitleBurnIn,
   playbackDecision,
   type PlaybackDecision,
   type PlaybackDecisionInput,
+  type SubtitleBurnInInput,
 } from './playbackDecision.js';
 
 // Trust score levels

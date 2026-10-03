@@ -39,6 +39,7 @@ import {
 import { uncapDecompressionForTx } from '../db/timescale.js';
 import { invalidateAutomationsCache } from '../jobs/poller/database.js';
 import { getAuth } from '../lib/auth.js';
+import { representativeAccountOrderSql } from '../utils/representativeAccount.js';
 import {
   recomputeIdentityAggregates,
   ServerUserNotFoundError,
@@ -159,6 +160,22 @@ async function loadIdentitySnapshot(tx: Tx, userId: string): Promise<MergeIdenti
     linkedPlexAccountCount: plexCount?.count ?? 0,
     authAccountCount: authAccountCountRow?.count ?? 0,
   };
+}
+
+async function shownName(tx: Tx, userId: string): Promise<string | null> {
+  const result = await tx.execute(sql`
+    SELECT coalesce(u.name, rep.username) AS name
+    FROM users u
+    LEFT JOIN LATERAL (
+      SELECT su.username
+      FROM server_users su
+      WHERE su.user_id = u.id
+      ORDER BY ${representativeAccountOrderSql('su')}
+      LIMIT 1
+    ) rep ON true
+    WHERE u.id = ${userId}
+  `);
+  return (result.rows[0] as { name: string | null } | undefined)?.name ?? null;
 }
 
 export interface MergedIdentityRowIds {
@@ -429,6 +446,8 @@ export async function mergeUsers(
     // above so a rejected merge leaves the source's sessions untouched.
     await (await getAuth().$context).internalAdapter.deleteUserSessions(sourceUserId);
 
+    const keptName = await shownName(tx, targetUserId);
+
     const droppedRuleNames: string[] = [];
     for (const combine of plan.combines) {
       const dropped = await combineServerUsers(
@@ -448,6 +467,15 @@ export async function mergeUsers(
 
     const movedIdentityRowIds = await repointIdentityRows(tx, sourceUserId, targetUserId);
     await recomputeIdentityAggregates(targetUserId, tx);
+
+    const nameSetOnTarget =
+      keptName !== null && (await shownName(tx, targetUserId)) !== keptName
+        ? await tx
+            .update(users)
+            .set({ name: keptName, updatedAt: new Date() })
+            .where(and(eq(users.id, targetUserId), isNull(users.name)))
+            .returning({ id: users.id })
+        : [];
 
     // If this source was itself the target of an earlier merge, that earlier
     // audit's targetUserId still points at it. user_merge_audits.targetUserId
@@ -528,6 +556,7 @@ export async function mergeUsers(
           role: sourceUser.role,
           contactEmail: sourceUser.contactEmail,
           contactEmailCarried: carriedContactEmail.length > 0,
+          nameSetOnTarget: nameSetOnTarget.length > 0 ? keptName : null,
         },
         movedIdentityRowIds,
       })
@@ -700,6 +729,14 @@ export async function splitServerUser(
           .update(userMergeAudits)
           .set({ undoneAt: new Date() })
           .where(eq(userMergeAudits.id, audit.id));
+
+        const { nameSetOnTarget } = audit.sourceUserSnapshot;
+        if (nameSetOnTarget) {
+          await tx
+            .update(users)
+            .set({ name: null, updatedAt: new Date() })
+            .where(and(eq(users.id, oldUserId), eq(users.name, nameSetOnTarget)));
+        }
       }
     }
 

@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Vítejte v Tracearr",
-    "addServer": "Přidat server",
     "connectToServer": "Připojit k serveru",
     "enterServerDetails": "Zadejte URL serveru Tracearr a mobilní přístupový token",
     "serverUrl": "URL serveru",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "Chybějící pole",
-    "pleaseEnterBothFields": "Zadejte URL adresu serveru a token",
     "invalidUrl": "Neplatná URL",
-    "serverUrlMustStartWith": "Adresa URL serveru musí začínat http:// nebo https:////",
     "pleaseEnterValidUrl": "Zadejte prosím platnou adresu URL serveru",
     "pairingFailed": "Párování se nezdařilo",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Neplatný formát QR kódu. Vygenerujte prosím nový kód.",
     "invalidQrCodeMissingUrl": "Neplatný QR kód: chybí URL serveru",
     "invalidQrCodeMissingToken": "Neplatný QR kód: chybí párovací token",
-    "invalidServerUrlInQr": "Neplatná URL adresa serveru v QR kódu",
-    "tooManyPairingAttempts": "Příliš mnoho pokusů o párování. Počkejte prosím několik minut.",
-    "invalidOrExpiredToken": "Neplatný nebo vypršela platnost tokenu.",
-    "invalidPairingRequest": "Neplatný požadavek na párování. Zkontrolujte token.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Vybrat server",
-    "server": "",
-    "navigation": ""
+    "server": ""
   },
   "resources": {
     "cpu": "",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,20 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_few": "",
+    "moreLocations_many": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_few": "",
+    "moreDevices_many": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +137,19 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_few": "",
+    "acknowledgeAllTitle_many": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_few": "",
+    "pendingCount_many": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +162,10 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_few": "",
+      "sectionSelected_many": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -176,7 +178,7 @@
     "sortTrust": ""
   },
   "activity": {
-    "playsOverTime": "Přehrávání v průběhu času",
+    "playsOverTime": "Přehrání v průběhu času",
     "concurrentStreams": "",
     "platforms": "Platformy",
     "playbackQuality": ""
@@ -193,28 +195,29 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_few": "",
+    "alertsCount_many": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_few": "",
+    "filtersActive_many": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +230,11 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_few": "",
+    "conditions_many": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,10 +268,14 @@
   },
   "widget": {
     "asOf": "",
-    "serversDown_one": "",
-    "serversDown_other": "",
     "signedOut": "",
+    "serversDown_one": "",
+    "serversDown_few": "",
+    "serversDown_many": "",
+    "serversDown_other": "",
     "transcodes_one": "",
+    "transcodes_few": "",
+    "transcodes_many": "",
     "transcodes_other": ""
   }
 }

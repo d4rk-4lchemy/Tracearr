@@ -12,7 +12,7 @@ vi.mock('../mediaLinks.js', () => ({
 }));
 
 import { createMockActiveSession } from '../../../test/fixtures.js';
-import { discordType, type DiscordEmbed } from '../destinations/discord.js';
+import { discordType, fitEmbed, type DiscordEmbed } from '../destinations/discord.js';
 import type { NotificationEvent } from '../events.js';
 import type { RenderContext } from '../destinations/types.js';
 
@@ -205,16 +205,6 @@ describe('discordType.render', () => {
     expect(embed.color).toBe(0xf39c12);
     expect(embed.description).toContain('Jellyfin: ');
     expect(embed.description).toContain('latest 0.3.0');
-  });
-
-  it('uses the rule source title for a rule send', async () => {
-    const embed = await render(
-      { type: 'violation', payload: violation },
-      { destination, source: { kind: 'rule', title: 'Rule fired', message: 'Too many streams' } }
-    );
-
-    expect(embed.title).toBe('Rule fired');
-    expect(fieldNames(embed)).toEqual(['User', 'Rule', 'Severity']);
   });
 });
 
@@ -536,5 +526,86 @@ describe('discordType media embeds', () => {
     );
 
     expect(mockProxyImage).not.toHaveBeenCalled();
+  });
+});
+
+describe('discord text handling', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const userNamed = (username: string) => ({
+    id: 'su-1',
+    username,
+    thumbUrl: null,
+    identityName: null,
+  });
+
+  it('escapes inserted values but not the template text', async () => {
+    const embed = await render(
+      {
+        type: 'session_started',
+        payload: createMockActiveSession({
+          mediaTitle: 'a_b (2024) - x',
+          user: userNamed('bob*_'),
+        }),
+      },
+      automationCtx({ body: '**{{ user.username }}** said {{ session.mediaTitle }}' })
+    );
+    expect(embed.description).toBe('**bob\\*\\_** said a\\_b \\(2024\\) \\- x');
+  });
+
+  it('leaves a url inside an inserted value alone and escapes the text around it', async () => {
+    const embed = await render(
+      {
+        type: 'session_started',
+        payload: createMockActiveSession({ mediaTitle: 'a_b https://x.test/a_b(1) c-d' }),
+      },
+      automationCtx({ body: '{{ session.mediaTitle }}' })
+    );
+    expect(embed.description).toBe('a\\_b https://x.test/a_b(1) c\\-d');
+  });
+
+  it('omits a blank description on every embed', () => {
+    expect(fitEmbed({ title: 'Server Back Online', description: '', color: 1 })).toEqual({
+      title: 'Server Back Online',
+      color: 1,
+    });
+  });
+
+  it('cuts title and description to their limits', () => {
+    const embed = fitEmbed({ title: 't'.repeat(300), description: 'd'.repeat(5000), color: 1 });
+    expect([...embed.title]).toHaveLength(256);
+    expect([...(embed.description ?? '')]).toHaveLength(4096);
+  });
+
+  it('keeps the whole embed within 6000 characters by cutting the description', () => {
+    const fields = Array.from({ length: 5 }, (_, i) => ({
+      name: `f${i}`,
+      value: 'v'.repeat(1000),
+      inline: false,
+    }));
+    const embed = fitEmbed({
+      title: 'Title',
+      description: 'd'.repeat(4000),
+      color: 1,
+      fields,
+      footer: { text: 'Tracearr' },
+    });
+    const total =
+      embed.title.length +
+      (embed.description?.length ?? 0) +
+      (embed.fields ?? []).reduce((sum, f) => sum + f.name.length + f.value.length, 0) +
+      (embed.footer?.text.length ?? 0) +
+      (embed.author?.name.length ?? 0);
+    expect(total).toBeLessThanOrEqual(6000);
+  });
+
+  it('turns mentions off on every post', async () => {
+    const f = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', f);
+    await discordType.deliver({ embed: { title: 'x', color: 1 } }, config, deliverCtx);
+    const body = JSON.parse(f.mock.calls[0]?.[1].body);
+    expect(body.allowed_mentions).toEqual({ parse: [] });
   });
 });

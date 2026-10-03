@@ -26,6 +26,7 @@ import type {
   MaintenanceJobProgress,
   RunningTask,
   ServerConnectionStatus,
+  ServerDownReason,
 } from '@tracearr/shared';
 import { WS_EVENTS } from '@tracearr/shared';
 import { useAuth } from './useAuth';
@@ -43,6 +44,7 @@ interface UnhealthyServer {
   serverId: string;
   serverName: string;
   since: Date;
+  reason?: ServerDownReason;
 }
 
 interface SocketContextValue {
@@ -104,6 +106,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     return events ? events.has(eventType) : true;
   }, []);
 
+  // Health check is best-effort: a failed fetch leaves the current list alone.
+  const refreshUnhealthyServers = useCallback(() => {
+    api.servers
+      .health()
+      .then((servers) => {
+        setUnhealthyServers(servers.map((s) => ({ ...s, since: new Date() })));
+      })
+      .catch(() => undefined);
+  }, []);
+
   // Fetch initial server health status on authentication
   useEffect(() => {
     if (!isAuthenticated) {
@@ -111,15 +123,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    api.servers
-      .health()
-      .then((servers) => {
-        setUnhealthyServers(servers.map((s) => ({ ...s, since: new Date() })));
-      })
-      .catch(() => {
-        // Ignore errors - health check is best-effort
-      });
-  }, [isAuthenticated]);
+    refreshUnhealthyServers();
+  }, [isAuthenticated, refreshUnhealthyServers]);
 
   // Fetch initial connection statuses on authentication
   useEffect(() => {
@@ -174,6 +179,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         void queryClient.invalidateQueries({ queryKey: ['sessions', 'active'] });
         void queryClient.invalidateQueries({ queryKey: ['tasks', 'running'] });
         void queryClient.invalidateQueries({ queryKey: ['stats', 'dashboard'] });
+        refreshUnhealthyServers();
       }
       hasConnectedRef.current = true;
     });
@@ -273,14 +279,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    newSocket.on(WS_EVENTS.SERVER_DOWN, (data: { serverId: string; serverName: string }) => {
-      // Track unhealthy server for persistent banner
-      setUnhealthyServers((prev) => {
-        // Avoid duplicates
-        if (prev.some((s) => s.serverId === data.serverId)) return prev;
-        return [...prev, { ...data, since: new Date() }];
-      });
-    });
+    newSocket.on(
+      WS_EVENTS.SERVER_DOWN,
+      (data: { serverId: string; serverName: string; reason?: ServerDownReason }) => {
+        // Upsert: the SSE fallback can publish a plain server:down before the poller adds a reason
+        setUnhealthyServers((prev) => {
+          const existing = prev.find((s) => s.serverId === data.serverId);
+          const others = prev.filter((s) => s.serverId !== data.serverId);
+          return [...others, { ...data, since: existing?.since ?? new Date() }];
+        });
+      }
+    );
 
     newSocket.on(WS_EVENTS.SERVER_UP, (data: { serverId: string; serverName: string }) => {
       // Remove from unhealthy servers
@@ -295,7 +304,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
           : data.severity === 'warning'
             ? toast.warning
             : toast.info;
-      toastFn(data.title, { description: data.message, duration: 10000 });
+      toastFn(data.title, {
+        description: data.message,
+        descriptionClassName: 'whitespace-pre-line',
+        duration: 10000,
+      });
     });
 
     // Any instance's destination write lands here, including the toast preferences read above.
@@ -437,7 +450,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         runsRefreshThrottleRef.current = null;
       }
     };
-  }, [isAuthenticated, isInMaintenance, queryClient, isWebToastEnabled]);
+  }, [isAuthenticated, isInMaintenance, queryClient, isWebToastEnabled, refreshUnhealthyServers]);
 
   const subscribeSessions = useCallback(() => {
     if (socket && isConnected) {

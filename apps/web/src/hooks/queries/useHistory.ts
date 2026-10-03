@@ -1,13 +1,17 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { serverScopeFromIds, serverScopeKey } from '@tracearr/shared';
-import type { HistoryQueryInput, HistoryAggregatesQueryInput } from '@tracearr/shared';
+import type {
+  HistoryQueryInput,
+  HistoryAggregatesQueryInput,
+  PlaybackDecision,
+} from '@tracearr/shared';
 import { api } from '@/lib/api';
 
 export interface HistoryFilters {
   serverUserIds?: string[];
   serverIds?: string[];
   state?: 'playing' | 'paused' | 'stopped';
-  mediaTypes?: ('movie' | 'episode' | 'track' | 'live')[];
+  mediaTypes?: ('movie' | 'episode' | 'track' | 'live' | 'trailer')[];
   startDate?: Date;
   endDate?: Date;
   search?: string;
@@ -20,8 +24,9 @@ export interface HistoryFilters {
   geoCity?: string;
   geoRegion?: string;
   network?: 'local' | 'remote';
-  transcodeDecisions?: ('directplay' | 'copy' | 'transcode')[];
+  transcodeDecisions?: PlaybackDecision[];
   watched?: boolean;
+  subtitleBurnIn?: boolean;
   excludeShortSessions?: boolean;
   orderBy?: 'startedAt' | 'durationMs' | 'mediaTitle';
   orderDir?: 'asc' | 'desc';

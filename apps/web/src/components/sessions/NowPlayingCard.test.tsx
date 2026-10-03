@@ -367,19 +367,93 @@ describe('NowPlayingCard ffmpeg speed display', () => {
       expect(screen.getByTestId('card-artwork')).not.toHaveClass('overflow-hidden');
       expect(poster).toHaveClass('max-h-28');
       expect(poster).toHaveClass('max-w-20');
-      expect(poster).toHaveClass('shadow-lg');
+      expect(poster).not.toHaveClass('shadow-lg');
+      if (mediaType === 'live') {
+        expect(poster).not.toHaveClass('rounded-lg');
+      } else {
+        expect(poster).toHaveClass('rounded-lg');
+      }
+      expect(screen.getByTestId('artwork-playback-overlay')).not.toHaveClass('bg-black/50');
+      expect(screen.getByTestId('artwork-playback-overlay')).toHaveClass(
+        'opacity-0',
+        'group-hover:opacity-100'
+      );
       expect(screen.getByTestId('artwork-playback-overlay').parentElement).toHaveClass(
         'overflow-visible'
       );
       expect(container.querySelector('svg.lucide-play')).toHaveClass('h-8', 'w-8', 'shrink-0');
+      const dimmer = screen.getByTestId('artwork-dimmer');
+      expect(dimmer.style.maskImage).toBe(`url(${JSON.stringify(poster?.getAttribute('src'))})`);
+      expect(dimmer).toHaveStyle({
+        inset: '-1px',
+        maskMode: 'alpha',
+        maskSize: '100% 100%',
+        maskRepeat: 'no-repeat',
+      });
+      expect(dimmer).toHaveClass('pointer-events-none', 'bg-black/50');
+      if (mediaType === 'live') {
+        expect(dimmer).not.toHaveClass('rounded-lg');
+      } else {
+        expect(dimmer).toHaveClass('rounded-lg');
+      }
+      expect(container.querySelector('svg.lucide-play')?.parentElement).toBe(
+        screen.getByTestId('artwork-playback-overlay')
+      );
       expect(poster?.getAttribute('src')).toContain('&artwork=2');
     }
   );
+
+  it.each(['dispatcharr', 'plex', 'jellyfin', 'emby'] as const)(
+    'keeps live artwork square and the outer card rounded for %s',
+    (type) => {
+      const { container } = render(
+        <NowPlayingCard
+          session={makeSession({
+            thumbPath: '/logo.png',
+            server: { id: 'server-1', name: type, type },
+          })}
+        />
+      );
+      expect(container.querySelector('img[src*="images/proxy"]')).not.toHaveClass('rounded-lg');
+      expect(container.firstElementChild).toHaveClass('rounded-xl');
+    }
+  );
+
+  it('keeps paused catch-up artwork square with a visible, undimmed Pause icon', () => {
+    const { container } = render(
+      <NowPlayingCard
+        session={makeSession({
+          dispatcharrPlaybackKind: 'catchup',
+          state: 'paused',
+          thumbPath: '/catchup.png',
+        })}
+      />
+    );
+    expect(container.querySelector('img[src*="images/proxy"]')).not.toHaveClass(
+      'rounded-lg',
+      'shadow-lg'
+    );
+    expect(screen.getByTestId('artwork-playback-overlay')).toHaveClass('opacity-100');
+    expect(screen.getByTestId('artwork-playback-overlay')).not.toHaveClass(
+      'bg-black/50',
+      'opacity-0'
+    );
+    expect(container.querySelector('svg.lucide-pause')).toHaveClass(
+      'relative',
+      'h-8',
+      'w-8',
+      'shrink-0'
+    );
+    expect(screen.getByTestId('artwork-dimmer')).not.toHaveClass('rounded-lg');
+    expect(screen.getByTestId('artwork-dimmer').style.maskMode).toBe('alpha');
+    expect(screen.getByTestId('card-artwork')).not.toHaveClass('bg-muted', 'overflow-hidden');
+  });
 
   it('keeps the gray artwork placeholder when no image exists', () => {
     render(<NowPlayingCard session={makeSession({ thumbPath: null })} />);
 
     expect(screen.getByTestId('card-artwork')).toHaveClass('bg-muted');
+    expect(screen.queryByTestId('artwork-dimmer')).toBeNull();
   });
 
   it('proxies absolute Dispatcharr live channel logos for card artwork', () => {
@@ -405,7 +479,11 @@ describe('NowPlayingCard ffmpeg speed display', () => {
 });
 
 function renderCard(overrides: Partial<ActiveSession>) {
-  render(<NowPlayingCard session={makeSession({ playerName: null, ...overrides })} />);
+  render(
+    <NowPlayingCard
+      session={makeSession({ playerName: null, totalDurationMs: 7_200_000, ...overrides })}
+    />
+  );
   return screen.getByTestId('device-badge');
 }
 
@@ -426,5 +504,32 @@ describe('NowPlayingCard device icon', () => {
 
   it('carries no hover text when the session reports no device at all', () => {
     expect(renderCard({})).not.toHaveAttribute('title');
+  });
+});
+
+describe('NowPlayingCard transcoder bar and buffering', () => {
+  it('draws the transcoder segment ahead of the playhead', () => {
+    renderCard({ progressMs: 720_000, transcodeInfo: { maxOffsetAvailable: 1800 } });
+    expect(screen.getByTestId('progress-buffered')).toHaveStyle({ width: '25%' });
+  });
+
+  it('falls back to transcode percent when the server gives no offset (Jellyfin)', () => {
+    renderCard({ progressMs: 720_000, transcodeInfo: { progress: 40 } });
+    expect(screen.getByTestId('progress-buffered')).toHaveStyle({ width: '40%' });
+  });
+
+  it('draws nothing for direct play', () => {
+    renderCard({ progressMs: 720_000, transcodeInfo: null });
+    expect(screen.queryByTestId('progress-buffered')).toBeNull();
+  });
+
+  it('draws nothing when the transcoder is behind the playhead', () => {
+    renderCard({ progressMs: 720_000, transcodeInfo: { maxOffsetAvailable: 300 } });
+    expect(screen.queryByTestId('progress-buffered')).toBeNull();
+  });
+
+  it('labels a buffering session', () => {
+    renderCard({ state: 'playing', buffering: true });
+    expect(screen.getByText('playback.buffering')).toBeInTheDocument();
   });
 });

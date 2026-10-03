@@ -282,6 +282,12 @@ describe('Action Executor Registry', () => {
     });
 
     describe('send', () => {
+      it('carries the send priority onto the source', async () => {
+        const context = createMockContext({ violationId: 'v1' });
+        await executeAction(context, { type: 'send', to: ['d1'], priority: 'urgent' });
+        expect(enqueueCall().source).toMatchObject({ priority: 'urgent' });
+      });
+
       it('builds a violation event with the rule severity and real ids and names the automation', async () => {
         const context = createMockContext({ violationId: 'v1' });
         const action: SendAction = { type: 'send', to: ['d1', 'd2'], body: 'over the limit' };
@@ -325,6 +331,20 @@ describe('Action Executor Registry', () => {
             },
           })
         );
+      });
+
+      it('carries the show title in violation data so session.name can name an episode', async () => {
+        const context = createMockContext({ violationId: 'v1' });
+        const withShow = {
+          ...context,
+          session: { ...context.session, grandparentTitle: 'The Bear' },
+        };
+        await executeAction(withShow, { type: 'send', to: ['d1'] });
+        const { event } = enqueueCall();
+        expect(event.type).toBe('violation');
+        expect(event.type === 'violation' && event.payload.data).toMatchObject({
+          grandparentTitle: 'The Bear',
+        });
       });
 
       it('prefers the identity name over the account username for display', async () => {
@@ -1156,6 +1176,20 @@ describe('Action Executor Registry', () => {
           expect(mockDeps.sendClientMessage).toHaveBeenCalledWith('s2', 'Warning!');
         });
       });
+
+      it('records the action as skipped when every target sits on a historical server', async () => {
+        (mockDeps.sendClientMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
+          skipReason: 'server_historical',
+        });
+        const context = createMockContext();
+        const action: MessageClientAction = { type: 'message_client', message: 'Please stop!' };
+
+        const result = await executeAction(context, action);
+
+        expect(result.success).toBe(true);
+        expect(result.skipped).toBe(true);
+        expect(result.skipReason).toBe('server_historical');
+      });
     });
 
     describe('Cooldown Handling', () => {
@@ -1605,18 +1639,24 @@ describe('Action Executor Registry', () => {
       });
     });
 
-    it('keeps the inactivity wording as the default body an override can replace', async () => {
+    it('sends the inactivity wording as defaultBody, beside any body the send has', async () => {
       const serverUser = createMockServerUser({ lastActivityAt: fortyFiveDaysAgo });
       const context = inactivityContext(serverUser);
 
       await executeActions(context, [{ type: 'send', to: ['d1'] }]);
-      expect(enqueueCall().source).toMatchObject({
-        body: 'Account "testuser" has been inactive for 45 days',
+      expect(enqueueCall().source).toEqual({
+        kind: 'automation',
+        automationId: context.rule.id,
+        automationName: context.rule.name,
+        defaultBody: 'Account "testuser" has been inactive for 45 days',
       });
 
       (mockDeps.enqueueAutomationNotification as ReturnType<typeof vi.fn>).mockClear();
       await executeActions(context, [{ type: 'send', to: ['d1'], body: 'come back {{days}}' }]);
-      expect(enqueueCall().source).toMatchObject({ body: 'come back {{days}}' });
+      expect(enqueueCall().source).toMatchObject({
+        body: 'come back {{days}}',
+        defaultBody: 'Account "testuser" has been inactive for 45 days',
+      });
     });
 
     it('words the default body for a never-active account', async () => {
@@ -1625,7 +1665,7 @@ describe('Action Executor Registry', () => {
       await executeActions(context, [{ type: 'send', to: ['d1'] }]);
 
       expect(enqueueCall().source).toMatchObject({
-        body: 'Account "testuser" has never been active',
+        defaultBody: 'Account "testuser" has never been active',
       });
     });
 

@@ -26,8 +26,8 @@ import {
   type PlexPlaySessionNotification,
 } from '@tracearr/shared';
 import { registerService, unregisterService } from './serviceTracker.js';
-import { db } from '../db/client.js';
-import { servers } from '../db/schema.js';
+import { liveServers } from './liveServers.js';
+import type { servers } from '../db/schema.js';
 import { PlexEventSource } from './mediaServer/plex/eventSource.js';
 import {
   DispatcharrRealtimeConnector,
@@ -203,7 +203,7 @@ export class SSEManager extends EventEmitter {
       throw new Error('SSEManager not initialized');
     }
 
-    const allServers = await db.select().from(servers);
+    const allServers = await liveServers();
 
     console.log(`[SSEManager] Starting SSE for ${allServers.length} server(s)`);
 
@@ -971,7 +971,7 @@ export class SSEManager extends EventEmitter {
     try {
       let allServers;
       try {
-        allServers = await db.select().from(servers);
+        allServers = await liveServers();
       } catch (error) {
         console.error('[SSEManager] Failed to fetch servers from database:', error);
         return;

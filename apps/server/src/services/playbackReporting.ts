@@ -18,6 +18,7 @@ import { normalizeClient } from '../utils/platformNormalizer.js';
 import { parseJellystatPlayMethod } from '../utils/transcodeNormalizer.js';
 import { wallTimeToUtc } from '../utils/wallClock.js';
 import { servers, sessions } from '../db/schema.js';
+import { ServerHistoricalError } from './liveServers.js';
 import { checkAggregateNeedsRebuild, refreshAggregates } from '../db/timescale.js';
 import {
   enqueueMaintenanceJob,
@@ -375,6 +376,10 @@ export async function importPlaybackReporting(
 
     if (!server) {
       throw new Error(`Server not found: ${serverId}`);
+    }
+
+    if (server.historicalAt) {
+      throw new ServerHistoricalError(serverId);
     }
 
     if (server.type !== 'jellyfin' && server.type !== 'emby') {

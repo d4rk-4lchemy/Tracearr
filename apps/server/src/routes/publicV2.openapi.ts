@@ -90,7 +90,6 @@ const ServerTypeEnum = z.enum(['plex', 'jellyfin', 'emby', 'dispatcharr']);
 // Responses can carry 'trailer' (sessions store it); the history filter
 // deliberately accepts only the six primary types.
 const MediaTypeEnum = z.enum(['movie', 'episode', 'track', 'live', 'photo', 'trailer', 'unknown']);
-const MediaTypeFilterEnum = z.enum(['movie', 'episode', 'track', 'live', 'photo', 'unknown']);
 const TranscodeDecisionEnum = z.enum(['directplay', 'copy', 'transcode']);
 
 const CursorMeta = z
@@ -276,7 +275,9 @@ const HistoryQuery = z.object({
   imdb_id: z.string().min(1).max(20).optional().openapi({ example: 'tt1375666' }),
   tmdb_id: z.coerce.number().int().optional(),
   tvdb_id: z.coerce.number().int().optional(),
-  media_type: MediaTypeFilterEnum.optional(),
+  media_type: MediaTypeEnum.optional().openapi({
+    description: 'Filter by media type. Trailers are left out unless you ask for trailer',
+  }),
   watched: QueryBoolean.optional().openapi({
     description:
       'Filter by watched state of the play. A play is watched once it crosses the per-media-type completion threshold (default 85%, configurable in settings)',
@@ -410,6 +411,10 @@ const StreamsServerSummary = z
     server_name: z.string(),
     total: z.number().int(),
     transcodes: z.number().int(),
+    audio_transcodes: z
+      .number()
+      .int()
+      .openapi({ description: 'Of the transcodes, those where only the audio is transcoded' }),
     direct_streams: z.number().int(),
     direct_plays: z.number().int(),
     total_bitrate: z.string().openapi({
@@ -423,6 +428,10 @@ const StreamsSummary = z
   .object({
     total: z.number().int(),
     transcodes: z.number().int(),
+    audio_transcodes: z
+      .number()
+      .int()
+      .openapi({ description: 'Of the transcodes, those where only the audio is transcoded' }),
     direct_streams: z.number().int(),
     direct_plays: z.number().int(),
     total_bitrate: z.string().openapi({

@@ -107,4 +107,27 @@ describe('ServerSelector', () => {
     expect(screen.getByText('Jellyfin Box')).toBeInTheDocument();
     expect(screen.queryByText('Plex Box')).not.toBeInTheDocument();
   });
+
+  it('lists historical servers after live ones under their own heading', async () => {
+    const user = userEvent.setup();
+    const retired = server({
+      id: 'srv-old',
+      name: 'Old Plex',
+      historicalAt: '2026-09-01T12:00:00.000Z',
+    });
+    mockServers([retired, server(), jellyfin], ['srv-plex', 'srv-jf', 'srv-old']);
+    renderSelector();
+
+    await user.click(screen.getByRole('button', { name: /serverSelector.all/ }));
+
+    expect(screen.getByText('serverSelector.historical')).toBeInTheDocument();
+    const names = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(names[names.length - 1]).toContain('Old Plex');
+    expect(names.slice(0, 2)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Plex Box'),
+        expect.stringContaining('Jellyfin Box'),
+      ])
+    );
+  });
 });

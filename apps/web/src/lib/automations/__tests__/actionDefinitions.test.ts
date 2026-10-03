@@ -1,9 +1,10 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { i18n, initI18n } from '@tracearr/translations';
-import { trustActionSchema } from '@tracearr/shared';
+import { trustActionSchema, type SendAction } from '@tracearr/shared';
 import {
   applyActionFieldChange,
   createDefaultAction,
+  setSendText,
   storedActionLabel,
 } from '../actionDefinitions';
 import type { Translate } from '../conditionFields';
@@ -65,5 +66,29 @@ describe('storedActionLabel', () => {
 
   it('falls back to the stored value for an action this build does not know', () => {
     expect(storedActionLabel(t, 'quarantine')).toBe('quarantine');
+  });
+});
+
+describe('setSendText', () => {
+  const send: SendAction = { type: 'send', to: ['d1'], title: 'x', body: 'y' };
+
+  it('removes the key when the field is cleared', () => {
+    expect(setSendText(send, 'title', '')).toEqual({ type: 'send', to: ['d1'], body: 'y' });
+    expect('body' in setSendText(send, 'body', '')).toBe(false);
+  });
+
+  it('sets the text otherwise', () => {
+    expect(setSendText(send, 'body', 'z').body).toBe('z');
+  });
+});
+
+describe('send priority field', () => {
+  const send: SendAction = { type: 'send', to: ['d1'], priority: 'high' };
+
+  it('removes the key on Automatic and sets a level otherwise', () => {
+    expect('priority' in applyActionFieldChange(send, 'priority', 'automatic')).toBe(false);
+    expect(applyActionFieldChange(send, 'priority', 'urgent')).toMatchObject({
+      priority: 'urgent',
+    });
   });
 });

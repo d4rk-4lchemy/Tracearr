@@ -2,22 +2,12 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
-import { PLAYBACK_DECISION_LABEL_KEYS } from '@tracearr/shared';
+import { PLAYBACK_DECISION_LABEL_KEYS, type QualityStats } from '@tracearr/shared';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { ChartEmpty } from './ChartEmpty';
 
-interface QualityData {
-  directPlay: number;
-  directStream: number;
-  transcode: number;
-  total: number;
-  directPlayPercent: number;
-  directStreamPercent: number;
-  transcodePercent: number;
-}
-
 interface QualityChartProps {
-  data: QualityData | undefined;
+  data: QualityStats | undefined;
   isLoading?: boolean;
   height?: number;
 }
@@ -25,6 +15,7 @@ interface QualityChartProps {
 const COLORS = {
   directPlay: 'hsl(142, 76%, 36%)', // Green
   directStream: 'hsl(210, 76%, 50%)', // Blue
+  audioTranscode: 'hsl(262, 60%, 58%)', // Violet
   transcode: 'hsl(38, 92%, 50%)', // Orange
 };
 
@@ -96,8 +87,13 @@ export function QualityChart({ data, isLoading, height = 250 }: QualityChartProp
               color: COLORS.directStream,
             },
             {
+              name: t(PLAYBACK_DECISION_LABEL_KEYS.audio_transcode),
+              y: data.audioTranscode,
+              color: COLORS.audioTranscode,
+            },
+            {
               name: t(PLAYBACK_DECISION_LABEL_KEYS.transcode),
-              y: data.transcode,
+              y: data.transcode - data.audioTranscode,
               color: COLORS.transcode,
             },
           ],

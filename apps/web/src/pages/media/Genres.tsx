@@ -58,12 +58,22 @@ function TablePanelSkeleton() {
 }
 
 export function MediaGenres() {
-  const { t } = useTranslation('pages');
-  const { selectedServerIds, mediaLibraryServerIds: scopedServerIds, isLoading: serversLoading, refetch } = useServer();
+  const { t } = useTranslation(['pages', 'common']);
+  const {
+    selectedServerIds,
+    mediaLibraryServerIds: scopedServerIds,
+    isLoading: serversLoading,
+    refetch,
+  } = useServer();
   const mediaLibraryServerIds = scopedServerIds ?? selectedServerIds;
   const [type, setType] = useState<'movie' | 'show'>('movie');
 
-  const { data, isLoading, isError, refetch: refetchGenres } = useGenres(type, mediaLibraryServerIds);
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch: refetchGenres,
+  } = useGenres(type, mediaLibraryServerIds);
   const genres = useMemo(() => data?.data ?? [], [data]);
 
   const sortedByPlays = useMemo(() => [...genres].sort((a, b) => b.plays - a.plays), [genres]);
@@ -89,7 +99,10 @@ export function MediaGenres() {
   );
 
   if (hasNoServers) {
-    if (mediaLibraryServerIds.length === 0) return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
+    if (mediaLibraryServerIds.length === 0)
+      return (
+        <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>
+      );
     return (
       <div className="space-y-6">
         {header}
@@ -149,7 +162,7 @@ export function MediaGenres() {
                     {t('media.genres.table.columns.genre')}
                   </TableHead>
                   <TableHead className="text-muted-foreground text-right text-[10.5px] font-semibold tracking-[0.07em] uppercase">
-                    {t('media.genres.table.columns.items')}
+                    {t('common:labels.items')}
                   </TableHead>
                   <TableHead className="text-muted-foreground text-right text-[10.5px] font-semibold tracking-[0.07em] uppercase">
                     {t('media.genres.table.columns.plays')}

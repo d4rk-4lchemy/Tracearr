@@ -377,6 +377,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
           serverId: serverUsers.serverId,
           serverName: servers.name,
           serverDisplayOrder: servers.displayOrder,
+          serverHistoricalAt: servers.historicalAt,
           serverUserId: serverUsers.id,
           removedAt: serverUsers.removedAt,
         })
@@ -387,8 +388,18 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
       identityServerRows.sort(
         (a, b) =>
           compareServers(
-            { displayOrder: a.serverDisplayOrder, name: a.serverName, id: a.serverId },
-            { displayOrder: b.serverDisplayOrder, name: b.serverName, id: b.serverId }
+            {
+              historicalAt: a.serverHistoricalAt,
+              displayOrder: a.serverDisplayOrder,
+              name: a.serverName,
+              id: a.serverId,
+            },
+            {
+              historicalAt: b.serverHistoricalAt,
+              displayOrder: b.serverDisplayOrder,
+              name: b.serverName,
+              id: b.serverId,
+            }
           ) || a.serverUserId.localeCompare(b.serverUserId)
       );
       for (const row of identityServerRows) {

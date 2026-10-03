@@ -237,6 +237,7 @@ export function mapMediaSession(
     // Stream details (source media, stream output, transcode/subtitle info)
     ...extractStreamDetailsFromQuality(session.quality),
     state: session.playback.state === 'paused' ? 'paused' : 'playing',
+    buffering: session.playback.state === 'buffering',
     totalDurationMs: session.media.durationMs,
     progressMs: session.playback.positionMs,
     // Jellyfin provides exact pause timestamp for more accurate tracking

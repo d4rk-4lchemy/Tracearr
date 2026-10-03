@@ -17,9 +17,7 @@ const { mockFetchJson, mockSseManager, mockGetSettings, mockDbServers } = vi.hoi
 vi.mock('../../utils/http.js', () => ({ fetchJson: mockFetchJson }));
 vi.mock('../../services/sseManager.js', () => ({ sseManager: mockSseManager }));
 vi.mock('../../services/settings.js', () => ({ getSettings: mockGetSettings }));
-vi.mock('../../db/client.js', () => ({
-  db: { select: () => ({ from: mockDbServers }) },
-}));
+vi.mock('../../services/liveServers.js', () => ({ liveServers: mockDbServers }));
 
 const mockDispatchPluginUpdate = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../services/automations/events/producers.js', () => ({
@@ -50,6 +48,11 @@ describe('runPluginUpdateCheck', () => {
       { id: 's1', name: 'JF', type: 'jellyfin' },
       { id: 's2', name: 'Plex', type: 'plex' },
     ]);
+  });
+
+  it('reads the server list through the live filter', async () => {
+    await runPluginUpdateCheck();
+    expect(mockDbServers).toHaveBeenCalledWith();
   });
 
   it('publishes the max manifest version to sseManager', async () => {

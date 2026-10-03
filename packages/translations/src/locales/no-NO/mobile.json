@@ -1,9 +1,8 @@
 {
   "pair": {
     "welcome": "Velkommen til Tracearr",
-    "addServer": "Legg til server",
     "connectToServer": "Koble til server",
-    "enterServerDetails": "Skriv inn din tracker server URL og mobil tilgangstoken",
+    "enterServerDetails": "Skriv inn URL-en til Tracearr-serveren og mobiltilgangstokenet",
     "serverUrl": "URL til server",
     "accessToken": "Tilgang til kode",
     "scanQrCodeInstead": "Skann QR-koden i stedet",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "Manglende felt",
-    "pleaseEnterBothFields": "Vennligst skriv inn både serverens URL og token",
     "invalidUrl": "Ugyldig nettadresse",
-    "serverUrlMustStartWith": "Server-URL-adressen må starte med http:// eller https://",
     "pleaseEnterValidUrl": "Vennligst skriv inn en gyldig nettadresse til serveren",
     "pairingFailed": "Sammenkobling mislyktes",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Ugyldig QR-kode format. Opprett en ny kode.",
     "invalidQrCodeMissingUrl": "Ugyldig QR-kode: manglende server-URL",
     "invalidQrCodeMissingToken": "Ugyldig QR-kode: manglende tilkoblingstoken",
-    "invalidServerUrlInQr": "Ugyldig server URL i QR-kode",
-    "tooManyPairingAttempts": "For mange paringsforsøk. Vent et par minutter.",
-    "invalidOrExpiredToken": "Ugyldig eller utgått tilkoblingsnøkkel.",
-    "invalidPairingRequest": "Ugyldig sammenkoblingsforespørsel. Kontroller koden.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -56,17 +47,15 @@
     "account": "Konto",
     "disconnect": "",
     "disconnectServer": "Koble fra server",
-    "disconnectConfirm": "Er du sikker på at du vil koble fra \"{{serverName}}\"? Du må parre igjen for å bruke appen.",
-    "disconnectConfirmGeneric": "Er du sikker på at du vil koble fra? Du må parre deg igjen for å bruke appen.",
+    "disconnectConfirm": "Er du sikker på at du vil koble fra «{{serverName}}»? Du må koble sammen på nytt for å bruke appen.",
+    "disconnectConfirmGeneric": "Er du sikker på at du vil koble fra? Du må koble sammen på nytt for å bruke appen.",
     "currentlyConnected": "Foreløpig koblet til {{serverName}}",
     "version": "",
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Velg Server",
-    "server": "Tjener",
-    "navigation": ""
+    "server": "Server"
   },
   "resources": {
     "cpu": "Prosessor",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,16 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +133,15 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +154,8 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -176,7 +168,7 @@
     "sortTrust": ""
   },
   "activity": {
-    "playsOverTime": "Spiller over tid",
+    "playsOverTime": "Avspillinger over tid",
     "concurrentStreams": "Samtidige strømmer",
     "platforms": "Plattformer",
     "playbackQuality": ""
@@ -193,28 +185,25 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +216,9 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,9 +252,9 @@
   },
   "widget": {
     "asOf": "",
+    "signedOut": "",
     "serversDown_one": "",
     "serversDown_other": "",
-    "signedOut": "",
     "transcodes_one": "",
     "transcodes_other": ""
   }

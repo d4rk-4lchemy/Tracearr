@@ -40,6 +40,7 @@ import {
   parseGenresByRatingKey,
   parseRatingKeys,
   getTranscodingSessionRatingKeys,
+  keepSession,
   type PlexServerResource,
   type PlexStatisticsDataPoint,
   type PlexBandwidthStats,
@@ -97,12 +98,13 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
    * /library/metadata/{ratingKey} to get accurate source bitrates and details,
    * since Plex's session data shows transcoded output during transcodes.
    */
-  async getSessions(): Promise<MediaSession[]> {
-    const data = await fetchJson<unknown>(`${this.baseUrl}/status/sessions`, {
+  async getSessions(sessionKey?: string): Promise<MediaSession[]> {
+    const raw = await fetchJson<unknown>(`${this.baseUrl}/status/sessions`, {
       headers: this.buildHeaders(),
       service: 'plex',
       timeout: 10000, // 10s timeout to prevent polling hangs
     });
+    const data = sessionKey ? keepSession(raw, sessionKey) : raw;
 
     const transcodingEntries = getTranscodingSessionRatingKeys(data);
 

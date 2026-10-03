@@ -127,4 +127,16 @@ describe('HistoryFiltersBar', () => {
     const lastCall = calls[calls.length - 1]?.[0] as HistoryFilters;
     expect(lastCall.network).toBeUndefined();
   });
+
+  it('lets the user pick trailers', async () => {
+    const { onFiltersChange } = renderBar({});
+
+    await userEvent.click(screen.getByRole('button', { name: /filters/i }));
+    await waitFor(() => expect(screen.getByText('Network')).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'Trailers' }));
+
+    expect(onFiltersChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mediaTypes: ['trailer'] })
+    );
+  });
 });

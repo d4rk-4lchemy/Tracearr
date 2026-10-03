@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { getCacheService } from '../../services/cache.js';
 import { buildAvatarUrl, buildPosterUrl } from '../../services/imageProxy.js';
+import { countStreams } from '../../utils/streamCounts.js';
 import { displayValues, emptyToNull, type RouteConfig } from './shared.js';
 
 interface SessionIdentityRow {
@@ -148,72 +149,21 @@ export function registerStreamsRoutes(app: FastifyInstance, routeConfig: RouteCo
             };
           });
 
-      const categorizeStream = (session: (typeof activeSessions)[0]) => {
-        if (session.isTranscode) return 'transcode';
-        if (session.videoDecision === 'copy' || session.audioDecision === 'copy')
-          return 'directStream';
-        return 'directPlay';
-      };
-
-      let transcodeCount = 0;
-      let directStreamCount = 0;
-      let directPlayCount = 0;
-      let totalBitrate = 0;
-
-      for (const session of activeSessions) {
-        const category = categorizeStream(session);
-        if (category === 'transcode') transcodeCount++;
-        else if (category === 'directStream') directStreamCount++;
-        else directPlayCount++;
-        if (session.bitrate) totalBitrate += session.bitrate;
-      }
-
-      const serverBreakdown: Record<
-        string,
-        {
-          serverId: string;
-          serverName: string;
-          total: number;
-          transcodes: number;
-          directStreams: number;
-          directPlays: number;
-          bitrateKbps: number;
-        }
-      > = {};
-
-      for (const session of activeSessions) {
-        let serverStats = serverBreakdown[session.serverId];
-        if (!serverStats) {
-          serverStats = {
-            serverId: session.serverId,
-            serverName: session.server.name,
-            total: 0,
-            transcodes: 0,
-            directStreams: 0,
-            directPlays: 0,
-            bitrateKbps: 0,
-          };
-          serverBreakdown[session.serverId] = serverStats;
-        }
-        const category = categorizeStream(session);
-        serverStats.total++;
-        if (category === 'transcode') serverStats.transcodes++;
-        else if (category === 'directStream') serverStats.directStreams++;
-        else serverStats.directPlays++;
-        if (session.bitrate) serverStats.bitrateKbps += session.bitrate;
-      }
+      const { overall, byServer } = countStreams(activeSessions);
 
       const summary = {
-        total: activeSessions.length,
-        transcodes: transcodeCount,
-        direct_streams: directStreamCount,
-        direct_plays: directPlayCount,
-        total_bitrate: formatBitrate(totalBitrate),
-        by_server: Object.values(serverBreakdown).map((s) => ({
+        total: overall.total,
+        transcodes: overall.transcodes,
+        audio_transcodes: overall.audioTranscodes,
+        direct_streams: overall.directStreams,
+        direct_plays: overall.directPlays,
+        total_bitrate: formatBitrate(overall.bitrateKbps),
+        by_server: byServer.map((s) => ({
           server_id: s.serverId,
           server_name: s.serverName,
           total: s.total,
           transcodes: s.transcodes,
+          audio_transcodes: s.audioTranscodes,
           direct_streams: s.directStreams,
           direct_plays: s.directPlays,
           total_bitrate: formatBitrate(s.bitrateKbps),

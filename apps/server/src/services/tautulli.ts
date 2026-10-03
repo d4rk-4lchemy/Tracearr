@@ -12,6 +12,7 @@ import {
   refreshAggregates,
   uncapDecompressionForTx,
 } from '../db/timescale.js';
+import { deleteSessionsRepointingChildren, importForm } from '../jobs/importDuplicateCleanup.js';
 import {
   enqueueMaintenanceJob,
   enqueueServerLocationSyncIfBehind,
@@ -20,6 +21,7 @@ import {
   batchGetLibraryItemIdentity,
   batchResolveMediaByPlexGuid,
 } from '../jobs/poller/database.js';
+import { ts } from '../jobs/sessionWalk.js';
 import { sanitizeCodec } from '../utils/codecNormalizer.js';
 import { extractIpFromEndpoint } from '../utils/parsing.js';
 import { normalizeClient } from '../utils/platformNormalizer.js';
@@ -44,11 +46,41 @@ import {
 import { markImportedServerLocations } from './serverLocations.js';
 import { getSettings, rearmImportedHistoryLink } from './settings.js';
 
+const GUID_HISTORY_LENGTH = 100000;
 const PAGE_SIZE = 5000; // Larger batches = fewer API calls (tested up to 10k, scales linearly)
 const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000; // Base delay, will be multiplied by attempt number
 const ERROR_BODY_MAX_CHARS = 500;
+const ABSORBED_GROUPS_PER_TX = 250;
+
+/** A group whose group_ids name plays other than its own root */
+interface AbsorbingGroup {
+  rootExternalId: string;
+  serverUserId: string;
+  started: Date;
+  stopped: Date;
+  absorbedIds: string[];
+}
+
+function absorbingGroup(
+  record: TautulliHistoryRecord,
+  serverUserId: string
+): AbsorbingGroup | null {
+  const rootExternalId = String(record.reference_id);
+  const absorbedIds = (record.group_ids ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id !== '' && id !== rootExternalId);
+  if (absorbedIds.length === 0) return null;
+  return {
+    rootExternalId,
+    serverUserId,
+    started: new Date(record.started * 1000),
+    stopped: new Date(record.stopped * 1000),
+    absorbedIds,
+  };
+}
 
 export class TautulliApiError extends Error {
   readonly status: number;
@@ -216,7 +248,9 @@ const TautulliGuidHistoryResponseSchema = z.object({
 });
 
 const TautulliGuidHistoryRowSchema = z.object({
-  rating_key: z.union([z.number(), z.string()]).transform(String),
+  rating_key: z
+    .union([z.number(), z.string(), z.null()])
+    .transform((v) => (v === null ? null : String(v))),
   live: z.number().nullable(),
   media_type: z.string(),
   guid: z.string().nullable(),
@@ -556,6 +590,8 @@ export class TautulliService {
         order_column: 'date',
         order_dir: 'desc',
         grouping: 1,
+        include_activity: 0,
+        include_archived: 1,
       },
       TautulliHistoryResponseSchema
     );
@@ -579,8 +615,8 @@ export class TautulliService {
   /**
    * Raw guids and reference ids Tautulli recorded for each rating key, from
    * non-live movie and episode history rows. Null when the answer may be
-   * incomplete: an error result, a row that does not parse, or fewer rows
-   * returned than matched.
+   * incomplete: an error result, a row that does not parse, or a full page,
+   * which may have been cut.
    */
   async getGuidsByRatingKey(
     ratingKeys: string[]
@@ -591,13 +627,14 @@ export class TautulliService {
         rating_key: ratingKeys.join(','),
         grouping: 0,
         include_activity: 0,
-        length: 100000,
+        include_archived: 1,
+        length: GUID_HISTORY_LENGTH,
       },
       TautulliGuidHistoryResponseSchema
     );
     const { data } = result.response;
     if (result.response.result !== 'success' || !data) return null;
-    if (data.data.length !== data.recordsFiltered) return null;
+    if (data.data.length >= GUID_HISTORY_LENGTH) return null;
 
     const requested = new Set(ratingKeys);
     const history = new Map<string, { guids: Set<string>; referenceIds: Set<string> }>();
@@ -613,7 +650,7 @@ export class TautulliService {
       } = row.data;
       // Tautulli filters on session_history.rating_key but reports
       // session_history_metadata.rating_key, so check the key it reports.
-      if (!requested.has(ratingKey)) continue;
+      if (ratingKey === null || !requested.has(ratingKey)) continue;
       if (live !== 0 || (mediaType !== 'movie' && mediaType !== 'episode')) continue;
       const entry = history.get(ratingKey) ?? { guids: new Set(), referenceIds: new Set() };
       // A row without a guid still counts, so its key cannot look unanimous.
@@ -743,7 +780,6 @@ export class TautulliService {
         success: false,
         imported: 0,
         updated: 0,
-        linked: 0,
         skipped: 0,
         errors: 0,
         message: 'Tautulli is not configured. Please add URL and API key in Settings.',
@@ -759,7 +795,6 @@ export class TautulliService {
         success: false,
         imported: 0,
         updated: 0,
-        linked: 0,
         skipped: 0,
         errors: 0,
         message: 'Failed to connect to Tautulli. Please check URL and API key.',
@@ -772,7 +807,6 @@ export class TautulliService {
         success: false,
         imported: 0,
         updated: 0,
-        linked: 0,
         skipped: 0,
         errors: 0,
         message: 'Server not found; cannot determine import cutoff.',
@@ -850,14 +884,11 @@ export class TautulliService {
     let minImportDate: Date | null = null;
     let maxImportDate: Date | null = null;
 
-    // Track sessions that need referenceId linking (child → parent external IDs)
-    // group_ids from Tautulli contains comma-separated session IDs in the same viewing chain
-    // startedAt is stored to enable time-bounded queries in the linking phase
-    const sessionGroupLinks: Array<{
-      childExternalId: string;
-      parentExternalId: string;
-      startedAt: Date;
-    }> = [];
+    const absorbingGroups: AbsorbingGroup[] = [];
+    const collectAbsorbed = (record: TautulliHistoryRecord, serverUserId: string) => {
+      const group = absorbingGroup(record, serverUserId);
+      if (group) absorbingGroups.push(group);
+    };
 
     // Track skipped users using shared module
     const skippedUserTracker = createSkippedUserTracker();
@@ -874,6 +905,8 @@ export class TautulliService {
     let skipped = 0;
     let errors = 0;
     let alreadyTracked = 0;
+    let ungrouped = 0;
+    let noMetadata = 0;
     let page = 0;
     const failedPages: number[] = [];
 
@@ -923,6 +956,13 @@ export class TautulliService {
       // Validate records individually - skip bad records instead of failing entire page
       const validRecords: TautulliHistoryRecord[] = [];
       for (const raw of rawRecords) {
+        if ((raw as { full_title?: unknown } | null)?.full_title === null) {
+          skipped++;
+          noMetadata++;
+          progress.skippedRecords++;
+          progress.processedRecords++;
+          continue;
+        }
         const parsed = TautulliHistoryRecordSchema.safeParse(raw);
         if (parsed.success) {
           validRecords.push(parsed.data);
@@ -1023,11 +1063,10 @@ export class TautulliService {
             continue;
           }
 
-          // Skip records without reference_id (active/in-progress sessions)
           if (record.reference_id === null) {
             skipped++;
             progress.skippedRecords++;
-            progress.activeSessionRecords++;
+            ungrouped += record.group_count ?? 1;
             continue;
           }
 
@@ -1114,18 +1153,7 @@ export class TautulliService {
               progress.duplicateRecords++;
             }
 
-            // Still collect group links for existing records (to fix historical data)
-            if (record.group_count && record.group_count > 1 && record.group_ids) {
-              const groupIds = record.group_ids.split(',').map((id) => id.trim());
-              const parentExternalId = groupIds[0];
-              if (parentExternalId && parentExternalId !== referenceIdStr) {
-                sessionGroupLinks.push({
-                  childExternalId: referenceIdStr,
-                  parentExternalId,
-                  startedAt: new Date(record.started * 1000),
-                });
-              }
-            }
+            if (startsMatch) collectAbsorbed(record, serverUserId);
             continue;
           }
 
@@ -1179,18 +1207,7 @@ export class TautulliService {
                 progress.duplicateRecords++;
               }
 
-              // Still collect group links for existing records (to fix historical data)
-              if (record.group_count && record.group_count > 1 && record.group_ids) {
-                const groupIds = record.group_ids.split(',').map((id) => id.trim());
-                const parentExternalId = groupIds[0];
-                if (parentExternalId && parentExternalId !== referenceIdStr) {
-                  sessionGroupLinks.push({
-                    childExternalId: referenceIdStr,
-                    parentExternalId,
-                    startedAt,
-                  });
-                }
-              }
+              collectAbsorbed(record, serverUserId);
               continue;
             }
           }
@@ -1335,21 +1352,7 @@ export class TautulliService {
             channelThumb: null,
           });
 
-          // Track session grouping for referenceId linking
-          // group_ids contains comma-separated Tautulli row IDs (e.g., "12351,12362")
-          // The first ID is the "parent" session in the resume chain
-          if (record.group_count && record.group_count > 1 && record.group_ids) {
-            const groupIds = record.group_ids.split(',').map((id) => id.trim());
-            const parentExternalId = groupIds[0];
-            // Only link if this session is NOT the parent (avoid self-reference)
-            if (parentExternalId && parentExternalId !== referenceIdStr) {
-              sessionGroupLinks.push({
-                childExternalId: referenceIdStr,
-                parentExternalId,
-                startedAt,
-              });
-            }
-          }
+          collectAbsorbed(record, serverUserId);
 
           changes.imported++;
           progress.importedRecords++;
@@ -1376,60 +1379,27 @@ export class TautulliService {
     // Final flush for any remaining records
     await flushBatches();
 
-    // Link sessions using group_ids data (referenceId linking pass)
-    // Process in mega-chunks to avoid lock exhaustion from querying all IDs at once
-    let linkedSessions = 0;
-    if (sessionGroupLinks.length > 0) {
-      progress.message = `Linking ${sessionGroupLinks.length} resume sessions...`;
+    // A regroup in Tautulli folds plays an earlier import stored as their own
+    // group into another group, whose root the loop above just rewrote with the
+    // merged total. The old rows would count that watch time twice.
+    let mergedAway = 0;
+    if (absorbingGroups.length > 0) {
+      progress.message = 'Removing plays Tautulli merged into another play...';
       publishProgress(progress);
-
-      // Process links in chunks to spread lock acquisition and reduce memory pressure
-      // Each mega-chunk queries only the parent/child IDs it needs
-      const LINK_MEGA_CHUNK_SIZE = 500;
-      const UPDATE_BATCH_SIZE = 50;
-
-      for (let i = 0; i < sessionGroupLinks.length; i += LINK_MEGA_CHUNK_SIZE) {
-        const megaChunk = sessionGroupLinks.slice(i, i + LINK_MEGA_CHUNK_SIZE);
-
-        // Get unique parent/child IDs for this mega-chunk only
-        const chunkParentIds = [...new Set(megaChunk.map((l) => l.parentExternalId))];
-        const chunkChildIds = megaChunk.map((l) => l.childExternalId);
-
-        // Compute time bounds for this chunk to enable TimescaleDB chunk exclusion
-        const chunkTimestamps = megaChunk.map((l) => l.startedAt.getTime());
-        const chunkTimeBounds: TimeBounds = {
-          minTime: new Date(Math.min(...chunkTimestamps)),
-          maxTime: new Date(Math.max(...chunkTimestamps)),
-        };
-
-        const parentMap = await queryExistingByExternalIds(
+      for (let i = 0; i < absorbingGroups.length; i += ABSORBED_GROUPS_PER_TX) {
+        const deletedStarts = await TautulliService.deleteAbsorbedImports(
           serverId,
-          chunkParentIds,
-          chunkTimeBounds
+          absorbingGroups.slice(i, i + ABSORBED_GROUPS_PER_TX)
         );
-        const childMap = await queryExistingByExternalIds(serverId, chunkChildIds, chunkTimeBounds);
-
-        // Batch updates within this mega-chunk
-        for (let j = 0; j < megaChunk.length; j += UPDATE_BATCH_SIZE) {
-          const updateBatch = megaChunk.slice(j, j + UPDATE_BATCH_SIZE);
-          await Promise.all(
-            updateBatch.map(async ({ childExternalId, parentExternalId }) => {
-              const parent = parentMap.get(parentExternalId);
-              const child = childMap.get(childExternalId);
-              if (parent && child) {
-                await db
-                  .update(sessions)
-                  .set({ referenceId: parent.id })
-                  .where(eq(sessions.id, child.id));
-                linkedSessions++;
-              }
-            })
-          );
+        mergedAway += deletedStarts.length;
+        for (const started of deletedStarts) {
+          const startedAt = new Date(started);
+          if (!minImportDate || startedAt < minImportDate) minImportDate = startedAt;
+          if (!maxImportDate || startedAt > maxImportDate) maxImportDate = startedAt;
         }
       }
-
-      if (linkedSessions > 0) {
-        console.log(`[Import] Linked ${linkedSessions} sessions via group_ids`);
+      if (mergedAway > 0) {
+        console.log(`[Import] Removed ${mergedAway} plays Tautulli merged into another play`);
       }
     }
 
@@ -1516,13 +1486,23 @@ export class TautulliService {
     const parts: string[] = [];
     if (changes.imported > 0) parts.push(`${changes.imported} new`);
     if (changes.updated > 0) parts.push(`${changes.updated} updated`);
-    if (linkedSessions > 0) parts.push(`${linkedSessions} linked`);
+    if (mergedAway > 0) {
+      parts.push(`${mergedAway} plays Tautulli merged into another play since the last import`);
+    }
     if (skipped > 0) {
       parts.push(
         alreadyTracked > 0
           ? `${skipped} skipped (${alreadyTracked} started after this server was added to Tracearr)`
           : `${skipped} skipped`
       );
+    }
+    if (ungrouped > 0) {
+      parts.push(
+        `${ungrouped} plays Tautulli never grouped (fixed in Tautulli after 2.18.2; re-import once upgraded)`
+      );
+    }
+    if (noMetadata > 0) {
+      parts.push(`${noMetadata} without metadata in Tautulli`);
     }
     if (errors > 0) parts.push(`${errors} errors`);
     if (failedPages.length > 0) {
@@ -1552,7 +1532,6 @@ export class TautulliService {
       success: true,
       imported: changes.imported,
       updated: changes.updated,
-      linked: linkedSessions,
       skipped,
       errors,
       message,
@@ -1565,6 +1544,82 @@ export class TautulliService {
             }))
           : undefined,
     };
+  }
+
+  /**
+   * Delete the imported rows of plays these groups absorbed, returning the
+   * started_at of each row deleted. Only a row in the Tautulli import form,
+   * for the group's user and inside the group's span, can match: a tracked
+   * row, or a play a reset Tautulli database reused the id of, never does.
+   */
+  private static async deleteAbsorbedImports(
+    serverId: string,
+    groups: AbsorbingGroup[]
+  ): Promise<string[]> {
+    const plays = groups.flatMap((g) => g.absorbedIds.map((externalId) => ({ externalId, g })));
+    const minStart = new Date(Math.min(...groups.map((g) => g.started.getTime())));
+    const maxStop = new Date(Math.max(...groups.map((g) => g.stopped.getTime())));
+    const imported = sql`s.server_id = ${serverId}::uuid AND s.started_at >= ${ts(minStart)} AND ${importForm('s', 'plex')}`;
+
+    return db.transaction(async (tx) => {
+      await uncapDecompressionForTx(tx);
+      const found = await tx.execute(sql`
+        SELECT DISTINCT ON (s.id) s.id, s.started_at, s.server_user_id,
+          r.id AS r_id, r.started_at AS r_started, r.reference_id AS r_ref
+        FROM unnest(
+          ${sql.param(plays.map((p) => p.externalId))}::text[],
+          ${sql.param(plays.map((p) => p.g.rootExternalId))}::text[],
+          ${sql.param(plays.map((p) => p.g.serverUserId))}::uuid[],
+          ${sql.param(plays.map((p) => p.g.started.toISOString()))}::timestamptz[],
+          ${sql.param(plays.map((p) => p.g.stopped.toISOString()))}::timestamptz[]
+        ) AS g(external_id, root_external_id, server_user_id, started, stopped)
+        JOIN sessions s
+          ON ${imported} AND s.started_at <= ${ts(maxStop)}
+          AND s.server_user_id = g.server_user_id
+          AND s.started_at >= g.started AND s.started_at <= g.stopped
+          AND s.external_session_id = g.external_id
+        JOIN sessions r
+          ON r.server_id = ${serverId}::uuid AND r.started_at >= ${ts(minStart)} AND r.started_at <= ${ts(maxStop)}
+          AND r.server_user_id = g.server_user_id AND r.started_at = g.started
+          AND r.external_session_id = g.root_external_id
+        ORDER BY s.id, r.id
+      `);
+      const rows = found.rows as Array<{
+        id: string;
+        started_at: string;
+        server_user_id: string;
+        r_id: string;
+        r_started: string;
+        r_ref: string | null;
+      }>;
+      if (rows.length === 0) return [];
+
+      const doomedIds = new Set(rows.map((r) => r.id));
+      // The removed group_ids link pass could point a root at a play it absorbed.
+      // That root starts before the play, below the children lookup's bound.
+      const detached = rows.filter((r) => r.r_ref !== null && doomedIds.has(r.r_ref));
+      if (detached.length > 0) {
+        await tx.execute(sql`
+          UPDATE sessions r SET reference_id = NULL
+          FROM unnest(${sql.param(detached.map((d) => d.r_id))}::uuid[], ${sql.param(detached.map((d) => d.r_started))}::timestamptz[]) AS d(id, started_at)
+          WHERE r.id = d.id AND r.started_at = d.started_at
+            AND r.server_id = ${serverId}::uuid AND r.started_at >= ${ts(minStart)}
+            AND r.reference_id = ANY(${sql.param([...doomedIds])}::uuid[])
+        `);
+      }
+
+      return deleteSessionsRepointingChildren(
+        tx,
+        serverId,
+        rows.map((r) => ({
+          id: r.id,
+          started_at: r.started_at,
+          server_user_id: r.server_user_id,
+          root_id: r.r_ref !== null && !doomedIds.has(r.r_ref) ? r.r_ref : r.r_id,
+        })),
+        imported
+      );
+    });
   }
 
   /**
@@ -1915,6 +1970,9 @@ export function mapStreamDataToSession(
     streamAudioCodec: sanitizeCodec(streamData.stream_audio_codec),
     bitrate: streamData.bandwidth ?? streamData.stream_bitrate ?? streamData.bitrate ?? null,
     quality: streamData.quality_profile ?? null,
+    // get_history only has the combined transcode_decision; these split it per stream
+    ...((streamData.video_decision || streamData.audio_decision) &&
+      normalizeStreamDecisions(streamData.video_decision, streamData.audio_decision)),
 
     // JSONB fields (only set if they have content)
     ...(Object.keys(sourceVideoDetails).length > 0 && { sourceVideoDetails }),

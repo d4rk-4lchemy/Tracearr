@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Eye, Clock, CheckCircle2, Flame, BarChart3 } from 'lucide-react';
 import type { Server } from '@tracearr/shared';
 import { StatCard, formatWatchTime } from '@/components/ui/stat-card';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState, BingeHighlightsTable, MostWatchedSection } from '@/components/library';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -314,24 +314,18 @@ export function LibraryWatch() {
       {/* Binge Highlights Section - Full Width */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base font-medium">
-                {t('library.watch.bingeHighlights')}
-              </CardTitle>
-              <p className="text-muted-foreground text-sm">
-                {t('library.watch.bingeHighlightsDesc')}
+          <CardTitle className="text-base font-medium">
+            {t('library.watch.bingeHighlights')}
+          </CardTitle>
+          <p className="text-muted-foreground text-sm">{t('library.watch.bingeHighlightsDesc')}</p>
+          {patterns.data?.summary && (
+            <CardAction className="text-right">
+              <p className="text-lg font-medium">
+                {patterns.data.summary.bingeSessionsPct.toFixed(0)}%
               </p>
-            </div>
-            {patterns.data?.summary && (
-              <div className="text-right">
-                <p className="text-lg font-medium">
-                  {patterns.data.summary.bingeSessionsPct.toFixed(0)}%
-                </p>
-                <p className="text-muted-foreground text-xs">{t('library.watch.bingeSessions')}</p>
-              </div>
-            )}
-          </div>
+              <p className="text-muted-foreground text-xs">{t('library.watch.bingeSessions')}</p>
+            </CardAction>
+          )}
         </CardHeader>
         <CardContent>
           <BingeHighlightsTable

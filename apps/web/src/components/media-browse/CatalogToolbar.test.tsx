@@ -203,7 +203,7 @@ describe('CatalogToolbar', () => {
     expect(screen.getByText('4K')).toBeInTheDocument();
     await user.click(
       screen.getByRole('button', {
-        name: 'media.grid.toolbar.removeFilter:{"label":"4K"}',
+        name: 'common:filters.remove:{"label":"4K"}',
       })
     );
     expect(onFiltersChange).toHaveBeenCalledWith(
@@ -224,10 +224,29 @@ describe('CatalogToolbar', () => {
     expect(screen.getByText('media.grid.toolbar.hdrChip')).toBeInTheDocument();
     await user.click(
       screen.getByRole('button', {
-        name: 'media.grid.toolbar.removeFilter:{"label":"media.grid.toolbar.hdrChip"}',
+        name: 'common:filters.remove:{"label":"media.grid.toolbar.hdrChip"}',
       })
     );
     expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ hdr: undefined }));
+  });
+
+  it('renders an Atmos chip and removes it', async () => {
+    const onFiltersChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <CatalogToolbar
+        {...baseProps}
+        filters={{ ...DEFAULT_GRID_FILTERS, atmos: true }}
+        onFiltersChange={onFiltersChange}
+      />
+    );
+    expect(screen.getByText('media.grid.toolbar.atmosChip')).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', {
+        name: 'common:filters.remove:{"label":"media.grid.toolbar.atmosChip"}',
+      })
+    );
+    expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ atmos: undefined }));
   });
 
   it('renders a library chip using the server and library name, and removes it', async () => {
@@ -252,7 +271,7 @@ describe('CatalogToolbar', () => {
     expect(screen.getByText('Plex - Movies')).toBeInTheDocument();
     await user.click(
       screen.getByRole('button', {
-        name: 'media.grid.toolbar.removeFilter:{"label":"Plex - Movies"}',
+        name: 'common:filters.remove:{"label":"Plex - Movies"}',
       })
     );
     expect(onFiltersChange).toHaveBeenCalledWith(
@@ -286,7 +305,7 @@ describe('CatalogToolbar', () => {
     expect(screen.getByText(label)).toBeInTheDocument();
     await user.click(
       screen.getByRole('button', {
-        name: `media.grid.toolbar.removeFilter:${JSON.stringify({ label })}`,
+        name: `common:filters.remove:${JSON.stringify({ label })}`,
       })
     );
     expect(onFiltersChange).toHaveBeenCalledWith(
@@ -493,5 +512,23 @@ describe('CatalogToolbar', () => {
     await user.click(screen.getByRole('button', { name: /media.grid.toolbar.filtersLabel/ }));
     expect(await screen.findByLabelText('media.grid.toolbar.hdrLabel')).toBeInTheDocument();
     expect(screen.queryByLabelText('media.grid.toolbar.libraryLabel')).not.toBeInTheDocument();
+  });
+
+  it('badges a historical server in the server select and lists it after live ones', async () => {
+    const user = userEvent.setup();
+    render(
+      <CatalogToolbar
+        {...baseProps}
+        servers={[
+          { id: 'srv-old', name: 'Old Plex', historicalAt: '2026-09-01T12:00:00.000Z' },
+          { id: 'srv-1', name: 'Plex', historicalAt: null },
+        ]}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /media.grid.toolbar.filtersLabel/ }));
+    await user.click(screen.getByRole('combobox', { name: 'media.grid.toolbar.serverLabel' }));
+
+    const names = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(names.slice(1)).toEqual(['Plex', 'Old Plexcommon:serverSelector.historical']);
   });
 });

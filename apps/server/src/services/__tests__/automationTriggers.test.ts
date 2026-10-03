@@ -31,6 +31,10 @@ describe('synthesizeTriggers', () => {
       'session.started',
       'session.transcode_changed',
     ]);
+    expect(types(conditionsFor('is_subtitle_burn_in'))).toEqual([
+      'session.started',
+      'session.transcode_changed',
+    ]);
     expect(types(conditionsFor('output_resolution'))).toEqual([
       'session.started',
       'session.transcode_changed',

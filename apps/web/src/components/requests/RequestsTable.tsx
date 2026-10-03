@@ -176,7 +176,7 @@ export function RequestsTable(props: RequestsTableProps) {
             <TableHead>
               {subject === 'media' ? t('requests.columns.requester') : t('requests.columns.title')}
             </TableHead>
-            <TableHead>{t('requests.columns.status')}</TableHead>
+            <TableHead>{t('common:labels.status')}</TableHead>
             <TableHead>{t('requests.columns.requested')}</TableHead>
             <TableHead>{t('requests.columns.wait')}</TableHead>
             <TableHead>{t('requests.columns.seasons')}</TableHead>

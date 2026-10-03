@@ -53,20 +53,21 @@ export function isPrivateIP(ip: string): boolean {
 // ============================================================================
 
 /**
- * Drops sessions rule evaluation must not count: grace-flagged ones (at
+ * Drops sessions rule evaluation must not count: trailers (a preroll or
+ * trailer ahead of a movie is not a second stream), grace-flagged ones (at
  * least one confirmed missed poll, the system's own signal that the stream
- * probably stopped) and unconfirmed pending ones. Counting either makes
- * concurrent-stream rules fire on phantoms, e.g. killing the stream a user
- * just switched to. Sessions missing for the first time in the current tick
- * are not flagged yet and still count, which keeps one anomalous poll from
- * distorting detection. Returns the input array untouched when nothing is
- * excluded so hot-path callers avoid a copy.
+ * probably stopped) and unconfirmed pending ones. Counting grace-flagged or
+ * pending sessions makes concurrent-stream rules fire on phantoms, e.g.
+ * killing the stream a user just switched to. Sessions missing for the first
+ * time in the current tick are not flagged yet and still count, which keeps
+ * one anomalous poll from distorting detection. Returns the input array
+ * untouched when nothing is excluded so hot-path callers avoid a copy.
  */
 export function excludeUncountableSessions(
   sessions: ActiveSession[],
   graceSessionIds: Set<string>
 ): ActiveSession[] {
-  const needsFilter = sessions.some((s) => s.pending || graceSessionIds.has(s.id));
-  if (!needsFilter) return sessions;
-  return sessions.filter((s) => !s.pending && !graceSessionIds.has(s.id));
+  const countable = (s: ActiveSession) =>
+    s.mediaType !== 'trailer' && !s.pending && !graceSessionIds.has(s.id);
+  return sessions.every(countable) ? sessions : sessions.filter(countable);
 }

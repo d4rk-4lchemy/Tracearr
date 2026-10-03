@@ -303,6 +303,15 @@ describe('runNewsletter', () => {
     expect(firstSnapshot().html).toMatch(/What&#x27;s new on Basement \(\w{3} \d{1,2}, \d{4}\) 1/);
   });
 
+  it('renders a subject the grammar rejects the way the old substitution did', async () => {
+    store.getNewsletter.mockResolvedValue({
+      ...NEWSLETTER,
+      subject: '{{server_name}} {{ oops }} {%',
+    });
+    await runNewsletter(NEWSLETTER.id, 'manual');
+    expect(firstSnapshot().subject).toBe('Basement  {%');
+  });
+
   it('renders through the branding block with the newsletter sender name in the subject and footer', async () => {
     mockBranding.mockResolvedValue({
       branding: {

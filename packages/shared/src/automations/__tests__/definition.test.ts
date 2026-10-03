@@ -27,6 +27,7 @@ const mediaAdded = { id: id(4), type: 'media.added', enabled: true } as const;
 const mediaUpgraded = { id: id(5), type: 'media.upgraded', enabled: true } as const;
 const newDevice = { id: id(6), type: 'account.new_device', enabled: true } as const;
 const trustChanged = { id: id(7), type: 'account.trust_changed', enabled: true } as const;
+const tracearrUpdate = { id: id(8), type: 'tracearr.update_available', enabled: true } as const;
 const base = {
   name: 'x',
   kind: 'notification',
@@ -54,8 +55,8 @@ describe('catalog', () => {
     expect(TRIGGERS['newsletter.failed'].context).toBe('install');
     expect(TRIGGERS['newsletter.failed'].group).toBe('notifications');
   });
-  it('has 35 condition fields each with requires and operators', () => {
-    expect(Object.keys(CONDITION_FIELDS)).toHaveLength(35);
+  it('has 36 condition fields each with requires and operators', () => {
+    expect(Object.keys(CONDITION_FIELDS)).toHaveLength(36);
     expect(CONDITION_FIELDS.server_id.requires).toBe('server');
     expect(CONDITION_FIELDS.inactive_days.requires).toBe('account');
     expect(CONDITION_FIELDS.is_transcoding.requires).toBe('session');
@@ -391,6 +392,61 @@ describe('definition refinements', () => {
         actions: { actions: [send('{{device.location}}')] },
       }).success
     ).toBe(false);
+  });
+
+  it('reports a template parse error with its code and position', () => {
+    const result = automationDefinitionSchema.safeParse({
+      ...base,
+      triggers: [started],
+      actions: { actions: [{ type: 'send', to: [id(9)], body: 'hi\n{% if user.username %}' }] },
+    });
+    expect(result.success).toBe(false);
+    const issue = result.success ? undefined : result.error.issues[0];
+    expect(issue?.path.join('.')).toBe('actions.actions.0.body');
+    expect(issue?.code === 'custom' ? issue.params : undefined).toEqual({
+      kind: 'templateParse',
+      code: 'missingEndif',
+      line: 2,
+      column: 1,
+    });
+  });
+
+  it('tags an unavailable variable with its name, in if conditions and defaults too', () => {
+    for (const body of [
+      '{{ user.username }}',
+      '{% if user.username %}x{% endif %}',
+      '{{ user.username | default: "x" }}',
+    ]) {
+      const result = automationDefinitionSchema.safeParse({
+        ...base,
+        triggers: [started, down],
+        actions: { actions: [{ type: 'send', to: [id(9)], body }] },
+      });
+      const issue = result.success ? undefined : result.error.issues[0];
+      expect(issue?.code === 'custom' ? issue.params : undefined).toEqual({
+        kind: 'templateVariable',
+        name: 'user.username',
+      });
+    }
+  });
+
+  it('accepts an aliased variable name and the new session.name', () => {
+    const send = (body: string) => ({ type: 'send', to: [id(9)], body });
+    expect(
+      automationDefinitionSchema.safeParse({
+        ...base,
+        triggers: [tracearrUpdate],
+        actions: { actions: [send('{{ current }} to {{ latest }} ({{ installedVersion }})')] },
+      }).success
+    ).toBe(true);
+    expect(
+      automationDefinitionSchema.safeParse({
+        ...base,
+        triggers: [started],
+        actions: { actions: [send('{{ session.name }}')] },
+      }).success
+    ).toBe(true);
+    expect(variablesFor([newDevice])).not.toContain('session.name');
   });
 });
 

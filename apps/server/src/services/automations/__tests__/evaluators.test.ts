@@ -2494,6 +2494,36 @@ describe('Stream Quality Evaluators', () => {
     });
   });
 
+  describe('is_subtitle_burn_in', () => {
+    const evaluate = (session: ReturnType<typeof createMockSession>, value: boolean) =>
+      matched(
+        evaluatorRegistry.is_subtitle_burn_in(
+          createTestContext({ session }),
+          createCondition({ field: 'is_subtitle_burn_in', operator: 'eq', value })
+        )
+      );
+
+    it('matches a Plex burn decision and a Jellyfin/Emby subtitle transcode reason', () => {
+      expect(evaluate(createMockSession({ subtitleInfo: { decision: 'burn' } }), true)).toBe(true);
+      expect(
+        evaluate(
+          createMockSession({ transcodeInfo: { reasons: ['SubtitleCodecNotSupported'] } }),
+          true
+        )
+      ).toBe(true);
+    });
+
+    it('does not match a video transcode without burn-in', () => {
+      const session = createMockSession({
+        isTranscode: true,
+        videoDecision: 'transcode',
+        transcodeInfo: { reasons: ['VideoCodecNotSupported'] },
+      });
+      expect(evaluate(session, true)).toBe(false);
+      expect(evaluate(session, false)).toBe(true);
+    });
+  });
+
   describe('source_bitrate_mbps', () => {
     it('converts kbps-stored bitrates to Mbps', () => {
       // Parsers store kbps for all three server types (see mediaServer/types.ts)
@@ -3210,6 +3240,7 @@ describe('Evaluator Registry', () => {
       'output_resolution',
       'is_transcoding',
       'is_transcode_downgrade',
+      'is_subtitle_burn_in',
       'source_bitrate_mbps',
       'user_id',
       'trust_score',

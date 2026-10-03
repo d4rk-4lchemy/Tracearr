@@ -30,6 +30,7 @@ interface ItemRow {
   server_type: 'plex' | 'jellyfin' | 'emby';
   server_url: string;
   server_token: string;
+  server_historical_at: string | null;
 }
 
 export const libraryDuplicateFilesRoute: FastifyPluginAsync = async (app) => {
@@ -64,7 +65,7 @@ export const libraryDuplicateFilesRoute: FastifyPluginAsync = async (app) => {
       const idsArray = `{${itemIds.join(',')}}`;
       const result = await db.execute(sql`
         SELECT li.id, li.rating_key, li.server_id,
-               s.type AS server_type, s.url AS server_url, s.token AS server_token
+               s.type AS server_type, s.url AS server_url, s.token AS server_token, s.historical_at AS server_historical_at
         FROM library_items li
         JOIN servers s ON s.id = li.server_id
         WHERE li.id = ANY(${idsArray}::uuid[])
@@ -86,6 +87,8 @@ export const libraryDuplicateFilesRoute: FastifyPluginAsync = async (app) => {
       for (const [serverId, serverRows] of byServer) {
         const first = serverRows[0];
         if (!first) continue;
+        // A historical server is never probed; its files stay unchecked.
+        if (first.server_historical_at) continue;
 
         const client = createMediaServerClient({
           type: first.server_type,

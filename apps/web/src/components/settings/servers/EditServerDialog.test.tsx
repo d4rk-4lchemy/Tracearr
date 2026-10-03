@@ -712,11 +712,61 @@ describe('EditServerDialog', () => {
       />
     );
 
-    await user.click(screen.getByRole('button', { name: /servers.location.remove/ }));
+    await user.click(screen.getByRole('button', { name: /common:actions\.remove/ }));
     await user.click(screen.getByRole('button', { name: 'common:actions.update' }));
 
     expect(mutateAsync).toHaveBeenCalledWith({ id: 'server-1', entries: [] });
     expect(onUpdate).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('locks the URL and API key on a historical server but still renames it', async () => {
+    const onUpdate = vi.fn();
+    render(
+      <EditServerDialog
+        server={server({ historicalAt: '2026-09-01T12:00:00.000Z' })}
+        servers={[]}
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+        isUpdating={false}
+      />
+    );
+
+    expect(field('servers.serverUrl', 0)).toBeDisabled();
+    expect(field('common:labels.apiKey', 0)).toBeDisabled();
+    expect(screen.getAllByText('servers.resumeFirst').length).toBeGreaterThan(0);
+
+    await userEvent.clear(field('servers.serverName', 0));
+    await userEvent.type(field('servers.serverName', 0), 'Old Attic');
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.update' }));
+
+    expect(onUpdate).toHaveBeenCalledWith({
+      name: 'Old Attic',
+      url: undefined,
+      color: undefined,
+      publicUrl: undefined,
+      apiKey: undefined,
+    });
+  });
+
+  it('shows a disabled address instead of the Plex connection picker on a historical Plex server', () => {
+    vi.mocked(usePlexServerConnections).mockReturnValue({
+      data: { server: { name: 'Plex', connections: [] } },
+      isLoading: false,
+    } as unknown as ReturnType<typeof usePlexServerConnections>);
+    render(
+      <EditServerDialog
+        server={server({ type: 'plex', historicalAt: '2026-09-01T12:00:00.000Z' })}
+        servers={[]}
+        onClose={vi.fn()}
+        onUpdate={vi.fn()}
+        isUpdating={false}
+      />
+    );
+
+    expect(screen.queryByText('plex server selector')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('http://jelly.local:8096')).toBeDisabled();
+    expect(usePlexServerConnections).toHaveBeenLastCalledWith(undefined);
+    expect(screen.queryByText('servers.discoveringConnections')).not.toBeInTheDocument();
   });
 });

@@ -139,7 +139,7 @@ describe('Users', () => {
     await userEvent.click(screen.getByRole('button', { name: 'common:actions.next' }));
     expect(lastQueryParams()).toMatchObject({ page: 2 });
 
-    await userEvent.type(screen.getByPlaceholderText('pages:users.searchPlaceholder'), 'bob');
+    await userEvent.type(screen.getByPlaceholderText('common:search.searchUsers'), 'bob');
 
     await waitFor(() => expect(lastQueryParams()).toMatchObject({ search: 'bob', page: 1 }));
   });
@@ -233,5 +233,25 @@ describe('Users', () => {
       { sourceUserId: 'u-2', targetUserId: 'u-1', confirmSameServerCombine: false },
       expect.anything()
     );
+  });
+
+  it('marks a historical server in the server filter and lists it after live ones', async () => {
+    mockUseServer.mockReturnValue({
+      selectedServerIds: [],
+      selectedServers: [],
+      servers: [
+        { id: 'server-old', name: 'Old Plex', historicalAt: '2026-09-01T12:00:00.000Z' },
+        { id: 'server-1', name: 'Server One', historicalAt: null },
+      ],
+    } as unknown as ReturnType<typeof useServer>);
+    mockList([], 0);
+
+    renderUsers();
+    await userEvent.click(screen.getByRole('button', { name: /filters/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'pages:users.filterHasAccessTo' }));
+
+    expect(screen.getByText('common:serverSelector.historical')).toBeInTheDocument();
+    const names = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(names).toEqual(['Server One', 'Old Plex']);
   });
 });

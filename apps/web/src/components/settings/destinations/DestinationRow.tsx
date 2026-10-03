@@ -163,7 +163,7 @@ export function DestinationRow({ destination, onEdit }: DestinationRowProps) {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={t('pages:settings.destinations.delete')}
+        title={t('common:actions.delete')}
         description={t('pages:settings.destinations.deleteConfirm', { name: destination.name })}
         confirmLabel={t('common:actions.delete')}
         variant="destructive"

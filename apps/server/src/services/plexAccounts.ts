@@ -22,6 +22,7 @@ export interface ReconciledServer {
   id: string;
   name: string;
   url: string;
+  historicalAt: Date | null;
   status: ReauthorizedServerStatus;
 }
 
@@ -102,6 +103,7 @@ export async function reconcilePlexAccountToken(
         name: servers.name,
         url: servers.url,
         plexAccountId: servers.plexAccountId,
+        historicalAt: servers.historicalAt,
       })
       .from(servers)
       .where(
@@ -136,6 +138,7 @@ export async function reconcilePlexAccountToken(
       id: s.id,
       name: s.name,
       url: s.url,
+      historicalAt: s.historicalAt,
       status: s.plexAccountId === account.id ? 'refreshed' : 'adopted',
     }));
   });

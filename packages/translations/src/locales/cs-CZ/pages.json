@@ -27,9 +27,7 @@
     "plexAuthFailed": "Ověření Plex se nezdařilo",
     "plexStartFailed": "Nepodařilo se spustit přihlášení Plex",
     "serverConnectFailed": "Nepodařilo se připojit k serveru",
-    "signupFailed": "Registrace se nezdařila",
     "createAccountFailed": "Vytvoření účtu se nezdařilo",
-    "loginFailed": "Přihlášení se nezdařilo",
     "invalidCredentials": "Neplatný e-mail nebo heslo",
     "claimCodeRequired": "První nastavení vyžaduje kód pozemku",
     "enterClaimCode": "Zadejte kód žádosti",
@@ -41,6 +39,8 @@
   },
   "dashboard": {
     "alerts": "Výstrahy",
+    "plays": "Přehrání",
+    "watchTime": "Čas sledování",
     "activeUsers": "Aktivní uživatelé",
     "nowPlaying": "Právě hraje",
     "streamLocations": "Umístění streamu",
@@ -57,13 +57,9 @@
     "title": "Uživatelé",
     "showRemoved": "",
     "noUsersFound": "Nenalezeni žádní uživatelé.",
-    "searchPlaceholder": "Hledat uživatele...",
-    "selectAllUsers": "Vybrat všechny uživatele {{count}}",
     "serversColumn": "",
-    "resetTrustScore": "Resetovat důvěryhodné skóre",
-    "resetTrustScoreTitle_one": "Obnovit důvěryhodné skóre pro uživatele {{count}}",
-    "resetTrustScoreTitle_other": "Resetovat důvěryhodné skóre pro {{count}} uživatele",
-    "resetTrustScoreConfirm": "Opravdu chcete obnovit důvěryhodné skóre na 100? Tuto akci nelze vrátit zpět.",
+    "resetTrustScore": "Resetovat skóre důvěryhodnosti",
+    "resetTrustScoreConfirm": "Opravdu chcete resetovat skóre důvěryhodnosti na 100? Tuto akci nelze vrátit zpět.",
     "mergeUsers": "",
     "mergeTitleSuggestion": "",
     "mergeTitleBulk": "",
@@ -76,12 +72,8 @@
     "mergeRequired": "",
     "mergeLastActive": "",
     "mergeNeverActive": "",
-    "mergeSessions_one": "",
-    "mergeSessions_other": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -97,17 +89,9 @@
     "mergeSameIdentity": "",
     "mergeSelectAllActive": "",
     "suggestionsTitle": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -122,7 +106,35 @@
     "suggestionsError": "",
     "filterHasAccessTo": "",
     "filterHasAccessToPlaceholder": "",
-    "filterHasAccessToHint": ""
+    "filterHasAccessToHint": "",
+    "selectAllUsers_one": "",
+    "selectAllUsers_few": "",
+    "selectAllUsers_many": "",
+    "selectAllUsers_other": "Vybrat všechny uživatele {{count}}",
+    "resetTrustScoreTitle_one": "Resetovat skóre důvěryhodnosti pro {{count}} uživatele",
+    "resetTrustScoreTitle_few": "",
+    "resetTrustScoreTitle_many": "",
+    "resetTrustScoreTitle_other": "Resetovat skóre důvěryhodnosti pro {{count}} uživatelů",
+    "mergeMoves_one": "",
+    "mergeMoves_few": "",
+    "mergeMoves_many": "",
+    "mergeMoves_other": "",
+    "suggestionsCount_one": "",
+    "suggestionsCount_few": "",
+    "suggestionsCount_many": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_one": "",
+    "suggestionsPairEmailMore_few": "",
+    "suggestionsPairEmailMore_many": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_one": "",
+    "suggestionsPairEmailUsernameMore_few": "",
+    "suggestionsPairEmailUsernameMore_many": "",
+    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairUsernameMore_one": "",
+    "suggestionsPairUsernameMore_few": "",
+    "suggestionsPairUsernameMore_many": "",
+    "suggestionsPairUsernameMore_other": ""
   },
   "userDetail": {
     "backToUsers": "Zpět na uživatele",
@@ -130,14 +142,14 @@
     "userInfo": "Informace o uživateli",
     "statistics": "Statistiky",
     "sessions": "Relace",
-    "violations": "Porušování",
+    "violations": "Porušení",
     "terminationHistory": "Historie ukončení",
     "noViolationsFound": "Pro tohoto uživatele žádné porušení.",
     "noTerminationsFound": "Pro tohoto uživatele nejsou ukončeny žádné streamy.",
     "byRule": "Podle / pravidla",
     "manual": "Ruční",
     "unknownRule": "Neznámé pravidlo",
-    "adjustTrustScore": "Upravit důvěryhodné skóre",
+    "adjustTrustScore": "Upravit skóre důvěryhodnosti",
     "linkedAccounts": "",
     "splitAccount": "",
     "splitConfirmTitle": "",
@@ -160,26 +172,20 @@
   },
   "history": {
     "title": "Historie",
-    "description": "Procházet všechny streamovací relace účinným filtrováním",
-    "loadingMore": "Načítání dalšího...",
-    "scrollForMore": "Posunout pro více",
-    "showingAllResults": "Zobrazení všech {{total}} výsledků",
-    "deleteSession_one": "Odstranit {{count}} relaci",
-    "deleteSession_other": "Odstranit {{count}} relace",
-    "deleteSessionsConfirm": "Jste si jisti, že chcete odstranit? Tuto akci nelze vrátit zpět.",
+    "description": "",
     "totalPlays": "",
     "uniqueTitles": "",
     "uniqueUsers": ""
   },
   "library": {
     "title": "Knihovna",
-    "description": "Nejlepší filmy a seriály na vašem serveru",
+    "description": "",
     "topMovies": "Nejlepší filmy",
     "topShows": "Nejlepší seriály",
-    "noMoviePlays": "V tomto období nehraje žádný film",
-    "noShowPlays": "Žádné seriály v tomto období",
+    "noMoviePlays": "V tomto období žádná přehrání filmů",
+    "noShowPlays": "V tomto období žádná přehrání seriálů",
     "overview": {
-      "description": "Zdraví a růstové ukazatele knihovny",
+      "description": "",
       "lastUpdated": "Naposledy aktualizováno:",
       "totalItems": "Celkem položek",
       "shows": "seriály",
@@ -195,7 +201,7 @@
     },
     "quality": {
       "title": "Kvalita",
-      "description": "Rozlišení a distribuce kodeků",
+      "description": "",
       "qualityEvolution": "Vývoj kvality",
       "all": "Vše",
       "failedToLoad": "Nepodařilo se načíst kvalitní data",
@@ -203,14 +209,14 @@
     },
     "storage": {
       "title": "Úložiště",
-      "description": "Využití, předpovědi a optimalizace úložiště",
+      "description": "",
       "totalStorage": "Celkový počet úložišť",
       "growthRate": "Míra růstu",
       "duplicates": "Duplikáty",
       "groups": "skupiny",
       "recoverable": "zpětně získatelné",
       "staleContent": "Znehybný obsah",
-      "staleContentDesc": "Obsah, který může být kandidátem na odvolání",
+      "staleContentDesc": "",
       "items": "položky",
       "unused": "nevyužito",
       "storageTrend": "Trend úložiště",
@@ -221,7 +227,7 @@
       "zeroGrowth": "",
       "predictions": "Předpovědi",
       "contentROI": "",
-      "contentROIDesc": "Hodnota sledování za náklady na úložiště",
+      "contentROIDesc": "",
       "avgHoursPerGB": "Průměr hodin/GB",
       "insufficientData": "Nedostatečná data",
       "of": "z",
@@ -236,7 +242,6 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
-      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
@@ -247,8 +252,8 @@
       "copyPath": ""
     },
     "watch": {
-      "title": "Sledujte analytiku",
-      "description": "Zobrazení chování a zapojení obsahu",
+      "title": "Statistiky sledování",
+      "description": "",
       "watched": "Zhlédnuto",
       "percentWatched": "% sledovaných",
       "totalWatchTime": "Celkový čas sledování",
@@ -260,13 +265,13 @@
       "monthlyTrends": "Měsíční trendy",
       "busiest": "Nejlepší:",
       "quietest": "Nejvíce ticho:",
-      "bingeHighlights": "Zvýraznění Binge",
-      "bingeHighlightsDesc": "Zobrazí s nejintenzivnějším obrazcem",
+      "bingeHighlights": "Nejvýraznější maratony",
+      "bingeHighlightsDesc": "",
       "bingeSessions": "",
-      "noData": "Zatím žádná sledovaná data",
+      "noData": "Zatím žádná data o sledování",
       "noDataDesc": "Analytika se zobrazí zde, jakmile bude obsah přehrán. Po nějaké aktivitě se vraťte zpět.",
-      "failedToLoad": "Nepodařilo se načíst analýzu hodinek",
-      "failedToLoadDesc": "Nelze načíst data hodinek."
+      "failedToLoad": "Nepodařilo se načíst statistiky sledování",
+      "failedToLoadDesc": "Nelze načíst data o sledování."
     },
     "emptyState": {
       "checkingStatus": "",
@@ -298,7 +303,10 @@
         "title": "",
         "fallbackBody": "",
         "progress": "",
-        "snapshotsSuffix": ""
+        "snapshotsSuffix_one": "",
+        "snapshotsSuffix_few": "",
+        "snapshotsSuffix_many": "",
+        "snapshotsSuffix_other": ""
       },
       "multiServer": {
         "title": "",
@@ -321,41 +329,40 @@
     "versionsBackfill": {
       "banner": "",
       "action": "",
-      "syncFailed": "",
-      "syncStarted": ""
+      "syncStarted": "",
+      "syncFailed_one": "",
+      "syncFailed_few": "",
+      "syncFailed_many": "",
+      "syncFailed_other": ""
     }
   },
   "activity": {
     "title": "Aktivita",
-    "description": "Přehrát trendy, vzorce a chování streamování",
-    "playsOverTime": "Přehrávání v průběhu času",
+    "description": "",
+    "playsOverTime": "Přehrání v průběhu času",
     "concurrentStreams": "Souběžné streamy",
     "engagementBreakdown": "Rozdělení zapojení",
     "howUsersEngage": "Jak se uživatelé zapojují do obsahu",
-    "playsVsSessions": "Hraje vs relace",
-    "playsVsSessionsDesc": "Plné dokončení pouze - počítá hry, když celkový čas hodinek pokrývá celý běh obsahu",
+    "playsVsSessions": "Přehrání vs. relace",
+    "playsVsSessionsDesc": "Pouze úplná dokončení: přehrání se započítá, když celkový čas sledování pokryje celou délku obsahu",
     "activityByDayOfWeek": "Aktivita podle dne v týdnu",
     "activityByHourOfDay": "Aktivita podle Hodiny dne",
     "platforms": "Platformy",
     "streamQuality": "Kvalita streamu"
   },
   "violations": {
-    "title": "Porušování",
+    "title": "Porušení",
     "tryAdjustingFilters": "Zkuste upravit filtry",
-    "selectAllViolations": "Vybrat všechny filtry porušení {{count}}",
-    "dismissViolation": "Zrušit porušení",
-    "dismissViolationConfirm": "Jste si jisti, že chcete zrušit toto porušení? Toto je trvale odstraní z protokolu o porušení.",
-    "dismissViolation_one": "Zrušit porušení {{count}}",
-    "dismissViolation_other": "Zrušit porušení {{count}}",
-    "dismissViolationsConfirm": "Jste si jisti, že chcete odstranit? Tato akce je trvale odstraní z protokolu porušení a obnoví související skóre důvěryhodnosti.",
-    "noViolationsFound": "Žádná porušení předpisů nenalezena",
+    "dismissViolation": "Odmítnout porušení",
+    "dismissViolationConfirm": "Opravdu chcete odmítnout toto porušení? Tím ho trvale odstraníte z protokolu porušení.",
+    "dismissViolationsConfirm": "Opravdu je chcete odmítnout? Tím je trvale odstraníte z protokolu porušení a obnovíte související skóre důvěryhodnosti.",
+    "noViolationsFound": "Nenalezena žádná porušení",
     "noViolationsRecorded": "Zatím nebyla zaznamenána žádná porušení.",
     "allSeverities": "Všechny závažnosti",
     "allStatuses": "Všechny stavy",
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
-    "peopleSelectedCount": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -378,22 +385,157 @@
       "threshold": "Prahová hodnota",
       "lastActivity": "Poslední aktivita",
       "neverActive": "Nikdy neaktivní",
-      "conditionEvidence": "Důkazy o stavu",
+      "conditionEvidence": "Důkazy podmínky",
       "conditionGroup": "Skupina podmínek {{index}}",
       "matched": "{{matched}}/{{total}} odpovídá",
       "actual": "Aktuální",
-      "relatedSessions": "Relace související s {{count}}",
       "relatedSessions_one": "Relace související s {{count}}",
+      "relatedSessions_few": "",
+      "relatedSessions_many": "",
       "relatedSessions_other": "Relace související s {{count}}"
-    }
+    },
+    "selectAllViolations_one": "",
+    "selectAllViolations_few": "",
+    "selectAllViolations_many": "",
+    "selectAllViolations_other": "Vybrat všechny filtry porušení {{count}}",
+    "dismissViolations_one": "Odmítnout {{count}} porušení",
+    "dismissViolations_few": "",
+    "dismissViolations_many": "",
+    "dismissViolations_other": "Odmítnout {{count}} porušení",
+    "peopleSelectedCount_one": "",
+    "peopleSelectedCount_few": "",
+    "peopleSelectedCount_many": "",
+    "peopleSelectedCount_other": ""
   },
   "automations": {
+    "message": {
+      "heading": "",
+      "defaultText": "",
+      "title": "",
+      "body": "",
+      "blankHint": "",
+      "insertVariable": "",
+      "searchVariables": "",
+      "noVariables": "",
+      "preview": "",
+      "previewSamples": "",
+      "previewDefault": "",
+      "previewDefaultHint": "",
+      "previewPickDestination": "",
+      "fieldTitle": "",
+      "fieldMessage": "",
+      "fieldSubject": "",
+      "fieldHeading": "",
+      "fieldEmbedTitle": "",
+      "fieldDescription": "",
+      "addedDiscord": "",
+      "addedEmail": "",
+      "addedPushSubtitle": "",
+      "previewCount": "",
+      "previewCountBytes": "",
+      "previewCut": "",
+      "previewPriority": "",
+      "previewEscapeHint": "",
+      "webhookNotSent": ""
+    },
+    "priorities": {
+      "automatic": "",
+      "lowest": "",
+      "low": "",
+      "normal": "",
+      "high": "",
+      "urgent": ""
+    },
+    "variableGroups": {
+      "account": "",
+      "stream": "",
+      "server": "",
+      "media": "",
+      "device": "",
+      "trust": "",
+      "newsletter": "",
+      "event": ""
+    },
+    "variables": {
+      "user": {
+        "username": "",
+        "identityName": ""
+      },
+      "session": {
+        "mediaTitle": "",
+        "mediaType": "",
+        "sourceDynamicRange": "",
+        "sourceVideoCodec": "",
+        "seasonNumber": "",
+        "episodeNumber": "",
+        "name": ""
+      },
+      "server": {
+        "name": "",
+        "type": ""
+      },
+      "device": {
+        "name": "",
+        "platform": "",
+        "product": "",
+        "location": ""
+      },
+      "trust": {
+        "previous": "",
+        "new": "",
+        "reason": ""
+      },
+      "media": {
+        "title": "",
+        "name": "",
+        "show": "",
+        "season": "",
+        "episode": "",
+        "episodeCount": "",
+        "type": "",
+        "year": "",
+        "library": "",
+        "server": "",
+        "from": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        },
+        "to": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        }
+      },
+      "newsletter": {
+        "name": "",
+        "outcome": "",
+        "recipientCount": "",
+        "error": ""
+      },
+      "durationMinutes": "",
+      "minutes": "",
+      "days": "",
+      "installedVersion": "",
+      "latestVersion": "",
+      "downloadUrl": "",
+      "releaseUrl": ""
+    },
     "actions": {
       "send": {
         "label": "",
         "description": "",
         "fields": {
           "cooldown_minutes": {
+            "description": ""
+          },
+          "priority": {
             "description": ""
           }
         },
@@ -489,10 +631,12 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_other": "",
       "item": "",
-      "recordedViolation": ""
+      "recordedViolation": "",
+      "emptyRanDescription_one": "",
+      "emptyRanDescription_few": "",
+      "emptyRanDescription_many": "",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -501,7 +645,6 @@
       "nameHelper": "",
       "namePlaceholder": "",
       "activeLabel": "",
-      "back": "",
       "submit": "",
       "submitting": "",
       "customize": "",
@@ -550,7 +693,16 @@
         "trustAmountRange": "",
         "trustValueRange": "",
         "messageRequired": "",
-        "tooLong": ""
+        "tooLong": "",
+        "template": {
+          "unclosed": "",
+          "invalidOutput": "",
+          "invalidTag": "",
+          "unexpectedElse": "",
+          "unexpectedEndif": "",
+          "missingEndif": ""
+        },
+        "templateVariable": ""
       },
       "recordAs": {
         "label": "",
@@ -566,7 +718,6 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
-      "selectedCount": "",
       "scope": {
         "label": "",
         "global": "",
@@ -581,6 +732,7 @@
         "personPlaceholder": "",
         "personHelper": "",
         "noServers": "",
+        "historicalNote": "",
         "enforceAcrossServers": "",
         "enforceAcrossServersDescription": ""
       },
@@ -686,12 +838,16 @@
         "placeholderAction": ""
       },
       "footer": {
+        "ready": "",
+        "search": "",
         "problems_one": "",
+        "problems_few": "",
+        "problems_many": "",
         "problems_other": "",
         "remaining_one": "",
-        "remaining_other": "",
-        "ready": "",
-        "search": ""
+        "remaining_few": "",
+        "remaining_many": "",
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -712,7 +868,11 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_one": "",
+      "selectedCount_few": "",
+      "selectedCount_many": "",
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -726,12 +886,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_one": "",
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -750,8 +906,12 @@
       "appliesTo": "",
       "duration": {
         "minutes_one": "",
+        "minutes_few": "",
+        "minutes_many": "",
         "minutes_other": "",
         "days_one": "",
+        "days_few": "",
+        "days_many": "",
         "days_other": ""
       },
       "triggers": {
@@ -802,6 +962,7 @@
         "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
+        "is_subtitle_burn_in": "",
         "source_bitrate_mbps": "",
         "user_id": "",
         "trust_score": "",
@@ -830,6 +991,10 @@
           "no": ""
         },
         "is_transcode_downgrade": {
+          "yes": "",
+          "no": ""
+        },
+        "is_subtitle_burn_in": {
           "yes": "",
           "no": ""
         },
@@ -885,16 +1050,22 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_one": "",
+      "more_few": "",
+      "more_many": "",
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
+      "noRuns": "",
       "runsLine_one": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "runsLine_few": "",
+      "runsLine_many": "",
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1000,6 +1171,10 @@
         "description": ""
       },
       "is_transcode_downgrade": {
+        "label": "",
+        "description": ""
+      },
+      "is_subtitle_burn_in": {
         "label": "",
         "description": ""
       },
@@ -1296,6 +1471,9 @@
       "cooldown_minutes": {
         "label": ""
       },
+      "priority": {
+        "label": ""
+      },
       "target": {
         "label": ""
       },
@@ -1585,21 +1763,19 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_one": "",
+    "deleteAutomation_few": "",
+    "deleteAutomation_many": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
-    "title": "Ukončit vysílání",
+    "title": "Ukončit stream",
     "stopMedia": "Zastavit \"{{mediaTitle}}\" za @{{username}}?",
     "messageLabel": "Zpráva uživateli (volitelné)",
     "messagePlaceholder": "Např. nesdílejte svůj účet",
     "messageHint": "Tato zpráva se jim zobrazí během přehrávání",
-    "terminating": "Ukončování...",
-    "killStream": "Zabít Stream"
-  },
-  "notFound": {
-    "title": "",
-    "heading": "Stránka nenalezena",
-    "description": "Stránka, kterou hledáte, neexistuje nebo byla přesunuta."
+    "terminating": "Ukončování..."
   },
   "settings": {
     "plex": {
@@ -1624,10 +1800,8 @@
         "unknown": ""
       },
       "connectionsReachable": "{{reachable}} z {{total}} kontaktů dosažitelné",
-      "connectionsAvailable": "{{count}} připojení k dispozici",
       "hideFiltered": "Skrýt filtrované",
       "showAll": "Zobrazit vše",
-      "moreConnections": "+{{count}} další spojení",
       "connectingTo": "Připojuji se k {{name}}...",
       "ownerOnly": "",
       "noAccountsLinked": "Žádné Plex účty nejsou propojeny",
@@ -1636,21 +1810,28 @@
       "linkAnotherAccount": "Propojit další účet Plex",
       "linking": "Propojování...",
       "loginEnabled": "Přihlášení povoleno",
-      "serversConnected_one": "{{count}} server připojen",
-      "serversConnected_other": "{{count}} servery připojeny",
       "unlinkAccount": "Odpojit tento Plex účet",
       "reauthorizeAccount": "",
-      "deleteServersFirst": "Odstranit připojené servery jako první pro odpojení tohoto účtu",
+      "deleteServersFirst": "Nejprve odstraňte aktivní servery připojené přes tento účet, nebo je označte jako archivní",
       "unlinkPlexAccount": "Odpojit Plex účet",
-      "unlinkConfirm": "Opravdu chcete odpojit tento Plex účet? Nebudete moci přidat servery z tohoto účtu dokud jej znovu nepropojíte."
+      "unlinkConfirm": "Opravdu chcete odpojit tento Plex účet? Nebudete moci přidat servery z tohoto účtu dokud jej znovu nepropojíte.",
+      "connectionsAvailable_one": "",
+      "connectionsAvailable_few": "",
+      "connectionsAvailable_many": "",
+      "connectionsAvailable_other": "{{count}} připojení k dispozici",
+      "moreConnections_one": "",
+      "moreConnections_few": "",
+      "moreConnections_many": "",
+      "moreConnections_other": "+{{count}} další spojení",
+      "serversConnected_one": "{{count}} server připojen",
+      "serversConnected_few": "",
+      "serversConnected_many": "",
+      "serversConnected_other": "{{count}} servery připojeny"
     },
     "destinations": {
       "add": "",
-      "alertsGoTo": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
-      "delete": "",
       "deleteConfirm": "",
       "description": "",
       "emailDescription": "",
@@ -1746,13 +1927,21 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy": "",
-      "usedBy_other": "",
-      "usedByNewsletters": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
+      "webToastNote": "",
+      "alertsGoTo_one": "",
+      "alertsGoTo_few": "",
+      "alertsGoTo_many": "",
+      "alertsGoTo_other": "",
+      "usedBy_one": "",
+      "usedBy_few": "",
+      "usedBy_many": "",
+      "usedBy_other": "",
+      "usedByNewsletters_one": "",
+      "usedByNewsletters_few": "",
+      "usedByNewsletters_many": "",
+      "usedByNewsletters_other": ""
     },
     "jobs": {
       "runNow": "Spustit nyní",
@@ -1799,46 +1988,48 @@
     "allTypes": "Všechny typy",
     "heatmap": "Teplotní mapa",
     "circles": "Kruhy",
-    "streams": "proudy",
+    "streams": "streamy",
     "locations": "místa",
     "allActivity": "Všechny aktivity",
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "basemapShadowed": "",
     "badMounts": ""
   },
   "devices": {
     "title": "Kompatibilita zařízení",
-    "description": "Podívej se, která zařízení přímé přehrávání proti transkódování každého kodeku",
+    "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip": "",
     "directPlayRate": "Míra přímého přehrávání",
-    "videoAndAudio": "Video + zvuk",
+    "videoAndAudio": "",
     "uniqueDevices": "Unikátní zařízení",
     "uniqueCodecs": "Unikátní kodeky",
     "deviceHealth": "Zdraví zařízení",
-    "deviceHealthDesc": "Rychlost přímého přehrávání podle typu zařízení",
-    "transcodeHotspots": "Překódovat hotspoty",
-    "transcodeHotspotsDesc": "Kombinace, které způsobují nejvíce transkódů",
+    "deviceHealthDesc": "",
+    "transcodeHotspots": "Hotspoty překódování",
+    "transcodeHotspotsDesc": "",
     "deviceAndCodec": "Zařízení + kodek",
     "transcodes": "Překódování",
     "pctOfTotal": "% z celkového počtu",
-    "noTranscodeHotspots": "Žádné transkódování hotspoty",
+    "noTranscodeHotspots": "Žádné hotspoty překódování",
     "compatibilityMatrix": "Matice kompatibility",
-    "compatibilityMatrixDesc": "Sazba přímého přehrávání podle zařízení a kodeku. Seřazena podle hlasitosti relace.",
+    "compatibilityMatrixDesc": "Míra přímého přehrávání podle zařízení a video kodeku. Seřazeno podle počtu relací.",
     "noDeviceDataPeriod": "Žádná data zařízení v tomto období",
     "legend": "Legenda:",
     "directPlayHigh": "≥80% Přímé",
     "directPlayMid": "",
     "directPlayLow": "",
-    "topTranscodingUsers": "Nejvíce uživatelů překódování",
-    "topTranscodingUsersDesc": "Uživatelé, kteří způsobují nejvíce transkódů na vašem serveru",
-    "noTranscodingUsers": "Nenalezen žádný uživatel překódování"
+    "topTranscodingUsers": "Uživatelé s nejvíce překódováním",
+    "topTranscodingUsersDesc": "",
+    "noTranscodingUsers": "Nenalezen žádný uživatel překódování",
+    "analyzedSessionsTooltip_one": "",
+    "analyzedSessionsTooltip_few": "",
+    "analyzedSessionsTooltip_many": "",
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
     "title": "Šířka pásma",
-    "description": "Využití šířky pásma a analýza bitrate",
+    "description": "",
     "dataTransferred": "Přenesené údaje",
     "avgBitrate": "Prům. bitrate",
     "avgBitrateMbps": "Průměrný bitrate (Mbps)",
@@ -1846,9 +2037,9 @@
     "totalWatchTime": "Celkový čas sledování",
     "uniqueUsers": "Unikátní uživatelé",
     "dailyUsage": "Denní využití šířky pásma",
-    "dailyUsageDesc": "Průměrná bitrate a počet relací v průběhu času",
+    "dailyUsageDesc": "",
     "topUsers": "Top uživatelé šířky pásma",
-    "topUsersDesc": "Uživatelé, kteří nejvíce spotřebují šířku pásma",
+    "topUsersDesc": "",
     "noData": "Nejsou k dispozici žádná data o šířce pásma"
   },
   "statsUsers": {
@@ -1872,21 +2063,18 @@
   },
   "debug": {
     "title": "Nástroje ladění",
-    "description": "Administrativní služby pro řešení problémů a správu dat",
+    "description": "",
     "overview": "Přehled",
     "librarySnapshots": "Snímky knihovny",
     "tasks": "Úkoly",
     "logs": "Logy",
     "plexAccounts": "Plex účty",
-    "terminations": "Ukončení platnosti",
+    "terminations": "Ukončení streamů",
     "libraryItems": "Položky knihovny",
     "environment": "Životní prostředí",
     "systemInformation": "Systémové informace",
-    "cpu": "",
-    "memory": "Paměť",
-    "uptime": "Doba provozu",
     "database": "Databáze",
-    "databaseDesc": "Velikost databáze a tabulka statistiky",
+    "databaseDesc": "",
     "totalSize": "Celková velikost",
     "maintenance": "Údržba",
     "destructiveActions": "Destruktivní akce",
@@ -1946,27 +2134,36 @@
         }
       },
       "card": {
-        "newEpisodes_one": "{{count}} nová epizoda",
-        "newEpisodes_other": "{{count}} nových epizod",
-        "replacedEpisodes_one": "",
-        "replacedEpisodes_other": "",
         "addedAgo": "přidáno {{date}}",
         "addedCompactAgo": "",
-        "newEpisodesChip": ""
+        "newEpisodes_one": "{{count}} nová epizoda",
+        "newEpisodes_few": "",
+        "newEpisodes_many": "",
+        "newEpisodes_other": "{{count}} nových epizod",
+        "replacedEpisodes_one": "",
+        "replacedEpisodes_few": "",
+        "replacedEpisodes_many": "",
+        "replacedEpisodes_other": "",
+        "newEpisodesChip_one": "",
+        "newEpisodesChip_few": "",
+        "newEpisodesChip_many": "",
+        "newEpisodesChip_other": ""
       },
       "deadWeight": {
         "title": "",
-        "summary": "",
         "empty": "",
         "columns": {
           "poster": "",
           "title": "",
-          "size": "",
           "added": "",
           "servers": ""
         },
         "viewAll": "",
-        "viewAllTooltip": ""
+        "viewAllTooltip": "",
+        "summary_one": "",
+        "summary_few": "",
+        "summary_many": "",
+        "summary_other": ""
       },
       "loadError": ""
     },
@@ -1982,15 +2179,16 @@
       "chart": {
         "title": "",
         "valueLabel": "",
+        "ariaLabel": "",
         "itemCount_one": "",
-        "itemCount_other": "",
-        "ariaLabel": ""
+        "itemCount_few": "",
+        "itemCount_many": "",
+        "itemCount_other": ""
       },
       "table": {
         "title": "",
         "columns": {
           "genre": "",
-          "items": "",
           "plays": "",
           "watchTime": ""
         },
@@ -2017,8 +2215,12 @@
         "loadError": "",
         "meta": {
           "seasons_one": "",
+          "seasons_few": "",
+          "seasons_many": "",
           "seasons_other": "",
           "episodes_one": "",
+          "episodes_few": "",
+          "episodes_many": "",
           "episodes_other": ""
         },
         "availability": {
@@ -2063,7 +2265,6 @@
         "lastWatchedAgo": "",
         "completionLabel": "",
         "columns": {
-          "user": "",
           "plays": "",
           "episodes": "",
           "completion": "",
@@ -2074,15 +2275,17 @@
         "title": "",
         "loadError": "",
         "empty": "",
-        "episodeCount_one": "",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
-        }
+        },
+        "episodeCount_one": "",
+        "episodeCount_few": "",
+        "episodeCount_many": "",
+        "episodeCount_other": ""
       },
       "platforms": {
         "title": "",
@@ -2090,7 +2293,6 @@
         "empty": "",
         "unknown": "",
         "columns": {
-          "platform": "",
           "plays": "",
           "watchTime": ""
         }
@@ -2102,10 +2304,6 @@
         "watched": "",
         "notWatched": "",
         "columns": {
-          "date": "",
-          "user": "",
-          "content": "",
-          "server": "",
           "duration": ""
         }
       },
@@ -2114,11 +2312,8 @@
         "loadError": "",
         "unknownLibrary": "",
         "columns": {
-          "server": "",
           "library": "",
-          "quality": "",
           "episodes": "",
-          "size": "",
           "added": ""
         },
         "versionLabel": ""
@@ -2128,10 +2323,6 @@
       "rankSuffix": ", pořadí {{rank}}",
       "onServers": "Na {{servers}}",
       "addedLabel": "Přidáno {{date}}",
-      "plays_one": "{{count}} přehrání",
-      "plays_other": "{{count}} přehrání",
-      "viewers_one": "{{count}} divák",
-      "viewers_other": "{{count}} diváků",
       "watchedState": {
         "watched": "Zhlédnuto",
         "partial": "Částečně zhlédnuto",
@@ -2145,12 +2336,20 @@
         "resolution": ""
       },
       "rankChip": "",
-      "playsCompact_one": "",
-      "playsCompact_other": "",
       "versionsChip": "",
+      "moreServers": "",
+      "viewers_one": "{{count}} divák",
+      "viewers_few": "",
+      "viewers_many": "",
+      "viewers_other": "{{count}} diváků",
+      "playsCompact_one": "",
+      "playsCompact_few": "",
+      "playsCompact_many": "",
+      "playsCompact_other": "",
       "versions_one": "",
-      "versions_other": "",
-      "moreServers": ""
+      "versions_few": "",
+      "versions_many": "",
+      "versions_other": ""
     },
     "grid": {
       "toolbar": {
@@ -2160,7 +2359,6 @@
         "showsToggle": "",
         "searchPlaceholder": "",
         "searchLabel": "",
-        "removeFilter": "",
         "filtersLabel": "",
         "filtersSheetTitle": "",
         "done": "",
@@ -2178,6 +2376,10 @@
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "atmosLabel": "",
+        "atmosAll": "",
+        "atmosOnly": "",
+        "atmosChip": "",
         "genreLabel": "",
         "genreAll": "",
         "serverLabel": "",
@@ -2202,6 +2404,8 @@
         },
         "count": "",
         "countTotal_one": "",
+        "countTotal_few": "",
+        "countTotal_many": "",
         "countTotal_other": ""
       },
       "scrubber": {
@@ -2232,7 +2436,6 @@
     "columns": {
       "requester": "",
       "title": "",
-      "status": "",
       "requested": "",
       "wait": "",
       "seasons": "",
@@ -2287,11 +2490,14 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
-        "landedOf": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": ""
+        "onDisk": "",
+        "landedOf_one": "",
+        "landedOf_few": "",
+        "landedOf_many": "",
+        "landedOf_other": ""
       }
     },
     "funnel": {

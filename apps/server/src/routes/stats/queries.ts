@@ -14,6 +14,8 @@ import type { SQL } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { ACTIVITY_MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
+import { playbackDecisionSql } from '../../utils/playbackDecisionSql.js';
+import type { QualityStats } from '@tracearr/shared';
 
 // Sessions shorter than 2 minutes are not counted as intentional plays
 const MIN_PLAY_DURATION_MS = 120000;
@@ -168,7 +170,10 @@ export interface ConcurrentRow {
   total: number;
   direct: number;
   directStream: number;
+  /** Every transcode, audio-only ones included. */
   transcode: number;
+  /** The audio-only part of `transcode`. */
+  audioTranscode: number;
 }
 
 /**
@@ -186,7 +191,7 @@ export async function queryConcurrentStreams(params: {
 
   const result = await db.execute(sql`
     WITH filtered_sessions AS (
-      SELECT started_at, stopped_at, is_transcode, video_decision, audio_decision
+      SELECT started_at, stopped_at, ${playbackDecisionSql()} AS tier
       FROM sessions
       WHERE stopped_at IS NOT NULL
         ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
@@ -196,15 +201,17 @@ export async function queryConcurrentStreams(params: {
     ),
     events AS (
       SELECT started_at AS event_time,
-        CASE WHEN is_transcode = false AND COALESCE(video_decision, 'directplay') != 'copy' AND COALESCE(audio_decision, 'directplay') != 'copy' THEN 1 ELSE 0 END AS direct_delta,
-        CASE WHEN is_transcode = false AND (COALESCE(video_decision, 'directplay') = 'copy' OR COALESCE(audio_decision, 'directplay') = 'copy') THEN 1 ELSE 0 END AS copy_delta,
-        CASE WHEN is_transcode = true THEN 1 ELSE 0 END AS transcode_delta
+        CASE WHEN tier = 'directplay' THEN 1 ELSE 0 END AS direct_delta,
+        CASE WHEN tier = 'copy' THEN 1 ELSE 0 END AS copy_delta,
+        CASE WHEN tier IN ('transcode', 'audio_transcode') THEN 1 ELSE 0 END AS transcode_delta,
+        CASE WHEN tier = 'audio_transcode' THEN 1 ELSE 0 END AS audio_transcode_delta
       FROM filtered_sessions
       UNION ALL
       SELECT stopped_at AS event_time,
-        CASE WHEN is_transcode = false AND COALESCE(video_decision, 'directplay') != 'copy' AND COALESCE(audio_decision, 'directplay') != 'copy' THEN -1 ELSE 0 END AS direct_delta,
-        CASE WHEN is_transcode = false AND (COALESCE(video_decision, 'directplay') = 'copy' OR COALESCE(audio_decision, 'directplay') = 'copy') THEN -1 ELSE 0 END AS copy_delta,
-        CASE WHEN is_transcode = true THEN -1 ELSE 0 END AS transcode_delta
+        CASE WHEN tier = 'directplay' THEN -1 ELSE 0 END AS direct_delta,
+        CASE WHEN tier = 'copy' THEN -1 ELSE 0 END AS copy_delta,
+        CASE WHEN tier IN ('transcode', 'audio_transcode') THEN -1 ELSE 0 END AS transcode_delta,
+        CASE WHEN tier = 'audio_transcode' THEN -1 ELSE 0 END AS audio_transcode_delta
       FROM filtered_sessions
     ),
     running AS (
@@ -212,11 +219,12 @@ export async function queryConcurrentStreams(params: {
         event_time,
         SUM(direct_delta) OVER (ORDER BY event_time) AS direct,
         SUM(copy_delta) OVER (ORDER BY event_time) AS copy,
-        SUM(transcode_delta) OVER (ORDER BY event_time) AS transcode
+        SUM(transcode_delta) OVER (ORDER BY event_time) AS transcode,
+        SUM(audio_transcode_delta) OVER (ORDER BY event_time) AS audio_transcode
       FROM events
     ),
     with_total AS (
-      SELECT event_time, direct, copy, transcode,
+      SELECT event_time, direct, copy, transcode, audio_transcode,
         (direct + copy + transcode) AS total
       FROM running
       WHERE event_time >= ${rangeStart}
@@ -224,7 +232,7 @@ export async function queryConcurrentStreams(params: {
     ranked AS (
       SELECT
         time_bucket(${bucketInterval}::interval, event_time) AS bucket,
-        direct, copy, transcode, total,
+        direct, copy, transcode, audio_transcode, total,
         ROW_NUMBER() OVER (
           PARTITION BY time_bucket(${bucketInterval}::interval, event_time)
           ORDER BY total DESC, event_time
@@ -236,7 +244,8 @@ export async function queryConcurrentStreams(params: {
       total::int,
       direct::int,
       copy::int AS direct_stream,
-      transcode::int
+      transcode::int,
+      audio_transcode::int
     FROM ranked
     WHERE rn = 1
     ORDER BY bucket
@@ -249,6 +258,7 @@ export async function queryConcurrentStreams(params: {
       direct: number;
       direct_stream: number;
       transcode: number;
+      audio_transcode: number;
     }[]
   ).map((r) => ({
     hour: r.hour,
@@ -256,6 +266,7 @@ export async function queryConcurrentStreams(params: {
     direct: r.direct,
     directStream: r.direct_stream,
     transcode: r.transcode,
+    audioTranscode: r.audio_transcode,
   }));
 }
 
@@ -303,15 +314,7 @@ export interface QualityRow {
   count: number;
 }
 
-export interface QualityBreakdown {
-  directPlay: number;
-  directStream: number;
-  transcode: number;
-  total: number;
-  directPlayPercent: number;
-  directStreamPercent: number;
-  transcodePercent: number;
-}
+export type QualityBreakdown = QualityStats;
 
 /**
  * Compute quality breakdown with percentages from raw tier counts.
@@ -320,17 +323,21 @@ export interface QualityBreakdown {
 export function computeQualityBreakdown(qualityRows: QualityRow[]): QualityBreakdown {
   const directPlay = qualityRows.find((q) => q.tier === 'directplay')?.count ?? 0;
   const directStream = qualityRows.find((q) => q.tier === 'copy')?.count ?? 0;
-  const transcode = qualityRows.find((q) => q.tier === 'transcode')?.count ?? 0;
+  const audioTranscode = qualityRows.find((q) => q.tier === 'audio_transcode')?.count ?? 0;
+  const transcode = (qualityRows.find((q) => q.tier === 'transcode')?.count ?? 0) + audioTranscode;
   const total = directPlay + directStream + transcode;
+  const percent = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 
   return {
     directPlay,
     directStream,
     transcode,
+    audioTranscode,
     total,
-    directPlayPercent: total > 0 ? Math.round((directPlay / total) * 100) : 0,
-    directStreamPercent: total > 0 ? Math.round((directStream / total) * 100) : 0,
-    transcodePercent: total > 0 ? Math.round((transcode / total) * 100) : 0,
+    directPlayPercent: percent(directPlay),
+    directStreamPercent: percent(directStream),
+    transcodePercent: percent(transcode),
+    audioTranscodePercent: percent(audioTranscode),
   };
 }
 
@@ -346,11 +353,7 @@ export async function queryQualityBreakdown(params: {
 
   const result = await db.execute(sql`
     SELECT
-      CASE
-        WHEN is_transcode = true THEN 'transcode'
-        WHEN video_decision = 'copy' OR audio_decision = 'copy' THEN 'copy'
-        ELSE 'directplay'
-      END AS tier,
+      ${playbackDecisionSql()} AS tier,
       COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
     FROM sessions
     WHERE true

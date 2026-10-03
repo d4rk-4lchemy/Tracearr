@@ -1,6 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { format } from 'date-fns';
-import { formatMediaTech, type MediaAvailabilityEntry } from '@tracearr/shared';
+import {
+  formatMediaTech,
+  type MediaAvailabilityEntry,
+  type MediaVersionEntry,
+} from '@tracearr/shared';
 import type { HeroServerLookupEntry } from './DetailHero';
 import {
   Table,
@@ -33,6 +37,12 @@ function formatResolutionSet(resolutions: string[]): string {
   return extra > 0 ? `${shown} +${extra}` : shown;
 }
 
+function versionAudioLabel(version: MediaVersionEntry): string | null {
+  return version.audioCodec
+    ? formatMediaTech(version.audioCodec) + (version.audioAtmos ? ' Atmos' : '')
+    : null;
+}
+
 function CopiesPanelSkeleton() {
   return (
     <div className="space-y-2">
@@ -56,7 +66,7 @@ export function CopiesPanel({
   onRetry,
   serverById,
 }: CopiesPanelProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
 
   const activeCopies = (availability ?? []).filter((entry) => entry.removedAt == null);
   const hasEpisodeCounts = activeCopies.some((entry) => entry.episodeCount != null);
@@ -82,17 +92,15 @@ export function CopiesPanel({
             <TableCaption className="sr-only">{t('media.detail.copies.title')}</TableCaption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>{t('media.detail.copies.columns.server')}</TableHead>
+                <TableHead>{t('common:labels.server')}</TableHead>
                 <TableHead>{t('media.detail.copies.columns.library')}</TableHead>
-                <TableHead>{t('media.detail.copies.columns.quality')}</TableHead>
+                <TableHead>{t('common:labels.quality')}</TableHead>
                 {hasEpisodeCounts && (
                   <TableHead className="text-right">
                     {t('media.detail.copies.columns.episodes')}
                   </TableHead>
                 )}
-                <TableHead className="text-right">
-                  {t('media.detail.copies.columns.size')}
-                </TableHead>
+                <TableHead className="text-right">{t('common:labels.size')}</TableHead>
                 <TableHead className="text-right">
                   {t('media.detail.copies.columns.added')}
                 </TableHead>
@@ -101,12 +109,21 @@ export function CopiesPanel({
             <TableBody>
               {activeCopies.flatMap((entry) => {
                 const server = serverById.get(entry.serverId);
-                const quality =
+                const resolutionLabel =
                   entry.episodeResolutions && entry.episodeResolutions.length > 0
                     ? formatResolutionSet(entry.episodeResolutions)
                     : entry.videoResolution
                       ? formatMediaTech(entry.videoResolution)
                       : null;
+                const [onlyVersion] = entry.versions.length === 1 ? entry.versions : [];
+                const quality =
+                  [
+                    resolutionLabel,
+                    onlyVersion && versionAudioLabel(onlyVersion),
+                    onlyVersion?.editionTitle,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || null;
                 const sizeBytes = entry.fileSize ?? entry.episodeFileSize;
                 const mainRow = (
                   <TableRow key={`${entry.serverId}-${entry.libraryId}-${entry.ratingKey}`}>
@@ -157,6 +174,8 @@ export function CopiesPanel({
                               version.dynamicRange && version.dynamicRange !== 'sdr'
                                 ? formatMediaTech(version.dynamicRange)
                                 : null,
+                              versionAudioLabel(version),
+                              version.editionTitle,
                             ]
                               .filter(Boolean)
                               .join(' · ') || '—'}

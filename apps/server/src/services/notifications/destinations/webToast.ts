@@ -1,8 +1,17 @@
-import { DESTINATION_TYPES, WS_EVENTS, type NotificationToast } from '@tracearr/shared';
+import {
+  DESTINATION_TEXT_PROFILES,
+  DESTINATION_TYPES,
+  WS_EVENTS,
+  escapeFor,
+  type NotificationToast,
+} from '@tracearr/shared';
 import { getPubSubService } from '../../cache.js';
 import { toNotificationPayload } from '../types.js';
 import type { NotificationEvent, NotificationSource } from '../events.js';
+import { fitted } from './overrides.js';
 import type { DestinationType } from './types.js';
+
+const PROFILE = DESTINATION_TEXT_PROFILES.web_toast;
 
 export interface ToastRendered {
   toast?: NotificationToast;
@@ -10,22 +19,12 @@ export interface ToastRendered {
 
 /** The automation is the gate: only its own sends toast, and every event type does. */
 function toastFor(event: NotificationEvent, source: NotificationSource): NotificationToast | null {
-  if (source.kind === 'rule') {
-    // Pre-automation jobs still in the queue at upgrade; only ever violation-shaped.
-    if (event.type !== 'violation') return null;
-    return {
-      title: source.title,
-      message: source.message,
-      automationId: event.payload.rule.id,
-      automationName: event.payload.rule.name,
-      severity: event.payload.severity,
-    };
-  }
   if (source.kind !== 'automation') return null;
-  const payload = toNotificationPayload(event, source);
+  const payload = toNotificationPayload(event, source, escapeFor(PROFILE));
+  const text = fitted(payload, PROFILE);
   return {
-    title: payload.title,
-    message: payload.message,
+    title: text.title,
+    message: text.message,
     automationId: source.automationId,
     automationName: source.automationName,
     severity: payload.severity,

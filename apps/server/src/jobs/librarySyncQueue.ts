@@ -27,6 +27,7 @@ import {
 } from '../services/librarySync.js';
 import { syncServer } from '../services/sync.js';
 import { getPubSubService } from '../services/cache.js';
+import { isLiveServer, liveServers, type ServerRow } from '../services/liveServers.js';
 import { enqueueMaintenanceJob, maybeEnqueueMaintenanceJob } from './maintenanceQueue.js';
 import { enqueueImagePrecache } from './imagePrecacheQueue.js';
 import { resolvePrecachePass } from './precachePassPolicy.js';
@@ -232,6 +233,11 @@ export function startLibrarySyncWorker(): void {
           `[LibrarySync] Skipping job ${job.id} - sync already in progress for server ${serverId}`
         );
         return { skipped: true, reason: 'sync already in progress' };
+      }
+
+      if (!(await isLiveServer(serverId))) {
+        console.log(`[LibrarySync] Skipping job ${job.id} - server ${serverId} is historical`);
+        return { skipped: true, reason: 'server historical' };
       }
 
       // Mark as active
@@ -556,27 +562,22 @@ async function checkAndTriggerSnapshotBackfill(): Promise<void> {
   }
 }
 
-/**
- * Schedule auto-sync for all servers every 12 hours at :10 past the hour (UTC)
- * Offset from :00 to avoid collision with aggregate auto-refresh
- */
-export async function scheduleAutoSync(): Promise<void> {
+async function applyAutoSyncSchedules(allServers: ServerRow[]): Promise<void> {
   if (!librarySyncQueue) {
     throw new Error('Library sync queue not initialized');
   }
 
-  // Query all servers from database
-  const allServers = (await db.select({ id: servers.id, name: servers.name, type: servers.type }).from(servers)).filter((s) => supportsMediaLibrary(s.type));
-
-  if (allServers.length === 0) {
-    console.log('[LibrarySync] No servers found - skipping auto-sync scheduling');
-    return;
-  }
+  allServers = allServers.filter((server) => supportsMediaLibrary(server.type));
 
   // Remove existing job schedulers first (in case servers changed)
   const schedulers = await librarySyncQueue.getJobSchedulers();
   for (const scheduler of schedulers) {
     await librarySyncQueue.removeJobScheduler(scheduler.key);
+  }
+
+  if (allServers.length === 0) {
+    console.log('[LibrarySync] No live servers found - no auto-sync scheduled');
+    return;
   }
 
   // Add repeatable job for each server with staggered cron times
@@ -605,6 +606,32 @@ export async function scheduleAutoSync(): Promise<void> {
   console.log(
     `[LibrarySync] Scheduled auto-sync for ${allServers.length} server(s) every 12 hours (staggered)`
   );
+}
+
+/**
+ * Rebuild the 12-hourly schedulers from the live servers, queuing nothing else.
+ * Used when the set of live servers changes at runtime.
+ */
+export async function rebuildAutoSyncSchedules(): Promise<void> {
+  if (!librarySyncQueue) {
+    throw new Error('Library sync queue not initialized');
+  }
+  await applyAutoSyncSchedules(await liveServers());
+}
+
+/**
+ * Boot: rebuild the schedulers (every 12 hours at :10 past the hour UTC, offset from
+ * :00 to avoid collision with aggregate auto-refresh) and queue a staggered sync
+ * for each live server that has none pending.
+ */
+export async function scheduleAutoSync(): Promise<void> {
+  if (!librarySyncQueue) {
+    throw new Error('Library sync queue not initialized');
+  }
+
+  const allServers = await liveServers();
+  await applyAutoSyncSchedules(allServers);
+  if (allServers.length === 0) return;
 
   // Queue an immediate sync on boot (non-blocking, staggered to avoid overwhelming startup)
   // Check for any pending/delayed jobs first to avoid duplicates after rapid restarts.
@@ -669,8 +696,13 @@ export async function enqueueLibrarySync(serverId: string, userId?: string): Pro
   if (!librarySyncQueue) {
     throw new Error('Library sync queue not initialized');
   }
-  const server = await db.select({ type: servers.type }).from(servers).where(sql`${servers.id} = ${serverId}`).limit(1);
-  if (server[0] && !supportsMediaLibrary(server[0].type)) throw new Error('Library sync is not supported for this server');
+  const server = await db
+    .select({ type: servers.type })
+    .from(servers)
+    .where(sql`${servers.id} = ${serverId}`)
+    .limit(1);
+  if (server[0] && !supportsMediaLibrary(server[0].type))
+    throw new Error('Library sync is not supported for this server');
 
   // Only block if there's an active sync running - scheduled jobs shouldn't block manual syncs
   const activeJobs = await librarySyncQueue.getJobs(['active']);

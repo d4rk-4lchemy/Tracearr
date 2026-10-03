@@ -38,7 +38,7 @@ export interface TerminateSessionOptions {
   reason?: string;
 }
 
-export type TerminationOutcome = 'terminated' | 'already_gone' | 'failed';
+export type TerminationOutcome = 'terminated' | 'already_gone' | 'failed' | 'server_historical';
 
 export interface TerminationResult {
   success: boolean;
@@ -100,6 +100,32 @@ export async function terminateSession(
       terminationLogId: '',
       error: 'Session not found in database',
       outcome: 'failed',
+    };
+  }
+
+  // The switch force-stopped the server's streams; anything queued before it ends here.
+  if (session.server.historicalAt) {
+    const logEntries = await db
+      .insert(terminationLogs)
+      .values({
+        sessionId: session.id,
+        serverId: session.serverId,
+        serverUserId: session.serverUserId,
+        trigger,
+        triggeredByUserId: triggeredByUserId ?? null,
+        ruleId: ruleId ?? null,
+        violationId: violationId ?? null,
+        reason: reason ?? null,
+        success: false,
+        errorMessage: 'Server is historical',
+      })
+      .returning({ id: terminationLogs.id });
+
+    return {
+      success: false,
+      terminationLogId: logEntries[0]?.id ?? '',
+      error: 'Server is historical',
+      outcome: 'server_historical',
     };
   }
 

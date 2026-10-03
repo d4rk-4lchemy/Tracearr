@@ -1,5 +1,11 @@
 import { deviceIdentity } from '../../mediaServer/dispatcharr/deviceIdentity.js';
-import { BYTES_PER_GB, TIME_MS, normalizeDynamicRange, resolutionTierRank } from '@tracearr/shared';
+import {
+  BYTES_PER_GB,
+  TIME_MS,
+  isSubtitleBurnIn,
+  normalizeDynamicRange,
+  resolutionTierRank,
+} from '@tracearr/shared';
 import type {
   Condition,
   ConditionField,
@@ -797,6 +803,14 @@ const evaluateIsTranscodeDowngrade: ConditionEvaluator = (
   };
 };
 
+const evaluateIsSubtitleBurnIn: ConditionEvaluator = (
+  context: SessionEvaluationContext,
+  condition: Condition
+): EvaluatorResult => {
+  const burnIn = isSubtitleBurnIn(context.session);
+  return { matched: compare(burnIn, condition.operator, condition.value), actual: burnIn };
+};
+
 const evaluateSourceBitrateMbps: ConditionEvaluator = (
   context: SessionEvaluationContext,
   condition: Condition
@@ -1175,6 +1189,7 @@ export const evaluatorRegistry: Record<ConditionField, ConditionEvaluator> = {
   source_video_codec: evaluateSourceVideoCodec,
   is_transcoding: evaluateIsTranscoding,
   is_transcode_downgrade: evaluateIsTranscodeDowngrade,
+  is_subtitle_burn_in: evaluateIsSubtitleBurnIn,
   source_bitrate_mbps: evaluateSourceBitrateMbps,
 
   // User attributes

@@ -121,6 +121,29 @@ export function useUpdateServer() {
   });
 }
 
+export function useSetServerHistorical() {
+  const { t } = useTranslation('notifications');
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, historical }: { id: string; historical: boolean }) =>
+      api.servers.setHistorical(id, historical),
+    onSuccess: (server, { historical }) => {
+      void queryClient.invalidateQueries({ queryKey: ['plex-accounts'] });
+      const key = historical ? 'serverMarkedHistorical' : 'serverResumed';
+      toast.success(t(`toast.success.${key}.title`), {
+        description: t(`toast.success.${key}.message`, { name: server.name }),
+      });
+    },
+    onError: (error: Error) => {
+      toast.error(t('toast.error.serverHistoricalFailed'), { description: error.message });
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['servers', 'list'] });
+    },
+  });
+}
+
 export function useServerLocations(serverId: string | undefined) {
   return useQuery({
     queryKey: ['servers', 'locations', serverId],

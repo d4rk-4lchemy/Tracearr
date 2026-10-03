@@ -24,6 +24,7 @@ import {
   TautulliUserRecordSchema,
   TautulliUsersResponseSchema,
   isFatalImportError,
+  mapStreamDataToSession,
   parseHistoryGuid,
   type TautulliHistoryRecord,
   type TautulliUserRecord,
@@ -48,8 +49,9 @@ import {
   queryExistingByTimeKeys,
   type ExistingSession,
 } from '../import/index.js';
-import { queryChain } from '../../test/helpers.js';
+import { queryChain, renderSql } from '../../test/helpers.js';
 import type * as ImportModule from '../import/index.js';
+import type { SQL } from 'drizzle-orm';
 
 vi.mock('../geoip.js', () => ({
   geoipService: {
@@ -79,6 +81,7 @@ vi.mock('../../db/timescale.js', () => ({
   refreshAggregates: vi.fn().mockResolvedValue(undefined),
   checkAggregateNeedsRebuild: vi.fn().mockResolvedValue({ needsRebuild: false }),
   uncapDecompressionForTx: vi.fn().mockResolvedValue(undefined),
+  getSessionChunkRanges: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../jobs/maintenanceQueue.js', () => ({
@@ -642,6 +645,31 @@ describe('TautulliService.getGuidsByRatingKey', () => {
     expect(params.get('grouping')).toBe('0');
     expect(params.get('include_activity')).toBe('0');
     expect(params.get('length')).toBe('100000');
+    expect(params.get('include_archived')).toBe('1');
+  });
+
+  it('skips a row Tautulli has no metadata for and keeps the rest of the batch', async () => {
+    respondWith([
+      historyRow({ rating_key: 101 }),
+      historyRow({ rating_key: null, guid: null, reference_id: 7009 }),
+    ]);
+
+    const service = new TautulliService('http://localhost:8181', 'api-key');
+    const history = await service.getGuidsByRatingKey(['101']);
+
+    expect(history?.get('101')).toEqual({
+      guids: new Set(['plex://episode/aaa?lang=en']),
+      referenceIds: new Set(['7001']),
+    });
+  });
+
+  it('accepts fewer rows than Tautulli counted, as 2.18 returns for rows without metadata', async () => {
+    respondWith([historyRow({})], { recordsFiltered: 2 });
+
+    const service = new TautulliService('http://localhost:8181', 'api-key');
+    const history = await service.getGuidsByRatingKey(['101']);
+
+    expect(history?.get('101')?.referenceIds).toEqual(new Set(['7001']));
   });
 
   it('drops live rows and rows that are not movies or episodes, guids and reference ids alike', async () => {
@@ -703,13 +731,13 @@ describe('TautulliService.getGuidsByRatingKey', () => {
     );
   });
 
-  it('returns null on an error result and when fewer rows came back than matched', async () => {
+  it('returns null on an error result and on a full page that may have been cut', async () => {
     const service = new TautulliService('http://localhost:8181', 'api-key');
 
     respondWith([historyRow({})], { result: 'error' });
     await expect(service.getGuidsByRatingKey(['101'])).resolves.toBeNull();
 
-    respondWith([historyRow({})], { recordsFiltered: 2 });
+    respondWith(Array.from({ length: 100000 }, () => historyRow({})));
     await expect(service.getGuidsByRatingKey(['101'])).resolves.toBeNull();
   });
 });
@@ -728,6 +756,18 @@ describe('isFatalImportError', () => {
     expect(isFatalImportError(new TautulliApiError(500, 'Internal Server Error', 'x'))).toBe(false);
     expect(isFatalImportError(new Error('Tautulli API timeout after 30000ms'))).toBe(false);
     expect(isFatalImportError('nope')).toBe(false);
+  });
+});
+
+describe('mapStreamDataToSession', () => {
+  it('splits the per-stream decisions so an audio-only transcode stays one', () => {
+    expect(
+      mapStreamDataToSession({ video_decision: 'copy', audio_decision: 'transcode' })
+    ).toMatchObject({ videoDecision: 'copy', audioDecision: 'transcode', isTranscode: true });
+  });
+
+  it('leaves the decisions alone when the stream data has none', () => {
+    expect(mapStreamDataToSession({})).not.toHaveProperty('videoDecision');
   });
 });
 
@@ -2255,8 +2295,10 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
     });
   }
 
-  function makeRecord(overrides: Partial<TautulliHistoryRecord> = {}): TautulliHistoryRecord {
-    return { ...REAL_MOVIE_RECORD, ...overrides };
+  function makeRecord(
+    overrides: { [K in keyof TautulliHistoryRecord]?: TautulliHistoryRecord[K] | null } = {}
+  ): TautulliHistoryRecord {
+    return { ...REAL_MOVIE_RECORD, ...overrides } as TautulliHistoryRecord;
   }
 
   function makeExisting(overrides: Partial<ExistingSession> = {}): ExistingSession {
@@ -2297,6 +2339,8 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
     vi.mocked(queryExistingByTimeKeys).mockResolvedValue(new Map());
     vi.mocked(flushInsertBatch).mockResolvedValue(0);
     vi.mocked(flushUpdateBatch).mockResolvedValue(0);
+    vi.mocked(db.transaction).mockImplementation((async (callback: (tx: unknown) => unknown) =>
+      callback({ execute: vi.fn().mockResolvedValue({ rows: [] }) })) as never);
   });
 
   afterEach(() => {
@@ -2313,6 +2357,44 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
       String(call[0]).includes('cmd=get_history')
     );
     expect(historyCall?.[0]).toContain('grouping=1');
+  });
+
+  it('asks for archived users and libraries and leaves current activity out', async () => {
+    mockFetch = mockTautulliFetch([], 0);
+    global.fetch = mockFetch as typeof global.fetch;
+
+    await TautulliService.importHistory(SERVER_ID);
+
+    const historyCall = mockFetch.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('cmd=get_history')
+    );
+    expect(historyCall?.[0]).toContain('include_archived=1');
+    expect(historyCall?.[0]).toContain('include_activity=0');
+  });
+
+  it('counts the plays of a nameless group Tautulli never grouped instead of treating it as activity', async () => {
+    mockFetch = mockTautulliFetch(
+      [makeRecord({ reference_id: null, row_id: 5, group_count: 3, group_ids: '5,6,7' })],
+      1
+    );
+    global.fetch = mockFetch as typeof global.fetch;
+
+    const result = await TautulliService.importHistory(SERVER_ID);
+
+    expect(result.imported).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(result.message).toContain('3 plays Tautulli never grouped');
+  });
+
+  it('skips a record Tautulli has no metadata for instead of counting an error', async () => {
+    mockFetch = mockTautulliFetch([makeRecord({ full_title: null, title: null })], 1);
+    global.fetch = mockFetch as typeof global.fetch;
+
+    const result = await TautulliService.importHistory(SERVER_ID);
+
+    expect(result.errors).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(result.message).toContain('1 without metadata in Tautulli');
   });
 
   it('aborts with an error result when the server has no tracking cutoff', async () => {
@@ -2464,6 +2546,186 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
     expect(refreshAggregates).toHaveBeenCalledWith({
       startTime: new Date(startedAt.getTime() - 24 * 60 * 60 * 1000),
       endTime: new Date(startedAt.getTime() + 24 * 60 * 60 * 1000),
+    });
+  });
+
+  describe('plays Tautulli merged into another group since the last import', () => {
+    const DAY_SEC = 24 * 60 * 60;
+    const rootStarted = Math.floor(CUTOFF.getTime() / 1000) - 30 * DAY_SEC;
+    const absorbedStartedIso = new Date((rootStarted + 4 * DAY_SEC) * 1000).toISOString();
+
+    function mergedRecord(overrides: Parameters<typeof makeRecord>[0] = {}) {
+      return makeRecord({
+        reference_id: 1,
+        started: rootStarted,
+        stopped: rootStarted + 4 * DAY_SEC + 3600,
+        duration: 600,
+        group_count: 2,
+        group_ids: '2, 1',
+        ...overrides,
+      });
+    }
+
+    function existingRoot(startedSec = rootStarted) {
+      vi.mocked(queryExistingByExternalIds).mockResolvedValue(
+        new Map([
+          [
+            '1',
+            makeExisting({
+              id: 'root-session',
+              externalSessionId: '1',
+              startedAt: new Date(startedSec * 1000),
+            }),
+          ],
+        ])
+      );
+    }
+
+    function mockMergeTransaction(results: Array<{ rows: unknown[] }>) {
+      const execute = vi.fn().mockResolvedValue({ rows: [] });
+      for (const result of results) execute.mockResolvedValueOnce(result);
+      vi.mocked(db.transaction).mockImplementation((async (callback: (tx: unknown) => unknown) =>
+        callback({ execute })) as never);
+      return execute;
+    }
+
+    function statements(execute: ReturnType<typeof vi.fn>) {
+      return execute.mock.calls.map((call) => {
+        const rendered = renderSql(call[0] as SQL);
+        return { sql: rendered.sql.replace(/\s+/g, ' ').trim(), params: rendered.params };
+      });
+    }
+
+    it('deletes the absorbed import by id and started_at, keeps the root, and refreshes its day', async () => {
+      mockFetch = mockTautulliFetch([mergedRecord()], 1);
+      global.fetch = mockFetch as typeof global.fetch;
+      existingRoot();
+      const execute = mockMergeTransaction([
+        {
+          rows: [
+            {
+              id: 'absorbed-session',
+              started_at: absorbedStartedIso,
+              server_user_id: SERVER_USER_ID,
+              r_id: 'root-session',
+              r_started: new Date(rootStarted * 1000).toISOString(),
+              r_ref: null,
+            },
+          ],
+        },
+        { rows: [] },
+        { rows: [{ started_at: absorbedStartedIso }] },
+      ]);
+
+      const result = await TautulliService.importHistory(SERVER_ID);
+
+      const [select, , remove] = statements(execute);
+      expect(select?.params).toContainEqual(['2']);
+      expect(remove?.sql).toMatch(/^DELETE FROM sessions s/);
+      expect(remove?.params).toContainEqual(['absorbed-session']);
+      expect(remove?.params).toContainEqual([absorbedStartedIso]);
+      expect(JSON.stringify(remove?.params)).not.toContain('root-session');
+      expect(result.message).toContain(
+        '1 plays Tautulli merged into another play since the last import'
+      );
+      expect(refreshAggregates).toHaveBeenCalledWith({
+        startTime: new Date((rootStarted - DAY_SEC) * 1000),
+        endTime: new Date(new Date(absorbedStartedIso).getTime() + DAY_SEC * 1000),
+      });
+    });
+
+    it('selects and deletes only rows in the Tautulli import form on this server', async () => {
+      mockFetch = mockTautulliFetch([mergedRecord()], 1);
+      global.fetch = mockFetch as typeof global.fetch;
+      existingRoot();
+      const execute = mockMergeTransaction([
+        {
+          rows: [
+            {
+              id: 'absorbed-session',
+              started_at: absorbedStartedIso,
+              server_user_id: SERVER_USER_ID,
+              r_id: 'root-session',
+              r_started: new Date(rootStarted * 1000).toISOString(),
+              r_ref: null,
+            },
+          ],
+        },
+        { rows: [] },
+        { rows: [{ started_at: absorbedStartedIso }] },
+      ]);
+
+      await TautulliService.importHistory(SERVER_ID);
+
+      const [select, , remove] = statements(execute);
+      for (const statement of [select, remove]) {
+        expect(statement?.sql).toContain("(s.session_key = 'tautulli-' || s.external_session_id)");
+        expect(statement?.sql).toMatch(/s\.server_id = \$\d+::uuid/);
+        expect(statement?.params).toContain(SERVER_ID);
+      }
+    });
+
+    it('clears a root reference that points at the absorbed play before deleting it', async () => {
+      mockFetch = mockTautulliFetch([mergedRecord()], 1);
+      global.fetch = mockFetch as typeof global.fetch;
+      existingRoot();
+      const execute = mockMergeTransaction([
+        {
+          rows: [
+            {
+              id: 'absorbed-session',
+              started_at: absorbedStartedIso,
+              server_user_id: SERVER_USER_ID,
+              r_id: 'root-session',
+              r_started: new Date(rootStarted * 1000).toISOString(),
+              r_ref: 'absorbed-session',
+            },
+          ],
+        },
+        { rows: [] },
+        { rows: [] },
+        { rows: [{ started_at: absorbedStartedIso }] },
+      ]);
+
+      await TautulliService.importHistory(SERVER_ID);
+
+      const [, detach, , remove] = statements(execute);
+      expect(detach?.sql).toMatch(/^UPDATE sessions r SET reference_id = NULL/);
+      expect(detach?.params).toContainEqual(['root-session']);
+      expect(detach?.params).toContainEqual(['absorbed-session']);
+      expect(remove?.params).toContainEqual(['absorbed-session']);
+    });
+
+    it('deletes nothing when no import row matches the absorbed ids', async () => {
+      mockFetch = mockTautulliFetch([mergedRecord()], 1);
+      global.fetch = mockFetch as typeof global.fetch;
+      existingRoot();
+      const execute = mockMergeTransaction([{ rows: [] }]);
+
+      const result = await TautulliService.importHistory(SERVER_ID);
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(result.message).not.toContain('merged');
+    });
+
+    it('runs no delete when no group absorbed another play', async () => {
+      mockFetch = mockTautulliFetch([mergedRecord({ group_count: 1, group_ids: '1' })], 1);
+      global.fetch = mockFetch as typeof global.fetch;
+      existingRoot();
+
+      await TautulliService.importHistory(SERVER_ID);
+
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it('keeps the absorbed plays when the stored root has a different start', async () => {
+      mockFetch = mockTautulliFetch([mergedRecord()], 1);
+      global.fetch = mockFetch as typeof global.fetch;
+      existingRoot(rootStarted - 999);
+
+      await TautulliService.importHistory(SERVER_ID);
+
+      expect(db.transaction).not.toHaveBeenCalled();
     });
   });
 

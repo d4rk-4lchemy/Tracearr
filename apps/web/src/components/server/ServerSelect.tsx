@@ -1,4 +1,7 @@
+import { useTranslation } from 'react-i18next';
 import type { Server } from '@tracearr/shared';
+import { Badge } from '@/components/ui/badge';
+import { liveFirst } from '@/lib/servers';
 import { cn } from '@/lib/utils';
 import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
 import {
@@ -28,7 +31,9 @@ export function ServerSelect({
   id,
   className,
 }: ServerSelectProps) {
-  const selected = servers.find((server) => server.id === value);
+  const { t } = useTranslation('common');
+  const ordered = liveFirst(servers);
+  const selected = ordered.find((server) => server.id === value);
 
   return (
     <Select value={value} onValueChange={onChange}>
@@ -40,11 +45,16 @@ export function ServerSelect({
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
-        {servers.map((server) => (
+        {ordered.map((server) => (
           <SelectItem key={server.id} value={server.id}>
             <span className="flex min-w-0 items-center gap-2">
               <MediaServerIcon type={server.type} className="h-4 w-4 shrink-0" />
               <span className="truncate">{server.name}</span>
+              {server.historicalAt && (
+                <Badge variant="outline" className="ml-auto">
+                  {t('serverSelector.historical')}
+                </Badge>
+              )}
             </span>
           </SelectItem>
         ))}

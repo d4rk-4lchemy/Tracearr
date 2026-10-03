@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { initI18n } from '@tracearr/translations';
-import type { Server, TemplateInput } from '@tracearr/shared';
+import type { Server, TemplateDefinition, TemplateInput } from '@tracearr/shared';
 import { TemplateInputField } from '../TemplateInputField';
 import { STREAM_STARTED } from './fixtures';
 
@@ -81,5 +81,42 @@ describe('TemplateInputField units', () => {
     expect(control).toHaveValue('30');
     expect(control.closest('[data-slot="input-group"]')).toHaveTextContent('minutes');
     expect(screen.getByText('Paused for')).toBeInTheDocument();
+  });
+});
+
+describe('TemplateInputField send text', () => {
+  it("keeps a send title within the template input's own limit", () => {
+    const headline: TemplateInput = {
+      key: 'headline',
+      kind: 'text',
+      label: 'Headline',
+      required: false,
+      maxLength: 80,
+    };
+    const base = STREAM_STARTED.version.definition;
+    const definition: TemplateDefinition = {
+      ...base,
+      actions: {
+        actions: base.actions.actions.map((action) =>
+          action.type === 'send' ? { ...action, title: { $input: 'headline' } } : action
+        ),
+      },
+    };
+    render(
+      <TemplateInputField
+        input={headline}
+        definition={definition}
+        value=""
+        onChange={() => undefined}
+        servers={servers}
+        boundServerId=""
+        filterOptions={undefined}
+        unitSystem="metric"
+        invalid={false}
+        onFocusInput={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole('combobox')).toHaveAttribute('maxlength', '80');
   });
 });

@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import sensible from '@fastify/sensible';
 import rateLimit from '@fastify/rate-limit';
+import type { SQL } from 'drizzle-orm';
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -23,12 +24,19 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+vi.mock('../publicV2/shared.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../publicV2/shared.js')>()),
+  runHistoryPage: vi.fn(async () => ({ data: [], nextCursor: null })),
+}));
+
 vi.mock('../../services/settings.js', () => ({
   getSetting: vi.fn(() => Promise.resolve(240)),
 }));
 
 import { db } from '../../db/client.js';
 import { getSetting } from '../../services/settings.js';
+import { runHistoryPage } from '../publicV2/shared.js';
+import { renderSql } from '../../test/helpers.js';
 import { publicV2Routes } from '../publicV2/index.js';
 import { resetPublicApiRateLimitCache } from '../publicV2/rateLimitCache.js';
 
@@ -154,6 +162,25 @@ describe('public API v2 skeleton', () => {
       expect(res.statusCode).toBe(400);
     });
 
+    it('leaves trailers out of history unless media_type is trailer', async () => {
+      const conditionsFor = async (query: string) => {
+        vi.mocked(runHistoryPage).mockClear();
+        const res = await app.inject({ method: 'GET', url: `/api/v2/public/history${query}` });
+        expect(res.statusCode).toBe(200);
+        const conditions = vi.mocked(runHistoryPage).mock.calls[0]![0];
+        return conditions.map((c: SQL) => renderSql(c));
+      };
+
+      const unfiltered = await conditionsFor('');
+      expect(unfiltered.map((c) => c.sql)).toContain("s.media_type <> 'trailer'");
+
+      const trailers = await conditionsFor('?media_type=trailer');
+      expect(trailers.map((c) => c.sql)).not.toContain("s.media_type <> 'trailer'");
+      expect(trailers.some((c) => c.sql === 's.media_type = $1' && c.params[0] === 'trailer')).toBe(
+        true
+      );
+    });
+
     it('rejects invalid history query parameters with 400', async () => {
       const res = await app.inject({
         method: 'GET',
@@ -196,6 +223,7 @@ describe('public API v2 skeleton', () => {
         summary: {
           total: 0,
           transcodes: 0,
+          audio_transcodes: 0,
           direct_streams: 0,
           direct_plays: 0,
           total_bitrate: expect.any(String),

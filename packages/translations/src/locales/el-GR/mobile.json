@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Καλώς ήλθατε στο Tracearr",
-    "addServer": "Προσθήκη Διακομιστή",
     "connectToServer": "Σύνδεση σε διακομιστή",
     "enterServerDetails": "Εισάγετε τη διεύθυνση URL του διακομιστή Tracearr και το διακριτικό πρόσβασης από το κινητό",
     "serverUrl": "Url Διακομιστή",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "Λείπει Πεδία",
-    "pleaseEnterBothFields": "Παρακαλώ εισάγετε το URL και το διακριτικό του διακομιστή",
     "invalidUrl": "Μη Έγκυρο URL",
-    "serverUrlMustStartWith": "Η διεύθυνση URL του διακομιστή πρέπει να ξεκινά με http:// ή http://",
     "pleaseEnterValidUrl": "Παρακαλώ εισάγετε μια έγκυρη διεύθυνση URL διακομιστή",
     "pairingFailed": "Αποτυχία Σύζευξης",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Μη έγκυρη μορφή κωδικού QR. Παρακαλούμε δημιουργήστε ένα νέο κωδικό.",
     "invalidQrCodeMissingUrl": "Μη έγκυρος κωδικός QR: λείπει το URL του διακομιστή",
     "invalidQrCodeMissingToken": "Μη έγκυρος κωδικός QR: λείπει το διακριτικό σύζευξης",
-    "invalidServerUrlInQr": "Μη έγκυρη διεύθυνση URL διακομιστή στον κωδικό QR",
-    "tooManyPairingAttempts": "Πάρα πολλές προσπάθειες σύζευξης. Παρακαλώ περιμένετε μερικά λεπτά.",
-    "invalidOrExpiredToken": "Μη έγκυρο ή ληγμένο διακριτικό σύζευξης.",
-    "invalidPairingRequest": "Άκυρο αίτημα σύζευξης. Ελέγξτε το διακριτικό σας.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -55,7 +46,7 @@
     "supportDevelopment": "",
     "account": "Λογαριασμός",
     "disconnect": "",
-    "disconnectServer": "Αποσύνδεση Εξυπηρετητή",
+    "disconnectServer": "Αποσύνδεση Διακομιστή",
     "disconnectConfirm": "Είστε βέβαιοι ότι θέλετε να αποσυνδεθείτε από το \"{{serverName}}\"? Θα χρειαστεί να κάνετε ξανά σύζευξη για να χρησιμοποιήσετε την εφαρμογή.",
     "disconnectConfirmGeneric": "Είστε βέβαιοι ότι θέλετε να αποσυνδεθείτε? Θα χρειαστεί να κάνετε ξανά σύζευξη για να χρησιμοποιήσετε την εφαρμογή.",
     "currentlyConnected": "Συνδεδεμένο με το {{serverName}}",
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Επιλογή Διακομιστή",
-    "server": "Διακομιστής",
-    "navigation": ""
+    "server": "Διακομιστής"
   },
   "resources": {
     "cpu": "Επεξεργαστής",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,16 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +133,15 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +154,8 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -176,7 +168,7 @@
     "sortTrust": ""
   },
   "activity": {
-    "playsOverTime": "Παίζει Με Χρόνο",
+    "playsOverTime": "Αναπαραγωγές με την πάροδο του χρόνου",
     "concurrentStreams": "Ταυτόχρονες Ροές",
     "platforms": "Πλατφόρμες",
     "playbackQuality": ""
@@ -193,28 +185,25 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +216,9 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,9 +252,9 @@
   },
   "widget": {
     "asOf": "",
+    "signedOut": "",
     "serversDown_one": "",
     "serversDown_other": "",
-    "signedOut": "",
     "transcodes_one": "",
     "transcodes_other": ""
   }

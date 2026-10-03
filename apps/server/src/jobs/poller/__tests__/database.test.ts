@@ -35,6 +35,7 @@ vi.mock('../../../utils/logger.js', () => ({
 import {
   CONTAINER_MEDIA_TYPES,
   batchGetLibraryItemIdentity,
+  batchGetRecentUserSessions,
   batchResolveMediaByPlexGuid,
   defaultRecentSessionWindowHours,
   getActiveAutomations,
@@ -282,6 +283,19 @@ describe('maxWindowHoursFromAutomations', () => {
 
   it('caps at 168 hours', () => {
     expect(maxWindowHoursFromAutomations([windowedRule(500)])).toBe(168);
+  });
+});
+
+describe('batchGetRecentUserSessions', () => {
+  it('leaves trailer rows out of rule history', async () => {
+    const chain = queryChain(vi.fn, []);
+    mockDbSelect.mockReturnValue(chain);
+
+    await batchGetRecentUserSessions(['su-1']);
+
+    const { text, params } = renderCall(chain);
+    expect(text).toMatch(/sessions\.media_type <> \$\d+/);
+    expect(params).toContain('trailer');
   });
 });
 

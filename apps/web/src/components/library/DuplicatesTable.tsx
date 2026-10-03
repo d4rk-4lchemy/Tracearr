@@ -203,7 +203,7 @@ export function DuplicatesTable({
         <TableHeader>
           <TableRow>
             <TableHead className="w-10" />
-            <TableHead className="w-24">{t('library.storage.colType')}</TableHead>
+            <TableHead className="w-24">{t('common:labels.type')}</TableHead>
             <TableHead>{t('library.storage.colTitle')}</TableHead>
             <TableHead>{t('library.storage.colMatchType')}</TableHead>
             <TableHead className="text-right">{t('library.storage.colCopies')}</TableHead>

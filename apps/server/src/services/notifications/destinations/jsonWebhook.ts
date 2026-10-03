@@ -1,4 +1,9 @@
-import { DESTINATION_TYPES, NOTIFICATION_EVENTS } from '@tracearr/shared';
+import {
+  DESTINATION_TEXT_PROFILES,
+  DESTINATION_TYPES,
+  NOTIFICATION_EVENTS,
+  escapeFor,
+} from '@tracearr/shared';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
 import { getMediaDisplay, getPlaybackType, getUserDisplayName } from './sessionText.js';
@@ -17,6 +22,8 @@ import type {
   ViolationContext,
 } from '../types.js';
 import type { DeliverContext, DestinationType } from './types.js';
+
+const PROFILE = DESTINATION_TEXT_PROFILES.json_webhook;
 
 export interface JsonWebhookConfig {
   url: string;
@@ -205,7 +212,9 @@ function buildFlat(
 
 function build(payload: NotificationPayload): JsonWebhookBody {
   const body = bodyOf(payload);
-  return payload.automation ? { ...body, automation: payload.automation } : body;
+  if (!payload.automation) return body;
+  const { priority: _priority, ...automation } = payload.automation;
+  return { ...body, automation };
 }
 
 function bodyOf(payload: NotificationPayload): JsonWebhookBody {
@@ -250,7 +259,8 @@ async function post(url: string, body: JsonWebhookBody, ctx: DeliverContext): Pr
 export const jsonWebhookType: DestinationType<JsonWebhookConfig, JsonWebhookBody> = {
   kind: 'json_webhook',
   events: DESTINATION_TYPES.json_webhook.events,
-  render: (event, _config, ctx) => build(toNotificationPayload(event, ctx.source)),
+  render: (event, _config, ctx) =>
+    build(toNotificationPayload(event, ctx.source, escapeFor(PROFILE))),
   deliver: (body, config, ctx) => post(config.url, body, ctx),
   test: (config, ctx) =>
     post(

@@ -360,8 +360,7 @@ export class PlexEventSource extends EventEmitter {
         this.emit('session:stopped', notification);
         break;
       case 'buffering':
-        // Treat buffering as playing (will resume shortly)
-        this.emit('session:playing', notification);
+        this.emit('session:progress', notification);
         break;
     }
   }
@@ -401,6 +400,9 @@ export class PlexEventSource extends EventEmitter {
       }
       if ('status' in errorObj) {
         errorMessage += ` (status: ${errorObj.status})`;
+      }
+      if (errorObj.code !== undefined) {
+        errorMessage += ` (status: ${errorObj.code})`;
       }
     }
 

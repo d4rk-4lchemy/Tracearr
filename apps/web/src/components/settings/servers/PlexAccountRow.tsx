@@ -29,7 +29,7 @@ export function PlexAccountRow({
   oauthBusy: boolean;
 }) {
   const { t } = useTranslation(['pages', 'common']);
-  const canUnlink = account.serverCount === 0;
+  const canUnlink = account.liveServerCount === 0;
   const unlinkLabel = t('pages:settings.plex.unlinkAccount');
 
   return (

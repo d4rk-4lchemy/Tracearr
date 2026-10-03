@@ -10,24 +10,27 @@
         "message": "服务器已成功删除"
       },
       "serverSynced": {
-        "title": "服务器同步",
-        "message": "服务器数据已同步"
+        "title": "服务器同步"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "设置已更新",
         "message": "您的设置已保存"
       },
-      "tokenCopied": {
-        "title": "Token已复制",
-        "message": "配对令牌已复制到剪贴板"
-      },
       "violationAcknowledged": {
-        "title": "确认违约行为",
-        "message": "违法行为已被标记为已确认"
+        "title": "违规已确认",
+        "message": "违规已标记为已确认"
       },
       "violationDismissed": {
-        "title": "丢弃的违规行为",
-        "message": "违法行为已被拒绝"
+        "title": "违规已忽略",
+        "message": "违规已被忽略"
       },
       "deviceRemoved": {
         "title": "设备已移除",
@@ -38,19 +41,11 @@
         "message": "设备名称已更新"
       },
       "sessionsRevoked": {
-        "title": "会话已取消",
-        "message": "所有移动会话已被撤销"
+        "title": "会话已取消"
       },
       "loggedIn": {
         "title": "成功",
         "message": "登录成功"
-      },
-      "webhookTest": {
-        "title": "测试成功",
-        "message": "Webhook 正常工作"
-      },
-      "copiedToClipboard": {
-        "title": "已复制到剪贴板"
       },
       "plexAccountLinked": {
         "title": "Plex 账户已链接",
@@ -62,39 +57,25 @@
       },
       "plexAccountReauthorized": {
         "title": "Plex账户已重新授权",
-        "message_one": "{{count}} 服务器已连接",
-        "message_other": "{{count}} 台服务器已连接",
         "messageNoServers": "帐户令牌已更新",
         "partial": "Token已更新，但{{names}}仍拒绝了它",
-        "unmatched": "令牌已更新，但 {{names}} 无法重新链接"
-      },
-      "agentAdded": {
-        "title": "代理已添加",
-        "message": "通知代理已添加"
-      },
-      "agentUpdated": {
-        "title": "代理已更新",
-        "message": "通知代理已更新"
-      },
-      "agentRemoved": {
-        "title": "代理已删除",
-        "message": "通知代理已被删除"
+        "unmatched": "令牌已更新，但 {{names}} 无法重新链接",
+        "message_other": "{{count}} 台服务器已连接"
       },
       "jobCompleted": {
-        "title": "任务已完成",
-        "message": "{{name}}成功完成"
+        "title": "任务已完成"
       },
       "automationCreated": {
         "title": "自动化操作已创建",
-        "message": "已成功创建规则"
+        "message": "已成功创建自动化"
       },
       "automationUpdated": {
         "title": "已更新自动化",
-        "message": "规则已成功更新"
+        "message": "已成功更新自动化"
       },
       "automationDeleted": {
         "title": "自动化操作已删除",
-        "message": "规则已成功删除"
+        "message": "已成功删除自动化"
       },
       "streamTerminated": {
         "title": "流已终止",
@@ -118,18 +99,15 @@
       },
       "sessionsDeleted": {
         "title": "会话已删除",
-        "message_one": "{{count}}会话已删除",
         "message_other": "{{count}}会话已删除"
       },
       "violationsAcknowledged": {
         "title": "确认违规行为",
-        "message_one": "{{count}}确认违规行为",
-        "message_other": "{{count}}确认违规行为"
+        "message_other": "已确认 {{count}} 条违规"
       },
       "violationsDismissed": {
-        "title": "违规情况已清除",
-        "message_one": "{{count}}违规情况已清除",
-        "message_other": "{{count}}违规情况已清除"
+        "title": "违规已忽略",
+        "message_other": "已忽略 {{count}} 条违规"
       },
       "apiKeyGenerated": {
         "title": "已生成API密钥",
@@ -150,7 +128,6 @@
       "identityUpdated": "个人资料已更新",
       "trustScoresReset": {
         "title": "重置信任分数",
-        "message_one": "{{count}}用户重置为100",
         "message_other": "{{count}}用户重置为100"
       },
       "claimCodeValidated": {
@@ -175,21 +152,21 @@
       "newsletterDuplicated": "通讯已复制",
       "newsletterTestQueued": "",
       "newsletterSendQueued": "发送队列中",
-      "newsletterRetryQueued": "",
       "brandingSaved": "邮件标记已保存",
       "suppressionAdded": "地址添加到抑制列表",
-      "suppressionRemoved": "地址已从抑制列表中删除"
+      "suppressionRemoved": "地址已从抑制列表中删除",
+      "newsletterRetryQueued_other": ""
     },
     "error": {
       "serverAddFailed": "添加服务器失败",
       "serverRemoveFailed": "删除服务器失败",
       "serverSyncFailed": "同步服务器失败",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "更新设置失败",
       "copyFailed": "无法复制到剪贴板",
-      "acknowledgeFailed": "无法识别违反行为",
-      "dismissFailed": "未能删除违规行为",
+      "acknowledgeFailed": "确认违规失败",
+      "dismissFailed": "忽略违规失败",
       "authFailed": "验证失败",
-      "webhookTestFailed": "Webhook 测试失败",
       "automationCreateFailed": "无法创建自动化",
       "automationUpdateFailed": "无法更新自动化",
       "automationDeleteFailed": "无法删除自动化",
@@ -207,15 +184,9 @@
       "deviceRenameFailed": "无法重命名设备",
       "sessionsRevokeFailed": "撤销会话失败",
       "identityUpdateFailed": "无法更新配置文件",
-      "trustScoresResetFailed": "重置信任分失败",
-      "routingUpdateFailed": "更新路由失败",
-      "clipboardFailed": "复制到剪贴板失败",
+      "trustScoresResetFailed": "重置信任分数失败",
       "plexUnlinkFailed": "取消链接Plex帐户失败",
       "plexReauthorizeFailed": "取消链接Plex帐户失败",
-      "agentAddFailed": "添加代理失败",
-      "agentUpdateFailed": "更新代理失败",
-      "agentRemoveFailed": "移除代理失败",
-      "agentTestFailed": "测试失败",
       "jobAlreadyRunning": "任务已在运行",
       "jobStartFailed": "启动任务失败",
       "jobLoadFailed": "加载维护任务失败",
@@ -223,7 +194,7 @@
       "plexDirectUrl": "plex.direct URL是此处不能使用的中继地址。请使用直接IP地址或主机名。",
       "userMergeFailed": "合并用户失败",
       "serverUserSplitFailed": "分割帐户失败",
-      "mergeSuggestionDismissFailed": "无法取消建议",
+      "mergeSuggestionDismissFailed": "无法忽略该建议",
       "mergeSuggestionRestoreFailed": "无法还原建议",
       "invalidClaimCode": {
         "title": "无效的索赔码",
@@ -248,8 +219,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "任务失败",
-        "message": "{{name}} 遇到错误"
+        "title": "任务失败"
       }
     },
     "info": {
@@ -263,44 +233,24 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "检测到共享违约行为",
-    "streamStarted": "流开始",
-    "streamEnded": "流结束",
-    "serverDown": "服务器连接丢失",
-    "serverUp": "服务器已重新上线",
-    "newDevice": "新设备",
-    "trustScoreChanged": "信任分数已更改"
-  },
   "settings": {
-    "title": "通知设置",
-    "allSeverity": "所有(下, 警告, 高)",
+    "allSeverity": "全部（低、警告、高）",
     "warningAndHigh": "仅警告和高",
     "highOnly": "仅限高严重度",
-    "allTypes": "全部类型",
     "rateLimit": "当前速率限制状态",
     "perMinute": "每分钟",
     "perHour": "每小时",
     "enablePushNotifications": "启用推送通知",
     "notificationEvents": "通知事件",
     "violationDetected": "检测到违规事件",
-    "violationDetectedDesc": "当触发共享违规行为",
     "streamStarted": "流开始",
-    "streamStartedDesc": "当用户开始观看时",
     "streamStopped": "流停止",
-    "streamStoppedDesc": "当用户停止关注时",
-    "concurrentStreams": "同步流",
-    "concurrentStreamsDesc": "当超过最大流量限制",
+    "concurrentStreams": "并发流",
     "newDevice": "新设备",
-    "newDeviceDesc": "当新设备连接时",
-    "trustScoreChanged": "信任得分已更改",
-    "trustScoreChangedDesc": "当用户信任得分变化时",
+    "trustScoreChanged": "信任分数已更改",
     "serverDown": "服务器关闭",
-    "serverDownDesc": "当媒体服务器离线时",
     "serverUp": "服务器已启动",
-    "serverUpDesc": "当媒体服务器返回上线时",
-    "violationFilters": "违规过滤器",
-    "minimumSeverity": "最小的严重级别",
+    "minimumSeverity": "最低严重程度",
     "quietHours": "安静时段",
     "enableQuietHours": "启用安静时间",
     "overrideForCritical": "覆盖临界值",

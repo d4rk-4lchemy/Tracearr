@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DESTINATION_KINDS,
+  DESTINATION_TEXT_PROFILES,
+  escapeDiscordMarkdown,
+  escapeFor,
   DESTINATION_TYPES,
   NOTIFICATION_EVENT_TYPES,
   SUBSCRIBABLE_EVENTS,
@@ -363,5 +366,41 @@ describe('email destination', () => {
   it('marks only the password as secret', () => {
     const secrets = DESTINATION_TYPES.email.fields.filter((f) => f.secret).map((f) => f.key);
     expect(secrets).toEqual(['password']);
+  });
+});
+
+describe('destination text profiles', () => {
+  it('backslash-escapes Discord markdown in a value', () => {
+    expect(escapeDiscordMarkdown('**a_b** ~c~ `d` |e| > # - [f](g) \\')).toBe(
+      '\\*\\*a\\_b\\*\\* \\~c\\~ \\`d\\` \\|e\\| \\> \\# \\- \\[f\\]\\(g\\) \\\\'
+    );
+  });
+
+  it('leaves URL runs unescaped and escapes the text around them', () => {
+    expect(
+      escapeDiscordMarkdown('see https://example.com/release_notes/v2.5.2-beta(1) for _it_')
+    ).toBe('see https://example.com/release_notes/v2.5.2-beta(1) for \\_it\\_');
+  });
+
+  it('leaves mentions as text; allowed_mentions stops them pinging', () => {
+    expect(escapeDiscordMarkdown('@everyone')).toBe('@everyone');
+  });
+
+  it('gives every destination kind a profile with the spec limits', () => {
+    expect(DESTINATION_TEXT_PROFILES.discord).toEqual({
+      escape: 'discordMarkdown',
+      title: { max: 256, unit: 'chars' },
+      body: { max: 4096, unit: 'chars' },
+    });
+    expect(DESTINATION_TEXT_PROFILES.ntfy.body).toEqual({ max: 4096, unit: 'bytes' });
+    expect(DESTINATION_TEXT_PROFILES.pushover.title).toEqual({ max: 250, unit: 'chars' });
+    expect(DESTINATION_TEXT_PROFILES.pushover.body).toEqual({ max: 1024, unit: 'chars' });
+    expect(DESTINATION_TEXT_PROFILES.push.body).toEqual({ max: 1024, unit: 'chars' });
+    expect(DESTINATION_TEXT_PROFILES.json_webhook).toEqual({
+      escape: 'none',
+      title: null,
+      body: null,
+    });
+    expect(escapeFor(DESTINATION_TEXT_PROFILES.gotify)('**x**')).toBe('**x**');
   });
 });

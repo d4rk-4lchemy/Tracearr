@@ -22,6 +22,7 @@ import {
   isTranscodingFromInfo,
   type StreamDecisions,
 } from '../../../utils/transcodeNormalizer.js';
+import { isAtmos } from '../../../utils/codecNormalizer.js';
 import type { MediaSession } from '../types.js';
 import type {
   SourceVideoDetails,
@@ -602,6 +603,10 @@ function extractSourceAudioDetails(stream: Record<string, unknown> | undefined):
   // Sample rate
   const sampleRate = parseOptionalNumber(stream.SampleRate);
   if (sampleRate) details.sampleRate = sampleRate;
+
+  const profile = parseOptionalString(stream.Profile);
+  if (profile) details.profile = profile;
+  if (isAtmos(profile, parseOptionalString(stream.Title))) details.atmos = true;
 
   return { codec, channels, details };
 }

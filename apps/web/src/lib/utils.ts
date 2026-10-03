@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getName as getCountryNameFromCode } from 'country-list';
-import { formatEpisodeLabel } from '@tracearr/shared';
+import { formatEpisodeLabel, type TranscodeInfo } from '@tracearr/shared';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -60,6 +60,22 @@ export function getSessionProgress(session: {
 }): number | null {
   if (!session.totalDurationMs || session.progressMs == null) return null;
   return Math.min(100, Math.round((session.progressMs / session.totalDurationMs) * 100));
+}
+
+/** Percent of the file the transcoder has ready; null for direct play or when the server sent nothing. */
+export function getBufferedPercent(session: {
+  transcodeInfo: TranscodeInfo | null;
+  totalDurationMs: number | null;
+}): number | null {
+  const info = session.transcodeInfo;
+  if (!info) return null;
+  if (info.maxOffsetAvailable != null && session.totalDurationMs) {
+    return Math.min(
+      100,
+      Math.round(((info.maxOffsetAvailable * 1000) / session.totalDurationMs) * 100)
+    );
+  }
+  return info.progress != null ? Math.min(100, Math.round(info.progress)) : null;
 }
 
 /**

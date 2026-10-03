@@ -1,12 +1,15 @@
 import { useId, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type {
-  AutomationFilterOptions,
-  Condition,
-  Server,
-  TemplateDefinition,
-  TemplateInput,
-  UnitSystem,
+import {
+  SEND_BODY_MAX,
+  SEND_TITLE_MAX,
+  variablesFor,
+  type AutomationFilterOptions,
+  type Condition,
+  type Server,
+  type TemplateDefinition,
+  type TemplateInput,
+  type UnitSystem,
 } from '@tracearr/shared';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import {
@@ -27,6 +30,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { NotificationTextField } from '@/components/automations/NotificationTextField';
 import { DestinationsField } from '@/components/automations/builder/DestinationsField';
 import { conditionValueView, FieldControl } from '@/components/automations/builder/fields';
 import { useUsers } from '@/hooks/queries/useUsers';
@@ -34,6 +38,7 @@ import {
   conditionFieldForInput,
   fieldDescriptor,
   messageSlotForInput,
+  sendTextSlotForInput,
   templateInputLabel,
 } from '@/lib/automations';
 
@@ -277,6 +282,27 @@ export function TemplateInputField({
 
       case 'text': {
         const text = typeof value === 'string' ? value : '';
+        const sendSlot = sendTextSlotForInput(definition, input.key);
+        if (sendSlot) {
+          const max = sendSlot === 'body' ? SEND_BODY_MAX : SEND_TITLE_MAX;
+          return (
+            <NotificationTextField
+              id={controlId}
+              aria-labelledby={labelId}
+              value={text}
+              onChange={(next) => onChange(next === '' ? undefined : next)}
+              variables={variablesFor(
+                definition.triggers.map((trigger) => ({
+                  type: trigger.type,
+                  enabled: trigger.enabled !== false,
+                }))
+              )}
+              multiline={sendSlot === 'body'}
+              maxLength={Math.min(input.maxLength ?? max, max)}
+              invalid={invalid}
+            />
+          );
+        }
         const props = {
           id: controlId,
           maxLength: input.maxLength,
@@ -297,6 +323,7 @@ export function TemplateInputField({
     input.kind === 'destinations' ||
     (input.kind === 'select' && input.multiple === true) ||
     (input.kind === 'text' && (input.maxLength ?? 0) > TEXTAREA_OVER) ||
+    sendTextSlotForInput(definition, input.key) === 'body' ||
     (input.kind === 'field_value' && descriptor?.valueType === 'multiSelect');
 
   const messageSlot = messageSlotForInput(definition, input.key);

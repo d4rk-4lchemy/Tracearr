@@ -10,16 +10,19 @@
         "message": "The server has been removed successfully"
       },
       "serverSynced": {
-        "title": "Server Synced",
-        "message": "Server data has been synchronized"
+        "title": "Server Synced"
+      },
+      "serverMarkedHistorical": {
+        "title": "Server marked historical",
+        "message": "Tracearr no longer contacts {{name}}. Its history stays."
+      },
+      "serverResumed": {
+        "title": "Server resumed",
+        "message": "Tracearr is contacting {{name}} again."
       },
       "settingsUpdated": {
         "title": "Settings Updated",
         "message": "Your settings have been saved"
-      },
-      "tokenCopied": {
-        "title": "Token Copied",
-        "message": "Pair token copied to clipboard"
       },
       "violationAcknowledged": {
         "title": "Violation Acknowledged",
@@ -38,19 +41,11 @@
         "message": "The device name has been updated"
       },
       "sessionsRevoked": {
-        "title": "Sessions Revoked",
-        "message": "All mobile sessions have been revoked"
+        "title": "Sessions Revoked"
       },
       "loggedIn": {
         "title": "Success",
         "message": "Logged in successfully"
-      },
-      "webhookTest": {
-        "title": "Test Successful",
-        "message": "Webhook is working correctly"
-      },
-      "copiedToClipboard": {
-        "title": "Copied to clipboard"
       },
       "plexAccountLinked": {
         "title": "Plex Account Linked",
@@ -68,21 +63,8 @@
         "partial": "Token updated, but {{names}} still refused it",
         "unmatched": "Token updated, but {{names}} could not be re-linked"
       },
-      "agentAdded": {
-        "title": "Agent Added",
-        "message": "The notification agent has been added"
-      },
-      "agentUpdated": {
-        "title": "Agent Updated",
-        "message": "The notification agent has been updated"
-      },
-      "agentRemoved": {
-        "title": "Agent Removed",
-        "message": "The notification agent has been removed"
-      },
       "jobCompleted": {
-        "title": "Job Completed",
-        "message": "{{name}} finished successfully"
+        "title": "Job Completed"
       },
       "automationCreated": {
         "title": "Automation Created",
@@ -175,7 +157,8 @@
       "newsletterDuplicated": "Newsletter duplicated",
       "newsletterTestQueued": "Test queued to {{address}}",
       "newsletterSendQueued": "Send queued",
-      "newsletterRetryQueued": "Retrying {{count}} recipients",
+      "newsletterRetryQueued_one": "Retrying {{count}} recipient",
+      "newsletterRetryQueued_other": "Retrying {{count}} recipients",
       "brandingSaved": "Email branding saved",
       "suppressionAdded": "Address added to the suppression list",
       "suppressionRemoved": "Address removed from the suppression list"
@@ -184,12 +167,12 @@
       "serverAddFailed": "Failed to add server",
       "serverRemoveFailed": "Failed to remove server",
       "serverSyncFailed": "Failed to sync server",
+      "serverHistoricalFailed": "Failed to change the server's status",
       "settingsUpdateFailed": "Failed to update settings",
       "copyFailed": "Could not copy to clipboard",
       "acknowledgeFailed": "Failed to acknowledge violation",
       "dismissFailed": "Failed to dismiss violation",
       "authFailed": "Authentication failed",
-      "webhookTestFailed": "Webhook test failed",
       "automationCreateFailed": "Failed to create automation",
       "automationUpdateFailed": "Failed to update automation",
       "automationDeleteFailed": "Failed to delete automation",
@@ -208,14 +191,8 @@
       "sessionsRevokeFailed": "Failed to revoke sessions",
       "identityUpdateFailed": "Could not update the profile",
       "trustScoresResetFailed": "Failed to reset trust scores",
-      "routingUpdateFailed": "Failed to update routing",
-      "clipboardFailed": "Failed to copy to clipboard",
       "plexUnlinkFailed": "Failed to unlink Plex account",
       "plexReauthorizeFailed": "Failed to reauthorize Plex account",
-      "agentAddFailed": "Failed to add agent",
-      "agentUpdateFailed": "Failed to update agent",
-      "agentRemoveFailed": "Failed to remove agent",
-      "agentTestFailed": "Test failed",
       "jobAlreadyRunning": "Job already running",
       "jobStartFailed": "Failed to start job",
       "jobLoadFailed": "Failed to load maintenance jobs",
@@ -248,8 +225,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "Job Failed",
-        "message": "{{name}} encountered an error"
+        "title": "Job Failed"
       }
     },
     "info": {
@@ -263,43 +239,23 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "Sharing Violation Detected",
-    "streamStarted": "Stream Started",
-    "streamEnded": "Stream Ended",
-    "serverDown": "Server Connection Lost",
-    "serverUp": "Server Back Online",
-    "newDevice": "New Device",
-    "trustScoreChanged": "Trust Score Changed"
-  },
   "settings": {
-    "title": "Notification Settings",
     "allSeverity": "All (Low, Warning, High)",
     "warningAndHigh": "Warning & High only",
     "highOnly": "High severity only",
-    "allTypes": "All Types",
     "rateLimit": "Current Rate Limit Status",
     "perMinute": "Per Minute",
     "perHour": "Per Hour",
     "enablePushNotifications": "Enable Push Notifications",
     "notificationEvents": "Notification Events",
     "violationDetected": "Violation Detected",
-    "violationDetectedDesc": "When a sharing violation is triggered",
     "streamStarted": "Stream Started",
-    "streamStartedDesc": "When a user starts watching",
     "streamStopped": "Stream Stopped",
-    "streamStoppedDesc": "When a user stops watching",
     "concurrentStreams": "Concurrent Streams",
-    "concurrentStreamsDesc": "When max stream limit is exceeded",
     "newDevice": "New Device",
-    "newDeviceDesc": "When a new device connects",
     "trustScoreChanged": "Trust Score Changed",
-    "trustScoreChangedDesc": "When a user's trust score changes",
     "serverDown": "Server Down",
-    "serverDownDesc": "When a media server goes offline",
     "serverUp": "Server Up",
-    "serverUpDesc": "When a media server comes back online",
-    "violationFilters": "Violation Filters",
     "minimumSeverity": "Minimum Severity",
     "quietHours": "Quiet Hours",
     "enableQuietHours": "Enable Quiet Hours",

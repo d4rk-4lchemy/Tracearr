@@ -369,4 +369,16 @@ describe('poller rediscovered-session guard against stop races', () => {
     expect(call.updatedSessions).toHaveLength(1);
     expect(call.updatedSessions[0].id).toBe(EXISTING_SESSION_ID);
   });
+
+  it('keeps a rediscovered paused row paused while Plex reports buffering', async () => {
+    mockUpdateWhere.mockResolvedValue([{ id: EXISTING_SESSION_ID }]);
+    mockFindActiveSession.mockResolvedValue(existingSessionRow({ state: 'paused' }));
+    mockMapMediaSession.mockReturnValue(processedSession({ state: 'playing', buffering: true }));
+
+    await triggerServerPoll('server-1');
+
+    expect(mockBuildActiveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ overrides: expect.objectContaining({ state: 'paused' }) })
+    );
+  });
 });

@@ -64,6 +64,7 @@ function itemRow(overrides: Record<string, unknown> = {}) {
     server_type: 'plex',
     server_url: 'http://plex.local:32400',
     server_token: 'tok',
+    server_historical_at: null,
     ...overrides,
   };
 }
@@ -116,6 +117,22 @@ describe('GET /library/duplicates/files', () => {
 
     const [statement] = vi.mocked(db.execute).mock.calls[0] ?? [];
     expect(JSON.stringify(statement)).toContain(SERVER_A);
+    expect(mockCreateClient).not.toHaveBeenCalled();
+  });
+
+  it('reports a historical server as not checked and never probes it', async () => {
+    vi.mocked(db.execute).mockResolvedValue({
+      rows: [itemRow({ server_historical_at: '2026-09-01T00:00:00.000Z' })],
+    } as never);
+
+    const app = await buildTestApp(
+      { userId: randomUUID(), username: 'owner', role: 'owner', serverIds: [] },
+      createSpyRedis()
+    );
+    const res = await app.inject({ url: `/library/duplicates/files?itemIds=${ITEM_A}` });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json<DuplicateFilesResponse>()).toEqual({ checked: false, files: [] });
     expect(mockCreateClient).not.toHaveBeenCalled();
   });
 

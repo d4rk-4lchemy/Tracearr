@@ -32,7 +32,7 @@ export function RealtimeSetupDialog({
   mode?: 'setup' | 'update';
   connectionStatus?: ServerConnectionStatus;
 }) {
-  const { t } = useTranslation(['settings']);
+  const { t } = useTranslation(['settings', 'common']);
   const repoUrl = t('servers.realtimeDialog.jellyfinRepoUrl');
   const isDispatcharr = server.type === 'dispatcharr';
   const issueKey =
@@ -133,25 +133,13 @@ export function RealtimeSetupDialog({
               </div>
             </>
           ) : (
-            <>
-              <ol className="list-decimal space-y-2 pl-4">
-                <li>
-                  Download the latest <strong>Tracearr.Sse.Emby</strong> release zip from the link
-                  below.
-                </li>
-                <li>Extract the plugin DLL into your Emby plugins folder.</li>
-                <li>Restart Emby, and Tracearr will detect it automatically.</li>
-              </ol>
-              <a
-                href={t('servers.realtimeDialog.embyReleasesUrl')}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary inline-flex items-center gap-1 hover:underline"
-              >
-                {t('servers.realtimeDialog.openReleases')}
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            </>
+            <ol className="list-decimal space-y-2 pl-4">
+              <li>In your Emby dashboard, go to Plugins &rarr; Catalog.</li>
+              <li>
+                Find <strong>Tracearr SSE</strong> in the Notifications row and install it.
+              </li>
+              <li>Restart Emby, and Tracearr will detect it automatically.</li>
+            </ol>
           )}
           <p className="text-xs">
             {isDispatcharr
@@ -162,7 +150,7 @@ export function RealtimeSetupDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            {t('servers.realtimeDialog.close')}
+            {t('common:actions.close')}
           </Button>
         </DialogFooter>
       </DialogContent>

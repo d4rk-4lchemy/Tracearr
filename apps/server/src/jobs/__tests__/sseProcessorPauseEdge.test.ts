@@ -140,6 +140,7 @@ vi.mock('../../services/serviceTracker.js', () => ({
   unregisterService: vi.fn(),
 }));
 
+import { shouldFlushDbWrite } from '../poller/dbWriteThrottle.js';
 import { initializeSSEProcessor, startSSEProcessor, stopSSEProcessor } from '../sseProcessor.js';
 
 const EXISTING_SESSION_ID = 'session-paused-1';
@@ -239,7 +240,10 @@ describe('SSE processor pause edge', () => {
     stopSSEProcessor();
   });
 
-  async function emit(event: 'plex:session:paused' | 'plex:session:playing'): Promise<void> {
+  async function emit(
+    event: 'plex:session:paused' | 'plex:session:playing' | 'plex:session:progress',
+    overrides: { state?: string } = {}
+  ): Promise<void> {
     mockSseManager.emit(event, {
       serverId: 'server-1',
       notification: {
@@ -247,6 +251,7 @@ describe('SSE processor pause edge', () => {
         ratingKey: '1001',
         clientIdentifier: 'device-1',
         viewOffset: 20_000,
+        ...overrides,
       },
     });
     await vi.waitFor(() => {
@@ -267,6 +272,7 @@ describe('SSE processor pause edge', () => {
   });
 
   it('dispatches nothing for a paused→paused update', async () => {
+    vi.mocked(shouldFlushDbWrite).mockReturnValueOnce(true);
     mockFindActiveSession.mockResolvedValue(existingSession('paused'));
 
     await emit('plex:session:paused');
@@ -284,5 +290,15 @@ describe('SSE processor pause edge', () => {
     );
     const types = mockDispatch.mock.calls.map((c) => (c[0] as { type: string }).type);
     expect(types).not.toContain('session.paused');
+  });
+
+  it('dispatches nothing when a paused row receives a buffering progress tick', async () => {
+    vi.mocked(shouldFlushDbWrite).mockReturnValueOnce(true);
+    mockFindActiveSession.mockResolvedValue(existingSession('paused'));
+
+    await emit('plex:session:progress', { state: 'buffering' });
+
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockCalculatePauseAccumulation).not.toHaveBeenCalled();
   });
 });

@@ -10,24 +10,27 @@
         "message": "تم إزالة الخادم بنجاح"
       },
       "serverSynced": {
-        "title": "مزامنة الخادم",
-        "message": "تم مزامنة بيانات الخادم"
+        "title": "مزامنة الخادم"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "تم تحديث الإعدادات",
         "message": "تم حفظ الإعدادات الخاصة بك"
-      },
-      "tokenCopied": {
-        "title": "تم نسخ الرمز",
-        "message": "تم نسخ رمز الاقتران إلى الحافظة"
       },
       "violationAcknowledged": {
         "title": "تم الاعتراف بالانتهاك",
         "message": "وقد وُسم الانتهاك بأنه معترف به"
       },
       "violationDismissed": {
-        "title": "تم إلغاء الانتهاك",
-        "message": "تم رفض المخالفة"
+        "title": "تم رفض الانتهاك",
+        "message": "تم رفض الانتهاك"
       },
       "deviceRemoved": {
         "title": "تم حذف الجهاز",
@@ -38,19 +41,11 @@
         "message": "تم تحديث اسم الجهاز"
       },
       "sessionsRevoked": {
-        "title": "الجلسات الملغاة",
-        "message": "تم إلغاء جميع الجلسات المتنقلة"
+        "title": "الجلسات الملغاة"
       },
       "loggedIn": {
         "title": "نجاح",
         "message": "تم تسجيل الدخول بنجاح"
-      },
-      "webhookTest": {
-        "title": "تم الاختبار بنجاح",
-        "message": "يعمل Webhook بشكل صحيح"
-      },
-      "copiedToClipboard": {
-        "title": "نسخ إلى الحافظة"
       },
       "plexAccountLinked": {
         "title": "حساب Plex مرتبط",
@@ -62,27 +57,18 @@
       },
       "plexAccountReauthorized": {
         "title": "",
-        "message_one": "",
-        "message_other": "",
         "messageNoServers": "",
         "partial": "",
-        "unmatched": ""
-      },
-      "agentAdded": {
-        "title": "تم إضافة الوكيل",
-        "message": "تم إضافة وكيل الإخطار"
-      },
-      "agentUpdated": {
-        "title": "تم تحديث الوكيل",
-        "message": "تم تحديث وكيل الإخطار"
-      },
-      "agentRemoved": {
-        "title": "تم حذف الوكيل",
-        "message": "تم إزالة وكيل الإخطار"
+        "unmatched": "",
+        "message_zero": "",
+        "message_one": "",
+        "message_two": "",
+        "message_few": "",
+        "message_many": "",
+        "message_other": ""
       },
       "jobCompleted": {
-        "title": "اكتمل العمل",
-        "message": ""
+        "title": "اكتمل العمل"
       },
       "automationCreated": {
         "title": "",
@@ -97,7 +83,7 @@
         "message": ""
       },
       "streamTerminated": {
-        "title": "توقف البث",
+        "title": "تم إنهاء البث",
         "message": "تم إيقاف جلسة التشغيل"
       },
       "serverUrlUpdated": {
@@ -118,17 +104,29 @@
       },
       "sessionsDeleted": {
         "title": "الجلسات المحذوفة",
+        "message_zero": "",
         "message_one": "تم حذف جلسة {{count}}",
+        "message_two": "",
+        "message_few": "",
+        "message_many": "",
         "message_other": ""
       },
       "violationsAcknowledged": {
         "title": "الانتهاكات المعترف بها",
+        "message_zero": "",
         "message_one": "",
+        "message_two": "",
+        "message_few": "",
+        "message_many": "",
         "message_other": "تم الاعتراف بانتهاكات {{count}}"
       },
       "violationsDismissed": {
-        "title": "تم إلغاء الانتهاكات",
-        "message_one": "رفض المخالفة {{count}}",
+        "title": "تم رفض الانتهاكات",
+        "message_zero": "",
+        "message_one": "تم رفض {{count}} انتهاك",
+        "message_two": "",
+        "message_few": "",
+        "message_many": "",
         "message_other": "تم رفض انتهاكات {{count}}"
       },
       "apiKeyGenerated": {
@@ -150,8 +148,12 @@
       "identityUpdated": "",
       "trustScoresReset": {
         "title": "إعادة تعيين نقاط الثقة",
+        "message_zero": "",
         "message_one": "",
-        "message_other": "{{count}} إعادة تعيين المستخدمين إلى 100"
+        "message_two": "",
+        "message_few": "",
+        "message_many": "",
+        "message_other": "تمت إعادة تعيين {{count}} مستخدمين إلى 100"
       },
       "claimCodeValidated": {
         "title": "تم التحقق من صحة رمز المطالبة",
@@ -175,21 +177,26 @@
       "newsletterDuplicated": "",
       "newsletterTestQueued": "",
       "newsletterSendQueued": "",
-      "newsletterRetryQueued": "",
       "brandingSaved": "",
       "suppressionAdded": "",
-      "suppressionRemoved": ""
+      "suppressionRemoved": "",
+      "newsletterRetryQueued_zero": "",
+      "newsletterRetryQueued_one": "",
+      "newsletterRetryQueued_two": "",
+      "newsletterRetryQueued_few": "",
+      "newsletterRetryQueued_many": "",
+      "newsletterRetryQueued_other": ""
     },
     "error": {
       "serverAddFailed": "فشل في إضافة الخادم",
       "serverRemoveFailed": "فشل في إزالة الخادم",
       "serverSyncFailed": "فشل في مزامنة الخادم",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "فشل تحديث الإعدادات",
       "copyFailed": "تعذر النسخ إلى الحافظة",
-      "acknowledgeFailed": "فشل في الإقرار بالانتهاك",
+      "acknowledgeFailed": "فشل في الاعتراف بالانتهاك",
       "dismissFailed": "فشل في رفض الانتهاك",
       "authFailed": "فشل المصادقة",
-      "webhookTestFailed": "فشل اختبار Webhook",
       "automationCreateFailed": "",
       "automationUpdateFailed": "",
       "automationDeleteFailed": "",
@@ -202,20 +209,14 @@
       "apiKeyGenerateFailed": "فشل في إنشاء مفتاح API",
       "mobileAccessEnableFailed": "فشل في تمكين الوصول إلى الجوال",
       "mobileAccessDisableFailed": "فشل في تعطيل الوصول إلى الجوال",
-      "pairTokenGenerateFailed": "فشل في إنشاء الرمز المميز للزوج",
+      "pairTokenGenerateFailed": "فشل في إنشاء رمز الإقران",
       "deviceRemoveFailed": "فشل في إزالة الجهاز",
       "deviceRenameFailed": "فشل في إعادة تسمية الجهاز",
       "sessionsRevokeFailed": "فشل في إلغاء الجلسات",
       "identityUpdateFailed": "",
       "trustScoresResetFailed": "فشل في إعادة تعيين نقاط الثقة",
-      "routingUpdateFailed": "فشل تحديث المسار",
-      "clipboardFailed": "فشل النسخ إلى الحافظة",
       "plexUnlinkFailed": "فشل فك ربط حساب Plex",
       "plexReauthorizeFailed": "",
-      "agentAddFailed": "فشل في إضافة وكيل",
-      "agentUpdateFailed": "فشل تحديث الوكيل",
-      "agentRemoveFailed": "فشل في إزالة الوكيل",
-      "agentTestFailed": "فشل الاختبار",
       "jobAlreadyRunning": "العمل قيد التشغيل مسبقاً",
       "jobStartFailed": "فشل في بدء المهمة",
       "jobLoadFailed": "فشل تحميل مهام الصيانة",
@@ -248,8 +249,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "فشل العمل",
-        "message": ""
+        "title": "فشل العمل"
       }
     },
     "info": {
@@ -263,43 +263,23 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "تم اكتشاف انتهاك المشاركة",
-    "streamStarted": "بدأ البث",
-    "streamEnded": "انتهى البث",
-    "serverDown": "فقدت اتصال الخادم",
-    "serverUp": "خادم الرجوع على الإنترنت",
-    "newDevice": "جهاز جديد",
-    "trustScoreChanged": "تم تغيير نقاط الثقة"
-  },
   "settings": {
-    "title": "إعدادات الإشعارات",
     "allSeverity": "الكل (منخفض، تحذير، عالي)",
     "warningAndHigh": "تحذير و ارتفاع فقط",
-    "highOnly": "شدة عالية فقط",
-    "allTypes": "جميع الأنواع",
+    "highOnly": "الخطورة العالية فقط",
     "rateLimit": "حالة حد المعدل الحالي",
     "perMinute": "لكل دقيقة",
     "perHour": "لكل ساعة",
     "enablePushNotifications": "تمكين الإشعارات",
     "notificationEvents": "أحداث الإشعارات",
     "violationDetected": "تم اكتشاف انتهاك",
-    "violationDetectedDesc": "عندما يتم تشغيل مخالفة المشاركة",
     "streamStarted": "بدأ البث",
-    "streamStartedDesc": "عندما يبدأ المستخدم في المشاهدة",
     "streamStopped": "توقف البث",
-    "streamStoppedDesc": "عندما يتوقف المستخدم عن مشاهدة",
     "concurrentStreams": "البث المتزامن",
-    "concurrentStreamsDesc": "عند تجاوز الحد الأقصى للبث",
     "newDevice": "جهاز جديد",
-    "newDeviceDesc": "عندما يتصل جهاز جديد",
     "trustScoreChanged": "تم تغيير نقاط الثقة",
-    "trustScoreChangedDesc": "عند تغيير نقاط ثقة المستخدم",
-    "serverDown": "السيرفر أسفل",
-    "serverDownDesc": "عندما يتحول خادم الوسائط إلى غير متصل",
-    "serverUp": "سيرفر لأعلى",
-    "serverUpDesc": "عندما يعود خادم الوسائط إلى الإنترنت",
-    "violationFilters": "فلاتر المخالفة",
+    "serverDown": "الخادم متوقف",
+    "serverUp": "الخادم يعمل",
     "minimumSeverity": "أدنى درجة من الخطورة",
     "quietHours": "ساعات هادئة",
     "enableQuietHours": "تمكين ساعات الهدوء",

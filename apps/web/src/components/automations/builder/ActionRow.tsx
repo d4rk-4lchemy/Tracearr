@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { LeafAction } from '@tracearr/shared';
+import type { LeafAction, TemplateVariable } from '@tracearr/shared';
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item';
 import {
   actionHint,
@@ -13,11 +13,13 @@ import { cn } from '@/lib/utils';
 import { idOf, nodeDomId, type BuilderDispatch } from './builderReducer';
 import { ActionConfigField } from './fields';
 import { RowActions, RowIssues, RowWarning } from './RowActions';
+import { SendMessageSection } from './SendMessageSection';
 import type { RowProps } from './useRowKeyboard';
 import type { BuilderIssue } from './validation';
 
 interface ActionRowProps {
   action: LeafAction;
+  variables: readonly TemplateVariable[];
   issues: BuilderIssue[] | undefined;
   pulsing: boolean;
   rowProps: RowProps;
@@ -31,6 +33,7 @@ interface ActionRowProps {
 /** One thing the automation does, with everything it needs on the row itself. */
 export function ActionRow({
   action,
+  variables,
   issues,
   pulsing,
   rowProps,
@@ -82,6 +85,9 @@ export function ActionRow({
             />
           ))}
         </div>
+        {action.type === 'send' && (
+          <SendMessageSection action={action} variables={variables} dispatch={dispatch} />
+        )}
         {hint && <RowWarning message={hint} />}
         <RowIssues issues={issues} />
       </ItemContent>

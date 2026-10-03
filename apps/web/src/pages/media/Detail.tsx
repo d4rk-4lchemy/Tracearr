@@ -46,7 +46,7 @@ const HISTORY_HEAD_CLASS = 'text-foreground h-10 px-2 font-medium whitespace-now
 const HISTORY_CELL_CLASS = 'p-2 whitespace-nowrap';
 
 function NotFoundState() {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-4 py-20 text-center">
       <h1 className="text-xl font-semibold">{t('media.detail.notFound.title')}</h1>
@@ -110,7 +110,7 @@ function HistoryPanel({
   onLoadMore: () => void;
   onRowClick: (sessionId: string) => void;
 }) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -169,16 +169,16 @@ function HistoryPanel({
                 }}
               >
                 <div role="columnheader" className={HISTORY_HEAD_CLASS}>
-                  {t('media.detail.history.columns.date')}
+                  {t('common:labels.date')}
                 </div>
                 <div role="columnheader" className={HISTORY_HEAD_CLASS}>
-                  {t('media.detail.history.columns.user')}
+                  {t('common:labels.user')}
                 </div>
                 <div role="columnheader" className={HISTORY_HEAD_CLASS}>
-                  {t('media.detail.history.columns.content')}
+                  {t('common:labels.content')}
                 </div>
                 <div role="columnheader" className={HISTORY_HEAD_CLASS}>
-                  {t('media.detail.history.columns.server')}
+                  {t('common:labels.server')}
                 </div>
                 <div role="columnheader" className={cn(HISTORY_HEAD_CLASS, 'text-right')}>
                   {t('media.detail.history.columns.duration')}

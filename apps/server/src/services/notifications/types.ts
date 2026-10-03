@@ -2,6 +2,7 @@
  * Notification payload types shared by every destination type module.
  */
 
+import { renderText, resolveVariable } from '@tracearr/shared';
 import { MEDIA_QUALITY_FIELDS } from '../automations/types.js';
 import {
   formatMediaAddedMessage,
@@ -9,8 +10,14 @@ import {
   mediaHeadline,
   parentName,
   qualityText,
+  episodeHeadline,
 } from './formatters/media.js';
-import type { ViolationWithDetails, ActiveSession, NotificationEventType } from '@tracearr/shared';
+import type {
+  ViolationWithDetails,
+  ActiveSession,
+  NotificationEventType,
+  NotificationPriority,
+} from '@tracearr/shared';
 import type { MediaQuality } from '../automations/types.js';
 import type {
   MediaEventPayload,
@@ -181,7 +188,13 @@ export interface NotificationPayload {
   imageUrl?: string;
 
   /** The automation whose send produced this, with whatever text it overrode already rendered. */
-  automation?: { id: string; name: string; title?: string; message?: string };
+  automation?: {
+    id: string;
+    name: string;
+    title?: string;
+    message?: string;
+    priority?: NotificationPriority;
+  };
 }
 
 /**
@@ -383,6 +396,19 @@ function scalar(value: unknown): string {
   return '';
 }
 
+const numberOrNull = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+
+function sessionName(s: {
+  mediaType: string;
+  grandparentTitle: string | null;
+  mediaTitle: string;
+  seasonNumber: number | null;
+  episodeNumber: number | null;
+}): string {
+  if (s.mediaType !== 'episode' || !s.grandparentTitle) return s.mediaTitle;
+  return episodeHeadline(s.grandparentTitle, s.mediaTitle, s.seasonNumber, s.episodeNumber);
+}
+
 function mediaVariables(payload: MediaEventPayload): Record<string, string> {
   return {
     'media.title': payload.title,
@@ -435,6 +461,14 @@ function variablesOf(event: NotificationEvent): Record<string, string> {
       return {
         'user.username': v.user.username,
         'user.identityName': v.user.identityName ?? v.user.username,
+        'session.name': sessionName({
+          mediaType: scalar(data.mediaType),
+          grandparentTitle:
+            typeof data.grandparentTitle === 'string' ? data.grandparentTitle : null,
+          mediaTitle: scalar(data.mediaTitle),
+          seasonNumber: numberOrNull(data.seasonNumber),
+          episodeNumber: numberOrNull(data.episodeNumber),
+        }),
         'session.mediaTitle': scalar(data.mediaTitle),
         'session.mediaType': scalar(data.mediaType),
         'session.sourceDynamicRange': scalar(data.sourceDynamicRange),
@@ -454,6 +488,13 @@ function variablesOf(event: NotificationEvent): Record<string, string> {
       return {
         'user.username': s.user.username,
         'user.identityName': s.user.identityName ?? s.user.username,
+        'session.name': sessionName({
+          mediaType: s.mediaType,
+          grandparentTitle: s.grandparentTitle ?? null,
+          mediaTitle: s.mediaTitle,
+          seasonNumber: s.seasonNumber ?? null,
+          episodeNumber: s.episodeNumber ?? null,
+        }),
         'session.mediaTitle': s.mediaTitle,
         'session.mediaType': s.mediaType,
         'session.sourceDynamicRange': s.sourceVideoDetails?.dynamicRange ?? '',
@@ -493,8 +534,8 @@ function variablesOf(event: NotificationEvent): Record<string, string> {
     }
     case 'tracearr_update_available':
       return {
-        current: event.payload.current,
-        latest: event.payload.latest,
+        installedVersion: event.payload.current,
+        latestVersion: event.payload.latest,
         releaseUrl: event.payload.releaseUrl,
       };
     case 'media_added':
@@ -538,17 +579,24 @@ function variablesOf(event: NotificationEvent): Record<string, string> {
   }
 }
 
-const VARIABLE = /\{\{\s*([\w.]+)\s*\}\}/g;
+const identity = (value: string): string => value;
 
-/** A name the trigger does not offer renders as nothing rather than leaving the braces in. */
-export function renderTemplate(template: string, variables: Record<string, string>): string {
-  return template.replace(VARIABLE, (_match, name: string) => variables[name] ?? '');
+/** Rendered text, or undefined when it came out blank so the default text stands. */
+function renderField(
+  template: string | undefined,
+  variables: Record<string, string>,
+  escape: (value: string) => string
+): string | undefined {
+  if (template === undefined) return undefined;
+  const text = renderText(template, (name) => variables[resolveVariable(name)], escape);
+  return text.trim() === '' ? undefined : text;
 }
 
 /** One NotificationPayload per event; an automation's send may override the text. */
 export function toNotificationPayload(
   event: NotificationEvent,
-  source: NotificationSource
+  source: NotificationSource,
+  escape: (value: string) => string = identity
 ): NotificationPayload {
   const base = ((): NotificationPayload => {
     switch (event.type) {
@@ -589,14 +637,11 @@ export function toNotificationPayload(
         return PayloadBuilders.fromNewsletterSend(event.payload);
     }
   })();
-  if (source.kind === 'rule') {
-    return { ...base, title: source.title, message: source.message };
-  }
   if (source.kind !== 'automation') return base;
 
   const variables = variablesOf(event);
-  const title = source.title === undefined ? undefined : renderTemplate(source.title, variables);
-  const message = source.body === undefined ? undefined : renderTemplate(source.body, variables);
+  const title = renderField(source.title, variables, escape);
+  const message = renderField(source.body, variables, escape) ?? source.defaultBody;
   return {
     ...base,
     title: title ?? base.title,
@@ -606,6 +651,7 @@ export function toNotificationPayload(
       name: source.automationName,
       ...(title !== undefined && { title }),
       ...(message !== undefined && { message }),
+      ...(source.priority !== undefined && { priority: source.priority }),
     },
   };
 }

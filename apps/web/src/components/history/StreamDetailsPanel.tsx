@@ -410,7 +410,9 @@ export function StreamDetailsPanel({
             <SectionColumnLabels className="border-border/50 mb-1 border-b pb-1" />
             <ComparisonRow
               label="Codec"
-              sourceValue={formatCodec(sourceAudioCodec)}
+              sourceValue={
+                formatCodec(sourceAudioCodec) + (sourceAudioDetails?.atmos ? ' Atmos' : '')
+              }
               streamValue={formatCodec(streamAudioCodec ?? sourceAudioCodec)}
             />
             <ComparisonRow
