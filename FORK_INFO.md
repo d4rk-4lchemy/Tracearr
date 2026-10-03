@@ -46,9 +46,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `dd6818583`
-- Last shared upstream commit found during inspection: `762c15e45` (before merge)
-- Latest upstream commit merged into the current working tree: `dd6818583`
+- Source branch/SHA inspected: `main` at `7eb029ab6`
+- Last shared upstream commit found during inspection: `dd6818583` (before merge)
+- Latest upstream commit merged into the current working tree: `7eb029ab6`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -59,6 +59,54 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## October 3, 2026 — Tracearr 2.6.1 upstream merge
+
+Upstream `main` at `7eb029ab6` adds catalog video/audio codec and channel
+filters, links from quality charts into filtered browsing, episode numbering
+for watched items removed from the library, explicit trailer labels, and
+Crowdin updates. The new codec-options query uses `mediaLibraryServerIds`,
+preserving Dispatcharr's exclusion from library browsing. Dashboard trailer
+labels are applied after the fork's channel/programme title mapping; uncropped
+artwork, brightness dimming, transparent slots and Catch-up presentation remain
+intact. The mixed-server codec scope and trailer/year cases have regression
+coverage alongside the existing Dispatcharr and artwork tests.
+
+The basemap conflict combines upstream's three-newest-build fallback with the
+fork's v4 metadata selection, explicit build-pin validation and atomic output.
+Each failed attempt removes its partial file before trying the next archive;
+an exhausted download leaves any existing output intact. A pinned build never
+falls back to another date. Ten stubbed script checks and shell syntax validation
+passed without contacting Protomaps. Both Dockerfiles remain unchanged.
+
+Exactly the PR-only CI and fork dual-registry release workflows remain
+unchanged, including the four native build publication gate. Helm version
+changes were excluded per MERGE_INSTRUCTION.md. Upstream migrations remain
+byte-for-byte aligned with the source checkout, and fork migrations are unchanged.
+
+Full non-Docker validation passed with Node 24.21.0 / pnpm 12.4.2, a cleared
+Turbo cache, frozen-lockfile install, 4 GB heap, two Vitest workers and Turbo
+concurrency one. Heavy jobs ran sequentially on the 8 GB LXC. Lint, typecheck,
+translations, unit/services/routes/auth/security, web, coverage and build all
+passed. The five server groups plus web passed 9,340 tests; coverage passed
+6,000 tests (71.12% statements, 65.00% branches, 75.33% functions, 72.33% lines).
+The first web run caught missing translation setup in the two new trailer
+tests; after fixing the fixture, all 1,873 web tests passed. Final lint has
+764 warnings, down two from the previous 766 baseline; upstream removed two
+non-null assertions in watched-media pagination. Initial lint ran against
+stale shared declarations and reported 777 warnings; rebuilding dependencies
+and rerunning the full lint removed those transient diagnostics.
+Translations reports 290 absent keys (ten new codec/browse labels in each of
+29 locales), with English fallback; no translation-check errors. Warning
+counts and logs are recorded in `.tmp/github-ci-warning-reference.md` and
+`.tmp/merge-261-<job>-20261003.log` (successful web/lint/typecheck reruns use
+`-final`). Changed conflict-resolution files also passed Prettier.
+
+Docker integration and E2E were explicitly omitted at the user's request.
+Docker image builds, live-provider smoke checks and database upgrade execution
+were not performed. SQL changes to catalog filters and removed-episode
+numbering therefore have automated unit/route coverage but were not executed
+against PostgreSQL in this validation.
 
 ## October 3, 2026 upstream merge
 

@@ -435,6 +435,68 @@ describe('listWatchedMedia', () => {
     expect(row?.show_media_id).toBe(showId);
     expect(row?.show_tvdb_id).toBe(750001);
   });
+
+  it('keeps the numbers of a watched episode whose every copy was removed', async () => {
+    const server = await createTestServer({ type: 'plex' });
+    const user = await createTestUser({ role: 'member' });
+    const account = await createTestServerUser({ userId: user.id, serverId: server.id });
+
+    const showId = await resolveMediaForItem({
+      mediaType: 'show',
+      tvdbId: 750101,
+      title: 'Deleted Episode Show',
+      year: 2022,
+      serverId: server.id,
+      ratingKey: 'deleted-show',
+    });
+    const episodeId = await resolveMediaForItem({
+      mediaType: 'episode',
+      title: 'Deleted Episode',
+      year: 2022,
+      serverId: server.id,
+      ratingKey: 'deleted-ep',
+      showMediaId: showId,
+    });
+    await createTestLibraryItem({
+      serverId: server.id,
+      ratingKey: 'deleted-ep',
+      mediaType: 'episode',
+      mediaId: episodeId,
+      parentIndex: 5,
+      itemIndex: 2,
+      removedAt: new Date(),
+    });
+
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaType: 'episode',
+      mediaId: episodeId,
+      showMediaId: showId,
+      ratingKey: 'deleted-ep',
+      durationMs: 1_800_000,
+      totalDurationMs: 1_800_000,
+      referenceId: null,
+      watched: true,
+    });
+
+    await refreshPlaysAggregate();
+
+    const { data } = await listWatchedMedia({
+      kind: 'episode',
+      userId: null,
+      serverIds: [server.id],
+      minState: 'watched',
+      pageSize: 100,
+      cursorValue: null,
+    });
+
+    const row = data.find((r) => r.media_id === episodeId);
+    expect(row?.tvdb_id).toBeNull();
+    expect(row?.season_number).toBe(5);
+    expect(row?.episode_number).toBe(2);
+  });
+
   it('walks every page exactly once and stops, paging over the ordered candidate list', async () => {
     const server = await createTestServer({ type: 'plex' });
     const user = await createTestUser({ role: 'member' });

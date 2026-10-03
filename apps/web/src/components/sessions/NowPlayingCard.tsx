@@ -110,9 +110,13 @@ function PlaybackOverlay({ isPaused }: { isPaused: boolean }) {
 }
 
 export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
-  const { title, subtitle } = getCardMediaDisplay(session);
+  const { title, subtitle: mediaSubtitle } = getCardMediaDisplay(session);
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'pages']);
+  const subtitle =
+    session.mediaType === 'trailer'
+      ? [t('pages:automations.options.trailer'), mediaSubtitle].filter(Boolean).join(' · ')
+      : mediaSubtitle;
   const { isMultiServer } = useServer();
   const [showTerminateDialog, setShowTerminateDialog] = useState(false);
 

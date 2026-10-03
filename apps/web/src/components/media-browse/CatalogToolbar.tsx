@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import {
   RESOLUTION_LABELS,
+  formatMediaTech,
   type GenreRow,
   type LibraryOption,
   type WatchedState,
@@ -50,10 +51,34 @@ export interface PersistedGridFilters {
   atmos?: boolean;
   sizeGbMin?: number;
   sizeGbMax?: number;
+  /** Codec display names as the Quality page charts show them ('HEVC', 'EAC3'). */
+  videoCodec?: string;
+  audioCodec?: string;
+  /** Channel layout as the charts name it ('Stereo', '5.1'). */
+  audioChannels?: string;
   sort: CatalogSort;
 }
 
 export const DEFAULT_GRID_FILTERS: PersistedGridFilters = { sort: 'title' };
+
+export function activeFilterCount(filters: PersistedGridFilters): number {
+  return [
+    filters.watched,
+    filters.resolution,
+    filters.genre,
+    filters.yearFrom,
+    filters.yearTo,
+    filters.serverId,
+    filters.libraryKey,
+    filters.hdr,
+    filters.atmos,
+    filters.sizeGbMin,
+    filters.sizeGbMax,
+    filters.videoCodec,
+    filters.audioCodec,
+    filters.audioChannels,
+  ].filter((value) => value !== undefined).length;
+}
 const SORT_OPTIONS: CatalogSort[] = ['title', 'added', 'year', 'plays', 'watch_time', 'viewers'];
 const WATCHED_OPTIONS: WatchedState[] = ['unwatched', 'partial', 'watched'];
 
@@ -153,6 +178,40 @@ function parseSizeGbInput(raw: string): number | undefined {
   return Math.min(value, SIZE_GB_MAX);
 }
 
+interface CodecSelectProps {
+  label: string;
+  allLabel: string;
+  value: string | undefined;
+  options: string[];
+  onChange: (value: string | undefined) => void;
+}
+
+function CodecSelect({ label, allLabel, value, options, onChange }: CodecSelectProps) {
+  // A codec arriving from a Quality page link may be absent from this type's list; keep it selectable.
+  const items = value && !options.includes(value) ? [value, ...options] : options;
+  return (
+    <div className="space-y-1.5">
+      <span className="text-muted-foreground block text-xs">{label}</span>
+      <Select
+        value={value ?? ALL_SENTINEL}
+        onValueChange={(next) => onChange(next === ALL_SENTINEL ? undefined : next)}
+      >
+        <SelectTrigger aria-label={label}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_SENTINEL}>{allLabel}</SelectItem>
+          {items.map((codec) => (
+            <SelectItem key={codec} value={codec}>
+              {formatMediaTech(codec)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 interface FilterChipProps {
   label: string;
   removeLabel: string;
@@ -185,6 +244,9 @@ interface CatalogToolbarProps {
   genres: GenreRow[];
   servers: { id: string; name: string; historicalAt?: string | null }[];
   libraries: LibraryOption[];
+  videoCodecs: string[];
+  audioCodecs: string[];
+  audioChannelOptions: string[];
   totalItems: number | undefined;
   totalFileSize: number | undefined;
   /** The letter-scrubber Select, rendered inside the mobile filter Sheet only. */
@@ -202,6 +264,9 @@ export function CatalogToolbar({
   genres,
   servers,
   libraries,
+  videoCodecs,
+  audioCodecs,
+  audioChannelOptions,
   totalItems,
   totalFileSize,
   mobileScrubber,
@@ -315,19 +380,7 @@ export function CatalogToolbar({
   const showLibraryGroups = librariesByServer.size > 1;
   const selectedLibrary = gridLibraries.find((lib) => libraryKeyFor(lib) === filters.libraryKey);
 
-  const activeFilterCount = [
-    filters.watched,
-    filters.resolution,
-    filters.genre,
-    filters.yearFrom,
-    filters.yearTo,
-    filters.serverId,
-    filters.libraryKey,
-    filters.hdr,
-    filters.atmos,
-    filters.sizeGbMin,
-    filters.sizeGbMax,
-  ].filter((v) => v !== undefined).length;
+  const filterCount = activeFilterCount(filters);
 
   const chips = useMemo(() => {
     const list: { key: string; label: string; onRemove: () => void }[] = [];
@@ -393,6 +446,27 @@ export function CatalogToolbar({
         key: 'atmos',
         label: t('media.grid.toolbar.atmosChip'),
         onRemove: () => onFiltersChange({ ...filters, atmos: undefined }),
+      });
+    }
+    if (filters.videoCodec) {
+      list.push({
+        key: 'videoCodec',
+        label: formatMediaTech(filters.videoCodec),
+        onRemove: () => onFiltersChange({ ...filters, videoCodec: undefined }),
+      });
+    }
+    if (filters.audioCodec) {
+      list.push({
+        key: 'audioCodec',
+        label: formatMediaTech(filters.audioCodec),
+        onRemove: () => onFiltersChange({ ...filters, audioCodec: undefined }),
+      });
+    }
+    if (filters.audioChannels) {
+      list.push({
+        key: 'audioChannels',
+        label: formatMediaTech(filters.audioChannels),
+        onRemove: () => onFiltersChange({ ...filters, audioChannels: undefined }),
       });
     }
     if (filters.sizeGbMin !== undefined || filters.sizeGbMax !== undefined) {
@@ -478,6 +552,14 @@ export function CatalogToolbar({
         </Select>
       </div>
 
+      <CodecSelect
+        label={t('media.grid.toolbar.videoCodecLabel')}
+        allLabel={t('media.grid.toolbar.videoCodecAll')}
+        value={filters.videoCodec}
+        options={videoCodecs}
+        onChange={(videoCodec) => onFiltersChange({ ...filters, videoCodec })}
+      />
+
       <div className="space-y-1.5">
         <span className="text-muted-foreground block text-xs">
           {t('media.grid.toolbar.hdrLabel')}
@@ -497,6 +579,22 @@ export function CatalogToolbar({
           </SelectContent>
         </Select>
       </div>
+
+      <CodecSelect
+        label={t('media.grid.toolbar.audioCodecLabel')}
+        allLabel={t('media.grid.toolbar.audioCodecAll')}
+        value={filters.audioCodec}
+        options={audioCodecs}
+        onChange={(audioCodec) => onFiltersChange({ ...filters, audioCodec })}
+      />
+
+      <CodecSelect
+        label={t('media.grid.toolbar.audioChannelsLabel')}
+        allLabel={t('media.grid.toolbar.audioChannelsAll')}
+        value={filters.audioChannels}
+        options={audioChannelOptions}
+        onChange={(audioChannels) => onFiltersChange({ ...filters, audioChannels })}
+      />
 
       <div className="space-y-1.5">
         <span className="text-muted-foreground block text-xs">
@@ -689,9 +787,9 @@ export function CatalogToolbar({
     <Button variant="outline" size="sm" className="h-9 gap-1.5">
       <SlidersHorizontal className="h-3.5 w-3.5" />
       {t('media.grid.toolbar.filtersLabel')}
-      {activeFilterCount > 0 && (
+      {filterCount > 0 && (
         <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-          {activeFilterCount}
+          {filterCount}
         </Badge>
       )}
     </Button>

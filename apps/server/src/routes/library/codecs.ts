@@ -64,32 +64,41 @@ interface LibraryCodecsResponse {
  * Aggregate and normalize codec counts, returning top entries plus "Other"
  */
 function aggregateCodecs(
-  rows: Array<{ codec: string | null; count: number }>,
+  rows: Array<{ codec: string | null; count: number; media_type?: string }>,
   normalizer: (codec: string | null) => string,
   topN: number = 7
 ): { codecs: CodecEntry[]; total: number } {
-  // Group by normalized codec name
-  const codecMap = new Map<string, number>();
+  // Group by normalized codec name; rows carrying media_type also split movies from episodes
+  const codecMap = new Map<string, { count: number; movies: number; episodes: number }>();
+  const byType = rows.some((row) => row.media_type !== undefined);
   let total = 0;
 
   for (const row of rows) {
     const normalized = normalizer(row.codec);
-    const existing = codecMap.get(normalized) ?? 0;
-    codecMap.set(normalized, existing + row.count);
+    const entry = codecMap.get(normalized) ?? { count: 0, movies: 0, episodes: 0 };
+    entry.count += row.count;
+    if (row.media_type === 'movie') entry.movies += row.count;
+    if (row.media_type === 'episode') entry.episodes += row.count;
+    codecMap.set(normalized, entry);
     total += row.count;
   }
 
   // Sort by count descending
   const sorted = Array.from(codecMap.entries())
-    .map(([codec, count]) => ({ codec, count }))
+    .map(([codec, entry]) => ({ codec, ...entry }))
     .sort((a, b) => b.count - a.count);
 
   // Take top N, aggregate rest as "Other"
-  const topCodecs = sorted.slice(0, topN);
-  const otherCount = sorted.slice(topN).reduce((sum, item) => sum + item.count, 0);
-
-  if (otherCount > 0) {
-    topCodecs.push({ codec: 'Other', count: otherCount });
+  const topCodecs: Array<(typeof sorted)[number] & { includes?: string[] }> = sorted.slice(0, topN);
+  const rest = sorted.slice(topN);
+  if (rest.length > 0) {
+    topCodecs.push({
+      codec: 'Other',
+      count: rest.reduce((sum, item) => sum + item.count, 0),
+      movies: rest.reduce((sum, item) => sum + item.movies, 0),
+      episodes: rest.reduce((sum, item) => sum + item.episodes, 0),
+      includes: rest.map((item) => item.codec),
+    });
   }
 
   // Calculate percentages
@@ -97,6 +106,8 @@ function aggregateCodecs(
     codec: item.codec,
     count: item.count,
     percentage: total > 0 ? Math.round((item.count / total) * 1000) / 10 : 0,
+    ...(byType && { movies: item.movies, episodes: item.episodes }),
+    ...(item.includes && { includes: item.includes }),
   }));
 
   return { codecs, total };
@@ -157,7 +168,7 @@ export const libraryCodecsRoute: FastifyPluginAsync = async (app) => {
 
       // Query video codecs for movies and episodes
       const videoCodecsResult = await db.execute(sql`
-        SELECT v.video_codec AS codec, COUNT(DISTINCT library_items.id)::int AS count
+        SELECT v.video_codec AS codec, media_type, COUNT(DISTINCT library_items.id)::int AS count
         FROM library_items
         JOIN library_item_versions v
           ON v.library_item_id = library_items.id AND v.removed_at IS NULL
@@ -166,13 +177,13 @@ export const libraryCodecsRoute: FastifyPluginAsync = async (app) => {
           AND library_items.removed_at IS NULL
           ${serverFilter}
           ${libraryFilter}
-        GROUP BY v.video_codec
+        GROUP BY v.video_codec, media_type
         ORDER BY count DESC
       `);
 
       // Query audio codecs for movies and episodes
       const audioCodecsResult = await db.execute(sql`
-        SELECT v.audio_codec AS codec, COUNT(DISTINCT library_items.id)::int AS count
+        SELECT v.audio_codec AS codec, media_type, COUNT(DISTINCT library_items.id)::int AS count
         FROM library_items
         JOIN library_item_versions v
           ON v.library_item_id = library_items.id AND v.removed_at IS NULL
@@ -181,13 +192,13 @@ export const libraryCodecsRoute: FastifyPluginAsync = async (app) => {
           AND library_items.removed_at IS NULL
           ${serverFilter}
           ${libraryFilter}
-        GROUP BY v.audio_codec
+        GROUP BY v.audio_codec, media_type
         ORDER BY count DESC
       `);
 
       // Query audio channels for movies and episodes
       const channelsResult = await db.execute(sql`
-        SELECT v.audio_channels AS channels, COUNT(DISTINCT library_items.id)::int AS count
+        SELECT v.audio_channels AS channels, media_type, COUNT(DISTINCT library_items.id)::int AS count
         FROM library_items
         JOIN library_item_versions v
           ON v.library_item_id = library_items.id AND v.removed_at IS NULL
@@ -196,7 +207,7 @@ export const libraryCodecsRoute: FastifyPluginAsync = async (app) => {
           AND library_items.removed_at IS NULL
           ${serverFilter}
           ${libraryFilter}
-        GROUP BY v.audio_channels
+        GROUP BY v.audio_channels, media_type
         ORDER BY count DESC
       `);
 
@@ -216,15 +227,28 @@ export const libraryCodecsRoute: FastifyPluginAsync = async (app) => {
       `);
 
       // Process results with normalization
-      const videoRows = videoCodecsResult.rows as Array<{ codec: string | null; count: number }>;
-      const audioRows = audioCodecsResult.rows as Array<{ codec: string | null; count: number }>;
-      const channelRows = channelsResult.rows as Array<{ channels: number | null; count: number }>;
+      const videoRows = videoCodecsResult.rows as Array<{
+        codec: string | null;
+        count: number;
+        media_type: string;
+      }>;
+      const audioRows = audioCodecsResult.rows as Array<{
+        codec: string | null;
+        count: number;
+        media_type: string;
+      }>;
+      const channelRows = channelsResult.rows as Array<{
+        channels: number | null;
+        count: number;
+        media_type: string;
+      }>;
       const musicRows = musicCodecsResult.rows as Array<{ codec: string | null; count: number }>;
 
       // Convert channel rows to codec-like format for reusing aggregateCodecs
       const channelRowsAsCodec = channelRows.map((row) => ({
         codec: row.channels !== null ? String(row.channels) : null,
         count: row.count,
+        media_type: row.media_type,
       }));
 
       const response: LibraryCodecsResponse = {

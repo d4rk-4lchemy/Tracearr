@@ -1,11 +1,10 @@
 data/basemap.pmtiles contains map data from OpenStreetMap, available under the
 Open Database License (ODbL): https://www.openstreetmap.org/copyright
 
-The archive is an unmodified zoom-limited extract of the Protomaps daily
-planet build (https://protomaps.com), produced by scripts/fetch-basemap.sh,
-which pins the build date and the zoom ceiling. Protomaps basemap tilesets
+The archive is an unmodified zoom-limited extract of a Protomaps daily
+planet build (https://protomaps.com), produced by scripts/fetch-basemap.sh
+from the newest build available when it runs. Protomaps basemap tilesets
 are distributed under ODbL; the map styles rendering them are CC0.
 
-Replacing this file with a deeper extract of the same build (for example
-BASEMAP_MAXZOOM=10 for more detail) is supported; the same attribution
-applies.
+Replacing this file with a deeper extract (for example BASEMAP_MAXZOOM=10
+for more detail) is supported; the same attribution applies.

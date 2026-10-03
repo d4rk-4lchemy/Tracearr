@@ -2685,6 +2685,14 @@ export interface CatalogLettersResponse {
   letters: CatalogLetterBucket[];
 }
 
+/** GET /library/catalog/codecs: codec display names for the browse filters, most common first. */
+export interface CatalogCodecOptionsResponse {
+  video: string[];
+  audio: string[];
+  /** Channel layouts as the charts name them ('Stereo', '5.1'). */
+  channels: string[];
+}
+
 // Shelves endpoint (GET /library/shelves) - windowed library command center:
 // four type-split shelves, a KPI strip, and a dead-weight (storage reclaim)
 // module. All-users aggregate (no per-viewer lens) so the whole payload is
@@ -3103,6 +3111,12 @@ export interface CodecEntry {
   codec: string;
   count: number;
   percentage: number;
+  /** Movie files in `count`; absent on music breakdowns. */
+  movies?: number;
+  /** Episode files in `count`; absent on music breakdowns. */
+  episodes?: number;
+  /** On the aggregated 'Other' entry: the names folded into it, most common first. */
+  includes?: string[];
 }
 
 /** Codec breakdown for a category (video, audio, or music) */

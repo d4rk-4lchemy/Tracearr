@@ -27,6 +27,10 @@ export interface CatalogFilters {
   atmos?: boolean;
   sizeGbMin?: number;
   sizeGbMax?: number;
+  /** Display names as the codec charts show them. */
+  videoCodec?: string;
+  audioCodec?: string;
+  audioChannels?: string;
 }
 
 /**
@@ -98,6 +102,9 @@ function catalogRequestParams(args: UseCatalogArgs & { sortedServerIds: string[]
     atmos: filters.atmos,
     sizeGbMin: filters.sizeGbMin,
     sizeGbMax: filters.sizeGbMax,
+    videoCodec: filters.videoCodec,
+    audioCodec: filters.audioCodec,
+    audioChannels: filters.audioChannels,
   };
 }
 
@@ -281,6 +288,15 @@ export function useGenres(type: 'movie' | 'show', serverIds: string[]) {
     queryFn: () => api.library.genres(type, sortedServerIds),
     staleTime: 5 * 60_000,
     enabled: serverIds.length > 0,
+  });
+}
+
+export function useCatalogCodecs(type: 'movie' | 'show', serverIds: string[]) {
+  const sortedServerIds = [...serverIds].sort();
+  return useQuery({
+    queryKey: ['media', 'codecs', type, sortedServerIds.join(',')],
+    queryFn: () => api.library.catalogCodecs(type, sortedServerIds),
+    staleTime: 5 * 60_000,
   });
 }
 

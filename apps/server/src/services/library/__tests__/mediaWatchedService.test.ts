@@ -245,13 +245,13 @@ describe('buildHydrationQuery', () => {
     // Without this a server-scoped request numbers an episode from a copy on a
     // server the caller never asked about.
     expect(render('episode', ['srv-1'])).toContain(
-      'WHERE li.media_id = m.id AND li.removed_at IS NULL AND li.server_id = $1'
+      'WHERE li.media_id = m.id AND li.server_id = $1'
     );
   });
 
   it('leaves the lateral unscoped when no server filter was given', () => {
     const query = render('episode', undefined);
-    expect(query).toContain('WHERE li.media_id = m.id AND li.removed_at IS NULL ORDER BY');
+    expect(query).toContain('WHERE li.media_id = m.id ORDER BY (li.removed_at IS NOT NULL)');
   });
 
   it('skips the lateral entirely for movies and shows', () => {

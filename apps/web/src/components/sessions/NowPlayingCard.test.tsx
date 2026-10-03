@@ -5,6 +5,12 @@ import { setTimeFormat } from '@/lib/timeFormat';
 import { NowPlayingCard } from './NowPlayingCard';
 import type { ActiveSession } from '@tracearr/shared';
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => (key === 'pages:automations.options.trailer' ? 'Trailer' : key),
+  }),
+}));
+
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { role: 'user' } }),
 }));
@@ -133,6 +139,21 @@ function getProgressTranslatePercent(container: HTMLElement): number | null {
 describe('NowPlayingCard ffmpeg speed display', () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  it.each([null, 2026])('labels a Plex trailer with year %s without changing its title', (year) => {
+    render(
+      <NowPlayingCard
+        session={makeSession({
+          mediaType: 'trailer',
+          mediaTitle: 'Movie title',
+          year,
+          server: { id: 'plex-1', name: 'Plex', type: 'plex' },
+        })}
+      />
+    );
+    expect(screen.getByText('Movie title')).toBeTruthy();
+    expect(screen.getByText(year ? `Trailer · ${year}` : 'Trailer')).toBeTruthy();
   });
 
   it('shows a catch-up icon for Dispatcharr catch-up cards', () => {

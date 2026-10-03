@@ -1,12 +1,22 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { Film, Music } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TopListChart } from '@/components/charts';
 import { EmptyState } from '@/components/ui/empty-state';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { PerServerCardGrid } from '@/components/server';
 import { useLibraryCodecs } from '@/hooks/queries';
-import { formatMediaTech, type CodecBreakdown } from '@tracearr/shared';
+import { formatMediaTech, type CodecBreakdown, type CodecEntry } from '@tracearr/shared';
+import { browseHref } from '@/lib/browseLinks';
 import type { Server } from '@tracearr/shared';
 
 interface CodecDistributionSectionProps {
@@ -23,8 +33,96 @@ function toChartData(breakdown: CodecBreakdown | undefined) {
   return breakdown.codecs.map((item) => ({
     name: formatMediaTech(item.codec),
     value: item.count,
-    subtitle: `${item.percentage}%`,
+    subtitle: item.includes
+      ? `${item.percentage}% · ${item.includes.map(formatMediaTech).join(', ')}`
+      : `${item.percentage}%`,
   }));
+}
+
+const BROWSE_PARAM = {
+  video: 'videoCodec',
+  audio: 'audioCodec',
+  channels: 'audioChannels',
+} as const;
+
+/** A codec chart whose bars open Browse filtered to that codec, as movies or TV shows. */
+function BrowsableCodecChart({
+  kind,
+  breakdown,
+  isLoading,
+  serverId,
+}: {
+  kind: keyof typeof BROWSE_PARAM;
+  breakdown: CodecBreakdown | undefined;
+  isLoading: boolean;
+  serverId: string | null | undefined;
+}) {
+  const { t } = useTranslation('pages');
+  const [menu, setMenu] = useState<{ entry: CodecEntry; x: number; y: number } | null>(null);
+  const entries = breakdown?.codecs ?? [];
+
+  return (
+    <div className="relative">
+      <TopListChart
+        data={toChartData(breakdown)}
+        isLoading={isLoading}
+        height={220}
+        valueLabel="Items"
+        colorful
+        onItemClick={(index, point) => {
+          const entry = entries[index];
+          if (entry) setMenu({ entry, ...point });
+        }}
+        isItemClickable={(index) => entries[index]?.codec !== 'Other'}
+      />
+      <DropdownMenu open={menu !== null} onOpenChange={(open) => !open && setMenu(null)}>
+        <DropdownMenuTrigger asChild>
+          <span
+            aria-hidden
+            className="pointer-events-none absolute size-0"
+            style={{ left: menu?.x ?? 0, top: menu?.y ?? 0 }}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {menu && (
+            <>
+              <DropdownMenuLabel>{formatMediaTech(menu.entry.codec)}</DropdownMenuLabel>
+              {menu.entry.movies !== 0 && (
+                <DropdownMenuItem asChild>
+                  <Link
+                    to={browseHref('movie', { [BROWSE_PARAM[kind]]: menu.entry.codec, serverId })}
+                  >
+                    {t('library.quality.codecBrowse.movies')}
+                    {menu.entry.movies !== undefined && (
+                      <span className="text-muted-foreground ml-auto pl-4 tabular-nums">
+                        {t('library.quality.codecBrowse.movieCount', { count: menu.entry.movies })}
+                      </span>
+                    )}
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {menu.entry.episodes !== 0 && (
+                <DropdownMenuItem asChild>
+                  <Link
+                    to={browseHref('show', { [BROWSE_PARAM[kind]]: menu.entry.codec, serverId })}
+                  >
+                    {t('library.quality.codecBrowse.shows')}
+                    {menu.entry.episodes !== undefined && (
+                      <span className="text-muted-foreground ml-auto pl-4 tabular-nums">
+                        {t('library.quality.codecBrowse.episodeCount', {
+                          count: menu.entry.episodes,
+                        })}
+                      </span>
+                    )}
+                  </Link>
+                </DropdownMenuItem>
+              )}
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
 }
 
 /** Codec tabs content - shared by both single-server and per-server card renderers. */
@@ -32,9 +130,6 @@ function CodecTabsContent({ serverId }: { serverId: string | null | undefined })
   const [activeTab, setActiveTab] = useState<'video' | 'music'>('video');
   const codecs = useLibraryCodecs(serverId);
 
-  const videoData = toChartData(codecs.data?.video);
-  const audioData = toChartData(codecs.data?.audio);
-  const channelsData = toChartData(codecs.data?.channels);
   const musicData = toChartData(codecs.data?.music);
 
   const hasVideoData = (codecs.data?.video.total ?? 0) > 0;
@@ -74,32 +169,29 @@ function CodecTabsContent({ serverId }: { serverId: string | null | undefined })
           <div className="grid gap-6 md:grid-cols-3">
             <div>
               <h4 className="mb-3 text-sm font-medium">Video Codecs</h4>
-              <TopListChart
-                data={videoData}
+              <BrowsableCodecChart
+                kind="video"
+                breakdown={codecs.data?.video}
                 isLoading={codecs.isLoading}
-                height={220}
-                valueLabel="Items"
-                colorful
+                serverId={serverId}
               />
             </div>
             <div>
               <h4 className="mb-3 text-sm font-medium">Audio Codecs</h4>
-              <TopListChart
-                data={audioData}
+              <BrowsableCodecChart
+                kind="audio"
+                breakdown={codecs.data?.audio}
                 isLoading={codecs.isLoading}
-                height={220}
-                valueLabel="Items"
-                colorful
+                serverId={serverId}
               />
             </div>
             <div>
               <h4 className="mb-3 text-sm font-medium">Audio Channels</h4>
-              <TopListChart
-                data={channelsData}
+              <BrowsableCodecChart
+                kind="channels"
+                breakdown={codecs.data?.channels}
                 isLoading={codecs.isLoading}
-                height={220}
-                valueLabel="Items"
-                colorful
+                serverId={serverId}
               />
             </div>
           </div>

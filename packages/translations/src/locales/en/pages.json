@@ -189,7 +189,15 @@
       "qualityEvolution": "Quality Evolution",
       "all": "All",
       "failedToLoad": "Failed to load quality data",
-      "failedToLoadDesc": "Could not fetch quality data. Please try again."
+      "failedToLoadDesc": "Could not fetch quality data. Please try again.",
+      "codecBrowse": {
+        "movies": "Browse movies",
+        "shows": "Browse TV shows",
+        "movieCount_one": "{{count}} movie",
+        "movieCount_other": "{{count}} movies",
+        "episodeCount_one": "{{count}} episode",
+        "episodeCount_other": "{{count}} episodes"
+      }
     },
     "storage": {
       "title": "Storage",
@@ -2280,10 +2288,16 @@
         "unwatchedByLens": "Unwatched by {{name}}",
         "resolutionLabel": "Resolution",
         "resolutionAll": "Any resolution",
+        "videoCodecLabel": "Video codec",
+        "videoCodecAll": "Any video codec",
         "hdrLabel": "Dynamic range",
         "hdrAll": "Any",
         "hdrOnly": "HDR only",
         "hdrChip": "HDR",
+        "audioCodecLabel": "Audio codec",
+        "audioCodecAll": "Any audio codec",
+        "audioChannelsLabel": "Audio channels",
+        "audioChannelsAll": "Any channel layout",
         "atmosLabel": "Audio",
         "atmosAll": "Any",
         "atmosOnly": "Dolby Atmos only",
