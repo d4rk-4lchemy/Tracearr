@@ -34,12 +34,19 @@ const { serverRowProps } = vi.hoisted(() => ({
 }));
 
 vi.mock('@/components/settings/servers/ServerRow', () => ({
-  ServerRow: (props: { server: Server; onDelete: () => void; requestService?: unknown }) => {
+  ServerRow: (props: {
+    server: Server;
+    onDelete: () => void;
+    onSetHistorical: (historical: boolean) => void;
+    requestService?: unknown;
+  }) => {
     serverRowProps.push(props);
     return (
       <div>
         {props.server.name}
         <button onClick={props.onDelete}>remove-{props.server.id}</button>
+        <button onClick={() => props.onSetHistorical(true)}>mark-{props.server.id}</button>
+        <button onClick={() => props.onSetHistorical(false)}>resume-{props.server.id}</button>
       </div>
     );
   },
@@ -122,6 +129,9 @@ vi.mock('@/hooks/useSocket', () => ({ useSocket: vi.fn() }));
 const deleteMutate = vi.fn((_id: string, opts?: { onSuccess?: () => void }) => {
   opts?.onSuccess?.();
 });
+const setHistoricalMutate = vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => {
+  opts?.onSuccess?.();
+});
 const reorderMutate = vi.fn();
 const invalidateQueries = vi.fn();
 
@@ -130,6 +140,11 @@ vi.mock('@/hooks/queries', () => ({
   useReorderServers: vi.fn(() => ({ mutate: reorderMutate, isPending: false })),
   useRequestServices: vi.fn(),
   useServers: vi.fn(),
+  useSetServerHistorical: vi.fn(() => ({
+    mutate: setHistoricalMutate,
+    isPending: false,
+    variables: undefined,
+  })),
   useSyncServer: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useUpdateServer: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
@@ -253,6 +268,33 @@ describe('Connections', () => {
     expect(useRequestServices).toHaveBeenCalledWith({ enabled: false });
     expect(serverRowProps).not.toHaveLength(0);
     expect(serverRowProps.every((props) => props.requestService === undefined)).toBe(true);
+  });
+
+  it('asks before marking a server historical, then calls the mutation', async () => {
+    const user = userEvent.setup();
+    render(<Connections />);
+
+    await user.click(screen.getByText('mark-server-1'));
+    expect(screen.getByText('servers.markHistoricalConfirm')).toBeInTheDocument();
+    expect(setHistoricalMutate).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'servers.markHistorical' }));
+    await waitFor(() =>
+      expect(setHistoricalMutate).toHaveBeenCalledWith(
+        { id: 'server-1', historical: true },
+        expect.anything()
+      )
+    );
+  });
+
+  it('resumes without asking', async () => {
+    const user = userEvent.setup();
+    render(<Connections />);
+
+    await user.click(screen.getByText('resume-server-2'));
+
+    expect(setHistoricalMutate).toHaveBeenCalledWith({ id: 'server-2', historical: false });
+    expect(screen.queryByText('servers.markHistoricalConfirm')).not.toBeInTheDocument();
   });
 
   it('maps a keyboard drag to the reordered displayOrder payload', () => {

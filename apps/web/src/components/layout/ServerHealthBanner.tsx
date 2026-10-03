@@ -15,9 +15,17 @@ export function ServerHealthBanner() {
   }
 
   const serverNames = unhealthyServers.map((s) => s.serverName).join(', ');
+  const [only] = unhealthyServers;
   const message =
     unhealthyServers.length === 1
-      ? t('serverHealth.unreachable', { serverName: serverNames })
+      ? t(
+          only?.reason === 'unauthorized'
+            ? 'serverHealth.tokenRejected'
+            : 'serverHealth.unreachable',
+          {
+            serverName: serverNames,
+          }
+        )
       : t('serverHealth.multipleUnreachable', {
           count: unhealthyServers.length,
           serverNames,

@@ -16,6 +16,7 @@ import {
   extractIpFromEndpoint,
 } from '../../../utils/parsing.js';
 import type { StreamDecisions } from '../../../utils/transcodeNormalizer.js';
+import { isAtmos } from '../../../utils/codecNormalizer.js';
 import type {
   MediaSession,
   MediaUser,
@@ -619,6 +620,7 @@ function streamQuality(streams: unknown[]): {
   videoDynamicRange?: string;
   audioCodec?: string;
   audioChannels?: number;
+  audioAtmos?: boolean;
 } {
   const result: {
     videoResolution?: string;
@@ -626,6 +628,7 @@ function streamQuality(streams: unknown[]): {
     videoDynamicRange?: string;
     audioCodec?: string;
     audioChannels?: number;
+    audioAtmos?: boolean;
   } = {};
 
   for (const stream of streams) {
@@ -649,6 +652,10 @@ function streamQuality(streams: unknown[]): {
       if (typeof s.Channels === 'number') {
         result.audioChannels = s.Channels;
       }
+      result.audioAtmos = isAtmos(
+        typeof s.Profile === 'string' ? s.Profile : undefined,
+        typeof s.Title === 'string' ? s.Title : undefined
+      );
     }
   }
 

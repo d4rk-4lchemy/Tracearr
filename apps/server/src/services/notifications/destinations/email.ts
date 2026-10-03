@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { UnrecoverableError } from 'bullmq';
 import {
+  DESTINATION_TEXT_PROFILES,
   DESTINATION_TYPES,
   POSTER_IMAGE_SIZE,
   addressList,
+  escapeFor,
   type EmailBrandingSettings,
 } from '@tracearr/shared';
 import { renderEvent, renderTest, type EventCard, type EventEmailInput } from '@tracearr/emails';
@@ -24,7 +26,7 @@ import {
   smtpExtraHeaders,
   type SmtpConfig,
 } from './emailTransport.js';
-import { ownText, textOf } from './overrides.js';
+import { fitted, ownText, textOf } from './overrides.js';
 import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
 import type { NotificationEvent } from '../events.js';
 import type { MediaAddedContext, MediaUpgradedContext, NotificationPayload } from '../types.js';
@@ -60,6 +62,8 @@ const POSTER_EXTENSIONS: Record<string, string> = {
   'image/webp': 'webp',
   'image/gif': 'gif',
 };
+
+const PROFILE = DESTINATION_TEXT_PROFILES.email;
 
 const NO_ALERT_RECIPIENTS =
   'No alert recipients on this destination. Add one under Settings, Destinations.';
@@ -226,7 +230,7 @@ function serverNameOf(payload: NotificationPayload): string {
 }
 
 async function build(event: NotificationEvent, ctx: RenderContext): Promise<EmailMessage> {
-  const payload = toNotificationPayload(event, ctx.source);
+  const payload = toNotificationPayload(event, ctx.source, escapeFor(PROFILE));
   const attachments: EmailAttachment[] = [];
   const { branding, logo: logoSetting } = await resolveEmailBranding();
   const logo = eventLogo(logoSetting);
@@ -239,10 +243,12 @@ async function build(event: NotificationEvent, ctx: RenderContext): Promise<Emai
     card = await mediaCard(payload.context, poster);
   }
 
-  const { title, message } = textFor(payload);
+  const { title, message } = fitted(textFor(payload), PROFILE);
+  const subjectTitle = title.replace(/[\r\n]+/g, ' ');
+  const custom = payload.automation?.title !== undefined;
   const { externalUrl } = await getNetworkSettings();
   const input: EventEmailInput = {
-    subject: card?.kind === 'media' ? `${title}: ${card.headline}` : title,
+    subject: card?.kind === 'media' && !custom ? `${subjectTitle}: ${card.headline}` : subjectTitle,
     title,
     message,
     severity: payload.severity,

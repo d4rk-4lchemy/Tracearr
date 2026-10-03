@@ -27,9 +27,7 @@
     "plexAuthFailed": "Plex authentication failed",
     "plexStartFailed": "Failed to start Plex login",
     "serverConnectFailed": "Failed to connect to server",
-    "signupFailed": "Signup failed",
     "createAccountFailed": "Failed to create account",
-    "loginFailed": "Login failed",
     "invalidCredentials": "Invalid username, email, or password",
     "claimCodeRequired": "First-time setup requires a claim code",
     "enterClaimCode": "Enter Claim Code",
@@ -57,8 +55,8 @@
     "title": "Users",
     "showRemoved": "Show removed",
     "noUsersFound": "No users found.",
-    "searchPlaceholder": "Search users...",
-    "selectAllUsers": "Select all {{count}} users",
+    "selectAllUsers_one": "Select {{count}} user",
+    "selectAllUsers_other": "Select all {{count}} users",
     "serversColumn": "Servers",
     "resetTrustScore": "Reset Trust Score",
     "resetTrustScoreTitle_one": "Reset Trust Score for {{count}} User",
@@ -76,8 +74,6 @@
     "mergeRequired": "{{name}} can sign in to Tracearr, so {{name}} is kept.",
     "mergeLastActive": "Last active {{relative}}",
     "mergeNeverActive": "Never active",
-    "mergeSessions_one": "{{count}} session",
-    "mergeSessions_other": "{{count}} sessions",
     "mergeMoreServers": "+{{count}}",
     "mergeWhatHappens": "What happens",
     "mergeMoves_one": "{{foldName}}'s server accounts and {{count}} session move to {{keepName}}.",
@@ -161,12 +157,6 @@
   "history": {
     "title": "History",
     "description": "Browse all streaming sessions with powerful filtering.",
-    "loadingMore": "Loading more...",
-    "scrollForMore": "Scroll for more",
-    "showingAllResults": "Showing all {{total}} results",
-    "deleteSession_one": "Delete {{count}} Session",
-    "deleteSession_other": "Delete {{count}} Sessions",
-    "deleteSessionsConfirm": "Are you sure you want to delete? This action cannot be undone.",
     "totalPlays": "Total Plays",
     "uniqueTitles": "Unique Titles",
     "uniqueUsers": "Unique Users"
@@ -236,7 +226,6 @@
       "noDuplicatesTitle": "No duplicates found",
       "noDuplicatesDesc": "No titles with more than one physical file detected.",
       "colTitle": "Title",
-      "colType": "Type",
       "colMatchType": "Match Type",
       "colCopies": "Copies",
       "colRecoverable": "Recoverable Space",
@@ -298,7 +287,8 @@
         "title": "Generating historical data...",
         "fallbackBody": "Creating snapshots from library history. This may take a few minutes.",
         "progress": "{{processed}} of {{total}} libraries",
-        "snapshotsSuffix": " ({{count}} snapshots)"
+        "snapshotsSuffix_one": " ({{count}} snapshot)",
+        "snapshotsSuffix_other": " ({{count}} snapshots)"
       },
       "multiServer": {
         "title": "Some libraries need attention",
@@ -321,7 +311,8 @@
     "versionsBackfill": {
       "banner": "File version data is still being collected for this server. Run a library sync to finish.",
       "action": "Sync now",
-      "syncFailed": "Sync failed to start on {{count}} server(s). Check your permissions and server status.",
+      "syncFailed_one": "Sync failed to start on {{count}} server. Check your permissions and server status.",
+      "syncFailed_other": "Sync failed to start on {{count}} servers. Check your permissions and server status.",
       "syncStarted": "Library sync started."
     }
   },
@@ -342,11 +333,12 @@
   "violations": {
     "title": "Violations",
     "tryAdjustingFilters": "Try adjusting your filters",
-    "selectAllViolations": "Select all {{count}} violations matching filters",
+    "selectAllViolations_one": "Select the {{count}} violation matching filters",
+    "selectAllViolations_other": "Select all {{count}} violations matching filters",
     "dismissViolation": "Dismiss Violation",
     "dismissViolationConfirm": "Are you sure you want to dismiss this violation? This will remove it from the violation log permanently.",
-    "dismissViolation_one": "Dismiss {{count}} Violation",
-    "dismissViolation_other": "Dismiss {{count}} Violations",
+    "dismissViolations_one": "Dismiss {{count}} Violation",
+    "dismissViolations_other": "Dismiss {{count}} Violations",
     "dismissViolationsConfirm": "Are you sure you want to dismiss? This will remove them from the violation log permanently and restore associated trust scores.",
     "noViolationsFound": "No violations found",
     "noViolationsRecorded": "No violations have been recorded yet.",
@@ -355,7 +347,8 @@
     "allRules": "All rules",
     "filterPeople": "People",
     "allPeople": "All people",
-    "peopleSelectedCount": "{{count}} people",
+    "peopleSelectedCount_one": "{{count}} person",
+    "peopleSelectedCount_other": "{{count}} people",
     "personFilterPlaceholder": "Filter by person",
     "personFilterEmpty": "No matching people found",
     "personFilterError": "Failed to load people",
@@ -382,12 +375,120 @@
       "conditionGroup": "Condition Group {{index}}",
       "matched": "{{matched}}/{{total}} matched",
       "actual": "Actual",
-      "relatedSessions": "{{count}} related session",
       "relatedSessions_one": "{{count}} related session",
       "relatedSessions_other": "{{count}} related sessions"
     }
   },
   "automations": {
+    "message": {
+      "heading": "Message",
+      "defaultText": "Default text",
+      "title": "Title",
+      "body": "Message",
+      "blankHint": "Leave blank to use each destination's default text",
+      "insertVariable": "Insert variable",
+      "searchVariables": "Search variables",
+      "noVariables": "No variables match",
+      "preview": "Preview",
+      "previewSamples": "Shown with sample values, for example {{user}} as the user",
+      "previewDefault": "Tracearr's default for this event",
+      "previewDefaultHint": "The wording depends on the event and the destination",
+      "previewPickDestination": "Pick a destination to see how each one shows this",
+      "fieldTitle": "Title",
+      "fieldMessage": "Message",
+      "fieldSubject": "Subject",
+      "fieldHeading": "Heading (same as subject)",
+      "fieldEmbedTitle": "Embed title",
+      "fieldDescription": "Description",
+      "addedDiscord": "Added by Tracearr, depending on the event: a color, fields such as User, Media and Player, and on media events a poster and footer. The description may be shortened when the fields are long.",
+      "addedEmail": "Added by Tracearr: a severity label, event details, the time sent, and a link to Tracearr",
+      "addedPushSubtitle": "Subtitle set by Tracearr on most events",
+      "previewCount": "{{used, number}} / {{max, number}}",
+      "previewCountBytes": "{{used, number}} / {{max, number}} bytes",
+      "previewCut": "cut to fit",
+      "previewPriority": "Priority: {{priority}}",
+      "previewEscapeHint": "Counts Discord's escape characters",
+      "webhookNotSent": "Not sent. The payload carries the event's own data."
+    },
+    "priorities": {
+      "automatic": "Automatic",
+      "lowest": "Lowest",
+      "low": "Low",
+      "normal": "Normal",
+      "high": "High",
+      "urgent": "Urgent"
+    },
+    "variableGroups": {
+      "account": "Account",
+      "stream": "Stream",
+      "server": "Server",
+      "media": "Media",
+      "device": "Device",
+      "trust": "Trust",
+      "newsletter": "Newsletter",
+      "event": "Event"
+    },
+    "variables": {
+      "user": { "username": "Account username", "identityName": "Person's name" },
+      "session": {
+        "mediaTitle": "Title playing",
+        "mediaType": "Media type",
+        "sourceDynamicRange": "Source dynamic range",
+        "sourceVideoCodec": "Source video codec",
+        "seasonNumber": "Season number",
+        "episodeNumber": "Episode number",
+        "name": "Show and episode, or title"
+      },
+      "server": { "name": "Server name", "type": "Server type" },
+      "device": {
+        "name": "Device name",
+        "platform": "Platform",
+        "product": "App",
+        "location": "Location"
+      },
+      "trust": { "previous": "Previous score", "new": "New score", "reason": "Reason" },
+      "media": {
+        "title": "Item title",
+        "name": "Show and episode, or title",
+        "show": "Show",
+        "season": "Season",
+        "episode": "Episode",
+        "episodeCount": "Episodes added",
+        "type": "Media type",
+        "year": "Year",
+        "library": "Library",
+        "server": "Server",
+        "from": {
+          "resolution": "Old resolution",
+          "dynamicRange": "Old dynamic range",
+          "videoCodec": "Old video codec",
+          "audioCodec": "Old audio codec",
+          "audioChannels": "Old audio channels",
+          "fileSize": "Old file size"
+        },
+        "to": {
+          "resolution": "New resolution",
+          "dynamicRange": "New dynamic range",
+          "videoCodec": "New video codec",
+          "audioCodec": "New audio codec",
+          "audioChannels": "New audio channels",
+          "fileSize": "New file size"
+        }
+      },
+      "newsletter": {
+        "name": "Newsletter",
+        "outcome": "Outcome",
+        "recipientCount": "Recipients",
+        "error": "Error"
+      },
+      "durationMinutes": "Minutes watched",
+      "minutes": "Minutes",
+      "days": "Days inactive",
+      "installedVersion": "Installed version",
+      "latestVersion": "Latest version",
+      "downloadUrl": "Download link",
+      "releaseUrl": "Release notes link"
+    },
     "actions": {
       "send": {
         "label": "Send Notification",
@@ -395,6 +496,9 @@
         "fields": {
           "cooldown_minutes": {
             "description": "Minimum time between notifications"
+          },
+          "priority": {
+            "description": "Used by Pushover, Gotify and ntfy"
           }
         },
         "ran": "Sent a notification"
@@ -501,7 +605,6 @@
       "nameHelper": "The name in the automations list.",
       "namePlaceholder": "A name for this automation",
       "activeLabel": "Turn it on now",
-      "back": "Back",
       "submit": "Use this",
       "submitting": "Setting it up…",
       "customize": "Open in the builder",
@@ -550,7 +653,16 @@
         "trustAmountRange": "Trust changes by between -100 and 100 points",
         "trustValueRange": "Trust score is between 0 and 100",
         "messageRequired": "Type the message to show",
-        "tooLong": "At most {{max}} characters"
+        "tooLong": "At most {{max}} characters",
+        "template": {
+          "unclosed": "A {{open}} on line {{line}} is never closed",
+          "invalidOutput": "Line {{line}} has something other than a variable inside {{braces}}",
+          "invalidTag": "Line {{line}} has a tag other than if, else or endif",
+          "unexpectedElse": "The else on line {{line}} has no if to belong to",
+          "unexpectedEndif": "The endif on line {{line}} has no if to close",
+          "missingEndif": "The if on line {{line}} needs an endif"
+        },
+        "templateVariable": "{{name}} isn't available for every trigger here"
       },
       "recordAs": {
         "label": "When this runs, record it as",
@@ -566,7 +678,8 @@
       "searchPlaceholder": "Search…",
       "noMatches": "No matches",
       "clearSelection": "Clear selection",
-      "selectedCount": "{{count}} selected",
+      "selectedCount_one": "{{count}} selected",
+      "selectedCount_other": "{{count}} selected",
       "scope": {
         "label": "Who this applies to",
         "global": "Everyone",
@@ -581,6 +694,7 @@
         "personPlaceholder": "Select person",
         "personHelper": "Matches this person on every server they have an account on.",
         "noServers": "No servers connected yet.",
+        "historicalNote": "This server is historical. Triggers that need it live, like stream, server and update events, won't fire until it's resumed.",
         "enforceAcrossServers": "Act on their streams on any of their servers",
         "enforceAcrossServersDescription": "Acts on the person's sessions on any of their servers, not only the one that triggered it. Off by default."
       },
@@ -802,6 +916,7 @@
         "source_video_codec": "the source video codec",
         "is_transcoding": "the transcoding",
         "is_transcode_downgrade": "the downgrade",
+        "is_subtitle_burn_in": "the subtitle burn-in",
         "source_bitrate_mbps": "the source bitrate",
         "user_id": "the user",
         "trust_score": "the trust score",
@@ -832,6 +947,10 @@
         "is_transcode_downgrade": {
           "yes": "the stream is downgraded",
           "no": "the stream is not downgraded"
+        },
+        "is_subtitle_burn_in": {
+          "yes": "subtitles are burned into the video",
+          "no": "subtitles are not burned into the video"
         },
         "is_transcoding": {
           "video": {
@@ -1002,6 +1121,10 @@
       "is_transcode_downgrade": {
         "label": "Transcode Downgrade",
         "description": "Output resolution is lower than source"
+      },
+      "is_subtitle_burn_in": {
+        "label": "Subtitle Burn-in",
+        "description": "Subtitles are burned into the video, forcing a video transcode"
       },
       "source_bitrate_mbps": {
         "label": "Source Bitrate",
@@ -1295,6 +1418,9 @@
     "configFields": {
       "cooldown_minutes": {
         "label": "Cooldown"
+      },
+      "priority": {
+        "label": "Priority"
       },
       "target": {
         "label": "Target"
@@ -1593,13 +1719,7 @@
     "messageLabel": "Message to user (optional)",
     "messagePlaceholder": "e.g., Please don't share your account",
     "messageHint": "This message will be shown to them during playback",
-    "terminating": "Terminating...",
-    "killStream": "Kill Stream"
-  },
-  "notFound": {
-    "title": "404",
-    "heading": "Page Not Found",
-    "description": "The page you're looking for doesn't exist or has been moved."
+    "terminating": "Terminating..."
   },
   "settings": {
     "plex": {
@@ -1624,10 +1744,12 @@
         "unknown": "Connection failed"
       },
       "connectionsReachable": "{{reachable}} of {{total}} connections reachable",
-      "connectionsAvailable": "{{count}} connections available",
+      "connectionsAvailable_one": "{{count}} connection available",
+      "connectionsAvailable_other": "{{count}} connections available",
       "hideFiltered": "Hide filtered",
       "showAll": "Show all",
-      "moreConnections": "+{{count}} more connections",
+      "moreConnections_one": "+{{count}} more connection",
+      "moreConnections_other": "+{{count}} more connections",
       "connectingTo": "Connecting to {{name}}...",
       "ownerOnly": "Only the owner can manage linked Plex accounts.",
       "noAccountsLinked": "No Plex Accounts Linked",
@@ -1640,17 +1762,16 @@
       "serversConnected_other": "{{count}} servers connected",
       "unlinkAccount": "Unlink this Plex account",
       "reauthorizeAccount": "Reauthorize this Plex account",
-      "deleteServersFirst": "Delete connected servers first to unlink this account",
+      "deleteServersFirst": "Delete the live servers connected through this account, or mark them historical, first",
       "unlinkPlexAccount": "Unlink Plex Account",
       "unlinkConfirm": "Are you sure you want to unlink this Plex account? You won't be able to add servers from this account until you link it again."
     },
     "destinations": {
       "add": "Add destination",
-      "alertsGoTo": "Alerts go to {{count}} address",
+      "alertsGoTo_one": "Alerts go to {{count}} address",
       "alertsGoTo_other": "Alerts go to {{count}} addresses",
       "builtinNote": "Built in",
       "clearSecret": "Clear",
-      "delete": "Delete",
       "deleteConfirm": "Delete {{name}}? Automations and newsletters that use it stop until they are updated.",
       "description": "Where notifications go. Add as many as you like, and automations can send to any of them.",
       "emailDescription": "Tracearr sends mail through this SMTP server. Newsletters pick their own recipients; automation alerts go to the addresses below.",
@@ -1746,9 +1867,9 @@
         "push": "Mobile push",
         "webToast": "Browser toasts"
       },
-      "usedBy": "Used by {{count}} automation",
+      "usedBy_one": "Used by {{count}} automation",
       "usedBy_other": "Used by {{count}} automations",
-      "usedByNewsletters": "Used by {{count}} newsletter",
+      "usedByNewsletters_one": "Used by {{count}} newsletter",
       "usedByNewsletters_other": "Used by {{count}} newsletters",
       "violationsOff": "Violations off",
       "violationsOn": "Violations on",
@@ -1805,14 +1926,14 @@
     "basemapMissing": "Basemap not installed",
     "webglUnavailable": "WebGL is disabled in this browser",
     "webglHint": "The map needs WebGL. Enable it for this site in your browser settings.",
-    "basemapShadowed": "Basemap missing from {{path}}. Tracearr ships it in the image, so a volume mounted over that directory is hiding it. To persist the poster cache, mount /app/data/image-cache instead of /app/data.",
     "badMounts": "Incorrect volume mounts detected — functionality is not guaranteed."
   },
   "devices": {
     "title": "Device Compatibility",
     "description": "See which devices direct play vs transcode each codec.",
     "analyzedSessions": "Analyzed Sessions",
-    "analyzedSessionsTooltip": "Sessions in device + codec combinations with at least {{count}} sessions and a known codec. Rare combinations and sessions with no codec info aren't counted.",
+    "analyzedSessionsTooltip_one": "Sessions in device + codec combinations with at least {{count}} session and a known codec. Rare combinations and sessions with no codec info aren't counted.",
+    "analyzedSessionsTooltip_other": "Sessions in device + codec combinations with at least {{count}} sessions and a known codec. Rare combinations and sessions with no codec info aren't counted.",
     "directPlayRate": "Direct Play Rate",
     "videoAndAudio": "Video + Audio",
     "uniqueDevices": "Unique Devices",
@@ -1882,9 +2003,6 @@
     "libraryItems": "Library Items",
     "environment": "Environment",
     "systemInformation": "System Information",
-    "cpu": "CPU",
-    "memory": "Memory",
-    "uptime": "Uptime",
     "database": "Database",
     "databaseDesc": "Database size and table statistics.",
     "totalSize": "Total Size",
@@ -1952,16 +2070,17 @@
         "replacedEpisodes_other": "{{count}} episodes replaced",
         "addedAgo": "added {{date}}",
         "addedCompactAgo": "added {{age}} ago",
-        "newEpisodesChip": "{{count}} new"
+        "newEpisodesChip_one": "{{count}} new",
+        "newEpisodesChip_other": "{{count}} new"
       },
       "deadWeight": {
         "title": "Dead Weight",
-        "summary": "{{count}} never-watched titles · {{size}}",
+        "summary_one": "{{count}} never-watched title · {{size}}",
+        "summary_other": "{{count}} never-watched titles · {{size}}",
         "empty": "Nothing to reclaim - everything in your library has been watched",
         "columns": {
           "poster": "Poster",
           "title": "Title",
-          "size": "Size",
           "added": "Added",
           "servers": "Servers"
         },
@@ -1990,7 +2109,6 @@
         "title": "Genre breakdown",
         "columns": {
           "genre": "Genre",
-          "items": "Items",
           "plays": "Plays",
           "watchTime": "Watch time"
         },
@@ -2063,7 +2181,6 @@
         "lastWatchedAgo": "{{age}} ago",
         "completionLabel": "{{percent}}% complete",
         "columns": {
-          "user": "User",
           "plays": "Plays",
           "episodes": "Episodes",
           "completion": "Completion",
@@ -2090,7 +2207,6 @@
         "empty": "No platform data yet",
         "unknown": "Unknown",
         "columns": {
-          "platform": "Platform",
           "plays": "Plays",
           "watchTime": "Watch time"
         }
@@ -2102,10 +2218,6 @@
         "watched": "Watched",
         "notWatched": "Not finished",
         "columns": {
-          "date": "Date",
-          "user": "User",
-          "content": "Content",
-          "server": "Server",
           "duration": "Duration"
         }
       },
@@ -2114,11 +2226,8 @@
         "loadError": "Couldn't load copies",
         "unknownLibrary": "Unknown library",
         "columns": {
-          "server": "Server",
           "library": "Library",
-          "quality": "Quality",
           "episodes": "Episodes",
-          "size": "Size",
           "added": "Added"
         },
         "versionLabel": "File {{index}}"
@@ -2128,8 +2237,6 @@
       "rankSuffix": ", rank {{rank}}",
       "onServers": "On {{servers}}",
       "addedLabel": "Added {{date}}",
-      "plays_one": "{{count}} play",
-      "plays_other": "{{count}} plays",
       "viewers_one": "{{count}} viewer",
       "viewers_other": "{{count}} viewers",
       "watchedState": {
@@ -2160,7 +2267,6 @@
         "showsToggle": "Shows",
         "searchPlaceholder": "Search titles…",
         "searchLabel": "Search titles",
-        "removeFilter": "Remove {{label}} filter",
         "filtersLabel": "Filters",
         "filtersSheetTitle": "Filters",
         "done": "Done",
@@ -2178,6 +2284,10 @@
         "hdrAll": "Any",
         "hdrOnly": "HDR only",
         "hdrChip": "HDR",
+        "atmosLabel": "Audio",
+        "atmosAll": "Any",
+        "atmosOnly": "Dolby Atmos only",
+        "atmosChip": "Atmos",
         "genreLabel": "Genre",
         "genreAll": "Any genre",
         "serverLabel": "Server",
@@ -2232,7 +2342,6 @@
     "columns": {
       "requester": "Requested by",
       "title": "Title",
-      "status": "Status",
       "requested": "Requested",
       "wait": "Wait",
       "seasons": "Seasons",
@@ -2287,7 +2396,8 @@
       "linkSeerr": "Link Seerr",
       "kpi": {
         "requested": "Requested",
-        "landedOf": "{{count}} landed",
+        "landedOf_one": "{{count}} landed",
+        "landedOf_other": "{{count}} landed",
         "watched": "Watched",
         "neverPlayed": "Never played",
         "ofLanded": "{{share}} of landed",

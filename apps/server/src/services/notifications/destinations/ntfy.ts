@@ -1,10 +1,15 @@
-import { DESTINATION_TYPES } from '@tracearr/shared';
+import {
+  DESTINATION_TEXT_PROFILES,
+  DESTINATION_TYPES,
+  escapeFor,
+  type NotificationPriority,
+} from '@tracearr/shared';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
 import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
 import { formatViolationMessage } from '../formatters/violation.js';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
-import { ownText, textOf } from './overrides.js';
+import { fitted, ownText, textOf } from './overrides.js';
 import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
 import type {
   NotificationPayload,
@@ -16,6 +21,16 @@ import type {
   ViolationContext,
 } from '../types.js';
 import type { DeliverContext, DestinationType } from './types.js';
+
+const PROFILE = DESTINATION_TEXT_PROFILES.ntfy;
+
+const NTFY_PRIORITY: Record<NotificationPriority, number> = {
+  lowest: 1,
+  low: 2,
+  normal: 3,
+  high: 4,
+  urgent: 5,
+};
 
 export interface NtfyConfig {
   url: string;
@@ -202,8 +217,16 @@ async function post(config: NtfyConfig, body: NtfyMessage, ctx: DeliverContext):
 export const ntfyType: DestinationType<NtfyConfig, NtfyMessage> = {
   kind: 'ntfy',
   events: DESTINATION_TYPES.ntfy.events,
-  render: (event, config, ctx) =>
-    build(toNotificationPayload(event, ctx.source), config.topic || 'tracearr'),
+  render: (event, config, ctx) => {
+    const payload = toNotificationPayload(event, ctx.source, escapeFor(PROFILE));
+    const message = build(payload, config.topic || 'tracearr');
+    const priority = payload.automation?.priority;
+    return {
+      ...message,
+      ...fitted(message, PROFILE),
+      ...(priority !== undefined && { priority: NTFY_PRIORITY[priority] }),
+    };
+  },
   deliver: (body, config, ctx) => post(config, body, ctx),
   test: (config, ctx) =>
     post(

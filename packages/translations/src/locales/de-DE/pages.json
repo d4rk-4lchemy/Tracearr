@@ -1,7 +1,7 @@
 {
   "login": {
     "title": "",
-    "tagline": "Stream-Zugriffsverwaltung",
+    "tagline": "Tracearr - Stream-Zugriffsverwaltung",
     "createAccountHeading": "Erstellen Sie Ihr Konto, um starten",
     "signInHeading": "Melden Sie sich in Ihrem Konto an",
     "createAccountDescription": "Erstellen Sie ein Konto, um Ihre Medienserver zu verwalten",
@@ -27,9 +27,7 @@
     "plexAuthFailed": "Plex-Authentifizierung fehlgeschlagen",
     "plexStartFailed": "Plex-Anmeldung konnte nicht gestartet werden",
     "serverConnectFailed": "Verbindung zum Server fehlgeschlagen",
-    "signupFailed": "Anmeldung fehlgeschlagen",
     "createAccountFailed": "Konto konnte nicht erstellt werden",
-    "loginFailed": "Login fehlgeschlagen",
     "invalidCredentials": "Ungültige Email oder Password",
     "claimCodeRequired": "Erstmaliges Setup erfordert einen Bestätigungscode",
     "enterClaimCode": "Bestätigungscode eingeben",
@@ -57,12 +55,8 @@
     "title": "Benutzer",
     "showRemoved": "",
     "noUsersFound": "Keine Benutzer gefunden.",
-    "searchPlaceholder": "Suche Benutzer...",
-    "selectAllUsers": "Alle {{count}} Benutzer auswählen",
     "serversColumn": "",
-    "resetTrustScore": "Vertrauensbewertung zurücksetzen",
-    "resetTrustScoreTitle_one": "Vertrauensbewertung für {{count}} Benutzer zurücksetzen",
-    "resetTrustScoreTitle_other": "Vertrauensbewertung für {{count}} Benutzer zurücksetzen",
+    "resetTrustScore": "Vertrauenswert zurücksetzen",
     "resetTrustScoreConfirm": "Möchten Sie den Vertrauenswert für {{count}} Benutzer wirklich auf 100 zurücksetzen? Diese Aktion kann nicht rückgängig gemacht werden.",
     "mergeUsers": "",
     "mergeTitleSuggestion": "",
@@ -76,12 +70,8 @@
     "mergeRequired": "",
     "mergeLastActive": "",
     "mergeNeverActive": "",
-    "mergeSessions_one": "",
-    "mergeSessions_other": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -97,17 +87,9 @@
     "mergeSameIdentity": "",
     "mergeSelectAllActive": "",
     "suggestionsTitle": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "{{first}} und {{second}} verwenden die gleiche Adresse wie eine Benutzername oder Konto-E-Mail, plus {{count}} mehr",
-    "suggestionsPairEmailUsernameMore_other": "{{first}} und {{second}} verwenden die gleiche Adresse wie eine Benutzername oder Konto-E-Mail, plus {{count}} mehr",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -122,22 +104,36 @@
     "suggestionsError": "",
     "filterHasAccessTo": "",
     "filterHasAccessToPlaceholder": "",
-    "filterHasAccessToHint": ""
+    "filterHasAccessToHint": "",
+    "selectAllUsers_one": "",
+    "selectAllUsers_other": "Alle {{count}} Benutzer auswählen",
+    "resetTrustScoreTitle_one": "Vertrauenswert für {{count}} Benutzer zurücksetzen",
+    "resetTrustScoreTitle_other": "Vertrauenswert für {{count}} Benutzer zurücksetzen",
+    "mergeMoves_one": "",
+    "mergeMoves_other": "",
+    "suggestionsCount_one": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_one": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_one": "{{first}} und {{second}} verwenden die gleiche Adresse wie eine Benutzername oder Konto-E-Mail, plus {{count}} mehr",
+    "suggestionsPairEmailUsernameMore_other": "{{first}} und {{second}} verwenden die gleiche Adresse wie eine Benutzername oder Konto-E-Mail, plus {{count}} mehr",
+    "suggestionsPairUsernameMore_one": "",
+    "suggestionsPairUsernameMore_other": ""
   },
   "userDetail": {
     "backToUsers": "Zurück zu den Benutzern",
-    "userNotFound": "User nicht gefunden",
+    "userNotFound": "Benutzer nicht gefunden",
     "userInfo": "",
     "statistics": "Statistiken",
     "sessions": "",
     "violations": "Verstöße",
-    "terminationHistory": "Termination Historie",
-    "noViolationsFound": "Für diesen Nutzer wurden keine Verstöße festgestellt.",
-    "noTerminationsFound": "Für diesen Benutzer wurden keine Streams terminiert.",
+    "terminationHistory": "Verlauf beendeter Streams",
+    "noViolationsFound": "Für diesen Benutzer wurden keine Verstöße festgestellt.",
+    "noTerminationsFound": "Für diesen Benutzer wurden keine Streams beendet.",
     "byRule": "Bei / Regel",
     "manual": "",
     "unknownRule": "Unbekannte Regel",
-    "adjustTrustScore": "Trust Punktzahl anpassen",
+    "adjustTrustScore": "Vertrauenswert anpassen",
     "linkedAccounts": "",
     "splitAccount": "",
     "splitConfirmTitle": "",
@@ -161,12 +157,6 @@
   "history": {
     "title": "Historie",
     "description": "",
-    "loadingMore": "Lade mehr...",
-    "scrollForMore": "Scrollen um mehr zu sehen",
-    "showingAllResults": "Alle {{total}} Resultate anzeigen",
-    "deleteSession_one": "Lösche {{count}} Session",
-    "deleteSession_other": "Lösche {{count}} Sessions",
-    "deleteSessionsConfirm": "Möchten Sie wirklich {{count}} Sitzungen löschen? Diese Aktion kann nicht rückgängig gemacht werden..",
     "totalPlays": "",
     "uniqueTitles": "",
     "uniqueUsers": ""
@@ -236,7 +226,6 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
-      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
@@ -247,11 +236,11 @@
       "copyPath": ""
     },
     "watch": {
-      "title": "Analytik beobachten",
+      "title": "Wiedergabeanalyse",
       "description": "",
       "watched": "Gesehen",
       "percentWatched": "% angesehen",
-      "totalWatchTime": "Gesamte Beobachtungszeit",
+      "totalWatchTime": "Gesamte Wiedergabezeit",
       "avgPerItem": "avg pro Artikel",
       "completed": "Abgeschlossen",
       "peakHour": "Spitzenstunde",
@@ -260,12 +249,12 @@
       "monthlyTrends": "Monatliche Trends",
       "busiest": "",
       "quietest": "Ruhe:",
-      "bingeHighlights": "Scharnier-Highlights",
+      "bingeHighlights": "Serienmarathon-Highlights",
       "bingeHighlightsDesc": "",
-      "bingeSessions": "binge Sitzungen",
-      "noData": "Noch keine Beobachtungsdaten",
+      "bingeSessions": "Serienmarathons",
+      "noData": "Noch keine Wiedergabedaten",
       "noDataDesc": "Die Analyse wird hier angezeigt, sobald der Inhalt wiedergegeben wurde. Schauen Sie nach einer Aktivität wieder vorbei.",
-      "failedToLoad": "Fehler beim Laden der Beobachtungsanalyse",
+      "failedToLoad": "Fehler beim Laden der Wiedergabeanalyse",
       "failedToLoadDesc": "Überwachungsdaten konnten nicht abgerufen werden."
     },
     "emptyState": {
@@ -298,7 +287,8 @@
         "title": "Verlaufsdaten werden erstellt...",
         "fallbackBody": "Snapshots werden aus dem Bibliotheksverlauf erstellt. Dies kann einige Minuten dauern.",
         "progress": "{{processed}} von {{total}} Bibliotheken",
-        "snapshotsSuffix": " ({{count}} Snapshots)"
+        "snapshotsSuffix_one": "",
+        "snapshotsSuffix_other": " ({{count}} Snapshots)"
       },
       "multiServer": {
         "title": "Einige Bibliotheken benötigen Aufmerksamkeit",
@@ -321,8 +311,9 @@
     "versionsBackfill": {
       "banner": "",
       "action": "",
-      "syncFailed": "",
-      "syncStarted": ""
+      "syncStarted": "",
+      "syncFailed_one": "",
+      "syncFailed_other": ""
     }
   },
   "activity": {
@@ -331,9 +322,9 @@
     "playsOverTime": "Wiedergaben im Zeitverlauf",
     "concurrentStreams": "Gleichzeitige Streams",
     "engagementBreakdown": "Engagement-Aufschlüsselung",
-    "howUsersEngage": "Wie Nutzer mit Inhalten interagieren",
+    "howUsersEngage": "Wie Benutzer mit Inhalten interagieren",
     "playsVsSessions": "Wiedergaben vs Sitzungen",
-    "playsVsSessionsDesc": "Validierte Wiedergaben vs. Roh Wiedergaben",
+    "playsVsSessionsDesc": "Nur vollständige Wiedergaben: Eine Wiedergabe zählt, wenn die gesamte Wiedergabezeit die Laufzeit des Inhalts abdeckt.",
     "activityByDayOfWeek": "Aktivität nach Wochentag",
     "activityByHourOfDay": "Aktivität nach Tageszeit",
     "platforms": "Plattformen",
@@ -342,11 +333,8 @@
   "violations": {
     "title": "Verstöße",
     "tryAdjustingFilters": "Versuchen Sie, Ihre Filter anzupassen",
-    "selectAllViolations": "Wählen Sie alle {{count}} Verstöße aus, die den Filtern entsprechen",
-    "dismissViolation": "Verstoß ablehnen",
-    "dismissViolationConfirm": "Möchten Sie diesen Verstoß wirklich ignorieren? Er wird dadurch dauerhaft aus dem Verstoß-Protokoll entfernt..",
-    "dismissViolation_one": "{{count}} Verstoß abweisen",
-    "dismissViolation_other": "{{count}} Verstöße abweisen",
+    "dismissViolation": "Verstoß verwerfen",
+    "dismissViolationConfirm": "Möchten Sie diesen Verstoß wirklich verwerfen? Er wird dadurch dauerhaft aus dem Verstoß-Protokoll entfernt.",
     "dismissViolationsConfirm": "Sind Sie sicher, dass Sie {{count}} Verstöße ablehnen möchten? Dadurch werden sie dauerhaft aus dem Verstoß-Protokoll entfernt und die zugehörigen Vertrauenswerte werden wiederhergestellt.",
     "noViolationsFound": "Es wurden keine Verstöße festgestellt",
     "noViolationsRecorded": "Bisher wurden keine Verstöße registriert.",
@@ -355,7 +343,6 @@
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
-    "peopleSelectedCount": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -382,18 +369,145 @@
       "conditionGroup": "",
       "matched": "{{matched}}/{{total}} übereinstimmen",
       "actual": "Aktuell",
-      "relatedSessions": "{{count}} verwandte Sitzung",
       "relatedSessions_one": "{{count}} verwandte Sitzung",
       "relatedSessions_other": "{{count}} ähnliche Sitzungen"
-    }
+    },
+    "selectAllViolations_one": "",
+    "selectAllViolations_other": "Wählen Sie alle {{count}} Verstöße aus, die den Filtern entsprechen",
+    "dismissViolations_one": "{{count}} Verstoß verwerfen",
+    "dismissViolations_other": "{{count}} Verstöße verwerfen",
+    "peopleSelectedCount_one": "",
+    "peopleSelectedCount_other": ""
   },
   "automations": {
+    "message": {
+      "heading": "",
+      "defaultText": "",
+      "title": "",
+      "body": "",
+      "blankHint": "",
+      "insertVariable": "",
+      "searchVariables": "",
+      "noVariables": "",
+      "preview": "",
+      "previewSamples": "",
+      "previewDefault": "",
+      "previewDefaultHint": "",
+      "previewPickDestination": "",
+      "fieldTitle": "",
+      "fieldMessage": "",
+      "fieldSubject": "",
+      "fieldHeading": "",
+      "fieldEmbedTitle": "",
+      "fieldDescription": "",
+      "addedDiscord": "",
+      "addedEmail": "",
+      "addedPushSubtitle": "",
+      "previewCount": "",
+      "previewCountBytes": "",
+      "previewCut": "",
+      "previewPriority": "",
+      "previewEscapeHint": "",
+      "webhookNotSent": ""
+    },
+    "priorities": {
+      "automatic": "",
+      "lowest": "",
+      "low": "",
+      "normal": "",
+      "high": "",
+      "urgent": ""
+    },
+    "variableGroups": {
+      "account": "",
+      "stream": "",
+      "server": "",
+      "media": "",
+      "device": "",
+      "trust": "",
+      "newsletter": "",
+      "event": ""
+    },
+    "variables": {
+      "user": {
+        "username": "",
+        "identityName": ""
+      },
+      "session": {
+        "mediaTitle": "",
+        "mediaType": "",
+        "sourceDynamicRange": "",
+        "sourceVideoCodec": "",
+        "seasonNumber": "",
+        "episodeNumber": "",
+        "name": ""
+      },
+      "server": {
+        "name": "",
+        "type": ""
+      },
+      "device": {
+        "name": "",
+        "platform": "",
+        "product": "",
+        "location": ""
+      },
+      "trust": {
+        "previous": "",
+        "new": "",
+        "reason": ""
+      },
+      "media": {
+        "title": "",
+        "name": "",
+        "show": "",
+        "season": "",
+        "episode": "",
+        "episodeCount": "",
+        "type": "",
+        "year": "",
+        "library": "",
+        "server": "",
+        "from": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        },
+        "to": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        }
+      },
+      "newsletter": {
+        "name": "",
+        "outcome": "",
+        "recipientCount": "",
+        "error": ""
+      },
+      "durationMinutes": "",
+      "minutes": "",
+      "days": "",
+      "installedVersion": "",
+      "latestVersion": "",
+      "downloadUrl": "",
+      "releaseUrl": ""
+    },
     "actions": {
       "send": {
         "label": "",
         "description": "",
         "fields": {
           "cooldown_minutes": {
+            "description": ""
+          },
+          "priority": {
             "description": ""
           }
         },
@@ -489,10 +603,10 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_other": "",
       "item": "",
-      "recordedViolation": ""
+      "recordedViolation": "",
+      "emptyRanDescription_one": "",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -501,7 +615,6 @@
       "nameHelper": "",
       "namePlaceholder": "",
       "activeLabel": "",
-      "back": "",
       "submit": "",
       "submitting": "",
       "customize": "",
@@ -550,7 +663,16 @@
         "trustAmountRange": "",
         "trustValueRange": "",
         "messageRequired": "",
-        "tooLong": ""
+        "tooLong": "",
+        "template": {
+          "unclosed": "",
+          "invalidOutput": "",
+          "invalidTag": "",
+          "unexpectedElse": "",
+          "unexpectedEndif": "",
+          "missingEndif": ""
+        },
+        "templateVariable": ""
       },
       "recordAs": {
         "label": "",
@@ -566,7 +688,6 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
-      "selectedCount": "",
       "scope": {
         "label": "",
         "global": "",
@@ -581,6 +702,7 @@
         "personPlaceholder": "",
         "personHelper": "",
         "noServers": "",
+        "historicalNote": "",
         "enforceAcrossServers": "",
         "enforceAcrossServersDescription": ""
       },
@@ -686,12 +808,12 @@
         "placeholderAction": ""
       },
       "footer": {
+        "ready": "",
+        "search": "",
         "problems_one": "",
         "problems_other": "",
         "remaining_one": "",
-        "remaining_other": "",
-        "ready": "",
-        "search": ""
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -712,7 +834,9 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_one": "",
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -726,12 +850,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_one": "",
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -802,6 +922,7 @@
         "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
+        "is_subtitle_burn_in": "",
         "source_bitrate_mbps": "",
         "user_id": "",
         "trust_score": "",
@@ -830,6 +951,10 @@
           "no": ""
         },
         "is_transcode_downgrade": {
+          "yes": "",
+          "no": ""
+        },
+        "is_subtitle_burn_in": {
           "yes": "",
           "no": ""
         },
@@ -885,16 +1010,18 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_one": "",
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
+      "noRuns": "",
       "runsLine_one": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1000,6 +1127,10 @@
         "description": ""
       },
       "is_transcode_downgrade": {
+        "label": "",
+        "description": ""
+      },
+      "is_subtitle_burn_in": {
         "label": "",
         "description": ""
       },
@@ -1296,6 +1427,9 @@
       "cooldown_minutes": {
         "label": ""
       },
+      "priority": {
+        "label": ""
+      },
       "target": {
         "label": ""
       },
@@ -1585,7 +1719,9 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_one": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
     "title": "Stream beenden",
@@ -1593,13 +1729,7 @@
     "messageLabel": "Nachricht an Benutzer (optional)",
     "messagePlaceholder": "z.B. Bitte teilen Sie Ihr Konto nicht",
     "messageHint": "Diese Nachricht wird während der Wiedergabe angezeigt",
-    "terminating": "Wird beendet...",
-    "killStream": "Stream beenden"
-  },
-  "notFound": {
-    "title": "",
-    "heading": "Seite nicht gefunden",
-    "description": "Die gesuchte Seite existiert nicht oder wurde verschoben"
+    "terminating": "Wird beendet..."
   },
   "settings": {
     "plex": {
@@ -1624,10 +1754,8 @@
         "unknown": "Verbindung fehlgeschlagen"
       },
       "connectionsReachable": "{{reachable}} von {{total}} Verbindungen erreichbar",
-      "connectionsAvailable": "{{count}} Verbindungen verfügbar",
       "hideFiltered": "Gefilterte ausblenden",
       "showAll": "Alle anzeigen",
-      "moreConnections": "+{{count}} weitere Verbindungen",
       "connectingTo": "Verbinde mit {{name}}...",
       "ownerOnly": "",
       "noAccountsLinked": "Keine Plex-Konten verknüpft",
@@ -1636,21 +1764,22 @@
       "linkAnotherAccount": "Weiteres Plex-Konto verknüpfen",
       "linking": "Verknüpfen...",
       "loginEnabled": "Anmeldung aktiviert",
-      "serversConnected_one": "{{count}} Server verbunden",
-      "serversConnected_other": "{{count}} Server verbunden",
       "unlinkAccount": "Dieses Plex-Konto trennen",
       "reauthorizeAccount": "",
-      "deleteServersFirst": "Verbundene Server zuerst löschen, um dieses Konto zu trennen",
+      "deleteServersFirst": "Zuerst die über dieses Konto verbundenen aktiven Server löschen oder als historisch markieren",
       "unlinkPlexAccount": "Plex-Konto trennen",
-      "unlinkConfirm": "Möchten Sie dieses Plex-Konto wirklich trennen? Sie können erst dann wieder Server von diesem Konto hinzufügen, wenn Sie es erneut verknüpfen."
+      "unlinkConfirm": "Möchten Sie dieses Plex-Konto wirklich trennen? Sie können erst dann wieder Server von diesem Konto hinzufügen, wenn Sie es erneut verknüpfen.",
+      "connectionsAvailable_one": "",
+      "connectionsAvailable_other": "{{count}} Verbindungen verfügbar",
+      "moreConnections_one": "",
+      "moreConnections_other": "+{{count}} weitere Verbindungen",
+      "serversConnected_one": "{{count}} Server verbunden",
+      "serversConnected_other": "{{count}} Server verbunden"
     },
     "destinations": {
       "add": "",
-      "alertsGoTo": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
-      "delete": "",
       "deleteConfirm": "",
       "description": "",
       "emailDescription": "",
@@ -1746,13 +1875,15 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy": "",
-      "usedBy_other": "",
-      "usedByNewsletters": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
+      "webToastNote": "",
+      "alertsGoTo_one": "",
+      "alertsGoTo_other": "",
+      "usedBy_one": "",
+      "usedBy_other": "",
+      "usedByNewsletters_one": "",
+      "usedByNewsletters_other": ""
     },
     "jobs": {
       "runNow": "Jetzt ausführen",
@@ -1775,7 +1906,7 @@
     "startingDescription": "Der Server wartet darauf, dass Backend-Dienste verfügbar sind. Diese Seite wird automatisch aktualisiert, sobald alles bereit ist.",
     "interruptionDescription": "Ein oder mehrere Backend-Dienste sind nicht mehr verfügbar. Diese Seite wird automatisch aktualisiert, wenn die Verbindung wiederhergestellt wird.",
     "unreachable": "",
-    "restoreTitle": "Wiederherstellen vom Backup...",
+    "restoreTitle": "Wiederherstellung aus Sicherung...",
     "restoreFailed": "Wiederherstellung fehlgeschlagen",
     "restorePhase": {
       "validating": "Sicherung wird überprüft",
@@ -1805,36 +1936,36 @@
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "basemapShadowed": "",
     "badMounts": ""
   },
   "devices": {
     "title": "Gerätekompatibilität",
     "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip": "",
     "directPlayRate": "",
     "videoAndAudio": "",
     "uniqueDevices": "Einzigartige Geräte",
     "uniqueCodecs": "Eindeutige Codecs",
     "deviceHealth": "Gerätegesundheit",
     "deviceHealthDesc": "",
-    "transcodeHotspots": "Hotspots umkodieren",
+    "transcodeHotspots": "Transkodierungs-Hotspots",
     "transcodeHotspotsDesc": "",
     "deviceAndCodec": "Gerät + Codec",
-    "transcodes": "Umkode",
+    "transcodes": "Transkodierungen",
     "pctOfTotal": "% der Gesamtsumme",
-    "noTranscodeHotspots": "Keine Transcode-Hotspots",
+    "noTranscodeHotspots": "Keine Transkodierungs-Hotspots",
     "compatibilityMatrix": "Kompatibilitätsmatrix",
-    "compatibilityMatrixDesc": "Direkte Wiedergaberaten nach Gerät und Video-Codec. Sortiert nach Session-Lautstärke.",
+    "compatibilityMatrixDesc": "Direkte-Wiedergabe-Raten nach Gerät und Video-Codec. Sortiert nach Anzahl der Sitzungen.",
     "noDeviceDataPeriod": "Keine Gerätedaten in diesem Zeitraum",
     "legend": "Legende:",
     "directPlayHigh": "80 % direkt",
     "directPlayMid": "",
     "directPlayLow": "",
-    "topTranscodingUsers": "Top Transcoding Benutzer",
+    "topTranscodingUsers": "Benutzer mit den meisten Transkodierungen",
     "topTranscodingUsersDesc": "",
-    "noTranscodingUsers": "Keine Transcoding Benutzer gefunden"
+    "noTranscodingUsers": "Keine Benutzer mit Transkodierungen gefunden",
+    "analyzedSessionsTooltip_one": "",
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
     "title": "Bandbreite",
@@ -1843,7 +1974,7 @@
     "avgBitrate": "Durchschnittliche Bitrate",
     "avgBitrateMbps": "Durchschnittliche Bitrate (Mbps)",
     "peakBitrate": "Spitze: {{value}} Mbit/s",
-    "totalWatchTime": "Gesamte Beobachtungszeit",
+    "totalWatchTime": "Gesamte Wiedergabezeit",
     "uniqueUsers": "Einzigartige Benutzer",
     "dailyUsage": "Tägliche Bandbreitennutzung",
     "dailyUsageDesc": "",
@@ -1853,7 +1984,7 @@
   },
   "statsUsers": {
     "noActivity": "Noch keine Aktivität",
-    "noActivityDesc": "Starte Streaming, um deine Top-Nutzer hier zu sehen",
+    "noActivityDesc": "Starte Streaming, um deine Top-Benutzer hier zu sehen",
     "top3": "Oben 3",
     "runnersUp": "Läufer oben"
   },
@@ -1878,13 +2009,10 @@
     "tasks": "Aufgaben",
     "logs": "",
     "plexAccounts": "Plex Konten",
-    "terminations": "Terminationen",
+    "terminations": "Beendete Streams",
     "libraryItems": "Bibliothekselemente",
     "environment": "Umgebung",
     "systemInformation": "Systeminformationen",
-    "cpu": "",
-    "memory": "Speicher",
-    "uptime": "Laufzeit",
     "database": "Datenbank",
     "databaseDesc": "",
     "totalSize": "Gesamtgröße",
@@ -1898,7 +2026,7 @@
     "clearViolations": "Verstöße löschen",
     "clearAutomations": "",
     "clearAutomationsConfirm": "",
-    "clearTerminationLogs": "Lösche Terminierungsprotokolle",
+    "clearTerminationLogs": "Protokolle beendeter Streams löschen",
     "clearLibraryCache": "Bibliotheks-Cache leeren",
     "clearSessions": "Sitzungen löschen",
     "clearUsers": "Benutzer löschen",
@@ -1907,7 +2035,7 @@
     "manageSnapshots": "Verwalten von Bibliotheks-Snapshots für SpeicherTrend und Qualitätsentwicklungsdiagramme",
     "suspiciousOnly": "Nur verdächtig",
     "load": "Laden",
-    "noSuspiciousSnapshots": "Keine verdächtigen Schnappschüsse gefunden",
+    "noSuspiciousSnapshots": "Keine verdächtigen Snapshots gefunden",
     "clickLoadToView": "Klicken Sie auf \"Laden\", um Snapshots zu sehen",
     "deleteSelected": "Ausgewählte löschen",
     "deleteAllSuspicious": "Alle Verdächtigen löschen",
@@ -1946,27 +2074,28 @@
         }
       },
       "card": {
+        "addedAgo": "hinzugefügt {{date}}",
+        "addedCompactAgo": "vor {{age}} hinzugefügt",
         "newEpisodes_one": "{{count}} neue Folge",
         "newEpisodes_other": "{{count}} neue Folgen",
         "replacedEpisodes_one": "",
         "replacedEpisodes_other": "",
-        "addedAgo": "hinzugefügt {{date}}",
-        "addedCompactAgo": "vor {{age}} hinzugefügt",
-        "newEpisodesChip": "{{count}} neu"
+        "newEpisodesChip_one": "",
+        "newEpisodesChip_other": "{{count}} neu"
       },
       "deadWeight": {
         "title": "",
-        "summary": "",
         "empty": "",
         "columns": {
           "poster": "",
           "title": "",
-          "size": "",
           "added": "",
           "servers": ""
         },
         "viewAll": "",
-        "viewAllTooltip": ""
+        "viewAllTooltip": "",
+        "summary_one": "",
+        "summary_other": ""
       },
       "loadError": "Deine Mediathek konnte nicht geladen werden"
     },
@@ -1982,15 +2111,14 @@
       "chart": {
         "title": "",
         "valueLabel": "",
+        "ariaLabel": "",
         "itemCount_one": "",
-        "itemCount_other": "",
-        "ariaLabel": ""
+        "itemCount_other": ""
       },
       "table": {
         "title": "",
         "columns": {
           "genre": "",
-          "items": "",
           "plays": "",
           "watchTime": ""
         },
@@ -2063,7 +2191,6 @@
         "lastWatchedAgo": "",
         "completionLabel": "",
         "columns": {
-          "user": "",
           "plays": "",
           "episodes": "",
           "completion": "",
@@ -2074,15 +2201,15 @@
         "title": "",
         "loadError": "",
         "empty": "",
-        "episodeCount_one": "",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
-        }
+        },
+        "episodeCount_one": "",
+        "episodeCount_other": ""
       },
       "platforms": {
         "title": "",
@@ -2090,7 +2217,6 @@
         "empty": "",
         "unknown": "",
         "columns": {
-          "platform": "",
           "plays": "",
           "watchTime": ""
         }
@@ -2102,10 +2228,6 @@
         "watched": "",
         "notWatched": "",
         "columns": {
-          "date": "",
-          "user": "",
-          "content": "",
-          "server": "",
           "duration": ""
         }
       },
@@ -2114,11 +2236,8 @@
         "loadError": "",
         "unknownLibrary": "",
         "columns": {
-          "server": "",
           "library": "",
-          "quality": "",
           "episodes": "",
-          "size": "",
           "added": ""
         },
         "versionLabel": ""
@@ -2128,10 +2247,6 @@
       "rankSuffix": ", Rang {{rank}}",
       "onServers": "Auf {{servers}}",
       "addedLabel": "Hinzugefügt {{date}}",
-      "plays_one": "{{count}} Wiedergabe",
-      "plays_other": "{{count}} Wiedergaben",
-      "viewers_one": "{{count}} Zuschauer",
-      "viewers_other": "{{count}} Zuschauer",
       "watchedState": {
         "watched": "Gesehen",
         "partial": "Teilweise gesehen",
@@ -2145,12 +2260,14 @@
         "resolution": "Auflösung"
       },
       "rankChip": "",
+      "versionsChip": "",
+      "moreServers": "",
+      "viewers_one": "{{count}} Zuschauer",
+      "viewers_other": "{{count}} Zuschauer",
       "playsCompact_one": "{{compact}} Wiedergabe",
       "playsCompact_other": "{{compact}} Wiedergaben",
-      "versionsChip": "",
       "versions_one": "",
-      "versions_other": "",
-      "moreServers": ""
+      "versions_other": ""
     },
     "grid": {
       "toolbar": {
@@ -2160,7 +2277,6 @@
         "showsToggle": "",
         "searchPlaceholder": "",
         "searchLabel": "",
-        "removeFilter": "",
         "filtersLabel": "",
         "filtersSheetTitle": "",
         "done": "",
@@ -2178,6 +2294,10 @@
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "atmosLabel": "",
+        "atmosAll": "",
+        "atmosOnly": "",
+        "atmosChip": "",
         "genreLabel": "",
         "genreAll": "",
         "serverLabel": "",
@@ -2232,7 +2352,6 @@
     "columns": {
       "requester": "",
       "title": "",
-      "status": "",
       "requested": "",
       "wait": "",
       "seasons": "",
@@ -2287,11 +2406,12 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
-        "landedOf": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": ""
+        "onDisk": "",
+        "landedOf_one": "",
+        "landedOf_other": ""
       }
     },
     "funnel": {

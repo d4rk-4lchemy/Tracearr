@@ -395,7 +395,7 @@ function syncStateReads(lastSyncedAt: string, lastItemCount: string) {
     .mockResolvedValueOnce(lastItemCount)
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce(null)
-    .mockResolvedValueOnce('2');
+    .mockResolvedValueOnce('3');
 }
 
 /**

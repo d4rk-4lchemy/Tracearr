@@ -37,7 +37,7 @@ function PlatformPanelSkeleton() {
 }
 
 export function PlatformPanel({ data, isLoading, isError, onRetry }: PlatformPanelProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
 
   return (
     <section
@@ -60,7 +60,7 @@ export function PlatformPanel({ data, isLoading, isError, onRetry }: PlatformPan
             <TableCaption className="sr-only">{t('media.detail.platforms.title')}</TableCaption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead>{t('media.detail.platforms.columns.platform')}</TableHead>
+                <TableHead>{t('common:labels.platform')}</TableHead>
                 <TableHead className="text-right">
                   {t('media.detail.platforms.columns.plays')}
                 </TableHead>

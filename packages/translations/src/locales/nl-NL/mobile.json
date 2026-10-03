@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Welkom bij Tracearr",
-    "addServer": "Server toevoegen",
     "connectToServer": "Verbinden met server",
     "enterServerDetails": "Voer de URL van je Tracearr-server en mobiele toegangstoken in",
     "serverUrl": "Server-URL",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": "Voer de toegangstoken in"
   },
   "errors": {
-    "missingFields": "Ontbrekende velden",
-    "pleaseEnterBothFields": "Voer zowel server-URL als token in",
     "invalidUrl": "Ongeldige URL",
-    "serverUrlMustStartWith": "Server-URL moet beginnen met http:// of https://",
     "pleaseEnterValidUrl": "Voer een geldige server-URL in",
     "pairingFailed": "Koppelen mislukt",
     "unableToPair": "Kan geen verbinding maken met de server",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Ongeldig indeling QR-code. Genereer een nieuwe code.",
     "invalidQrCodeMissingUrl": "Ongeldige QR-code: server-URL ontbreekt",
     "invalidQrCodeMissingToken": "Ongeldige QR-code: koppeltoken ontbreekt",
-    "invalidServerUrlInQr": "Ongeldige server-URL in QR-code",
-    "tooManyPairingAttempts": "Te veel koppelpogingen. Wacht een paar minuten.",
-    "invalidOrExpiredToken": "Ongeldig of verlopen koppeltoken.",
-    "invalidPairingRequest": "Ongeldig koppelverzoek. Controleer je token.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "Verbinding kwijt",
     "failedToLoadSession": "Sessie laden mislukt"
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Server selecteren",
-    "server": "",
-    "navigation": "Navigatie"
+    "server": ""
   },
   "resources": {
     "cpu": "",
@@ -82,11 +71,10 @@
     "failedToSendTest": "Versturen testmelding mislukt",
     "loadingPreferences": "Voorkeuren laden...",
     "unableToLoadPreferences": "Voorkeuren laden mislukt",
-    "receiveAlerts": "Ontvang meldingen op dit apparaat",
+    "receiveAlerts": "Ontvang waarschuwingen op dit apparaat",
     "ruleViolationTriggered": "Regelovertreding geactiveerd",
     "newPlaybackBegan": "Afspelen is begonnen",
     "playbackEnded": "Afspelen beëindigd",
-    "exceededStreamLimit": "Gebruiker heeft de streamlimiet overschreden",
     "newDeviceDetected": "Nieuw apparaat gedetecteerd voor gebruiker",
     "trustScoreDegraded": "De vertrouwensscore van de gebruiker is gedaald",
     "serverUnreachable": "Mediaserver onbereikbaar",
@@ -117,7 +105,7 @@
     "violationTypes": ""
   },
   "session": {
-    "streamTerminated": "Stream Beëindigd",
+    "streamTerminated": "Stream afgebroken",
     "sessionStopped": "De afspeelsessie is gestopt.",
     "failedToTerminate": "Het beëindigen is mislukt"
   },
@@ -125,17 +113,19 @@
     "userMayBeRemoved": "Deze gebruiker is mogelijk verwijderd.",
     "noLocationsRecorded": "Geen locaties geregistreerd",
     "noDevicesRecorded": "Geen apparaten geregistreerd",
-    "moreLocations": "+{{count}} meer locaties",
-    "moreDevices": "+{{count}} meer apparaten",
     "noViolations": "Geen overtredingen",
-    "noTerminations": "Geen stream stops",
+    "noTerminations": "Geen afgebroken streams",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_other": "+{{count}} meer locaties",
+    "moreDevices_one": "",
+    "moreDevices_other": "+{{count}} meer apparaten"
   },
   "violation": {
-    "violationNotFoundDesc": "Deze overtreding is mogelijk afgewezen of niet langer beschikbaar.",
+    "violationNotFoundDesc": "Deze overtreding is mogelijk genegeerd of niet langer beschikbaar.",
     "ips": ""
   },
   "alerts": {
@@ -143,14 +133,15 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "Probeer je filters aan te passen",
@@ -163,7 +154,8 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -183,7 +175,7 @@
   },
   "unauthenticated": {
     "connectionLost": "Verbinding Verbroken",
-    "accessRevoked": "Uw toegang tot {{serverName}} is ingetrokken. Vraag de serverbeheerder om een ​​nieuwe koppelingscode.",
+    "accessRevoked": "Je toegang tot {{serverName}} is ingetrokken. Vraag de servereigenaar om een nieuwe koppelcode.",
     "scanQrCode": ""
   },
   "serverSelector": {
@@ -193,28 +185,25 @@
     "allServers": "Alle servers"
   },
   "reconnected": "Opnieuw verbonden",
-  "serverScope": {
-    "single": "Alleen {{name}} weergeven"
-  },
   "a11y": {
     "selectServer": "Selecteer server",
     "alerts": "Waarschuwingen",
-    "alertsCount": "Waarschuwingen, {{count}} ongelezen",
     "settings": "Instellingen",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_other": "Waarschuwingen, {{count}} ongelezen",
+    "filtersActive_one": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "Geen locatiegegevens beschikbaar",
     "unavailable": "Kaart niet beschikbaar"
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +216,9 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,9 +252,9 @@
   },
   "widget": {
     "asOf": "",
+    "signedOut": "",
     "serversDown_one": "",
     "serversDown_other": "",
-    "signedOut": "",
     "transcodes_one": "",
     "transcodes_other": ""
   }

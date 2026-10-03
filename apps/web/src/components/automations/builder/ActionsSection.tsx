@@ -7,6 +7,7 @@ import {
   type ActionType,
   type AutomationActions,
   type AutomationKind,
+  type TemplateVariable,
   type ViolationSeverity,
 } from '@tracearr/shared';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ interface ActionsSectionProps {
   actions: AutomationActions;
   kind: AutomationKind;
   severity: ViolationSeverity;
+  variables: readonly TemplateVariable[];
   refs: BuilderRefs;
   issues: NodeIssues;
   pulseId: string | null;
@@ -64,6 +66,7 @@ export function ActionsSection({
   actions,
   kind,
   severity,
+  variables,
   refs,
   issues,
   pulseId,
@@ -167,6 +170,7 @@ export function ActionsSection({
               <IfRow
                 key={idOf(action)}
                 action={action}
+                variables={variables}
                 refs={refs}
                 issues={issues}
                 pulseId={pulseId}
@@ -183,6 +187,7 @@ export function ActionsSection({
               <ActionRow
                 key={idOf(action)}
                 action={action}
+                variables={variables}
                 issues={issues.get(idOf(action))}
                 pulsing={pulseId === idOf(action)}
                 rowProps={rows.rowProps(index)}

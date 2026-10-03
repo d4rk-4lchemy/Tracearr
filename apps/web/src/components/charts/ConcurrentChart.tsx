@@ -14,6 +14,7 @@ interface ConcurrentData {
   direct: number;
   directStream: number;
   transcode: number;
+  audioTranscode: number;
 }
 
 interface ConcurrentChartProps {
@@ -35,7 +36,8 @@ export function ConcurrentChart({
       return {};
     }
 
-    const timestamps = data.map((d) => parseChartDate(d.hour));
+    const points = (value: (d: ConcurrentData) => number): [number, number][] =>
+      data.map((d) => [parseChartDate(d.hour), value(d)]);
 
     return {
       chart: {
@@ -161,7 +163,7 @@ export function ConcurrentChart({
         {
           type: 'area',
           name: t(PLAYBACK_DECISION_LABEL_KEYS.directplay),
-          data: data.map((d, i) => [timestamps[i] ?? 0, d.direct]),
+          data: points((d) => d.direct),
           color: 'hsl(var(--chart-2))',
           fillColor: {
             linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
@@ -174,7 +176,7 @@ export function ConcurrentChart({
         {
           type: 'area',
           name: t(PLAYBACK_DECISION_LABEL_KEYS.copy),
-          data: data.map((d, i) => [timestamps[i] ?? 0, d.directStream]),
+          data: points((d) => d.directStream),
           color: 'hsl(210, 76%, 50%)',
           fillColor: {
             linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
@@ -186,8 +188,21 @@ export function ConcurrentChart({
         },
         {
           type: 'area',
+          name: t(PLAYBACK_DECISION_LABEL_KEYS.audio_transcode),
+          data: points((d) => d.audioTranscode),
+          color: 'hsl(262, 60%, 58%)',
+          fillColor: {
+            linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+            stops: [
+              [0, 'hsl(262 60% 58% / 0.4)'],
+              [1, 'hsl(262 60% 58% / 0.1)'],
+            ],
+          },
+        },
+        {
+          type: 'area',
           name: t(PLAYBACK_DECISION_LABEL_KEYS.transcode),
-          data: data.map((d, i) => [timestamps[i] ?? 0, d.transcode]),
+          data: points((d) => d.transcode - d.audioTranscode),
           color: 'hsl(var(--chart-4))',
           fillColor: {
             linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },

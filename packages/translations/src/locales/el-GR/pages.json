@@ -27,9 +27,7 @@
     "plexAuthFailed": "Αποτυχία ταυτοποίησης Plex",
     "plexStartFailed": "Αποτυχία έναρξης σύνδεσης στο Plex",
     "serverConnectFailed": "Αποτυχία σύνδεσης με το διακομιστή",
-    "signupFailed": "Η εγγραφή απέτυχε",
     "createAccountFailed": "Αποτυχία δημιουργίας λογαριασμού",
-    "loginFailed": "Αποτυχία σύνδεσης",
     "invalidCredentials": "Μη έγκυρο email ή κωδικός πρόσβασης",
     "claimCodeRequired": "Η πρώτη ρύθμιση απαιτεί έναν κωδικό απαίτησης",
     "enterClaimCode": "Εισάγετε Κωδικό Διεκδίκησης",
@@ -41,6 +39,8 @@
   },
   "dashboard": {
     "alerts": "Ειδοποιήσεις",
+    "plays": "Αναπαραγωγές",
+    "watchTime": "Χρόνος Παρακολούθησης",
     "activeUsers": "Ενεργοί Χρήστες",
     "nowPlaying": "Παίζει Τώρα",
     "streamLocations": "Τοποθεσίες Ροής",
@@ -57,13 +57,9 @@
     "title": "Χρήστες",
     "showRemoved": "",
     "noUsersFound": "Δεν βρέθηκαν χρήστες.",
-    "searchPlaceholder": "Αναζήτηση χρηστη...",
-    "selectAllUsers": "Επιλογή όλων των {{count}} χρηστών",
     "serversColumn": "",
-    "resetTrustScore": "Επαναφορά Βαθμού Εμπιστοσύνης",
-    "resetTrustScoreTitle_one": "",
-    "resetTrustScoreTitle_other": "Επαναφορά Αποτέλεσμα Εμπιστοσύνης για {{count}} Χρήστες",
-    "resetTrustScoreConfirm": "Είστε βέβαιοι ότι θέλετε να επαναφέρετε το σκορ εμπιστοσύνης στο 100? Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.",
+    "resetTrustScore": "Επαναφορά Βαθμολογίας Εμπιστοσύνης",
+    "resetTrustScoreConfirm": "Είστε βέβαιοι ότι θέλετε να επαναφέρετε τη βαθμολογία εμπιστοσύνης στο 100; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.",
     "mergeUsers": "",
     "mergeTitleSuggestion": "",
     "mergeTitleBulk": "",
@@ -76,12 +72,8 @@
     "mergeRequired": "",
     "mergeLastActive": "",
     "mergeNeverActive": "",
-    "mergeSessions_one": "",
-    "mergeSessions_other": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -97,17 +89,9 @@
     "mergeSameIdentity": "",
     "mergeSelectAllActive": "",
     "suggestionsTitle": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -122,7 +106,21 @@
     "suggestionsError": "",
     "filterHasAccessTo": "",
     "filterHasAccessToPlaceholder": "",
-    "filterHasAccessToHint": ""
+    "filterHasAccessToHint": "",
+    "selectAllUsers_one": "",
+    "selectAllUsers_other": "Επιλογή όλων των {{count}} χρηστών",
+    "resetTrustScoreTitle_one": "",
+    "resetTrustScoreTitle_other": "Επαναφορά Βαθμολογίας Εμπιστοσύνης για {{count}} Χρήστες",
+    "mergeMoves_one": "",
+    "mergeMoves_other": "",
+    "suggestionsCount_one": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_one": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_one": "",
+    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairUsernameMore_one": "",
+    "suggestionsPairUsernameMore_other": ""
   },
   "userDetail": {
     "backToUsers": "Πίσω στους χρήστες",
@@ -130,7 +128,7 @@
     "userInfo": "Πληροφορίες Χρήστη",
     "statistics": "Στατιστικά",
     "sessions": "Συνεδρίες",
-    "violations": "Παραβάσεις",
+    "violations": "Παραβιάσεις",
     "terminationHistory": "Ιστορικό Τερματισμού",
     "noViolationsFound": "Δεν υπάρχουν παραβιάσεις για αυτόν τον χρήστη.",
     "noTerminationsFound": "Δεν υπάρχουν τερματισμοί ροής για αυτόν το χρήστη.",
@@ -161,12 +159,6 @@
   "history": {
     "title": "Ιστορικό",
     "description": "",
-    "loadingMore": "Φόρτωση περισσότερων...",
-    "scrollForMore": "Κύλιση για περισσότερα",
-    "showingAllResults": "",
-    "deleteSession_one": "",
-    "deleteSession_other": "",
-    "deleteSessionsConfirm": "Είστε βέβαιοι ότι θέλετε να διαγράψετε? Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.",
     "totalPlays": "",
     "uniqueTitles": "",
     "uniqueUsers": ""
@@ -176,8 +168,8 @@
     "description": "",
     "topMovies": "Κορυφαίες Ταινίες",
     "topShows": "Κορυφαίες Τηλεοπτικές Δείξεις",
-    "noMoviePlays": "Δεν παίζει ταινία σε αυτή την περίοδο",
-    "noShowPlays": "Καμία τηλεοπτική εκπομπή δεν παίζει σε αυτή την περίοδο",
+    "noMoviePlays": "Δεν υπάρχουν αναπαραγωγές ταινιών σε αυτή την περίοδο",
+    "noShowPlays": "Δεν υπάρχουν αναπαραγωγές σειρών σε αυτή την περίοδο",
     "overview": {
       "description": "",
       "lastUpdated": "Τελευταία ενημέρωση:",
@@ -236,7 +228,6 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
-      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
@@ -247,7 +238,7 @@
       "copyPath": ""
     },
     "watch": {
-      "title": "Παρακολούθηση Αναλυτικών",
+      "title": "Αναλυτικά Στοιχεία Παρακολούθησης",
       "description": "",
       "watched": "Παρακολουθήθηκε",
       "percentWatched": "% παρακολούθησαν",
@@ -260,12 +251,12 @@
       "monthlyTrends": "Μηνιαίες Τάσεις",
       "busiest": "Αγοράστε:",
       "quietest": "Δυσπιστεί:",
-      "bingeHighlights": "Στιγμιότυπα Binge",
+      "bingeHighlights": "Κορυφαίοι μαραθώνιοι παρακολούθησης",
       "bingeHighlightsDesc": "",
-      "bingeSessions": "συνεδρίες binge",
+      "bingeSessions": "Συνεδρίες μαραθωνίου",
       "noData": "Δεν υπάρχουν δεδομένα παρακολούθησης ακόμα",
       "noDataDesc": "Τα αναλυτικά στοιχεία παρακολούθησης θα εμφανιστούν εδώ μόλις εμφανιστεί το περιεχόμενο. Ελέγξτε πίσω μετά από κάποια δραστηριότητα προβολής.",
-      "failedToLoad": "Αποτυχία φόρτωσης ανάλυσης ρολογιού",
+      "failedToLoad": "Αποτυχία φόρτωσης αναλυτικών στοιχείων παρακολούθησης",
       "failedToLoadDesc": "Αδύνατη η ανάκτηση δεδομένων παρακολούθησης."
     },
     "emptyState": {
@@ -298,7 +289,8 @@
         "title": "",
         "fallbackBody": "",
         "progress": "",
-        "snapshotsSuffix": ""
+        "snapshotsSuffix_one": "",
+        "snapshotsSuffix_other": ""
       },
       "multiServer": {
         "title": "",
@@ -321,32 +313,30 @@
     "versionsBackfill": {
       "banner": "",
       "action": "",
-      "syncFailed": "",
-      "syncStarted": ""
+      "syncStarted": "",
+      "syncFailed_one": "",
+      "syncFailed_other": ""
     }
   },
   "activity": {
     "title": "Δραστηριότητα",
     "description": "",
-    "playsOverTime": "Παίζει Με Χρόνο",
+    "playsOverTime": "Αναπαραγωγές με την πάροδο του χρόνου",
     "concurrentStreams": "Ταυτόχρονες Ροές",
     "engagementBreakdown": "Ανάλυση Δέσμευσης",
     "howUsersEngage": "Πώς οι χρήστες εμπλέκονται με το περιεχόμενο",
-    "playsVsSessions": "Παίζει vs συνεδρίες",
-    "playsVsSessionsDesc": "Πλήρης ολοκλήρωση μόνο — μετράει ένα παιχνίδι όταν ο συνολικός χρόνος παρακολούθησης καλύπτει ολόκληρο το χρόνο εκτέλεσης ενός περιεχομένου",
+    "playsVsSessions": "Αναπαραγωγές vs συνεδρίες",
+    "playsVsSessionsDesc": "Μόνο πλήρεις ολοκληρώσεις: μετράει μία αναπαραγωγή όταν ο συνολικός χρόνος παρακολούθησης καλύπτει ολόκληρη τη διάρκεια του περιεχομένου",
     "activityByDayOfWeek": "Δραστηριότητα ανά Ημέρα της Εβδομάδας",
     "activityByHourOfDay": "Δραστηριότητα ανά Ώρα της Ημέρας",
     "platforms": "Πλατφόρμες",
     "streamQuality": "Ποιότητα Ροής"
   },
   "violations": {
-    "title": "Παραβάσεις",
+    "title": "Παραβιάσεις",
     "tryAdjustingFilters": "Δοκιμάστε να προσαρμόσετε τα φίλτρα σας",
-    "selectAllViolations": "Επιλογή όλων των φίλτρων {{count}} για παραβιάσεις",
-    "dismissViolation": "Παράβλεψη Παραβίασης",
+    "dismissViolation": "Απόρριψη Παραβίασης",
     "dismissViolationConfirm": "Είστε βέβαιοι ότι θέλετε να απορρίψετε αυτή την παραβίαση? Αυτό θα το αφαιρέσει από το αρχείο καταγραφής παραβίασης μόνιμα.",
-    "dismissViolation_one": "",
-    "dismissViolation_other": "",
     "dismissViolationsConfirm": "Είστε βέβαιοι ότι θέλετε να απορρίψετε? Αυτό θα τους αφαιρέσει από το αρχείο καταγραφής παραβίασης μόνιμα και θα αποκαταστήσει τις σχετικές βαθμολογίες εμπιστοσύνης.",
     "noViolationsFound": "Δεν βρέθηκαν παραβιάσεις",
     "noViolationsRecorded": "Καμία παραβίαση δεν έχει καταγραφεί ακόμα.",
@@ -355,7 +345,6 @@
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
-    "peopleSelectedCount": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -366,7 +355,7 @@
       "userInfo": "Χρήστης",
       "sessions": "Συνεδρίες",
       "noSessions": "Καμία συνεδρία που σχετίζεται με αυτήν την παραβίαση",
-      "trigger": "Ενεργοποίηση",
+      "trigger": "Έναυσμα",
       "map": "Τοποθεσίες Συνεδρίας",
       "actions": "Ληφθείσες Ενέργειες",
       "timestamps": "Χρονοσφραγίδες",
@@ -378,22 +367,149 @@
       "threshold": "Όριο",
       "lastActivity": "Τελευταία Δραστηριότητα",
       "neverActive": "Ποτέ ενεργό",
-      "conditionEvidence": "Στοιχεία Κατάστασης",
+      "conditionEvidence": "Στοιχεία Συνθήκης",
       "conditionGroup": "",
       "matched": "{{matched}}/{{total}} ταιριάζουν",
       "actual": "Πραγματικό",
-      "relatedSessions": "",
       "relatedSessions_one": "",
       "relatedSessions_other": ""
-    }
+    },
+    "selectAllViolations_one": "",
+    "selectAllViolations_other": "Επιλογή και των {{count}} παραβιάσεων που ταιριάζουν με τα φίλτρα",
+    "dismissViolations_one": "",
+    "dismissViolations_other": "",
+    "peopleSelectedCount_one": "",
+    "peopleSelectedCount_other": ""
   },
   "automations": {
+    "message": {
+      "heading": "",
+      "defaultText": "",
+      "title": "",
+      "body": "",
+      "blankHint": "",
+      "insertVariable": "",
+      "searchVariables": "",
+      "noVariables": "",
+      "preview": "",
+      "previewSamples": "",
+      "previewDefault": "",
+      "previewDefaultHint": "",
+      "previewPickDestination": "",
+      "fieldTitle": "",
+      "fieldMessage": "",
+      "fieldSubject": "",
+      "fieldHeading": "",
+      "fieldEmbedTitle": "",
+      "fieldDescription": "",
+      "addedDiscord": "",
+      "addedEmail": "",
+      "addedPushSubtitle": "",
+      "previewCount": "",
+      "previewCountBytes": "",
+      "previewCut": "",
+      "previewPriority": "",
+      "previewEscapeHint": "",
+      "webhookNotSent": ""
+    },
+    "priorities": {
+      "automatic": "",
+      "lowest": "",
+      "low": "",
+      "normal": "",
+      "high": "",
+      "urgent": ""
+    },
+    "variableGroups": {
+      "account": "",
+      "stream": "",
+      "server": "",
+      "media": "",
+      "device": "",
+      "trust": "",
+      "newsletter": "",
+      "event": ""
+    },
+    "variables": {
+      "user": {
+        "username": "",
+        "identityName": ""
+      },
+      "session": {
+        "mediaTitle": "",
+        "mediaType": "",
+        "sourceDynamicRange": "",
+        "sourceVideoCodec": "",
+        "seasonNumber": "",
+        "episodeNumber": "",
+        "name": ""
+      },
+      "server": {
+        "name": "",
+        "type": ""
+      },
+      "device": {
+        "name": "",
+        "platform": "",
+        "product": "",
+        "location": ""
+      },
+      "trust": {
+        "previous": "",
+        "new": "",
+        "reason": ""
+      },
+      "media": {
+        "title": "",
+        "name": "",
+        "show": "",
+        "season": "",
+        "episode": "",
+        "episodeCount": "",
+        "type": "",
+        "year": "",
+        "library": "",
+        "server": "",
+        "from": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        },
+        "to": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        }
+      },
+      "newsletter": {
+        "name": "",
+        "outcome": "",
+        "recipientCount": "",
+        "error": ""
+      },
+      "durationMinutes": "",
+      "minutes": "",
+      "days": "",
+      "installedVersion": "",
+      "latestVersion": "",
+      "downloadUrl": "",
+      "releaseUrl": ""
+    },
     "actions": {
       "send": {
         "label": "",
         "description": "",
         "fields": {
           "cooldown_minutes": {
+            "description": ""
+          },
+          "priority": {
             "description": ""
           }
         },
@@ -489,10 +605,10 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_other": "",
       "item": "",
-      "recordedViolation": ""
+      "recordedViolation": "",
+      "emptyRanDescription_one": "",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -501,7 +617,6 @@
       "nameHelper": "",
       "namePlaceholder": "",
       "activeLabel": "",
-      "back": "",
       "submit": "",
       "submitting": "",
       "customize": "",
@@ -550,7 +665,16 @@
         "trustAmountRange": "",
         "trustValueRange": "",
         "messageRequired": "",
-        "tooLong": ""
+        "tooLong": "",
+        "template": {
+          "unclosed": "",
+          "invalidOutput": "",
+          "invalidTag": "",
+          "unexpectedElse": "",
+          "unexpectedEndif": "",
+          "missingEndif": ""
+        },
+        "templateVariable": ""
       },
       "recordAs": {
         "label": "",
@@ -566,7 +690,6 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
-      "selectedCount": "",
       "scope": {
         "label": "",
         "global": "",
@@ -581,6 +704,7 @@
         "personPlaceholder": "",
         "personHelper": "",
         "noServers": "",
+        "historicalNote": "",
         "enforceAcrossServers": "",
         "enforceAcrossServersDescription": ""
       },
@@ -686,12 +810,12 @@
         "placeholderAction": ""
       },
       "footer": {
+        "ready": "",
+        "search": "",
         "problems_one": "",
         "problems_other": "",
         "remaining_one": "",
-        "remaining_other": "",
-        "ready": "",
-        "search": ""
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -712,7 +836,9 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_one": "",
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -726,12 +852,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_one": "",
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -802,6 +924,7 @@
         "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
+        "is_subtitle_burn_in": "",
         "source_bitrate_mbps": "",
         "user_id": "",
         "trust_score": "",
@@ -830,6 +953,10 @@
           "no": ""
         },
         "is_transcode_downgrade": {
+          "yes": "",
+          "no": ""
+        },
+        "is_subtitle_burn_in": {
           "yes": "",
           "no": ""
         },
@@ -885,16 +1012,18 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_one": "",
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
+      "noRuns": "",
       "runsLine_one": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1000,6 +1129,10 @@
         "description": ""
       },
       "is_transcode_downgrade": {
+        "label": "",
+        "description": ""
+      },
+      "is_subtitle_burn_in": {
         "label": "",
         "description": ""
       },
@@ -1296,6 +1429,9 @@
       "cooldown_minutes": {
         "label": ""
       },
+      "priority": {
+        "label": ""
+      },
       "target": {
         "label": ""
       },
@@ -1585,7 +1721,9 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_one": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
     "title": "Τερματισμός Ροής",
@@ -1593,13 +1731,7 @@
     "messageLabel": "Μήνυμα προς το χρήστη (προαιρετικό)",
     "messagePlaceholder": "π.χ., Παρακαλώ μην κοινοποιήσετε το λογαριασμό σας",
     "messageHint": "Αυτό το μήνυμα θα εμφανιστεί σε αυτούς κατά την αναπαραγωγή",
-    "terminating": "Τερματισμός...",
-    "killStream": "Τερματισμός Ροής"
-  },
-  "notFound": {
-    "title": "",
-    "heading": "Η Σελίδα Δεν Βρέθηκε",
-    "description": "Η σελίδα που ψάχνετε δεν υπάρχει ή έχει μετακινηθεί."
+    "terminating": "Τερματισμός..."
   },
   "settings": {
     "plex": {
@@ -1624,10 +1756,8 @@
         "unknown": ""
       },
       "connectionsReachable": "{{reachable}} {{total}} συνδέσεις προσβάσιμες",
-      "connectionsAvailable": "Διαθέσιμες συνδέσεις {{count}}",
       "hideFiltered": "Απόκρυψη φιλτραρισμένων",
       "showAll": "Εμφάνιση όλων",
-      "moreConnections": "",
       "connectingTo": "",
       "ownerOnly": "",
       "noAccountsLinked": "Κανένας Λογαριασμός Plex Συνδεδεμένος",
@@ -1636,21 +1766,22 @@
       "linkAnotherAccount": "Σύνδεση Άλλου Λογαριασμού Plex",
       "linking": "Σύνδεση...",
       "loginEnabled": "Ενεργοποίηση Σύνδεσης",
-      "serversConnected_one": "",
-      "serversConnected_other": "",
       "unlinkAccount": "Αποσύνδεση αυτού του λογαριασμού Plex",
       "reauthorizeAccount": "",
-      "deleteServersFirst": "Διαγραφή συνδεδεμένων διακομιστών πρώτα για αποσύνδεση αυτού του λογαριασμού",
+      "deleteServersFirst": "Διαγράψτε πρώτα τους ενεργούς διακομιστές που συνδέονται μέσω αυτού του λογαριασμού ή επισημάνετέ τους ως αρχειοθετημένους",
       "unlinkPlexAccount": "Αποσύνδεση Λογαριασμού Plex",
-      "unlinkConfirm": "Είστε βέβαιοι ότι θέλετε να αποσυνδέσετε αυτό το λογαριασμό Plex? Δεν θα είστε σε θέση να προσθέσετε διακομιστές από αυτό το λογαριασμό μέχρι να τον συνδέσετε ξανά."
+      "unlinkConfirm": "Είστε βέβαιοι ότι θέλετε να αποσυνδέσετε αυτό το λογαριασμό Plex? Δεν θα είστε σε θέση να προσθέσετε διακομιστές από αυτό το λογαριασμό μέχρι να τον συνδέσετε ξανά.",
+      "connectionsAvailable_one": "",
+      "connectionsAvailable_other": "Διαθέσιμες συνδέσεις {{count}}",
+      "moreConnections_one": "",
+      "moreConnections_other": "",
+      "serversConnected_one": "",
+      "serversConnected_other": ""
     },
     "destinations": {
       "add": "",
-      "alertsGoTo": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
-      "delete": "",
       "deleteConfirm": "",
       "description": "",
       "emailDescription": "",
@@ -1673,7 +1804,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1685,7 +1816,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",
@@ -1746,13 +1877,15 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy": "",
-      "usedBy_other": "",
-      "usedByNewsletters": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
+      "webToastNote": "",
+      "alertsGoTo_one": "",
+      "alertsGoTo_other": "",
+      "usedBy_one": "",
+      "usedBy_other": "",
+      "usedByNewsletters_one": "",
+      "usedByNewsletters_other": ""
     },
     "jobs": {
       "runNow": "Εκτέλεση Τώρα",
@@ -1805,36 +1938,36 @@
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "basemapShadowed": "",
     "badMounts": ""
   },
   "devices": {
     "title": "Συμβατότητα Συσκευής",
     "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip": "",
-    "directPlayRate": "Άμεσος Ρυθμός Παιχνιδιού",
+    "directPlayRate": "Ποσοστό Άμεσης Αναπαραγωγής",
     "videoAndAudio": "",
     "uniqueDevices": "Μοναδικές Συσκευές",
     "uniqueCodecs": "Μοναδικοί Κωδικοποιητές",
     "deviceHealth": "Υγεία Συσκευής",
     "deviceHealthDesc": "",
-    "transcodeHotspots": "Μετατροπή Κωδικού Hotspots",
+    "transcodeHotspots": "Σημεία συχνής διακωδικοποίησης",
     "transcodeHotspotsDesc": "",
     "deviceAndCodec": "Συσκευή + Κωδικοποιητής",
-    "transcodes": "Μετατροπή",
+    "transcodes": "Διακωδικοποιήσεις",
     "pctOfTotal": "% επί συνόλου",
-    "noTranscodeHotspots": "Δεν υπάρχει transcode hotspots",
+    "noTranscodeHotspots": "Δεν υπάρχουν σημεία συχνής διακωδικοποίησης",
     "compatibilityMatrix": "Πίνακας Συμβατότητας",
-    "compatibilityMatrixDesc": "Απευθείας αναπαραγωγή τιμών ανά συσκευή και κωδικοποιητή βίντεο. Ταξινόμηση ανά ένταση συνεδρίας.",
+    "compatibilityMatrixDesc": "Ποσοστά άμεσης αναπαραγωγής ανά συσκευή και κωδικοποιητή βίντεο. Ταξινόμηση κατά πλήθος συνεδριών.",
     "noDeviceDataPeriod": "Δεν υπάρχουν δεδομένα συσκευής σε αυτήν την περίοδο",
     "legend": "Υπόμνημα:",
     "directPlayHigh": "≥80% Άμεση",
     "directPlayMid": "",
     "directPlayLow": "",
-    "topTranscodingUsers": "Κορυφαίοι Χρήστες Transcoding",
+    "topTranscodingUsers": "Χρήστες με τις περισσότερες διακωδικοποιήσεις",
     "topTranscodingUsersDesc": "",
-    "noTranscodingUsers": "Δεν βρέθηκαν χρήστες transcoding"
+    "noTranscodingUsers": "Δεν βρέθηκαν χρήστες με διακωδικοποίηση",
+    "analyzedSessionsTooltip_one": "",
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
     "title": "Εύρος Ζώνης",
@@ -1853,7 +1986,7 @@
   },
   "statsUsers": {
     "noActivity": "Καμία δραστηριότητα ακόμα",
-    "noActivityDesc": "Ξεκινήστε να κάνετε streaming για να δείτε τους κορυφαίους χρήστες σας εδώ",
+    "noActivityDesc": "Ξεκινήστε να κάνετε streaming για να δείτε τους κορυφαίους χρήστες σας εδώ.",
     "top3": "Κορυφή 3",
     "runnersUp": "Επάνω Δρομείς"
   },
@@ -1878,13 +2011,10 @@
     "tasks": "Εργασίες",
     "logs": "Καταγραφή",
     "plexAccounts": "Λογαριασμοί Plex",
-    "terminations": "Καταγγελίες",
+    "terminations": "Τερματισμοί",
     "libraryItems": "Στοιχεία Βιβλιοθήκης",
     "environment": "Περιβάλλον",
     "systemInformation": "Πληροφορίες Συστήματος",
-    "cpu": "Επεξεργαστής",
-    "memory": "Μνήμη",
-    "uptime": "Χρόνος",
     "database": "Βάση Δεδομένων",
     "databaseDesc": "",
     "totalSize": "Συνολικό Μέγεθος",
@@ -1946,27 +2076,28 @@
         }
       },
       "card": {
+        "addedAgo": "προστέθηκε {{date}}",
+        "addedCompactAgo": "",
         "newEpisodes_one": "{{count}} νέο επεισόδιο",
         "newEpisodes_other": "{{count}} νέα επεισόδια",
         "replacedEpisodes_one": "",
         "replacedEpisodes_other": "",
-        "addedAgo": "προστέθηκε {{date}}",
-        "addedCompactAgo": "",
-        "newEpisodesChip": ""
+        "newEpisodesChip_one": "",
+        "newEpisodesChip_other": ""
       },
       "deadWeight": {
         "title": "",
-        "summary": "",
         "empty": "",
         "columns": {
           "poster": "",
           "title": "",
-          "size": "",
           "added": "",
           "servers": ""
         },
         "viewAll": "",
-        "viewAllTooltip": ""
+        "viewAllTooltip": "",
+        "summary_one": "",
+        "summary_other": ""
       },
       "loadError": ""
     },
@@ -1982,15 +2113,14 @@
       "chart": {
         "title": "",
         "valueLabel": "",
+        "ariaLabel": "",
         "itemCount_one": "",
-        "itemCount_other": "",
-        "ariaLabel": ""
+        "itemCount_other": ""
       },
       "table": {
         "title": "",
         "columns": {
           "genre": "",
-          "items": "",
           "plays": "",
           "watchTime": ""
         },
@@ -2063,7 +2193,6 @@
         "lastWatchedAgo": "",
         "completionLabel": "",
         "columns": {
-          "user": "",
           "plays": "",
           "episodes": "",
           "completion": "",
@@ -2074,15 +2203,15 @@
         "title": "",
         "loadError": "",
         "empty": "",
-        "episodeCount_one": "",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
-        }
+        },
+        "episodeCount_one": "",
+        "episodeCount_other": ""
       },
       "platforms": {
         "title": "",
@@ -2090,7 +2219,6 @@
         "empty": "",
         "unknown": "",
         "columns": {
-          "platform": "",
           "plays": "",
           "watchTime": ""
         }
@@ -2102,10 +2230,6 @@
         "watched": "",
         "notWatched": "",
         "columns": {
-          "date": "",
-          "user": "",
-          "content": "",
-          "server": "",
           "duration": ""
         }
       },
@@ -2114,11 +2238,8 @@
         "loadError": "",
         "unknownLibrary": "",
         "columns": {
-          "server": "",
           "library": "",
-          "quality": "",
           "episodes": "",
-          "size": "",
           "added": ""
         },
         "versionLabel": ""
@@ -2128,10 +2249,6 @@
       "rankSuffix": ", θέση {{rank}}",
       "onServers": "Στο {{servers}}",
       "addedLabel": "Προστέθηκε {{date}}",
-      "plays_one": "{{count}} αναπαραγωγή",
-      "plays_other": "{{count}} αναπαραγωγές",
-      "viewers_one": "{{count}} θεατής",
-      "viewers_other": "{{count}} θεατές",
       "watchedState": {
         "watched": "Παρακολουθήθηκε",
         "partial": "Μερικώς παρακολουθημένο",
@@ -2145,12 +2262,14 @@
         "resolution": ""
       },
       "rankChip": "",
+      "versionsChip": "",
+      "moreServers": "",
+      "viewers_one": "{{count}} θεατής",
+      "viewers_other": "{{count}} θεατές",
       "playsCompact_one": "",
       "playsCompact_other": "",
-      "versionsChip": "",
       "versions_one": "",
-      "versions_other": "",
-      "moreServers": ""
+      "versions_other": ""
     },
     "grid": {
       "toolbar": {
@@ -2160,7 +2279,6 @@
         "showsToggle": "",
         "searchPlaceholder": "",
         "searchLabel": "",
-        "removeFilter": "",
         "filtersLabel": "",
         "filtersSheetTitle": "",
         "done": "",
@@ -2178,6 +2296,10 @@
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "atmosLabel": "",
+        "atmosAll": "",
+        "atmosOnly": "",
+        "atmosChip": "",
         "genreLabel": "",
         "genreAll": "",
         "serverLabel": "",
@@ -2232,7 +2354,6 @@
     "columns": {
       "requester": "",
       "title": "",
-      "status": "",
       "requested": "",
       "wait": "",
       "seasons": "",
@@ -2287,11 +2408,12 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
-        "landedOf": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": ""
+        "onDisk": "",
+        "landedOf_one": "",
+        "landedOf_other": ""
       }
     },
     "funnel": {

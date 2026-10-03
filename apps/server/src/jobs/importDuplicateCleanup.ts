@@ -26,7 +26,7 @@ const BATCH_SIZE = 1000;
 
 const uuids = (ids: string[]) => sql`${sql.param(ids)}::uuid[]`;
 
-function importForm(alias: string, type: DuplicateCleanupServer['type']): SQL {
+export function importForm(alias: string, type: DuplicateCleanupServer['type']): SQL {
   const a = sql.raw(alias);
   return type === 'plex'
     ? sql`(${a}.session_key = 'tautulli-' || ${a}.external_session_id)`
@@ -203,35 +203,15 @@ export async function removeImportDuplicatesBatch(
 
     // A root whose reference_id is the import itself is kept by the verdict,
     // so no child below is ever repointed onto its own id.
-    const doomedIds = doomed.map((p) => p.id);
-    const minStarted = doomed.map((p) => p.started_at).sort(byInstant)[0];
-
-    // No upper bound: a resume child can sit in a later chunk than its root.
-    const children = await tx.execute(sql`
-      SELECT id, started_at, reference_id FROM sessions
-      WHERE server_id = ${server.id}::uuid AND server_user_id = ANY(${uuids([...new Set(doomed.map((p) => p.server_user_id))])})
-        AND started_at >= ${minStarted}::timestamptz AND reference_id = ANY(${uuids(doomedIds)})
-    `);
-    const childRows = children.rows as Array<{
-      id: string;
-      started_at: string;
-      reference_id: string;
-    }>;
-    if (childRows.length > 0) {
-      await repointChildren(tx, server, childRows, doomed);
-    }
-
-    const removed = await tx.execute(sql`
-      DELETE FROM sessions s
-      USING unnest(${uuids(doomedIds)}, ${sql.param(doomed.map((p) => p.started_at))}::timestamptz[]) AS d(id, started_at)
-      WHERE s.id = d.id AND s.started_at = d.started_at
-        AND ${candidateBounds('s', server, window)}
-      RETURNING s.started_at
-    `);
     return {
       count: pairs.length,
       keptIds,
-      deletedStarts: (removed.rows as Array<{ started_at: string }>).map((r) => r.started_at),
+      deletedStarts: await deleteSessionsRepointingChildren(
+        tx,
+        server.id,
+        doomed,
+        candidateBounds('s', server, window)
+      ),
     };
   });
 
@@ -279,12 +259,53 @@ async function importsSharingChain(
 }
 
 /**
+ * Repoint the doomed rows' resume children onto each row's root_id, then delete
+ * the doomed rows by (id, started_at) and return the started_at of each row
+ * deleted. `bounds` constrains alias `s` in the DELETE and is the caller's
+ * guard on which rows may go. A root_id must never be a doomed row's own id.
+ * Runs inside the caller's transaction, after uncapDecompressionForTx.
+ */
+export async function deleteSessionsRepointingChildren(
+  tx: { execute: (query: SQL) => Promise<{ rows: unknown[] }> },
+  serverId: string,
+  doomed: Array<{ id: string; started_at: string; server_user_id: string; root_id: string }>,
+  bounds: SQL
+): Promise<string[]> {
+  const doomedIds = doomed.map((p) => p.id);
+  const minStarted = doomed.map((p) => p.started_at).sort(byInstant)[0];
+
+  // No upper bound: a resume child can sit in a later chunk than its root.
+  const children = await tx.execute(sql`
+    SELECT id, started_at, reference_id FROM sessions
+    WHERE server_id = ${serverId}::uuid AND server_user_id = ANY(${uuids([...new Set(doomed.map((p) => p.server_user_id))])})
+      AND started_at >= ${minStarted}::timestamptz AND reference_id = ANY(${uuids(doomedIds)})
+  `);
+  const childRows = children.rows as Array<{
+    id: string;
+    started_at: string;
+    reference_id: string;
+  }>;
+  if (childRows.length > 0) {
+    await repointChildren(tx, serverId, childRows, doomed);
+  }
+
+  const removed = await tx.execute(sql`
+    DELETE FROM sessions s
+    USING unnest(${uuids(doomedIds)}, ${sql.param(doomed.map((p) => p.started_at))}::timestamptz[]) AS d(id, started_at)
+    WHERE s.id = d.id AND s.started_at = d.started_at
+      AND ${bounds}
+    RETURNING s.started_at
+  `);
+  return (removed.rows as Array<{ started_at: string }>).map((r) => r.started_at);
+}
+
+/**
  * One UPDATE per sessions chunk, with that chunk's bounds on the target, so
  * repointing never decompresses more than one chunk at a time.
  */
 async function repointChildren(
   tx: { execute: (query: SQL) => Promise<{ rows: unknown[] }> },
-  server: DuplicateCleanupServer,
+  serverId: string,
   children: Array<{ id: string; started_at: string; reference_id: string }>,
   doomed: Array<{ id: string; server_user_id: string; root_id: string }>
 ): Promise<void> {
@@ -313,7 +334,7 @@ async function repointChildren(
       SET reference_id = m.root_id
       FROM unnest(${uuids(group.map((c) => c.id))}, ${sql.param(group.map((c) => c.started_at))}::timestamptz[], ${uuids(group.map((c) => c.root_id))}) AS m(id, started_at, root_id)
       WHERE s.id = m.id AND s.started_at = m.started_at
-        AND s.server_id = ${server.id}::uuid AND s.server_user_id = ANY(${uuids(users)})
+        AND s.server_id = ${serverId}::uuid AND s.server_user_id = ANY(${uuids(users)})
         AND s.started_at >= ${sorted[0]}::timestamptz AND s.started_at <= ${sorted[sorted.length - 1]}::timestamptz
     `);
   }

@@ -18,9 +18,11 @@ import {
   TRIGGER_GROUPS,
   contextOf,
   contextSupplies,
+  resolveVariable,
   triggerNodeSchema,
   variablesFor,
 } from './triggers.js';
+import { parseTemplate, templateVariables } from './template.js';
 import type { Action, AutomationActions } from './actions.js';
 import type {
   AutomationConditions,
@@ -69,8 +71,6 @@ const automationFieldsSchema = z.strictObject({
   retentionDays: z.number().int().min(1).max(3650).nullable().optional(),
   isActive: z.boolean().optional(),
 });
-
-const VAR_RE = /\{\{\s*([a-zA-Z][\w.]*)\s*\}\}/g;
 
 function valueMatches(
   descriptor: ConditionFieldDescriptor,
@@ -174,7 +174,7 @@ function definitionRefinements(
     );
   };
   checkGroups(def.conditions.groups, ['conditions', 'groups']);
-  const vars = new Set(variablesFor(triggers));
+  const vars = new Set<string>(variablesFor(triggers));
   const checkAction = (action: Action, path: (string | number)[]) => {
     if (action.enabled !== false) {
       const need = ACTIONS[action.type].requires;
@@ -195,13 +195,25 @@ function definitionRefinements(
     }
     if (action.type !== 'send') return;
     for (const field of ['title', 'body'] as const) {
-      for (const match of (action[field] ?? '').matchAll(VAR_RE)) {
-        const name = match[1] ?? '';
-        if (!vars.has(name)) {
+      const text = action[field];
+      if (text === undefined) continue;
+      const parsed = parseTemplate(text);
+      if (!parsed.ok) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [...path, field],
+          message: `template error ${parsed.error.code} at line ${parsed.error.line}`,
+          params: { kind: 'templateParse', ...parsed.error },
+        });
+        continue;
+      }
+      for (const name of templateVariables(parsed.nodes)) {
+        if (!vars.has(resolveVariable(name))) {
           ctx.addIssue({
             code: 'custom',
             path: [...path, field],
             message: `{{${name}}} is not available for every enabled trigger`,
+            params: { kind: 'templateVariable', name },
           });
         }
       }

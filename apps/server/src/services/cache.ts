@@ -4,7 +4,12 @@
  */
 
 import { dispatcharrDeviceId } from './mediaServer/dispatcharr/deviceIdentity.js';
-import type { ActiveSession, DashboardStats, ServerConnectionStatus } from '@tracearr/shared';
+import type {
+  ActiveSession,
+  DashboardStats,
+  ServerConnectionStatus,
+  ServerDownReason,
+} from '@tracearr/shared';
 import { CACHE_TTL, REDIS_KEYS } from '@tracearr/shared';
 import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
@@ -77,7 +82,8 @@ export interface CacheService {
 
   // Server health tracking
   getServerHealth(serverId: string): Promise<boolean | null>;
-  setServerHealth(serverId: string, isHealthy: boolean): Promise<void>;
+  setServerHealth(serverId: string, isHealthy: boolean, reason?: ServerDownReason): Promise<void>;
+  getServerDownReason(serverId: string): Promise<ServerDownReason | null>;
   incrServerFailCount(serverId: string): Promise<number>;
   resetServerFailCount(serverId: string): Promise<void>;
 
@@ -465,12 +471,21 @@ export function createCacheService(redis: Redis): CacheService {
       return data === 'true';
     },
 
-    async setServerHealth(serverId: string, isHealthy: boolean): Promise<void> {
+    async setServerHealth(
+      serverId: string,
+      isHealthy: boolean,
+      reason?: ServerDownReason
+    ): Promise<void> {
       await redis.setex(
         REDIS_KEYS.SERVER_HEALTH(serverId),
         CACHE_TTL.SERVER_HEALTH,
-        isHealthy ? 'true' : 'false'
+        isHealthy ? 'true' : (reason ?? 'false')
       );
+    },
+
+    async getServerDownReason(serverId: string): Promise<ServerDownReason | null> {
+      const data = await redis.get(REDIS_KEYS.SERVER_HEALTH(serverId));
+      return data === 'unauthorized' ? data : null;
     },
 
     async incrServerFailCount(serverId: string): Promise<number> {

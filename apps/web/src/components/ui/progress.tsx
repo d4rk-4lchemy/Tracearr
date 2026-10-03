@@ -5,15 +5,22 @@ import { cn } from '@/lib/utils';
 
 const Progress = React.forwardRef<
   React.ComponentRef<typeof ProgressPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
->(({ className, value, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root> & { buffered?: number | null }
+>(({ className, value, buffered, ...props }, ref) => (
   <ProgressPrimitive.Root
     ref={ref}
     className={cn('bg-primary/20 relative h-2 w-full overflow-hidden rounded-full', className)}
     {...props}
   >
+    {buffered != null && buffered > (value ?? 0) && (
+      <div
+        className="bg-primary/40 absolute inset-y-0 left-0"
+        style={{ width: `${Math.min(100, buffered)}%` }}
+        data-testid="progress-buffered"
+      />
+    )}
     <ProgressPrimitive.Indicator
-      className="bg-primary h-full w-full flex-1 transition-all"
+      className="bg-primary relative h-full w-full flex-1 transition-all"
       style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
     />
   </ProgressPrimitive.Root>

@@ -27,9 +27,7 @@
     "plexAuthFailed": "",
     "plexStartFailed": "",
     "serverConnectFailed": "",
-    "signupFailed": "",
     "createAccountFailed": "",
-    "loginFailed": "",
     "invalidCredentials": "",
     "claimCodeRequired": "",
     "enterClaimCode": "",
@@ -57,12 +55,8 @@
     "title": "",
     "showRemoved": "",
     "noUsersFound": "",
-    "searchPlaceholder": "",
-    "selectAllUsers": "",
     "serversColumn": "",
     "resetTrustScore": "",
-    "resetTrustScoreTitle_one": "",
-    "resetTrustScoreTitle_other": "",
     "resetTrustScoreConfirm": "",
     "mergeUsers": "",
     "mergeTitleSuggestion": "",
@@ -76,12 +70,8 @@
     "mergeRequired": "",
     "mergeLastActive": "",
     "mergeNeverActive": "",
-    "mergeSessions_one": "",
-    "mergeSessions_other": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -97,17 +87,9 @@
     "mergeSameIdentity": "",
     "mergeSelectAllActive": "",
     "suggestionsTitle": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -122,7 +104,14 @@
     "suggestionsError": "",
     "filterHasAccessTo": "",
     "filterHasAccessToPlaceholder": "",
-    "filterHasAccessToHint": ""
+    "filterHasAccessToHint": "",
+    "selectAllUsers_other": "",
+    "resetTrustScoreTitle_other": "",
+    "mergeMoves_other": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairUsernameMore_other": ""
   },
   "userDetail": {
     "backToUsers": "",
@@ -161,12 +150,6 @@
   "history": {
     "title": "",
     "description": "",
-    "loadingMore": "",
-    "scrollForMore": "",
-    "showingAllResults": "",
-    "deleteSession_one": "",
-    "deleteSession_other": "",
-    "deleteSessionsConfirm": "",
     "totalPlays": "",
     "uniqueTitles": "",
     "uniqueUsers": ""
@@ -236,7 +219,6 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
-      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
@@ -298,7 +280,7 @@
         "title": "",
         "fallbackBody": "",
         "progress": "",
-        "snapshotsSuffix": ""
+        "snapshotsSuffix_other": ""
       },
       "multiServer": {
         "title": "",
@@ -321,8 +303,8 @@
     "versionsBackfill": {
       "banner": "",
       "action": "",
-      "syncFailed": "",
-      "syncStarted": ""
+      "syncStarted": "",
+      "syncFailed_other": ""
     }
   },
   "activity": {
@@ -342,11 +324,8 @@
   "violations": {
     "title": "",
     "tryAdjustingFilters": "",
-    "selectAllViolations": "",
     "dismissViolation": "",
     "dismissViolationConfirm": "",
-    "dismissViolation_one": "",
-    "dismissViolation_other": "",
     "dismissViolationsConfirm": "",
     "noViolationsFound": "",
     "noViolationsRecorded": "",
@@ -355,7 +334,6 @@
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
-    "peopleSelectedCount": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -382,18 +360,141 @@
       "conditionGroup": "",
       "matched": "",
       "actual": "",
-      "relatedSessions": "",
-      "relatedSessions_one": "",
       "relatedSessions_other": ""
-    }
+    },
+    "selectAllViolations_other": "",
+    "dismissViolations_other": "",
+    "peopleSelectedCount_other": ""
   },
   "automations": {
+    "message": {
+      "heading": "",
+      "defaultText": "",
+      "title": "",
+      "body": "",
+      "blankHint": "",
+      "insertVariable": "",
+      "searchVariables": "",
+      "noVariables": "",
+      "preview": "",
+      "previewSamples": "",
+      "previewDefault": "",
+      "previewDefaultHint": "",
+      "previewPickDestination": "",
+      "fieldTitle": "",
+      "fieldMessage": "",
+      "fieldSubject": "",
+      "fieldHeading": "",
+      "fieldEmbedTitle": "",
+      "fieldDescription": "",
+      "addedDiscord": "",
+      "addedEmail": "",
+      "addedPushSubtitle": "",
+      "previewCount": "",
+      "previewCountBytes": "",
+      "previewCut": "",
+      "previewPriority": "",
+      "previewEscapeHint": "",
+      "webhookNotSent": ""
+    },
+    "priorities": {
+      "automatic": "",
+      "lowest": "",
+      "low": "",
+      "normal": "",
+      "high": "",
+      "urgent": ""
+    },
+    "variableGroups": {
+      "account": "",
+      "stream": "",
+      "server": "",
+      "media": "",
+      "device": "",
+      "trust": "",
+      "newsletter": "",
+      "event": ""
+    },
+    "variables": {
+      "user": {
+        "username": "",
+        "identityName": ""
+      },
+      "session": {
+        "mediaTitle": "",
+        "mediaType": "",
+        "sourceDynamicRange": "",
+        "sourceVideoCodec": "",
+        "seasonNumber": "",
+        "episodeNumber": "",
+        "name": ""
+      },
+      "server": {
+        "name": "",
+        "type": ""
+      },
+      "device": {
+        "name": "",
+        "platform": "",
+        "product": "",
+        "location": ""
+      },
+      "trust": {
+        "previous": "",
+        "new": "",
+        "reason": ""
+      },
+      "media": {
+        "title": "",
+        "name": "",
+        "show": "",
+        "season": "",
+        "episode": "",
+        "episodeCount": "",
+        "type": "",
+        "year": "",
+        "library": "",
+        "server": "",
+        "from": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        },
+        "to": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        }
+      },
+      "newsletter": {
+        "name": "",
+        "outcome": "",
+        "recipientCount": "",
+        "error": ""
+      },
+      "durationMinutes": "",
+      "minutes": "",
+      "days": "",
+      "installedVersion": "",
+      "latestVersion": "",
+      "downloadUrl": "",
+      "releaseUrl": ""
+    },
     "actions": {
       "send": {
         "label": "",
         "description": "",
         "fields": {
           "cooldown_minutes": {
+            "description": ""
+          },
+          "priority": {
             "description": ""
           }
         },
@@ -489,10 +590,9 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_other": "",
       "item": "",
-      "recordedViolation": ""
+      "recordedViolation": "",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -501,7 +601,6 @@
       "nameHelper": "",
       "namePlaceholder": "",
       "activeLabel": "",
-      "back": "",
       "submit": "",
       "submitting": "",
       "customize": "",
@@ -550,7 +649,16 @@
         "trustAmountRange": "",
         "trustValueRange": "",
         "messageRequired": "",
-        "tooLong": ""
+        "tooLong": "",
+        "template": {
+          "unclosed": "",
+          "invalidOutput": "",
+          "invalidTag": "",
+          "unexpectedElse": "",
+          "unexpectedEndif": "",
+          "missingEndif": ""
+        },
+        "templateVariable": ""
       },
       "recordAs": {
         "label": "",
@@ -566,7 +674,6 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
-      "selectedCount": "",
       "scope": {
         "label": "",
         "global": "",
@@ -581,6 +688,7 @@
         "personPlaceholder": "",
         "personHelper": "",
         "noServers": "",
+        "historicalNote": "",
         "enforceAcrossServers": "",
         "enforceAcrossServersDescription": ""
       },
@@ -686,12 +794,10 @@
         "placeholderAction": ""
       },
       "footer": {
-        "problems_one": "",
-        "problems_other": "",
-        "remaining_one": "",
-        "remaining_other": "",
         "ready": "",
-        "search": ""
+        "search": "",
+        "problems_other": "",
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -712,7 +818,8 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -726,12 +833,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_one": "",
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -749,9 +852,7 @@
       "otherwise": "",
       "appliesTo": "",
       "duration": {
-        "minutes_one": "",
         "minutes_other": "",
-        "days_one": "",
         "days_other": ""
       },
       "triggers": {
@@ -802,6 +903,7 @@
         "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
+        "is_subtitle_burn_in": "",
         "source_bitrate_mbps": "",
         "user_id": "",
         "trust_score": "",
@@ -830,6 +932,10 @@
           "no": ""
         },
         "is_transcode_downgrade": {
+          "yes": "",
+          "no": ""
+        },
+        "is_subtitle_burn_in": {
           "yes": "",
           "no": ""
         },
@@ -885,16 +991,16 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
-      "runsLine_one": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "noRuns": "",
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1000,6 +1106,10 @@
         "description": ""
       },
       "is_transcode_downgrade": {
+        "label": "",
+        "description": ""
+      },
+      "is_subtitle_burn_in": {
         "label": "",
         "description": ""
       },
@@ -1296,6 +1406,9 @@
       "cooldown_minutes": {
         "label": ""
       },
+      "priority": {
+        "label": ""
+      },
       "target": {
         "label": ""
       },
@@ -1585,7 +1698,8 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
     "title": "",
@@ -1593,13 +1707,7 @@
     "messageLabel": "",
     "messagePlaceholder": "",
     "messageHint": "",
-    "terminating": "",
-    "killStream": ""
-  },
-  "notFound": {
-    "title": "",
-    "heading": "",
-    "description": ""
+    "terminating": ""
   },
   "settings": {
     "plex": {
@@ -1624,10 +1732,8 @@
         "unknown": ""
       },
       "connectionsReachable": "",
-      "connectionsAvailable": "",
       "hideFiltered": "",
       "showAll": "",
-      "moreConnections": "",
       "connectingTo": "",
       "ownerOnly": "",
       "noAccountsLinked": "",
@@ -1636,21 +1742,19 @@
       "linkAnotherAccount": "",
       "linking": "",
       "loginEnabled": "",
-      "serversConnected_one": "",
-      "serversConnected_other": "",
       "unlinkAccount": "",
       "reauthorizeAccount": "",
       "deleteServersFirst": "",
       "unlinkPlexAccount": "",
-      "unlinkConfirm": ""
+      "unlinkConfirm": "",
+      "connectionsAvailable_other": "",
+      "moreConnections_other": "",
+      "serversConnected_other": ""
     },
     "destinations": {
       "add": "",
-      "alertsGoTo": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
-      "delete": "",
       "deleteConfirm": "",
       "description": "",
       "emailDescription": "",
@@ -1673,7 +1777,7 @@
         "password": "",
         "fromName": "",
         "fromAddress": "",
-        "to": "Recipients",
+        "to": "",
         "replyTo": "",
         "messagesPerSecond": "",
         "messageStream": ""
@@ -1685,7 +1789,7 @@
       },
       "hints": {
         "authTokenOptional": "",
-        "smtpPreset": "Fills the host, port and security for common providers",
+        "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
         "smtpTo": "",
@@ -1746,13 +1850,12 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy": "",
-      "usedBy_other": "",
-      "usedByNewsletters": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
+      "webToastNote": "",
+      "alertsGoTo_other": "",
+      "usedBy_other": "",
+      "usedByNewsletters_other": ""
     },
     "jobs": {
       "runNow": "",
@@ -1805,14 +1908,12 @@
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "basemapShadowed": "",
     "badMounts": ""
   },
   "devices": {
     "title": "",
     "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip": "",
     "directPlayRate": "",
     "videoAndAudio": "",
     "uniqueDevices": "",
@@ -1834,7 +1935,8 @@
     "directPlayLow": "",
     "topTranscodingUsers": "",
     "topTranscodingUsersDesc": "",
-    "noTranscodingUsers": ""
+    "noTranscodingUsers": "",
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
     "title": "",
@@ -1882,9 +1984,6 @@
     "libraryItems": "",
     "environment": "",
     "systemInformation": "",
-    "cpu": "",
-    "memory": "",
-    "uptime": "",
     "database": "",
     "databaseDesc": "",
     "totalSize": "",
@@ -1946,27 +2045,24 @@
         }
       },
       "card": {
-        "newEpisodes_one": "{{count}} tập mới",
-        "newEpisodes_other": "{{count}} tập mới",
-        "replacedEpisodes_one": "",
-        "replacedEpisodes_other": "",
         "addedAgo": "đã thêm {{date}}",
         "addedCompactAgo": "",
-        "newEpisodesChip": ""
+        "newEpisodes_other": "{{count}} tập mới",
+        "replacedEpisodes_other": "",
+        "newEpisodesChip_other": ""
       },
       "deadWeight": {
         "title": "",
-        "summary": "",
         "empty": "",
         "columns": {
           "poster": "",
           "title": "",
-          "size": "",
           "added": "",
           "servers": ""
         },
         "viewAll": "",
-        "viewAllTooltip": ""
+        "viewAllTooltip": "",
+        "summary_other": ""
       },
       "loadError": ""
     },
@@ -1982,15 +2078,13 @@
       "chart": {
         "title": "",
         "valueLabel": "",
-        "itemCount_one": "",
-        "itemCount_other": "",
-        "ariaLabel": ""
+        "ariaLabel": "",
+        "itemCount_other": ""
       },
       "table": {
         "title": "",
         "columns": {
           "genre": "",
-          "items": "",
           "plays": "",
           "watchTime": ""
         },
@@ -2016,9 +2110,7 @@
       "hero": {
         "loadError": "",
         "meta": {
-          "seasons_one": "",
           "seasons_other": "",
-          "episodes_one": "",
           "episodes_other": ""
         },
         "availability": {
@@ -2063,7 +2155,6 @@
         "lastWatchedAgo": "",
         "completionLabel": "",
         "columns": {
-          "user": "",
           "plays": "",
           "episodes": "",
           "completion": "",
@@ -2074,15 +2165,14 @@
         "title": "",
         "loadError": "",
         "empty": "",
-        "episodeCount_one": "",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
-        }
+        },
+        "episodeCount_other": ""
       },
       "platforms": {
         "title": "",
@@ -2090,7 +2180,6 @@
         "empty": "",
         "unknown": "",
         "columns": {
-          "platform": "",
           "plays": "",
           "watchTime": ""
         }
@@ -2102,10 +2191,6 @@
         "watched": "",
         "notWatched": "",
         "columns": {
-          "date": "",
-          "user": "",
-          "content": "",
-          "server": "",
           "duration": ""
         }
       },
@@ -2114,11 +2199,8 @@
         "loadError": "",
         "unknownLibrary": "",
         "columns": {
-          "server": "",
           "library": "",
-          "quality": "",
           "episodes": "",
-          "size": "",
           "added": ""
         },
         "versionLabel": ""
@@ -2128,10 +2210,6 @@
       "rankSuffix": ", hạng {{rank}}",
       "onServers": "Trên {{servers}}",
       "addedLabel": "Đã thêm {{date}}",
-      "plays_one": "{{count}} lượt phát",
-      "plays_other": "{{count}} lượt phát",
-      "viewers_one": "{{count}} người xem",
-      "viewers_other": "{{count}} người xem",
       "watchedState": {
         "watched": "Đã xem",
         "partial": "Đã xem một phần",
@@ -2145,12 +2223,11 @@
         "resolution": ""
       },
       "rankChip": "",
-      "playsCompact_one": "",
-      "playsCompact_other": "",
       "versionsChip": "",
-      "versions_one": "",
-      "versions_other": "",
-      "moreServers": ""
+      "moreServers": "",
+      "viewers_other": "{{count}} người xem",
+      "playsCompact_other": "",
+      "versions_other": ""
     },
     "grid": {
       "toolbar": {
@@ -2160,7 +2237,6 @@
         "showsToggle": "",
         "searchPlaceholder": "",
         "searchLabel": "",
-        "removeFilter": "",
         "filtersLabel": "",
         "filtersSheetTitle": "",
         "done": "",
@@ -2178,6 +2254,10 @@
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "atmosLabel": "",
+        "atmosAll": "",
+        "atmosOnly": "",
+        "atmosChip": "",
         "genreLabel": "",
         "genreAll": "",
         "serverLabel": "",
@@ -2201,7 +2281,6 @@
           "viewers": ""
         },
         "count": "",
-        "countTotal_one": "",
         "countTotal_other": ""
       },
       "scrubber": {
@@ -2232,7 +2311,6 @@
     "columns": {
       "requester": "",
       "title": "",
-      "status": "",
       "requested": "",
       "wait": "",
       "seasons": "",
@@ -2287,11 +2365,11 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
-        "landedOf": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": ""
+        "onDisk": "",
+        "landedOf_other": ""
       }
     },
     "funnel": {

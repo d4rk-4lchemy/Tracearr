@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { Check, Info, Loader2, Save, TriangleAlert } from 'lucide-react';
-import type { Automation } from '@tracearr/shared';
+import { variablesFor, type Automation } from '@tracearr/shared';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Kbd } from '@/components/ui/kbd';
@@ -227,6 +227,7 @@ export function AutomationBuilder({ automation, draft }: AutomationBuilderProps)
     [state, describeRefs, t, settings]
   );
 
+  const variables = useMemo(() => variablesFor(state.triggers), [state.triggers]);
   const input = useMemo(() => toCreateInput(state), [state]);
   const localIssues = useMemo(() => builderIssues(state, t), [state, t]);
   const issues = useMemo(() => [...localIssues, ...rejected], [localIssues, rejected]);
@@ -408,6 +409,7 @@ export function AutomationBuilder({ automation, draft }: AutomationBuilderProps)
             actions={state.actions}
             kind={state.kind}
             severity={state.severity}
+            variables={variables}
             refs={refs}
             issues={byNode}
             pulseId={pulseId}

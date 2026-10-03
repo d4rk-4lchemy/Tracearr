@@ -88,6 +88,7 @@ const catalogQuerySchema = z.object({
   // `${serverId}:${libraryId}` - a library id is only unique within its server.
   libraryKey: libraryKeySchema.optional(),
   hdr: booleanStringSchema.default(false),
+  atmos: booleanStringSchema.default(false),
   sizeGbMin: z.coerce.number().min(0).max(CATALOG_SIZE_GB_MAX).optional(),
   sizeGbMax: z.coerce.number().min(0).max(CATALOG_SIZE_GB_MAX).optional(),
 });
@@ -122,6 +123,7 @@ export interface CatalogPageQueryParams {
   libraryServerId: string | null;
   libraryId: string | null;
   hdr: boolean;
+  atmos: boolean;
   sizeGbMin: number | null;
   sizeGbMax: number | null;
   serverIds: string[] | undefined;
@@ -140,6 +142,7 @@ export interface CatalogTotalsQueryParams {
   libraryServerId: string | null;
   libraryId: string | null;
   hdr: boolean;
+  atmos: boolean;
   sizeGbMin: number | null;
   sizeGbMax: number | null;
   serverIds: string[] | undefined;
@@ -294,6 +297,7 @@ function buildCommonWhere(params: {
   libraryServerId: string | null;
   libraryId: string | null;
   hdr: boolean;
+  atmos: boolean;
   sizeGbMin: number | null;
   sizeGbMax: number | null;
   serverFragmentLi: SQL;
@@ -308,6 +312,7 @@ function buildCommonWhere(params: {
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverFragmentLi,
@@ -344,6 +349,18 @@ function buildCommonWhere(params: {
           WHERE livh.library_item_id = li.id AND livh.removed_at IS NULL
             AND livh.video_dynamic_range IS NOT NULL AND livh.video_dynamic_range <> 'sdr'
         )`;
+  const atmosFilter = !atmos
+    ? sql``
+    : type === 'show'
+      ? sql`AND EXISTS (
+          SELECT 1 ${episodeVersionsScope('m.id')}
+            AND v.audio_atmos
+        )`
+      : sql`AND EXISTS (
+          SELECT 1 FROM library_item_versions liva
+          WHERE liva.library_item_id = li.id AND liva.removed_at IS NULL
+            AND liva.audio_atmos
+        )`;
   // Per-copy grain either way: a movie copy matches on its version-summed
   // rollup, a show copy on its episode total for that server + library - the
   // same figure the detail view reports for the copy.
@@ -367,6 +384,7 @@ function buildCommonWhere(params: {
         AND (${libraryServerId}::uuid IS NULL OR li.server_id = ${libraryServerId}::uuid)
         AND (${libraryId}::text IS NULL OR li.library_id = ${libraryId})
         ${hdrFilter}
+        ${atmosFilter}
         ${sizeFilter}
     )
   `;
@@ -509,6 +527,7 @@ export function buildCatalogPageQuery(params: CatalogPageQueryParams): SQL {
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverIds,
@@ -527,6 +546,7 @@ export function buildCatalogPageQuery(params: CatalogPageQueryParams): SQL {
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverFragmentLi,
@@ -565,6 +585,7 @@ export function buildCatalogTotalsQuery(params: CatalogTotalsQueryParams): SQL {
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverIds,
@@ -584,6 +605,7 @@ export function buildCatalogTotalsQuery(params: CatalogTotalsQueryParams): SQL {
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverFragmentLi,
@@ -649,6 +671,7 @@ async function getCatalogTotals(
     params.libraryServerId ?? '',
     params.libraryId ?? '',
     params.hdr ? 'hdr' : '',
+    params.atmos ? 'atmos' : '',
     params.sizeGbMin ?? '',
     params.sizeGbMax ?? '',
   ].join('|');
@@ -700,6 +723,7 @@ export interface CatalogFilterParams {
   libraryServerId: string | null;
   libraryId: string | null;
   hdr: boolean;
+  atmos: boolean;
   sizeGbMin: number | null;
   sizeGbMax: number | null;
   serverIds: string[] | undefined;
@@ -717,6 +741,7 @@ export function buildLetterCountsQuery(params: CatalogFilterParams): SQL {
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverIds,
@@ -732,6 +757,7 @@ export function buildLetterCountsQuery(params: CatalogFilterParams): SQL {
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverFragmentLi,
@@ -766,6 +792,7 @@ export function buildCatalogCandidatesQuery(
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverIds,
@@ -781,6 +808,7 @@ export function buildCatalogCandidatesQuery(
     libraryServerId,
     libraryId,
     hdr,
+    atmos,
     sizeGbMin,
     sizeGbMax,
     serverFragmentLi,
@@ -926,6 +954,7 @@ function watchedCandidatesCacheKey(args: WatchedCandidatesArgs): string {
     args.libraryServerId ?? '',
     args.libraryId ?? '',
     args.hdr ? 'hdr' : '',
+    args.atmos ? 'atmos' : '',
     args.sizeGbMin ?? '',
     args.sizeGbMax ?? '',
     args.watched,
@@ -1097,6 +1126,7 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
         pageSize,
         libraryKey,
         hdr,
+        atmos,
         sizeGbMin,
         sizeGbMax,
       } = query.data;
@@ -1141,6 +1171,7 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
         libraryServerId: library?.serverId ?? null,
         libraryId: library?.libraryId ?? null,
         hdr,
+        atmos,
         sizeGbMin: sizeGbMin ?? null,
         sizeGbMax: sizeGbMax ?? null,
         serverIds: resolvedIds,
@@ -1298,6 +1329,7 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
         sort,
         libraryKey,
         hdr,
+        atmos,
         sizeGbMin,
         sizeGbMax,
       } = query.data;
@@ -1348,6 +1380,7 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
         libraryServerId: library?.serverId ?? null,
         libraryId: library?.libraryId ?? null,
         hdr,
+        atmos,
         sizeGbMin: sizeGbMin ?? null,
         sizeGbMax: sizeGbMax ?? null,
         serverIds: resolvedIds,
@@ -1381,6 +1414,7 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
         library?.serverId ?? '',
         library?.libraryId ?? '',
         hdr ? 'hdr' : '',
+        atmos ? 'atmos' : '',
         sizeGbMin ?? '',
         sizeGbMax ?? '',
       ].join('|');

@@ -203,4 +203,32 @@ describe('PlexEventSource library timeline parsing', () => {
     expect(added).toHaveLength(0);
     expect(removed).toHaveLength(0);
   });
+
+  it('emits session:progress, not session:playing, for a buffering notification', async () => {
+    const src = await connectedSource();
+    const playing: unknown[] = [];
+    const progress: unknown[] = [];
+    src.on('session:playing', (e) => playing.push(e));
+    src.on('session:progress', (e) => progress.push(e));
+
+    stub._emit(
+      'playing',
+      JSON.stringify({
+        PlaySessionStateNotification: {
+          sessionKey: '1',
+          clientIdentifier: 'c1',
+          guid: 'g1',
+          ratingKey: 'r1',
+          url: '',
+          key: '',
+          viewOffset: 5000,
+          playQueueItemID: 1,
+          state: 'buffering',
+        },
+      })
+    );
+
+    expect(playing).toHaveLength(0);
+    expect(progress).toHaveLength(1);
+  });
 });

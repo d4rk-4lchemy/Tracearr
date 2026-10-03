@@ -353,6 +353,15 @@ function assertSameOrigin(baseUrl: string, imagePath: string): void {
   }
 }
 
+const IMAGE_PATH_ALLOWLIST: Record<(typeof servers.$inferSelect)['type'], RegExp> = {
+  plex: /^\/library\/metadata\/[^/?#]+\/thumb\/[^/?#]+$/,
+  jellyfin: /^\/(Items|Users)\/[^/?#]+\/Images\/Primary(\?tag=[^&#]+)?$/,
+  emby: /^\/(Items|Users)\/[^/?#]+\/Images\/Primary(\?tag=[^&#]+)?$/,
+  // Dispatcharr VOD metadata can provide other relative logo/poster routes.
+  // Requests remain pinned to the configured origin and carry no auth headers.
+  dispatcharr: /^\/[^/].*/,
+};
+
 export function buildUpstreamRequest(
   server: typeof servers.$inferSelect,
   imagePath: string,
@@ -364,6 +373,9 @@ export function buildUpstreamRequest(
   // check on the base URL covers every request shape built below.
   assertSameOrigin(baseUrl, imagePath);
   assertSafeProbeUrl(baseUrl);
+  if (!IMAGE_PATH_ALLOWLIST[server.type].test(imagePath)) {
+    throw new SsrfBlockedError(`Not a media server image path: ${imagePath}`);
+  }
 
   // Dispatcharr's channel-logo endpoint expects the request contract used by
   // the provider itself: the configured server URL and no proxy-added
@@ -458,7 +470,7 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
   const { serverId, imagePath, width, height, fallback, cachePath, shardDir, resizedOnly } = args;
 
   const server = await getServerRow(serverId);
-  if (!server) {
+  if (!server || server.historicalAt) {
     return {
       data: getFallbackImage(fallback, width, height),
       contentType: 'image/svg+xml',
@@ -532,7 +544,7 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
     // drops EXIF, so the tag has to be applied to the pixels first
     const resized = await sharp(imageBuffer, { autoOrient: true })
       .resize(width, height, {
-        fit: fallback === 'poster' || server.type === 'dispatcharr' ? 'inside' : 'cover',
+        fit: 'inside',
         position: 'center',
       })
       .webp({ quality: 80 })

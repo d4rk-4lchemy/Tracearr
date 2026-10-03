@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "歡迎來到 Tracearr",
-    "addServer": "新增伺服器",
     "connectToServer": "連接至伺服器",
     "enterServerDetails": "請輸入你的 Tracearr 網址和手機存取憑證",
     "serverUrl": "伺服器網址",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "缺少欄位",
-    "pleaseEnterBothFields": "請輸入伺服器網址和憑證",
     "invalidUrl": "無效的網址",
-    "serverUrlMustStartWith": "伺服器網址必須以 http:// 或 https:// 開頭",
     "pleaseEnterValidUrl": "請輸入有效的伺服器網址",
     "pairingFailed": "配對失敗",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "無效的 QR 碼格式，請生成新的 QR 碼。",
     "invalidQrCodeMissingUrl": "無效的 QR 碼: 缺少伺服器網址",
     "invalidQrCodeMissingToken": "無效的 QR 碼: 缺少配對憑證",
-    "invalidServerUrlInQr": "QR 碼中具有無效的伺服器網址",
-    "tooManyPairingAttempts": "配對嘗試次數過多，請稍候幾分鐘。",
-    "invalidOrExpiredToken": "無效或過期的配對憑證。",
-    "invalidPairingRequest": "無效的配對請求，請確認你的憑證。",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "選擇伺服器",
-    "server": "伺服器",
-    "navigation": "導覽"
+    "server": "伺服器"
   },
   "resources": {
     "cpu": "處理器",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,14 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_other": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +131,13 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +150,7 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -193,28 +180,23 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_other": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +209,8 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,10 +244,8 @@
   },
   "widget": {
     "asOf": "",
-    "serversDown_one": "",
-    "serversDown_other": "",
     "signedOut": "",
-    "transcodes_one": "",
+    "serversDown_other": "",
     "transcodes_other": ""
   }
 }

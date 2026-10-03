@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { servers } from '../db/schema.js';
 import { dispatchServerUpdate } from '../services/automations/events/producers.js';
 import { createMediaServerClient } from '../services/mediaServer/index.js';
+import { liveServers } from '../services/liveServers.js';
 import { getSettings } from '../services/settings.js';
 import { createLogger } from '../utils/logger.js';
 import { startPeriodic, type PeriodicTimers } from '../utils/periodic.js';
@@ -104,15 +105,7 @@ export async function runServerUpdateCheck(): Promise<void> {
     const settings = await getSettings(['serverUpdateCheckEnabled']);
     if (!settings.serverUpdateCheckEnabled) return;
 
-    const rows = await db
-      .select({
-        id: servers.id,
-        name: servers.name,
-        type: servers.type,
-        url: servers.url,
-        token: servers.token,
-      })
-      .from(servers);
+    const rows = await liveServers();
 
     // The vendor feed is per type, not per server: read it once however many servers share it.
     const latestByType = new Map<ServerType, Promise<string | null>>();

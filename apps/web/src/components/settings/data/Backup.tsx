@@ -265,7 +265,7 @@ export function RestoreCard({ backup, onClose }: { backup: BackupListItem; onClo
         <dl className="grid max-w-lg grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
           <dt className="text-muted-foreground">{t('backup.restore.selectedBackup')}</dt>
           <dd className="font-mono">{backup.filename}</dd>
-          <dt className="text-muted-foreground">{t('backup.date')}</dt>
+          <dt className="text-muted-foreground">{t('common:labels.date')}</dt>
           <dd>{dateLabel(backup.createdAt)}</dd>
           <dt className="text-muted-foreground">{t('backup.version')}</dt>
           <dd>{backup.metadata.app.version}</dd>

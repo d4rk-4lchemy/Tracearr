@@ -5,7 +5,9 @@ import {
   TRIGGER_TYPES,
   contextOf,
   contextSupplies,
+  resolveVariable,
   variablesFor,
+  VARIABLE_SAMPLES,
 } from '../index.js';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -78,5 +80,30 @@ describe('newsletter triggers', () => {
     expect(TRIGGERS['newsletter.failed'].context).toBe('install');
     expect(TRIGGER_GROUPS).toContain('notifications');
     expect(contextOf([{ id: id(7), type: 'newsletter.failed', enabled: true }])).toBe('install');
+  });
+});
+
+describe('template variables', () => {
+  it('names the tracearr update versions like the other update triggers', () => {
+    expect(TRIGGERS['tracearr.update_available'].variables).toEqual([
+      'installedVersion',
+      'latestVersion',
+      'releaseUrl',
+    ]);
+  });
+
+  it('resolves the old names to the new ones and leaves the rest alone', () => {
+    expect(resolveVariable('current')).toBe('installedVersion');
+    expect(resolveVariable('latest')).toBe('latestVersion');
+    expect(resolveVariable('toString')).toBe('toString');
+    expect(resolveVariable('user.username')).toBe('user.username');
+  });
+
+  it('has a non-empty sample for every variable a trigger offers', () => {
+    for (const type of TRIGGER_TYPES) {
+      for (const name of TRIGGERS[type].variables) {
+        expect(VARIABLE_SAMPLES[name]).not.toBe('');
+      }
+    }
   });
 });

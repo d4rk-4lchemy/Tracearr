@@ -201,6 +201,21 @@ describe('pushType.render', () => {
   });
 });
 
+describe('pushType.render text limits', () => {
+  it('cuts an override body to 1024 characters on the event path', async () => {
+    const rendered = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ body: 'b'.repeat(1500) })
+    );
+    expect(rendered.kind === 'event' ? [...(rendered.override?.body ?? '')].length : 0).toBe(1024);
+  });
+
+  it('cuts the text path body to 1024 characters', async () => {
+    const rendered = await render(mediaAdded, automationCtx({ body: 'b'.repeat(1500) }));
+    expect(rendered.kind === 'text' ? [...rendered.body].length : 0).toBe(1024);
+  });
+});
+
 function spyOnNotifiers() {
   return {
     notifyViolation: vi

@@ -36,6 +36,10 @@ vi.mock('../../../db/client.js', () => ({
 
 const mockPublish = vi.fn().mockResolvedValue(undefined);
 vi.mock('../../cache.js', () => ({ getPubSubService: () => ({ publish: mockPublish }) }));
+const mockIsLiveServer = vi.fn().mockResolvedValue(true);
+vi.mock('../../liveServers.js', () => ({
+  isLiveServer: (...args: unknown[]) => mockIsLiveServer(...args),
+}));
 
 const mockLoadEvaluationContext = vi.fn();
 vi.mock('../events/contextAssembly.js', async (importOriginal) => ({
@@ -487,6 +491,7 @@ describe('server and install producers', () => {
     vi.clearAllMocks();
     resetDispatcherForTests();
     cached.length = 0;
+    mockIsLiveServer.mockResolvedValue(true);
     mockGetActiveAutomations.mockResolvedValue([]);
     mockServerRows.mockReturnValue([serverRow]);
     setContextAssemblyDeps({
@@ -501,6 +506,28 @@ describe('server and install producers', () => {
     await dispatchServerHealth('server.down', server, new Date());
     await dispatchServerHealth('server.up', server, new Date());
 
+    expect(seen).toEqual([]);
+  });
+
+  it('publishes no banner and dispatches nothing by id for a historical server', async () => {
+    mockGetActiveAutomations.mockResolvedValue([automation([node('server.down')])]);
+    mockIsLiveServer.mockResolvedValue(false);
+    const seen = captureEvents('server.down');
+
+    await dispatchServerHealthById('server.down', 'server-1', new Date());
+
+    expect(mockPublish).not.toHaveBeenCalled();
+    expect(seen).toEqual([]);
+  });
+
+  it('publishes no banner and dispatches nothing from the poller row for a historical server', async () => {
+    mockGetActiveAutomations.mockResolvedValue([automation([node('server.down')])]);
+    mockIsLiveServer.mockResolvedValue(false);
+    const seen = captureEvents('server.down');
+
+    await dispatchServerHealth('server.down', server, new Date());
+
+    expect(mockPublish).not.toHaveBeenCalled();
     expect(seen).toEqual([]);
   });
 

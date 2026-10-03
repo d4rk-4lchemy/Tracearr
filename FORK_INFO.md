@@ -39,9 +39,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `762c15e45`
-- Last shared upstream commit found during inspection: `ef0fb45f` (before merge)
-- Latest upstream commit merged into the current working tree: `762c15e45`
+- Source branch/SHA inspected: `main` at `dd6818583`
+- Last shared upstream commit found during inspection: `762c15e45` (before merge)
+- Latest upstream commit merged into the current working tree: `dd6818583`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -52,6 +52,43 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## October 3, 2026 upstream merge
+
+Upstream `main` at `dd6818583` (Tracearr 2.6.0) adds historical servers,
+audio/Atmos and edition metadata, buffering and transcoder presentation,
+subtitle burn-in, trailer handling, notification previews, import corrections,
+new translations, and image-path checks. Upstream migrations `0109` and
+`0110` are byte-for-byte aligned with the source checkout; the Dispatcharr
+fork-migration ledger remains separate and unchanged. Historical Dispatcharr
+servers now stop polling and realtime work, while live Dispatcharr servers
+remain excluded from library auto-sync schedules. Dispatcharr authentication,
+device identity, session lifecycle, termination, settings, and public API
+types remain present.
+
+The shared image proxy retains uncropped `inside` resizing for every provider.
+Upstream image-path restrictions remain for Plex/Jellyfin/Emby; Dispatcharr
+images remain pinned to the configured origin without auth headers and accept
+provider-relative VOD poster paths as well as channel logos. Both Dockerfiles
+retain fork migrations, fork build metadata, and builder-generated basemap
+copies. The release workflow can still prefetch the basemap into the build
+context. Exactly the PR-only CI and fork dual-registry release workflows
+remain; upstream release, geoip, nightly and insiders workflows were excluded.
+
+Full non-Docker validation passed with Node 24 / pnpm 12.4.2, a clean Turbo
+cache, frozen install, 4 GB heap, one Vitest worker, and Turbo concurrency
+one: lint, typecheck, translations, unit/services/routes/auth/security, web,
+coverage, and build. The five server groups plus web passed 9,302 tests;
+coverage passed 5,972 tests (71.06% statements, 64.89% branches, 75.27%
+functions, 72.26% lines). The final Dispatcharr VOD poster regression passed
+in a focused 54-test image-proxy run. Lint has 766 warnings, 15 more than the
+previous baseline, all from upstream-touched files. Runtime warning counts
+and translation results are recorded in `.tmp/github-ci-warning-reference.md`.
+Logs: `.tmp/merge-<job>-20261003.log` (final reruns include `-final`).
+Docker integration, E2E, image builds, database upgrade execution, and
+live-provider smoke checks were omitted at the user's request; the new
+historical-server migrations and runtime behavior have not been checked
+against a running database.
 
 ## September 29, 2026 upstream merge
 

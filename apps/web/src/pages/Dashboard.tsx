@@ -62,7 +62,7 @@ export function Dashboard() {
   // (Jellyfin/Emby until the SSE plugin samples them) return empty series
   // and contribute no line.
   const statsServerIds = useMemo(
-    () => (isMultiServer ? selectedServers.map((s) => s.id) : []),
+    () => (isMultiServer ? selectedServers.filter((s) => !s.historicalAt).map((s) => s.id) : []),
     [isMultiServer, selectedServers]
   );
 
@@ -73,12 +73,17 @@ export function Dashboard() {
     bandwidthAverages,
     clockSkewMs: singleClockSkewMs,
     isLoading: liveStatsLoading,
-  } = useServerLiveStats(selectedServerId ?? undefined, !!singleServer);
+  } = useServerLiveStats(
+    selectedServerId ?? undefined,
+    !!singleServer && !singleServer.historicalAt
+  );
 
   const showServerResources =
     !!singleServer &&
+    !singleServer.historicalAt &&
     (singleIsPlex || singleServer.type === 'dispatcharr' || (serverStats?.length ?? 0) > 0);
 
+  const liveSelected = selectedServers.filter((s) => !s.historicalAt);
   const singleProcessLabel = singleServer
     ? {
         plex: 'Plex Media Server',
@@ -100,19 +105,19 @@ export function Dashboard() {
     (s) => s.statistics.length > 0 || s.bandwidth.length > 0
   );
   const showMultiServerResources =
-    isMultiServer && (hasAnyMultiData || selectedServers.some((s) => s.type === 'plex'));
-  // Plex always exposes its bandwidth endpoint. Dispatcharr only exposes the
-  // card after its Metrics plugin has supplied at least one valid sample;
-  // a zero-valued sample is still valid and intentionally shows the chart.
+    isMultiServer && (hasAnyMultiData || liveSelected.some((s) => s.type === 'plex'));
+  // Dispatcharr shows bandwidth after its Metrics plugin supplies a valid sample.
   const showBandwidthChart =
-    singleIsPlex ||
-    (singleServer?.type === 'dispatcharr' && (bandwidthStats?.length ?? 0) > 0) ||
+    (!!singleServer &&
+      !singleServer.historicalAt &&
+      (singleIsPlex ||
+        (singleServer.type === 'dispatcharr' && (bandwidthStats?.length ?? 0) > 0))) ||
     (isMultiServer &&
-      (selectedServers.some((s) => s.type === 'plex') ||
+      (liveSelected.some((s) => s.type === 'plex') ||
         multiLiveStats.some(
           (series) =>
-            selectedServers.find((server) => server.id === series.serverId)?.type ===
-              'dispatcharr' && series.bandwidth.length > 0
+            liveSelected.find((server) => server.id === series.serverId)?.type === 'dispatcharr' &&
+            series.bandwidth.length > 0
         )));
 
   const seriesMeta = useCallback(

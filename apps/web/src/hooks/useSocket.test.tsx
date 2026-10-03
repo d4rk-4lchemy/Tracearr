@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -59,6 +59,7 @@ vi.mock('@/lib/api', () => ({
 
 import { WS_EVENTS } from '@tracearr/shared';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
 import { DESTINATIONS_KEY } from './queries/useDestinations';
 import { REQUESTS_KEY } from './queries/useRequests';
 import { RUNS_KEY } from './queries/useRuns';
@@ -119,6 +120,22 @@ describe('SocketProvider', () => {
     const opts = fake.io.mock.calls[0]?.[0];
     expect(opts).toBeDefined();
     expect(opts?.reconnectionAttempts).toBeUndefined();
+  });
+
+  it('replaces the health banner from the server after a plain reconnect', async () => {
+    const health = vi.mocked(api.servers.health);
+    health.mockClear();
+    const { result } = setup();
+    fire('connect');
+    fire(WS_EVENTS.SERVER_DOWN, { serverId: 's1', serverName: 'Plex' });
+    expect(result.current.unhealthyServers.map((s) => s.serverId)).toEqual(['s1']);
+
+    health.mockResolvedValueOnce([]);
+    fire('disconnect');
+    fire('connect');
+
+    await waitFor(() => expect(result.current.unhealthyServers).toEqual([]));
+    expect(health).toHaveBeenCalledTimes(2);
   });
 
   it('keeps the socket while the server is merely unreachable', () => {
@@ -246,18 +263,19 @@ describe('SocketProvider', () => {
     }
   });
 
-  it('renders a rule toast from the notification payload', () => {
+  it('renders an automation toast from the notification payload', () => {
     setup();
     fire(WS_EVENTS.NOTIFICATION_TOAST, {
       title: 'Rule tripped',
       message: 'alice is streaming from two places',
-      ruleId: 'r1',
-      ruleName: 'Concurrent streams',
+      automationId: 'a1',
+      automationName: 'Concurrent streams',
       severity: 'high',
     });
 
     expect(toast.error).toHaveBeenCalledWith('Rule tripped', {
       description: 'alice is streaming from two places',
+      descriptionClassName: 'whitespace-pre-line',
       duration: 10000,
     });
   });

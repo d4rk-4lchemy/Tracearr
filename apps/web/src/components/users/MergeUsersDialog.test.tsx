@@ -138,7 +138,7 @@ describe('MergeUsersDialog', () => {
 
     expect(screen.getByText('pages:users.mergeTitleBulk')).toBeInTheDocument();
     expect(screen.queryByText('pages:users.mergeReasonEmail')).not.toBeInTheDocument();
-    expect(screen.queryByText(/pages:users\.mergeSessions/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/common:count\.session/)).not.toBeInTheDocument();
     expect(screen.getByText('pages:users.mergeMovesNoCount')).toBeInTheDocument();
   });
 

@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Tracearr에 오신 것을 환영합니다",
-    "addServer": "서버 추가",
     "connectToServer": "서버에 연결",
     "enterServerDetails": "Tracearr 서버 URL과 모바일 접근 토큰을 입력하세요",
     "serverUrl": "서버 URL",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": "접근 토큰을 입력하세요"
   },
   "errors": {
-    "missingFields": "누락된 항목",
-    "pleaseEnterBothFields": "서버 URL과 토큰을 모두 입력하세요",
     "invalidUrl": "올바르지 않은 URL입니다",
-    "serverUrlMustStartWith": "서버 URL은 http:// 또는 https://로 시작해야 합니다",
     "pleaseEnterValidUrl": "올바른 서버 URL을 입력하세요",
     "pairingFailed": "페어링 실패",
     "unableToPair": "서버와 페어링할 수 없습니다",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "QR 코드 형식이 올바르지 않습니다. 새 코드를 생성하세요.",
     "invalidQrCodeMissingUrl": "QR 코드에 서버 URL이 없습니다",
     "invalidQrCodeMissingToken": "QR 코드에 페어링 토큰이 없습니다",
-    "invalidServerUrlInQr": "QR 코드의 서버 URL이 올바르지 않습니다",
-    "tooManyPairingAttempts": "페어링 시도가 너무 많습니다. 몇 분 후 다시 시도하세요.",
-    "invalidOrExpiredToken": "페어링 토큰이 올바르지 않거나 만료되었습니다.",
-    "invalidPairingRequest": "페어링 요청이 올바르지 않습니다. 토큰을 확인하세요.",
     "errorDetails": "오류 상세:",
-    "componentStack": "컴포넌트 스택:",
     "connectionLost": "연결이 끊겼습니다",
     "failedToLoadSession": "세션을 불러오지 못했습니다"
   },
@@ -63,10 +54,8 @@
     "build": "빌드 {{build}}"
   },
   "navigation": {
-    "home": "홈",
     "selectServer": "서버 선택",
-    "server": "서버",
-    "navigation": "탐색"
+    "server": "서버"
   },
   "resources": {
     "cpu": "CPU",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "규칙 위반이 발생했습니다",
     "newPlaybackBegan": "새 재생이 시작되었습니다",
     "playbackEnded": "재생이 종료되었습니다",
-    "exceededStreamLimit": "사용자가 스트림 제한을 초과했습니다",
     "newDeviceDetected": "사용자에게 새 기기가 감지되었습니다",
     "trustScoreDegraded": "사용자 신뢰 점수가 낮아졌습니다",
     "serverUnreachable": "미디어 서버에 연결할 수 없습니다",
@@ -106,9 +94,9 @@
     "pushNotifications": "푸시 알림",
     "ruleTypes": {
       "accountInactivity": "계정 비활성",
-      "deviceVelocity": "장치 속도",
+      "deviceVelocity": "기기 속도",
       "geoRestriction": "지역 제한",
-      "impossibleTravel": "불가능 한 지역",
+      "impossibleTravel": "불가능한 이동",
       "simultaneousLocations": "동시 위치"
     },
     "severityAll": "모두",
@@ -125,14 +113,14 @@
     "userMayBeRemoved": "이 사용자는 삭제되었을 수 있습니다.",
     "noLocationsRecorded": "위치 기록이 없습니다",
     "noDevicesRecorded": "기기 기록이 없습니다",
-    "moreLocations": "위치 {{count}}곳 더 보기",
-    "moreDevices": "기기 {{count}}대 더 보기",
     "noViolations": "위반이 없습니다",
     "noTerminations": "스트림 종료 기록이 없습니다",
     "lastSeen": "마지막으로 확인된 {{relative}}",
     "terminatedBy": "작성자: @{{username}}",
     "trustScoreConfirm": "@{{username}}의 신뢰 점수를 {{score}}(으)로 설정하시겠습니까?",
-    "trustScoreRange": "@{{username}}의 신뢰 점수(0~100)"
+    "trustScoreRange": "@{{username}}의 신뢰 점수(0~100)",
+    "moreLocations_other": "위치 {{count}}곳 더 보기",
+    "moreDevices_other": "기기 {{count}}대 더 보기"
   },
   "violation": {
     "violationNotFoundDesc": "이 위반은 해제되었거나 더 이상 사용할 수 없을 수 있습니다.",
@@ -143,14 +131,13 @@
     "acknowledgeAll": "모두 확인 처리",
     "acknowledgeAllBody": "{{servers}}의 대기 중인 모든 알림을 확인 처리합니다. 이 작업은 되돌릴 수 없습니다.",
     "acknowledgeAllBodySeverity": "{{servers}}에서 심각도가 {{severity}}인 대기 중 알림을 모두 확인 처리합니다. 이 작업은 되돌릴 수 없습니다.",
-    "acknowledgeAllTitle_one": "알림 {{count}}개를 확인 처리할까요?",
-    "acknowledgeAllTitle_other": "알림 {{count}}개를 확인 처리할까요?",
     "all": "전체",
     "allClear": "이상 없음",
     "allServers": "모든 서버",
     "noAlertsRecorded": "아직 기록된 알림이 없습니다.",
     "noMatches": "일치하는 알림이 없습니다.",
-    "pendingCount": "대기 중 {{count}}개"
+    "acknowledgeAllTitle_other": "알림 {{count}}개를 확인 처리할까요?",
+    "pendingCount_other": "대기 중 {{count}}개"
   },
   "history": {
     "adjustFilters": "필터를 조정해 보세요",
@@ -163,7 +150,7 @@
       "noCountries": "사용 가능한 국가가 없습니다.",
       "noPlatforms": "사용 가능한 플랫폼이 없습니다.",
       "noUsers": "사용 가능한 사용자가 없습니다.",
-      "sectionSelected": "{{section}}, {{count}}개 선택됨"
+      "sectionSelected_other": "{{section}}, {{count}}개 선택됨"
     }
   },
   "users": {
@@ -193,28 +180,23 @@
     "allServers": "모든 서버"
   },
   "reconnected": "다시 연결됨",
-  "serverScope": {
-    "single": "{{name}}만 표시 중"
-  },
   "a11y": {
     "selectServer": "서버 선택",
     "alerts": "알림",
-    "alertsCount": "알림, 읽지 않음 {{count}}개",
     "settings": "설정",
     "trustScore": "신뢰 점수 {{score}}",
     "decreaseTrustScore": "신뢰 점수 낮추기",
-    "filtersActive": "활성 필터 {{count}}개",
     "increaseTrustScore": "신뢰 점수 높이기",
     "sortAscending": "오름차순으로 정렬됨. 탭하여 반대로 정렬",
-    "sortDescending": "내림차순으로 정렬됨. 탭하여 반대로 정렬"
+    "sortDescending": "내림차순으로 정렬됨. 탭하여 반대로 정렬",
+    "alertsCount_other": "알림, 읽지 않음 {{count}}개",
+    "filtersActive_other": "활성 필터 {{count}}개"
   },
   "map": {
     "noData": "위치 데이터가 없습니다",
     "unavailable": "지도를 사용할 수 없습니다"
   },
   "automations": {
-    "conditions_one": "조건 {{count}}개",
-    "conditions_other": "조건 {{count}}개",
     "editOnWeb": "자동화는 Tracearr 웹 앱에서 만들고 편집합니다.",
     "emptyDescription": "Tracearr 웹 앱에서 자동화를 만들면 여기에 표시됩니다.",
     "kind": {
@@ -227,7 +209,8 @@
     "turnOnFailed": "켜지 못했습니다. 아직 꺼져 있습니다.",
     "unsupportedDescription": "이 서버에서 보고한 버전은 {{version}}입니다. 자동화와 실행 내역을 보려면 Tracearr를 업데이트하세요.",
     "unsupportedTitle": "자동화를 사용하려면 서버 2.2 이상이 필요합니다.",
-    "versionCheckFailed": "서버 버전을 확인하지 못했습니다."
+    "versionCheckFailed": "서버 버전을 확인하지 못했습니다.",
+    "conditions_other": "조건 {{count}}개"
   },
   "charts": {
     "weekOf": "{{date}} 주간"
@@ -261,10 +244,8 @@
   },
   "widget": {
     "asOf": "{{time}} 기준",
-    "serversDown_one": "서버 {{count}}대 오프라인",
+    "signedOut": "서버와 페어링하려면 Tracearr를 여세요.",
     "serversDown_other": "서버 {{count}}대 오프라인",
-    "signedOut": "서버를 연결하려면 Tracearr를 여세요.",
-    "transcodes_one": "트랜스코딩 {{count}}개",
     "transcodes_other": "트랜스코딩 {{count}}개"
   }
 }

@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { Automation, TriggerNode } from '@tracearr/shared';
+import {
+  createAutomationSchema,
+  type Automation,
+  type SendAction,
+  type TriggerNode,
+} from '@tracearr/shared';
+import { setSendText } from '@/lib/automations';
 import {
   builderReducer,
   builderStateFrom,
@@ -364,5 +370,43 @@ describe('builderReducer without crypto.randomUUID', () => {
     ];
     for (const id of ids) expect(z.uuid().safeParse(id).success).toBe(true);
     expect(new Set(ids).size).toBe(3);
+  });
+});
+
+describe('send text in a branch', () => {
+  it('saves a send inside an if branch after its body is cleared', () => {
+    const sendId = '44444444-4444-4444-8444-444444444444';
+    const send: SendAction = {
+      id: sendId,
+      type: 'send',
+      to: ['55555555-5555-4555-8555-555555555555'],
+      body: 'x',
+    };
+    const loaded = builderStateFrom(
+      automation({
+        triggers: [
+          { id: '11111111-1111-4111-8111-111111111111', type: 'server.down', enabled: true },
+        ],
+        actions: {
+          actions: [
+            {
+              id: '66666666-6666-4666-8666-666666666666',
+              type: 'if',
+              conditions: { groups: [] },
+              then: [send],
+              else: [],
+            },
+          ],
+        },
+      })
+    );
+
+    const cleared = builderReducer(loaded, {
+      type: 'setAction',
+      id: sendId,
+      action: setSendText(send, 'body', ''),
+    });
+
+    expect(createAutomationSchema.safeParse(toCreateInput(cleared)).success).toBe(true);
   });
 });

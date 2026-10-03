@@ -1,0 +1,1 @@
+ALTER TABLE "servers" ADD COLUMN "historical_at" timestamp with time zone;

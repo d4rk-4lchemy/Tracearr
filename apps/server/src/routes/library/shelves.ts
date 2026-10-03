@@ -158,6 +158,7 @@ async function fetchRecentlyAddedMovies(
     libraryServerId: null,
     libraryId: null,
     hdr: false,
+    atmos: false,
     sizeGbMin: null,
     sizeGbMax: null,
     serverIds,

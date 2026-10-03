@@ -119,4 +119,18 @@ describe('ScopeField', () => {
 
     await waitFor(() => expect(offeredModes()).toEqual(SCOPE_MODES));
   });
+
+  it('notes a historical server under the server picker', async () => {
+    listServers.mockResolvedValue([
+      server('s1', 'One'),
+      { ...server('s2', 'Two'), historicalAt: '2026-09-01T12:00:00.000Z' },
+    ]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    renderField(client, { mode: 'server', serverId: 's2' });
+
+    await waitFor(() =>
+      expect(screen.getByText('automations.builder.scope.historicalNote')).toBeInTheDocument()
+    );
+  });
 });

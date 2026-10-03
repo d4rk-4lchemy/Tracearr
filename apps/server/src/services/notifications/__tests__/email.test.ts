@@ -286,6 +286,32 @@ describe('emailType.render', () => {
   });
 });
 
+describe('emailType.render with automation text', () => {
+  const automationCtx = (over: { title?: string; body?: string } = {}): RenderContext => ({
+    destination,
+    source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
+  });
+  const started: NotificationEvent = {
+    type: 'session_started',
+    payload: createMockActiveSession(),
+  };
+
+  it('uses a custom title as the subject as written, even for media', async () => {
+    const message = await render(mediaAdded, automationCtx({ title: 'New: {{ media.title }}' }));
+    expect(message.subject).toBe('New: Heat');
+  });
+
+  it('strips line breaks from the subject and keeps them in the body', async () => {
+    const message = await render(
+      started,
+      automationCtx({ title: 'a\r\nb', body: 'line one\nline two' })
+    );
+    expect(message.subject).toBe('a b');
+    expect(message.html).toMatch(/line one<br\s*\/?>line two/);
+    expect(message.text).toContain('line one\nline two');
+  });
+});
+
 describe('emailType.deliver', () => {
   it('sends to every listed address with html, text, attachments and a message id', async () => {
     const message = await render(mediaAdded);

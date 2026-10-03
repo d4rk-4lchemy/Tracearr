@@ -40,6 +40,7 @@ export {
   triggerReconciliationPoll,
   triggerServerPoll,
   sweepStaleSessions,
+  forceStopSessions,
 } from './processor.js';
 
 // ============================================================================

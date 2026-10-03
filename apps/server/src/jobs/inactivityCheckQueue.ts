@@ -12,6 +12,7 @@ import { db } from '../db/client.js';
 import { serverUsers, users, servers } from '../db/schema.js';
 import { dispatch } from '../services/automations/events/dispatcher.js';
 import { matchesTrigger, triggerNodeFor } from '../services/automations/events/evaluate.js';
+import { liveServerCondition } from '../services/liveServers.js';
 import { isMaintenance } from '../serverState.js';
 import { batchGetIdentityServerUserIds, getActiveAutomations } from './poller/database.js';
 import { broadcastViolations } from './poller/violations.js';
@@ -226,7 +227,7 @@ async function processInactivityCheck(job: Job<InactivityCheckJobData>): Promise
   const now = Date.now();
   for (const rule of activeRules) {
     const since = inactiveSince(rule, now);
-    const scopeFilters: (SQL | undefined)[] = [isNull(serverUsers.removedAt)];
+    const scopeFilters: (SQL | undefined)[] = [isNull(serverUsers.removedAt), liveServerCondition];
     if (rule.serverUserId) scopeFilters.push(eq(serverUsers.id, rule.serverUserId));
     if (rule.serverId) scopeFilters.push(eq(serverUsers.serverId, rule.serverId));
     if (rule.userId) scopeFilters.push(eq(serverUsers.userId, rule.userId));

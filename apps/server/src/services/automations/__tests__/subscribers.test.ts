@@ -1873,6 +1873,43 @@ describe('registerRuleSubscribers', () => {
     ]);
   });
 
+  it('skips a trailer session on session.started', async () => {
+    const input = createTranscodeInput();
+    const event = startedEvent(input);
+
+    await dispatch(
+      { ...event, session: { ...event.session, mediaType: 'trailer' } },
+      inputsOf(input)
+    );
+
+    expect(mockEvaluateRulesAsync).not.toHaveBeenCalled();
+    expect(mockRecordRun).not.toHaveBeenCalled();
+  });
+
+  it('still evaluates a trailer session on account.new_device', async () => {
+    const input = createTranscodeInput({
+      activeAutomations: [
+        createTranscodeRule({
+          triggers: [{ id: 'trigger-new-device', type: 'account.new_device', enabled: true }],
+        }),
+      ],
+    });
+
+    await dispatch(
+      {
+        type: 'account.new_device',
+        at: new Date(),
+        server: input.server,
+        serverUser: input.serverUser,
+        session: { ...toRuleSession(input.existingSession), mediaType: 'trailer' },
+        device: { name: 'Living Room TV', platform: null, product: null, location: null },
+      },
+      inputsOf(input)
+    );
+
+    expect(mockEvaluateRulesAsync).toHaveBeenCalledTimes(1);
+  });
+
   it('records a dispatched session.transcode_changed against the guarded scope', async () => {
     const input = createTranscodeInput();
 

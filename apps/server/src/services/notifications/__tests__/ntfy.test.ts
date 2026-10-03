@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ViolationWithDetails } from '@tracearr/shared';
+import type { NotificationPriority, ViolationWithDetails } from '@tracearr/shared';
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { ntfyType, type NtfyConfig, type NtfyMessage } from '../destinations/ntfy.js';
 import type { NotificationEvent } from '../events.js';
@@ -166,16 +166,6 @@ describe('ntfyType.render', () => {
     expect(message.priority).toBe(3);
   });
 
-  it('uses the rule source title for a rule send', async () => {
-    const message = await render(
-      { type: 'violation', payload: violation },
-      { destination, source: { kind: 'rule', title: 'Rule fired', message: 'Too many streams' } }
-    );
-
-    expect(message.title).toBe('Rule fired');
-    expect(message.message).toBe('User Test User triggered Test Rule (Warning severity)');
-  });
-
   it('falls back to the tracearr topic when the config topic is empty', async () => {
     const message = await ntfyType.render(
       { type: 'violation', payload: violation },
@@ -307,7 +297,9 @@ const newsletterSend = {
   },
 } as const;
 
-const automationCtx = (over: { title?: string; body?: string } = {}): RenderContext => ({
+const automationCtx = (
+  over: { title?: string; body?: string; priority?: NotificationPriority } = {}
+): RenderContext => ({
   destination,
   source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
 });
@@ -365,5 +357,27 @@ describe('ntfyType.render with an automation source', () => {
     expect(message.title).toBe('Newsletter partly sent');
     expect(message.message).toBe('Weekly reached only part of its 42 recipients');
     expect(message.priority).toBe(3);
+  });
+
+  it('cuts a multibyte body to 4096 bytes', async () => {
+    const message = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ body: '😀'.repeat(1100) })
+    );
+    expect(new TextEncoder().encode(message.message).length).toBeLessThanOrEqual(4096);
+    expect(message.message.endsWith('…')).toBe(true);
+  });
+
+  it('maps every send priority and keeps the event priority without one', async () => {
+    const expected = { lowest: 1, low: 2, normal: 3, high: 4, urgent: 5 } as const;
+    for (const [priority, value] of Object.entries(expected)) {
+      const message = await render(
+        { type: 'session_started', payload: session },
+        automationCtx({ priority: priority as keyof typeof expected })
+      );
+      expect(message.priority).toBe(value);
+    }
+    const automatic = await render({ type: 'session_started', payload: session }, automationCtx());
+    expect(automatic.priority).toBe(3);
   });
 });

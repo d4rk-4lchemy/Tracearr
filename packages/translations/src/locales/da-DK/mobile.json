@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Velkommen til Tracearr",
-    "addServer": "Tilføj Server",
     "connectToServer": "Opret forbindelse til server",
     "enterServerDetails": "Indtast din Tracearr server URL og mobil adgangstoken",
     "serverUrl": "",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "Manglende Felter",
-    "pleaseEnterBothFields": "Indtast venligst både server URL og token",
     "invalidUrl": "Ugyldig URL",
-    "serverUrlMustStartWith": "Server URL skal starte med http:// eller https://",
     "pleaseEnterValidUrl": "Angiv en gyldig server URL",
     "pairingFailed": "Parring Mislykkedes",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Ugyldig QR kode format. Opret venligst en ny kode.",
     "invalidQrCodeMissingUrl": "Ugyldig QR-kode: manglende server-URL",
     "invalidQrCodeMissingToken": "Ugyldig QR-kode: manglende parringstoken",
-    "invalidServerUrlInQr": "Ugyldig server-URL i QR-kode",
-    "tooManyPairingAttempts": "For mange parringsforsøg. Vent et par minutter.",
-    "invalidOrExpiredToken": "Ugyldigt eller udløbet parringstoken.",
-    "invalidPairingRequest": "Ugyldig parringsanmodning. Tjek dit token.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Vælg Server",
-    "server": "",
-    "navigation": ""
+    "server": ""
   },
   "resources": {
     "cpu": "",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,16 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +133,15 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +154,8 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -176,7 +168,7 @@
     "sortTrust": ""
   },
   "activity": {
-    "playsOverTime": "Spiller Over Tid",
+    "playsOverTime": "Afspilninger over tid",
     "concurrentStreams": "",
     "platforms": "Platforme",
     "playbackQuality": ""
@@ -193,28 +185,25 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +216,9 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,9 +252,9 @@
   },
   "widget": {
     "asOf": "",
+    "signedOut": "",
     "serversDown_one": "",
     "serversDown_other": "",
-    "signedOut": "",
     "transcodes_one": "",
     "transcodes_other": ""
   }

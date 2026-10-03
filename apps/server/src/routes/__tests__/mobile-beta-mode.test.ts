@@ -206,9 +206,11 @@ describe('Mobile Routes - Beta Mode Enabled', () => {
             txSelectCallCount++;
             if (txSelectCallCount === 3) {
               return {
-                from: vi
-                  .fn()
-                  .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                from: vi.fn().mockReturnValue({
+                  orderBy: vi
+                    .fn()
+                    .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                }),
               };
             }
             return {
@@ -289,9 +291,11 @@ describe('Mobile Routes - Beta Mode Enabled', () => {
             txSelectCallCount++;
             if (txSelectCallCount === 3) {
               return {
-                from: vi
-                  .fn()
-                  .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                from: vi.fn().mockReturnValue({
+                  orderBy: vi
+                    .fn()
+                    .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                }),
               };
             }
             return {
@@ -380,9 +384,11 @@ describe('Mobile Routes - Beta Mode Enabled', () => {
             txSelectCallCount++;
             if (txSelectCallCount === 3) {
               return {
-                from: vi
-                  .fn()
-                  .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                from: vi.fn().mockReturnValue({
+                  orderBy: vi
+                    .fn()
+                    .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                }),
               };
             }
             return {
@@ -461,9 +467,11 @@ describe('Mobile Routes - Beta Mode Enabled', () => {
             txSelectCallCount++;
             if (txSelectCallCount === 3) {
               return {
-                from: vi
-                  .fn()
-                  .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                from: vi.fn().mockReturnValue({
+                  orderBy: vi
+                    .fn()
+                    .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                }),
               };
             }
             return {

@@ -1,5 +1,6 @@
 import type {
   Server,
+  ServerDownReason,
   UserRole,
   ServerUserWithIdentity,
   ServerUserDetail,
@@ -152,6 +153,7 @@ import type {
   TemplateDefinition,
   TemplateEnvelope,
   TemplateInput,
+  QualityStats,
 } from '@tracearr/shared';
 
 // Re-export shared types needed by frontend components
@@ -324,6 +326,7 @@ function appendHistoryFilterParams(
   if (params.transcodeDecisions?.length)
     searchParams.set('transcodeDecisions', params.transcodeDecisions.join(','));
   if (params.watched !== undefined) searchParams.set('watched', String(params.watched));
+  if (params.subtitleBurnIn) searchParams.set('subtitleBurnIn', 'true');
   if (params.excludeShortSessions) searchParams.set('excludeShortSessions', 'true');
 }
 
@@ -777,6 +780,11 @@ class ApiClient {
         method: 'PATCH',
         body: JSON.stringify({ servers }),
       }),
+    setHistorical: (id: string, historical: boolean) =>
+      this.request<Server>(`/servers/${id}/historical`, {
+        method: 'POST',
+        body: JSON.stringify({ historical }),
+      }),
     liveStats: (id: string) =>
       this.request<{
         serverId: string;
@@ -789,7 +797,7 @@ class ApiClient {
       }>(`/servers/${id}/live-stats`),
     health: async () => {
       const response = await this.request<{
-        data: { serverId: string; serverName: string }[];
+        data: { serverId: string; serverName: string; reason?: ServerDownReason }[];
       }>('/servers/health');
       return response.data;
     },
@@ -1229,15 +1237,7 @@ class ApiClient {
     },
     quality: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
       const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
-      return this.request<{
-        directPlay: number;
-        directStream: number;
-        transcode: number;
-        total: number;
-        directPlayPercent: number;
-        directStreamPercent: number;
-        transcodePercent: number;
-      }>(`/stats/quality?${params.toString()}`);
+      return this.request<QualityStats>(`/stats/quality?${params.toString()}`);
     },
     topUsers: async (timeRange?: StatsTimeRange, serverIds?: string[]) => {
       const params = this.buildStatsParamsMulti(timeRange ?? { period: 'month' }, serverIds);
@@ -1282,6 +1282,7 @@ class ApiClient {
           direct: number;
           directStream: number;
           transcode: number;
+          audioTranscode: number;
         }[];
       }>(`/stats/concurrent?${params.toString()}`);
       return response.data;
@@ -1638,6 +1639,7 @@ class ApiClient {
       pageSize?: number;
       libraryKey?: string;
       hdr?: boolean;
+      atmos?: boolean;
       sizeGbMin?: number;
       sizeGbMax?: number;
     }) => {
@@ -1660,6 +1662,7 @@ class ApiClient {
       if (params.pageSize) searchParams.set('pageSize', String(params.pageSize));
       if (params.libraryKey) searchParams.set('libraryKey', params.libraryKey);
       if (params.hdr) searchParams.set('hdr', 'true');
+      if (params.atmos) searchParams.set('atmos', 'true');
       if (params.sizeGbMin !== undefined) searchParams.set('sizeGbMin', String(params.sizeGbMin));
       if (params.sizeGbMax !== undefined) searchParams.set('sizeGbMax', String(params.sizeGbMax));
       return this.request<CatalogResponse>(`/library/catalog?${searchParams.toString()}`);
@@ -1677,6 +1680,7 @@ class ApiClient {
       sort?: 'title' | 'added' | 'year' | 'plays' | 'watch_time' | 'viewers';
       libraryKey?: string;
       hdr?: boolean;
+      atmos?: boolean;
       sizeGbMin?: number;
       sizeGbMax?: number;
     }) => {
@@ -1697,6 +1701,7 @@ class ApiClient {
       if (params.sort) searchParams.set('sort', params.sort);
       if (params.libraryKey) searchParams.set('libraryKey', params.libraryKey);
       if (params.hdr) searchParams.set('hdr', 'true');
+      if (params.atmos) searchParams.set('atmos', 'true');
       if (params.sizeGbMin !== undefined) searchParams.set('sizeGbMin', String(params.sizeGbMin));
       if (params.sizeGbMax !== undefined) searchParams.set('sizeGbMax', String(params.sizeGbMax));
       return this.request<CatalogLettersResponse>(

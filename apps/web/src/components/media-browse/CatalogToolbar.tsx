@@ -32,6 +32,7 @@ import { MediaTypeToggle } from '@/components/media-browse/MediaTypeToggle';
 import { stableSerialize, type CatalogSort } from '@/hooks/queries';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { formatBytes } from '@/lib/formatters';
+import { liveFirst } from '@/lib/servers';
 import { cn } from '@/lib/utils';
 
 export type { CatalogSort };
@@ -46,6 +47,7 @@ export interface PersistedGridFilters {
   /** `${serverId}:${libraryId}` - a library id is only unique within its server. */
   libraryKey?: string;
   hdr?: boolean;
+  atmos?: boolean;
   sizeGbMin?: number;
   sizeGbMax?: number;
   sort: CatalogSort;
@@ -181,7 +183,7 @@ interface CatalogToolbarProps {
   filters: PersistedGridFilters;
   onFiltersChange: (next: PersistedGridFilters) => void;
   genres: GenreRow[];
-  servers: { id: string; name: string }[];
+  servers: { id: string; name: string; historicalAt?: string | null }[];
   libraries: LibraryOption[];
   totalItems: number | undefined;
   totalFileSize: number | undefined;
@@ -205,7 +207,7 @@ export function CatalogToolbar({
   mobileScrubber,
   className,
 }: CatalogToolbarProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const isMobile = useIsMobile();
   const [searchInput, setSearchInput] = useState(search);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -322,6 +324,7 @@ export function CatalogToolbar({
     filters.serverId,
     filters.libraryKey,
     filters.hdr,
+    filters.atmos,
     filters.sizeGbMin,
     filters.sizeGbMax,
   ].filter((v) => v !== undefined).length;
@@ -383,6 +386,13 @@ export function CatalogToolbar({
         key: 'hdr',
         label: t('media.grid.toolbar.hdrChip'),
         onRemove: () => onFiltersChange({ ...filters, hdr: undefined }),
+      });
+    }
+    if (filters.atmos) {
+      list.push({
+        key: 'atmos',
+        label: t('media.grid.toolbar.atmosChip'),
+        onRemove: () => onFiltersChange({ ...filters, atmos: undefined }),
       });
     }
     if (filters.sizeGbMin !== undefined || filters.sizeGbMax !== undefined) {
@@ -490,6 +500,26 @@ export function CatalogToolbar({
 
       <div className="space-y-1.5">
         <span className="text-muted-foreground block text-xs">
+          {t('media.grid.toolbar.atmosLabel')}
+        </span>
+        <Select
+          value={filters.atmos ? 'atmos' : ALL_SENTINEL}
+          onValueChange={(value) =>
+            onFiltersChange({ ...filters, atmos: value === 'atmos' ? true : undefined })
+          }
+        >
+          <SelectTrigger aria-label={t('media.grid.toolbar.atmosLabel')}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.atmosAll')}</SelectItem>
+            <SelectItem value="atmos">{t('media.grid.toolbar.atmosOnly')}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <span className="text-muted-foreground block text-xs">
           {t('media.grid.toolbar.genreLabel')}
         </span>
         <Select
@@ -559,9 +589,14 @@ export function CatalogToolbar({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.serverAll')}</SelectItem>
-            {servers.map((server) => (
+            {liveFirst(servers).map((server) => (
               <SelectItem key={server.id} value={server.id}>
                 {server.name}
+                {server.historicalAt && (
+                  <Badge variant="outline" className="ml-auto">
+                    {t('common:serverSelector.historical')}
+                  </Badge>
+                )}
               </SelectItem>
             ))}
           </SelectContent>
@@ -743,7 +778,7 @@ export function CatalogToolbar({
             <FilterChip
               key={chip.key}
               label={chip.label}
-              removeLabel={t('media.grid.toolbar.removeFilter', { label: chip.label })}
+              removeLabel={t('common:filters.remove', { label: chip.label })}
               onRemove={chip.onRemove}
             />
           ))}

@@ -65,7 +65,7 @@ export function RichTextField({
   placeholder,
   labelledBy,
 }: RichTextFieldProps) {
-  const { t } = useTranslation('settings');
+  const { t } = useTranslation(['settings', 'common']);
   const [error, setError] = useState<string | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [href, setHref] = useState('');
@@ -180,7 +180,7 @@ export function RichTextField({
               <FieldError>{hrefError}</FieldError>
               <div className="flex justify-end gap-2">
                 <Button type="button" size="sm" onClick={applyLink}>
-                  {t('newsletters.richText.linkApply')}
+                  {t('common:actions.apply')}
                 </Button>
               </div>
             </PopoverContent>

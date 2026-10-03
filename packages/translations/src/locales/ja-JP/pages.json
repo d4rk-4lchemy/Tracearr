@@ -6,10 +6,10 @@
     "signInHeading": "アカウントにサインインする",
     "createAccountDescription": "メディアサーバーを管理するためのアカウントを作成する",
     "signInDescription": "ダッシュボードにアクセスするにはサインインしてください",
-    "selectPlexServer": "プレックスサーバーを選択",
-    "waitingForPlex": "プレックスの承認を待っています...",
+    "selectPlexServer": "Plexサーバーを選択",
+    "waitingForPlex": "Plexの承認を待っています...",
     "completeInPopup": "ポップアップウィンドウでサインインを完了する",
-    "reopenPlexLogin": "プレックスログインを再開する",
+    "reopenPlexLogin": "Plexログインを再開する",
     "continueWith": "",
     "usernameOrEmail": "",
     "identifierPlaceholder": "",
@@ -19,17 +19,15 @@
     "displayNamePlaceholder": "表示名を選択",
     "passwordPlaceholder": "少なくとも8文字",
     "yourPasswordPlaceholder": "パスワード",
-    "setupNote": "アカウントを作成したら、format@@0からプレックスまたはJellyfinサーバーを追加します。",
+    "setupNote": "アカウントを作成したら、設定から Plex または Jellyfin サーバーを追加します。",
     "localDisabledHint": "",
     "oidcError": "",
     "accountCreated": "アカウントが正常に作成されました！",
     "connectedTo": "{{name}} に接続しました",
-    "plexAuthFailed": "プレックス認証に失敗しました",
-    "plexStartFailed": "プレックスのログインを開始できませんでした",
+    "plexAuthFailed": "Plex認証に失敗しました",
+    "plexStartFailed": "Plexのログインを開始できませんでした",
     "serverConnectFailed": "サーバーへの接続に失敗しました",
-    "signupFailed": "サインアップに失敗しました",
     "createAccountFailed": "アカウントの作成に失敗しました",
-    "loginFailed": "ログインに失敗しました",
     "invalidCredentials": "メールアドレスまたはパスワードが正しくありません",
     "claimCodeRequired": "初回セットアップには請求コードが必要です",
     "enterClaimCode": "請求コードを入力",
@@ -41,12 +39,14 @@
   },
   "dashboard": {
     "alerts": "アラート",
+    "plays": "再生回数",
+    "watchTime": "視聴時間",
     "activeUsers": "アクティブなユーザー",
     "nowPlaying": "再生中",
     "streamLocations": "ストリームの場所",
     "serverResources": "サーバーリソース",
     "bandwidth": "",
-    "noActiveStreams": "有効なストリームがありません",
+    "noActiveStreams": "アクティブなストリームはありません",
     "streamsAppearHere": "ユーザーが視聴を開始すると、アクティブなストリームがここに表示されます",
     "vodPlays": "",
     "vodWatchTime": "",
@@ -57,13 +57,9 @@
     "title": "ユーザー",
     "showRemoved": "",
     "noUsersFound": "ユーザーが見つかりませんでした。",
-    "searchPlaceholder": "ユーザーを検索...",
-    "selectAllUsers": "すべての {{count}} ユーザーを選択",
     "serversColumn": "",
     "resetTrustScore": "信頼スコアをリセット",
-    "resetTrustScoreTitle_one": "{{count}} ユーザーのトラストスコアをリセット",
-    "resetTrustScoreTitle_other": "{{count}} ユーザーのトラストスコアをリセット",
-    "resetTrustScoreConfirm": "信頼度を100にリセットしてもよろしいですか？この操作は元に戻せません。",
+    "resetTrustScoreConfirm": "信頼スコアを100にリセットしてもよろしいですか？この操作は元に戻せません。",
     "mergeUsers": "",
     "mergeTitleSuggestion": "",
     "mergeTitleBulk": "",
@@ -76,12 +72,8 @@
     "mergeRequired": "",
     "mergeLastActive": "",
     "mergeNeverActive": "",
-    "mergeSessions_one": "",
-    "mergeSessions_other": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -97,17 +89,9 @@
     "mergeSameIdentity": "",
     "mergeSelectAllActive": "",
     "suggestionsTitle": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -122,7 +106,14 @@
     "suggestionsError": "",
     "filterHasAccessTo": "",
     "filterHasAccessToPlaceholder": "",
-    "filterHasAccessToHint": ""
+    "filterHasAccessToHint": "",
+    "selectAllUsers_other": "すべての {{count}} ユーザーを選択",
+    "resetTrustScoreTitle_other": "{{count}} ユーザーの信頼スコアをリセット",
+    "mergeMoves_other": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairUsernameMore_other": ""
   },
   "userDetail": {
     "backToUsers": "ユーザーに戻る",
@@ -133,7 +124,7 @@
     "violations": "違反",
     "terminationHistory": "終了履歴",
     "noViolationsFound": "このユーザーに対する違反はありません。",
-    "noTerminationsFound": "このユーザーに対する配信終了はありません。",
+    "noTerminationsFound": "このユーザーのストリーム終了記録はありません。",
     "byRule": "",
     "manual": "マニュアル",
     "unknownRule": "不明なルール",
@@ -161,12 +152,6 @@
   "history": {
     "title": "沿革",
     "description": "",
-    "loadingMore": "さらに読み込み中...",
-    "scrollForMore": "詳細はスクロール",
-    "showingAllResults": "すべての {{total}} 結果を表示",
-    "deleteSession_one": "{{count}} セッションを削除",
-    "deleteSession_other": "{{count}} セッションを削除",
-    "deleteSessionsConfirm": "本当に削除しますか？この操作は元に戻せません。",
     "totalPlays": "",
     "uniqueTitles": "",
     "uniqueUsers": ""
@@ -184,7 +169,7 @@
       "totalItems": "合計アイテム数",
       "shows": "ショー",
       "added": "追加しました",
-      "libraryGrowth": "図書館成長",
+      "libraryGrowth": "ライブラリの増加",
       "failedToLoad": "ライブラリの統計情報の読み込みに失敗しました",
       "failedToLoadDesc": "ライブラリデータを取得できませんでした。もう一度やり直してください。",
       "thisPeriod": "この期間",
@@ -236,7 +221,6 @@
       "noDuplicatesTitle": "",
       "noDuplicatesDesc": "",
       "colTitle": "",
-      "colType": "",
       "colMatchType": "",
       "colCopies": "",
       "colRecoverable": "",
@@ -247,7 +231,7 @@
       "copyPath": ""
     },
     "watch": {
-      "title": "分析を見る",
+      "title": "視聴分析",
       "description": "",
       "watched": "視聴済み",
       "percentWatched": "視聴率",
@@ -260,13 +244,13 @@
       "monthlyTrends": "毎月のトレンド",
       "busiest": "最も印象的な:",
       "quietest": "",
-      "bingeHighlights": "Bingeハイライト",
+      "bingeHighlights": "一気見ハイライト",
       "bingeHighlightsDesc": "",
-      "bingeSessions": "bingeセッション",
-      "noData": "ウォッチデータがまだありません",
-      "noDataDesc": "コンテンツが再生されると、ウォッチ解析がここに表示されます。いくつかの閲覧後に再度ご確認ください。",
-      "failedToLoad": "ウォッチ解析の読み込みに失敗しました",
-      "failedToLoadDesc": "ウォッチデータを取得できませんでした。"
+      "bingeSessions": "一気見セッション",
+      "noData": "視聴データはまだありません",
+      "noDataDesc": "コンテンツが再生されると、視聴分析がここに表示されます。視聴が行われた後にもう一度確認してください。",
+      "failedToLoad": "視聴分析の読み込みに失敗しました",
+      "failedToLoadDesc": "視聴データを取得できませんでした。"
     },
     "emptyState": {
       "checkingStatus": "",
@@ -298,7 +282,7 @@
         "title": "",
         "fallbackBody": "",
         "progress": "",
-        "snapshotsSuffix": ""
+        "snapshotsSuffix_other": ""
       },
       "multiServer": {
         "title": "",
@@ -321,19 +305,19 @@
     "versionsBackfill": {
       "banner": "",
       "action": "",
-      "syncFailed": "",
-      "syncStarted": ""
+      "syncStarted": "",
+      "syncFailed_other": ""
     }
   },
   "activity": {
     "title": "アクティビティ",
     "description": "",
-    "playsOverTime": "再生時間",
+    "playsOverTime": "再生回数の推移",
     "concurrentStreams": "同時ストリーム",
     "engagementBreakdown": "エンゲージメントの分析",
     "howUsersEngage": "ユーザーがコンテンツをどのように利用するか",
-    "playsVsSessions": "再生対セッション",
-    "playsVsSessionsDesc": "完全な完了のみ — 合計ウォッチ時間がコンテンツのランタイム全体をカバーする場合、再生をカウントします",
+    "playsVsSessions": "再生回数とセッション数",
+    "playsVsSessionsDesc": "完全に再生された場合のみ: 合計視聴時間がコンテンツの全編をカバーしたときに1回の再生として数えます",
     "activityByDayOfWeek": "曜日ごとのアクティビティ",
     "activityByHourOfDay": "毎日のアクティビティ",
     "platforms": "プラットフォーム",
@@ -342,11 +326,8 @@
   "violations": {
     "title": "違反",
     "tryAdjustingFilters": "フィルターを調整してみてください",
-    "selectAllViolations": "すべての {{count}} 違反マッチングフィルターを選択",
     "dismissViolation": "違反を却下する",
     "dismissViolationConfirm": "この違反を却下してもよろしいですか？違反ログから完全に削除されます。",
-    "dismissViolation_one": "{{count}} 違反を却下する",
-    "dismissViolation_other": "{{count}} 違反を却下する",
     "dismissViolationsConfirm": "本当に却下しますか？これにより違反ログから削除され、関連する信頼スコアが復元されます。",
     "noViolationsFound": "違反は見つかりませんでした",
     "noViolationsRecorded": "違反は記録されていません。",
@@ -355,7 +336,6 @@
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
-    "peopleSelectedCount": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -382,18 +362,141 @@
       "conditionGroup": "条件グループ {{index}}",
       "matched": "{{matched}}/{{total}} が一致しました",
       "actual": "実際：",
-      "relatedSessions": "{{count}} 関連セッション",
-      "relatedSessions_one": "{{count}} 関連セッション",
       "relatedSessions_other": "{{count}} 関連セッション"
-    }
+    },
+    "selectAllViolations_other": "すべての {{count}} 違反マッチングフィルターを選択",
+    "dismissViolations_other": "{{count}} 違反を却下する",
+    "peopleSelectedCount_other": ""
   },
   "automations": {
+    "message": {
+      "heading": "",
+      "defaultText": "",
+      "title": "",
+      "body": "",
+      "blankHint": "",
+      "insertVariable": "",
+      "searchVariables": "",
+      "noVariables": "",
+      "preview": "",
+      "previewSamples": "",
+      "previewDefault": "",
+      "previewDefaultHint": "",
+      "previewPickDestination": "",
+      "fieldTitle": "",
+      "fieldMessage": "",
+      "fieldSubject": "",
+      "fieldHeading": "",
+      "fieldEmbedTitle": "",
+      "fieldDescription": "",
+      "addedDiscord": "",
+      "addedEmail": "",
+      "addedPushSubtitle": "",
+      "previewCount": "",
+      "previewCountBytes": "",
+      "previewCut": "",
+      "previewPriority": "",
+      "previewEscapeHint": "",
+      "webhookNotSent": ""
+    },
+    "priorities": {
+      "automatic": "",
+      "lowest": "",
+      "low": "",
+      "normal": "",
+      "high": "",
+      "urgent": ""
+    },
+    "variableGroups": {
+      "account": "",
+      "stream": "",
+      "server": "",
+      "media": "",
+      "device": "",
+      "trust": "",
+      "newsletter": "",
+      "event": ""
+    },
+    "variables": {
+      "user": {
+        "username": "",
+        "identityName": ""
+      },
+      "session": {
+        "mediaTitle": "",
+        "mediaType": "",
+        "sourceDynamicRange": "",
+        "sourceVideoCodec": "",
+        "seasonNumber": "",
+        "episodeNumber": "",
+        "name": ""
+      },
+      "server": {
+        "name": "",
+        "type": ""
+      },
+      "device": {
+        "name": "",
+        "platform": "",
+        "product": "",
+        "location": ""
+      },
+      "trust": {
+        "previous": "",
+        "new": "",
+        "reason": ""
+      },
+      "media": {
+        "title": "",
+        "name": "",
+        "show": "",
+        "season": "",
+        "episode": "",
+        "episodeCount": "",
+        "type": "",
+        "year": "",
+        "library": "",
+        "server": "",
+        "from": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        },
+        "to": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        }
+      },
+      "newsletter": {
+        "name": "",
+        "outcome": "",
+        "recipientCount": "",
+        "error": ""
+      },
+      "durationMinutes": "",
+      "minutes": "",
+      "days": "",
+      "installedVersion": "",
+      "latestVersion": "",
+      "downloadUrl": "",
+      "releaseUrl": ""
+    },
     "actions": {
       "send": {
         "label": "",
         "description": "",
         "fields": {
           "cooldown_minutes": {
+            "description": ""
+          },
+          "priority": {
             "description": ""
           }
         },
@@ -489,10 +592,9 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_other": "",
       "item": "",
-      "recordedViolation": ""
+      "recordedViolation": "",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -501,7 +603,6 @@
       "nameHelper": "",
       "namePlaceholder": "",
       "activeLabel": "",
-      "back": "",
       "submit": "",
       "submitting": "",
       "customize": "",
@@ -550,7 +651,16 @@
         "trustAmountRange": "",
         "trustValueRange": "",
         "messageRequired": "",
-        "tooLong": ""
+        "tooLong": "",
+        "template": {
+          "unclosed": "",
+          "invalidOutput": "",
+          "invalidTag": "",
+          "unexpectedElse": "",
+          "unexpectedEndif": "",
+          "missingEndif": ""
+        },
+        "templateVariable": ""
       },
       "recordAs": {
         "label": "",
@@ -566,7 +676,6 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
-      "selectedCount": "",
       "scope": {
         "label": "",
         "global": "",
@@ -581,6 +690,7 @@
         "personPlaceholder": "",
         "personHelper": "",
         "noServers": "",
+        "historicalNote": "",
         "enforceAcrossServers": "",
         "enforceAcrossServersDescription": ""
       },
@@ -686,12 +796,10 @@
         "placeholderAction": ""
       },
       "footer": {
-        "problems_one": "",
-        "problems_other": "",
-        "remaining_one": "",
-        "remaining_other": "",
         "ready": "",
-        "search": ""
+        "search": "",
+        "problems_other": "",
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -712,7 +820,8 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -726,12 +835,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_one": "",
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -749,9 +854,7 @@
       "otherwise": "",
       "appliesTo": "",
       "duration": {
-        "minutes_one": "",
         "minutes_other": "",
-        "days_one": "",
         "days_other": ""
       },
       "triggers": {
@@ -802,6 +905,7 @@
         "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
+        "is_subtitle_burn_in": "",
         "source_bitrate_mbps": "",
         "user_id": "",
         "trust_score": "",
@@ -830,6 +934,10 @@
           "no": ""
         },
         "is_transcode_downgrade": {
+          "yes": "",
+          "no": ""
+        },
+        "is_subtitle_burn_in": {
           "yes": "",
           "no": ""
         },
@@ -885,16 +993,16 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
-      "runsLine_one": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "noRuns": "",
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1000,6 +1108,10 @@
         "description": ""
       },
       "is_transcode_downgrade": {
+        "label": "",
+        "description": ""
+      },
+      "is_subtitle_burn_in": {
         "label": "",
         "description": ""
       },
@@ -1296,6 +1408,9 @@
       "cooldown_minutes": {
         "label": ""
       },
+      "priority": {
+        "label": ""
+      },
       "target": {
         "label": ""
       },
@@ -1585,25 +1700,20 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
-    "title": "配信を終了",
+    "title": "ストリームを終了",
     "stopMedia": "@{{mediaTitle}}の \"{{username}}\" を停止しますか？",
     "messageLabel": "ユーザーへのメッセージ (オプション)",
     "messagePlaceholder": "例えば、アカウントを共有しないでください",
     "messageHint": "このメッセージは再生中に表示されます",
-    "terminating": "終了中...",
-    "killStream": "キルストリーム"
-  },
-  "notFound": {
-    "title": "",
-    "heading": "ページが見つかりません",
-    "description": "お探しのページは存在しないか、移動されていません。"
+    "terminating": "終了中..."
   },
   "settings": {
     "plex": {
-      "noServersFound": "プレックスサーバーが見つかりません",
+      "noServersFound": "Plexサーバーが見つかりません",
       "noServersFoundHint": "Plexサーバーを少なくとも1つ所有していることを確認してください",
       "noReachableConnections": "接続可能な接続がありません",
       "local": "ローカル",
@@ -1624,33 +1734,29 @@
         "unknown": ""
       },
       "connectionsReachable": "{{reachable}} / {{total}} コネクションに到達可能",
-      "connectionsAvailable": "{{count}} コネクションが利用可能です",
       "hideFiltered": "フィルターを隠す",
       "showAll": "すべて表示",
-      "moreConnections": "+{{count}} 他のコネクション",
       "connectingTo": "{{name}} に接続中...",
       "ownerOnly": "",
-      "noAccountsLinked": "プレックスアカウントがリンクされていません",
+      "noAccountsLinked": "Plexアカウントがリンクされていません",
       "noAccountsLinkedHint": "Plexアカウントをリンクして、PlexサーバーをTracearrに追加します。",
-      "linkPlexAccount": "プレックスアカウントをリンク",
-      "linkAnotherAccount": "別のプレックスアカウントにリンク",
+      "linkPlexAccount": "Plexアカウントをリンク",
+      "linkAnotherAccount": "別のPlexアカウントにリンク",
       "linking": "リンクしています...",
       "loginEnabled": "ログインが有効です",
-      "serversConnected_one": "{{count}} サーバーが接続されました",
-      "serversConnected_other": "{{count}} サーバーが接続されました",
-      "unlinkAccount": "このプレックスアカウントの連携を解除する",
+      "unlinkAccount": "このPlexアカウントの連携を解除する",
       "reauthorizeAccount": "",
-      "deleteServersFirst": "このアカウントの連携を解除するには、最初に接続されているサーバーを削除してください",
-      "unlinkPlexAccount": "プレックスアカウントのリンクを解除",
-      "unlinkConfirm": "このプレックスアカウントのリンクを解除してもよろしいですか？再度リンクするまで、このアカウントからサーバーを追加することはできません。"
+      "deleteServersFirst": "先に、このアカウント経由で接続している稼働中のサーバーを削除するか、アーカイブ済みにしてください",
+      "unlinkPlexAccount": "Plexアカウントのリンクを解除",
+      "unlinkConfirm": "このPlexアカウントのリンクを解除してもよろしいですか？再度リンクするまで、このアカウントからサーバーを追加することはできません。",
+      "connectionsAvailable_other": "{{count}} コネクションが利用可能です",
+      "moreConnections_other": "+{{count}} 他のコネクション",
+      "serversConnected_other": "{{count}} サーバーが接続されました"
     },
     "destinations": {
       "add": "",
-      "alertsGoTo": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
-      "delete": "",
       "deleteConfirm": "",
       "description": "",
       "emailDescription": "",
@@ -1746,13 +1852,12 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy": "",
-      "usedBy_other": "",
-      "usedByNewsletters": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
+      "webToastNote": "",
+      "alertsGoTo_other": "",
+      "usedBy_other": "",
+      "usedByNewsletters_other": ""
     },
     "jobs": {
       "runNow": "今すぐ実行",
@@ -1805,28 +1910,26 @@
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "basemapShadowed": "",
     "badMounts": ""
   },
   "devices": {
     "title": "デバイスの互換性",
     "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip": "",
-    "directPlayRate": "ダイレクトプレイレート",
+    "directPlayRate": "ダイレクト再生率",
     "videoAndAudio": "",
     "uniqueDevices": "ユニークなデバイス",
     "uniqueCodecs": "ユニークなコーデック：",
     "deviceHealth": "デバイスの健康",
     "deviceHealthDesc": "",
-    "transcodeHotspots": "ホットスポットの変換",
+    "transcodeHotspots": "トランスコードのホットスポット",
     "transcodeHotspotsDesc": "",
     "deviceAndCodec": "デバイス + コーデック",
     "transcodes": "トランスコード",
     "pctOfTotal": "合計の%",
     "noTranscodeHotspots": "トランスコードのホットスポットがありません",
     "compatibilityMatrix": "互換マトリクス",
-    "compatibilityMatrixDesc": "デバイスとビデオコーデック別のダイレクトプレイレート。セッションボリュームでソートされます。",
+    "compatibilityMatrixDesc": "デバイスとビデオコーデック別のダイレクト再生率。セッション数順に並べています。",
     "noDeviceDataPeriod": "この期間にデバイスデータがありません",
     "legend": "凡例:",
     "directPlayHigh": "80%以上の直接アクセス",
@@ -1834,7 +1937,8 @@
     "directPlayLow": "",
     "topTranscodingUsers": "トップトランスコーディングユーザー",
     "topTranscodingUsersDesc": "",
-    "noTranscodingUsers": "トランスコーディングユーザーが見つかりません"
+    "noTranscodingUsers": "トランスコーディングユーザーが見つかりません",
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
     "title": "",
@@ -1877,14 +1981,11 @@
     "librarySnapshots": "ライブラリのスナップショット",
     "tasks": "タスク",
     "logs": "ログ",
-    "plexAccounts": "プレックスアカウント",
+    "plexAccounts": "Plexアカウント",
     "terminations": "終了",
     "libraryItems": "ライブラリ項目",
     "environment": "環境",
     "systemInformation": "システム情報",
-    "cpu": "",
-    "memory": "メモリ",
-    "uptime": "稼働時間",
     "database": "データベース",
     "databaseDesc": "",
     "totalSize": "合計サイズ",
@@ -1946,27 +2047,24 @@
         }
       },
       "card": {
-        "newEpisodes_one": "新しいエピソード {{count}} 件",
-        "newEpisodes_other": "新しいエピソード {{count}} 件",
-        "replacedEpisodes_one": "",
-        "replacedEpisodes_other": "",
         "addedAgo": "{{date}}に追加",
         "addedCompactAgo": "",
-        "newEpisodesChip": ""
+        "newEpisodes_other": "新しいエピソード {{count}} 件",
+        "replacedEpisodes_other": "",
+        "newEpisodesChip_other": ""
       },
       "deadWeight": {
         "title": "",
-        "summary": "",
         "empty": "",
         "columns": {
           "poster": "",
           "title": "",
-          "size": "",
           "added": "",
           "servers": ""
         },
         "viewAll": "",
-        "viewAllTooltip": ""
+        "viewAllTooltip": "",
+        "summary_other": ""
       },
       "loadError": ""
     },
@@ -1982,15 +2080,13 @@
       "chart": {
         "title": "",
         "valueLabel": "",
-        "itemCount_one": "",
-        "itemCount_other": "",
-        "ariaLabel": ""
+        "ariaLabel": "",
+        "itemCount_other": ""
       },
       "table": {
         "title": "",
         "columns": {
           "genre": "",
-          "items": "",
           "plays": "",
           "watchTime": ""
         },
@@ -2016,9 +2112,7 @@
       "hero": {
         "loadError": "",
         "meta": {
-          "seasons_one": "",
           "seasons_other": "",
-          "episodes_one": "",
           "episodes_other": ""
         },
         "availability": {
@@ -2063,7 +2157,6 @@
         "lastWatchedAgo": "",
         "completionLabel": "",
         "columns": {
-          "user": "",
           "plays": "",
           "episodes": "",
           "completion": "",
@@ -2074,15 +2167,14 @@
         "title": "",
         "loadError": "",
         "empty": "",
-        "episodeCount_one": "",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
-        }
+        },
+        "episodeCount_other": ""
       },
       "platforms": {
         "title": "",
@@ -2090,7 +2182,6 @@
         "empty": "",
         "unknown": "",
         "columns": {
-          "platform": "",
           "plays": "",
           "watchTime": ""
         }
@@ -2102,10 +2193,6 @@
         "watched": "",
         "notWatched": "",
         "columns": {
-          "date": "",
-          "user": "",
-          "content": "",
-          "server": "",
           "duration": ""
         }
       },
@@ -2114,11 +2201,8 @@
         "loadError": "",
         "unknownLibrary": "",
         "columns": {
-          "server": "",
           "library": "",
-          "quality": "",
           "episodes": "",
-          "size": "",
           "added": ""
         },
         "versionLabel": ""
@@ -2128,10 +2212,6 @@
       "rankSuffix": "、{{rank}}位",
       "onServers": "{{servers}}で利用可能",
       "addedLabel": "{{date}}に追加",
-      "plays_one": "{{count}} 回再生",
-      "plays_other": "{{count}} 回再生",
-      "viewers_one": "{{count}} 人が視聴",
-      "viewers_other": "{{count}} 人が視聴",
       "watchedState": {
         "watched": "視聴済み",
         "partial": "一部視聴済み",
@@ -2145,12 +2225,11 @@
         "resolution": ""
       },
       "rankChip": "",
-      "playsCompact_one": "",
-      "playsCompact_other": "",
       "versionsChip": "",
-      "versions_one": "",
-      "versions_other": "",
-      "moreServers": ""
+      "moreServers": "",
+      "viewers_other": "{{count}} 人が視聴",
+      "playsCompact_other": "",
+      "versions_other": ""
     },
     "grid": {
       "toolbar": {
@@ -2160,7 +2239,6 @@
         "showsToggle": "",
         "searchPlaceholder": "",
         "searchLabel": "",
-        "removeFilter": "",
         "filtersLabel": "",
         "filtersSheetTitle": "",
         "done": "",
@@ -2178,6 +2256,10 @@
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "atmosLabel": "",
+        "atmosAll": "",
+        "atmosOnly": "",
+        "atmosChip": "",
         "genreLabel": "",
         "genreAll": "",
         "serverLabel": "",
@@ -2201,7 +2283,6 @@
           "viewers": ""
         },
         "count": "",
-        "countTotal_one": "",
         "countTotal_other": ""
       },
       "scrubber": {
@@ -2232,7 +2313,6 @@
     "columns": {
       "requester": "",
       "title": "",
-      "status": "",
       "requested": "",
       "wait": "",
       "seasons": "",
@@ -2287,11 +2367,11 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
-        "landedOf": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": ""
+        "onDisk": "",
+        "landedOf_other": ""
       }
     },
     "funnel": {

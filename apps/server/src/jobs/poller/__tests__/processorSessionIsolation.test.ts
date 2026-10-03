@@ -12,6 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActiveSession, EngineAutomation } from '@tracearr/shared';
 import type { CacheService, PubSubService } from '../../../services/cache.js';
+import type * as ProducersModule from '../../../services/automations/events/producers.js';
 import type { ProcessedSession } from '../types.js';
 
 const mockDbSelect = vi.fn();
@@ -39,6 +40,11 @@ vi.mock('../../../services/settings.js', () => ({
 
 vi.mock('../../../serverState.js', () => ({
   isMaintenance: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock('../../../services/liveServers.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isLiveServer: async () => true,
 }));
 
 vi.mock('../../../services/mediaServer/index.js', () => ({
@@ -103,6 +109,11 @@ vi.mock('../../../services/automations/events/dispatcher.js', () => ({
   subscribe: vi.fn(),
 }));
 
+vi.mock('../../../services/automations/events/producers.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof ProducersModule>();
+  return { ...actual, dispatchServerHealth: vi.fn(actual.dispatchServerHealth) };
+});
+
 vi.mock('../violations.js', () => ({
   broadcastViolations: vi.fn(),
 }));
@@ -114,6 +125,10 @@ vi.mock('../sessionMapper.js', () => ({
 
 import { servers, serverUsers, sessions as sessionsTable } from '../../../db/schema.js';
 import { gracePeriodSessionIds, initializePoller, stopPoller, triggerPoll } from '../processor.js';
+import { dispatchServerHealth } from '../../../services/automations/events/producers.js';
+import { HttpClientError } from '../../../utils/http.js';
+
+const mockDispatchServerHealth = vi.mocked(dispatchServerHealth);
 
 function createMockProcessedSession(overrides: Partial<ProcessedSession> = {}): ProcessedSession {
   return {
@@ -150,6 +165,7 @@ function createMockProcessedSession(overrides: Partial<ProcessedSession> = {}): 
     audioDecision: 'directplay',
     bitrate: 20000,
     state: 'playing',
+    buffering: false,
     totalDurationMs: 7200000,
     progressMs: 600000,
     sourceVideoCodec: 'hevc',
@@ -373,7 +389,7 @@ describe('per-session error isolation in processServerSessions', () => {
     await triggerPoll();
     await triggerPoll();
 
-    expect(cacheService.setServerHealth).not.toHaveBeenCalledWith('server-1', false);
+    expect(cacheService.setServerHealth).not.toHaveBeenCalledWith('server-1', false, undefined);
     expect(dispatchedOfType('server.down')).toEqual([]);
   });
 
@@ -386,7 +402,34 @@ describe('per-session error isolation in processServerSessions', () => {
     await triggerPoll();
     await triggerPoll();
 
-    expect(cacheService.setServerHealth).toHaveBeenCalledWith('server-1', false);
+    expect(cacheService.setServerHealth).toHaveBeenCalledWith('server-1', false, undefined);
+  });
+
+  it('marks the server down as unauthorized when the poll gets a 401', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockCreateMediaServerClient.mockReturnValue({
+      getSessions: vi.fn().mockRejectedValue(
+        new HttpClientError({
+          service: 'plex',
+          statusCode: 401,
+          statusText: 'Unauthorized',
+          url: 'http://plex.local:32400/status/sessions',
+        })
+      ),
+    });
+
+    await triggerPoll();
+    await triggerPoll();
+    await triggerPoll();
+
+    expect(cacheService.setServerHealth).toHaveBeenCalledWith('server-1', false, 'unauthorized');
+    expect(mockDispatchServerHealth).toHaveBeenCalledWith(
+      'server.down',
+      expect.objectContaining({ id: 'server-1' }),
+      expect.any(Date),
+      'unauthorized'
+    );
+    errorSpy.mockRestore();
   });
 
   it('dispatches server.down once the threshold trips, and enqueues nothing', async () => {

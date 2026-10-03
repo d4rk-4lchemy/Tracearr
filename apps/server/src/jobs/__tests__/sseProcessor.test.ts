@@ -11,21 +11,31 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EventEmitter } from 'events';
 
 // Create mocks using vi.hoisted - must require EventEmitter inside for hoisting to work
-const { mockSseManager, mockEnqueueNotification, mockDispatch, mockGetActiveAutomations } =
-  vi.hoisted(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { EventEmitter: EE } = require('events');
-    return {
-      mockSseManager: new EE() as EventEmitter,
-      mockEnqueueNotification: vi.fn().mockResolvedValue('job-id'),
-      mockDispatch: vi.fn().mockResolvedValue({ violations: [], outcomes: [] }),
-      mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
-    };
-  });
+const {
+  mockSseManager,
+  mockEnqueueNotification,
+  mockDispatch,
+  mockGetActiveAutomations,
+  mockIsLiveServer,
+} = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { EventEmitter: EE } = require('events');
+  return {
+    mockSseManager: new EE() as EventEmitter,
+    mockEnqueueNotification: vi.fn().mockResolvedValue('job-id'),
+    mockDispatch: vi.fn().mockResolvedValue({ violations: [], outcomes: [] }),
+    mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
+    mockIsLiveServer: vi.fn().mockResolvedValue(true),
+  };
+});
 
 // Mock the sseManager
 vi.mock('../../services/sseManager.js', () => ({
   sseManager: mockSseManager,
+}));
+
+vi.mock('../../services/liveServers.js', () => ({
+  isLiveServer: (...args: unknown[]) => mockIsLiveServer(...args),
 }));
 
 // Mock enqueueNotification
@@ -120,7 +130,12 @@ vi.mock('../../services/automations/events/contextAssembly.js', () => ({
 }));
 
 // Import after mocking
-import { initializeSSEProcessor, startSSEProcessor, stopSSEProcessor } from '../sseProcessor.js';
+import {
+  clearServerDownState,
+  initializeSSEProcessor,
+  startSSEProcessor,
+  stopSSEProcessor,
+} from '../sseProcessor.js';
 import { triggerReconciliationPoll } from '../poller/index.js';
 
 // Mock cache and pubsub services
@@ -174,6 +189,7 @@ describe('SSE Processor - Server Health Notifications', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     mockGetActiveAutomations.mockResolvedValue(listening);
+    mockIsLiveServer.mockResolvedValue(true);
     mockSseManager.removeAllListeners();
 
     // Initialize and start the processor
@@ -187,6 +203,32 @@ describe('SSE Processor - Server Health Notifications', () => {
   });
 
   describe('fallback:activated (server goes down)', () => {
+    it('dispatches nothing when the server turned historical before the threshold', async () => {
+      mockIsLiveServer.mockResolvedValue(false);
+      down('server-1', 'Plex');
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(dispatched('server.down', 'server-1')).toHaveLength(0);
+
+      up('server-1', 'Plex');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(dispatched('server.up', 'server-1')).toHaveLength(0);
+    });
+
+    it('forgets a pending down and a sent down when the switch clears the server', async () => {
+      down('server-1', 'Plex');
+      clearServerDownState('server-1');
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(dispatched('server.down', 'server-1')).toHaveLength(0);
+
+      down('server-2', 'Plex 2');
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(dispatched('server.down', 'server-2')).toHaveLength(1);
+      clearServerDownState('server-2');
+      up('server-2', 'Plex 2');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(dispatched('server.up', 'server-2')).toHaveLength(0);
+    });
+
     it('holds the server.down dispatch for the 60s threshold', async () => {
       down('server-1', 'Test Server');
 

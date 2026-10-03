@@ -357,4 +357,20 @@ describe('Automations', () => {
     expect(deleteMutate).not.toHaveBeenCalled();
     expect(openedDetail()).not.toBeInTheDocument();
   });
+
+  it('marks a historical server in the server filter and lists it after live ones', async () => {
+    mockUseServer.mockReturnValue({
+      servers: [
+        { id: 'server-old', name: 'Old Plex', historicalAt: '2026-09-01T12:00:00.000Z' },
+        { id: 'server-1', name: 'Server One', historicalAt: null },
+      ],
+    });
+
+    renderAutomations();
+    await userEvent.click(screen.getByRole('button', { name: /filters/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'Server' }));
+
+    const names = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(names.slice(1)).toEqual(['Server One', 'Old Plex (Historical)']);
+  });
 });

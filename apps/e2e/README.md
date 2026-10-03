@@ -60,6 +60,7 @@ Environment variables are loaded from the root `.env` file. The following can be
 | `CLAIM_CODE`       | `tracearr-e2e-test-claim-code`                       | Claim code for first-time setup gate          |
 | `SHOWCASE`         | unset                                                | Set to `1` for the screenshot run (see below) |
 | `SHOWCASE_OUT`     | `showcase/out`                                       | Where the captured images are written         |
+| `E2E_BUILD`        | unset                                                | Set to `1` to test the built app on port 3000 |
 
 ## Test Structure
 

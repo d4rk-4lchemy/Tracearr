@@ -138,6 +138,7 @@ function activeFilterCount(filters: PersistedGridFilters): number {
     filters.serverId,
     filters.libraryKey,
     filters.hdr,
+    filters.atmos,
     filters.sizeGbMin,
     filters.sizeGbMax,
   ].filter((value) => value !== undefined).length;
@@ -311,6 +312,7 @@ export function MediaGrid() {
       search: search || undefined,
       libraryKey: filters.libraryKey,
       hdr: filters.hdr,
+      atmos: filters.atmos,
       sizeGbMin: filters.sizeGbMin,
       sizeGbMax: filters.sizeGbMax,
     },
@@ -492,7 +494,7 @@ export function MediaGrid() {
         filters={filters}
         onFiltersChange={handleFiltersChange}
         genres={genres}
-        servers={servers.map((s) => ({ id: s.id, name: s.name }))}
+        servers={servers.map((s) => ({ id: s.id, name: s.name, historicalAt: s.historicalAt }))}
         libraries={gridLibraries}
         totalItems={totalItems ?? undefined}
         totalFileSize={totalFileSize ?? undefined}

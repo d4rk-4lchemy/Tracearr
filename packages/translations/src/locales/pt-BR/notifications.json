@@ -10,16 +10,19 @@
         "message": "O servidor foi removido com sucesso"
       },
       "serverSynced": {
-        "title": "Servidor sincronizado",
-        "message": "Os dados do servidor foram sincronizados"
+        "title": "Servidor sincronizado"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "Definições atualizadas",
         "message": "As suas definições foram guardadas"
-      },
-      "tokenCopied": {
-        "title": "Token copiado",
-        "message": "O token foi copiado para a área de transferência"
       },
       "violationAcknowledged": {
         "title": "Violação reconhecida",
@@ -38,19 +41,11 @@
         "message": "O nome do dispositivo foi atualizado"
       },
       "sessionsRevoked": {
-        "title": "Sessões revogadas",
-        "message": "Todas as sessões foram revogadas"
+        "title": "Sessões revogadas"
       },
       "loggedIn": {
         "title": "Sucesso",
         "message": "Sessão iniciada com sucesso"
-      },
-      "webhookTest": {
-        "title": "Teste válido",
-        "message": "O webhook está a funcionar corretamente"
-      },
-      "copiedToClipboard": {
-        "title": "Copiado para a área de transferência"
       },
       "plexAccountLinked": {
         "title": "Conta Plex associada",
@@ -62,27 +57,14 @@
       },
       "plexAccountReauthorized": {
         "title": "",
-        "message_one": "",
-        "message_other": "",
         "messageNoServers": "",
         "partial": "",
-        "unmatched": ""
-      },
-      "agentAdded": {
-        "title": "Agente adicionado",
-        "message": "O agente de notificação foi adicionado"
-      },
-      "agentUpdated": {
-        "title": "Agente atualizado",
-        "message": "O agente de notificação foi atualizado"
-      },
-      "agentRemoved": {
-        "title": "Agente removido",
-        "message": "O agente de notificação foi removido"
+        "unmatched": "",
+        "message_one": "",
+        "message_other": ""
       },
       "jobCompleted": {
-        "title": "Tarefa concluída",
-        "message": "{{name}} concluído com sucesso"
+        "title": "Tarefa concluída"
       },
       "automationCreated": {
         "title": "",
@@ -117,9 +99,9 @@
         "title": "Sincronização concluída com erros"
       },
       "sessionsDeleted": {
-        "title": "Sessões eliminadas",
-        "message_one": "{{count}} sessão eliminada",
-        "message_other": "{{count}} sessões eliminadas"
+        "title": "Sessões excluídas",
+        "message_one": "{{count}} sessão excluída",
+        "message_other": "{{count}} sessões excluídas"
       },
       "violationsAcknowledged": {
         "title": "Violações reconhecidas",
@@ -144,14 +126,14 @@
         "message": "Todas as sessões móveis foram revogadas"
       },
       "pairTokenGenerated": {
-        "title": "Token de emparelhamento gerado",
-        "message": "Digitalize o código QR com o seu dispositivo móvel"
+        "title": "Token de pareamento gerado",
+        "message": "Escaneie o código QR com seu dispositivo móvel para parear"
       },
       "identityUpdated": "",
       "trustScoresReset": {
         "title": "Pontuações de confiança redefinidas",
-        "message_one": "{{count}} utilizador redefinido para 100",
-        "message_other": "{{count}} utilizadores redefinidos para 100"
+        "message_one": "{{count}} usuário redefinido para 100",
+        "message_other": "{{count}} usuários redefinidos para 100"
       },
       "claimCodeValidated": {
         "title": "Recuperar código validado",
@@ -175,21 +157,22 @@
       "newsletterDuplicated": "",
       "newsletterTestQueued": "",
       "newsletterSendQueued": "",
-      "newsletterRetryQueued": "",
       "brandingSaved": "",
       "suppressionAdded": "",
-      "suppressionRemoved": ""
+      "suppressionRemoved": "",
+      "newsletterRetryQueued_one": "",
+      "newsletterRetryQueued_other": ""
     },
     "error": {
       "serverAddFailed": "Falha ao adicionar servidor",
       "serverRemoveFailed": "Falha ao remover servidor",
       "serverSyncFailed": "Falha ao sincronizar servidor",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Falha ao atualizar definições",
       "copyFailed": "Não foi possível copiar para a área de transferência",
       "acknowledgeFailed": "Falha ao reconhecer violação",
       "dismissFailed": "Falha ao descartar violação",
       "authFailed": "Autenticação falhou",
-      "webhookTestFailed": "Teste do webhook falhou",
       "automationCreateFailed": "",
       "automationUpdateFailed": "",
       "automationDeleteFailed": "",
@@ -198,24 +181,18 @@
       "serverUpdateFailed": "Falha ao atualizar servidor",
       "serverLocationSaveFailed": "",
       "serverReorderFailed": "Falha ao reordenar servidores",
-      "sessionsDeleteFailed": "Falha ao eliminar sessões",
+      "sessionsDeleteFailed": "Falha ao excluir sessões",
       "apiKeyGenerateFailed": "Falha ao gerar chave API",
       "mobileAccessEnableFailed": "Falha ao ativar acesso móvel",
       "mobileAccessDisableFailed": "Falha ao desativar acesso móvel",
-      "pairTokenGenerateFailed": "Falha ao gerar token de emparelhamento",
+      "pairTokenGenerateFailed": "Falha ao gerar token de pareamento",
       "deviceRemoveFailed": "Falha ao remover dispositivo",
       "deviceRenameFailed": "Falha ao renomear dispositivo",
       "sessionsRevokeFailed": "Falha ao revogar sessões",
       "identityUpdateFailed": "",
       "trustScoresResetFailed": "Falha ao redefinir pontuações de confiança",
-      "routingUpdateFailed": "Falha ao atualizar encaminhamento",
-      "clipboardFailed": "Falha ao copiar para a área de transferência",
       "plexUnlinkFailed": "Falha ao desassociar conta Plex",
       "plexReauthorizeFailed": "",
-      "agentAddFailed": "Falha ao adicionar agente",
-      "agentUpdateFailed": "Falha ao atualizar agente",
-      "agentRemoveFailed": "Falha ao remover agente",
-      "agentTestFailed": "Teste falhou",
       "jobAlreadyRunning": "Tarefa já em execução",
       "jobStartFailed": "Falha ao iniciar tarefa",
       "jobLoadFailed": "Falha ao carregar tarefas de manutenção",
@@ -248,8 +225,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "Tarefa falhou",
-        "message": "{{name}} encontrou um erro"
+        "title": "Tarefa falhou"
       }
     },
     "info": {
@@ -263,43 +239,23 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "Violação de partilha detetada",
-    "streamStarted": "Transmissão iniciada",
-    "streamEnded": "Transmissão terminada",
-    "serverDown": "Ligação ao servidor perdida",
-    "serverUp": "Servidor de volta online",
-    "newDevice": "",
-    "trustScoreChanged": ""
-  },
   "settings": {
-    "title": "Definições de notificações",
     "allSeverity": "Todas (Baixa, Aviso, Elevado)",
     "warningAndHigh": "Apenas Aviso e Elevado",
     "highOnly": "Apenas severidade elevada",
-    "allTypes": "Todos os tipos",
     "rateLimit": "Estado atual do ratelimit",
     "perMinute": "Por minuto",
     "perHour": "Por hora",
     "enablePushNotifications": "",
     "notificationEvents": "",
     "violationDetected": "",
-    "violationDetectedDesc": "Quando uma violação de compartilhamento é acionada",
     "streamStarted": "",
-    "streamStartedDesc": "Quando um usuário começa a assistir",
     "streamStopped": "",
-    "streamStoppedDesc": "Quando um usuário para de assistir",
     "concurrentStreams": "",
-    "concurrentStreamsDesc": "Quando o limite máximo de transmissão for excedido",
     "newDevice": "",
-    "newDeviceDesc": "Quando um novo dispositivo se conectar",
     "trustScoreChanged": "",
-    "trustScoreChangedDesc": "Quando o ponto de confiança de um usuário mudar",
     "serverDown": "",
-    "serverDownDesc": "Quando um servidor de mídia ficar offline",
     "serverUp": "",
-    "serverUpDesc": "Quando um servidor de mídia está online",
-    "violationFilters": "",
     "minimumSeverity": "",
     "quietHours": "",
     "enableQuietHours": "",

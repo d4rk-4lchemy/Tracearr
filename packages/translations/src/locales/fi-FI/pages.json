@@ -1,7 +1,7 @@
 {
   "login": {
-    "title": "",
-    "tagline": "",
+    "title": "Tracearr",
+    "tagline": "Tracearr - Stream access Management",
     "createAccountHeading": "Luo tilisi päästäksesi alkuun",
     "signInHeading": "Kirjaudu sisään tilillesi",
     "createAccountDescription": "Luo tili hallitaksesi mediapalvelimia",
@@ -10,40 +10,40 @@
     "waitingForPlex": "Odotetaan Plex valtuutusta...",
     "completeInPopup": "Suorita sisäänkirjautuminen ponnahdusikkunassa",
     "reopenPlexLogin": "Avaa Plex Kirjaudu Uudelleen",
-    "continueWith": "",
-    "usernameOrEmail": "",
-    "identifierPlaceholder": "",
-    "username": "",
-    "usernamePlaceholder": "",
+    "continueWith": "Jatka {{provider}}-tilillä",
+    "usernameOrEmail": "Käyttäjätunnus tai Sähköposti",
+    "identifierPlaceholder": "Käyttäjätunnus tai sähköpostiosoite",
+    "username": "Käyttäjätunnus",
+    "usernamePlaceholder": "käyttäjätunnuksesi",
     "emailPlaceholder": "sinun@email.com",
     "displayNamePlaceholder": "Valitse näytön nimi",
     "passwordPlaceholder": "Vähintään 8 merkkiä",
     "yourPasswordPlaceholder": "Salasanasi",
     "setupNote": "Kun olet luonut tilin, voit lisätä Plex tai Jellyfin palvelimet Asetuksista.",
-    "localDisabledHint": "",
-    "oidcError": "",
+    "localDisabledHint": "Paikallinen sisäänkirjautuminen on poistettu käytöstä tässä tapauksessa. Pyydä ylläpitäjää suorittamaan `enable-local-login` Tracearr CLI:stä ottaaksesi sen uudelleen käyttöön.",
+    "oidcError": "Single sign-on epäonnistui. Yritä uudelleen tai käytä toista kirjautumismenetelmää.",
     "accountCreated": "Tili luotiin onnistuneesti!",
     "connectedTo": "Yhdistetty {{name}}",
     "plexAuthFailed": "Plex todennus epäonnistui",
     "plexStartFailed": "Ei voitu aloittaa Plex kirjautumista",
     "serverConnectFailed": "Yhteyden muodostaminen palvelimeen epäonnistui",
-    "signupFailed": "Ilmoittautuminen epäonnistui",
     "createAccountFailed": "Tiliä ei voitu luoda",
-    "loginFailed": "Kirjautuminen epäonnistui",
     "invalidCredentials": "Virheellinen sähköpostiosoite tai salasana",
     "claimCodeRequired": "Ensi aikainen määritys vaatii korvauskoodin.",
     "enterClaimCode": "Syötä Lunastuskoodi",
     "claimCodeDescription": "Tarkista palvelimen lokitiedot saadaksesi vaaditun koodin, jotta voit jatkaa asetuksia",
     "claimCodeLabel": "Lunasta Koodi",
     "claimCodeHint": "Lunastuskoodi on painettu palvelimen lokiin, kun kontti käynnistyy",
-    "validateClaimCode": "",
+    "validateClaimCode": "Validoi Claim-koodi",
     "claimCodeSecurityNote": "Tämä turvatoimenpide varmistaa, että vain valtuutetut käyttäjät voivat suorittaa ensimmäisen asennuksen"
   },
   "dashboard": {
-    "alerts": "Ilmoitukset",
+    "alerts": "Hälytykset",
+    "plays": "Toistot",
+    "watchTime": "Katseluaika",
     "activeUsers": "Aktiiviset Käyttäjät",
-    "nowPlaying": "Nyt Soi",
-    "streamLocations": "Virran Sijainnit",
+    "nowPlaying": "Toistossa nyt",
+    "streamLocations": "Striimien sijainnit",
     "serverResources": "Palvelimen Resurssit",
     "bandwidth": "Kaistanleveys",
     "noActiveStreams": "Ei aktiivisia streameja",
@@ -55,74 +55,72 @@
   },
   "users": {
     "title": "Käyttäjät",
-    "showRemoved": "",
+    "showRemoved": "Näytä poistetut",
     "noUsersFound": "Käyttäjiä ei löytynyt.",
-    "searchPlaceholder": "Etsi käyttäjiä...",
-    "selectAllUsers": "Valitse kaikki {{count}} käyttäjää",
-    "serversColumn": "",
-    "resetTrustScore": "Nollaa Trust Pisteet",
-    "resetTrustScoreTitle_one": "Nollaa Trust-pisteet käyttäjälle {{count}}",
-    "resetTrustScoreTitle_other": "",
+    "serversColumn": "Palvelimet",
+    "resetTrustScore": "Nollaa luottamuspisteet",
     "resetTrustScoreConfirm": "Oletko varma, että haluat palauttaa luottamuspisteen 100:aan? Tätä toimintoa ei voi peruuttaa.",
-    "mergeUsers": "",
-    "mergeTitleSuggestion": "",
-    "mergeTitleBulk": "",
-    "mergeReasonEmail": "",
-    "mergeReasonEmailUsername": "",
-    "mergeReasonUsername": "",
-    "mergeKeep": "",
+    "mergeUsers": "Yhdistä käyttäjiä",
+    "mergeTitleSuggestion": "Ovatko nämä sama henkilö?",
+    "mergeTitleBulk": "Yhdistä nämä käyttäjät?",
+    "mergeReasonEmail": "Molemmilla on sähköpostiosoite {{value}} palvelimen tileillään.",
+    "mergeReasonEmailUsername": "Molemmat käyttävät käyttäjätunnuksenaan {{value}} tai tili-sähköpostiosoitteenaan.",
+    "mergeReasonUsername": "Molemmat käyttävät käyttäjätunnusta {{value}}.",
+    "mergeKeep": "Säilytä",
     "mergeFoldIn": "",
-    "mergeSwap": "",
+    "mergeSwap": "Vaihda sitä, joka säilytetään",
     "mergeRequired": "",
-    "mergeLastActive": "",
-    "mergeNeverActive": "",
-    "mergeSessions_one": "",
-    "mergeSessions_other": "",
-    "mergeMoreServers": "",
-    "mergeWhatHappens": "",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
+    "mergeLastActive": "Viimeksi nähty {{relative}}",
+    "mergeNeverActive": "Ei koskaan aktiivinen",
+    "mergeMoreServers": "+{{count}}",
+    "mergeWhatHappens": "Mitä tapahtuu",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
     "mergeRulesKept": "",
-    "mergeIrreversibleTitle": "",
+    "mergeIrreversibleTitle": "Tätä ei voi peruuttaa",
     "mergeIrreversibleBody": "",
-    "mergeServerLabel": "",
-    "mergeServerUnknown": "",
-    "mergeIrreversibleAcknowledge": "",
-    "mergeServerAccountRemoved": "",
-    "mergeConfirmInto": "",
-    "mergeSelectTwo": "",
-    "mergeSameIdentity": "",
+    "mergeServerLabel": "Palvelin",
+    "mergeServerUnknown": "Tuntematon palvelin",
+    "mergeIrreversibleAcknowledge": "Ymmärrän, että tällä palvelimella olevia kahta tiliä ei voi erottaa enää uudelleen",
+    "mergeServerAccountRemoved": "Poistettu",
+    "mergeConfirmInto": "Yhdistä -> {{keepName}}",
+    "mergeSelectTwo": "Valitse täsmälleen kaksi käyttäjää yhdistettäväksi",
+    "mergeSameIdentity": "Nämä tilit kuuluvat jo samalle käyttäjälle",
     "mergeSelectAllActive": "",
-    "suggestionsTitle": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
+    "suggestionsTitle": "Mahdolliset päällekkäiset käyttäjät",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
-    "suggestionsReview": "",
-    "suggestionsNotSame": "",
-    "suggestionsMatchEmail": "",
-    "suggestionsMatchEmailUsername": "",
-    "suggestionsMatchUsername": "",
-    "suggestionsEmpty": "",
+    "suggestionsReview": "Tarkistus",
+    "suggestionsNotSame": "Ei sama henkilö",
+    "suggestionsMatchEmail": "Sama sähköpostiosoite",
+    "suggestionsMatchEmailUsername": "Molemmat käyttävät käyttäjätunnuksena {{value}} tai tilin sähköpostiosoitteena",
+    "suggestionsMatchUsername": "Sama käyttäjänimi",
+    "suggestionsEmpty": "Mitään ei jäänyt tarkistettavaksi",
     "suggestionsDismissed": "",
     "suggestionsDismissedPair": "",
     "suggestionsDismissedAt": "",
-    "suggestionsRestore": "",
-    "suggestionsError": "",
-    "filterHasAccessTo": "",
-    "filterHasAccessToPlaceholder": "",
-    "filterHasAccessToHint": ""
+    "suggestionsRestore": "Palauta",
+    "suggestionsError": "Yhdistämisehdotuksia ei voitu ladata",
+    "filterHasAccessTo": "On pääsy",
+    "filterHasAccessToPlaceholder": "Mille tahansa palvelimelle",
+    "filterHasAccessToHint": "Näyttää ihmiset, joilla on aktiivinen tili jokaisella valitulla palvelimella.",
+    "selectAllUsers_one": "Valitse {{count}} käyttäjä",
+    "selectAllUsers_other": "Valitse kaikki {{count}} käyttäjää",
+    "resetTrustScoreTitle_one": "Nollaa luottamuspisteet {{count}} käyttäjältä",
+    "resetTrustScoreTitle_other": "Nollaa luottamuspisteet {{count}} käyttäjältä",
+    "mergeMoves_one": "",
+    "mergeMoves_other": "",
+    "suggestionsCount_one": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_one": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_one": "",
+    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairUsernameMore_one": "",
+    "suggestionsPairUsernameMore_other": ""
   },
   "userDetail": {
     "backToUsers": "Takaisin käyttäjiin",
@@ -131,55 +129,49 @@
     "statistics": "Tilastot",
     "sessions": "Istunnot",
     "violations": "Rikkomukset",
-    "terminationHistory": "Päättymisen Historia",
+    "terminationHistory": "Lopetushistoria",
     "noViolationsFound": "Ei rikkomuksia tälle käyttäjälle.",
-    "noTerminationsFound": "Tälle käyttäjälle ei ole virtauksen keskeytyksiä.",
+    "noTerminationsFound": "Tälle käyttäjälle ei ole lopetettuja striimejä.",
     "byRule": "Sääntöjen Mukaan",
     "manual": "Manuaalinen",
     "unknownRule": "Tuntematon sääntö",
     "adjustTrustScore": "Säädä Luottamuspisteitä",
-    "linkedAccounts": "",
-    "splitAccount": "",
-    "splitConfirmTitle": "",
+    "linkedAccounts": "Linkitetyt tilit",
+    "splitAccount": "Jaa erilliseksi käyttäjäksi",
+    "splitConfirmTitle": "Jaa palvelimen tili",
     "splitConfirmDescription": "",
-    "splitConfirmLoading": "",
-    "acrossAllServers": "",
-    "overallTrust": "",
-    "serverScope": "",
-    "allServers": "",
-    "title": "",
-    "editIdentity": "",
+    "splitConfirmLoading": "Jaetaan...",
+    "acrossAllServers": "Kaikissa linkitetyissä tileissä:",
+    "overallTrust": "Yleinen luottamus",
+    "serverScope": "Palvelin",
+    "allServers": "Kaikki palvelimet",
+    "title": "Käyttäjän tiedot",
+    "editIdentity": "Muokkaa nimeä ja yhteyssähköpostia",
     "editIdentityDescription": "",
-    "displayName": "",
-    "contactEmail": "",
+    "displayName": "Näyttönimi",
+    "contactEmail": "Yhteyssähköposti",
     "contactEmailHelp": "",
-    "contactEmailLabel": "",
-    "contactEmailNone": "",
+    "contactEmailLabel": "Uutiskirjeen osoite:",
+    "contactEmailNone": "ei asetettu",
     "contactEmailNoLogin": "",
     "locations": "Sijainnit"
   },
   "history": {
     "title": "Historia",
-    "description": "",
-    "loadingMore": "Ladataan lisää...",
-    "scrollForMore": "Vieritä lisää",
-    "showingAllResults": "Näytetään kaikki {{total}} tulokset",
-    "deleteSession_one": "Poista {{count}} Istunto",
-    "deleteSession_other": "",
-    "deleteSessionsConfirm": "Oletko varma, että haluat poistaa? Tätä toimintoa ei voi peruuttaa.",
-    "totalPlays": "",
-    "uniqueTitles": "",
-    "uniqueUsers": ""
+    "description": "Selaa kaikkia suoratoistoistuntoja tehokkaalla suodatuksella.",
+    "totalPlays": "Kokonaistoistot",
+    "uniqueTitles": "Uniikit nimikkeet",
+    "uniqueUsers": "Uniikit käyttäjät"
   },
   "library": {
     "title": "Kirjasto",
-    "description": "",
+    "description": "Suosituimmat elokuvat ja ohjelmat palvelimellasi.",
     "topMovies": "Parhaat Elokuvat",
     "topShows": "Eniten TV-ohjelmia",
-    "noMoviePlays": "Tällä ajanjaksolla ei ole elokuvaa",
-    "noShowPlays": "Tänä aikana ei näytetä TV-ohjelmia",
+    "noMoviePlays": "Ei elokuvien toistoja tällä ajanjaksolla",
+    "noShowPlays": "Ei TV-sarjojen toistoja tällä ajanjaksolla",
     "overview": {
-      "description": "",
+      "description": "Kirjaston terveys- ja kasvumittarit.",
       "lastUpdated": "Viimeksi päivitetty:",
       "totalItems": "Kohteita Yhteensä",
       "shows": "näyttää",
@@ -191,11 +183,11 @@
       "thisWeek": "tällä viikolla",
       "thisMonth": "tässä kuussa",
       "thisYear": "tänä vuonna",
-      "serversNeedSync": ""
+      "serversNeedSync": "Näiden palvelimien on synkronoitava:"
     },
     "quality": {
       "title": "Laatu",
-      "description": "",
+      "description": "Resoluutio ja koodekkijakauma.",
       "qualityEvolution": "Laadun Kehitys",
       "all": "Kaikki",
       "failedToLoad": "Laadun tietojen lataaminen epäonnistui",
@@ -203,14 +195,14 @@
     },
     "storage": {
       "title": "Tallennustila",
-      "description": "",
+      "description": "Tallennustilan käyttö, ennusteet ja optimointi.",
       "totalStorage": "Tallennustila Yhteensä",
       "growthRate": "Kasvu",
       "duplicates": "Kaksoiskappaleet",
       "groups": "ryhmät",
       "recoverable": "palautettavissa",
       "staleContent": "Vanhentunut Sisältö",
-      "staleContentDesc": "",
+      "staleContentDesc": "Sisältö, joka voi olla ehdolla poistettavaksi.",
       "items": "kohteet",
       "unused": "käyttämätön",
       "storageTrend": "Tallennustilan Trendi",
@@ -220,7 +212,7 @@
       "confidenceLow": "Matala",
       "zeroGrowth": "0 GB/kk",
       "predictions": "Ennusteet",
-      "contentROI": "",
+      "contentROI": "Sisällön kannattavuus (ROI)",
       "contentROIDesc": "",
       "avgHoursPerGB": "avg tuntia/GB",
       "insufficientData": "Riittämättömät tiedot",
@@ -228,30 +220,29 @@
       "days": "päivää",
       "failedToLoad": "Tallennustietojen lataaminen epäonnistui",
       "failedToLoadDesc": "Tallennustietoja ei voitu noutaa. Yritä uudelleen.",
-      "duplicatesTitle": "",
+      "duplicatesTitle": "Kaksoiskappaleet",
       "duplicatesSubtitle": "",
       "growthPreChangeover": "",
-      "loadingDuplicates": "",
-      "duplicatesFailed": "",
-      "noDuplicatesTitle": "",
-      "noDuplicatesDesc": "",
-      "colTitle": "",
-      "colType": "",
-      "colMatchType": "",
-      "colCopies": "",
-      "colRecoverable": "",
-      "sameServer": "",
-      "mirror": "",
-      "missingOnServer": "",
+      "loadingDuplicates": "Ladataan kaksoiskappaleita...",
+      "duplicatesFailed": "Kaksoiskappaleiden lataaminen epäonnistui",
+      "noDuplicatesTitle": "Kaksoiskappaleita ei löytynyt",
+      "noDuplicatesDesc": "Ei havaittuja nimikkeitä, joissa olisi useampi kuin yksi fyysinen tiedosto",
+      "colTitle": "Nimike",
+      "colMatchType": "Vastaavuustyyppi",
+      "colCopies": "Kopiot",
+      "colRecoverable": "Palautettavissa oleva tila",
+      "sameServer": "Sama palvelin",
+      "mirror": "Peilikuva",
+      "missingOnServer": "Puuttuu palvelimelta",
       "missingOnServerHint": "",
-      "copyPath": ""
+      "copyPath": "Kopioi tiedostopolku"
     },
     "watch": {
-      "title": "Katso Analytiikkaa",
+      "title": "Katseluanalytiikka",
       "description": "",
       "watched": "Katsottu",
       "percentWatched": "% katsottu",
-      "totalWatchTime": "Katsella Aika Yhteensä",
+      "totalWatchTime": "Katseluaika yhteensä",
       "avgPerItem": "avg per kohde",
       "completed": "Valmis",
       "peakHour": "Huippu Tunti",
@@ -260,94 +251,93 @@
       "monthlyTrends": "Kuukausittaiset Suuntaukset",
       "busiest": "Mutta:",
       "quietest": "Kysely:",
-      "bingeHighlights": "Bingen Yksityiskohdat",
+      "bingeHighlights": "Ahmimiskatselun kohokohdat",
       "bingeHighlightsDesc": "",
-      "bingeSessions": "binge istuntoja",
-      "noData": "Ei vielä kellon tietoja",
-      "noDataDesc": "Katsella analytiikka ilmestyy tänne, kun sisältöä on toistettava. Tarkista sen jälkeen, kun olet tarkastellut toimintoja.",
-      "failedToLoad": "Kellon analytiikan lataaminen epäonnistui",
-      "failedToLoadDesc": "Kellon tietoja ei voitu noutaa."
+      "bingeSessions": "Ahmimiskatselukerrat",
+      "noData": "Ei vielä katselutietoja",
+      "noDataDesc": "Katseluanalytiikka näkyy täällä, kun sisältöä on toistettu. Palaa katsomaan, kun katselua on kertynyt.",
+      "failedToLoad": "Katseluanalytiikan lataaminen epäonnistui",
+      "failedToLoadDesc": "Katselutietoja ei voitu noutaa."
     },
     "emptyState": {
-      "checkingStatus": "",
+      "checkingStatus": "Tarkistetaan kirjaston tilaa...",
       "backfillAvailable": {
-        "title": "",
+        "title": "Historiatiedot saatavilla",
         "bodyWithDays": "",
         "bodyGeneric": "",
-        "syncRunningTitle": "",
-        "syncRunningBody": ""
+        "syncRunningTitle": "Kirjaston synkronointi käynnissä...",
+        "syncRunningBody": "Historiatiedon luominen alkaa automaattisesti, kun synkronointi valmistuu."
       },
-      "generateHistory": "",
-      "starting": "",
+      "generateHistory": "Luo historia",
+      "starting": "Käynnistetään...",
       "syncInProgress": {
-        "title": "",
-        "body": ""
+        "title": "Kirjaston synkronointi käynnissä...",
+        "body": "Kirjaston tilastot näkyvät synkronoinnin valmistuttua. Tämä saattaa kestää muutaman minuutin kirjaston koosta riippuen."
       },
       "notSynced": {
-        "title": "",
-        "body": ""
+        "title": "Kirjastoa ei ole vielä synkronoitu",
+        "body": "Kirjaston tilastot näkyvät täällä, kun kirjasto on synkronoitu. Tämä tapahtuu yleensä automaattisesti tunnin välein."
       },
       "noMedia": {
-        "title": "",
-        "body": ""
+        "title": "Ei vielä elokuvia tai ohjelmia",
+        "body": "Tämä kirjasto on synkronoitu, mutta sillä ei ole vielä elokuvia tai näytelmiä."
       },
-      "syncNow": "",
-      "syncing": "",
-      "notSyncedShort": "",
+      "syncNow": "Synkronoi nyt",
+      "syncing": "Synkronoidaan...",
+      "notSyncedShort": "Ei vielä synkronoitu",
       "backfillRunning": {
-        "title": "",
+        "title": "Luodaan historiatietoja...",
         "fallbackBody": "",
-        "progress": "",
-        "snapshotsSuffix": ""
+        "progress": "{{processed}} / {{total}} kirjastoista",
+        "snapshotsSuffix_one": "",
+        "snapshotsSuffix_other": ""
       },
       "multiServer": {
-        "title": "",
-        "body": "",
-        "needsBackfillIntro": ""
+        "title": "Jotkut kirjastot tarvitsevat huomiota",
+        "body": "Synkronoi alla olevat palvelimet nähdäksesi yhdistetyt kirjastotilastot.",
+        "needsBackfillIntro": "Nämä palvelimet on synkronoitu, mutta niillä ei ole vielä aiempia tietoja:"
       },
       "toast": {
-        "noServerSelected": "",
-        "syncStartedTitle": "",
-        "syncStartedDesc": "",
-        "syncFailedTitle": "",
-        "genericRetry": "",
-        "backfillStartedTitle": "",
+        "noServerSelected": "Palvelinta ei ole valittu",
+        "syncStartedTitle": "Kirjaston synkronointi aloitettu",
+        "syncStartedDesc": "Tämä voi kestää muutamia minuutteja riippuen kirjaston koosta.",
+        "syncFailedTitle": "Synkronoinnin aloitus epäonnistui",
+        "genericRetry": "Ole hyvä ja yritä uudelleen.",
+        "backfillStartedTitle": "Takautuva täyttö aloitettu",
         "backfillStartedDesc": "",
-        "backfillFailedTitle": "",
-        "backfillCompleteTitle": "",
-        "backfillErrorTitle": ""
+        "backfillFailedTitle": "Takautuvan täytön käynnistäminen epäonnistui",
+        "backfillCompleteTitle": "Takautuva täyttö valmis",
+        "backfillErrorTitle": "Takautuva täyttö epäonnistui"
       }
     },
     "versionsBackfill": {
-      "banner": "",
+      "banner": "Tiedostoversiotietoja kerätään yhä tälle palvelimelle. Suorita kirjaston synkronointi viimeistelläksesi.",
       "action": "",
-      "syncFailed": "",
-      "syncStarted": ""
+      "syncStarted": "",
+      "syncFailed_one": "",
+      "syncFailed_other": ""
     }
   },
   "activity": {
     "title": "Toiminta",
     "description": "",
-    "playsOverTime": "Soittaa Ajan Yli",
+    "playsOverTime": "Toistot ajan mittaan",
     "concurrentStreams": "Samanaikaiset Streamit",
     "engagementBreakdown": "Sitoumusten Erittely",
     "howUsersEngage": "Miten käyttäjät sitoutuvat sisältöön",
-    "playsVsSessions": "Soittaa vs. istuntoja",
-    "playsVsSessionsDesc": "Täydelliset vain — laskee toiston, kun kokonaiskellon aika kattaa sisällön koko ajon",
+    "playsVsSessions": "Toistot vs. istunnot",
+    "playsVsSessionsDesc": "Vain kokonaan katsotut: toisto lasketaan, kun kokonaiskatseluaika kattaa sisällön koko keston",
     "activityByDayOfWeek": "Toiminta viikon päivään mennessä",
     "activityByHourOfDay": "Aktiivisuus päivän tunnilla",
     "platforms": "Alustat",
-    "streamQuality": "Virran Laatu"
+    "streamQuality": "Striimin laatu"
   },
   "violations": {
     "title": "Rikkomukset",
     "tryAdjustingFilters": "Yritä muuttaa suodattimia",
-    "selectAllViolations": "Valitse kaikki {{count}} rikkomistapausta vastaavat suodattimet",
-    "dismissViolation": "Hylkää Rikkominen",
+    "dismissViolation": "Hylkää rikkomus",
     "dismissViolationConfirm": "Oletko varma, että haluat hylätä tämän rikkomuksen? Tämä poistaa sen rikkomuslokista pysyvästi.",
-    "dismissViolation_one": "Hylkää {{count}} Väkivalta",
-    "dismissViolation_other": "Hylkää {{count}} Rikkomuksia",
-    "dismissViolationsConfirm": "Oletko varma, että haluat erottaa? Tämä poistaa ne rikkomuslokista pysyvästi ja palauttaa niihin liittyvät luottamuspisteet.",
+    "dismissViolationsConfirm": "Haluatko varmasti hylätä ne? Tämä poistaa ne rikkomuslokista pysyvästi ja palauttaa niihin liittyvät luottamuspisteet.",
     "noViolationsFound": "Rikkomuksia ei löytynyt",
     "noViolationsRecorded": "Rikkomuksia ei ole vielä tallennettu.",
     "allSeverities": "Kaikki Vakavuudet",
@@ -355,7 +345,6 @@
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
-    "peopleSelectedCount": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -366,34 +355,161 @@
       "userInfo": "Käyttäjä",
       "sessions": "Istunnot",
       "noSessions": "Tähän rikkomukseen ei liity istuntoja",
-      "trigger": "Käynnistin",
+      "trigger": "Laukaisin",
       "map": "Istunnon Sijainnit",
       "actions": "Toteutetut Toimet",
       "timestamps": "Aikaleimat",
       "created": "Luotu",
-      "acknowledged": "Tunnettu",
+      "acknowledged": "Kuitattu",
       "detected": "Havaittu",
       "inactivity": "Toimettomuuden Tiedot",
       "daysInactive": "Päivää Passiivinen",
       "threshold": "Kynnysarvo",
       "lastActivity": "Viimeisin Toiminta",
       "neverActive": "Ei koskaan aktiivinen",
-      "conditionEvidence": "Olosuhteet Todisteet",
+      "conditionEvidence": "Ehdon todisteet",
       "conditionGroup": "Ehtoryhmä {{index}}",
       "matched": "",
       "actual": "Todellinen",
-      "relatedSessions": "{{count}} liittyvä istunto",
       "relatedSessions_one": "{{count}} liittyvä istunto",
       "relatedSessions_other": "{{count}} aiheeseen liittyvää istuntoa"
-    }
+    },
+    "selectAllViolations_one": "",
+    "selectAllViolations_other": "Valitse kaikki {{count}} rikkomistapausta vastaavat suodattimet",
+    "dismissViolations_one": "Hylkää {{count}} rikkomus",
+    "dismissViolations_other": "Hylkää {{count}} Rikkomuksia",
+    "peopleSelectedCount_one": "",
+    "peopleSelectedCount_other": ""
   },
   "automations": {
+    "message": {
+      "heading": "",
+      "defaultText": "",
+      "title": "",
+      "body": "",
+      "blankHint": "",
+      "insertVariable": "",
+      "searchVariables": "",
+      "noVariables": "",
+      "preview": "",
+      "previewSamples": "",
+      "previewDefault": "",
+      "previewDefaultHint": "",
+      "previewPickDestination": "",
+      "fieldTitle": "",
+      "fieldMessage": "",
+      "fieldSubject": "",
+      "fieldHeading": "",
+      "fieldEmbedTitle": "",
+      "fieldDescription": "",
+      "addedDiscord": "",
+      "addedEmail": "",
+      "addedPushSubtitle": "",
+      "previewCount": "",
+      "previewCountBytes": "",
+      "previewCut": "",
+      "previewPriority": "",
+      "previewEscapeHint": "",
+      "webhookNotSent": ""
+    },
+    "priorities": {
+      "automatic": "",
+      "lowest": "",
+      "low": "",
+      "normal": "",
+      "high": "",
+      "urgent": ""
+    },
+    "variableGroups": {
+      "account": "",
+      "stream": "",
+      "server": "",
+      "media": "",
+      "device": "",
+      "trust": "",
+      "newsletter": "",
+      "event": ""
+    },
+    "variables": {
+      "user": {
+        "username": "",
+        "identityName": ""
+      },
+      "session": {
+        "mediaTitle": "",
+        "mediaType": "",
+        "sourceDynamicRange": "",
+        "sourceVideoCodec": "",
+        "seasonNumber": "",
+        "episodeNumber": "",
+        "name": ""
+      },
+      "server": {
+        "name": "",
+        "type": ""
+      },
+      "device": {
+        "name": "",
+        "platform": "",
+        "product": "",
+        "location": ""
+      },
+      "trust": {
+        "previous": "",
+        "new": "",
+        "reason": ""
+      },
+      "media": {
+        "title": "",
+        "name": "",
+        "show": "",
+        "season": "",
+        "episode": "",
+        "episodeCount": "",
+        "type": "",
+        "year": "",
+        "library": "",
+        "server": "",
+        "from": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        },
+        "to": {
+          "resolution": "",
+          "dynamicRange": "",
+          "videoCodec": "",
+          "audioCodec": "",
+          "audioChannels": "",
+          "fileSize": ""
+        }
+      },
+      "newsletter": {
+        "name": "",
+        "outcome": "",
+        "recipientCount": "",
+        "error": ""
+      },
+      "durationMinutes": "",
+      "minutes": "",
+      "days": "",
+      "installedVersion": "",
+      "latestVersion": "",
+      "downloadUrl": "",
+      "releaseUrl": ""
+    },
     "actions": {
       "send": {
         "label": "",
         "description": "",
         "fields": {
           "cooldown_minutes": {
+            "description": ""
+          },
+          "priority": {
             "description": ""
           }
         },
@@ -489,10 +605,10 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_other": "",
       "item": "",
-      "recordedViolation": ""
+      "recordedViolation": "",
+      "emptyRanDescription_one": "",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -501,7 +617,6 @@
       "nameHelper": "",
       "namePlaceholder": "",
       "activeLabel": "",
-      "back": "",
       "submit": "",
       "submitting": "",
       "customize": "",
@@ -550,7 +665,16 @@
         "trustAmountRange": "",
         "trustValueRange": "",
         "messageRequired": "",
-        "tooLong": ""
+        "tooLong": "",
+        "template": {
+          "unclosed": "",
+          "invalidOutput": "",
+          "invalidTag": "",
+          "unexpectedElse": "",
+          "unexpectedEndif": "",
+          "missingEndif": ""
+        },
+        "templateVariable": ""
       },
       "recordAs": {
         "label": "",
@@ -566,7 +690,6 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
-      "selectedCount": "",
       "scope": {
         "label": "",
         "global": "",
@@ -581,6 +704,7 @@
         "personPlaceholder": "",
         "personHelper": "",
         "noServers": "",
+        "historicalNote": "",
         "enforceAcrossServers": "",
         "enforceAcrossServersDescription": ""
       },
@@ -686,12 +810,12 @@
         "placeholderAction": ""
       },
       "footer": {
+        "ready": "",
+        "search": "",
         "problems_one": "",
         "problems_other": "",
         "remaining_one": "",
-        "remaining_other": "",
-        "ready": "",
-        "search": ""
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -712,7 +836,9 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_one": "",
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -726,12 +852,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_one": "",
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -802,6 +924,7 @@
         "source_video_codec": "",
         "is_transcoding": "",
         "is_transcode_downgrade": "",
+        "is_subtitle_burn_in": "",
         "source_bitrate_mbps": "",
         "user_id": "",
         "trust_score": "",
@@ -830,6 +953,10 @@
           "no": ""
         },
         "is_transcode_downgrade": {
+          "yes": "",
+          "no": ""
+        },
+        "is_subtitle_burn_in": {
           "yes": "",
           "no": ""
         },
@@ -885,16 +1012,18 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_one": "",
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
+      "noRuns": "",
       "runsLine_one": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1000,6 +1129,10 @@
         "description": ""
       },
       "is_transcode_downgrade": {
+        "label": "",
+        "description": ""
+      },
+      "is_subtitle_burn_in": {
         "label": "",
         "description": ""
       },
@@ -1296,6 +1429,9 @@
       "cooldown_minutes": {
         "label": ""
       },
+      "priority": {
+        "label": ""
+      },
       "target": {
         "label": ""
       },
@@ -1585,21 +1721,17 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_one": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
-    "title": "Lopeta Lähetys",
+    "title": "Lopeta striimi",
     "stopMedia": "Pysäytä \"{{mediaTitle}}\" @{{username}}?",
     "messageLabel": "Viesti käyttäjälle (valinnainen)",
     "messagePlaceholder": "esim., Älä jaa tiliäsi",
     "messageHint": "Tämä viesti näytetään heille soiton aikana",
-    "terminating": "Lopetetaan...",
-    "killStream": "Tapa Stream"
-  },
-  "notFound": {
-    "title": "",
-    "heading": "Sivua Ei Löytynyt",
-    "description": "Sivua, jota etsit ei ole olemassa tai on siirretty."
+    "terminating": "Lopetetaan..."
   },
   "settings": {
     "plex": {
@@ -1624,33 +1756,32 @@
         "unknown": ""
       },
       "connectionsReachable": "",
-      "connectionsAvailable": "{{count}} yhteyttä saatavilla",
       "hideFiltered": "Piilota suodatettu",
       "showAll": "Näytä kaikki",
-      "moreConnections": "+{{count}} lisää yhteyksiä",
       "connectingTo": "Yhdistetään {{name}} tiedostoon...",
       "ownerOnly": "",
-      "noAccountsLinked": "Ei Ole Ole Yhdistetty Plex Tilejä",
+      "noAccountsLinked": "Plex-tilejä ei ole yhdistetty",
       "noAccountsLinkedHint": "Yhdistä Plex tili lisätäksesi Plex palvelimet Tracearriin.",
       "linkPlexAccount": "Linkitä Plex Tili",
       "linkAnotherAccount": "Linkitä Toinen Plex -tili",
       "linking": "Yhdistetään...",
       "loginEnabled": "Kirjautuminen Käytössä",
-      "serversConnected_one": "{{count}} palvelin yhdistetty",
-      "serversConnected_other": "{{count}} palvelinta yhdistetty",
       "unlinkAccount": "Poista yhteys Plex tiliin",
       "reauthorizeAccount": "",
-      "deleteServersFirst": "Poista yhdistetyt palvelimet ensin poistaaksesi linkitys tähän tiliin",
+      "deleteServersFirst": "Poista ensin tämän tilin kautta yhdistetyt aktiiviset palvelimet tai merkitse ne historiallisiksi",
       "unlinkPlexAccount": "Irroita Plex Tili",
-      "unlinkConfirm": "Oletko varma, että haluat poistaa yhteyden tähän Plex tiliin? Et voi lisätä palvelimia tältä tililtä ennen kuin linkität sen uudelleen."
+      "unlinkConfirm": "Oletko varma, että haluat poistaa yhteyden tähän Plex tiliin? Et voi lisätä palvelimia tältä tililtä ennen kuin linkität sen uudelleen.",
+      "connectionsAvailable_one": "",
+      "connectionsAvailable_other": "{{count}} yhteyttä saatavilla",
+      "moreConnections_one": "",
+      "moreConnections_other": "+{{count}} lisää yhteyksiä",
+      "serversConnected_one": "{{count}} palvelin yhdistetty",
+      "serversConnected_other": "{{count}} palvelinta yhdistetty"
     },
     "destinations": {
       "add": "",
-      "alertsGoTo": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
-      "delete": "",
       "deleteConfirm": "",
       "description": "",
       "emailDescription": "",
@@ -1746,13 +1877,15 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy": "",
-      "usedBy_other": "",
-      "usedByNewsletters": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
+      "webToastNote": "",
+      "alertsGoTo_one": "",
+      "alertsGoTo_other": "",
+      "usedBy_one": "",
+      "usedBy_other": "",
+      "usedByNewsletters_one": "",
+      "usedByNewsletters_other": ""
     },
     "jobs": {
       "runNow": "Suorita Nyt",
@@ -1778,7 +1911,7 @@
     "restoreTitle": "Palautetaan varmuuskopiosta...",
     "restoreFailed": "Palautus epäonnistui",
     "restorePhase": {
-      "validating": "Varmuuskopiointia tarkistetaan",
+      "validating": "Varmuuskopiota tarkistetaan",
       "creating_restore_point": "Luodaan palautuspistettä",
       "shutting_down": "Palvelujen sulkeminen",
       "restoring_database": "Palautetaan tietokanta",
@@ -1799,42 +1932,42 @@
     "allTypes": "Kaikki tyypit",
     "heatmap": "Lämpökartta",
     "circles": "Ympyrät",
-    "streams": "purot",
+    "streams": "striimit",
     "locations": "sijainnit",
     "allActivity": "Kaikki toiminnot",
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "basemapShadowed": "",
     "badMounts": ""
   },
   "devices": {
     "title": "Laitteen Yhteensopivuus",
     "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip": "",
-    "directPlayRate": "Suora Toistomaksu",
+    "directPlayRate": "Suoran toiston osuus",
     "videoAndAudio": "",
     "uniqueDevices": "Yksilölliset Laitteet",
     "uniqueCodecs": "Yksilölliset Koodekit",
     "deviceHealth": "Laitteen Terveys",
     "deviceHealthDesc": "",
-    "transcodeHotspots": "Transkoodaa Hotspotteja",
+    "transcodeHotspots": "Transkoodauksen hotspotit",
     "transcodeHotspotsDesc": "",
     "deviceAndCodec": "Laite + Koodi",
     "transcodes": "Transkoodaukset",
     "pctOfTotal": "% yhteensä",
     "noTranscodeHotspots": "Ei transkoodauksen hotspotteja",
     "compatibilityMatrix": "Yhteensopivuus Matriisi",
-    "compatibilityMatrixDesc": "Suora toiston hinnat laitteen ja videon koodekki. Lajittelu istunnon äänenvoimakkuuden.",
+    "compatibilityMatrixDesc": "Suoran toiston osuus laitteittain ja videokoodekeittain. Lajiteltu istuntomäärän mukaan.",
     "noDeviceDataPeriod": "Laitteen tietoja ei ole tänä aikana",
     "legend": "Selite:",
     "directPlayHigh": "≥80 % Suora",
     "directPlayMid": "",
     "directPlayLow": "",
-    "topTranscodingUsers": "Eniten Transkoodataan Käyttäjiä",
+    "topTranscodingUsers": "Eniten transkoodaavat käyttäjät",
     "topTranscodingUsersDesc": "",
-    "noTranscodingUsers": "Transkoodauksen käyttäjiä ei löytynyt"
+    "noTranscodingUsers": "Transkoodauksen käyttäjiä ei löytynyt",
+    "analyzedSessionsTooltip_one": "",
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
     "title": "Kaistanleveys",
@@ -1843,7 +1976,7 @@
     "avgBitrate": "Keskim. Bittinopeus",
     "avgBitrateMbps": "Keskimääräinen Bittinopeus (MBPS)",
     "peakBitrate": "Huippu: {{value}} Mbps",
-    "totalWatchTime": "Katsella Aika Yhteensä",
+    "totalWatchTime": "Katseluaika yhteensä",
     "uniqueUsers": "Yksilölliset Käyttäjät",
     "dailyUsage": "Päivittäinen Kaistanleveyden Käyttö",
     "dailyUsageDesc": "",
@@ -1874,17 +2007,14 @@
     "title": "Työkalujen Vianetsintä",
     "description": "",
     "overview": "Yleiskatsaus",
-    "librarySnapshots": "Kirjaston Tilannekaappaukset",
+    "librarySnapshots": "Kirjaston tilannekuvat",
     "tasks": "Tehtävät",
     "logs": "Lokit",
     "plexAccounts": "Plex Tilit",
-    "terminations": "Päättymiset",
+    "terminations": "Lopetukset",
     "libraryItems": "Kirjaston Nimikkeet",
     "environment": "Ympäristö",
     "systemInformation": "Järjestelmän Tiedot",
-    "cpu": "Suoritin",
-    "memory": "Muisti",
-    "uptime": "Käyttöaika",
     "database": "Tietokanta",
     "databaseDesc": "",
     "totalSize": "Koko Yhteensä",
@@ -1946,27 +2076,28 @@
         }
       },
       "card": {
+        "addedAgo": "lisätty {{date}}",
+        "addedCompactAgo": "",
         "newEpisodes_one": "{{count}} uusi jakso",
         "newEpisodes_other": "{{count}} uutta jaksoa",
         "replacedEpisodes_one": "",
         "replacedEpisodes_other": "",
-        "addedAgo": "lisätty {{date}}",
-        "addedCompactAgo": "",
-        "newEpisodesChip": ""
+        "newEpisodesChip_one": "",
+        "newEpisodesChip_other": ""
       },
       "deadWeight": {
         "title": "",
-        "summary": "",
         "empty": "",
         "columns": {
           "poster": "",
           "title": "",
-          "size": "",
           "added": "",
           "servers": ""
         },
         "viewAll": "",
-        "viewAllTooltip": ""
+        "viewAllTooltip": "",
+        "summary_one": "",
+        "summary_other": ""
       },
       "loadError": ""
     },
@@ -1982,15 +2113,14 @@
       "chart": {
         "title": "",
         "valueLabel": "",
+        "ariaLabel": "",
         "itemCount_one": "",
-        "itemCount_other": "",
-        "ariaLabel": ""
+        "itemCount_other": ""
       },
       "table": {
         "title": "",
         "columns": {
           "genre": "",
-          "items": "",
           "plays": "",
           "watchTime": ""
         },
@@ -2063,7 +2193,6 @@
         "lastWatchedAgo": "",
         "completionLabel": "",
         "columns": {
-          "user": "",
           "plays": "",
           "episodes": "",
           "completion": "",
@@ -2074,15 +2203,15 @@
         "title": "",
         "loadError": "",
         "empty": "",
-        "episodeCount_one": "",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
-        }
+        },
+        "episodeCount_one": "",
+        "episodeCount_other": ""
       },
       "platforms": {
         "title": "",
@@ -2090,7 +2219,6 @@
         "empty": "",
         "unknown": "",
         "columns": {
-          "platform": "",
           "plays": "",
           "watchTime": ""
         }
@@ -2102,10 +2230,6 @@
         "watched": "",
         "notWatched": "",
         "columns": {
-          "date": "",
-          "user": "",
-          "content": "",
-          "server": "",
           "duration": ""
         }
       },
@@ -2114,11 +2238,8 @@
         "loadError": "",
         "unknownLibrary": "",
         "columns": {
-          "server": "",
           "library": "",
-          "quality": "",
           "episodes": "",
-          "size": "",
           "added": ""
         },
         "versionLabel": ""
@@ -2128,10 +2249,6 @@
       "rankSuffix": ", sija {{rank}}",
       "onServers": "Palvelimilla {{servers}}",
       "addedLabel": "Lisätty {{date}}",
-      "plays_one": "{{count}} toisto",
-      "plays_other": "{{count}} toistoa",
-      "viewers_one": "{{count}} katsoja",
-      "viewers_other": "{{count}} katsojaa",
       "watchedState": {
         "watched": "Katsottu",
         "partial": "Osittain katsottu",
@@ -2145,12 +2262,14 @@
         "resolution": ""
       },
       "rankChip": "",
+      "versionsChip": "",
+      "moreServers": "",
+      "viewers_one": "{{count}} katsoja",
+      "viewers_other": "{{count}} katsojaa",
       "playsCompact_one": "",
       "playsCompact_other": "",
-      "versionsChip": "",
       "versions_one": "",
-      "versions_other": "",
-      "moreServers": ""
+      "versions_other": ""
     },
     "grid": {
       "toolbar": {
@@ -2160,7 +2279,6 @@
         "showsToggle": "",
         "searchPlaceholder": "",
         "searchLabel": "",
-        "removeFilter": "",
         "filtersLabel": "",
         "filtersSheetTitle": "",
         "done": "",
@@ -2178,6 +2296,10 @@
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "atmosLabel": "",
+        "atmosAll": "",
+        "atmosOnly": "",
+        "atmosChip": "",
         "genreLabel": "",
         "genreAll": "",
         "serverLabel": "",
@@ -2232,7 +2354,6 @@
     "columns": {
       "requester": "",
       "title": "",
-      "status": "",
       "requested": "",
       "wait": "",
       "seasons": "",
@@ -2287,11 +2408,12 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
-        "landedOf": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": ""
+        "onDisk": "",
+        "landedOf_one": "",
+        "landedOf_other": ""
       }
     },
     "funnel": {

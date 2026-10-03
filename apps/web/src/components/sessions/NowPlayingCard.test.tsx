@@ -405,7 +405,11 @@ describe('NowPlayingCard ffmpeg speed display', () => {
 });
 
 function renderCard(overrides: Partial<ActiveSession>) {
-  render(<NowPlayingCard session={makeSession({ playerName: null, ...overrides })} />);
+  render(
+    <NowPlayingCard
+      session={makeSession({ playerName: null, totalDurationMs: 7_200_000, ...overrides })}
+    />
+  );
   return screen.getByTestId('device-badge');
 }
 
@@ -426,5 +430,32 @@ describe('NowPlayingCard device icon', () => {
 
   it('carries no hover text when the session reports no device at all', () => {
     expect(renderCard({})).not.toHaveAttribute('title');
+  });
+});
+
+describe('NowPlayingCard transcoder bar and buffering', () => {
+  it('draws the transcoder segment ahead of the playhead', () => {
+    renderCard({ progressMs: 720_000, transcodeInfo: { maxOffsetAvailable: 1800 } });
+    expect(screen.getByTestId('progress-buffered')).toHaveStyle({ width: '25%' });
+  });
+
+  it('falls back to transcode percent when the server gives no offset (Jellyfin)', () => {
+    renderCard({ progressMs: 720_000, transcodeInfo: { progress: 40 } });
+    expect(screen.getByTestId('progress-buffered')).toHaveStyle({ width: '40%' });
+  });
+
+  it('draws nothing for direct play', () => {
+    renderCard({ progressMs: 720_000, transcodeInfo: null });
+    expect(screen.queryByTestId('progress-buffered')).toBeNull();
+  });
+
+  it('draws nothing when the transcoder is behind the playhead', () => {
+    renderCard({ progressMs: 720_000, transcodeInfo: { maxOffsetAvailable: 300 } });
+    expect(screen.queryByTestId('progress-buffered')).toBeNull();
+  });
+
+  it('labels a buffering session', () => {
+    renderCard({ state: 'playing', buffering: true });
+    expect(screen.getByText('playback.buffering')).toBeInTheDocument();
   });
 });

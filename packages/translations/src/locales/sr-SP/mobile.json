@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "",
-    "addServer": "",
     "connectToServer": "",
     "enterServerDetails": "",
     "serverUrl": "",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "",
-    "pleaseEnterBothFields": "",
     "invalidUrl": "",
-    "serverUrlMustStartWith": "",
     "pleaseEnterValidUrl": "",
     "pairingFailed": "",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "",
     "invalidQrCodeMissingUrl": "",
     "invalidQrCodeMissingToken": "",
-    "invalidServerUrlInQr": "",
-    "tooManyPairingAttempts": "",
-    "invalidOrExpiredToken": "",
-    "invalidPairingRequest": "",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "",
-    "server": "",
-    "navigation": ""
+    "server": ""
   },
   "resources": {
     "cpu": "",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,18 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_few": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_few": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +135,17 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_few": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_few": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +158,9 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_few": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -193,28 +190,27 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_few": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_few": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +223,10 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_few": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,10 +260,12 @@
   },
   "widget": {
     "asOf": "",
-    "serversDown_one": "",
-    "serversDown_other": "",
     "signedOut": "",
+    "serversDown_one": "",
+    "serversDown_few": "",
+    "serversDown_other": "",
     "transcodes_one": "",
+    "transcodes_few": "",
     "transcodes_other": ""
   }
 }

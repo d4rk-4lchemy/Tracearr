@@ -1,7 +1,7 @@
 import { useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, Plus } from 'lucide-react';
-import type { IfAction, LeafActionType } from '@tracearr/shared';
+import type { IfAction, LeafActionType, TemplateVariable } from '@tracearr/shared';
 import { LEAF_ACTION_TYPES } from '@tracearr/shared';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
@@ -34,6 +34,7 @@ import type { NodeIssues } from './validation';
 
 interface IfRowProps {
   action: IfAction;
+  variables: readonly TemplateVariable[];
   refs: BuilderRefs;
   issues: NodeIssues;
   pulseId: string | null;
@@ -52,6 +53,7 @@ function isLeafActionType(value: string): value is LeafActionType {
 /** A fork in the run: what holds decides which set of steps happens. */
 export function IfRow({
   action,
+  variables,
   refs,
   issues,
   pulseId,
@@ -177,6 +179,7 @@ export function IfRow({
             ifId={id}
             side="then"
             actions={action.then}
+            variables={variables}
             issues={issues}
             pulseId={pulseId}
             onRemoveBranchAction={onRemoveBranchAction}
@@ -192,6 +195,7 @@ export function IfRow({
             ifId={id}
             side="else"
             actions={action.else}
+            variables={variables}
             emptyText={t('automations.builder.actions.branchElseEmpty')}
             issues={issues}
             pulseId={pulseId}
@@ -214,6 +218,7 @@ interface BranchProps {
   ifId: string;
   side: 'then' | 'else';
   actions: IfAction['then'];
+  variables: readonly TemplateVariable[];
   /** What this side does while it holds nothing, said in words rather than left blank. */
   emptyText?: string;
   issues: NodeIssues;
@@ -227,6 +232,7 @@ function Branch({
   ifId,
   side,
   actions,
+  variables,
   emptyText,
   issues,
   pulseId,
@@ -262,6 +268,7 @@ function Branch({
             <ActionRow
               key={idOf(action)}
               action={action}
+              variables={variables}
               issues={issues.get(idOf(action))}
               pulsing={pulseId === idOf(action)}
               rowProps={rows.rowProps(index)}

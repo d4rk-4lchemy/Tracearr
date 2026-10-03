@@ -11,9 +11,9 @@ const { mockGetSettings, mockServerRows, mockUpdate, mockGetSoftwareVersion, moc
   }));
 
 vi.mock('../../services/settings.js', () => ({ getSettings: mockGetSettings }));
+vi.mock('../../services/liveServers.js', () => ({ liveServers: mockServerRows }));
 vi.mock('../../db/client.js', () => ({
   db: {
-    select: () => ({ from: mockServerRows }),
     update: () => ({
       set: (patch: unknown) => {
         mockUpdate(patch);
@@ -70,6 +70,12 @@ describe('runServerUpdateCheck', () => {
     mockGetSoftwareVersion.mockResolvedValue('10.11.11');
     mockCreateClient.mockReturnValue({ getSoftwareVersion: mockGetSoftwareVersion });
     mockLatestVersionFor.mockResolvedValue('10.11.12');
+  });
+
+  it('reads only live servers', async () => {
+    await runServerUpdateCheck();
+    expect(mockServerRows).toHaveBeenCalledTimes(1);
+    expect(mockServerRows).toHaveBeenCalledWith();
   });
 
   it('persists the installed and latest versions it read', async () => {

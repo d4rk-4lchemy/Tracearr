@@ -90,7 +90,7 @@ vi.mock('../violations.js', () => ({
   broadcastViolations: vi.fn(),
 }));
 
-import { initializePoller, sweepStaleSessions } from '../processor.js';
+import { forceStopSessions, initializePoller, sweepStaleSessions } from '../processor.js';
 
 const staleSessionRow = {
   id: 'session-1',
@@ -171,5 +171,48 @@ describe('sweepStaleSessions', () => {
 
     expect(cacheService.removeActiveSession).not.toHaveBeenCalled();
     expect(cacheService.invalidateDashboardStatsCache).not.toHaveBeenCalled();
+  });
+});
+
+describe('forceStopSessions', () => {
+  const cacheService = {
+    removeActiveSession: vi.fn(),
+    addSessionWriteRetry: vi.fn(),
+    invalidateDashboardStatsCache: vi.fn(),
+  };
+  const pubSubService = { publish: vi.fn() };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    initializePoller(cacheService as never, pubSubService as never);
+  });
+
+  it('stops every row it is given, however recently it was seen, and reports how many changed', async () => {
+    const seenJustNow = { ...staleSessionRow, id: 'session-2', lastSeenAt: new Date() };
+    mockStopSessionAtomic
+      .mockResolvedValueOnce({
+        durationMs: 1,
+        watched: false,
+        shortSession: true,
+        wasUpdated: true,
+      })
+      .mockResolvedValueOnce({
+        durationMs: null,
+        watched: false,
+        shortSession: false,
+        wasUpdated: false,
+      });
+
+    const stopped = await forceStopSessions([staleSessionRow, seenJustNow] as never);
+
+    expect(stopped).toBe(1);
+    expect(mockStopSessionAtomic).toHaveBeenCalledTimes(2);
+    expect(mockStopSessionAtomic.mock.calls[1]?.[0]).toMatchObject({
+      session: seenJustNow,
+      forceStopped: true,
+    });
+    expect(pubSubService.publish).toHaveBeenCalledWith('session:stopped', 'session-1');
+    expect(pubSubService.publish).not.toHaveBeenCalledWith('session:stopped', 'session-2');
+    expect(cacheService.invalidateDashboardStatsCache).toHaveBeenCalledTimes(1);
   });
 });

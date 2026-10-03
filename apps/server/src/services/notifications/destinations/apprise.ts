@@ -1,10 +1,10 @@
-import { DESTINATION_TYPES } from '@tracearr/shared';
+import { DESTINATION_TEXT_PROFILES, DESTINATION_TYPES, escapeFor } from '@tracearr/shared';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
 import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
 import { formatViolationMessage } from '../formatters/violation.js';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
-import { ownText, textOf } from './overrides.js';
+import { fitted, ownText, textOf } from './overrides.js';
 import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
 import type {
   NotificationPayload,
@@ -17,6 +17,8 @@ import type {
 } from '../types.js';
 import type { DeliverContext, DestinationType } from './types.js';
 
+const PROFILE = DESTINATION_TEXT_PROFILES.apprise;
+
 export interface AppriseConfig {
   url: string;
 }
@@ -27,6 +29,7 @@ export interface AppriseMessage {
   title: string;
   body: string;
   type: AppriseType;
+  format: 'text';
 }
 
 function severityToType(severity: string): AppriseType {
@@ -43,7 +46,12 @@ function buildViolation(payload: NotificationPayload, ctx: ViolationContext): Ap
     title: payload.title,
     message: formatViolationMessage(ctx.violation),
   });
-  return { title: text.title, body: text.message, type: severityToType(ctx.violation.severity) };
+  return {
+    title: text.title,
+    body: text.message,
+    type: severityToType(ctx.violation.severity),
+    format: 'text',
+  };
 }
 
 function buildSessionStarted(payload: NotificationPayload, ctx: SessionContext): AppriseMessage {
@@ -56,7 +64,7 @@ function buildSessionStarted(payload: NotificationPayload, ctx: SessionContext):
     title: 'Stream Started',
     message: `${userName} started watching ${mediaDisplay}`,
   });
-  return { title: text.title, body: text.message, type: 'info' };
+  return { title: text.title, body: text.message, type: 'info', format: 'text' };
 }
 
 function buildSessionStopped(payload: NotificationPayload, ctx: SessionContext): AppriseMessage {
@@ -70,7 +78,7 @@ function buildSessionStopped(payload: NotificationPayload, ctx: SessionContext):
     title: 'Stream Ended',
     message: `${userName} finished watching ${mediaDisplay}${durationStr}`,
   });
-  return { title: text.title, body: text.message, type: 'info' };
+  return { title: text.title, body: text.message, type: 'info', format: 'text' };
 }
 
 function buildServerDown(payload: NotificationPayload, ctx: ServerContext): AppriseMessage {
@@ -78,7 +86,7 @@ function buildServerDown(payload: NotificationPayload, ctx: ServerContext): Appr
     title: 'Server Offline',
     message: `${ctx.serverName} is not responding`,
   });
-  return { title: text.title, body: text.message, type: 'failure' };
+  return { title: text.title, body: text.message, type: 'failure', format: 'text' };
 }
 
 function buildServerUp(payload: NotificationPayload, ctx: ServerContext): AppriseMessage {
@@ -86,7 +94,7 @@ function buildServerUp(payload: NotificationPayload, ctx: ServerContext): Appris
     title: 'Server Online',
     message: `${ctx.serverName} is back online`,
   });
-  return { title: text.title, body: text.message, type: 'success' };
+  return { title: text.title, body: text.message, type: 'success', format: 'text' };
 }
 
 function buildPluginUpdate(payload: NotificationPayload, ctx: PluginUpdateContext): AppriseMessage {
@@ -94,7 +102,7 @@ function buildPluginUpdate(payload: NotificationPayload, ctx: PluginUpdateContex
     title: 'Plugin Update Available',
     message: `${ctx.serverName}: ${formatPluginUpdateMessage(ctx)}`,
   });
-  return { title: text.title, body: text.message, type: 'warning' };
+  return { title: text.title, body: text.message, type: 'warning', format: 'text' };
 }
 
 function buildServerUpdate(payload: NotificationPayload, ctx: ServerUpdateContext): AppriseMessage {
@@ -102,7 +110,7 @@ function buildServerUpdate(payload: NotificationPayload, ctx: ServerUpdateContex
     title: 'Server Update Available',
     message: formatServerUpdateMessage(ctx),
   });
-  return { title: text.title, body: text.message, type: 'warning' };
+  return { title: text.title, body: text.message, type: 'warning', format: 'text' };
 }
 
 function buildTracearrUpdate(
@@ -113,12 +121,12 @@ function buildTracearrUpdate(
     title: 'Tracearr Update Available',
     message: formatTracearrUpdateMessage(ctx),
   });
-  return { title: text.title, body: text.message, type: 'info' };
+  return { title: text.title, body: text.message, type: 'info', format: 'text' };
 }
 
 function buildOwnText(payload: NotificationPayload): AppriseMessage {
   const text = ownText(payload);
-  return { title: text.title, body: text.message, type: 'info' };
+  return { title: text.title, body: text.message, type: 'info', format: 'text' };
 }
 
 function build(payload: NotificationPayload): AppriseMessage {
@@ -163,7 +171,11 @@ async function post(url: string, body: AppriseMessage, ctx: DeliverContext): Pro
 export const appriseType: DestinationType<AppriseConfig, AppriseMessage> = {
   kind: 'apprise',
   events: DESTINATION_TYPES.apprise.events,
-  render: (event, _config, ctx) => build(toNotificationPayload(event, ctx.source)),
+  render: (event, _config, ctx) => {
+    const message = build(toNotificationPayload(event, ctx.source, escapeFor(PROFILE)));
+    const fit = fitted({ title: message.title, message: message.body }, PROFILE);
+    return { ...message, title: fit.title, body: fit.message };
+  },
   deliver: (body, config, ctx) => post(config.url, body, ctx),
   test: (config, ctx) =>
     post(
@@ -172,6 +184,7 @@ export const appriseType: DestinationType<AppriseConfig, AppriseMessage> = {
         title: 'Test Notification',
         body: 'This is a test notification from Tracearr',
         type: 'info',
+        format: 'text',
       },
       ctx
     ),

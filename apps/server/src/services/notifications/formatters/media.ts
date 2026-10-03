@@ -33,6 +33,17 @@ export function parentName(ctx: MediaEventPayload): string | null {
   return ctx.mediaType === 'season' ? ctx.parentTitle : ctx.grandparentTitle;
 }
 
+/** A show and an episode code, as the notification headline prints them. */
+export function episodeHeadline(
+  show: string,
+  title: string,
+  season: number | null,
+  episode: number | null
+): string {
+  const code = formatEpisodeLabel(season, episode, { separator: ' · ' });
+  return code === null ? `${show} — ${title}` : `${show} — ${code}`;
+}
+
 /** The headline: what a person would call this item out loud. */
 export function mediaHeadline(ctx: MediaEventPayload): string {
   const parent = parentName(ctx);
@@ -40,9 +51,7 @@ export function mediaHeadline(ctx: MediaEventPayload): string {
     return parent === null ? seasonLabel(ctx) : `${parent} — ${seasonLabel(ctx)}`;
   }
   if (ctx.mediaType === 'episode') {
-    const code = formatEpisodeLabel(ctx.parentIndex, ctx.itemIndex, { separator: ' · ' });
-    const show = parent ?? ctx.title;
-    return code === null ? `${show} — ${ctx.title}` : `${show} — ${code}`;
+    return episodeHeadline(parent ?? ctx.title, ctx.title, ctx.parentIndex, ctx.itemIndex);
   }
   return parent === null ? ctx.title : `${parent} — ${ctx.title}`;
 }

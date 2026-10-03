@@ -88,7 +88,7 @@ describe('NewsletterRow', () => {
 
   it('patches enabled from the switch without opening anything', async () => {
     const { onToggle } = renderRow();
-    const toggle = screen.getByRole('switch', { name: 'newsletters.enabled' });
+    const toggle = screen.getByRole('switch', { name: 'common:states.enabled' });
     expect(toggle).toBeChecked();
     await userEvent.click(toggle);
     expect(onToggle).toHaveBeenCalledWith(false);

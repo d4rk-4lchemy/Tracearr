@@ -52,6 +52,7 @@ import { getSetting, setSetting } from '../services/settings.js';
 import { compareNames } from '../utils/collation.js';
 import { hashSha256 } from '../utils/hash.js';
 import { hasServerAccess } from '../utils/serverFiltering.js';
+import { serverOrderBy } from '../utils/serverOrder.js';
 import { firstIssueMessage } from '../utils/zod.js';
 import { disconnectMobileDevice } from '../websocket/index.js';
 
@@ -688,7 +689,10 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         const owner = ownerRow[0]!;
 
         // Get all server IDs for the JWT
-        const allServers = await tx.select({ id: servers.id, type: servers.type }).from(servers);
+        const allServers = await tx
+          .select({ id: servers.id, type: servers.type })
+          .from(servers)
+          .orderBy(...serverOrderBy());
         const serverIds = allServers.map((s) => s.id);
 
         // Get primary server info for the response (first server)
@@ -1162,6 +1166,10 @@ export const mobileRoutes: FastifyPluginAsync = async (app) => {
         triggeredByUserId: authUser.userId,
         reason,
       });
+
+      if (result.outcome === 'server_historical') {
+        return reply.conflict('Resume this server to end its streams');
+      }
 
       if (!result.success) {
         app.log.error(

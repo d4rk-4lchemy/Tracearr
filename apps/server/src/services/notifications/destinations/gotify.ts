@@ -1,10 +1,15 @@
-import { DESTINATION_TYPES } from '@tracearr/shared';
+import {
+  DESTINATION_TEXT_PROFILES,
+  DESTINATION_TYPES,
+  escapeFor,
+  type NotificationPriority,
+} from '@tracearr/shared';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
 import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
 import { formatViolationMessage } from '../formatters/violation.js';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
-import { ownText, textOf } from './overrides.js';
+import { fitted, ownText, textOf } from './overrides.js';
 import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
 import type {
   NotificationPayload,
@@ -16,6 +21,16 @@ import type {
   ViolationContext,
 } from '../types.js';
 import type { DeliverContext, DestinationType } from './types.js';
+
+const PROFILE = DESTINATION_TEXT_PROFILES.gotify;
+
+const GOTIFY_PRIORITY: Record<NotificationPriority, number> = {
+  lowest: 0,
+  low: 2,
+  normal: 5,
+  high: 8,
+  urgent: 10,
+};
 
 export interface GotifyConfig {
   url: string;
@@ -169,7 +184,16 @@ async function post(url: string, body: GotifyMessage, ctx: DeliverContext): Prom
 export const gotifyType: DestinationType<GotifyConfig, GotifyMessage> = {
   kind: 'gotify',
   events: DESTINATION_TYPES.gotify.events,
-  render: (event, _config, ctx) => build(toNotificationPayload(event, ctx.source)),
+  render: (event, _config, ctx) => {
+    const payload = toNotificationPayload(event, ctx.source, escapeFor(PROFILE));
+    const message = build(payload);
+    const priority = payload.automation?.priority;
+    return {
+      ...message,
+      ...fitted(message, PROFILE),
+      ...(priority !== undefined && { priority: GOTIFY_PRIORITY[priority] }),
+    };
+  },
   deliver: (body, config, ctx) => post(config.url, body, ctx),
   test: (config, ctx) =>
     post(

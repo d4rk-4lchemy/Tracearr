@@ -299,6 +299,29 @@ export function messageSlotForInput(
   return walk(definition.actions.actions);
 }
 
+/** The send text slot an input fills, so the gallery edits it with the notification editor. */
+export function sendTextSlotForInput(
+  definition: TemplateDefinition,
+  key: string
+): 'title' | 'body' | undefined {
+  const walk = (
+    actions: TemplateDefinition['actions']['actions']
+  ): 'title' | 'body' | undefined => {
+    for (const action of actions) {
+      if (action.type === 'if') {
+        const nested = walk([...action.then, ...action.else]);
+        if (nested) return nested;
+        continue;
+      }
+      if (action.type !== 'send') continue;
+      if (placeholderKey(action.title) === key) return 'title';
+      if (placeholderKey(action.body) === key) return 'body';
+    }
+    return undefined;
+  };
+  return walk(definition.actions.actions);
+}
+
 /**
  * The condition field an input's value lands in, so a number is edited and shown the
  * way the builder edits and shows that same condition.

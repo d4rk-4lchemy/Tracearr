@@ -10,20 +10,23 @@
         "message": "Servern har tagits bort"
       },
       "serverSynced": {
-        "title": "Servern synkroniserad",
-        "message": "Serverdata har synkroniserats"
+        "title": "Servern synkroniserad"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "Inställningar uppdaterade",
         "message": "Dina inställningar har sparats"
       },
-      "tokenCopied": {
-        "title": "Token kopierad",
-        "message": "Par-token kopierad till urklipp"
-      },
       "violationAcknowledged": {
-        "title": "Brott erkänt",
-        "message": "Brott har markerats som erkänt"
+        "title": "Överträdelse bekräftad",
+        "message": "Överträdelsen har markerats som bekräftad"
       },
       "violationDismissed": {
         "title": "Överträdelse avfärdad",
@@ -38,19 +41,11 @@
         "message": "Enhetens namn har uppdaterats"
       },
       "sessionsRevoked": {
-        "title": "Sessioner återkallade",
-        "message": "Alla mobila sessioner har återkallats"
+        "title": "Sessioner återkallade"
       },
       "loggedIn": {
         "title": "Klart",
         "message": "Inloggningen lyckades"
-      },
-      "webhookTest": {
-        "title": "Testet lyckades",
-        "message": "Webhook fungerar korrekt"
-      },
-      "copiedToClipboard": {
-        "title": "Kopierad till urklipp"
       },
       "plexAccountLinked": {
         "title": "Plex konto länkat",
@@ -62,27 +57,14 @@
       },
       "plexAccountReauthorized": {
         "title": "",
-        "message_one": "",
-        "message_other": "",
         "messageNoServers": "",
         "partial": "",
-        "unmatched": ""
-      },
-      "agentAdded": {
-        "title": "Agentkommando tillagda",
-        "message": "Anslagstavlan har lagts till"
-      },
-      "agentUpdated": {
-        "title": "Agentkommando Uppdaterad",
-        "message": "Meddelandeombudet har uppdaterats"
-      },
-      "agentRemoved": {
-        "title": "Agentkommando borttagen",
-        "message": "Anslagstavlan har tagits bort"
+        "unmatched": "",
+        "message_one": "",
+        "message_other": ""
       },
       "jobCompleted": {
-        "title": "Jobb slutförd",
-        "message": "{{name}} slutförd"
+        "title": "Jobb slutförd"
       },
       "automationCreated": {
         "title": "",
@@ -97,7 +79,7 @@
         "message": ""
       },
       "streamTerminated": {
-        "title": "Strömmen upphörde",
+        "title": "Strömmen avslutad",
         "message": "Uppspelningssessionen har stoppats"
       },
       "serverUrlUpdated": {
@@ -123,12 +105,12 @@
       },
       "violationsAcknowledged": {
         "title": "Överträdelser erkända",
-        "message_one": "{{count}} kränkning bekräftad",
-        "message_other": "{{count}} kränkningar erkända"
+        "message_one": "{{count}} överträdelse bekräftad",
+        "message_other": "{{count}} överträdelser bekräftade"
       },
       "violationsDismissed": {
         "title": "Överträdelser avfärdade",
-        "message_one": "{{count}} kränkning avfärdad",
+        "message_one": "{{count}} överträdelse avfärdad",
         "message_other": "{{count}} avfärdade överträdelser"
       },
       "apiKeyGenerated": {
@@ -144,12 +126,12 @@
         "message": "Alla mobila sessioner har återkallats"
       },
       "pairTokenGenerated": {
-        "title": "Par-token genererad",
+        "title": "Parkopplingstoken genererad",
         "message": "Skanna QR-koden med din mobila enhet för att koppla"
       },
       "identityUpdated": "",
       "trustScoresReset": {
-        "title": "Lita på poäng Återställ",
+        "title": "Förtroendepoäng återställda",
         "message_one": "{{count}} användaråterställning till 100",
         "message_other": "{{count}} användare återställs till 100"
       },
@@ -175,21 +157,22 @@
       "newsletterDuplicated": "",
       "newsletterTestQueued": "",
       "newsletterSendQueued": "",
-      "newsletterRetryQueued": "",
       "brandingSaved": "",
       "suppressionAdded": "",
-      "suppressionRemoved": ""
+      "suppressionRemoved": "",
+      "newsletterRetryQueued_one": "",
+      "newsletterRetryQueued_other": ""
     },
     "error": {
       "serverAddFailed": "Det gick inte att lägga till server",
       "serverRemoveFailed": "Det gick inte att ta bort servern",
       "serverSyncFailed": "Det gick inte att synkronisera servern",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Det gick inte att uppdatera inställningarna",
       "copyFailed": "Kunde inte kopiera till urklipp",
-      "acknowledgeFailed": "Misslyckades att erkänna brott",
-      "dismissFailed": "Misslyckades att avfärda brott",
+      "acknowledgeFailed": "Det gick inte att bekräfta överträdelsen",
+      "dismissFailed": "Det gick inte att avfärda överträdelsen",
       "authFailed": "Autentisering misslyckades",
-      "webhookTestFailed": "Webhook test misslyckades",
       "automationCreateFailed": "",
       "automationUpdateFailed": "",
       "automationDeleteFailed": "",
@@ -202,20 +185,14 @@
       "apiKeyGenerateFailed": "Det gick inte att generera API-nyckel",
       "mobileAccessEnableFailed": "Det gick inte att aktivera mobilåtkomst",
       "mobileAccessDisableFailed": "Det gick inte att inaktivera mobilåtkomst",
-      "pairTokenGenerateFailed": "Det gick inte att generera partoken",
+      "pairTokenGenerateFailed": "Det gick inte att generera parkopplingstoken",
       "deviceRemoveFailed": "Det gick inte att ta bort enheten",
       "deviceRenameFailed": "Det gick inte att byta namn på enheten",
       "sessionsRevokeFailed": "Det gick inte att återkalla sessioner",
       "identityUpdateFailed": "",
-      "trustScoresResetFailed": "Det gick inte att återställa trust-poäng",
-      "routingUpdateFailed": "Det gick inte att uppdatera routing",
-      "clipboardFailed": "Det gick inte att kopiera till urklipp",
+      "trustScoresResetFailed": "Det gick inte att återställa förtroendepoäng",
       "plexUnlinkFailed": "Det gick inte att koppla bort Plex-kontot",
       "plexReauthorizeFailed": "",
-      "agentAddFailed": "Det gick inte att lägga till agent",
-      "agentUpdateFailed": "Det gick inte att uppdatera agent",
-      "agentRemoveFailed": "Det gick inte att ta bort agent",
-      "agentTestFailed": "Testet misslyckades",
       "jobAlreadyRunning": "Jobbet körs redan",
       "jobStartFailed": "Det gick inte att starta jobbet",
       "jobLoadFailed": "Det gick inte att ladda underhållsjobb",
@@ -248,8 +225,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "Jobbet misslyckades",
-        "message": "{{name}} stötte på ett fel"
+        "title": "Jobbet misslyckades"
       }
     },
     "info": {
@@ -263,44 +239,24 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "Delning av överträdelse upptäckt",
-    "streamStarted": "Strömmen startad",
-    "streamEnded": "Stream avslutad",
-    "serverDown": "Serveranslutning förlorad",
-    "serverUp": "Server tillbaka online",
-    "newDevice": "Ny enhet",
-    "trustScoreChanged": "Tillit Poäng Ändrad"
-  },
   "settings": {
-    "title": "Inställningar för aviseringar",
     "allSeverity": "Alla (låg, varning, hög)",
     "warningAndHigh": "Varning & Hög endast",
-    "highOnly": "Endast hög svårighetsgrad",
-    "allTypes": "Alla typer",
+    "highOnly": "Endast hög allvarlighetsgrad",
     "rateLimit": "Nuvarande hastighetsgräns status",
     "perMinute": "Per minut",
     "perHour": "Per timme",
     "enablePushNotifications": "Aktivera push-meddelanden",
     "notificationEvents": "Aviseringshändelser",
     "violationDetected": "Överträdelse upptäckt",
-    "violationDetectedDesc": "När en delningsöverträdelse utlöses",
     "streamStarted": "Strömmen startad",
-    "streamStartedDesc": "När en användare börjar titta på",
-    "streamStopped": "Stream stoppad",
-    "streamStoppedDesc": "När en användare slutar titta på",
+    "streamStopped": "Strömmen stoppad",
     "concurrentStreams": "Samtidiga strömmar",
-    "concurrentStreamsDesc": "När maxgränsen för ström överskrids",
     "newDevice": "Ny enhet",
-    "newDeviceDesc": "När en ny enhet ansluts",
-    "trustScoreChanged": "Tillit Poäng Ändrad",
-    "trustScoreChangedDesc": "När en användares trust-poäng ändras",
+    "trustScoreChanged": "Förtroendepoäng ändrad",
     "serverDown": "Servern ner",
-    "serverDownDesc": "När en mediaserver går offline",
     "serverUp": "Servern upp",
-    "serverUpDesc": "När en mediaserver kommer tillbaka online",
-    "violationFilters": "Brott mot filter",
-    "minimumSeverity": "Minsta svårighetsgrad",
+    "minimumSeverity": "Lägsta allvarlighetsgrad",
     "quietHours": "Tysta timmar",
     "enableQuietHours": "Aktivera tysta timmar",
     "overrideForCritical": "Åsidosätt för kritisk",

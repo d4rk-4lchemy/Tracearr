@@ -13,6 +13,17 @@ import {
 
 const id = '3f2c8f0e-1c4d-4c1a-9c2e-6f0b6f5c9a11';
 
+describe('send priority', () => {
+  it('accepts the five levels and nothing else', () => {
+    for (const priority of ['lowest', 'low', 'normal', 'high', 'urgent']) {
+      expect(sendActionSchema.safeParse({ type: 'send', to: [id], priority }).success).toBe(true);
+    }
+    expect(sendActionSchema.safeParse({ type: 'send', to: [id], priority: 'loud' }).success).toBe(
+      false
+    );
+  });
+});
+
 describe('send action', () => {
   it('takes no empty title or body, which would send a blank one', () => {
     const send = (over: Record<string, unknown>) => ({ type: 'send', to: [id], ...over });

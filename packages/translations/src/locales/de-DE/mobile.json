@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Wilkommen zu Tracearr",
-    "addServer": "Server hinzufügen",
     "connectToServer": "Server verbinden",
     "enterServerDetails": "Geben Sie die URL Ihres Tracearr-Servers und den Mobile-Zugriffstoken ein",
     "serverUrl": "",
@@ -16,24 +15,16 @@
     "pleaseEnterToken": "Bitte Zugangs-Token eingeben"
   },
   "errors": {
-    "missingFields": "Fehlende Felder",
-    "pleaseEnterBothFields": "Bitte geben Sie sowohl Server-URL als auch Token ein",
     "invalidUrl": "Ungültige URL",
-    "serverUrlMustStartWith": "Server-URL muss mit http:// oder https:// beginnen",
     "pleaseEnterValidUrl": "Bitte geben Sie eine gültige Server-URL ein",
-    "pairingFailed": "Pairing fehlgeschlagen",
+    "pairingFailed": "Kopplung fehlgeschlagen",
     "unableToPair": "Verbindung mit Server nicht möglich",
     "invalidQrCode": "Ungültiger QR Code",
     "invalidQrCodeMissingData": "Ungültiger QR-Code: Kopplungsdaten fehlen",
     "invalidQrCodeFormat": "Ungültiges QR-Code-Format. Bitte generieren Sie einen neuen Code.",
     "invalidQrCodeMissingUrl": "Ungültiger QR-Code: Server-URL fehlt",
     "invalidQrCodeMissingToken": "Ungültiger QR-Code: Kopplungs-Token fehlt",
-    "invalidServerUrlInQr": "Ungültige Server-URL im QR-Code",
-    "tooManyPairingAttempts": "Zu viele Kopplungsversuche. Bitte warten Sie ein paar Minuten.",
-    "invalidOrExpiredToken": "Ungültiges oder abgelaufenes Kopplungs-Token.",
-    "invalidPairingRequest": "Ungültige Kopplungsanfrage. Bitte Token überprüfen.",
     "errorDetails": "Fehlerdetails:",
-    "componentStack": "Komponenten Stack:",
     "connectionLost": "Verbindung unterbrochen",
     "failedToLoadSession": "Sitzung konnte nicht geladen werden"
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "Startseite",
     "selectServer": "Server wählen",
-    "server": "",
-    "navigation": ""
+    "server": ""
   },
   "resources": {
     "cpu": "",
@@ -83,15 +72,14 @@
     "loadingPreferences": "Lade Einstellungen...",
     "unableToLoadPreferences": "Einstellungen konnten nicht geladen werden",
     "receiveAlerts": "Erhalte Warnungen auf diesem Gerät",
-    "ruleViolationTriggered": "Regelverletzung ausgelöst",
+    "ruleViolationTriggered": "Regelverstoß ausgelöst",
     "newPlaybackBegan": "Neue Wiedergabe gestartet",
     "playbackEnded": "Wiedergabe beendet",
-    "exceededStreamLimit": "Benutzer überschrittene Streamlimits",
     "newDeviceDetected": "Neues Gerät für Benutzer erkannt",
-    "trustScoreDegraded": "Benutzer-Vertrauens-Score verschlechtert",
+    "trustScoreDegraded": "Vertrauenswert des Benutzers gesunken",
     "serverUnreachable": "Medienserver nicht erreichbar",
     "serverBackOnline": "Medienserver wieder online",
-    "allViolationTypes": "Alle Verletzungstypen",
+    "allViolationTypes": "Alle Verstoßtypen",
     "notifyForEveryRule": "Für jeden Regeltyp benachrichtigen",
     "severityDescription": "Nur bei Verstößen auf oder über diesem Schweregrad benachrichtigen",
     "quietHoursDescription": "Unkritische Benachrichtigungen während der festgelegten Stunden anhalten",
@@ -125,17 +113,19 @@
     "userMayBeRemoved": "Dieser Benutzer wurde möglicherweise entfernt.",
     "noLocationsRecorded": "Keine Orte aufgezeichnet",
     "noDevicesRecorded": "Keine Geräte aufgezeichnet",
-    "moreLocations": "+{{count}} weitere Standorte",
-    "moreDevices": "+{{count}} weitere Geräte",
     "noViolations": "Keine Verstöße",
-    "noTerminations": "Keine Stream-Terminierungen",
+    "noTerminations": "Keine beendeten Streams",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_other": "+{{count}} weitere Standorte",
+    "moreDevices_one": "",
+    "moreDevices_other": "+{{count}} weitere Geräte"
   },
   "violation": {
-    "violationNotFoundDesc": "Dieser Verstoß wurde möglicherweise abgewiesen oder ist nicht mehr verfügbar.",
+    "violationNotFoundDesc": "Dieser Verstoß wurde möglicherweise verworfen oder ist nicht mehr verfügbar.",
     "ips": "IP-Adressen"
   },
   "alerts": {
@@ -143,14 +133,15 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "Versuche die Filter anzupassen",
@@ -163,7 +154,8 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -183,7 +175,7 @@
   },
   "unauthenticated": {
     "connectionLost": "Verbindung abgebrochen",
-    "accessRevoked": "Ihr Zugriff auf {{serverName}} wurde widerrufen. Fragen Sie den Serverbesitzer nach einem neuen Pairing Code.",
+    "accessRevoked": "Ihr Zugriff auf {{serverName}} wurde widerrufen. Fragen Sie den Serverbesitzer nach einem neuen Kopplungscode.",
     "scanQrCode": "QR-Code scannen"
   },
   "serverSelector": {
@@ -193,28 +185,25 @@
     "allServers": ""
   },
   "reconnected": "Wiederverbunden",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +216,9 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,9 +252,9 @@
   },
   "widget": {
     "asOf": "",
+    "signedOut": "",
     "serversDown_one": "",
     "serversDown_other": "",
-    "signedOut": "",
     "transcodes_one": "",
     "transcodes_other": ""
   }

@@ -1,20 +1,9 @@
+# syntax=docker/dockerfile:1
 # Tracearr All-in-One Image (Supervised)
 # Runs TimescaleDB, Redis, and Tracearr in a single container
 # Ideal for simple deployments, Unraid, Synology, etc.
 
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS builder
-
-# Build arguments for version info
-ARG APP_VERSION=0.0.0
-ARG APP_TAG=
-ARG APP_COMMIT=
-ARG APP_BUILD_DATE=
-ARG APP_UPSTREAM_VERSION=${APP_VERSION}
-ARG APP_FORK_REVISION=
-ARG APP_FORK_VERSION=
-ARG APP_FORK_RELEASE_TAG=
-ARG APP_FORK_REPO=d4rk-4lchemy/Tracearr
-ARG APP_IMAGE_REPO=darkalchemy2137/distracearr
 
 # pnpm's install script is what puts its native binary in place. corepack never runs it,
 # and npm 12 blocks it unless allowed, so both leave pnpm's shebang-less fallback shim instead.
@@ -34,7 +23,8 @@ COPY packages/test-utils/package.json ./packages/test-utils/
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source code
+# Copy source code. data/ only goes into the final image, so it stays out of this layer and its cache.
+# Include the workflow-prefetched basemap; plain builds generate it below when absent.
 COPY . .
 
 # The basemap is generated rather than committed. Reuse a prepared build-context
@@ -112,43 +102,45 @@ RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyri
 RUN sed -i 's/^bind .*/bind 127.0.0.1/' /etc/redis/redis.conf \
     && sed -i 's/^daemonize yes/daemonize no/' /etc/redis/redis.conf
 
-# Create app directory
-WORKDIR /app
-
-# Copy built application from builder
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/pnpm-workspace.yaml ./
-COPY --from=builder /app/pnpm-lock.yaml ./
-COPY --from=builder /app/apps/server/package.json ./apps/server/
-COPY --from=builder /app/apps/server/dist ./apps/server/dist
-COPY --from=builder /app/apps/server/scripts ./apps/server/scripts
-COPY --from=builder /app/apps/web/dist ./apps/web/dist
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/
-COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/emails/package.json ./packages/emails/
-COPY --from=builder /app/packages/emails/dist ./packages/emails/dist
-COPY --from=builder /app/apps/server/src/db/migrations ./apps/server/src/db/migrations
-COPY --from=builder /app/apps/server/src/db/fork-migrations ./apps/server/src/db/fork-migrations
-COPY --from=builder /app/assets/logo.png ./assets/logo.png
-
-# GeoIP database (bundled for geolocation features)
-COPY data/GeoLite2-City.mmdb ./data/GeoLite2-City.mmdb
-COPY data/GeoLite2-ASN.mmdb ./data/GeoLite2-ASN.mmdb
-COPY --from=builder /app/data/basemap.pmtiles ./data/basemap.pmtiles
-COPY data/BASEMAP_NOTICE.txt ./data/BASEMAP_NOTICE.txt
-
-# Server runtime deps only: the web app ships as static files, so its packages never load here (ignore-scripts keeps prepare/husky out)
-RUN pnpm install --prod --frozen-lockfile --ignore-scripts --filter @tracearr/server...
-
 # Create tracearr user for running the application (non-root)
 RUN groupadd --system --gid 1001 tracearr \
     && useradd --system --uid 1001 --gid tracearr --shell /bin/false tracearr
+
+# Create app directory
+WORKDIR /app
+
+# Basemap tiles change far less often than anything below, so they come first and stay cached
+COPY --from=builder --chown=tracearr:tracearr /app/data/basemap.pmtiles ./data/basemap.pmtiles
+COPY --chown=tracearr:tracearr data/BASEMAP_NOTICE.txt ./data/BASEMAP_NOTICE.txt
+
+# Server runtime deps only: the web app ships as static files, so its packages never load here (ignore-scripts keeps prepare/husky out).
+# Installed before any build output is copied so a code-only change reuses this layer.
+COPY --chown=tracearr:tracearr package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY --chown=tracearr:tracearr apps/server/package.json ./apps/server/
+COPY --chown=tracearr:tracearr packages/shared/package.json ./packages/shared/
+COPY --chown=tracearr:tracearr packages/emails/package.json ./packages/emails/
+RUN pnpm install --prod --frozen-lockfile --ignore-scripts --filter @tracearr/server... \
+    && chown -R tracearr:tracearr /app
+
+# GeoIP databases, refreshed from MaxMind on every build
+COPY --chown=tracearr:tracearr data/GeoLite2-City.mmdb ./data/GeoLite2-City.mmdb
+COPY --chown=tracearr:tracearr data/GeoLite2-ASN.mmdb ./data/GeoLite2-ASN.mmdb
+
+# Copy built application from builder
+COPY --from=builder --chown=tracearr:tracearr /app/apps/server/dist ./apps/server/dist
+COPY --from=builder --chown=tracearr:tracearr /app/apps/server/scripts ./apps/server/scripts
+COPY --from=builder --chown=tracearr:tracearr /app/apps/web/dist ./apps/web/dist
+COPY --from=builder --chown=tracearr:tracearr /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder --chown=tracearr:tracearr /app/packages/emails/dist ./packages/emails/dist
+COPY --from=builder --chown=tracearr:tracearr /app/apps/server/src/db/migrations ./apps/server/src/db/migrations
+COPY --from=builder --chown=tracearr:tracearr /app/apps/server/src/db/fork-migrations ./apps/server/src/db/fork-migrations
+COPY --from=builder --chown=tracearr:tracearr /app/assets/logo.png ./assets/logo.png
 
 # Create data directories with proper ownership
 RUN mkdir -p /data/postgres /data/redis /data/tracearr /data/backup /var/log/supervisor \
     && chown -R postgres:postgres /data/postgres \
     && chown -R redis:redis /data/redis \
-    && chown -R tracearr:tracearr /data/tracearr /data/backup /app
+    && chown -R tracearr:tracearr /data/tracearr /data/backup
 
 # Supervisord configuration
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -210,11 +202,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://127.0.0.1:3000/health || exit 1
 
 # OCI image labels for container registries and tools like Renovate
-LABEL org.opencontainers.image.source="https://github.com/connorgallopo/Tracearr" \
-      org.opencontainers.image.url="https://github.com/connorgallopo/Tracearr" \
+LABEL org.opencontainers.image.source="https://github.com/d4rk-4lchemy/Tracearr" \
+      org.opencontainers.image.url="https://github.com/d4rk-4lchemy/Tracearr" \
       org.opencontainers.image.title="Tracearr Supervised" \
       org.opencontainers.image.description="Streaming access manager for Plex, Jellyfin, and Emby (all-in-one)" \
-      org.opencontainers.image.vendor="connorgallopo" \
+      org.opencontainers.image.vendor="d4rk-4lchemy" \
       org.opencontainers.image.licenses="AGPL-3.0" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${APP_COMMIT}" \

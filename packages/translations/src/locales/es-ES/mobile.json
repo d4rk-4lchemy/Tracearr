@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Bienvenido a Tracearr",
-    "addServer": "Añadir servidor",
     "connectToServer": "Conectar con un servidor",
     "enterServerDetails": "Introduzca la URL de su servidor Tracearr y el token de acceso móvil",
     "serverUrl": "URL del servidor",
@@ -9,17 +8,14 @@
     "scanQrCodeInstead": "Escanear código QR ",
     "enterManually": "Introducir URL y token manualmente",
     "cameraPermissionRequired": "Se requiere permiso de cámara para escanear códigos QR",
-    "scanQrInstructions": "Abre Ajustes → Ve en la aplicación móvil a tu panel de seguimiento y escanea el código QR",
+    "scanQrInstructions": "Abre Ajustes → App móvil en tu panel de Tracearr y escanea el código QR",
     "urlPlaceholder": "",
     "tokenPlaceholder": "",
     "missingToken": "",
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "Campos que faltan",
-    "pleaseEnterBothFields": "Por favor, introduzca tanto la URL del servidor como el token",
     "invalidUrl": "URL invalida",
-    "serverUrlMustStartWith": "La URL del servidor debe empezar con http:// o https://",
     "pleaseEnterValidUrl": "Por favor, introduce una URL válida del servidor",
     "pairingFailed": "Fallo de emparejamiento",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Formato de código QR inválido. Por favor, genere un nuevo código.",
     "invalidQrCodeMissingUrl": "Código QR inválido: falta la URL del servidor",
     "invalidQrCodeMissingToken": "Código QR inválido: falta el token de emparejamiento",
-    "invalidServerUrlInQr": "URL del servidor no válida en código QR",
-    "tooManyPairingAttempts": "Demasiados intentos de emparejamiento. Por favor, espere unos minutos.",
-    "invalidOrExpiredToken": "Token de emparejamiento inválido o caducado.",
-    "invalidPairingRequest": "Solicitud de emparejamiento inválida. Compruebe su token.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Seleccionar Servidor",
-    "server": "Servidor",
-    "navigation": "Navegación"
+    "server": "Servidor"
   },
   "resources": {
     "cpu": "",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,16 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +133,15 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +154,8 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -177,7 +169,7 @@
   },
   "activity": {
     "playsOverTime": "Reproducciones con el tiempo",
-    "concurrentStreams": "Reproducciones simultaneas",
+    "concurrentStreams": "Reproducciones simultáneas",
     "platforms": "Plataformas",
     "playbackQuality": ""
   },
@@ -193,28 +185,25 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +216,9 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,9 +252,9 @@
   },
   "widget": {
     "asOf": "",
+    "signedOut": "",
     "serversDown_one": "",
     "serversDown_other": "",
-    "signedOut": "",
     "transcodes_one": "",
     "transcodes_other": ""
   }

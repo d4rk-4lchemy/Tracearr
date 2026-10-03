@@ -598,6 +598,23 @@ describe('extractStreamDetails', () => {
       expect(result.sourceAudioDetails?.channelLayout).toBe('7.1');
     });
 
+    it('flags Atmos from the Emby stream title', () => {
+      const session = createMockSession({
+        audioStream: { Codec: 'truehd', Title: 'TrueHD Atmos 7.1' },
+      });
+      const result = extractStreamDetails(session);
+      expect(result.sourceAudioDetails?.atmos).toBe(true);
+    });
+
+    it('flags Atmos from the Jellyfin stream profile', () => {
+      const session = createMockSession({
+        audioStream: { Codec: 'truehd', Profile: 'Dolby TrueHD + Dolby Atmos' },
+      });
+      const result = extractStreamDetails(session);
+      expect(result.sourceAudioDetails?.atmos).toBe(true);
+      expect(result.sourceAudioDetails?.profile).toBe('Dolby TrueHD + Dolby Atmos');
+    });
+
     it('extracts audio language', () => {
       const session = createMockSession({
         audioStream: { Language: 'eng' },

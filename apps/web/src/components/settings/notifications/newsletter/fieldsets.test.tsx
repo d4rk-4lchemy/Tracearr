@@ -84,7 +84,7 @@ describe('IdentityFields', () => {
     const p = { ...props(), errors: { name: 'Too short' }, mode: 'edit' as const };
     render(<IdentityFields {...p} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Too short');
-    expect(screen.getByRole('switch', { name: 'newsletters.enabled' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'common:states.enabled' })).toBeInTheDocument();
   });
 
   it('marks the name touched when the input is left', async () => {

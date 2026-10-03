@@ -192,12 +192,7 @@ function dedupeKey(
       if (!ruleKey) return undefined;
       // A send and the routed violation are separate sends; without the kind
       // they share a jobId and BullMQ drops the second.
-      const kind =
-        source.kind === 'automation'
-          ? source.automationId
-          : source.kind === 'rule'
-            ? 'notify'
-            : 'auto';
+      const kind = source.kind === 'automation' ? source.automationId : 'auto';
       tail = `violation-${event.payload.serverUserId}-${ruleKey}-${kind}-${bucket}`;
       break;
     }

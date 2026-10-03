@@ -43,14 +43,14 @@ export function HoverOverlay({
   viewers,
   className,
 }: HoverOverlayProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
 
   const metaLine = [year != null ? String(year) : null, resolution]
     .filter((part): part is string => part != null)
     .join(' · ');
 
   const statsLine = [
-    plays !== undefined ? t('media.posterCard.plays', { count: plays }) : null,
+    plays !== undefined ? t('common:count.play', { count: plays }) : null,
     viewers !== undefined ? t('media.posterCard.viewers', { count: viewers }) : null,
   ]
     .filter((part): part is string => part != null)

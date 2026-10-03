@@ -23,6 +23,7 @@ const CONDITION_FIELD_LABELS: Record<ConditionField, string> = {
   source_video_codec: 'Source Video Codec',
   is_transcoding: 'Transcoding',
   is_transcode_downgrade: 'Transcode Downgrade',
+  is_subtitle_burn_in: 'Subtitle Burn-in',
   source_bitrate_mbps: 'Source Bitrate',
   user_id: 'User',
   trust_score: 'Trust Score',

@@ -141,6 +141,8 @@ export interface AvailabilityRow {
     videoCodec: string | null;
     audioCodec: string | null;
     dynamicRange: string | null;
+    audioAtmos: boolean;
+    editionTitle: string | null;
     container: string | null;
     fileSize: number | null;
   }>;
@@ -217,6 +219,8 @@ export async function getAvailability(
           'videoCodec', v.video_codec,
           'audioCodec', v.audio_codec,
           'dynamicRange', v.video_dynamic_range,
+          'audioAtmos', v.audio_atmos,
+          'editionTitle', v.edition_title,
           'container', v.container,
           'fileSize', v.file_size
         ) ORDER BY v.file_size DESC NULLS LAST)

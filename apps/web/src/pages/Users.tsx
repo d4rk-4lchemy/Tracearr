@@ -50,6 +50,7 @@ import { useBulkResetTrust, useMergeUsers, useUsers } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { useRowSelection } from '@/hooks/useRowSelection';
 import { useServer } from '@/hooks/useServer';
+import { liveFirst } from '@/lib/servers';
 import {
   buildUsersRosterParams,
   USERS_FILTER_DEFAULTS,
@@ -102,8 +103,13 @@ export function Users() {
   const [mergeRequest, setMergeRequest] = useState<MergeRequest | null>(null);
 
   const serverOptions = useMemo(
-    () => servers.map((server) => ({ value: server.id, label: server.name })),
-    [servers]
+    () =>
+      liveFirst(servers).map((server) => ({
+        value: server.id,
+        label: server.name,
+        group: server.historicalAt ? t('common:serverSelector.historical') : undefined,
+      })),
+    [servers, t]
   );
 
   const descriptors = useMemo<FilterDescriptor[]>(() => {
@@ -129,7 +135,7 @@ export function Users() {
         kind: 'search',
         key: 'search',
         label: t('common:actions.search'),
-        placeholder: t('pages:users.searchPlaceholder'),
+        placeholder: t('common:search.searchUsers'),
         clearLabel: t('common:filters.clearSearch'),
         inline: true,
         className: 'w-full sm:w-64',

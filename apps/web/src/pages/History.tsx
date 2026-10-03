@@ -24,7 +24,7 @@ import {
   type HistoryFilters,
 } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
-import type { SessionWithDetails } from '@tracearr/shared';
+import { PLAYBACK_DECISIONS, type SessionWithDetails } from '@tracearr/shared';
 
 // Local storage key for column visibility
 const COLUMN_VISIBILITY_KEY = 'tracearr-history-columns';
@@ -91,6 +91,7 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
     'episode',
     'track',
     'live',
+    'trailer',
   ] as const);
   if (mediaTypes) filters.mediaTypes = mediaTypes;
 
@@ -99,11 +100,10 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
     filters.state = state;
   }
 
-  const transcodeDecisions = parseCommaSeparated(searchParams.get('transcodeDecisions'), [
-    'directplay',
-    'copy',
-    'transcode',
-  ] as const);
+  const transcodeDecisions = parseCommaSeparated(
+    searchParams.get('transcodeDecisions'),
+    PLAYBACK_DECISIONS
+  );
   if (transcodeDecisions) filters.transcodeDecisions = transcodeDecisions;
 
   const network = searchParams.get('network');
@@ -143,6 +143,7 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
   const watched = searchParams.get('watched');
   if (watched === 'true') filters.watched = true;
   if (watched === 'false') filters.watched = false;
+  if (searchParams.get('subtitleBurnIn') === 'true') filters.subtitleBurnIn = true;
 
   const orderBy = searchParams.get('orderBy');
   if (orderBy === 'startedAt' || orderBy === 'durationMs' || orderBy === 'mediaTitle') {
@@ -175,6 +176,7 @@ function filtersToUrlParams(filters: HistoryFilters): URLSearchParams {
   if (filters.endDate) params.set('endDate', filters.endDate.toISOString());
   if (!filters.startDate && !filters.endDate) params.set('period', 'all');
   if (filters.watched !== undefined) params.set('watched', String(filters.watched));
+  if (filters.subtitleBurnIn) params.set('subtitleBurnIn', 'true');
   if (filters.orderBy && filters.orderBy !== 'startedAt') params.set('orderBy', filters.orderBy);
   if (filters.orderDir && filters.orderDir !== 'desc') params.set('orderDir', filters.orderDir);
 

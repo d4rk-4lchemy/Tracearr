@@ -14,6 +14,7 @@ import type {
 const TRANSCODE_FIELDS: ReadonlySet<ConditionField> = new Set([
   'is_transcoding',
   'is_transcode_downgrade',
+  'is_subtitle_burn_in',
   'output_resolution',
 ]);
 const PAUSE_FIELDS: ReadonlySet<ConditionField> = new Set([

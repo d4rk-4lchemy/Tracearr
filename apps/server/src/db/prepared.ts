@@ -19,6 +19,7 @@ import { db } from './client.js';
 import { sessions, automationRuns, users, serverUsers, servers, automations } from './schema.js';
 import { ACTIVITY_MEDIA_TYPES, PRIMARY_MEDIA_TYPES } from '../constants/index.js';
 import { violationAliasConditions } from '../services/automations/aliasFilter.js';
+import { playbackDecisionSql } from '../utils/playbackDecisionSql.js';
 
 /**
  * Single source of truth for all prepared statement definitions.
@@ -273,11 +274,7 @@ function createStatements() {
      */
     qualityStatsSince: db
       .select({
-        tier: sql<string>`CASE
-          WHEN is_transcode = true THEN 'transcode'
-          WHEN video_decision = 'copy' OR audio_decision = 'copy' THEN 'copy'
-          ELSE 'directplay'
-        END`.as('tier'),
+        tier: sql<string>`${playbackDecisionSql()}`.as('tier'),
         count: sql<number>`count(DISTINCT COALESCE(reference_id, id))::int`,
       })
       .from(sessions)

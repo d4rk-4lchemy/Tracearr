@@ -10,23 +10,26 @@
         "message": "Сервер был успешно удален"
       },
       "serverSynced": {
-        "title": "Синхронизация с сервером",
-        "message": "Данные сервера синхронизированы"
+        "title": "Синхронизация с сервером"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "Настройки обновлены",
         "message": "Ваши настройки были сохранены"
       },
-      "tokenCopied": {
-        "title": "Токен скопирован",
-        "message": "Маркер пара скопирован в буфер обмена"
-      },
       "violationAcknowledged": {
         "title": "Подтверждено нарушение",
-        "message": "Нарушение было отмечено как признанное"
+        "message": "Нарушение отмечено как подтверждённое"
       },
       "violationDismissed": {
-        "title": "Нарушение прекращено",
+        "title": "Нарушение отклонено",
         "message": "Нарушение было отклонено"
       },
       "deviceRemoved": {
@@ -38,51 +41,32 @@
         "message": "Имя устройства обновлено"
       },
       "sessionsRevoked": {
-        "title": "Сеансы отозваны",
-        "message": "Все мобильные сессии были отозваны"
+        "title": "Сеансы отозваны"
       },
       "loggedIn": {
         "title": "Успешно",
         "message": "Вход выполнен успешно"
-      },
-      "webhookTest": {
-        "title": "Тест пройден",
-        "message": "Веб-хук работает корректно"
-      },
-      "copiedToClipboard": {
-        "title": "Скопировано в буфер обмена"
       },
       "plexAccountLinked": {
         "title": "Аккаунт Plex привязан",
         "message": "Теперь вы можете добавить серверы из вашего аккаунта Plex"
       },
       "plexAccountUnlinked": {
-        "title": "Учетная запись Plex удалена",
+        "title": "Аккаунт Plex отвязан",
         "message": "Ваша учетная запись Plex была отключена"
       },
       "plexAccountReauthorized": {
         "title": "",
-        "message_one": "",
-        "message_other": "",
         "messageNoServers": "",
         "partial": "",
-        "unmatched": ""
-      },
-      "agentAdded": {
-        "title": "Агент добавлен",
-        "message": "Агент уведомления был добавлен"
-      },
-      "agentUpdated": {
-        "title": "Агент обновлён",
-        "message": "Агент уведомления был обновлен"
-      },
-      "agentRemoved": {
-        "title": "Агент удален",
-        "message": "Агент уведомления был удален"
+        "unmatched": "",
+        "message_one": "",
+        "message_few": "",
+        "message_many": "",
+        "message_other": ""
       },
       "jobCompleted": {
-        "title": "Вакансия выполнена",
-        "message": "{{name}} успешно завершен"
+        "title": "Вакансия выполнена"
       },
       "automationCreated": {
         "title": "",
@@ -119,17 +103,23 @@
       "sessionsDeleted": {
         "title": "Сессии удалены",
         "message_one": "{{count}} сессия удалена",
-        "message_other": "{{count}} сеансов удалено"
+        "message_few": "",
+        "message_many": "",
+        "message_other": "{{count}} сессий удалено"
       },
       "violationsAcknowledged": {
-        "title": "Признанные нарушения",
-        "message_one": "Нарушение {{count}} признано",
-        "message_other": "Признанные нарушения {{count}}"
+        "title": "Нарушения подтверждены",
+        "message_one": "Подтверждено нарушений: {{count}}",
+        "message_few": "",
+        "message_many": "",
+        "message_other": "Подтверждено нарушений: {{count}}"
       },
       "violationsDismissed": {
-        "title": "Нарушения прекращены",
+        "title": "Нарушения отклонены",
         "message_one": "Нарушение {{count}} отклонено",
-        "message_other": "Убрано нарушений {{count}}"
+        "message_few": "",
+        "message_many": "",
+        "message_other": "Отклонено нарушений: {{count}}"
       },
       "apiKeyGenerated": {
         "title": "Ключ API создан",
@@ -144,13 +134,15 @@
         "message": "Все мобильные сессии были отозваны"
       },
       "pairTokenGenerated": {
-        "title": "Токен пара создан",
+        "title": "Токен сопряжения создан",
         "message": "Сканируйте QR-код вашим мобильным устройством для сопряжения"
       },
       "identityUpdated": "",
       "trustScoresReset": {
         "title": "Сброс баллов доверия",
         "message_one": "Пользователь {{count}} сброшен на 100",
+        "message_few": "",
+        "message_many": "",
         "message_other": "{{count}} пользователей сброшены на 100"
       },
       "claimCodeValidated": {
@@ -175,21 +167,24 @@
       "newsletterDuplicated": "",
       "newsletterTestQueued": "",
       "newsletterSendQueued": "",
-      "newsletterRetryQueued": "",
       "brandingSaved": "",
       "suppressionAdded": "",
-      "suppressionRemoved": ""
+      "suppressionRemoved": "",
+      "newsletterRetryQueued_one": "",
+      "newsletterRetryQueued_few": "",
+      "newsletterRetryQueued_many": "",
+      "newsletterRetryQueued_other": ""
     },
     "error": {
       "serverAddFailed": "Не удалось добавить сервер",
       "serverRemoveFailed": "Не удалось удалить сервер",
       "serverSyncFailed": "Не удалось синхронизировать сервер",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Не удалось обновить настройки",
       "copyFailed": "Не удалось скопировать в буфер обмена",
       "acknowledgeFailed": "Не удалось подтвердить нарушение",
-      "dismissFailed": "Не удалось уволить нарушение",
+      "dismissFailed": "Не удалось отклонить нарушение",
       "authFailed": "Аутентификация не удалась",
-      "webhookTestFailed": "Тест Webhook не удался",
       "automationCreateFailed": "",
       "automationUpdateFailed": "",
       "automationDeleteFailed": "",
@@ -202,20 +197,14 @@
       "apiKeyGenerateFailed": "Не удалось сгенерировать ключ API",
       "mobileAccessEnableFailed": "Не удалось включить мобильный доступ",
       "mobileAccessDisableFailed": "Не удалось отключить мобильный доступ",
-      "pairTokenGenerateFailed": "Не удалось сгенерировать токен пары",
+      "pairTokenGenerateFailed": "Не удалось сгенерировать токен сопряжения",
       "deviceRemoveFailed": "Не удалось удалить устройство",
       "deviceRenameFailed": "Не удалось переименовать устройство",
       "sessionsRevokeFailed": "Не удалось отозвать сессии",
       "identityUpdateFailed": "",
       "trustScoresResetFailed": "Не удалось сбросить баллы доверия",
-      "routingUpdateFailed": "Не удалось обновить маршрутизацию",
-      "clipboardFailed": "Не удалось скопировать в буфер обмена",
       "plexUnlinkFailed": "Не удалось отвязать аккаунт Plex",
       "plexReauthorizeFailed": "",
-      "agentAddFailed": "Не удалось добавить агента",
-      "agentUpdateFailed": "Не удалось обновить агента",
-      "agentRemoveFailed": "Не удалось удалить агента",
-      "agentTestFailed": "Тест не пройден",
       "jobAlreadyRunning": "Вакансия уже запущена",
       "jobStartFailed": "Не удалось запустить задание",
       "jobLoadFailed": "Не удалось загрузить задания по техническому обслуживанию",
@@ -248,8 +237,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "Работа не удалась",
-        "message": "{{name}} обнаружил ошибку"
+        "title": "Работа не удалась"
       }
     },
     "info": {
@@ -263,43 +251,23 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "Обнаружено нарушение",
-    "streamStarted": "Поток начат",
-    "streamEnded": "Поток завершен",
-    "serverDown": "Соединение с сервером потеряно",
-    "serverUp": "Обратный сервер онлайн",
-    "newDevice": "Новое устройство",
-    "trustScoreChanged": "Счет доверия изменен"
-  },
   "settings": {
-    "title": "Настройки уведомлений",
     "allSeverity": "Все (Ну, предупреждение, Высокое)",
     "warningAndHigh": "Только высокий уровень предупреждения",
-    "highOnly": "Только повышенная тяжесть",
-    "allTypes": "Все типы",
+    "highOnly": "Только высокая серьёзность",
     "rateLimit": "Статус текущего лимита",
     "perMinute": "В минуту",
     "perHour": "За час",
     "enablePushNotifications": "Включить Push-уведомления",
     "notificationEvents": "События уведомлений",
     "violationDetected": "Обнаружено нарушение",
-    "violationDetectedDesc": "При возникновении нарушения обмена",
     "streamStarted": "Поток начат",
-    "streamStartedDesc": "Когда пользователь начинает смотреть",
     "streamStopped": "Поток остановлен",
-    "streamStoppedDesc": "Когда пользователь перестает смотреть",
     "concurrentStreams": "Одновременные потоки",
-    "concurrentStreamsDesc": "При превышении лимита потока",
     "newDevice": "Новое устройство",
-    "newDeviceDesc": "При подключении нового устройства",
-    "trustScoreChanged": "Счет доверия изменен",
-    "trustScoreChangedDesc": "Когда рейтинг доверия пользователя меняется",
-    "serverDown": "Сервер выключен",
-    "serverDownDesc": "Когда медиа-сервер выходит в автономном режиме",
-    "serverUp": "Сервер выключен",
-    "serverUpDesc": "Когда медиа сервер возвращается в сеть",
-    "violationFilters": "Нарушение фильтров",
+    "trustScoreChanged": "Балл доверия изменён",
+    "serverDown": "Сервер недоступен",
+    "serverUp": "Сервер доступен",
     "minimumSeverity": "Минимальная Серьезность",
     "quietHours": "Тихие часы",
     "enableQuietHours": "Включить тихие часы",

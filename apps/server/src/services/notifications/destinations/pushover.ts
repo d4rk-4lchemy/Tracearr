@@ -1,10 +1,15 @@
-import { DESTINATION_TYPES } from '@tracearr/shared';
+import {
+  DESTINATION_TEXT_PROFILES,
+  DESTINATION_TYPES,
+  escapeFor,
+  type NotificationPriority,
+} from '@tracearr/shared';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
 import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
 import { formatViolationMessage } from '../formatters/violation.js';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
-import { ownText, textOf } from './overrides.js';
+import { fitted, ownText, textOf } from './overrides.js';
 import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
 import type {
   NotificationPayload,
@@ -18,6 +23,17 @@ import type {
 import type { DeliverContext, DestinationType } from './types.js';
 
 const PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json';
+const PROFILE = DESTINATION_TEXT_PROFILES.pushover;
+
+const PUSHOVER_PRIORITY: Record<NotificationPriority, string> = {
+  lowest: '-2',
+  low: '-1',
+  normal: '0',
+  high: '1',
+  urgent: '2',
+};
+/** Pushover refuses an emergency without these and repeats it until acknowledged. */
+const EMERGENCY = { retry: '60', expire: '3600' };
 
 export interface PushoverConfig {
   userKey: string;
@@ -28,6 +44,8 @@ export interface PushoverMessage {
   title: string;
   message: string;
   priority: string;
+  retry?: string;
+  expire?: string;
 }
 
 function severityToPushoverPriority(severity: string): string {
@@ -163,6 +181,17 @@ function build(payload: NotificationPayload): PushoverMessage {
   }
 }
 
+function withPriority(
+  message: PushoverMessage,
+  priority: NotificationPriority | undefined
+): PushoverMessage {
+  if (priority === undefined) return message;
+  const value = PUSHOVER_PRIORITY[priority];
+  return value === '2'
+    ? { ...message, priority: value, ...EMERGENCY }
+    : { ...message, priority: value };
+}
+
 async function post(
   config: PushoverConfig,
   body: PushoverMessage,
@@ -175,6 +204,10 @@ async function post(
     message: body.message,
     priority: body.priority,
   });
+  if (body.retry !== undefined && body.expire !== undefined) {
+    params.set('retry', body.retry);
+    params.set('expire', body.expire);
+  }
 
   await deliverFetch(
     PUSHOVER_API_URL,
@@ -190,7 +223,11 @@ async function post(
 export const pushoverType: DestinationType<PushoverConfig, PushoverMessage> = {
   kind: 'pushover',
   events: DESTINATION_TYPES.pushover.events,
-  render: (event, _config, ctx) => build(toNotificationPayload(event, ctx.source)),
+  render: (event, _config, ctx) => {
+    const payload = toNotificationPayload(event, ctx.source, escapeFor(PROFILE));
+    const message = build(payload);
+    return withPriority({ ...message, ...fitted(message, PROFILE) }, payload.automation?.priority);
+  },
   deliver: (body, config, ctx) => post(config, body, ctx),
   test: (config, ctx) =>
     post(

@@ -49,6 +49,7 @@ const STREAM_VARS = [
   'session.sourceVideoCodec',
   'session.seasonNumber',
   'session.episodeNumber',
+  'session.name',
 ] as const;
 const ACCOUNT_VARS = ['user.username', 'user.identityName', 'server.name', 'server.type'] as const;
 const SERVER_VARS = ['server.name', 'server.type'] as const;
@@ -156,7 +157,7 @@ export const TRIGGERS = {
   'tracearr.update_available': {
     context: 'install',
     group: 'updates',
-    variables: ['current', 'latest', 'releaseUrl'],
+    variables: ['installedVersion', 'latestVersion', 'releaseUrl'],
   },
   'newsletter.sent': { context: 'install', group: 'notifications', variables: NEWSLETTER_VARS },
   'newsletter.failed': { context: 'install', group: 'notifications', variables: NEWSLETTER_VARS },
@@ -166,6 +167,19 @@ export const TRIGGERS = {
 >;
 
 export type TriggerType = keyof typeof TRIGGERS;
+
+/** Every name some trigger offers a template. */
+export type TemplateVariable = (typeof TRIGGERS)[TriggerType]['variables'][number];
+
+/** Names a template may still use after a rename; each resolves to the current name. */
+export const VARIABLE_ALIASES: Readonly<Record<string, TemplateVariable>> = {
+  current: 'installedVersion',
+  latest: 'latestVersion',
+};
+
+export function resolveVariable(name: string): string {
+  return Object.hasOwn(VARIABLE_ALIASES, name) ? (VARIABLE_ALIASES[name] ?? name) : name;
+}
 
 /** The release that first shipped a trigger; one not listed has been there since 2.2.0. */
 export const TRIGGER_INTRODUCED_IN: Partial<Record<TriggerType, string>> = {
@@ -223,10 +237,12 @@ export function contextOf(triggers: readonly TriggerNode[]): TriggerContext | nu
 }
 
 /** The variables every enabled trigger offers, so a template renders whichever one fired. */
-export function variablesFor(triggers: readonly TriggerNode[]): string[] {
+export function variablesFor(
+  triggers: readonly { type: TriggerType; enabled: boolean }[]
+): TemplateVariable[] {
   const sets = triggers
     .filter((trigger) => trigger.enabled)
-    .map((trigger) => new Set<string>(TRIGGERS[trigger.type].variables));
+    .map((trigger) => new Set<TemplateVariable>(TRIGGERS[trigger.type].variables));
   const first = sets[0];
   if (!first) return [];
   return [...first].filter((variable) => sets.every((set) => set.has(variable)));

@@ -60,13 +60,16 @@ export interface MediaSubject {
   addedEpisodeCount?: number;
 }
 
+/** Rules read the server's identity, not its lifecycle; the database row carries historicalAt as a Date. */
+type ContextServer = Omit<Server, 'historicalAt'>;
+
 export interface EvaluationContext {
   /** null outside a playback session: account, media, server and install triggers. */
   session: Session | null;
   /** null for media, server and install triggers, which are about no one. */
   serverUser: ServerUser | null;
   /** null for install triggers, the only context with no server behind it. */
-  server: Server | null;
+  server: ContextServer | null;
   /** Set only by the two media triggers; every other context leaves it null. */
   media: MediaSubject | null;
   /** What the run is about, as the recorder keys it: session id, server user id, `media:<id>`, `server:<id>` or `install`. */
@@ -96,7 +99,7 @@ export interface EvaluatorResult {
 }
 
 /** The contexts by depth: each one supplies everything its parent does and more. */
-export type ServerEvaluationContext = EvaluationContext & { server: Server };
+export type ServerEvaluationContext = EvaluationContext & { server: ContextServer };
 export type AccountEvaluationContext = ServerEvaluationContext & { serverUser: ServerUser };
 export type SessionEvaluationContext = AccountEvaluationContext & { session: Session };
 

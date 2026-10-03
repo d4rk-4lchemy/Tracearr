@@ -351,6 +351,39 @@ describe('Plex Session Parser', () => {
     });
   });
 
+  describe('parseSession audio profile', () => {
+    it('flags Atmos from the audio stream profile', () => {
+      const session = parseSession({
+        sessionKey: '1',
+        ratingKey: '2',
+        title: 'Episode',
+        type: 'episode',
+        duration: 1000,
+        viewOffset: 0,
+        User: { id: '1', title: 'John' },
+        Player: { title: 'TV', machineIdentifier: 'm', state: 'playing' },
+        Media: [
+          {
+            Part: [
+              {
+                Stream: [
+                  {
+                    streamType: 2,
+                    codec: 'eac3',
+                    profile: 'dolby digital plus + dolby atmos',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(session.quality.sourceAudioDetails?.atmos).toBe(true);
+      expect(session.quality.sourceAudioDetails?.profile).toBe('dolby digital plus + dolby atmos');
+    });
+  });
+
   describe('parseSessionsResponse', () => {
     it('should parse full MediaContainer response', () => {
       const response = {
@@ -379,6 +412,35 @@ describe('Plex Session Parser', () => {
       expect(sessions).toHaveLength(2);
       expect(sessions[0]!.sessionKey).toBe('1');
       expect(sessions[1]!.sessionKey).toBe('2');
+    });
+
+    it('drops theme music and non-trailer extras, keeps trailers and prerolls', () => {
+      const base = {
+        User: { id: '1', title: 'User1' },
+        Player: { title: 'TV', machineIdentifier: 'dev1' },
+      };
+      const response = {
+        MediaContainer: {
+          Metadata: [
+            {
+              ...base,
+              sessionKey: '1',
+              title: 'Theme',
+              type: 'track',
+              guid: 'library://abc/item/1',
+            },
+            { ...base, sessionKey: '2', title: 'Movie', type: 'movie' },
+            { ...base, sessionKey: '3', title: 'Featurette', type: 'clip', extraType: 10 },
+            { ...base, sessionKey: '4', title: 'Trailer', type: 'clip', extraType: 1 },
+            { ...base, sessionKey: '5', title: 'Preroll', type: 'clip', guid: 'prerolls://x' },
+          ],
+        },
+      };
+
+      const sessions = parseSessionsResponse(response);
+
+      expect(sessions.map((s) => s.sessionKey)).toEqual(['2', '4', '5']);
+      expect(sessions.filter((s) => s.media.type === 'trailer')).toHaveLength(2);
     });
 
     it('should return empty array when MediaContainer has no Metadata (no active sessions)', () => {
@@ -1573,6 +1635,28 @@ describe('Plex Library Item Parser', () => {
       expect(item.container).toBe('mkv');
       expect(item.filePath).toBe('/movies/Inception/Inception (2010).mkv');
       expect(item.thumbPath).toBe('/library/metadata/12345/thumb/1700000000');
+    });
+
+    it('reads Atmos from the media audio profile and the edition from the item', () => {
+      const response = {
+        MediaContainer: {
+          Metadata: [
+            {
+              ratingKey: '1',
+              title: 'Aliens',
+              type: 'movie',
+              addedAt: 1609459200,
+              editionTitle: 'Extended Cut',
+              Media: [{ id: 5, audioCodec: 'truehd', audioProfile: 'dolby truehd + dolby atmos' }],
+            },
+          ],
+        },
+      };
+
+      const version = parseLibraryItemsResponse(response)[0]!.versions?.[0];
+
+      expect(version?.audioAtmos).toBe(true);
+      expect(version?.editionTitle).toBe('Extended Cut');
     });
 
     it('leaves thumbPath undefined when the item has no thumb', () => {

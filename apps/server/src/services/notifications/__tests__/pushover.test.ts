@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ViolationWithDetails } from '@tracearr/shared';
+import type { NotificationPriority, ViolationWithDetails } from '@tracearr/shared';
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import {
   pushoverType,
@@ -167,16 +167,6 @@ describe('pushoverType.render', () => {
     expect(message.message).toContain('latest 0.3.0');
     expect(message.priority).toBe('-1');
   });
-
-  it('uses the rule source title for a rule send', async () => {
-    const message = await render(
-      { type: 'violation', payload: violation },
-      { destination, source: { kind: 'rule', title: 'Rule fired', message: 'Too many streams' } }
-    );
-
-    expect(message.title).toBe('Rule fired');
-    expect(message.message).toBe('User Test User triggered Test Rule (Warning severity)');
-  });
 });
 
 describe('pushoverType.deliver', () => {
@@ -293,7 +283,9 @@ const newsletterSend = {
   },
 } as const;
 
-const automationCtx = (over: { title?: string; body?: string } = {}): RenderContext => ({
+const automationCtx = (
+  over: { title?: string; body?: string; priority?: NotificationPriority } = {}
+): RenderContext => ({
   destination,
   source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
 });
@@ -340,5 +332,50 @@ describe('pushoverType.render with an automation source', () => {
     const message = await render(newsletterSend, automationCtx());
     expect(message.title).toBe('Newsletter partly sent');
     expect(message.message).toBe('Weekly reached only part of its 42 recipients');
+  });
+
+  it('cuts the title to 250 and the message to 1024 characters', async () => {
+    const message = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ title: 't'.repeat(300), body: 'b'.repeat(1500) })
+    );
+    expect([...message.title]).toHaveLength(250);
+    expect([...message.message]).toHaveLength(1024);
+  });
+
+  it('maps every send priority and keeps the event priority without one', async () => {
+    const expected = { lowest: '-2', low: '-1', normal: '0', high: '1', urgent: '2' } as const;
+    for (const [priority, value] of Object.entries(expected)) {
+      const message = await render(
+        { type: 'session_started', payload: session },
+        automationCtx({ priority: priority as keyof typeof expected })
+      );
+      expect(message.priority).toBe(value);
+    }
+    const automatic = await render({ type: 'session_started', payload: session }, automationCtx());
+    expect(automatic.priority).toBe('-1');
+  });
+
+  it('sends retry and expire with an urgent message and not otherwise', async () => {
+    const f = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal('fetch', f);
+    const urgent = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ priority: 'urgent' })
+    );
+    await pushoverType.deliver(urgent, config, deliverCtx);
+    const sent = new URLSearchParams(f.mock.calls[0]?.[1].body);
+    expect(sent.get('priority')).toBe('2');
+    expect(sent.get('retry')).toBe('60');
+    expect(sent.get('expire')).toBe('3600');
+
+    f.mockClear();
+    const high = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ priority: 'high' })
+    );
+    await pushoverType.deliver(high, config, deliverCtx);
+    expect(new URLSearchParams(f.mock.calls[0]?.[1].body).has('retry')).toBe(false);
+    vi.unstubAllGlobals();
   });
 });

@@ -6,6 +6,7 @@ import {
   ArrowUpCircle,
   ExternalLink,
   GripVertical,
+  MoreHorizontal,
   Pencil,
   Radio,
   RefreshCw,
@@ -15,7 +16,14 @@ import {
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { RequestService, Server, ServerConnectionStatus } from '@tracearr/shared';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Item,
   ItemActions,
@@ -40,8 +48,11 @@ export function ServerRow({
   onSync,
   onDelete,
   onEdit,
+  onSetHistorical,
   isSyncing,
+  isSwitching,
   isDraggable,
+  isOwner,
   requestService,
 }: {
   server: Server;
@@ -49,8 +60,11 @@ export function ServerRow({
   onSync: () => void;
   onDelete: () => void;
   onEdit: () => void;
+  onSetHistorical: (historical: boolean) => void;
   isSyncing?: boolean;
+  isSwitching?: boolean;
   isDraggable?: boolean;
+  isOwner?: boolean;
   requestService?: { service: RequestService | undefined } | undefined;
 }) {
   const { t } = useTranslation(['settings', 'common']);
@@ -62,6 +76,7 @@ export function ServerRow({
 
   const hasPluginIssue =
     !!connectionStatus?.pluginIssue && PLUGIN_ISSUES.includes(connectionStatus.pluginIssue);
+  const historical = !!server.historicalAt;
 
   return (
     <div
@@ -77,7 +92,11 @@ export function ServerRow({
       <TooltipProvider delayDuration={100}>
         <Item
           variant="outline"
-          className={cn(server.color && 'border-l-4', isDragging && 'ring-primary ring-2')}
+          className={cn(
+            server.color && 'border-l-4',
+            isDragging && 'ring-primary ring-2',
+            historical && 'opacity-60'
+          )}
           style={server.color ? { borderLeftColor: server.color } : undefined}
         >
           <ItemMedia className="gap-2 self-center">
@@ -101,6 +120,7 @@ export function ServerRow({
           <ItemContent>
             <ItemTitle>
               {server.name}
+              {historical && <Badge variant="outline">{t('servers.historical')}</Badge>}
               <TooltipIconButton
                 label={t('servers.editServer')}
                 icon={Pencil}
@@ -119,12 +139,19 @@ export function ServerRow({
             <p className="text-muted-foreground text-xs">
               {t('servers.added', { date: format(new Date(server.createdAt), 'MMM d, yyyy') })}
             </p>
+            {server.historicalAt && (
+              <p className="text-muted-foreground text-xs">
+                {t('servers.historicalSince', {
+                  date: format(new Date(server.historicalAt), 'MMM d, yyyy'),
+                })}
+              </p>
+            )}
             <ServerVersionLine server={server} />
             {requestService && (
               <RequestServiceLine server={server} service={requestService.service} />
             )}
 
-            {server.type !== 'plex' && (
+            {server.type !== 'plex' && !historical && (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                 {!connectionStatus ? (
                   <span className="text-muted-foreground">{t('servers.checkingConnection')}</span>
@@ -175,10 +202,29 @@ export function ServerRow({
           </ItemContent>
 
           <ItemActions>
-            <Button variant="ghost" size="sm" onClick={onSync} disabled={isSyncing}>
+            <Button variant="ghost" size="sm" onClick={onSync} disabled={isSyncing || historical}>
               <RefreshCw className={cn(isSyncing && 'animate-spin')} />
               {t('common:actions.sync')}
             </Button>
+            {isOwner && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('servers.moreActions')}
+                    disabled={isSwitching}
+                  >
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => onSetHistorical(!historical)}>
+                    {historical ? t('servers.resume') : t('servers.markHistorical')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             <TooltipIconButton
               label={t('common:actions.remove')}
               icon={Trash2}

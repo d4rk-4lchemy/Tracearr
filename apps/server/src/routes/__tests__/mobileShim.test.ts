@@ -126,6 +126,7 @@ function stubGetAuth() {
 // tests don't depend on query call order.
 interface Chain {
   where: () => Chain;
+  orderBy: () => Chain;
   for: () => Chain;
   limit: () => Promise<unknown[]>;
   then: (
@@ -137,6 +138,7 @@ interface Chain {
 function chainFor(rows: unknown[]): Chain {
   const chain: Chain = {
     where: () => chain,
+    orderBy: () => chain,
     for: () => chain,
     limit: () => Promise.resolve(rows),
     then: (resolve, reject) => Promise.resolve(rows).then(resolve, reject),

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ViolationWithDetails } from '@tracearr/shared';
+import type { NotificationPriority, ViolationWithDetails } from '@tracearr/shared';
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { gotifyType, type GotifyMessage } from '../destinations/gotify.js';
 import type { NotificationEvent } from '../events.js';
@@ -154,16 +154,6 @@ describe('gotifyType.render', () => {
     expect(message.message).toContain('latest 0.3.0');
     expect(message.priority).toBe(3);
   });
-
-  it('uses the rule source title for a rule send', async () => {
-    const message = await render(
-      { type: 'violation', payload: violation },
-      { destination, source: { kind: 'rule', title: 'Rule fired', message: 'Too many streams' } }
-    );
-
-    expect(message.title).toBe('Rule fired');
-    expect(message.message).toBe('User Test User triggered Test Rule (High severity)');
-  });
 });
 
 describe('gotifyType.deliver', () => {
@@ -269,7 +259,9 @@ const newsletterSend = {
   },
 } as const;
 
-const automationCtx = (over: { title?: string; body?: string } = {}): RenderContext => ({
+const automationCtx = (
+  over: { title?: string; body?: string; priority?: NotificationPriority } = {}
+): RenderContext => ({
   destination,
   source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
 });
@@ -316,5 +308,29 @@ describe('gotifyType.render with an automation source', () => {
     const message = await render(newsletterSend, automationCtx());
     expect(message.title).toBe('Newsletter partly sent');
     expect(message.message).toBe('Weekly reached only part of its 42 recipients');
+  });
+
+  it('sends values as written', async () => {
+    const message = await render(
+      {
+        type: 'session_started',
+        payload: createMockActiveSession({ mediaTitle: 'a_b (2024) - x' }),
+      },
+      automationCtx({ body: '**{{ session.mediaTitle }}**' })
+    );
+    expect(message.message).toBe('**a_b (2024) - x**');
+  });
+
+  it('maps every send priority and keeps the event priority without one', async () => {
+    const expected = { lowest: 0, low: 2, normal: 5, high: 8, urgent: 10 } as const;
+    for (const [priority, value] of Object.entries(expected)) {
+      const message = await render(
+        { type: 'session_started', payload: session },
+        automationCtx({ priority: priority as keyof typeof expected })
+      );
+      expect(message.priority).toBe(value);
+    }
+    const automatic = await render({ type: 'session_started', payload: session }, automationCtx());
+    expect(automatic.priority).toBe(3);
   });
 });

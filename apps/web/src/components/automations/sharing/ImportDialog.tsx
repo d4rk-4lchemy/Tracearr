@@ -64,7 +64,7 @@ interface ImportDialogProps {
 
 /** The list page's Import button: the same two views with nothing behind them. */
 export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const [checked, setChecked] = useState<ImportPreview | null>(null);
 
   // The dialog outlives every import it runs, so a finished review must not be here on the next open.
@@ -102,7 +102,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
                 variant="ghost"
                 size="icon"
                 className="-ml-2 size-7"
-                aria-label={t('automations.bind.back')}
+                aria-label={t('common:actions.back')}
                 onClick={() => setChecked(null)}
               >
                 <ChevronLeft />
@@ -122,7 +122,7 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
           onChecked={setChecked}
           onExit={close}
           onDone={close}
-          backLabel={t('automations.bind.back')}
+          backLabel={t('common:actions.back')}
         />
       </DialogContent>
     </Dialog>

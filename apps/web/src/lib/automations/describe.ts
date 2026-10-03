@@ -116,7 +116,11 @@ export const TRIGGER_KEYS = {
 } as const satisfies Record<TriggerType, string>;
 
 /** Fields whose truth reads as a state, not as a comparison against `true`. */
-const BOOLEAN_STATE_FIELDS = ['is_local_network', 'is_transcode_downgrade'] as const;
+const BOOLEAN_STATE_FIELDS = [
+  'is_local_network',
+  'is_transcode_downgrade',
+  'is_subtitle_burn_in',
+] as const;
 
 const TRANSCODING_VALUES = [
   'video',

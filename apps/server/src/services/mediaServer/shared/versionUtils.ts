@@ -28,6 +28,8 @@ export function computeVersionsFingerprint(versions: MediaItemVersion[]): string
         v.videoDynamicRange ?? '',
         v.audioCodec ?? '',
         v.audioChannels ?? '',
+        v.audioAtmos ? 'atmos' : '',
+        v.editionTitle ?? '',
         v.container ?? '',
         v.bitrate ?? '',
         v.partCount,

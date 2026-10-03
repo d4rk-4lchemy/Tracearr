@@ -26,11 +26,15 @@ vi.mock('../../../services/mediaServer/index.js', () => ({
     },
   },
 }));
+vi.mock('../../../jobs/librarySyncQueue.js', () => ({
+  rebuildAutoSyncSchedules: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('../../../services/sync.js', () => ({
   syncServer: vi.fn().mockResolvedValue({ usersAdded: 0, librariesSynced: 0 }),
 }));
 
 import { db } from '../../../db/client.js';
+import { rebuildAutoSyncSchedules } from '../../../jobs/librarySyncQueue.js';
 import { EmbyClient, JellyfinClient } from '../../../services/mediaServer/index.js';
 import { embyRoutes } from '../emby.js';
 import { jellyfinRoutes } from '../jellyfin.js';
@@ -141,5 +145,35 @@ describe('connect-api-key public address', () => {
       updatedAt: expect.any(Date),
     });
     expect(update.set.mock.calls[0]?.[0]).not.toHaveProperty('publicUrl');
+  });
+});
+
+describe.each([
+  ['jellyfin', JellyfinClient],
+  ['emby', EmbyClient],
+] as const)('connect-api-key on a %s server', (type, client) => {
+  const url = `/${type}/connect-api-key`;
+  const payload = { serverUrl: 'http://192.168.1.40:8096', serverName: 'Old', apiKey: 'key-9' };
+
+  it('refuses a historical server before contacting it or writing to it', async () => {
+    const app = await build();
+    mockExisting([{ id: 'srv-1', historicalAt: new Date('2026-09-01T00:00:00Z') }]);
+    vi.mocked(db.update).mockClear();
+    vi.mocked(client.verifyServerAdmin).mockClear();
+    const res = await app.inject({ method: 'POST', url, payload });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toBe('Resume this server to change its address or key');
+    expect(client.verifyServerAdmin).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('rebuilds the sync schedules when a new server is added', async () => {
+    const app = await build();
+    mockExisting([]);
+    mockInsert();
+    vi.mocked(rebuildAutoSyncSchedules).mockClear();
+    const res = await app.inject({ method: 'POST', url, payload });
+    expect(res.statusCode).toBe(200);
+    expect(rebuildAutoSyncSchedules).toHaveBeenCalledTimes(1);
   });
 });

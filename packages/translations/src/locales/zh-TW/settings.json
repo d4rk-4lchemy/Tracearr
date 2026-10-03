@@ -49,19 +49,14 @@
     }
   },
   "general": {
-    "title": "一般設定",
     "unitSystem": "單位系統",
     "metric": "公制（km, km/h）",
     "imperial": "英制（mi, mph）",
-    "timezone": "時區",
-    "primaryAuth": "主要驗證方法",
-    "localAccount": "本地帳號",
-    "plexAccount": "Plex 帳號",
     "language": "語言",
-    "languageDescription": "請選擇你偏好的顯示語言。",
+    "languageDescription": "儲存在此瀏覽器中，因此每位登入的使用者都可以選擇自己的語言。",
     "helpTranslate": "幫助翻譯 Tracearr",
     "timeFormat": "時間格式",
-    "timeFormatDescription": "請選擇如何顯示時間。",
+    "timeFormatDescription": "12 小時制或 24 小時制，用於歷史記錄和媒體頁面中的會話時間。",
     "timeFormat12h": "12 小時制（1:30 PM）",
     "timeFormat24h": "24 小時制（13:30）",
     "theme": "",
@@ -127,7 +122,6 @@
       "size": "",
       "files": "",
       "need": "",
-      "needHint": "",
       "free": "",
       "freeOf": "",
       "floor": "",
@@ -138,18 +132,15 @@
       "never": "",
       "diskLimited": "",
       "loadError": "",
-      "notPersisting": ""
+      "notPersisting": "",
+      "needHint_other": ""
     }
   },
   "servers": {
-    "title": "已連接的伺服器",
     "addServer": "新增伺服器",
     "serverName": "伺服器名稱",
     "serverUrl": "伺服器網址",
-    "syncInterval": "同步間隔",
     "testConnection": "測試連線",
-    "connectionSuccess": "連接成功",
-    "connectionFailed": "連接失敗",
     "noServersConnected": "",
     "noServersConnectedHint": "",
     "serverType": "",
@@ -162,14 +153,11 @@
     "allServersConnected": "",
     "allServersConnectedDesc": "",
     "serverUrlPlaceholder": "",
-    "serverUrlHelp": "",
     "serverNamePlaceholder": "",
     "apiKeyPlaceholder": "",
-    "apiKeyHelp": "",
-    "connecting": "正在連接……",
     "connectServer": "",
     "removeServer": "",
-    "removeServerConfirm": "",
+    "removeServerConfirm": "移除此伺服器？其會話、觀看紀錄、使用者和媒體庫將從 Tracearr 中刪除，且無法復原。",
     "editServer": "",
     "editServerDesc": "",
     "serverColor": "",
@@ -178,7 +166,6 @@
     "allFieldsRequired": "",
     "addServerDialogDescPlex": "",
     "addServerDialogDescOther": "",
-    "description": "",
     "discoveringServers": "",
     "discoveringConnections": "",
     "plexAccount": "",
@@ -201,6 +188,14 @@
     "checkingConnection": "",
     "pluginVersion": "",
     "pluginUpdateAvailable": "",
+    "historical": "",
+    "historicalSince": "",
+    "markHistorical": "",
+    "resume": "",
+    "moreActions": "",
+    "markHistoricalTitle": "",
+    "markHistoricalConfirm": "",
+    "resumeFirst": "",
     "location": {
       "title": "",
       "description": "",
@@ -208,7 +203,6 @@
       "addMove": "",
       "fromBeginning": "",
       "movedOn": "",
-      "remove": "",
       "latitude": "",
       "longitude": "",
       "country": "",
@@ -231,17 +225,13 @@
       "repositoryUrl": "",
       "copyUrl": "",
       "jellyfinRepoUrl": "",
-      "embyReleasesUrl": "",
-      "openReleases": "",
       "autoDetectNote": "",
-      "close": "",
       "issueBlocked": "",
       "issueRestartRequired": "",
-      "issueMalfunctioned": ""
+      "issueMalfunctioned": "",
+      "openReleases": ""
     },
     "posterSource": {
-      "title": "",
-      "titleDesc": "",
       "label": "",
       "description": "",
       "automatic": "",
@@ -262,7 +252,7 @@
     "tokenExpires": "憑證於 {{time}} 過期",
     "lastSeen": "",
     "connectedOn": "",
-    "noDevices": "未連接至任何裝置",
+    "noDevices": "尚未配對任何裝置",
     "noDevicesDesc": "",
     "revokeAll": "撤銷所有會話",
     "getOnGooglePlay": "",
@@ -273,7 +263,6 @@
     "enableMobileAccess": "",
     "enabling": "",
     "devicesConnected": "",
-    "pendingTokens": "",
     "addDevice": "",
     "disableMobileAccess": "",
     "revokeAllSessions": "",
@@ -296,7 +285,8 @@
     "removeDeviceConfirm": "",
     "externalUrlBanner": "",
     "externalUrlBannerLink": "",
-    "externalUrlBannerSuffix": ""
+    "externalUrlBannerSuffix": "",
+    "pendingTokens_other": ""
   },
   "tailscale": {
     "title": "",
@@ -304,7 +294,7 @@
     "notAvailable": "未找到 Tailscale 二進位檔案。此功能只在運行官方 Docker 鏡像的時候可用。",
     "disabledDescription": "啟用 Tailscale 以將 Tracearr 放在你的私人 tailnet 上。無須端口轉發或反向代理。",
     "hostnameLabel": "裝置主機名稱",
-    "hostnameHint": "此設備在你的 tailnet 中的可選自定義名稱。僅限字母、數字和連字號。",
+    "hostnameHint": "此裝置在你的 tailnet 中的自訂名稱（選填）。僅限字母、數字和連字號。",
     "enable": "啟用 Tailscale",
     "disable": "停用 Tailscale",
     "starting": "正在啟動 Tailscale……",
@@ -318,8 +308,6 @@
     "showLogs": "顯示日誌",
     "hideLogs": "隱藏日誌",
     "noLogs": "沒有可用的日誌輸出。",
-    "exitNodeNone": "沒有",
-    "exitNodeOffline": "(離線)",
     "unknownError": "發生了未知錯誤。",
     "disableConfirmTitle": "停用 Tailscale？",
     "disableConfirmDescription": "這將使 Tracearr 與你的 tailnet 中斷連接。你可以在不重新認證的情況下重新啟用。",
@@ -363,33 +351,12 @@
     "automatic": "",
     "startJob": ""
   },
-  "advanced": {
-    "title": "進階設定",
-    "externalUrl": "外部網址",
-    "trustProxy": "信任代理標頭",
-    "reverseProxy": "",
-    "connectionScenarios": "連線情境"
-  },
   "accessControl": {
-    "title": "",
-    "description": "",
     "allowGuestAccess": "",
     "allowGuestAccessDesc": "",
     "singleOwnerNote": ""
   },
   "import": {
-    "title": "匯入資料",
-    "jellystat": "從 Jellyfin 匯入",
-    "tautulli": "從 Tautulli 匯入",
-    "importProgress": "匯入進度",
-    "importComplete": "匯入完成",
-    "importFailed": "匯入失敗",
-    "processed": "已處理",
-    "page": "頁",
-    "imported": "已匯入",
-    "skipped": "已略過",
-    "enriched": "豐富",
-    "errors": "錯誤",
     "noServers": "",
     "noServersHint": "",
     "tautulliUrl": "",
@@ -426,8 +393,6 @@
     "uploadingBackup": "",
     "plex": "",
     "jellyfinEmby": "",
-    "step1": "",
-    "step2": "",
     "apiKeyPlaceholder": "",
     "skipUserNotFoundPlex": "",
     "skipDuplicate": "",
@@ -448,10 +413,10 @@
     "serverTimezoneHelp": "",
     "importFullRange": "",
     "importFullRangeHelp": "",
-    "overlapSkipped": "",
-    "duplicates": "",
     "skipOverlap": "",
-    "skipDuplicatePlugin": ""
+    "skipDuplicatePlugin": "",
+    "overlapSkipped_other": "",
+    "duplicates_other": ""
   },
   "plex": {
     "signInWithPlex": "使用 Plex 登入",
@@ -463,10 +428,7 @@
     "createAccount": "建立新帳號",
     "email": "電子信箱",
     "password": "密碼",
-    "displayName": "顯示名稱",
-    "createYourAccount": "建立你的帳號即可開始使用",
-    "signInToAccount": "登入你的帳號",
-    "useLocalAccount": "改用本地帳號"
+    "displayName": "顯示名稱"
   },
   "update": {
     "title": "有可用的更新",
@@ -493,8 +455,6 @@
     "earlier": "",
     "installedBadge": "",
     "latestBadge": "",
-    "changeCount_one": "",
-    "changeCount_other": "",
     "series": "",
     "docs": "",
     "source": "",
@@ -505,11 +465,13 @@
       "fix": "",
       "security": "",
       "note": ""
-    }
+    },
+    "changeCount_other": ""
   },
   "serverHealth": {
     "unreachable": "{{serverName}} 無法連接",
-    "multipleUnreachable": "{{count}} 個伺服器無法連接：{{serverNames}}"
+    "tokenRejected": "",
+    "multipleUnreachable_other": "{{count}} 個伺服器無法連接：{{serverNames}}"
   },
   "ipWarning": {
     "message": "所有使用者似乎都在使用相同的 IP 地址或本地網路 IP 地址。這可能會影響基於規則的位置或 IP 地址邏輯。",
@@ -528,9 +490,6 @@
     "lowDiskSpace": "硬碟空間不足— 備份和還原需要至少兩倍的可用空間。",
     "backupHistory": "備份記錄",
     "noBackups": "尚未備份。請在上面建立您的第一個備份。",
-    "size": "大小",
-    "date": "",
-    "type": "類型",
     "version": "",
     "actions": "操作",
     "rowActions": "",
@@ -603,7 +562,6 @@
     "noDestinationDescription": "",
     "noDestinationHint": "",
     "addEmailDestination": "",
-    "enabled": "",
     "rowActions": "",
     "duplicate": "",
     "sendNow": "",
@@ -629,13 +587,9 @@
       "skipped_empty": ""
     },
     "counts": {
-      "movies_one": "",
       "movies_other": "",
-      "shows_one": "",
       "shows_other": "",
-      "albums_one": "",
       "albums_other": "",
-      "watched_one": "",
       "watched_other": ""
     },
     "copyOf": "",
@@ -645,7 +599,6 @@
       "link": "",
       "bulletList": "",
       "linkHref": "",
-      "linkApply": "",
       "counter": ""
     },
     "editor": {
@@ -693,10 +646,10 @@
       },
       "windowSentence": {
         "fallback": "",
-        "fallbackLabel": "",
         "fixed": "",
         "fixedAfter": "",
-        "fixedLabel": ""
+        "fallbackLabel_other": "",
+        "fixedLabel_other": ""
       },
       "windowMax": "",
       "days": "",
@@ -704,14 +657,12 @@
       "allServers": "",
       "searchServers": "",
       "noServers": "",
-      "serversSelected": "",
       "variantsNote": "",
       "serversHelp": "",
       "libraries": "",
       "allLibraries": "",
       "searchLibraries": "",
       "noLibraries": "",
-      "librariesSelected": "",
       "librariesHelp": "",
       "clear": "",
       "unknownLibrary": "",
@@ -733,11 +684,11 @@
           "mostPlayed": ""
         },
         "labels": {
-          "movies": "",
-          "shows": "",
-          "seasons": "",
-          "music": "",
-          "mostWatched": ""
+          "movies_other": "",
+          "shows_other": "",
+          "seasons_other": "",
+          "music_other": "",
+          "mostWatched_other": ""
         },
         "musicHelp": "",
         "mostWatchedHelp": ""
@@ -745,9 +696,6 @@
       "message": "",
       "senderName": "",
       "senderNameHelp": "",
-      "senderNameRequiredMulti": "",
-      "previewVariant_one": "",
-      "previewVariant_other": "",
       "variantHeading": "",
       "subject": "",
       "subjectHelp": "",
@@ -782,10 +730,8 @@
         "loadFailed": "",
         "willReceive": "",
         "excludedCount": "",
-        "notIncludable": "",
         "noAddress": "",
         "suppressedCount": "",
-        "joinedSinceLastSend": "",
         "newSinceLastSend": "",
         "manage": "",
         "manageHelp": "",
@@ -800,7 +746,6 @@
         },
         "selectAll": "",
         "selectPerson": "",
-        "selectedCount": "",
         "excludeSelected": "",
         "includeSelected": "",
         "noMatches": "",
@@ -820,7 +765,6 @@
         "include": "",
         "includeAction": "",
         "excludedHelp": "",
-        "notIncludableHelp": "",
         "excludedAfterSave": "",
         "includedAfterSave": "",
         "reasons": {
@@ -830,7 +774,11 @@
           "noServer": ""
         },
         "emptyTitle": "",
-        "emptyDescription": ""
+        "emptyDescription": "",
+        "notIncludable_other": "",
+        "joinedSinceLastSend_other": "",
+        "selectedCount_other": "",
+        "notIncludableHelp_other": ""
       },
       "delivery": {
         "title": "",
@@ -879,13 +827,12 @@
         "fromDomain": "",
         "fromDomainFail": "",
         "fromDomainUnknown": "",
-        "recipients_one": "",
-        "recipients_other": "",
         "recipientsFail": "",
         "recipientsChecking": "",
         "recipientsLoadFailed": "",
         "dns": "",
-        "dnsLink": ""
+        "dnsLink": "",
+        "recipients_other": ""
       },
       "actions": {
         "preview": "",
@@ -930,13 +877,16 @@
       "send": {
         "title": "",
         "previewing": "",
-        "summary": "",
         "nobody": "",
-        "trimmed_one": "",
-        "trimmed_other": "",
         "confirm": "",
-        "sending": ""
-      }
+        "sending": "",
+        "summary_other": "",
+        "trimmed_other": ""
+      },
+      "serversSelected_other": "",
+      "librariesSelected_other": "",
+      "senderNameRequiredMulti_other": "",
+      "previewVariant_other": ""
     },
     "history": {
       "empty": "",
@@ -948,7 +898,6 @@
         "test": ""
       },
       "window": "",
-      "recipients": "",
       "recipientsEmpty": "",
       "finished": "",
       "open": "",
@@ -961,7 +910,6 @@
         "suppressed": "",
         "unknown": ""
       },
-      "attempts": "",
       "unknownHelp": "",
       "openSnapshot": "",
       "variant": "",
@@ -969,7 +917,9 @@
       "openVariantSnapshot": "",
       "snapshotTitle": "",
       "pruned": "",
-      "retryFailed": ""
+      "retryFailed": "",
+      "recipients_other": "",
+      "attempts_other": ""
     }
   },
   "email": {
@@ -1037,11 +987,8 @@
     "syncedAgo": "",
     "neverSynced": "",
     "counts": {
-      "requests_one": "",
       "requests_other": "",
-      "unmatchedMedia_one": "",
       "unmatchedMedia_other": "",
-      "unmatchedUsers_one": "",
       "unmatchedUsers_other": ""
     },
     "needsKey": "",
@@ -1059,7 +1006,6 @@
       "hideKey": "",
       "test": "",
       "testing": "",
-      "save": "",
       "saveHint": "",
       "match": "",
       "mismatch": "",

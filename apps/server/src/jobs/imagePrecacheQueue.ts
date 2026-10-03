@@ -21,7 +21,7 @@ import { POSTER_IMAGE_SIZE, REDIS_KEYS } from '@tracearr/shared';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
-import { libraryItems, servers } from '../db/schema.js';
+import { libraryItems } from '../db/schema.js';
 import { IMAGE_CACHE_DIR, proxyImage, posterCacheEntryExists } from '../services/imageProxy.js';
 import {
   takeRefusedWrites,
@@ -30,6 +30,7 @@ import {
   readDiskLimited,
 } from '../services/imageCacheGuard.js';
 import { sweepImageCache } from '../services/imageCacheSweep.js';
+import { isLiveServer, liveServers } from '../services/liveServers.js';
 import { getRedis } from '../lib/redisShared.js';
 import { getSetting } from '../services/settings.js';
 import { getLibrarySyncStatus } from './librarySyncQueue.js';
@@ -192,7 +193,7 @@ export async function startImagePrecacheWorker(): Promise<void> {
   await reconcileImagePrecacheOnBoot({
     queue: imagePrecacheQueue!,
     redis: getRedis(),
-    listServerIds: async () => (await db.select({ id: servers.id }).from(servers)).map((r) => r.id),
+    listServerIds: async () => (await liveServers()).map((r) => r.id),
     enqueuePass: (serverId) => enqueueImagePrecache(serverId),
     sweep: () => sweepImageCache(),
   }).catch((err: unknown) => {
@@ -433,6 +434,10 @@ export async function processImagePrecacheJob(
   const enabled = await getSetting('imagePrecacheEnabled');
   if (!enabled) {
     return { skipped: true, reason: 'disabled' };
+  }
+
+  if (!(await isLiveServer(serverId))) {
+    return { skipped: true, reason: 'server historical' };
   }
 
   const passStartedAt =

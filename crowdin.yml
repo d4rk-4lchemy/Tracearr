@@ -2,3 +2,4 @@ preserve_hierarchy: 1
 files:
   - source: packages/translations/src/locales/en/*.json
     translation: /packages/translations/src/locales/%locale%/%original_file_name%
+    type: i18next_json

@@ -125,6 +125,17 @@ describe('processInactivityCheck', () => {
     mockDispatch.mockResolvedValue({ violations: [], outcomes: [] });
   });
 
+  it('leaves out accounts on historical servers', async () => {
+    mockGetActiveAutomations.mockResolvedValue([inactivityRule('r1')]);
+    mockWhere.mockResolvedValueOnce([]);
+
+    await processInactivityCheckForTests(job);
+
+    expect(mockWhere).toHaveBeenCalledTimes(1);
+    const filter = mockWhere.mock.calls[0]?.[0] as SQL;
+    expect(dialect.sqlToQuery(filter).sql).toContain('"servers"."historical_at" is null');
+  });
+
   it('dispatches account.inactive_for once per distinct candidate across rule scopes', async () => {
     mockGetActiveAutomations.mockResolvedValue([
       inactivityRule('a'),

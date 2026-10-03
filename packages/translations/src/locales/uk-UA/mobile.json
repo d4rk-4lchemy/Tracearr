@@ -1,7 +1,6 @@
 {
   "pair": {
     "welcome": "Ласкаво просимо до Tracearr",
-    "addServer": "Додати сервер",
     "connectToServer": "Підключитися до сервера",
     "enterServerDetails": "Введіть URL-адресу вашого серверу Tracearr та токен доступу",
     "serverUrl": "URL-адреса сервера",
@@ -16,10 +15,7 @@
     "pleaseEnterToken": ""
   },
   "errors": {
-    "missingFields": "Пропущені поля",
-    "pleaseEnterBothFields": "Будь ласка, введіть URL-адресу сервера та токен",
     "invalidUrl": "Неправильна URL-адреса",
-    "serverUrlMustStartWith": "URL-адреса сервера має починатися з http:// або https://",
     "pleaseEnterValidUrl": "Будь ласка, введіть коректний URL сервера",
     "pairingFailed": "Помилка парування",
     "unableToPair": "",
@@ -28,12 +24,7 @@
     "invalidQrCodeFormat": "Невірний формат QR-коду. Будь ласка, згенеруйте новий код.",
     "invalidQrCodeMissingUrl": "Невірний QR-код: відсутній URL сервера",
     "invalidQrCodeMissingToken": "Невірний QR-код: відсутній токен парування",
-    "invalidServerUrlInQr": "Хибна URL-адреса сервера у QR-коді",
-    "tooManyPairingAttempts": "Занадто багато спроб створення пари. Будь ласка, зачекайте кілька хвилин.",
-    "invalidOrExpiredToken": "Некоректний або прострочений токен парування.",
-    "invalidPairingRequest": "Хибний запит на парування. Перевірте свій маркер.",
     "errorDetails": "",
-    "componentStack": "",
     "connectionLost": "",
     "failedToLoadSession": ""
   },
@@ -63,10 +54,8 @@
     "build": ""
   },
   "navigation": {
-    "home": "",
     "selectServer": "Виберіть сервер",
-    "server": "Сервер",
-    "navigation": ""
+    "server": "Сервер"
   },
   "resources": {
     "cpu": "",
@@ -86,7 +75,6 @@
     "ruleViolationTriggered": "",
     "newPlaybackBegan": "",
     "playbackEnded": "",
-    "exceededStreamLimit": "",
     "newDeviceDetected": "",
     "trustScoreDegraded": "",
     "serverUnreachable": "",
@@ -125,14 +113,20 @@
     "userMayBeRemoved": "",
     "noLocationsRecorded": "",
     "noDevicesRecorded": "",
-    "moreLocations": "",
-    "moreDevices": "",
     "noViolations": "",
     "noTerminations": "",
     "lastSeen": "",
     "terminatedBy": "",
     "trustScoreConfirm": "",
-    "trustScoreRange": ""
+    "trustScoreRange": "",
+    "moreLocations_one": "",
+    "moreLocations_few": "",
+    "moreLocations_many": "",
+    "moreLocations_other": "",
+    "moreDevices_one": "",
+    "moreDevices_few": "",
+    "moreDevices_many": "",
+    "moreDevices_other": ""
   },
   "violation": {
     "violationNotFoundDesc": "",
@@ -143,14 +137,19 @@
     "acknowledgeAll": "",
     "acknowledgeAllBody": "",
     "acknowledgeAllBodySeverity": "",
-    "acknowledgeAllTitle_one": "",
-    "acknowledgeAllTitle_other": "",
     "all": "",
     "allClear": "",
     "allServers": "",
     "noAlertsRecorded": "",
     "noMatches": "",
-    "pendingCount": ""
+    "acknowledgeAllTitle_one": "",
+    "acknowledgeAllTitle_few": "",
+    "acknowledgeAllTitle_many": "",
+    "acknowledgeAllTitle_other": "",
+    "pendingCount_one": "",
+    "pendingCount_few": "",
+    "pendingCount_many": "",
+    "pendingCount_other": ""
   },
   "history": {
     "adjustFilters": "",
@@ -163,7 +162,10 @@
       "noCountries": "",
       "noPlatforms": "",
       "noUsers": "",
-      "sectionSelected": ""
+      "sectionSelected_one": "",
+      "sectionSelected_few": "",
+      "sectionSelected_many": "",
+      "sectionSelected_other": ""
     }
   },
   "users": {
@@ -176,8 +178,8 @@
     "sortTrust": ""
   },
   "activity": {
-    "playsOverTime": "Грати з часом",
-    "concurrentStreams": "Конактуальні потоки",
+    "playsOverTime": "Відтворення з плином часу",
+    "concurrentStreams": "Одночасні потоки",
     "platforms": "Платформи",
     "playbackQuality": ""
   },
@@ -193,28 +195,29 @@
     "allServers": ""
   },
   "reconnected": "",
-  "serverScope": {
-    "single": ""
-  },
   "a11y": {
     "selectServer": "",
     "alerts": "",
-    "alertsCount": "",
     "settings": "",
     "trustScore": "",
     "decreaseTrustScore": "",
-    "filtersActive": "",
     "increaseTrustScore": "",
     "sortAscending": "",
-    "sortDescending": ""
+    "sortDescending": "",
+    "alertsCount_one": "",
+    "alertsCount_few": "",
+    "alertsCount_many": "",
+    "alertsCount_other": "",
+    "filtersActive_one": "",
+    "filtersActive_few": "",
+    "filtersActive_many": "",
+    "filtersActive_other": ""
   },
   "map": {
     "noData": "",
     "unavailable": ""
   },
   "automations": {
-    "conditions_one": "",
-    "conditions_other": "",
     "editOnWeb": "",
     "emptyDescription": "",
     "kind": {
@@ -227,7 +230,11 @@
     "turnOnFailed": "",
     "unsupportedDescription": "",
     "unsupportedTitle": "",
-    "versionCheckFailed": ""
+    "versionCheckFailed": "",
+    "conditions_one": "",
+    "conditions_few": "",
+    "conditions_many": "",
+    "conditions_other": ""
   },
   "charts": {
     "weekOf": ""
@@ -261,10 +268,14 @@
   },
   "widget": {
     "asOf": "",
-    "serversDown_one": "",
-    "serversDown_other": "",
     "signedOut": "",
+    "serversDown_one": "",
+    "serversDown_few": "",
+    "serversDown_many": "",
+    "serversDown_other": "",
     "transcodes_one": "",
+    "transcodes_few": "",
+    "transcodes_many": "",
     "transcodes_other": ""
   }
 }

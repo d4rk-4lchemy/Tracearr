@@ -10,16 +10,19 @@
         "message": "El servidor s'ha suprimit correctament"
       },
       "serverSynced": {
-        "title": "Servidor sincronitzat",
-        "message": "S'han sincronitzat les dades del servidor"
+        "title": "Servidor sincronitzat"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "Configuració actualitzada",
         "message": "S'ha desat la configuració"
-      },
-      "tokenCopied": {
-        "title": "Testimoni copiat",
-        "message": "S'ha copiat el testimoni d'aparellament al porta-retalls"
       },
       "violationAcknowledged": {
         "title": "Incompliment confirmat",
@@ -38,19 +41,11 @@
         "message": "S'ha actualitzat el nom del dispositiu"
       },
       "sessionsRevoked": {
-        "title": "Sessions revocades",
-        "message": "S'han revocat totes les sessions mòbils"
+        "title": "Sessions revocades"
       },
       "loggedIn": {
         "title": "Realitzat amb èxit",
         "message": "S'ha iniciat la sessió correctament"
-      },
-      "webhookTest": {
-        "title": "Prova correcta",
-        "message": "El webhook funciona correctament"
-      },
-      "copiedToClipboard": {
-        "title": "Copiat al porta-retalls"
       },
       "plexAccountLinked": {
         "title": "Compte de Plex enllaçat",
@@ -62,27 +57,14 @@
       },
       "plexAccountReauthorized": {
         "title": "Compte de Plex reautoritzat",
-        "message_one": "{{count}} servidor reconnectat",
-        "message_other": "{{count}} servidors reconnectats",
         "messageNoServers": "S'ha actualitzat el testimoni del compte",
         "partial": "S'ha actualitzat el testimoni, però {{names}} l'han rebutjat igualment",
-        "unmatched": "S'ha actualitzat el testimoni, però {{names}} no s'han pogut tornar a enllaçar"
-      },
-      "agentAdded": {
-        "title": "Agent afegit",
-        "message": "S'ha afegit l'agent de notificacions"
-      },
-      "agentUpdated": {
-        "title": "Agent actualitzat",
-        "message": "S'ha actualitzat l'agent de notificacions"
-      },
-      "agentRemoved": {
-        "title": "Agent suprimit",
-        "message": "S'ha suprimit l'agent de notificacions"
+        "unmatched": "S'ha actualitzat el testimoni, però {{names}} no s'han pogut tornar a enllaçar",
+        "message_one": "{{count}} servidor reconnectat",
+        "message_other": "{{count}} servidors reconnectats"
       },
       "jobCompleted": {
-        "title": "Tasca completada",
-        "message": "{{name}} ha acabat correctament"
+        "title": "Tasca completada"
       },
       "automationCreated": {
         "title": "Automatització creada",
@@ -175,21 +157,22 @@
       "newsletterDuplicated": "Butlletí duplicat",
       "newsletterTestQueued": "S'ha posat la prova a la cua cap a {{address}}",
       "newsletterSendQueued": "Enviament posat a la cua",
-      "newsletterRetryQueued": "S'està reintentant amb {{count}} destinataris",
       "brandingSaved": "S'ha desat la imatge de marca del correu",
       "suppressionAdded": "S'ha afegit l'adreça a la llista de supressió",
-      "suppressionRemoved": "S'ha tret l'adreça de la llista de supressió"
+      "suppressionRemoved": "S'ha tret l'adreça de la llista de supressió",
+      "newsletterRetryQueued_one": "",
+      "newsletterRetryQueued_other": "S'està reintentant amb {{count}} destinataris"
     },
     "error": {
       "serverAddFailed": "No s'ha pogut afegir el servidor",
       "serverRemoveFailed": "No s'ha pogut suprimir el servidor",
       "serverSyncFailed": "No s'ha pogut sincronitzar el servidor",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "No s'ha pogut actualitzar la configuració",
       "copyFailed": "No s'ha pogut copiar al porta-retalls",
       "acknowledgeFailed": "No s'ha pogut confirmar l'incompliment",
       "dismissFailed": "No s'ha pogut descartar l'incompliment",
       "authFailed": "Ha fallat l'autenticació",
-      "webhookTestFailed": "Ha fallat la prova del webhook",
       "automationCreateFailed": "No s'ha pogut crear l'automatització",
       "automationUpdateFailed": "No s'ha pogut actualitzar l'automatització",
       "automationDeleteFailed": "No s'ha pogut suprimir l'automatització",
@@ -208,14 +191,8 @@
       "sessionsRevokeFailed": "No s'han pogut revocar les sessions",
       "identityUpdateFailed": "No s'ha pogut actualitzar el perfil",
       "trustScoresResetFailed": "No s'han pogut restablir les puntuacions de confiança",
-      "routingUpdateFailed": "No s'ha pogut actualitzar l'encaminament",
-      "clipboardFailed": "No s'ha pogut copiar al porta-retalls",
       "plexUnlinkFailed": "No s'ha pogut desenllaçar el compte de Plex",
       "plexReauthorizeFailed": "No s'ha pogut reautoritzar el compte de Plex",
-      "agentAddFailed": "No s'ha pogut afegir l'agent",
-      "agentUpdateFailed": "No s'ha pogut actualitzar l'agent",
-      "agentRemoveFailed": "No s'ha pogut suprimir l'agent",
-      "agentTestFailed": "La prova ha fallat",
       "jobAlreadyRunning": "La tasca ja s'està executant",
       "jobStartFailed": "No s'ha pogut iniciar la tasca",
       "jobLoadFailed": "No s'han pogut carregar les tasques de manteniment",
@@ -248,8 +225,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "La tasca ha fallat",
-        "message": "{{name}} ha trobat un error"
+        "title": "La tasca ha fallat"
       }
     },
     "info": {
@@ -263,43 +239,23 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "S'ha detectat un incompliment de compartició",
-    "streamStarted": "Transmissió iniciada",
-    "streamEnded": "Transmissió acabada",
-    "serverDown": "S'ha perdut la connexió amb el servidor",
-    "serverUp": "El servidor torna a estar en línia",
-    "newDevice": "Dispositiu nou",
-    "trustScoreChanged": "La puntuació de confiança ha canviat"
-  },
   "settings": {
-    "title": "Configuració de les notificacions",
     "allSeverity": "Totes (Reduïda, Avís, Alta)",
     "warningAndHigh": "Només Avís i Alta",
     "highOnly": "Només severitat Alta",
-    "allTypes": "Tots els tipus",
     "rateLimit": "Estat actual del límit de freqüència",
     "perMinute": "Per minut",
     "perHour": "Per hora",
     "enablePushNotifications": "Habilita les notificacions push",
     "notificationEvents": "Esdeveniments de notificació",
     "violationDetected": "Incompliment detectat",
-    "violationDetectedDesc": "Quan s'activa un incompliment de compartició",
     "streamStarted": "Transmissió iniciada",
-    "streamStartedDesc": "Quan un usuari comença a mirar contingut",
     "streamStopped": "Transmissió aturada",
-    "streamStoppedDesc": "Quan un usuari deixa de mirar contingut",
     "concurrentStreams": "Transmissions simultànies",
-    "concurrentStreamsDesc": "Quan se supera el límit màxim de transmissions",
     "newDevice": "Dispositiu nou",
-    "newDeviceDesc": "Quan es connecta un dispositiu nou",
     "trustScoreChanged": "La puntuació de confiança ha canviat",
-    "trustScoreChangedDesc": "Quan canvia la puntuació de confiança d'un usuari",
     "serverDown": "Servidor caigut",
-    "serverDownDesc": "Quan un servidor multimèdia es desconnecta",
     "serverUp": "Servidor actiu",
-    "serverUpDesc": "Quan un servidor multimèdia torna a estar en línia",
-    "violationFilters": "Filtres d'incompliments",
     "minimumSeverity": "Severitat mínima",
     "quietHours": "Hores de silenci",
     "enableQuietHours": "Habilita les hores de silenci",

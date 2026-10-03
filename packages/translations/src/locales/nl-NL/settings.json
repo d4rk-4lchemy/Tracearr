@@ -49,14 +49,9 @@
     }
   },
   "general": {
-    "title": "Algemene instellingen",
     "unitSystem": "Eenheidsstelsel",
     "metric": "Metrisch (km, km/u)",
     "imperial": "Imperiaal (mijl, mijl/u)",
-    "timezone": "Tijdzone",
-    "primaryAuth": "Primaire authenticatiemethode",
-    "localAccount": "Lokaal account",
-    "plexAccount": "Plex-account",
     "language": "Taal",
     "languageDescription": "Kies je gewenste weergavetaal.",
     "helpTranslate": "Help bij het vertalen van Tracearr",
@@ -95,7 +90,7 @@
     "apiDocs": "",
     "noApiKeyGenerated": "Geen API-sleutel gegenereerd",
     "copyToClipboard": "Kopiëren naar klembord",
-    "apiKeyReadAccess": "Uw API-sleutel geeft volledige leestoegang tot uw Tracear-gegevens.",
+    "apiKeyReadAccess": "Uw API-sleutel geeft volledige leestoegang tot uw Tracearr-gegevens.",
     "generateApiKeyPrompt": "Genereer een API-sleutel om externe integratie mogelijk te maken.",
     "regenerate": "Hergenereren",
     "generateKey": "Sleutel genereren",
@@ -127,7 +122,6 @@
       "size": "Op de schijf",
       "files": "Bestanden",
       "need": "Geschatte behoefte",
-      "needHint": "",
       "free": "Schijfruimte vrij maken",
       "freeOf": "van {{total}}",
       "floor": "Houd vrij",
@@ -138,18 +132,16 @@
       "never": "nog niet",
       "diskLimited": "Disk gelimiteerd sinds {{since}}: ongeveer {{shortfall}} posters worden niet gecached.",
       "loadError": "Kon de cache-status niet laden.",
-      "notPersisting": ""
+      "notPersisting": "",
+      "needHint_one": "",
+      "needHint_other": ""
     }
   },
   "servers": {
-    "title": "Verbonden servers",
     "addServer": "Server toevoegen",
     "serverName": "Servernaam",
     "serverUrl": "Server-URL",
-    "syncInterval": "Synchronisatie-interval",
     "testConnection": "Verbinding testen",
-    "connectionSuccess": "Succesvol verbonden",
-    "connectionFailed": "Verbinding mislukt",
     "noServersConnected": "Geen servers verbonden",
     "noServersConnectedHint": "Klik op \"Server toevoegen\" om een Jellyfin of Emby server te verbinden",
     "serverType": "Type server",
@@ -162,14 +154,11 @@
     "allServersConnected": "Alle servers verbonden",
     "allServersConnectedDesc": "Alle servers van deze account zijn al verbonden.",
     "serverUrlPlaceholder": "",
-    "serverUrlHelp": "Directe URL naar uw Jellyfin of Emby server. Gebruik IP:port voor de beste betrouwbaarheid",
     "serverNamePlaceholder": "Mijn mediaserver",
     "apiKeyPlaceholder": "Voer uw API-sleutel in",
-    "apiKeyHelp": "Gevonden in het dashboard van uw mediaserver onder API-sleutels of geavanceerde instellingen.",
-    "connecting": "Verbinden...",
     "connectServer": "Server verbinden",
     "removeServer": "Server verwijderen",
-    "removeServerConfirm": "Weet je zeker dat je deze server wilt verwijderen? Alle bijbehorende sessiegegevens worden bewaard, maar je kunt geen nieuwe sessies vanaf deze server bijhouden.",
+    "removeServerConfirm": "Deze server verwijderen? De sessies, kijkgeschiedenis, gebruikers en bibliotheken ervan worden uit Tracearr verwijderd en kunnen niet worden hersteld.",
     "editServer": "Server bewerken",
     "editServerDesc": "Update de servernaam of de verbinding-URL.",
     "serverColor": "Server Kleur",
@@ -178,7 +167,6 @@
     "allFieldsRequired": "Alle velden zijn verplicht",
     "addServerDialogDescPlex": "Selecteer een Plex server van uw gekoppelde account.",
     "addServerDialogDescOther": "Verbind een Jellyfin of Emby server.",
-    "description": "",
     "discoveringServers": "Ontdekken van beschikbare Plex servers...",
     "discoveringConnections": "Ontdekken van verbindingen...",
     "plexAccount": "Plex-account",
@@ -201,6 +189,14 @@
     "checkingConnection": "Connectie controleren…",
     "pluginVersion": "",
     "pluginUpdateAvailable": "Plug-in update beschikbaar",
+    "historical": "",
+    "historicalSince": "",
+    "markHistorical": "",
+    "resume": "",
+    "moreActions": "",
+    "markHistoricalTitle": "",
+    "markHistoricalConfirm": "",
+    "resumeFirst": "",
     "location": {
       "title": "",
       "description": "",
@@ -208,7 +204,6 @@
       "addMove": "",
       "fromBeginning": "",
       "movedOn": "",
-      "remove": "",
       "latitude": "",
       "longitude": "",
       "country": "",
@@ -227,21 +222,17 @@
       "jellyfinDescription": "Installeer de Tracearr SSE plugin om direct sessie updates te krijgen zonder te wachten voor de volgende polling.",
       "embyDescription": "Installeer de Tracearr SSE plugin om direct sessie updates te krijgen zonder te wachten voor de volgende polling.",
       "jellyfinUpdateDescription": "Er is een nieuwere versie van de plugin beschikbaar. Open je Jellyfin-dashboard, ga naar Plugins, Catalogus en update Tracearr SSE. Start Jellyfin vervolgens opnieuw op.",
-      "embyUpdateDescription": "Er is een nieuwere versie van de plugin beschikbaar. Download het zip-bestand met de nieuwste versie, vervang de plugin-DLL in de map 'plugins' van Emby en herstart Emby.",
+      "embyUpdateDescription": "",
       "repositoryUrl": "",
       "copyUrl": "Kopieer URL",
       "jellyfinRepoUrl": "",
-      "embyReleasesUrl": "",
-      "openReleases": "Open releases pagina",
       "autoDetectNote": "Start Jellyfin of Emby opnieuw op na het installeren van de plugin; dit is noodzakelijk. Tracearr zelf hoeft niet opnieuw opgestart te worden en detecteert de plugin automatisch.",
-      "close": "Sluiten",
       "issueBlocked": "De server meldt dat de plugin is geïnstalleerd en actief, maar Tracearr krijgt een 404 foutmelding van het eindpunt. Een reverse proxy die het pad blokkeert is meestal de oorzaak.",
       "issueRestartRequired": "De plugin is geïnstalleerd, maar de mediaserver moet opnieuw worden opgestart voordat deze geactiveerd wordt.",
-      "issueMalfunctioned": "De server meldt dat de plugin niet geladen kon worden. Het bijwerken van de plugin of de mediaserver lost dit probleem meestal op."
+      "issueMalfunctioned": "De server meldt dat de plugin niet geladen kon worden. Het bijwerken van de plugin of de mediaserver lost dit probleem meestal op.",
+      "openReleases": "Open releases pagina"
     },
     "posterSource": {
-      "title": "Postervoorkeuren",
-      "titleDesc": "Kies van welke server de poster wordt weergegeven wanneer een titel op meer dan één server beschikbaar is",
       "label": "Voorkeursbron voor posters",
       "description": "Als een titel op meerdere servers beschikbaar is, gebruik dan de poster van die server. Als die server geen poster heeft, gebruiken we de meest recent toegevoegde versie.",
       "automatic": "Automatisch (meest recent)",
@@ -273,14 +264,13 @@
     "enableMobileAccess": "Inschakelen mobiele toegang",
     "enabling": "Inschakelen...",
     "devicesConnected": "{{current}} van {{max}} apparaten verbonden",
-    "pendingTokens": "{{count}} hangende paar tokens",
     "addDevice": "Apparaat toevoegen",
     "disableMobileAccess": "Uitschakelen mobiele toegang",
     "revokeAllSessions": "Alles intrekken",
     "pairNewDevice": "Nieuw apparaat koppelen",
     "pairNewDeviceDesc": "Scan de QR-code met de Tracearr app of voer de token handmatig in.",
     "expiresIn": "Verloopt in {{time}}",
-    "oneTimePairToken": "Eenmalige Paar Token",
+    "oneTimePairToken": "Eenmalige koppeltoken",
     "copyToken": "Kopieer token",
     "tokenExpiryNote": "Deze token verloopt in 5 minuten en kan slechts één keer worden gebruikt.",
     "done": "Voltooid",
@@ -296,7 +286,9 @@
     "removeDeviceConfirm": "Weet u zeker dat u {{deviceName}}wilt verwijderen? Dit apparaat zal opnieuw moeten koppelen om opnieuw te verbinden.",
     "externalUrlBanner": "Een reverse proxy gebruiken of toegang op afstand krijgen? Stel je in",
     "externalUrlBannerLink": "Externe URL",
-    "externalUrlBannerSuffix": "zodat de mobiele app verbinding kan maken met uw server."
+    "externalUrlBannerSuffix": "zodat de mobiele app verbinding kan maken met uw server.",
+    "pendingTokens_one": "",
+    "pendingTokens_other": "{{count}} openstaande koppeltokens"
   },
   "tailscale": {
     "title": "",
@@ -318,8 +310,6 @@
     "showLogs": "Logboeken tonen",
     "hideLogs": "Logboeken verbergen",
     "noLogs": "Geen logboekuitvoer beschikbaar.",
-    "exitNodeNone": "Geen",
-    "exitNodeOffline": "",
     "unknownError": "Er is een onbekende fout opgetreden.",
     "disableConfirmTitle": "Tailscale uitschakelen?",
     "disableConfirmDescription": "Dit zal de verbinding van Tracearr met je tailnet verbreken. Je kunt dit opnieuw inschakelen zonder autorisatie.",
@@ -363,33 +353,12 @@
     "automatic": "",
     "startJob": "Taak starten"
   },
-  "advanced": {
-    "title": "Geavanceerde instellingen",
-    "externalUrl": "Externe URL",
-    "trustProxy": "Proxy-headers vertrouwen",
-    "reverseProxy": "Reverse proxy",
-    "connectionScenarios": "Verbindingsscenario's"
-  },
   "accessControl": {
-    "title": "Toegangsbeheer",
-    "description": "",
     "allowGuestAccess": "Gasttoegang toestaan",
     "allowGuestAccessDesc": "Indien uitgeschakeld kan alleen de server eigenaar inloggen op Tracearr",
     "singleOwnerNote": "Opmerking: Wanneer gasttoegang is uitgeschakeld, kan alleen de servereigenaar inloggen. Alle andere gebruikers zien het bericht \"Toegang Geweigerd\"."
   },
   "import": {
-    "title": "Gegevens importeren",
-    "jellystat": "Importeren uit Jellystat",
-    "tautulli": "Importeren uit Tautulli",
-    "importProgress": "Importvoortgang",
-    "importComplete": "Importeren voltooid",
-    "importFailed": "Importeren mislukt",
-    "processed": "Verwerkt",
-    "page": "Pagina",
-    "imported": "Geïmporteerd",
-    "skipped": "Overgeslagen",
-    "enriched": "Verrijkt",
-    "errors": "Fouten",
     "noServers": "Geen servers verbonden",
     "noServersHint": "Je hebt minstens één verbonden server nodig om gegevens te importeren.",
     "tautulliUrl": "",
@@ -408,7 +377,7 @@
     "importing": "Importeren...",
     "startImport": "Importeren starten",
     "howItWorks": "Hoe de import werkt",
-    "howItWorksDesc": "Tracearr zal alle historische horloge gegevens uit je bron importeren. Dit kan een tijdje duren, afhankelijk van de grootte van je bibliotheek.",
+    "howItWorksDesc": "Tracearr importeert alle historische kijkgegevens uit je bron. Dit kan even duren, afhankelijk van de grootte van je bibliotheek.",
     "recordsMayBeSkipped": "Records kunnen worden overgeslagen als:",
     "selectTargetServer": "Selecteer een doelserver",
     "selectJellyfinServer": "Selecteer een Jellyfin of Emby server",
@@ -426,8 +395,6 @@
     "uploadingBackup": "Back-upbestand uploaden...",
     "plex": "Plex (zeker)",
     "jellyfinEmby": "",
-    "step1": "",
-    "step2": "",
     "apiKeyPlaceholder": "Jouw Tautulli API-sleutel",
     "skipUserNotFoundPlex": "Gebruiker niet gevonden - De Plex gebruiker bestaat niet in Tracearr. Synchroniseer eerst je server om alle gebruikers toe te voegen.",
     "skipDuplicate": "Dupliceer sessie - De sessie is al eerder geïmporteerd.",
@@ -448,10 +415,12 @@
     "serverTimezoneHelp": "De tijdzone moet overeenkomen met de tijdzone die is geconfigureerd op uw mediaserver, niet met de tijdzone van uw browser. De tijdstempels voor afspeelrapportage worden opgeslagen in de lokale servertijd.",
     "importFullRange": "Importeer volledige historie",
     "importFullRangeHelp": "",
-    "overlapSkipped": "{{count}} overgeslagen vanwege overlapping",
-    "duplicates": "{{count}} duplicaten overgeslagen",
     "skipOverlap": "Overlappende record - de tijdstempel valt binnen de periode die Tracearr al bijhoudt voor deze server. Schakel 'volledige bereikimport' in om deze mee te nemen.",
-    "skipDuplicatePlugin": "Dubbele record - reeds rechtstreeks geïmporteerd of eerder binnengekomen via een Jellystat import van dezelfde plugingegevens."
+    "skipDuplicatePlugin": "Dubbele record - reeds rechtstreeks geïmporteerd of eerder binnengekomen via een Jellystat import van dezelfde plugingegevens.",
+    "overlapSkipped_one": "",
+    "overlapSkipped_other": "{{count}} overgeslagen vanwege overlapping",
+    "duplicates_one": "",
+    "duplicates_other": "{{count}} duplicaten overgeslagen"
   },
   "plex": {
     "signInWithPlex": "Aanmelden met Plex",
@@ -463,10 +432,7 @@
     "createAccount": "Account aanmaken",
     "email": "E-mail",
     "password": "Wachtwoord",
-    "displayName": "Weergavenaam",
-    "createYourAccount": "Maak je account aan om te beginnen",
-    "signInToAccount": "Aanmelden bij je account",
-    "useLocalAccount": "Lokaal account gebruiken"
+    "displayName": "Weergavenaam"
   },
   "update": {
     "title": "Update beschikbaar",
@@ -493,8 +459,6 @@
     "earlier": "",
     "installedBadge": "",
     "latestBadge": "",
-    "changeCount_one": "",
-    "changeCount_other": "",
     "series": "",
     "docs": "",
     "source": "",
@@ -505,11 +469,15 @@
       "fix": "",
       "security": "",
       "note": ""
-    }
+    },
+    "changeCount_one": "",
+    "changeCount_other": ""
   },
   "serverHealth": {
     "unreachable": "{{serverName}} is onbereikbaar",
-    "multipleUnreachable": "{{count}} servers onbereikbaar: {{serverNames}}"
+    "tokenRejected": "",
+    "multipleUnreachable_one": "",
+    "multipleUnreachable_other": "{{count}} servers onbereikbaar: {{serverNames}}"
   },
   "ipWarning": {
     "message": "Alle gebruikers lijken hetzelfde IP-adres of een lokaal IP te gebruiken. Dit kan invloed hebben op de regellogica voor locatie of IP-adressen.",
@@ -528,9 +496,6 @@
     "lowDiskSpace": "Weinig schijfruimte — back-ups en herstelbewerkingen vereisen minstens twee keer de grootte van de database aan vrije ruimte.",
     "backupHistory": "Backup Historie",
     "noBackups": "Nog geen back-ups. Maak hierboven uw eerste back-up aan.",
-    "size": "Grootte",
-    "date": "Datum",
-    "type": "",
     "version": "Versie",
     "actions": "Acties",
     "rowActions": "",
@@ -603,7 +568,6 @@
     "noDestinationDescription": "",
     "noDestinationHint": "",
     "addEmailDestination": "",
-    "enabled": "",
     "rowActions": "",
     "duplicate": "",
     "sendNow": "",
@@ -645,7 +609,6 @@
       "link": "",
       "bulletList": "",
       "linkHref": "",
-      "linkApply": "",
       "counter": ""
     },
     "editor": {
@@ -693,10 +656,12 @@
       },
       "windowSentence": {
         "fallback": "",
-        "fallbackLabel": "",
         "fixed": "",
         "fixedAfter": "",
-        "fixedLabel": ""
+        "fallbackLabel_one": "",
+        "fallbackLabel_other": "",
+        "fixedLabel_one": "",
+        "fixedLabel_other": ""
       },
       "windowMax": "",
       "days": "",
@@ -704,14 +669,12 @@
       "allServers": "",
       "searchServers": "",
       "noServers": "",
-      "serversSelected": "",
       "variantsNote": "",
       "serversHelp": "",
       "libraries": "",
       "allLibraries": "",
       "searchLibraries": "",
       "noLibraries": "",
-      "librariesSelected": "",
       "librariesHelp": "",
       "clear": "",
       "unknownLibrary": "",
@@ -733,11 +696,16 @@
           "mostPlayed": ""
         },
         "labels": {
-          "movies": "",
-          "shows": "",
-          "seasons": "",
-          "music": "",
-          "mostWatched": ""
+          "movies_one": "",
+          "movies_other": "",
+          "shows_one": "",
+          "shows_other": "",
+          "seasons_one": "",
+          "seasons_other": "",
+          "music_one": "",
+          "music_other": "",
+          "mostWatched_one": "",
+          "mostWatched_other": ""
         },
         "musicHelp": "",
         "mostWatchedHelp": ""
@@ -745,9 +713,6 @@
       "message": "",
       "senderName": "",
       "senderNameHelp": "",
-      "senderNameRequiredMulti": "",
-      "previewVariant_one": "",
-      "previewVariant_other": "",
       "variantHeading": "",
       "subject": "",
       "subjectHelp": "",
@@ -782,10 +747,8 @@
         "loadFailed": "",
         "willReceive": "",
         "excludedCount": "",
-        "notIncludable": "",
         "noAddress": "",
         "suppressedCount": "",
-        "joinedSinceLastSend": "",
         "newSinceLastSend": "",
         "manage": "",
         "manageHelp": "",
@@ -800,7 +763,6 @@
         },
         "selectAll": "",
         "selectPerson": "",
-        "selectedCount": "",
         "excludeSelected": "",
         "includeSelected": "",
         "noMatches": "",
@@ -820,7 +782,6 @@
         "include": "",
         "includeAction": "",
         "excludedHelp": "",
-        "notIncludableHelp": "",
         "excludedAfterSave": "",
         "includedAfterSave": "",
         "reasons": {
@@ -830,7 +791,15 @@
           "noServer": ""
         },
         "emptyTitle": "",
-        "emptyDescription": ""
+        "emptyDescription": "",
+        "notIncludable_one": "",
+        "notIncludable_other": "",
+        "joinedSinceLastSend_one": "",
+        "joinedSinceLastSend_other": "",
+        "selectedCount_one": "",
+        "selectedCount_other": "",
+        "notIncludableHelp_one": "",
+        "notIncludableHelp_other": ""
       },
       "delivery": {
         "title": "",
@@ -879,13 +848,13 @@
         "fromDomain": "",
         "fromDomainFail": "",
         "fromDomainUnknown": "",
-        "recipients_one": "",
-        "recipients_other": "",
         "recipientsFail": "",
         "recipientsChecking": "",
         "recipientsLoadFailed": "",
         "dns": "",
-        "dnsLink": ""
+        "dnsLink": "",
+        "recipients_one": "",
+        "recipients_other": ""
       },
       "actions": {
         "preview": "",
@@ -930,13 +899,22 @@
       "send": {
         "title": "",
         "previewing": "",
-        "summary": "",
         "nobody": "",
-        "trimmed_one": "",
-        "trimmed_other": "",
         "confirm": "",
-        "sending": ""
-      }
+        "sending": "",
+        "summary_one": "",
+        "summary_other": "",
+        "trimmed_one": "",
+        "trimmed_other": ""
+      },
+      "serversSelected_one": "",
+      "serversSelected_other": "",
+      "librariesSelected_one": "",
+      "librariesSelected_other": "",
+      "senderNameRequiredMulti_one": "",
+      "senderNameRequiredMulti_other": "",
+      "previewVariant_one": "",
+      "previewVariant_other": ""
     },
     "history": {
       "empty": "",
@@ -948,7 +926,6 @@
         "test": ""
       },
       "window": "",
-      "recipients": "",
       "recipientsEmpty": "",
       "finished": "",
       "open": "",
@@ -961,7 +938,6 @@
         "suppressed": "",
         "unknown": ""
       },
-      "attempts": "",
       "unknownHelp": "",
       "openSnapshot": "",
       "variant": "",
@@ -969,7 +945,11 @@
       "openVariantSnapshot": "",
       "snapshotTitle": "",
       "pruned": "",
-      "retryFailed": ""
+      "retryFailed": "",
+      "recipients_one": "",
+      "recipients_other": "",
+      "attempts_one": "",
+      "attempts_other": ""
     }
   },
   "email": {
@@ -1059,7 +1039,6 @@
       "hideKey": "",
       "test": "",
       "testing": "",
-      "save": "",
       "saveHint": "",
       "match": "",
       "mismatch": "",

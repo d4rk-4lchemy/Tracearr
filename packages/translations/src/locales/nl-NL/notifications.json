@@ -10,16 +10,19 @@
         "message": "De server is succesvol verwijderd"
       },
       "serverSynced": {
-        "title": "Server gesynchroniseerd",
-        "message": "Servergegevens zijn gesynchroniseerd"
+        "title": "Server gesynchroniseerd"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "Instellingen bijgewerkt",
         "message": "Je instellingen zijn opgeslagen"
-      },
-      "tokenCopied": {
-        "title": "Token gekopieerd",
-        "message": "Koppeltoken gekopieerd naar klembord"
       },
       "violationAcknowledged": {
         "title": "Overtreding bevestigd",
@@ -38,19 +41,11 @@
         "message": "De apparaatnaam is bijgewerkt"
       },
       "sessionsRevoked": {
-        "title": "Sessies ingetrokken",
-        "message": "Alle mobiele sessies zijn ingetrokken"
+        "title": "Sessies ingetrokken"
       },
       "loggedIn": {
         "title": "Geslaagd",
         "message": "Succesvol aangemeld"
-      },
-      "webhookTest": {
-        "title": "Test geslaagd",
-        "message": "Webhook werkt correct"
-      },
-      "copiedToClipboard": {
-        "title": "Gekopieerd naar klembord"
       },
       "plexAccountLinked": {
         "title": "Plex-account gekoppeld",
@@ -62,27 +57,14 @@
       },
       "plexAccountReauthorized": {
         "title": "Plex account opnieuw geautoriseerd",
-        "message_one": "{{count}} server opnieuw verbonden",
-        "message_other": "{{count}} servers hebben opnieuw verbinding gemaakt",
         "messageNoServers": "Accounttoken bijgewerkt",
         "partial": "Token bijgewerkt, maar {{names}} weigerde het nog steeds",
-        "unmatched": "Token bijgewerkt, maar {{names}} kon niet opnieuw gekoppeld worden"
-      },
-      "agentAdded": {
-        "title": "Agent toegevoegd",
-        "message": "De meldings-agent is toegevoegd"
-      },
-      "agentUpdated": {
-        "title": "Agent bijgewerkt",
-        "message": "De meldings-agent is bijgewerkt"
-      },
-      "agentRemoved": {
-        "title": "Agent verwijderd",
-        "message": "De meldings-agent is verwijderd"
+        "unmatched": "Token bijgewerkt, maar {{names}} kon niet opnieuw gekoppeld worden",
+        "message_one": "{{count}} server opnieuw verbonden",
+        "message_other": "{{count}} servers hebben opnieuw verbinding gemaakt"
       },
       "jobCompleted": {
-        "title": "Taak voltooid",
-        "message": "{{name}} is succesvol voltooid"
+        "title": "Taak voltooid"
       },
       "automationCreated": {
         "title": "Automatisering gemaakt",
@@ -175,21 +157,22 @@
       "newsletterDuplicated": "",
       "newsletterTestQueued": "",
       "newsletterSendQueued": "",
-      "newsletterRetryQueued": "",
       "brandingSaved": "",
       "suppressionAdded": "",
-      "suppressionRemoved": ""
+      "suppressionRemoved": "",
+      "newsletterRetryQueued_one": "",
+      "newsletterRetryQueued_other": ""
     },
     "error": {
       "serverAddFailed": "Server toevoegen mislukt",
       "serverRemoveFailed": "Server verwijderen mislukt",
       "serverSyncFailed": "Server synchroniseren mislukt",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Instellingen bijwerken mislukt",
       "copyFailed": "Kopiëren naar klembord mislukt",
       "acknowledgeFailed": "Overtreding bevestigen mislukt",
       "dismissFailed": "Overtreding negeren mislukt",
       "authFailed": "Authenticatie mislukt",
-      "webhookTestFailed": "Webhook-test mislukt",
       "automationCreateFailed": "Automatisering aanmaken is mislukt",
       "automationUpdateFailed": "Automatisering bijwerken is mislukt",
       "automationDeleteFailed": "Automatisering verwijderen is mislukt",
@@ -208,14 +191,8 @@
       "sessionsRevokeFailed": "Sessies intrekken mislukt",
       "identityUpdateFailed": "",
       "trustScoresResetFailed": "Vertrouwensscores herstellen mislukt",
-      "routingUpdateFailed": "Routering bijwerken mislukt",
-      "clipboardFailed": "Kopiëren naar klembord mislukt",
       "plexUnlinkFailed": "Ontkoppelen Plex-account mislukt",
       "plexReauthorizeFailed": "Het opnieuw autoriseren van het Plex account is mislukt",
-      "agentAddFailed": "Agent toevoegen mislukt",
-      "agentUpdateFailed": "Agent bijwerken mislukt",
-      "agentRemoveFailed": "Agent verwijderen mislukt",
-      "agentTestFailed": "Test mislukt",
       "jobAlreadyRunning": "Taak wordt al uitgevoerd",
       "jobStartFailed": "Taak starten mislukt",
       "jobLoadFailed": "Onderhoudstaken laden mislukt",
@@ -248,8 +225,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "Taak mislukt",
-        "message": "{{name}} heeft een fout ondervonden"
+        "title": "Taak mislukt"
       }
     },
     "info": {
@@ -263,43 +239,23 @@
       }
     }
   },
-  "push": {
-    "violationDetected": "Deelovertreding gedetecteerd",
-    "streamStarted": "Stream gestart",
-    "streamEnded": "Stream geëindigd",
-    "serverDown": "Serververbinding verbroken",
-    "serverUp": "Server weer online",
-    "newDevice": "Nieuw apparaat",
-    "trustScoreChanged": "Vertrouwensscore gewijzigd"
-  },
   "settings": {
-    "title": "Meldingsinstellingen",
     "allSeverity": "Alle (laag, waarschuwing, hoog)",
     "warningAndHigh": "Alleen waarschuwing & hoog",
     "highOnly": "Alleen hoge ernst",
-    "allTypes": "Alle types",
     "rateLimit": "Huidige status aanvraaglimiet",
     "perMinute": "Per minuut",
     "perHour": "Per uur",
     "enablePushNotifications": "Pushmeldingen inschakelen",
     "notificationEvents": "Meldingsgebeurtenissen",
     "violationDetected": "Overtreding gedetecteerd",
-    "violationDetectedDesc": "Wanneer een overtreding bij delen wordt geactiveerd",
     "streamStarted": "Stream gestart",
-    "streamStartedDesc": "Wanneer een gebruiker begint te kijken",
     "streamStopped": "Stream gestopt",
-    "streamStoppedDesc": "Wanneer een gebruiker stopt met kijken",
     "concurrentStreams": "Gelijktijdige streams",
-    "concurrentStreamsDesc": "Wanneer de max stream limiet is overschreden",
     "newDevice": "Nieuw apparaat",
-    "newDeviceDesc": "Wanneer een nieuw apparaat verbinding maakt",
     "trustScoreChanged": "Vertrouwensscore gewijzigd",
-    "trustScoreChangedDesc": "Wanneer een gebruiker vertrouwt op score verandert",
     "serverDown": "Server offline",
-    "serverDownDesc": "Wanneer een mediaserver offline gaat",
     "serverUp": "Server online",
-    "serverUpDesc": "Wanneer een mediaserver weer online komt",
-    "violationFilters": "Overtredingsfilters",
     "minimumSeverity": "Minimale ernst",
     "quietHours": "Stille uren",
     "enableQuietHours": "Stille uren inschakelen",

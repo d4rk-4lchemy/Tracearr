@@ -4,6 +4,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { _registerLocaleLoader } from './language.js';
+import { withPluralFallbacks } from './plurals.js';
 
 // ============================================================================
 // English (base language)
@@ -571,7 +572,7 @@ export async function loadLocale(lang: string): Promise<void> {
   if (!bundles) return;
 
   for (const [ns, data] of Object.entries(bundles)) {
-    i18n.addResourceBundle(lang, ns, data, true, true);
+    i18n.addResourceBundle(lang, ns, withPluralFallbacks(lang, data), true, true);
   }
   loadedLocales.add(lang);
 }

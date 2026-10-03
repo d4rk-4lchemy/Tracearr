@@ -9,7 +9,12 @@
 import { Expo, type ExpoPushMessage, type ExpoPushTicket } from 'expo-server-sdk';
 import { eq, isNotNull } from 'drizzle-orm';
 import type { ViolationWithDetails, ActiveSession } from '@tracearr/shared';
-import { SEVERITY_LEVELS, getSeverityPriority, formatEpisodeLabel } from '@tracearr/shared';
+import {
+  SEVERITY_LEVELS,
+  getSeverityPriority,
+  formatEpisodeLabel,
+  fitText,
+} from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { mobileSessions, notificationPreferences, serverUsers } from '../db/schema.js';
 import { getCacheService } from './cache.js';
@@ -20,6 +25,10 @@ import { getNetworkSettings } from '../routes/settings.js';
 import { buildPushPosterUrl, buildPushAvatarUrl, buildLogoUrl } from './imageProxy.js';
 import { hashSha256 } from '../utils/hash.js';
 import type { NewDevicePayload, TrustChangedPayload } from './notifications/events.js';
+
+const PUSH_PAYLOAD_BYTES = 4096;
+const encoder = new TextEncoder();
+const jsonBytes = (value: unknown): number => encoder.encode(JSON.stringify(value)).length;
 
 // Initialize Expo SDK
 const expo = new Expo();
@@ -121,7 +130,7 @@ interface SessionWithPrefs {
  * Encrypts the data payload if deviceSecret is provided
  * Supports rich notifications with subtitle and image
  */
-function buildPushMessage(
+export function buildPushMessage(
   token: string,
   deviceSecret: string | null,
   notification: {
@@ -171,6 +180,18 @@ function buildPushMessage(
     (message as ExpoPushMessage & { richContent?: { image: string } }).richContent = {
       image: notification.imageUrl,
     };
+  }
+
+  // Expo rejects a message over 4096 bytes as MessageTooBig, which only surfaces in a log.
+  // JSON escaping can cost more than the UTF-8 bytes, so cut until the whole thing fits.
+  let over = jsonBytes(message) - PUSH_PAYLOAD_BYTES;
+  while (over > 0 && message.body) {
+    message.body = fitText(message.body, {
+      max: Math.max(encoder.encode(message.body).length - over, 0),
+      unit: 'bytes',
+    });
+    over = jsonBytes(message) - PUSH_PAYLOAD_BYTES;
+    if (message.body === '…') break;
   }
 
   return message;

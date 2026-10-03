@@ -58,6 +58,7 @@ const baseFilterParams = {
   libraryServerId: null,
   libraryId: null,
   hdr: false,
+  atmos: false,
   sizeGbMin: null,
   sizeGbMax: null,
   serverIds: undefined,
@@ -175,6 +176,7 @@ describe('buildCatalogPageQuery', () => {
         libraryServerId: null,
         libraryId: null,
         hdr: false,
+        atmos: false,
         sizeGbMin: null,
         sizeGbMax: null,
         serverIds: undefined,
@@ -203,6 +205,7 @@ describe('buildCatalogPageQuery', () => {
         libraryServerId: serverId,
         libraryId: 'lib-1',
         hdr: true,
+        atmos: false,
         sizeGbMin: 5,
         sizeGbMax: 50,
         pageSize: 60,
@@ -232,6 +235,7 @@ describe('buildCatalogPageQuery', () => {
         ...baseFilterParams,
         resolution: '4k',
         hdr: true,
+        atmos: false,
         sizeGbMin: 5,
         sizeGbMax: 50,
         pageSize: 60,
@@ -248,6 +252,23 @@ describe('buildCatalogPageQuery', () => {
     expect(text).not.toContain('liv.library_item_id');
     expect(params).toContain(5 * 1024 ** 3);
     expect(params).toContain(50 * 1024 ** 3);
+  });
+
+  it('show Atmos filter checks audio_atmos on episode versions', () => {
+    const { sql } = renderSql(
+      buildCatalogPageQuery({
+        type: 'show',
+        sort: 'title',
+        offset: 0,
+        ...baseFilterParams,
+        atmos: true,
+        pageSize: 60,
+      })
+    );
+    const text = normalize(sql);
+    expect(text).toContain('em.show_media_id = m.id');
+    expect(text).toContain('AND v.audio_atmos');
+    expect(text).not.toContain('liva.audio_atmos');
   });
 
   it('show pages decorate copies with episode-derived resolution and size', () => {
@@ -382,6 +403,7 @@ describe('buildLetterCountsQuery', () => {
         libraryServerId: null,
         libraryId: null,
         hdr: false,
+        atmos: false,
         sizeGbMin: null,
         sizeGbMax: null,
         serverIds: undefined,
@@ -770,6 +792,22 @@ describe('GET /library/catalog', () => {
       expect.arrayContaining([serverId, 'lib-1', 1 * 1024 ** 3, 20 * 1024 ** 3])
     );
     expect(normalize(pageCall!.sql)).toContain("livh.video_dynamic_range <> 'sdr'");
+  });
+
+  it('filters to copies with Atmos', async () => {
+    app = await buildTestApp(createOwnerUser());
+    dbExecute.mockImplementation(
+      dispatchBySql([
+        { match: isTotalsQuery, rows: [{ total_items: '0', total_file_size: '0' }] },
+      ]) as never
+    );
+
+    await app.inject({ method: 'GET', url: '/library/catalog?type=movie&atmos=true' });
+
+    const pageCall = dbExecute.mock.calls
+      .map((call) => renderSql(call[0] as never))
+      .find(({ sql }) => isPageQuery(normalize(sql)));
+    expect(normalize(pageCall!.sql)).toContain('liva.audio_atmos');
   });
 
   it('a punctuation-only search binds no search param instead of an empty-string LIKE', async () => {

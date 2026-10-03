@@ -12,6 +12,7 @@ import sensible from '@fastify/sensible';
 import cookie from '@fastify/cookie';
 import jwt from '@fastify/jwt';
 import { randomUUID } from 'node:crypto';
+import type { SQL } from 'drizzle-orm';
 import type { AuthUser } from '@tracearr/shared';
 
 // Mock dependencies before imports
@@ -20,8 +21,14 @@ vi.mock('../../../db/client.js', () => ({
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
+    delete: vi.fn(),
     transaction: vi.fn(),
   },
+}));
+
+vi.mock('../../../jobs/poller/database.js', () => ({
+  invalidateServersCache: vi.fn(),
+  publishServersChanged: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../../services/plexAccounts.js', () => ({
@@ -71,6 +78,10 @@ vi.mock('../../../services/sync.js', () => ({
   syncServer: vi.fn(),
 }));
 
+vi.mock('../../../jobs/librarySyncQueue.js', () => ({
+  rebuildAutoSyncSchedules: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../../services/userService.js', () => ({
   getUserById: vi.fn(),
   getOwnerUser: vi.fn(),
@@ -91,10 +102,13 @@ import { db } from '../../../db/client.js';
 import { getUserById } from '../../../services/userService.js';
 import { PlexClient } from '../../../services/mediaServer/index.js';
 import { syncServer } from '../../../services/sync.js';
+import { rebuildAutoSyncSchedules } from '../../../jobs/librarySyncQueue.js';
+import { publishServersChanged } from '../../../jobs/poller/database.js';
+import { renderSql } from '../../../test/helpers.js';
 import { reconcilePlexAccountToken } from '../../../services/plexAccounts.js';
 import { sseManager } from '../../../services/sseManager.js';
 import { isClaimCodeEnabled, validateClaimCode } from '../../../utils/claimCode.js';
-import { plexRoutes } from '../plex.js';
+import { plexRoutes, resolvePlexToken } from '../plex.js';
 
 // Mock global fetch for connection testing
 const mockFetch = vi.fn();
@@ -537,6 +551,8 @@ describe('Plex Auth Routes', () => {
       // Mock insert
       const insertChain = mockDbInsert([newServer]);
 
+      vi.mocked(rebuildAutoSyncSchedules).mockResolvedValue(undefined);
+
       // Mock sync
       vi.mocked(syncServer).mockResolvedValue({
         usersAdded: 5,
@@ -562,6 +578,7 @@ describe('Plex Auth Routes', () => {
       const body = response.json();
       expect(body.server.id).toBe(newServerId);
       expect(body.success).toBe(true);
+      expect(rebuildAutoSyncSchedules).toHaveBeenCalledTimes(1);
 
       // The resolved account owns the new row: its token and its id, not a
       // token copied off some other server with no account attribution.
@@ -775,6 +792,7 @@ describe('Plex Auth Routes', () => {
       const selectMock = {
         from: vi.fn().mockReturnThis(),
         where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
         limit: vi.fn().mockResolvedValueOnce([{ token: 'fallback-tok' }]),
       };
       vi.mocked(db.select).mockReturnValue(selectMock as never);
@@ -911,6 +929,36 @@ describe('Plex Auth Routes', () => {
       expect(body.server.connections[0].port).toBe(9999);
     });
 
+    it('answers 409 for a historical server without contacting plex.tv or the server', async () => {
+      app = await buildTestApp(ownerUser);
+      const serverId = randomUUID();
+      const selectMock = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([
+          {
+            id: serverId,
+            token: 'srv-tok',
+            name: 'Old',
+            url: 'http://192.168.1.100:32400',
+            machineIdentifier: 'mid-abc',
+            historicalAt: new Date('2026-09-01T12:00:00.000Z'),
+          },
+        ]),
+      };
+      vi.mocked(db.select).mockReturnValue(selectMock as never);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/plex/server-connections/${serverId}`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().message).toBe('Resume this server to change its address or key');
+      expect(PlexClient.getServers).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
     it('does NOT inject when saved URL matches a plex.tv connection', async () => {
       app = await buildTestApp(ownerUser);
 
@@ -966,6 +1014,7 @@ describe('Plex Auth Routes', () => {
       id: randomUUID(),
       name: 'Linked Server',
       url: 'http://192.168.1.100:32400',
+      historicalAt: null,
       status: 'refreshed' as const,
     };
 
@@ -1076,6 +1125,30 @@ describe('Plex Auth Routes', () => {
       ]);
     });
 
+    it('repoints a historical server without verifying it', async () => {
+      app = await buildTestApp(ownerUser);
+      vi.mocked(getUserById).mockResolvedValue(mockDbUser as never);
+      mockAccountLookup();
+      vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(freshPin);
+      vi.mocked(reconcilePlexAccountToken).mockResolvedValue({
+        reconciled: [{ ...linkedServer, historicalAt: new Date('2026-09-01T00:00:00Z') }],
+        unmatched: [],
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/plex/accounts/${mockLinkedAccount.id}/reauthorize`,
+        payload: { pin: '12345' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(PlexClient.verifyServerAdmin).not.toHaveBeenCalled();
+      expect(response.json().servers).toEqual([
+        { id: linkedServer.id, name: linkedServer.name, status: 'refreshed', ok: true },
+      ]);
+      expect(response.json().account).toMatchObject({ serverCount: 1, liveServerCount: 1 });
+    });
+
     it('reports a server that still refuses the new token', async () => {
       app = await buildTestApp(ownerUser);
       vi.mocked(getUserById).mockResolvedValue(mockDbUser as never);
@@ -1123,6 +1196,84 @@ describe('Plex Auth Routes', () => {
       ]);
       // Nothing was written, so there is no stale connection to rebuild
       expect(sseManager.refresh).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolvePlexToken', () => {
+    it('falls back to the oldest live Plex server only', async () => {
+      const chain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([{ token: 'server-tok' }]),
+      };
+      vi.mocked(db.select).mockReturnValue(chain as never);
+
+      const source = await resolvePlexToken(ownerId);
+
+      expect(source).toEqual({ kind: 'server', token: 'server-tok' });
+      const rendered = renderSql(chain.where.mock.calls[1]?.[0] as SQL);
+      expect(rendered.sql).toContain('servers.historical_at is null');
+      expect(rendered.params).toContain('plex');
+    });
+  });
+
+  describe('DELETE /plex/accounts/:id', () => {
+    const noLogin = { ...mockLinkedAccount, allowLogin: false };
+
+    function mockUnlinkQueries(liveCount: number) {
+      const selectMock = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockImplementation(() =>
+          Object.assign(Promise.resolve([{ count: liveCount }]), {
+            limit: vi.fn().mockResolvedValue([noLogin]),
+          })
+        ),
+      };
+      vi.mocked(db.select).mockReturnValue(selectMock as never);
+      const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+      vi.mocked(db.update).mockReturnValue({ set: setMock } as never);
+      vi.mocked(db.delete).mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      } as never);
+      return { selectMock, setMock };
+    }
+
+    it('unlinks once every server through the account is historical, and frees those rows', async () => {
+      app = await buildTestApp(ownerUser);
+      vi.mocked(getUserById).mockResolvedValue(mockDbUser as never);
+      const { selectMock, setMock } = mockUnlinkQueries(0);
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/plex/accounts/${mockLinkedAccount.id}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(renderSql(selectMock.where.mock.calls[1]?.[0] as SQL).sql).toContain(
+        'servers.historical_at is null'
+      );
+      expect(setMock).toHaveBeenCalledWith({ plexAccountId: null });
+      expect(db.delete).toHaveBeenCalled();
+      expect(publishServersChanged).toHaveBeenCalled();
+    });
+
+    it('still refuses while a live server uses the account', async () => {
+      app = await buildTestApp(ownerUser);
+      vi.mocked(getUserById).mockResolvedValue(mockDbUser as never);
+      mockUnlinkQueries(2);
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/plex/accounts/${mockLinkedAccount.id}`,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().message).toContain('2 live server(s)');
+      expect(db.delete).not.toHaveBeenCalled();
     });
   });
 });

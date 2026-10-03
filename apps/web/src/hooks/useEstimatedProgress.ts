@@ -27,7 +27,7 @@ function getEstimatedProgressMs(session: ActiveSession): number {
  * src/hooks/useEstimatedProgress.ts). Keep both files in sync when making changes.
  *
  * When state is "playing", progress increments every second based on elapsed time.
- * When state is "paused" or "stopped", progress stays at last known value.
+ * When state is "paused" or "stopped", or the client is buffering, progress stays at last known value.
  *
  * Resets estimation when:
  * - Session ID changes
@@ -38,7 +38,9 @@ function getEstimatedProgressMs(session: ActiveSession): number {
  * @returns Object with estimated progressMs and progress percentage
  */
 export function useEstimatedProgress(session: ActiveSession) {
-  const [estimatedProgressMs, setEstimatedProgressMs] = useState(() => getEstimatedProgressMs(session));
+  const [estimatedProgressMs, setEstimatedProgressMs] = useState(() =>
+    getEstimatedProgressMs(session)
+  );
 
   // Track the last known server values to detect changes
   const lastServerProgress = useRef(session.progressMs);
@@ -63,15 +65,20 @@ export function useEstimatedProgress(session: ActiveSession) {
       lastProgressUpdatedAt.current = session.progressUpdatedAt;
       lastSessionId.current = session.id;
       lastState.current = session.state;
-      estimationStartTime.current =
-        parseTimestampMs(session.progressUpdatedAt) ?? Date.now();
+      estimationStartTime.current = parseTimestampMs(session.progressUpdatedAt) ?? Date.now();
       estimationStartProgress.current = session.progressMs ?? 0;
     }
-  }, [session.id, session.progressMs, session.progressUpdatedAt, session.state, session.totalDurationMs]);
+  }, [
+    session.id,
+    session.progressMs,
+    session.progressUpdatedAt,
+    session.state,
+    session.totalDurationMs,
+  ]);
 
   // Tick progress when playing
   useEffect(() => {
-    if (session.state !== 'playing') {
+    if (session.state !== 'playing' || session.buffering) {
       return;
     }
 
@@ -87,7 +94,14 @@ export function useEstimatedProgress(session: ActiveSession) {
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [session.id, session.progressMs, session.progressUpdatedAt, session.state, session.totalDurationMs]);
+  }, [
+    session.id,
+    session.progressMs,
+    session.progressUpdatedAt,
+    session.state,
+    session.buffering,
+    session.totalDurationMs,
+  ]);
 
   // Calculate percentage
   const progressPercent = session.totalDurationMs

@@ -23,9 +23,6 @@ import {
   Play,
   Pause,
   Square,
-  MonitorPlay,
-  Zap,
-  Cpu,
   Globe,
   Eye,
   Server,
@@ -38,19 +35,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Clapperboard,
+  Subtitles,
 } from 'lucide-react';
 import { cn, getCountryName, getMediaDisplay, getSessionProgress } from '@/lib/utils';
 import { imageProxyUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/formatters';
+import { playbackBadge } from '@/lib/playbackBadge';
 import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { StreamDetailsPanel } from './StreamDetailsPanel';
 
-import {
-  PLAYBACK_DECISION_LABEL_KEYS,
-  POSTER_IMAGE_SIZE,
-  playbackDecision,
-} from '@tracearr/shared';
+import { PLAYBACK_DECISION_LABEL_KEYS, POSTER_IMAGE_SIZE } from '@tracearr/shared';
 import type {
   SessionWithDetails,
   ActiveSession,
@@ -537,43 +532,42 @@ function SessionContent({ session }: { session: SessionWithDetails | ActiveSessi
           icon={Gauge}
           title="Stream Details"
           badge={(() => {
-            const isHwTranscode =
-              session.isTranscode &&
-              !!(session.transcodeInfo?.hwEncoding || session.transcodeInfo?.hwDecoding);
-            const TranscodeIcon = isHwTranscode ? Cpu : Zap;
+            const { decision, Icon, variant, isBurnIn } = playbackBadge(session);
+            const content = (
+              <>
+                <Icon className="h-3 w-3" />
+                {t(PLAYBACK_DECISION_LABEL_KEYS[decision])}
+              </>
+            );
 
-            if (session.isTranscode) {
-              return (
-                <Badge variant="warning" className="gap-1 text-xs">
-                  {hasTranscodeReason ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="flex items-center gap-1">
-                            <TranscodeIcon className="h-3 w-3" />
-                            {t(PLAYBACK_DECISION_LABEL_KEYS.transcode)}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-xs text-left">
-                          <span className="text-[11px]">{transcodeReasonText}</span>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
-                    <>
-                      <TranscodeIcon className="h-3 w-3" />
-                      {t(PLAYBACK_DECISION_LABEL_KEYS.transcode)}
-                    </>
-                  )}
-                </Badge>
-              );
-            }
-
-            return (
-              <Badge variant="success" className="gap-1 text-xs">
-                <MonitorPlay className="h-3 w-3" />
-                {t(PLAYBACK_DECISION_LABEL_KEYS[playbackDecision(session)])}
+            const decisionBadge = (
+              <Badge variant={variant} className="gap-1 text-xs">
+                {session.isTranscode && hasTranscodeReason ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center gap-1">{content}</span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs text-left">
+                        <span className="text-[11px]">{transcodeReasonText}</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  content
+                )}
               </Badge>
+            );
+
+            if (!isBurnIn) return decisionBadge;
+            return (
+              <span className="flex items-center gap-1">
+                {decisionBadge}
+                <Badge variant="warning" className="gap-1 text-xs">
+                  <Subtitles className="h-3 w-3" />
+                  {t('playback.burnIn')}
+                </Badge>
+              </span>
             );
           })()}
         >

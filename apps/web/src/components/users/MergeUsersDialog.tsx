@@ -226,7 +226,7 @@ function CandidatePanel({
   matchedEmail: string | null;
   kept: boolean;
 }) {
-  const { t } = useTranslation(['pages']);
+  const { t } = useTranslation(['pages', 'common']);
   const labelId = useId();
   const activity = candidate.lastActivityAt
     ? t('pages:users.mergeLastActive', {
@@ -267,7 +267,7 @@ function CandidatePanel({
       <p className="text-muted-foreground text-xs">
         {activity}
         {candidate.sessionCount !== undefined &&
-          ` · ${t('pages:users.mergeSessions', { count: candidate.sessionCount })}`}
+          ` · ${t('common:count.session', { count: candidate.sessionCount })}`}
       </p>
     </section>
   );

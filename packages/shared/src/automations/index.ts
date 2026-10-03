@@ -5,3 +5,5 @@ export * from './definition.js';
 export * from './dryRun.js';
 export * from './templates.js';
 export * from './share.js';
+export * from './template.js';
+export * from './samples.js';

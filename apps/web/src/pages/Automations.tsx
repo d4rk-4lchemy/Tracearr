@@ -47,6 +47,7 @@ import {
 import { useAutomationFilterOptions } from '@/hooks/queries/useHistory';
 import { useRowSelection } from '@/hooks/useRowSelection';
 import { useServer } from '@/hooks/useServer';
+import { liveFirst } from '@/lib/servers';
 import {
   automationIcon,
   describeAutomation,
@@ -120,7 +121,12 @@ export function Automations() {
         // Undefined until the servers land, so a deep-linked server survives the first render.
         options:
           servers.length > 0
-            ? servers.map((server) => ({ value: server.id, label: server.name }))
+            ? liveFirst(servers).map((server) => ({
+                value: server.id,
+                label: server.historicalAt
+                  ? `${server.name} (${t('common:serverSelector.historical')})`
+                  : server.name,
+              }))
             : undefined,
       },
       {

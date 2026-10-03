@@ -124,6 +124,7 @@ export interface BuildActiveSessionInput {
     /** Plex Session.id - required for termination (some clients like Plexamp may not have this) */
     plexSessionId?: string;
     state: 'playing' | 'paused';
+    buffering?: boolean;
     mediaType: 'movie' | 'episode' | 'track' | 'live' | 'photo' | 'unknown';
     mediaTitle: string;
     grandparentTitle: string;
@@ -206,6 +207,7 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
 
     // State (can be overridden for updates)
     state: overrides?.state ?? processed.state,
+    buffering: processed.buffering,
 
     // Media metadata
     mediaType: processed.mediaType,
@@ -332,6 +334,7 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
 
     // State
     state: pendingData.currentState,
+    buffering: processed.buffering,
 
     // Progress timestamps remain meaningful before pending playback is confirmed.
     progressUpdatedAt: new Date(),

@@ -68,7 +68,7 @@ vi.mock('../imageProxy.js', () => ({
 }));
 
 import { hashSha256 } from '../../utils/hash.js';
-import { pushNotificationService } from '../pushNotification.js';
+import { buildPushMessage, pushNotificationService } from '../pushNotification.js';
 
 const SERVER_ID = '0b9f6a52-5c1e-4a63-9d0e-2f4f4d1c7a10';
 const SERVER_USER_ID = '7d1c3e88-91a4-4f0b-8a55-c3b2e6f9d421';
@@ -245,5 +245,17 @@ describe('silent sessions sync', () => {
       to: 'ExponentPushToken[ios-1]',
       data: { type: 'data_sync', syncType: 'sessions' },
     });
+  });
+});
+
+describe('buildPushMessage size', () => {
+  it('cuts the body so the whole message fits in 4096 bytes', () => {
+    const message = buildPushMessage('ExponentPushToken[x]', null, {
+      title: 'Title',
+      body: '😀'.repeat(1024),
+      data: { type: 'test' },
+    });
+    expect(new TextEncoder().encode(JSON.stringify(message)).length).toBeLessThanOrEqual(4096);
+    expect(message.body?.endsWith('…')).toBe(true);
   });
 });

@@ -25,6 +25,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '@tracearr/shared';
+import type { SQL } from 'drizzle-orm';
 
 // Mock the database module
 vi.mock('../../db/client.js', () => ({
@@ -61,6 +62,7 @@ vi.mock('../../lib/auth.js', () => ({
 
 // Import mocked db, routes, termination service, websocket, and settings
 import { db } from '../../db/client.js';
+import { renderSql } from '../../test/helpers.js';
 import { getAuth } from '../../lib/auth.js';
 import { mobileRoutes } from '../mobile.js';
 import { terminateSession } from '../../services/termination.js';
@@ -948,6 +950,9 @@ describe('Mobile Routes', () => {
       // Mock transaction with call tracking for different query patterns
       const mockOwner = { id: randomUUID(), username: 'owner', role: 'owner' };
       const mockServerId = randomUUID();
+      const serverOrderBy = vi
+        .fn()
+        .mockResolvedValue([{ id: mockServerId, name: 'MyServer', type: 'plex' }]);
       vi.mocked(db.transaction).mockImplementation(async (callback) => {
         let txSelectCallCount = 0;
         const tx = {
@@ -956,14 +961,9 @@ describe('Mobile Routes', () => {
             txSelectCallCount++;
             // Call 1: mobileTokens lookup with .where().for().limit()
             // Call 2: users lookup with .where().limit()
-            // Call 3: servers lookup (id, type) - awaited directly, no .where() or .limit()
+            // Call 3: servers lookup (id, type) - ends at .orderBy()
             if (txSelectCallCount === 3) {
-              // tx.select({ id, type }).from(servers) - awaited directly
-              return {
-                from: vi
-                  .fn()
-                  .mockResolvedValue([{ id: mockServerId, name: 'MyServer', type: 'plex' }]),
-              };
+              return { from: vi.fn().mockReturnValue({ orderBy: serverOrderBy }) };
             }
             return {
               from: vi.fn().mockImplementation(() => ({
@@ -1006,6 +1006,9 @@ describe('Mobile Routes', () => {
       expect(body.server.name).toBe('Tracearr');
       expect(body.server.type).toBe('plex');
       expect(body.user.role).toBe('owner');
+      expect(renderSql(serverOrderBy.mock.calls[0]?.[0] as SQL).sql).toBe(
+        'servers.historical_at IS NULL desc'
+      );
     });
 
     it('rejects invalid token prefix', async () => {
@@ -1278,9 +1281,11 @@ describe('Mobile Routes', () => {
             txSelectCallCount++;
             if (txSelectCallCount === 3) {
               return {
-                from: vi
-                  .fn()
-                  .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                from: vi.fn().mockReturnValue({
+                  orderBy: vi
+                    .fn()
+                    .mockResolvedValue([{ id: mockServerId, name: 'Server', type: 'plex' }]),
+                }),
               };
             }
             return {
@@ -1725,6 +1730,36 @@ describe('Mobile Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.success).toBe(true);
+    });
+
+    it('returns 409 with the resume message when the server is historical', async () => {
+      app = await buildTestApp({ ...createMobileUser(), serverIds: [serverId] });
+
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi
+              .fn()
+              .mockResolvedValue([
+                { id: sessionId, serverId, serverUserId: randomUUID(), state: 'playing' },
+              ]),
+          }),
+        }),
+      } as never);
+      vi.mocked(terminateSession).mockResolvedValue({
+        success: false,
+        error: 'Server is historical',
+        outcome: 'server_historical',
+      } as never);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/mobile/streams/${sessionId}/terminate`,
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().message).toBe('Resume this server to end its streams');
     });
 
     it('returns 403 for viewer trying to terminate', async () => {

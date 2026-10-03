@@ -76,7 +76,7 @@ export function NewsletterRow({
           checked={newsletter.enabled}
           onCheckedChange={onToggle}
           disabled={toggling}
-          aria-label={t('newsletters.enabled')}
+          aria-label={t('common:states.enabled')}
         />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

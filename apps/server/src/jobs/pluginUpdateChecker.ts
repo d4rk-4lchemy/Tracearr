@@ -4,9 +4,8 @@ import type { PluginFamily } from '@tracearr/shared';
 import { startPeriodic, type PeriodicTimers } from '../utils/periodic.js';
 import { sseManager } from '../services/sseManager.js';
 import { getSettings } from '../services/settings.js';
+import { liveServers } from '../services/liveServers.js';
 import { dispatchPluginUpdate } from '../services/automations/events/producers.js';
-import { db } from '../db/client.js';
-import { servers } from '../db/schema.js';
 
 const DEFAULT_MANIFEST_URL =
   'https://raw.githubusercontent.com/Tracearr/Media-Server-SSE/main/manifest.json';
@@ -104,7 +103,7 @@ export async function runPluginUpdateCheck(): Promise<void> {
 
     if (targets.length === 0) return;
 
-    const allServers = await db.select().from(servers);
+    const allServers = await liveServers();
     for (const server of allServers) {
       if (server.type === 'plex') continue;
       if (sseManager.isInFallback(server.id)) continue;

@@ -21,7 +21,7 @@ export function ServerLocationEditor({
   syncPending: boolean;
   error: string | null;
 }) {
-  const { t } = useTranslation('settings');
+  const { t } = useTranslation(['settings', 'common']);
   const update = (key: string, patch: Partial<LocationDraft>) =>
     onChange(drafts.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
 
@@ -56,7 +56,7 @@ export function ServerLocationEditor({
               onClick={() => onChange(drafts.filter((d) => d.key !== draft.key))}
             >
               <Trash2 />
-              {t('servers.location.remove')}
+              {t('common:actions.remove')}
             </Button>
           </div>
 

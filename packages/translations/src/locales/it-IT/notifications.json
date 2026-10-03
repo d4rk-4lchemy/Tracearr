@@ -10,24 +10,27 @@
         "message": "Il server è stato rimosso con successo"
       },
       "serverSynced": {
-        "title": "Server Sincronizzato",
-        "message": "I dati del server sono stati sincronizzati"
+        "title": "Server Sincronizzato"
+      },
+      "serverMarkedHistorical": {
+        "title": "",
+        "message": ""
+      },
+      "serverResumed": {
+        "title": "",
+        "message": ""
       },
       "settingsUpdated": {
         "title": "Impostazioni Aggiornate",
         "message": "Le tue impostazioni sono state salvate"
-      },
-      "tokenCopied": {
-        "title": "Token Copiato",
-        "message": "Token di coppia copiato negli appunti"
       },
       "violationAcknowledged": {
         "title": "Violazione Riconosciuta",
         "message": "La violazione è stata contrassegnata come riconosciuta"
       },
       "violationDismissed": {
-        "title": "Violazione Respinta",
-        "message": "La violazione è stata respinta"
+        "title": "Violazione Ignorata",
+        "message": "La violazione è stata ignorata"
       },
       "deviceRemoved": {
         "title": "Dispositivo Rimosso",
@@ -38,19 +41,11 @@
         "message": "Il nome del dispositivo è stato aggiornato"
       },
       "sessionsRevoked": {
-        "title": "Sessioni Revocate",
-        "message": "Tutte le sessioni mobili sono state revocate"
+        "title": "Sessioni Revocate"
       },
       "loggedIn": {
         "title": "Successo",
         "message": "Accesso effettuato con successo"
-      },
-      "webhookTest": {
-        "title": "Test Riuscito",
-        "message": "Webhook funziona correttamente"
-      },
-      "copiedToClipboard": {
-        "title": "Copiato negli appunti"
       },
       "plexAccountLinked": {
         "title": "Account Plex Collegato",
@@ -62,27 +57,14 @@
       },
       "plexAccountReauthorized": {
         "title": "",
-        "message_one": "",
-        "message_other": "",
         "messageNoServers": "",
         "partial": "",
-        "unmatched": ""
-      },
-      "agentAdded": {
-        "title": "Agente Aggiunto",
-        "message": "L'agente di notifica è stato aggiunto"
-      },
-      "agentUpdated": {
-        "title": "Agente Aggiornato",
-        "message": "L'agente di notifica è stato aggiornato"
-      },
-      "agentRemoved": {
-        "title": "Agente Rimosso",
-        "message": "L'agente di notifica è stato rimosso"
+        "unmatched": "",
+        "message_one": "",
+        "message_other": ""
       },
       "jobCompleted": {
-        "title": "Lavoro Completato",
-        "message": "{{name}} completato con successo"
+        "title": "Lavoro Completato"
       },
       "automationCreated": {
         "title": "",
@@ -127,9 +109,9 @@
         "message_other": ""
       },
       "violationsDismissed": {
-        "title": "Violazioni Rimosse",
-        "message_one": "{{count}} violazione licenziata",
-        "message_other": "{{count}} violazioni respinte"
+        "title": "Violazioni Ignorate",
+        "message_one": "{{count}} violazione ignorata",
+        "message_other": "{{count}} violazioni ignorate"
       },
       "apiKeyGenerated": {
         "title": "Chiave API Generata",
@@ -144,8 +126,8 @@
         "message": "Tutte le sessioni mobili sono state revocate"
       },
       "pairTokenGenerated": {
-        "title": "Token Di Coppia Generato",
-        "message": "Scansiona il codice QR con il tuo dispositivo mobile per abbinare"
+        "title": "Token Di Accoppiamento Generato",
+        "message": "Scansiona il codice QR con il tuo dispositivo mobile per accoppiarlo"
       },
       "identityUpdated": "",
       "trustScoresReset": {
@@ -175,21 +157,22 @@
       "newsletterDuplicated": "",
       "newsletterTestQueued": "",
       "newsletterSendQueued": "",
-      "newsletterRetryQueued": "",
       "brandingSaved": "",
       "suppressionAdded": "",
-      "suppressionRemoved": ""
+      "suppressionRemoved": "",
+      "newsletterRetryQueued_one": "",
+      "newsletterRetryQueued_other": ""
     },
     "error": {
       "serverAddFailed": "Impossibile aggiungere il server",
       "serverRemoveFailed": "Impossibile rimuovere il server",
       "serverSyncFailed": "Sincronizzazione del server non riuscita",
+      "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Impossibile aggiornare le impostazioni",
       "copyFailed": "Impossibile copiare negli appunti",
       "acknowledgeFailed": "Impossibile riconoscere la violazione",
-      "dismissFailed": "Impossibile annullare la violazione",
+      "dismissFailed": "Impossibile ignorare la violazione",
       "authFailed": "Autenticazione non riuscita",
-      "webhookTestFailed": "Test Webhook fallito",
       "automationCreateFailed": "",
       "automationUpdateFailed": "",
       "automationDeleteFailed": "",
@@ -202,20 +185,14 @@
       "apiKeyGenerateFailed": "Impossibile generare la chiave API",
       "mobileAccessEnableFailed": "Impossibile abilitare l'accesso mobile",
       "mobileAccessDisableFailed": "Impossibile disattivare l'accesso mobile",
-      "pairTokenGenerateFailed": "Impossibile generare il token della coppia",
+      "pairTokenGenerateFailed": "Impossibile generare il token di accoppiamento",
       "deviceRemoveFailed": "Impossibile rimuovere il dispositivo",
       "deviceRenameFailed": "Impossibile rinominare il dispositivo",
       "sessionsRevokeFailed": "Impossibile revocare le sessioni",
       "identityUpdateFailed": "",
       "trustScoresResetFailed": "Impossibile ripristinare i punteggi di fiducia",
-      "routingUpdateFailed": "Impossibile aggiornare il routing",
-      "clipboardFailed": "Impossibile copiare negli appunti",
       "plexUnlinkFailed": "Scollegamento account Plex non riuscito",
       "plexReauthorizeFailed": "",
-      "agentAddFailed": "Impossibile aggiungere l'agente",
-      "agentUpdateFailed": "Impossibile aggiornare l'agente",
-      "agentRemoveFailed": "Impossibile rimuovere l'agente",
-      "agentTestFailed": "Test fallito",
       "jobAlreadyRunning": "Job già in esecuzione",
       "jobStartFailed": "Impossibile avviare il processo",
       "jobLoadFailed": "Impossibile caricare i lavori di manutenzione",
@@ -248,8 +225,7 @@
     },
     "warning": {
       "jobFailed": {
-        "title": "Job Fallito",
-        "message": "{{name}} ha riscontrato un errore"
+        "title": "Job Fallito"
       }
     },
     "info": {
@@ -259,47 +235,27 @@
       },
       "violationDetected": {
         "title": "Nuova Violazione: {{ruleName}}",
-        "message": "{{user}} attivato {{ruleType}}"
+        "message": "{{user}} ha innescato {{ruleType}}"
       }
     }
   },
-  "push": {
-    "violationDetected": "Violazione Condivisione Rilevata",
-    "streamStarted": "Stream Iniziato",
-    "streamEnded": "Stream Terminato",
-    "serverDown": "Connessione Del Server Persa",
-    "serverUp": "Server Indietro Online",
-    "newDevice": "Nuovo Dispositivo",
-    "trustScoreChanged": "Trust Punteggio Cambiato"
-  },
   "settings": {
-    "title": "Impostazioni Notifiche",
     "allSeverity": "Tutto (Low, Attenzione, Alto)",
     "warningAndHigh": "Solo avvertimento & alto",
     "highOnly": "Solo gravità elevata",
-    "allTypes": "Tutti I Tipi",
     "rateLimit": "Stato Limite Tariffa Attuale",
     "perMinute": "Al Minuto",
     "perHour": "Per Ora",
     "enablePushNotifications": "Abilita Notifiche Push",
     "notificationEvents": "Eventi Di Notifica",
     "violationDetected": "Violazione Rilevata",
-    "violationDetectedDesc": "Quando viene attivata una violazione della condivisione",
     "streamStarted": "Stream Iniziato",
-    "streamStartedDesc": "Quando un utente inizia a guardare",
     "streamStopped": "Stream Fermato",
-    "streamStoppedDesc": "Quando un utente smette di guardare",
-    "concurrentStreams": "Flussi Concorrenti",
-    "concurrentStreamsDesc": "Quando il limite massimo dello stream è superato",
+    "concurrentStreams": "Stream Simultanei",
     "newDevice": "Nuovo Dispositivo",
-    "newDeviceDesc": "Quando un nuovo dispositivo si connette",
-    "trustScoreChanged": "Trust Punteggio Cambiato",
-    "trustScoreChangedDesc": "Quando il punteggio di fiducia di un utente cambia",
+    "trustScoreChanged": "Punteggio Di Fiducia Cambiato",
     "serverDown": "Server Giù",
-    "serverDownDesc": "Quando un media server va offline",
     "serverUp": "Server Su",
-    "serverUpDesc": "Quando un media server torna online",
-    "violationFilters": "Filtri Di Violazione",
     "minimumSeverity": "Gravità Minima",
     "quietHours": "Ore Di Tranquillo",
     "enableQuietHours": "Abilita Ore Silenziose",

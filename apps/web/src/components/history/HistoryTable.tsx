@@ -16,12 +16,10 @@ import {
   CircleHelp,
   Play,
   Pause,
-  MonitorPlay,
-  Zap,
-  Cpu,
   Globe,
   Clock,
   Clapperboard,
+  Subtitles,
 } from 'lucide-react';
 import { TableCell, TableHead, TableRow } from '@/components/ui/table';
 import { DATA_TABLE_VIEWPORT_MAX_HEIGHT } from '@/components/ui/data-table';
@@ -39,11 +37,11 @@ import {
   getSessionProgress,
 } from '@/lib/utils';
 import { formatDuration } from '@/lib/formatters';
+import { playbackBadge } from '@/lib/playbackBadge';
 import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import {
   PLAYBACK_DECISION_LABEL_KEYS,
-  playbackDecision,
   type SessionWithDetails,
   type SessionState,
   type MediaType,
@@ -403,24 +401,28 @@ export const HistoryTableRow = memo(
           {columnVisibility.quality && (
             <TableCell style={getColumnStyle('quality')}>
               {(() => {
-                const isHwTranscode =
-                  session.isTranscode &&
-                  !!(session.transcodeInfo?.hwEncoding || session.transcodeInfo?.hwDecoding);
-
-                if (session.isTranscode) {
-                  return (
-                    <Badge variant="warning" className="gap-1 text-xs">
-                      {isHwTranscode ? <Cpu className="h-3 w-3" /> : <Zap className="h-3 w-3" />}
-                      {t(PLAYBACK_DECISION_LABEL_KEYS.transcode)}
-                    </Badge>
-                  );
-                }
-
+                const { decision, Icon, variant, isBurnIn } = playbackBadge(session);
                 return (
-                  <Badge variant="success" className="gap-1 text-xs">
-                    <MonitorPlay className="h-3 w-3" />
-                    {t(PLAYBACK_DECISION_LABEL_KEYS[playbackDecision(session)])}
-                  </Badge>
+                  <div className="flex items-center gap-1">
+                    <Badge variant={variant} className="gap-1 text-xs">
+                      <Icon className="h-3 w-3" />
+                      {t(PLAYBACK_DECISION_LABEL_KEYS[decision])}
+                    </Badge>
+                    {isBurnIn && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge
+                            variant="warning"
+                            className="px-1.5 text-xs"
+                            aria-label={t('playback.burnIn')}
+                          >
+                            <Subtitles className="h-3 w-3" />
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>{t('playback.burnIn')}</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
                 );
               })()}
             </TableCell>

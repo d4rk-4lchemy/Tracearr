@@ -17,6 +17,7 @@ function account(overrides = {}) {
     plexThumbnail: null,
     allowLogin: true,
     serverCount: 0,
+    liveServerCount: 0,
     ...overrides,
   };
 }
@@ -57,7 +58,7 @@ describe('PlexAccountRow', () => {
 
   it('blocks unlinking while servers still use the account', () => {
     renderRow({
-      account: account({ serverCount: 2 }) as React.ComponentProps<
+      account: account({ serverCount: 2, liveServerCount: 1 }) as React.ComponentProps<
         typeof PlexAccountRow
       >['account'],
     });
@@ -65,5 +66,15 @@ describe('PlexAccountRow', () => {
     expect(
       screen.getByRole('button', { name: 'pages:settings.plex.unlinkAccount' })
     ).toBeDisabled();
+  });
+
+  it('allows unlinking when every connected server is historical', () => {
+    renderRow({
+      account: account({ serverCount: 2, liveServerCount: 0 }) as React.ComponentProps<
+        typeof PlexAccountRow
+      >['account'],
+    });
+
+    expect(screen.getByRole('button', { name: 'pages:settings.plex.unlinkAccount' })).toBeEnabled();
   });
 });

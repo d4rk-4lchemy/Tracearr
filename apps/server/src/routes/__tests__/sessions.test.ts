@@ -33,8 +33,13 @@ vi.mock('../../services/cache.js', () => ({
   })),
 }));
 
+vi.mock('../../services/termination.js', () => ({
+  terminateSession: vi.fn(),
+}));
+
 // Import the mocked db and the routes
 import { db } from '../../db/client.js';
+import { terminateSession } from '../../services/termination.js';
 import { sessionRoutes } from '../sessions.js';
 
 /**
@@ -236,6 +241,40 @@ describe('Session Routes', () => {
       });
 
       expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('POST /sessions/:id/terminate', () => {
+    it('answers 409 when the stream sits on a historical server', async () => {
+      const owner = createOwnerUser();
+      const app = await buildTestApp(owner);
+      const sessionId = randomUUID();
+      const serverId = owner.serverIds[0] ?? randomUUID();
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi
+          .fn()
+          .mockResolvedValue([
+            { id: sessionId, serverId, serverUserId: randomUUID(), state: 'playing' },
+          ]),
+      } as never);
+      vi.mocked(terminateSession).mockResolvedValue({
+        success: false,
+        terminationLogId: 'log-h',
+        error: 'Server is historical',
+        outcome: 'server_historical',
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/sessions/${sessionId}/terminate`,
+        payload: { reason: 'test' },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().message).toBe('Resume this server to end its streams');
+      await app.close();
     });
   });
 
@@ -722,6 +761,26 @@ describe('Session Routes', () => {
       );
       expect(query).toContain('s.started_at >= (SELECT MIN(started_at) FROM history_page_ids)');
       expect(query).toContain('s.started_at = gs.started_at');
+    });
+
+    it('leaves trailers out when no media type is picked', async () => {
+      app = await buildTestApp(createOwnerUser());
+      mockDb.execute.mockResolvedValueOnce({ rows: [] });
+
+      await app.inject({ method: 'GET', url: '/sessions/history' });
+
+      const { sql: query } = renderSql(mockDb.execute.mock.calls[0][0] as SQL);
+      expect(query).toContain("media_type <> 'trailer'");
+    });
+
+    it('returns trailers when the trailer type is picked', async () => {
+      app = await buildTestApp(createOwnerUser());
+      mockDb.execute.mockResolvedValueOnce({ rows: [] });
+
+      await app.inject({ method: 'GET', url: '/sessions/history?mediaTypes=trailer' });
+
+      const { sql: query } = renderSql(mockDb.execute.mock.calls[0][0] as SQL);
+      expect(query).not.toContain("media_type <> 'trailer'");
     });
 
     it('returns an empty result in a single query when no plays match', async () => {

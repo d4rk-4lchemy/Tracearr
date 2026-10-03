@@ -166,4 +166,22 @@ describe('renderEvent', () => {
     expect(out.html).toContain('&lt;b&gt;bold&lt;/b&gt;');
     expect(out.html).not.toContain('<b>bold</b>');
   });
+
+  it('keeps line breaks in the message', async () => {
+    const out = await renderEvent(
+      {
+        subject: 's',
+        title: 't',
+        message: 'a\nb',
+        severity: 'low',
+        timestamp: '2026-09-02T12:00:00.000Z',
+        card: null,
+        logoRef: null,
+        appUrl: null,
+      },
+      branding
+    );
+    expect(out.html).toMatch(/a<br\s*\/?>b/);
+    expect(out.text).toContain('a\nb');
+  });
 });

@@ -181,7 +181,7 @@ export function LinkDialog({ open, onOpenChange, server, existing }: LinkDialogP
           </Button>
           <Button onClick={save} disabled={!canSave}>
             {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {t('requests.dialog.save')}
+            {t('common:actions.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

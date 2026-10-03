@@ -71,6 +71,7 @@ export function EditServerDialog({
   const isPlexServer = server?.type === 'plex';
   const isDispatcharr = server?.type === 'dispatcharr';
   const [dispatcharr, setDispatcharr] = useState(emptyDispatcharrForm);
+  const locked = !!server?.historicalAt;
   const {
     data: locationData,
     isFetchedAfterMount: locationsFetched,
@@ -82,7 +83,7 @@ export function EditServerDialog({
   const [locationsSeededFor, setLocationsSeededFor] = useState<string | null>(null);
 
   const { data: connectionsData, isLoading: isLoadingConnections } = usePlexServerConnections(
-    isPlexServer ? server?.id : undefined
+    isPlexServer && !locked ? server?.id : undefined
   );
 
   // Re-seed from the server prop each time the dialog opens for one, rather than in an
@@ -131,7 +132,7 @@ export function EditServerDialog({
   const hasLocationChange = locationsSeeded && draftsKey(drafts) !== locationBaseline;
 
   const hasNameChange = server ? editName.trim() !== server.name : false;
-  const hasUrlChange = server ? manualUrl.trim() !== server.url : false;
+  const hasUrlChange = server && !locked ? manualUrl.trim() !== server.url : false;
   const hasPublicUrlChange =
     server && !isPlexServer && !isDispatcharr
       ? manualPublicUrl.trim() !== (server.publicUrl ?? '')
@@ -150,7 +151,7 @@ export function EditServerDialog({
       ? Boolean(dispatcharr.token.trim())
       : Boolean(dispatcharr.username.trim()) && Boolean(dispatcharr.password));
   const hasApiKeyChange =
-    server && !isPlexServer && !isDispatcharr ? editApiKey.trim().length > 0 : false;
+    server && !isPlexServer && !isDispatcharr && !locked ? editApiKey.trim().length > 0 : false;
   const hasServerChange =
     hasNameChange ||
     hasUrlChange ||
@@ -213,7 +214,7 @@ export function EditServerDialog({
                     {t('servers.discoveringConnections')}
                   </span>
                 </div>
-              ) : connectionsData?.server ? (
+              ) : connectionsData?.server && !locked ? (
                 <>
                   <PlexServerSelector
                     servers={[connectionsData.server]}
@@ -238,12 +239,16 @@ export function EditServerDialog({
                   {hasNameChange && <FieldDescription>{t('servers.updateHint')}</FieldDescription>}
                 </>
               ) : (
-                <Input
-                  id="edit-url"
-                  value={manualUrl}
-                  onChange={(e) => setManualUrl(e.target.value)}
-                  placeholder={t('servers.plexServerUrlPlaceholder')}
-                />
+                <>
+                  <Input
+                    id="edit-url"
+                    value={manualUrl}
+                    onChange={(e) => setManualUrl(e.target.value)}
+                    placeholder={t('servers.plexServerUrlPlaceholder')}
+                    disabled={locked}
+                  />
+                  {locked && <FieldDescription>{t('servers.resumeFirst')}</FieldDescription>}
+                </>
               )}
             </Field>
           ) : (
@@ -255,7 +260,9 @@ export function EditServerDialog({
                   value={manualUrl}
                   onChange={(e) => setManualUrl(e.target.value)}
                   placeholder="http://192.168.1.100:8096"
+                  disabled={locked}
                 />
+                {locked && <FieldDescription>{t('servers.resumeFirst')}</FieldDescription>}
               </Field>
               {!isDispatcharr && (
                 <>
@@ -276,13 +283,16 @@ export function EditServerDialog({
                       type="password"
                       autoComplete="off"
                       value={editApiKey}
+                      disabled={locked}
                       onChange={(e) => setEditApiKey(e.target.value)}
                       placeholder={t('servers.apiKeyKeepCurrent')}
                     />
                     <FieldDescription>
-                      {server.type === 'jellyfin'
-                        ? t('servers.apiKeyHelpJellyfin')
-                        : t('servers.apiKeyHelpEmby')}
+                      {locked
+                        ? t('servers.resumeFirst')
+                        : server.type === 'jellyfin'
+                          ? t('servers.apiKeyHelpJellyfin')
+                          : t('servers.apiKeyHelpEmby')}
                     </FieldDescription>
                   </Field>
                 </>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ViolationWithDetails } from '@tracearr/shared';
+import type { NotificationPriority, ViolationWithDetails } from '@tracearr/shared';
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { jsonWebhookType, type JsonWebhookBody } from '../destinations/jsonWebhook.js';
 import type { NotificationEvent } from '../events.js';
@@ -8,10 +8,6 @@ import type { RenderContext } from '../destinations/types.js';
 const config = { url: 'https://example.com/webhook' };
 const destination = { id: 'dest-1', name: 'My Webhook' };
 const systemCtx: RenderContext = { destination, source: { kind: 'system' } };
-const ruleCtx: RenderContext = {
-  destination,
-  source: { kind: 'rule', title: 'Rule fired', message: 'Too many streams' },
-};
 const deliverCtx = { destination, signal: AbortSignal.timeout(5000) };
 
 const violation: ViolationWithDetails = {
@@ -217,18 +213,6 @@ describe('jsonWebhookType.render', () => {
       downloadUrl: 'https://example.com/plugin.zip',
     });
   });
-
-  it('keeps the structured body for a rule send', async () => {
-    const body = await render({ type: 'violation', payload: violation }, ruleCtx);
-
-    expect(body.event).toBe('violation_detected');
-    expect(body).not.toHaveProperty('title');
-    expect(body.data.rule).toEqual({
-      id: 'rule-456',
-      type: 'concurrent_streams',
-      name: 'Test Rule',
-    });
-  });
 });
 
 describe('jsonWebhookType.deliver', () => {
@@ -335,7 +319,9 @@ const newsletterSend = {
   },
 } as const;
 
-const automationCtx = (over: { title?: string; body?: string } = {}): RenderContext => ({
+const automationCtx = (
+  over: { title?: string; body?: string; priority?: NotificationPriority } = {}
+): RenderContext => ({
   destination,
   source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
 });
@@ -388,5 +374,14 @@ describe('jsonWebhookType.render with an automation source', () => {
     const body = await render(newsletterSend, automationCtx());
     expect(body.event).toBe('newsletter_send');
     expect(body.data).toEqual(newsletterSend.payload);
+  });
+
+  it('keeps the send priority out of the automation object', async () => {
+    const body = await render(
+      { type: 'session_started', payload: session },
+      automationCtx({ priority: 'urgent' })
+    );
+    expect(body.automation).toEqual({ id: 'a-1', name: 'Now playing' });
+    expect(body.automation).not.toHaveProperty('priority');
   });
 });

@@ -6,10 +6,14 @@
 import {
   AUTOMATION_DESCRIPTION_MAX,
   AUTOMATION_NAME_MAX,
+  SEND_BODY_MAX,
+  SEND_TITLE_MAX,
+  TEMPLATE_ERROR_CODES,
   createAutomationSchema,
   type Action,
   type Condition,
   type ConditionGroup,
+  type TemplateErrorCode,
 } from '@tracearr/shared';
 import { ApiError } from '@/lib/api';
 import { orphaningTriggers, type Translate } from '@/lib/automations';
@@ -132,6 +136,32 @@ interface RawIssue {
   message: string;
   /** The zod code, so a length complaint reads differently from a missing value. */
   code?: string;
+  /** What a custom check attached, which is how a template problem names its line or variable. */
+  params?: Record<string, unknown>;
+}
+
+function isTemplateErrorCode(value: unknown): value is TemplateErrorCode {
+  return typeof value === 'string' && (TEMPLATE_ERROR_CODES as readonly string[]).includes(value);
+}
+
+function sendTextMessage(t: Translate, issue: RawIssue, field: 'title' | 'body'): string {
+  if (issue.code === 'too_big') {
+    return t('automations.builder.errors.tooLong', {
+      max: field === 'title' ? SEND_TITLE_MAX : SEND_BODY_MAX,
+    });
+  }
+  const params = issue.params ?? {};
+  if (params.kind === 'templateParse' && isTemplateErrorCode(params.code)) {
+    return t(`automations.builder.errors.template.${params.code}`, {
+      line: params.line,
+      open: '{{ or {%',
+      braces: '{{ }}',
+    });
+  }
+  if (params.kind === 'templateVariable' && typeof params.name === 'string') {
+    return t('automations.builder.errors.templateVariable', { name: `{{ ${params.name} }}` });
+  }
+  return t('automations.builder.errors.variableUnavailable');
 }
 
 /** The path's last key says what went wrong; the schema's English is the last resort. */
@@ -154,7 +184,7 @@ function messageFor(t: Translate, issue: RawIssue, state: BuilderState, nodeId: 
       return t('automations.builder.errors.actionUnavailable');
     case 'title':
     case 'body':
-      return t('automations.builder.errors.variableUnavailable');
+      return sendTextMessage(t, issue, last === 'title' ? 'title' : 'body');
     case 'minutes':
       return t('automations.builder.errors.minutesRange', { ...TRIGGER_PARAM_BOUNDS.minutes });
     case 'days':
@@ -196,7 +226,8 @@ export function builderIssues(state: BuilderState, t: Translate): BuilderIssue[]
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       const nodeId = nodeIdForPath(state, issue.path);
-      const message = messageFor(t, issue, state, nodeId);
+      const params = issue.code === 'custom' ? issue.params : undefined;
+      const message = messageFor(t, { ...issue, params }, state, nodeId);
       issues.push({ nodeId, message, ...toneFor(issue.path) });
     }
   }

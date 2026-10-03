@@ -97,19 +97,19 @@ describe('RichTextField', () => {
 
     await userEvent.clear(input);
     await userEvent.type(input, 'javascript:alert(1)');
-    await userEvent.click(screen.getByRole('button', { name: 'newsletters.richText.linkApply' }));
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.apply' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Invalid URL');
     expect(chain.setLink).not.toHaveBeenCalled();
 
     await userEvent.clear(input);
     await userEvent.type(input, 'https://discord.gg/x');
-    await userEvent.click(screen.getByRole('button', { name: 'newsletters.richText.linkApply' }));
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.apply' }));
     expect(chain.extendMarkRange).toHaveBeenCalledWith('link');
     expect(chain.setLink).toHaveBeenCalledWith({ href: 'https://discord.gg/x' });
 
     await userEvent.click(screen.getByRole('button', { name: 'newsletters.richText.link' }));
     await userEvent.clear(screen.getByLabelText('newsletters.richText.linkHref'));
-    await userEvent.click(screen.getByRole('button', { name: 'newsletters.richText.linkApply' }));
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.apply' }));
     expect(chain.unsetLink).toHaveBeenCalledTimes(1);
   });
 });

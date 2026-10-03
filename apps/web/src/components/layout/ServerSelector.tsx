@@ -1,12 +1,14 @@
 import { useTranslation } from 'react-i18next';
 import { ChevronsUpDown, Server } from 'lucide-react';
 import { useServer } from '@/hooks/useServer';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MultiSelectList, type MultiSelectOption } from '@/components/ui/multi-select';
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
+import { liveFirst } from '@/lib/servers';
 
 export function ServerSelector() {
   const { t } = useTranslation('common');
@@ -21,7 +23,9 @@ export function ServerSelector() {
     isFetching,
   } = useServer();
 
-  if (isLoading || (servers.length === 0 && isFetching)) {
+  const ordered = liveFirst(servers);
+
+  if (isLoading || (ordered.length === 0 && isFetching)) {
     return (
       <div className="px-2 pb-2">
         <Skeleton className="h-8 w-full" />
@@ -29,12 +33,12 @@ export function ServerSelector() {
     );
   }
 
-  const [firstServer] = servers;
+  const [firstServer] = ordered;
   if (!firstServer) {
     return null;
   }
 
-  if (servers.length === 1) {
+  if (ordered.length === 1) {
     const server = firstServer;
     return (
       <div className="px-2 pb-2">
@@ -43,22 +47,24 @@ export function ServerSelector() {
           <span className="truncate font-medium group-data-[collapsible=icon]:hidden">
             {server.name}
           </span>
+          {server.historicalAt && <Badge variant="outline">{t('serverSelector.historical')}</Badge>}
         </div>
       </div>
     );
   }
 
   const singleSelected =
-    selectedServerIds.length === 1 ? servers.find((s) => s.id === selectedServerIds[0]) : undefined;
+    selectedServerIds.length === 1 ? ordered.find((s) => s.id === selectedServerIds[0]) : undefined;
 
   const triggerLabel = isAllServersSelected
     ? t('serverSelector.all')
     : (singleSelected?.name ??
-      t('serverSelector.some', { count: selectedServerIds.length, total: servers.length }));
+      t('serverSelector.some', { count: selectedServerIds.length, total: ordered.length }));
 
-  const options: MultiSelectOption[] = servers.map((server) => ({
+  const options: MultiSelectOption[] = ordered.map((server) => ({
     value: server.id,
     label: server.name,
+    group: server.historicalAt ? t('serverSelector.historical') : undefined,
     accentColor: server.color,
     icon: <MediaServerIcon type={server.type} className="size-4 shrink-0" />,
   }));
