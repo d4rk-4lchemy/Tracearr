@@ -26,6 +26,8 @@ COPY . .
 
 # The basemap is generated rather than committed. Reuse a prepared build-context
 # copy (for example from the GHCR workflow), or fetch it for a plain Docker build.
+ARG BASEMAP_BUILD
+ARG BASEMAP_MAXZOOM
 RUN if [ ! -s data/basemap.pmtiles ]; then \
       apk add --no-cache curl && scripts/fetch-basemap.sh; \
     fi

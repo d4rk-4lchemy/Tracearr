@@ -29,6 +29,8 @@ COPY . .
 
 # The basemap is generated rather than committed. Reuse a prepared build-context
 # copy (for example from the GHCR workflow), or fetch it for a plain Docker build.
+ARG BASEMAP_BUILD
+ARG BASEMAP_MAXZOOM
 RUN if [ ! -s data/basemap.pmtiles ]; then \
       apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
       && scripts/fetch-basemap.sh \

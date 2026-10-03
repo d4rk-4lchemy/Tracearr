@@ -90,6 +90,20 @@ live-provider smoke checks were omitted at the user's request; the new
 historical-server migrations and runtime behavior have not been checked
 against a running database.
 
+Follow-up on October 3: the fallback basemap fetch in both Docker builders
+failed because `scripts/fetch-basemap.sh` pinned `20260926.pmtiles`, which
+Protomaps now returns as 404. When no archive is already in the build context,
+the script now selects the newest published v4 build from the Protomaps builds
+metadata. `BASEMAP_BUILD=YYYYMMDD` can pin a build manually, including through
+the Docker build arguments. Extraction writes a temporary file and moves it
+into place only after success; an interrupted or failed fetch cannot look like
+a valid cached archive. The script hash change also rotates the release
+workflow's basemap cache key. An actual zoom-8 extract of `20261003.pmtiles`
+completed (556,799,472 bytes, PMTiles header); the validation file was
+removed. A forced stale-build fetch returned nonzero and left no output or
+partial file. Buildx `--check` passed for both Dockerfiles. Full Docker image
+builds were not rerun on this 95%-full host.
+
 ## September 29, 2026 upstream merge
 
 Upstream `main` at `762c15e45` (Tracearr 2.5.2) adds an audit-backed
