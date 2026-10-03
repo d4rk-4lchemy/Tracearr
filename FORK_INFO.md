@@ -27,6 +27,13 @@ HTTP/2 `PROTOCOL_ERROR`); `imagetools create` is idempotent, so the retry also
 repairs partially updated tags. If all attempts fail, rerun the release
 workflow: GHCR content is already complete and no image rebuild is needed.
 
+The publish job allows 30 minutes for registry copies and verification. The
+`v2.5.1-r2` release run on September 28, 2026 spent 9 minutes 37 seconds in a
+successful Docker Hub copy; its former 10-minute job limit then cancelled the
+platform check after all ten manifest checks printed `true`. This was a job
+timeout, not a failed `jq` check. Keep enough headroom for slow copies and
+verification when changing the release workflow.
+
 Local validation passed with Node 24 / pnpm 12.4.2: 1,803 web tests,
 typecheck, lint (751 existing warnings), translations check (seven existing
 missing `uk-UA/nav.json` keys), and web build. The mocked release check covered
