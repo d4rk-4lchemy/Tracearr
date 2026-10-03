@@ -114,14 +114,16 @@ function PlaybackOverlay({
           data-testid="artwork-dimmer"
           className={cn('pointer-events-none absolute bg-black/50', roundedArtwork && 'rounded-lg')}
           style={{
-            // Cover subpixel seams where the image and its alpha mask rasterize differently.
-            inset: -1,
+            // Match the image bounds exactly so hover scaling keeps logo details aligned.
+            inset: 0,
             maskImage: `url(${JSON.stringify(artworkUrl)})`,
             maskMode: 'alpha',
             maskSize: '100% 100%',
+            maskPosition: 'center',
             maskRepeat: 'no-repeat',
             WebkitMaskImage: `url(${JSON.stringify(artworkUrl)})`,
             WebkitMaskSize: '100% 100%',
+            WebkitMaskPosition: 'center',
             WebkitMaskRepeat: 'no-repeat',
           }}
         />

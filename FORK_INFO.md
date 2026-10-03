@@ -471,8 +471,9 @@ Server routes and services:
   shadow. On hover or while paused, the dimmer uses the same proxied image
   as an alpha mask, so transparent pixels and reserved padding stay clear.
   The mask covers only the dimmer, never the Play/Pause icon, and follows the
-  image's aspect ratio and corner radius, with 1px of overdraw on each side
-  to cover bright subpixel seams along the image edge.
+  image's exact bounds, aspect ratio and corner radius. Do not enlarge the
+  mask: a 1px outward margin stretches transparent logo details away from
+  the underlying image, especially during card hover scaling.
   Images with `mediaType === 'live'` (including Dispatcharr catch-up) have
   square corners for every provider; other artwork remains rounded.
   Outer card corners and the missing-image placeholder remain unchanged.

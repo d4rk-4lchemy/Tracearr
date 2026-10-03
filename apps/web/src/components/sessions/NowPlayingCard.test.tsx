@@ -385,9 +385,10 @@ describe('NowPlayingCard ffmpeg speed display', () => {
       const dimmer = screen.getByTestId('artwork-dimmer');
       expect(dimmer.style.maskImage).toBe(`url(${JSON.stringify(poster?.getAttribute('src'))})`);
       expect(dimmer).toHaveStyle({
-        inset: '-1px',
+        inset: '0',
         maskMode: 'alpha',
         maskSize: '100% 100%',
+        maskPosition: 'center',
         maskRepeat: 'no-repeat',
       });
       expect(dimmer).toHaveClass('pointer-events-none', 'bg-black/50');
