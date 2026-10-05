@@ -7,12 +7,19 @@ import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
 import { eq } from 'drizzle-orm';
 import type { AuthUser } from '@tracearr/shared';
-import { REDIS_KEYS, CACHE_TTL } from '@tracearr/shared';
+import {
+  REDIS_KEYS,
+  CACHE_TTL,
+  MIN_MOBILE_CLIENT_VERSION,
+  MOBILE_CLIENT_HEADER,
+  compareVersions,
+} from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { users, mobileSessions } from '../db/schema.js';
 import { getSetting } from '../services/settings.js';
-import { resolveBetterAuthUser } from '../lib/sessionResolver.js';
+import { resolveBetterAuthUser, resolveBetterAuthUserStrict } from '../lib/sessionResolver.js';
 import { requireBetterAuthSecret, isBetterAuthSecretDerived } from '../lib/env.js';
+import { ErrorCodes, MobileAuthError } from '../utils/errors.js';
 import { hashSha256 } from '../utils/hash.js';
 
 // Module-level cache - populated at startup and refreshed after restore
@@ -71,6 +78,50 @@ async function assertMobileNotRevoked(
     return false;
   }
   return true;
+}
+
+// Requests without the header come from apps older than the header itself,
+// which cannot show the update screen, so they are never refused on version.
+export function assertMobileClientSupported(
+  request: FastifyRequest,
+  floor: string | null = MIN_MOBILE_CLIENT_VERSION
+): void {
+  if (floor === null) return;
+  const header = request.headers[MOBILE_CLIENT_HEADER];
+  const version = typeof header === 'string' ? /^mobile\/(\d+\.\d+\.\d+)/.exec(header)?.[1] : null;
+  if (!version) return;
+  if (compareVersions(version, floor) < 0) {
+    throw new MobileAuthError(
+      'Update the Tracearr app to continue',
+      426,
+      ErrorCodes.CLIENT_TOO_OLD
+    );
+  }
+}
+
+// A failed Redis or DB lookup is not a verdict on the token: answer 503 so the
+// app keeps its session, instead of a 401 that signs it out.
+export async function failClosed<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof MobileAuthError) throw err;
+    throw Object.assign(
+      new MobileAuthError('Auth store unavailable', 503, ErrorCodes.SERVICE_UNAVAILABLE),
+      { cause: err }
+    );
+  }
+}
+
+// Throttled lastSeenAt update - at most once per CACHE_TTL.MOBILE_LAST_SEEN
+async function touchLastSeen(app: FastifyInstance, deviceId: string): Promise<void> {
+  const throttleKey = REDIS_KEYS.MOBILE_LAST_SEEN(deviceId);
+  if (await app.redis.get(throttleKey)) return;
+  await app.redis.set(throttleKey, '1', 'EX', CACHE_TTL.MOBILE_LAST_SEEN);
+  db.update(mobileSessions)
+    .set({ lastSeenAt: new Date() })
+    .where(eq(mobileSessions.deviceId, deviceId))
+    .catch(() => undefined);
 }
 
 const authPlugin: FastifyPluginAsync = async (app) => {
@@ -149,7 +200,9 @@ const authPlugin: FastifyPluginAsync = async (app) => {
   // then Better Auth bearer tokens mapped to a paired device via
   // mobileSessions.refreshTokenHash. Both paths enforce the device blacklist
   // and the throttled lastSeenAt update, and both fail closed.
-  app.decorate('requireMobile', async function (request: FastifyRequest, reply: FastifyReply) {
+  app.decorate('requireMobile', async function (request: FastifyRequest) {
+    assertMobileClientSupported(request);
+
     let legacyVerified = false;
     try {
       await request.jwtVerify();
@@ -159,39 +212,28 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     }
 
     if (legacyVerified) {
-      try {
-        if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
-          return reply.unauthorized('Session invalidated. Please log in again');
-        }
-
-        if (!request.user.mobile) {
-          reply.forbidden('Mobile access token required');
-          return;
-        }
-
-        // Check if this device's token has been blacklisted (session revoked)
-        if (request.user.deviceId) {
-          const blacklisted = await app.redis.get(
-            REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(request.user.deviceId)
-          );
-          if (blacklisted) {
-            reply.unauthorized('Session has been revoked');
-            return;
+      if (isTokenRevoked((request.user as AuthUser & { iat?: number }).iat)) {
+        throw new MobileAuthError(
+          'Session invalidated. Please log in again',
+          401,
+          ErrorCodes.SESSION_INVALIDATED
+        );
+      }
+      if (!request.user.mobile) {
+        throw new MobileAuthError(
+          'Mobile access token required',
+          403,
+          ErrorCodes.MOBILE_TOKEN_REQUIRED
+        );
+      }
+      const deviceId = request.user.deviceId;
+      if (deviceId) {
+        await failClosed(async () => {
+          if (await app.redis.get(REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(deviceId))) {
+            throw new MobileAuthError('Session has been revoked', 401, ErrorCodes.DEVICE_REVOKED);
           }
-
-          // Throttled lastSeenAt update - at most once per CACHE_TTL.MOBILE_LAST_SEEN
-          const throttleKey = REDIS_KEYS.MOBILE_LAST_SEEN(request.user.deviceId);
-          const alreadyRecent = await app.redis.get(throttleKey);
-          if (!alreadyRecent) {
-            await app.redis.set(throttleKey, '1', 'EX', CACHE_TTL.MOBILE_LAST_SEEN);
-            db.update(mobileSessions)
-              .set({ lastSeenAt: new Date() })
-              .where(eq(mobileSessions.deviceId, request.user.deviceId))
-              .catch(() => undefined);
-          }
-        }
-      } catch {
-        reply.unauthorized('Invalid or expired token');
+          await touchLastSeen(app, deviceId);
+        });
       }
       return;
     }
@@ -199,46 +241,54 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     // Better Auth bearer path: the pair endpoint hands the app a Better Auth
     // session token and stores its sha256 hash on the mobileSessions row, so
     // a resolved session plus a matching row identifies the paired device.
-    try {
-      const baUser = await resolveBetterAuthUser(request);
-      if (!baUser) {
-        return reply.unauthorized('Invalid or expired token');
-      }
+    const authHeader = request.headers.authorization ?? '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
-      const authHeader = request.headers.authorization ?? '';
-      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    await failClosed(async () => {
+      const baUser = await resolveBetterAuthUserStrict(request);
       if (!token) {
-        return reply.unauthorized('Mobile access token required');
+        // A web cookie session without a bearer is a valid login on the wrong client.
+        if (baUser) {
+          throw new MobileAuthError(
+            'Mobile access token required',
+            403,
+            ErrorCodes.MOBILE_TOKEN_REQUIRED
+          );
+        }
+        throw new MobileAuthError('Invalid or expired token', 401, ErrorCodes.INVALID_TOKEN);
       }
 
+      const tokenHash = hashSha256(token);
       const [row] = await db
         .select()
         .from(mobileSessions)
-        .where(eq(mobileSessions.refreshTokenHash, hashSha256(token)))
+        .where(eq(mobileSessions.refreshTokenHash, tokenHash))
         .limit(1);
+
+      if (!baUser) {
+        if (row) {
+          throw new MobileAuthError('Invalid or expired token', 401, ErrorCodes.TOKEN_EXPIRED);
+        }
+        if (await app.redis.get(REDIS_KEYS.MOBILE_REVOKED_TOKEN(tokenHash))) {
+          throw new MobileAuthError('Invalid or expired token', 401, ErrorCodes.DEVICE_REVOKED);
+        }
+        throw new MobileAuthError('Invalid or expired token', 401, ErrorCodes.INVALID_TOKEN);
+      }
       if (!row) {
-        return reply.forbidden('Mobile access token required');
+        throw new MobileAuthError(
+          'Mobile access token required',
+          403,
+          ErrorCodes.MOBILE_TOKEN_REQUIRED
+        );
       }
 
-      const blacklisted = await app.redis.get(REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(row.deviceId));
-      if (blacklisted) {
-        return reply.unauthorized('Session has been revoked');
+      if (await app.redis.get(REDIS_KEYS.MOBILE_BLACKLISTED_TOKEN(row.deviceId))) {
+        throw new MobileAuthError('Session has been revoked', 401, ErrorCodes.DEVICE_REVOKED);
       }
-
-      const throttleKey = REDIS_KEYS.MOBILE_LAST_SEEN(row.deviceId);
-      const alreadyRecent = await app.redis.get(throttleKey);
-      if (!alreadyRecent) {
-        await app.redis.set(throttleKey, '1', 'EX', CACHE_TTL.MOBILE_LAST_SEEN);
-        db.update(mobileSessions)
-          .set({ lastSeenAt: new Date() })
-          .where(eq(mobileSessions.deviceId, row.deviceId))
-          .catch(() => undefined);
-      }
+      await touchLastSeen(app, row.deviceId);
 
       request.user = { ...baUser, mobile: true, deviceId: row.deviceId };
-    } catch {
-      reply.unauthorized('Invalid or expired token');
-    }
+    });
   });
 
   // Public API authentication - validates bearer token from Authorization header

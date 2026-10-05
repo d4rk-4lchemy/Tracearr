@@ -15,9 +15,16 @@ import sensible from '@fastify/sensible';
 import { createHash, randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
-import type { AuthUser } from '@tracearr/shared';
+import { REDIS_KEYS, type AuthUser } from '@tracearr/shared';
 import { db } from '../../src/db/client.js';
-import { users, servers, serverUsers, mobileTokens, mobileSessions } from '../../src/db/schema.js';
+import {
+  users,
+  servers,
+  serverUsers,
+  mobileTokens,
+  mobileSessions,
+  authSessions,
+} from '../../src/db/schema.js';
 import { mobileRoutes } from '../../src/routes/mobile.js';
 import { getRedis } from '../../src/lib/redisShared.js';
 import { setSetting, getSetting } from '../../src/services/settings.js';
@@ -576,7 +583,7 @@ describe('Mobile Authentication Integration Tests', () => {
     });
   });
 
-  describe('POST /api/v1/mobile/refresh - Refresh JWT Token', () => {
+  describe('POST /api/v1/mobile/refresh - Refresh a mobile session', () => {
     let validRefreshToken: string;
 
     beforeEach(async () => {
@@ -642,7 +649,7 @@ describe('Mobile Authentication Integration Tests', () => {
       validRefreshToken = body.refreshToken;
     });
 
-    it('rotates the refresh token for legacy (non-Better-Auth) pairings', async () => {
+    it('moves a legacy (non-Better-Auth) pairing onto a better auth session', async () => {
       // Simulate a pairing created before the Better Auth migration: a
       // mobileSessions row with a refreshTokenHash but no betterAuthSessionId.
       const legacyRefreshToken = generateTestMobileToken();
@@ -656,46 +663,64 @@ describe('Mobile Authentication Integration Tests', () => {
         platform: 'ios',
       });
 
-      const res = await app.inject({
-        method: 'POST',
-        url: '/api/v1/mobile/refresh',
-        payload: {
-          refreshToken: legacyRefreshToken,
-        },
-      });
+      const refreshWith = (refreshToken: string) =>
+        app.inject({
+          method: 'POST',
+          url: '/api/v1/mobile/refresh',
+          payload: { refreshToken },
+        });
+
+      const res = await refreshWith(legacyRefreshToken);
 
       expect(res.statusCode).toBe(200);
       const body = res.json();
-      expect(body.accessToken).toBeDefined();
-      expect(body.refreshToken).toBeDefined();
-
-      // Legacy sessions still rotate on every refresh
+      expect(Object.keys(body).sort()).toEqual(['accessToken', 'refreshToken']);
+      // One Better Auth session token in both fields, as pair hands out
+      expect(body.accessToken).toBe(body.refreshToken);
       expect(body.refreshToken).not.toBe(legacyRefreshToken);
 
-      // Old refresh token is allowed during the 30s grace period (handles mobile network retries)
-      // but each replay still rotates to a fresh token pair
-      const secondRes = await app.inject({
-        method: 'POST',
-        url: '/api/v1/mobile/refresh',
-        payload: {
-          refreshToken: legacyRefreshToken,
-        },
-      });
-
-      expect(secondRes.statusCode).toBe(200);
-      const secondBody = secondRes.json();
-      expect(secondBody.refreshToken).not.toBe(legacyRefreshToken);
-      expect(secondBody.refreshToken).not.toBe(body.refreshToken);
-
-      // The stored hash advances on every rotation, confirming the legacy
-      // path never settles on a single unrotated token like the BA path does
+      // The row now points at a real Better Auth session for that token and
+      // remembers the legacy hash for the grace window
       const [sessionRow] = await db
         .select()
         .from(mobileSessions)
         .where(eq(mobileSessions.deviceId, 'device-legacy-test'));
+      expect(sessionRow.betterAuthSessionId).not.toBeNull();
+      expect(sessionRow.refreshTokenHash).toBe(hashToken(body.refreshToken));
+      expect(sessionRow.previousRefreshTokenHash).toBe(legacyRefreshTokenHash);
 
-      expect(sessionRow.betterAuthSessionId).toBeNull();
-      expect(sessionRow.refreshTokenHash).not.toBe(legacyRefreshTokenHash);
+      const [baSession] = await db
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.id, sessionRow.betterAuthSessionId!));
+      expect(baSession.token).toBe(body.refreshToken);
+      expect(baSession.userId).toBe(testData.ownerId);
+
+      // A retry with the legacy token inside its Redis grace window lands on
+      // the same session instead of minting another one
+      const retry = await refreshWith(legacyRefreshToken);
+      expect(retry.statusCode).toBe(200);
+      expect(retry.json()).toEqual({
+        accessToken: body.refreshToken,
+        refreshToken: body.refreshToken,
+      });
+      const ownerSessions = await db
+        .select({ id: authSessions.id })
+        .from(authSessions)
+        .where(eq(authSessions.token, body.refreshToken));
+      expect(ownerSessions).toHaveLength(1);
+
+      // The new token refreshes like any Better Auth pairing
+      const baRefresh = await refreshWith(body.refreshToken);
+      expect(baRefresh.statusCode).toBe(200);
+      expect(baRefresh.json().refreshToken).toBe(body.refreshToken);
+
+      // Once the grace key is gone the DB fallback matches only the current
+      // hash, so the legacy token is dead
+      await app.redis.del(REDIS_KEYS.MOBILE_REFRESH_TOKEN(legacyRefreshTokenHash));
+      const afterGrace = await refreshWith(legacyRefreshToken);
+      expect(afterGrace.statusCode).toBe(401);
+      expect(afterGrace.json().code).toBe('AUTH_002');
     });
 
     it('should reject invalid refresh token', async () => {

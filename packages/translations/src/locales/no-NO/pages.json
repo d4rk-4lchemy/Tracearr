@@ -191,7 +191,15 @@
       "qualityEvolution": "Kvalitetsutvikling",
       "all": "Alle",
       "failedToLoad": "Kan ikke laste kvalitetsdata",
-      "failedToLoadDesc": "Kunne ikke hente kvalitetsdata. Prøv på nytt."
+      "failedToLoadDesc": "Kunne ikke hente kvalitetsdata. Prøv på nytt.",
+      "codecBrowse": {
+        "movies": "",
+        "shows": "",
+        "movieCount_one": "",
+        "movieCount_other": "",
+        "episodeCount_one": "",
+        "episodeCount_other": ""
+      }
     },
     "storage": {
       "title": "Lagring",
@@ -2292,10 +2300,16 @@
         "unwatchedByLens": "",
         "resolutionLabel": "",
         "resolutionAll": "",
+        "videoCodecLabel": "",
+        "videoCodecAll": "",
         "hdrLabel": "",
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "audioCodecLabel": "",
+        "audioCodecAll": "",
+        "audioChannelsLabel": "",
+        "audioChannelsAll": "",
         "atmosLabel": "",
         "atmosAll": "",
         "atmosOnly": "",

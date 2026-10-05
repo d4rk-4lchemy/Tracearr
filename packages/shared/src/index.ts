@@ -795,6 +795,8 @@ export {
   API_BASE_PATH,
   API_VERSION_V2,
   API_V2_BASE_PATH,
+  MOBILE_CLIENT_HEADER,
+  MIN_MOBILE_CLIENT_VERSION,
   JWT_CONFIG,
   POLLING_INTERVALS,
   POLLER_CONFIG,
@@ -841,6 +843,9 @@ export {
   // Poster cache
   POSTER_IMAGE_SIZE,
 } from './constants.js';
+
+// API error codes
+export { ErrorCodes, type ErrorCode } from './errors.js';
 
 // Role helper exports
 export { ROLE_PERMISSIONS, LOGIN_ROLES, canLogin, hasMinRole, isOwner, isActive } from './types.js';

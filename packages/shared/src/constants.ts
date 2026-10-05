@@ -268,6 +268,7 @@ export const REDIS_KEYS = {
   MOBILE_BLACKLISTED_TOKEN: (deviceId: string) =>
     `${_redisPrefix}tracearr:mobile:blacklist:${deviceId}`,
   MOBILE_LAST_SEEN: (deviceId: string) => `${_redisPrefix}tracearr:mobile:last_seen:${deviceId}`,
+  MOBILE_REVOKED_TOKEN: (hash: string) => `${_redisPrefix}tracearr:mobile:revoked:${hash}`,
   // Rate limiting
   MOBILE_TOKEN_GEN_RATE: (userId: string) => `${_redisPrefix}mobile_token_gen:${userId}`,
   // Distributed locks
@@ -399,6 +400,11 @@ export const API_VERSION = 'v1';
 export const API_BASE_PATH = `/api/${API_VERSION}`;
 export const API_VERSION_V2 = 'v2';
 export const API_V2_BASE_PATH = `/api/${API_VERSION_V2}`;
+
+export const MOBILE_CLIENT_HEADER = 'x-tracearr-client';
+// Floor for the store build version in MOBILE_CLIENT_HEADER. Requests without
+// the header come from apps that cannot show the update screen and are never refused.
+export const MIN_MOBILE_CLIENT_VERSION: string | null = null;
 
 // JWT configuration
 export const JWT_CONFIG = {

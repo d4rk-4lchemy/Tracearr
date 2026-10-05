@@ -14,6 +14,7 @@
  *   src/lib/api.ts also runtime-checks accessToken, refreshToken,
  *   server.id, and user.userId before trusting the response.
  * - refresh response: accessToken, refreshToken (src/lib/api.ts performTokenRefresh)
+ * - 2026-10: refresh auth failures gained a `code` field next to error, message and statusCode.
  *
  * Setup mirrors src/routes/__tests__/mobile.test.ts (mocked db/redis/jwt,
  * local buildTestApp) since routes/__tests__ tests run against a mocked
@@ -61,6 +62,7 @@ vi.mock('../../lib/auth.js', () => ({
 import { db } from '../../db/client.js';
 import { getAuth } from '../../lib/auth.js';
 import { mobileRoutes } from '../mobile.js';
+import { registerErrorHandler } from '../../utils/errors.js';
 
 const mockRedis = {
   get: vi.fn(),
@@ -88,6 +90,7 @@ const mockJwt = {
 async function buildTestApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
+  registerErrorHandler(app);
   app.decorate('redis', mockRedis as never);
   app.decorate('jwt', mockJwt as never);
   // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -283,25 +286,24 @@ describe('mobile contract freeze', () => {
             }),
           }),
         } as never;
-      } else if (selectCallCount === 2) {
-        return {
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([mockSession]),
-            }),
-          }),
-        } as never;
       }
-      return { from: vi.fn().mockResolvedValue([{ id: randomUUID() }]) } as never;
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([mockSession]),
+          }),
+        }),
+      } as never;
     });
 
     vi.mocked(db.update).mockReturnValue({
       set: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(undefined),
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ id: mockSession.id }]),
+        }),
       }),
     } as never);
 
-    mockJwt.sign.mockReturnValue('new.jwt.token');
     mockRedis.del.mockResolvedValue(1);
     mockRedis.setex.mockResolvedValue('OK');
 
@@ -464,7 +466,8 @@ describe('mobile contract freeze', () => {
 
     expect(res.statusCode).toBe(401);
     const body = res.json();
-    expect(Object.keys(body).sort()).toEqual(['error', 'message', 'statusCode']);
+    expect(Object.keys(body).sort()).toEqual(['code', 'error', 'message', 'statusCode']);
+    expect(body.code).toBe('AUTH_002');
     expect(body.message).toBe('Invalid or expired refresh token');
   });
 });

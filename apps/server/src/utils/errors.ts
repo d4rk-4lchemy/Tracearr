@@ -5,44 +5,9 @@
 
 import type { FastifyInstance, FastifyError } from 'fastify';
 import type { ZodError } from 'zod';
-import type { ApiError } from '@tracearr/shared';
+import { ErrorCodes, type ApiError, type ErrorCode } from '@tracearr/shared';
 
-// Error codes for client identification
-export const ErrorCodes = {
-  // Authentication (1xxx)
-  UNAUTHORIZED: 'AUTH_001',
-  INVALID_TOKEN: 'AUTH_002',
-  TOKEN_EXPIRED: 'AUTH_003',
-  INSUFFICIENT_PERMISSIONS: 'AUTH_004',
-
-  // Validation (2xxx)
-  VALIDATION_ERROR: 'VAL_001',
-  INVALID_INPUT: 'VAL_002',
-  MISSING_FIELD: 'VAL_003',
-
-  // Resource (3xxx)
-  NOT_FOUND: 'RES_001',
-  ALREADY_EXISTS: 'RES_002',
-  CONFLICT: 'RES_003',
-
-  // Server (4xxx)
-  INTERNAL_ERROR: 'SRV_001',
-  SERVICE_UNAVAILABLE: 'SRV_002',
-  DATABASE_ERROR: 'SRV_003',
-  REDIS_ERROR: 'SRV_004',
-
-  // Rate limiting (5xxx)
-  RATE_LIMITED: 'RATE_001',
-
-  // External services (6xxx)
-  PLEX_ERROR: 'EXT_001',
-  JELLYFIN_ERROR: 'EXT_002',
-  GEOIP_ERROR: 'EXT_003',
-  EMBY_ERROR: 'EXT_004',
-  DISPATCHARR_ERROR: 'EXT_005',
-} as const;
-
-export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
+export { ErrorCodes, type ErrorCode };
 
 /**
  * Base application error class
@@ -122,6 +87,26 @@ export class ForbiddenError extends AppError {
     super(message, 403, ErrorCodes.INSUFFICIENT_PERMISSIONS);
     this.name = 'ForbiddenError';
     Object.setPrototypeOf(this, ForbiddenError.prototype);
+  }
+}
+
+const MOBILE_AUTH_ERROR_NAME = {
+  401: 'UnauthorizedError',
+  403: 'ForbiddenError',
+  426: 'UpgradeRequiredError',
+  503: 'ServiceUnavailableError',
+} as const;
+
+/**
+ * Mobile auth failure with a code the app can branch on.
+ * The names are the http-errors class names @fastify/sensible produces, so the
+ * body's `error` stays what these responses sent before they carried a code.
+ */
+export class MobileAuthError extends AppError {
+  constructor(message: string, statusCode: keyof typeof MOBILE_AUTH_ERROR_NAME, code: ErrorCode) {
+    super(message, statusCode, code);
+    this.name = MOBILE_AUTH_ERROR_NAME[statusCode];
+    Object.setPrototypeOf(this, MobileAuthError.prototype);
   }
 }
 

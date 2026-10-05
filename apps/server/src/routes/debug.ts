@@ -579,11 +579,12 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
     for (const session of sessionRows) {
       await revokeMobileDeviceSession(app.redis, session);
     }
-    const sessionsDeleted = await db.delete(mobileSessions).returning({ id: mobileSessions.id });
+    // revokeMobileDeviceSession deletes each row it revokes; this catches rows paired since the read.
+    const unrevokedDeleted = await db.delete(mobileSessions).returning({ id: mobileSessions.id });
     const tokensDeleted = await db.delete(mobileTokens).returning({ id: mobileTokens.id });
     return {
       success: true,
-      sessionsDeleted: sessionsDeleted.length,
+      sessionsDeleted: sessionRows.length + unrevokedDeleted.length,
       tokensDeleted: tokensDeleted.length,
     };
   });

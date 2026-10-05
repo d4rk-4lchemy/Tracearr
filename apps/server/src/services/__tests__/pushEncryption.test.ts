@@ -14,7 +14,12 @@
 import { describe, it, expect } from 'vitest';
 import { createDecipheriv, pbkdf2Sync } from 'node:crypto';
 import type { EncryptedPushPayload } from '@tracearr/shared';
-import { encryptPushPayload, shouldEncryptPush, pushEncryptionService } from '../pushEncryption.js';
+import {
+  encryptPushPayload,
+  pushSecretId,
+  shouldEncryptPush,
+  pushEncryptionService,
+} from '../pushEncryption.js';
 
 // Constants matching the encryption service
 const ALGORITHM = 'aes-256-gcm';
@@ -70,6 +75,16 @@ describe('pushEncryption', () => {
       // Verify decryption works
       const decrypted = decryptPushPayload(encrypted, testDeviceSecret);
       expect(decrypted).toEqual(payload);
+    });
+
+    it('names the secret it used with a 16 hex char kid', () => {
+      const secret = 'fixed-secret-for-kid-test-0123456789';
+      const encrypted = encryptPushPayload({ type: 'test' }, secret);
+
+      expect(encrypted.kid).toBe(pushSecretId(secret));
+      expect(encrypted.kid).toMatch(/^[0-9a-f]{16}$/);
+      // The app pins the same literal for this secret.
+      expect(encrypted.kid).toBe('5e5b8805d3fa81cc');
     });
 
     it('produces different ciphertext for same plaintext (random IV)', () => {

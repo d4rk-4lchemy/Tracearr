@@ -31,6 +31,7 @@ import {
   ValidationError,
   AuthenticationError,
   ForbiddenError,
+  MobileAuthError,
   NotFoundError,
   ConflictError,
   RateLimitError,
@@ -255,6 +256,24 @@ describe('ForbiddenError', () => {
   });
 });
 
+describe('MobileAuthError', () => {
+  it.each([
+    [401, 'UnauthorizedError'],
+    [403, 'ForbiddenError'],
+    [426, 'UpgradeRequiredError'],
+    [503, 'ServiceUnavailableError'],
+  ] as const)('sends %i with the sensible error name %s and carries the code', (status, name) => {
+    expect(
+      new MobileAuthError('Session has been revoked', status, ErrorCodes.DEVICE_REVOKED).toJSON()
+    ).toEqual({
+      statusCode: status,
+      error: name,
+      message: 'Session has been revoked',
+      code: 'AUTH_005',
+    });
+  });
+});
+
 describe('NotFoundError', () => {
   it('should have correct status code and error code', () => {
     const error = new NotFoundError();
@@ -391,6 +410,18 @@ describe('ServiceUnavailableError', () => {
 });
 
 describe('ExternalServiceError', () => {
+  it('should serialize Dispatcharr failures with the shared provider code', () => {
+    const error = new ExternalServiceError('dispatcharr', 'Connection refused');
+
+    expect(error.toJSON()).toEqual({
+      statusCode: 502,
+      error: 'ExternalServiceError',
+      message: 'Dispatcharr error: Connection refused',
+      code: ErrorCodes.DISPATCHARR_ERROR,
+    });
+    expect(error.code).toBe('EXT_005');
+  });
+
   it('should use PLEX_ERROR code for plex service', () => {
     const error = new ExternalServiceError('plex', 'Connection refused');
 

@@ -46,9 +46,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `7eb029ab6`
-- Last shared upstream commit found during inspection: `dd6818583` (before merge)
-- Latest upstream commit merged into the current working tree: `7eb029ab6`
+- Source branch/SHA inspected: `main` at `540bcd25b`
+- Last shared upstream commit found during inspection: `7eb029ab6` (before merge)
+- Latest upstream commit merged into the current working tree: `540bcd25b`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -59,6 +59,48 @@ git merge-base HEAD source-tmp/main
 git diff --stat source-tmp/main..HEAD
 git diff --name-status source-tmp/main..HEAD
 ```
+
+## October 5, 2026 — Tracearr 2.6.2 upstream merge
+
+Upstream `main` at `540bcd25b` adds shared mobile authentication error codes,
+strict session-store lookup with HTTP 503 on outages, revoked-token tombstones,
+legacy pairing conversion to Better Auth on refresh, race-safe refresh/revoke
+handling, push-secret IDs, updated pairing copy, translations and Scalar
+API-reference dependencies. The shared error-code move preserves the fork's
+`DISPATCHARR_ERROR` (`EXT_005`) and server `ExternalServiceError` mapping,
+with a regression asserting the serialized Dispatcharr error. Mobile pairing
+still accepts a Dispatcharr primary server. The push encryption null guard
+remains intact.
+
+The Finnish translation conflict retains upstream localization and the fork's
+`noLibraryServers` key. All 300 fork-only translation entries were checked
+against the pre-merge English key delta and retained. Helm chart changes were
+excluded under MERGE_INSTRUCTION.md. Exactly the unchanged PR CI and fork
+dual-registry release workflows remain; both Dockerfiles, upstream migrations
+and fork migrations are unchanged. Dispatcharr auth/settings, session and
+device identity, realtime/polling, library exclusions, two-channel versions,
+and permanent uncropped artwork/cache markers remain intact.
+
+Full non-Docker CI-equivalent validation passed with Node 24 / pnpm 12.4.2,
+a cleared Turbo cache, frozen-lockfile install, 4 GB heap, two Vitest workers
+and Turbo concurrency one. Heavy jobs ran sequentially on the 8 GB LXC.
+Lint, typecheck, translations, unit/services/routes/auth/security, web,
+coverage and build all passed on the first run. Server groups plus web passed
+9,374 tests, shared passed another 426, and coverage passed 6,034 tests
+(71.11% statements, 65.01% branches, 75.34% functions, 72.32% lines).
+Lint has 753 warnings, down 11: upstream removed five return-await warnings
+in auth.ts and six non-null assertions in mobile.ts. Translation keys are
+in sync for all 29 locales; upstream now supplies the former 290 missing
+codec/browse keys. Routes and coverage each emit one more instance of the
+existing MaxListenersExceededWarning; other test groups retain their counts.
+Conflict-resolution files and the new error regression passed Prettier.
+Logs: `.tmp/merge-262-<job>-20261005.log`; the sequential runner is
+`.tmp/merge-262-ci-20261005.log`. The warning reference records final counts.
+
+Docker integration and E2E were explicitly excluded at the user's request.
+Docker image builds, live-provider manual smoke and database upgrade execution
+were not performed. Mobile refresh/revoke race behavior has mocked test
+coverage, but the updated mobile integration job was not run against PostgreSQL.
 
 ## October 3, 2026 — Tracearr 2.6.1 upstream merge
 
