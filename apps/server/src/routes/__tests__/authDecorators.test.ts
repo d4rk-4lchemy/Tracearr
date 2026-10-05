@@ -32,6 +32,7 @@ import { getAuth } from '../../lib/auth.js';
 import { db } from '../../db/client.js';
 import authPlugin from '../../plugins/auth.js';
 import { sessionRoutes } from '../auth/session.js';
+import { registerErrorHandler } from '../../utils/errors.js';
 import { users, servers, authAccounts } from '../../db/schema.js';
 
 function mockBetterAuthSession(user: Record<string, unknown> | null) {
@@ -83,6 +84,7 @@ async function buildTestApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
 
   await app.register(sensible);
+  registerErrorHandler(app);
   await app.register(cookie, { secret: 'test-cookie-secret' });
   await app.register(authPlugin);
   await app.register(sessionRoutes, { prefix: `${API_BASE_PATH}/auth` });

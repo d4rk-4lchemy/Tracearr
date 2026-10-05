@@ -13,7 +13,7 @@
  * - Random IVs for each message prevent replay attacks
  */
 
-import { createCipheriv, randomBytes, pbkdf2Sync } from 'node:crypto';
+import { createCipheriv, createHash, randomBytes, pbkdf2Sync } from 'node:crypto';
 import type { EncryptedPushPayload } from '@tracearr/shared';
 
 // AES-256-GCM parameters (must match mobile client)
@@ -30,6 +30,15 @@ const PBKDF2_ITERATIONS = 100000;
  */
 function deriveKey(deviceSecret: string, salt: Buffer): Buffer {
   return pbkdf2Sync(deviceSecret, salt, PBKDF2_ITERATIONS, KEY_LENGTH, 'sha256');
+}
+
+/**
+ * Short id of a device secret, sent as `kid` so the app can tell a secret
+ * mismatch from a failed decrypt without deriving a key. The app computes the
+ * same value from its own secret, so the formula is part of the wire contract.
+ */
+export function pushSecretId(deviceSecret: string): string {
+  return createHash('sha256').update(deviceSecret).digest('hex').slice(0, 16);
 }
 
 /**
@@ -66,6 +75,7 @@ export function encryptPushPayload(
     salt: salt.toString('base64'),
     ct: encrypted.toString('base64'),
     tag: authTag.toString('base64'),
+    kid: pushSecretId(deviceSecret),
   };
 }
 

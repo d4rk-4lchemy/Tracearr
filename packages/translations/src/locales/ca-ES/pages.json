@@ -191,7 +191,15 @@
       "qualityEvolution": "Evolució de la qualitat",
       "all": "Tot",
       "failedToLoad": "No s'han pogut carregar les dades de qualitat",
-      "failedToLoadDesc": "No s'han pogut obtenir les dades de qualitat. Torneu-ho a provar."
+      "failedToLoadDesc": "No s'han pogut obtenir les dades de qualitat. Torneu-ho a provar.",
+      "codecBrowse": {
+        "movies": "Explora les pel·lícules",
+        "shows": "Explora les sèries",
+        "movieCount_one": "{{count}} pel·lícula",
+        "movieCount_other": "{{count}} pel·lícules",
+        "episodeCount_one": "{{count}} episodi",
+        "episodeCount_other": "{{count}} episodis"
+      }
     },
     "storage": {
       "title": "Emmagatzematge",
@@ -2292,10 +2300,16 @@
         "unwatchedByLens": "Sense veure per {{name}}",
         "resolutionLabel": "Resolució",
         "resolutionAll": "Qualsevol resolució",
+        "videoCodecLabel": "Còdec de vídeo",
+        "videoCodecAll": "Qualsevol còdec de vídeo",
         "hdrLabel": "Interval dinàmic",
         "hdrAll": "Qualsevol",
         "hdrOnly": "Només HDR",
         "hdrChip": "HDR",
+        "audioCodecLabel": "Còdec d'àudio",
+        "audioCodecAll": "Qualsevol còdec d'àudio",
+        "audioChannelsLabel": "Canals d'àudio",
+        "audioChannelsAll": "Qualsevol configuració de canals",
         "atmosLabel": "Àudio",
         "atmosAll": "Qualsevol",
         "atmosOnly": "Només Dolby Atmos",

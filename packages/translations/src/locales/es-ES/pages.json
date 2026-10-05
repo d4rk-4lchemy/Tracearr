@@ -189,7 +189,15 @@
       "qualityEvolution": "Evolución de calidad",
       "all": "Todos",
       "failedToLoad": "Error al cargar datos de calidad",
-      "failedToLoadDesc": "No se pudo obtener datos de calidad. Por favor, inténtelo de nuevo."
+      "failedToLoadDesc": "No se pudo obtener datos de calidad. Por favor, inténtelo de nuevo.",
+      "codecBrowse": {
+        "movies": "",
+        "shows": "",
+        "movieCount_one": "",
+        "movieCount_other": "",
+        "episodeCount_one": "",
+        "episodeCount_other": ""
+      }
     },
     "storage": {
       "title": "Almacenamiento",
@@ -2290,10 +2298,16 @@
         "unwatchedByLens": "",
         "resolutionLabel": "",
         "resolutionAll": "",
+        "videoCodecLabel": "",
+        "videoCodecAll": "",
         "hdrLabel": "",
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "audioCodecLabel": "",
+        "audioCodecAll": "",
+        "audioChannelsLabel": "",
+        "audioChannelsAll": "",
         "atmosLabel": "",
         "atmosAll": "",
         "atmosOnly": "",

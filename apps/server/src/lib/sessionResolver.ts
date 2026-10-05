@@ -29,7 +29,10 @@ interface BetterAuthSessionResult {
   sessionId: string | undefined;
 }
 
-async function loadBetterAuthSession(headers: Headers): Promise<BetterAuthSessionResult | null> {
+async function loadBetterAuthSession(
+  headers: Headers,
+  strict = false
+): Promise<BetterAuthSessionResult | null> {
   let session;
   try {
     // Force fresh validation against the session store (DB/Redis) instead of
@@ -41,8 +44,11 @@ async function loadBetterAuthSession(headers: Headers): Promise<BetterAuthSessio
       headers,
       query: { disableCookieCache: true },
     });
-  } catch {
-    return null; // fail closed on lookup errors
+  } catch (err) {
+    // Fail closed on lookup errors. Strict callers answer them as an outage
+    // instead of a dead session.
+    if (strict) throw err;
+    return null;
   }
   if (!session) return null;
 
@@ -64,6 +70,14 @@ async function loadBetterAuthSession(headers: Headers): Promise<BetterAuthSessio
 
 export async function resolveBetterAuthUser(request: FastifyRequest): Promise<AuthUser | null> {
   const resolved = await loadBetterAuthSession(fromNodeHeaders(request.headers));
+  return resolved?.user ?? null;
+}
+
+/** Same as `resolveBetterAuthUser`, but a failed lookup throws instead of resolving to null. */
+export async function resolveBetterAuthUserStrict(
+  request: FastifyRequest
+): Promise<AuthUser | null> {
+  const resolved = await loadBetterAuthSession(fromNodeHeaders(request.headers), true);
   return resolved?.user ?? null;
 }
 

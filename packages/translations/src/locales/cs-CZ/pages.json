@@ -205,7 +205,19 @@
       "qualityEvolution": "Vývoj kvality",
       "all": "Vše",
       "failedToLoad": "Nepodařilo se načíst kvalitní data",
-      "failedToLoadDesc": "Nelze načíst kvalitní data. Zkuste to prosím znovu."
+      "failedToLoadDesc": "Nelze načíst kvalitní data. Zkuste to prosím znovu.",
+      "codecBrowse": {
+        "movies": "",
+        "shows": "",
+        "movieCount_one": "",
+        "movieCount_few": "",
+        "movieCount_many": "",
+        "movieCount_other": "",
+        "episodeCount_one": "",
+        "episodeCount_few": "",
+        "episodeCount_many": "",
+        "episodeCount_other": ""
+      }
     },
     "storage": {
       "title": "Úložiště",
@@ -2372,10 +2384,16 @@
         "unwatchedByLens": "",
         "resolutionLabel": "",
         "resolutionAll": "",
+        "videoCodecLabel": "",
+        "videoCodecAll": "",
         "hdrLabel": "",
         "hdrAll": "",
         "hdrOnly": "",
         "hdrChip": "",
+        "audioCodecLabel": "",
+        "audioCodecAll": "",
+        "audioChannelsLabel": "",
+        "audioChannelsAll": "",
         "atmosLabel": "",
         "atmosAll": "",
         "atmosOnly": "",

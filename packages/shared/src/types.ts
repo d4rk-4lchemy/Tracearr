@@ -1388,6 +1388,7 @@ export interface ApiError {
   statusCode: number;
   error: string;
   message: string;
+  code?: string;
 }
 
 // ============================================
@@ -1533,6 +1534,7 @@ export interface EncryptedPushPayload {
   salt: string; // Base64-encoded 16-byte PBKDF2 salt
   ct: string; // Base64-encoded ciphertext (without authTag)
   tag: string; // Base64-encoded 16-byte authentication tag
+  kid?: string; // First 16 hex chars of SHA-256 of the device secret used to encrypt
 }
 
 // Push notification payload structure (before encryption)
