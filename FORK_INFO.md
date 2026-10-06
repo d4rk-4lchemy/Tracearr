@@ -2,6 +2,42 @@
 
 This file documents the local fork overlay so future upstream updates can preserve the fork-specific behavior intentionally.
 
+## October 6, 2026 — Tracearr 2.6.3 upstream merge
+
+Upstream `main` at `5060d2f80` adds the mobile language-switch fix: plural
+fallbacks use `one` and `other` when the runtime lacks `Intl.PluralRules`.
+It also updates Sharp to 0.35.5, Drizzle ORM, Fastify plugins, React Query,
+Turbo, Oxlint and image digests. Both Dockerfiles adopt upstream frontend
+pins and supervised base-image digests while preserving fork metadata,
+fork migrations and the shared basemap cache.
+
+Workflow conflicts retain the fork's CI structure and accept its E2E Redis
+digest update. Exactly PR CI (`opened`, `synchronize`) and the unchanged
+fork dual-registry image-release workflow (`release: published`) remain.
+Upstream release/insiders/Renovate/Snyk workflows and Helm changes are excluded.
+Upstream migrations remain byte-for-byte aligned; fork migrations and the
+Dispatcharr overlay, two-channel versions and uncropped artwork are unchanged.
+
+Full non-Docker CI-equivalent validation passed with Node 24 / pnpm 12.4.2,
+a cleared Turbo cache, frozen-lockfile install, 4 GB heap, two Vitest workers
+and Turbo concurrency one. Heavy jobs ran sequentially on the 8 GB LXC.
+Lint, typecheck, translations, unit/services/routes/auth/security, web,
+coverage and build all passed. Server groups plus web passed 9,425 tests;
+coverage passed 6,054 tests (71.24% statements, 65.19% branches,
+75.42% functions, 72.43% lines). Lint retains 753 warnings and zero errors;
+Oxlint 1.86 replaces two `react(refs)` diagnostics with two `react(purity)`
+diagnostics in unchanged files. All 29 locales remain in sync. Other
+runtime/build warnings retain their known classes. Local plural checks cover
+native Polish categories and a missing `Intl.PluralRules` implementation;
+changed source, release notes and CI YAML pass Prettier.
+Logs: `.tmp/merge-263-<job>-20261006.log`; sequential runner:
+`.tmp/merge-263-ci-20261006.log`.
+
+Docker integration and E2E were explicitly omitted at the user's request.
+Docker image builds, live-provider manual smoke and database upgrade execution
+were not performed; updated image digests and Drizzle SQL execution remain
+unverified against running containers/databases in this validation.
+
 ## October 6, 2026 — Dispatcharr Live TV provider labels
 
 Web Dashboard Live TV cards display `2.54x (Provider A)` or `(Provider A)`
@@ -83,9 +119,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `540bcd25b`
-- Last shared upstream commit found during inspection: `7eb029ab6` (before merge)
-- Latest upstream commit merged into the current working tree: `540bcd25b`
+- Source branch/SHA inspected: `main` at `5060d2f80`
+- Last shared upstream commit found during inspection: `540bcd25b` (before merge)
+- Latest upstream commit merged into the current working tree: `5060d2f80`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

@@ -1,0 +1,11 @@
+{
+  "version": "2.6.3",
+  "date": "2026-10-06",
+  "changes": [
+    {
+      "type": "fix",
+      "text": "the mobile app can switch language again; in app 2026.10.1 picking a language did nothing",
+      "refs": ["#1297"]
+    }
+  ]
+}
