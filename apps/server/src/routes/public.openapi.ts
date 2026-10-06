@@ -182,6 +182,10 @@ const TranscodeInfo = z
       .number()
       .optional()
       .openapi({ description: 'Transcode speed multiplier', example: 2.5 }),
+    dispatcharrProviderName: z.string().optional().openapi({
+      description: 'M3U account supplying the active Dispatcharr Live TV stream',
+      example: 'Provider A',
+    }),
     throttled: z.boolean().optional(),
     reasons: z.array(z.string()).optional(),
   })

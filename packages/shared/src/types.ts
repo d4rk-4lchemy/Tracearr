@@ -372,6 +372,8 @@ export interface TranscodeInfo {
   hwDecoding?: string;
   hwEncoding?: string;
   speed?: number;
+  /** Account supplying the active Dispatcharr Live TV M3U profile, independent of output profiles. */
+  dispatcharrProviderName?: string;
   throttled?: boolean;
   /**
    * Plex: share of the runtime this transcode job has produced since it started (0-100), not a

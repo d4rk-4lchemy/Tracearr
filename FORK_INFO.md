@@ -2,6 +2,43 @@
 
 This file documents the local fork overlay so future upstream updates can preserve the fork-specific behavior intentionally.
 
+## October 6, 2026 — Dispatcharr Live TV provider labels
+
+Web Dashboard Live TV cards display `2.54x (Provider A)` or `(Provider A)`
+when channel FFmpeg speed is unavailable. Paused/buffering labels use the
+existing application translations and append the same provider. Catch-up
+keeps its programme clocks; VOD/mobile/history presentation is unchanged.
+
+The provider is the M3U account owning the channel's current `m3u_profile_id`,
+resolved from `/api/m3u/accounts/` and its nested profiles, never an input or
+output profile name. This handles both `<account> Default` and arbitrary
+custom profiles without deleting real account-name words. Account lookup is
+background-only, single-flight, cached for 60 seconds and isolated by URL
+and authentication fingerprint. The cache retains only profile IDs and
+account names; failures back off without affecting sessions or realtime mode.
+Realtime applies completed lookups through its existing update queue against
+the latest clients/profile IDs, and ignores stopped/disconnected channels.
+
+The optional `transcodeInfo.dispatcharrProviderName` passes through existing
+JSONB, pending-session, active-cache and API mappings, with matching public
+OpenAPI documentation. Provider-only Live TV metadata must persist even
+before codecs are discovered. No database migration is needed. Preserve
+current profile IDs over cached details during stream switches; do not
+replace the provider with `stream_profile` or `output_profile_id` names.
+
+Validation passed with Node 24 / pnpm 12.4.2: full unit (2,205), services
+(4,081), routes (1,153), auth (42), security (54) and web (1,887) tests,
+typecheck, translations, lint (753 existing warnings) and the complete build.
+The final 17-case provider suite also verifies API-key, JWT and credentials
+authentication. Heavy jobs ran sequentially on the 8 GB LXC, with at most two
+Vitest workers, Turbo concurrency one and a 4 GB Node heap. Chromium checked
+seven local fixture variants, real Polish/German playback translations and
+non-overlapping labels at 240/300/420 px widths. Logs:
+`.tmp/dispatcharr-provider-*.log`; screenshot: `.tmp/provider-check/card.png`.
+Docker integration/E2E, coverage, image builds and live-provider manual smoke
+were not run. Local fixtures and automated tests do not substitute for the
+full live Dispatcharr smoke checklist.
+
 ## Dual-registry fork releases
 
 The fork-owned `fork-ghcr-release.yml` workflow now publishes each stable fork
