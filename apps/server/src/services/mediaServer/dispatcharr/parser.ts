@@ -31,6 +31,7 @@ export interface DispatcharrChannelStatus {
   source_fps?: unknown;
   resolution?: unknown;
   ffmpeg_speed?: unknown;
+  m3u_profile_id?: unknown;
 }
 
 export interface NormalizedDispatcharrChannel {
@@ -47,6 +48,8 @@ export interface NormalizedDispatcharrChannel {
   sourceFps?: string;
   resolution?: string;
   ffmpegSpeed?: number;
+  m3uProfileId?: number;
+  m3uProviderName?: string;
   clients: DispatcharrClientStatus[];
 }
 
@@ -869,6 +872,19 @@ export function normalizeDispatcharrChannel(
     asString(base.channel_id).trim() || asString(detail?.channel_id).trim() || undefined;
   if (!channelId) return null;
 
+  // A current profile/stream switch must never borrow the previous input's profile.
+  const sameStream =
+    !base.stream_id ||
+    !detail?.stream_id ||
+    asString(base.stream_id) === asString(detail.stream_id);
+  const profileId = asOptionalInteger(
+    Object.hasOwn(base, 'm3u_profile_id')
+      ? base.m3u_profile_id
+      : sameStream
+        ? detail?.m3u_profile_id
+        : undefined
+  );
+
   const channelName =
     asString(base.channel_name).trim() ||
     asString(detail?.channel_name).trim() ||
@@ -895,6 +911,7 @@ export function normalizeDispatcharrChannel(
     sourceFps: asOptionalString(base.source_fps) ?? asOptionalString(detail?.source_fps),
     resolution: asOptionalString(base.resolution) ?? asOptionalString(detail?.resolution),
     ffmpegSpeed: asOptionalNumber(base.ffmpeg_speed) ?? asOptionalNumber(detail?.ffmpeg_speed),
+    m3uProfileId: profileId !== undefined && profileId > 0 ? profileId : undefined,
     clients: mergeClients(parseChannelClients(detail), parseChannelClients(base)),
   };
 }
@@ -975,6 +992,7 @@ export function parseSessionsFromChannels(
           : undefined;
       const transcodeInfo =
         transcodeSpeed !== undefined ||
+        channel.m3uProviderName !== undefined ||
         inferredContainer !== undefined ||
         transcodeReasons !== undefined
           ? {
@@ -983,6 +1001,9 @@ export function parseSessionsFromChannels(
                 : {}),
               ...(containerChanged ? { containerDecision: 'transcode' } : {}),
               ...(transcodeSpeed !== undefined ? { speed: transcodeSpeed } : {}),
+              ...(channel.m3uProviderName !== undefined
+                ? { dispatcharrProviderName: channel.m3uProviderName }
+                : {}),
               ...(transcodeReasons ? { reasons: transcodeReasons } : {}),
             }
           : undefined;

@@ -1771,6 +1771,10 @@ export async function processServerSessions(
           if (processed.sourceAudioCodec || processed.sourceVideoCodec) {
             Object.assign(updatePayload, pickStreamDetailFields(processed));
           }
+          // Live input metadata can be available before Dispatcharr discovers codecs.
+          if (server.type === 'dispatcharr' && processed.dispatcharrPlaybackKind === 'live') {
+            updatePayload.transcodeInfo = processed.transcodeInfo;
+          }
 
           const pauseResult = calculatePauseAccumulation(
             previousState,

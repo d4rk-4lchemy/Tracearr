@@ -2,6 +2,79 @@
 
 This file documents the local fork overlay so future upstream updates can preserve the fork-specific behavior intentionally.
 
+## October 6, 2026 — Tracearr 2.6.3 upstream merge
+
+Upstream `main` at `5060d2f80` adds the mobile language-switch fix: plural
+fallbacks use `one` and `other` when the runtime lacks `Intl.PluralRules`.
+It also updates Sharp to 0.35.5, Drizzle ORM, Fastify plugins, React Query,
+Turbo, Oxlint and image digests. Both Dockerfiles adopt upstream frontend
+pins and supervised base-image digests while preserving fork metadata,
+fork migrations and the shared basemap cache.
+
+Workflow conflicts retain the fork's CI structure and accept its E2E Redis
+digest update. Exactly PR CI (`opened`, `synchronize`) and the unchanged
+fork dual-registry image-release workflow (`release: published`) remain.
+Upstream release/insiders/Renovate/Snyk workflows and Helm changes are excluded.
+Upstream migrations remain byte-for-byte aligned; fork migrations and the
+Dispatcharr overlay, two-channel versions and uncropped artwork are unchanged.
+
+Full non-Docker CI-equivalent validation passed with Node 24 / pnpm 12.4.2,
+a cleared Turbo cache, frozen-lockfile install, 4 GB heap, two Vitest workers
+and Turbo concurrency one. Heavy jobs ran sequentially on the 8 GB LXC.
+Lint, typecheck, translations, unit/services/routes/auth/security, web,
+coverage and build all passed. Server groups plus web passed 9,425 tests;
+coverage passed 6,054 tests (71.24% statements, 65.19% branches,
+75.42% functions, 72.43% lines). Lint retains 753 warnings and zero errors;
+Oxlint 1.86 replaces two `react(refs)` diagnostics with two `react(purity)`
+diagnostics in unchanged files. All 29 locales remain in sync. Other
+runtime/build warnings retain their known classes. Local plural checks cover
+native Polish categories and a missing `Intl.PluralRules` implementation;
+changed source, release notes and CI YAML pass Prettier.
+Logs: `.tmp/merge-263-<job>-20261006.log`; sequential runner:
+`.tmp/merge-263-ci-20261006.log`.
+
+Docker integration and E2E were explicitly omitted at the user's request.
+Docker image builds, live-provider manual smoke and database upgrade execution
+were not performed; updated image digests and Drizzle SQL execution remain
+unverified against running containers/databases in this validation.
+
+## October 6, 2026 — Dispatcharr Live TV provider labels
+
+Web Dashboard Live TV cards display `2.54x (Provider A)` or `(Provider A)`
+when channel FFmpeg speed is unavailable. Paused/buffering labels use the
+existing application translations and append the same provider. Catch-up
+keeps its programme clocks; VOD/mobile/history presentation is unchanged.
+
+The provider is the M3U account owning the channel's current `m3u_profile_id`,
+resolved from `/api/m3u/accounts/` and its nested profiles, never an input or
+output profile name. This handles both `<account> Default` and arbitrary
+custom profiles without deleting real account-name words. Account lookup is
+background-only, single-flight, cached for 60 seconds and isolated by URL
+and authentication fingerprint. The cache retains only profile IDs and
+account names; failures back off without affecting sessions or realtime mode.
+Realtime applies completed lookups through its existing update queue against
+the latest clients/profile IDs, and ignores stopped/disconnected channels.
+
+The optional `transcodeInfo.dispatcharrProviderName` passes through existing
+JSONB, pending-session, active-cache and API mappings, with matching public
+OpenAPI documentation. Provider-only Live TV metadata must persist even
+before codecs are discovered. No database migration is needed. Preserve
+current profile IDs over cached details during stream switches; do not
+replace the provider with `stream_profile` or `output_profile_id` names.
+
+Validation passed with Node 24 / pnpm 12.4.2: full unit (2,205), services
+(4,081), routes (1,153), auth (42), security (54) and web (1,887) tests,
+typecheck, translations, lint (753 existing warnings) and the complete build.
+The final 17-case provider suite also verifies API-key, JWT and credentials
+authentication. Heavy jobs ran sequentially on the 8 GB LXC, with at most two
+Vitest workers, Turbo concurrency one and a 4 GB Node heap. Chromium checked
+seven local fixture variants, real Polish/German playback translations and
+non-overlapping labels at 240/300/420 px widths. Logs:
+`.tmp/dispatcharr-provider-*.log`; screenshot: `.tmp/provider-check/card.png`.
+Docker integration/E2E, coverage, image builds and live-provider manual smoke
+were not run. Local fixtures and automated tests do not substitute for the
+full live Dispatcharr smoke checklist.
+
 ## Dual-registry fork releases
 
 The fork-owned `fork-ghcr-release.yml` workflow now publishes each stable fork
@@ -46,9 +119,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `540bcd25b`
-- Last shared upstream commit found during inspection: `7eb029ab6` (before merge)
-- Latest upstream commit merged into the current working tree: `540bcd25b`
+- Source branch/SHA inspected: `main` at `5060d2f80`
+- Last shared upstream commit found during inspection: `540bcd25b` (before merge)
+- Latest upstream commit merged into the current working tree: `5060d2f80`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

@@ -5,9 +5,18 @@ import { setTimeFormat } from '@/lib/timeFormat';
 import { NowPlayingCard } from './NowPlayingCard';
 import type { ActiveSession } from '@tracearr/shared';
 
+const playbackLabels = vi.hoisted(() => ({
+  paused: 'playback.paused',
+  buffering: 'playback.buffering',
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => (key === 'pages:automations.options.trailer' ? 'Trailer' : key),
+    t: (key: string) => {
+      if (key === 'playback.paused') return playbackLabels.paused;
+      if (key === 'playback.buffering') return playbackLabels.buffering;
+      return key === 'pages:automations.options.trailer' ? 'Trailer' : key;
+    },
   }),
 }));
 
@@ -139,6 +148,8 @@ function getProgressTranslatePercent(container: HTMLElement): number | null {
 describe('NowPlayingCard ffmpeg speed display', () => {
   beforeEach(() => {
     localStorage.clear();
+    playbackLabels.paused = 'playback.paused';
+    playbackLabels.buffering = 'playback.buffering';
   });
 
   it.each([null, 2026])('labels a Plex trailer with year %s without changing its title', (year) => {
@@ -354,6 +365,84 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     );
 
     expect(screen.getByText('1.03x')).toBeTruthy();
+  });
+
+  it.each([
+    [2.54, 'Provider A', '2.54x (Provider A)'],
+    [0, 'Provider A', '0.00x (Provider A)'],
+    [undefined, 'Provider A', '(Provider A)'],
+    [NaN, 'Provider A', '(Provider A)'],
+    [Infinity, 'Provider A', '(Provider A)'],
+    [2.54, undefined, '2.54x'],
+    [2.54, '   ', '2.54x'],
+  ] as const)(
+    'formats speed %s and provider %s as %s',
+    (speed, dispatcharrProviderName, expected) => {
+      render(
+        <NowPlayingCard
+          session={makeSession({ transcodeInfo: { speed, dispatcharrProviderName } })}
+        />
+      );
+      expect(screen.getByText(expected)).toBeTruthy();
+      expect(screen.getByTitle(expected)).toBeTruthy();
+    }
+  );
+
+  it('keeps the original placeholder when both speed and provider are missing', () => {
+    render(<NowPlayingCard session={makeSession({ transcodeInfo: null })} />);
+    expect(screen.getAllByText('--:--')).toHaveLength(2);
+  });
+
+  it.each(['paused', 'buffering'] as const)(
+    'appends the provider to the translated %s state',
+    (state) => {
+      playbackLabels.paused = 'En pause';
+      playbackLabels.buffering = 'Mise en mémoire tampon';
+      render(
+        <NowPlayingCard
+          session={makeSession({
+            state: state === 'paused' ? 'paused' : 'playing',
+            buffering: state === 'buffering',
+            transcodeInfo: { speed: 2.54, dispatcharrProviderName: 'Provider A' },
+          })}
+        />
+      );
+      const expected = `${playbackLabels[state]} (Provider A)`;
+      expect(screen.getByText(expected)).toBeTruthy();
+      expect(screen.getByTitle(expected)).toBeTruthy();
+      expect(screen.queryByText('2.54x (Provider A)')).toBeNull();
+    }
+  );
+
+  it('truncates a long provider with the complete label available in its title', () => {
+    const provider = 'A very long provider name '.repeat(6).trim();
+    render(
+      <NowPlayingCard
+        session={makeSession({ transcodeInfo: { speed: 2.54, dispatcharrProviderName: provider } })}
+      />
+    );
+    const label = screen.getByTitle(`2.54x (${provider})`);
+    expect(label.className).toContain('truncate');
+    expect(label.className).toContain('min-w-0');
+  });
+
+  it.each(['catchup', 'vod', 'plex'] as const)('does not add the provider to %s cards', (kind) => {
+    render(
+      <NowPlayingCard
+        session={makeSession({
+          mediaType: kind === 'vod' ? 'movie' : 'live',
+          dispatcharrPlaybackKind: kind === 'plex' ? undefined : kind,
+          server: {
+            id: 'server-1',
+            name: kind === 'plex' ? 'Plex' : 'Dispatcharr',
+            type: kind === 'plex' ? 'plex' : 'dispatcharr',
+          },
+          transcodeInfo: { speed: 2.54, dispatcharrProviderName: 'Provider A' },
+        })}
+      />
+    );
+    expect(screen.queryByText(/Provider A/)).toBeNull();
+    expect(screen.queryByText(/2\.54x/)).toBeNull();
   });
 
   it('keeps default duration fallback for non-dispatcharr streams', () => {

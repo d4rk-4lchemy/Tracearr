@@ -44,6 +44,12 @@ const CREDENTIALS_TOKEN_PREFIX = 'dispatcharr-credentials:';
 const TOKEN_REFRESH_SKEW_MS = 30_000;
 const DEFAULT_ACCESS_TOKEN_TTL_MS = 5 * 60 * 1000;
 const OUTPUT_PROFILE_CACHE_TTL_MS = 60_000;
+const M3U_PROVIDER_CACHE_TTL_MS = 60_000;
+
+interface DispatcharrM3uProviderCache {
+  expiresAtMs: number;
+  namesByProfileId: Map<number, string>;
+}
 
 interface DispatcharrOutputProfileApiRecord {
   id?: unknown;
@@ -99,6 +105,9 @@ export class DispatcharrClient implements IMediaServerClient {
     string,
     { expiresAtMs: number; profilesById: Map<number, DispatcharrResolvedOutputProfile> }
   >();
+  private static m3uProviderCache = new Map<string, DispatcharrM3uProviderCache>();
+  private static m3uProviderRequestsInFlight = new Map<string, Promise<boolean>>();
+  private observedM3uProviderRequest?: Promise<boolean>;
 
   private readonly baseUrl: string;
   private readonly token: string;
@@ -275,13 +284,93 @@ export class DispatcharrClient implements IMediaServerClient {
         )
       ));
 
-    return details.flatMap((detailChannel) => {
+    const channels = details.flatMap((detailChannel) => {
       const channelId = String(detailChannel.channel_id ?? '').trim();
       if (!channelId) return [];
       const baseChannel = channelById.get(channelId) ?? detailChannel;
       const normalized = normalizeDispatcharrChannel(baseChannel, detailChannel);
       return normalized ? [normalized] : [];
     });
+    this.enrichLiveProviderNames(channels);
+    return channels;
+  }
+
+  /** Apply cached account names immediately; optional metadata never holds up a snapshot. */
+  enrichLiveProviderNames(channels: NormalizedDispatcharrChannel[], onRefresh?: () => void): void {
+    const cacheKey = createHash('sha256').update(`${this.baseUrl}\0${this.token}`).digest('hex');
+    const cached = DispatcharrClient.m3uProviderCache.get(cacheKey);
+    for (const channel of channels) {
+      channel.m3uProviderName = channel.m3uProfileId
+        ? cached?.namesByProfileId.get(channel.m3uProfileId)
+        : undefined;
+    }
+    if (!channels.some((channel) => channel.m3uProfileId && channel.clients.length > 0)) return;
+    if (cached && cached.expiresAtMs > Date.now()) return;
+
+    let request = DispatcharrClient.m3uProviderRequestsInFlight.get(cacheKey);
+    if (!request) {
+      request = this.refreshM3uProviderNames(cacheKey).finally(() => {
+        DispatcharrClient.m3uProviderRequestsInFlight.delete(cacheKey);
+      });
+      DispatcharrClient.m3uProviderRequestsInFlight.set(cacheKey, request);
+    }
+    if (onRefresh && this.observedM3uProviderRequest !== request) {
+      this.observedM3uProviderRequest = request;
+      void request.then((refreshed) => {
+        if (refreshed) onRefresh();
+      });
+    }
+  }
+
+  private async refreshM3uProviderNames(cacheKey: string): Promise<boolean> {
+    try {
+      const endpoint = new URL(`${this.baseUrl}/api/m3u/accounts/`);
+      let nextUrl: URL | null = endpoint;
+      const visited = new Set<string>();
+      const namesByProfileId = new Map<number, string>();
+      while (nextUrl) {
+        // Never send provider credentials to another origin/path from a pagination link.
+        if (
+          nextUrl.origin !== endpoint.origin ||
+          nextUrl.pathname !== endpoint.pathname ||
+          visited.has(nextUrl.href)
+        ) {
+          throw new Error('Invalid Dispatcharr M3U accounts pagination');
+        }
+        visited.add(nextUrl.href);
+        const data: unknown = await fetchJson<unknown>(nextUrl.href, {
+          headers: await this.buildHeaders(),
+          service: 'dispatcharr',
+          timeout: 10000,
+        });
+        for (const account of this.extractRecords(data)) {
+          const name = this.getOptionalString(account.name);
+          if (!name) continue;
+          for (const profile of this.extractRecords(account.profiles)) {
+            const id = this.getOptionalInteger(profile.id);
+            if (id !== undefined && id > 0) namesByProfileId.set(id, name);
+          }
+        }
+        const next =
+          data && typeof data === 'object' && !Array.isArray(data) && 'next' in data
+            ? data.next
+            : null;
+        nextUrl = typeof next === 'string' && next ? new URL(next, nextUrl) : null;
+      }
+      DispatcharrClient.m3uProviderCache.set(cacheKey, {
+        expiresAtMs: Date.now() + M3U_PROVIDER_CACHE_TTL_MS,
+        namesByProfileId,
+      });
+      return true;
+    } catch {
+      // Back off on inaccessible accounts while retaining any previously resolved names.
+      const cached = DispatcharrClient.m3uProviderCache.get(cacheKey);
+      DispatcharrClient.m3uProviderCache.set(cacheKey, {
+        expiresAtMs: Date.now() + M3U_PROVIDER_CACHE_TTL_MS,
+        namesByProfileId: cached?.namesByProfileId ?? new Map<number, string>(),
+      });
+      return false;
+    }
   }
 
   buildSessionsFromNormalizedChannels(

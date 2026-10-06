@@ -583,6 +583,20 @@ export class DispatcharrRealtimeConnector extends EventEmitter {
       detailChannels
     );
 
+    this.client.enrichLiveProviderNames(normalizedChannels, () => {
+      this.enqueueUpdate(async () => {
+        // Resolve against current clients/profile IDs, never the snapshot that started the fetch.
+        if (
+          this.state !== 'connected' ||
+          this.manualDisconnect ||
+          this.activeLiveChannelIds().size === 0
+        )
+          return;
+        await this.rebuildLiveSessions();
+        this.emitMergedSnapshot(false);
+      });
+    });
+
     await this.refreshUserCache(normalizedChannels, forceEnrichment);
     await this.refreshLogoCache(normalizedChannels);
     await this.refreshProgramCache(normalizedChannels, forceEnrichment);

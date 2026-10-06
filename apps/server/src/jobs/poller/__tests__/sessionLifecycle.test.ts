@@ -844,6 +844,17 @@ describe('sessionLocation', () => {
 });
 
 describe('buildActiveSession identity passthrough', () => {
+  it('preserves provider-only Dispatcharr metadata for active cards and cache', async () => {
+    const { buildActiveSession } = await import('../sessionLifecycle.js');
+    const activeSession = buildActiveSession(
+      createMockBuildActiveSessionInput({
+        mediaType: 'live',
+        dispatcharrPlaybackKind: 'live',
+        transcodeInfo: { dispatcharrProviderName: 'Provider A' },
+      })
+    );
+    expect(activeSession.transcodeInfo).toEqual({ dispatcharrProviderName: 'Provider A' });
+  });
   it('gives parallel Dispatcharr connections one device without altering connection identity', async () => {
     const { buildActiveSession } = await import('../sessionLifecycle.js');
     const first = createMockBuildActiveSessionInput({

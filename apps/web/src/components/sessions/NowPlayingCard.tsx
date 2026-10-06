@@ -153,13 +153,25 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
 
   const deviceName = getDeviceDisplayName(session);
   const isPaused = session.state === 'paused';
+  const isDispatcharrLive =
+    !isDispatcharrCatchup && session.server.type === 'dispatcharr' && session.mediaType === 'live';
+  const dispatcharrProvider = isDispatcharrLive
+    ? session.transcodeInfo?.dispatcharrProviderName?.trim()
+    : undefined;
   const dispatcharrLiveSpeed =
-    !isDispatcharrCatchup &&
-    session.server.type === 'dispatcharr' &&
-    session.mediaType === 'live' &&
-    session.transcodeInfo?.speed !== undefined
+    isDispatcharrLive &&
+    session.transcodeInfo?.speed !== undefined &&
+    Number.isFinite(session.transcodeInfo.speed)
       ? `${session.transcodeInfo.speed.toFixed(2)}x`
       : null;
+  const dispatcharrLiveLabel =
+    [dispatcharrLiveSpeed, dispatcharrProvider ? `(${dispatcharrProvider})` : null]
+      .filter(Boolean)
+      .join(' ') || null;
+  const playbackStateLabel = session.buffering ? t('playback.buffering') : t('playback.paused');
+  const dispatcharrStateLabel = dispatcharrProvider
+    ? `${playbackStateLabel} (${dispatcharrProvider})`
+    : playbackStateLabel;
   const catchupStartLabel = formatDispatcharrCatchupClock(
     session.dispatcharrCatchupEpgStartAt ?? null
   );
@@ -322,19 +334,24 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                 buffered={getBufferedPercent(session)}
                 className="h-1.5"
               />
-              <div className="text-muted-foreground flex justify-between text-[10px]">
-                <span>
+              <div className="text-muted-foreground flex justify-between gap-2 text-[10px]">
+                <span className="shrink-0">
                   {isDispatcharrCatchup ? catchupStartLabel : formatDuration(estimatedProgressMs)}
                 </span>
-                <span>
+                <span
+                  className="min-w-0 truncate"
+                  title={
+                    isPaused || session.buffering
+                      ? dispatcharrStateLabel
+                      : (dispatcharrLiveLabel ?? undefined)
+                  }
+                >
                   {isDispatcharrCatchup ? (
                     catchupEndLabel
                   ) : isPaused || session.buffering ? (
-                    <span className="font-medium text-yellow-500">
-                      {session.buffering ? t('playback.buffering') : t('playback.paused')}
-                    </span>
-                  ) : dispatcharrLiveSpeed ? (
-                    dispatcharrLiveSpeed
+                    <span className="font-medium text-yellow-500">{dispatcharrStateLabel}</span>
+                  ) : dispatcharrLiveLabel ? (
+                    dispatcharrLiveLabel
                   ) : remaining ? (
                     `-${formatDuration(remaining)}`
                   ) : (

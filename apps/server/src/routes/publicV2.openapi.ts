@@ -155,6 +155,10 @@ const TranscodeInfo = z
     hwDecoding: z.string().optional().openapi({ example: 'videotoolbox' }),
     hwEncoding: z.string().optional().openapi({ example: 'videotoolbox' }),
     speed: z.number().optional().openapi({ description: 'Transcode speed multiplier' }),
+    dispatcharrProviderName: z.string().optional().openapi({
+      description: 'M3U account supplying the active Dispatcharr Live TV stream',
+      example: 'Provider A',
+    }),
     throttled: z.boolean().optional(),
     reasons: z.array(z.string()).optional(),
   })

@@ -95,6 +95,7 @@ describe('updatePendingSession', () => {
       mediaTitle: 'Late News',
       totalDurationMs: 3_600_000,
       progressMs: 42_000,
+      transcodeInfo: { dispatcharrProviderName: 'Provider A' },
     } as PendingSessionData['processed'];
 
     const { updatedData } = updatePendingSession(
@@ -107,6 +108,7 @@ describe('updatePendingSession', () => {
     );
 
     expect(updatedData.processed).toBe(nextProcessed);
+    expect(updatedData.processed.transcodeInfo).toEqual({ dispatcharrProviderName: 'Provider A' });
   });
 
   it('tracks pause accumulation across updates', () => {

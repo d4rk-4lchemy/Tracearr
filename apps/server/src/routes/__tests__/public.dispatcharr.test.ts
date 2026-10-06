@@ -69,6 +69,8 @@ vi.mock('../stats/queries.js', () => ({
 }));
 
 import { publicRoutes } from '../public.js';
+import { generateOpenAPIDocument } from '../public.openapi.js';
+import { generateOpenAPIDocumentV2 } from '../publicV2.openapi.js';
 
 async function buildTestApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -102,6 +104,35 @@ describe('Public API Routes', () => {
   });
 
   describe('GET /public/streams', () => {
+    it.each([undefined, 2.54])(
+      'retains provider metadata with speed %s and documents it in OpenAPI',
+      async (speed) => {
+        const serverId = randomUUID();
+        const transcodeInfo = {
+          dispatcharrProviderName: 'Provider A',
+          ...(speed !== undefined ? { speed } : {}),
+        };
+        mocks.getAllActiveSessions.mockResolvedValueOnce([
+          createMockActiveSession({
+            serverId,
+            mediaType: 'live',
+            transcodeInfo,
+            server: { id: serverId, name: 'Dispatcharr', type: 'dispatcharr' },
+          }),
+        ]);
+        app = await buildTestApp();
+        const response = await app.inject({ method: 'GET', url: '/public/streams' });
+        expect(response.statusCode).toBe(200);
+        expect(response.json().data[0].transcodeInfo).toEqual(transcodeInfo);
+        for (const document of [generateOpenAPIDocument(), generateOpenAPIDocumentV2()]) {
+          expect(document).toHaveProperty(
+            'components.schemas.TranscodeInfo.properties.dispatcharrProviderName.type',
+            'string'
+          );
+        }
+      }
+    );
+
     it('maps Dispatcharr live channel data as the primary media title and uses channel logo', async () => {
       const serverId = randomUUID();
       const session = createMockActiveSession({
