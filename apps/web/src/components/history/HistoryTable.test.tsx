@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type { SessionWithDetails } from '@tracearr/shared';
@@ -135,9 +135,9 @@ describe('HistoryTable content layout', () => {
     const title = screen.getByText(
       'Very Long Movie Name That Should Be Truncated On Mobile Layout'
     );
-    expect(title.className).toContain('truncate');
-    expect(title.className).toContain('min-w-0');
-    expect(title.className).toContain('flex-1');
+    expect(title.closest('span')?.className).toContain('truncate');
+    expect(title.closest('span')?.className).toContain('min-w-0');
+    expect(title.closest('span')?.className).toContain('flex-1');
 
     const contentHeader = screen.getByRole('columnheader', { name: 'Content' });
     expect(contentHeader).toHaveStyle({ width: '300px', minWidth: '300px' });
@@ -368,7 +368,10 @@ describe('HistoryTable live content display', () => {
   });
 });
 
-function renderTable(overrides: Partial<SessionWithDetails>) {
+function renderTable(
+  overrides: Partial<SessionWithDetails>,
+  onSessionClick?: (session: SessionWithDetails) => void
+) {
   const session = {
     id: 'session-1',
     serverId: 'server-1',
@@ -393,6 +396,7 @@ function renderTable(overrides: Partial<SessionWithDetails>) {
       <TooltipProvider>
         <HistoryTable
           sessions={[session]}
+          onSessionClick={onSessionClick}
           columnVisibility={{ ...DEFAULT_COLUMN_VISIBILITY, progress: true }}
         />
       </TooltipProvider>
@@ -414,5 +418,27 @@ describe('HistoryTable', () => {
 
     expect(screen.getByText('0%')).toBeInTheDocument();
     expect(screen.getByText('Abandoned')).toBeInTheDocument();
+  });
+
+  it('links the show and the episode without opening the row', () => {
+    const onSessionClick = vi.fn();
+    renderTable(
+      {
+        mediaType: 'episode',
+        mediaTitle: 'Pilot',
+        grandparentTitle: 'Lost',
+        seasonNumber: 1,
+        episodeNumber: 2,
+        mediaId: 'episode-1',
+        showMediaId: 'show-1',
+      },
+      onSessionClick
+    );
+
+    expect(screen.getByRole('link', { name: 'Lost' })).toHaveAttribute('href', '/media/show-1');
+    fireEvent.click(screen.getByRole('link', { name: /Pilot/ }));
+
+    expect(screen.getByRole('link', { name: /Pilot/ })).toHaveAttribute('href', '/media/episode-1');
+    expect(onSessionClick).not.toHaveBeenCalled();
   });
 });

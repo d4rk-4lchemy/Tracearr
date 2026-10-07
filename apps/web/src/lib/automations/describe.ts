@@ -72,6 +72,8 @@ interface Describe {
   placeholders: boolean;
 }
 
+type Names = Pick<Describe, 't' | 'refs'>;
+
 /** What the caller wants of a half-built definition. */
 export interface DescribeOptions {
   /** Names the empty trigger and action slots after the steps that fill them. */
@@ -223,24 +225,36 @@ function describeTriggers(
 }
 
 /** A user, server or country id reads as its name once the refs carry one. */
-function dynamicName(ctx: Describe, field: string, value: string): string | undefined {
+function dynamicName(ctx: Names, field: string, value: string): string | undefined {
   const source = fieldDescriptor(field)?.dynamicSource;
   return source ? ctx.refs[source]?.[value] : undefined;
 }
 
-function scalarText(ctx: Describe, field: string, value: string | boolean): string {
+function scalarText(ctx: Names, field: string, value: string | boolean): string {
   if (typeof value === 'boolean') return String(value);
   const named = dynamicName(ctx, field, value);
   if (named) return named;
   return fieldOptions(ctx.t, field).find((option) => option.value === value)?.label ?? value;
 }
 
-function listText(ctx: Describe, field: string, values: readonly (string | number)[]): string {
+function listText(ctx: Names, field: string, values: readonly (string | number)[]): string {
   if (values.length === 0) return ctx.t('automations.describe.noValues');
   const labels = values.map((entry) =>
     typeof entry === 'number' ? String(entry) : scalarText(ctx, field, entry)
   );
   return labels.length > 3 ? `${labels.slice(0, 3).join(', ')}...` : labels.join(', ');
+}
+
+/** A stored value as the sentence names it, for a caller that has no whole condition. */
+export function conditionValueText(
+  t: Translate,
+  refs: DescribeRefs,
+  field: string,
+  value: string | readonly (string | number)[]
+): string {
+  return typeof value === 'string'
+    ? scalarText({ t, refs }, field, value)
+    : listText({ t, refs }, field, value);
 }
 
 /** The threshold as the reader sees it: their unit system, and names where it holds ids. */

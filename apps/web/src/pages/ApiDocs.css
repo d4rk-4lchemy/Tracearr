@@ -4,7 +4,9 @@
  */
 
 .api-docs-wrapper {
-  min-height: 100vh;
+  /* Scalar offsets its sticky sidebar and sizes it to the viewport minus this */
+  --scalar-custom-header-height: 3.5rem;
+  min-height: 100svh;
   background: hsl(var(--background));
 }
 
@@ -12,7 +14,8 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  padding: 0.75rem 1.5rem;
+  height: var(--scalar-custom-header-height);
+  padding: 0 1.5rem;
   border-bottom: 1px solid hsl(var(--border));
   background: hsl(var(--background));
 }

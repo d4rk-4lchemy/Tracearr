@@ -158,3 +158,33 @@ describe('StreamCard marker popup wiring', () => {
     expect(connected.size).toBe(1);
   });
 });
+
+describe('StreamCard session popup', () => {
+  it('links the show and the episode to their media pages', async () => {
+    const episode = {
+      ...(session as object),
+      id: 's2',
+      mediaType: 'episode',
+      mediaTitle: 'Pilot',
+      grandparentTitle: 'Lost',
+      seasonNumber: 1,
+      episodeNumber: 2,
+      mediaId: 'episode-1',
+      showMediaId: 'show-1',
+    } as never;
+    render(
+      <MemoryRouter>
+        <StreamCard sessions={[episode]} />
+      </MemoryRouter>
+    );
+    await waitFor(() => expect(markerEls.some((el) => el.isConnected)).toBe(true));
+    const connected = markerEls.filter((el) => el.isConnected);
+    fireEvent.click(connected[connected.length - 1]!);
+
+    expect(await screen.findByRole('link', { name: 'Lost' })).toHaveAttribute(
+      'href',
+      '/media/show-1'
+    );
+    expect(screen.getByRole('link', { name: /Pilot/ })).toHaveAttribute('href', '/media/episode-1');
+  });
+});

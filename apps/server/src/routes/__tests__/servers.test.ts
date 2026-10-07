@@ -96,6 +96,7 @@ vi.mock('../../services/serverLiveStats.js', () => ({
 
 vi.mock('../../services/serverIdentity.js', () => ({
   readServerIdentity: vi.fn(),
+  sharesKnownUsers: vi.fn(),
 }));
 
 vi.mock('../../services/sseManager.js', () => ({
@@ -130,7 +131,7 @@ import {
 import { sseManager } from '../../services/sseManager.js';
 import { getServerLiveStats, getServerResourceStats } from '../../services/serverLiveStats.js';
 import { syncServer } from '../../services/sync.js';
-import { readServerIdentity } from '../../services/serverIdentity.js';
+import { readServerIdentity, sharesKnownUsers } from '../../services/serverIdentity.js';
 import { serverRoutes } from '../servers.js';
 
 // Mock global fetch for image proxy tests
@@ -1081,7 +1082,10 @@ describe('Server Routes', () => {
       expect(elsewhere.json().message).toContain('different server');
 
       mockDbSelectLimit([{ ...emby, machineIdentifier: null }]);
-      vi.mocked(readServerIdentity).mockRejectedValueOnce(new Error('401'));
+      vi.mocked(readServerIdentity)
+        .mockRejectedValueOnce(new Error('401'))
+        .mockResolvedValueOnce('emby-2');
+      vi.mocked(sharesKnownUsers).mockResolvedValueOnce(false);
       const unknown = await app.inject({
         method: 'PATCH',
         url: `/servers/${emby.id}`,
@@ -1091,6 +1095,40 @@ describe('Server Routes', () => {
       expect(unknown.json().message).toContain('no record of which server');
 
       expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('accepts a new key when the saved one is rejected but the server lists users Tracearr knows', async () => {
+      app = await buildTestApp(ownerUser);
+      const jellyfin = {
+        ...mockServer,
+        type: 'jellyfin' as const,
+        url: 'http://192.168.1.20:8096',
+        token: 'revoked-key',
+        machineIdentifier: null,
+      };
+      vi.mocked(JellyfinClient.verifyServerAdmin).mockResolvedValue({ success: true });
+      vi.mocked(readServerIdentity)
+        .mockRejectedValueOnce(new Error('401'))
+        .mockResolvedValueOnce('jf-1');
+      vi.mocked(sharesKnownUsers).mockResolvedValueOnce(true);
+      mockDbSelectLimit([jellyfin]);
+      const update = mockDbUpdateReturning([jellyfin]);
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/servers/${jellyfin.id}`,
+        payload: { apiKey: 'new-key' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(sharesKnownUsers).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'http://192.168.1.20:8096', token: 'new-key' })
+      );
+      expect(update.set).toHaveBeenCalledWith({
+        token: 'new-key',
+        machineIdentifier: 'jf-1',
+        updatedAt: expect.any(Date),
+      });
     });
 
     it('treats the saved key sent again as no change', async () => {

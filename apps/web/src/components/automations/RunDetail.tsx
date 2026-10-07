@@ -23,17 +23,20 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { AutomationKindBadge } from '@/components/automations/AutomationKindBadge';
 import { UserCell } from '@/components/users/UserCell';
+import { MediaPageLink } from '@/components/media/MediaPageLink';
 import { useRun } from '@/hooks/queries/useRuns';
+import { useDescribeRefs } from '@/hooks/useDescribeRefs';
 import {
   conditionText,
+  evidenceValueText,
   isKnownTrigger,
   runWhere,
   runWho,
   storedActionLabel,
   triggerLabel,
-  valueText,
   type Translate,
 } from '@/lib/automations';
+import { getMediaDisplay, getMediaLinks } from '@/lib/utils';
 
 /** Step zero, as the recorder writes it. */
 interface TriggerStep {
@@ -160,7 +163,7 @@ function RunSubjectBlock({ run }: { run: AutomationRun }) {
   const where = runWhere(run.subject);
   if (where) rows.push({ label: t('automations.activity.where'), value: where });
 
-  const playing = run.session ? playingText(run.session) : null;
+  const playing = run.session ? playingValue(run.session) : null;
   if (playing) rows.push({ label: t('automations.activity.playing'), value: playing });
 
   const from = run.session ? fromText(run.session) : null;
@@ -192,11 +195,21 @@ function RunSubjectBlock({ run }: { run: AutomationRun }) {
 }
 
 /** The show and the episode, when the session names both. */
-function playingText(session: RunSessionContext): string | null {
+function playingValue(session: RunSessionContext): ReactNode {
   if (session.mediaTitle === null) return null;
-  return session.grandparentTitle && session.grandparentTitle !== session.mediaTitle
-    ? `${session.grandparentTitle} — ${session.mediaTitle}`
-    : session.mediaTitle;
+  const { title, subtitle } = getMediaDisplay(session);
+  const links = getMediaLinks(session);
+  return (
+    <>
+      <MediaPageLink to={links.title}>{title}</MediaPageLink>
+      {subtitle && subtitle !== title && (
+        <>
+          {' · '}
+          <MediaPageLink to={links.subtitle}>{subtitle}</MediaPageLink>
+        </>
+      )}
+    </>
+  );
 }
 
 /** The client, then where it was streaming from. */
@@ -256,6 +269,7 @@ function Verdicts({ run }: { run: AutomationRun }) {
 }
 
 function ConditionVerdicts({ t, group }: { t: Translate; group: GroupEvidence }) {
+  const refs = useDescribeRefs();
   return (
     <ul className="space-y-1">
       {group.conditions.map((condition, index) => (
@@ -270,9 +284,11 @@ function ConditionVerdicts({ t, group }: { t: Translate; group: GroupEvidence })
               ? t('automations.builder.liveCheck.passed')
               : t('automations.builder.liveCheck.notPassed')}
           </span>
-          <span className="text-sm">{conditionText(t, condition)}</span>
+          <span className="text-sm">{conditionText(t, condition, refs)}</span>
           <span className="text-muted-foreground text-xs">
-            {t('automations.builder.liveCheck.actual', { value: valueText(t, condition.actual) })}
+            {t('automations.builder.liveCheck.actual', {
+              value: evidenceValueText(t, refs, condition.field, condition.actual),
+            })}
           </span>
         </li>
       ))}

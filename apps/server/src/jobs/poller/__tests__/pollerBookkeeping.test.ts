@@ -211,9 +211,10 @@ function createCacheService() {
   let failCount = 0;
   return {
     getAllActiveSessions: vi.fn(() => Promise.resolve(currentCachedSessions)),
-    getServerHealth: vi.fn(async () => health),
     setServerHealth: vi.fn(async (_id: string, value: boolean) => {
+      const previous = health;
       health = value;
+      return previous;
     }),
     resetServerFailCount: vi.fn(async () => {
       failCount = 0;

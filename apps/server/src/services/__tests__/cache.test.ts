@@ -1274,6 +1274,28 @@ describe('PubSubService', () => {
     });
   });
 
+  describe('public channel', () => {
+    it('repeats allowlisted events on the public channel and never fails on a public publish error', async () => {
+      const failing = {
+        publish: vi.fn(async (channel: string) => {
+          if (channel.endsWith('public:events')) throw new Error('channel down');
+          return 1;
+        }),
+      };
+      const service = createPubSubService(failing as never, subscriber);
+
+      await expect(service.publish('session:stopped', 'abc')).resolves.toBeUndefined();
+      const channels = failing.publish.mock.calls.map(([channel]) => channel);
+      expect(channels.filter((c) => c.endsWith('tracearr:events'))).toHaveLength(1);
+      expect(channels.filter((c) => c.endsWith('public:events'))).toHaveLength(1);
+
+      await service.publish('stats:updated', {});
+      expect(failing.publish.mock.calls.filter(([c]) => c.endsWith('public:events'))).toHaveLength(
+        1
+      );
+    });
+  });
+
   describe('subscribe', () => {
     it('should subscribe to channel', async () => {
       const callback = vi.fn();

@@ -2,7 +2,7 @@
  * Public API v2 - GET /streams
  */
 
-import { booleanStringSchema, formatBitrate } from '@tracearr/shared';
+import { booleanStringSchema, formatBitrate, type ActiveSession } from '@tracearr/shared';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -12,7 +12,7 @@ import { buildAvatarUrl, buildPosterUrl } from '../../services/imageProxy.js';
 import { countStreams } from '../../utils/streamCounts.js';
 import { displayValues, emptyToNull, type RouteConfig } from './shared.js';
 
-interface SessionIdentityRow {
+export interface SessionIdentityRow {
   id: string;
   media_id: string | null;
   show_media_id: string | null;
@@ -25,6 +25,75 @@ interface SessionIdentityRow {
   library_id: string | null;
   genres: string[] | null;
 }
+
+/**
+ * The GET /streams item shape. The events route calls this with the cached
+ * session only, so library_id and genres are null there; they need the
+ * library_items join that only the REST handler runs.
+ */
+export function formatActiveStream(session: ActiveSession, identity?: SessionIdentityRow) {
+  return {
+    id: session.id,
+    server_id: session.serverId,
+    server_name: session.server.name,
+    server_type: session.server.type,
+    username: session.user.identityName ?? session.user.username,
+    user_thumb: session.user.thumbUrl,
+    user_avatar_url: buildAvatarUrl(session.serverId, session.user.thumbUrl),
+    media_title: session.mediaTitle,
+    media_type: session.mediaType,
+    show_title: session.grandparentTitle,
+    season_number: session.seasonNumber,
+    episode_number: session.episodeNumber,
+    year: session.year,
+    artist_name: session.artistName,
+    album_name: session.albumName,
+    track_number: session.trackNumber,
+    disc_number: session.discNumber,
+    thumb_path: session.thumbPath,
+    poster_url: buildPosterUrl(session.serverId, session.thumbPath),
+    duration_ms: session.totalDurationMs,
+    state: session.state,
+    progress_ms: session.progressMs ?? 0,
+    started_at: session.startedAt,
+    is_transcode: session.isTranscode,
+    video_decision: session.videoDecision,
+    audio_decision: session.audioDecision,
+    bitrate: session.bitrate,
+    source_video_codec: session.sourceVideoCodec,
+    source_audio_codec: session.sourceAudioCodec,
+    source_audio_channels: session.sourceAudioChannels,
+    source_video_width: session.sourceVideoWidth,
+    source_video_height: session.sourceVideoHeight,
+    source_video_details: session.sourceVideoDetails,
+    source_audio_details: session.sourceAudioDetails,
+    stream_video_codec: session.streamVideoCodec,
+    stream_audio_codec: session.streamAudioCodec,
+    stream_video_details: session.streamVideoDetails,
+    stream_audio_details: session.streamAudioDetails,
+    transcode_info: session.transcodeInfo,
+    subtitle_info: session.subtitleInfo,
+    ...displayValues(session),
+    device: session.device,
+    player: session.playerName,
+    product: session.product,
+    platform: session.platform,
+    media_id: identity ? identity.media_id : (session.mediaId ?? null),
+    show_media_id: identity ? identity.show_media_id : (session.showMediaId ?? null),
+    imdb_id: identity ? identity.imdb_id : (session.imdbId ?? null),
+    tmdb_id: identity ? identity.tmdb_id : (session.tmdbId ?? null),
+    tvdb_id: identity ? identity.tvdb_id : (session.tvdbId ?? null),
+    rating_key: emptyToNull(identity ? identity.rating_key : session.ratingKey),
+    parent_rating_key: emptyToNull(identity ? identity.parent_rating_key : session.parentRatingKey),
+    grandparent_rating_key: emptyToNull(
+      identity ? identity.grandparent_rating_key : session.grandparentRatingKey
+    ),
+    library_id: identity?.library_id ?? null,
+    genres: identity?.genres ?? null,
+  };
+}
+
+export type ActiveStreamShape = ReturnType<typeof formatActiveStream>;
 
 export function registerStreamsRoutes(app: FastifyInstance, routeConfig: RouteConfig): void {
   /**
@@ -84,70 +153,9 @@ export function registerStreamsRoutes(app: FastifyInstance, routeConfig: RouteCo
 
       const streams = summaryOnly
         ? []
-        : activeSessions.map((session) => {
-            const identity = identityById.get(session.id);
-            return {
-              id: session.id,
-              server_id: session.serverId,
-              server_name: session.server.name,
-              server_type: session.server.type,
-              username: session.user.identityName ?? session.user.username,
-              user_thumb: session.user.thumbUrl,
-              user_avatar_url: buildAvatarUrl(session.serverId, session.user.thumbUrl),
-              media_title: session.mediaTitle,
-              media_type: session.mediaType,
-              show_title: session.grandparentTitle,
-              season_number: session.seasonNumber,
-              episode_number: session.episodeNumber,
-              year: session.year,
-              artist_name: session.artistName,
-              album_name: session.albumName,
-              track_number: session.trackNumber,
-              disc_number: session.discNumber,
-              thumb_path: session.thumbPath,
-              poster_url: buildPosterUrl(session.serverId, session.thumbPath),
-              duration_ms: session.totalDurationMs,
-              state: session.state,
-              progress_ms: session.progressMs ?? 0,
-              started_at: session.startedAt,
-              is_transcode: session.isTranscode,
-              video_decision: session.videoDecision,
-              audio_decision: session.audioDecision,
-              bitrate: session.bitrate,
-              source_video_codec: session.sourceVideoCodec,
-              source_audio_codec: session.sourceAudioCodec,
-              source_audio_channels: session.sourceAudioChannels,
-              source_video_width: session.sourceVideoWidth,
-              source_video_height: session.sourceVideoHeight,
-              source_video_details: session.sourceVideoDetails,
-              source_audio_details: session.sourceAudioDetails,
-              stream_video_codec: session.streamVideoCodec,
-              stream_audio_codec: session.streamAudioCodec,
-              stream_video_details: session.streamVideoDetails,
-              stream_audio_details: session.streamAudioDetails,
-              transcode_info: session.transcodeInfo,
-              subtitle_info: session.subtitleInfo,
-              ...displayValues(session),
-              device: session.device,
-              player: session.playerName,
-              product: session.product,
-              platform: session.platform,
-              media_id: identity ? identity.media_id : (session.mediaId ?? null),
-              show_media_id: identity ? identity.show_media_id : (session.showMediaId ?? null),
-              imdb_id: identity ? identity.imdb_id : (session.imdbId ?? null),
-              tmdb_id: identity ? identity.tmdb_id : (session.tmdbId ?? null),
-              tvdb_id: identity ? identity.tvdb_id : (session.tvdbId ?? null),
-              rating_key: emptyToNull(identity ? identity.rating_key : session.ratingKey),
-              parent_rating_key: emptyToNull(
-                identity ? identity.parent_rating_key : session.parentRatingKey
-              ),
-              grandparent_rating_key: emptyToNull(
-                identity ? identity.grandparent_rating_key : session.grandparentRatingKey
-              ),
-              library_id: identity?.library_id ?? null,
-              genres: identity?.genres ?? null,
-            };
-          });
+        : activeSessions.map((session) =>
+            formatActiveStream(session, identityById.get(session.id))
+          );
 
       const { overall, byServer } = countStreams(activeSessions);
 

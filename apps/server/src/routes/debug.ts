@@ -41,6 +41,7 @@ import {
 import { seedBuiltinDestinations } from '../services/notifications/destinationsMigration.js';
 import { violationAliasConditions } from '../services/automations/aliasFilter.js';
 import { getAllServices } from '../services/serviceTracker.js';
+import { getPublicEventConnectionStats } from '../services/publicEvents/connections.js';
 import { getAuth } from '../lib/auth.js';
 import { revokeMobileDeviceSession } from './mobile.js';
 import {
@@ -928,6 +929,7 @@ export const debugRoutes: FastifyPluginAsync = async (app) => {
         newsletters,
       },
       services: getAllServices(),
+      publicEventConnections: getPublicEventConnectionStats(),
       timestamp: new Date().toISOString(),
     };
   });

@@ -36,7 +36,8 @@ import { ActionResultsList } from '@/components/violations/ActionResultsList';
 import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { fieldLabel, operatorLabel } from '@/lib/automations';
-import { getCountryName, getMediaDisplay } from '@/lib/utils';
+import { getCountryName, getMediaDisplay, getMediaLinks } from '@/lib/utils';
+import { MediaPageLink } from '@/components/media/MediaPageLink';
 import { ServerBadge } from '@/components/server';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
 import {
@@ -264,13 +265,18 @@ export function ViolationDetail() {
           cell: ({ row }) => {
             const session = row.original;
             const { title, subtitle } = getMediaDisplay(session);
+            const mediaLinks = getMediaLinks(session);
             const isTriggering = violation?.session?.id === session.id;
             return (
               <div className="flex items-center gap-2">
                 <div className="max-w-[200px]">
-                  <p className="truncate font-medium">{title}</p>
+                  <p className="truncate font-medium">
+                    <MediaPageLink to={mediaLinks.title}>{title}</MediaPageLink>
+                  </p>
                   {subtitle ? (
-                    <p className="text-muted-foreground text-xs">{subtitle}</p>
+                    <p className="text-muted-foreground text-xs">
+                      <MediaPageLink to={mediaLinks.subtitle}>{subtitle}</MediaPageLink>
+                    </p>
                   ) : (
                     <p className="text-muted-foreground text-xs capitalize">{session.mediaType}</p>
                   )}

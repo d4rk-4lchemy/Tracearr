@@ -6,11 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
 import { useDryRun } from '@/hooks/queries/useDryRun';
-import { conditionText, valueText, type Translate } from '@/lib/automations';
+import {
+  conditionText,
+  evidenceValueText,
+  type DescribeRefs,
+  type Translate,
+} from '@/lib/automations';
 import { cn } from '@/lib/utils';
 
 interface LiveCheckStripProps {
   definition: CreateAutomationInput;
+  refs: DescribeRefs;
   /** False while the page has problems of its own; the draft would be rejected as it stands. */
   ready: boolean;
   /** A save is in flight, so nothing is asked until it lands. */
@@ -49,7 +55,7 @@ function statusOf(
  * What the draft would do to the sessions playing right now. The page fetches no
  * sessions of its own: the answer names the ones it was checked against.
  */
-export function LiveCheckStrip({ definition, ready, paused }: LiveCheckStripProps) {
+export function LiveCheckStrip({ definition, refs, ready, paused }: LiveCheckStripProps) {
   const { t } = useTranslation('pages');
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -104,7 +110,7 @@ export function LiveCheckStrip({ definition, ready, paused }: LiveCheckStripProp
         {status !== null && <p className="text-muted-foreground text-sm">{status}</p>}
 
         {samples.map((sample) => (
-          <SampleRow key={sample.subject.sessionId} sample={sample} />
+          <SampleRow key={sample.subject.sessionId} sample={sample} refs={refs} />
         ))}
       </div>
 
@@ -114,7 +120,7 @@ export function LiveCheckStrip({ definition, ready, paused }: LiveCheckStripProp
 }
 
 /** One session, its verdict in words, and the conditions behind it when opened. */
-function SampleRow({ sample }: { sample: DryRunSample }) {
+function SampleRow({ sample, refs }: { sample: DryRunSample; refs: DescribeRefs }) {
   const { t } = useTranslation('pages');
 
   return (
@@ -158,10 +164,15 @@ function SampleRow({ sample }: { sample: DryRunSample }) {
                   ? t('automations.builder.liveCheck.passed')
                   : t('automations.builder.liveCheck.notPassed')}
               </span>
-              <span>{conditionText(t, condition.evidence)}</span>
+              <span>{conditionText(t, condition.evidence, refs)}</span>
               <span className="text-muted-foreground">
                 {t('automations.builder.liveCheck.actual', {
-                  value: valueText(t, condition.evidence.actual),
+                  value: evidenceValueText(
+                    t,
+                    refs,
+                    condition.evidence.field,
+                    condition.evidence.actual
+                  ),
                 })}
               </span>
             </li>

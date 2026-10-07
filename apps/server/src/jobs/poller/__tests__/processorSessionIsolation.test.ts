@@ -9,17 +9,25 @@
  * feeds the DOWN_THRESHOLD health tracking the bug corrupts.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActiveSession, EngineAutomation } from '@tracearr/shared';
 import type { CacheService, PubSubService } from '../../../services/cache.js';
 import type * as ProducersModule from '../../../services/automations/events/producers.js';
 import type { ProcessedSession } from '../types.js';
 
 const mockDbSelect = vi.fn();
-const { mockCreateMediaServerClient, mockGetActiveAutomations } = vi.hoisted(() => ({
-  mockCreateMediaServerClient: vi.fn(),
-  mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
-}));
+const { mockCreateMediaServerClient, mockGetActiveAutomations, mockSseManager } = vi.hoisted(() => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { EventEmitter } = require('events');
+  return {
+    mockCreateMediaServerClient: vi.fn(),
+    mockGetActiveAutomations: vi.fn().mockResolvedValue([]),
+    mockSseManager: Object.assign(new EventEmitter(), {
+      isInFallback: vi.fn().mockReturnValue(true),
+      nudgeReconnect: vi.fn(),
+    }),
+  };
+});
 
 vi.mock('../../../db/client.js', () => ({
   db: { select: (...args: unknown[]) => mockDbSelect(...args) },
@@ -60,12 +68,7 @@ vi.mock('../../../services/serviceTracker.js', () => ({
   unregisterService: vi.fn(),
 }));
 
-vi.mock('../../../services/sseManager.js', () => ({
-  sseManager: {
-    isInFallback: vi.fn().mockReturnValue(true),
-    nudgeReconnect: vi.fn(),
-  },
-}));
+vi.mock('../../../services/sseManager.js', () => ({ sseManager: mockSseManager }));
 
 const mockEnqueueNotification = vi.fn();
 vi.mock('../../notificationQueue.js', () => ({
@@ -111,7 +114,11 @@ vi.mock('../../../services/automations/events/dispatcher.js', () => ({
 
 vi.mock('../../../services/automations/events/producers.js', async (importOriginal) => {
   const actual = await importOriginal<typeof ProducersModule>();
-  return { ...actual, dispatchServerHealth: vi.fn(actual.dispatchServerHealth) };
+  return {
+    ...actual,
+    dispatchServerHealth: vi.fn(actual.dispatchServerHealth),
+    dispatchServerHealthById: vi.fn(),
+  };
 });
 
 vi.mock('../violations.js', () => ({
@@ -124,11 +131,22 @@ vi.mock('../sessionMapper.js', () => ({
 }));
 
 import { servers, serverUsers, sessions as sessionsTable } from '../../../db/schema.js';
-import { gracePeriodSessionIds, initializePoller, stopPoller, triggerPoll } from '../processor.js';
-import { dispatchServerHealth } from '../../../services/automations/events/producers.js';
+import {
+  gracePeriodSessionIds,
+  initializePoller,
+  startPoller,
+  stopPoller,
+  triggerPoll,
+} from '../processor.js';
+import { initializeSSEProcessor, startSSEProcessor, stopSSEProcessor } from '../../sseProcessor.js';
+import {
+  dispatchServerHealth,
+  dispatchServerHealthById,
+} from '../../../services/automations/events/producers.js';
 import { HttpClientError } from '../../../utils/http.js';
 
 const mockDispatchServerHealth = vi.mocked(dispatchServerHealth);
+const mockDispatchServerHealthById = vi.mocked(dispatchServerHealthById);
 
 function createMockProcessedSession(overrides: Partial<ProcessedSession> = {}): ProcessedSession {
   return {
@@ -280,9 +298,11 @@ function createCacheService() {
   let failCount = 0;
   return {
     getAllActiveSessions: vi.fn().mockResolvedValue([activeSessionA, activeSessionB]),
-    getServerHealth: vi.fn(async () => health),
+    getServerHealth: vi.fn(async (_id: string) => health),
     setServerHealth: vi.fn(async (_id: string, value: boolean) => {
+      const previous = health;
       health = value;
+      return previous;
     }),
     resetServerFailCount: vi.fn(async () => {
       failCount = 0;
@@ -500,5 +520,118 @@ describe('per-session error isolation in processServerSessions', () => {
 
     expect(gracePeriodSessionIds().has('active-a-id')).toBe(false);
     expect(mockStopSessionAtomic).not.toHaveBeenCalled();
+  });
+});
+
+describe('server health across the poller and the live connection', () => {
+  const healthEvents = (type: 'server.down' | 'server.up') =>
+    [...mockDispatchServerHealth.mock.calls, ...mockDispatchServerHealthById.mock.calls].filter(
+      ([eventType]) => eventType === type
+    ).length;
+  const pollsAnswer = (getSessions: () => Promise<unknown[]>) =>
+    mockCreateMediaServerClient.mockReturnValue({ getSessions: vi.fn(getSessions) });
+  const pollsFail = () => pollsAnswer(() => Promise.reject(new Error('ECONNREFUSED')));
+  const pollsSucceed = () => pollsAnswer(() => Promise.resolve([]));
+  /** The real manager flips its fallback flag before it emits, so the poller sees the new state. */
+  const liveConnection = (open: boolean) => {
+    mockSseManager.isInFallback.mockReturnValue(!open);
+    mockSseManager.emit(open ? 'fallback:deactivated' : 'fallback:activated', {
+      serverId: 'server-1',
+      serverName: 'Test Server',
+    });
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    stopPoller();
+    mockSseManager.removeAllListeners();
+    mockSseManager.isInFallback.mockReturnValue(false);
+    mockGetActiveAutomations.mockResolvedValue([]);
+
+    cacheService = createCacheService();
+    const pubSub = createPubSubService() as unknown as PubSubService;
+    initializePoller(cacheService as unknown as CacheService, pubSub);
+    initializeSSEProcessor(cacheService as unknown as CacheService, pubSub);
+    startSSEProcessor();
+    startPoller({ enabled: true });
+  });
+
+  afterEach(() => {
+    stopSSEProcessor();
+    stopPoller();
+    mockSseManager.isInFallback.mockReturnValue(true);
+    vi.useRealTimers();
+  });
+
+  it('sends no server.down while polls keep succeeding after the live connection drops', async () => {
+    pollsSucceed();
+    liveConnection(false);
+
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+    expect(healthEvents('server.down')).toBe(0);
+  });
+
+  it('sends one server.up when the live connection returns after polling marked the server down', async () => {
+    pollsFail();
+    liveConnection(false);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(healthEvents('server.down')).toBe(1);
+
+    liveConnection(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(healthEvents('server.up')).toBe(1);
+    expect(await cacheService.getServerHealth('server-1')).toBe(true);
+    expect(cacheService.resetServerFailCount).toHaveBeenCalledWith('server-1');
+  });
+
+  it('sends one down through a long outage and one up when a poll and the reconnect both see the recovery', async () => {
+    pollsFail();
+    liveConnection(false);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(healthEvents('server.down')).toBe(1);
+
+    pollsSucceed();
+    await vi.advanceTimersByTimeAsync(10_000);
+    liveConnection(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(healthEvents('server.up')).toBe(1);
+  });
+
+  it('sends one up when the reconnect lands while a successful poll is in flight', async () => {
+    pollsFail();
+    liveConnection(false);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    let answer!: (sessions: unknown[]) => void;
+    const inFlight = new Promise<unknown[]>((resolve) => {
+      answer = resolve;
+    });
+    pollsAnswer(() => inFlight);
+    await vi.advanceTimersByTimeAsync(10_000);
+    liveConnection(true);
+    await vi.advanceTimersByTimeAsync(0);
+    answer([]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(healthEvents('server.up')).toBe(1);
+  });
+
+  it('sends no second down from a failed poll that was in flight when the live connection returned', async () => {
+    pollsFail();
+    liveConnection(false);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    cacheService.incrServerFailCount.mockImplementationOnce(async () => {
+      liveConnection(true);
+      return 4;
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(healthEvents('server.down')).toBe(1);
+    expect(await cacheService.getServerHealth('server-1')).toBe(true);
   });
 });

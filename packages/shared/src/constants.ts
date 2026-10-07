@@ -51,6 +51,10 @@ export const WS_EVENTS = {
   DESTINATIONS_CHANGED: 'destinations:changed',
   REQUESTS_CHANGED: 'requests:changed',
   SERVERS_CHANGED: 'servers:changed',
+  /** Internal, once per poll tick: slim progress for every updated session. The socket relay ignores it. */
+  SESSIONS_PROGRESS: 'sessions:progress',
+  /** Internal: an owner regenerated their public API key; open public event connections for that user close. */
+  PUBLIC_API_KEY_CHANGED: 'public-api:key-changed',
 } as const;
 
 // Redis key prefix (set at startup via setRedisPrefix)
@@ -117,6 +121,13 @@ export const REDIS_KEYS = {
   get PUBSUB_EVENTS() {
     return `${_redisPrefix}tracearr:events`;
   },
+  /** Pub/sub channel behind GET /api/v2/public/events; carries only the events that surface there */
+  get PUBLIC_EVENTS_CHANNEL() {
+    return `${_redisPrefix}tracearr:public:events`;
+  },
+  /** Open public event connections for one API key owner: ZSET of connection id scored by last heartbeat ms */
+  PUBLIC_EVENT_CONNECTIONS: (userId: string) =>
+    `${_redisPrefix}tracearr:public:events:conns:${userId}`,
   // Notification rate limiting (sliding window counters)
   PUSH_RATE_MINUTE: (sessionId: string) => `${_redisPrefix}tracearr:push:rate:minute:${sessionId}`,
   PUSH_RATE_HOUR: (sessionId: string) => `${_redisPrefix}tracearr:push:rate:hour:${sessionId}`,

@@ -260,8 +260,7 @@ const qualityChangeResult = {
 function createCacheService() {
   return {
     getAllActiveSessions: vi.fn().mockResolvedValue([]),
-    getServerHealth: vi.fn().mockResolvedValue(null),
-    setServerHealth: vi.fn().mockResolvedValue(undefined),
+    setServerHealth: vi.fn().mockResolvedValue(null),
     resetServerFailCount: vi.fn().mockResolvedValue(undefined),
     incrServerFailCount: vi.fn().mockResolvedValue(1),
     getPendingSession: vi.fn().mockResolvedValue(null),

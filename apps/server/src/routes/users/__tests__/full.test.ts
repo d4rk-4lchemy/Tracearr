@@ -11,8 +11,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
+import type { SQL } from 'drizzle-orm';
 import type { AuthUser } from '@tracearr/shared';
-import { queryChain, renderedWheres } from '../../../test/helpers.js';
+import { queryChain, renderSql, renderedWheres } from '../../../test/helpers.js';
 
 vi.mock('../../../db/client.js', () => ({
   db: { transaction: vi.fn() },
@@ -126,5 +127,44 @@ describe('GET /users/:id/full violations panel', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().identity.contactEmail).toBe('ann@example.com');
     expect(response.json().user).not.toHaveProperty('identityContactEmail');
+  });
+
+  it('returns the media ids on each recent session', async () => {
+    const serverUserId = randomUUID();
+    const serverId = randomUUID();
+    const mediaId = randomUUID();
+    const showMediaId = randomUUID();
+    app = await buildTestApp({
+      userId: randomUUID(),
+      username: 'owner',
+      role: 'owner',
+      serverIds: [serverId],
+    });
+
+    let selectCall = 0;
+    const tx = {
+      select: vi.fn(() => {
+        selectCall++;
+        const rows = selectCall === 1 ? [{ id: serverUserId, serverId, userId: randomUUID() }] : [];
+        return queryChain(vi.fn, rows);
+      }),
+      execute: vi.fn(async (_query: SQL) => ({
+        rows: [
+          { id: randomUUID(), segment_count: '1', media_id: mediaId, show_media_id: showMediaId },
+        ],
+      })),
+    };
+    vi.mocked((db as any).transaction).mockImplementation(async (callback: any) => callback(tx));
+
+    const response = await app.inject({ method: 'GET', url: `/users/${serverUserId}/full` });
+
+    const sessionQuery = tx.execute.mock.calls
+      .map(([query]) => renderSql(query).sql)
+      .find((text) => text.includes('grouped_sessions'));
+    expect(sessionQuery).toContain('s.media_id,');
+    expect(sessionQuery).toContain('s.show_media_id,');
+    const [session] = response.json().sessions.data;
+    expect(session.mediaId).toBe(mediaId);
+    expect(session.showMediaId).toBe(showMediaId);
   });
 });

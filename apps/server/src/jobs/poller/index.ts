@@ -34,6 +34,7 @@
 
 export {
   initializePoller,
+  isPollerRunning,
   startPoller,
   stopPoller,
   triggerPoll,

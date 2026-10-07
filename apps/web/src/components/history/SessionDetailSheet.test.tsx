@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import type { SessionWithDetails } from '@tracearr/shared';
 import { SessionDetailSheet } from './SessionDetailSheet';
@@ -8,7 +8,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-function renderSheet(overrides: Partial<SessionWithDetails>) {
+function renderSheet(overrides: Partial<SessionWithDetails>, onOpenChange = vi.fn()) {
   const session = {
     id: 'session-1',
     serverId: 'server-1',
@@ -30,7 +30,7 @@ function renderSheet(overrides: Partial<SessionWithDetails>) {
 
   return render(
     <MemoryRouter>
-      <SessionDetailSheet session={session} open onOpenChange={vi.fn()} />
+      <SessionDetailSheet session={session} open onOpenChange={onOpenChange} />
     </MemoryRouter>
   );
 }
@@ -72,5 +72,48 @@ describe('SessionDetailSheet', () => {
 
     expect(screen.getByText('50%')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it('links a movie title to its media page', () => {
+    renderSheet({ mediaId: 'movie-1' });
+
+    expect(screen.getByRole('link', { name: 'Heat' })).toHaveAttribute('href', '/media/movie-1');
+  });
+
+  it('links the show name to the show and the episode line to the episode', () => {
+    renderSheet({
+      mediaType: 'episode',
+      mediaTitle: 'Pilot',
+      grandparentTitle: 'Lost',
+      seasonNumber: 1,
+      episodeNumber: 2,
+      mediaId: 'episode-1',
+      showMediaId: 'show-1',
+    });
+
+    expect(screen.getByRole('link', { name: 'Lost' })).toHaveAttribute('href', '/media/show-1');
+    expect(screen.getByRole('link', { name: /Pilot/ })).toHaveAttribute('href', '/media/episode-1');
+  });
+
+  it('leaves the titles as plain text when the ids are missing', () => {
+    renderSheet({
+      mediaType: 'episode',
+      mediaTitle: 'Pilot',
+      grandparentTitle: 'Lost',
+      mediaId: null,
+      showMediaId: null,
+    });
+
+    expect(screen.getByText('Lost').closest('a')).toBeNull();
+    expect(screen.getByText(/Pilot/).closest('a')).toBeNull();
+  });
+
+  it('closes the sheet when a title link is followed', () => {
+    const onOpenChange = vi.fn();
+    renderSheet({ mediaId: 'movie-1' }, onOpenChange);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Heat' }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

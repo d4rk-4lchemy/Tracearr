@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDeviceDisplayName } from './utils';
+import { getDeviceDisplayName, getMediaLinks } from './utils';
 
 describe('getDeviceDisplayName', () => {
   it('prefers the name the client gave itself', () => {
@@ -28,5 +28,38 @@ describe('getDeviceDisplayName', () => {
   it('falls back to the platform, then to nothing at all', () => {
     expect(getDeviceDisplayName({ platform: 'Roku' })).toBe('Roku');
     expect(getDeviceDisplayName({})).toBeNull();
+  });
+});
+
+describe('getMediaLinks', () => {
+  it('links a movie title to its media page', () => {
+    expect(getMediaLinks({ mediaType: 'movie', mediaTitle: 'Heat', mediaId: 'm1' })).toEqual({
+      title: '/media/m1',
+      subtitle: null,
+    });
+  });
+
+  it('links an episode show name to the show and the episode line to the episode', () => {
+    expect(
+      getMediaLinks({
+        mediaType: 'episode',
+        mediaTitle: 'Pilot',
+        grandparentTitle: 'Lost',
+        mediaId: 'ep1',
+        showMediaId: 'show1',
+      })
+    ).toEqual({ title: '/media/show1', subtitle: '/media/ep1' });
+  });
+
+  it('links nothing when the ids are missing', () => {
+    expect(
+      getMediaLinks({
+        mediaType: 'episode',
+        mediaTitle: 'Pilot',
+        grandparentTitle: 'Lost',
+        mediaId: null,
+        showMediaId: null,
+      })
+    ).toEqual({ title: null, subtitle: null });
   });
 });

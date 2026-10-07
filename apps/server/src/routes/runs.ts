@@ -218,6 +218,8 @@ async function loadSessionContext(sessionId: string | null): Promise<RunSessionC
       mediaTitle: sessions.mediaTitle,
       mediaType: sessions.mediaType,
       grandparentTitle: sessions.grandparentTitle,
+      mediaId: sessions.mediaId,
+      showMediaId: sessions.showMediaId,
       player: sessions.playerName,
       device: sessions.device,
       product: sessions.product,
@@ -258,6 +260,8 @@ function storedSessionContext(row: {
     city: null,
     country: null,
     isLocal: false,
+    mediaId: null,
+    showMediaId: null,
   };
 }
 

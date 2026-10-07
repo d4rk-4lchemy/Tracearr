@@ -291,8 +291,7 @@ const createResultOk = {
 function createCacheService(cachedActive: ActiveSession[]) {
   return {
     getAllActiveSessions: vi.fn().mockResolvedValue(cachedActive),
-    getServerHealth: vi.fn().mockResolvedValue(true),
-    setServerHealth: vi.fn().mockResolvedValue(undefined),
+    setServerHealth: vi.fn().mockResolvedValue(true),
     resetServerFailCount: vi.fn().mockResolvedValue(undefined),
     incrServerFailCount: vi.fn().mockResolvedValue(1),
     getPendingSession: vi.fn().mockResolvedValue(null),

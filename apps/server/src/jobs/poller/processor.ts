@@ -2126,9 +2126,6 @@ async function pollServers(): Promise<void> {
       }
 
       try {
-        // Get previous health state for transition detection
-        const wasHealthy = cacheService ? await cacheService.getServerHealth(server.id) : null;
-
         const {
           success,
           unauthorized,
@@ -2148,20 +2145,21 @@ async function pollServers(): Promise<void> {
         if (cacheService) {
           const healthServer = { id: server.id, name: server.name, type: server.type };
           if (success) {
-            const wasDown = wasHealthy === false;
-            await cacheService.setServerHealth(server.id, true);
+            const wasHealthy = await cacheService.setServerHealth(server.id, true);
             await cacheService.resetServerFailCount(server.id);
 
-            if (wasDown) {
+            if (wasHealthy === false) {
               console.log(`[Poller] Server ${server.name} is back UP`);
               await dispatchServerHealth('server.up', healthServer, new Date());
             }
           } else {
             const failCount = await cacheService.incrServerFailCount(server.id);
 
-            if (failCount >= POLLER_CONFIG.DOWN_THRESHOLD) {
+            // A live connection that opened during this tick proves the server is
+            // reachable, and once it is out of fallback no poll would ever undo a down.
+            if (failCount >= POLLER_CONFIG.DOWN_THRESHOLD && sseManager.isInFallback(server.id)) {
               const reason = unauthorized ? 'unauthorized' : undefined;
-              await cacheService.setServerHealth(server.id, false, reason);
+              const wasHealthy = await cacheService.setServerHealth(server.id, false, reason);
 
               if (wasHealthy !== false) {
                 console.log(
@@ -2447,6 +2445,11 @@ export function stopPoller(): void {
   resetDbWriteThrottle();
   previousPollHadSessions = false;
   currentPollIntervalMs = POLLING_INTERVALS.SESSIONS_IDLE;
+}
+
+/** False when session sync is turned off, so nothing polls servers in fallback. */
+export function isPollerRunning(): boolean {
+  return pollingInterval !== null;
 }
 
 /**

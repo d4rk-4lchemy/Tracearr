@@ -258,8 +258,7 @@ mockDbSelect.mockImplementation(() => ({
 function createCacheService() {
   return {
     getAllActiveSessions: vi.fn().mockResolvedValue([oldActiveSession]),
-    getServerHealth: vi.fn().mockResolvedValue(true),
-    setServerHealth: vi.fn().mockResolvedValue(undefined),
+    setServerHealth: vi.fn().mockResolvedValue(true),
     resetServerFailCount: vi.fn().mockResolvedValue(undefined),
     incrServerFailCount: vi.fn().mockResolvedValue(1),
     getPendingSession: vi.fn().mockResolvedValue(null),

@@ -73,7 +73,10 @@ vi.mock('../../services/userService.js', () => ({
 vi.mock('../../routes/settings.js', () => ({
   getGeoIPSettings: vi.fn().mockResolvedValue({ usePlexGeoip: false }),
 }));
-vi.mock('../poller/index.js', () => ({ triggerReconciliationPoll: vi.fn() }));
+vi.mock('../poller/index.js', () => ({
+  triggerReconciliationPoll: vi.fn(),
+  isPollerRunning: () => true,
+}));
 vi.mock('../poller/processor.js', () => ({
   gracePeriodSessionIds: vi.fn().mockReturnValue(new Set()),
 }));

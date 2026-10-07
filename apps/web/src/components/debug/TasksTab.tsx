@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Activity, Clock, AlertCircle, CheckCircle2, Cpu } from 'lucide-react';
+import { RefreshCw, Activity, Clock, AlertCircle, CheckCircle2, Cpu, Radio } from 'lucide-react';
 import {
   Card,
   CardAction,
@@ -41,6 +41,7 @@ interface TasksData {
     backup: QueueStats | null;
   };
   services: TrackedService[];
+  publicEventConnections: { open: number; byUser: Record<string, number> };
   timestamp: string;
 }
 
@@ -136,7 +137,7 @@ export function TasksTab() {
     return <p className="text-destructive text-sm">Failed to load task status</p>;
   }
 
-  const { queues, services } = tasks.data;
+  const { queues, services, publicEventConnections } = tasks.data;
 
   return (
     <div className="space-y-6">
@@ -292,6 +293,30 @@ export function TasksTab() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Radio className="h-5 w-5" />
+            Event Connections
+          </CardTitle>
+          <CardDescription>
+            Open public API event connections (GET /api/v2/public/events) held by this process
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-2xl font-semibold tabular-nums">{publicEventConnections.open}</p>
+          {Object.keys(publicEventConnections.byUser).length > 1 && (
+            <ul className="text-muted-foreground mt-2 space-y-1 text-sm">
+              {Object.entries(publicEventConnections.byUser).map(([userId, count]) => (
+                <li key={userId} className="font-mono">
+                  {userId}: {count}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

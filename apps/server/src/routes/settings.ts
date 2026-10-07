@@ -5,9 +5,10 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
-import { updateSettingsSchema, type Settings } from '@tracearr/shared';
+import { WS_EVENTS, updateSettingsSchema, type Settings } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { users, sessions } from '../db/schema.js';
+import { getPubSubService } from '../services/cache.js';
 import { geoipService } from '../services/geoip.js';
 import { getImageCacheStatus } from '../services/imageCacheSweep.js';
 import { getAllSettings, rearmImportedHistoryLink, setSettings } from '../services/settings.js';
@@ -121,6 +122,15 @@ export const settingsRoutes: FastifyPluginAsync = async (app) => {
       .update(users)
       .set({ apiToken: newToken, updatedAt: new Date() })
       .where(eq(users.id, authUser.userId));
+
+    // The key is already rotated; a failed publish must not turn that into a 500.
+    try {
+      await getPubSubService()?.publish(WS_EVENTS.PUBLIC_API_KEY_CHANGED, {
+        userId: authUser.userId,
+      });
+    } catch (err) {
+      request.log.warn({ err }, 'public API key change publish failed');
+    }
 
     return { token: newToken };
   });

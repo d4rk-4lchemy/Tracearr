@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTimeFormat } from '@/lib/timeFormat';
+import { MemoryRouter } from 'react-router';
 import { NowPlayingCard } from './NowPlayingCard';
 import type { ActiveSession } from '@tracearr/shared';
 
@@ -579,11 +580,20 @@ describe('NowPlayingCard ffmpeg speed display', () => {
   });
 });
 
-function renderCard(overrides: Partial<ActiveSession>) {
+function renderCard(overrides: Partial<ActiveSession>, onClick?: () => void) {
   render(
-    <NowPlayingCard
-      session={makeSession({ playerName: null, totalDurationMs: 7_200_000, ...overrides })}
-    />
+    <MemoryRouter>
+      <NowPlayingCard
+        session={makeSession({
+          playerName: null,
+          totalDurationMs: 7_200_000,
+          mediaType: 'movie',
+          mediaTitle: 'Heat',
+          ...overrides,
+        })}
+        onClick={onClick}
+      />
+    </MemoryRouter>
   );
   return screen.getByTestId('device-badge');
 }
@@ -632,5 +642,33 @@ describe('NowPlayingCard transcoder bar and buffering', () => {
   it('labels a buffering session', () => {
     renderCard({ state: 'playing', buffering: true });
     expect(screen.getByText('playback.buffering')).toBeInTheDocument();
+  });
+});
+
+describe('NowPlayingCard title links', () => {
+  it('links the show name and the episode line to their media pages', () => {
+    renderCard({
+      mediaType: 'episode',
+      mediaTitle: 'Pilot',
+      grandparentTitle: 'Lost',
+      seasonNumber: 1,
+      episodeNumber: 2,
+      mediaId: 'episode-1',
+      showMediaId: 'show-1',
+    });
+
+    expect(screen.getByRole('link', { name: 'Lost' })).toHaveAttribute('href', '/media/show-1');
+    expect(screen.getByRole('link', { name: /Pilot/ })).toHaveAttribute('href', '/media/episode-1');
+  });
+
+  it('follows the title link without opening the slide-out', () => {
+    const onClick = vi.fn();
+    renderCard({ mediaType: 'movie', mediaTitle: 'Heat', mediaId: 'movie-1' }, onClick);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Heat' }));
+    expect(onClick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('alice'));
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });

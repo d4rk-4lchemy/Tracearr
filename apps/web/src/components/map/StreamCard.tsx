@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { Marker, type StyleSpecification } from 'maplibre-gl';
 import { formatEpisodeLabel, type ActiveSession, type LocationStats } from '@tracearr/shared';
-import { cn, formatLocationCompact } from '@/lib/utils';
+import { cn, formatLocationCompact, getMediaLinks } from '@/lib/utils';
 import { ActiveSessionBadge } from '@/components/sessions/ActiveSessionBadge';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
+import { MediaPageLink } from '@/components/media/MediaPageLink';
 import { ServerLegend } from '@/components/server';
 import { User, MapPin } from 'lucide-react';
 import { getAvatarUrl } from '@/components/users/utils';
@@ -218,14 +219,19 @@ export function StreamCard({
 function SessionPopupContent({ session }: { session: ActiveSession }) {
   const avatarUrl = getAvatarUrl(session.serverId, session.user.thumbUrl, 32);
   const { primary: mediaTitle, secondary: mediaSubtitle } = formatMediaTitle(session);
+  const mediaLinks = getMediaLinks(session);
 
   return (
     <div className="text-foreground min-w-[180px] p-2.5">
-      <h4 className="text-sm leading-snug font-semibold">{mediaTitle}</h4>
+      <h4 className="text-sm leading-snug font-semibold">
+        <MediaPageLink to={mediaLinks.title}>{mediaTitle}</MediaPageLink>
+      </h4>
 
       <div className="mt-0.5 flex items-center gap-2">
         {mediaSubtitle && (
-          <span className="text-muted-foreground truncate text-xs">{mediaSubtitle}</span>
+          <span className="text-muted-foreground truncate text-xs">
+            <MediaPageLink to={mediaLinks.subtitle}>{mediaSubtitle}</MediaPageLink>
+          </span>
         )}
         <ActiveSessionBadge state={session.state} className="px-1.5 py-0 text-[10px]" />
       </div>

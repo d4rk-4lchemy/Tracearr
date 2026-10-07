@@ -130,6 +130,17 @@ export function getMediaDisplay(media: MediaDisplayFields): {
   };
 }
 
+/** Media page paths for the title and subtitle lines getMediaDisplay produces. */
+export function getMediaLinks(
+  media: MediaDisplayFields & { mediaId?: string | null; showMediaId?: string | null }
+): { title: string | null; subtitle: string | null } {
+  const path = (id: string | null | undefined) => (id ? `/media/${id}` : null);
+  if (media.mediaType === 'episode' && media.grandparentTitle) {
+    return { title: path(media.showMediaId), subtitle: path(media.mediaId) };
+  }
+  return { title: path(media.mediaId), subtitle: null };
+}
+
 /**
  * What a client calls itself, else the app and hardware it reports. Null when
  * the server sent nothing identifying, so callers pick their own fallback.

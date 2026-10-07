@@ -1,5 +1,46 @@
 # Tracearr Fork Information
 
+## October 7, 2026 — Tracearr 2.7.0 upstream merge
+
+Upstream `main` at `16aca41f1` adds public V2 event streams, server health
+listing and violation endpoints, strict public API contract snapshots,
+atomic server-health transitions, server rekey recovery through known users,
+media-title links and readable automation condition references. The Dispatcharr
+URL/auth flow retains access verification without the unsupported identity
+gate; Plex/Jellyfin/Emby adopt upstream's identity and known-user fallback.
+Pending confirmation still updates the existing session without a second
+start, alongside upstream's per-session progress events. Public event and
+server-list regressions cover Dispatcharr metadata and both connection modes.
+
+Media-title links retain Dispatcharr Live TV channel/programme presentation,
+Catch-up badges and clocks, fixed History widths, complete artwork and cache
+markers. The new OpenAPI fixture is regenerated against the fork schemas:
+Dispatcharr enums, TV daily statistics, programme titles, optional show titles
+and provider names are pinned without weakening the strict comparator.
+Both upstream and fork migrations, both Dockerfiles and the two workflows
+remain unchanged. Upstream Helm changes are excluded. Dispatcharr device
+identity, library/Seerr exclusions and two-channel versions remain intact.
+
+Full non-Docker CI-equivalent validation passed with Node 24 / pnpm 12.4.2,
+a cleared Turbo cache, frozen-lockfile install, 4 GB heap, two Vitest workers
+and Turbo concurrency one. Heavy jobs ran sequentially on the 8 GB LXC.
+Lint, typecheck, translations, unit/services/routes/auth/security, web,
+coverage and build all passed. Server groups plus web passed 9,561 tests;
+coverage passed 6,171 tests (71.44% statements, 65.37% branches,
+75.63% functions, 72.65% lines). Lint has 750 warnings, down three from 753,
+with no new diagnostics; all 29 locales remain in sync. The first routes run
+failed only the upstream-only contract fixture; the full rerun passed after
+its deliberate fork reconciliation. All changed TS/TSX/JSON/CSS files pass
+Prettier after formatting the auto-merged publicV2 test. Logs:
+`.tmp/merge-270-<job>-20261007.log`; sequential runner:
+`.tmp/merge-270-ci-20261007.log` (successful routes/lint/typecheck use `-final`).
+
+Docker integration and E2E were explicitly omitted at the user's request.
+Docker image builds, live-provider manual smoke and database upgrade execution
+were not performed. Public-event Redis subscription/registry and new violation
+SQL integration tests remain unverified against running Redis/PostgreSQL.
+The pre-existing README edit is included in the merge commit at the user's request.
+
 This file documents the local fork overlay so future upstream updates can preserve the fork-specific behavior intentionally.
 
 ## October 6, 2026 — Tracearr 2.6.3 upstream merge
@@ -119,9 +160,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `5060d2f80`
-- Last shared upstream commit found during inspection: `540bcd25b` (before merge)
-- Latest upstream commit merged into the current working tree: `5060d2f80`
+- Source branch/SHA inspected: `main` at `16aca41f1`
+- Last shared upstream commit found during inspection: `5060d2f80` (before merge)
+- Latest upstream commit merged into the current working tree: `16aca41f1`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -535,7 +576,8 @@ The fork also carries local maintenance/distribution changes:
   2.29) is intentionally not part of GitHub PR CI. Run it manually when
   validating database, migration, or integration-test changes.
 - Local Husky hooks were removed.
-- `.tmp/`, `.plans/`, `AGENTS.md`, and this `FORK_INFO.md` are ignored locally.
+- `.tmp/`, `.plans/`, `AGENTS.md`, and `COMMON_REGRESSIONS.md` are ignored locally;
+  `FORK_INFO.md` is tracked and updated alongside upstream merges.
 - `AGENTS.md` documents the Pull Request CI workflow warning baseline. Read both `AGENTS.md` and this file before making changes, and update either file when a change affects repo instructions, fork overlay behavior, validation workflow expectations, warning counts, or future merge guidance.
 
 ## Typical Dispatcharr-Specific Changes
