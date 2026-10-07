@@ -1446,13 +1446,24 @@ export async function processPollResults(input: PollResultsInput): Promise<void>
       await pubSubService.publish('session:started', session);
     }
 
-    // No consumer reads the payload, so one tick's updates collapse to a single publish.
+    // Confirmation updates preserve the pending lifecycle; progress carries every updated session.
     const confirmedPendingSessions = confirmedFromPendingIds
       ? newSessions.filter((session) => confirmedFromPendingIds.has(session.id))
       : [];
     const sessionToUpdate = updatedSessions[0] ?? confirmedPendingSessions[0];
     if (sessionToUpdate) {
       await pubSubService.publish('session:updated', sessionToUpdate);
+    }
+    if (updatedSessions.length > 0) {
+      await pubSubService.publish('sessions:progress', {
+        sessions: updatedSessions.map((s) => ({
+          id: s.id,
+          serverId: s.serverId,
+          state: s.state,
+          progressMs: s.progressMs ?? 0,
+          bitrate: s.bitrate ?? null,
+        })),
+      });
     }
 
     for (const stoppedRef of uniqueStoppedSessions) {

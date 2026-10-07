@@ -2,8 +2,8 @@
  * processPollResults Tests
  *
  * Verifies the per-tick fan-out behavior:
- * - session:updated is coalesced to a single publish per tick regardless of
- *   how many sessions were updated (no consumer reads the payload)
+ * - session:updated collapses to a single publish per tick (the socket relay
+ *   and the public channel read it; sessions:progress carries every updated session)
  * - session:started / session:stopped remain one publish per session
  */
 
@@ -32,7 +32,29 @@ function makeSession(id: string, overrides: Partial<ActiveSession> = {}): Active
 
 describe('processPollResults', () => {
   it('publishes exactly one session:updated for a tick with multiple updated sessions', async () => {
-    const updatedSessions = [makeSession('s1'), makeSession('s2'), makeSession('s3')];
+    const updatedSessions = [
+      {
+        ...makeSession('s1'),
+        serverId: 'srv-1',
+        state: 'playing',
+        progressMs: 61_000,
+        bitrate: 8000,
+      },
+      {
+        ...makeSession('s2'),
+        serverId: 'srv-1',
+        state: 'paused',
+        progressMs: 90_000,
+        bitrate: null,
+      },
+      {
+        ...makeSession('s3'),
+        serverId: 'srv-2',
+        state: 'playing',
+        progressMs: null,
+        bitrate: 1500,
+      },
+    ] as ActiveSession[];
     const cacheService = {
       incrementalSyncActiveSessions: vi.fn(),
       addUserSession: vi.fn(),
@@ -55,6 +77,18 @@ describe('processPollResults', () => {
     );
     expect(updatedPublishes).toHaveLength(1);
     expect(updatedPublishes[0]?.[1]).toBe(updatedSessions[0]);
+
+    const progress = pubSubService.publish.mock.calls.filter(
+      ([event]) => event === 'sessions:progress'
+    );
+    expect(progress).toHaveLength(1);
+    expect(progress[0]?.[1]).toEqual({
+      sessions: [
+        { id: 's1', serverId: 'srv-1', state: 'playing', progressMs: 61_000, bitrate: 8000 },
+        { id: 's2', serverId: 'srv-1', state: 'paused', progressMs: 90_000, bitrate: null },
+        { id: 's3', serverId: 'srv-2', state: 'playing', progressMs: 0, bitrate: 1500 },
+      ],
+    });
   });
 
   it('does not publish session:updated when nothing was updated', async () => {
@@ -76,6 +110,9 @@ describe('processPollResults', () => {
     });
 
     expect(pubSubService.publish.mock.calls.some(([event]) => event === 'session:updated')).toBe(
+      false
+    );
+    expect(pubSubService.publish.mock.calls.some(([event]) => event === 'sessions:progress')).toBe(
       false
     );
   });

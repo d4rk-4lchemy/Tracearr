@@ -106,6 +106,8 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
         s.episode_number,
         s.year,
         s.thumb_path,
+        s.media_id,
+        s.show_media_id,
         s.rating_key,
         s.external_session_id,
         s.reference_id,
@@ -157,6 +159,8 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
         episode_number: number | null;
         year: number | null;
         thumb_path: string | null;
+        media_id: string | null;
+        show_media_id: string | null;
         rating_key: string | null;
         external_session_id: string | null;
         reference_id: string | null;
@@ -197,6 +201,8 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
       episodeNumber: row.episode_number,
       year: row.year,
       thumbPath: row.thumb_path,
+      mediaId: row.media_id,
+      showMediaId: row.show_media_id,
       ratingKey: row.rating_key,
       externalSessionId: row.external_session_id,
       startedAt: row.started_at,

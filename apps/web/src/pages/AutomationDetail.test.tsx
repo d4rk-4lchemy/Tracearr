@@ -546,6 +546,8 @@ describe('AutomationDetail run sheet', () => {
       city: 'Boston',
       country: 'United States',
       isLocal: false,
+      mediaId: null,
+      showMediaId: null,
     },
     evidence: [],
     ...overrides,
@@ -565,7 +567,7 @@ describe('AutomationDetail run sheet', () => {
 
     await openRun();
 
-    expect(screen.getByText('The Bear — System of a Down')).toBeInTheDocument();
+    expect(screen.getByText('The Bear · System of a Down')).toBeInTheDocument();
     expect(
       screen.getByText('Living Room TV · 10.0.0.9 · Boston, United States')
     ).toBeInTheDocument();

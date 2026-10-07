@@ -6,7 +6,7 @@
 
 import { eq, isNull, and } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { servers } from '../db/schema.js';
+import { servers, serverUsers } from '../db/schema.js';
 import { createMediaServerClient } from './mediaServer/index.js';
 import { isLiveServer, liveServerCondition } from './liveServers.js';
 import { invalidateServersCache } from '../jobs/poller/database.js';
@@ -31,6 +31,32 @@ export async function readServerIdentity(
     id: server.id,
   });
   return client.getServerIdentity ? client.getServerIdentity() : null;
+}
+
+/**
+ * Whether the server at this address and key lists any user Tracearr already holds for
+ * this server row. Jellyfin and Emby user ids are random GUIDs minted per install, so one
+ * match means the same install. Plex local ids are small integers and prove nothing.
+ */
+export async function sharesKnownUsers(
+  server: Omit<IdentifiableServer, 'machineIdentifier'>
+): Promise<boolean> {
+  if (server.type === 'plex') return false;
+
+  const known = await db
+    .select({ externalId: serverUsers.externalId })
+    .from(serverUsers)
+    .where(eq(serverUsers.serverId, server.id));
+  if (known.length === 0) return false;
+
+  const client = createMediaServerClient({
+    type: server.type,
+    url: server.url,
+    token: server.token,
+    id: server.id,
+  });
+  const knownIds = new Set(known.map((row) => row.externalId));
+  return (await client.getUsers()).some((user) => knownIds.has(user.id));
 }
 
 /**

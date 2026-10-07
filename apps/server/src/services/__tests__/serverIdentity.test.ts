@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const getServerIdentity = vi.fn();
-const createMediaServerClient = vi.fn((_opts: unknown) => ({ getServerIdentity }));
+const getUsers = vi.fn();
+const createMediaServerClient = vi.fn((_opts: unknown) => ({ getServerIdentity, getUsers }));
 const invalidateServersCache = vi.fn();
 const where = vi.fn(async (_cond: unknown) => undefined);
 const set = vi.fn((_values: unknown) => ({ where }));
@@ -29,7 +30,7 @@ vi.mock('../../jobs/poller/database.js', () => ({
 import { renderSql } from '../../test/helpers.js';
 import type { SQL } from 'drizzle-orm';
 
-const { backfillMissingServerIdentifiers, ensureServerIdentifier } =
+const { backfillMissingServerIdentifiers, ensureServerIdentifier, sharesKnownUsers } =
   await import('../serverIdentity.js');
 
 const server = {
@@ -115,5 +116,32 @@ describe('backfillMissingServerIdentifiers', () => {
     const rendered = renderSql(selectWhere.mock.calls[0]?.[0] as SQL);
     expect(rendered.sql).toContain('servers.machine_identifier is null');
     expect(rendered.sql).toContain('servers.historical_at is null');
+  });
+});
+
+describe('sharesKnownUsers', () => {
+  const guid = (n: number) => n.toString(16).padStart(32, '0');
+  const target = { id: 'srv-1', type: 'jellyfin' as const, url: 'http://jf:8096', token: 'new' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('matches on one known user among hundreds, and not when every id is new', async () => {
+    selectWhere.mockResolvedValue(Array.from({ length: 200 }, (_, i) => ({ externalId: guid(i) })));
+
+    getUsers.mockResolvedValueOnce([{ id: guid(9000) }, { id: guid(199) }]);
+    expect(await sharesKnownUsers(target)).toBe(true);
+
+    getUsers.mockResolvedValueOnce([{ id: guid(9000) }, { id: guid(9001) }]);
+    expect(await sharesKnownUsers(target)).toBe(false);
+  });
+
+  it('asks nothing of the server when Tracearr holds no users for it, or it is Plex', async () => {
+    selectWhere.mockResolvedValueOnce([]);
+    expect(await sharesKnownUsers(target)).toBe(false);
+
+    expect(await sharesKnownUsers({ ...target, type: 'plex' })).toBe(false);
+    expect(getUsers).not.toHaveBeenCalled();
   });
 });

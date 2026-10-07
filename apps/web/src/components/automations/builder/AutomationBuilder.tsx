@@ -9,9 +9,8 @@ import { Kbd } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSettings } from '@/hooks/queries/useSettings';
 import { useCreateAutomation, useUpdateAutomation } from '@/hooks/queries/useAutomations';
-import { useDestinations } from '@/hooks/queries/useDestinations';
 import { useAutomationFilterOptions } from '@/hooks/queries/useHistory';
-import { useServer } from '@/hooks/useServer';
+import { useDescribeRefs } from '@/hooks/useDescribeRefs';
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges';
 import {
   canEnforceAcrossServers,
@@ -106,10 +105,9 @@ function touchedKeys(action: BuilderAction, section: string): string[] {
 export function AutomationBuilder({ automation, draft }: AutomationBuilderProps) {
   const { t } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
-  const { servers } = useServer();
   const { data: settings } = useSettings();
   const { data: filterOptions } = useAutomationFilterOptions();
-  const { data: destinations } = useDestinations();
+  const namedRefs = useDescribeRefs();
   const createAutomation = useCreateAutomation();
   const updateAutomation = useUpdateAutomation();
 
@@ -182,20 +180,8 @@ export function AutomationBuilder({ automation, draft }: AutomationBuilderProps)
     if (automation?.scopeRef?.kind === 'account') {
       accounts[automation.scopeRef.id] = automation.scopeRef.name;
     }
-    return {
-      servers: Object.fromEntries(servers.map((server) => [server.id, server.name])),
-      users: Object.fromEntries(
-        (filterOptions?.users ?? []).map((user) => [user.id, user.identityName || user.username])
-      ),
-      countries: Object.fromEntries(
-        (filterOptions?.countries ?? []).map((country) => [country.code, country.name])
-      ),
-      accounts,
-      destinations: Object.fromEntries(
-        (destinations ?? []).map((destination) => [destination.id, destination.name])
-      ),
-    };
-  }, [servers, filterOptions, destinations, automation]);
+    return { ...namedRefs, accounts };
+  }, [namedRefs, automation]);
 
   const refs = useMemo<BuilderRefs>(
     () => ({
@@ -379,6 +365,7 @@ export function AutomationBuilder({ automation, draft }: AutomationBuilderProps)
           liveCheck={
             <LiveCheckStrip
               definition={input}
+              refs={describeRefs}
               ready={localIssues.length === 0}
               paused={isPending}
             />

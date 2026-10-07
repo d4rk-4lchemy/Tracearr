@@ -5,7 +5,13 @@ import { getAvatarUrl } from '@/components/users/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { cn, formatLocationCompact, getBufferedPercent, getDeviceDisplayName } from '@/lib/utils';
+import {
+  cn,
+  formatLocationCompact,
+  getBufferedPercent,
+  getDeviceDisplayName,
+  getMediaLinks,
+} from '@/lib/utils';
 import { imageProxyUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/formatters';
 import { playbackBadge } from '@/lib/playbackBadge';
@@ -17,6 +23,7 @@ import { TerminateSessionDialog } from './TerminateSessionDialog';
 import { CatchupIcon } from './CatchupIcon';
 import { formatDispatcharrCatchupClock } from './useDispatcharrCatchupCardProgress';
 import { LocalBadge } from './LocalBadge';
+import { MediaPageLink } from '@/components/media/MediaPageLink';
 import {
   PLAYBACK_DECISION_LABEL_KEYS,
   POSTER_IMAGE_SIZE,
@@ -111,6 +118,7 @@ function PlaybackOverlay({ isPaused }: { isPaused: boolean }) {
 
 export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
   const { title, subtitle: mediaSubtitle } = getCardMediaDisplay(session);
+  const mediaLinks = getMediaLinks(session);
   const { user } = useAuth();
   const { t } = useTranslation(['common', 'pages']);
   const subtitle =
@@ -321,9 +329,13 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
 
             {/* Middle: Title */}
             <div className="mt-2">
-              <h3 className="truncate text-sm leading-tight font-semibold">{title}</h3>
+              <h3 className="truncate text-sm leading-tight font-semibold">
+                <MediaPageLink to={mediaLinks.title}>{title}</MediaPageLink>
+              </h3>
               {subtitle && (
-                <p className="text-muted-foreground mt-0.5 truncate text-xs">{subtitle}</p>
+                <p className="text-muted-foreground mt-0.5 truncate text-xs">
+                  <MediaPageLink to={mediaLinks.subtitle}>{subtitle}</MediaPageLink>
+                </p>
               )}
             </div>
 

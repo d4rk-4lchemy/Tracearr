@@ -560,6 +560,22 @@ describe('Run routes', () => {
       expect(body.evidence).toEqual(evidence);
     });
 
+    it('carries the media ids of what was playing', async () => {
+      app = await buildTestApp(ownerUser);
+      setupDetailMocks({ ...runRow(), steps: [], definitionVersionId: null }, [
+        { ...SESSION_CONTEXT, mediaId: 'ep-1', showMediaId: 'show-1' },
+      ]);
+
+      const body = (await app.inject({ method: 'GET', url: `/runs/${RUN_ID}` })).json();
+
+      expect(vi.mocked(db.select).mock.calls[1]![0]).toMatchObject({
+        mediaId: expect.anything(),
+        showMediaId: expect.anything(),
+      });
+      expect(body.session.mediaId).toBe('ep-1');
+      expect(body.session.showMediaId).toBe('show-1');
+    });
+
     it('reports no session context for a run that was never about one', async () => {
       app = await buildTestApp(ownerUser);
       setupDetailMocks({
@@ -604,6 +620,8 @@ describe('Run routes', () => {
         city: null,
         country: null,
         isLocal: false,
+        mediaId: null,
+        showMediaId: null,
       });
       expect(body.subject.name).toBe('ada@plex');
     });

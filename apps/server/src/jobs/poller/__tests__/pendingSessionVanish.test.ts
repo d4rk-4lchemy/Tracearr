@@ -253,8 +253,7 @@ const pendingActiveSession = {
 function createCacheService(pendingData: PendingSessionData | null) {
   return {
     getAllActiveSessions: vi.fn().mockResolvedValue([pendingActiveSession]),
-    getServerHealth: vi.fn().mockResolvedValue(true),
-    setServerHealth: vi.fn().mockResolvedValue(undefined),
+    setServerHealth: vi.fn().mockResolvedValue(true),
     resetServerFailCount: vi.fn().mockResolvedValue(undefined),
     incrServerFailCount: vi.fn().mockResolvedValue(1),
     getPendingSession: vi.fn().mockResolvedValue(pendingData),

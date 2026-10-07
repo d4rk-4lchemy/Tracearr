@@ -71,6 +71,7 @@ vi.mock('../../services/geoip.js', () => ({
 
 vi.mock('../poller/index.js', () => ({
   triggerReconciliationPoll: vi.fn(),
+  isPollerRunning: () => true,
 }));
 
 vi.mock('../poller/sessionMapper.js', () => ({

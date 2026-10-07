@@ -63,6 +63,25 @@ export const appRoutes = (
     <Route path="/auth/plex-callback" element={<PlexCallback />} />
     <Route path="/setup" element={<Setup />} />
 
+    {/* Scalar lays itself out against the viewport, so the docs skip the app shell */}
+    <Route
+      path="/api-docs"
+      errorElement={<RouteError />}
+      element={
+        <ProtectedRoute>
+          <Suspense
+            fallback={
+              <div className="flex h-svh items-center justify-center">
+                <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
+              </div>
+            }
+          >
+            <ApiDocs />
+          </Suspense>
+        </ProtectedRoute>
+      }
+    />
+
     {/* Protected routes */}
     <Route
       path="/"
@@ -112,20 +131,6 @@ export const appRoutes = (
         <Route path="violations/:id" element={<ViolationDetail />} />
         <Route path="requests" element={<Requests />} />
         <Route path="settings/*" element={<Settings />} />
-        <Route
-          path="api-docs"
-          element={
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center">
-                  <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
-                </div>
-              }
-            >
-              <ApiDocs />
-            </Suspense>
-          }
-        />
 
         {/* Hidden debug page (owner only) */}
         <Route path="debug" element={<Debug />} />

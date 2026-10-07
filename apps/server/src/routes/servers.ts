@@ -32,7 +32,7 @@ import { markServerHistorical, resumeServer } from '../services/historicalServer
 import { liveServerCondition, HISTORICAL_EDIT_MESSAGE } from '../services/liveServers.js';
 import { enqueueLibrarySync, rebuildAutoSyncSchedules } from '../jobs/librarySyncQueue.js';
 import { publishServersChanged } from '../jobs/poller/database.js';
-import { readServerIdentity } from '../services/serverIdentity.js';
+import { readServerIdentity, sharesKnownUsers } from '../services/serverIdentity.js';
 import { rearmImportedHistoryLink } from '../services/settings.js';
 import { buildServerAccessCondition, hasServerAccess } from '../utils/serverFiltering.js';
 import { serverOrderBy } from '../utils/serverOrder.js';
@@ -497,12 +497,6 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       if (server.type !== 'dispatcharr') {
         const expectedIdentity =
           server.machineIdentifier ?? (await readServerIdentity(server).catch(() => null));
-        if (!expectedIdentity) {
-          return reply.badRequest(
-            'Tracearr has no record of which server this is and cannot reach it with the saved address and key, so it cannot confirm the change points at the same server.'
-          );
-        }
-
         const reachedIdentity = await readServerIdentity({
           id,
           type: server.type,
@@ -518,12 +512,32 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         if (reachedIdentity === null) {
           return reply.badRequest('Could not read which server answers at that address.');
         }
-        if (reachedIdentity !== expectedIdentity) {
-          return reply.badRequest(
-            'That address or API key reaches a different server. A server can only be pointed at itself.'
-          );
+        if (expectedIdentity) {
+          if (reachedIdentity !== expectedIdentity) {
+            return reply.badRequest(
+              'That address or API key reaches a different server. A server can only be pointed at itself.'
+            );
+          }
+        } else {
+          const sameUsers = await sharesKnownUsers({
+            id,
+            type: server.type,
+            url: effectiveUrl,
+            token: verifiedToken as string,
+          }).catch((error: unknown) => {
+            app.log.error(
+              { err: error, serverId: id, url: effectiveUrl },
+              'Failed to compare users'
+            );
+            return false;
+          });
+          if (!sameUsers) {
+            return reply.badRequest(
+              'Tracearr has no record of which server this is, cannot reach it with the saved address and key, and finds none of its users at the new address, so it cannot confirm the change points at the same server.'
+            );
+          }
         }
-        if (!server.machineIdentifier) backfilledIdentity = expectedIdentity;
+        if (!server.machineIdentifier) backfilledIdentity = reachedIdentity;
       }
     }
 

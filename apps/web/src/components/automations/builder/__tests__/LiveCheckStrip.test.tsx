@@ -71,7 +71,7 @@ function definition(overrides: Partial<CreateAutomationInput> = {}): CreateAutom
 function renderStrip(input = definition(), route = '/automations/a-1/edit') {
   render(
     <MemoryRouter initialEntries={[route]}>
-      <LiveCheckStrip definition={input} ready paused={false} />
+      <LiveCheckStrip definition={input} refs={{}} ready paused={false} />
     </MemoryRouter>
   );
 }

@@ -139,6 +139,7 @@ vi.mock('../../services/userService.js', () => ({
 
 vi.mock('../poller/index.js', () => ({
   triggerReconciliationPoll: vi.fn(),
+  isPollerRunning: () => true,
 }));
 
 vi.mock('../poller/sessionMapper.js', () => ({

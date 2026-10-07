@@ -327,6 +327,23 @@ describe('Violation Routes', () => {
       expect(body.meta).toEqual({ page: 1, pageSize: 20, total: 3 });
     });
 
+    it('returns the media ids on each violation session', async () => {
+      app = await buildTestApp(createOwnerUser());
+      const mediaId = randomUUID();
+      const showMediaId = randomUUID();
+      setupListMocks([{ ...createTestViolation(), mediaId, showMediaId }], 1);
+
+      const response = await app.inject({ method: 'GET', url: '/violations' });
+
+      expect(mockDb.select.mock.calls[0][0]).toMatchObject({
+        mediaId: expect.anything(),
+        showMediaId: expect.anything(),
+      });
+      const [violation] = JSON.parse(response.body).data;
+      expect(violation.session.mediaId).toBe(mediaId);
+      expect(violation.session.showMediaId).toBe(showMediaId);
+    });
+
     it('should apply default pagination', async () => {
       const ownerUser = createOwnerUser();
       app = await buildTestApp(ownerUser);
@@ -573,6 +590,40 @@ describe('Violation Routes', () => {
       expect(body.session.device).toBe('Safari');
       expect(body.session.product).toBe('Plex Web');
       expect(body.session.quality).toBe('4K');
+    });
+
+    it('returns the media ids on the triggering and related sessions', async () => {
+      app = await buildTestApp(createOwnerUser());
+      const violationId = randomUUID();
+      const relatedId = randomUUID();
+      const mediaId = randomUUID();
+      const showMediaId = randomUUID();
+      const relatedMediaId = randomUUID();
+      const violation = {
+        ...createTestViolation({ id: violationId, data: { relatedSessionIds: [relatedId] } }),
+        mediaId,
+        showMediaId,
+      };
+      mockDb.select
+        .mockReturnValueOnce(createSingleViolationSelectMock([violation]))
+        .mockReturnValueOnce(
+          queryChain(vi.fn, [{ id: relatedId, mediaId: relatedMediaId, showMediaId: null }])
+        )
+        .mockReturnValue(createEmptyChainMock());
+
+      const response = await app.inject({ method: 'GET', url: `/violations/${violationId}` });
+
+      for (const call of mockDb.select.mock.calls.slice(0, 2)) {
+        expect(call[0]).toMatchObject({
+          mediaId: expect.anything(),
+          showMediaId: expect.anything(),
+        });
+      }
+      const body = JSON.parse(response.body);
+      expect(body.session.mediaId).toBe(mediaId);
+      expect(body.session.showMediaId).toBe(showMediaId);
+      expect(body.relatedSessions[0].mediaId).toBe(relatedMediaId);
+      expect(body.relatedSessions[0].showMediaId).toBeNull();
     });
 
     it('passes only threshold UUIDs (not actual username) to getServerUserDisplayNames', async () => {

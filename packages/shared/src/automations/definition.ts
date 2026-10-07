@@ -442,6 +442,8 @@ export interface RunSessionContext {
   city: string | null;
   country: string | null;
   isLocal: boolean;
+  mediaId: string | null;
+  showMediaId: string | null;
 }
 
 export interface AutomationRunSummary {

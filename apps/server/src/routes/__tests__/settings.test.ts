@@ -39,6 +39,12 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+const { mockPublish } = vi.hoisted(() => ({ mockPublish: vi.fn(async () => undefined) }));
+
+vi.mock('../../services/cache.js', () => ({
+  getPubSubService: () => ({ publish: mockPublish }),
+}));
+
 // Mock geoip service
 vi.mock('../../services/geoip.js', () => ({
   geoipService: {
@@ -46,6 +52,7 @@ vi.mock('../../services/geoip.js', () => ({
   },
 }));
 
+import { db } from '../../db/client.js';
 import { getAllSettings, rearmImportedHistoryLink, setSettings } from '../../services/settings.js';
 import { getImageCacheStatus } from '../../services/imageCacheSweep.js';
 import { settingsRoutes } from '../settings.js';
@@ -413,6 +420,43 @@ describe('Settings Routes', () => {
       const body = response.json();
       expect(body.pluginUpdateCheckEnabled).toBe(false);
       expect(body.serverUpdateCheckEnabled).toBe(false);
+    });
+  });
+
+  describe('POST /settings/api-key/regenerate', () => {
+    it('writes the new key and announces the change for open event connections', async () => {
+      vi.mocked(db.update).mockReturnValue({
+        set: () => ({ where: async () => undefined }),
+      } as never);
+      app = await buildTestApp(ownerUser);
+
+      const res = await app.inject({ method: 'POST', url: '/settings/api-key/regenerate' });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ token: string }>().token).toMatch(/^trr_pub_/);
+      expect(mockPublish).toHaveBeenCalledWith('public-api:key-changed', {
+        userId: ownerUser.userId,
+      });
+    });
+
+    it('still returns the new key when the announcement fails', async () => {
+      vi.mocked(db.update).mockReturnValue({
+        set: () => ({ where: async () => undefined }),
+      } as never);
+      mockPublish.mockRejectedValueOnce(new Error('redis down'));
+      app = await buildTestApp(ownerUser);
+
+      const res = await app.inject({ method: 'POST', url: '/settings/api-key/regenerate' });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json<{ token: string }>().token).toMatch(/^trr_pub_/);
+    });
+
+    it('refuses a viewer', async () => {
+      app = await buildTestApp(viewerUser);
+      const res = await app.inject({ method: 'POST', url: '/settings/api-key/regenerate' });
+      expect(res.statusCode).toBe(403);
+      expect(mockPublish).not.toHaveBeenCalled();
     });
   });
 

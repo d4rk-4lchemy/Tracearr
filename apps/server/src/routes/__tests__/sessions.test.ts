@@ -231,6 +231,34 @@ describe('Session Routes', () => {
       expect(body.totalPages).toBe(4);
     });
 
+    it('returns the media ids on each row', async () => {
+      app = await buildTestApp(createOwnerUser());
+      const mediaId = randomUUID();
+      const showMediaId = randomUUID();
+      mockDb.execute.mockResolvedValueOnce({
+        rows: [
+          {
+            id: randomUUID(),
+            started_at: new Date(),
+            segment_count: '1',
+            media_type: 'episode',
+            media_id: mediaId,
+            show_media_id: showMediaId,
+          },
+        ],
+      });
+      mockDb.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+
+      const response = await app.inject({ method: 'GET', url: '/sessions' });
+
+      const { sql: query } = renderSql(mockDb.execute.mock.calls[0][0] as SQL);
+      expect(query).toContain('s.media_id,');
+      expect(query).toContain('s.show_media_id,');
+      const [row] = JSON.parse(response.body).data;
+      expect(row.mediaId).toBe(mediaId);
+      expect(row.showMediaId).toBe(showMediaId);
+    });
+
     it('should reject invalid query parameters', async () => {
       const ownerUser = createOwnerUser();
       app = await buildTestApp(ownerUser);
@@ -467,6 +495,41 @@ describe('Session Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.id).toBe(sessionId);
+    });
+
+    it('returns the media ids for a finished session', async () => {
+      const serverId = randomUUID();
+      const sessionId = randomUUID();
+      const mediaId = randomUUID();
+      const showMediaId = randomUUID();
+      app = await buildTestApp(createOwnerUser([serverId]));
+
+      const limit = vi
+        .fn()
+        .mockResolvedValue([
+          { id: sessionId, serverId, mediaType: 'episode', mediaId, showMediaId },
+        ]);
+      mockDb.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            innerJoin: vi.fn().mockReturnValue({
+              leftJoin: vi.fn().mockReturnValue({
+                where: vi.fn().mockReturnValue({ limit }),
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const response = await app.inject({ method: 'GET', url: `/sessions/${sessionId}` });
+
+      expect(mockDb.select.mock.calls[0][0]).toMatchObject({
+        mediaId: expect.anything(),
+        showMediaId: expect.anything(),
+      });
+      const body = JSON.parse(response.body);
+      expect(body.mediaId).toBe(mediaId);
+      expect(body.showMediaId).toBe(showMediaId);
     });
 
     it('should return 404 for non-existent session', async () => {
@@ -1031,6 +1094,24 @@ describe('Session Routes', () => {
       const response = await app.inject({ method: 'GET', url: '/sessions/history' });
 
       expect(JSON.parse(response.body).data[0].isLocal).toBe(true);
+    });
+
+    it('returns the media ids on each history row', async () => {
+      app = await buildTestApp(createOwnerUser());
+      const mediaId = randomUUID();
+      const showMediaId = randomUUID();
+      mockDb.execute.mockResolvedValueOnce({
+        rows: [createMockHistoryRow({ media_id: mediaId, show_media_id: showMediaId })],
+      });
+
+      const response = await app.inject({ method: 'GET', url: '/sessions/history' });
+
+      const { sql: query } = renderSql(mockDb.execute.mock.calls[0][0] as SQL);
+      expect(query).toContain('s.media_id,');
+      expect(query).toContain('s.show_media_id,');
+      const [row] = JSON.parse(response.body).data;
+      expect(row.mediaId).toBe(mediaId);
+      expect(row.showMediaId).toBe(showMediaId);
     });
   });
 });

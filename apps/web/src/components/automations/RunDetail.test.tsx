@@ -7,6 +7,21 @@ import type { AutomationRun } from '@tracearr/shared';
 
 const useRun = vi.fn();
 vi.mock('@/hooks/queries/useRuns', () => ({ useRun: () => useRun() }));
+vi.mock('@/hooks/useServer', () => ({
+  useServer: () => ({ servers: [{ id: 'srv-1', name: 'Basement' }] }),
+}));
+vi.mock('@/hooks/queries/useHistory', () => ({
+  useAutomationFilterOptions: () => ({
+    data: {
+      users: [
+        { id: 'u-1', username: 'chad', identityName: 'Chadowp' },
+        { id: 'u-2', username: 'ann', identityName: null },
+      ],
+      countries: [],
+    },
+  }),
+}));
+vi.mock('@/hooks/queries/useDestinations', () => ({ useDestinations: () => ({ data: [] }) }));
 
 import { RunDetail } from './RunDetail';
 
@@ -91,6 +106,30 @@ describe('RunDetail', () => {
     expect(screen.getByText('Concurrent Streams greater than 2')).toBeInTheDocument();
   });
 
+  it('names the users a condition lists by id', () => {
+    renderSheet(
+      run({
+        evidence: [
+          {
+            groupIndex: 0,
+            matched: true,
+            conditions: [
+              {
+                field: 'user_id',
+                operator: 'not_in',
+                threshold: ['u-1', 'u-2'],
+                actual: 'Chadowp',
+                matched: true,
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    expect(screen.getByText('User is not one of Chadowp, ann')).toBeInTheDocument();
+  });
+
   it('names the trigger in words rather than by its stored type', () => {
     renderSheet(run());
 
@@ -112,12 +151,39 @@ describe('RunDetail', () => {
           city: null,
           country: null,
           isLocal: false,
+          mediaId: null,
+          showMediaId: null,
         },
       })
     );
 
     expect(screen.getByText('Dune')).toBeInTheDocument();
     expect(screen.getByText('10.0.0.9')).toBeInTheDocument();
+  });
+
+  it('links the show and the episode that were playing', () => {
+    renderSheet(
+      run({
+        session: {
+          mediaTitle: 'Pilot',
+          mediaType: 'episode',
+          grandparentTitle: 'Lost',
+          player: null,
+          device: null,
+          product: null,
+          platform: null,
+          ipAddress: null,
+          city: null,
+          country: null,
+          isLocal: false,
+          mediaId: 'episode-1',
+          showMediaId: 'show-1',
+        },
+      })
+    );
+
+    expect(screen.getByRole('link', { name: 'Lost' })).toHaveAttribute('href', '/media/show-1');
+    expect(screen.getByRole('link', { name: 'Pilot' })).toHaveAttribute('href', '/media/episode-1');
   });
 
   it('says which branch an if took, in the words the builder uses', () => {
