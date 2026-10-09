@@ -170,4 +170,30 @@ describe('image precache job: real selection + warming behavior', () => {
     await expect(posterCacheEntryExists(server.id, freshThumb)).resolves.toBe(true);
     await expect(posterCacheEntryExists(server.id, staleThumb)).resolves.toBe(false);
   });
+
+  it('leaves untagged Jellyfin/Emby paths to live browsing', async () => {
+    const server = await createTestServer({ type: 'jellyfin' });
+    const tagged = await createTestLibraryItem({ serverId: server.id });
+    const untagged = await createTestLibraryItem({ serverId: server.id });
+    const taggedThumb = `/Items/${tagged.ratingKey}/Images/Primary?tag=${randomUUID()}`;
+    const untaggedThumb = `/Items/${untagged.ratingKey}/Images/Primary`;
+    await db
+      .update(libraryItems)
+      .set({ thumbPath: taggedThumb })
+      .where(eq(libraryItems.id, tagged.id));
+    await db
+      .update(libraryItems)
+      .set({ thumbPath: untaggedThumb })
+      .where(eq(libraryItems.id, untagged.id));
+
+    const counter = { calls: 0 };
+    stubFetch(counter);
+
+    const result = await processImagePrecacheJob(makeJob({ serverId: server.id, cursor: null }));
+
+    expect(result).toEqual({ processed: 1 });
+    expect(counter.calls).toBe(1);
+    await expect(posterCacheEntryExists(server.id, taggedThumb)).resolves.toBe(true);
+    await expect(posterCacheEntryExists(server.id, untaggedThumb)).resolves.toBe(false);
+  });
 });

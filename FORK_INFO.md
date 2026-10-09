@@ -1,5 +1,39 @@
 # Tracearr Fork Information
 
+## October 9, 2026 — Tracearr 2.7.1 upstream merge
+
+Upstream `main` at `1ba57a73f` gives Jellyfin/Emby episodes and seasons
+without their own Primary image a tagged parent/series poster. Library scan
+version 3 forces one full scan to refresh existing paths. Background precache
+counts and selects only known artwork, skipping untagged `/Items/` paths that
+otherwise stall warming in server backoff; live browsing can still request
+those images. The fork's uncropped image proxy, shared cache and artwork
+markers remain intact, as does Dispatcharr's library-capability exclusion.
+Dispatcharr auth, realtime/polling, session/device identity, library/Seerr
+scope and two-channel versions are unchanged.
+
+The only merge conflict was the excluded Helm chart change, resolved by
+retaining the fork chart. Exactly the unchanged PR CI and dual-registry release
+workflows remain, including the four native-build gate and platform checks.
+Both Dockerfiles and fork migrations are unchanged; upstream migrations remain
+byte-for-byte aligned with source. Changed TS/JSON files pass Prettier.
+
+Full non-Docker CI-equivalent validation passed on the first run with Node 24 /
+pnpm 12.4.2, a cleared Turbo cache, frozen-lockfile install and a 4 GB heap.
+Heavy jobs ran sequentially on the 8 GB LXC, with two Vitest workers and Turbo
+concurrency one. Lint, typecheck, translations, unit/services/routes/auth/
+security, web, coverage and build all passed. Server groups plus web passed
+9,563 tests; coverage passed 6,172 tests (71.45% statements, 65.41% branches,
+75.64% functions, 72.67% lines). Lint retains 750 warnings and zero errors;
+normalized diagnostics and runtime warning counts match the October 7 baseline.
+All 29 locales remain in sync. Logs: `.tmp/merge-271-<job>-20261009.log`;
+sequential runner: `.tmp/merge-271-ci-20261009.log`.
+
+Docker integration and E2E were explicitly omitted at the user's request.
+The new image-precache SQL selection regression was not executed against
+PostgreSQL. Docker image builds, database upgrade execution and live-provider
+manual smoke were not performed.
+
 ## October 7, 2026 — Tracearr 2.7.0 upstream merge
 
 Upstream `main` at `16aca41f1` adds public V2 event streams, server health
@@ -160,9 +194,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `16aca41f1`
-- Last shared upstream commit found during inspection: `5060d2f80` (before merge)
-- Latest upstream commit merged into the current working tree: `16aca41f1`
+- Source branch/SHA inspected: `main` at `1ba57a73f`
+- Last shared upstream commit found during inspection: `16aca41f1` (before merge)
+- Latest upstream commit merged into the current working tree: `1ba57a73f`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

@@ -1,0 +1,19 @@
+{
+  "version": "2.7.1",
+  "date": "2026-10-08",
+  "changes": [
+    {
+      "type": "fix",
+      "text": "the poster precache no longer stalls for days on Jellyfin and Emby items that have no image",
+      "refs": ["#1305"]
+    },
+    {
+      "type": "fix",
+      "text": "Jellyfin and Emby episodes and seasons without their own image show the season or series poster"
+    },
+    {
+      "type": "improved",
+      "text": "the first Jellyfin and Emby library sync after updating is a full scan, so existing episodes get their poster"
+    }
+  ]
+}
