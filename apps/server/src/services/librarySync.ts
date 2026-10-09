@@ -144,13 +144,14 @@ const FLAT_LIBRARY_TYPES = new Set(['movie', 'movies']);
 /**
  * Bump a server type's version when its listing query changes shape. A library
  * stamped with an older version gets one forced full scan, so items the old
- * query left out come back without anyone running a manual sync. Plex is at 3
- * and the other servers at 2: Plex's listing started storing plex_guid, and
- * every parse now reads the Atmos and edition fields, which existing copies
- * only pick up through a full scan.
+ * query left out come back without anyone running a manual sync. Plex is at 3:
+ * Plex's listing started storing plex_guid, and every parse now reads the Atmos
+ * and edition fields, which existing copies only pick up through a full scan.
+ * Jellyfin and Emby are at 3 since episodes and seasons with no image of their
+ * own took the series poster.
  */
-function libraryScanVersionFor(serverType: ServerType): number {
-  return serverType === 'plex' ? 3 : 2;
+function libraryScanVersionFor(_serverType: ServerType): number {
+  return 3;
 }
 
 // Auto-handoff throttles for the compressed-history identity backfill. The

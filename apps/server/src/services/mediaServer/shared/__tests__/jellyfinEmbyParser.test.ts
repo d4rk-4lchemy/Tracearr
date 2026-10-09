@@ -644,6 +644,36 @@ describe('parseLibraryItemsResponse', () => {
     expect(result[0]!.thumbPath).toBe('/Items/track-4/Images/Primary?tag=own');
   });
 
+  it('gives an episode with no image the parent poster Jellyfin reports, else the series poster', () => {
+    const input = [
+      {
+        Id: 'ep-1',
+        Name: 'Jellyfin Episode',
+        Type: 'Episode',
+        ImageTags: {},
+        SeriesId: 'series-1',
+        SeriesPrimaryImageTag: 'seriestag',
+        ParentPrimaryImageItemId: 'season-1',
+        ParentPrimaryImageTag: 'seasontag',
+      },
+      {
+        Id: 'ep-2',
+        Name: 'Emby Episode',
+        Type: 'Episode',
+        ImageTags: {},
+        SeriesId: 'series-1',
+        SeriesPrimaryImageTag: 'seriestag',
+      },
+      { Id: 'season-2', Name: 'Season 2', Type: 'Season', SeriesId: 'series-1' },
+    ];
+
+    const result = parseLibraryItemsResponse(input);
+
+    expect(result[0]!.thumbPath).toBe('/Items/season-1/Images/Primary?tag=seasontag');
+    expect(result[1]!.thumbPath).toBe('/Items/series-1/Images/Primary?tag=seriestag');
+    expect(result[2]!.thumbPath).toBe('/Items/season-2/Images/Primary');
+  });
+
   it('leaves an episode on its own image', () => {
     const input = [
       {
@@ -652,6 +682,8 @@ describe('parseLibraryItemsResponse', () => {
         Type: 'Episode',
         ImageTags: { Primary: 'eptag' },
         AlbumId: 'should-be-ignored',
+        SeriesId: 'series-1',
+        SeriesPrimaryImageTag: 'seriestag',
       },
     ];
 

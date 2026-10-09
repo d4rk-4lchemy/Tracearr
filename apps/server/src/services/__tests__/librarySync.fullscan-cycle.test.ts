@@ -287,8 +287,8 @@ describe('LibrarySyncService full-scan cycle', () => {
 
   it.each([
     { type: 'plex' as const, stored: '2', current: '3' },
-    { type: 'jellyfin' as const, stored: '1', current: '2' },
-    { type: 'emby' as const, stored: '1', current: '2' },
+    { type: 'jellyfin' as const, stored: '2', current: '3' },
+    { type: 'emby' as const, stored: '2', current: '3' },
   ])(
     '$type library stored at scan version $stored gets one forced full scan',
     async ({ type, stored, current }) => {
