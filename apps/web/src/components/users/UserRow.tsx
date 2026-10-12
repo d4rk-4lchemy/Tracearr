@@ -11,7 +11,8 @@ interface UserRowProps {
   identityName?: string | null;
   thumbUrl?: string | null;
   serverId?: string | null;
-  trustScore: number;
+  /** Absent for members, who never see a trust score */
+  trustScore?: number;
   playCount: number;
   watchTimeHours: number;
   topContent?: string | null;
@@ -92,18 +93,25 @@ export function UserRow({
         <div className="text-muted-foreground w-16 text-right">
           {watchTimeHours.toLocaleString()}h
         </div>
-        <div
-          className={cn('flex w-20 items-center gap-1 text-right', getTrustScoreColor(trustScore))}
-        >
-          <Trophy className="h-3.5 w-3.5" />
-          <span className="font-medium">{trustScore}%</span>
-        </div>
+        {trustScore !== undefined && (
+          <div
+            className={cn(
+              'flex w-20 items-center gap-1 text-right',
+              getTrustScoreColor(trustScore)
+            )}
+          >
+            <Trophy className="h-3.5 w-3.5" />
+            <span className="font-medium">{trustScore}%</span>
+          </div>
+        )}
       </div>
 
       {/* Mobile Stats */}
       <div className="flex items-center gap-3 text-xs sm:hidden">
         <span className="font-semibold">{playCount}</span>
-        <span className={cn('font-medium', getTrustScoreColor(trustScore))}>{trustScore}%</span>
+        {trustScore !== undefined && (
+          <span className={cn('font-medium', getTrustScoreColor(trustScore))}>{trustScore}%</span>
+        )}
       </div>
 
       {/* Arrow */}

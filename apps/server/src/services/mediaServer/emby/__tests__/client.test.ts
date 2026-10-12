@@ -116,3 +116,34 @@ describe('EmbyClient.verifyServerAdmin', () => {
     expect(mockFetchJson).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('EmbyClient member sign-in', () => {
+  beforeEach(() => {
+    mockFetchJson.mockReset();
+  });
+
+  it('posts Pw with the Emby authorization header', async () => {
+    sequence({ resolve: { User: { Id: 'ext-1' }, AccessToken: 'member-token' } });
+
+    const auth = await EmbyClient.authenticateByName(URL, 'alice', 'pw', 'tracearr-u1', '');
+
+    expect(auth).toEqual({ externalId: 'ext-1', token: 'member-token' });
+    const [, options] = mockFetchJson.mock.calls[0] ?? [];
+    const headers = (options?.headers ?? {}) as Record<string, string>;
+    expect(headers['X-Emby-Authorization']).toMatch(/^Emby /);
+    expect(headers['X-Emby-Authorization']).toContain('DeviceId="tracearr-u1"');
+    expect(JSON.parse(String(options?.body))).toEqual({ Username: 'alice', Pw: 'pw' });
+  });
+
+  it('checks a member token against the user it was issued to', async () => {
+    sequence({ resolve: { Id: 'ext-1', Policy: { IsDisabled: false } } });
+
+    await expect(EmbyClient.fetchSelf(URL, 'tok', 'ext-1')).resolves.toEqual({
+      id: 'ext-1',
+      isDisabled: false,
+    });
+    const [url, options] = mockFetchJson.mock.calls[0] ?? [];
+    expect(url).toBe(`${URL}/Users/ext-1`);
+    expect(options?.headers).toMatchObject({ 'X-Emby-Token': 'tok' });
+  });
+});

@@ -29,6 +29,7 @@ import { db } from '../../src/db/client.js';
 import { media } from '../../src/db/schema.js';
 import { libraryStaleRoute } from '../../src/routes/library/stale.js';
 import { libraryRoiRoute } from '../../src/routes/library/roi.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -36,6 +37,7 @@ async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: FastifyRequest) => {
     (request as FastifyRequest & { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', createMockRedis() as unknown as Redis);
   await app.register(libraryStaleRoute, { prefix: '/library' });
   await app.register(libraryRoiRoute, { prefix: '/library' });

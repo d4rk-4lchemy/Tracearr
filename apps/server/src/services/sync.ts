@@ -8,6 +8,8 @@
 import { eq, and, isNull, isNotNull, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { servers, serverUsers } from '../db/schema.js';
+import { revokeSessionsForServerUsers } from '../lib/revoke.js';
+import { clearScope } from '../lib/scope.js';
 import { createMediaServerClient, PlexClient, type MediaUser } from './mediaServer/index.js';
 import { syncUserFromMediaServer, type SyncUserOptions } from './userService.js';
 import { supportsMediaLibrary } from '@tracearr/shared';
@@ -61,6 +63,7 @@ async function syncServerUsers(
 
   // Track which external IDs we see from the media server
   const syncedExternalIds: string[] = [];
+  const lostAccessIds: string[] = [];
 
   for (const mediaUser of mediaUsers) {
     syncedExternalIds.push(mediaUser.id);
@@ -73,6 +76,7 @@ async function syncServerUsers(
         added++;
       } else {
         updated++;
+        if (result.newlyDisabled) lostAccessIds.push(result.serverUser.id);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -99,6 +103,7 @@ async function syncServerUsers(
       )
       .returning({ id: serverUsers.id });
     removed = removedResult.length;
+    lostAccessIds.push(...removedResult.map((r) => r.id));
     if (removed > 0) {
       console.log(`[Sync] Marked ${removed} users as removed from server ${serverId}`);
     }
@@ -117,12 +122,16 @@ async function syncServerUsers(
           inArray(matchColumn, syncedExternalIds)
         )
       )
-      .returning({ id: serverUsers.id });
+      .returning({ userId: serverUsers.userId });
     restored = restoredResult.length;
+    // A restored account widens its person's scope without revoking anything.
+    for (const userId of new Set(restoredResult.map((r) => r.userId))) await clearScope(userId);
     if (restored > 0) {
       console.log(`[Sync] Restored ${restored} previously removed users on server ${serverId}`);
     }
   }
+
+  await revokeSessionsForServerUsers(lostAccessIds);
 
   return { added, updated, skipped, removed, restored, errors };
 }

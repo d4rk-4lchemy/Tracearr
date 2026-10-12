@@ -6,7 +6,14 @@
  * are handled by abstract methods or configuration.
  */
 
-import { fetchJson, jellyfinEmbyHeaders, HttpClientError } from '../../../utils/http.js';
+import {
+  fetchJson,
+  fetchText,
+  jellyfinEmbyHeaders,
+  HttpClientError,
+  isHttpStatus,
+} from '../../../utils/http.js';
+import { assertSafeProbeUrl } from '../../../utils/ssrf.js';
 import type {
   IMediaServerClient,
   IMediaServerClientWithHistory,
@@ -15,6 +22,7 @@ import type {
   MediaLibrary,
   MediaLibraryItem,
   MediaWatchHistoryItem,
+  MediaServerAuth,
   MediaServerConfig,
 } from '../types.js';
 import { enrichLiveTvSessions } from './liveTvEpg.js';
@@ -24,6 +32,7 @@ const CLIENT_NAME = 'Tracearr';
 const CLIENT_VERSION = '1.0.0';
 const DEVICE_ID = 'tracearr-server';
 const DEVICE_NAME = 'Tracearr Server';
+const MEMBER_DEVICE_NAME = 'Tracearr Web';
 
 // MusicArtist is only requested for music libraries: Jellyfin 12 answers it
 // with every artist on the server whatever ParentId the query names
@@ -72,17 +81,6 @@ export interface JellyfinEmbyActivityEntry {
 }
 
 /**
- * Authentication result type - identical structure for Jellyfin and Emby
- */
-export interface JellyfinEmbyAuthResult {
-  id: string;
-  username: string;
-  token: string;
-  serverId: string;
-  isAdmin: boolean;
-}
-
-/**
  * Item result type for batch fetching - identical structure for Jellyfin and Emby
  */
 export interface JellyfinEmbyItemResult {
@@ -109,7 +107,6 @@ export interface MediaServerParsers {
   parseActivityLogResponse: (data: unknown) => JellyfinEmbyActivityEntry[];
   parseItemsResponse: (data: unknown) => JellyfinEmbyItemResult[];
   parseUser: (data: Record<string, unknown>) => MediaUser;
-  parseAuthResponse: (data: Record<string, unknown>) => JellyfinEmbyAuthResult;
   parseLibraryItemsResponse: (data: unknown[]) => MediaLibraryItem[];
 }
 
@@ -760,5 +757,82 @@ export abstract class BaseMediaServerClient
   protected static buildStaticAuthHeader(token?: string): string {
     const tokenPart = token ? `, Token="${token}"` : '';
     return `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"${tokenPart}`;
+  }
+
+  protected static memberClientHeader(scheme: 'MediaBrowser' | 'Emby', deviceId: string): string {
+    return `${scheme} Client="${CLIENT_NAME}", Device="${MEMBER_DEVICE_NAME}", DeviceId="${deviceId}", Version="${CLIENT_VERSION}"`;
+  }
+
+  // Member calls never follow a redirect: it would resend the member's password, Quick Connect
+  // secret or token to wherever it points, past the SSRF check on the server URL.
+
+  /** POSTs a sign-in and returns the user token, or null when the server refuses it. */
+  protected static async requestUserToken(
+    service: 'jellyfin' | 'emby',
+    serverUrl: string,
+    path: string,
+    headers: Record<string, string>,
+    body: Record<string, string>
+  ): Promise<MediaServerAuth | null> {
+    assertSafeProbeUrl(serverUrl);
+    try {
+      const data = await fetchJson<{ User?: { Id?: unknown }; AccessToken?: unknown }>(
+        `${serverUrl.replace(/\/$/, '')}${path}`,
+        {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(body),
+          service,
+          timeout: 10_000,
+          redirect: 'manual',
+        }
+      );
+      const externalId = data.User?.Id;
+      const token = data.AccessToken;
+      if (typeof externalId !== 'string' || typeof token !== 'string' || !externalId || !token) {
+        return null;
+      }
+      return { externalId, token };
+    } catch (error) {
+      if (isHttpStatus(error, 401, 403)) return null;
+      throw error;
+    }
+  }
+
+  /** Reads the user a member token belongs to; null when the server rejects the token. */
+  protected static async requestTokenUser(
+    service: 'jellyfin' | 'emby',
+    url: string,
+    headers: Record<string, string>
+  ): Promise<{ id: string; isDisabled: boolean } | null> {
+    assertSafeProbeUrl(url);
+    try {
+      const data = await fetchJson<{ Id?: unknown; Policy?: { IsDisabled?: unknown } }>(url, {
+        headers: { ...headers, Accept: 'application/json' },
+        service,
+        timeout: 10_000,
+        redirect: 'manual',
+      });
+      if (typeof data.Id !== 'string' || !data.Id) return null;
+      return { id: data.Id, isDisabled: data.Policy?.IsDisabled === true };
+    } catch (error) {
+      if (isHttpStatus(error, 400, 401, 403, 404)) return null;
+      throw error;
+    }
+  }
+
+  protected static async postTokenLogout(
+    service: 'jellyfin' | 'emby',
+    serverUrl: string,
+    headers: Record<string, string>
+  ): Promise<void> {
+    assertSafeProbeUrl(serverUrl);
+    await fetchText(`${serverUrl.replace(/\/$/, '')}/Sessions/Logout`, {
+      method: 'POST',
+      headers,
+      service,
+      timeout: 10_000,
+      redirect: 'manual',
+    });
   }
 }

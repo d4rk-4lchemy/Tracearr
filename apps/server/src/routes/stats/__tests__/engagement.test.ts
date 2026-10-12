@@ -60,6 +60,7 @@ vi.mock('../utils.js', () => ({
 
 import { db } from '../../../db/client.js';
 import { engagementRoutes } from '../engagement.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 /**
  * Helper to create a test Fastify instance with authentication
@@ -67,10 +68,10 @@ import { engagementRoutes } from '../engagement.js';
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
-
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   await app.register(engagementRoutes, { prefix: '/stats' });
 
@@ -90,7 +91,7 @@ function createViewerUser(serverIds: string[]): AuthUser {
   return {
     userId: randomUUID(),
     username: 'viewer',
-    role: 'viewer',
+    role: 'admin',
     serverIds,
   };
 }
@@ -347,6 +348,7 @@ describe('Engagement Routes', () => {
       app.decorate('authenticate', async () => {
         throw new Error('Unauthorized');
       });
+      app.decorate('requirePermission', permissionGuard(app));
 
       await app.register(engagementRoutes, { prefix: '/stats' });
 
@@ -531,10 +533,10 @@ describe('Engagement Routes', () => {
     it('should require authentication', async () => {
       const app = Fastify({ logger: false });
       await app.register(sensible);
-
       app.decorate('authenticate', async () => {
         throw new Error('Unauthorized');
       });
+      app.decorate('requirePermission', permissionGuard(app));
 
       await app.register(engagementRoutes, { prefix: '/stats' });
 

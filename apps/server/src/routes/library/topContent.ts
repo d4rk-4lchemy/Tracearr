@@ -125,7 +125,7 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: TopContentQueryInput }>(
     '/top-movies',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = topContentQuerySchema.safeParse(request.query);
       if (!query.success) {
@@ -563,7 +563,7 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: TopContentQueryInput }>(
     '/top-shows',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = topContentQuerySchema.safeParse(request.query);
       if (!query.success) {

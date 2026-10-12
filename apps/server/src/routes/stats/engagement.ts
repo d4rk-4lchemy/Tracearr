@@ -27,9 +27,11 @@ import {
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { resolveDateRange } from './utils.js';
-import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
+import { scopedServerFragment, viewScope } from '../../lib/scope.js';
 
 export const engagementRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('stats', 'read')] };
   /**
    * GET /engagement - Comprehensive engagement metrics
    *
@@ -40,7 +42,7 @@ export const engagementRoutes: FastifyPluginAsync = async (app) => {
    * - userProfiles: User behavior classification
    * - summary: Overall metrics including session inflation percentage
    */
-  app.get('/engagement', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/engagement', readStats, async (request, reply) => {
     const query = engagementQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -51,7 +53,7 @@ export const engagementRoutes: FastifyPluginAsync = async (app) => {
     const dateRange = resolveDateRange(period, startDate, endDate);
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, await viewScope(request));
     // Note: The continuous aggregate buckets by UTC day, so we truncate input dates
     // to UTC day boundaries to ensure correct bucket matching
     const dailyStartFilter = dateRange.start
@@ -535,7 +537,7 @@ export const engagementRoutes: FastifyPluginAsync = async (app) => {
    * - Average episodes per viewer
    * - Completion rate and binge score
    */
-  app.get('/shows', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/shows', readStats, async (request, reply) => {
     const query = showsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -546,7 +548,8 @@ export const engagementRoutes: FastifyPluginAsync = async (app) => {
     const dateRange = resolveDateRange(period, startDate, endDate);
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const scope = await viewScope(request);
+    const serverFilter = scopedServerFragment(resolvedIds, scope);
 
     // Map orderBy to SQL column
     const orderColumn = {
@@ -556,12 +559,15 @@ export const engagementRoutes: FastifyPluginAsync = async (app) => {
       uniqueViewers: sql`unique_viewers`,
     }[orderBy];
 
-    // For date filtering, aggregate from daily_content_engagement directly
-    if (dateRange.start) {
+    // For date filtering, aggregate from daily_content_engagement directly. A member always
+    // takes this branch: top_shows_by_engagement has no server_user_id to scope by.
+    if (dateRange.start || scope !== 'all') {
       // Build date filters for the day column in daily_content_engagement
       // Note: The continuous aggregate buckets by UTC day, so we truncate input dates
       // to UTC day boundaries to ensure correct bucket matching
-      const dailyStartFilter = sql`day >= date_trunc('day', ${dateRange.start}::timestamptz)`;
+      const dailyStartFilter = dateRange.start
+        ? sql`day >= date_trunc('day', ${dateRange.start}::timestamptz)`
+        : sql`true`;
       const dailyEndFilter =
         period === 'custom' && dateRange.end
           ? sql`AND day <= date_trunc('day', ${dateRange.end}::timestamptz)`

@@ -9,10 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { MediaSession, MediaUser, MediaLibrary, MediaWatchHistoryItem } from '../../types.js';
-import type {
-  JellyfinEmbyActivityEntry,
-  JellyfinEmbyAuthResult,
-} from '../../shared/baseMediaServerClient.js';
+import type { JellyfinEmbyActivityEntry } from '../../shared/baseMediaServerClient.js';
 
 // ============================================================================
 // Types for Parser Functions
@@ -29,7 +26,6 @@ export interface ParserFunctions {
   parseWatchHistoryResponse: (data: unknown) => MediaWatchHistoryItem[];
   parseActivityLogItem: (raw: Record<string, unknown>) => JellyfinEmbyActivityEntry;
   parseActivityLogResponse: (data: unknown) => JellyfinEmbyActivityEntry[];
-  parseAuthResponse: (raw: Record<string, unknown>) => JellyfinEmbyAuthResult;
 }
 
 // ============================================================================
@@ -618,72 +614,6 @@ export function createActivityLogParsingTests(
 }
 
 // ============================================================================
-// Authentication Response Parsing Tests
-// ============================================================================
-
-export function createAuthParsingTests(parsers: ParserFunctions, serverType: 'jellyfin' | 'emby') {
-  describe(`${serverType} Auth Response Parser`, () => {
-    describe('parseAuthResponse', () => {
-      it('should parse successful auth response', () => {
-        const rawResponse = {
-          User: {
-            Id: 'user-123',
-            Name: 'Admin',
-            ServerId: 'server-456',
-            Policy: {
-              IsAdministrator: true,
-            },
-          },
-          AccessToken: 'token-abc',
-          ServerId: 'server-456',
-        };
-
-        const result = parsers.parseAuthResponse(rawResponse);
-
-        expect(result.id).toBe('user-123');
-        expect(result.username).toBe('Admin');
-        expect(result.token).toBe('token-abc');
-        expect(result.serverId).toBe('server-456');
-        expect(result.isAdmin).toBe(true);
-      });
-
-      it('should handle non-admin user', () => {
-        const rawResponse = {
-          User: {
-            Id: 'user-789',
-            Name: 'Regular',
-            Policy: {
-              IsAdministrator: false,
-            },
-          },
-          AccessToken: 'token-xyz',
-          ServerId: 'server-123',
-        };
-
-        const result = parsers.parseAuthResponse(rawResponse);
-
-        expect(result.isAdmin).toBe(false);
-      });
-
-      it('should handle missing Policy', () => {
-        const rawResponse = {
-          User: {
-            Id: 'guest',
-            Name: 'Guest',
-          },
-          AccessToken: 'guest-token',
-          ServerId: 'server',
-        };
-
-        const result = parsers.parseAuthResponse(rawResponse);
-
-        expect(result.isAdmin).toBe(false);
-      });
-    });
-  });
-}
-
-// ============================================================================
 // PlayMethod and Transcode Detection Tests (Common)
 // ============================================================================
 
@@ -1248,7 +1178,6 @@ export function createAllSharedParserTests(
   createLibraryParsingTests(parsers, serverType);
   createWatchHistoryParsingTests(parsers, serverType);
   createActivityLogParsingTests(parsers, serverType);
-  createAuthParsingTests(parsers, serverType);
   createPlayMethodTests(parsers, serverType);
   createTrailerFilteringTests(parsers, serverType);
   createLiveTVTests(parsers, serverType);

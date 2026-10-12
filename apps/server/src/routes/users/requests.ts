@@ -9,14 +9,16 @@ import { db } from '../../db/client.js';
 import { listUserRequests } from '../../services/requests/reads.js';
 import { resolveServerIds } from '../../utils/serverFiltering.js';
 import { resolveIdentityScopedServerUserIds } from './queries.js';
+import { seesServerActivity } from '../../lib/scope.js';
 import type { FastifyPluginAsync } from 'fastify';
 
 export const requestsRoutes: FastifyPluginAsync = async (app) => {
+  const readRequests = { preHandler: [app.requirePermission('requests', 'read')] };
   /**
    * scope=identity widens the history to every account under the same person
    * the caller can access, the same rule the devices and locations routes use.
    */
-  app.get('/:id/requests', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id/requests', readRequests, async (request, reply) => {
     const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid user ID');
@@ -31,7 +33,8 @@ export const requestsRoutes: FastifyPluginAsync = async (app) => {
       db,
       request.user,
       params.data.id,
-      query.data.scope
+      query.data.scope,
+      request.scope
     );
     if ('error' in scoped) {
       if (scoped.error === 'notFound') {
@@ -42,6 +45,7 @@ export const requestsRoutes: FastifyPluginAsync = async (app) => {
 
     return listUserRequests({
       serverUserIds: scoped.ids,
+      showOthers: await seesServerActivity(request.scope),
       serverIds: resolveServerIds(request.user, undefined, undefined),
       page: query.data.page,
       pageSize: query.data.pageSize,

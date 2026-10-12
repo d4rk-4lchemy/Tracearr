@@ -1,19 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { Dashboard } from './Dashboard';
 
-function renderDashboard() {
+function Search() {
+  return <div data-testid="search">{useLocation().search}</div>;
+}
+
+function renderDashboard(url = '/') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
       <Dashboard />
+      <Search />
     </MemoryRouter>
   );
 }
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { count?: number }) =>
+      options?.count !== undefined ? `${key}:${options.count}` : key,
+  }),
 }));
 
 vi.mock('@/hooks/queries', () => ({
@@ -21,10 +29,29 @@ vi.mock('@/hooks/queries', () => ({
   useActiveSessions: vi.fn(),
 }));
 
+vi.mock('@/components/dashboard/PersonalDashboard', () => ({
+  PersonalDashboard: ({ actions }: { actions?: React.ReactNode }) => (
+    <div data-testid="personal">{actions}</div>
+  ),
+}));
+
+const auth = vi.hoisted(() => ({
+  user: { role: 'owner', impersonatedBy: undefined as string | undefined },
+}));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+
+const { multiLiveStats } = vi.hoisted(() => ({
+  multiLiveStats: vi.fn((_ids: string[], _enabled: boolean) => ({
+    series: [],
+    clockSkewMs: 0,
+    isLoading: false,
+  })),
+}));
+
 // Not typechecked against the real module - keep in sync by hand
 vi.mock('@/hooks/queries/useServers', () => ({
   useServerLiveStats: vi.fn(),
-  useMultiServerLiveStats: vi.fn(),
+  useMultiServerLiveStats: multiLiveStats,
 }));
 
 vi.mock('@/components/charts/ServerResourceCharts', () => ({
@@ -83,6 +110,9 @@ function serverReturn() {
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.user.role = 'owner';
+    auth.user.impersonatedBy = undefined;
+    localStorage.clear();
     mockUseServer.mockReturnValue(serverReturn());
     mockUseServerLiveStats.mockReturnValue({
       statistics: undefined,
@@ -291,5 +321,109 @@ describe('Dashboard', () => {
     renderDashboard();
 
     expect(screen.queryByText('dashboard.serverResources')).not.toBeInTheDocument();
+  });
+
+  describe('view toggle', () => {
+    beforeEach(() => {
+      mockUseDashboardStats.mockReturnValue({
+        data: { activeUsersToday: 2, todayPlays: 0, todaySessions: 0 },
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as unknown as ReturnType<typeof useDashboardStats>);
+      mockUseActiveSessions.mockReturnValue({
+        data: [],
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      } as unknown as ReturnType<typeof useActiveSessions>);
+    });
+
+    it('opens the server view for an owner with the toggle in the Today heading', () => {
+      renderDashboard();
+
+      expect(screen.getByRole('radio', { name: 'dashboard.view.admin' })).toBeChecked();
+      expect(screen.getByText('dashboard.activeUsers')).toBeInTheDocument();
+      expect(screen.queryByTestId('personal')).not.toBeInTheDocument();
+    });
+
+    it('opens the personal view from ?view=me, with the toggle in its first heading', () => {
+      renderDashboard('/?view=me');
+
+      expect(screen.getByTestId('personal')).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'dashboard.view.me' })).toBeChecked();
+      expect(screen.queryByText('dashboard.activeUsers')).not.toBeInTheDocument();
+    });
+
+    it('stores the choice and sets the param when the personal view is picked', async () => {
+      renderDashboard();
+
+      await userEvent.click(screen.getByRole('radio', { name: 'dashboard.view.me' }));
+
+      expect(localStorage.getItem('tracearr_dashboard_view')).toBe('me');
+      expect(screen.getByTestId('search')).toHaveTextContent('?view=me');
+      expect(screen.getByTestId('personal')).toBeInTheDocument();
+    });
+
+    it('opens the stored view when the URL names none, and lets the URL win when it does', () => {
+      localStorage.setItem('tracearr_dashboard_view', 'me');
+
+      renderDashboard();
+      expect(screen.getByTestId('personal')).toBeInTheDocument();
+
+      renderDashboard('/?view=admin');
+      expect(screen.getAllByTestId('personal')).toHaveLength(1);
+      expect(screen.getByText('dashboard.activeUsers')).toBeInTheDocument();
+    });
+
+    it.each([
+      ['a member', undefined],
+      ['an owner viewing as a member', 'owner-1'],
+    ])('gives %s the personal view and no toggle, whatever the URL and storage say', (_n, by) => {
+      auth.user.role = 'member';
+      auth.user.impersonatedBy = by;
+      localStorage.setItem('tracearr_dashboard_view', 'admin');
+
+      renderDashboard('/?view=admin');
+
+      expect(screen.getByTestId('personal')).toBeInTheDocument();
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+      expect(localStorage.getItem('tracearr_dashboard_view')).toBe('admin');
+    });
+
+    it('gives an owner viewing as an admin the server view and no toggle, whatever the URL and storage say', () => {
+      auth.user.role = 'admin';
+      auth.user.impersonatedBy = 'owner-1';
+      localStorage.setItem('tracearr_dashboard_view', 'me');
+
+      renderDashboard('/?view=me');
+
+      expect(screen.getByText('dashboard.activeUsers')).toBeInTheDocument();
+      expect(screen.queryByTestId('personal')).not.toBeInTheDocument();
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+      expect(localStorage.getItem('tracearr_dashboard_view')).toBe('me');
+    });
+  });
+
+  it('leaves the server view with the active users tile and no member extras', () => {
+    mockUseDashboardStats.mockReturnValue({
+      data: { activeUsersToday: 2, todayPlays: 0, todaySessions: 0 },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useDashboardStats>);
+    mockUseActiveSessions.mockReturnValue({
+      data: [],
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useActiveSessions>);
+
+    renderDashboard();
+
+    expect(screen.getByText('dashboard.activeUsers')).toBeInTheDocument();
+    expect(screen.queryByText('dashboard.dayStreak')).not.toBeInTheDocument();
   });
 });

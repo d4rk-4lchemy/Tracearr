@@ -15,31 +15,29 @@ import type { UpgradeWarning } from './releaseNotes.js';
 import type { ResolutionBucket } from './resolution.js';
 import type { statPeriodSchema } from './schemas.js';
 import type { z } from 'zod';
+import type { LOGIN_ACCESS } from './constants.js';
 
-// User role - combined permission level and account status
-// Can log in: owner, admin, viewer
-// Cannot log in: member (default for synced users), disabled, pending
-export type UserRole = 'owner' | 'admin' | 'viewer' | 'member' | 'disabled' | 'pending';
+// Can log in: owner always; admin and member as their loginAccess allows
+// Cannot log in: disabled, pending
+export type UserRole = 'owner' | 'admin' | 'member' | 'disabled' | 'pending';
 
-// Role permission hierarchy (higher = more permissions)
+export type LoginAccess = (typeof LOGIN_ACCESS)[number];
+
 export const ROLE_PERMISSIONS: Record<UserRole, number> = {
-  owner: 4,
-  admin: 3,
-  viewer: 2,
-  member: 1, // Synced from media server, no Tracearr login until promoted
+  owner: 3,
+  admin: 2,
+  member: 1,
   disabled: 0,
   pending: 0,
 } as const;
 
-// Roles that can log into Tracearr
-export const LOGIN_ROLES: UserRole[] = ['owner', 'admin'];
-
-// Role helper functions
+export const LOGIN_ROLES: UserRole[] = ['owner', 'admin', 'member'];
 export const canLogin = (role: UserRole): boolean => LOGIN_ROLES.includes(role);
-
-export const hasMinRole = (userRole: UserRole, required: 'owner' | 'admin' | 'viewer'): boolean =>
+/** Roles that manage the instance and see every server; members see only their own activity. */
+export const STAFF_ROLES: UserRole[] = ['owner', 'admin'];
+export const isStaff = (role: UserRole): boolean => STAFF_ROLES.includes(role);
+export const hasMinRole = (userRole: UserRole, required: 'owner' | 'admin' | 'member'): boolean =>
   ROLE_PERMISSIONS[userRole] >= ROLE_PERMISSIONS[required];
-
 export const isOwner = (role: UserRole): boolean => role === 'owner';
 export const isActive = (role: UserRole): boolean => canLogin(role);
 
@@ -65,6 +63,7 @@ export interface Server {
   latestVersion?: string | null;
   /** When Tracearr stopped contacting this server. Null, or absent on older payloads, while it is live. */
   historicalAt?: string | null;
+  allowMemberLogin?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -98,6 +97,9 @@ export interface User {
   thumbnail: string | null;
   email: string | null;
   role: UserRole; // Combined permission level and account status
+  loginAccess: LoginAccess;
+  lastLoginAt: Date | null;
+  loginCount: number;
   aggregateTrustScore: number;
   totalViolations: number;
   createdAt: Date;
@@ -128,6 +130,9 @@ export interface ServerUserWithIdentity extends ServerUser {
   serverName: string;
   identityName: string | null;
   role: UserRole; // From linked User identity
+  loginAccess: LoginAccess; // From linked User identity
+  lastLoginAt: Date | string | null; // Tracearr sign-ins of the linked identity
+  loginCount: number;
   // The identity's server memberships, scoped to servers the caller can access.
   // Length > 1 means this identity is merged across servers. serverUserId/removedAt
   // describe the identity's account on that server.
@@ -148,10 +153,10 @@ export interface ServerUserWithIdentity extends ServerUser {
   // Only populated by the list endpoint.
   identityJoinedAt?: Date | string | null;
   identityLastActivityAt?: Date | string | null;
-  // Server-computed: whether this identity can log in at all. Wider than
-  // canLogin(role) - it also counts a password hash, a linked Plex account and
-  // any auth account. A merge can only ever absorb into a login-capable target,
-  // so deriving this on the client from role alone picks the wrong direction.
+  // Server-computed: whether this identity holds sign-in credentials. Owner or
+  // admin role, a password hash, a linked Plex account or any auth account. A
+  // merge can only ever absorb into a login-capable target, so deriving this on
+  // the client from role alone picks the wrong direction.
   // Only populated by the list endpoint.
   loginCapable?: boolean;
 }
@@ -232,6 +237,7 @@ export interface AuthUser {
   serverIds: string[];
   mobile?: boolean; // True for mobile app tokens
   deviceId?: string; // Device identifier for mobile tokens
+  impersonatedBy?: string; // The owner's user id while the owner views as this user
 }
 
 export interface UserMergeResult {
@@ -303,7 +309,9 @@ export interface SetupStatus {
     plex: boolean;
     oidc: boolean;
     oidcProviderName: string | null;
+    member: boolean;
   };
+  memberLoginServers: { id: string; name: string; type: ServerType; quickConnect: boolean }[];
 }
 
 // Session types
@@ -704,12 +712,56 @@ export interface DashboardStats {
   activeStreams: number;
   todayPlays: number; // Validated plays (sessions >= 2 min)
   todaySessions: number; // Raw session count (for comparison)
-  watchTimeHours: number; // VOD watch time for movies/episodes only
-  tvSessions: number; // Raw TV session count for mediaType='live' (includes catch-up)
-  tvChannels: number; // Unique TV channels for mediaType='live' (includes catch-up)
-  tvWatchTimeHours: number; // TV watch time for mediaType='live' (includes catch-up)
-  alertsLast24h: number;
-  activeUsersToday: number; // Distinct users across all media types
+  watchTimeHours: number; // VOD only
+  tvSessions: number;
+  tvChannels: number;
+  tvWatchTimeHours: number;
+  /** Absent for members, who never see violations */
+  alertsLast24h?: number;
+  /** Absent for members, who get othersActive instead */
+  activeUsersToday?: number;
+  /** Members only: active streams on the member's servers that are not theirs */
+  othersActive?: number;
+}
+
+/** GET /stats/me: the viewer's own accounts, all time. */
+export interface MyStats {
+  /** Distinct local days with a play of two minutes or more */
+  daysWatched: number;
+  /** Consecutive local days ending today or yesterday, otherwise 0 */
+  currentStreak: number;
+  longestStreak: number;
+  /** Every session except trailers, across all servers: the same sum as the history aggregates */
+  totalWatchTimeMs: number;
+  firstPlay: {
+    mediaTitle: string;
+    grandparentTitle: string | null;
+    mediaId: string | null;
+    startedAt: string;
+  } | null;
+  /** Most distinct episodes of one show on one UTC day, when that is at least two */
+  biggestBinge: {
+    showTitle: string;
+    showMediaId: string | null;
+    episodes: number;
+    /** YYYY-MM-DD, UTC */
+    day: string;
+  } | null;
+  topGenres: { genre: string; plays: number }[];
+}
+
+/** GET /stats/me/titles: what the viewer watched most in the last 30 days, as poster rows. */
+export interface MyTopTitleRow extends ShelfRow {
+  watchedState: WatchedState;
+  plays: number;
+  watchTimeMs: number;
+  /** Distinct episodes played; null for a movie */
+  episodes: number | null;
+  rank: number;
+}
+
+export interface MyTopTitlesResponse {
+  data: MyTopTitleRow[];
 }
 
 export interface PlayStats {
@@ -814,8 +866,8 @@ export interface TopUserStats {
   thumbUrl: string | null;
   /** Representative account's server, used for avatar proxy */
   serverId: string | null;
-  /** Identity-level aggregate trust score, not the representative account's own score */
-  trustScore: number;
+  /** Identity-level aggregate trust score, not the representative account's own score. Absent for members. */
+  trustScore?: number;
   playCount: number;
   watchTimeHours: number;
   topMediaType: string | null; // "movie", "episode", etc.
@@ -936,9 +988,16 @@ export interface ServerLiveStats {
 // Unit system for display preferences (stored in settings)
 export type UnitSystem = 'metric' | 'imperial';
 
+export interface LoginMethods {
+  local: boolean;
+  plex: boolean;
+  oidc: boolean;
+  member: boolean;
+}
+
 // Settings types
 export interface Settings {
-  allowGuestAccess: boolean;
+  loginMethods: LoginMethods;
   // Display preferences
   unitSystem: UnitSystem;
   // Poller settings
@@ -978,6 +1037,14 @@ export interface Settings {
   imagePrecacheEnabled: boolean;
   // Media browsing: server whose poster wins when a title exists on multiple servers, null = automatic (most recently added copy)
   preferredPosterServerId: string | null;
+  // Members see anonymous counts of other people's activity: others watching, title totals, Most Popular, popularity sorts
+  memberServerActivity: boolean;
+}
+
+/** GET and PATCH /settings: the settings plus deployment facts that are not settings. */
+export interface SettingsResponse extends Settings {
+  /** Read-only: all three OIDC env vars are set. Not stored, and a PATCH cannot change it. */
+  oidcConfigured: boolean;
 }
 
 /** GET /settings/image-cache. Sizes in bytes; timestamps ISO. */
@@ -988,8 +1055,8 @@ export interface ImageCacheStatus {
   sweptAt: string | null;
   freedBytesLastSweep: number;
   deletedFilesLastSweep: number;
-  /** A full pass this process completed was followed by an empty cache, so the
-   *  directory is not surviving restarts. */
+  /** A completed full pass was followed by an empty cache on a directory that
+   *  is not a mounted volume, so the cache is not surviving restarts. */
   notPersisting: boolean;
   /** Distinct (server, thumb path) pairs in library_items, removed rows
    *  included: one cache file each, however many rows share the image. */
@@ -1526,9 +1593,32 @@ export interface RateLimitStatus {
   resetHourIn: number; // seconds until hour window resets
 }
 
+/** The per-device toggles that filter a push after the server has decided to send it. */
+export type PushEventPreference =
+  | 'onViolationDetected'
+  | 'onStreamStarted'
+  | 'onStreamStopped'
+  | 'onNewDevice'
+  | 'onTrustScoreChanged'
+  | 'onServerDown'
+  | 'onServerUp';
+
+/** What stands between an event and this device, apart from the device's own toggles. */
+export interface PushDeliveryStatus {
+  /** The server holds a push token for this device. */
+  tokenRegistered: boolean;
+  /** The built-in Mobile push destination is switched on. */
+  destinationEnabled: boolean;
+  /** Mobile push has Receive violations on, so every violation is sent. */
+  violationsSubscribed: boolean;
+  /** Active automations that send each event to Mobile push. */
+  automations: Record<PushEventPreference, number>;
+}
+
 // Extended preferences response including live rate limit status
 export interface NotificationPreferencesWithStatus extends NotificationPreferences {
   rateLimitStatus?: RateLimitStatus;
+  delivery?: PushDeliveryStatus;
 }
 
 // Encrypted push payload (AES-256-GCM with separate authTag per security best practices)
@@ -2729,8 +2819,9 @@ export interface RecentlyUpdatedShelfRow extends ShelfRow {
 }
 
 export interface MostPopularShelfRow extends ShelfRow {
-  plays: number;
-  viewers: number;
+  /** Absent for a member: how many people watched is the owner's to show. */
+  plays?: number;
+  viewers?: number;
   rank: number;
 }
 
@@ -2742,8 +2833,11 @@ export interface DeadWeightRow extends ShelfRow {
 }
 
 export interface ShelvesKpiWatchedInPeriod {
-  /** Distinct canonical titles (movies + shows) with >=1 play in the window. */
-  titlesTouched: number;
+  /**
+   * Distinct canonical titles (movies + shows) with >=1 play in the window. Absent for a member
+   * while the owner's memberServerActivity is off.
+   */
+  titlesTouched?: number;
   /** Total canonical titles (movies + shows) in scope, all-time. */
   totalTitles: number;
 }
@@ -2752,8 +2846,8 @@ export interface ShelvesKpiNewlyAdded {
   /** Canonical titles (movies + shows) added within the window. */
   count: number;
   totalBytes: number;
-  /** Of the titles added in the window, how many have ever been played. */
-  playedCount: number;
+  /** Of the titles added in the window, how many have ever been played. Omitted for members without server activity. */
+  playedCount?: number;
 }
 
 export interface ShelvesKpiDeadWeight {
@@ -2764,8 +2858,11 @@ export interface ShelvesKpiDeadWeight {
 
 export interface ShelvesKpis {
   watchedInPeriod: ShelvesKpiWatchedInPeriod;
-  /** Total watched time across the window, in seconds. */
-  hoursWatched: number;
+  /**
+   * Total watched time across the window, in seconds. Absent for a member while the owner's
+   * memberServerActivity is off.
+   */
+  hoursWatched?: number;
   newlyAdded: ShelvesKpiNewlyAdded;
   /** Omitted when the request opts out via includeDeadWeight=false. */
   deadWeight?: ShelvesKpiDeadWeight;
@@ -2922,6 +3019,8 @@ export interface MediaWatchersResponse {
   mediaType: string;
   window: 'all_time' | 'last_30' | 'last_7';
   watchers: MediaWatcherEntry[];
+  /** Members only: watchers left out because they are other people */
+  othersCount?: number;
 }
 
 export interface MediaPlatformBreakdownEntry {

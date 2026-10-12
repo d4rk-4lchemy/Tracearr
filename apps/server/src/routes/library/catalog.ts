@@ -58,6 +58,7 @@ import {
 import { db } from '../../db/client.js';
 import { resolutionBucketPredicate, resolutionRankSql } from '../../utils/resolutionBuckets.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { seesServerActivity, type Scope } from '../../lib/scope.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
 import { normalizeTitle } from '../../services/library/mediaMatchKey.js';
 import {
@@ -118,6 +119,29 @@ const catalogCodecsQuerySchema = catalogQuerySchema.pick({
 });
 
 export type CatalogSort = CatalogQueryInput['sort'];
+
+const POPULARITY_SORTS = new Set<CatalogSort>(['plays', 'watch_time', 'viewers']);
+
+/**
+ * A member browses through their own lens, since 'all' would list what anyone watched, and
+ * without popularity order or counts unless the owner shows members server activity. Another
+ * person's lens answers null, which the routes turn into a 404.
+ */
+async function viewerBrowse(
+  scope: Scope,
+  lens: string,
+  sort: CatalogSort
+): Promise<{ lensUserId: string | null; sort: CatalogSort; showActivity: boolean } | null> {
+  if (scope === 'all')
+    return { lensUserId: lens === 'all' ? null : lens, sort, showActivity: true };
+  if (lens !== 'all' && lens !== scope.userId) return null;
+  const showActivity = await seesServerActivity(scope);
+  return {
+    lensUserId: scope.userId,
+    sort: !showActivity && POPULARITY_SORTS.has(sort) ? 'title' : sort,
+    showActivity,
+  };
+}
 
 /** Splits the `${serverId}:${libraryId}` composite key back into its parts;
  * libraryKeySchema already validated the shape at the request boundary. */
@@ -881,12 +905,13 @@ interface WatchedCandidatesArgs extends CatalogFilterParams {
   watched: WatchedState;
 }
 
+// A lens is one person's plays, so its entries carry the member segment and go when clearScope
+// clears that person after a merge or split.
 function watchedCandidatesCacheKey(args: WatchedCandidatesArgs): string {
   const serverKey = args.serverIds !== undefined ? [...args.serverIds].sort().join(',') : 'all';
-  const filterKey = [args.sort, ...filterKeyParts(args), args.watched, args.lensUserId ?? ''].join(
-    '|'
-  );
-  return buildLibraryCacheKey(REDIS_KEYS.LIBRARY_CATALOG_WATCHED, serverKey, filterKey);
+  const filterKey = [args.sort, ...filterKeyParts(args), args.watched].join('|');
+  const lensKey = args.lensUserId ? `:member:${args.lensUserId}` : '';
+  return `${buildLibraryCacheKey(REDIS_KEYS.LIBRARY_CATALOG_WATCHED, serverKey, filterKey)}${lensKey}`;
 }
 
 /** Runs the candidates query and the watched probe rounds, uncached - the
@@ -1064,13 +1089,22 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: Record<string, unknown> }>(
     '/catalog',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
       const query = catalogQuerySchema.safeParse(request.query);
       if (!query.success) {
         return reply.badRequest('Invalid query parameters');
       }
-      const { type, serverId, serverIds, watched, lens, sort, offset, pageSize } = query.data;
+      const {
+        type,
+        serverId,
+        serverIds,
+        watched,
+        lens,
+        sort: requestedSort,
+        offset,
+        pageSize,
+      } = query.data;
       const authUser = request.user;
 
       // Guard 1: server scope, fail-closed (throws ForbiddenError on an
@@ -1079,7 +1113,9 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
       const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
 
       // Guard 2: lens identity must have at least one account within scope.
-      const lensUserId = lens === 'all' ? null : lens;
+      const browse = await viewerBrowse(request.scope, lens, requestedSort);
+      if (!browse) return reply.notFound();
+      const { lensUserId, sort } = browse;
       if (lensUserId !== null) {
         const serverFragment = buildMultiServerFragment(resolvedIds, 'server_id');
         const hasAccess =
@@ -1190,9 +1226,9 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
         }
       }
 
-      const needsEngagementLookup = sort !== 'plays' && sort !== 'watch_time' && sort !== 'viewers';
+      const needsEngagementLookup = !POPULARITY_SORTS.has(sort);
       const engagement =
-        needsEngagementLookup || watched
+        browse.showActivity && (needsEngagementLookup || watched)
           ? await fetchPageEngagement(
               rows.map((row) => row.id),
               type,
@@ -1201,9 +1237,11 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
           : null;
 
       const data: CatalogRow[] = rows.map((row) => {
-        const rowEngagement = engagement
-          ? (engagement.get(row.id) ?? { plays: 0, viewers: 0 })
-          : { plays: Number(row.plays_value ?? 0), viewers: Number(row.viewers_value ?? 0) };
+        const rowEngagement = !browse.showActivity
+          ? { plays: 0, viewers: 0 }
+          : engagement
+            ? (engagement.get(row.id) ?? { plays: 0, viewers: 0 })
+            : { plays: Number(row.plays_value ?? 0), viewers: Number(row.viewers_value ?? 0) };
         return toCatalogRow(
           row,
           watchedStates.get(row.id) ?? 'unwatched',
@@ -1232,19 +1270,21 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: Record<string, unknown> }>(
     '/catalog/letters',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
       const query = catalogLettersQuerySchema.safeParse(request.query);
       if (!query.success) {
         return reply.badRequest('Invalid query parameters');
       }
-      const { serverId, serverIds, watched, lens, sort } = query.data;
+      const { serverId, serverIds, watched, lens, sort: requestedSort } = query.data;
       const authUser = request.user;
 
       // Same server-scope and lens-access guards as GET /catalog.
       const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
 
-      const lensUserId = lens === 'all' ? null : lens;
+      const browse = await viewerBrowse(request.scope, lens, requestedSort);
+      if (!browse) return reply.notFound();
+      const { lensUserId, sort } = browse;
       if (lensUserId !== null) {
         const serverFragment = buildMultiServerFragment(resolvedIds, 'server_id');
         const hasAccess =
@@ -1327,7 +1367,7 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: Record<string, unknown> }>(
     '/catalog/codecs',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
       const query = catalogCodecsQuerySchema.safeParse(request.query);
       if (!query.success) {

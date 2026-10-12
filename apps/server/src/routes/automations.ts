@@ -214,7 +214,7 @@ type AutomationUpdate = Partial<{
 
 export const automationRoutes: FastifyPluginAsync = async (app) => {
   const owner = { preHandler: [app.requireOwner] };
-  const authed = { preHandler: [app.authenticate] };
+  const readers = { preHandler: [app.requirePermission('automations', 'read')] };
 
   /** The write, its version row when the definition moved, and the reply's own read. */
   const saveDefinition = async (
@@ -252,7 +252,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /automations - List automations with pagination, filters and sorting
    */
-  app.get('/', authed, async (request, reply) => {
+  app.get('/', readers, async (request, reply) => {
     const query = automationListQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -294,7 +294,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /automations/:id - One automation
    */
-  app.get('/:id', authed, async (request, reply) => {
+  app.get('/:id', readers, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid automation ID');
@@ -366,7 +366,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post(
     '/dry-run',
-    { ...authed, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    { ...readers, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const body = dryRunRequestSchema.safeParse(request.body);
       if (!body.success) {
@@ -640,7 +640,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /automations/:id/export - The automation as a shareable envelope and code
    */
-  app.get('/:id/export', authed, async (request, reply) => {
+  app.get('/:id/export', readers, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid automation ID');
@@ -728,7 +728,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /automations/:id/runs - This automation's runs, without their step logs
    */
-  app.get('/:id/runs', authed, async (request, reply) => {
+  app.get('/:id/runs', readers, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid automation ID');
@@ -768,7 +768,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /automations/:id/evaluations - The capped ring of matches that recorded no run
    */
-  app.get('/:id/evaluations', authed, async (request, reply) => {
+  app.get('/:id/evaluations', readers, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid automation ID');

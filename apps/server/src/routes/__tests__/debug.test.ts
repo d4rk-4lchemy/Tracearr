@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '@tracearr/shared';
@@ -55,6 +55,7 @@ import { getAuth } from '../../lib/auth.js';
 import { revokeMobileDeviceSession } from '../mobile.js';
 import { seedBuiltinDestinations } from '../../services/notifications/destinationsMigration.js';
 import { debugRoutes } from '../debug.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 /**
  * Build a test Fastify instance with mocked auth
@@ -68,6 +69,11 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   // Mock the authenticate decorator
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = authUser;
+  });
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: unknown, reply: FastifyReply) => {
+    (request as { user: AuthUser }).user = authUser;
+    if (authUser.role !== 'owner') return reply.forbidden('Owner access required');
   });
 
   // Mock redis (cast to satisfy ioredis type)
@@ -101,7 +107,7 @@ function createViewerUser(): AuthUser {
   return {
     userId: randomUUID(),
     username: 'viewer',
-    role: 'viewer',
+    role: 'member',
     serverIds: [randomUUID()],
   };
 }

@@ -34,14 +34,15 @@ import {
   getMaintenanceJobHistory,
 } from '../../jobs/maintenanceQueue.js';
 import { maintenanceRoutes } from '../maintenance.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
-
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   await app.register(maintenanceRoutes, { prefix: '/maintenance' });
   return app;
@@ -57,7 +58,7 @@ const ownerUser: AuthUser = {
 const viewerUser: AuthUser = {
   userId: randomUUID(),
   username: 'viewer',
-  role: 'viewer',
+  role: 'admin',
   serverIds: [],
 };
 

@@ -21,13 +21,14 @@ import {
   createTestLibraryItem,
 } from '@tracearr/test-utils/factories';
 import { contentRoutes } from '../../src/routes/stats/content.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 function ownerAuth(): AuthUser {
   return { userId: 'owner', username: 'owner', role: 'owner', serverIds: [] };
 }
 
 function viewerAuth(serverIds: string[]): AuthUser {
-  return { userId: 'viewer', username: 'viewer', role: 'viewer', serverIds };
+  return { userId: 'viewer', username: 'viewer', role: 'admin', serverIds };
 }
 
 async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
@@ -36,6 +37,7 @@ async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(contentRoutes as never);
   return app;
 }

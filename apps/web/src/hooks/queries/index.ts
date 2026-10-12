@@ -1,6 +1,8 @@
 // Stats hooks
 export {
   useDashboardStats,
+  useMyStats,
+  useMyTopTitles,
   usePlaysStats,
   useUserStats,
   useLocationStats,
@@ -30,7 +32,13 @@ export {
 } from './useStats';
 
 // Session hooks
-export { useSessions, useActiveSessions, useSession, useBulkDeleteSessions } from './useSessions';
+export {
+  useSessions,
+  useActiveSessions,
+  useOthersActive,
+  useSession,
+  useBulkDeleteSessions,
+} from './useSessions';
 export { useTerminateSession } from './useTerminateSession';
 
 // History hooks (advanced session queries with infinite scroll)
@@ -50,6 +58,7 @@ export {
   useUserSessions,
   useUpdateUser,
   useUpdateUserIdentity,
+  useUpdateUserAccess,
   useUserLocations,
   useUserDevices,
   useUserTerminations,
@@ -142,6 +151,7 @@ export {
   REQUESTS_KEY,
   useMediaRequests,
   useUserRequests,
+  useMyRequests,
   useRequestsAnalytics,
   useRequestsConfigured,
   useRequestsUnplayed,

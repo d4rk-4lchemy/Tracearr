@@ -1,13 +1,15 @@
 import { createContext, useContext, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import type { AuthUser } from '@tracearr/shared';
 import { api, ApiError, AUTH_STATE_CHANGE_EVENT, BASE_URL } from '@/lib/api';
 import { authClient } from '@/lib/authClient';
+import { dropUserData } from '@/lib/queryCache';
+import { stopViewingAs } from '@/hooks/queries/useImpersonation';
 
 interface UserProfile extends AuthUser {
   email: string | null;
   thumbUrl: string | null;
-  trustScore: number;
   hasPassword?: boolean;
   hasPlexLinked?: boolean;
 }
@@ -16,6 +18,8 @@ interface AuthContextValue {
   user: UserProfile | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  /** /me answered 401 or 403, so there is no session; false while it loads or when it could not be reached. */
+  isSignedOut: boolean;
   logout: () => Promise<void>;
   refetch: () => Promise<unknown>;
 }
@@ -29,6 +33,7 @@ const isSignedOut = (error: unknown) =>
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation('common');
 
   const {
     data: userData,
@@ -47,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           serverIds: user.serverIds ?? (user.serverId ? [user.serverId] : []),
           email: user.email ?? null,
           thumbUrl: user.thumbnail ?? user.thumbUrl ?? null,
-          trustScore: user.aggregateTrustScore ?? user.trustScore ?? 100,
+          impersonatedBy: user.impersonatedBy,
           hasPassword: user.hasPassword,
           hasPlexLinked: user.hasPlexLinked,
         };
@@ -81,17 +86,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(AUTH_STATE_CHANGE_EVENT, handleAuthChange);
   }, [queryClient]);
 
+  const impersonating = !!userData?.impersonatedBy;
   const logout = useCallback(async () => {
+    // Signing out of a preview would leave the owner signed out of themselves too
+    if (impersonating) return stopViewingAs(queryClient, t('errors.generic'));
     await authClient.signOut();
     queryClient.setQueryData(['auth', 'me'], null);
+    dropUserData(queryClient);
     await queryClient.invalidateQueries({ queryKey: ['auth'] });
-  }, [queryClient]);
+  }, [impersonating, queryClient, t]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user: userData ?? null,
       isLoading,
       isAuthenticated: !!userData,
+      isSignedOut: userData === null,
       logout,
       refetch,
     }),

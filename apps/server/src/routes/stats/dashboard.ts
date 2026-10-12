@@ -10,6 +10,7 @@ import { resolveServerIds } from '../../utils/serverFiltering.js';
 import { getDashboardStats } from '../../services/dashboardStats.js';
 
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('stats', 'read')] };
   /**
    * GET /dashboard - Dashboard summary metrics
    *
@@ -18,7 +19,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
    * - serverIds: Optional array of UUIDs to filter stats
    * - timezone: Optional IANA timezone (default: UTC)
    */
-  app.get('/dashboard', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/dashboard', readStats, async (request, reply) => {
     const query = dashboardQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -32,6 +33,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
 
     return getDashboardStats({
       serverIds: resolvedIds,
+      scope: request.scope,
       timezone: tz,
       redis: app.redis,
     });

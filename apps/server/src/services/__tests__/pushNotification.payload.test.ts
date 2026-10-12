@@ -259,3 +259,14 @@ describe('buildPushMessage size', () => {
     expect(message.body?.endsWith('…')).toBe(true);
   });
 });
+
+describe('a device with no saved preferences', () => {
+  it('receives a stream start an automation sent', async () => {
+    rows.length = 0;
+    rows.push(device({ pushEnabled: null, onStreamStarted: null }));
+
+    await pushNotificationService.notifySessionStarted(session);
+
+    expect(sent).toHaveLength(1);
+  });
+});

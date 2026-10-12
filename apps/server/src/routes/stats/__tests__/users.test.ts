@@ -22,6 +22,7 @@ vi.mock('../../../utils/serverFiltering.js', async () => {
 
 import { db } from '../../../db/client.js';
 import { usersRoutes } from '../users.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 const owner: AuthUser = {
   userId: 'owner-id',
@@ -36,6 +37,7 @@ async function buildTestApp(): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = owner;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(usersRoutes, { prefix: '/stats' });
   return app;
 }

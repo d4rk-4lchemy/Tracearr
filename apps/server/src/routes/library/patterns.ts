@@ -126,7 +126,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: LibraryPatternsQueryInput }>(
     '/patterns',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = libraryPatternsQuerySchema.safeParse(request.query);
       if (!query.success) {

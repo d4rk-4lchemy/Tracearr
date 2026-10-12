@@ -81,21 +81,21 @@ describe('jwt', () => {
         expect(successResult.user.serverIds).toEqual([]);
       });
 
-      it('should verify token with viewer role', () => {
-        const viewerPayload = {
+      it('should verify token with member role', () => {
+        const memberPayload = {
           userId: 'user-789',
-          username: 'viewer',
-          role: 'viewer' as const,
+          username: 'member',
+          role: 'member' as const,
           serverIds: [],
         };
 
-        const token = jwt.sign(viewerPayload, TEST_SECRET, { algorithm: 'HS256' });
+        const token = jwt.sign(memberPayload, TEST_SECRET, { algorithm: 'HS256' });
 
         const result = verifyJwt(token);
 
         expect(result.valid).toBe(true);
         const successResult = result as JwtVerifyResult;
-        expect(successResult.user.role).toBe('viewer');
+        expect(successResult.user.role).toBe('member');
       });
     });
 

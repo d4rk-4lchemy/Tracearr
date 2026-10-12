@@ -36,7 +36,7 @@ interface ItemRow {
 export const libraryDuplicateFilesRoute: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: LibraryDuplicateFilesQueryInput }>(
     '/duplicates/files',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = libraryDuplicateFilesQuerySchema.safeParse(request.query);
       if (!query.success) {

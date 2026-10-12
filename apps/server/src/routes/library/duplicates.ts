@@ -121,7 +121,7 @@ function computeMirrorFlags(files: GroupFile[]): boolean[] {
 export const libraryDuplicatesRoute: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: LibraryDuplicatesQueryInput }>(
     '/duplicates',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = libraryDuplicatesQuerySchema.safeParse(request.query);
       if (!query.success) {

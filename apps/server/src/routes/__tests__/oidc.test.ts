@@ -8,7 +8,7 @@
  * test/integration/betterAuthSignup.integration.test.ts and
  * betterAuthSecurity.integration.test.ts.
  *
- * The OIDC claim-code gate (auth.ts hooks.before, '/sign-in/oauth2') delegates
+ * The OIDC claim-code gate (auth.ts hooks.before, '/sign-in/social') delegates
  * to authGuards.assertOAuthSignupClaimCode. Driving it through a real request
  * would hit Better Auth's rate-limiter (needs live Redis, unavailable here),
  * so this exercises that guard directly instead.
@@ -65,6 +65,7 @@ describe('oidc gating', () => {
         plex: true,
         oidc: false,
         oidcProviderName: null,
+        member: false,
       });
 
       await app.close();
@@ -85,6 +86,7 @@ describe('oidc gating', () => {
         plex: true,
         oidc: true,
         oidcProviderName: 'Authentik',
+        member: false,
       });
 
       await app.close();
@@ -116,6 +118,7 @@ describe('oidc gating', () => {
         plex: true,
         oidc: false,
         oidcProviderName: null,
+        member: false,
       });
 
       await app.close();

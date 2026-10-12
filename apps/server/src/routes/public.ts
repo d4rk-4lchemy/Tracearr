@@ -110,19 +110,16 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | nu
 function buildPublicMediaFields(input: PublicMediaFieldsInput) {
   const isLive = input.mediaType === 'live';
   const isDispatcharrLive = isLive && input.serverType === 'dispatcharr';
-  const mediaTitle =
-    isDispatcharrLive
-      ? (firstNonEmpty(input.channelTitle, input.mediaTitle) ?? input.mediaTitle)
-      : input.mediaTitle;
+  const mediaTitle = isDispatcharrLive
+    ? (firstNonEmpty(input.channelTitle, input.mediaTitle) ?? input.mediaTitle)
+    : input.mediaTitle;
   const showTitle = isLive
     ? firstNonEmpty(input.channelTitle, input.grandparentTitle)
     : input.grandparentTitle;
   const rawThumbPath = isLive
     ? firstNonEmpty(input.channelThumb, input.thumbPath)
     : input.thumbPath;
-  const thumbPath = isDispatcharrLive
-    ? normalizeDispatcharrImagePath(rawThumbPath)
-    : rawThumbPath;
+  const thumbPath = isDispatcharrLive ? normalizeDispatcharrImagePath(rawThumbPath) : rawThumbPath;
 
   return {
     mediaTitle,
@@ -948,6 +945,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
 
     return getDashboardStats({
       serverIds: serverId ? [serverId] : undefined,
+      scope: 'all',
       timezone,
       redis: app.redis,
     });

@@ -10,6 +10,7 @@ import { getAllServerIds } from './utils.js';
 import { getUserById } from '../../services/userService.js';
 import { db } from '../../db/client.js';
 import { authAccounts } from '../../db/schema.js';
+import { loadScope } from '../../lib/scope.js';
 
 export const sessionRoutes: FastifyPluginAsync = async (app) => {
   /**
@@ -25,9 +26,8 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.unauthorized('User no longer exists');
     }
 
-    // Get fresh server IDs
-    // TODO: Admins should get servers where they're isServerAdmin=true
-    const serverIds = user.role === 'owner' ? await getAllServerIds() : [];
+    const scope = await loadScope(user.id, user.role);
+    const serverIds = scope === 'all' ? await getAllServerIds() : scope.serverIds;
 
     const [credential] = await db
       .select({ id: authAccounts.id })
@@ -46,10 +46,12 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       email: user.email,
       thumbnail: user.thumbnail,
       role: user.role,
-      aggregateTrustScore: user.aggregateTrustScore,
+      // A member never sees the trust score the owner keeps on them.
+      ...(scope === 'all' ? { aggregateTrustScore: user.aggregateTrustScore } : {}),
       serverIds,
       hasPassword: !!user.passwordHash || !!credential,
       hasPlexLinked: !!user.plexAccountId || !!plexLink,
+      impersonatedBy: authUser.impersonatedBy,
     };
   });
 };

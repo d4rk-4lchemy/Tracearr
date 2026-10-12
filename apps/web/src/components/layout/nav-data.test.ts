@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isNavItemActive, navigation, type NavItem } from './nav-data';
+import { isNavItemActive, navigation, visibleItems, type NavItem } from './nav-data';
 
 const allItems: NavItem[] = navigation.flatMap((section) => section.items);
 
@@ -83,5 +83,55 @@ describe('isNavItemActive', () => {
   it('separates the two user destinations', () => {
     expect(activeHrefs('/stats/users')).toEqual(['/stats/users']);
     expect(activeHrefs('/users')).toEqual(['/users']);
+  });
+});
+
+describe('visibleItems', () => {
+  const hrefsFor = (role: Parameters<typeof visibleItems>[1], seerr = true) =>
+    navigation.flatMap((section) => visibleItems(section, role, seerr)).map((item) => item.href);
+
+  it('gives the owner and admins every destination', () => {
+    const all = allItems.map((item) => item.href);
+
+    expect(hrefsFor('owner')).toEqual(all);
+    expect(hrefsFor('admin')).toEqual(all);
+  });
+
+  it('keeps management pages away from members', () => {
+    const member = hrefsFor('member');
+
+    for (const href of [
+      '/users',
+      '/automations',
+      '/settings',
+      '/stats/users',
+      '/stats/devices',
+      '/stats/bandwidth',
+      '/library/quality',
+      '/library/storage',
+      '/library/watch',
+      '/violations',
+    ]) {
+      expect(member).not.toContain(href);
+    }
+  });
+
+  it('leaves members the pages that show their own activity', () => {
+    const member = hrefsFor('member');
+
+    for (const href of ['/', '/map', '/history', '/media', '/requests']) {
+      expect(member).toContain(href);
+    }
+  });
+
+  it('keeps By User and Violations to the owner and admins, and has no Your Stats entry', () => {
+    expect(hrefsFor('member')).not.toContain('/stats/users');
+    expect(hrefsFor('owner')).toContain('/stats/users');
+    expect(hrefsFor('owner')).toContain('/violations');
+    expect(hrefsFor('owner')).not.toContain('/stats/me');
+  });
+
+  it('still hides Requests until a Seerr is linked', () => {
+    expect(hrefsFor('member', false)).not.toContain('/requests');
   });
 });

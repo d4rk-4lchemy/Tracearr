@@ -35,6 +35,7 @@ import {
   buildMultiServerCondition,
 } from '../utils/serverFiltering.js';
 import { isLocalSession } from '../utils/localSession.js';
+import { assertInScope, scopeSessions, type Scope } from '../lib/scope.js';
 import { violationAliasConditions } from '../services/automations/aliasFilter.js';
 import { dispatchTrustMoves } from '../services/automations/events/producers.js';
 import {
@@ -119,7 +120,8 @@ interface ViolationRosterConditions {
  */
 export async function buildViolationRosterConditions(
   filters: ViolationRosterFilters,
-  authUser: AuthUser
+  authUser: AuthUser,
+  scope: Scope
 ): Promise<ViolationRosterConditions> {
   const resolvedIds = resolveServerIds(authUser, filters.serverId, filters.serverIds, {
     strict: false,
@@ -133,6 +135,10 @@ export async function buildViolationRosterConditions(
   const serverCondition = buildMultiServerCondition(resolvedIds, serverUsers.serverId);
   if (serverCondition) {
     conditions.push(serverCondition);
+  }
+  const scopeCondition = scopeSessions(scope, automationRuns.serverUserId);
+  if (scopeCondition) {
+    conditions.push(scopeCondition);
   }
 
   if (filters.serverUserId) {
@@ -210,7 +216,8 @@ async function resolveBulkViolationIds(
 
   const roster = await buildViolationRosterConditions(
     body.filters ?? violationRosterFilterSchema.parse({}),
-    authUser
+    authUser,
+    'all'
   );
   if (roster.empty) {
     return [];
@@ -277,7 +284,7 @@ interface ViolationRow {
  * Enrich flat violation rows with related sessions, user history, and action results.
  * Works for both single-item and multi-item arrays.
  */
-async function enrichViolations(violationData: ViolationRow[]) {
+async function enrichViolations(violationData: ViolationRow[], scope: Scope) {
   if (violationData.length === 0) return [];
 
   // Sessions the runs recorded as related; the ids come from the run's own data.
@@ -321,7 +328,7 @@ async function enrichViolations(violationData: ViolationRow[]) {
           startedAt: sessions.startedAt,
         })
         .from(sessions)
-        .where(inArray(sessions.id, Array.from(allRelatedSessionIds)));
+        .where(and(inArray(sessions.id, Array.from(allRelatedSessionIds)), scopeSessions(scope)));
 
       for (const s of relatedSessionsResult) {
         sessionsById.set(s.id, { ...s, deviceId: s.deviceId ?? null, isLocal: isLocalSession(s) });
@@ -533,13 +540,14 @@ function buildViolationPageQuery(params: {
 type EnrichedViolation = Awaited<ReturnType<typeof enrichViolations>>[number];
 
 export const violationRoutes: FastifyPluginAsync = async (app) => {
+  const readViolations = { preHandler: [app.requirePermission('violations', 'read')] };
   /**
    * GET /violations - List violations with pagination and filters
    *
    * Violations are filtered by server access. Users only see violations
    * from servers they have access to.
    */
-  app.get('/', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/', readViolations, async (request, reply) => {
     const query = violationQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -549,7 +557,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
     const authUser = request.user;
     const offset = (page - 1) * pageSize;
 
-    const roster = await buildViolationRosterConditions(filters, authUser);
+    const roster = await buildViolationRosterConditions(filters, authUser, request.scope);
     if (roster.empty) {
       return { data: [], meta: { page, pageSize, total: 0 } } satisfies ListResponse<never>;
     }
@@ -574,7 +582,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       .where(where);
     const total = countRows[0]?.total ?? 0;
 
-    const formattedData = await enrichViolations(violationData);
+    const formattedData = await enrichViolations(violationData, request.scope);
 
     return {
       data: formattedData,
@@ -585,7 +593,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /violations/:id - Get a specific violation with full details
    */
-  app.get('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id', readViolations, async (request, reply) => {
     const params = violationIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid violation ID');
@@ -650,7 +658,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       .limit(1);
 
     const violation = violationRows[0];
-    if (!violation) {
+    if (!violation || !assertInScope(request.scope, violation.serverUserId)) {
       return reply.notFound('Violation not found');
     }
 
@@ -660,14 +668,19 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Enrich with related sessions, user history, and action results
-    const enriched = await enrichViolations([violation]);
+    const enriched = await enrichViolations([violation], request.scope);
     const enrichedViolation = enriched[0];
     if (!enrichedViolation) {
       return reply.notFound('Violation not found');
     }
 
-    // Resolve display names for user_id array conditions (in/not_in) in evidence
-    if (enrichedViolation.evidence && enrichedViolation.evidence.length > 0) {
+    // Resolve display names for user_id array conditions (in/not_in) in evidence. Those name
+    // other people, so a member never gets them.
+    if (
+      request.scope === 'all' &&
+      enrichedViolation.evidence &&
+      enrichedViolation.evidence.length > 0
+    ) {
       const userIdSet = new Set<string>();
       for (const group of enrichedViolation.evidence) {
         for (const cond of group.conditions) {
@@ -698,7 +711,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
   /**
    * PATCH /violations/:id - Acknowledge a violation
    */
-  app.patch('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.patch('/:id', { preHandler: [app.requireOwner] }, async (request, reply) => {
     const params = violationIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid violation ID');
@@ -706,11 +719,6 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
 
     const { id } = params.data;
     const authUser = request.user;
-
-    // Only owners can acknowledge violations
-    if (authUser.role !== 'owner') {
-      return reply.forbidden('Only server owners can acknowledge violations');
-    }
 
     // Check violation exists and get server info for access check
     const violationRows = await db
@@ -766,7 +774,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
    * This treats dismiss as "false positive, undo everything".
    * For just marking as seen, use PATCH (acknowledge) instead.
    */
-  app.delete('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.delete('/:id', { preHandler: [app.requireOwner] }, async (request, reply) => {
     const params = violationIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid violation ID');
@@ -774,11 +782,6 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
 
     const { id } = params.data;
     const authUser = request.user;
-
-    // Only owners can delete violations
-    if (authUser.role !== 'owner') {
-      return reply.forbidden('Only server owners can dismiss violations');
-    }
 
     // Check violation exists and get info needed for trust reversal. A
     // dismissed violation 404s so trust can never be reversed twice.
@@ -867,13 +870,8 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
    * POST /violations/bulk/acknowledge - Bulk acknowledge violations
    * Accepts either specific IDs or filter params with selectAll flag
    */
-  app.post('/bulk/acknowledge', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/bulk/acknowledge', { preHandler: [app.requireOwner] }, async (request, reply) => {
     const authUser = request.user;
-
-    // Only owners can acknowledge violations
-    if (authUser.role !== 'owner') {
-      return reply.forbidden('Only server owners can acknowledge violations');
-    }
 
     const parsedBody = violationBulkBodySchema.safeParse(request.body);
     if (!parsedBody.success) {
@@ -931,13 +929,8 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
    * DELETE /violations/bulk - Bulk dismiss (delete) violations
    * Accepts either specific IDs or filter params with selectAll flag
    */
-  app.delete('/bulk', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.delete('/bulk', { preHandler: [app.requireOwner] }, async (request, reply) => {
     const authUser = request.user;
-
-    // Only owners can dismiss violations
-    if (authUser.role !== 'owner') {
-      return reply.forbidden('Only server owners can dismiss violations');
-    }
 
     const parsedBody = violationBulkBodySchema.safeParse(request.body);
     if (!parsedBody.success) {

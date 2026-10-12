@@ -274,15 +274,14 @@ export async function getNewsletterQueueStats(): Promise<{
 }
 
 export async function shutdownNewsletterQueues(): Promise<void> {
-  await runWorker?.close();
-  await deliveryWorker?.close();
-  await runQueue?.close();
-  await deliveryQueue?.close();
-  await dlqQueue?.close();
+  const closing = [runWorker, deliveryWorker, runQueue, deliveryQueue, dlqQueue];
   runWorker = null;
   deliveryWorker = null;
   runQueue = null;
   deliveryQueue = null;
   dlqQueue = null;
   connection = null;
+  // A close called while its connection is reconnecting can hang: none waits on another,
+  // and state is already cleared so a restart is never blocked on one.
+  await Promise.all(closing.map(async (closable) => closable?.close()));
 }

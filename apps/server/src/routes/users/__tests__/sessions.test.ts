@@ -19,6 +19,7 @@ vi.mock('../queries.js', async (importActual) => ({
 import { db } from '../../../db/client.js';
 import { resolveIdentityScopedServerUserIds } from '../queries.js';
 import { sessionsRoutes } from '../sessions.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 describe('GET /users/:id/sessions', () => {
   let app: FastifyInstance;
@@ -42,6 +43,7 @@ describe('GET /users/:id/sessions', () => {
     app.decorate('authenticate', async (request: any) => {
       request.user = authUser;
     });
+    app.decorate('requirePermission', permissionGuard(app));
     await app.register(sessionsRoutes, { prefix: '/users' });
 
     vi.mocked(resolveIdentityScopedServerUserIds).mockResolvedValue({

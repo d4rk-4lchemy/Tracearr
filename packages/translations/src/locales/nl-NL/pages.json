@@ -49,14 +49,20 @@
     "vodPlays": "",
     "vodWatchTime": "",
     "tvSessions": "",
-    "tvWatchTime": ""
+    "tvWatchTime": "",
+    "plays": "Weergaven",
+    "watchTime": "Kijktijd"
   },
   "users": {
     "title": "Gebruikers",
     "showRemoved": "Show verwijdert",
     "noUsersFound": "Geen gebruikers gevonden.",
+    "selectAllUsers_one": "",
+    "selectAllUsers_other": "Alle {{count}} gebruikers selecteren",
     "serversColumn": "",
     "resetTrustScore": "Vertrouwensscore herstellen",
+    "resetTrustScoreTitle_one": "Vertrouwensscore voor {{count}} gebruiker herstellen",
+    "resetTrustScoreTitle_other": "Vertrouwensscore voor {{count}} gebruikers herstellen",
     "resetTrustScoreConfirm": "Weet je zeker dat je de vertrouwensscore wilt herstellen naar 100? Dit kan niet ongedaan worden gemaakt.",
     "mergeUsers": "Voeg gebruikers samen",
     "mergeTitleSuggestion": "",
@@ -72,6 +78,8 @@
     "mergeNeverActive": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
+    "mergeMoves_one": "",
+    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -87,9 +95,17 @@
     "mergeSameIdentity": "Deze accounts behoren al toe aan dezelfde gebruiker",
     "mergeSelectAllActive": "Verwijder de selectie 'alles selecteren' en kies precies twee gebruikers om samen te voegen",
     "suggestionsTitle": "Mogelijk dubbele gebruikers",
+    "suggestionsCount_one": "",
+    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
+    "suggestionsPairEmailMore_one": "",
+    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
+    "suggestionsPairEmailUsernameMore_one": "",
+    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
+    "suggestionsPairUsernameMore_one": "",
+    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -104,21 +120,7 @@
     "suggestionsError": "Samenvoegingssuggesties konden niet worden geladen",
     "filterHasAccessTo": "Heeft toegang tot",
     "filterHasAccessToPlaceholder": "Alle servers",
-    "filterHasAccessToHint": "Toont personen met een actief account op elke geselecteerde server.",
-    "selectAllUsers_one": "",
-    "selectAllUsers_other": "Alle {{count}} gebruikers selecteren",
-    "resetTrustScoreTitle_one": "Vertrouwensscore voor {{count}} gebruiker herstellen",
-    "resetTrustScoreTitle_other": "Vertrouwensscore voor {{count}} gebruikers herstellen",
-    "mergeMoves_one": "",
-    "mergeMoves_other": "",
-    "suggestionsCount_one": "",
-    "suggestionsCount_other": "",
-    "suggestionsPairEmailMore_one": "",
-    "suggestionsPairEmailMore_other": "",
-    "suggestionsPairEmailUsernameMore_one": "",
-    "suggestionsPairEmailUsernameMore_other": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_other": ""
+    "filterHasAccessToHint": "Toont personen met een actief account op elke geselecteerde server."
   },
   "userDetail": {
     "backToUsers": "Terug naar gebruikers",
@@ -164,10 +166,6 @@
   "library": {
     "title": "Bibliotheek",
     "description": "",
-    "topMovies": "Topfilms",
-    "topShows": "Topseries",
-    "noMoviePlays": "Geen filmweergaven in deze periode",
-    "noShowPlays": "Geen serieweergaven in deze periode",
     "overview": {
       "description": "",
       "lastUpdated": "Laatst bijgewerkt:",
@@ -319,10 +317,14 @@
     "versionsBackfill": {
       "banner": "Er worden nog steeds versiegegevens van bestanden verzameld voor deze server. Voer een bibliotheeksynchronisatie uit om dit te voltooien.",
       "action": "Synchroniseer nu",
-      "syncStarted": "Bibliotheeksynchronisatie gestart.",
       "syncFailed_one": "",
-      "syncFailed_other": "De synchronisatie is mislukt op {{count}} server(s). Controleer de machtigingen en de serverstatus."
-    }
+      "syncFailed_other": "De synchronisatie is mislukt op {{count}} server(s). Controleer de machtigingen en de serverstatus.",
+      "syncStarted": "Bibliotheeksynchronisatie gestart."
+    },
+    "topMovies": "Topfilms",
+    "topShows": "Topseries",
+    "noMoviePlays": "Geen filmweergaven in deze periode",
+    "noShowPlays": "Geen serieweergaven in deze periode"
   },
   "activity": {
     "title": "Activiteit",
@@ -341,8 +343,12 @@
   "violations": {
     "title": "Overtredingen",
     "tryAdjustingFilters": "Probeer je filters aan te passen",
+    "selectAllViolations_one": "",
+    "selectAllViolations_other": "Alle {{count}} overtredingen selecteren die overeenkomen met filters",
     "dismissViolation": "Overtreding negeren",
     "dismissViolationConfirm": "Weet je zeker dat je deze overtreding wilt negeren? Deze zal permanent uit het logboek worden verwijderd.",
+    "dismissViolations_one": "{{count}} overtreding negeren",
+    "dismissViolations_other": "{{count}} overtredingen negeren",
     "dismissViolationsConfirm": "Weet je zeker dat je wilt negeren? De overtredingen zullen permanent uit het logboek worden verwijderd en bijbehorende vertrouwensscores zullen worden hersteld.",
     "noViolationsFound": "Geen overtredingen gevonden",
     "noViolationsRecorded": "Er zijn nog geen overtredingen geregistreerd.",
@@ -351,6 +357,8 @@
     "allRules": "Alle regels",
     "filterPeople": "Mensen",
     "allPeople": "Alle mensen",
+    "peopleSelectedCount_one": "",
+    "peopleSelectedCount_other": "{{count}} mensen",
     "personFilterPlaceholder": "Filteren op persoon",
     "personFilterEmpty": "Geen overeenkomende personen gevonden",
     "personFilterError": "Het laden van de personen is mislukt",
@@ -379,13 +387,7 @@
       "actual": "Werkelijk",
       "relatedSessions_one": "{{count}} gerelateerde sessie",
       "relatedSessions_other": "{{count}} gerelateerde sessies"
-    },
-    "selectAllViolations_one": "",
-    "selectAllViolations_other": "Alle {{count}} overtredingen selecteren die overeenkomen met filters",
-    "dismissViolations_one": "{{count}} overtreding negeren",
-    "dismissViolations_other": "{{count}} overtredingen negeren",
-    "peopleSelectedCount_one": "",
-    "peopleSelectedCount_other": "{{count}} mensen"
+    }
   },
   "automations": {
     "message": {
@@ -611,10 +613,10 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
-      "item": "",
-      "recordedViolation": "",
       "emptyRanDescription_one": "",
-      "emptyRanDescription_other": ""
+      "emptyRanDescription_other": "",
+      "item": "",
+      "recordedViolation": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -696,6 +698,8 @@
       "searchPlaceholder": "",
       "noMatches": "Geen resultaten",
       "clearSelection": "Selectie wissen",
+      "selectedCount_one": "",
+      "selectedCount_other": "{{count}} geselecteerd",
       "scope": {
         "label": "",
         "global": "",
@@ -816,12 +820,12 @@
         "placeholderAction": ""
       },
       "footer": {
-        "ready": "",
-        "search": "",
         "problems_one": "",
         "problems_other": "",
         "remaining_one": "",
-        "remaining_other": ""
+        "remaining_other": "",
+        "ready": "",
+        "search": ""
       },
       "leave": {
         "title": "",
@@ -842,9 +846,7 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      },
-      "selectedCount_one": "",
-      "selectedCount_other": "{{count}} geselecteerd"
+      }
     },
     "categories": {
       "session_behavior": "",
@@ -858,8 +860,12 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
+    "deleteAutomation_one": "",
+    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
+      "more_one": "",
+      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -1018,18 +1024,16 @@
         "text": "een gekozen bericht",
         "boolean": "een gekozen instelling",
         "listed": "de geselecteerde"
-      },
-      "more_one": "",
-      "more_other": ""
+      }
     },
     "description": "",
     "detail": {
       "notFound": "Automatisering niet gevonden",
       "title": "Automatisering",
       "unsaved": "Niet-opgeslagen wijzigingen",
-      "noRuns": "Nog geen uitvoeringen",
       "runsLine_one": "1 keer uitgevoerd · laatste {{when}}",
-      "runsLine_other": "{{count}} uitvoeringen · laatste uitvoering {{when}}"
+      "runsLine_other": "{{count}} uitvoeringen · laatste uitvoering {{when}}",
+      "noRuns": "Nog geen uitvoeringen"
     },
     "disable": "Uitschakelen",
     "editAutomation": "",
@@ -1727,9 +1731,7 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_other": ""
+    "openGallery": ""
   },
   "terminateStream": {
     "title": "Stream afbreken",
@@ -1762,8 +1764,12 @@
         "unknown": "Verbinding mislukt"
       },
       "connectionsReachable": "{{reachable}} van {{total}} verbindingen bereikbaar",
+      "connectionsAvailable_one": "",
+      "connectionsAvailable_other": "{{count}} verbindingen beschikbaar",
       "hideFiltered": "Gefliterde verbergen",
       "showAll": "Alles weergeven",
+      "moreConnections_one": "",
+      "moreConnections_other": "+{{count}} meer connecties",
       "connectingTo": "Verbinden met {{name}}...",
       "ownerOnly": "",
       "noAccountsLinked": "Geen Plex-accounts gekoppeld",
@@ -1772,20 +1778,18 @@
       "linkAnotherAccount": "Nog een Plex-account koppelen",
       "linking": "Koppelen...",
       "loginEnabled": "Aanmelden ingeschakeld",
+      "serversConnected_one": "{{count}} server verbonden",
+      "serversConnected_other": "{{count}} servers verbonden",
       "unlinkAccount": "Dit Plex-account ontkoppelen",
       "reauthorizeAccount": "Autoriseer dit Plex account opnieuw",
       "deleteServersFirst": "Verwijder eerst de actieve servers die via dit account zijn verbonden, of markeer ze als historisch",
       "unlinkPlexAccount": "Plex-account ontkoppelen",
-      "unlinkConfirm": "Weet je zeker dat je dit Plex-account wilt ontkoppelen? Je kunt geen servers van dit account meer toevoegen totdat je opnieuw koppelt.",
-      "connectionsAvailable_one": "",
-      "connectionsAvailable_other": "{{count}} verbindingen beschikbaar",
-      "moreConnections_one": "",
-      "moreConnections_other": "+{{count}} meer connecties",
-      "serversConnected_one": "{{count}} server verbonden",
-      "serversConnected_other": "{{count}} servers verbonden"
+      "unlinkConfirm": "Weet je zeker dat je dit Plex-account wilt ontkoppelen? Je kunt geen servers van dit account meer toevoegen totdat je opnieuw koppelt."
     },
     "destinations": {
       "add": "Bestemming toevoegen",
+      "alertsGoTo_one": "",
+      "alertsGoTo_other": "",
       "builtinNote": "Ingebouwd",
       "clearSecret": "Maak leeg",
       "deleteConfirm": "",
@@ -1883,15 +1887,13 @@
         "push": "",
         "webToast": ""
       },
-      "violationsOff": "",
-      "violationsOn": "",
-      "webToastNote": "Toastberichten in deze browser.",
-      "alertsGoTo_one": "",
-      "alertsGoTo_other": "",
       "usedBy_one": "",
       "usedBy_other": "",
       "usedByNewsletters_one": "",
-      "usedByNewsletters_other": ""
+      "usedByNewsletters_other": "",
+      "violationsOff": "",
+      "violationsOn": "",
+      "webToastNote": "Toastberichten in deze browser."
     },
     "jobs": {
       "runNow": "Nu uitvoeren",
@@ -1950,6 +1952,8 @@
     "title": "Compatibiliteit van apparaat",
     "description": "",
     "analyzedSessions": "Geanalyseerde sessies",
+    "analyzedSessionsTooltip_one": "",
+    "analyzedSessionsTooltip_other": "Sessies in apparaat- + codeccombinaties met ten minste {{count}} sessies en een bekende codec. Zeldzame combinaties en sessies zonder codec-informatie worden niet meegeteld.",
     "directPlayRate": "Percentage direct afspelen",
     "videoAndAudio": "",
     "uniqueDevices": "Unieke apparaten",
@@ -1971,9 +1975,7 @@
     "directPlayLow": "",
     "topTranscodingUsers": "Gebruikers die het meest transcoderen",
     "topTranscodingUsersDesc": "",
-    "noTranscodingUsers": "Geen gebruikers met transcodering gevonden",
-    "analyzedSessionsTooltip_one": "",
-    "analyzedSessionsTooltip_other": "Sessies in apparaat- + codeccombinaties met ten minste {{count}} sessies en een bekende codec. Zeldzame combinaties en sessies zonder codec-informatie worden niet meegeteld."
+    "noTranscodingUsers": "Geen gebruikers met transcodering gevonden"
   },
   "statsBandwidth": {
     "title": "Bandbreedte",
@@ -2004,7 +2006,6 @@
     "backToSettings": "Terug naar Instellingen",
     "apiKeyAutoLoaded": "API-sleutel automatisch geladen",
     "noApiKey": "Geen API-sleutel gegenereerd - maak er één in Instellingen om eindpunten te testen",
-    "versionSwitcherLabel": "API documentatieversie",
     "versionV1": "",
     "versionV2": "",
     "specLoadError": "Het laden van de API specificatie is mislukt. Controleer de API sleutel en probeer het opnieuw."
@@ -2082,17 +2083,19 @@
         }
       },
       "card": {
-        "addedAgo": "toegevoegd {{date}}",
-        "addedCompactAgo": "toegevoegd {{age}} geleden",
         "newEpisodes_one": "{{count}} nieuwe aflevering",
         "newEpisodes_other": "{{count}} nieuwe afleveringen",
         "replacedEpisodes_one": "",
         "replacedEpisodes_other": "",
+        "addedAgo": "toegevoegd {{date}}",
+        "addedCompactAgo": "toegevoegd {{age}} geleden",
         "newEpisodesChip_one": "",
         "newEpisodesChip_other": "{{count}} nieuw"
       },
       "deadWeight": {
         "title": "",
+        "summary_one": "",
+        "summary_other": "{{count}} titels die nog nooit zijn bekeken · {{size}}",
         "empty": "Niets terug te vorderen - alles in je bibliotheek is bekeken",
         "columns": {
           "poster": "",
@@ -2101,9 +2104,7 @@
           "servers": ""
         },
         "viewAll": "Alles bekijken",
-        "viewAllTooltip": "Binnenkort",
-        "summary_one": "",
-        "summary_other": "{{count}} titels die nog nooit zijn bekeken · {{size}}"
+        "viewAllTooltip": "Binnenkort"
       },
       "loadError": "Je mediabibliotheek kon niet worden geladen"
     },
@@ -2119,9 +2120,9 @@
       "chart": {
         "title": "Weergaven per genre",
         "valueLabel": "Weergaven",
-        "ariaLabel": "Staafdiagram van weergaven per genre, gesorteerd van hoog naar laag. Het volledige overzicht staat in de tabel hieronder.",
         "itemCount_one": "{{count}} titel",
-        "itemCount_other": "{{count}} titels"
+        "itemCount_other": "{{count}} titels",
+        "ariaLabel": "Staafdiagram van weergaven per genre, gesorteerd van hoog naar laag. Het volledige overzicht staat in de tabel hieronder."
       },
       "table": {
         "title": "Genre indeling",
@@ -2209,15 +2210,15 @@
         "title": "Seizoenen",
         "loadError": "Seizoensgegevens konden niet worden geladen",
         "empty": "Geen seizoensdata beschikbaar",
+        "episodeCount_one": "{{count}} aflevering",
+        "episodeCount_other": "{{count}} afleveringen",
         "watchedPct": "{{percent}}% bekeken",
         "stripSummary": "{{season}}: {{percent}}% bekeken",
         "episodeLabel": {
           "watched": "{{code}}: bekeken",
           "partial": "{{code}}: gedeeltelijk bekeken",
           "unwatched": "{{code}}: niet bekeken"
-        },
-        "episodeCount_one": "{{count}} aflevering",
-        "episodeCount_other": "{{count}} afleveringen"
+        }
       },
       "platforms": {
         "title": "",
@@ -2255,6 +2256,8 @@
       "rankSuffix": ", rang {{rank}}",
       "onServers": "Op {{servers}}",
       "addedLabel": "Toegevoegd {{date}}",
+      "viewers_one": "{{count}} kijker",
+      "viewers_other": "{{count}} kijkers",
       "watchedState": {
         "watched": "Bekeken",
         "partial": "Gedeeltelijk bekeken",
@@ -2268,14 +2271,12 @@
         "resolution": ""
       },
       "rankChip": "",
-      "versionsChip": "",
-      "moreServers": "",
-      "viewers_one": "{{count}} kijker",
-      "viewers_other": "{{count}} kijkers",
       "playsCompact_one": "",
       "playsCompact_other": "",
+      "versionsChip": "",
       "versions_one": "",
-      "versions_other": ""
+      "versions_other": "",
+      "moreServers": ""
     },
     "grid": {
       "toolbar": {
@@ -2420,12 +2421,12 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
+        "landedOf_one": "",
+        "landedOf_other": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
-        "onDisk": "",
-        "landedOf_one": "",
-        "landedOf_other": ""
+        "onDisk": ""
       }
     },
     "funnel": {

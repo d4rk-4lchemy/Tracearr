@@ -265,6 +265,27 @@ describe('DetailHero', () => {
     expect(screen.getByText('No longer available on any connected server')).toBeInTheDocument();
   });
 
+  it.each([
+    ['the public address when set', 'https://jf.example.org', 'https://jf.example.org'],
+    ['the configured URL when none is set', null, 'http://10.0.0.5:8096'],
+  ])('links Open on server through %s', (_label, publicUrl, base) => {
+    const jf = new Map<string, HeroServerLookupEntry>([
+      ['srv-jf', { name: 'Jellyfin', type: 'jellyfin', url: 'http://10.0.0.5:8096', publicUrl }],
+    ]);
+    const [entry] = fullDetail().availability ?? [];
+    renderHero({
+      data: fullDetail({
+        availability: entry ? [{ ...entry, serverId: 'srv-jf', serverType: 'jellyfin' }] : [],
+      }),
+      serverById: jf,
+    });
+
+    expect(screen.getByRole('link', { name: /Open on server/ })).toHaveAttribute(
+      'href',
+      `${base}/web/index.html#/details?id=rk-1`
+    );
+  });
+
   it('renders an inline error with retry when the detail fetch fails and there is no stub at all', () => {
     const onRetry = vi.fn();
     renderHero({ isError: true, onRetry });
@@ -302,5 +323,50 @@ describe('DetailHero', () => {
     renderHero({ data: fullDetail(), stub });
 
     expect(screen.queryByText(/Requested by/)).not.toBeInTheDocument();
+  });
+
+  describe('DetailHero for a member', () => {
+    const memberServers = (entry: HeroServerLookupEntry) =>
+      new Map<string, HeroServerLookupEntry>([['srv-plex', entry]]);
+
+    it('links Plex through app.plex.tv even though the server row has no address', () => {
+      renderHero({
+        data: fullDetail(),
+        stub,
+        serverById: memberServers({ name: 'Plex', type: 'plex', machineIdentifier: 'abc123' }),
+      });
+
+      expect(screen.getByRole('link', { name: /Open on server/ })).toHaveAttribute(
+        'href',
+        expect.stringContaining('https://app.plex.tv/desktop')
+      );
+    });
+
+    it('hides Open on server for Jellyfin without a public address', () => {
+      renderHero({
+        data: fullDetail(),
+        stub,
+        serverById: memberServers({ name: 'Jellyfin', type: 'jellyfin' }),
+      });
+
+      expect(screen.queryByRole('link', { name: /Open on server/ })).not.toBeInTheDocument();
+    });
+
+    it('opens Jellyfin at the public address when there is one', () => {
+      renderHero({
+        data: fullDetail(),
+        stub,
+        serverById: memberServers({
+          name: 'Jellyfin',
+          type: 'jellyfin',
+          publicUrl: 'https://jf.example.org',
+        }),
+      });
+
+      expect(screen.getByRole('link', { name: /Open on server/ })).toHaveAttribute(
+        'href',
+        'https://jf.example.org/web/index.html#/details?id=rk-1'
+      );
+    });
   });
 });

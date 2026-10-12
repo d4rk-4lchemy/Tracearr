@@ -66,7 +66,7 @@ export function useDeleteServer() {
   });
 }
 
-export function useUpdateServer() {
+export function useUpdateServer({ silent = false }: { silent?: boolean } = {}) {
   const { t } = useTranslation('notifications');
   const queryClient = useQueryClient();
 
@@ -83,6 +83,7 @@ export function useUpdateServer() {
       color,
       publicUrl,
       apiKey,
+      allowMemberLogin,
     }: {
       id: string;
       name?: string;
@@ -95,6 +96,7 @@ export function useUpdateServer() {
       color?: string | null;
       publicUrl?: string | null;
       apiKey?: string;
+      allowMemberLogin?: boolean;
     }) =>
       api.servers.update(id, {
         name,
@@ -107,16 +109,26 @@ export function useUpdateServer() {
         color,
         publicUrl,
         apiKey,
+        allowMemberLogin,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['servers', 'list'] });
-      void queryClient.invalidateQueries({ queryKey: ['plex', 'server-connections'] });
-      toast.success(t('toast.success.serverUpdated.title'), {
-        description: t('toast.success.serverUpdated.message'),
-      });
+      const refreshed = Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['servers', 'list'] }),
+        queryClient.invalidateQueries({ queryKey: ['plex', 'server-connections'] }),
+      ]);
+      if (!silent) {
+        toast.success(t('toast.success.serverUpdated.title'), {
+          description: t('toast.success.serverUpdated.message'),
+        });
+        return;
+      }
+      // Silent callers derive their switch from the list, so it stays pending until the list has the new value
+      return refreshed;
     },
     onError: (error: Error) => {
-      toast.error(t('toast.error.serverUpdateFailed'), { description: error.message });
+      if (!silent) {
+        toast.error(t('toast.error.serverUpdateFailed'), { description: error.message });
+      }
     },
   });
 }

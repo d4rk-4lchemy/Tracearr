@@ -30,6 +30,7 @@ import { libraryStaleRoute } from '../../src/routes/library/stale.js';
 import { libraryTopContentRoute } from '../../src/routes/library/topContent.js';
 import { sessionRoutes } from '../../src/routes/sessions.js';
 import { resolveMediaForItem } from '../../src/services/library/mediaResolutionService.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 const THIRTY_MIN = 1_800_000;
 const TWO_HOURS = 7_200_000;
@@ -39,6 +40,11 @@ async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
   await app.register(sensible);
   app.decorate('authenticate', async (request: FastifyRequest) => {
     (request as FastifyRequest & { user: AuthUser }).user = authUser;
+  });
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: any, reply: any) => {
+    await app.authenticate(request, reply);
+    if (request.user.role !== 'owner') return reply.forbidden('Owner access required');
   });
   app.decorate('redis', getRedis() as never);
   await app.register(libraryWatchRoute, { prefix: '/library' });

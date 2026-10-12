@@ -54,8 +54,13 @@ vi.mock('../../lib/redisShared.js', () => ({
 
 vi.mock('../../services/userService.js', () => ({
   getUserById: vi.fn(),
-  getUserByPlexAccountId: vi.fn(),
   getOwnerUser: vi.fn(),
+}));
+
+vi.mock('../../lib/authGuards.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/authGuards.js')>()),
+  usableLoginMethods: vi.fn(),
+  canMemberLogin: vi.fn(),
 }));
 
 vi.mock('../../utils/claimCode.js', () => ({
@@ -77,11 +82,18 @@ const mockSetSessionCookie = vi.fn(
 vi.mock('better-auth/cookies', () => ({
   setSessionCookie: (ctx: unknown, session: unknown) =>
     mockSetSessionCookie(ctx as never, session as never),
+  expireCookie: vi.fn(),
 }));
 
 import { db } from '../../db/client.js';
 import { PlexClient } from '../../services/mediaServer/index.js';
-import { getUserById, getUserByPlexAccountId, getOwnerUser } from '../../services/userService.js';
+import { getUserById, getOwnerUser } from '../../services/userService.js';
+import {
+  canMemberLogin,
+  MEMBER_LOGIN_REFUSED,
+  MEMBER_NOT_PERMITTED,
+  usableLoginMethods,
+} from '../../lib/authGuards.js';
 import { isClaimCodeEnabled, validateClaimCode } from '../../utils/claimCode.js';
 import { plexPlugin } from '../../lib/plexPlugin.js';
 
@@ -97,6 +109,7 @@ function makeChain(result: unknown = []) {
     'innerJoin',
     'where',
     'limit',
+    'orderBy',
     'set',
     'values',
     'returning',
@@ -118,7 +131,11 @@ function makeCtx() {
   }));
   const logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
   return {
-    context: { internalAdapter: { createSession, findUserById }, logger },
+    context: {
+      internalAdapter: { createSession, findUserById },
+      logger,
+      createAuthCookie: (name: string) => ({ name: `better-auth.${name}`, attributes: {} }),
+    },
     createSession,
     findUserById,
   };
@@ -126,15 +143,18 @@ function makeCtx() {
 
 type PluginEndpoints = ReturnType<typeof plexPlugin>['endpoints'];
 
+const PIN = { pinId: 'pin-1', binding: 'binding-1' };
+
 async function callEndpoint(
   name: keyof PluginEndpoints,
   body: Record<string, unknown>,
-  ctx = makeCtx()
+  ctx = makeCtx(),
+  cookie = `better-auth.plex_pin=${PIN.binding}`
 ) {
   const endpoint = plexPlugin().endpoints[name] as (input: unknown) => Promise<unknown>;
   const result = (await endpoint({
     body,
-    headers: new Headers(),
+    headers: new Headers({ cookie }),
     context: ctx.context,
     returnHeaders: true,
   })) as { headers: Headers; response: Record<string, unknown> };
@@ -159,14 +179,84 @@ describe('plex better auth plugin', () => {
     vi.mocked(db.update).mockReturnValue(makeChain([]) as never);
     vi.mocked(db.insert).mockReturnValue(makeChain([]) as never);
     mockFetch.mockResolvedValue({ ok: true, status: 200, statusText: 'OK' });
+    vi.mocked(usableLoginMethods).mockResolvedValue({
+      local: true,
+      plex: true,
+      oidc: false,
+      member: false,
+    });
+    vi.mocked(canMemberLogin).mockResolvedValue({ ok: true });
+    mockRedis.get.mockImplementation(async (key: string) =>
+      key.includes('plex_pin') ? JSON.stringify(PIN) : null
+    );
+  });
+
+  it('hands out a handle for the pin, never the pin id, bound to this browser', async () => {
+    vi.mocked(PlexClient.initiateOAuth).mockResolvedValue({
+      pinId: 'pin-9',
+      authUrl: 'https://app.plex.tv/auth#?code=x',
+    });
+
+    const { result } = await callEndpoint('plexInitiate', {});
+
+    expect(result.response).toEqual({
+      handle: expect.stringMatching(/^[0-9a-f]{64}$/),
+      authUrl: 'https://app.plex.tv/auth#?code=x',
+    });
+    expect(JSON.stringify(result.response)).not.toContain('pin-9');
+    const [key, , stored] = mockRedis.setex.mock.calls[0] ?? [];
+    expect(key).toContain(result.response.handle as string);
+    const { binding } = JSON.parse(stored as string) as { binding: string };
+    expect(result.headers.get('set-cookie')).toContain(`better-auth.plex_pin=${binding}`);
+  });
+
+  it.each([
+    ['a guessed handle', null, `better-auth.plex_pin=${PIN.binding}`],
+    ['a handle from another browser', JSON.stringify(PIN), 'better-auth.plex_pin=someone-else'],
+    ['a handle with no browser cookie', JSON.stringify(PIN), ''],
+  ])('answers %s as expired without asking plex.tv', async (_label, stored, cookie) => {
+    mockRedis.get.mockResolvedValue(stored);
+
+    const { result } = await callEndpoint('plexCheckPin', { handle: 'guess' }, makeCtx(), cookie);
+
+    expect(result.response).toEqual({ authorized: false, expired: true });
+    expect(PlexClient.checkOAuthPin).not.toHaveBeenCalled();
+  });
+
+  it('spends the handle once plex.tv authorizes the pin', async () => {
+    vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
+    vi.mocked(db.select).mockReturnValueOnce(
+      makeChain([{ id: 'pa-1', userId: 'owner-1', allowLogin: true }]) as never
+    );
+    vi.mocked(getUserById).mockResolvedValue({ id: 'owner-1', role: 'owner' } as never);
+
+    await callEndpoint('plexCheckPin', { handle: 'handle-1' });
+
+    expect(PlexClient.checkOAuthPin).toHaveBeenCalledWith(PIN.pinId);
+    expect(mockRedis.del).toHaveBeenCalledWith(expect.stringContaining('plex_pin:handle-1'));
   });
 
   it('returns authorized false while the pin is unclaimed', async () => {
     vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(null);
 
-    const { result } = await callEndpoint('plexCheckPin', { pinId: 'pin-1' });
+    const { result } = await callEndpoint('plexCheckPin', { handle: 'handle-1' });
 
     expect(result.response).toEqual({ authorized: false, message: 'PIN not yet authorized' });
+  });
+
+  it("never logs a failed query's parameters, the plex token among them", async () => {
+    vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
+    const leak = Object.assign(new Error('query failed'), { params: [authResult.token] });
+    vi.mocked(db.select).mockImplementationOnce(() => {
+      throw leak;
+    });
+    const ctx = makeCtx();
+
+    await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' }, ctx)).rejects.toMatchObject({
+      statusCode: 500,
+    });
+    expect(ctx.context.logger.error).toHaveBeenCalledOnce();
+    expect(JSON.stringify(ctx.context.logger.error.mock.calls)).not.toContain(authResult.token);
   });
 
   it('logs in an existing owner by plex account and sets a session cookie', async () => {
@@ -180,7 +270,7 @@ describe('plex better auth plugin', () => {
       username: 'plexuser',
     } as never);
 
-    const { result, ctx } = await callEndpoint('plexCheckPin', { pinId: 'pin-1' });
+    const { result, ctx } = await callEndpoint('plexCheckPin', { handle: 'handle-1' });
 
     expect(result.response.authorized).toBe(true);
     expect((result.response.user as { id: string }).id).toBe('owner-1');
@@ -189,30 +279,52 @@ describe('plex better auth plugin', () => {
     expect(String(result.headers.get('set-cookie'))).toContain('better-auth');
   });
 
-  it('rejects a non-owner plex login', async () => {
+  it('refuses the owner when Plex login is not usable', async () => {
+    vi.mocked(usableLoginMethods).mockResolvedValue({
+      local: true,
+      plex: false,
+      oidc: false,
+      member: true,
+    });
     vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
     vi.mocked(db.select).mockReturnValueOnce(
-      makeChain([{ id: 'pa-2', userId: 'viewer-1', allowLogin: true }]) as never
+      makeChain([{ id: 'pa-1', userId: 'owner-1', allowLogin: true }]) as never
     );
+    vi.mocked(getUserById).mockResolvedValue({ id: 'owner-1', role: 'owner' } as never);
+
+    await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' })).rejects.toMatchObject({
+      statusCode: 403,
+      body: { message: MEMBER_LOGIN_REFUSED },
+    });
+    expect(mockSetSessionCookie).not.toHaveBeenCalled();
+  });
+
+  it('refuses a non-owner plex login with no live Plex server account', async () => {
+    vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(
+        makeChain([{ id: 'pa-2', userId: 'viewer-1', allowLogin: true }]) as never
+      )
+      .mockReturnValueOnce(makeChain([]) as never);
     vi.mocked(getUserById).mockResolvedValue({
       id: 'viewer-1',
-      role: 'viewer',
+      role: 'member',
       username: 'viewer',
     } as never);
 
-    await expect(callEndpoint('plexCheckPin', { pinId: 'pin-1' })).rejects.toMatchObject({
+    await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' })).rejects.toMatchObject({
       statusCode: 403,
+      body: { message: MEMBER_LOGIN_REFUSED },
     });
     expect(mockSetSessionCookie).not.toHaveBeenCalled();
   });
 
   it('starts server selection for a brand new first user with servers', async () => {
     vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
-    // plex_accounts lookup empty, then server_users fallback empty
+    // plex_accounts lookup empty, then the legacy identity lookup empty
     vi.mocked(db.select)
       .mockReturnValueOnce(makeChain([]) as never)
       .mockReturnValueOnce(makeChain([]) as never);
-    vi.mocked(getUserByPlexAccountId).mockResolvedValue(null);
     vi.mocked(getOwnerUser).mockResolvedValue(null);
     vi.mocked(PlexClient.getServers).mockResolvedValue([
       {
@@ -235,7 +347,7 @@ describe('plex better auth plugin', () => {
       },
     ] as never);
 
-    const { result } = await callEndpoint('plexCheckPin', { pinId: 'pin-1' });
+    const { result } = await callEndpoint('plexCheckPin', { handle: 'handle-1' });
 
     expect(result.response.authorized).toBe(true);
     expect(result.response.needsServerSelection).toBe(true);
@@ -249,66 +361,100 @@ describe('plex better auth plugin', () => {
     vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
     vi.mocked(db.select)
       .mockReturnValueOnce(makeChain([]) as never)
+      .mockReturnValueOnce(makeChain([]) as never)
       .mockReturnValueOnce(makeChain([]) as never);
-    vi.mocked(getUserByPlexAccountId).mockResolvedValue(null);
     vi.mocked(getOwnerUser).mockResolvedValue({ id: 'owner-x', role: 'owner' } as never);
 
-    await expect(callEndpoint('plexCheckPin', { pinId: 'pin-1' })).rejects.toMatchObject({
+    await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' })).rejects.toMatchObject({
       statusCode: 403,
     });
     expect(mockSetSessionCookie).not.toHaveBeenCalled();
   });
 
-  it('ignores a server_users row synced from a non-plex server (Priority 3)', async () => {
-    // A hostile Jellyfin/Emby server can report any UserId it likes, and the
-    // poller stores it as server_users.external_id. A plex.tv account id must
-    // never be honoured from a non-plex row.
+  it('signs in the owner the legacy lookup resolves (Priority 2 and 3)', async () => {
     vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
     vi.mocked(db.select)
       .mockReturnValueOnce(makeChain([]) as never)
-      .mockReturnValueOnce(makeChain([{ userId: 'owner-1', serverType: 'jellyfin' }]) as never);
-    vi.mocked(getUserByPlexAccountId).mockResolvedValue(null);
-    vi.mocked(getUserById).mockResolvedValue({ id: 'owner-1', role: 'owner' } as never);
-    vi.mocked(getOwnerUser).mockResolvedValue({ id: 'owner-1', role: 'owner' } as never);
-
-    await expect(callEndpoint('plexCheckPin', { pinId: 'pin-hostile' })).rejects.toMatchObject({
-      statusCode: 403,
-    });
-    expect(mockSetSessionCookie).not.toHaveBeenCalled();
-  });
-
-  it('honours a server_users row synced from a plex server (Priority 3)', async () => {
-    vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
-    vi.mocked(db.select)
-      .mockReturnValueOnce(makeChain([]) as never)
-      .mockReturnValueOnce(makeChain([{ userId: 'owner-1', serverType: 'plex' }]) as never)
+      .mockReturnValueOnce(makeChain([{ id: 'owner-1', role: 'owner' }]) as never)
       .mockReturnValueOnce(makeChain([]) as never);
-    vi.mocked(getUserByPlexAccountId).mockResolvedValue(null);
-    vi.mocked(getUserById).mockResolvedValue({
-      id: 'owner-1',
-      role: 'owner',
-      username: 'owner',
-    } as never);
 
-    await callEndpoint('plexCheckPin', { pinId: 'pin-legit' });
+    await callEndpoint('plexCheckPin', { handle: 'handle-1' });
 
     expect(mockSetSessionCookie).toHaveBeenCalled();
   });
 
-  it('rejects a non-owner user matched via the legacy plexAccountId tier (Priority 2)', async () => {
+  it('refuses a non-owner the legacy lookup resolves with no live Plex server account', async () => {
     vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
-    vi.mocked(db.select).mockReturnValueOnce(makeChain([]) as never); // priority 1: plex_accounts empty
-    vi.mocked(getUserByPlexAccountId).mockResolvedValue({
-      id: 'legacy-viewer-1',
-      role: 'viewer',
-      username: 'legacyviewer',
-    } as never);
+    vi.mocked(db.select)
+      .mockReturnValueOnce(makeChain([]) as never)
+      .mockReturnValueOnce(makeChain([{ id: 'legacy-viewer-1', role: 'member' }]) as never)
+      .mockReturnValueOnce(makeChain([]) as never);
 
-    await expect(callEndpoint('plexCheckPin', { pinId: 'pin-legacy' })).rejects.toMatchObject({
+    await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' })).rejects.toMatchObject({
       statusCode: 403,
     });
     expect(mockSetSessionCookie).not.toHaveBeenCalled();
     expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  describe('member path', () => {
+    beforeEach(() => {
+      vi.mocked(usableLoginMethods).mockResolvedValue({
+        local: true,
+        plex: false,
+        oidc: false,
+        member: true,
+      });
+      vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(authResult);
+      vi.mocked(db.select)
+        .mockReturnValueOnce(makeChain([]) as never)
+        .mockReturnValueOnce(makeChain([{ id: 'member-1', role: 'member' }]) as never)
+        .mockReturnValueOnce(makeChain([{ userId: 'member-1', serverId: 'srv-1' }]) as never);
+    });
+
+    it('signs in a synced member that passes the gates and keeps no plex.tv token', async () => {
+      const { result, ctx } = await callEndpoint('plexCheckPin', { handle: 'handle-1' });
+
+      expect(result.response).toEqual({
+        authorized: true,
+        user: { id: 'member-1', username: 'plexuser', role: 'member' },
+      });
+      expect(canMemberLogin).toHaveBeenCalledWith('member-1', 'srv-1');
+      expect(ctx.createSession).toHaveBeenCalledWith('member-1');
+      const insert = vi.mocked(db.insert).mock.results[0]?.value as {
+        values: ReturnType<typeof vi.fn>;
+      };
+      expect(insert.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: 'plex',
+          accountId: 'plex-tv-1',
+          userId: 'member-1',
+          accessToken: null,
+          refreshToken: null,
+        })
+      );
+    });
+
+    it('tells a member plex.tv vouched for that they are not permitted', async () => {
+      vi.mocked(canMemberLogin).mockResolvedValue({ ok: false, reason: 'not-permitted' });
+
+      await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' })).rejects.toMatchObject({
+        statusCode: 403,
+        body: { code: 'MEMBER_NOT_PERMITTED', message: MEMBER_NOT_PERMITTED },
+      });
+      expect(mockSetSessionCookie).not.toHaveBeenCalled();
+    });
+
+    it('refuses a synced member the gates turn away', async () => {
+      vi.mocked(canMemberLogin).mockResolvedValue({ ok: false, reason: 'refused' });
+
+      await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' })).rejects.toMatchObject({
+        statusCode: 403,
+        body: { message: MEMBER_LOGIN_REFUSED },
+      });
+      expect(mockSetSessionCookie).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    });
   });
 
   describe('first-run (no servers) claim code enforcement', () => {
@@ -325,11 +471,10 @@ describe('plex better auth plugin', () => {
 
     beforeEach(() => {
       vi.mocked(PlexClient.checkOAuthPin).mockResolvedValue(newAuthResult);
-      // priority 1 (plex_accounts) empty, then priority 3 (server_users) empty
+      // priority 1 (plex_accounts) empty, then the legacy identity lookup empty
       vi.mocked(db.select)
         .mockReturnValueOnce(makeChain([]) as never)
         .mockReturnValueOnce(makeChain([]) as never);
-      vi.mocked(getUserByPlexAccountId).mockResolvedValue(null);
       vi.mocked(getOwnerUser).mockResolvedValue(null);
       vi.mocked(PlexClient.getServers).mockResolvedValue([]);
     });
@@ -337,7 +482,7 @@ describe('plex better auth plugin', () => {
     it('rejects when a claim code is required and missing', async () => {
       vi.mocked(isClaimCodeEnabled).mockReturnValue(true);
 
-      await expect(callEndpoint('plexCheckPin', { pinId: 'pin-new' })).rejects.toMatchObject({
+      await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' })).rejects.toMatchObject({
         statusCode: 403,
       });
       expect(db.insert).not.toHaveBeenCalled();
@@ -348,7 +493,7 @@ describe('plex better auth plugin', () => {
       vi.mocked(validateClaimCode).mockReturnValue(false);
 
       await expect(
-        callEndpoint('plexCheckPin', { pinId: 'pin-new', claimCode: 'WRONG-CODE' })
+        callEndpoint('plexCheckPin', { handle: 'handle-1', claimCode: 'WRONG-CODE' })
       ).rejects.toMatchObject({ statusCode: 403 });
       expect(validateClaimCode).toHaveBeenCalledWith('WRONG-CODE');
       expect(db.insert).not.toHaveBeenCalled();
@@ -364,7 +509,7 @@ describe('plex better auth plugin', () => {
       vi.mocked(validateClaimCode).mockReturnValue(false);
 
       await expect(
-        callEndpoint('plexCheckPin', { pinId: 'pin-new', claimCode: 'WRONG-CODE' })
+        callEndpoint('plexCheckPin', { handle: 'handle-1', claimCode: 'WRONG-CODE' })
       ).rejects.toMatchObject({ statusCode: 403 });
 
       expect(PlexClient.getServers).not.toHaveBeenCalled();
@@ -373,7 +518,7 @@ describe('plex better auth plugin', () => {
     it('does not probe when a required claim code is missing entirely', async () => {
       vi.mocked(isClaimCodeEnabled).mockReturnValue(true);
 
-      await expect(callEndpoint('plexCheckPin', { pinId: 'pin-new' })).rejects.toMatchObject({
+      await expect(callEndpoint('plexCheckPin', { handle: 'handle-1' })).rejects.toMatchObject({
         statusCode: 403,
       });
 
@@ -391,7 +536,7 @@ describe('plex better auth plugin', () => {
         .mockReturnValueOnce(makeChain([{ id: 'plexacct-new' }]) as never);
 
       const { result, ctx } = await callEndpoint('plexCheckPin', {
-        pinId: 'pin-new',
+        handle: 'handle-1',
         claimCode: 'ABCD-EFGH-JKLM',
       });
 
@@ -466,6 +611,29 @@ describe('plex better auth plugin', () => {
         statusCode: 503,
       });
       expect(mockRedis.del).not.toHaveBeenCalled();
+    });
+
+    it("never logs a failed write's parameters, the plex token among them", async () => {
+      mockRedis.get.mockResolvedValue(JSON.stringify(storedTempData));
+      vi.mocked(getOwnerUser).mockResolvedValue(null);
+      vi.mocked(PlexClient.verifyServerAdmin).mockResolvedValue({ success: true } as never);
+      mockGetUsers.mockResolvedValue([{ id: 'plex-local-1', isAdmin: true }]);
+      vi.mocked(db.select).mockReturnValueOnce(makeChain([]) as never);
+      vi.mocked(db.insert).mockImplementationOnce(() => {
+        throw Object.assign(new Error('insert failed'), { params: [storedTempData.plexToken] });
+      });
+      const ctx = makeCtx();
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      await expect(callEndpoint('plexConnect', connectPayload, ctx)).rejects.toMatchObject({
+        statusCode: 500,
+      });
+      const logged = JSON.stringify([
+        ...ctx.context.logger.error.mock.calls,
+        ...consoleError.mock.calls,
+      ]);
+      consoleError.mockRestore();
+      expect(logged).not.toContain(storedTempData.plexToken);
     });
 
     it('creates the user and server, deletes the temp token, and returns a session on success', async () => {

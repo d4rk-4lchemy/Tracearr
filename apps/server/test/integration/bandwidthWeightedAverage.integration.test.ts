@@ -21,6 +21,7 @@ import {
 } from '@tracearr/test-utils/factories';
 import { db } from '../../src/db/client.js';
 import { bandwidthRoutes } from '../../src/routes/stats/bandwidth.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 function ownerAuth() {
   return { userId: 'owner', username: 'owner', role: 'owner' as const, serverIds: [] as string[] };
@@ -32,6 +33,7 @@ async function buildApp() {
   app.decorate('authenticate', async (request: { user: unknown }) => {
     request.user = ownerAuth();
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(bandwidthRoutes as never);
   return app;
 }

@@ -23,6 +23,7 @@ import {
 import { db } from '../../src/db/client.js';
 import { engagementRoutes } from '../../src/routes/stats/engagement.js';
 import { sql } from 'drizzle-orm';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 function ownerAuth(): AuthUser {
   return { userId: 'owner', username: 'owner', role: 'owner', serverIds: [] };
@@ -34,6 +35,7 @@ async function buildApp() {
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = ownerAuth();
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(engagementRoutes as never);
   return app;
 }

@@ -37,14 +37,15 @@ vi.mock('../../../utils/serverFiltering.js', async () => {
 
 import { db } from '../../../db/client.js';
 import { contentRoutes } from '../content.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
-
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   await app.register(contentRoutes, { prefix: '/stats' });
 
@@ -64,7 +65,7 @@ function createViewerUser(serverIds: string[]): AuthUser {
   return {
     userId: randomUUID(),
     username: 'viewer',
-    role: 'viewer',
+    role: 'admin',
     serverIds,
   };
 }
@@ -155,6 +156,7 @@ describe('GET /stats/libraries', () => {
     noAuthApp.decorate('authenticate', async () => {
       throw new Error('Unauthorized');
     });
+    noAuthApp.decorate('requirePermission', permissionGuard(noAuthApp));
     await noAuthApp.register(contentRoutes, { prefix: '/stats' });
 
     const response = await noAuthApp.inject({

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
+import type { WatchedState } from '@tracearr/shared';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { AlphabetScrubber, type ScrubberLetter } from '@/components/media-browse/AlphabetScrubber';
 import {
   CatalogToolbar,
+  visibleSort,
   activeFilterCount,
   loadPersistedFilters,
   persistFilters,
@@ -28,6 +30,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import {
   useCatalogWindow,
   useCatalogLetters,
+  useDashboardStats,
   useGenres,
   useCatalogCodecs,
   useLibraries,
@@ -37,11 +40,15 @@ import {
   stableSerialize,
   CATALOG_PAGE_SIZE,
 } from '@/hooks/queries';
+import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
 import { useIsMobile } from '@/hooks/use-mobile';
 
-/** Filters a link can set on arrival: `?genre=` from the Genres page, and
- * resolution, codec, channel and server params from the Quality page charts. */
+const WATCHED_STATES: readonly WatchedState[] = ['watched', 'partial', 'unwatched'];
+
+/** Filters a link can set on arrival: `?genre=` from the Genres page,
+ * resolution, codec, channel and server params from the Quality page charts, and
+ * `?watched=` from a member's "Not watched by you" link. */
 function linkedFilters(search: string): Partial<PersistedGridFilters> {
   const params = new URLSearchParams(search);
   const linked: Partial<PersistedGridFilters> = {};
@@ -56,6 +63,9 @@ function linkedFilters(search: string): Partial<PersistedGridFilters> {
     const value = params.get(key);
     if (value) linked[key] = value;
   }
+  const watched = params.get('watched');
+  const watchedState = WATCHED_STATES.find((state) => state === watched);
+  if (watchedState) linked.watched = watchedState;
   return linked;
 }
 
@@ -162,11 +172,18 @@ export function MediaGrid() {
     isLoading: serversLoading,
   } = useServer();
   const mediaLibraryServerIds = scopedServerIds ?? selectedServerIds;
+  const { user } = useAuth();
+  const isMember = user?.role === 'member';
+  const seesActivity =
+    useDashboardStats(selectedServerIds, { enabled: isMember, keepPrevious: true }).data
+      ?.othersActive !== undefined;
+  const hidePopularitySorts = isMember && !seesActivity;
 
   const type = typeFromSearch(location.search);
   const segment = typeSegment(type);
 
   const [filters, setFilters] = useState<PersistedGridFilters>(() => loadPersistedFilters(type));
+  const sort = visibleSort(filters.sort, hidePopularitySorts);
   const [search, setSearch] = useState('');
   const [activeLetter, setActiveLetter] = useState<ScrubberLetter | null>(null);
   // Seeded synchronously so the very first render already has the right offset (needed for the cached-data mount path).
@@ -310,9 +327,9 @@ export function MediaGrid() {
   const catalogArgs = {
     type,
     serverIds: catalogServerIds,
-    // Watched always means "any user has watched it" now - the per-identity
-    // lens picker is gone, so this is a fixed constant, not state.
-    lens: 'all',
+    // Watched means "any user has watched it" for staff. A member's lens is
+    // their own identity, since the server would otherwise list what others watched.
+    lens: isMember && user ? user.userId : 'all',
     filters: {
       resolution: filters.resolution,
       genre: filters.genre,
@@ -329,7 +346,7 @@ export function MediaGrid() {
       audioCodec: filters.audioCodec,
       audioChannels: filters.audioChannels,
     },
-    sort: filters.sort,
+    sort,
   };
 
   const lettersQuery = useCatalogLetters(catalogArgs);
@@ -365,7 +382,7 @@ export function MediaGrid() {
     type,
     serverIds: [...catalogServerIds].sort(),
     filters: catalogArgs.filters,
-    sort: filters.sort,
+    sort,
   });
   const knownTotalsRef = useRef<{ key: string; totalItems: number; totalFileSize: number } | null>(
     null
@@ -399,7 +416,7 @@ export function MediaGrid() {
           : info
       );
       // While a jump is still settling, trust the clicked letter over the transient topItem reading.
-      if (filters.sort === 'title' && pendingJumpItem === null) {
+      if (sort === 'title' && pendingJumpItem === null) {
         const letter = activeLetterForRow(
           info.topItem,
           info.columnCount,
@@ -408,7 +425,7 @@ export function MediaGrid() {
         if (letter) setActiveLetter(letter);
       }
     },
-    [filters.sort, letterOffsets, pendingJumpItem]
+    [sort, letterOffsets, pendingJumpItem]
   );
 
   const handleScrollIdle = useCallback(
@@ -454,7 +471,7 @@ export function MediaGrid() {
         ? 'filter'
         : 'library';
 
-  const showScrubber = filters.sort === 'title';
+  const showScrubber = sort === 'title';
 
   const header = (
     <div className="space-y-1">
@@ -518,6 +535,7 @@ export function MediaGrid() {
         totalItems={totalItems ?? undefined}
         totalFileSize={totalFileSize ?? undefined}
         mobileScrubber={showScrubber ? mobileScrubber : null}
+        hidePopularitySorts={hidePopularitySorts}
       />
 
       {totalItems === null ? (

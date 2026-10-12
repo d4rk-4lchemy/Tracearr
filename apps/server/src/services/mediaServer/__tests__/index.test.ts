@@ -340,8 +340,8 @@ describe('JellyfinClient Static Methods', () => {
 });
 
 describe('EmbyClient Static Methods', () => {
-  it('should have authenticate static method', () => {
-    expect(typeof EmbyClient.authenticate).toBe('function');
+  it('should have authenticateByName static method', () => {
+    expect(typeof EmbyClient.authenticateByName).toBe('function');
   });
 
   it('should have verifyServerAdmin static method', () => {

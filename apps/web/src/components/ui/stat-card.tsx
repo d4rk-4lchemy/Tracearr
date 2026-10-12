@@ -15,6 +15,8 @@ interface StatCardProps {
   subValue?: string;
   isLoading?: boolean;
   href?: string;
+  /** Cut a long value (a show title) with an ellipsis instead of letting it overflow. */
+  truncateValue?: boolean;
   /**
    * 'kpi' is the media detail unit's iconless, raised-surface treatment
    * (uppercase label, larger value, sub-value on its own line). Default is
@@ -34,6 +36,7 @@ export function StatCard({
   subValue,
   isLoading,
   href,
+  truncateValue,
   variant = 'default',
 }: StatCardProps) {
   const card =
@@ -74,7 +77,11 @@ export function StatCard({
             </>
           ) : (
             <>
-              <div className="text-lg font-semibold tabular-nums">{value}</div>
+              <div
+                className={cn('text-lg font-semibold tabular-nums', truncateValue && 'truncate')}
+              >
+                {value}
+              </div>
               <div className="text-muted-foreground text-xs">
                 {label}
                 {subValue && <span className="ml-1">({subValue})</span>}

@@ -15,7 +15,10 @@ vi.mock('@/lib/api', async () => {
 });
 
 vi.mock('@/lib/authClient', () => ({
-  authClient: { signOut: vi.fn().mockResolvedValue(undefined) },
+  authClient: {
+    signOut: vi.fn().mockResolvedValue(undefined),
+    admin: { stopImpersonating: vi.fn().mockResolvedValue({ data: {}, error: null }) },
+  },
 }));
 
 import { api, ApiError, AUTH_STATE_CHANGE_EVENT, BASE_URL } from '@/lib/api';
@@ -95,7 +98,7 @@ describe('useAuth', () => {
     });
   });
 
-  it('exposes the frozen { user, isLoading, isAuthenticated, logout, refetch } shape', async () => {
+  it('exposes the frozen { user, isLoading, isAuthenticated, isSignedOut, logout, refetch } shape', async () => {
     mockMe.mockResolvedValue({
       userId: 'u1',
       username: 'alice',
@@ -111,7 +114,7 @@ describe('useAuth', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(Object.keys(result.current).sort()).toEqual(
-      ['user', 'isLoading', 'isAuthenticated', 'logout', 'refetch'].sort()
+      ['user', 'isLoading', 'isAuthenticated', 'isSignedOut', 'logout', 'refetch'].sort()
     );
     expect(result.current.isAuthenticated).toBe(true);
     expect(result.current.user?.username).toBe('alice');
@@ -182,6 +185,75 @@ describe('useAuth', () => {
     expect(mockSignOut).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(result.current.isAuthenticated).toBe(false));
     expect(result.current.user).toBeNull();
+  });
+
+  it('logout drops everything the last person loaded, keeping only the auth query', async () => {
+    mockMe.mockResolvedValueOnce(alice);
+    mockMe.mockRejectedValueOnce(noSession());
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['stats', 'me', 'UTC'], { daysWatched: 9 });
+    const wrap = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper: wrap });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(client.getQueryData(['stats', 'me', 'UTC'])).toBeUndefined();
+    await waitFor(() => expect(result.current.isSignedOut).toBe(true));
+  });
+
+  it('is not signed out when the lookup fails on the network', async () => {
+    mockMe.mockRejectedValue(new Error('network down'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrap = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <AuthProvider>{children}</AuthProvider>
+      </QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper: wrap });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.isSignedOut).toBe(false);
+  });
+
+  it('carries impersonatedBy and never a trust score for the member being viewed', async () => {
+    mockMe.mockResolvedValueOnce({
+      ...alice,
+      role: 'member' as const,
+      aggregateTrustScore: undefined,
+      impersonatedBy: 'owner-1',
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.user?.impersonatedBy).toBe('owner-1');
+    expect(result.current.user).not.toHaveProperty('trustScore');
+  });
+
+  it('logout while viewing as someone stops viewing instead of signing the owner out', async () => {
+    const setHref = mockLocation('/');
+    mockSignOut.mockClear();
+    mockMe.mockResolvedValueOnce({ ...alice, role: 'member' as const, impersonatedBy: 'owner-1' });
+
+    const { result } = renderHook(() => useAuth(), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(vi.mocked(authClient.admin.stopImpersonating)).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(setHref).toHaveBeenCalledWith(`${BASE_URL}users`);
   });
 
   it('skips the redirect when already on the login page', async () => {

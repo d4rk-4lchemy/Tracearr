@@ -199,7 +199,7 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: LibraryStorageQueryInput }>(
     '/storage',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = libraryStorageQuerySchema.safeParse(request.query);
       if (!query.success) {

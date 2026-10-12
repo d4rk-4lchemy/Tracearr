@@ -8,7 +8,12 @@
 
 import { alias } from 'drizzle-orm/pg-core';
 import { and, asc, desc, eq, inArray, isNull, like, lt, ne, or, sql } from 'drizzle-orm';
-import { canLogin, rankMergeTarget, type MergeRankInput, type UserRole } from '@tracearr/shared';
+import {
+  rankMergeTarget,
+  type LoginAccess,
+  type MergeRankInput,
+  type UserRole,
+} from '@tracearr/shared';
 import type {
   DismissedMergeSuggestion,
   MergeSuggestion,
@@ -39,6 +44,7 @@ import {
 import { uncapDecompressionForTx } from '../db/timescale.js';
 import { invalidateAutomationsCache } from '../jobs/poller/database.js';
 import { getAuth } from '../lib/auth.js';
+import { refreshUserSessionSnapshots, revokeSessionsForUsers } from '../lib/revoke.js';
 import { representativeAccountOrderSql } from '../utils/representativeAccount.js';
 import {
   recomputeIdentityAggregates,
@@ -82,9 +88,20 @@ export class SameServerCombineNotConfirmedError extends MergeValidationError {
   }
 }
 
+// A merge never lets the combined person in where either half was kept out: losing an allow is
+// the fail-closed direction, and a value this code does not know counts as block.
+const strictness = (access: string): number =>
+  access === 'allow' ? 0 : access === 'default' ? 1 : 2;
+
+export function stricterLoginAccess(a: LoginAccess, b: LoginAccess): LoginAccess {
+  const stricter = strictness(a) >= strictness(b) ? a : b;
+  return strictness(stricter) === 2 ? 'block' : stricter;
+}
+
 export function isLoginCapable(user: MergeIdentitySnapshot): boolean {
   return (
-    canLogin(user.role) ||
+    user.role === 'owner' ||
+    user.role === 'admin' ||
     user.passwordHash !== null ||
     user.plexAccountId !== null ||
     user.linkedPlexAccountCount > 0 ||
@@ -537,6 +554,21 @@ export async function mergeUsers(
         )
       );
 
+    const [targetAccess] = await tx
+      .select({ loginAccess: users.loginAccess })
+      .from(users)
+      .where(eq(users.id, targetUserId))
+      .limit(1);
+    if (targetAccess) {
+      const loginAccess = stricterLoginAccess(sourceUser.loginAccess, targetAccess.loginAccess);
+      if (loginAccess !== targetAccess.loginAccess) {
+        await tx
+          .update(users)
+          .set({ loginAccess, updatedAt: new Date() })
+          .where(eq(users.id, targetUserId));
+      }
+    }
+
     await tx.delete(users).where(eq(users.id, sourceUserId));
 
     const [audit] = await tx
@@ -579,11 +611,8 @@ export async function mergeUsers(
   // (the snapshot freezes the user object at write time). Refresh it here so
   // stale identity data does not survive until the snapshot expires (up to
   // 30 days).
-  const authCtx = await getAuth().$context;
-  const freshTarget = await authCtx.internalAdapter.findUserById(targetUserId);
-  if (freshTarget) {
-    await authCtx.internalAdapter.refreshUserSessions(freshTarget);
-  }
+  await refreshUserSessionSnapshots(targetUserId);
+  await revokeSessionsForUsers([sourceUserId, targetUserId]);
 
   return result;
 }
@@ -669,7 +698,14 @@ export async function splitServerUser(
     // Raw insert, not Better Auth's create-user path: user.create.before
     // enforces single-owner/claim-code signup rules that would wrongly
     // reject or mutate this restored identity, which is not a new signup.
-    // Role is always member on a split identity; splitting never grants login.
+    // Role is always member on a split identity, and anything stricter than
+    // default on the person it came from stays block; splitting never grants
+    // login.
+    const [splitFrom] = await tx
+      .select({ loginAccess: users.loginAccess })
+      .from(users)
+      .where(eq(users.id, serverUser.userId))
+      .limit(1);
     const [newUser] = await tx
       .insert(users)
       .values({
@@ -679,6 +715,10 @@ export async function splitServerUser(
         contactEmail: identity.contactEmail ?? null,
         thumbnail: identity.thumbnail,
         role: 'member',
+        loginAccess:
+          splitFrom?.loginAccess === 'allow' || splitFrom?.loginAccess === 'default'
+            ? 'default'
+            : 'block',
       })
       .returning();
 
@@ -752,11 +792,8 @@ export async function splitServerUser(
   // target does not keep stale identity data until the snapshot expires (up
   // to 30 days). The new identity is skipped: it was just created and
   // cannot have any sessions yet.
-  const authCtx = await getAuth().$context;
-  const freshOldUser = await authCtx.internalAdapter.findUserById(result.oldUserId);
-  if (freshOldUser) {
-    await authCtx.internalAdapter.refreshUserSessions(freshOldUser);
-  }
+  await refreshUserSessionSnapshots(result.oldUserId);
+  await revokeSessionsForUsers([result.oldUserId, result.newUserId]);
 
   return { newUserId: result.newUserId, serverUserId: result.serverUserId };
 }

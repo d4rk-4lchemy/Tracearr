@@ -303,10 +303,11 @@ function emptyCounts(): RunCounts {
 }
 
 export const runRoutes: FastifyPluginAsync = async (app) => {
+  const readRuns = { preHandler: [app.requirePermission('runs', 'read')] };
   /**
    * GET /runs/counts - How many runs each outcome holds, under the same filters
    */
-  app.get('/counts', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/counts', readRuns, async (request, reply) => {
     const query = runCountsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -344,7 +345,7 @@ export const runRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /runs - Every automation's runs, newest first
    */
-  app.get('/', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/', readRuns, async (request, reply) => {
     const query = runListQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -377,7 +378,7 @@ export const runRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /runs/:id - One run with its step log
    */
-  app.get('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id', readRuns, async (request, reply) => {
     const params = runIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid run ID');

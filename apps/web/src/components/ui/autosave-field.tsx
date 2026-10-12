@@ -65,7 +65,7 @@ export function SaveStatusIndicator({ status, className }: SaveStatusIndicatorPr
 
 interface FieldHeaderProps {
   id: string;
-  label: string;
+  label: ReactNode;
   status: SaveStatus;
   labelClassName?: string;
 }
@@ -121,7 +121,7 @@ function ErrorActions({ errorMessage, onRetry, onReset }: ErrorActionsProps) {
 }
 
 interface AutosaveFieldBaseProps {
-  label: string;
+  label: ReactNode;
   description?: string;
   status: SaveStatus;
   errorMessage?: string | null;

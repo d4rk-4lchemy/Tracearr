@@ -23,11 +23,13 @@ import {
   getCachedLatestForkRelease,
 } from '../../jobs/versionCheckQueue.js';
 import { versionRoutes } from '../version.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 async function buildTestApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
   app.decorate('authenticate', async () => {});
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(versionRoutes, { prefix: '/version' });
   return app;
 }

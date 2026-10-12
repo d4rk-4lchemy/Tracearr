@@ -69,7 +69,7 @@ describe('better auth backfill migration', () => {
 
   it('skips credential rows for empty-string password hashes', async () => {
     await createTestUser({
-      role: 'viewer',
+      role: 'admin',
       username: 'emptyhash',
       email: 'emptyhash@example.com',
       passwordHash: '',

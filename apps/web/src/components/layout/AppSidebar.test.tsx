@@ -39,9 +39,10 @@ vi.mock('@/hooks/queries', () => ({
   useDismissWhatsNew: () => ({ mutate: dismissMutate }),
 }));
 
+const auth = vi.hoisted(() => ({ role: 'owner' }));
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
-    user: { username: 'tester', email: 'tester@example.test', thumbUrl: null },
+    user: { username: 'tester', email: 'tester@example.test', thumbUrl: null, role: auth.role },
     logout: vi.fn(),
   }),
 }));
@@ -64,6 +65,7 @@ function renderSidebar(initialPath = '/media') {
 
 describe('AppSidebar navigation', () => {
   beforeEach(() => {
+    auth.role = 'owner';
     seerr.configured = false;
     versionState.data = undefined;
     versionState.isLoading = true;
@@ -152,5 +154,31 @@ describe('AppSidebar navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'common:actions.close' }));
     expect(screen.queryByText('settings:whatsNew.title')).not.toBeInTheDocument();
     expect(dismissMutate).not.toHaveBeenCalled();
+  });
+
+  it('shows a member only the pages that are theirs, and labels the sections they have left', () => {
+    auth.role = 'member';
+    seerr.configured = true;
+    renderSidebar();
+
+    for (const name of ['dashboard', 'history', 'activity', 'overview', 'requests']) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    for (const name of [
+      'users',
+      'settings',
+      'automations',
+      'userStats',
+      'quality',
+      'storage',
+      'violations',
+      'yourStats',
+    ]) {
+      expect(screen.queryByText(name)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('manage')).not.toBeInTheDocument();
+    for (const label of ['monitor', 'stats', 'media']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 });

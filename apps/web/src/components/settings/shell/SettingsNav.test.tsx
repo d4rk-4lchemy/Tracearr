@@ -47,7 +47,7 @@ describe('SettingsNav', () => {
       'aria-current',
       'page'
     );
-    expect(screen.getByRole('link', { name: 'nav.sections.guest' })).not.toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'nav.sections.memberLogin' })).not.toHaveAttribute(
       'aria-current'
     );
   });

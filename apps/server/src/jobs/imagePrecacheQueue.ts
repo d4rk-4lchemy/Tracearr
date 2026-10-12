@@ -28,6 +28,7 @@ import {
   writeDiskLimited,
   clearDiskLimited,
   readDiskLimited,
+  isOnMountedVolume,
 } from '../services/imageCacheGuard.js';
 import { sweepImageCache } from '../services/imageCacheSweep.js';
 import { isLiveServer, liveServers } from '../services/liveServers.js';
@@ -92,7 +93,8 @@ const PERSISTENCE_MIN_PRESENT = 0.2;
  * the directory this process uses counts: a stamp from another path (the
  * default moved in an upgrade, or the operator changed IMAGE_CACHE_DIR) sits
  * beside a legitimately empty cache, and so does one from before the path was
- * recorded at all.
+ * recorded at all. A directory that is a mount is skipped: empty there means
+ * the volume was attached after the pass or the writes are failing.
  */
 async function checkPersistence(
   serverId: string,
@@ -104,6 +106,7 @@ async function checkPersistence(
     redis.get(REDIS_KEYS.LIBRARY_PRECACHE_LAST_FULL_DIR(serverId)),
   ]);
   if (!lastFull || stampedDir !== IMAGE_CACHE_DIR) return;
+  if (await isOnMountedVolume(IMAGE_CACHE_DIR)) return;
 
   const sample = batch.slice(0, PERSISTENCE_SAMPLE);
   if (sample.length === 0) return;

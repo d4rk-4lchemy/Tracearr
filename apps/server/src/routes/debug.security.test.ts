@@ -11,7 +11,7 @@ import {
   createTestApp,
   generateTestToken,
   createOwnerPayload,
-  createViewerPayload,
+  createMemberPayload,
 } from '../test/helpers.js';
 import { debugRoutes } from './debug.js';
 
@@ -109,7 +109,7 @@ describe('Debug Routes Security', () => {
     it.each(debugEndpoints)(
       'should reject guest users on $method $url',
       async ({ method, url }) => {
-        const guestToken = generateTestToken(app, createViewerPayload());
+        const guestToken = generateTestToken(app, createMemberPayload());
 
         const res = await app.inject({
           method: method as any,

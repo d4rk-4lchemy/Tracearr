@@ -5,16 +5,16 @@
 import type { FastifyRequest } from 'fastify';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { AuthUser, UserRole } from '@tracearr/shared';
-import { canLogin } from '@tracearr/shared';
+import { canLogin, isStaff } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { servers } from '../db/schema.js';
 import { getAuth } from './auth.js';
+import { ACCESS_CACHE_TTL_MS } from './scope.js';
 
 let serverIdsCache: { ids: string[]; fetchedAt: number } | null = null;
-const SERVER_IDS_TTL_MS = 30_000;
 
 export async function getCachedServerIds(): Promise<string[]> {
-  if (serverIdsCache && Date.now() - serverIdsCache.fetchedAt < SERVER_IDS_TTL_MS) {
+  if (serverIdsCache && Date.now() - serverIdsCache.fetchedAt < ACCESS_CACHE_TTL_MS) {
     return serverIdsCache.ids;
   }
   const rows = await db.select({ id: servers.id }).from(servers);
@@ -56,7 +56,10 @@ async function loadBetterAuthSession(
   const role = user.role ?? 'member';
   if (!canLogin(role)) return null;
 
-  const serverIds = role === 'owner' ? await getCachedServerIds() : [];
+  const impersonatedBy = session.session?.impersonatedBy;
+  // Viewing as another user is a browser session only, never a bearer token.
+  if (impersonatedBy && headers.get('authorization')) return null;
+  const serverIds = isStaff(role) ? await getCachedServerIds() : [];
   return {
     sessionId: session.session?.id,
     user: {
@@ -64,6 +67,7 @@ async function loadBetterAuthSession(
       username: user.username ?? user.name,
       role,
       serverIds,
+      ...(impersonatedBy ? { impersonatedBy } : {}),
     },
   };
 }

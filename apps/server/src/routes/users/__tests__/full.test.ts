@@ -21,6 +21,7 @@ vi.mock('../../../db/client.js', () => ({
 
 import { db } from '../../../db/client.js';
 import { fullRoutes } from '../full.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -28,6 +29,7 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: any) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(fullRoutes, { prefix: '/users' });
   return app;
 }
@@ -127,6 +129,54 @@ describe('GET /users/:id/full violations panel', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().identity.contactEmail).toBe('ann@example.com');
     expect(response.json().user).not.toHaveProperty('identityContactEmail');
+  });
+
+  it('selects the identity sign-in facts and keeps them on the user block', async () => {
+    const serverUserId = randomUUID();
+    const serverId = randomUUID();
+    const authUser: AuthUser = {
+      userId: randomUUID(),
+      username: 'owner',
+      role: 'owner',
+      serverIds: [serverId],
+    };
+    app = await buildTestApp(authUser);
+
+    let selectCall = 0;
+    const tx = {
+      select: vi.fn((_projection?: Record<string, unknown>) => {
+        selectCall++;
+        const rows =
+          selectCall === 1
+            ? [
+                {
+                  id: serverUserId,
+                  serverId,
+                  userId: randomUUID(),
+                  loginAccess: 'allow',
+                  loginCount: 7,
+                  lastLoginAt: '2026-10-01T15:30:00.000Z',
+                  identityContactEmail: null,
+                  identityAggregateTrustScore: 90,
+                  identityTotalViolations: 0,
+                },
+              ]
+            : [];
+        const chain = queryChain(vi.fn, rows);
+        chains.push(chain);
+        return chain;
+      }),
+      execute: vi.fn(async () => ({ rows: [] })),
+    };
+    vi.mocked((db as any).transaction).mockImplementation(async (callback: any) => callback(tx));
+
+    const response = await app.inject({ method: 'GET', url: `/users/${serverUserId}/full` });
+
+    expect(response.statusCode).toBe(200);
+    expect(Object.keys(tx.select.mock.calls[0]?.[0] ?? {})).toEqual(
+      expect.arrayContaining(['loginAccess', 'loginCount', 'lastLoginAt'])
+    );
+    expect(response.json().user).toMatchObject({ loginAccess: 'allow', loginCount: 7 });
   });
 
   it('returns the media ids on each recent session', async () => {

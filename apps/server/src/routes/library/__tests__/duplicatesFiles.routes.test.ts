@@ -25,6 +25,7 @@ vi.mock('../../../services/mediaServer/index.js', () => ({
 import { db } from '../../../db/client.js';
 import { createMediaServerClient } from '../../../services/mediaServer/index.js';
 import { libraryDuplicateFilesRoute } from '../duplicatesFiles.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 const mockCreateClient = vi.mocked(createMediaServerClient);
 
@@ -48,6 +49,7 @@ async function buildTestApp(
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', redis as never);
   await app.register(libraryDuplicateFilesRoute, { prefix: '/library' });
   return app;
@@ -110,7 +112,7 @@ describe('GET /library/duplicates/files', () => {
     vi.mocked(db.execute).mockResolvedValue({ rows: [] } as never);
 
     const app = await buildTestApp(
-      { userId: randomUUID(), username: 'viewer', role: 'viewer', serverIds: [SERVER_A] },
+      { userId: randomUUID(), username: 'viewer', role: 'admin', serverIds: [SERVER_A] },
       createSpyRedis()
     );
     await app.inject({ url: `/library/duplicates/files?itemIds=${ITEM_A}` });

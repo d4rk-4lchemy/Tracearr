@@ -14,8 +14,12 @@ import type {
   WatchedState,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
-import { buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { scopedServerFragment, seesServerActivity, type Scope } from '../../lib/scope.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
+import { buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { buildPosterOrderFragment } from '../../routes/library/catalog.js';
+import { buildPosterUrl } from '../imageProxy.js';
+import { getSetting } from '../settings.js';
 import {
   UNWATCHED_LENSES,
   watchedStatesFor,
@@ -37,6 +41,7 @@ const EMPTY_SUMMARY: UserRequestsResponse['summary'] = {
   completed: 0,
   neverWatched: 0,
   medianWaitMs: null,
+  availableThisWeek: 0,
 };
 
 interface RequestBaseRow {
@@ -66,6 +71,8 @@ interface MediaRequestSqlRow extends RequestBaseRow {
 interface UserRequestSqlRow extends RequestBaseRow {
   title: string | null;
   year: number | null;
+  poster_server_id: string | null;
+  poster_thumb_path: string | null;
 }
 
 interface UserSummarySqlRow {
@@ -74,6 +81,7 @@ interface UserSummarySqlRow {
   approved_or_completed: number;
   decided: number;
   median_wait_ms: number | null;
+  available_this_week: number;
 }
 
 /** node-postgres hands raw-query timestamps back as strings, the same coercion the v2 history rows do. */
@@ -95,7 +103,9 @@ function toLensRow(row: RequestBaseRow): WatchedLensRow {
   };
 }
 
-function baseEntry(row: RequestBaseRow, lenses: RequestWatchedLenses) {
+// Without server activity a member sees whether they watched what they asked for, never
+// whether someone else did.
+function baseEntry(row: RequestBaseRow, lenses: RequestWatchedLenses, showOthers: boolean) {
   return {
     id: row.id,
     serverId: row.server_id,
@@ -107,7 +117,7 @@ function baseEntry(row: RequestBaseRow, lenses: RequestWatchedLenses) {
     seasons: row.seasons,
     is4k: row.is_4k,
     isAutoRequest: row.is_auto_request,
-    watchedState: lenses.anyone,
+    watchedState: showOthers ? lenses.anyone : lenses.requester,
     watchedStateRequester: lenses.requester,
   };
 }
@@ -127,11 +137,18 @@ function scopeFilter(scope: MediaScope): SQL {
 export interface ListMediaRequestsArgs {
   scope: MediaScope;
   serverIds: string[] | undefined;
+  rowScope: Scope;
 }
 
 export async function listMediaRequests(args: ListMediaRequestsArgs): Promise<MediaRequestEntry[]> {
-  const { scope, serverIds } = args;
-  const authFragment = buildMultiServerFragment(serverIds, 'rs.server_id');
+  const { scope, serverIds, rowScope } = args;
+  const showOthers = await seesServerActivity(rowScope);
+  const authFragment = scopedServerFragment(
+    serverIds,
+    rowScope,
+    'rs.server_id',
+    sql`mr.server_user_id`
+  );
   const result = await db.execute(sql`
     SELECT
       mr.id,
@@ -164,7 +181,7 @@ export async function listMediaRequests(args: ListMediaRequestsArgs): Promise<Me
   const states = await watchedStatesFor(rows.map(toLensRow), serverIds);
 
   return rows.map((row) => ({
-    ...baseEntry(row, states.get(row.id) ?? UNWATCHED_LENSES),
+    ...baseEntry(row, states.get(row.id) ?? UNWATCHED_LENSES, showOthers),
     requester: row.server_user_id
       ? {
           serverUserId: row.server_user_id,
@@ -187,6 +204,7 @@ export async function listMediaRequests(args: ListMediaRequestsArgs): Promise<Me
 
 export interface ListUserRequestsArgs {
   serverUserIds: string[];
+  showOthers: boolean;
   serverIds: string[] | undefined;
   page: number;
   pageSize: number;
@@ -200,6 +218,7 @@ export async function listUserRequests(args: ListUserRequestsArgs): Promise<User
 
   const ids = uuidArraySql(serverUserIds);
   const scoped = sql`mr.server_user_id = ANY(${ids})`;
+  const preferredPosterServerId = await getSetting('preferredPosterServerId');
 
   const [pageResult, summaryResult, completedResult] = await Promise.all([
     db.execute(sql`
@@ -217,10 +236,22 @@ export async function listUserRequests(args: ListUserRequestsArgs): Promise<User
         mr.seasons,
         mr.is_4k,
         mr.is_auto_request,
-        su.user_id AS lens_user_id
+        su.user_id AS lens_user_id,
+        poster.server_id AS poster_server_id,
+        poster.thumb_path AS poster_thumb_path
       FROM media_requests mr
       JOIN request_services rs ON rs.id = mr.service_id
       JOIN server_users su ON su.id = mr.server_user_id
+      LEFT JOIN LATERAL (
+        SELECT li.server_id, li.thumb_path
+        FROM library_items li
+        WHERE li.media_id = mr.media_id
+          AND li.removed_at IS NULL
+          AND li.thumb_path IS NOT NULL
+          ${buildMultiServerFragment(serverIds, 'li.server_id')}
+        ${buildPosterOrderFragment(preferredPosterServerId)}
+        LIMIT 1
+      ) poster ON true
       WHERE ${scoped}
       ORDER BY mr.requested_at DESC, mr.id
       LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
@@ -233,7 +264,10 @@ export async function listUserRequests(args: ListUserRequestsArgs): Promise<User
         count(*) FILTER (WHERE mr.status <> 'pending')::int AS decided,
         percentile_cont(0.5) WITHIN GROUP (
           ORDER BY EXTRACT(EPOCH FROM (mr.available_at - mr.requested_at)) * 1000
-        ) FILTER (WHERE mr.available_at IS NOT NULL) AS median_wait_ms
+        ) FILTER (WHERE mr.available_at IS NOT NULL) AS median_wait_ms,
+        count(*) FILTER (
+          WHERE mr.available_at >= now() - interval '7 days'
+        )::int AS available_this_week
       FROM media_requests mr
       WHERE ${scoped}
     `),
@@ -280,15 +314,17 @@ export async function listUserRequests(args: ListUserRequestsArgs): Promise<User
     completed: summaryRow?.completed ?? 0,
     neverWatched: completed.filter((row) => !started(states.get(row.id)?.requester)).length,
     medianWaitMs: medianWaitMs == null ? null : Number(medianWaitMs),
+    availableThisWeek: summaryRow?.available_this_week ?? 0,
   };
 
   const data: UserRequestEntry[] = rows.map((row) => ({
-    ...baseEntry(row, states.get(row.id) ?? UNWATCHED_LENSES),
+    ...baseEntry(row, states.get(row.id) ?? UNWATCHED_LENSES, args.showOthers),
     media: {
       mediaId: row.media_id,
       title: row.title,
       year: row.year,
       mediaType: row.media_type,
+      posterUrl: buildPosterUrl(row.poster_server_id, row.poster_thumb_path),
     },
   }));
 

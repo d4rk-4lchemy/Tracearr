@@ -11,9 +11,11 @@ import { Loader2 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
 import { Layout } from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { RoleRoute } from '@/components/auth/RoleRoute';
 import { RouteError } from '@/components/RouteError';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { BASE_URL } from '@/lib/basePath';
+import { STAFF_ROLES } from '@tracearr/shared';
 import { Login } from '@/pages/Login';
 import { PlexCallback } from '@/pages/PlexCallback';
 import { Setup } from '@/pages/Setup';
@@ -69,15 +71,17 @@ export const appRoutes = (
       errorElement={<RouteError />}
       element={
         <ProtectedRoute>
-          <Suspense
-            fallback={
-              <div className="flex h-svh items-center justify-center">
-                <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
-              </div>
-            }
-          >
-            <ApiDocs />
-          </Suspense>
+          <RoleRoute roles={STAFF_ROLES}>
+            <Suspense
+              fallback={
+                <div className="flex h-svh items-center justify-center">
+                  <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
+                </div>
+              }
+            >
+              <ApiDocs />
+            </Suspense>
+          </RoleRoute>
         </ProtectedRoute>
       }
     />
@@ -97,19 +101,12 @@ export const appRoutes = (
 
         {/* Stats routes */}
         <Route path="stats" element={<Navigate to="/stats/activity" replace />} />
+        <Route path="stats/me" element={<Navigate to="/?view=me" replace />} />
         <Route path="stats/activity" element={<StatsActivity />} />
         <Route path="stats/library" element={<Navigate to="/media" replace />} />
-        <Route path="stats/users" element={<StatsUsers />} />
-
-        {/* Performance routes */}
-        <Route path="stats/devices" element={<StatsDevices />} />
-        <Route path="stats/bandwidth" element={<StatsBandwidth />} />
 
         {/* Library routes - overview merged into Media, other pages untouched */}
         <Route path="library" element={<Navigate to="/media" replace />} />
-        <Route path="library/quality" element={<LibraryQuality />} />
-        <Route path="library/storage" element={<LibraryStorage />} />
-        <Route path="library/watch" element={<LibraryWatch />} />
 
         {/* Media routes */}
         <Route path="media" element={<MediaOverview />} />
@@ -121,19 +118,31 @@ export const appRoutes = (
 
         {/* Other routes */}
         <Route path="history/:sessionId?" element={<History />} />
-        <Route path="users" element={<Users />} />
-        <Route path="users/:id" element={<UserDetail />} />
-        <Route path="automations" element={<Automations />} />
-        <Route path="automations/new" element={<AutomationBuilderPage />} />
-        <Route path="automations/:id" element={<AutomationDetail />} />
-        <Route path="automations/:id/edit" element={<AutomationBuilderPage />} />
-        <Route path="violations" element={<Violations />} />
-        <Route path="violations/:id" element={<ViolationDetail />} />
         <Route path="requests" element={<Requests />} />
-        <Route path="settings/*" element={<Settings />} />
+
+        {/* Members get the same 404 a mistyped URL gets */}
+        <Route element={<RoleRoute roles={STAFF_ROLES} />}>
+          <Route path="stats/users" element={<StatsUsers />} />
+          <Route path="violations" element={<Violations />} />
+          <Route path="violations/:id" element={<ViolationDetail />} />
+          <Route path="stats/devices" element={<StatsDevices />} />
+          <Route path="stats/bandwidth" element={<StatsBandwidth />} />
+          <Route path="library/quality" element={<LibraryQuality />} />
+          <Route path="library/storage" element={<LibraryStorage />} />
+          <Route path="library/watch" element={<LibraryWatch />} />
+          <Route path="users" element={<Users />} />
+          <Route path="users/:id" element={<UserDetail />} />
+          <Route path="automations" element={<Automations />} />
+          <Route path="automations/new" element={<AutomationBuilderPage />} />
+          <Route path="automations/:id" element={<AutomationDetail />} />
+          <Route path="automations/:id/edit" element={<AutomationBuilderPage />} />
+          <Route path="settings/*" element={<Settings />} />
+        </Route>
 
         {/* Hidden debug page (owner only) */}
-        <Route path="debug" element={<Debug />} />
+        <Route element={<RoleRoute roles={['owner']} />}>
+          <Route path="debug" element={<Debug />} />
+        </Route>
 
         {/* Legacy redirects */}
         <Route path="analytics" element={<Navigate to="/stats/activity" replace />} />

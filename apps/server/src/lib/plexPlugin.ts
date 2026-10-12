@@ -8,36 +8,47 @@
  * session and sets the session cookie.
  *
  * Endpoints (mounted under /api/v1/auth via the plugin):
- * - POST /plex/initiate   -> { pinId, authUrl }
+ * - POST /plex/initiate   -> { handle, authUrl }
  * - POST /plex/check-pin   -> { authorized: false } | server-selection payload |
  *                             { authorized: true, user } with the session cookie
  * - POST /plex/connect     -> { authorized: true, user } with the session cookie
  *
- * Security: an auth_accounts plex row never grants login on its own. Login
- * requires plex_accounts.allowLogin (or the legacy-equivalent lookup), the
- * owner-only rule, and (via the session hook) assertUserCanLogin.
+ * Security: an auth_accounts plex row never grants login on its own. The owner
+ * signs in through plex_accounts.allowLogin or the legacy-equivalent lookup with
+ * Plex login usable; anyone else only through a synced Plex server account that
+ * passes canMemberLogin. The session hook runs assertUserCanLogin on both.
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { BetterAuthPlugin } from 'better-auth';
 import { createAuthEndpoint, APIError } from 'better-auth/api';
-import { setSessionCookie } from 'better-auth/cookies';
+import { expireCookie, type setSessionCookie } from 'better-auth/cookies';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc, desc, ne, or, sql } from 'drizzle-orm';
 import { REDIS_KEYS, type PlexDiscoveredServer } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { users, servers, serverUsers, plexAccounts, authAccounts } from '../db/schema.js';
 import { PlexClient } from '../services/mediaServer/index.js';
 import { testServerConnections } from '../services/mediaServer/plex/connectionTest.js';
 import { syncServer } from '../services/sync.js';
-import { getUserById, getUserByPlexAccountId } from '../services/userService.js';
+import { getOwnerUser, getUserById } from '../services/userService.js';
 import { getRedis } from './redisShared.js';
 import { invalidateServersCache } from '../jobs/poller/database.js';
-import { assertSignupAllowed, assertClaimCode } from './authGuards.js';
+import {
+  assertSignupAllowed,
+  assertClaimCode,
+  canMemberLogin,
+  liveServerAccount,
+  notPermitted,
+  refused,
+  usableLoginMethods,
+} from './authGuards.js';
+import { createSignedInSession, writeWithoutParams } from './memberLogin.js';
 
 const PLEX_TEMP_TOKEN_TTL = 10 * 60; // 10 minutes for server selection
+const PLEX_PIN_TTL = 15 * 60;
 
-const checkPinBody = z.object({ pinId: z.string(), claimCode: z.string().optional() });
+const checkPinBody = z.object({ handle: z.string(), claimCode: z.string().optional() });
 const initiateBody = z.object({ forwardUrl: z.url().optional() });
 const connectBody = z.object({
   tempToken: z.string(),
@@ -49,17 +60,9 @@ const connectBody = z.object({
 
 type PlexEndpointCtx = Parameters<typeof setSessionCookie>[0];
 
-/**
- * Create a Better Auth session for the given user and set the session cookie.
- * Replaces the JWT token issuance of the legacy Plex handlers. The session
- * `create` database hook still runs assertUserCanLogin as a final gate.
- */
-async function createPlexSession(ctx: PlexEndpointCtx, userId: string) {
-  const session = await ctx.context.internalAdapter.createSession(userId);
-  const user = await ctx.context.internalAdapter.findUserById(userId);
-  if (!user) throw new APIError('UNAUTHORIZED', { message: 'User not found' });
-  await setSessionCookie(ctx, { session, user });
-  return { session, user };
+interface PlexPinState {
+  pinId: string;
+  binding: string;
 }
 
 export interface PlexTokenMetadata {
@@ -84,36 +87,109 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0] | typeof db;
 export async function upsertPlexAuthAccount(
   userId: string,
   plexAccountId: string,
-  tokenInfo: PlexTokenMetadata,
+  tokenInfo: PlexTokenMetadata | null,
   tx: Tx = db
 ) {
-  const isJwt = tokenInfo.tokenKind === 'jwt';
+  const isJwt = tokenInfo?.tokenKind === 'jwt';
   const refreshToken = isJwt ? tokenInfo.refreshToken : null;
   const accessTokenExpiresAt = isJwt ? tokenInfo.expiresAt : null;
+  const accessToken = tokenInfo?.token ?? null;
 
-  await tx
-    .insert(authAccounts)
-    .values({
-      id: randomUUID(),
-      accountId: plexAccountId,
-      providerId: 'plex',
-      userId,
-      accessToken: tokenInfo.token,
-      refreshToken,
-      accessTokenExpiresAt,
-    })
-    .onConflictDoUpdate({
-      target: [authAccounts.providerId, authAccounts.accountId],
-      // Intentional downgrade on relogin: a legacy re-login nulls out
-      // refreshToken/accessTokenExpiresAt, since a legacy token has neither.
-      set: {
-        userId,
-        accessToken: tokenInfo.token,
-        refreshToken,
-        accessTokenExpiresAt,
-        updatedAt: new Date(),
-      },
-    });
+  await writeWithoutParams(
+    () =>
+      tx
+        .insert(authAccounts)
+        .values({
+          id: randomUUID(),
+          accountId: plexAccountId,
+          providerId: 'plex',
+          userId,
+          accessToken,
+          refreshToken,
+          accessTokenExpiresAt,
+        })
+        .onConflictDoUpdate({
+          target: [authAccounts.providerId, authAccounts.accountId],
+          // Intentional downgrade on relogin: a legacy re-login nulls out
+          // refreshToken/accessTokenExpiresAt, since a legacy token has neither.
+          set: {
+            userId,
+            accessToken,
+            refreshToken,
+            accessTokenExpiresAt,
+            updatedAt: new Date(),
+          },
+        }),
+    { userId }
+  );
+}
+
+/**
+ * The identity behind a plex.tv id outside plex_accounts: users.plex_account_id (legacy) or a
+ * Plex server account whose external id is the plex.tv id. Neither is unique per identity, so the
+ * owner wins and the rest fall in a fixed order. Constrained to Plex servers: the poller writes
+ * external_id from whatever an upstream reports, so a hostile Jellyfin or Emby server could
+ * otherwise plant one and claim the owner's identity.
+ */
+async function legacyPlexIdentity(plexTvId: string) {
+  const [identity] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(
+      or(
+        eq(users.plexAccountId, plexTvId),
+        sql`exists (
+          select 1 from server_users su join servers s on s.id = su.server_id
+          where su.user_id = ${users.id} and s.type = 'plex' and su.external_id = ${plexTvId}
+        )`
+      )
+    )
+    .orderBy(desc(sql`${users.role} = 'owner'`), asc(users.createdAt), asc(users.id))
+    .limit(1);
+  return identity ?? null;
+}
+
+/**
+ * A member's own synced Plex account proves membership (the sync sets removedAt when it ends), so
+ * no plex.tv call is made. The first identity, in a fixed order, whose account passes the gates
+ * signs in. The owner never signs in here: that is the owner branch, behind the Plex switch.
+ */
+async function finishPlexMemberLogin(
+  ctx: PlexEndpointCtx,
+  authResult: { id: string } & PlexTokenMetadata
+) {
+  const rows = await db
+    .select({ userId: serverUsers.userId, serverId: serverUsers.serverId })
+    .from(serverUsers)
+    .innerJoin(servers, eq(serverUsers.serverId, servers.id))
+    .innerJoin(users, eq(serverUsers.userId, users.id))
+    .where(
+      and(
+        eq(serverUsers.plexAccountId, authResult.id),
+        ne(users.role, 'owner'),
+        eq(servers.type, 'plex'),
+        liveServerAccount
+      )
+    )
+    .orderBy(asc(serverUsers.userId), asc(serverUsers.serverId));
+  let userId: string | null = null;
+  let notPermittedSomewhere = false;
+  for (const row of rows) {
+    const gate = await canMemberLogin(row.userId, row.serverId);
+    if (gate.ok) {
+      userId = row.userId;
+      break;
+    }
+    if (gate.reason === 'not-permitted') notPermittedSomewhere = true;
+  }
+  // plex.tv returned this account for the PIN, so a person the rule keeps out is told so.
+  if (!userId) throw notPermittedSomewhere ? notPermitted() : refused();
+
+  // A member's plex.tv token reaches their whole Plex account and Tracearr never uses it: the
+  // sync's view of their server accounts is what keeps them signed in.
+  await upsertPlexAuthAccount(userId, authResult.id, null);
+  const user = await createSignedInSession(ctx, userId);
+  return ctx.json({ authorized: true, user });
 }
 
 export const plexPlugin = () =>
@@ -125,23 +201,40 @@ export const plexPlugin = () =>
         { method: 'POST', body: initiateBody },
         async (ctx) => {
           const { pinId, authUrl } = await PlexClient.initiateOAuth(ctx.body.forwardUrl);
-          return ctx.json({ pinId, authUrl });
+          // Whoever polls a pin id plex.tv authorized gets that person's session, so the id never
+          // leaves the server and the handle that stands for it only works in this browser.
+          const handle = randomBytes(32).toString('hex');
+          const binding = randomBytes(32).toString('hex');
+          const pin: PlexPinState = { pinId, binding };
+          await getRedis().setex(REDIS_KEYS.PLEX_PIN(handle), PLEX_PIN_TTL, JSON.stringify(pin));
+          const cookie = ctx.context.createAuthCookie('plex_pin', { maxAge: PLEX_PIN_TTL });
+          ctx.setCookie(cookie.name, binding, cookie.attributes);
+          return ctx.json({ handle, authUrl });
         }
       ),
       plexCheckPin: createAuthEndpoint(
         '/plex/check-pin',
         { method: 'POST', body: checkPinBody },
         async (ctx) => {
-          const { pinId, claimCode } = ctx.body;
+          const { handle, claimCode } = ctx.body;
+          const key = REDIS_KEYS.PLEX_PIN(handle);
+          const stored = await getRedis().get(key);
+          const pin = stored ? (JSON.parse(stored) as PlexPinState) : null;
+          const cookie = ctx.context.createAuthCookie('plex_pin');
+          if (!pin || ctx.getCookie(cookie.name) !== pin.binding) {
+            return ctx.json({ authorized: false, expired: true });
+          }
           try {
-            const authResult = await PlexClient.checkOAuthPin(pinId);
+            const authResult = await PlexClient.checkOAuthPin(pin.pinId);
 
             if (!authResult) {
               return ctx.json({ authorized: false, message: 'PIN not yet authorized' });
             }
+            await getRedis().del(key);
+            expireCookie(ctx, cookie);
 
             // Priority 1: plex_accounts table (login-capable accounts only)
-            const plexAccount = await db
+            const [account] = await db
               .select({
                 id: plexAccounts.id,
                 userId: plexAccounts.userId,
@@ -156,21 +249,11 @@ export const plexPlugin = () =>
               )
               .limit(1);
 
-            if (plexAccount.length > 0) {
-              const account = plexAccount[0]!;
+            if (account) {
               const user = await getUserById(account.userId);
 
-              if (user) {
-                // Owner-only login gate: the session.create database hook
-                // (assertUserCanLogin) only enforces LOGIN_ROLES (owner/admin/viewer),
-                // not owner-only. This check and its counterpart below (the Priority
-                // 2/3 lookup) are the sole gate keeping a non-owner Plex account from
-                // logging in.
-                if (user.role !== 'owner') {
-                  throw new APIError('FORBIDDEN', {
-                    message: 'Only the owner can log in to this Tracearr instance.',
-                  });
-                }
+              if (user?.role === 'owner') {
+                if (!(await usableLoginMethods()).plex) throw refused();
 
                 // authResult.token may be a strong-PIN JWT (see PlexTokenMetadata).
                 // Only clients.plex.tv has been confirmed to accept a JWT here; PMS
@@ -178,21 +261,29 @@ export const plexPlugin = () =>
                 // real PMS before the JWT branch can ever fire - today
                 // initiateOAuth never sends a JWK, so tokenKind is always 'legacy'
                 // and this mirror only ever carries a legacy token.
-                await db
-                  .update(plexAccounts)
-                  .set({
-                    plexUsername: authResult.username,
-                    plexEmail: authResult.email,
-                    plexThumbnail: authResult.thumb,
-                    plexToken: authResult.token,
-                  })
-                  .where(eq(plexAccounts.id, account.id));
+                await writeWithoutParams(
+                  () =>
+                    db
+                      .update(plexAccounts)
+                      .set({
+                        plexUsername: authResult.username,
+                        plexEmail: authResult.email,
+                        plexThumbnail: authResult.thumb,
+                        plexToken: authResult.token,
+                      })
+                      .where(eq(plexAccounts.id, account.id)),
+                  { userId: user.id }
+                );
 
-                const refreshed = await db
-                  .update(servers)
-                  .set({ token: authResult.token, updatedAt: new Date() })
-                  .where(eq(servers.plexAccountId, account.id))
-                  .returning({ id: servers.id, name: servers.name });
+                const refreshed = await writeWithoutParams(
+                  () =>
+                    db
+                      .update(servers)
+                      .set({ token: authResult.token, updatedAt: new Date() })
+                      .where(eq(servers.plexAccountId, account.id))
+                      .returning({ id: servers.id, name: servers.name }),
+                  { userId: user.id }
+                );
                 if (refreshed.length > 0) invalidateServersCache();
 
                 if (refreshed.length > 0) {
@@ -219,44 +310,22 @@ export const plexPlugin = () =>
                   plexAccountId: account.id,
                 });
 
-                const { user: sessionUser } = await createPlexSession(ctx, user.id);
+                const sessionUser = await createSignedInSession(ctx, user.id);
                 return ctx.json({
                   authorized: true,
                   user: { id: sessionUser.id, username: authResult.username, role: 'owner' },
                 });
               }
+              if (user) return await finishPlexMemberLogin(ctx, authResult);
             }
 
-            // Priority 2: users.plexAccountId (legacy - migrate to plex_accounts)
-            let existingUser = await getUserByPlexAccountId(authResult.id);
+            // Priority 2 and 3: users.plexAccountId (legacy, migrated to plex_accounts below)
+            // and Plex server accounts
+            const legacy = await legacyPlexIdentity(authResult.id);
 
-            // Priority 3: server_users.externalId (server-synced users)
-            if (!existingUser) {
-              // Constrained to plex servers: authResult.id is a plex.tv account
-              // id, and the poller writes external_id from whatever an upstream
-              // reports, so a hostile Jellyfin/Emby server could otherwise plant
-              // one and claim the owner's identity.
-              const fallbackServerUsers = await db
-                .select({ userId: serverUsers.userId, serverType: servers.type })
-                .from(serverUsers)
-                .innerJoin(servers, eq(serverUsers.serverId, servers.id))
-                .where(eq(serverUsers.externalId, authResult.id))
-                .limit(10);
-              const plexRow = fallbackServerUsers.find((r) => r.serverType === 'plex');
-              if (plexRow) {
-                existingUser = await getUserById(plexRow.userId);
-              }
-            }
-
-            if (existingUser) {
-              const user = existingUser;
-
-              // Only the owner can log in
-              if (user.role !== 'owner') {
-                throw new APIError('FORBIDDEN', {
-                  message: 'Only the owner can log in to this Tracearr instance.',
-                });
-              }
+            if (legacy?.role === 'owner') {
+              if (!(await usableLoginMethods()).plex) throw refused();
+              const user = legacy;
 
               const existingPlexAccount = await db
                 .select({ id: plexAccounts.id })
@@ -265,15 +334,19 @@ export const plexPlugin = () =>
                 .limit(1);
 
               if (existingPlexAccount.length === 0) {
-                await db.insert(plexAccounts).values({
-                  userId: user.id,
-                  plexAccountId: authResult.id,
-                  plexUsername: authResult.username,
-                  plexEmail: authResult.email,
-                  plexThumbnail: authResult.thumb,
-                  plexToken: authResult.token,
-                  allowLogin: true,
-                });
+                await writeWithoutParams(
+                  () =>
+                    db.insert(plexAccounts).values({
+                      userId: user.id,
+                      plexAccountId: authResult.id,
+                      plexUsername: authResult.username,
+                      plexEmail: authResult.email,
+                      plexThumbnail: authResult.thumb,
+                      plexToken: authResult.token,
+                      allowLogin: true,
+                    }),
+                  { userId: user.id }
+                );
                 ctx.context.logger.info('Auto-migrated user to plex_accounts', {
                   userId: user.id,
                   plexAccountId: authResult.id,
@@ -297,14 +370,18 @@ export const plexPlugin = () =>
                 userId: user.id,
               });
 
-              const { user: sessionUser } = await createPlexSession(ctx, user.id);
+              const sessionUser = await createSignedInSession(ctx, user.id);
               return ctx.json({
                 authorized: true,
                 user: { id: sessionUser.id, username: authResult.username, role: 'owner' },
               });
             }
 
-            // No user - first-run setup. Fail closed if an owner already exists.
+            if (legacy || (await getOwnerUser())) {
+              return await finishPlexMemberLogin(ctx, authResult);
+            }
+
+            // No identity and no owner - first-run setup.
             await assertSignupAllowed();
 
             // Claim code guard before the outbound probes below: getServers and
@@ -379,15 +456,19 @@ export const plexPlugin = () =>
               throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user' });
             }
 
-            await db.insert(plexAccounts).values({
-              userId: newUser.id,
-              plexAccountId: authResult.id,
-              plexUsername: authResult.username,
-              plexEmail: authResult.email,
-              plexThumbnail: authResult.thumb,
-              plexToken: authResult.token,
-              allowLogin: true,
-            });
+            await writeWithoutParams(
+              () =>
+                db.insert(plexAccounts).values({
+                  userId: newUser.id,
+                  plexAccountId: authResult.id,
+                  plexUsername: authResult.username,
+                  plexEmail: authResult.email,
+                  plexThumbnail: authResult.thumb,
+                  plexToken: authResult.token,
+                  allowLogin: true,
+                }),
+              { userId: newUser.id }
+            );
 
             await upsertPlexAuthAccount(newUser.id, authResult.id, authResult);
 
@@ -398,14 +479,17 @@ export const plexPlugin = () =>
               role: 'owner',
             });
 
-            const { user: sessionUser } = await createPlexSession(ctx, newUser.id);
+            const sessionUser = await createSignedInSession(ctx, newUser.id);
             return ctx.json({
               authorized: true,
               user: { id: sessionUser.id, username: newUser.username, role: 'owner' },
             });
           } catch (error) {
             if (error instanceof APIError) throw error;
-            ctx.context.logger.error('Plex check-pin failed', { err: error });
+            // A query error carries its bound parameters, Plex tokens among them.
+            ctx.context.logger.error('Plex check-pin failed', {
+              error: error instanceof Error ? error.name : 'unknown',
+            });
             throw new APIError('INTERNAL_SERVER_ERROR', {
               message: 'Failed to check Plex authorization',
             });
@@ -473,29 +557,36 @@ export const plexPlugin = () =>
               .limit(1);
 
             if (server.length === 0) {
-              const inserted = await db
-                .insert(servers)
-                .values({
-                  name: serverName,
-                  type: 'plex',
-                  url: serverUri,
-                  token: plexToken,
-                  machineIdentifier: clientIdentifier,
-                })
-                .returning();
-              server = inserted;
+              server = await writeWithoutParams(
+                () =>
+                  db
+                    .insert(servers)
+                    .values({
+                      name: serverName,
+                      type: 'plex',
+                      url: serverUri,
+                      token: plexToken,
+                      machineIdentifier: clientIdentifier,
+                    })
+                    .returning(),
+                { plexAccountId }
+              );
             } else {
               const existingServer = server[0]!;
-              await db
-                .update(servers)
-                .set({
-                  token: plexToken,
-                  updatedAt: new Date(),
-                  ...(clientIdentifier && !existingServer.machineIdentifier
-                    ? { machineIdentifier: clientIdentifier }
-                    : {}),
-                })
-                .where(eq(servers.id, existingServer.id));
+              await writeWithoutParams(
+                () =>
+                  db
+                    .update(servers)
+                    .set({
+                      token: plexToken,
+                      updatedAt: new Date(),
+                      ...(clientIdentifier && !existingServer.machineIdentifier
+                        ? { machineIdentifier: clientIdentifier }
+                        : {}),
+                    })
+                    .where(eq(servers.id, existingServer.id)),
+                { plexAccountId }
+              );
             }
             invalidateServersCache();
 
@@ -516,18 +607,22 @@ export const plexPlugin = () =>
               throw new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to create user' });
             }
 
-            const [newPlexAccount] = await db
-              .insert(plexAccounts)
-              .values({
-                userId: newUser.id,
-                plexAccountId,
-                plexUsername,
-                plexEmail,
-                plexThumbnail: plexThumb,
-                plexToken,
-                allowLogin: true,
-              })
-              .returning();
+            const [newPlexAccount] = await writeWithoutParams(
+              () =>
+                db
+                  .insert(plexAccounts)
+                  .values({
+                    userId: newUser.id,
+                    plexAccountId,
+                    plexUsername,
+                    plexEmail,
+                    plexThumbnail: plexThumb,
+                    plexToken,
+                    allowLogin: true,
+                  })
+                  .returning(),
+              { userId: newUser.id }
+            );
 
             if (!newPlexAccount) {
               ctx.context.logger.error('Failed to create plex_account entry', {
@@ -587,14 +682,17 @@ export const plexPlugin = () =>
                 });
               });
 
-            const { user: sessionUser } = await createPlexSession(ctx, newUser.id);
+            const sessionUser = await createSignedInSession(ctx, newUser.id);
             return ctx.json({
               authorized: true,
               user: { id: sessionUser.id, username: newUser.username, role: 'owner' },
             });
           } catch (error) {
             if (error instanceof APIError) throw error;
-            ctx.context.logger.error('Plex connect failed', { err: error });
+            // A query error carries its bound parameters, Plex tokens among them.
+            ctx.context.logger.error('Plex connect failed', {
+              error: error instanceof Error ? error.name : 'unknown',
+            });
             throw new APIError('INTERNAL_SERVER_ERROR', {
               message: 'Failed to connect to Plex server',
             });

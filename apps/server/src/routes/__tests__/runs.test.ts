@@ -20,6 +20,7 @@ vi.mock('../../db/client.js', () => ({
 
 import { db } from '../../db/client.js';
 import { runRoutes } from '../runs.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 const RUN_ID = randomUUID();
 const AUTOMATION_ID = randomUUID();
@@ -89,14 +90,14 @@ const ownerUser: AuthUser = {
 const viewerUser: AuthUser = {
   userId: randomUUID(),
   username: 'viewer',
-  role: 'viewer',
+  role: 'admin',
   serverIds: ['srv-1'],
 };
 
 const strandedViewer: AuthUser = {
   userId: randomUUID(),
   username: 'stranded',
-  role: 'viewer',
+  role: 'admin',
   serverIds: [],
 };
 
@@ -106,6 +107,7 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(runRoutes, { prefix: '/runs' });
   return app;
 }

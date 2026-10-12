@@ -329,7 +329,7 @@ describe('dryRun', () => {
     const viewer: AuthUser = {
       userId: 'auth2',
       username: 'viewer',
-      role: 'viewer',
+      role: 'member',
       serverIds: ['srv1'],
     };
     const elsewhere = { ...session('sess-other', 'movie'), serverId: 'srv2' };

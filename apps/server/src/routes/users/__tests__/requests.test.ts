@@ -19,6 +19,7 @@ vi.mock('../../../services/requests/reads.js', () => ({ listUserRequests: vi.fn(
 import { listUserRequests } from '../../../services/requests/reads.js';
 import { resolveIdentityScopedServerUserIds } from '../queries.js';
 import { requestsRoutes } from '../requests.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 const SERVER_USER_ID = '55555555-5555-4555-8555-555555555555';
 const OTHER_SERVER_USER_ID = '66666666-6666-4666-8666-666666666666';
@@ -44,7 +45,7 @@ const entry: UserRequestEntry = {
   isAutoRequest: false,
   watchedState: 'partial',
   watchedStateRequester: 'partial',
-  media: { mediaId: null, title: 'X', year: 2020, mediaType: 'movie' },
+  media: { mediaId: null, title: 'X', year: 2020, mediaType: 'movie', posterUrl: null },
 };
 
 const emptyResponse: UserRequestsResponse = {
@@ -58,6 +59,7 @@ const emptyResponse: UserRequestsResponse = {
     completed: 0,
     neverWatched: 0,
     medianWaitMs: null,
+    availableThisWeek: 0,
   },
 };
 
@@ -67,6 +69,7 @@ async function buildTestApp(): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: { user?: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(requestsRoutes, { prefix: '/users' });
   return app;
 }
@@ -122,6 +125,7 @@ describe('User Requests Route', () => {
     expect(response.statusCode).toBe(200);
     expect(listUserRequests).toHaveBeenCalledWith({
       serverUserIds: [SERVER_USER_ID],
+      showOthers: true,
       serverIds: [SERVER_ID],
       page: 3,
       pageSize: 20,
@@ -160,10 +164,12 @@ describe('User Requests Route', () => {
       expect.anything(),
       authUser,
       SERVER_USER_ID,
-      'identity'
+      'identity',
+      'all'
     );
     expect(listUserRequests).toHaveBeenCalledWith({
       serverUserIds: [SERVER_USER_ID, OTHER_SERVER_USER_ID],
+      showOthers: true,
       serverIds: [SERVER_ID],
       page: 1,
       pageSize: 5,

@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import type { Settings } from '@tracearr/shared';
+import type { SettingsResponse } from '@tracearr/shared';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
+import { api, type SettingsUpdate } from '@/lib/api';
 
 // API Key queries and mutations
 export function useApiKey() {
@@ -57,17 +57,21 @@ export function useUpdateSettings(options: UpdateSettingsOptions = {}) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: Partial<Settings>) => api.settings.update(data),
+    mutationFn: (data: SettingsUpdate) => api.settings.update(data),
     onMutate: async (newSettings) => {
       await queryClient.cancelQueries({ queryKey: ['settings'] });
 
       // Snapshot the previous value
-      const previousSettings = queryClient.getQueryData<Settings>(['settings']);
+      const previousSettings = queryClient.getQueryData<SettingsResponse>(['settings']);
 
       // Optimistically update to the new value
-      queryClient.setQueryData<Settings>(['settings'], (old) => {
+      queryClient.setQueryData<SettingsResponse>(['settings'], (old) => {
         if (!old) return old;
-        return { ...old, ...newSettings };
+        return {
+          ...old,
+          ...newSettings,
+          loginMethods: { ...old.loginMethods, ...newSettings.loginMethods },
+        };
       });
 
       return { previousSettings };

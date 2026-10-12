@@ -1079,7 +1079,7 @@
                     },
                     "role": {
                       "type": "string",
-                      "enum": ["owner", "admin", "viewer", "member", "disabled", "pending"]
+                      "enum": ["owner", "admin", "member", "disabled", "pending"]
                     },
                     "trustScore": {
                       "type": "integer"

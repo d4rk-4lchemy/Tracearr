@@ -22,7 +22,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { role: 'user' } }),
+  useAuth: () => ({ user: { role: 'member' } }),
 }));
 
 vi.mock('@/hooks/useServer', () => ({

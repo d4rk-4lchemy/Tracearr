@@ -336,7 +336,7 @@ export function startImportWorker(): void {
 
   if (importQueue) {
     importQueue
-      .getJobs(['active', 'waiting', 'delayed', 'paused', 'prioritized'])
+      .getJobs(['active', 'waiting', 'delayed', 'prioritized'])
       .then((jobs) =>
         sweepJellystatUploads(
           new Set(

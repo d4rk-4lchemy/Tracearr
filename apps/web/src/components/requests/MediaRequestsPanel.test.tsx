@@ -5,6 +5,8 @@ import { initI18n } from '@tracearr/translations';
 import type { MediaRequestEntry } from '@tracearr/shared';
 import { MediaRequestsPanel } from './MediaRequestsPanel';
 
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { role: 'owner' } }) }));
+
 beforeAll(async () => {
   await initI18n({ lng: 'en' });
 });

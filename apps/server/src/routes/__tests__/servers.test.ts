@@ -113,7 +113,10 @@ vi.mock('../../services/historicalServers.js', () => ({
 
 vi.mock('../../services/settings.js', () => ({
   rearmImportedHistoryLink: vi.fn().mockResolvedValue(undefined),
+  getSetting: vi.fn().mockResolvedValue({ local: true, plex: true, oidc: true, member: true }),
 }));
+
+vi.mock('../../lib/revoke.js', () => ({ revokeUnlessStillIn: vi.fn() }));
 
 import type { SQL } from 'drizzle-orm';
 import { db } from '../../db/client.js';
@@ -132,7 +135,19 @@ import { sseManager } from '../../services/sseManager.js';
 import { getServerLiveStats, getServerResourceStats } from '../../services/serverLiveStats.js';
 import { syncServer } from '../../services/sync.js';
 import { readServerIdentity, sharesKnownUsers } from '../../services/serverIdentity.js';
+import { revokeUnlessStillIn } from '../../lib/revoke.js';
+vi.mock('../../lib/redisShared.js', () => ({
+  getRedis: () => ({
+    get: vi.fn().mockResolvedValue(
+      JSON.stringify({
+        serverUserIds: ['own-account'],
+        serverIds: ['11111111-1111-4111-8111-111111111111'],
+      })
+    ),
+  }),
+}));
 import { serverRoutes } from '../servers.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 // Mock global fetch for image proxy tests
 const mockFetch = vi.fn();
@@ -205,6 +220,7 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   // Mock jwtVerify for image routes
   app.decorateRequest('jwtVerify', async function (this: { user: AuthUser }) {
@@ -225,7 +241,7 @@ const ownerUser: AuthUser = {
 const viewerUser: AuthUser = {
   userId: randomUUID(),
   username: 'viewer',
-  role: 'viewer',
+  role: 'admin',
   serverIds: [randomUUID()],
 };
 
@@ -344,6 +360,44 @@ describe('Server Routes', () => {
       const body = response.json();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].id).toBe(guestServerId);
+    });
+
+    it('keeps Dispatcharr connection settings private in a member server selector', async () => {
+      const id = '11111111-1111-4111-8111-111111111111';
+      app = await buildTestApp({
+        userId: 'member-1',
+        username: 'member',
+        role: 'member',
+        serverIds: [id],
+      });
+      mockDbSelectWhere([
+        {
+          ...mockServer,
+          id,
+          name: 'Dispatcharr',
+          type: 'dispatcharr',
+          url: 'http://private-dispatcharr:9191',
+          token: 'dispatcharr-credentials:secret',
+          color: '#F97316',
+          allowMemberLogin: false,
+        },
+      ]);
+      const response = await app.inject({ url: '/servers' });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().data[0]).toMatchObject({
+        id,
+        name: 'Dispatcharr',
+        type: 'dispatcharr',
+      });
+      for (const field of [
+        'url',
+        'token',
+        'dispatcharrAuthMode',
+        'ignoreAnonymousStreams',
+        'allowMemberLogin',
+      ]) {
+        expect(response.json().data[0]).not.toHaveProperty(field);
+      }
     });
 
     it('returns Dispatcharr auth mode based on stored token format', async () => {
@@ -917,6 +971,49 @@ describe('Server Routes', () => {
   });
 
   describe('PATCH /servers/:id', () => {
+    // Off already is the resend after a revoke that failed; it must still revoke.
+    it.each([true, false])(
+      'persists member login off and revokes everyone on the server except allowed people (was on: %s)',
+      async (wasOn) => {
+        app = await buildTestApp(ownerUser);
+        const server = { ...mockServer, allowMemberLogin: wasOn };
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue([server]),
+        } as never);
+        const holders = vi.fn().mockResolvedValue([
+          { userId: 'u1', role: 'member', loginAccess: 'default' },
+          { userId: 'u2', role: 'admin', loginAccess: 'block' },
+          { userId: 'u3', role: 'member', loginAccess: 'allow' },
+        ]);
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnThis(),
+          innerJoin: vi.fn().mockReturnThis(),
+          where: holders,
+        } as never);
+        const update = mockDbUpdateReturning([{ ...server, allowMemberLogin: false }]);
+
+        const response = await app.inject({
+          method: 'PATCH',
+          url: `/servers/${server.id}`,
+          payload: { allowMemberLogin: false },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(update.set).toHaveBeenCalledWith({
+          allowMemberLogin: false,
+          updatedAt: expect.any(Date),
+        });
+        expect(response.json().allowMemberLogin).toBe(false);
+        expect(revokeUnlessStillIn).toHaveBeenCalledExactlyOnceWith(['u1', 'u2']);
+        // Holders whose account there is removed or disabled have nothing to lose
+        const condition = renderSql(holders.mock.calls[0]?.[0] as SQL).sql;
+        expect(condition).toContain('removed_at is null');
+        expect(condition).toContain('is_disabled =');
+      }
+    );
+
     it('updates server name only for owner', async () => {
       app = await buildTestApp(ownerUser);
 

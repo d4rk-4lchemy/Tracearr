@@ -19,6 +19,7 @@ import {
   createTestSession,
 } from '@tracearr/test-utils/factories';
 import { playsRoutes } from '../../src/routes/stats/plays.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 function ownerAuth(): AuthUser {
   return { userId: 'owner', username: 'owner', role: 'owner', serverIds: [] };
@@ -30,6 +31,7 @@ async function buildApp(): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = ownerAuth();
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(playsRoutes as never);
   return app;
 }

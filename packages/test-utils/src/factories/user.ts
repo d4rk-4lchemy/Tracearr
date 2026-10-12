@@ -14,7 +14,7 @@ export interface UserData {
   thumbnail?: string | null;
   passwordHash?: string | null;
   plexAccountId?: string | null;
-  role?: 'owner' | 'admin' | 'viewer' | 'member' | 'disabled' | 'pending';
+  role?: 'owner' | 'admin' | 'member' | 'disabled' | 'pending';
   aggregateTrustScore?: number;
   totalViolations?: number;
 }
@@ -130,7 +130,7 @@ function mapUserRow(row: Record<string, unknown>): CreatedUser {
     username: row.username as string,
     name: row.name as string | null,
     email: row.email as string | null,
-    role: row.role as 'owner' | 'admin' | 'viewer' | 'member' | 'disabled' | 'pending',
+    role: row.role as 'owner' | 'admin' | 'member' | 'disabled' | 'pending',
     aggregateTrustScore: row.aggregate_trust_score as number,
     totalViolations: row.total_violations as number,
     createdAt: row.created_at as Date,

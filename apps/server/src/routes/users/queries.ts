@@ -8,6 +8,7 @@ import { serverUsers } from '../../db/schema.js';
 import { buildServerAccessCondition, hasServerAccess } from '../../utils/serverFiltering.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
 import { localSessionSql } from '../../utils/localSession.js';
+import { assertInScope, type Scope } from '../../lib/scope.js';
 
 // Accept either the default db or a transaction context
 type DbOrTx = typeof defaultDb;
@@ -59,7 +60,8 @@ export async function resolveIdentityScopedServerUserIds(
   dbOrTx: DbOrTx,
   authUser: AuthUser,
   id: string,
-  scope: 'identity' | undefined
+  scope: 'identity' | undefined,
+  rowScope: Scope
 ): Promise<
   | { error: 'notFound' }
   | { error: 'forbidden' }
@@ -72,7 +74,7 @@ export async function resolveIdentityScopedServerUserIds(
     .limit(1);
 
   const serverUser = rows[0];
-  if (!serverUser) {
+  if (!serverUser || !assertInScope(rowScope, serverUser.id)) {
     return { error: 'notFound' };
   }
   if (!hasServerAccess(authUser, serverUser.serverId)) {
@@ -82,7 +84,9 @@ export async function resolveIdentityScopedServerUserIds(
     return { serverUser, ids: [id] };
   }
 
-  const ids = await resolveAccessibleServerUserIdsForIdentity(dbOrTx, authUser, serverUser.userId);
+  const ids = (
+    await resolveAccessibleServerUserIdsForIdentity(dbOrTx, authUser, serverUser.userId)
+  ).filter((accountId) => assertInScope(rowScope, accountId));
   // The anchor account is always part of its own identity and already passed
   // the access check above, so this can't come back empty in practice.
   return { serverUser, ids: ids.length > 0 ? ids : [id] };

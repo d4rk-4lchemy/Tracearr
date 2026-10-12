@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod';
-import { isValidTimezone } from './constants.js';
+import { LOGIN_ACCESS, isValidTimezone } from './constants.js';
 import { listDateBoundSchema, listSortSchema } from './listQuery.js';
 import { PLAYBACK_DECISIONS } from './playbackDecision.js';
 
@@ -107,6 +107,9 @@ export const booleanStringSchema = z
   .union([z.boolean(), z.string()])
   .transform((val) => (typeof val === 'boolean' ? val : val === 'true'));
 
+// Opt-in on the stats reads the personal dashboard uses: the viewer's own accounts, for every role.
+export const selfQuerySchema = z.object({ self: booleanStringSchema.default(false) });
+
 // IANA timezone string validation (e.g., 'America/Los_Angeles', 'Europe/London')
 // Uses shared isValidTimezone helper which validates via Intl API
 export const timezoneSchema = z
@@ -130,6 +133,16 @@ export const callbackSchema = z.object({
   token: z.string().optional(),
   serverType: serverTypeSchema,
 });
+
+export const memberPasswordSignInSchema = z.object({
+  serverId: z.uuid(),
+  username: z.string().min(1).max(255),
+  password: z.string().min(1).max(1024),
+});
+
+export const quickConnectInitiateSchema = z.object({ serverId: z.uuid() });
+
+export const quickConnectCheckSchema = z.object({ handle: z.string().regex(/^[0-9a-f]{64}$/) });
 
 const permissiveUrlSchema = z.string().refine(
   (val) => {
@@ -238,6 +251,7 @@ export const updateServerSchema = z
       .nullable(),
     publicUrl: publicUrlSchema.optional(),
     apiKey: z.string().trim().min(1).optional(),
+    allowMemberLogin: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     const hasToken = data.token !== undefined;
@@ -273,12 +287,13 @@ export const updateServerSchema = z
       data.password === undefined &&
       data.publicUrl === undefined &&
       data.apiKey === undefined &&
-      data.ignoreAnonymousStreams === undefined
+      data.ignoreAnonymousStreams === undefined &&
+      data.allowMemberLogin === undefined
     ) {
       ctx.addIssue({
         code: 'custom',
         message:
-          'At least one of name, url, color, publicUrl, apiKey, token, username, password, or ignoreAnonymousStreams is required',
+          'At least one of name, url, color, publicUrl, apiKey, token, username, password, ignoreAnonymousStreams, or allowMemberLogin is required',
       });
     }
   });
@@ -322,8 +337,15 @@ export const serverLocationsSchema = z
 // ============================================================================
 
 export const updateUserSchema = z.object({
-  allowGuest: z.boolean().optional(),
   trustScore: z.number().int().min(0).max(100).optional(),
+});
+
+// ?all on the login page lists every live server, not only those that let members sign in.
+export const setupStatusQuerySchema = z.object({ all: z.enum(['', '1', 'true']).optional() });
+
+export const updateUserAccessSchema = z.object({
+  loginAccess: z.enum(LOGIN_ACCESS).optional(),
+  role: z.enum(['admin', 'member']).optional(),
 });
 
 export const updateUserIdentitySchema = z.object({
@@ -394,6 +416,8 @@ export const userRosterFilterSchema = serverIdFilterSchema.extend({
    * view is narrowed to one server.
    */
   hasAccessTo: serverIdsQuerySchema,
+  /** Only people whose sign-in access is set to Allow or Block on their user page. */
+  signInOverride: booleanStringSchema.default(false),
   // Identity-level bounds: earliest account join, latest account activity.
   joinedAfter: listDateBoundSchema,
   joinedBefore: listDateBoundSchema,
@@ -795,7 +819,10 @@ const nullableStringSchema = (maxLength?: number) =>
 
 // Settings schemas
 export const updateSettingsSchema = z.object({
-  allowGuestAccess: z.boolean().optional(),
+  loginMethods: z
+    .object({ local: z.boolean(), plex: z.boolean(), oidc: z.boolean(), member: z.boolean() })
+    .partial()
+    .optional(),
   // Display preferences
   unitSystem: unitSystemSchema.optional(),
   // Poller settings
@@ -838,6 +865,8 @@ export const updateSettingsSchema = z.object({
   imagePrecacheEnabled: z.boolean().optional(),
   // Media browsing: server whose poster wins when a title exists on multiple servers
   preferredPosterServerId: z.string().uuid().nullable().optional(),
+  // Members see anonymous counts of other people's activity
+  memberServerActivity: z.boolean().optional(),
 });
 
 // ============================================================================
@@ -1323,6 +1352,7 @@ export type CreateServerInput = z.infer<typeof createServerSchema>;
 export type ReorderServersInput = z.infer<typeof reorderServersSchema>;
 export type UpdateServerInput = z.infer<typeof updateServerSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export type UpdateUserAccessInput = z.infer<typeof updateUserAccessSchema>;
 export type SessionQueryInput = z.infer<typeof sessionQuerySchema>;
 export type HistoryQueryInput = z.infer<typeof historyQuerySchema>;
 export type HistoryAggregatesQueryInput = z.infer<typeof historyAggregatesQuerySchema>;

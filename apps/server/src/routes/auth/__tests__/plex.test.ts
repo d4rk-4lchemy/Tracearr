@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import sensible from '@fastify/sensible';
 import cookie from '@fastify/cookie';
 import jwt from '@fastify/jwt';
@@ -159,9 +159,10 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
 
-  // Mock authenticate
-  app.decorate('authenticate', async (request: unknown) => {
+  app.decorate('requireOwner', async (request: unknown, reply: FastifyReply) => {
     (request as { user: AuthUser }).user = authUser;
+    if (authUser.role === 'member') return reply.notFound();
+    if (authUser.role !== 'owner') return reply.forbidden('Owner access required');
   });
 
   await app.register(plexRoutes);
@@ -177,8 +178,7 @@ async function buildUnauthenticatedTestApp(): Promise<FastifyInstance> {
     sign: { algorithm: 'HS256' },
   });
 
-  // Mock authenticate (required even though unauthenticated endpoints don't use it)
-  app.decorate('authenticate', async (request: unknown) => {
+  app.decorate('requireOwner', async (request: unknown) => {
     (request as { user: AuthUser }).user = ownerUser;
   });
 
@@ -209,7 +209,7 @@ const mockDbUser = {
 const viewerUser: AuthUser = {
   userId: randomUUID(),
   username: 'viewer',
-  role: 'viewer',
+  role: 'member',
   serverIds: [randomUUID()],
 };
 
@@ -326,7 +326,7 @@ describe('Plex Auth Routes', () => {
       vi.mocked(db.select).mockReturnValue(selectMock as never);
     };
 
-    it('returns 403 for non-owner users', async () => {
+    it('returns 404 for a member', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -334,7 +334,7 @@ describe('Plex Auth Routes', () => {
         url: '/plex/available-servers',
       });
 
-      expect(response.statusCode).toBe(403);
+      expect(response.statusCode).toBe(404);
     });
 
     it('returns hasPlexToken: false when no Plex accounts linked', async () => {
@@ -427,7 +427,15 @@ describe('Plex Auth Routes', () => {
   });
 
   describe('POST /plex/add-server', () => {
-    it('returns 403 for non-owner users', async () => {
+    it('answers a member 404 before it looks at the body', async () => {
+      app = await buildTestApp(viewerUser);
+
+      const response = await app.inject({ method: 'POST', url: '/plex/add-server', payload: {} });
+
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('returns 404 for a member', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -440,7 +448,7 @@ describe('Plex Auth Routes', () => {
         },
       });
 
-      expect(response.statusCode).toBe(403);
+      expect(response.statusCode).toBe(404);
     });
 
     it('returns 400 when no Plex accounts linked', async () => {
@@ -772,7 +780,7 @@ describe('Plex Auth Routes', () => {
       expect(body.connection.error.status).toBe(401);
     });
 
-    it('returns 403 for non-owner authenticated user (no tempToken)', async () => {
+    it('returns 404 for a member without a tempToken', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -781,7 +789,7 @@ describe('Plex Auth Routes', () => {
         payload: { uri: 'http://192.168.1.100:32400' },
       });
 
-      expect(response.statusCode).toBe(403);
+      expect(response.statusCode).toBe(404);
     });
 
     it('owner auth path uses fallback Plex token when no accountId provided', async () => {
@@ -1031,7 +1039,7 @@ describe('Plex Auth Routes', () => {
       vi.mocked(db.select).mockReturnValue(selectMock as never);
     }
 
-    it('returns 403 for non-owner users', async () => {
+    it('returns 404 for a member', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -1040,7 +1048,7 @@ describe('Plex Auth Routes', () => {
         payload: { pin: '12345' },
       });
 
-      expect(response.statusCode).toBe(403);
+      expect(response.statusCode).toBe(404);
       expect(reconcilePlexAccountToken).not.toHaveBeenCalled();
     });
 

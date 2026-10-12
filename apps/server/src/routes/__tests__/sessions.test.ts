@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { SQL } from 'drizzle-orm';
 import type { AuthUser } from '@tracearr/shared';
 import { createMockActiveSession } from '../../test/fixtures.js';
-import { renderSql } from '../../test/helpers.js';
+import { queryChain, renderSql } from '../../test/helpers.js';
 
 // Mock the database module before importing routes
 vi.mock('../../db/client.js', () => ({
@@ -41,6 +41,7 @@ vi.mock('../../services/termination.js', () => ({
 import { db } from '../../db/client.js';
 import { terminateSession } from '../../services/termination.js';
 import { sessionRoutes } from '../sessions.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 /**
  * Build a test Fastify instance with mocked auth and redis
@@ -56,6 +57,11 @@ async function buildTestApp(
   // Mock the authenticate decorator
   app.decorate('authenticate', async (request: any) => {
     request.user = authUser;
+  });
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: any, reply: any) => {
+    request.user = authUser;
+    if (authUser.role !== 'owner') return reply.forbidden('Owner access required');
   });
 
   // Mock Redis (cast to never for test mock)
@@ -75,11 +81,11 @@ function createOwnerUser(serverIds?: string[]): AuthUser {
   };
 }
 
-function createViewerUser(serverIds?: string[]): AuthUser {
+function createAdminUser(serverIds?: string[]): AuthUser {
   return {
     userId: randomUUID(),
-    username: 'viewer',
-    role: 'viewer',
+    username: 'admin',
+    role: 'admin',
     serverIds: serverIds ?? [randomUUID()],
   };
 }
@@ -349,7 +355,7 @@ describe('Session Routes', () => {
     it('should filter sessions by user serverIds', async () => {
       const serverId1 = randomUUID();
       const serverId2 = randomUUID();
-      const viewerUser = createViewerUser([serverId1]);
+      const adminUser = createAdminUser([serverId1]);
 
       const activeSessions = [
         createMockActiveSession({ serverId: serverId1 }),
@@ -359,7 +365,7 @@ describe('Session Routes', () => {
       // Mock the cache service response
       mockGetAllActiveSessions.mockResolvedValueOnce(activeSessions);
 
-      app = await buildTestApp(viewerUser);
+      app = await buildTestApp(adminUser);
 
       const response = await app.inject({
         method: 'GET',
@@ -388,6 +394,27 @@ describe('Session Routes', () => {
       expect(response.statusCode).toBe(200);
       const body = JSON.parse(response.body);
       expect(body.data).toHaveLength(0);
+    });
+
+    it('gives the owner only their own streams with self, and every stream without', async () => {
+      const ownAccount = randomUUID();
+      const streams = [
+        createMockActiveSession({ serverUserId: ownAccount }),
+        createMockActiveSession(),
+      ];
+      mockGetAllActiveSessions.mockResolvedValueOnce(streams).mockResolvedValueOnce(streams);
+      vi.mocked(db.select).mockReturnValue(
+        queryChain(vi.fn, [{ id: ownAccount, serverId: randomUUID() }])
+      );
+      app = await buildTestApp(createOwnerUser());
+
+      const self = (await app.inject({ url: '/sessions/active?self=true' })).json();
+      const all = (await app.inject({ url: '/sessions/active' })).json();
+
+      expect(self.data.map((s: { serverUserId: string }) => s.serverUserId)).toEqual([ownAccount]);
+      expect(self).not.toHaveProperty('othersActive');
+      expect(all.data).toHaveLength(2);
+      expect(all).not.toHaveProperty('othersActive');
     });
   });
 
@@ -578,13 +605,13 @@ describe('Session Routes', () => {
       const serverId = randomUUID();
       const sessionId = randomUUID();
       const differentServerId = randomUUID();
-      const viewerUser = createViewerUser([differentServerId]);
+      const adminUser = createAdminUser([differentServerId]);
 
       const redisMock = {
         get: vi.fn().mockResolvedValue(null),
       };
 
-      app = await buildTestApp(viewerUser, redisMock);
+      app = await buildTestApp(adminUser, redisMock);
 
       const dbSession = {
         id: sessionId,
@@ -657,7 +684,7 @@ describe('Session Routes', () => {
       const serverId = randomUUID();
       const sessionId = randomUUID();
       const differentServerId = randomUUID();
-      const viewerUser = createViewerUser([differentServerId]);
+      const adminUser = createAdminUser([differentServerId]);
 
       const activeSession = createMockActiveSession({ id: sessionId, serverId });
 
@@ -665,7 +692,7 @@ describe('Session Routes', () => {
         get: vi.fn().mockResolvedValue(JSON.stringify(activeSession)),
       };
 
-      app = await buildTestApp(viewerUser, redisMock);
+      app = await buildTestApp(adminUser, redisMock);
 
       // Should fall through to DB since server access denied
       mockDb.select.mockReturnValue({

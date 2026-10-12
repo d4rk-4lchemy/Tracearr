@@ -127,7 +127,7 @@ describe('merge routes', () => {
   });
 
   it('rejects non-owners', async () => {
-    app = await buildTestApp(createAuthUser('viewer'));
+    app = await buildTestApp(createAuthUser('member'));
 
     const response = await app.inject({
       method: 'POST',
@@ -231,7 +231,7 @@ describe('merge routes', () => {
     ['POST', '/users/merge-suggestions/dismissals', { userIds: [randomUUID(), randomUUID()] }],
     ['DELETE', `/users/merge-suggestions/dismissals/${randomUUID()}/${randomUUID()}`, undefined],
   ] as const)('rejects non-owners on %s %s', async (method, url, payload) => {
-    app = await buildTestApp(createAuthUser('viewer'));
+    app = await buildTestApp(createAuthUser('member'));
 
     const response = await app.inject({ method, url, payload });
 

@@ -3,14 +3,29 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '@tracearr/shared';
+import type { SQL } from 'drizzle-orm';
 import type { RequestsAnalyticsData } from '../../services/requests/analytics.js';
+import type * as WatchedLenses from '../../services/requests/watchedLenses.js';
+import { queryChain, renderSql } from '../../test/helpers.js';
+
+const { scopeRedis } = vi.hoisted(() => ({ scopeRedis: { get: vi.fn(), set: vi.fn() } }));
 
 vi.mock('../../services/requests/analytics.js', () => ({ getRequestsAnalytics: vi.fn() }));
 vi.mock('../../services/requests/store.js', () => ({ anyRequestServiceLinked: vi.fn() }));
+vi.mock('../../db/client.js', () => ({ db: { execute: vi.fn(), select: vi.fn() } }));
+vi.mock('../../lib/redisShared.js', () => ({ getRedis: () => scopeRedis }));
+vi.mock('../../services/settings.js', () => ({ getSetting: vi.fn(async () => null) }));
+vi.mock('../../services/requests/watchedLenses.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof WatchedLenses>()),
+  watchedStatesFor: vi.fn(async () => new Map()),
+}));
+
+import { db } from '../../db/client.js';
 
 import { getRequestsAnalytics } from '../../services/requests/analytics.js';
 import { anyRequestServiceLinked } from '../../services/requests/store.js';
 import { requestRoutes } from '../requests.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 const SERVER_ID = '0c1f1c5a-2b3d-4e5f-8a9b-0c1d2e3f4a5b';
 const OTHER_SERVER_ID = '1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a';
@@ -44,6 +59,7 @@ async function buildTestApp(
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', redis as never);
   await app.register(requestRoutes, { prefix: '/requests' });
   return app;
@@ -258,7 +274,7 @@ describe('GET /requests/analytics', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(getRequestsAnalytics).toHaveBeenCalledWith([]);
+    expect(getRequestsAnalytics).toHaveBeenCalledWith([], 'all', true);
   });
 
   it('serves the second request from cache', async () => {
@@ -280,5 +296,86 @@ describe('GET /requests/analytics', () => {
     await app.inject({ method: 'GET', url: `/requests/analytics?serverIds=${SERVER_ID}` });
 
     expect(getRequestsAnalytics).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('GET /requests/mine', () => {
+  const OWN = '22222222-2222-4222-8222-222222222222';
+  const member: AuthUser = { userId: 'u-member', username: 'mia', role: 'member', serverIds: [] };
+  const requestRow = {
+    id: 'req-1',
+    server_id: SERVER_ID,
+    media_id: 'media-1',
+    media_type: 'movie',
+    title: 'Arrival',
+    year: 2016,
+    status: 'completed',
+    requested_at: '2026-10-01T00:00:00.000Z',
+    available_at: '2026-10-05T00:00:00.000Z',
+    deleted_at: null,
+    seasons: null,
+    is_4k: false,
+    is_auto_request: false,
+    lens_user_id: 'u-member',
+    poster_server_id: SERVER_ID,
+    poster_thumb_path: '/library/metadata/1/thumb/1',
+  };
+  const summaryRow = {
+    total: 1,
+    completed: 1,
+    approved_or_completed: 1,
+    decided: 1,
+    median_wait_ms: 345_600_000,
+    available_this_week: 1,
+  };
+  // uuidArraySql inlines the account ids into the text, so the text is what names them.
+  const sentQueries = () =>
+    vi.mocked(db.execute).mock.calls.map((call) => renderSql(call[0] as SQL).sql);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.execute)
+      .mockResolvedValueOnce({ rows: [requestRow] } as never)
+      .mockResolvedValueOnce({ rows: [summaryRow] } as never)
+      .mockResolvedValueOnce({ rows: [] } as never);
+  });
+
+  it("lists only a member's own requests, with the poster through the image proxy", async () => {
+    scopeRedis.get.mockResolvedValue(
+      JSON.stringify({ serverUserIds: [OWN], serverIds: [SERVER_ID] })
+    );
+    const app = await buildTestApp(member, createSpyRedis());
+
+    const body = (await app.inject({ url: '/requests/mine?page=1&pageSize=4' })).json();
+
+    expect(sentQueries()).toHaveLength(3);
+    for (const text of sentQueries()) expect(text).toContain(`'${OWN}'::uuid`);
+    expect(body.data[0].media.posterUrl).toMatch(/^\/api\/v1\/images\/proxy\?/);
+    expect(body.data[0].media.posterUrl).toContain(`server=${SERVER_ID}`);
+    expect(body.summary.availableThisWeek).toBe(1);
+  });
+
+  it("lists the owner's own accounts, not everyone's", async () => {
+    const ownerAccount = '33333333-3333-4333-8333-333333333333';
+    vi.mocked(db.select).mockReturnValue(
+      queryChain(vi.fn, [{ id: ownerAccount, serverId: SERVER_ID }])
+    );
+    const app = await buildTestApp(owner(), createSpyRedis());
+
+    await app.inject({ url: '/requests/mine' });
+
+    expect(sentQueries()).toHaveLength(3);
+    for (const text of sentQueries()) expect(text).toContain(`'${ownerAccount}'::uuid`);
+  });
+
+  it('answers zeros without a query for a member with no accounts', async () => {
+    scopeRedis.get.mockResolvedValue(JSON.stringify({ serverUserIds: [], serverIds: [] }));
+    const app = await buildTestApp(member, createSpyRedis());
+
+    const body = (await app.inject({ url: '/requests/mine' })).json();
+
+    expect(body.total).toBe(0);
+    expect(body.summary.availableThisWeek).toBe(0);
+    expect(db.execute).not.toHaveBeenCalled();
   });
 });

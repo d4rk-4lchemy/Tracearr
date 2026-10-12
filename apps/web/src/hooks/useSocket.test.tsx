@@ -27,6 +27,7 @@ const fake = vi.hoisted(() => {
       return socket;
     }),
     emit: vi.fn(),
+    connect: vi.fn(),
     disconnect: vi.fn(),
   };
   return {
@@ -34,7 +35,7 @@ const fake = vi.hoisted(() => {
     handlers,
     webToast,
     io: vi.fn((_opts?: Record<string, unknown>) => socket),
-    auth: { isAuthenticated: true },
+    auth: { isAuthenticated: true, user: { role: 'owner' } },
     maintenance: { isInMaintenance: false, isUnreachable: false },
     destinations: { data: [webToast] as unknown[] | undefined },
   };
@@ -101,9 +102,11 @@ describe('SocketProvider', () => {
     fake.io.mockClear();
     fake.socket.on.mockClear();
     fake.socket.disconnect.mockClear();
+    fake.socket.connect.mockClear();
     fake.socket.recovered = false;
     fake.handlers.clear();
     fake.auth.isAuthenticated = true;
+    fake.auth.user.role = 'owner';
     fake.maintenance.isInMaintenance = false;
     fake.maintenance.isUnreachable = false;
     fake.webToast.enabled = true;
@@ -136,6 +139,52 @@ describe('SocketProvider', () => {
 
     await waitFor(() => expect(result.current.unhealthyServers).toEqual([]));
     expect(health).toHaveBeenCalledTimes(2);
+  });
+
+  it('reconnects after the server ends the socket and refetches who the user is now', () => {
+    const { invalidate } = setup();
+    fire('connect');
+
+    fire('disconnect', 'io server disconnect');
+
+    expect(fake.socket.connect).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['auth', 'me'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['servers'] });
+  });
+
+  it('leaves other disconnects to socket.io own retry', () => {
+    setup();
+    fire('connect');
+
+    fire('disconnect', 'transport close');
+
+    expect(fake.socket.connect).not.toHaveBeenCalled();
+  });
+
+  it('never asks a member for server health, connection state or destinations', () => {
+    fake.auth.user.role = 'member';
+    const health = vi.mocked(api.servers.health);
+    const status = vi.mocked(api.servers.connectionStatus);
+    health.mockClear();
+    status.mockClear();
+
+    setup();
+
+    expect(health).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+  });
+
+  it('does not ask a member for server health when the socket reconnects', () => {
+    fake.auth.user.role = 'member';
+    const health = vi.mocked(api.servers.health);
+    setup();
+    fire('connect');
+    health.mockClear();
+
+    fire('disconnect', 'transport close');
+    fire('connect');
+
+    expect(health).not.toHaveBeenCalled();
   });
 
   it('keeps the socket while the server is merely unreachable', () => {

@@ -31,6 +31,7 @@ import {
   type AutomationKind,
   type EmailRichTextDoc,
   type EmailSuppressionReason,
+  type LoginAccess,
   type MediaRequestStatus,
   type NewsletterImageMode,
   type NewsletterLinks,
@@ -116,6 +117,7 @@ export const servers = pgTable(
     locationSyncedVersion: integer('location_synced_version').notNull().default(0),
     // Set when Tracearr stops contacting this server; its history stays. Null while live.
     historicalAt: timestamp('historical_at', { withTimezone: true }),
+    allowMemberLogin: boolean('allow_member_login').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -181,17 +183,26 @@ export const users = pgTable(
     apiToken: varchar('api_token', { length: 60 }), // Public API key (format: trr_pub_<base64url>)
 
     // Access control - combined permission level and account status
-    // Can log in: 'owner', 'admin', 'viewer'
-    // Cannot log in: 'member' (default), 'disabled', 'pending'
+    // Can log in: owner always; admin and member as loginAccess allows
     role: varchar('role', { length: 20 })
       .notNull()
-      .$type<'owner' | 'admin' | 'viewer' | 'member' | 'disabled' | 'pending'>()
+      .$type<'owner' | 'admin' | 'member' | 'disabled' | 'pending'>()
       .default('member'),
+    // default follows the global member switch; allow and block override it for this person
+    loginAccess: varchar('login_access', { length: 10 })
+      .notNull()
+      .$type<LoginAccess>()
+      .default('default'),
 
     // better-auth admin plugin fields
     banned: boolean('banned'),
     banReason: text('ban_reason'),
     banExpires: timestamp('ban_expires', { withTimezone: true }),
+
+    // Tracearr sign-ins, counted when a session is created. Distinct from
+    // lastActivityAt below, which tracks media activity.
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    loginCount: integer('login_count').notNull().default(0),
 
     // Aggregated metrics (cached, recomputed in-app by recomputeIdentityAggregates
     // after every serverUsers.trustScore write and violation insert - no
@@ -216,7 +227,7 @@ export const users = pgTable(
     // usernames freely (distinct humans on different servers can collide).
     uniqueIndex('users_login_username_unique')
       .on(sql`lower(${table.username})`)
-      .where(sql`role IN ('owner', 'admin', 'viewer')`),
+      .where(sql`role IN ('owner', 'admin')`),
     uniqueIndex('users_email_unique').on(table.email),
     index('users_plex_account_id_idx').on(table.plexAccountId),
     index('users_role_idx').on(table.role),
@@ -308,6 +319,7 @@ export const serverUsers = pgTable(
 
     // Server-specific permissions
     isServerAdmin: boolean('is_server_admin').notNull().default(false),
+    isDisabled: boolean('is_disabled').notNull().default(false),
 
     // Per-server trust
     trustScore: integer('trust_score').notNull().default(100),
@@ -786,11 +798,11 @@ export const notificationPreferences = pgTable(
 
     // Event type toggles
     onViolationDetected: boolean('on_violation_detected').notNull().default(true),
-    onStreamStarted: boolean('on_stream_started').notNull().default(false),
-    onStreamStopped: boolean('on_stream_stopped').notNull().default(false),
+    onStreamStarted: boolean('on_stream_started').notNull().default(true),
+    onStreamStopped: boolean('on_stream_stopped').notNull().default(true),
     onConcurrentStreams: boolean('on_concurrent_streams').notNull().default(true),
     onNewDevice: boolean('on_new_device').notNull().default(true),
-    onTrustScoreChanged: boolean('on_trust_score_changed').notNull().default(false),
+    onTrustScoreChanged: boolean('on_trust_score_changed').notNull().default(true),
     onServerDown: boolean('on_server_down').notNull().default(true),
     onServerUp: boolean('on_server_up').notNull().default(true),
 
@@ -1184,7 +1196,7 @@ export const settings = pgTable('settings', {
 
 // ============================================================================
 // Better Auth tables (session storage, login providers, verification tokens)
-// Field set matches better-auth 1.6.23 codegen for core + username + admin + bearer.
+// Field set matches better-auth 1.7.7 codegen for core + username + admin + bearer.
 // ============================================================================
 
 export const authSessions = pgTable(

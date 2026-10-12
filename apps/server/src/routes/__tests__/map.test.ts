@@ -64,11 +64,11 @@ describe('GET /map/basemap', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('reports the archive as installed', async () => {
+  it('reports the archive as installed, without saying where it lives on disk', async () => {
     process.env.MAP_BASEMAP_PATH = join(dir, 'basemap.pmtiles');
     const res = await app.inject({ method: 'GET', url: '/map/basemap/status' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ installed: true, path: join(dir, 'basemap.pmtiles') });
+    expect(res.json()).toEqual({ installed: true });
   });
 
   it('reports the archive as missing when a mount has hidden it', async () => {

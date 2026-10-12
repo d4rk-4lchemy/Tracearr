@@ -28,6 +28,7 @@ import { createMockRedis } from '@tracearr/test-utils/mocks';
 import { db } from '../../src/db/client.js';
 import { libraryMediaRoute } from '../../src/routes/library/media.js';
 import { resolveMediaForItem } from '../../src/services/library/mediaResolutionService.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; redis: Redis }> {
   const app = Fastify({ logger: false });
@@ -35,6 +36,7 @@ async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; red
   app.decorate('authenticate', async (request: FastifyRequest) => {
     (request as FastifyRequest & { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   const redis = createMockRedis() as unknown as Redis;
   app.decorate('redis', redis);
   await app.register(libraryMediaRoute, { prefix: '/library' });
@@ -46,7 +48,7 @@ function ownerFor(serverIds: string[] = []): AuthUser {
 }
 
 function viewerFor(serverIds: string[]): AuthUser {
-  return { userId: randomUUID(), username: 'viewer', role: 'viewer', serverIds };
+  return { userId: randomUUID(), username: 'viewer', role: 'admin', serverIds };
 }
 
 async function refreshPlaysAggregate(): Promise<void> {

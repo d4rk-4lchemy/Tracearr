@@ -42,7 +42,7 @@ export const libraryStatsRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: LibraryStatsQueryInput }>(
     '/stats',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
       const query = libraryStatsQuerySchema.safeParse(request.query);
       if (!query.success) {

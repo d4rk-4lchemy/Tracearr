@@ -84,6 +84,12 @@ async function buildTestApp(authUser: AuthUser | null): Promise<FastifyInstance>
     }
   });
 
+  app.decorate('requireOwner', async (request: unknown) => {
+    if (authUser) {
+      (request as { user: AuthUser }).user = authUser;
+    }
+  });
+
   app.decorate('requireMobile', async (request: unknown) => {
     if (authUser) {
       (request as { user: AuthUser }).user = authUser;

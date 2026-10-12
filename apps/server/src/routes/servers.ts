@@ -3,7 +3,7 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify';
-import { eq, inArray, and } from 'drizzle-orm';
+import { eq, inArray, and, isNull } from 'drizzle-orm';
 import {
   createServerSchema,
   serverIdParamSchema,
@@ -16,7 +16,9 @@ import {
   type ServerDownReason,
 } from '@tracearr/shared';
 import { db } from '../db/client.js';
-import { servers, plexAccounts } from '../db/schema.js';
+import { servers, plexAccounts, serverUsers, users } from '../db/schema.js';
+import { nonOwnerMayLoginThrough } from '../lib/authGuards.js';
+import { revokeUnlessStillIn } from '../lib/revoke.js';
 import {
   PlexClient,
   JellyfinClient,
@@ -33,7 +35,7 @@ import { liveServerCondition, HISTORICAL_EDIT_MESSAGE } from '../services/liveSe
 import { enqueueLibrarySync, rebuildAutoSyncSchedules } from '../jobs/librarySyncQueue.js';
 import { publishServersChanged } from '../jobs/poller/database.js';
 import { readServerIdentity, sharesKnownUsers } from '../services/serverIdentity.js';
-import { rearmImportedHistoryLink } from '../services/settings.js';
+import { getSetting, rearmImportedHistoryLink } from '../services/settings.js';
 import { buildServerAccessCondition, hasServerAccess } from '../utils/serverFiltering.js';
 import { serverOrderBy } from '../utils/serverOrder.js';
 
@@ -128,11 +130,14 @@ async function verifyServerAccess(params: {
 }
 
 export const serverRoutes: FastifyPluginAsync = async (app) => {
+  const readServers = { preHandler: [app.requirePermission('servers', 'read')] };
+  const readMedia = { preHandler: [app.requirePermission('media', 'read')] };
+  const writeServers = { preHandler: [app.requirePermission('servers', 'write')] };
   /**
    * GET /servers - List connected servers
    * Returns all servers (without tokens) for the authenticated user
    */
-  app.get('/', { preHandler: [app.authenticate] }, async (request) => {
+  app.get('/', readMedia, async (request) => {
     const authUser = request.user;
 
     // Owners see all servers, guests only see their authorized servers
@@ -151,6 +156,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         version: servers.version,
         latestVersion: servers.latestVersion,
         historicalAt: servers.historicalAt,
+        allowMemberLogin: servers.allowMemberLogin,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
       })
@@ -176,6 +182,20 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    if (request.scope !== 'all') {
+      return {
+        data: serverList.map((s) => ({
+          id: s.id,
+          name: s.name,
+          type: s.type,
+          publicUrl: s.publicUrl,
+          machineIdentifier: s.machineIdentifier,
+          displayOrder: s.displayOrder,
+          color: s.color,
+          historicalAt: s.historicalAt,
+        })),
+      };
+    }
     return {
       data: serverList.map((server) => ({
         ...server,
@@ -190,7 +210,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * POST /servers - Add a new server
    * Encrypts the token before storage
    */
-  app.post('/', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/', writeServers, async (request, reply) => {
     const body = createServerSchema.safeParse(request.body);
     if (!body.success) {
       return reply.badRequest(body.error.issues[0]?.message ?? 'Invalid request body');
@@ -350,7 +370,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * - Validates that the clientIdentifier matches the server's machineIdentifier
    * - This prevents accidentally connecting Server A's config to Server B's URL
    */
-  app.patch('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.patch('/:id', writeServers, async (request, reply) => {
     const params = serverIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid server ID');
@@ -373,6 +393,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       color: newColor,
       publicUrl: newPublicUrl,
       apiKey: newApiKey,
+      allowMemberLogin: newAllowMemberLogin,
     } = body.data;
     const newUrl = bodyUrl !== undefined ? bodyUrl.replace(/\/$/, '') : undefined;
     const authUser = request.user;
@@ -433,7 +454,10 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       same(newColor, server.color) &&
       same(newPublicUrl, server.publicUrl) &&
       same(newIgnoreAnonymousStreams, server.ignoreAnonymousStreams) &&
-      same(newApiKey, server.token)
+      same(newApiKey, server.token) &&
+      same(newAllowMemberLogin, server.allowMemberLogin) &&
+      // Off again is how a revoke that failed gets retried.
+      newAllowMemberLogin !== false
     ) {
       return {
         id: server.id,
@@ -446,6 +470,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
           server.type === 'dispatcharr' ? getDispatcharrAuthMode(server.token) : undefined,
         ignoreAnonymousStreams: server.ignoreAnonymousStreams,
         historicalAt: server.historicalAt,
+        allowMemberLogin: server.allowMemberLogin,
         createdAt: server.createdAt,
         updatedAt: server.updatedAt,
       };
@@ -550,6 +575,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       color?: string | null;
       publicUrl?: string | null;
       machineIdentifier?: string;
+      allowMemberLogin?: boolean;
       updatedAt: Date;
     } = { updatedAt: new Date() };
     if (backfilledIdentity !== undefined) updatePayload.machineIdentifier = backfilledIdentity;
@@ -562,6 +588,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
     if (newColor !== undefined) updatePayload.color = newColor;
     if (newPublicUrl !== undefined) updatePayload.publicUrl = newPublicUrl;
     if (newApiKey !== undefined) updatePayload.token = newApiKey;
+    if (newAllowMemberLogin !== undefined) updatePayload.allowMemberLogin = newAllowMemberLogin;
 
     const updated = await db
       .update(servers)
@@ -577,6 +604,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
         ignoreAnonymousStreams: servers.ignoreAnonymousStreams,
         color: servers.color,
         historicalAt: servers.historicalAt,
+        allowMemberLogin: servers.allowMemberLogin,
         createdAt: servers.createdAt,
         updatedAt: servers.updatedAt,
       });
@@ -593,6 +621,29 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
       keyChanging ||
       (newIgnoreAnonymousStreams !== undefined &&
         newIgnoreAnonymousStreams !== server.ignoreAnonymousStreams);
+    if (newAllowMemberLogin === false) {
+      const [accounts, { member }] = await Promise.all([
+        db
+          .select({ userId: serverUsers.userId, role: users.role, loginAccess: users.loginAccess })
+          .from(serverUsers)
+          .innerJoin(users, eq(users.id, serverUsers.userId))
+          .where(
+            and(
+              eq(serverUsers.serverId, id),
+              isNull(serverUsers.removedAt),
+              eq(serverUsers.isDisabled, false)
+            )
+          ),
+        getSetting('loginMethods'),
+      ]);
+      // Anyone the rule still lets in, through this server or another way, keeps their session.
+      await revokeUnlessStillIn(
+        accounts
+          .filter((account) => !nonOwnerMayLoginThrough(account, member, false))
+          .map((account) => account.userId)
+      );
+    }
+
     await publishServersChanged();
 
     if (connectorConfigChanged) {
@@ -628,7 +679,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * PATCH /servers/reorder - Update server display order
    * Accepts array of { id, displayOrder } and updates all servers in a transaction
    */
-  app.patch('/reorder', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.patch('/reorder', writeServers, async (request, reply) => {
     const body = reorderServersSchema.safeParse(request.body);
     if (!body.success) {
       return reply.badRequest('Invalid request body');
@@ -689,7 +740,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * DELETE /servers/:id - Remove a server
    * Cascades to delete all related users, sessions, violations
    */
-  app.delete('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.delete('/:id', writeServers, async (request, reply) => {
     const params = serverIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid server ID');
@@ -727,7 +778,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * For Plex: Fetches users from Plex.tv including shared users
    * For Jellyfin: Fetches users from the server
    */
-  app.post('/:id/sync', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/:id/sync', writeServers, async (request, reply) => {
     const params = serverIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid server ID');
@@ -804,7 +855,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * POST /servers/:id/historical - Stop contacting a server (historical: true) or resume it.
    * Marking force-stops its streams; history, users and libraries stay.
    */
-  app.post('/:id/historical', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/:id/historical', writeServers, async (request, reply) => {
     const params = serverIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid server ID');
@@ -850,7 +901,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * On-demand endpoint for dashboard - data is not stored
    * Plex only (undocumented /statistics/resources endpoint). /live-stats covers every server type.
    */
-  app.get('/:id/statistics', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id/statistics', readServers, async (request, reply) => {
     const params = serverIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid server ID');
@@ -896,7 +947,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * the plugin reports), so multi-server dashboards fan out without
    * special-casing type.
    */
-  app.get('/:id/live-stats', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id/live-stats', readServers, async (request, reply) => {
     const params = serverIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid server ID');
@@ -947,7 +998,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * GET /servers/health - Get health status for all servers
    * Returns which servers are currently unreachable based on cached health state
    */
-  app.get('/health', { preHandler: [app.authenticate] }, async (request) => {
+  app.get('/health', readServers, async (request) => {
     const authUser = request.user;
 
     // Get all servers the user has access to
@@ -990,7 +1041,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
    * mirrored in Redis with a TTL — not persisted to the database. Servers with
    * no cached status are reported as polling (safe default).
    */
-  app.get('/connection-status', { preHandler: [app.authenticate] }, async (request) => {
+  app.get('/connection-status', readServers, async (request) => {
     const authUser = request.user;
 
     const serverList = await db

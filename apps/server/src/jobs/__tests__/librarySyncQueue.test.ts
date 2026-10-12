@@ -67,6 +67,7 @@ const mockQueueGetJobs = vi.fn().mockResolvedValue([]);
 const mockQueueClose = vi.fn().mockResolvedValue(undefined);
 const mockGetJobSchedulers = vi.fn().mockResolvedValue([]);
 const mockRemoveJobScheduler = vi.fn().mockResolvedValue(undefined);
+const mockUpsertJobScheduler = vi.fn().mockResolvedValue({ id: 'job-1' });
 
 vi.mock('bullmq', () => ({
   Queue: vi.fn().mockImplementation(function MockQueue() {
@@ -76,6 +77,7 @@ vi.mock('bullmq', () => ({
       close: mockQueueClose,
       getJobSchedulers: mockGetJobSchedulers,
       removeJobScheduler: mockRemoveJobScheduler,
+      upsertJobScheduler: mockUpsertJobScheduler,
       on: vi.fn(),
     };
   }),
@@ -332,11 +334,28 @@ describe('scheduleAutoSync - boot sync pending-job check', () => {
     await scheduleAutoSync();
 
     expect(mockDbServers).toHaveBeenCalledTimes(1);
-    expect(mockQueueAdd).toHaveBeenCalledWith(
-      'auto-sync-srv-1',
-      { serverId: 'srv-1', triggeredBy: 'scheduled' },
-      expect.objectContaining({ jobId: 'scheduled-srv-1' })
+    expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+      'scheduled-srv-1',
+      { pattern: '10 */12 * * *', tz: 'UTC' },
+      { name: 'auto-sync-srv-1', data: { serverId: 'srv-1', triggeredBy: 'scheduled' } }
     );
+  });
+
+  it('converts a BullMQ 5 schedule before reading servers, so it survives a failed read', async () => {
+    const legacyKey = '1f51c6da23a36cd0d3cb411d01b79122';
+    mockGetJobSchedulers.mockResolvedValue([
+      { key: legacyKey, name: 'auto-sync-srv-1', pattern: '10 */12 * * *', tz: 'UTC' },
+    ]);
+    mockDbServers.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(scheduleAutoSync()).rejects.toThrow('db down');
+
+    expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+      'scheduled-srv-1',
+      { pattern: '10 */12 * * *', tz: 'UTC' },
+      { name: 'auto-sync-srv-1', data: { serverId: 'srv-1', triggeredBy: 'scheduled' } }
+    );
+    expect(mockRemoveJobScheduler).toHaveBeenCalledWith(legacyKey);
   });
 
   it('rebuilds only the schedulers and never queues a boot sync', async () => {
@@ -345,12 +364,13 @@ describe('scheduleAutoSync - boot sync pending-job check', () => {
     await rebuildAutoSyncSchedules();
 
     expect(mockRemoveJobScheduler).toHaveBeenCalledWith('old');
-    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
-    expect(mockQueueAdd).toHaveBeenCalledWith(
-      'auto-sync-srv-1',
+    expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(1);
+    expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+      'scheduled-srv-1',
       expect.anything(),
       expect.anything()
     );
+    expect(mockQueueAdd).not.toHaveBeenCalled();
     expect(mockQueueGetJobs).not.toHaveBeenCalled();
   });
 
@@ -362,6 +382,7 @@ describe('scheduleAutoSync - boot sync pending-job check', () => {
     await scheduleAutoSync();
 
     expect(mockRemoveJobScheduler).toHaveBeenCalledTimes(2);
+    expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     expect(mockQueueAdd).not.toHaveBeenCalled();
   });
 

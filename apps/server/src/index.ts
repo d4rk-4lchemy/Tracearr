@@ -2,7 +2,6 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { config } from 'dotenv';
 import Fastify, { type FastifyInstance } from 'fastify';
-import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import sensible from '@fastify/sensible';
 import cookie from '@fastify/cookie';
@@ -14,6 +13,7 @@ import { Redis } from 'ioredis';
 import { API_BASE_PATH, API_V2_BASE_PATH, REDIS_KEYS, WS_EVENTS } from '@tracearr/shared';
 import { createBetterAuthHandler } from './lib/betterAuthRequest.js';
 import { getBasePath } from './lib/basePath.js';
+import { registerOriginPolicy, trustProxyFromEnv } from './lib/origins.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -47,7 +47,7 @@ import type {
 
 import authPlugin, { loadJwtRevokeSettings } from './plugins/auth.js';
 import redisPlugin, { connectRedis } from './plugins/redis.js';
-import { closeAuth } from './lib/auth.js';
+import { closeAuth, probeOidcAtStartup } from './lib/auth.js';
 import { authRoutes } from './routes/auth/index.js';
 import { setupRoutes } from './routes/setup.js';
 import { serverRoutes } from './routes/servers.js';
@@ -92,6 +92,7 @@ import {
 import { initializeEncryption, migrateToken, looksEncrypted } from './utils/crypto.js';
 import { publicApiRateLimitKey } from './utils/publicApiRateLimitKey.js';
 import { registerErrorHandler } from './utils/errors.js';
+import { REQUEST_LOG_REDACT } from './utils/logger.js';
 import { resolveWebAsset } from './utils/webRoot.js';
 import { geoipService } from './services/geoip.js';
 import { tailscaleService } from './services/tailscale.js';
@@ -124,7 +125,14 @@ import {
 import { startPluginUpdateChecker, stopPluginUpdateChecker } from './jobs/pluginUpdateChecker.js';
 import { startServerUpdateChecker, stopServerUpdateChecker } from './jobs/serverUpdateChecker.js';
 import { startLeaderLease, stopLeaderLease } from './services/leaderLease.js';
-import { initializeWebSocket, broadcastToSessions } from './websocket/index.js';
+import {
+  initializeWebSocket,
+  broadcastToSessions,
+  broadcastSessionEvent,
+  broadcastSessionStopped,
+  dropMobileDeviceSockets,
+  dropUserSockets,
+} from './websocket/index.js';
 import {
   initNotificationQueue,
   startNotificationWorker,
@@ -317,18 +325,17 @@ const BASE_PATH = getBasePath();
 // required secrets like BETTER_AUTH_SECRET are missing)
 // ============================================================================
 
-async function buildApp(options: { trustProxy?: boolean } = {}) {
+async function buildApp() {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
+      redact: REQUEST_LOG_REDACT,
       transport:
         process.env.NODE_ENV === 'development'
           ? { target: 'pino-pretty', options: { colorize: true } }
           : undefined,
     },
-    // Trust proxy if enabled in settings or via env var
-    // This respects X-Forwarded-For, X-Forwarded-Proto headers from reverse proxies
-    trustProxy: options.trustProxy ?? process.env.TRUST_PROXY === 'true',
+    trustProxy: trustProxyFromEnv(),
     // Strip basePath prefix from incoming URLs before routing.
     // All existing routes (/api/v1/..., /health, etc.) match without changes.
     // Fastify automatically stores the original URL as request.originalUrl.
@@ -380,10 +387,7 @@ async function buildApp(options: { trustProxy?: boolean } = {}) {
     crossOriginEmbedderPolicy: false,
     originAgentCluster: false,
   });
-  await app.register(cors, {
-    origin: process.env.CORS_ORIGIN || true,
-    credentials: true,
-  });
+  await registerOriginPolicy(app);
   await app.register(rateLimit, {
     max: 1000,
     timeWindow: '1 minute',
@@ -1251,18 +1255,30 @@ async function initializePostListen(app: FastifyInstance) {
       // Forward events to WebSocket clients
       switch (event) {
         case WS_EVENTS.SESSION_STARTED:
-          broadcastToSessions('session:started', data as ActiveSession);
+          broadcastSessionEvent('session:started', data as ActiveSession).catch((err: unknown) => {
+            app.log.error({ err }, 'Failed to broadcast session start');
+          });
           widgetSessions.started(data as ActiveSession);
           wakeMobileWidgets();
           break;
         case WS_EVENTS.SESSION_STOPPED:
-          broadcastToSessions('session:stopped', data as string);
+          broadcastSessionStopped(data as string).catch((err: unknown) => {
+            app.log.error({ err }, 'Failed to broadcast session stop');
+          });
           widgetSessions.stopped(data as string);
           wakeMobileWidgets();
           break;
         case WS_EVENTS.SESSION_UPDATED:
-          broadcastToSessions('session:updated', data as ActiveSession);
+          broadcastSessionEvent('session:updated', data as ActiveSession).catch((err: unknown) => {
+            app.log.error({ err }, 'Failed to broadcast session update');
+          });
           if (widgetSessions.updated(data as ActiveSession)) wakeMobileWidgets();
+          break;
+        case WS_EVENTS.USER_ACCESS_CHANGED:
+          dropUserSockets(data as string);
+          break;
+        case WS_EVENTS.MOBILE_DEVICE_REVOKED:
+          dropMobileDeviceSockets(data as string);
           break;
         case WS_EVENTS.VIOLATION_NEW:
           broadcastToSessions('violation:new', data as ViolationWithDetails);
@@ -1387,7 +1403,7 @@ async function initializePostListen(app: FastifyInstance) {
 
   // Log network settings status
   const networkSettings = await getNetworkSettings();
-  const envTrustProxy = process.env.TRUST_PROXY === 'true';
+  const envTrustProxy = trustProxyFromEnv() !== false;
   if (networkSettings.trustProxy && !envTrustProxy) {
     app.log.warn(
       'Trust proxy is enabled in settings but TRUST_PROXY env var is not set. ' +
@@ -1516,6 +1532,7 @@ async function start() {
     }
     // Initialize claim code for first-time setup security
     initializeClaimCode();
+    await probeOidcAtStartup();
 
     const app = await buildApp();
 

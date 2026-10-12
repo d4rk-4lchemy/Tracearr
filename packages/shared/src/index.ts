@@ -19,6 +19,7 @@ export type {
   ServerUserFullDetail,
   ViolationSummary,
   UserRole,
+  LoginAccess,
   AuthUser,
   SetupStatus,
   UserLocation,
@@ -59,6 +60,9 @@ export type {
   ViolationSessionInfo,
   // Stats
   DashboardStats,
+  MyStats,
+  MyTopTitleRow,
+  MyTopTitlesResponse,
   PlayStats,
   UserStats,
   LocationStats,
@@ -83,6 +87,8 @@ export type {
   ServerLiveStats,
   // Settings
   Settings,
+  SettingsResponse,
+  LoginMethods,
   UnitSystem,
   ImageCacheStatus,
   // Tailscale
@@ -137,6 +143,8 @@ export type {
   NotificationEventType,
   NotificationPreferences,
   RateLimitStatus,
+  PushEventPreference,
+  PushDeliveryStatus,
   NotificationPreferencesWithStatus,
   EncryptedPushPayload,
   PushNotificationPayload,
@@ -464,6 +472,9 @@ export {
   booleanStringSchema,
   // Auth
   loginSchema,
+  memberPasswordSignInSchema,
+  quickConnectInitiateSchema,
+  quickConnectCheckSchema,
   callbackSchema,
   // Server
   createServerSchema,
@@ -478,6 +489,8 @@ export {
   serverLocationsSchema,
   // User
   updateUserSchema,
+  updateUserAccessSchema,
+  setupStatusQuerySchema,
   updateUserIdentitySchema,
   userIdParamSchema,
   identityScopeQuerySchema,
@@ -495,6 +508,7 @@ export {
   sessionQuerySchema,
   historyQuerySchema,
   historyAggregatesQuerySchema,
+  selfQuerySchema,
   filterOptionsQuerySchema,
   sessionIdParamSchema,
   terminateSessionBodySchema,
@@ -717,6 +731,7 @@ export type {
   ReorderServersInput,
   UpdateServerInput,
   UpdateUserInput,
+  UpdateUserAccessInput,
   UpdateUserIdentityInput,
   IdentityScopeQuery,
   MergeUsersBody,
@@ -842,13 +857,24 @@ export {
   LEGACY_VERSION_SENTINEL,
   // Poster cache
   POSTER_IMAGE_SIZE,
+  LOGIN_ACCESS,
+  SIGN_IN_ERROR_CODES,
 } from './constants.js';
 
 // API error codes
 export { ErrorCodes, type ErrorCode } from './errors.js';
 
 // Role helper exports
-export { ROLE_PERMISSIONS, LOGIN_ROLES, canLogin, hasMinRole, isOwner, isActive } from './types.js';
+export {
+  ROLE_PERMISSIONS,
+  LOGIN_ROLES,
+  STAFF_ROLES,
+  canLogin,
+  hasMinRole,
+  isOwner,
+  isActive,
+  isStaff,
+} from './types.js';
 
 // Session constants
 export { MEDIA_TYPES, DEFAULT_STREAM_DETAILS } from './types.js';
@@ -870,7 +896,7 @@ export {
 } from './violations.js';
 
 // Media display utilities
-export { formatEpisodeLabel, type FormatEpisodeLabelOptions } from './media.js';
+export { formatEpisodeLabel, isDirectAvatarUrl, type FormatEpisodeLabelOptions } from './media.js';
 
 // Alphabet rail letters
 export { LETTER_RAIL_ALPHABET } from './catalogLetters.js';
@@ -936,6 +962,7 @@ export {
   buildMediaServerItemUrl,
   isPubliclyRoutableUrl,
   memberFacingUrl,
+  serverLinkBase,
   type MediaServerItemLinkInput,
 } from './mediaServerLinks.js';
 
@@ -947,6 +974,7 @@ export {
   createRequestServiceSchema,
   updateRequestServiceSchema,
   userRequestsQuerySchema,
+  myRequestsQuerySchema,
   requestsAnalyticsQuerySchema,
   requestsUnplayedQuerySchema,
   requestersQuerySchema,
@@ -968,6 +996,7 @@ export {
   type CreateRequestServiceInput,
   type UpdateRequestServiceInput,
   type UserRequestsQuery,
+  type MyRequestsQuery,
   type RequestOutcomeRow,
   type RequestUnplayedSort,
   type RequesterSort,

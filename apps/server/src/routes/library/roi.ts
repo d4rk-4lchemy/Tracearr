@@ -142,7 +142,7 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: LibraryRoiQueryInput }>(
     '/roi',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = libraryRoiQuerySchema.safeParse(request.query);
       if (!query.success) {

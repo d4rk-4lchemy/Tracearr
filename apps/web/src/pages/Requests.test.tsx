@@ -27,6 +27,10 @@ vi.mock('@/hooks/useServer', () => ({
   useServer: vi.fn(),
 }));
 
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({ user: { role: 'owner' } }),
+}));
+
 // Stub the funnel: the charts barrel drags in every Highcharts module.
 vi.mock('@/components/charts', () => ({
   RequestFunnelChart: ({ stages }: { stages: { name: string; value: number }[] }) => (

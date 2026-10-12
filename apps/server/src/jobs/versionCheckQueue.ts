@@ -7,7 +7,7 @@
 
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import type { Redis } from 'ioredis';
-import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { everyAligned, getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import {
   REDIS_KEYS,
@@ -199,15 +199,10 @@ export async function scheduleVersionChecks(): Promise<void> {
   }
 
   // Schedule a check every 6 hours (4 times per day)
-  await versionQueue.add(
-    'scheduled-check',
-    { type: 'check' },
-    {
-      repeat: {
-        every: CACHE_TTL.VERSION_CHECK * 1000, // 6 hours in milliseconds
-      },
-      jobId: 'version-check-repeatable',
-    }
+  await versionQueue.upsertJobScheduler(
+    'version-check-repeatable',
+    everyAligned(CACHE_TTL.VERSION_CHECK * 1000),
+    { name: 'scheduled-check', data: { type: 'check' } }
   );
 
   // Use a fresh startup job on every process start. A stable id can refer to a

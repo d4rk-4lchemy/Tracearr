@@ -13,6 +13,7 @@ import { sql } from 'drizzle-orm';
 import { locationStatsQuerySchema } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { scopeSessionsRaw } from '../../lib/scope.js';
 import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
 import { localSessionSql } from '../../utils/localSession.js';
 import { resolveDateRange } from './utils.js';
@@ -49,6 +50,7 @@ function buildUserFilterFragment(
 }
 
 export const locationsRoutes: FastifyPluginAsync = async (app) => {
+  const readMap = { preHandler: [app.requirePermission('map', 'read')] };
   /**
    * GET /locations - Geo data for stream map with filtering
    *
@@ -61,7 +63,7 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
    * - serverIds: Repeatable multi-server filter
    * - mediaType: Filter by movie/episode/track
    */
-  app.get('/locations', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/locations', readMap, async (request, reply) => {
     const query = locationStatsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -94,10 +96,12 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
     );
 
     // Build WHERE conditions for main query (all qualified with 's.' for sessions table)
+    const scoped = scopeSessionsRaw(request.scope, sql`s.server_user_id`);
     const conditions: ReturnType<typeof sql>[] = [
       sql`s.geo_lat IS NOT NULL`,
       sql`s.geo_lon IS NOT NULL`,
     ];
+    if (scoped) conditions.push(scoped);
 
     // Add date range filter (null start means "all time")
     if (dateRange.start) {
@@ -124,6 +128,7 @@ export const locationsRoutes: FastifyPluginAsync = async (app) => {
       sql`s.geo_lat IS NOT NULL`,
       sql`s.geo_lon IS NOT NULL`,
     ];
+    if (scoped) baseConditions.push(scoped);
 
     // Add date range filter for cascading filters
     if (dateRange.start) {

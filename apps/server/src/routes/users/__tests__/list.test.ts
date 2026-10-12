@@ -23,7 +23,18 @@ vi.mock('../../../db/client.js', () => ({
     select: vi.fn(),
     selectDistinct: vi.fn(),
     transaction: vi.fn(),
+    update: vi.fn(),
   },
+}));
+
+vi.mock('../../../lib/revoke.js', () => ({
+  revokeSessionsForUsers: vi.fn(),
+  refreshUserSessionSnapshots: vi.fn(),
+}));
+vi.mock('../../../websocket/index.js', () => ({ disconnectUserSockets: vi.fn() }));
+vi.mock('../../../services/settings.js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
+  getSetting: vi.fn(),
 }));
 
 vi.mock('../../../services/userService.js', async (importActual) => {
@@ -32,7 +43,10 @@ vi.mock('../../../services/userService.js', async (importActual) => {
 });
 
 import { db } from '../../../db/client.js';
+import { refreshUserSessionSnapshots, revokeSessionsForUsers } from '../../../lib/revoke.js';
+import { disconnectUserSockets } from '../../../websocket/index.js';
 import { recomputeIdentityAggregates } from '../../../services/userService.js';
+import { getSetting } from '../../../services/settings.js';
 import {
   listRoutes,
   buildUserRosterSql,
@@ -40,11 +54,13 @@ import {
   buildUserRosterCountQuery,
   buildUserRosterAccountIdQuery,
 } from '../list.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 const mockExecute = vi.mocked(db.execute);
 const mockSelect = vi.mocked(db.select);
 const mockSelectDistinct = vi.mocked(db.selectDistinct);
 const mockTransaction = vi.mocked(db.transaction);
+const mockUpdate = vi.mocked(db.update);
 const mockRecompute = vi.mocked(recomputeIdentityAggregates);
 
 function normalize(text: string): string {
@@ -56,7 +72,7 @@ function owner(): AuthUser {
 }
 
 function filters(overrides: Partial<UserRosterFilters> = {}): UserRosterFilters {
-  return { includeRemoved: false, ...overrides };
+  return { includeRemoved: false, signInOverride: false, ...overrides };
 }
 
 function pageSql(
@@ -194,6 +210,15 @@ describe('roster date bounds', () => {
 // Account scope
 // ============================================================================
 
+describe('roster signInOverride', () => {
+  it('keeps only identities set to Allow or Block', () => {
+    const { text } = pageSql(filters({ signInOverride: true }));
+
+    expect(text).toContain("u.login_access <> 'default'");
+    expect(pageSql(filters()).text).not.toContain('u.login_access <>');
+  });
+});
+
 describe('roster hasAccessTo', () => {
   it('requires an active account on every listed server, not any of them', () => {
     const plex = randomUUID();
@@ -314,6 +339,11 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: any) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: any, reply: any) => {
+    request.user = authUser;
+    if (authUser.role !== 'owner') return reply.forbidden('Owner access required');
+  });
   await app.register(listRoutes, { prefix: '/users' });
   return app;
 }
@@ -346,6 +376,9 @@ describe('GET /users', () => {
             userId,
             identityName: 'Robert',
             role: 'member',
+            loginAccess: 'allow',
+            lastLoginAt: activeAt,
+            loginCount: 3,
             passwordHash: null,
             identityPlexAccountId: null,
             identityTrustScore: 72,
@@ -399,6 +432,9 @@ describe('GET /users', () => {
       identityName: 'Robert',
       identityTrustScore: 72,
       trustScore: 80,
+      loginAccess: 'allow',
+      lastLoginAt: '2024-06-02T14:29:35.040Z',
+      loginCount: 3,
       loginCapable: true,
       joinedAt: '2023-01-05T00:00:00.000Z',
       lastActivityAt: '2024-06-02T14:29:35.040Z',
@@ -498,5 +534,145 @@ describe('POST /users/bulk/reset-trust', () => {
       'FROM server_users su INNER JOIN users u ON u.id = su.user_id'
     );
     expect(normalize(text)).not.toContain('LATERAL');
+  });
+});
+
+describe('PATCH /users/:id sign-in access', () => {
+  let app: FastifyInstance;
+  const serverUser = {
+    id: randomUUID(),
+    userId: randomUUID(),
+    serverId: randomUUID(),
+    trustScore: 100,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUpdate.mockReturnValue(thenableChain([serverUser]));
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  function identity(role: string, loginAccess = 'default', memberSwitch = true) {
+    mockSelect
+      .mockReturnValueOnce(thenableChain([serverUser]))
+      .mockReturnValueOnce(thenableChain([{ role, loginAccess }]));
+    vi.mocked(getSetting).mockResolvedValue({
+      local: true,
+      plex: true,
+      oidc: true,
+      member: memberSwitch,
+    } as never);
+  }
+
+  async function patch(payload: Record<string, unknown>) {
+    return app.inject({ method: 'PATCH', url: `/users/${serverUser.id}`, payload });
+  }
+
+  function expectRevoked() {
+    expect(revokeSessionsForUsers).toHaveBeenCalledExactlyOnceWith([serverUser.userId]);
+    expect(disconnectUserSockets).not.toHaveBeenCalled();
+  }
+
+  function expectReconnectOnly() {
+    expect(revokeSessionsForUsers).not.toHaveBeenCalled();
+    expect(disconnectUserSockets).toHaveBeenCalledExactlyOnceWith(serverUser.userId);
+  }
+
+  it('writes the access and revokes when a person is blocked', async () => {
+    app = await buildTestApp(owner());
+    identity('member', 'default', true);
+
+    const response = await patch({ loginAccess: 'block' });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockUpdate.mock.results[0]?.value.set).toHaveBeenCalledWith(
+      expect.objectContaining({ loginAccess: 'block' })
+    );
+    expectRevoked();
+  });
+
+  it('revokes when allow goes back to default while the global switch is off', async () => {
+    app = await buildTestApp(owner());
+    identity('member', 'allow', false);
+
+    expect((await patch({ loginAccess: 'default' })).statusCode).toBe(200);
+    expectRevoked();
+  });
+
+  it('only reconnects when allow goes back to default while the global switch is on', async () => {
+    app = await buildTestApp(owner());
+    identity('member', 'allow', true);
+
+    expect((await patch({ loginAccess: 'default' })).statusCode).toBe(200);
+    expectReconnectOnly();
+  });
+
+  it('only reconnects when a person is allowed', async () => {
+    app = await buildTestApp(owner());
+    identity('member', 'default', false);
+
+    expect((await patch({ loginAccess: 'allow' })).statusCode).toBe(200);
+    expectReconnectOnly();
+  });
+
+  it('does nothing to sessions when the access is unchanged', async () => {
+    app = await buildTestApp(owner());
+    identity('member', 'allow', false);
+
+    expect((await patch({ loginAccess: 'allow' })).statusCode).toBe(200);
+    expect(revokeSessionsForUsers).not.toHaveBeenCalled();
+    expect(disconnectUserSockets).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a Block', { loginAccess: 'block' }, 'block'],
+    ['a demotion', { role: 'member' }, 'allow'],
+  ])('revokes again when %s is resent after a revoke that failed', async (_label, body, stored) => {
+    app = await buildTestApp(owner());
+    identity('member', stored, true);
+
+    expect((await patch(body)).statusCode).toBe(200);
+    expectRevoked();
+  });
+
+  it('refuses an access value outside allow, block and default', async () => {
+    app = await buildTestApp(owner());
+
+    expect((await patch({ loginAccess: 'sometimes' })).statusCode).toBe(400);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('revokes the identity when an admin becomes a member', async () => {
+    app = await buildTestApp(owner());
+    identity('admin', 'allow');
+
+    const response = await patch({ role: 'member' });
+
+    expect(response.statusCode).toBe(200);
+    expectRevoked();
+  });
+
+  it('refreshes the session snapshot and drops the sockets when a member becomes an admin', async () => {
+    app = await buildTestApp(owner());
+    identity('member', 'default');
+
+    const response = await patch({ loginAccess: 'allow', role: 'admin' });
+
+    expect(response.statusCode).toBe(200);
+    expect(refreshUserSessionSnapshots).toHaveBeenCalledExactlyOnceWith(serverUser.userId);
+    expectReconnectOnly();
+  });
+
+  it("refuses to change the owner's access", async () => {
+    app = await buildTestApp(owner());
+    identity('owner');
+
+    const response = await patch({ loginAccess: 'block' });
+
+    expect(response.statusCode).toBe(400);
+    expect(revokeSessionsForUsers).not.toHaveBeenCalled();
   });
 });

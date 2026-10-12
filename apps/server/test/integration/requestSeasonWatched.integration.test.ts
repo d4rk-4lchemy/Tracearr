@@ -123,7 +123,7 @@ describe('a show request is watched only when the requested seasons are', () => 
     const scope = await buildMediaScope(canonical);
     if (!scope) throw new Error('show media row has no scope');
 
-    const entries = await listMediaRequests({ scope, serverIds: [server.id] });
+    const entries = await listMediaRequests({ scope, serverIds: [server.id], rowScope: 'all' });
     const bySeason = new Map(entries.map((e) => [e.seasons?.[0]?.seasonNumber ?? -1, e] as const));
 
     expect(bySeason.get(1)?.watchedStateRequester).toBe('watched');

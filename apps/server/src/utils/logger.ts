@@ -6,6 +6,22 @@
  * logging services.
  */
 
+/** Applied to every Fastify request log, so a credential in a request never reaches a log line. */
+export const REQUEST_LOG_REDACT = {
+  paths: [
+    'req.headers.authorization',
+    'req.headers.cookie',
+    'req.headers["x-emby-authorization"]',
+    'req.headers["x-emby-token"]',
+    'req.body.password',
+    'req.body.Pw',
+    'req.body.token',
+    'req.body.secret',
+    'req.body.accessToken',
+  ],
+  censor: '[redacted]',
+};
+
 export interface Logger {
   debug: (message: string, context?: Record<string, unknown>) => void;
   info: (message: string, context?: Record<string, unknown>) => void;

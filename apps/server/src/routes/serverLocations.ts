@@ -10,7 +10,9 @@ import { isCountryCode } from '../utils/country.js';
 import { firstIssueMessage } from '../utils/zod.js';
 
 export const serverLocationRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/:id/locations', { preHandler: [app.authenticate] }, async (request, reply) => {
+  const readServers = { preHandler: [app.requirePermission('servers', 'read')] };
+  const writeServers = { preHandler: [app.requirePermission('servers', 'write')] };
+  app.get('/:id/locations', readServers, async (request, reply) => {
     if (request.user.role !== 'owner') {
       return reply.forbidden('Only server owners can view server locations');
     }
@@ -22,7 +24,7 @@ export const serverLocationRoutes: FastifyPluginAsync = async (app) => {
     return locations;
   });
 
-  app.put('/:id/locations', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.put('/:id/locations', writeServers, async (request, reply) => {
     if (request.user.role !== 'owner') {
       return reply.forbidden('Only server owners can update server locations');
     }

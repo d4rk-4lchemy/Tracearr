@@ -44,7 +44,7 @@ const owner: AuthUser = { userId: randomUUID(), username: 'admin', role: 'owner'
 async function build(): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
-  app.decorate('authenticate', async (request: unknown) => {
+  app.decorate('requireOwner', async (request: unknown) => {
     (request as { user: AuthUser }).user = owner;
   });
   await app.register(jellyfinRoutes);

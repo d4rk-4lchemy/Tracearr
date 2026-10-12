@@ -80,6 +80,12 @@ export function activeFilterCount(filters: PersistedGridFilters): number {
   ].filter((value) => value !== undefined).length;
 }
 const SORT_OPTIONS: CatalogSort[] = ['title', 'added', 'year', 'plays', 'watch_time', 'viewers'];
+const POPULARITY_SORTS: CatalogSort[] = ['plays', 'watch_time', 'viewers'];
+
+/** A popularity sort saved in this browser reads as Title wherever those sorts are hidden. */
+export function visibleSort(sort: CatalogSort, hidePopularitySorts: boolean): CatalogSort {
+  return hidePopularitySorts && POPULARITY_SORTS.includes(sort) ? DEFAULT_GRID_FILTERS.sort : sort;
+}
 const WATCHED_OPTIONS: WatchedState[] = ['unwatched', 'partial', 'watched'];
 
 /** Server-reported library mediaType tokens, lowercased: Plex uses the
@@ -251,6 +257,8 @@ interface CatalogToolbarProps {
   totalFileSize: number | undefined;
   /** The letter-scrubber Select, rendered inside the mobile filter Sheet only. */
   mobileScrubber?: ReactNode;
+  /** Members don't get server-wide popularity orderings. */
+  hidePopularitySorts?: boolean;
   className?: string;
 }
 
@@ -270,12 +278,16 @@ export function CatalogToolbar({
   totalItems,
   totalFileSize,
   mobileScrubber,
+  hidePopularitySorts = false,
   className,
 }: CatalogToolbarProps) {
   const { t } = useTranslation(['pages', 'common']);
   const isMobile = useIsMobile();
   const [searchInput, setSearchInput] = useState(search);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const sortOptions = hidePopularitySorts
+    ? SORT_OPTIONS.filter((sort) => !POPULARITY_SORTS.includes(sort))
+    : SORT_OPTIONS;
 
   // Debounced commits below merge onto this instead of the `filters` closure
   // captured when their timer was scheduled, so a filter change elsewhere
@@ -846,7 +858,7 @@ export function CatalogToolbar({
 
         <div className="space-y-1.5">
           <Select
-            value={filters.sort}
+            value={visibleSort(filters.sort, hidePopularitySorts)}
             onValueChange={(value) => onFiltersChange({ ...filters, sort: value as CatalogSort })}
           >
             <SelectTrigger
@@ -856,7 +868,7 @@ export function CatalogToolbar({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SORT_OPTIONS.map((sort) => (
+              {sortOptions.map((sort) => (
                 <SelectItem key={sort} value={sort}>
                   {t(`media.grid.toolbar.sort.${sort}`)}
                 </SelectItem>

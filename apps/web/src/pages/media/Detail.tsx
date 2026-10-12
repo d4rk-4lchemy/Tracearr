@@ -17,11 +17,12 @@ import {
   useMediaRequests,
   findCachedMediaStub,
 } from '@/hooks/queries';
+import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
 import { SessionDetailSheet } from '@/components/history/SessionDetailSheet';
 import { DetailHero } from '@/components/media-browse/DetailHero';
 import { CopiesPanel } from '@/components/media-browse/CopiesPanel';
-import { KpiStrip } from '@/components/media-browse/KpiStrip';
+import { KpiStrip, MemberKpiStrip } from '@/components/media-browse/KpiStrip';
 import { WatchersTable } from '@/components/media-browse/WatchersTable';
 import { SeasonHeatPanel } from '@/components/media-browse/SeasonHeatPanel';
 import { PlatformPanel } from '@/components/media-browse/PlatformPanel';
@@ -42,6 +43,8 @@ const HISTORY_ROW_HEIGHT = 56;
 // Shared by the header row and every virtualized data row so both size their
 // columns identically - date, user, content (flexible), server, duration.
 const HISTORY_GRID_TEMPLATE = '160px 160px minmax(200px,1fr) 140px 100px';
+/** A member's rows are all their own, so the User column goes */
+const HISTORY_GRID_TEMPLATE_NO_USER = '160px minmax(200px,1fr) 140px 100px';
 const HISTORY_HEAD_CLASS = 'text-foreground h-10 px-2 font-medium whitespace-nowrap';
 const HISTORY_CELL_CLASS = 'p-2 whitespace-nowrap';
 
@@ -99,8 +102,10 @@ function HistoryPanel({
   isFetchingNextPage,
   onLoadMore,
   onRowClick,
+  showUser,
 }: {
   historyRef: RefObject<HTMLDivElement | null>;
+  showUser: boolean;
   rows: HistoryRow[];
   isLoading: boolean;
   isError: boolean;
@@ -112,6 +117,7 @@ function HistoryPanel({
 }) {
   const { t } = useTranslation(['pages', 'common']);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const gridTemplateColumns = showUser ? HISTORY_GRID_TEMPLATE : HISTORY_GRID_TEMPLATE_NO_USER;
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -164,16 +170,18 @@ function HistoryPanel({
                 className="border-b"
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: HISTORY_GRID_TEMPLATE,
+                  gridTemplateColumns,
                   alignItems: 'center',
                 }}
               >
                 <div role="columnheader" className={HISTORY_HEAD_CLASS}>
                   {t('common:labels.date')}
                 </div>
-                <div role="columnheader" className={HISTORY_HEAD_CLASS}>
-                  {t('common:labels.user')}
-                </div>
+                {showUser && (
+                  <div role="columnheader" className={HISTORY_HEAD_CLASS}>
+                    {t('common:labels.user')}
+                  </div>
+                )}
                 <div role="columnheader" className={HISTORY_HEAD_CLASS}>
                   {t('common:labels.content')}
                 </div>
@@ -217,7 +225,7 @@ function HistoryPanel({
                       width: 'max-content',
                       transform: `translateY(${virtualRow.start}px)`,
                       display: 'grid',
-                      gridTemplateColumns: HISTORY_GRID_TEMPLATE,
+                      gridTemplateColumns,
                       alignItems: 'center',
                     }}
                   >
@@ -229,37 +237,43 @@ function HistoryPanel({
                         {format(new Date(row.started_at), getTimeFormatString())}
                       </div>
                     </div>
-                    <div role="cell" className={HISTORY_CELL_CLASS}>
-                      {row.user.server_user_id ? (
-                        <Link
-                          to={`/users/${row.user.server_user_id}`}
-                          onClick={(event) => event.stopPropagation()}
-                          className="flex items-center gap-2 hover:underline"
-                        >
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage
-                              src={getAvatarUrl(row.server_id, row.user.thumb_url, 24) ?? undefined}
-                            />
-                            <AvatarFallback className="text-xs">
-                              {row.user.username[0]?.toUpperCase() ?? '?'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="truncate text-sm">{row.user.username}</span>
-                        </Link>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage
-                              src={getAvatarUrl(row.server_id, row.user.thumb_url, 24) ?? undefined}
-                            />
-                            <AvatarFallback className="text-xs">
-                              {row.user.username[0]?.toUpperCase() ?? '?'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="truncate text-sm">{row.user.username}</span>
-                        </div>
-                      )}
-                    </div>
+                    {showUser && (
+                      <div role="cell" className={HISTORY_CELL_CLASS}>
+                        {row.user.server_user_id ? (
+                          <Link
+                            to={`/users/${row.user.server_user_id}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className="flex items-center gap-2 hover:underline"
+                          >
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage
+                                src={
+                                  getAvatarUrl(row.server_id, row.user.thumb_url, 24) ?? undefined
+                                }
+                              />
+                              <AvatarFallback className="text-xs">
+                                {row.user.username[0]?.toUpperCase() ?? '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate text-sm">{row.user.username}</span>
+                          </Link>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage
+                                src={
+                                  getAvatarUrl(row.server_id, row.user.thumb_url, 24) ?? undefined
+                                }
+                              />
+                              <AvatarFallback className="text-xs">
+                                {row.user.username[0]?.toUpperCase() ?? '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate text-sm">{row.user.username}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div role="cell" className={cn(HISTORY_CELL_CLASS, 'min-w-0')}>
                       <div className="flex items-center gap-2">
                         <span className="truncate">{row.media_title}</span>
@@ -293,6 +307,8 @@ export function MediaDetail() {
   const id = rawId ?? '';
   const { selectedServerIds, mediaLibraryServerIds: scopedServerIds, servers } = useServer();
   const mediaLibraryServerIds = scopedServerIds ?? selectedServerIds;
+  const { user } = useAuth();
+  const isMember = user?.role === 'member';
   const queryClient = useQueryClient();
   const historyRef = useRef<HTMLDivElement>(null);
   // A history row's id is its chain id (the chain's first session id), so the
@@ -310,6 +326,7 @@ export function MediaDetail() {
             type: server.type,
             color: server.color,
             url: server.url,
+            publicUrl: server.publicUrl,
             machineIdentifier: server.machineIdentifier,
           },
         ])
@@ -386,26 +403,40 @@ export function MediaDetail() {
         />
       )}
 
-      <KpiStrip
-        mediaType={mediaType}
-        stats={statsQuery.data}
-        statsLoading={statsQuery.isLoading}
-        statsError={statsQuery.isError}
-        onRetryStats={() => void statsQuery.refetch()}
-        watchers={watchersQuery.data?.watchers}
-        watchersLoading={watchersQuery.isLoading}
-        watchersError={watchersQuery.isError}
-        onRetryWatchers={() => void watchersQuery.refetch()}
-      />
+      {isMember ? (
+        <MemberKpiStrip
+          mediaType={mediaType}
+          episodeCount={detailQuery.data?.episodeCount}
+          watchers={watchersQuery.data?.watchers}
+          watchersLoading={watchersQuery.isLoading}
+          watchersError={watchersQuery.isError}
+          onRetryWatchers={() => void watchersQuery.refetch()}
+          othersCount={watchersQuery.data?.othersCount}
+        />
+      ) : (
+        <>
+          <KpiStrip
+            mediaType={mediaType}
+            stats={statsQuery.data}
+            statsLoading={statsQuery.isLoading}
+            statsError={statsQuery.isError}
+            onRetryStats={() => void statsQuery.refetch()}
+            watchers={watchersQuery.data?.watchers}
+            watchersLoading={watchersQuery.isLoading}
+            watchersError={watchersQuery.isError}
+            onRetryWatchers={() => void watchersQuery.refetch()}
+          />
 
-      <WatchersTable
-        watchers={watchersQuery.data?.watchers}
-        isLoading={watchersQuery.isLoading}
-        isError={watchersQuery.isError}
-        onRetry={() => void watchersQuery.refetch()}
-        mediaType={mediaType}
-        episodeCount={detailQuery.data?.episodeCount}
-      />
+          <WatchersTable
+            watchers={watchersQuery.data?.watchers}
+            isLoading={watchersQuery.isLoading}
+            isError={watchersQuery.isError}
+            onRetry={() => void watchersQuery.refetch()}
+            mediaType={mediaType}
+            episodeCount={detailQuery.data?.episodeCount}
+          />
+        </>
+      )}
 
       {isShow && (
         <SeasonHeatPanel
@@ -433,6 +464,7 @@ export function MediaDetail() {
         isFetchingNextPage={historyQuery.isFetchingNextPage}
         onLoadMore={() => void historyQuery.fetchNextPage()}
         onRowClick={setSelectedSessionId}
+        showUser={!isMember}
       />
 
       <SessionDetailSheet

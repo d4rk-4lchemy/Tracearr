@@ -16,10 +16,12 @@ import { db } from '../db/client.js';
 import { librarySnapshots } from '../db/schema.js';
 
 export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
+  const readMaintenance = { preHandler: [app.requirePermission('maintenance', 'read')] };
+  const writeMaintenance = { preHandler: [app.requirePermission('maintenance', 'write')] };
   /**
    * GET /maintenance/jobs - List available maintenance jobs
    */
-  app.get('/jobs', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/jobs', readMaintenance, async (request, reply) => {
     const authUser = request.user;
     if (authUser.role !== 'owner') {
       return reply.forbidden('Only server owners can access maintenance jobs');
@@ -168,7 +170,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post<{ Params: { type: string } }>(
     '/jobs/:type',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('maintenance', 'write')] },
     async (request, reply) => {
       const authUser = request.user;
       if (authUser.role !== 'owner') {
@@ -219,7 +221,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /maintenance/progress - Get current job progress (if any)
    */
-  app.get('/progress', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/progress', readMaintenance, async (request, reply) => {
     const authUser = request.user;
     if (authUser.role !== 'owner') {
       return reply.forbidden('Only server owners can access maintenance jobs');
@@ -234,7 +236,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Params: { jobId: string } }>(
     '/jobs/:jobId/status',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('maintenance', 'read')] },
     async (request, reply) => {
       const authUser = request.user;
       if (authUser.role !== 'owner') {
@@ -261,7 +263,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /maintenance/stats - Get queue statistics
    */
-  app.get('/stats', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/stats', readMaintenance, async (request, reply) => {
     const authUser = request.user;
     if (authUser.role !== 'owner') {
       return reply.forbidden('Only server owners can access maintenance jobs');
@@ -279,7 +281,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /maintenance/history - Get recent job history
    */
-  app.get('/history', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/history', readMaintenance, async (request, reply) => {
     const authUser = request.user;
     if (authUser.role !== 'owner') {
       return reply.forbidden('Only server owners can access maintenance jobs');
@@ -300,7 +302,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get<{
     Querystring: { suspicious?: string; date?: string; libraryId?: string; limit?: string };
-  }>('/snapshots', { preHandler: [app.authenticate] }, async (request, reply) => {
+  }>('/snapshots', readMaintenance, async (request, reply) => {
     const authUser = request.user;
     if (authUser.role !== 'owner') {
       return reply.forbidden('Only server owners can access snapshots');
@@ -373,7 +375,7 @@ export const maintenanceRoutes: FastifyPluginAsync = async (app) => {
       ids?: string[];
       criteria?: { suspicious?: boolean; date?: string; libraryId?: string };
     };
-  }>('/snapshots', { preHandler: [app.authenticate] }, async (request, reply) => {
+  }>('/snapshots', writeMaintenance, async (request, reply) => {
     const authUser = request.user;
     if (authUser.role !== 'owner') {
       return reply.forbidden('Only server owners can delete snapshots');

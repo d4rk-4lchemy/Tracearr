@@ -5,11 +5,12 @@
  * Extends BaseMediaServerClient with Jellyfin-specific authentication and activity log handling.
  */
 
-import { fetchJson, HttpClientError } from '../../../utils/http.js';
+import { fetchJson, HttpClientError, isHttpStatus } from '../../../utils/http.js';
+import { assertSafeProbeUrl } from '../../../utils/ssrf.js';
+import type { MediaServerAuth } from '../types.js';
 import {
   BaseMediaServerClient,
   type JellyfinEmbyActivityEntry,
-  type JellyfinEmbyAuthResult,
   type JellyfinEmbyItemResult,
   type MediaServerParsers,
 } from '../shared/baseMediaServerClient.js';
@@ -19,7 +20,6 @@ import {
   parseLibrariesResponse,
   parseWatchHistoryResponse,
   parseActivityLogResponse,
-  parseAuthResponse,
   parseItemsResponse,
   parseLibraryItemsResponse,
   parseUser,
@@ -27,7 +27,6 @@ import {
 
 // Re-export types with platform-specific aliases for backward compatibility
 export type JellyfinActivityEntry = JellyfinEmbyActivityEntry;
-export type JellyfinAuthResult = JellyfinEmbyAuthResult;
 export type JellyfinItemResult = JellyfinEmbyItemResult;
 
 /**
@@ -49,7 +48,6 @@ export class JellyfinClient extends BaseMediaServerClient {
     parseItemsResponse,
     parseLibraryItemsResponse,
     parseUser,
-    parseAuthResponse,
   };
 
   // ==========================================================================
@@ -91,6 +89,131 @@ export class JellyfinClient extends BaseMediaServerClient {
     INVALID_KEY: 'INVALID_KEY',
     NOT_ADMIN: 'NOT_ADMIN',
   } as const;
+
+  // Jellyfin ignores X-Emby-Authorization and X-Emby-Token unless legacy authorization is on, so
+  // everything goes in Authorization. Member-token calls send the token alone, so no Client or
+  // Device field can overwrite what the member's device record holds from the sign-in.
+  private static memberTokenHeader(token: string): Record<string, string> {
+    return { Authorization: `MediaBrowser Token="${token}"` };
+  }
+
+  // Pw, not Password: the field name Jellyfin's AuthenticateByName body uses.
+  static authenticateByName(
+    serverUrl: string,
+    username: string,
+    pw: string,
+    deviceId: string,
+    forwardedFor: string
+  ): Promise<MediaServerAuth | null> {
+    return BaseMediaServerClient.requestUserToken(
+      'jellyfin',
+      serverUrl,
+      '/Users/AuthenticateByName',
+      {
+        Authorization: BaseMediaServerClient.memberClientHeader('MediaBrowser', deviceId),
+        ...(forwardedFor ? { 'X-Forwarded-For': forwardedFor } : {}),
+      },
+      { Username: username, Pw: pw }
+    );
+  }
+
+  static async quickConnectEnabled(serverUrl: string): Promise<boolean> {
+    try {
+      assertSafeProbeUrl(serverUrl);
+      const enabled = await fetchJson<unknown>(
+        `${serverUrl.replace(/\/$/, '')}/QuickConnect/Enabled`,
+        {
+          headers: { Accept: 'application/json' },
+          service: 'jellyfin',
+          timeout: 5_000,
+          redirect: 'manual',
+        }
+      );
+      return enabled === true;
+    } catch {
+      return false;
+    }
+  }
+
+  static async quickConnectInitiate(
+    serverUrl: string,
+    deviceId: string
+  ): Promise<{ secret: string; code: string }> {
+    assertSafeProbeUrl(serverUrl);
+    const data = await fetchJson<{ Secret?: unknown; Code?: unknown }>(
+      `${serverUrl.replace(/\/$/, '')}/QuickConnect/Initiate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: BaseMediaServerClient.memberClientHeader('MediaBrowser', deviceId),
+          Accept: 'application/json',
+        },
+        service: 'jellyfin',
+        timeout: 10_000,
+        redirect: 'manual',
+      }
+    );
+    if (typeof data.Secret !== 'string' || typeof data.Code !== 'string') {
+      throw new Error('Quick Connect initiate returned no secret');
+    }
+    return { secret: data.Secret, code: data.Code };
+  }
+
+  static async quickConnectStatus(
+    serverUrl: string,
+    secret: string
+  ): Promise<'pending' | 'authenticated' | 'gone'> {
+    assertSafeProbeUrl(serverUrl);
+    try {
+      const data = await fetchJson<{ Authenticated?: unknown }>(
+        `${serverUrl.replace(/\/$/, '')}/QuickConnect/Connect?secret=${encodeURIComponent(secret)}`,
+        {
+          headers: { Accept: 'application/json' },
+          service: 'jellyfin',
+          timeout: 10_000,
+          redirect: 'manual',
+        }
+      );
+      return data.Authenticated === true ? 'authenticated' : 'pending';
+    } catch (error) {
+      if (isHttpStatus(error, 404)) return 'gone';
+      throw error;
+    }
+  }
+
+  /** The redeemed token belongs to the DeviceId the request was initiated with. */
+  static quickConnectRedeem(
+    serverUrl: string,
+    secret: string,
+    deviceId: string
+  ): Promise<MediaServerAuth | null> {
+    return BaseMediaServerClient.requestUserToken(
+      'jellyfin',
+      serverUrl,
+      '/Users/AuthenticateWithQuickConnect',
+      { Authorization: BaseMediaServerClient.memberClientHeader('MediaBrowser', deviceId) },
+      { Secret: secret }
+    );
+  }
+
+  static fetchSelf(
+    serverUrl: string,
+    token: string
+  ): Promise<{ id: string; isDisabled: boolean } | null> {
+    return BaseMediaServerClient.requestTokenUser(
+      'jellyfin',
+      `${serverUrl.replace(/\/$/, '')}/Users/Me`,
+      JellyfinClient.memberTokenHeader(token)
+    );
+  }
+
+  static logoutUserToken(serverUrl: string, token: string): Promise<void> {
+    return BaseMediaServerClient.postTokenLogout(
+      'jellyfin',
+      serverUrl,
+      JellyfinClient.memberTokenHeader(token)
+    );
+  }
 
   /**
    * Verify if token has admin access to a Jellyfin server

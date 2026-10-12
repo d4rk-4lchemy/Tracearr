@@ -1,5 +1,66 @@
 # Tracearr Fork Information
 
+## October 12, 2026 — Tracearr 2.8.0 upstream merge
+
+Upstream `main` at `3965a1aa4` adds member sign-in, account-scoped reads,
+owner impersonation, a Personal Dashboard, origin/proxy and image-path
+hardening, push preference defaults and BullMQ 6 job schedulers with Redis
+recovery. Its upgrade intentionally converts existing admins/viewers into
+members; the owner must grant Admin again where needed. Member sign-in is off
+by default. Upstream migrations `0111`–`0114` and their snapshots/journal are
+byte-for-byte aligned with source; the separate Dispatcharr migration ledger
+is unchanged.
+
+Dispatcharr retains token/credentials add/edit, secret redaction, anonymous
+filtering, leader-owned realtime/polling, pending/catch-up lifecycle, stable
+device identity, provider labels and termination. Member selectors retain
+Dispatcharr but omit private connection settings, and TV dashboard SQL uses
+the same member account scope as VOD. Dispatcharr connection status now uses
+upstream's staff socket room. Dispatcharr is excluded from member sign-in
+switches/usable-method detection and from library/Seerr queries. The new
+Personal Dashboard catalog shelf uses `mediaLibraryServerIds`, with empty
+library selections idle; its watching statistics still include Dispatcharr.
+Its generic Plays/Watch Time translations coexist with the fork's VOD/TV labels.
+Explicit server selection respects owner impersonation without overwriting
+the owner's stored pick. Focused regressions cover these merge boundaries.
+
+Uncropped Dashboard artwork, transparency/brightness behavior, shared cache,
+startup cleanup and browser markers are unchanged. The fork's two-channel
+version API and fork-only update badges remain; member UI respects upstream
+staff-only update controls. All 300 existing fork-only localized entries
+remain. Exactly PR-only CI and the unchanged dual-registry release workflow
+remain, preserving the four native-build publication gate. CI adopts upstream
+web sharding (two), E2E sharding (three), built E2E artifacts/headless-shell
+cache and action pins; manual integration stays outside PR CI. Helm changes
+are excluded. Both Dockerfiles retain fork metadata/migrations/basemap cache
+and now install pnpm 12.10.1, matching the root packageManager and CI.
+AGENTS.md and MERGE_INSTRUCTION.md use the new toolchain and E2E invocation.
+
+Full non-Docker CI-equivalent validation passed with Node 24.21.0 /
+pnpm 12.10.1, a cleared Turbo cache, frozen-lockfile install and a 4 GB heap.
+Heavy jobs ran sequentially on the 8 GB LXC, Vitest with two workers and
+Turbo concurrency one. Lint, typecheck, translations, unit/services/routes/
+auth/security, web, coverage and build all passed. Server groups plus web
+passed 10,088 tests; coverage passed 6,539 tests (71.49% statements,
+65.62% branches, 75.67% functions, 72.70% lines), meeting all thresholds.
+The initial routes run caught a missing requirePermission decorator in the
+fork's Live TV user-activity fixture; the complete rerun passed after repair.
+Final lint has 753 warnings and zero errors, three above the previous merge;
+normalized warning changes are recorded in the local warning reference.
+Translations exits zero with 3,857 absent keys (133 new upstream keys in each
+of 29 locales), served by English fallback. All 474 changed supported source,
+JSON, CSS and YAML files pass Prettier; 39 formatting drifts were corrected.
+Final lint/typecheck/translations passed again after formatting and another
+Turbo cache clear. Logs: `.tmp/merge-280-<job>-20261012.log`; sequential runner:
+`.tmp/merge-280-ci-20261012.log` (final static jobs use `-final`, the initial
+failed routes log uses `routes-initial`).
+
+Docker integration and E2E were explicitly omitted at the user's request.
+Docker image builds, database upgrade execution and live-provider manual smoke
+were not performed. New member SQL/migrations and BullMQ/ioredis upgrade and
+reconnection behavior are not validated against running PostgreSQL/Redis;
+automated mocked regression coverage is not a substitute for those checks.
+
 ## October 9, 2026 — Tracearr 2.7.1 upstream merge
 
 Upstream `main` at `1ba57a73f` gives Jellyfin/Emby episodes and seasons
@@ -194,9 +255,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `1ba57a73f`
-- Last shared upstream commit found during inspection: `16aca41f1` (before merge)
-- Latest upstream commit merged into the current working tree: `1ba57a73f`
+- Source branch/SHA inspected: `main` at `3965a1aa4`
+- Last shared upstream commit found during inspection: `1ba57a73f` (before merge)
+- Latest upstream commit merged into the current working tree: `3965a1aa4`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:
@@ -801,6 +862,13 @@ Web UI:
 - `apps/web/src/components/icons/MediaServerIcon.tsx` and `apps/web/public/images/servers/dispatcharr.png` add Dispatcharr branding.
 - `apps/web/src/components/sessions/NowPlayingCard.tsx` shows Live TV channel/programme-oriented cards.
 - Catch-up cards must continue to use the Live TV visual grouping, but favor progress/remaining-time presentation over FFmpeg live-speed presentation.
+- `apps/web/src/components/dashboard/PersonalDashboard.tsx` uses the library-only
+  server scope for its catalog-backed top-title shelf, while personal watching
+  metrics keep every selected server. `useMyTopTitles` stays idle when that
+  library scope is empty. Preserve generic Plays/Watch Time translations.
+- Member server selectors omit private connection fields; Dispatcharr sign-in
+  switches are excluded, but linked members keep their own Dispatcharr sessions.
+  Fork TV metrics carry the same account scope as upstream VOD metrics.
 - `apps/web/src/pages/Dashboard.tsx` now renders six daily stat cards in this order: Alerts, VOD Plays, VOD Watch Time, TV Sessions, TV Watch Time, Active Users.
 - `apps/web/src/components/history/HistoryTable.tsx` fixes column sizing/truncation for long Live TV content, improves history layout, and shows the Dispatcharr catch-up indicator for catch-up rows.
 - `apps/web/src/components/history/StreamDetailsPanel.tsx` shows FFmpeg speed and Dispatcharr-oriented stream details.

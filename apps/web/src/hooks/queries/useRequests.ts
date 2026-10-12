@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type {
   CreateRequestServiceInput,
+  MyRequestsQuery,
   RequesterSort,
   RequestUnplayedSort,
   TestRequestServiceInput,
@@ -30,6 +31,15 @@ export function useUserRequests(
     queryKey: [...REQUESTS_KEY, 'user', id, opts.scope ?? 'account', opts.page, opts.pageSize],
     queryFn: () => api.users.requests(id, opts),
     enabled: !!id,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useMyRequests(opts: MyRequestsQuery & { enabled?: boolean }) {
+  return useQuery({
+    queryKey: [...REQUESTS_KEY, 'mine', opts.page, opts.pageSize],
+    queryFn: () => api.requests.mine({ page: opts.page, pageSize: opts.pageSize }),
+    enabled: opts.enabled ?? true,
     placeholderData: (prev) => prev,
   });
 }

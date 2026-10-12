@@ -33,6 +33,7 @@ import {
 import { getDashboardStats } from '../../src/services/dashboardStats.js';
 import { initPreparedStatements } from '../../src/db/prepared.js';
 import { sql } from 'drizzle-orm';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 function ownerAuth(userId: string) {
   return { userId, username: 'owner', role: 'owner' as const, serverIds: [] as string[] };
@@ -44,6 +45,11 @@ async function buildApp(plugin: Parameters<typeof Fastify.prototype.register>[0]
   app.decorate('redis', createMockRedis() as unknown as Redis);
   app.decorate('authenticate', async (request: any) => {
     request.user = ownerAuth(request.headers['x-test-user-id'] ?? 'owner');
+  });
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: any, reply: any) => {
+    await app.authenticate(request, reply);
+    if (request.user.role !== 'owner') return reply.forbidden('Owner access required');
   });
   await app.register(plugin as any);
   return app;
@@ -209,7 +215,11 @@ describe('merged identity stats', () => {
 
       await mergeUsers(source.id, target.id, admin.id);
 
-      const stats = await getDashboardStats({ serverIds: undefined, timezone: 'UTC' });
+      const stats = await getDashboardStats({
+        serverIds: undefined,
+        scope: 'all',
+        timezone: 'UTC',
+      });
       expect(stats.activeUsersToday).toBe(1);
     });
 
@@ -241,6 +251,7 @@ describe('merged identity stats', () => {
 
       const stats = await getDashboardStats({
         serverIds: [serverA.id, serverB.id],
+        scope: 'all',
         timezone: 'UTC',
       });
       expect(stats.activeUsersToday).toBe(1);

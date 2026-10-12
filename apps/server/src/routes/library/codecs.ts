@@ -121,7 +121,7 @@ export const libraryCodecsRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: CodecsQueryInput }>(
     '/codecs',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = codecsQuerySchema.safeParse(request.query);
       if (!query.success) {

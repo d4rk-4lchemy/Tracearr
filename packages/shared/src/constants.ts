@@ -11,6 +11,16 @@ import {
 export { IDENTITY_AWARE_CONDITION_FIELDS } from './automations/conditions.js';
 
 // Severity levels
+// A person's own sign-in access. default follows loginMethods.member; allow and block override it.
+export const LOGIN_ACCESS = ['default', 'allow', 'block'] as const;
+
+// Error codes on a refused sign-in. notPermitted is only ever sent after the media server, the
+// identity provider or a Tracearr password proved who the person is.
+export const SIGN_IN_ERROR_CODES = {
+  refused: 'MEMBER_LOGIN_REFUSED',
+  notPermitted: 'MEMBER_NOT_PERMITTED',
+} as const;
+
 export const SEVERITY_LEVELS = {
   low: { label: 'Low', priority: 1 },
   warning: { label: 'Warning', priority: 2 },
@@ -55,6 +65,10 @@ export const WS_EVENTS = {
   SESSIONS_PROGRESS: 'sessions:progress',
   /** Internal: an owner regenerated their public API key; open public event connections for that user close. */
   PUBLIC_API_KEY_CHANGED: 'public-api:key-changed',
+  /** Internal: a person's role or accounts changed; every instance drops their sockets. */
+  USER_ACCESS_CHANGED: 'user:access-changed',
+  /** Internal: a paired mobile device was revoked; every instance drops its sockets. */
+  MOBILE_DEVICE_REVOKED: 'mobile:device-revoked',
 } as const;
 
 // Redis key prefix (set at startup via setRedisPrefix)
@@ -101,6 +115,9 @@ export const REDIS_KEYS = {
   },
   get DASHBOARD_STATS() {
     return `${_redisPrefix}tracearr:stats:dashboard`;
+  },
+  get MY_STATS() {
+    return `${_redisPrefix}tracearr:stats:me`;
   },
   RATE_LIMIT_LOGIN: (ip: string) => `${_redisPrefix}tracearr:ratelimit:login:${ip}`,
   RATE_LIMIT_MOBILE_PAIR: (ip: string) => `${_redisPrefix}tracearr:ratelimit:mobile:pair:${ip}`,
@@ -275,6 +292,10 @@ export const REDIS_KEYS = {
   IMAGE_CACHE_NOT_PERSISTING: `${_redisPrefix}tracearr:image-cache:not-persisting`,
   // Auth tokens
   PLEX_TEMP_TOKEN: (token: string) => `${_redisPrefix}tracearr:plex_temp:${token}`,
+  PLEX_PIN: (handle: string) => `${_redisPrefix}tracearr:plex_pin:${handle}`,
+  QUICK_CONNECT: (handle: string) => `${_redisPrefix}tracearr:quick_connect:${handle}`,
+  LOGIN_FAILURES: (serverId: string, username: string) =>
+    `${_redisPrefix}tracearr:login_failures:${serverId}:${username}`,
   MOBILE_REFRESH_TOKEN: (hash: string) => `${_redisPrefix}tracearr:mobile_refresh:${hash}`,
   MOBILE_BLACKLISTED_TOKEN: (deviceId: string) =>
     `${_redisPrefix}tracearr:mobile:blacklist:${deviceId}`,
@@ -316,6 +337,8 @@ export const REDIS_KEYS = {
   // Filter options caching
   FILTER_OPTIONS: (userId: string, scopeHash: string) =>
     `${_redisPrefix}tracearr:filter-options:v2:${userId}:${scopeHash}`,
+  // A member's non-removed server account ids and their servers
+  USER_SCOPE: (userId: string) => `${_redisPrefix}tracearr:scope:${userId}`,
   // v1 segment invalidates cached entries if the GeoLocation shape ever changes
   PLEX_GEOIP: (ip: string) => `${_redisPrefix}tracearr:geoip:plex:v1:${ip}`,
   // Public API v2 per-media stats/watchers responses
@@ -331,6 +354,7 @@ export const REDIS_KEYS = {
 // Cache TTLs in seconds
 export const CACHE_TTL = {
   DASHBOARD_STATS: 60,
+  MY_STATS: 60,
   PUBLIC_MEDIA_STATS: 60,
   // Must exceed several SSE reconciliation intervals (30s): paused Plex sessions emit no events,
   // and an expiring entry hides the session from the dashboard and from concurrent-stream limits.
@@ -955,10 +979,13 @@ export function getClientTimezone(): string {
 /**
  * Validate an IANA timezone identifier.
  *
+ * Intl accepts offset strings like "+05:00" with the opposite sign to Postgres, so they are refused.
+ *
  * @param tz - Timezone string to validate
  * @returns true if valid IANA timezone, false otherwise
  */
 export function isValidTimezone(tz: string): boolean {
+  if (/^[+-]/.test(tz)) return false;
   try {
     Intl.DateTimeFormat('en-US', { timeZone: tz });
     return true;

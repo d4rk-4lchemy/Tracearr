@@ -36,6 +36,7 @@ vi.mock('../../../services/settings.js', () => ({
 import { db } from '../../../db/client.js';
 import { getSetting } from '../../../services/settings.js';
 import { libraryShelvesRoute } from '../shelves.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 function normalize(sqlText: string): string {
   return sqlText.replace(/\s+/g, ' ').trim();
@@ -72,6 +73,7 @@ async function buildTestApp(
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', redis as never);
   await app.register(libraryShelvesRoute, { prefix: '/library' });
   return app;

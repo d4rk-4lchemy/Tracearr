@@ -25,6 +25,7 @@ import { createMockRedis } from '@tracearr/test-utils/mocks';
 import { db } from '../../src/db/client.js';
 import { libraryStaleRoute } from '../../src/routes/library/stale.js';
 import { libraryDuplicatesRoute } from '../../src/routes/library/duplicates.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 const GB = 1024 ** 3;
 
@@ -43,6 +44,7 @@ async function buildApp() {
   app.decorate('authenticate', async (request: any) => {
     request.user = { userId: 'owner', username: 'owner', role: 'owner', serverIds: [] };
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(libraryStaleRoute, { prefix: '/library' });
   await app.register(libraryDuplicatesRoute, { prefix: '/library' });
   return app;

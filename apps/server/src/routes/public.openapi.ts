@@ -34,7 +34,7 @@ const ServerTypeEnum = z.enum(['plex', 'jellyfin', 'emby', 'dispatcharr']);
 const MediaTypeEnum = z.enum(['movie', 'episode', 'track', 'live', 'photo', 'trailer', 'unknown']);
 const PlaybackStateEnum = z.enum(['playing', 'paused', 'stopped']);
 const SeverityEnum = z.enum(['low', 'warning', 'high']);
-const UserRoleEnum = z.enum(['owner', 'admin', 'viewer', 'member', 'disabled', 'pending']);
+const UserRoleEnum = z.enum(['owner', 'admin', 'member', 'disabled', 'pending']);
 const TranscodeDecisionEnum = z.enum(['directplay', 'copy', 'transcode']);
 
 // ============================================================================

@@ -27,18 +27,20 @@ services:
   tracearr:
     image: ghcr.io/connorgallopo/tracearr:supervised
     container_name: tracearr
-    shm_size: 512mb  # Required for PostgreSQL shared memory (increase for large imports)
-    mem_limit: 3g    # Minimum 3GB required (PostgreSQL + Redis + Node.js)
+    shm_size: 512mb # Required for PostgreSQL shared memory (increase for large imports)
+    mem_limit: 3g # Minimum 3GB required (PostgreSQL + Redis + Node.js)
     ulimits:
       nofile:
         soft: 65536
-        hard: 65536  # TimescaleDB chunks require many file descriptors
+        hard: 65536 # TimescaleDB chunks require many file descriptors
     ports:
-      - "${PORT:-3000}:3000"
+      - '${PORT:-3000}:3000'
     environment:
       - TZ=${TZ:-UTC}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       # - DATABASE_POOL_MAX=50  # Database connection pool size (default: derived from PostgreSQL max_connections, ~20 at the 3g limit)
+      # Behind a reverse proxy: true trusts one hop, 2 for two chained proxies, or proxy IPs/CIDRs
+      # - TRUST_PROXY=true
       # Secrets are auto-generated if not provided
       # Uncomment to override:
       # - JWT_SECRET=${JWT_SECRET}
@@ -54,7 +56,7 @@ services:
       # due to permission issues with PostgreSQL and Redis
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/health"]
+      test: ['CMD', 'curl', '-f', 'http://127.0.0.1:3000/health']
       interval: 30s
       timeout: 10s
       start_period: 60s

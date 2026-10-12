@@ -69,7 +69,7 @@ export const libraryGrowthRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: LibraryGrowthQueryInput }>(
     '/growth',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
       const query = libraryGrowthQuerySchema.safeParse(request.query);
       if (!query.success) {

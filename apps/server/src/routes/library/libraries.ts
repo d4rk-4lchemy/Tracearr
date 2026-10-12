@@ -67,7 +67,7 @@ export const libraryLibrariesRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: Record<string, unknown> }>(
     '/libraries',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
       const query = librariesQuerySchema.safeParse(request.query);
       if (!query.success) {

@@ -28,6 +28,7 @@ async function getServerName(serverId: string): Promise<string> {
 }
 
 export const tasksRoutes: FastifyPluginAsync = async (app) => {
+  const readTasks = { preHandler: [app.requirePermission('tasks', 'read')] };
   /**
    * GET /tasks/running - Get all currently running background tasks
    *
@@ -36,7 +37,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
    * - Import queue (Tautulli, Jellystat)
    * - Maintenance queue
    */
-  app.get('/running', { preHandler: [app.authenticate] }, async () => {
+  app.get('/running', readTasks, async () => {
     const tasks: RunningTask[] = [];
 
     // Get library sync tasks

@@ -33,6 +33,7 @@ import { libraryResolutionRoute } from '../../src/routes/library/resolution.js';
 import { libraryStatsRoute } from '../../src/routes/library/stats.js';
 import { libraryDuplicatesRoute } from '../../src/routes/library/duplicates.js';
 import { resolveMediaForItem } from '../../src/services/library/mediaResolutionService.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; redis: Redis }> {
   const app = Fastify({ logger: false });
@@ -40,6 +41,7 @@ async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; red
   app.decorate('authenticate', async (request: FastifyRequest) => {
     (request as FastifyRequest & { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   const redis = createMockRedis() as unknown as Redis;
   app.decorate('redis', redis);
   await app.register(libraryResolutionRoute, { prefix: '/library' });

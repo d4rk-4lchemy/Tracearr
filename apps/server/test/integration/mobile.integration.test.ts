@@ -301,7 +301,7 @@ describe('Mobile Authentication Integration Tests', () => {
         {
           userId: testData.ownerId,
           username: 'testviewer',
-          role: 'viewer',
+          role: 'member',
           serverIds: [],
         } as AuthUser,
         { expiresIn: '1h' }
@@ -829,7 +829,7 @@ describe('Mobile Authentication Integration Tests', () => {
         {
           userId: testData.ownerId,
           username: 'testviewer',
-          role: 'viewer',
+          role: 'member',
           serverIds: [],
         } as AuthUser,
         { expiresIn: '1h' }
@@ -920,7 +920,7 @@ describe('Mobile Authentication Integration Tests', () => {
         {
           userId: testData.ownerId,
           username: 'testviewer',
-          role: 'viewer',
+          role: 'member',
           serverIds: [],
         } as AuthUser,
         { expiresIn: '1h' }
@@ -972,7 +972,7 @@ describe('Mobile Authentication Integration Tests', () => {
         {
           userId: testData.ownerId,
           username: 'testviewer',
-          role: 'viewer',
+          role: 'member',
           serverIds: [],
         } as AuthUser,
         { expiresIn: '1h' }
@@ -1016,7 +1016,7 @@ describe('Mobile Authentication Integration Tests', () => {
         {
           userId: testData.ownerId,
           username: 'testviewer',
-          role: 'viewer',
+          role: 'member',
           serverIds: [],
         } as AuthUser,
         { expiresIn: '1h' }
@@ -1070,7 +1070,7 @@ describe('Mobile Authentication Integration Tests', () => {
         {
           userId: testData.ownerId,
           username: 'testviewer',
-          role: 'viewer',
+          role: 'member',
           serverIds: [],
         } as AuthUser,
         { expiresIn: '1h' }

@@ -61,10 +61,12 @@ export function startBackupWorker(): void {
     async (job: Job) => {
       console.log(`[Backup] Starting scheduled backup job ${job.id}`);
 
-      const { filePath, metadata } = await createBackup(BACKUP_DIR, 'scheduled').catch((err: unknown) => {
-        console.error(`[Backup] Backup failed: ${err instanceof Error ? err.message : err}`);
-        throw err;
-      });
+      const { filePath, metadata } = await createBackup(BACKUP_DIR, 'scheduled').catch(
+        (err: unknown) => {
+          console.error(`[Backup] Backup failed: ${err instanceof Error ? err.message : err}`);
+          throw err;
+        }
+      );
       console.log(`[Backup] Backup created: ${filePath} (v${metadata.app.version})`);
 
       // Read retention count from settings
@@ -137,16 +139,13 @@ export async function scheduleBackupJob(schedule: {
       return;
   }
 
-  await backupQueue.add(
+  const tz = process.env.TZ || 'UTC';
+  await backupQueue.upsertJobScheduler(
     'scheduled-backup',
-    {},
-    {
-      repeat: { pattern: cron, tz: process.env.TZ || 'UTC' },
-      jobId: 'scheduled-backup',
-    }
+    { pattern: cron, tz },
+    { name: 'scheduled-backup', data: {} }
   );
 
-  const tz = process.env.TZ || 'UTC';
   console.log(`[Backup] Scheduled ${schedule.type} backup at cron: ${cron} (${tz})`);
 }
 

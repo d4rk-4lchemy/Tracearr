@@ -12,7 +12,7 @@ interface EngagementBreakdownChartProps {
 }
 
 // Colors for engagement tiers (from abandoned to rewatched)
-const TIER_COLORS: Record<string, string> = {
+export const TIER_COLORS: Record<string, string> = {
   abandoned: 'hsl(0, 70%, 50%)', // Red
   sampled: 'hsl(38, 92%, 50%)', // Orange
   engaged: 'hsl(48, 96%, 53%)', // Yellow

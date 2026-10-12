@@ -29,7 +29,7 @@ services:
     image: ghcr.io/connorgallopo/tracearr:latest
     container_name: tracearr
     ports:
-      - "${PORT:-3000}:3000"
+      - '${PORT:-3000}:3000'
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
@@ -38,7 +38,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - COOKIE_SECRET=${COOKIE_SECRET}
+      # Other origins that may use a signed-in session; * only allows requests without one
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      # Behind a reverse proxy: true trusts one hop, 2 for two chained proxies, or proxy IPs/CIDRs
+      # - TRUST_PROXY=true
       - LOG_LEVEL=${LOG_LEVEL:-info}
       # - DATABASE_POOL_MAX=50  # Database connection pool size (default: 50)
     depends_on:
@@ -57,11 +60,11 @@ services:
     # TimescaleDB HA with PostgreSQL 18 - pinned for stability
     image: timescale/timescaledb-ha:pg18.4-ts2.29.1
     container_name: tracearr-db
-    shm_size: 512mb  # Required for PostgreSQL shared memory (increase for large imports)
+    shm_size: 512mb # Required for PostgreSQL shared memory (increase for large imports)
     ulimits:
       nofile:
         soft: 65536
-        hard: 65536  # TimescaleDB chunks require many file descriptors
+        hard: 65536 # TimescaleDB chunks require many file descriptors
     # Cap tuple decompression per DML transaction (migrations and imports grant
     # themselves unlimited per-session, so this stays at the TimescaleDB default)
     # Increase lock table size for large imports (Tautulli imports with many TimescaleDB chunks)
@@ -75,7 +78,7 @@ services:
     volumes:
       - timescale_data:/home/postgres/pgdata/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tracearr"]
+      test: ['CMD-SHELL', 'pg_isready -U tracearr']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -90,7 +93,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5

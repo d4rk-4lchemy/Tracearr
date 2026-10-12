@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
-import { LayoutBanner } from './LayoutBanner';
+import { LayoutBanner, LayoutBannerAction } from './LayoutBanner';
 
 const IP_WARNING_STATE_KEY = 'tracearr_ip_warning_state';
 
@@ -56,16 +55,9 @@ export function IpWarningBanner() {
     <LayoutBanner variant="warning">
       <div className="flex items-center justify-between gap-4">
         <span className="flex-1">{t('ipWarning.message')}</span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleAcknowledge}
-          // --warning already flips per theme, so the dark: pairs the hardcoded
-          // yellows needed are gone. h-7 keeps it under the strip's line height.
-          className="text-warning hover:bg-warning/10 hover:text-warning h-7 shrink-0"
-        >
+        <LayoutBannerAction onClick={handleAcknowledge}>
           {t('ipWarning.acknowledge')}
-        </Button>
+        </LayoutBannerAction>
       </div>
     </LayoutBanner>
   );

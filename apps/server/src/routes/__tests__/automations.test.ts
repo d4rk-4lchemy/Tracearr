@@ -61,6 +61,7 @@ import { getTemplate, getTemplateVersion } from '../../services/automations/temp
 import { unknownDestinationIds } from '../../services/notifications/destinationRefs.js';
 import { recomputeIdentityAggregatesForServerUser } from '../../services/userService.js';
 import { automationRoutes } from '../automations.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 const conditions: AutomationConditions = {
   groups: [{ conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 2 }] }],
@@ -156,7 +157,7 @@ const ownerUser: AuthUser = {
 const viewerUser: AuthUser = {
   userId: randomUUID(),
   username: 'viewer',
-  role: 'viewer',
+  role: 'admin',
   serverIds: ['srv-1'],
 };
 
@@ -170,10 +171,10 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
     registeredRoutes.set(`${String(route.method)} ${route.url}`, route.config);
   });
   await app.register(sensible);
-
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('requireOwner', async (request: unknown, reply: FastifyReply) => {
     (request as { user: AuthUser }).user = authUser;
     if (authUser.role !== 'owner') {

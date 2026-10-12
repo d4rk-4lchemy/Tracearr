@@ -10,6 +10,7 @@ import type { Redis } from 'ioredis';
 import type { AuthUser } from '@tracearr/shared';
 import type { SQL } from 'drizzle-orm';
 import { CasingCache } from 'drizzle-orm/casing';
+import { permissionGuard } from '../lib/scope.js';
 
 const sqlCasingCache = new CasingCache();
 
@@ -143,6 +144,7 @@ export async function createTestApp(): Promise<FastifyInstance> {
       reply.unauthorized('Invalid or expired token');
     }
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   // Test stub, NOT the production dual-verify decorator (see plugins/auth.ts).
   app.decorate('requireOwner', async function (request: any, reply: any) {
@@ -181,12 +183,12 @@ export function createOwnerPayload(overrides?: Partial<AuthUser>): AuthUser {
   };
 }
 
-// Create a test viewer user payload (for testing non-owner access)
-export function createViewerPayload(overrides?: Partial<AuthUser>): AuthUser {
+// Create a test member user payload (for testing non-owner access)
+export function createMemberPayload(overrides?: Partial<AuthUser>): AuthUser {
   return {
-    userId: 'viewer-uuid-5678',
-    username: 'testviewer',
-    role: 'viewer',
+    userId: 'member-uuid-5678',
+    username: 'testmember',
+    role: 'member',
     serverIds: [],
     ...overrides,
   };

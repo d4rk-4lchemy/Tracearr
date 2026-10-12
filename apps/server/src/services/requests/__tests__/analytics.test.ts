@@ -6,6 +6,8 @@ const { mockDb } = vi.hoisted(() => ({
 
 vi.mock('../../../db/client.js', () => ({ db: mockDb }));
 
+import type { SQL } from 'drizzle-orm';
+import { renderSql } from '../../../test/helpers.js';
 import { getRequestsAnalytics } from '../analytics.js';
 
 const MOVIE_ID = '11111111-1111-4111-8111-111111111111';
@@ -60,7 +62,7 @@ describe('getRequestsAnalytics', () => {
   it('leaves a request Seerr calls available but Tracearr never matched out of the landed set', async () => {
     mockQueries([row(), row({ id: 'req-2', media_id: null })]);
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.funnel.requested).toBe(2);
     expect(result.funnel.landed).toBe(1);
@@ -78,7 +80,7 @@ describe('getRequestsAnalytics', () => {
       ]
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.funnel).toEqual({ requested: 2, landed: 2, watched: 1 });
     expect(result.unplayed.map((row) => row.id)).toEqual(['req-1']);
@@ -94,7 +96,7 @@ describe('getRequestsAnalytics', () => {
       mediaIds.map((mediaId) => size(mediaId, null, 1000))
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.unplayed).toHaveLength(60);
     expect(result.unplayedBytes).toBe(60_000);
@@ -106,7 +108,7 @@ describe('getRequestsAnalytics', () => {
       [size(MOVIE_ID, null, 10), size(OTHER_MOVIE_ID, null, 900)]
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.unplayed.map((row) => row.id)).toEqual(['large', 'small']);
   });
@@ -128,7 +130,7 @@ describe('getRequestsAnalytics', () => {
       [size(MOVIE_ID, 1, 300), size(MOVIE_ID, 2, 700), size(MOVIE_ID, 3, 900)]
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     const bySeason = new Map(result.unplayed.map((r) => [r.id, r.fileSizeBytes]));
     expect(bySeason.get('req-s1')).toBe(300);
@@ -156,7 +158,7 @@ describe('getRequestsAnalytics', () => {
       [size(MOVIE_ID, 1, 300), size(MOVIE_ID, 2, 700)]
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.unplayedBytes).toBe(1000);
   });
@@ -167,7 +169,7 @@ describe('getRequestsAnalytics', () => {
       [size(MOVIE_ID, 1, 300), size(MOVIE_ID, 2, 700)]
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.unplayed[0]?.fileSizeBytes).toBe(1000);
   });
@@ -184,7 +186,7 @@ describe('getRequestsAnalytics', () => {
       }),
     ]);
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.requesters).toHaveLength(1);
     expect(result.requesters[0]).toMatchObject({ requested: 2, landed: 2 });
@@ -196,7 +198,7 @@ describe('getRequestsAnalytics', () => {
       [size(MOVIE_ID, null, 1000)]
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.unplayed.map((r) => r.id)).toEqual(['req-1']);
   });
@@ -208,7 +210,7 @@ describe('getRequestsAnalytics', () => {
       row({ id: 'req-3', media_id: null, available_at: null }),
     ]);
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.requesters[0]).toMatchObject({
       requested: 3,
@@ -229,9 +231,29 @@ describe('getRequestsAnalytics', () => {
       ]
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.requesters[0]).toMatchObject({ landed: 2, watchedByOthers: 2 });
+  });
+
+  it("counts only a member's own plays, and no watchedByOthers, without server activity", async () => {
+    const member = { userId: USER_ID, serverUserIds: [SERVER_USER_ID], serverIds: [SERVER_ID] };
+    const viewers = [
+      { request_id: 'req-1', viewer_user_id: null, watched: true },
+      { request_id: 'req-1', viewer_user_id: USER_ID, watched: true },
+    ];
+    const playsQuery = () => renderSql(mockDb.execute.mock.calls[2]?.[0] as SQL);
+
+    mockQueries([row()], undefined, viewers);
+    const own = await getRequestsAnalytics([SERVER_ID], member, false);
+    expect(playsQuery().params).toContain(SERVER_USER_ID);
+    expect(own.requesters[0]).not.toHaveProperty('watchedByOthers');
+
+    vi.clearAllMocks();
+    mockQueries([row()], undefined, viewers);
+    const anonymous = await getRequestsAnalytics([SERVER_ID], member, true);
+    expect(playsQuery().params).not.toContain(SERVER_USER_ID);
+    expect(anonymous.requesters[0]).toMatchObject({ watchedByOthers: 0 });
   });
 
   it('does not count the requester watching their own request as someone else', async () => {
@@ -239,7 +261,7 @@ describe('getRequestsAnalytics', () => {
       { request_id: 'req-1', viewer_user_id: USER_ID, watched: true },
     ]);
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.requesters[0]).toMatchObject({ watchedByOthers: 0 });
   });
@@ -251,7 +273,7 @@ describe('getRequestsAnalytics', () => {
       [{ request_id: 'req-1', viewer_user_id: USER_ID, watched: true }]
     );
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.unplayed).toEqual([]);
     expect(result.unplayedBytes).toBe(0);
@@ -260,7 +282,7 @@ describe('getRequestsAnalytics', () => {
   it('leaves a person nobody else watched at zero', async () => {
     mockQueries([row()]);
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.requesters[0]).toMatchObject({ watchedByOthers: 0 });
   });
@@ -268,7 +290,7 @@ describe('getRequestsAnalytics', () => {
   it('keeps an unmatched requester under their remote username', async () => {
     mockQueries([row({ server_user_id: null, lens_user_id: null, user_server_id: null })]);
 
-    const result = await getRequestsAnalytics(undefined);
+    const result = await getRequestsAnalytics(undefined, 'all', true);
 
     expect(result.requesters[0]?.requester).toEqual({
       serverUserId: null,

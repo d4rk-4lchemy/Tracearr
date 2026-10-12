@@ -29,14 +29,15 @@ vi.mock('../utils.js', () => ({
 
 import { db } from '../../../db/client.js';
 import { devicesRoutes } from '../devices.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   await app.register(sensible);
-
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   await app.register(devicesRoutes, { prefix: '/stats' });
 
@@ -56,7 +57,7 @@ function createViewerUser(serverIds: string[]): AuthUser {
   return {
     userId: randomUUID(),
     username: 'viewer',
-    role: 'viewer',
+    role: 'admin',
     serverIds,
   };
 }

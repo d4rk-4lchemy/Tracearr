@@ -5,6 +5,9 @@ import { initI18n } from '@tracearr/translations';
 import type { MediaRequestEntry, UserRequestEntry } from '@tracearr/shared';
 import { RequestsTable } from './RequestsTable';
 
+const auth = vi.hoisted(() => ({ user: { role: 'owner' } }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+
 beforeAll(async () => {
   await initI18n({ lng: 'en' });
 });
@@ -53,7 +56,7 @@ function makeUserEntry(overrides: Partial<UserRequestEntry> = {}): UserRequestEn
     isAutoRequest: false,
     watchedState: 'unwatched',
     watchedStateRequester: 'unwatched',
-    media: { mediaId: 'm1', title: 'Arrival', year: 2016, mediaType: 'movie' },
+    media: { mediaId: 'm1', title: 'Arrival', year: 2016, mediaType: 'movie', posterUrl: null },
     ...overrides,
   };
 }
@@ -118,6 +121,24 @@ describe('RequestsTable', () => {
     expect(link).toHaveAttribute('href', '/users/u1');
   });
 
+  it('shows the requester unlinked to a member', () => {
+    auth.user.role = 'member';
+    renderTable(
+      <RequestsTable
+        subject="media"
+        rows={[makeMediaEntry()]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        emptyTitle="none"
+      />
+    );
+    auth.user.role = 'owner';
+
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Alice/ })).toBeNull();
+  });
+
   it('links the title to the media page when mediaId is set for the user subject', () => {
     renderTable(
       <RequestsTable
@@ -139,7 +160,13 @@ describe('RequestsTable', () => {
         subject="user"
         rows={[
           makeUserEntry({
-            media: { mediaId: null, title: 'Old Title', year: null, mediaType: 'movie' },
+            media: {
+              mediaId: null,
+              title: 'Old Title',
+              year: null,
+              mediaType: 'movie',
+              posterUrl: null,
+            },
           }),
         ]}
         isLoading={false}

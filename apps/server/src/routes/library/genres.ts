@@ -5,7 +5,8 @@
  * genres page. itemCount is canonical-grain (active scoped copies, unnested
  * by the canonical media's genres); plays/watchTimeMs come from the all-time
  * cagg, alias-safe (a merged loser's plays land on the canonical row's genre
- * buckets). Cached per (sorted serverIds, type).
+ * buckets). A member's plays and watch time are their own. Cached per
+ * (sorted serverIds, type, member).
  */
 
 import type { FastifyPluginAsync } from 'fastify';
@@ -20,6 +21,7 @@ import {
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { memberCacheSegment, scopeFragment, type Scope } from '../../lib/scope.js';
 import { buildLibraryCacheKey } from './utils.js';
 
 const genresQuerySchema = z.object({
@@ -70,11 +72,13 @@ async function fetchItemCounts(
  */
 async function fetchEngagement(
   type: 'movie' | 'show',
-  serverIds: string[] | undefined
+  serverIds: string[] | undefined,
+  scope: Scope
 ): Promise<Map<string, { plays: number; watchTimeMs: number }>> {
   const mediaCol = type === 'movie' ? sql`p.media_id` : sql`p.show_media_id`;
   const showGuard = type === 'show' ? sql`AND p.show_media_id IS NOT NULL` : sql``;
   const serverFragmentP = buildMultiServerFragment(serverIds, 'p.server_id');
+  const scopeFragmentP = scopeFragment(scope, sql`p.server_user_id`);
   const result = await db.execute(sql`
     WITH per_media AS (
       SELECT ${mediaCol} AS media_id,
@@ -85,7 +89,7 @@ async function fetchEngagement(
         SELECT pmr.id FROM media pmr
         JOIN media canon ON canon.id = COALESCE(pmr.merged_into_id, pmr.id)
         WHERE canon.media_type = ${type}
-      ) ${showGuard} ${serverFragmentP}
+      ) ${showGuard} ${serverFragmentP} ${scopeFragmentP}
       GROUP BY ${mediaCol}
     )
     SELECT genre,
@@ -110,11 +114,12 @@ async function fetchEngagement(
 
 async function computeGenres(
   type: 'movie' | 'show',
-  serverIds: string[] | undefined
+  serverIds: string[] | undefined,
+  scope: Scope
 ): Promise<GenreRow[]> {
   const [itemCounts, engagement] = await Promise.all([
     fetchItemCounts(type, serverIds),
-    fetchEngagement(type, serverIds),
+    fetchEngagement(type, serverIds, scope),
   ]);
 
   const genres = new Set([...itemCounts.keys(), ...engagement.keys()]);
@@ -131,11 +136,11 @@ async function computeGenres(
 export const libraryGenresRoute: FastifyPluginAsync = async (app) => {
   /**
    * GET /genres - Per-genre item counts and all-time plays/watch time,
-   * scoped to the caller's accessible servers, cached per (serverIds, type).
+   * scoped to the caller's accessible servers, cached per (serverIds, type, member).
    */
   app.get<{ Querystring: Record<string, unknown> }>(
     '/genres',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
       const query = genresQuerySchema.safeParse(request.query);
       if (!query.success) {
@@ -148,7 +153,7 @@ export const libraryGenresRoute: FastifyPluginAsync = async (app) => {
       const resolvedIds = resolveServerIds(authUser, undefined, serverIds);
 
       const serverCacheKey = resolvedIds !== undefined ? [...resolvedIds].sort().join(',') : 'all';
-      const cacheKey = buildLibraryCacheKey(REDIS_KEYS.LIBRARY_GENRES, serverCacheKey, type);
+      const cacheKey = `${buildLibraryCacheKey(REDIS_KEYS.LIBRARY_GENRES, serverCacheKey, type)}${memberCacheSegment(request.scope)}`;
 
       let data: GenreRow[] | null = null;
       const cached = await app.redis.get(cacheKey);
@@ -160,7 +165,7 @@ export const libraryGenresRoute: FastifyPluginAsync = async (app) => {
         }
       }
       if (!data) {
-        data = await computeGenres(type, resolvedIds);
+        data = await computeGenres(type, resolvedIds, request.scope);
         await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_GENRES, JSON.stringify(data));
       }
 

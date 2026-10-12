@@ -95,7 +95,7 @@ describe('the reclaim table charges a season request for its own seasons', () =>
     await insertRequest(9101, [1]);
     await insertRequest(9102, [2]);
 
-    const result = await getRequestsAnalytics([server.id]);
+    const result = await getRequestsAnalytics([server.id], 'all', true);
     const bySeason = new Map(
       result.unplayed.map((row) => [row.seasons?.[0]?.seasonNumber ?? -1, row.fileSizeBytes])
     );
@@ -106,7 +106,7 @@ describe('the reclaim table charges a season request for its own seasons', () =>
 
     await insertRequest(9103, [1, 2]);
 
-    const withOverlap = await getRequestsAnalytics([server.id]);
+    const withOverlap = await getRequestsAnalytics([server.id], 'all', true);
 
     expect(withOverlap.unplayed).toHaveLength(3);
     expect(withOverlap.unplayedBytes).toBe(SEASON_ONE_BYTES + SEASON_TWO_BYTES);
@@ -197,7 +197,7 @@ describe('the reclaim table charges a season request for its own seasons', () =>
       sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
     );
 
-    const result = await getRequestsAnalytics([server.id]);
+    const result = await getRequestsAnalytics([server.id], 'all', true);
 
     expect(result.funnel).toMatchObject({ landed: 2, watched: 1 });
     expect(result.unplayed).toHaveLength(1);
@@ -298,20 +298,20 @@ describe('the reclaim table charges a season request for its own seasons', () =>
     };
 
     await watch(['sb-s2e1', 'sb-s2e2', 'sb-s1e1']);
-    const partway = await getRequestsAnalytics([server.id]);
+    const partway = await getRequestsAnalytics([server.id], 'all', true);
 
     expect(partway.unplayed).toEqual([]);
     expect(partway.requesters[0]).toMatchObject({ watchedByOthers: 0 });
 
     await watch(['sb-s1e2']);
-    const finished = await getRequestsAnalytics([server.id]);
+    const finished = await getRequestsAnalytics([server.id], 'all', true);
 
     expect(finished.requesters[0]).toMatchObject({ watchedByOthers: 1 });
 
     await db.execute(
       sql`UPDATE library_items SET removed_at = now() WHERE server_id = ${server.id} AND parent_index = 1`
     );
-    const deleted = await getRequestsAnalytics([server.id]);
+    const deleted = await getRequestsAnalytics([server.id], 'all', true);
 
     expect(deleted.funnel.watched).toBe(1);
     expect(deleted.unplayed).toEqual([]);

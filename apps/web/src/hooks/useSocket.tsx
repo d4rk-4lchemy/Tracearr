@@ -28,7 +28,7 @@ import type {
   ServerConnectionStatus,
   ServerDownReason,
 } from '@tracearr/shared';
-import { WS_EVENTS } from '@tracearr/shared';
+import { isStaff as staffRole, WS_EVENTS } from '@tracearr/shared';
 import { useAuth } from './useAuth';
 import { useMaintenanceMode } from './useMaintenanceMode';
 import { toast } from 'sonner';
@@ -72,7 +72,9 @@ const RUNS_REFRESH_THROTTLE_MS = 2000;
 
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation(['notifications', 'common']);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  // Members cannot read server health, connection state or destinations; those fetches would 403
+  const isStaff = !!user && staffRole(user.role);
   const { isInMaintenance } = useMaintenanceMode();
   const queryClient = useQueryClient();
   const [socket, setSocket] = useState<TypedSocket | null>(null);
@@ -85,7 +87,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   // Browser-toast preferences live on the web_toast destination. Gated on auth -
   // this provider mounts globally, and an unauthenticated fetch would 401 on the
   // login page.
-  const { data: destinations } = useDestinations(isAuthenticated);
+  const { data: destinations } = useDestinations(isAuthenticated && isStaff);
 
   const webToastEventsRef = useRef<Set<string> | null>(null);
   const sessionUpdatedThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,27 +110,28 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   // Health check is best-effort: a failed fetch leaves the current list alone.
   const refreshUnhealthyServers = useCallback(() => {
+    if (!isStaff) return;
     api.servers
       .health()
       .then((servers) => {
         setUnhealthyServers(servers.map((s) => ({ ...s, since: new Date() })));
       })
       .catch(() => undefined);
-  }, []);
+  }, [isStaff]);
 
   // Fetch initial server health status on authentication
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !isStaff) {
       setUnhealthyServers([]);
       return;
     }
 
     refreshUnhealthyServers();
-  }, [isAuthenticated, refreshUnhealthyServers]);
+  }, [isAuthenticated, isStaff, refreshUnhealthyServers]);
 
   // Fetch initial connection statuses on authentication
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !isStaff) {
       setServerConnectionStatuses(new Map());
       return;
     }
@@ -143,7 +146,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         // Best-effort, no impact on core functionality
       });
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isStaff]);
 
   useEffect(() => {
     // Nothing to connect to while the server is starting up (Socket.IO attaches
@@ -173,8 +176,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     newSocket.on('connect', () => {
       setIsConnected(true);
       // Catch up on anything missed while the socket was down. Skipped on the
-      // very first connect (queries are fresh) and when the server recovered
-      // the session and replayed the gap itself.
+      // very first connect, when queries are fresh. The server has connection
+      // state recovery off, so a reconnect never arrives recovered today.
       if (hasConnectedRef.current && !newSocket.recovered) {
         void queryClient.invalidateQueries({ queryKey: ['sessions', 'active'] });
         void queryClient.invalidateQueries({ queryKey: ['tasks', 'running'] });
@@ -184,8 +187,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       hasConnectedRef.current = true;
     });
 
-    newSocket.on('disconnect', () => {
+    newSocket.on('disconnect', (reason) => {
       setIsConnected(false);
+      // The server ends a user's sockets when their role or access changes, and the client does
+      // not reconnect after a server-side disconnect by itself. Rooms are chosen at connect, so
+      // reconnecting is what picks up the new scope; the profile and server list refetch with it.
+      if (reason === 'io server disconnect') {
+        void queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+        void queryClient.invalidateQueries({ queryKey: ['servers'] });
+        newSocket.connect();
+      }
     });
 
     newSocket.on('connect_error', (error) => {

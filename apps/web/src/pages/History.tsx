@@ -23,6 +23,7 @@ import {
   useSession,
   type HistoryFilters,
 } from '@/hooks/queries';
+import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
 import { PLAYBACK_DECISIONS, type SessionWithDetails } from '@tracearr/shared';
 
@@ -189,6 +190,8 @@ export function History() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedServerIds, isMultiServer } = useServer();
+  const { user } = useAuth();
+  const isMember = user?.role === 'member';
   const [selectedSession, setSelectedSession] = useState<SessionWithDetails | null>(null);
 
   // Deep-link: fetch session by ID from route param and auto-open sheet
@@ -202,6 +205,10 @@ export function History() {
     }
   }, [linkedSession]);
   const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(loadColumnVisibility);
+  const tableVisibility = useMemo(
+    () => (isMember ? { ...columnVisibility, user: false } : columnVisibility),
+    [isMember, columnVisibility]
+  );
 
   // Parse filters from URL on mount and when URL changes
   const filters = useMemo(() => {
@@ -327,6 +334,7 @@ export function History() {
             columnVisibility={columnVisibility}
             onColumnVisibilityChange={handleColumnVisibilityChange}
             isMultiServer={isMultiServer}
+            isMember={isMember}
           />
         </CardContent>
       </Card>
@@ -350,7 +358,7 @@ export function History() {
               hasNextPage={hasNextPage}
               onLoadMore={() => void fetchNextPage()}
               onSessionClick={handleSessionClick}
-              columnVisibility={columnVisibility}
+              columnVisibility={tableVisibility}
               sortBy={filters.orderBy ?? 'startedAt'}
               sortDir={filters.orderDir ?? 'desc'}
               onSortChange={handleSortChange}

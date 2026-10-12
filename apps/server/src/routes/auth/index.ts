@@ -23,8 +23,18 @@ import { plexRoutes } from './plex.js';
 import { jellyfinRoutes } from './jellyfin.js';
 import { embyRoutes } from './emby.js';
 import { sessionRoutes } from './session.js';
+import { betterAuthBasePath } from '../../lib/basePath.js';
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
+  app.route({
+    method: ['GET', 'POST'],
+    url: '/oauth2/callback/oidc',
+    handler: async (request, reply) => {
+      const query = request.url.includes('?') ? request.url.slice(request.url.indexOf('?')) : '';
+      return reply.redirect(`${betterAuthBasePath()}/callback/oidc${query}`, 308);
+    },
+  });
+
   // Register all sub-route plugins
   // Each plugin defines its own paths (no additional prefix needed)
   await app.register(localRoutes);

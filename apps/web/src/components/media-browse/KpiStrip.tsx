@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { format, parseISO } from 'date-fns';
 import type { MediaStatsResponse, MediaWatcherEntry } from '@tracearr/shared';
 import { StatCard, formatNumber } from '@/components/ui/stat-card';
 import { InlineErrorState } from '@/components/library/ErrorState';
@@ -110,6 +111,98 @@ export function KpiStrip({
           subValue={t(completionDetailKey, { finished: finishedCount, total: totalWatchers })}
           variant="kpi"
         />
+      )}
+    </div>
+  );
+}
+
+interface MemberKpiStripProps {
+  mediaType: string | undefined;
+  episodeCount: number | null | undefined;
+  watchers: MediaWatcherEntry[] | undefined;
+  watchersLoading: boolean;
+  watchersError: boolean;
+  onRetryWatchers: () => void;
+  /** Present only when the owner shares anonymous server activity */
+  othersCount: number | undefined;
+}
+
+/** A member's own numbers for this title; the server leaves every other watcher out. */
+export function MemberKpiStrip({
+  mediaType,
+  episodeCount,
+  watchers,
+  watchersLoading,
+  watchersError,
+  onRetryWatchers,
+  othersCount,
+}: MemberKpiStripProps) {
+  const { t } = useTranslation('pages');
+  const own = watchers ?? [];
+  const plays = own.reduce((sum, w) => sum + w.plays, 0);
+  const watchTimeMs = own.reduce((sum, w) => sum + w.watchTimeMs, 0);
+  const completion = averageCompletion(own);
+  const lastWatchedDay = own.reduce<string | null>(
+    (latest, w) =>
+      w.lastWatchedDay && (!latest || w.lastWatchedDay > latest) ? w.lastWatchedDay : latest,
+    null
+  );
+  const episodesWatched = Math.max(0, ...own.map((w) => w.distinctEpisodesWatched ?? 0));
+  const showEpisodes = mediaType === 'show' && episodesWatched > 0 && !!episodeCount;
+
+  return (
+    <div
+      className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3"
+      data-testid="detail-kpi-strip"
+      aria-label={t('media.detail.kpis.ariaLabel')}
+    >
+      {watchersError ? (
+        <div className="col-span-full">
+          <InlineErrorState message={t('media.detail.kpis.loadError')} onRetry={onRetryWatchers} />
+        </div>
+      ) : watchersLoading || watchers === undefined ? (
+        <>
+          <StatCard label="" value="" isLoading variant="kpi" />
+          <StatCard label="" value="" isLoading variant="kpi" />
+          <StatCard label="" value="" isLoading variant="kpi" />
+          <StatCard label="" value="" isLoading variant="kpi" />
+        </>
+      ) : (
+        <>
+          <StatCard
+            label={t('media.detail.kpis.yourPlays')}
+            value={formatNumber(plays)}
+            variant="kpi"
+          />
+          <StatCard
+            label={t('media.detail.kpis.yourWatchTime')}
+            value={formatKpiHours(watchTimeMs)}
+            variant="kpi"
+          />
+          <StatCard
+            label={t('media.detail.kpis.yourCompletion')}
+            value={completion != null ? `${completion}%` : '-'}
+            subValue={
+              showEpisodes
+                ? t('media.detail.kpis.episodesOf', {
+                    watched: episodesWatched,
+                    total: episodeCount,
+                  })
+                : undefined
+            }
+            variant="kpi"
+          />
+          <StatCard
+            label={t('media.detail.kpis.lastWatched')}
+            value={lastWatchedDay ? format(parseISO(lastWatchedDay), 'MMM d, yyyy') : '-'}
+            variant="kpi"
+          />
+        </>
+      )}
+      {othersCount !== undefined && othersCount > 0 && (
+        <p className="text-muted-foreground col-span-full text-xs">
+          {t('media.detail.kpis.watchedByOthers', { count: othersCount })}
+        </p>
       )}
     </div>
   );

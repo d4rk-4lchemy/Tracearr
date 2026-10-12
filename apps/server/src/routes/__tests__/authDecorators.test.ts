@@ -200,7 +200,7 @@ describe('auth decorators with better auth sessions', () => {
   });
 
   it('refuses to resolve a session for a role outside LOGIN_ROLES', async () => {
-    mockBetterAuthSession({ id: 'user-3', username: 'viewer', name: 'Viewer', role: 'viewer' });
+    mockBetterAuthSession({ id: 'user-3', username: 'gone', name: 'Gone', role: 'disabled' });
     app = await buildTestApp();
 
     const res = await app.inject({

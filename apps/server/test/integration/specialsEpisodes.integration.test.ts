@@ -29,6 +29,7 @@ import { sql } from 'drizzle-orm';
 import { createSessionWithRulesAtomic } from '../../src/jobs/poller/sessionLifecycle.js';
 import type { SessionCreationInput } from '../../src/jobs/poller/types.js';
 import { sessionRoutes } from '../../src/routes/sessions.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 const NULL_GEO = {
   city: null,
@@ -53,6 +54,11 @@ async function buildApp() {
   app.decorate('redis', createMockRedis() as unknown as Redis);
   app.decorate('authenticate', async (request: any) => {
     request.user = ownerAuth('owner');
+  });
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: any, reply: any) => {
+    await app.authenticate(request, reply);
+    if (request.user.role !== 'owner') return reply.forbidden('Owner access required');
   });
   await app.register(sessionRoutes as any);
   return app;

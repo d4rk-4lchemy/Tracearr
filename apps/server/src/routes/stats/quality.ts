@@ -9,15 +9,17 @@ import type { FastifyPluginAsync } from 'fastify';
 import { statsQuerySchema } from '@tracearr/shared';
 import { qualityStatsSince } from '../../db/prepared.js';
 import { resolveDateRange } from './utils.js';
-import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
+import { scopedServerFragment } from '../../lib/scope.js';
 import { queryQualityBreakdown, computeQualityBreakdown } from './queries.js';
 
 export const qualityRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('stats', 'read')] };
   /**
    * GET /quality - Direct play / direct stream / transcode breakdown
    * Uses prepared statement for better performance when no server filter
    */
-  app.get('/quality', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/quality', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -28,7 +30,7 @@ export const qualityRoutes: FastifyPluginAsync = async (app) => {
     const dateRange = resolveDateRange(period, startDate, endDate);
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
     const needsServerFilter = resolvedIds !== undefined;
 
     // For 'all' period (no start date) OR when server filtering is needed, use shared query

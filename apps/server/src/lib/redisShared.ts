@@ -6,6 +6,14 @@
 
 import { Redis } from 'ioredis';
 
+// TTL only on creation: a rate-limit window is fixed from first hit, later
+// increments must not slide it. Lua instead of EXPIRE NX (7.0+) because
+// self-hosted Redis versions vary and the repo documents no minimum; scripts
+// run on anything 2.6+.
+export const INCREMENT_SCRIPT = `local value = redis.call('INCR', KEYS[1])
+if value == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return value`;
+
 /** The Fastify plugin's client. Owned by the plugin - closeRedis must not quit it. */
 let injected: Redis | null = null;
 /** Only created when nothing injected a client: scripts and unit tests. */

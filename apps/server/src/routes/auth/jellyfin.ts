@@ -21,7 +21,7 @@ export const jellyfinRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post(
     '/jellyfin/connect-api-key',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requireOwner] },
     async (request, reply) => {
       const body = apiKeyConnectSchema.safeParse(request.body);
       if (!body.success) {
@@ -29,11 +29,6 @@ export const jellyfinRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const authUser = request.user;
-
-      // Only owners can add servers
-      if (authUser.role !== 'owner') {
-        return reply.forbidden('Only owners can add servers');
-      }
 
       const { serverUrl, serverName, apiKey, publicUrl } = body.data;
 

@@ -118,6 +118,18 @@ describe('buildMediaLinks', () => {
     });
   });
 
+  it.each([
+    ['the public address when set', 'https://emby.example.org', 'https://emby.example.org'],
+    ['the configured URL when none is set', null, 'http://192.168.1.122:8096'],
+  ])('builds the Emby link from %s', async (_label, publicUrl, base) => {
+    mockLimit.mockResolvedValue([
+      { url: 'http://192.168.1.122:8096', publicUrl, machineIdentifier: 'emby-machine' },
+    ]);
+    const links = await buildMediaLinks(payload({ serverType: 'emby', serverName: 'Emby' }));
+
+    expect(links[1]?.url).toBe(`${base}/web/index.html#!/item?id=205325&serverId=emby-machine`);
+  });
+
   it('survives a server row that has gone missing', async () => {
     mockLimit.mockResolvedValue([]);
 

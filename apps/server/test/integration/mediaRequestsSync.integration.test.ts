@@ -219,7 +219,11 @@ describe('Seerr request sync', () => {
     const scope = await buildMediaScope(canonical);
     if (!scope) throw new Error('movie media row has no scope');
 
-    const entries = await listMediaRequests({ scope, serverIds: [seeded.serverId] });
+    const entries = await listMediaRequests({
+      scope,
+      serverIds: [seeded.serverId],
+      rowScope: 'all',
+    });
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.requester.serverUserId).toBe(accountId);

@@ -177,7 +177,7 @@ export async function resetPasswordCommand(opts: {
 
 /**
  * Renames a user's login username. Respects the partial unique index on
- * lower(username) for login-enabled roles (owner/admin/viewer) - a
+ * lower(username) for owner and admin - a
  * collision is reported as a clean error with no partial write, since the
  * username + display_username update is a single statement.
  */
@@ -285,7 +285,7 @@ export async function listUsersCommand(): Promise<UserSummary[]> {
 
 /** Re-enables local username/password login - recovery when an OIDC misconfig locks the UI. */
 export async function enableLocalLoginCommand(): Promise<void> {
-  await setSetting('localLoginEnabled', true);
+  await setSetting('loginMethods', { ...(await getSetting('loginMethods')), local: true });
 }
 
 export interface PurgedDispatcharrServer {

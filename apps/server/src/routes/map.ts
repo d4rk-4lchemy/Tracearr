@@ -93,7 +93,7 @@ export const mapRoutes: FastifyPluginAsync = async (app) => {
   // — almost always a volume mounted over the directory it lives in.
   app.get('/basemap/status', { preHandler: [requireSession] }, async () => {
     const current = await getArchive();
-    return { installed: current !== null, path: basemapPath() };
+    return { installed: current !== null };
   });
 
   app.get('/basemap', { preHandler: [requireSession] }, async (request, reply) => {

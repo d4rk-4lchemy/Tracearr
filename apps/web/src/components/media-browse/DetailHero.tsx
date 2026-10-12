@@ -33,7 +33,9 @@ export interface HeroServerLookupEntry {
   name: string;
   type: ServerType;
   color?: string | null;
-  url: string;
+  /** Absent for members, whose server rows carry no internal address. */
+  url?: string;
+  publicUrl?: string | null;
   machineIdentifier?: string | null;
 }
 
@@ -180,19 +182,19 @@ function OpenOnServerAction({
 }) {
   const { t } = useTranslation('pages');
 
-  const targets = activeAvailability
-    .map((entry) => {
-      const server = serverById.get(entry.serverId);
-      if (!server) return null;
-      const itemUrl = buildMediaServerItemUrl({
-        serverType: server.type,
-        baseUrl: server.url,
-        ratingKey: entry.ratingKey,
-        machineIdentifier: server.machineIdentifier,
-      });
-      return { serverId: entry.serverId, name: server.name, url: itemUrl ?? server.url };
-    })
-    .filter((target): target is { serverId: string; name: string; url: string } => !!target);
+  const targets = activeAvailability.flatMap((entry) => {
+    const server = serverById.get(entry.serverId);
+    if (!server) return [];
+    const base = server.publicUrl ?? server.url;
+    const itemUrl = buildMediaServerItemUrl({
+      serverType: server.type,
+      baseUrl: base ?? '',
+      ratingKey: entry.ratingKey,
+      machineIdentifier: server.machineIdentifier,
+    });
+    const url = itemUrl ?? base;
+    return url ? [{ serverId: entry.serverId, name: server.name, url }] : [];
+  });
 
   if (targets.length === 0) return null;
 
