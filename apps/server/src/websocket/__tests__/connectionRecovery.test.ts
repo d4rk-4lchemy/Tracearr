@@ -49,29 +49,97 @@ beforeEach(() => {
   });
 });
 
-describe('connection state recovery', () => {
-  it('recovers the session after an abrupt transport drop and re-runs auth', async () => {
+describe('reconnecting', () => {
+  it('starts a fresh connection that runs auth and joins rooms from the current role', async () => {
     const client = connect(url, {
       auth: { token: 't' },
       reconnectionDelay: 10,
       reconnectionDelayMax: 20,
     });
     await once(client, 'connect');
-    expect(client.recovered).toBeFalsy();
-    expect(resolveSession).toHaveBeenCalledTimes(1);
+    expect(await io.in('sessions').fetchSockets()).toHaveLength(1);
 
-    // Recovery needs an offset, so the client has to have seen one event first
     const delivered = once(client, WS_EVENTS.SESSION_STOPPED);
     io.emit(WS_EVENTS.SESSION_STOPPED, 'sess-1');
     await delivered;
 
+    resolveSession.mockResolvedValue({
+      sessionId: 'ses1',
+      user: { userId: 'u1', username: 'owner', role: 'member', serverIds: [] },
+    });
     const reconnected = once(client, 'connect');
     client.io.engine.close();
     await reconnected;
 
-    expect(client.recovered).toBe(true);
+    expect(client.recovered).toBeFalsy();
     expect(resolveSession).toHaveBeenCalledTimes(2);
-
+    expect(await io.in('sessions').fetchSockets()).toHaveLength(0);
+    expect(await io.in('member:u1').fetchSockets()).toHaveLength(1);
     client.disconnect();
+  });
+});
+
+describe('handshake origin', () => {
+  it('refuses a page from another origin and lets the app and native clients in', async () => {
+    const foreign = connect(url, {
+      auth: { token: 't' },
+      reconnection: false,
+      extraHeaders: { origin: 'http://localhost:1' },
+    });
+    await expect(once(foreign, 'connect_error')).resolves.toBeInstanceOf(Error);
+    foreign.disconnect();
+
+    for (const extraHeaders of [{ origin: url }, {}] as Record<string, string>[]) {
+      const client = connect(url, { auth: { token: 't' }, reconnection: false, extraHeaders });
+      await once(client, 'connect');
+      client.disconnect();
+    }
+  });
+});
+
+describe('handshake host behind a proxy', () => {
+  const forged = { origin: 'http://evil.example', 'x-forwarded-host': 'evil.example' };
+
+  async function handshake(trustProxy: string | undefined) {
+    vi.stubEnv('TRUST_PROXY', trustProxy ?? '');
+    const client = connect(url, {
+      auth: { token: 't' },
+      reconnection: false,
+      transports: ['polling'],
+      extraHeaders: forged,
+    });
+    const outcome = await Promise.race([
+      once(client, 'connect').then(() => 'connected'),
+      once(client, 'connect_error').then(() => 'refused'),
+    ]);
+    client.disconnect();
+    vi.unstubAllEnvs();
+    return outcome;
+  }
+
+  it('believes x-forwarded-host only from a proxy TRUST_PROXY names', async () => {
+    expect(await handshake(undefined)).toBe('refused');
+    expect(await handshake('0')).toBe('refused');
+    expect(await handshake('10.0.0.0/8')).toBe('refused');
+    expect(await handshake('127.0.0.1, ::1')).toBe('connected');
+  });
+
+  it('answers a foreign preflight without credentialed CORS', async () => {
+    const res = await fetch(`${url}/socket.io/?EIO=4&transport=polling`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://evil.example',
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'x-forwarded-host',
+      },
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+
+    const own = await fetch(`${url}/socket.io/?EIO=4&transport=polling`, {
+      method: 'OPTIONS',
+      headers: { origin: url, 'access-control-request-method': 'GET' },
+    });
+    expect(own.headers.get('access-control-allow-origin')).toBe(url);
+    expect(own.headers.get('access-control-allow-credentials')).toBe('true');
   });
 });

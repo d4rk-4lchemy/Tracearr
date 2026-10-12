@@ -21,6 +21,7 @@ vi.mock('../../../db/client.js', () => ({
 // Import the mocked db and the routes
 import { db } from '../../../db/client.js';
 import { terminationsRoutes } from '../terminations.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 /**
  * Build a test Fastify instance with mocked auth
@@ -35,6 +36,7 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: any) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   // Register routes under /users prefix (matching real app structure)
   await app.register(terminationsRoutes, { prefix: '/users' });
@@ -124,7 +126,7 @@ function createViewerUser(serverIds: string[] = [randomUUID()]): AuthUser {
   return {
     userId: randomUUID(),
     username: 'viewer',
-    role: 'viewer',
+    role: 'admin',
     serverIds,
   };
 }

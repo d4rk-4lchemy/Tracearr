@@ -16,7 +16,7 @@ import { liveServerCondition } from '../services/liveServers.js';
 import { isMaintenance } from '../serverState.js';
 import { batchGetIdentityServerUserIds, getActiveAutomations } from './poller/database.js';
 import { broadcastViolations } from './poller/violations.js';
-import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { everyAligned, getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 
 // Queue name
 const QUEUE_NAME = 'inactivity-check';
@@ -160,15 +160,10 @@ export async function scheduleInactivityChecks(): Promise<void> {
   }
 
   // Schedule a single recurring job that checks all rules hourly
-  await inactivityQueue.add(
-    'scheduled-check',
-    { type: 'check' },
-    {
-      repeat: {
-        every: CHECK_INTERVAL_MS,
-      },
-      jobId: 'inactivity-check-repeatable',
-    }
+  await inactivityQueue.upsertJobScheduler(
+    'inactivity-check-repeatable',
+    everyAligned(CHECK_INTERVAL_MS),
+    { name: 'scheduled-check', data: { type: 'check' } }
   );
 
   // Schedule a delayed startup check to allow server to fully initialize

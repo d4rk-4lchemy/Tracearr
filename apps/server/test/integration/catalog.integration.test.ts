@@ -34,6 +34,7 @@ import {
   mergeMediaRows,
 } from '../../src/services/library/mediaResolutionService.js';
 import { setSetting } from '../../src/services/settings.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -41,6 +42,7 @@ async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: FastifyRequest) => {
     (request as FastifyRequest & { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', createMockRedis() as unknown as Redis);
   await app.register(libraryCatalogRoute, { prefix: '/library' });
   return app;
@@ -51,7 +53,7 @@ function ownerFor(serverIds: string[] = []): AuthUser {
 }
 
 function viewerFor(serverIds: string[]): AuthUser {
-  return { userId: randomUUID(), username: 'viewer', role: 'viewer', serverIds };
+  return { userId: randomUUID(), username: 'viewer', role: 'admin', serverIds };
 }
 
 async function refreshPlaysAggregate(): Promise<void> {

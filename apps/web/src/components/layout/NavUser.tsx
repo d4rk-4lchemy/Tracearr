@@ -1,5 +1,16 @@
 import { useTranslation } from 'react-i18next';
-import { BookOpen, ChevronsUpDown, Globe, Heart, LogOut, Monitor, Moon, Sun } from 'lucide-react';
+import {
+  BookOpen,
+  ChevronsUpDown,
+  Eye,
+  Globe,
+  Heart,
+  LogOut,
+  Monitor,
+  Moon,
+  Sun,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -58,12 +69,21 @@ const externalLinks = [
 ];
 
 export function NavUser() {
-  const { t } = useTranslation(['common', 'settings']);
+  const { t } = useTranslation(['common', 'settings', 'pages']);
   const { user, logout } = useAuth();
   const { isMobile } = useSidebar();
   const { theme, setTheme } = useTheme();
 
   if (!user) return null;
+
+  // A preview that cannot be stopped says so; the owner stays signed in
+  const handleLogout = () => {
+    logout().catch((error: unknown) => {
+      toast.error(t('common:errors.generic'), {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    });
+  };
 
   const initials = user.username.slice(0, 2).toUpperCase();
   const ThemeIcon = THEME_ICONS[theme];
@@ -147,9 +167,11 @@ export function NavUser() {
             ))}
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => void logout()} variant="destructive">
-            <LogOut />
-            {t('common:actions.signOut')}
+          <DropdownMenuItem onClick={handleLogout} variant="destructive">
+            {user.impersonatedBy ? <Eye /> : <LogOut />}
+            {user.impersonatedBy
+              ? t('pages:impersonation.stopViewing')
+              : t('common:actions.signOut')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

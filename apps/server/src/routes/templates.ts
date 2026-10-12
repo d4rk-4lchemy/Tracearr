@@ -144,19 +144,19 @@ function readEnvelope(body: { code?: string; envelope?: unknown }): EnvelopeResu
 
 export const templateRoutes: FastifyPluginAsync = async (app) => {
   const owner = { preHandler: [app.requireOwner] };
-  const authed = { preHandler: [app.authenticate] };
+  const readers = { preHandler: [app.requirePermission('templates', 'read')] };
   // Decoding a pasted code costs real work, so the two routes that do it are capped.
   const decoding = { ...owner, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } };
 
   /**
    * GET /templates - Every stored template with the number of automations on it
    */
-  app.get('/', authed, async () => ({ data: await listTemplates() }));
+  app.get('/', readers, async () => ({ data: await listTemplates() }));
 
   /**
    * GET /templates/:id - One template with its current version
    */
-  app.get('/:id', authed, async (request, reply) => {
+  app.get('/:id', readers, async (request, reply) => {
     const params = idParamSchema.safeParse(request.params);
     if (!params.success) return reply.badRequest('Invalid template ID');
 
@@ -168,7 +168,7 @@ export const templateRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /templates/:id/versions/:version - One stored version, however old
    */
-  app.get('/:id/versions/:version', authed, async (request, reply) => {
+  app.get('/:id/versions/:version', readers, async (request, reply) => {
     const params = versionParamsSchema.safeParse(request.params);
     if (!params.success) return reply.badRequest('Invalid template version');
 

@@ -43,7 +43,7 @@ import {
 import { recordServerBandwidthSample, recordServerStatsSample } from './serverLiveStats.js';
 import { getRedis } from '../lib/redisShared.js';
 import { probeSsePlugin } from './mediaServer/shared/ssePluginProbe.js';
-import { broadcastToAll } from '../websocket/index.js';
+import { broadcastToSessions } from '../websocket/index.js';
 import { isLeader } from './leaderLease.js';
 import { triggerServerPoll } from '../jobs/poller/index.js';
 import { clearLiveTvEpgServer } from './mediaServer/shared/liveTvEpg.js';
@@ -727,7 +727,7 @@ export class SSEManager extends EventEmitter {
         });
     }
 
-    broadcastToAll(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connectionStatus);
+    broadcastToSessions(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connectionStatus);
   }
 
   /**
@@ -825,7 +825,7 @@ export class SSEManager extends EventEmitter {
           });
       }
 
-      broadcastToAll(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connectionStatus);
+      broadcastToSessions(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connectionStatus);
     });
 
     realtime.on('connection:error', (error: Error) => {
@@ -893,7 +893,7 @@ export class SSEManager extends EventEmitter {
         console.error(`[SSEManager] Failed to write connection status for ${serverName}:`, err);
       });
 
-      broadcastToAll(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connStatus);
+      broadcastToSessions(WS_EVENTS.SERVER_CONNECTION as 'server:connection', connStatus);
     }
   }
 

@@ -15,6 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { SQL } from 'drizzle-orm';
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -30,13 +31,15 @@ vi.mock('../../services/mediaServer/index.js', () => ({
 import { db } from '../../db/client.js';
 import { authAccounts, plexAccounts, servers } from '../../db/schema.js';
 import { PlexClient } from '../../services/mediaServer/index.js';
+import { renderSql } from '../../test/helpers.js';
 import { processPlexTokenRefresh } from '../plexTokenRefresh.js';
 
+const candidateWhere = vi.fn();
+
 function selectCandidates(rows: unknown[]) {
+  candidateWhere.mockImplementation(() => Promise.resolve(rows));
   vi.mocked(db.select).mockReturnValue({
-    from: vi.fn(() => ({
-      where: vi.fn(() => Promise.resolve(rows)),
-    })),
+    from: vi.fn(() => ({ innerJoin: vi.fn(() => ({ where: candidateWhere })) })),
   } as never);
 }
 
@@ -79,6 +82,17 @@ function mockUpdates({
 describe('processPlexTokenRefresh', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("refreshes only the owner's plex.tv tokens", async () => {
+    selectCandidates([]);
+    mockUpdates({});
+
+    await processPlexTokenRefresh();
+
+    const where = renderSql(candidateWhere.mock.calls[0]?.[0] as SQL);
+    expect(where.sql).toContain('users.role = $');
+    expect(where.params).toContain('owner');
   });
 
   it('is a clean no-op when there are no candidate rows', async () => {

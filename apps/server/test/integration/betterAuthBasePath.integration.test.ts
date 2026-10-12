@@ -28,6 +28,7 @@ import { db } from '../../src/db/client.js';
 import { users, authAccounts, authSessions, authVerifications } from '../../src/db/schema.js';
 import { createBetterAuthHandler } from '../../src/lib/betterAuthRequest.js';
 import { betterAuthBasePath } from '../../src/lib/basePath.js';
+import { authUserOptions, oidcAtLegacyCallback } from '../../src/lib/auth.js';
 
 const HOST = 'tracearr.example.com';
 const BASE_PATH = '/tracearr';
@@ -51,24 +52,27 @@ beforeAll(async () => {
         verification: authVerifications,
       },
     }),
+    user: authUserOptions,
     advanced: {
       database: { generateId: () => randomUUID() },
     },
     plugins: [
       usernamePlugin(),
-      genericOAuth({
-        config: [
-          {
-            providerId: 'oidc',
-            clientId: 'tracearr',
-            clientSecret: 'test-oidc-secret',
-            authorizationUrl: 'https://idp.example.com/authorize',
-            tokenUrl: 'https://idp.example.com/token',
-            scopes: ['openid', 'email', 'profile'],
-            pkce: true,
-          },
-        ],
-      }),
+      oidcAtLegacyCallback(
+        genericOAuth({
+          config: [
+            {
+              providerId: 'oidc',
+              clientId: 'tracearr',
+              clientSecret: 'test-oidc-secret',
+              authorizationUrl: 'https://idp.example.com/authorize',
+              tokenUrl: 'https://idp.example.com/token',
+              scopes: ['openid', 'email', 'profile'],
+              pkce: true,
+            },
+          ],
+        })
+      ),
     ],
   });
 
@@ -96,7 +100,7 @@ afterAll(async () => {
   await app.close();
 });
 
-async function signInOAuth2(url: string) {
+async function signInSocial(url: string) {
   return app.inject({
     method: 'POST',
     url,
@@ -105,13 +109,13 @@ async function signInOAuth2(url: string) {
       host: HOST,
       'x-forwarded-proto': 'https',
     },
-    payload: { providerId: 'oidc', callbackURL: `${BASE_PATH}/` },
+    payload: { provider: 'oidc', callbackURL: `${BASE_PATH}/` },
   });
 }
 
 describe('OIDC redirect_uri with BASE_PATH set', () => {
   it('keeps the subpath in the redirect_uri sent to the provider', async () => {
-    const res = await signInOAuth2(`${BASE_PATH}${API_BASE_PATH}/auth/sign-in/oauth2`);
+    const res = await signInSocial(`${BASE_PATH}${API_BASE_PATH}/auth/sign-in/social`);
     expect(res.statusCode).toBe(200);
 
     const authorizationUrl = new URL(res.json().url);
@@ -124,7 +128,7 @@ describe('OIDC redirect_uri with BASE_PATH set', () => {
   it('emits the same canonical redirect_uri for a request that bypasses the prefix', async () => {
     // Direct access without the subpath (rewriteUrl passes it through
     // untouched) must send the redirect_uri the provider has registered.
-    const res = await signInOAuth2(`${API_BASE_PATH}/auth/sign-in/oauth2`);
+    const res = await signInSocial(`${API_BASE_PATH}/auth/sign-in/social`);
     expect(res.statusCode).toBe(200);
 
     expect(new URL(res.json().url).searchParams.get('redirect_uri')).toBe(

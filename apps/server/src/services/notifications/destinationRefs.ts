@@ -5,7 +5,7 @@ import { automations, newsletters } from '../../db/schema.js';
 import { listDestinations } from './destinationStore.js';
 
 /** A branch holds effects of its own, so a destination can live one level down. */
-const leaves = (action: Action): LeafAction[] =>
+export const leaves = (action: Action): LeafAction[] =>
   action.type === 'if' ? [...action.then, ...action.else] : [action];
 
 /**

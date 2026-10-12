@@ -99,6 +99,7 @@ import {
   getActivePlaybackReportingImportForServer,
 } from '../../jobs/importQueue.js';
 import { importRoutes } from '../import.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 /**
  * Build a test Fastify instance with mocked auth
@@ -113,6 +114,7 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   // Register routes
   await app.register(importRoutes, { prefix: '/import' });
@@ -139,7 +141,7 @@ function createViewerUser(): AuthUser {
   return {
     userId: randomUUID(),
     username: 'viewer',
-    role: 'viewer',
+    role: 'admin',
     serverIds: [randomUUID()],
   };
 }

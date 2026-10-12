@@ -436,6 +436,12 @@ export interface MediaWatchHistoryItem {
 // Media Server Client Interface
 // ============================================================================
 
+/** A Jellyfin or Emby user token, as the server reported it at sign-in */
+export interface MediaServerAuth {
+  externalId: string;
+  token: string;
+}
+
 /**
  * Configuration for creating a media server client
  */

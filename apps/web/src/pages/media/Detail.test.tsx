@@ -38,6 +38,9 @@ vi.mock('@/components/history/SessionDetailSheet', () => ({
     open && session ? <div data-testid="session-sheet">{session.id}</div> : null,
 }));
 
+const auth = vi.hoisted(() => ({ user: { role: 'owner' } }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
+
 vi.mock('@/hooks/useServer', () => ({
   useServer: vi.fn(),
 }));
@@ -153,6 +156,7 @@ function renderPage() {
 describe('MediaDetail page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.user.role = 'owner';
     mockUseParams.mockReturnValue({ id: 'media-1' });
     mockUseServer.mockReturnValue({
       selectedServerIds: ['srv-1'],
@@ -598,5 +602,55 @@ describe('MediaDetail page', () => {
     expect(
       screen.queryByRole('heading', { name: 'requests.mediaPanel.title' })
     ).not.toBeInTheDocument();
+  });
+
+  it('drops the User column of the history table for a member', () => {
+    mockUseMediaDetail.mockReturnValue(detailQuery('movie'));
+    const play = {
+      id: 'chain-1',
+      server_id: 'srv-1',
+      server_name: 'Plex',
+      media_title: 'Severance',
+      started_at: '2026-07-01T12:00:00.000Z',
+      duration_ms: 2_700_000,
+      watched: true,
+      user: { id: 'user-1', server_user_id: 'server-user-1', username: 'ari', thumb_url: null },
+    };
+    mockUseMediaHistory.mockReturnValue(
+      pendingQuery({
+        isLoading: false,
+        data: { pages: [{ data: [play] }] },
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+      })
+    );
+    const { unmount } = renderPage();
+    expect(screen.getByRole('columnheader', { name: 'common:labels.user' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /ari/ })).toHaveAttribute(
+      'href',
+      '/users/server-user-1'
+    );
+    unmount();
+
+    auth.user.role = 'member';
+    renderPage();
+    expect(screen.queryByRole('columnheader', { name: 'common:labels.user' })).toBeNull();
+    expect(screen.queryByText('ari')).toBeNull();
+    expect(screen.getByText('Severance')).toBeInTheDocument();
+  });
+
+  it('gives a member their own numbers and no watchers table', () => {
+    auth.user.role = 'member';
+    mockUseMediaDetail.mockReturnValue(detailQuery('movie'));
+    mockUseMediaWatchers.mockReturnValue(
+      pendingQuery({ isLoading: false, data: { watchers: [], othersCount: 2 } })
+    );
+
+    renderPage();
+
+    expect(screen.getByText('media.detail.kpis.yourPlays')).toBeInTheDocument();
+    expect(screen.queryByText('media.detail.watchers.title')).not.toBeInTheDocument();
+    expect(screen.queryByText('media.detail.kpis.viewers.label')).not.toBeInTheDocument();
   });
 });

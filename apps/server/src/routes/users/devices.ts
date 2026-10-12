@@ -10,13 +10,14 @@ import { db } from '../../db/client.js';
 import { queryUserDevices, resolveIdentityScopedServerUserIds } from './queries.js';
 
 export const devicesRoutes: FastifyPluginAsync = async (app) => {
+  const readDevices = { preHandler: [app.requirePermission('devices', 'read')] };
   /**
    * GET /:id/devices - Get user's unique devices (aggregated from sessions)
    *
    * scope=identity expands the result to every account under the same
    * person that the caller can access.
    */
-  app.get('/:id/devices', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id/devices', readDevices, async (request, reply) => {
     const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid user ID');
@@ -30,7 +31,13 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
     const { id } = params.data;
     const authUser = request.user;
 
-    const scoped = await resolveIdentityScopedServerUserIds(db, authUser, id, query.data.scope);
+    const scoped = await resolveIdentityScopedServerUserIds(
+      db,
+      authUser,
+      id,
+      query.data.scope,
+      request.scope
+    );
     if ('error' in scoped) {
       if (scoped.error === 'notFound') {
         return reply.notFound('User not found');

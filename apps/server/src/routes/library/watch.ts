@@ -140,7 +140,7 @@ export const libraryWatchRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: LibraryWatchQueryInput }>(
     '/watch',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = libraryWatchQuerySchema.safeParse(request.query);
       if (!query.success) {

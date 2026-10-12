@@ -19,6 +19,7 @@ import {
   plexAccounts,
   getRedis,
   getSetting,
+  setSetting,
   resetPasswordCommand,
   setUsernameCommand,
   setEmailCommand,
@@ -454,9 +455,15 @@ describe('admin cli commands', () => {
   });
 
   describe('enableLocalLoginCommand', () => {
-    it('flips the setting', async () => {
+    it('turns local login back on and keeps the other methods', async () => {
+      await setSetting('loginMethods', { local: false, plex: false, oidc: true, member: true });
       await enableLocalLoginCommand();
-      expect(await getSetting('localLoginEnabled')).toBe(true);
+      expect(await getSetting('loginMethods')).toEqual({
+        local: true,
+        plex: false,
+        oidc: true,
+        member: true,
+      });
     });
   });
 
@@ -469,7 +476,9 @@ describe('admin cli commands', () => {
       const result = await purgeDispatcharrCommand();
       expect(result).toEqual({ servers: [], redisWarning: null });
 
-      const remainingServers = await db.select({ id: servers.id, type: servers.type }).from(servers);
+      const remainingServers = await db
+        .select({ id: servers.id, type: servers.type })
+        .from(servers);
       expect(remainingServers).toHaveLength(1);
       expect(remainingServers[0]?.type).toBe('plex');
     });
@@ -542,9 +551,9 @@ describe('admin cli commands', () => {
       expect(
         await db.select().from(serverUsers).where(eq(serverUsers.serverId, dispatcharr.id))
       ).toHaveLength(0);
-      expect(await db.select().from(serverUsers).where(eq(serverUsers.serverId, plex.id))).toHaveLength(
-        1
-      );
+      expect(
+        await db.select().from(serverUsers).where(eq(serverUsers.serverId, plex.id))
+      ).toHaveLength(1);
       expect(
         await db
           .select({ id: sessions.id })

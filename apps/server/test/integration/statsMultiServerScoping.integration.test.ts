@@ -22,13 +22,14 @@ import { db } from '../../src/db/client.js';
 import { contentRoutes } from '../../src/routes/stats/content.js';
 import { engagementRoutes } from '../../src/routes/stats/engagement.js';
 import { sql } from 'drizzle-orm';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 function ownerAuth(): AuthUser {
   return { userId: 'owner', username: 'owner', role: 'owner', serverIds: [] };
 }
 
 function viewerAuth(serverIds: string[]): AuthUser {
-  return { userId: 'viewer', username: 'viewer', role: 'viewer', serverIds };
+  return { userId: 'viewer', username: 'viewer', role: 'admin', serverIds };
 }
 
 async function buildApp(
@@ -40,6 +41,7 @@ async function buildApp(
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(plugin as never);
   return app;
 }

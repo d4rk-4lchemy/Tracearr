@@ -9,15 +9,17 @@ import type { FastifyPluginAsync } from 'fastify';
 import { statsQuerySchema } from '@tracearr/shared';
 import { playsByPlatformSince } from '../../db/prepared.js';
 import { resolveDateRange } from './utils.js';
-import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
+import { scopedServerFragment } from '../../lib/scope.js';
 import { queryPlatforms } from './queries.js';
 
 export const platformsRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('stats', 'read')] };
   /**
    * GET /platforms - Plays by platform
    * Uses prepared statement for better performance when no server filter
    */
-  app.get('/platforms', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/platforms', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -28,7 +30,7 @@ export const platformsRoutes: FastifyPluginAsync = async (app) => {
     const dateRange = resolveDateRange(period, startDate, endDate);
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
     const needsServerFilter = resolvedIds !== undefined;
 
     // For 'all' period (no start date) OR when server filtering is needed, use shared query

@@ -11,7 +11,8 @@ interface UserCardProps {
   identityName?: string | null;
   thumbUrl?: string | null;
   serverId?: string | null;
-  trustScore: number;
+  /** Absent for members, who never see a trust score */
+  trustScore?: number;
   playCount: number;
   watchTimeHours: number;
   topContent?: string | null;
@@ -113,16 +114,18 @@ export function UserCard({
       </div>
 
       {/* Trust Score */}
-      <div
-        className={cn(
-          'relative z-10 mt-3 flex w-24 items-center justify-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium',
-          getTrustScoreBg(trustScore),
-          getTrustScoreColor(trustScore)
-        )}
-      >
-        <Trophy className="h-3 w-3 shrink-0" />
-        <span>Trust: {trustScore}%</span>
-      </div>
+      {trustScore !== undefined && (
+        <div
+          className={cn(
+            'relative z-10 mt-3 flex w-24 items-center justify-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium',
+            getTrustScoreBg(trustScore),
+            getTrustScoreColor(trustScore)
+          )}
+        >
+          <Trophy className="h-3 w-3 shrink-0" />
+          <span>Trust: {trustScore}%</span>
+        </div>
+      )}
 
       {/* Top Content */}
       {topContent && (

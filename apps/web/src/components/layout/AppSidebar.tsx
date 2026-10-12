@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { ArrowUpCircle } from 'lucide-react';
-import { normalizeVersion } from '@tracearr/shared';
+import { isStaff as staffRole, normalizeVersion } from '@tracearr/shared';
 import {
   Sidebar,
   SidebarContent,
@@ -23,10 +23,11 @@ import { Logo } from '@/components/brand/Logo';
 import { ServerSelector } from './ServerSelector';
 import { NavRunningTasks } from './NavRunningTasks';
 import { NavUser } from './NavUser';
-import { navigation, isNavItemActive, type NavItem } from './nav-data';
+import { navigation, isNavItemActive, visibleItems, type NavItem } from './nav-data';
 import { UpdateDialog } from './UpdateDialog';
 import { WhatsNewDialog } from '@/components/whats-new/WhatsNewDialog';
 import { useRequestsConfigured, useVersion } from '@/hooks/queries';
+import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
 import { cn } from '@/lib/utils';
 import { RELEASE_NOTES, selectReopen, type WhatsNewSections } from '@/lib/releaseNotes';
@@ -50,7 +51,7 @@ function NavMenuItem({ item }: { item: NavItem }) {
   );
 }
 
-function VersionDisplay() {
+function VersionDisplay({ isStaff }: { isStaff: boolean }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [reopenSections, setReopenSections] = useState<WhatsNewSections | null>(null);
@@ -102,7 +103,7 @@ function VersionDisplay() {
             <span className="text-muted-foreground/60 ml-1">({t('common:beta')})</span>
           )}
         </button>
-        {version.recommended.kind !== 'none' && (
+        {isStaff && version.recommended.kind !== 'none' && (
           <Badge
             variant="secondary"
             className={cn(
@@ -117,7 +118,7 @@ function VersionDisplay() {
             <span className="text-[10px]">{getUpdateLabel()}</span>
           </Badge>
         )}
-        {pluginUpdateAvailable && (
+        {isStaff && pluginUpdateAvailable && (
           <Badge
             variant="secondary"
             className="h-5 cursor-pointer bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
@@ -130,7 +131,7 @@ function VersionDisplay() {
         )}
       </div>
 
-      {version.recommended.kind !== 'none' && (
+      {isStaff && version.recommended.kind !== 'none' && (
         <UpdateDialog open={dialogOpen} onOpenChange={setDialogOpen} version={version} />
       )}
 
@@ -152,7 +153,11 @@ function VersionDisplay() {
 export function AppSidebar() {
   const { t } = useTranslation('nav');
   const { state, isMobile } = useSidebar();
+  const { user } = useAuth();
   const seerrConfigured = useRequestsConfigured().data?.configured ?? false;
+  const role = user?.role ?? 'member';
+  // Members cannot read the running tasks, the update check or the connection settings
+  const isStaff = staffRole(role);
   // The mobile sheet is always full width, so `state` (which tracks the desktop
   // panel) would hide the wordmark inside an open sheet.
   const expanded = isMobile || state === 'expanded';
@@ -173,30 +178,33 @@ export function AppSidebar() {
           SidebarContent to overflow-hidden there; 17 destinations overflow a
           768px-tall laptop, so restore scrolling rather than clip them away. */}
       <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
-        {navigation.map((section) => (
-          <SidebarGroup key={section.labelKey}>
-            <SidebarGroupLabel>{t(section.labelKey)}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {section.items
-                  .filter((item) => seerrConfigured || item.requiresSeerr === undefined)
-                  .map((item) => (
+        {navigation.map((section) => {
+          const items = visibleItems(section, role, seerrConfigured);
+          if (items.length === 0) return null;
+
+          return (
+            <SidebarGroup key={section.labelKey}>
+              <SidebarGroupLabel>{t(section.labelKey)}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {items.map((item) => (
                     <NavMenuItem key={item.href} item={item} />
                   ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
       </SidebarContent>
       <SidebarFooter>
         {/* Tasks first: the footer is bottom-anchored and grows upward, so a
             task appearing moves only the footer's top edge and leaves the
             account button under the pointer where it was. */}
         <SidebarMenu>
-          <NavRunningTasks />
+          {isStaff && <NavRunningTasks />}
           <NavUser />
         </SidebarMenu>
-        <VersionDisplay />
+        <VersionDisplay isStaff={isStaff} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

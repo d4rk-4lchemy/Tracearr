@@ -5,6 +5,7 @@ import {
   MERGE_SAME_SERVER_CONFIRMATION_REQUIRED,
   serverScopeFromIds,
   serverScopeKey,
+  type UpdateUserAccessInput,
   type UserRosterFilters,
 } from '@tracearr/shared';
 import { api, type UserListParams } from '@/lib/api';
@@ -96,6 +97,18 @@ export function useUpdateUserIdentity() {
     onError: (error: Error) => {
       toast.error(t('toast.error.identityUpdateFailed'), { description: error.message });
     },
+  });
+}
+
+export function useUpdateUserAccess() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateUserAccessInput }) =>
+      api.users.updateAccess(id, data),
+    // Sign-in access belongs to the identity, so every cached view of it is stale. Returned so the
+    // mutation stays pending until the page has the new value.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
   });
 }
 

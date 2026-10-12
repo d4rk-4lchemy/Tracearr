@@ -52,7 +52,10 @@ export function useHistorySessions(filters: HistoryFilters = {}, pageSize = 50) 
   });
 }
 
-export type AggregateFilters = Partial<HistoryAggregatesQueryInput> & { serverIds?: string[] };
+export type AggregateFilters = Partial<HistoryAggregatesQueryInput> & {
+  serverIds?: string[];
+  self?: boolean;
+};
 
 export function useHistoryAggregates(filters: AggregateFilters = {}) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(filters.serverIds));

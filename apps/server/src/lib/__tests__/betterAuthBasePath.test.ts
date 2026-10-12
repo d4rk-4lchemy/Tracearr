@@ -17,6 +17,7 @@ import type { FastifyRequest } from 'fastify';
 function fakeRequest(url: string): FastifyRequest {
   return {
     url,
+    host: 'example.com',
     headers: { host: 'example.com' },
     protocol: 'https',
     ip: '203.0.113.7',
@@ -24,6 +25,40 @@ function fakeRequest(url: string): FastifyRequest {
     body: undefined,
   } as unknown as FastifyRequest;
 }
+
+describe('old OIDC callback path', () => {
+  it('308s to the new callback and keeps the query string', async () => {
+    delete process.env.BASE_PATH;
+    vi.resetModules();
+    vi.doMock('../../routes/auth/local.js', () => ({ localRoutes: async () => {} }));
+    vi.doMock('../../routes/auth/plex.js', () => ({ plexRoutes: async () => {} }));
+    vi.doMock('../../routes/auth/jellyfin.js', () => ({ jellyfinRoutes: async () => {} }));
+    vi.doMock('../../routes/auth/emby.js', () => ({ embyRoutes: async () => {} }));
+    vi.doMock('../../routes/auth/session.js', () => ({ sessionRoutes: async () => {} }));
+    const { default: Fastify } = await import('fastify');
+    const { authRoutes } = await import('../../routes/auth/index.js');
+    const app = Fastify();
+    await app.register(authRoutes, { prefix: '/api/v1/auth' });
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/oauth2/callback/oidc?code=abc&state=xyz',
+      });
+      expect(res.statusCode).toBe(308);
+      expect(res.headers.location).toBe('/api/v1/auth/callback/oidc?code=abc&state=xyz');
+
+      const post = await app.inject({ method: 'POST', url: '/api/v1/auth/oauth2/callback/oidc' });
+      expect(post.statusCode).toBe(308);
+    } finally {
+      await app.close();
+      vi.doUnmock('../../routes/auth/local.js');
+      vi.doUnmock('../../routes/auth/plex.js');
+      vi.doUnmock('../../routes/auth/jellyfin.js');
+      vi.doUnmock('../../routes/auth/emby.js');
+      vi.doUnmock('../../routes/auth/session.js');
+    }
+  });
+});
 
 describe('better auth BASE_PATH handling', () => {
   afterEach(() => {
@@ -70,24 +105,24 @@ describe('better auth BASE_PATH handling', () => {
       vi.resetModules();
       const { toWebRequest } = await import('../betterAuthRequest.js');
       // rewriteUrl has already stripped /tracearr by the time the shim runs
-      const webRequest = toWebRequest(fakeRequest('/api/v1/auth/sign-in/oauth2'));
-      expect(webRequest.url).toBe('https://example.com/tracearr/api/v1/auth/sign-in/oauth2');
+      const webRequest = toWebRequest(fakeRequest('/api/v1/auth/sign-in/social'));
+      expect(webRequest.url).toBe('https://example.com/tracearr/api/v1/auth/sign-in/social');
     });
 
     it('leaves the url untouched with no BASE_PATH', async () => {
       delete process.env.BASE_PATH;
       vi.resetModules();
       const { toWebRequest } = await import('../betterAuthRequest.js');
-      const webRequest = toWebRequest(fakeRequest('/api/v1/auth/sign-in/oauth2'));
-      expect(webRequest.url).toBe('https://example.com/api/v1/auth/sign-in/oauth2');
+      const webRequest = toWebRequest(fakeRequest('/api/v1/auth/sign-in/social'));
+      expect(webRequest.url).toBe('https://example.com/api/v1/auth/sign-in/social');
     });
 
     it('builds a correct absolute url with BASE_PATH="/" (root), not a protocol-relative one', async () => {
       process.env.BASE_PATH = '/';
       vi.resetModules();
       const { toWebRequest } = await import('../betterAuthRequest.js');
-      const webRequest = toWebRequest(fakeRequest('/api/v1/auth/sign-in/oauth2'));
-      expect(webRequest.url).toBe('https://example.com/api/v1/auth/sign-in/oauth2');
+      const webRequest = toWebRequest(fakeRequest('/api/v1/auth/sign-in/social'));
+      expect(webRequest.url).toBe('https://example.com/api/v1/auth/sign-in/social');
     });
   });
 

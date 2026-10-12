@@ -25,12 +25,13 @@ import { db } from '../../src/db/client.js';
 import { authSessions } from '../../src/db/schema.js';
 import { closeAuth } from '../../src/lib/auth.js';
 import { createBetterAuthHandler } from '../../src/lib/betterAuthRequest.js';
+import { trustProxyFromEnv } from '../../src/lib/origins.js';
 import { getRedis } from '../../src/lib/redisShared.js';
 
-// trustProxy: true mirrors the documented reverse-proxy deployment
-// (TRUST_PROXY=true), making request.ip honor x-forwarded-for.
+// TRUST_PROXY=true, the documented single reverse proxy: request.ip is the address that proxy
+// appended to x-forwarded-for.
 async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false, trustProxy: true });
+  const app = Fastify({ logger: false, trustProxy: trustProxyFromEnv('true') });
   app.route({
     method: ['GET', 'POST'],
     url: `${API_BASE_PATH}/auth/*`,
@@ -54,11 +55,11 @@ async function signUp(app: FastifyInstance, headers: Record<string, string>) {
   });
 }
 
-// A proxy chain appends to x-forwarded-for, so the header reaching the app is
-// multi-valued. Better Auth's own header parsing rejects multi-valued XFF
-// outright when no trustedProxies are configured; only Fastify's trustProxy
-// resolution (forwarded through the shim) can recover the client IP here.
-const proxyChain = (ip: string) => `${ip}, 10.0.0.1`;
+// The proxy appends the address it saw to whatever the client sent, so the header reaching the
+// app is multi-valued and its left side is the client's own claim. Better Auth's own header
+// parsing rejects multi-valued XFF outright when no trustedProxies are configured; only
+// Fastify's trustProxy resolution (forwarded through the shim) can recover the client IP here.
+const proxyChain = (ip: string) => `10.9.9.9, ${ip}`;
 
 async function signIn(app: FastifyInstance, ip: string) {
   return app.inject({

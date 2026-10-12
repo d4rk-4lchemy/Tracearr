@@ -37,6 +37,7 @@ import {
   invalidateLibraryCaches,
   shutdownLibrarySyncQueue,
 } from '../../src/jobs/librarySyncQueue.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; redis: Redis }> {
   const app = Fastify({ logger: false });
@@ -44,6 +45,7 @@ async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; red
   app.decorate('authenticate', async (request: FastifyRequest) => {
     (request as FastifyRequest & { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   const redis = createMockRedis() as unknown as Redis;
   app.decorate('redis', redis);
   await app.register(libraryShelvesRoute, { prefix: '/library' });
@@ -1004,7 +1006,7 @@ describe('shelves command center endpoint against a real database', () => {
     const viewer: AuthUser = {
       userId: randomUUID(),
       username: 'viewer',
-      role: 'viewer',
+      role: 'admin',
       serverIds: [serverA.id],
     };
     const { app } = await buildApp(viewer);

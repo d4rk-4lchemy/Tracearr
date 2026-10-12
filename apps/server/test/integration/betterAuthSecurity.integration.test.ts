@@ -23,29 +23,37 @@ import rateLimit from '@fastify/rate-limit';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { betterAuth } from 'better-auth';
+import { username as usernamePlugin } from 'better-auth/plugins';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { API_BASE_PATH } from '@tracearr/shared';
+import { API_BASE_PATH, type LoginAccess } from '@tracearr/shared';
 import { db } from '../../src/db/client.js';
 import {
   users,
+  servers,
+  serverUsers,
   authAccounts,
   authSessions,
   authVerifications,
   plexAccounts,
   mobileSessions,
 } from '../../src/db/schema.js';
-import { closeAuth } from '../../src/lib/auth.js';
+import { closeAuth, authUserOptions } from '../../src/lib/auth.js';
 import { createBetterAuthHandler } from '../../src/lib/betterAuthRequest.js';
 import { getRedis } from '../../src/lib/redisShared.js';
-import { setSetting } from '../../src/services/settings.js';
+import { resetSettingsCache, setSetting } from '../../src/services/settings.js';
 import { hashPassword } from '../../src/utils/password.js';
 import authPlugin from '../../src/plugins/auth.js';
 import { authRoutes } from '../../src/routes/auth/index.js';
 import { mobileRoutes } from '../../src/routes/mobile.js';
+import { setupRoutes } from '../../src/routes/setup.js';
 import { resolveSocketUser, checkMobileBlacklist } from '../../src/websocket/index.js';
 import { enableLocalLoginCommand } from '../../scripts/lib/commands.js';
 import { assertSignupAllowed } from '../../src/lib/authGuards.js';
-import { PlexClient } from '../../src/services/mediaServer/index.js';
+import { JellyfinClient, PlexClient } from '../../src/services/mediaServer/index.js';
+import { linkOidcMember } from '../../src/lib/memberLogin.js';
+import { userRoutes } from '../../src/routes/users/index.js';
+import { settingsRoutes } from '../../src/routes/settings.js';
+import { debugRoutes } from '../../src/routes/debug.js';
 
 /** Rebuilds a Cookie header from a set-cookie response array (name=value only). */
 function cookieHeader(setCookie: string[]): string {
@@ -83,6 +91,7 @@ async function buildApp(): Promise<FastifyInstance> {
   });
   await app.register(authRoutes, { prefix: `${API_BASE_PATH}/auth` });
   await app.register(mobileRoutes, { prefix: `${API_BASE_PATH}/mobile` });
+  await app.register(setupRoutes, { prefix: `${API_BASE_PATH}/setup` });
 
   app.get('/protected', { preHandler: [app.authenticate] }, async (request) => ({
     userId: request.user.userId,
@@ -98,6 +107,34 @@ async function buildApp(): Promise<FastifyInstance> {
   );
 
   return app;
+}
+
+/** Starts a Plex sign-in the way a browser does and polls it once with the handle it got. */
+async function plexCheckPin(app: FastifyInstance) {
+  const initiate = vi.spyOn(PlexClient, 'initiateOAuth').mockResolvedValue({
+    pinId: 'fake-pin-id',
+    authUrl: 'https://app.plex.tv/auth#?code=x',
+  });
+  try {
+    const start = await app.inject({
+      method: 'POST',
+      url: `${API_BASE_PATH}/auth/plex/initiate`,
+      headers: { 'content-type': 'application/json', origin: 'http://localhost:80' },
+      payload: {},
+    });
+    return await app.inject({
+      method: 'POST',
+      url: `${API_BASE_PATH}/auth/plex/check-pin`,
+      headers: {
+        'content-type': 'application/json',
+        origin: 'http://localhost:80',
+        cookie: cookieHeader(setCookieArray(start)),
+      },
+      payload: { handle: start.json().handle },
+    });
+  } finally {
+    initiate.mockRestore();
+  }
 }
 
 async function signUpOwner(
@@ -267,7 +304,8 @@ describe('better auth security (integration)', () => {
       payload: { email, password },
     });
 
-    expect(res.statusCode).toBe(403);
+    // An email is a password sign-in identifier only for owner and admin.
+    expect(res.statusCode).toBe(401);
 
     const rows = await db.select().from(users).where(eq(users.id, user!.id));
     expect(rows).toHaveLength(1); // sanity: user still exists, just can't log in
@@ -292,9 +330,16 @@ describe('better auth security (integration)', () => {
   });
 
   it('cli enable-local-login recovers from local login disabled', async () => {
-    const { email, password } = await signUpOwner(app);
+    const { email, password, userId } = await signUpOwner(app);
+    await db.insert(plexAccounts).values({
+      userId,
+      plexAccountId: `plex-${randomUUID()}`,
+      plexUsername: 'owner',
+      plexToken: 'fake-plex-token',
+      allowLogin: true,
+    });
 
-    await setSetting('localLoginEnabled', false);
+    await setSetting('loginMethods', { local: false, plex: true, oidc: true, member: false });
     const blocked = await app.inject({
       method: 'POST',
       url: `${API_BASE_PATH}/auth/sign-in/email`,
@@ -313,6 +358,69 @@ describe('better auth security (integration)', () => {
     });
     expect(recovered.statusCode).toBe(200);
   });
+
+  it('still lets the owner sign in with a password when the switches leave no other way in', async () => {
+    const { email, password, userId } = await signUpOwner(app);
+    const [owner] = await db.select().from(users).where(eq(users.id, userId));
+    // better-auth keeps the password on the credential account, never on users.password_hash.
+    expect(owner?.passwordHash).toBeNull();
+
+    await setSetting('loginMethods', { local: false, plex: false, oidc: true, member: false });
+    const res = await app.inject({
+      method: 'POST',
+      url: `${API_BASE_PATH}/auth/sign-in/email`,
+      headers: { 'content-type': 'application/json' },
+      payload: { email, password },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it.each([
+    { role: 'member', refusal: 401 },
+    { role: 'admin', refusal: null },
+  ] as const)(
+    'a $role with a Tracearr password signs in only as an admin',
+    async ({ role, refusal }) => {
+      await signUpOwner(app);
+      await setSetting('loginMethods', { local: true, plex: true, oidc: true, member: true });
+      const email = `${role}-${randomUUID()}@example.com`;
+      const [person] = await db
+        .insert(users)
+        .values({
+          username: `${role}${randomUUID().slice(0, 8)}`,
+          email,
+          role,
+          loginAccess: 'allow',
+        })
+        .returning();
+      if (!person) throw new Error('user insert returned nothing');
+      await db.insert(authAccounts).values({
+        id: randomUUID(),
+        accountId: person.id,
+        providerId: 'credential',
+        userId: person.id,
+        password: await hashPassword('LeftoverPassword!123'),
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `${API_BASE_PATH}/auth/sign-in/email`,
+        headers: { 'content-type': 'application/json' },
+        payload: { email, password: 'LeftoverPassword!123' },
+      });
+      const sessions = await db
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.userId, person.id));
+      if (refusal) {
+        expect(res.statusCode).toBe(refusal);
+        expect(sessions).toHaveLength(0);
+      } else {
+        expect(res.statusCode).toBe(200);
+        expect(sessions).toHaveLength(1);
+      }
+    }
+  );
 
   it('rejects a forged/garbage session cookie', async () => {
     const res = await app.inject({
@@ -581,7 +689,7 @@ describe('better auth security (integration)', () => {
         username: `nonowner${randomUUID().replace(/-/g, '').slice(0, 10)}`,
         email: `nonowner-${randomUUID()}@example.com`,
         emailVerified: true,
-        role: 'viewer',
+        role: 'member',
       })
       .returning();
     expect(nonOwner).toBeDefined();
@@ -613,16 +721,741 @@ describe('better auth security (integration)', () => {
     });
 
     try {
-      const res = await app.inject({
-        method: 'POST',
-        url: `${API_BASE_PATH}/auth/plex/check-pin`,
-        headers: { 'content-type': 'application/json' },
-        payload: { pinId: 'fake-pin-id' },
-      });
+      const res = await plexCheckPin(app);
       expect(res.statusCode).toBe(403);
     } finally {
       spy.mockRestore();
     }
+  });
+
+  describe('owner with only a legacy Plex link', () => {
+    function mockPin(plexAccountId: string) {
+      return vi.spyOn(PlexClient, 'checkOAuthPin').mockResolvedValue({
+        id: plexAccountId,
+        username: 'owner',
+        email: `plex-${randomUUID()}@example.com`,
+        thumb: '',
+        token: 'fake-plex-token',
+        tokenKind: 'legacy',
+        refreshToken: null,
+        expiresAt: null,
+      });
+    }
+
+    async function expectPlexOpen(plexAccountId: string) {
+      const status = await app.inject({ method: 'GET', url: `${API_BASE_PATH}/setup/status` });
+      expect(status.json().authMethods.plex).toBe(true);
+
+      const spy = mockPin(plexAccountId);
+      try {
+        const res = await plexCheckPin(app);
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toMatchObject({ authorized: true, user: { role: 'owner' } });
+      } finally {
+        spy.mockRestore();
+      }
+    }
+
+    it('signs in through users.plexAccountId with no plex_accounts row', async () => {
+      const { userId } = await signUpOwner(app);
+      const plexAccountId = `plex-${randomUUID()}`;
+      await db.update(users).set({ plexAccountId }).where(eq(users.id, userId));
+
+      await expectPlexOpen(plexAccountId);
+    });
+
+    async function plexServerAccount(row: {
+      userId: string;
+      externalId: string;
+      plexAccountId: string | null;
+    }) {
+      const [server] = await db
+        .insert(servers)
+        .values({ name: 'Plex', type: 'plex', url: 'http://plex.local:32400', token: 'tok' })
+        .returning();
+      if (!server) throw new Error('server insert returned nothing');
+      await db.insert(serverUsers).values({ ...row, serverId: server.id, username: 'owner' });
+    }
+
+    it('signs in through a Plex server account whose external id is the plex.tv id', async () => {
+      const { userId } = await signUpOwner(app);
+      const plexAccountId = `plex-${randomUUID()}`;
+      await plexServerAccount({ userId, externalId: plexAccountId, plexAccountId });
+
+      await expectPlexOpen(plexAccountId);
+    });
+
+    it('signs in through a poller-created Plex account no sync has reached', async () => {
+      const { userId } = await signUpOwner(app);
+      const plexAccountId = `plex-${randomUUID()}`;
+      await plexServerAccount({ userId, externalId: plexAccountId, plexAccountId: null });
+
+      await expectPlexOpen(plexAccountId);
+    });
+
+    it("does not count the server owner's own '1' row as a Plex login", async () => {
+      const { userId } = await signUpOwner(app);
+      await plexServerAccount({ userId, externalId: '1', plexAccountId: null });
+
+      const status = await app.inject({ method: 'GET', url: `${API_BASE_PATH}/setup/status` });
+      expect(status.json().authMethods.plex).toBe(false);
+    });
+  });
+
+  describe('impersonation', () => {
+    const origin = 'http://localhost:80';
+
+    // impersonate-user expires the owner's cookies and sets the member's in one response.
+    function liveCookies(res: { headers: { 'set-cookie'?: string | string[] } }): string {
+      return cookieHeader(setCookieArray(res).filter((c) => !/Max-Age=0/i.test(c)));
+    }
+
+    async function ownerAndMember() {
+      const owner = await signUpOwner(app);
+      const [member] = await db
+        .insert(users)
+        .values({
+          username: `member${randomUUID().slice(0, 8)}`,
+          role: 'member',
+          loginAccess: 'block',
+        })
+        .returning();
+      return { ownerCookie: cookieHeader(setCookieArray(owner.res)), owner, memberId: member!.id };
+    }
+
+    it('lets the owner view as a member the login gates refuse, without counting a sign-in', async () => {
+      const { ownerCookie, owner, memberId } = await ownerAndMember();
+      const info = vi.spyOn(console, 'info');
+
+      const start = await app.inject({
+        method: 'POST',
+        url: `${API_BASE_PATH}/auth/admin/impersonate-user`,
+        headers: { cookie: ownerCookie, origin, 'content-type': 'application/json' },
+        payload: { userId: memberId },
+      });
+      expect(start.statusCode).toBe(200);
+      expect(info).toHaveBeenCalledWith(
+        '[auth] impersonation started',
+        expect.objectContaining({ ownerId: owner.userId, targetId: memberId })
+      );
+
+      const viewing = await app.inject({
+        method: 'GET',
+        url: '/protected',
+        headers: { cookie: liveCookies(start) },
+      });
+      expect(viewing.json()).toMatchObject({ userId: memberId, role: 'member' });
+      const [member] = await db.select().from(users).where(eq(users.id, memberId));
+      expect(member?.loginCount).toBe(0);
+
+      const stop = await app.inject({
+        method: 'POST',
+        url: `${API_BASE_PATH}/auth/admin/stop-impersonating`,
+        headers: { cookie: liveCookies(start), origin },
+      });
+      expect(stop.statusCode).toBe(200);
+      const dontRemember = setCookieArray(stop).filter((c) => c.includes('dont_remember='));
+      expect(dontRemember.length).toBeGreaterThan(0);
+      expect(dontRemember.every((c) => /Max-Age=0/i.test(c))).toBe(true);
+      expect(info).toHaveBeenCalledWith(
+        '[auth] impersonation stopped',
+        expect.objectContaining({ ownerId: owner.userId, targetId: memberId })
+      );
+    });
+
+    it('a view-as session presented as a bearer token can neither stretch itself nor write', async () => {
+      const { ownerCookie, memberId } = await ownerAndMember();
+      const start = await app.inject({
+        method: 'POST',
+        url: `${API_BASE_PATH}/auth/admin/impersonate-user`,
+        headers: { cookie: ownerCookie, origin, 'content-type': 'application/json' },
+        payload: { userId: memberId },
+      });
+      expect(start.statusCode).toBe(200);
+      const [masquerade] = await db
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.userId, memberId));
+      if (!masquerade) throw new Error('impersonation session missing');
+      const bearer = { authorization: `Bearer ${masquerade.token}` };
+
+      const read = await app.inject({
+        method: 'GET',
+        url: `${API_BASE_PATH}/auth/get-session`,
+        headers: bearer,
+      });
+      expect(read.statusCode).toBe(403);
+      const write = await app.inject({
+        method: 'POST',
+        url: `${API_BASE_PATH}/auth/update-user`,
+        headers: { ...bearer, 'content-type': 'application/json' },
+        payload: { name: 'x' },
+      });
+      expect(write.statusCode).toBe(403);
+      const protectedRead = await app.inject({ method: 'GET', url: '/protected', headers: bearer });
+      expect(protectedRead.statusCode).toBe(401);
+
+      const [after] = await db
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.id, masquerade.id));
+      expect(after?.expiresAt.getTime()).toBe(masquerade.expiresAt.getTime());
+      const [member] = await db.select().from(users).where(eq(users.id, memberId));
+      expect(member?.name).not.toBe('x');
+
+      const viaCookie = await app.inject({
+        method: 'GET',
+        url: `${API_BASE_PATH}/auth/get-session`,
+        headers: { cookie: liveCookies(start) },
+      });
+      expect(viaCookie.statusCode).toBe(200);
+      const expires = new Date(viaCookie.json().session.expiresAt).getTime();
+      expect(expires).toBeLessThanOrEqual(Date.now() + 60 * 60 * 1000 + 5000);
+    });
+
+    it('refuses impersonation over a bearer token', async () => {
+      const { owner, memberId } = await ownerAndMember();
+      const [row] = await db
+        .select({ token: authSessions.token })
+        .from(authSessions)
+        .where(eq(authSessions.userId, owner.userId));
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `${API_BASE_PATH}/auth/admin/impersonate-user`,
+        headers: { authorization: `Bearer ${row!.token}`, 'content-type': 'application/json' },
+        payload: { userId: memberId },
+      });
+      expect(res.statusCode).toBe(400);
+      const sessions = await db
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.userId, memberId));
+      expect(sessions).toHaveLength(0);
+    });
+  });
+
+  describe('member login', () => {
+    const origin = 'http://localhost:80';
+    const MEMBER_TOKEN = 'member-secret-token';
+
+    afterEach(async () => {
+      resetSettingsCache();
+      await clearRedisPattern(`${process.env.REDIS_PREFIX ?? ''}tracearr:login_failures:*`);
+    });
+
+    function liveCookies(res: { headers: { 'set-cookie'?: string | string[] } }): string {
+      return cookieHeader(setCookieArray(res).filter((c) => !/Max-Age=0/i.test(c)));
+    }
+
+    async function loginServer(type: 'jellyfin' | 'plex' = 'jellyfin', allowMemberLogin = true) {
+      const [server] = await db
+        .insert(servers)
+        .values({
+          name: type,
+          type,
+          url: type === 'plex' ? 'http://plex.local:32400' : 'http://jellyfin.local:8096',
+          token: 'tok',
+          allowMemberLogin,
+        })
+        .returning();
+      if (!server) throw new Error('server insert returned nothing');
+      return server;
+    }
+
+    async function member(username = 'alice', loginAccess: LoginAccess = 'allow') {
+      const [row] = await db
+        .insert(users)
+        .values({ username, role: 'member', loginAccess })
+        .returning();
+      if (!row) throw new Error('member insert returned nothing');
+      return row;
+    }
+
+    async function memberOnJellyfin(
+      {
+        memberSwitch,
+        loginAccess,
+        serverAllows = true,
+      }: { memberSwitch: boolean; loginAccess: LoginAccess; serverAllows?: boolean } = {
+        memberSwitch: true,
+        loginAccess: 'allow',
+      }
+    ) {
+      await setSetting('loginMethods', {
+        local: true,
+        plex: true,
+        oidc: true,
+        member: memberSwitch,
+      });
+      const server = await loginServer('jellyfin', serverAllows);
+      const alice = await member('alice', loginAccess);
+      await db
+        .insert(serverUsers)
+        .values({ userId: alice.id, serverId: server.id, externalId: 'ext-1', username: 'alice' });
+      return { server, alice };
+    }
+
+    function jellyfinSignIn(serverId: string, username = 'alice') {
+      return app.inject({
+        method: 'POST',
+        url: `${API_BASE_PATH}/auth/jellyfin/sign-in`,
+        headers: { origin, 'content-type': 'application/json' },
+        payload: { serverId, username, password: 'pw' },
+      });
+    }
+
+    it("keeps better-auth's account endpoints and trust fields away from a member", async () => {
+      const owner = await signUpOwner(app);
+      const { server } = await memberOnJellyfin();
+      const auth = vi
+        .spyOn(JellyfinClient, 'authenticateByName')
+        .mockResolvedValue({ externalId: 'ext-1', token: MEMBER_TOKEN });
+
+      try {
+        const signedIn = await jellyfinSignIn(server.id);
+        expect(signedIn.statusCode).toBe(200);
+        const memberCookie = cookieHeader(setCookieArray(signedIn));
+        const json = { cookie: memberCookie, origin, 'content-type': 'application/json' };
+
+        for (const [method, path, payload] of [
+          ['POST', '/update-user', { name: 'Not Alice' }],
+          ['POST', '/change-email', { newEmail: 'x@example.com' }],
+          ['POST', '/change-password', { currentPassword: 'a', newPassword: 'bbbbbbbb' }],
+          ['POST', '/is-username-available', { username: owner.username }],
+          ['POST', '/revoke-sessions', {}],
+          ['POST', '/unlink-account', { providerId: 'jellyfin' }],
+          ['GET', '/list-sessions', undefined],
+        ] as const) {
+          const res = await app.inject({
+            method,
+            url: `${API_BASE_PATH}/auth${path}`,
+            headers: json,
+            ...(payload ? { payload } : {}),
+          });
+          expect(res.statusCode, path).toBe(404);
+        }
+
+        const session = await app.inject({
+          method: 'GET',
+          url: `${API_BASE_PATH}/auth/get-session`,
+          headers: { cookie: memberCookie },
+        });
+        expect(session.json().user).not.toHaveProperty('aggregateTrustScore');
+        expect(session.json().user).not.toHaveProperty('totalViolations');
+        expect(session.json().user).not.toHaveProperty('apiToken');
+
+        const ownerList = await app.inject({
+          method: 'GET',
+          url: `${API_BASE_PATH}/auth/list-sessions`,
+          headers: { cookie: cookieHeader(setCookieArray(owner.res)) },
+        });
+        expect(ownerList.statusCode).toBe(200);
+        expect(ownerList.json().length).toBeGreaterThan(0);
+        for (const listed of ownerList.json()) expect(listed).not.toHaveProperty('token');
+      } finally {
+        auth.mockRestore();
+      }
+    });
+
+    it('signs a member in through Jellyfin and posts the server-side logout at sign-out', async () => {
+      await signUpOwner(app);
+      const { server, alice } = await memberOnJellyfin();
+      const auth = vi
+        .spyOn(JellyfinClient, 'authenticateByName')
+        .mockResolvedValue({ externalId: 'ext-1', token: MEMBER_TOKEN });
+      const logout = vi.spyOn(JellyfinClient, 'logoutUserToken').mockResolvedValue();
+
+      try {
+        const res = await jellyfinSignIn(server.id);
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          authorized: true,
+          user: { id: alice.id, username: 'alice', role: 'member' },
+        });
+        expect(res.body).not.toContain(MEMBER_TOKEN);
+        const [account] = await db
+          .select()
+          .from(authAccounts)
+          .where(eq(authAccounts.userId, alice.id));
+        expect(account).toMatchObject({
+          providerId: 'jellyfin',
+          accountId: `${server.id}:ext-1`,
+          accessToken: MEMBER_TOKEN,
+        });
+
+        const cookie = cookieHeader(setCookieArray(res));
+        const viewing = await app.inject({ method: 'GET', url: '/protected', headers: { cookie } });
+        expect(viewing.json()).toMatchObject({ userId: alice.id, role: 'member' });
+
+        const out = await app.inject({
+          method: 'POST',
+          url: `${API_BASE_PATH}/auth/sign-out`,
+          headers: { cookie, origin },
+        });
+        expect(out.statusCode).toBe(200);
+        expect(logout).toHaveBeenCalledExactlyOnceWith(server.url, MEMBER_TOKEN);
+      } finally {
+        auth.mockRestore();
+        logout.mockRestore();
+      }
+    });
+
+    it.each([
+      { memberSwitch: false, loginAccess: 'allow', serverAllows: true, status: 200 },
+      { memberSwitch: false, loginAccess: 'allow', serverAllows: false, status: 200 },
+      { memberSwitch: true, loginAccess: 'block', serverAllows: true, status: 403 },
+      { memberSwitch: false, loginAccess: 'default', serverAllows: true, status: 403 },
+      // Nobody can sign in through this server, so it is closed before the password goes out
+      {
+        memberSwitch: true,
+        loginAccess: 'default',
+        serverAllows: false,
+        status: 403,
+        code: 'MEMBER_LOGIN_REFUSED',
+      },
+      { memberSwitch: true, loginAccess: 'default', serverAllows: true, status: 200 },
+    ] as const)(
+      'switch $memberSwitch, $loginAccess, server allows $serverAllows: Jellyfin answers $status',
+      async ({ memberSwitch, loginAccess, serverAllows, status, ...row }) => {
+        await signUpOwner(app);
+        const { server, alice } = await memberOnJellyfin({
+          memberSwitch,
+          loginAccess,
+          serverAllows,
+        });
+        const auth = vi
+          .spyOn(JellyfinClient, 'authenticateByName')
+          .mockResolvedValue({ externalId: 'ext-1', token: MEMBER_TOKEN });
+
+        try {
+          const res = await jellyfinSignIn(server.id);
+          expect(res.statusCode).toBe(status);
+          if (status === 403 && 'code' in row) {
+            expect(res.json()).toMatchObject({ code: row.code });
+          } else if (status === 403) {
+            expect(res.json()).toMatchObject({
+              code: 'MEMBER_NOT_PERMITTED',
+              message: 'You are not permitted to sign in. Please contact the server owner.',
+            });
+          }
+          const sessions = await db
+            .select()
+            .from(authSessions)
+            .where(eq(authSessions.userId, alice.id));
+          expect(sessions).toHaveLength(status === 200 ? 1 : 0);
+        } finally {
+          auth.mockRestore();
+        }
+      }
+    );
+
+    it('passes no credential to a switched-off server nobody is allowed on, nor lists it', async () => {
+      await signUpOwner(app);
+      const { server } = await memberOnJellyfin({
+        memberSwitch: true,
+        loginAccess: 'default',
+        serverAllows: false,
+      });
+      const auth = vi.spyOn(JellyfinClient, 'authenticateByName');
+      const qc = vi.spyOn(JellyfinClient, 'quickConnectEnabled');
+
+      try {
+        const res = await jellyfinSignIn(server.id);
+        expect(res.statusCode).toBe(403);
+        expect(res.json()).toMatchObject({ code: 'MEMBER_LOGIN_REFUSED' });
+        const initiate = await app.inject({
+          method: 'POST',
+          url: `${API_BASE_PATH}/auth/jellyfin/quick-connect/initiate`,
+          headers: { origin, 'content-type': 'application/json' },
+          payload: { serverId: server.id },
+        });
+        expect(initiate.statusCode).toBe(403);
+        expect(auth).not.toHaveBeenCalled();
+        expect(qc).not.toHaveBeenCalled();
+
+        const status = await app.inject({
+          method: 'GET',
+          url: `${API_BASE_PATH}/setup/status?all`,
+        });
+        expect(status.json().memberLoginServers).toEqual([]);
+      } finally {
+        auth.mockRestore();
+        qc.mockRestore();
+      }
+    });
+
+    it('opens a switched-off server to sign-in while an allowed person has a live account on it', async () => {
+      await signUpOwner(app);
+      const { server, alice } = await memberOnJellyfin({
+        memberSwitch: false,
+        loginAccess: 'allow',
+        serverAllows: false,
+      });
+      const auth = vi
+        .spyOn(JellyfinClient, 'authenticateByName')
+        .mockResolvedValue({ externalId: 'ext-1', token: MEMBER_TOKEN });
+      vi.spyOn(JellyfinClient, 'quickConnectEnabled').mockResolvedValue(false);
+
+      try {
+        const status = await app.inject({
+          method: 'GET',
+          url: `${API_BASE_PATH}/setup/status?all`,
+        });
+        expect(status.json().memberLoginServers).toMatchObject([{ id: server.id }]);
+
+        expect((await jellyfinSignIn(server.id)).statusCode).toBe(200);
+        expect(auth).toHaveBeenCalledOnce();
+
+        await db
+          .update(serverUsers)
+          .set({ removedAt: new Date() })
+          .where(eq(serverUsers.userId, alice.id));
+        auth.mockClear();
+        expect((await jellyfinSignIn(server.id)).statusCode).toBe(403);
+        expect(auth).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('never says not permitted to a wrong password', async () => {
+      await signUpOwner(app);
+      const { server } = await memberOnJellyfin({
+        memberSwitch: false,
+        loginAccess: 'block',
+        serverAllows: false,
+      });
+      const auth = vi.spyOn(JellyfinClient, 'authenticateByName').mockResolvedValue(null);
+
+      try {
+        const res = await jellyfinSignIn(server.id);
+        expect(res.statusCode).toBe(403);
+        expect(res.json()).toMatchObject({ code: 'MEMBER_LOGIN_REFUSED' });
+      } finally {
+        auth.mockRestore();
+      }
+    });
+
+    it("leaves the member's media server device alone when an owner ends a masquerade by signing out", async () => {
+      const owner = await signUpOwner(app);
+      const { server, alice } = await memberOnJellyfin();
+      await db.insert(authAccounts).values({
+        id: randomUUID(),
+        providerId: 'jellyfin',
+        accountId: `${server.id}:ext-1`,
+        userId: alice.id,
+        accessToken: MEMBER_TOKEN,
+      });
+      const logout = vi.spyOn(JellyfinClient, 'logoutUserToken').mockResolvedValue();
+
+      try {
+        const start = await app.inject({
+          method: 'POST',
+          url: `${API_BASE_PATH}/auth/admin/impersonate-user`,
+          headers: {
+            cookie: cookieHeader(setCookieArray(owner.res)),
+            origin,
+            'content-type': 'application/json',
+          },
+          payload: { userId: alice.id },
+        });
+        expect(start.statusCode).toBe(200);
+
+        const out = await app.inject({
+          method: 'POST',
+          url: `${API_BASE_PATH}/auth/sign-out`,
+          headers: { cookie: liveCookies(start), origin },
+        });
+        expect(out.statusCode).toBe(200);
+        expect(logout).not.toHaveBeenCalled();
+      } finally {
+        logout.mockRestore();
+      }
+    });
+
+    it('rate limits password sign-in per address before the media server is called', async () => {
+      await signUpOwner(app);
+      const { server } = await memberOnJellyfin();
+      const auth = vi.spyOn(JellyfinClient, 'authenticateByName').mockResolvedValue(null);
+
+      try {
+        const statuses: number[] = [];
+        for (let i = 0; i < 11; i++) {
+          statuses.push((await jellyfinSignIn(server.id, `user${i}`)).statusCode);
+        }
+        expect(statuses.slice(0, 10)).toEqual(Array(10).fill(403));
+        expect(statuses[10]).toBe(429);
+        expect(auth).toHaveBeenCalledTimes(10);
+      } finally {
+        auth.mockRestore();
+      }
+    });
+
+    it('lets at most three parallel wrong guesses for one account reach the media server', async () => {
+      await signUpOwner(app);
+      const { server } = await memberOnJellyfin();
+      const auth = vi
+        .spyOn(JellyfinClient, 'authenticateByName')
+        .mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(null), 50)));
+
+      try {
+        const results = await Promise.all(
+          Array.from({ length: 8 }, () => jellyfinSignIn(server.id))
+        );
+        expect(results.map((r) => r.statusCode)).toEqual(Array(8).fill(403));
+        expect(auth).toHaveBeenCalledTimes(3);
+      } finally {
+        auth.mockRestore();
+      }
+    });
+
+    function pinFor(plexAccountId: string) {
+      return vi.spyOn(PlexClient, 'checkOAuthPin').mockResolvedValue({
+        id: plexAccountId,
+        username: 'shared',
+        email: `plex-${randomUUID()}@example.com`,
+        thumb: '',
+        token: 'fake-plex-token',
+        tokenKind: 'legacy',
+        refreshToken: null,
+        expiresAt: null,
+      });
+    }
+
+    function checkPin() {
+      return plexCheckPin(app);
+    }
+
+    it('signs in the owner when one plex.tv id sits on the owner and on a member', async () => {
+      await setSetting('loginMethods', { local: true, plex: true, oidc: true, member: true });
+      const plexAccountId = `plex-${randomUUID()}`;
+      const shared = await member('shared');
+      const memberServer = await loginServer('plex');
+      await db.insert(serverUsers).values({
+        userId: shared.id,
+        serverId: memberServer.id,
+        externalId: plexAccountId,
+        plexAccountId,
+        username: 'shared',
+      });
+      const owner = await signUpOwner(app);
+      const ownerServer = await loginServer('plex');
+      await db.insert(serverUsers).values({
+        userId: owner.userId,
+        serverId: ownerServer.id,
+        externalId: plexAccountId,
+        plexAccountId,
+        username: 'shared',
+      });
+
+      const spy = pinFor(plexAccountId);
+      try {
+        const res = await checkPin();
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toMatchObject({ user: { id: owner.userId, role: 'owner' } });
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("does not sign the owner in through a member's path while Plex login is off", async () => {
+      const owner = await signUpOwner(app);
+      await setSetting('loginMethods', { local: true, plex: false, oidc: true, member: true });
+      const plexAccountId = `plex-${randomUUID()}`;
+      const server = await loginServer('plex');
+      await db.insert(serverUsers).values({
+        userId: owner.userId,
+        serverId: server.id,
+        externalId: '1',
+        plexAccountId,
+        username: 'owner',
+      });
+
+      const spy = pinFor(plexAccountId);
+      try {
+        expect((await checkPin()).statusCode).toBe(403);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('ignores a Jellyfin account whose external id is the presented plex.tv id', async () => {
+      const owner = await signUpOwner(app);
+      const plexAccountId = `plex-${randomUUID()}`;
+      const jellyfin = await loginServer('jellyfin');
+      await db.insert(serverUsers).values({
+        userId: owner.userId,
+        serverId: jellyfin.id,
+        externalId: plexAccountId,
+        username: 'owner',
+      });
+
+      const spy = pinFor(plexAccountId);
+      try {
+        expect((await checkPin()).statusCode).toBe(403);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('links an OIDC profile to a member by username and never to the owner', async () => {
+      const owner = await signUpOwner(app);
+      const { server, alice } = await memberOnJellyfin();
+      await db.insert(serverUsers).values({
+        userId: owner.userId,
+        serverId: server.id,
+        externalId: 'ext-owner',
+        username: 'boss',
+      });
+
+      await linkOidcMember({ sub: 'sub-owner', preferred_username: 'boss' });
+      await linkOidcMember({ sub: 'sub-alice', preferred_username: 'Alice' });
+
+      const links = await db
+        .select({ userId: authAccounts.userId, accountId: authAccounts.accountId })
+        .from(authAccounts)
+        .where(eq(authAccounts.providerId, 'oidc'));
+      expect(links).toEqual([{ userId: alice.id, accountId: 'sub-alice' }]);
+    });
+
+    it('never returns a member token from the users, settings or debug routes', async () => {
+      const owner = await signUpOwner(app);
+      const { server, alice } = await memberOnJellyfin();
+      await db.insert(authAccounts).values({
+        id: randomUUID(),
+        providerId: 'jellyfin',
+        accountId: `${server.id}:ext-1`,
+        userId: alice.id,
+        accessToken: MEMBER_TOKEN,
+      });
+      const [account] = await db
+        .select({ id: serverUsers.id })
+        .from(serverUsers)
+        .where(eq(serverUsers.userId, alice.id));
+      const routesApp = await buildApp();
+      await routesApp.register(userRoutes, { prefix: `${API_BASE_PATH}/users` });
+      await routesApp.register(settingsRoutes, { prefix: `${API_BASE_PATH}/settings` });
+      await routesApp.register(debugRoutes, { prefix: `${API_BASE_PATH}/debug` });
+      const cookie = cookieHeader(setCookieArray(owner.res));
+
+      try {
+        for (const url of [
+          `${API_BASE_PATH}/users`,
+          `${API_BASE_PATH}/users/${account?.id}`,
+          `${API_BASE_PATH}/users/${account?.id}/full`,
+          `${API_BASE_PATH}/settings`,
+          `${API_BASE_PATH}/debug/stats`,
+        ]) {
+          const res = await routesApp.inject({ method: 'GET', url, headers: { cookie } });
+          expect(res.statusCode, url).toBe(200);
+          expect(res.body, url).not.toContain(MEMBER_TOKEN);
+          expect(res.body, url).not.toContain('accessToken');
+        }
+      } finally {
+        await routesApp.close();
+      }
+    });
   });
 
   it('an expired session is rejected', async () => {
@@ -694,7 +1527,9 @@ describe('better auth security (integration)', () => {
         database: { generateId: () => randomUUID() },
         disableOriginCheck: false,
       },
+      user: authUserOptions,
       emailAndPassword: { enabled: true },
+      plugins: [usernamePlugin()],
     });
 
     async function signInWithOrigin(origin: string | undefined, withCookie: boolean) {

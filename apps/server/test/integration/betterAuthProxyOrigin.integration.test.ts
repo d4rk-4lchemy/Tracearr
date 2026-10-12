@@ -41,7 +41,8 @@ import { API_BASE_PATH } from '@tracearr/shared';
 import { db } from '../../src/db/client.js';
 import { users, authAccounts, authSessions, authVerifications } from '../../src/db/schema.js';
 import { createBetterAuthHandler } from '../../src/lib/betterAuthRequest.js';
-import { trustedOriginsForRequest } from '../../src/lib/auth.js';
+import { trustedOriginsForRequest, authUserOptions } from '../../src/lib/auth.js';
+import { trustProxyFromEnv } from '../../src/lib/origins.js';
 
 const HOST = 'tracearr.example.com';
 
@@ -68,6 +69,7 @@ const originCheckAuth = betterAuth({
     // observable.
     cookieCache: { enabled: true, maxAge: 5 * 60 },
   },
+  user: authUserOptions,
   emailAndPassword: { enabled: true },
   // users.username is NOT NULL, so sign-up through this instance needs the
   // same username plugin production uses.
@@ -76,22 +78,31 @@ const originCheckAuth = betterAuth({
 
 let app: FastifyInstance;
 
-beforeAll(async () => {
-  app = Fastify({ logger: false });
-  app.route({
+// TRUST_PROXY=true: the injected request's peer is the one proxy in front.
+async function buildApp(trustProxy = trustProxyFromEnv('true')) {
+  const built = Fastify({ logger: false, trustProxy });
+  built.route({
     method: ['GET', 'POST'],
     url: `${API_BASE_PATH}/auth/*`,
     handler: createBetterAuthHandler(() => originCheckAuth),
   });
-  await app.ready();
+  await built.ready();
+  return built;
+}
+
+beforeAll(async () => {
+  app = await buildApp();
 });
 
 afterAll(async () => {
   await app.close();
 });
 
-async function signIn(headers: Record<string, string>, { withCookie = true } = {}) {
-  return app.inject({
+async function signIn(
+  headers: Record<string, string>,
+  { withCookie = true, via = app }: { withCookie?: boolean; via?: FastifyInstance } = {}
+) {
+  return via.inject({
     method: 'POST',
     url: `${API_BASE_PATH}/auth/sign-in/email`,
     headers: {
@@ -218,15 +229,34 @@ describe('origin gate when the proxy rewrites Host but forwards x-forwarded-host
     expect(res.json().code).toBe('INVALID_EMAIL_OR_PASSWORD');
   });
 
-  it('uses the first value of a comma-separated x-forwarded-host', async () => {
+  it('uses the value the trusted proxy appended to a comma-separated x-forwarded-host', async () => {
     const res = await signIn({
       host: '127.0.0.1:3000',
-      'x-forwarded-host': 'public.example, internal.example',
+      'x-forwarded-host': 'spoofed.example, public.example',
       'x-forwarded-proto': 'https',
       origin: 'https://public.example',
     });
     expect(res.statusCode).toBe(401);
     expect(res.json().code).toBe('INVALID_EMAIL_OR_PASSWORD');
+  });
+
+  it('ignores x-forwarded-host when no proxy is trusted', async () => {
+    const direct = await buildApp(false);
+    try {
+      const res = await signIn(
+        {
+          host: '127.0.0.1:3000',
+          'x-forwarded-host': 'public.example',
+          'x-forwarded-proto': 'https',
+          origin: 'https://public.example',
+        },
+        { via: direct }
+      );
+      expect(res.statusCode).toBe(403);
+      expect(res.json().code).toBe('INVALID_ORIGIN');
+    } finally {
+      await direct.close();
+    }
   });
 
   it('still rejects a cross-site origin when x-forwarded-host is present', async () => {
@@ -297,6 +327,20 @@ describe('trustedOriginsForRequest', () => {
       new Request(`http://${HOST}/api/v1/auth/sign-in/email`)
     );
     expect(origins).toEqual([`http://${HOST}`, `https://${HOST}`]);
+  });
+
+  it('never hands better-auth a wildcard from CORS_ORIGIN', async () => {
+    const previous = process.env.CORS_ORIGIN;
+    process.env.CORS_ORIGIN = '*, https://*.example, https://frontend.example';
+    try {
+      expect(trustedOriginsForRequest()).toEqual(['https://frontend.example']);
+      const res = await signIn({ origin: 'https://evil.example' });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().code).toBe('INVALID_ORIGIN');
+    } finally {
+      if (previous === undefined) delete process.env.CORS_ORIGIN;
+      else process.env.CORS_ORIGIN = previous;
+    }
   });
 
   it('keeps CORS_ORIGIN trusted from a different host', async () => {

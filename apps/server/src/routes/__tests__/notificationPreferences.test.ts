@@ -32,6 +32,23 @@ vi.mock('../../services/pushRateLimiter.js', () => ({
   getPushRateLimiter: vi.fn(),
 }));
 
+const pushDelivery = {
+  destinationEnabled: true,
+  violationsSubscribed: true,
+  automations: {
+    onViolationDetected: 0,
+    onStreamStarted: 2,
+    onStreamStopped: 0,
+    onNewDevice: 1,
+    onTrustScoreChanged: 0,
+    onServerDown: 1,
+    onServerUp: 1,
+  },
+};
+vi.mock('../../services/pushDelivery.js', () => ({
+  getPushDelivery: async () => pushDelivery,
+}));
+
 // Import mocked modules
 import { db } from '../../db/client.js';
 import { getPushRateLimiter } from '../../services/pushRateLimiter.js';
@@ -292,6 +309,37 @@ describe('Notification Preferences Routes', () => {
 
       expect(response.statusCode).toBe(404);
       expect(response.json().message).toContain('No mobile session');
+    });
+
+    it('reports what sends to this device and whether its token is registered', async () => {
+      app = await buildTestApp(mobileUser);
+
+      let selectCount = 0;
+      vi.mocked(db.select).mockImplementation(() => {
+        selectCount++;
+        const chain = {
+          from: vi.fn().mockReturnThis(),
+          where: vi.fn().mockReturnThis(),
+          orderBy: vi.fn().mockReturnThis(),
+          limit: vi
+            .fn()
+            .mockResolvedValue(
+              selectCount === 1
+                ? [{ id: mockMobileSession.id, expoPushToken: mockMobileSession.expoPushToken }]
+                : [mockPrefsRow]
+            ),
+        };
+        return chain as never;
+      });
+      vi.mocked(getPushRateLimiter).mockReturnValue(null);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/notifications/preferences',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().delivery).toEqual({ tokenRegistered: true, ...pushDelivery });
     });
   });
 

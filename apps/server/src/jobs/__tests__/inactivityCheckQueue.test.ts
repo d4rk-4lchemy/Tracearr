@@ -33,7 +33,8 @@ const mockBroadcast = vi.fn();
 vi.mock('../poller/violations.js', () => ({
   broadcastViolations: (...a: unknown[]) => mockBroadcast(...a),
 }));
-vi.mock('../queueConnection.js', () => ({
+vi.mock('../queueConnection.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../queueConnection.js')>()),
   getBullPrefix: () => 'bull',
   queueConnectionOptions: () => ({}),
 }));
@@ -43,6 +44,7 @@ vi.mock('bullmq', () => {
     getJobSchedulers = vi.fn(async () => [] as { key: string }[]);
     removeJobScheduler = vi.fn(async () => true);
     add = vi.fn(async () => ({}));
+    upsertJobScheduler = vi.fn(async () => ({}));
     constructor() {
       queueRef.current = this;
     }
@@ -288,5 +290,18 @@ describe('scheduleInactivityChecks', () => {
     await scheduleInactivityChecks();
 
     expect(queueRef.current.removeJobScheduler).toHaveBeenCalledWith('inactivity-check-repeatable');
+  });
+
+  it('starts the hourly scheduler on the next hour boundary instead of running at once', async () => {
+    mockGetActiveAutomations.mockResolvedValue([inactivityRule('a')]);
+
+    await scheduleInactivityChecks();
+
+    const [id, timing, template] = queueRef.current.upsertJobScheduler.mock.calls[0];
+    expect(id).toBe('inactivity-check-repeatable');
+    expect(timing.every).toBe(3_600_000);
+    expect(timing.startDate.getTime() % 3_600_000).toBe(0);
+    expect(timing.startDate.getTime()).toBeGreaterThanOrEqual(Date.now());
+    expect(template).toEqual({ name: 'scheduled-check', data: { type: 'check' } });
   });
 });

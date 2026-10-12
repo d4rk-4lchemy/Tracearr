@@ -30,7 +30,13 @@ function makeEntry(id: string): UserRequestEntry {
     isAutoRequest: false,
     watchedState: 'unwatched',
     watchedStateRequester: 'unwatched',
-    media: { mediaId: `m-${id}`, title: `Title ${id}`, year: 2016, mediaType: 'movie' },
+    media: {
+      mediaId: `m-${id}`,
+      title: `Title ${id}`,
+      year: 2016,
+      mediaType: 'movie',
+      posterUrl: null,
+    },
   };
 }
 
@@ -46,6 +52,7 @@ function response(total: number, rowCount: number): UserRequestsResponse {
       completed: total,
       neverWatched: 1,
       medianWaitMs: 60 * 60 * 1000,
+      availableThisWeek: 0,
     },
   };
 }

@@ -87,7 +87,7 @@ describe('Users', () => {
       servers: [{ id: 'server-1', name: 'Server One' }],
     } as unknown as ReturnType<typeof useServer>);
     mockUseAuth.mockReturnValue({
-      user: { role: 'viewer' },
+      user: { role: 'member' },
     } as unknown as ReturnType<typeof useAuth>);
   });
 

@@ -118,13 +118,8 @@ export const versionRoutes: FastifyPluginAsync = async (app) => {
    * Force an immediate version check (admin only)
    */
   app.post('/check', {
-    preHandler: [app.authenticate],
-    handler: async (request, reply) => {
-      // Require admin role
-      if (request.user.role !== 'owner' && request.user.role !== 'admin') {
-        return reply.forbidden('Admin access required');
-      }
-
+    preHandler: [app.requirePermission('settings', 'read')],
+    handler: async () => {
       await forceVersionCheck();
 
       return { message: 'Version check queued' };

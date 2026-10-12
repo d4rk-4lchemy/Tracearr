@@ -28,6 +28,7 @@ const mockTakeRefusedWrites = vi.fn();
 const mockWriteDiskLimited = vi.fn();
 const mockClearDiskLimited = vi.fn();
 const mockReadDiskLimited = vi.fn();
+const mockIsOnMountedVolume = vi.fn();
 const mockReconcileImagePrecacheOnBoot = vi.fn();
 const mockSweepImageCache = vi.fn();
 const mockIsLiveServer = vi.fn().mockResolvedValue(true);
@@ -56,6 +57,7 @@ vi.mock('../../services/imageCacheGuard.js', () => ({
   writeDiskLimited: (...args: unknown[]) => mockWriteDiskLimited(...args),
   clearDiskLimited: (...args: unknown[]) => mockClearDiskLimited(...args),
   readDiskLimited: (...args: unknown[]) => mockReadDiskLimited(...args),
+  isOnMountedVolume: (...args: unknown[]) => mockIsOnMountedVolume(...args),
 }));
 
 const mockGetAllActiveSessions = vi.fn<() => Promise<Array<Record<string, unknown>>>>();
@@ -496,6 +498,17 @@ describe('imagePrecacheQueue', () => {
       mockBatchQuery([makeItemRow('item-0')]);
       mockPosterCacheEntryExists.mockResolvedValue(false);
       fullPassStamp('/app/data/image-cache');
+
+      await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
+
+      expect(redisStore.get(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING)).toBeUndefined();
+    });
+
+    it('does not flag a mounted volume, where an empty sample is a new mount or failed writes', async () => {
+      mockBatchQuery([makeItemRow('item-0')]);
+      mockPosterCacheEntryExists.mockResolvedValue(false);
+      mockIsOnMountedVolume.mockResolvedValueOnce(true);
+      fullPassStamp();
 
       await processImagePrecacheJob(makeJob({ serverId: 'server-1', cursor: null }));
 

@@ -66,6 +66,12 @@ import {
   uniqueUsersAllMediaSince,
 } from '../../db/prepared.js';
 import { dashboardRoutes } from '../stats/dashboard.js';
+import { permissionGuard } from '../../lib/scope.js';
+import { getDashboardStats } from '../../services/dashboardStats.js';
+import { renderSql } from '../../test/helpers.js';
+import type { SQL } from 'drizzle-orm';
+
+vi.mock('../../services/settings.js', () => ({ getSetting: vi.fn().mockResolvedValue(true) }));
 
 /**
  * Build a test Fastify instance with mocked auth and redis
@@ -82,6 +88,7 @@ async function buildTestApp(
   app.decorate('authenticate', async (request: any) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
 
   // Mock Redis
   app.decorate(
@@ -382,10 +389,10 @@ describe('Dashboard Stats Routes', () => {
       const serverId1 = randomUUID();
       const serverId2 = randomUUID();
       // Non-owner user only has access to serverId1
-      const viewerUser: AuthUser = {
+      const adminUser: AuthUser = {
         userId: randomUUID(),
-        username: 'viewer',
-        role: 'viewer',
+        username: 'admin',
+        role: 'admin',
         serverIds: [serverId1],
       };
 
@@ -394,7 +401,7 @@ describe('Dashboard Stats Routes', () => {
         setex: vi.fn().mockResolvedValue('OK'),
       };
 
-      app = await buildTestApp(viewerUser, redisMock);
+      app = await buildTestApp(adminUser, redisMock);
 
       // Request stats for serverId2 (not in user's serverIds)
       // resolveServerIds intersects requested IDs with user's access, yielding empty set
@@ -421,5 +428,39 @@ describe('Dashboard Stats Routes', () => {
 
       expect(response.statusCode).toBe(400);
     });
+  });
+});
+
+describe('Member TV dashboard scope', () => {
+  it('scopes every Live TV query to the member accounts and omits staff metrics', async () => {
+    vi.clearAllMocks();
+    mockGetAllActiveSessions.mockResolvedValue([
+      createMockActiveSession({ serverId: 'tv', serverUserId: 'own-account', mediaType: 'live' }),
+      createMockActiveSession({ serverId: 'tv', serverUserId: 'other-account', mediaType: 'live' }),
+    ]);
+    mockDbExecute.mockResolvedValue({ rows: [{ count: 2, total_ms: 3600000 }] });
+    const stats = await getDashboardStats({
+      scope: { userId: 'member-1', serverUserIds: ['own-account'], serverIds: ['tv'] },
+      serverIds: ['tv'],
+      timezone: 'UTC',
+    });
+    expect(stats).toMatchObject({
+      activeStreams: 1,
+      othersActive: 1,
+      tvSessions: 2,
+      tvChannels: 2,
+      tvWatchTimeHours: 1,
+    });
+    expect(stats).not.toHaveProperty('alertsLast24h');
+    expect(stats).not.toHaveProperty('activeUsersToday');
+    const liveQueries = mockDbExecute.mock.calls
+      .map(([query]) => renderSql(query as SQL))
+      .filter(({ params }) => params.includes('live'));
+    expect(liveQueries).toHaveLength(3);
+    for (const query of liveQueries) {
+      expect(query.params).toContain('own-account');
+      expect(query.params).not.toContain('other-account');
+      expect(query.params).toContain('tv');
+    }
   });
 });

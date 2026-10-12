@@ -5,6 +5,8 @@ import {
   formatMediaTech,
   resolutionTierRank,
   POSTER_IMAGE_SIZE,
+  type CatalogRowServerEntry,
+  type ServerType,
   type WatchedState,
 } from '@tracearr/shared';
 import { cn } from '@/lib/utils';
@@ -71,6 +73,31 @@ export interface PosterCardServer extends HoverOverlayServer {
   videoResolution?: string | null;
   /** Active physical files of this copy; drives the versions chip */
   versionCount?: number;
+}
+
+export interface ServerLookupEntry {
+  name: string;
+  type: ServerType;
+  color?: string | null;
+}
+
+/** A row's copies named and colored from the server list; an unknown server shows its id. */
+export function toPosterCardServers(
+  entries: CatalogRowServerEntry[],
+  serverById: Map<string, ServerLookupEntry>
+): PosterCardServer[] {
+  return entries.map((entry) => {
+    const server = serverById.get(entry.serverId);
+    return {
+      serverId: entry.serverId,
+      name: server?.name ?? entry.serverId,
+      type: server?.type ?? 'plex',
+      color: server?.color ?? null,
+      addedAt: entry.addedAt,
+      videoResolution: entry.videoResolution,
+      versionCount: entry.versionCount,
+    };
+  });
 }
 
 /**

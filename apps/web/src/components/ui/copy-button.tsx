@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,14 +12,17 @@ type CopyButtonProps = Omit<ComponentProps<typeof Button>, 'value' | 'onClick' |
   label: string;
   /** Renders the label beside the icon; off by default, which is the icon-only shape. */
   showLabel?: boolean;
+  /** Shown beside the icon in place of the label, for a value that is its own tap target. */
+  children?: ReactNode;
 };
 
 export function CopyButton({
   value,
   label,
   showLabel = false,
+  children,
   variant = 'outline',
-  size = showLabel ? 'default' : 'icon',
+  size = showLabel || children ? 'default' : 'icon',
   ...props
 }: CopyButtonProps) {
   const { t } = useTranslation('notifications');
@@ -50,7 +53,7 @@ export function CopyButton({
       {...props}
     >
       {copied ? <CheckIcon className="text-success" /> : <CopyIcon />}
-      {showLabel && label}
+      {children ?? (showLabel && label)}
     </Button>
   );
 }

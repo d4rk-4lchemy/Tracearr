@@ -21,13 +21,11 @@ export {
   parseWatchHistoryResponse,
   parseActivityLogItem,
   parseActivityLogResponse,
-  parseAuthResponse,
   parseItem,
   parseItemsResponse,
   parseLibraryItemsResponse,
   // Re-export shared types with platform-specific aliases for backward compatibility
   type JellyfinEmbyActivityEntry as EmbyActivityEntry,
-  type JellyfinEmbyAuthResult as EmbyAuthResult,
   type JellyfinEmbyItemResult as EmbyItemResult,
 } from '../shared/jellyfinEmbyParser.js';
 

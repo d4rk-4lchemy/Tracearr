@@ -96,6 +96,8 @@ export interface UserRequestEntry extends RequestEntryBase {
     title: string | null;
     year: number | null;
     mediaType: MediaRequestMediaType;
+    /** Through the image proxy, from the preferred server's library copy; null with no copy */
+    posterUrl: string | null;
   };
 }
 
@@ -105,6 +107,8 @@ export interface UserRequestsSummary {
   completed: number;
   neverWatched: number;
   medianWaitMs: number | null;
+  /** Requests that became available in the last seven days */
+  availableThisWeek: number;
 }
 
 export interface UserRequestsResponse {
@@ -175,7 +179,8 @@ export interface RequesterFollowThrough {
   requested: number;
   landed: number;
   watched: number;
-  watchedByOthers: number;
+  /** Absent for a member unless the owner shows members server activity */
+  watchedByOthers?: number;
   medianWaitMs: number | null;
 }
 
@@ -236,10 +241,13 @@ export const userRequestsQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(5),
 });
 
+export const myRequestsQuerySchema = userRequestsQuerySchema.omit({ scope: true });
+
 export type TestRequestServiceInput = z.infer<typeof testRequestServiceSchema>;
 export type CreateRequestServiceInput = z.infer<typeof createRequestServiceSchema>;
 export type UpdateRequestServiceInput = z.infer<typeof updateRequestServiceSchema>;
 export type UserRequestsQuery = z.infer<typeof userRequestsQuerySchema>;
+export type MyRequestsQuery = z.infer<typeof myRequestsQuerySchema>;
 export type RequestsAnalyticsQuery = z.infer<typeof requestsAnalyticsQuerySchema>;
 export type RequestsUnplayedQuery = z.infer<typeof requestsUnplayedQuerySchema>;
 export type RequestersQuery = z.infer<typeof requestersQuerySchema>;

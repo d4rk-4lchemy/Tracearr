@@ -23,6 +23,7 @@ import { UserRequestsCard } from '@/components/requests/UserRequestsCard';
 import { TrustScoreBadge } from '@/components/users/TrustScoreBadge';
 import { UserLocationsCard } from '@/components/users/UserLocationsCard';
 import { UserDevicesCard } from '@/components/users/UserDevicesCard';
+import { UserAccessControls } from '@/components/users/UserAccessControls';
 import { EditUserIdentityDialog } from '@/components/users/EditUserIdentityDialog';
 import { ContactEmailLine } from '@/components/users/ContactEmailLine';
 import { EditTrustScoreDialog } from '@/components/users/EditTrustScoreDialog';
@@ -720,6 +721,10 @@ export function UserDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {isOwner && user.role !== 'owner' && (
+        <UserAccessControls user={user} name={user.identityName ?? user.username} />
+      )}
 
       {/* Linked Accounts */}
       {identity && isMergedIdentity && (

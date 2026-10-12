@@ -9,6 +9,7 @@ import type {
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { type Scope, scopedServerFragment } from '../../lib/scope.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
 
 export interface RequestsAnalyticsData {
@@ -131,14 +132,20 @@ interface RequestPlays {
 }
 
 /**
- * Every request anyone played; absent means no plays. Unlike the library
+ * Every request the viewers in playScope played; absent means no plays. Unlike the library
  * badges, episodes whose files were deleted still count toward watched.
  */
 async function fetchRequestPlays(
-  serverIds: string[] | undefined
+  serverIds: string[] | undefined,
+  playScope: Scope
 ): Promise<Map<string, RequestPlays>> {
   const authFragment = buildMultiServerFragment(serverIds, 'rs.server_id');
-  const playFragment = buildMultiServerFragment(serverIds, 'p2.server_id');
+  const playFragment = scopedServerFragment(
+    serverIds,
+    playScope,
+    'p2.server_id',
+    sql`p2.server_user_id`
+  );
   const itemFragment = buildMultiServerFragment(serverIds, 'li.server_id');
   // Same LATERAL/OFFSET 0 shape as the watched probes, so each alias row
   // probes the cagg's media_id or show_media_id index instead of seq-scanning it.
@@ -246,10 +253,21 @@ function chargedBytes(rows: RequestOutcomeRow[], buckets: Map<string, [number, n
   return [...charged.values()].reduce((sum, bytes) => sum + bytes, 0);
 }
 
+/**
+ * Without showOthers a member's numbers come from their own plays alone: watched means they
+ * watched it, unplayed means they never did, and there is no watchedByOthers.
+ */
 export async function getRequestsAnalytics(
-  serverIds: string[] | undefined
+  serverIds: string[] | undefined,
+  scope: Scope,
+  showOthers: boolean
 ): Promise<RequestsAnalyticsData> {
-  const authFragment = buildMultiServerFragment(serverIds, 'rs.server_id');
+  const authFragment = scopedServerFragment(
+    serverIds,
+    scope,
+    'rs.server_id',
+    sql`mr.server_user_id`
+  );
   const result = await db.execute(sql`
     SELECT
       mr.id,
@@ -285,7 +303,7 @@ export async function getRequestsAnalytics(
     [...new Set(landed.flatMap((row) => (row.media_id ? [row.media_id] : [])))],
     serverIds
   );
-  const plays = await fetchRequestPlays(serverIds);
+  const plays = await fetchRequestPlays(serverIds, showOthers ? 'all' : scope);
 
   const sizeBuckets = new Map<string, [number, number][]>();
   const outcomes = landed.map((row): RequestOutcomeRow => {
@@ -333,9 +351,13 @@ export async function getRequestsAnalytics(
         watched: landedRows.filter(
           (row) => row.requester.userId !== null && watchedBy(row.id).has(row.requester.userId)
         ).length,
-        watchedByOthers: landedRows.filter((row) =>
-          [...watchedBy(row.id)].some((viewer) => viewer !== row.requester.userId)
-        ).length,
+        ...(showOthers
+          ? {
+              watchedByOthers: landedRows.filter((row) =>
+                [...watchedBy(row.id)].some((viewer) => viewer !== row.requester.userId)
+              ).length,
+            }
+          : {}),
         medianWaitMs: median(
           landedRows.flatMap((row) => (row.waitMs === null ? [] : [row.waitMs]))
         ),

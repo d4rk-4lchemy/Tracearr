@@ -28,17 +28,23 @@ import { violationRoutes } from '../../src/routes/violations.js';
 import { users, serverUsers, automationRuns, automations } from '../../src/db/schema.js';
 import { mergeUsers } from '../../src/services/mergeService.js';
 import * as userService from '../../src/services/userService.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 async function buildApp(authUser: {
   userId: string;
   username: string;
-  role: 'owner' | 'admin' | 'viewer' | 'member';
+  role: 'owner' | 'admin' | 'member';
   serverIds: string[];
 }) {
   const app = Fastify({ logger: false });
   await app.register(sensible);
   app.decorate('authenticate', async (request: any) => {
     request.user = authUser;
+  });
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: any, reply: any) => {
+    await app.authenticate(request, reply);
+    if (request.user.role !== 'owner') return reply.forbidden('Owner access required');
   });
   await app.register(violationRoutes, { prefix: '/violations' });
   return app;
@@ -146,7 +152,7 @@ describe('POST /violations/bulk/acknowledge - person filter', () => {
     const app = await buildApp({
       userId: randomUUID(),
       username: 'viewer',
-      role: 'viewer',
+      role: 'admin',
       serverIds: [server.id],
     });
 

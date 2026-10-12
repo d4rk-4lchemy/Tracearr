@@ -23,6 +23,7 @@ function fakeRequest(overrides: {
     method: 'POST',
     url: '/api/v1/auth/sign-in/email',
     protocol: 'http',
+    host: 'tracearr.example.com',
     ip: overrides.ip,
     headers: { host: 'tracearr.example.com', ...overrides.headers },
     body: { email: 'a@b.c', password: 'x' },

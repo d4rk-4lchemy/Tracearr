@@ -25,6 +25,7 @@ import { createMockRedis } from '@tracearr/test-utils/mocks';
 import { userRoutes } from '../../src/routes/users/index.js';
 import { violationRoutes } from '../../src/routes/violations.js';
 import { automationRoutes } from '../../src/routes/automations.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 const PERSON_NAMES = ['Bob', 'alice', '_x', 'Zed', 'Emile', 'emile'];
 const AUTOMATION_NAMES = ['Bob', 'alice', '_x', 'Zed', 'Emile'];
@@ -37,6 +38,7 @@ async function buildApp() {
   app.decorate('authenticate', async (request: any) => {
     request.user = owner;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('requireOwner', async (request: any) => {
     request.user = owner;
   });

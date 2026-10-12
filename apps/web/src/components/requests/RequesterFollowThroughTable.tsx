@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Users } from 'lucide-react';
-import type { RequesterFollowThrough } from '@tracearr/shared';
+import { isStaff, type RequesterFollowThrough } from '@tracearr/shared';
 import {
   createDataTableColumnHelper,
   DataTableBody,
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/data-table';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { RequesterCell } from '@/components/requests/RequesterCell';
+import { useAuth } from '@/hooks/useAuth';
 import { formatDuration } from '@/lib/formatters';
 
 interface RequesterFollowThroughTableProps {
@@ -49,6 +50,10 @@ export function RequesterFollowThroughTable({
   onRetry,
 }: RequesterFollowThroughTableProps) {
   const { t } = useTranslation(['pages', 'common']);
+  const { user } = useAuth();
+  // The server leaves it out for a member unless the owner shows members server activity
+  const showWatchedByOthers =
+    (!!user && isStaff(user.role)) || !!rows?.some((row) => row.watchedByOthers !== undefined);
 
   const columns = useMemo(
     () =>
@@ -73,11 +78,15 @@ export function RequesterFollowThroughTable({
           header: t('pages:requests.followThrough.watched'),
           meta: { numeric: true },
         }),
-        columnHelper.accessor((row) => row.watchedByOthers, {
-          id: 'watchedByOthers',
-          header: t('pages:requests.followThrough.watchedByOthers'),
-          meta: { numeric: true },
-        }),
+        ...(showWatchedByOthers
+          ? [
+              columnHelper.accessor((row) => row.watchedByOthers, {
+                id: 'watchedByOthers',
+                header: t('pages:requests.followThrough.watchedByOthers'),
+                meta: { numeric: true },
+              }),
+            ]
+          : []),
         columnHelper.accessor((row) => row.medianWaitMs, {
           id: 'medianWaitMs',
           header: t('pages:requests.followThrough.medianWait'),
@@ -88,7 +97,7 @@ export function RequesterFollowThroughTable({
           },
         }),
       ]),
-    [t]
+    [t, showWatchedByOthers]
   );
 
   const { table, pager } = useDataTable<RequesterFollowThrough>({

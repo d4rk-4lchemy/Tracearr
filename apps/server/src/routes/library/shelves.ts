@@ -41,13 +41,14 @@ import {
 import { buildProxyUrl, posterVersionFor } from '../../services/imageProxy.js';
 import { reAddedPredicate } from '../../services/library/reAdded.js';
 import { getSetting } from '../../services/settings.js';
+import { seesServerActivity } from '../../lib/scope.js';
 import { resolveDateRange, type DateRange } from '../stats/utils.js';
 import { buildLibraryCacheKey, mediaSizeSubquery, withComputeSingleFlight } from './utils.js';
 
 const SHELF_LIMIT = 20;
 const DEAD_WEIGHT_LIMIT = 10;
 
-interface RawShelfRow {
+export interface RawShelfRow {
   id: string;
   media_type: 'movie' | 'show';
   title: string;
@@ -86,7 +87,7 @@ type CachedMostPopularRow = CachedShelfRow &
   Pick<MostPopularShelfRow, 'plays' | 'viewers' | 'rank'>;
 type CachedDeadWeightRow = CachedShelfRow & Pick<DeadWeightRow, 'fileBytes' | 'addedAt'>;
 
-function toShelfRowBase(row: RawShelfRow): CachedShelfRow {
+export function toShelfRowBase(row: RawShelfRow): CachedShelfRow {
   const servers = row.servers ?? [];
   const poster = row.poster_copy;
   const posterVersion = poster?.thumbPath ? posterVersionFor(poster.thumbPath) : null;
@@ -630,6 +631,11 @@ function withWatched<T extends CachedShelfRow>(
   return { ...row, watchedState: watchedStates.get(row.mediaId) ?? 'unwatched' };
 }
 
+function withoutCounts(watchedStates: Map<string, WatchedState>) {
+  return ({ plays: _plays, viewers: _viewers, ...row }: MostPopularShelfRow) =>
+    withWatched(row, watchedStates);
+}
+
 async function computeShelves(
   serverIds: string[] | undefined,
   dateRange: DateRange,
@@ -710,6 +716,54 @@ async function computeShelves(
   };
 }
 
+/**
+ * The cached shelves are everyone's. A member gets each title's watched state as their own, the
+ * Most Popular shelves whatever the owner's activity switch says but never their play and viewer
+ * counts, no Recently Updated (a replaced file is the owner's business), and the server's watched
+ * figures only with the switch on.
+ */
+async function forMember(
+  response: ShelvesResponse,
+  userId: string,
+  serverIds: string[] | undefined,
+  showActivity: boolean
+): Promise<ShelvesResponse> {
+  const movieIds = new Set<string>();
+  const showIds = new Set<string>();
+  for (const row of [...response.recentlyAddedMovies, ...response.mostPopularMovies]) {
+    movieIds.add(row.mediaId);
+  }
+  for (const row of [...response.recentlyAddedShows, ...response.mostPopularShows]) {
+    showIds.add(row.mediaId);
+  }
+  const showIdList = [...showIds];
+  const watchedStates = await resolveWatchedStates({
+    movieIds: [...movieIds],
+    showIds: showIdList,
+    serverIds,
+    lensUserId: userId,
+    episodeCounts: await fetchEpisodeCounts(showIdList, serverIds),
+  });
+  // Dead weight is the titles nobody watched, judged from everyone's plays.
+  const { deadWeight: _everyone, hoursWatched, watchedInPeriod, ...kpis } = response.kpis;
+  // playedCount counts titles anyone played.
+  if (!showActivity)
+    kpis.newlyAdded = { count: kpis.newlyAdded.count, totalBytes: kpis.newlyAdded.totalBytes };
+  const activity = showActivity
+    ? { hoursWatched, watchedInPeriod }
+    : { watchedInPeriod: { totalTitles: watchedInPeriod.totalTitles } };
+  return {
+    ...response,
+    deadWeight: undefined,
+    kpis: { ...kpis, ...activity },
+    recentlyAddedMovies: response.recentlyAddedMovies.map((r) => withWatched(r, watchedStates)),
+    recentlyAddedShows: response.recentlyAddedShows.map((r) => withWatched(r, watchedStates)),
+    recentlyUpdated: [],
+    mostPopularMovies: response.mostPopularMovies.map(withoutCounts(watchedStates)),
+    mostPopularShows: response.mostPopularShows.map(withoutCounts(watchedStates)),
+  };
+}
+
 /** Thin wrapper over the generic single-flight helper, typed to a shelves
  * compute (see withComputeSingleFlight in utils.ts for the lock mechanics). */
 export async function computeShelvesSingleFlight(
@@ -728,7 +782,7 @@ export const libraryShelvesRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: Record<string, unknown> }>(
     '/shelves',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
       const query = shelvesQuerySchema.safeParse(request.query);
       if (!query.success) {
@@ -774,26 +828,35 @@ export const libraryShelvesRoute: FastifyPluginAsync = async (app) => {
         `${preferredPosterServerId ?? 'auto'}:${includeDeadWeight ? 'dw1' : 'dw0'}`
       );
 
-      const cached = await app.redis.get(cacheKey);
-      if (cached) {
+      const scope = request.scope;
+      const forViewer = async (response: ShelvesResponse) =>
+        scope === 'all'
+          ? response
+          : forMember(response, scope.userId, resolvedIds, await seesServerActivity(scope));
+
+      const cachedRaw = await app.redis.get(cacheKey);
+      let cached: ShelvesResponse | null = null;
+      if (cachedRaw) {
         try {
-          return JSON.parse(cached) as ShelvesResponse;
+          cached = JSON.parse(cachedRaw) as ShelvesResponse;
         } catch {
           // Fall through to compute.
         }
       }
+      if (cached) return forViewer(cached);
 
-      return computeShelvesSingleFlight(app.redis, cacheKey, async () => {
-        const response = await computeShelves(
+      const response = await computeShelvesSingleFlight(app.redis, cacheKey, async () => {
+        const computed = await computeShelves(
           resolvedIds,
           dateRange,
           period,
           preferredPosterServerId,
           includeDeadWeight
         );
-        await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_SHELVES, JSON.stringify(response));
-        return response;
+        await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_SHELVES, JSON.stringify(computed));
+        return computed;
       });
+      return forViewer(response);
     }
   );
 };

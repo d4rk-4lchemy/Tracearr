@@ -32,7 +32,7 @@ import authPlugin from '../plugins/auth.js';
 import {
   generateTestToken,
   createOwnerPayload,
-  createViewerPayload,
+  createMemberPayload,
   generateExpiredToken,
   generateTamperedToken,
   generateWrongSecretToken,
@@ -132,7 +132,7 @@ describe('Auth Security', () => {
     });
 
     it('should reject tampered tokens', async () => {
-      const validToken = generateTestToken(app, createViewerPayload());
+      const validToken = generateTestToken(app, createMemberPayload());
       const tamperedToken = generateTamperedToken(validToken);
 
       const res = await app.inject({
@@ -207,8 +207,8 @@ describe('Auth Security', () => {
   });
 
   describe('Authorization - Owner-Only Routes', () => {
-    it('should reject guest users on owner-only routes', async () => {
-      const guestToken = generateTestToken(app, createViewerPayload());
+    it('should answer members on owner-only routes with 404', async () => {
+      const guestToken = generateTestToken(app, createMemberPayload());
 
       const res = await app.inject({
         method: 'GET',
@@ -216,8 +216,7 @@ describe('Auth Security', () => {
         headers: { Authorization: `Bearer ${guestToken}` },
       });
 
-      expect(res.statusCode).toBe(403);
-      expect(res.json().message).toContain('Owner access required');
+      expect(res.statusCode).toBe(404);
     });
 
     it('should accept owner users on owner-only routes', async () => {
@@ -245,7 +244,7 @@ describe('Auth Security', () => {
 
     it('should prevent role escalation via token manipulation', async () => {
       // Create a guest token and try to tamper it to become owner
-      const guestToken = generateTestToken(app, createViewerPayload());
+      const guestToken = generateTestToken(app, createMemberPayload());
 
       // Try various tampering techniques
       const tamperedTokens = [
@@ -260,8 +259,8 @@ describe('Auth Security', () => {
           headers: { Authorization: `Bearer ${tampered}` },
         });
 
-        // Should either reject as invalid (401) or as unauthorized (403)
-        expect([401, 403]).toContain(res.statusCode);
+        // Should either reject as invalid (401) or as a member (404)
+        expect([401, 404]).toContain(res.statusCode);
       }
     });
   });

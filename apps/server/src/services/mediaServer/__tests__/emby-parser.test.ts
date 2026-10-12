@@ -19,7 +19,6 @@ import {
   parseWatchHistoryResponse,
   parseActivityLogItem,
   parseActivityLogResponse,
-  parseAuthResponse,
 } from '../emby/parser.js';
 import { createAllSharedParserTests } from './shared/jellyfinEmbyParserTests.js';
 
@@ -39,7 +38,6 @@ createAllSharedParserTests(
     parseWatchHistoryResponse,
     parseActivityLogItem,
     parseActivityLogResponse,
-    parseAuthResponse,
   },
   'emby'
 );

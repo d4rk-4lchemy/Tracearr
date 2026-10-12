@@ -41,7 +41,7 @@
   "devDependencies": {
     "@types/node": "^24.13.3",
     "@types/react": "19.3.0",
-    "@vitest/coverage-v8": "^4.1.5",
+    "@vitest/coverage-v8": "^5.0.0",
     "globals": "^17.3.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.8",
@@ -52,9 +52,9 @@
     "shadcn": "^4.16.1",
     "turbo": "^2.10.11",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.5"
+    "vitest": "^5.0.0"
   },
-  "packageManager": "pnpm@12.4.2+sha512.08adc6613180275c7c9edada39dcf08c9c61ad4e7eaf330a4f3461f102b0f907423454d117f98e72d47fef0616070644d7bffc973a6a57f5090a6d7c368b07c9",
+  "packageManager": "pnpm@12.10.1+sha512.ba40a37eb1a370d60fea8c4cf1d364c13bcccef518e98ad2bcee954f539d38da37458e58261a3fa55e06523450ea0ffff9f497b135be41f2c15c1642bacace6c",
   "engines": {
     "node": ">=22.22.2",
     "pnpm": ">=12.0.0"

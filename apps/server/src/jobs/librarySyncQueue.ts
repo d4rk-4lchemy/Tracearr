@@ -562,6 +562,24 @@ async function checkAndTriggerSnapshotBackfill(): Promise<void> {
   }
 }
 
+/**
+ * BullMQ 6 keeps running a schedule BullMQ 5 wrote under its md5 key, but with empty job
+ * data after the first run. Droppable once no install can predate 2.8.0.
+ */
+async function convertLegacySchedulers(queue: Queue<LibrarySyncJobData>): Promise<void> {
+  for (const scheduler of await queue.getJobSchedulers()) {
+    const { key, name, pattern, tz } = scheduler;
+    if (!/^[0-9a-f]{32}$/.test(key) || !name.startsWith('auto-sync-') || !pattern) continue;
+    const serverId = name.slice('auto-sync-'.length);
+    await queue.upsertJobScheduler(
+      `scheduled-${serverId}`,
+      { pattern, tz },
+      { name, data: { serverId, triggeredBy: 'scheduled' } }
+    );
+    await queue.removeJobScheduler(key);
+  }
+}
+
 async function applyAutoSyncSchedules(allServers: ServerRow[]): Promise<void> {
   if (!librarySyncQueue) {
     throw new Error('Library sync queue not initialized');
@@ -587,18 +605,12 @@ async function applyAutoSyncSchedules(allServers: ServerRow[]): Promise<void> {
     if (!server) continue;
     const minuteOffset = (10 + i * 4) % 60; // Server 0 at :10, server 1 at :14, wraps at 60
 
-    await librarySyncQueue.add(
-      `auto-sync-${server.id}`,
+    await librarySyncQueue.upsertJobScheduler(
+      `scheduled-${server.id}`,
+      { pattern: `${minuteOffset} */12 * * *`, tz: 'UTC' },
       {
-        serverId: server.id,
-        triggeredBy: 'scheduled',
-      },
-      {
-        repeat: {
-          pattern: `${minuteOffset} */12 * * *`,
-          tz: 'UTC',
-        },
-        jobId: `scheduled-${server.id}`,
+        name: `auto-sync-${server.id}`,
+        data: { serverId: server.id, triggeredBy: 'scheduled' },
       }
     );
   }
@@ -629,6 +641,7 @@ export async function scheduleAutoSync(): Promise<void> {
     throw new Error('Library sync queue not initialized');
   }
 
+  await convertLegacySchedulers(librarySyncQueue);
   const allServers = await liveServers();
   await applyAutoSyncSchedules(allServers);
   if (allServers.length === 0) return;

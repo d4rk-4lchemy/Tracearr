@@ -39,6 +39,12 @@ const OWNER_ID = '18d9e320-9415-4d88-90e7-6dce323cf587';
 const ADMIN_ID = 'a2df9127-6046-4547-acdf-21707e2423be';
 const VIEWER_ID = 'c3ee0431-0f57-4e99-bdf0-32818f3534cf';
 
+// viewer left the role type in 0111; this migration ran while it still existed.
+async function createViewer(username: string): Promise<void> {
+  await createTestUser({ id: VIEWER_ID, role: 'member', username });
+  await db.execute(sql`UPDATE users SET role = 'viewer' WHERE id = ${VIEWER_ID}`);
+}
+
 async function usernameOf(id: string): Promise<string> {
   const [row] = await db.select().from(users).where(eq(users.id, id));
   return row!.username;
@@ -80,7 +86,7 @@ describe('login username collision handling in the unique index migration', () =
 
   it('keeps the oldest account when no owner is involved', async () => {
     await createTestUser({ id: ADMIN_ID, role: 'admin', username: 'shared' });
-    await createTestUser({ id: VIEWER_ID, role: 'viewer', username: 'shared' });
+    await createViewer('shared');
     await db
       .update(users)
       .set({ createdAt: new Date('2024-01-01T00:00:00Z') })
@@ -99,7 +105,7 @@ describe('login username collision handling in the unique index migration', () =
   it('resolves a three-way collision to three distinct usernames', async () => {
     await createTestUser({ id: OWNER_ID, role: 'owner', username: 'moppen' });
     await createTestUser({ id: ADMIN_ID, role: 'admin', username: 'moppen' });
-    await createTestUser({ id: VIEWER_ID, role: 'viewer', username: 'moppen' });
+    await createViewer('moppen');
 
     await db.execute(sql.raw(collisionMigrationSql()));
 
@@ -133,7 +139,7 @@ describe('login username collision handling in the unique index migration', () =
     await createTestUser({ id: OWNER_ID, role: 'owner', username: 'moppen' });
     await createTestUser({ id: ADMIN_ID, role: 'admin', username: 'moppen' });
     // Occupies exactly the name the admin rename would produce.
-    await createTestUser({ id: VIEWER_ID, role: 'viewer', username: 'moppen-a2df9127' });
+    await createViewer('moppen-a2df9127');
 
     await expect(db.execute(sql.raw(collisionMigrationSql()))).rejects.toThrow(/upgrade blocked/);
   });

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import type { NotificationPreferences, NotificationPreferencesWithStatus } from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { mobileSessions, notificationPreferences } from '../db/schema.js';
+import { getPushDelivery } from '../services/pushDelivery.js';
 import { getPushRateLimiter } from '../services/pushRateLimiter.js';
 import { pushNotificationService } from '../services/pushNotification.js';
 
@@ -45,13 +46,15 @@ const updatePreferencesSchema = z.object({
   quietHoursOverrideCritical: z.boolean().optional(),
 });
 
+type MobileSessionRef = Pick<typeof mobileSessions.$inferSelect, 'id' | 'expoPushToken'>;
+
 /**
  * Find mobile session by deviceId from JWT claims
  * Mobile JWTs include deviceId for targeting the correct device session
  */
-async function findMobileSessionByDeviceId(deviceId: string): Promise<{ id: string } | null> {
+async function findMobileSessionByDeviceId(deviceId: string): Promise<MobileSessionRef | null> {
   const session = await db
-    .select({ id: mobileSessions.id })
+    .select({ id: mobileSessions.id, expoPushToken: mobileSessions.expoPushToken })
     .from(mobileSessions)
     .where(eq(mobileSessions.deviceId, deviceId))
     .limit(1);
@@ -63,10 +66,10 @@ async function findMobileSessionByDeviceId(deviceId: string): Promise<{ id: stri
  * Find mobile session for user (fallback for legacy tokens without deviceId)
  * Gets the most recently active session for the owner
  */
-async function findMobileSessionForUserFallback(_userId: string): Promise<{ id: string } | null> {
+async function findMobileSessionForUserFallback(_userId: string): Promise<MobileSessionRef | null> {
   // Get the most recently active session (desc ordering)
   const session = await db
-    .select({ id: mobileSessions.id })
+    .select({ id: mobileSessions.id, expoPushToken: mobileSessions.expoPushToken })
     .from(mobileSessions)
     .orderBy(desc(mobileSessions.lastSeenAt))
     .limit(1);
@@ -146,30 +149,30 @@ export const notificationPreferencesRoutes: FastifyPluginAsync = async (app) => 
       return reply.internalServerError('Failed to load notification preferences');
     }
 
-    // Get live rate limit status from Redis
-    const prefs = toApiResponse(row);
-    const rateLimiter = getPushRateLimiter();
+    const response: NotificationPreferencesWithStatus = {
+      ...toApiResponse(row),
+      delivery: {
+        tokenRegistered: Boolean(mobileSession.expoPushToken),
+        ...(await getPushDelivery()),
+      },
+    };
 
+    // Get live rate limit status from Redis
+    const rateLimiter = getPushRateLimiter();
     if (rateLimiter) {
       const status = await rateLimiter.getStatus(mobileSession.id, {
-        maxPerMinute: prefs.maxPerMinute,
-        maxPerHour: prefs.maxPerHour,
+        maxPerMinute: response.maxPerMinute,
+        maxPerHour: response.maxPerHour,
       });
-
-      const response: NotificationPreferencesWithStatus = {
-        ...prefs,
-        rateLimitStatus: {
-          remainingMinute: status.remainingMinute,
-          remainingHour: status.remainingHour,
-          resetMinuteIn: status.resetMinuteIn,
-          resetHourIn: status.resetHourIn,
-        },
+      response.rateLimitStatus = {
+        remainingMinute: status.remainingMinute,
+        remainingHour: status.remainingHour,
+        resetMinuteIn: status.resetMinuteIn,
+        resetHourIn: status.resetHourIn,
       };
-
-      return response;
     }
 
-    return prefs;
+    return response;
   });
 
   /**

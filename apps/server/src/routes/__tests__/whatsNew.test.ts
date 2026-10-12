@@ -11,6 +11,7 @@ vi.mock('../../services/whatsNew.js', () => ({
 
 import { dismissWhatsNew, getWhatsNewState } from '../../services/whatsNew.js';
 import { whatsNewRoutes } from '../whatsNew.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -18,6 +19,7 @@ async function buildTestApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(whatsNewRoutes, { prefix: '/whats-new' });
   return app;
 }

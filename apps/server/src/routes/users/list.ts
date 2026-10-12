@@ -13,6 +13,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { eq, and, sql, inArray, type SQL } from 'drizzle-orm';
 import {
   updateUserSchema,
+  updateUserAccessSchema,
   updateUserIdentitySchema,
   userIdParamSchema,
   userListQuerySchema,
@@ -20,11 +21,13 @@ import {
   bulkResetTrustBodySchema,
   type AuthUser,
   type ListResponse,
+  type LoginAccess,
   type UserRole,
   type UserRosterFilters,
   type UserSortField,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
+import { isUniqueViolation } from '../../db/pg.js';
 import { serverUsers, sessions, servers, users } from '../../db/schema.js';
 import {
   hasServerAccess,
@@ -53,6 +56,10 @@ import {
   recomputeIdentityAggregates,
 } from '../../services/userService.js';
 import { isLoginCapable } from '../../services/mergeService.js';
+import { nonOwnerMayLogin } from '../../lib/authGuards.js';
+import { refreshUserSessionSnapshots, revokeSessionsForUsers } from '../../lib/revoke.js';
+import { getSetting } from '../../services/settings.js';
+import { disconnectUserSockets } from '../../websocket/index.js';
 import { parseDateString } from '../../utils/parsing.js';
 import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
 import { PLAY_COUNT } from '../../constants/index.js';
@@ -157,6 +164,10 @@ export function buildUserRosterSql(
     }
   }
 
+  if (filters.signInOverride) {
+    identityConditions.push(sql`u.login_access <> 'default'`);
+  }
+
   const joinedAfter = utcDayStart(filters.joinedAfter);
   if (joinedAfter) {
     identityConditions.push(sql`u.first_joined_at >= ${joinedAfter}`);
@@ -206,6 +217,9 @@ export function buildUserRosterPageQuery(params: {
       u.id AS "userId",
       u.name AS "identityName",
       u.role AS "role",
+      u.login_access AS "loginAccess",
+      u.last_login_at AS "lastLoginAt",
+      u.login_count AS "loginCount",
       u.password_hash AS "passwordHash",
       u.plex_account_id AS "identityPlexAccountId",
       u.aggregate_trust_score AS "identityTrustScore",
@@ -272,6 +286,9 @@ interface RosterPageRow {
   userId: string;
   identityName: string | null;
   role: UserRole;
+  loginAccess: LoginAccess;
+  lastLoginAt: string | null;
+  loginCount: number;
   passwordHash: string | null;
   identityPlexAccountId: string | null;
   identityTrustScore: number;
@@ -319,6 +336,9 @@ interface UserRosterRow {
   updatedAt: string;
   identityName: string | null;
   role: UserRole;
+  loginAccess: LoginAccess;
+  lastLoginAt: string | null;
+  loginCount: number;
   identityTrustScore: number;
   identityJoinedAt: string | null;
   identityLastActivityAt: string | null;
@@ -327,10 +347,12 @@ interface UserRosterRow {
 }
 
 export const listRoutes: FastifyPluginAsync = async (app) => {
+  const readUsers = { preHandler: [app.requirePermission('users', 'read')] };
+  const writeUsers = { preHandler: [app.requirePermission('users', 'write')] };
   /**
    * GET / - List all server users with pagination
    */
-  app.get('/', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/', readUsers, async (request, reply) => {
     const query = userListQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -435,12 +457,15 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
       updatedAt: new Date(row.updatedAt).toISOString(),
       identityName: row.identityName,
       role: row.role,
+      loginAccess: row.loginAccess,
+      lastLoginAt: parseDateString(row.lastLoginAt),
+      loginCount: row.loginCount,
       // The person's overall trust across all their server accounts,
       // distinct from `trustScore` (this representative account's own score).
       identityTrustScore: row.identityTrustScore,
       identityJoinedAt: parseDateString(row.identityJoinedAt),
       identityLastActivityAt: parseDateString(row.identityLastActivityAt),
-      // Wider than canLogin(role); the merge dialog picks its direction from
+      // Wider than the role alone; the merge dialog picks its direction from
       // this, and deriving it client-side from role alone picks the wrong one.
       loginCapable: isLoginCapable({
         id: row.userId,
@@ -468,7 +493,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /:id - Get server user details
    */
-  app.get('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id', readUsers, async (request, reply) => {
     const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid user ID');
@@ -496,6 +521,9 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
         // Include identity info
         identityName: users.name,
         role: users.role,
+        loginAccess: users.loginAccess,
+        lastLoginAt: users.lastLoginAt,
+        loginCount: users.loginCount,
       })
       .from(serverUsers)
       .innerJoin(servers, eq(serverUsers.serverId, servers.id))
@@ -536,14 +564,15 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
   /**
    * PATCH /:id - Update server user (trustScore, etc.)
    */
-  app.patch('/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.patch('/:id', writeUsers, async (request, reply) => {
     const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid user ID');
     }
 
     const body = updateUserSchema.safeParse(request.body);
-    if (!body.success) {
+    const access = updateUserAccessSchema.safeParse(request.body);
+    if (!body.success || !access.success) {
       return reply.badRequest('Invalid request body');
     }
 
@@ -570,6 +599,46 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
     // Verify access (owners can see all servers)
     if (!hasServerAccess(authUser, serverUser.serverId)) {
       return reply.forbidden('You do not have access to this user');
+    }
+
+    const { loginAccess, role } = access.data;
+    if (loginAccess !== undefined || role !== undefined) {
+      const [identity] = await db
+        .select({ role: users.role, loginAccess: users.loginAccess })
+        .from(users)
+        .where(eq(users.id, serverUser.userId))
+        .limit(1);
+      if (!identity) return reply.notFound('User not found');
+      if (identity.role === 'owner') {
+        return reply.badRequest("The owner's sign-in access cannot be changed");
+      }
+      try {
+        await db
+          .update(users)
+          .set({ loginAccess, role, updatedAt: new Date() })
+          .where(eq(users.id, serverUser.userId));
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          return reply.conflict('Another owner or admin already signs in with this username');
+        }
+        throw error;
+      }
+      const next = {
+        role: role ?? identity.role,
+        loginAccess: loginAccess ?? identity.loginAccess,
+      };
+      const roleChanged = next.role !== identity.role;
+      const accessChanged = next.loginAccess !== identity.loginAccess;
+      const { member } = await getSetting('loginMethods');
+      // Judged on what was asked for, not on what changed: a resend after a revoke that failed
+      // finds nothing changed and must still sign the person out.
+      if (role === 'member' || !nonOwnerMayLogin(next, member)) {
+        await revokeSessionsForUsers([serverUser.userId]);
+      } else if (roleChanged || accessChanged) {
+        if (roleChanged) await refreshUserSessionSnapshots(serverUser.userId);
+        // Socket rooms are picked at connect, so a promotion takes effect on the reconnect.
+        await disconnectUserSockets(serverUser.userId);
+      }
     }
 
     // A trust write goes through the one writer, which recomputes the person's rollup in
@@ -623,7 +692,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
    * PATCH /:id/identity - Update user identity (display name and contact email)
    * Owner-only. Updates the users table (identity), not server_users.
    */
-  app.patch('/:id/identity', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.patch('/:id/identity', { preHandler: [app.requireOwner] }, async (request, reply) => {
     const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid user ID');
@@ -636,11 +705,6 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
 
     const { id } = params.data;
     const authUser = request.user;
-
-    // Only owners can update user identity
-    if (authUser.role !== 'owner') {
-      return reply.forbidden('Only owners can update user identity');
-    }
 
     // Get serverUser to find userId (the identity)
     const serverUserRows = await db
@@ -679,13 +743,8 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
    * rollup recomputes over the person's full account set and may land short
    * of 100 if a sibling account outside their access still has a lower score.
    */
-  app.post('/bulk/reset-trust', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/bulk/reset-trust', writeUsers, async (request, reply) => {
     const authUser = request.user;
-
-    // Only owners and admins can reset trust scores
-    if (authUser.role !== 'owner' && authUser.role !== 'admin') {
-      return reply.forbidden('Only administrators can reset trust scores');
-    }
 
     const parsedBody = bulkResetTrustBodySchema.safeParse(request.body);
     if (!parsedBody.success) {

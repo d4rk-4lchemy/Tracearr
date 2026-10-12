@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { LayoutBanner } from './LayoutBanner';
+import { LayoutBanner, LayoutBannerAction } from './LayoutBanner';
 
 function renderBanner(variant: 'warning' | 'destructive' = 'warning') {
   render(<LayoutBanner variant={variant}>strip copy</LayoutBanner>);
@@ -60,5 +60,25 @@ describe('LayoutBanner', () => {
 
     expect(banner.querySelector('svg')).toBeInTheDocument();
     expect(screen.getByText('strip copy')).toBeInTheDocument();
+  });
+
+  it('takes a different icon than the warning triangle', () => {
+    render(
+      <LayoutBanner variant="warning" icon={() => <svg data-testid="custom-icon" />}>
+        copy
+      </LayoutBanner>
+    );
+
+    expect(screen.getByTestId('custom-icon')).toBeInTheDocument();
+  });
+
+  it('gives the action the warning colors and a height that fits the strip', () => {
+    render(<LayoutBannerAction>Stop</LayoutBannerAction>);
+
+    expect(screen.getByRole('button', { name: 'Stop' })).toHaveClass(
+      'text-warning',
+      'h-7',
+      'shrink-0'
+    );
   });
 });

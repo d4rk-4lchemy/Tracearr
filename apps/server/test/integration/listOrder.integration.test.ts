@@ -24,6 +24,7 @@ import { createMockRedis } from '@tracearr/test-utils/mocks';
 import { db } from '../../src/db/client.js';
 import { sessionRoutes } from '../../src/routes/sessions.js';
 import { libraryLibrariesRoute } from '../../src/routes/library/libraries.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 const MEMBER_NAMES = ['Bob', 'alice', '_x', 'Émile', 'Zed'];
 
@@ -33,6 +34,11 @@ async function buildApp() {
   app.decorate('redis', createMockRedis() as unknown as Redis);
   app.decorate('authenticate', async (request: any) => {
     request.user = { userId: 'owner', username: 'owner', role: 'owner', serverIds: [] };
+  });
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: any, reply: any) => {
+    await app.authenticate(request, reply);
+    if (request.user.role !== 'owner') return reply.forbidden('Owner access required');
   });
   await app.register(sessionRoutes, { prefix: '/sessions' });
   await app.register(libraryLibrariesRoute, { prefix: '/library' });

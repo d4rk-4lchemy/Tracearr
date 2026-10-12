@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import type { CatalogRowServerEntry, DeadWeightRow, ServerType } from '@tracearr/shared';
-import { buildPosterSrc, type PosterCardServer } from '@/components/media-browse/PosterCard';
+import type { DeadWeightRow } from '@tracearr/shared';
+import {
+  buildPosterSrc,
+  toPosterCardServers,
+  type ServerLookupEntry,
+} from '@/components/media-browse/PosterCard';
 import { ServerDots } from '@/components/media-browse/ServerDots';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -17,29 +21,7 @@ import {
 } from '@/components/ui/table';
 import { formatBytes, formatCompactAge } from '@/lib/formatters';
 
-export interface ServerLookupEntry {
-  name: string;
-  type: ServerType;
-  color?: string | null;
-}
-
-function resolvePosterCardServers(
-  entries: CatalogRowServerEntry[],
-  serverById: Map<string, ServerLookupEntry>
-): PosterCardServer[] {
-  return entries.map((entry) => {
-    const server = serverById.get(entry.serverId);
-    return {
-      serverId: entry.serverId,
-      name: server?.name ?? entry.serverId,
-      type: server?.type ?? 'plex',
-      color: server?.color ?? null,
-      addedAt: entry.addedAt,
-      videoResolution: entry.videoResolution,
-      versionCount: entry.versionCount,
-    };
-  });
-}
+export type { ServerLookupEntry };
 
 export function DeadWeightTableSkeleton() {
   return (
@@ -178,7 +160,7 @@ export function DeadWeightTable({
                   {formatCompactAge(row.addedAt)}
                 </TableCell>
                 <TableCell>
-                  <ServerDots servers={resolvePosterCardServers(row.servers, serverById)} />
+                  <ServerDots servers={toPosterCardServers(row.servers, serverById)} />
                 </TableCell>
               </TableRow>
             ))}

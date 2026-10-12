@@ -17,6 +17,7 @@ describe('RequestsSummary', () => {
           completed: 9,
           neverWatched: 3,
           medianWaitMs: 2 * 60 * 60 * 1000,
+          availableThisWeek: 0,
         }}
       />
     );

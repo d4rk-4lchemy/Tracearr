@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { RequestRequester } from '@tracearr/shared';
+import { isStaff, type RequestRequester } from '@tracearr/shared';
 import { UserCell } from '@/components/users/UserCell';
+import { useAuth } from '@/hooks/useAuth';
 
 /** A requester with no account on the linked server has only the name Seerr knows, shown muted and unlinked. */
 export function RequesterCell({
@@ -12,6 +13,7 @@ export function RequesterCell({
   trailing?: ReactNode;
 }) {
   const { t } = useTranslation('pages');
+  const { user } = useAuth();
 
   if (requester.serverUserId === null) {
     return (
@@ -31,6 +33,7 @@ export function RequesterCell({
       identityName={requester.identityName}
       thumbUrl={requester.thumb}
       serverId={requester.serverId}
+      link={!!user && isStaff(user.role)}
       trailing={trailing}
     />
   );

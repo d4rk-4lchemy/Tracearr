@@ -584,6 +584,59 @@ describe('reverifyKillCondition', () => {
     });
   });
 
+  it('kills when the triggering session still sits in the cache flagged pending from before its confirmation', async () => {
+    // A session that went through the pending phase was cached at first sight
+    // with pending: true under the id it keeps. At delay_seconds 0 the job runs
+    // before the confirming caller has touched that entry (issue #1308).
+    const actualEngine = await vi.importActual<typeof EngineModule>('../engine.js');
+    mockEvaluateRulesAsync.mockImplementation(actualEngine.evaluateRulesAsync);
+
+    const sessionRow = makeSessionRow();
+    mockSessionFindFirst.mockResolvedValue(sessionRow);
+
+    const ruleRow = makeRuleRow({
+      conditions: {
+        groups: [{ conditions: [{ field: 'concurrent_streams', operator: 'gt', value: 1 }] }],
+      },
+    });
+    mockRuleSelect(ruleRow);
+
+    mockBatchGetIdentityServerUserIds.mockResolvedValue(new Map());
+    mockBatchGetRecentUserSessions.mockResolvedValue(new Map());
+
+    const otherActiveSession = {
+      id: 'other-active-session',
+      serverUserId: sessionRow.serverUserId,
+      deviceId: 'device-other',
+      ipAddress: '10.0.0.9',
+    } as Session;
+    const stalePendingTrigger = { ...sessionRow, pending: true } as unknown as Session;
+    mockGetCacheService.mockReturnValue({
+      getAllActiveSessions: vi.fn().mockResolvedValue([otherActiveSession, stalePendingTrigger]),
+    } as never);
+
+    mockTerminateSession.mockResolvedValue({
+      success: true,
+      terminationLogId: randomUUID(),
+      outcome: 'terminated',
+    });
+
+    const result = await reverifyKillCondition({
+      triggeringSessionId: sessionRow.id,
+      targetSessionId: sessionRow.id,
+      serverId: sessionRow.serverId,
+      ruleId: ruleRow.id,
+    });
+
+    expect(result.outcome).toBe('killed');
+    expect(mockTerminateSession).toHaveBeenCalledWith({
+      sessionId: sessionRow.id,
+      trigger: 'rule',
+      ruleId: ruleRow.id,
+      reason: undefined,
+    });
+  });
+
   it('R1/R2: evaluates against the TRIGGER context, so a scoped enforceAcrossServers kill of a sibling-server target does not self-abort', async () => {
     const actualEngine = await vi.importActual<typeof EngineModule>('../engine.js');
     mockEvaluateRulesAsync.mockImplementation(actualEngine.evaluateRulesAsync);

@@ -10,6 +10,7 @@ const { mockDb, watched } = vi.hoisted(() => ({
 
 vi.mock('../../../db/client.js', () => ({ db: mockDb }));
 vi.mock('../../library/mediaWatchedService.js', () => watched);
+vi.mock('../../settings.js', () => ({ getSetting: vi.fn(async () => null) }));
 
 import { listMediaRequests, listUserRequests } from '../reads.js';
 
@@ -68,7 +69,7 @@ describe('listMediaRequests', () => {
   it('narrows a season scope to requests covering that season number', async () => {
     mockDb.execute.mockResolvedValue({ rows: [] });
 
-    await listMediaRequests({ scope: seasonScope(), serverIds: undefined });
+    await listMediaRequests({ scope: seasonScope(), serverIds: undefined, rowScope: 'all' });
 
     const text = lastSql();
     expect(text).toContain('jsonb_array_elements');
@@ -79,7 +80,7 @@ describe('listMediaRequests', () => {
   it('matches a show scope on the media id alone', async () => {
     mockDb.execute.mockResolvedValue({ rows: [] });
 
-    await listMediaRequests({ scope: showScope(), serverIds: undefined });
+    await listMediaRequests({ scope: showScope(), serverIds: undefined, rowScope: 'all' });
 
     const text = lastSql();
     expect(text).not.toContain('jsonb_array_elements');
@@ -89,7 +90,7 @@ describe('listMediaRequests', () => {
   it('scopes to the servers the viewer can see', async () => {
     mockDb.execute.mockResolvedValue({ rows: [] });
 
-    await listMediaRequests({ scope: showScope(), serverIds: [SERVER_ID] });
+    await listMediaRequests({ scope: showScope(), serverIds: [SERVER_ID], rowScope: 'all' });
 
     expect(renderSql(mockDb.execute.mock.calls[0]![0] as SQL).params).toContain(SERVER_ID);
   });
@@ -111,7 +112,11 @@ describe('listMediaRequests', () => {
 
     watched.resolveWatchedStates.mockResolvedValue(new Map([[SHOW_ID, 'watched']]));
 
-    const entries = await listMediaRequests({ scope: showScope(), serverIds: undefined });
+    const entries = await listMediaRequests({
+      scope: showScope(),
+      serverIds: undefined,
+      rowScope: 'all',
+    });
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.watchedState).toBe('watched');
@@ -144,7 +149,7 @@ describe('listMediaRequests', () => {
       ],
     });
 
-    await listMediaRequests({ scope: showScope(), serverIds: [SERVER_ID] });
+    await listMediaRequests({ scope: showScope(), serverIds: [SERVER_ID], rowScope: 'all' });
 
     expect(watched.fetchEpisodeCounts).toHaveBeenCalledTimes(1);
     expect(watched.fetchEpisodeCounts).toHaveBeenCalledWith(
@@ -163,7 +168,7 @@ describe('listMediaRequests', () => {
       ],
     });
 
-    await listMediaRequests({ scope: showScope(), serverIds: [SERVER_ID] });
+    await listMediaRequests({ scope: showScope(), serverIds: [SERVER_ID], rowScope: 'all' });
 
     expect(watched.fetchEpisodeCounts).toHaveBeenCalledTimes(2);
     expect(watched.fetchEpisodeCounts).toHaveBeenCalledWith([SHOW_ID], [SERVER_ID], [2]);
@@ -177,7 +182,11 @@ describe('listMediaRequests', () => {
     mockDb.execute.mockResolvedValue({ rows: [mediaRow()] });
     watched.resolveWatchedStates.mockResolvedValue(new Map([[SHOW_ID, 'watched']]));
 
-    const entries = await listMediaRequests({ scope: showScope(), serverIds: undefined });
+    const entries = await listMediaRequests({
+      scope: showScope(),
+      serverIds: undefined,
+      rowScope: 'all',
+    });
 
     expect(entries[0]?.waitMs).toBe(5000);
     expect(entries[0]?.watchedState).toBe('watched');
@@ -197,7 +206,11 @@ describe('listMediaRequests', () => {
   it('reports a null wait while nothing is available yet', async () => {
     mockDb.execute.mockResolvedValue({ rows: [mediaRow({ available_at: null })] });
 
-    const entries = await listMediaRequests({ scope: showScope(), serverIds: undefined });
+    const entries = await listMediaRequests({
+      scope: showScope(),
+      serverIds: undefined,
+      rowScope: 'all',
+    });
 
     expect(entries[0]?.waitMs).toBeNull();
   });
@@ -217,6 +230,7 @@ describe('listUserRequests', () => {
       approved_or_completed: 0,
       decided: 0,
       median_wait_ms: null,
+      available_this_week: 0,
       ...overrides,
     };
   }
@@ -230,6 +244,7 @@ describe('listUserRequests', () => {
       .mockResolvedValueOnce({ rows: [] });
 
     const result = await listUserRequests({
+      showOthers: true,
       serverUserIds: [SERVER_USER_ID],
       serverIds: undefined,
       page: 2,
@@ -242,6 +257,7 @@ describe('listUserRequests', () => {
       completed: 0,
       neverWatched: 0,
       medianWaitMs: null,
+      availableThisWeek: 0,
     });
     expect(result.total).toBe(1);
     expect(result.page).toBe(2);
@@ -251,6 +267,7 @@ describe('listUserRequests', () => {
       title: 'X',
       year: 2020,
       mediaType: 'show',
+      posterUrl: null,
     });
   });
 
@@ -271,6 +288,7 @@ describe('listUserRequests', () => {
       .mockResolvedValueOnce({ rows: [] });
 
     const result = await listUserRequests({
+      showOthers: true,
       serverUserIds: [SERVER_USER_ID],
       serverIds: undefined,
       page: 1,
@@ -300,6 +318,7 @@ describe('listUserRequests', () => {
     watched.resolveWatchedStates.mockResolvedValue(new Map([[SHOW_ID, 'watched']]));
 
     const result = await listUserRequests({
+      showOthers: true,
       serverUserIds: [SERVER_USER_ID],
       serverIds: undefined,
       page: 1,
@@ -319,6 +338,7 @@ describe('listUserRequests', () => {
     watched.resolveWatchedStates.mockResolvedValue(new Map([[SHOW_ID, 'partial']]));
 
     const result = await listUserRequests({
+      showOthers: true,
       serverUserIds: [SERVER_USER_ID],
       serverIds: undefined,
       page: 1,
@@ -338,6 +358,7 @@ describe('listUserRequests', () => {
     watched.resolveWatchedStates.mockResolvedValue(new Map([[SHOW_ID, 'partial']]));
 
     const result = await listUserRequests({
+      showOthers: true,
       serverUserIds: [SERVER_USER_ID],
       serverIds: [SERVER_ID],
       page: 1,
@@ -353,6 +374,7 @@ describe('listUserRequests', () => {
 
   it('returns an empty page without querying when the identity has no accounts', async () => {
     const result = await listUserRequests({
+      showOthers: true,
       serverUserIds: [],
       serverIds: undefined,
       page: 1,
@@ -370,6 +392,7 @@ describe('listUserRequests', () => {
         completed: 0,
         neverWatched: 0,
         medianWaitMs: null,
+        availableThisWeek: 0,
       },
     });
     expect(mockDb.execute).not.toHaveBeenCalled();

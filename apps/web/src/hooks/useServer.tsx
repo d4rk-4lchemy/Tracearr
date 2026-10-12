@@ -5,6 +5,7 @@ import {
   useCallback,
   useMemo,
   useEffect,
+  useRef,
   type ReactNode,
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ import { useAuth } from './useAuth';
 // Local storage keys
 const SELECTED_SERVERS_KEY = 'tracearr_selected_servers';
 const LEGACY_SELECTED_SERVER_KEY = 'tracearr_selected_server';
+const SELECTION_OWNER_KEY = 'tracearr_selected_servers_user';
 
 interface ServerContextValue {
   servers: Server[];
@@ -53,8 +55,11 @@ interface ServerContextValue {
 const ServerContext = createContext<ServerContextValue | null>(null);
 
 export function ServerProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, isSignedOut, user } = useAuth();
   const queryClient = useQueryClient();
+
+  // The stored selection is the owner's own; a preview of someone else must not rewrite it
+  const persistSelection = !user?.impersonatedBy;
 
   const [selectedServerIds, setSelectedServerIds] = useState<string[]>(() => {
     try {
@@ -89,8 +94,26 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     return servers.filter((s) => user.serverIds.includes(s.id));
   }, [servers, user]);
 
-  const mediaLibraryServers = useMemo(() => accessibleServers.filter((s) => supportsMediaLibrary(s.type)), [accessibleServers]);
-  const mediaLibraryServerIds = useMemo(() => selectedServerIds.filter((id) => mediaLibraryServers.some((s) => s.id === id)), [selectedServerIds, mediaLibraryServers]);
+  const mediaLibraryServers = useMemo(
+    () => accessibleServers.filter((s) => supportsMediaLibrary(s.type)),
+    [accessibleServers]
+  );
+  const mediaLibraryServerIds = useMemo(
+    () => selectedServerIds.filter((id) => mediaLibraryServers.some((s) => s.id === id)),
+    [selectedServerIds, mediaLibraryServers]
+  );
+  // The stored pick belongs to whoever wrote it; another account signing in starts clean
+  const userId = user && !user.impersonatedBy ? user.userId : null;
+  useEffect(() => {
+    if (!userId) return;
+    const storedOwner = localStorage.getItem(SELECTION_OWNER_KEY);
+    if (storedOwner !== null && storedOwner !== userId) {
+      setSelectedServerIds([]);
+      localStorage.removeItem(SELECTED_SERVERS_KEY);
+      localStorage.removeItem(LEGACY_SELECTED_SERVER_KEY);
+    }
+    localStorage.setItem(SELECTION_OWNER_KEY, userId);
+  }, [userId]);
 
   // Validate selection when servers load
   useEffect(() => {
@@ -99,8 +122,10 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     if (accessibleServers.length === 0) {
       if (selectedServerIds.length > 0) {
         setSelectedServerIds([]);
-        localStorage.removeItem(SELECTED_SERVERS_KEY);
-        localStorage.removeItem(LEGACY_SELECTED_SERVER_KEY);
+        if (persistSelection) {
+          localStorage.removeItem(SELECTED_SERVERS_KEY);
+          localStorage.removeItem(LEGACY_SELECTED_SERVER_KEY);
+        }
       }
       return;
     }
@@ -117,18 +142,26 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       next.some((id, i) => id !== selectedServerIds[i])
     ) {
       setSelectedServerIds(next);
-      localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(next));
+      if (persistSelection) localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(next));
     }
-  }, [accessibleServers, selectedServerIds, isLoading, user]);
+  }, [accessibleServers, selectedServerIds, isLoading, user, persistSelection]);
 
-  // Clear selection on logout
+  // Stopping a preview empties the auth cache a moment before the page navigates away
+  const wasPreviewing = useRef(false);
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (user) wasPreviewing.current = !!user.impersonatedBy;
+  }, [user]);
+
+  // Clear selection on logout, once /me has answered that there is no session. It reads
+  // as signed out while it loads and when the server cannot be reached; neither counts.
+  useEffect(() => {
+    if (isSignedOut && !wasPreviewing.current) {
       setSelectedServerIds([]);
       localStorage.removeItem(SELECTED_SERVERS_KEY);
       localStorage.removeItem(LEGACY_SELECTED_SERVER_KEY);
+      localStorage.removeItem(SELECTION_OWNER_KEY);
     }
-  }, [isAuthenticated]);
+  }, [isSignedOut]);
 
   const invalidateServerQueries = useCallback(() => {
     void queryClient.invalidateQueries({
@@ -144,12 +177,12 @@ export function ServerProvider({ children }: { children: ReactNode }) {
           : [...prev, serverId];
         // Prevent empty selection
         if (next.length === 0) return prev;
-        localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(next));
+        if (persistSelection) localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(next));
         return next;
       });
       invalidateServerQueries();
     },
-    [invalidateServerQueries]
+    [invalidateServerQueries, persistSelection]
   );
 
   const setSelectedServers = useCallback(
@@ -159,26 +192,26 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       const next = deduped.filter((id) => accessibleIds.has(id));
       if (next.length === 0) return;
       setSelectedServerIds(next);
-      localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(next));
+      if (persistSelection) localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(next));
       invalidateServerQueries();
     },
-    [accessibleServers, invalidateServerQueries]
+    [accessibleServers, invalidateServerQueries, persistSelection]
   );
 
   const selectAllServers = useCallback(() => {
     const allIds = accessibleServers.map((s) => s.id);
     setSelectedServerIds(allIds);
-    localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(allIds));
+    if (persistSelection) localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify(allIds));
     invalidateServerQueries();
-  }, [accessibleServers, invalidateServerQueries]);
+  }, [accessibleServers, invalidateServerQueries, persistSelection]);
 
   const deselectAllExcept = useCallback(
     (serverId: string) => {
       setSelectedServerIds([serverId]);
-      localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify([serverId]));
+      if (persistSelection) localStorage.setItem(SELECTED_SERVERS_KEY, JSON.stringify([serverId]));
       invalidateServerQueries();
     },
-    [invalidateServerQueries]
+    [invalidateServerQueries, persistSelection]
   );
 
   // Backward compat: selectServer sets single selection
@@ -208,9 +241,9 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     () => ({
       servers: accessibleServers,
       selectedServerIds,
-    selectedServers,
-    mediaLibraryServerIds,
-    mediaLibraryServers,
+      selectedServers,
+      mediaLibraryServerIds,
+      mediaLibraryServers,
       isMultiServer,
       isAllServersSelected,
       isLoading,
@@ -229,6 +262,8 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       accessibleServers,
       selectedServerIds,
       selectedServers,
+      mediaLibraryServerIds,
+      mediaLibraryServers,
       isMultiServer,
       isAllServersSelected,
       isLoading,

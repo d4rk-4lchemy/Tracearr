@@ -136,7 +136,7 @@ export function registerMediaRoutes(app: FastifyInstance, routeConfig: RouteConf
         if (cached) return cached;
       }
 
-      const windows = await getMediaStats(scope, undefined);
+      const windows = await getMediaStats(scope, undefined, 'all');
 
       const response = {
         media_id: canonical.id,
@@ -240,6 +240,7 @@ export function registerMediaRoutes(app: FastifyInstance, routeConfig: RouteConf
         pageSize,
         cursorValue,
         serverIds: undefined,
+        rowScope: 'all',
       });
       return cursorPage(data, nextCursor, pageSize);
     }

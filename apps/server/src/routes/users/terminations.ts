@@ -12,6 +12,7 @@ import { terminationLogs, users, automations, sessions, servers } from '../../db
 import { resolveIdentityScopedServerUserIds } from './queries.js';
 
 export const terminationsRoutes: FastifyPluginAsync = async (app) => {
+  const readUsers = { preHandler: [app.requirePermission('users', 'read')] };
   /**
    * GET /:id/terminations - Get termination history for a user
    *
@@ -20,7 +21,7 @@ export const terminationsRoutes: FastifyPluginAsync = async (app) => {
    * scope=identity expands the result to every account under the same
    * person that the caller can access.
    */
-  app.get('/:id/terminations', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/:id/terminations', readUsers, async (request, reply) => {
     const params = userIdParamSchema.safeParse(request.params);
     if (!params.success) {
       return reply.badRequest('Invalid user ID');
@@ -36,7 +37,7 @@ export const terminationsRoutes: FastifyPluginAsync = async (app) => {
     const authUser = request.user;
     const offset = (page - 1) * pageSize;
 
-    const scoped = await resolveIdentityScopedServerUserIds(db, authUser, id, scope);
+    const scoped = await resolveIdentityScopedServerUserIds(db, authUser, id, scope, request.scope);
     if ('error' in scoped) {
       if (scoped.error === 'notFound') {
         return reply.notFound('User not found');

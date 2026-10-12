@@ -22,6 +22,7 @@ vi.mock('../../../db/client.js', () => ({
 
 import { db } from '../../../db/client.js';
 import { libraryDuplicatesRoute } from '../duplicates.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 function createSpyRedis() {
   const store = new Map<string, string>();
@@ -43,6 +44,7 @@ async function buildTestApp(
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', redis as never);
   await app.register(libraryDuplicatesRoute, { prefix: '/library' });
   return app;

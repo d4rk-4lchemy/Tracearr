@@ -171,7 +171,7 @@ describe('BullMQ native stalled detection: recovery latency', () => {
     // without ever calling worker.close(). The lock key it holds is left
     // behind in Redis with time still on its TTL - exactly what a killed
     // process leaves.
-    const clientA = await workerA.client;
+    const clientA = await workerA.getBackend().client;
     const crashTime = Date.now();
     clientA.disconnect();
 

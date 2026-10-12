@@ -11,7 +11,8 @@ import { statsQuerySchema, type DeviceCompatibilityMatrix } from '@tracearr/shar
 import { db } from '../../db/client.js';
 import '../../db/schema.js';
 import { resolveDateRange } from './utils.js';
-import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
+import { scopedServerFragment } from '../../lib/scope.js';
 import { compareNames } from '../../utils/collation.js';
 
 // Extended schema with minSessions filter
@@ -52,6 +53,7 @@ function buildDeviceMatrix(rows: MatrixDeviceRow[], codecs: string[]): DeviceCom
 }
 
 export const devicesRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('devices', 'read')] };
   /**
    * GET /device-compatibility - Device vs codec direct play compatibility matrix
    *
@@ -61,7 +63,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    *
    * Aggregates across all selected servers - no per-row serverId.
    */
-  app.get('/device-compatibility', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/device-compatibility', readStats, async (request, reply) => {
     const query = deviceCompatibilitySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -72,7 +74,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
     const dateRange = resolveDateRange(period, startDate, endDate);
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
 
     // For all-time queries, we need a base WHERE clause
     const baseWhere = dateRange.start
@@ -172,30 +174,27 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * query and returns them keyed by server id, so the frontend no longer needs
    * to fan out one request per selected server.
    */
-  app.get(
-    '/device-compatibility/matrix',
-    { preHandler: [app.authenticate] },
-    async (request, reply) => {
-      const query = deviceCompatibilitySchema.safeParse(request.query);
-      if (!query.success) {
-        return reply.badRequest('Invalid query parameters');
-      }
+  app.get('/device-compatibility/matrix', readStats, async (request, reply) => {
+    const query = deviceCompatibilitySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.badRequest('Invalid query parameters');
+    }
 
-      const { period, startDate, endDate, serverId, serverIds, minSessions } = query.data;
-      const authUser = request.user;
-      const dateRange = resolveDateRange(period, startDate, endDate);
-      const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
+    const { period, startDate, endDate, serverId, serverIds, minSessions } = query.data;
+    const authUser = request.user;
+    const dateRange = resolveDateRange(period, startDate, endDate);
+    const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
 
-      const baseWhere = dateRange.start
-        ? sql`WHERE started_at >= ${dateRange.start}`
-        : sql`WHERE true`;
-      const dateFilter = period === 'custom' ? sql`AND started_at < ${dateRange.end}` : sql``;
+    const baseWhere = dateRange.start
+      ? sql`WHERE started_at >= ${dateRange.start}`
+      : sql`WHERE true`;
+    const dateFilter = period === 'custom' ? sql`AND started_at < ${dateRange.end}` : sql``;
 
-      if (serverIds) {
-        const targetIds = resolvedIds ?? [];
-        const serverFilter = buildMultiServerFragment(targetIds);
+    if (serverIds) {
+      const targetIds = resolvedIds ?? [];
+      const serverFilter = scopedServerFragment(targetIds, request.scope);
 
-        const codecsResult = await db.execute(sql`
+      const codecsResult = await db.execute(sql`
           SELECT DISTINCT server_id, COALESCE(source_video_codec, 'Unknown') AS codec
           FROM sessions
           ${baseWhere}
@@ -205,14 +204,14 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
           ORDER BY server_id, codec
         `);
 
-        const codecsByServer = new Map<string, string[]>();
-        for (const row of codecsResult.rows as { server_id: string; codec: string }[]) {
-          const list = codecsByServer.get(row.server_id) ?? [];
-          list.push(row.codec);
-          codecsByServer.set(row.server_id, list);
-        }
+      const codecsByServer = new Map<string, string[]>();
+      for (const row of codecsResult.rows as { server_id: string; codec: string }[]) {
+        const list = codecsByServer.get(row.server_id) ?? [];
+        list.push(row.codec);
+        codecsByServer.set(row.server_id, list);
+      }
 
-        const matrixResult = await db.execute(sql`
+      const matrixResult = await db.execute(sql`
           SELECT
             server_id,
             COALESCE(platform, 'Unknown') AS device_type,
@@ -230,30 +229,27 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
           ORDER BY server_id, device_type, video_codec
         `);
 
-        const rowsByServer = new Map<string, MatrixDeviceRow[]>();
-        for (const row of matrixResult.rows as unknown as (MatrixDeviceRow & {
-          server_id: string;
-        })[]) {
-          const list = rowsByServer.get(row.server_id) ?? [];
-          list.push(row);
-          rowsByServer.set(row.server_id, list);
-        }
-
-        const response: Record<string, DeviceCompatibilityMatrix> = {};
-        for (const id of targetIds) {
-          response[id] = buildDeviceMatrix(
-            rowsByServer.get(id) ?? [],
-            codecsByServer.get(id) ?? []
-          );
-        }
-
-        return response;
+      const rowsByServer = new Map<string, MatrixDeviceRow[]>();
+      for (const row of matrixResult.rows as unknown as (MatrixDeviceRow & {
+        server_id: string;
+      })[]) {
+        const list = rowsByServer.get(row.server_id) ?? [];
+        list.push(row);
+        rowsByServer.set(row.server_id, list);
       }
 
-      // Single serverId or no server param: unchanged, one combined matrix.
-      const serverFilter = buildMultiServerFragment(resolvedIds);
+      const response: Record<string, DeviceCompatibilityMatrix> = {};
+      for (const id of targetIds) {
+        response[id] = buildDeviceMatrix(rowsByServer.get(id) ?? [], codecsByServer.get(id) ?? []);
+      }
 
-      const codecsResult = await db.execute(sql`
+      return response;
+    }
+
+    // Single serverId or no server param: unchanged, one combined matrix.
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
+
+    const codecsResult = await db.execute(sql`
         SELECT DISTINCT COALESCE(source_video_codec, 'Unknown') AS codec
         FROM sessions
         ${baseWhere}
@@ -263,9 +259,9 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         ORDER BY codec
       `);
 
-      const codecs = (codecsResult.rows as { codec: string }[]).map((r) => r.codec);
+    const codecs = (codecsResult.rows as { codec: string }[]).map((r) => r.codec);
 
-      const matrixResult = await db.execute(sql`
+    const matrixResult = await db.execute(sql`
         SELECT
           COALESCE(platform, 'Unknown') AS device_type,
           COALESCE(source_video_codec, 'Unknown') AS video_codec,
@@ -282,11 +278,10 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         ORDER BY device_type, video_codec
       `);
 
-      const matrixRows = matrixResult.rows as unknown as MatrixDeviceRow[];
+    const matrixRows = matrixResult.rows as unknown as MatrixDeviceRow[];
 
-      return buildDeviceMatrix(matrixRows, codecs);
-    }
-  );
+    return buildDeviceMatrix(matrixRows, codecs);
+  });
 
   /**
    * GET /device-compatibility/health - Device health rankings
@@ -297,26 +292,23 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * Combined across selected servers - each row includes serverId so the
    * frontend can render a Server column.
    */
-  app.get(
-    '/device-compatibility/health',
-    { preHandler: [app.authenticate] },
-    async (request, reply) => {
-      const query = statsQuerySchema.safeParse(request.query);
-      if (!query.success) {
-        return reply.badRequest('Invalid query parameters');
-      }
+  app.get('/device-compatibility/health', readStats, async (request, reply) => {
+    const query = statsQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.badRequest('Invalid query parameters');
+    }
 
-      const { period, startDate, endDate, serverId, serverIds } = query.data;
-      const authUser = request.user;
-      const dateRange = resolveDateRange(period, startDate, endDate);
+    const { period, startDate, endDate, serverId, serverIds } = query.data;
+    const authUser = request.user;
+    const dateRange = resolveDateRange(period, startDate, endDate);
 
-      const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-      const serverFilter = buildMultiServerFragment(resolvedIds);
-      const baseWhere = dateRange.start
-        ? sql`WHERE started_at >= ${dateRange.start}`
-        : sql`WHERE true`;
+    const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
+    const baseWhere = dateRange.start
+      ? sql`WHERE started_at >= ${dateRange.start}`
+      : sql`WHERE true`;
 
-      const result = await db.execute(sql`
+    const result = await db.execute(sql`
         SELECT
           server_id,
           COALESCE(platform, 'Unknown') AS device,
@@ -335,29 +327,28 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         ORDER BY direct_play_pct DESC
       `);
 
-      const rows = result.rows as {
-        server_id: string;
-        device: string;
-        sessions: number;
-        video_direct: number;
-        audio_direct: number;
-        full_direct: number;
-        transcode_count: number;
-        direct_play_pct: number;
-      }[];
+    const rows = result.rows as {
+      server_id: string;
+      device: string;
+      sessions: number;
+      video_direct: number;
+      audio_direct: number;
+      full_direct: number;
+      transcode_count: number;
+      direct_play_pct: number;
+    }[];
 
-      return {
-        data: rows.map((r) => ({
-          serverId: r.server_id,
-          device: r.device,
-          sessions: r.sessions,
-          directPlayCount: r.full_direct,
-          transcodeCount: r.transcode_count,
-          directPlayPct: r.direct_play_pct,
-        })),
-      };
-    }
-  );
+    return {
+      data: rows.map((r) => ({
+        serverId: r.server_id,
+        device: r.device,
+        sessions: r.sessions,
+        directPlayCount: r.full_direct,
+        transcodeCount: r.transcode_count,
+        directPlayPct: r.direct_play_pct,
+      })),
+    };
+  });
 
   /**
    * GET /device-compatibility/hotspots - Transcode hotspots
@@ -368,26 +359,23 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * Combined across selected servers - each row includes serverId so the
    * frontend can render a Server column.
    */
-  app.get(
-    '/device-compatibility/hotspots',
-    { preHandler: [app.authenticate] },
-    async (request, reply) => {
-      const query = statsQuerySchema.safeParse(request.query);
-      if (!query.success) {
-        return reply.badRequest('Invalid query parameters');
-      }
+  app.get('/device-compatibility/hotspots', readStats, async (request, reply) => {
+    const query = statsQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.badRequest('Invalid query parameters');
+    }
 
-      const { period, startDate, endDate, serverId, serverIds } = query.data;
-      const authUser = request.user;
-      const dateRange = resolveDateRange(period, startDate, endDate);
+    const { period, startDate, endDate, serverId, serverIds } = query.data;
+    const authUser = request.user;
+    const dateRange = resolveDateRange(period, startDate, endDate);
 
-      const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-      const serverFilter = buildMultiServerFragment(resolvedIds);
-      const baseWhere = dateRange.start
-        ? sql`WHERE started_at >= ${dateRange.start}`
-        : sql`WHERE true`;
+    const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
+    const baseWhere = dateRange.start
+      ? sql`WHERE started_at >= ${dateRange.start}`
+      : sql`WHERE true`;
 
-      const result = await db.execute(sql`
+    const result = await db.execute(sql`
         SELECT
           server_id,
           COALESCE(platform, 'Unknown') AS device,
@@ -408,37 +396,36 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         LIMIT 10
       `);
 
-      const rows = result.rows as {
-        server_id: string;
-        device: string;
-        video_codec: string;
-        audio_codec: string;
-        sessions: number;
-        direct_count: number;
-        transcode_count: number;
-        direct_play_pct: number;
-      }[];
+    const rows = result.rows as {
+      server_id: string;
+      device: string;
+      video_codec: string;
+      audio_codec: string;
+      sessions: number;
+      direct_count: number;
+      transcode_count: number;
+      direct_play_pct: number;
+    }[];
 
-      // Calculate total transcodes for percentage
-      const totalTranscodes = rows.reduce((sum, r) => sum + r.transcode_count, 0);
+    // Calculate total transcodes for percentage
+    const totalTranscodes = rows.reduce((sum, r) => sum + r.transcode_count, 0);
 
-      return {
-        data: rows.map((r) => ({
-          serverId: r.server_id,
-          device: r.device,
-          videoCodec: r.video_codec,
-          audioCodec: r.audio_codec,
-          sessions: r.sessions,
-          directCount: r.direct_count,
-          transcodeCount: r.transcode_count,
-          directPlayPct: r.direct_play_pct,
-          pctOfTotalTranscodes:
-            totalTranscodes > 0 ? Math.round((r.transcode_count / totalTranscodes) * 100) : 0,
-        })),
-        totalTranscodes,
-      };
-    }
-  );
+    return {
+      data: rows.map((r) => ({
+        serverId: r.server_id,
+        device: r.device,
+        videoCodec: r.video_codec,
+        audioCodec: r.audio_codec,
+        sessions: r.sessions,
+        directCount: r.direct_count,
+        transcodeCount: r.transcode_count,
+        directPlayPct: r.direct_play_pct,
+        pctOfTotalTranscodes:
+          totalTranscodes > 0 ? Math.round((r.transcode_count / totalTranscodes) * 100) : 0,
+      })),
+      totalTranscodes,
+    };
+  });
 
   /**
    * GET /device-compatibility/top-transcoding-users - Users who transcode the most
@@ -449,26 +436,28 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    * Combined across selected servers - each row includes serverId. The same
    * human on two servers legitimately yields two rows (serverUserId is server-scoped).
    */
-  app.get(
-    '/device-compatibility/top-transcoding-users',
-    { preHandler: [app.authenticate] },
-    async (request, reply) => {
-      const query = statsQuerySchema.safeParse(request.query);
-      if (!query.success) {
-        return reply.badRequest('Invalid query parameters');
-      }
+  app.get('/device-compatibility/top-transcoding-users', readStats, async (request, reply) => {
+    const query = statsQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.badRequest('Invalid query parameters');
+    }
 
-      const { period, startDate, endDate, serverId, serverIds } = query.data;
-      const authUser = request.user;
-      const dateRange = resolveDateRange(period, startDate, endDate);
+    const { period, startDate, endDate, serverId, serverIds } = query.data;
+    const authUser = request.user;
+    const dateRange = resolveDateRange(period, startDate, endDate);
 
-      const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-      const serverFilter = buildMultiServerFragment(resolvedIds, 's.server_id');
-      const baseWhere = dateRange.start
-        ? sql`WHERE s.started_at >= ${dateRange.start}`
-        : sql`WHERE true`;
+    const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
+    const serverFilter = scopedServerFragment(
+      resolvedIds,
+      request.scope,
+      's.server_id',
+      sql`s.server_user_id`
+    );
+    const baseWhere = dateRange.start
+      ? sql`WHERE s.started_at >= ${dateRange.start}`
+      : sql`WHERE true`;
 
-      const result = await db.execute(sql`
+    const result = await db.execute(sql`
         SELECT
           su.server_id,
           su.id AS server_user_id,
@@ -492,37 +481,36 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         LIMIT 10
       `);
 
-      const rows = result.rows as {
-        server_id: string;
-        server_user_id: string;
-        username: string;
-        identity_name: string | null;
-        avatar: string | null;
-        total_sessions: number;
-        direct_play_count: number;
-        transcode_count: number;
-        direct_play_pct: number;
-      }[];
+    const rows = result.rows as {
+      server_id: string;
+      server_user_id: string;
+      username: string;
+      identity_name: string | null;
+      avatar: string | null;
+      total_sessions: number;
+      direct_play_count: number;
+      transcode_count: number;
+      direct_play_pct: number;
+    }[];
 
-      // Calculate total transcodes for percentage
-      const totalTranscodes = rows.reduce((sum, r) => sum + r.transcode_count, 0);
+    // Calculate total transcodes for percentage
+    const totalTranscodes = rows.reduce((sum, r) => sum + r.transcode_count, 0);
 
-      return {
-        data: rows.map((r) => ({
-          serverId: r.server_id,
-          serverUserId: r.server_user_id,
-          username: r.username,
-          identityName: r.identity_name,
-          avatar: r.avatar,
-          totalSessions: r.total_sessions,
-          directPlayCount: r.direct_play_count,
-          transcodeCount: r.transcode_count,
-          directPlayPct: r.direct_play_pct,
-          pctOfTotalTranscodes:
-            totalTranscodes > 0 ? Math.round((r.transcode_count / totalTranscodes) * 100) : 0,
-        })),
-        totalTranscodes,
-      };
-    }
-  );
+    return {
+      data: rows.map((r) => ({
+        serverId: r.server_id,
+        serverUserId: r.server_user_id,
+        username: r.username,
+        identityName: r.identity_name,
+        avatar: r.avatar,
+        totalSessions: r.total_sessions,
+        directPlayCount: r.direct_play_count,
+        transcodeCount: r.transcode_count,
+        directPlayPct: r.direct_play_pct,
+        pctOfTotalTranscodes:
+          totalTranscodes > 0 ? Math.round((r.transcode_count / totalTranscodes) * 100) : 0,
+      })),
+      totalTranscodes,
+    };
+  });
 };

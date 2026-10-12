@@ -15,6 +15,7 @@ import { isMaintenance } from '../serverState.js';
 import {
   ESTIMATED_POSTER_BYTES,
   getGuardConfig,
+  isOnMountedVolume,
   readDiskLimited,
   readDiskSpace,
   setCacheTallyBytes,
@@ -256,9 +257,10 @@ export function stopImageCacheSweep(): void {
 
 export async function getImageCacheStatus(): Promise<ImageCacheStatus> {
   const redis = getRedis();
-  const [tallyRaw, notPersisting, limited, space, countRow] = await Promise.all([
+  const [tallyRaw, notPersisting, onVolume, limited, space, countRow] = await Promise.all([
     redis.get(REDIS_KEYS.IMAGE_CACHE_TALLY),
     redis.get(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING).catch(() => null),
+    isOnMountedVolume(IMAGE_CACHE_DIR),
     readDiskLimited(redis),
     readDiskSpace(IMAGE_CACHE_DIR).catch(() => ({ freeBytes: 0, totalBytes: 0 })),
     // One file per (server, path), not per row: a track row carries its album's
@@ -296,7 +298,8 @@ export async function getImageCacheStatus(): Promise<ImageCacheStatus> {
     sweptAt: tally?.sweptAt ?? null,
     freedBytesLastSweep: tally?.freedBytes ?? 0,
     deletedFilesLastSweep: tally?.deletedFiles ?? 0,
-    notPersisting: notPersisting !== null,
+    // The flag is only re-sampled every few days; a volume added since clears it now.
+    notPersisting: notPersisting !== null && !onVolume,
     postersWithThumb,
     estimatedNeedBytes: postersWithThumb * ESTIMATED_POSTER_BYTES,
     freeBytes: space.freeBytes,

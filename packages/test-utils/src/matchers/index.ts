@@ -59,10 +59,13 @@ interface UUIDMatchers<R = unknown> {
  */
 declare module 'vitest' {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  interface Assertion<T>
-    extends HTTPMatchers, ValidationMatchers, DateMatchers, ArrayMatchers, UUIDMatchers {}
-  interface AsymmetricMatchersContaining
-    extends HTTPMatchers, ValidationMatchers, DateMatchers, ArrayMatchers, UUIDMatchers {}
+  interface Matchers<R, T>
+    extends
+      HTTPMatchers<R>,
+      ValidationMatchers<R>,
+      DateMatchers<R>,
+      ArrayMatchers<R>,
+      UUIDMatchers<R> {}
 }
 
 /**

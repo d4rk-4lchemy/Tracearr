@@ -265,7 +265,7 @@ describe('heavyOpsLock', () => {
     const redis = createFakeRedis();
     await initHeavyOpsLock(redis);
 
-    vi.spyOn(redis, 'set').mockImplementation(async () => null);
+    vi.spyOn(redis, 'set').mockImplementation(async () => null as never);
     vi.spyOn(redis, 'get').mockImplementation(async () => null);
 
     const result = await acquireHeavyOpsLock('maintenance', 'job-1', 'Test job', 'run-a');

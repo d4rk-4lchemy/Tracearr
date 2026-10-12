@@ -16,7 +16,9 @@ function firstForwardedValue(header: string | string[] | undefined): string | un
  */
 export function deriveScheme(request: FastifyRequest): string {
   const proto = firstForwardedValue(request.headers['x-forwarded-proto']);
-  return proto === 'https' || proto === 'http' ? proto : request.protocol;
+  if (proto === 'https' || proto === 'http') return proto;
+  // With a trusted proxy request.protocol is that proxy's x-forwarded-proto, garbage included.
+  return request.protocol === 'https' ? 'https' : 'http';
 }
 
 /**
@@ -29,14 +31,13 @@ export function deriveScheme(request: FastifyRequest): string {
  * and every cookie-bearing request fails with 403 INVALID_ORIGIN. Likewise a
  * proxy that rewrites Host to the upstream address must have its
  * x-forwarded-host honored or the derived origin's host can never match the
- * browser Origin. Trusting x-forwarded-proto and x-forwarded-host is safe
- * against the browser CSRF threat model: a cross-site page cannot attach
- * either header (and already controls neither Host nor its own Origin), and
- * a direct request that forges them still has to present an Origin matching
- * the derived origin, which a cross-site page cannot send.
+ * browser Origin. request.host reads x-forwarded-host only from a proxy
+ * TRUST_PROXY names, since anyone else could claim any host with it.
+ * x-forwarded-proto is read from anyone: a cross-site page cannot attach it,
+ * and both schemes of the host are trusted anyway (trustedOriginsForRequest).
  */
 export function toWebRequest(request: FastifyRequest): Request {
-  const host = firstForwardedValue(request.headers['x-forwarded-host']) || request.headers.host;
+  const host = request.host;
   // request.url is post-rewriteUrl, so BASE_PATH is already stripped whether
   // or not the inbound request carried it. Re-prefixing restores the
   // canonical external path, which has to match the basePath configured in

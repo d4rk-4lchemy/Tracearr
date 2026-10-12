@@ -2,17 +2,26 @@
  * Socket.io WebSocket server setup
  */
 
-import type { Server as HttpServer } from 'http';
+import type { IncomingMessage, Server as HttpServer } from 'http';
 import { Server } from 'socket.io';
 import type { Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { eq } from 'drizzle-orm';
-import type { ServerToClientEvents, ClientToServerEvents, AuthUser } from '@tracearr/shared';
-import { WS_EVENTS, REDIS_KEYS } from '@tracearr/shared';
+import type {
+  ServerToClientEvents,
+  ClientToServerEvents,
+  AuthUser,
+  ActiveSession,
+} from '@tracearr/shared';
+import { WS_EVENTS, REDIS_KEYS, isStaff } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
 import { db } from '../db/client.js';
-import { mobileSessions } from '../db/schema.js';
+import { mobileSessions, serverUsers } from '../db/schema.js';
 import { resolveBetterAuthSession } from '../lib/sessionResolver.js';
+import { isTrustedOrigin, requestHost } from '../lib/origins.js';
+import { isTokenRevoked } from '../plugins/auth.js';
+import { ACCESS_CACHE_TTL_MS } from '../lib/scope.js';
+import { getPubSubService } from '../services/cache.js';
 
 type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -24,6 +33,19 @@ interface SocketData {
 let io: TypedServer | null = null;
 let redis: Redis | null = null;
 
+// A session's account never changes, so session:stopped (which carries only the id) is routed
+// through it. An account's person does change, on merge and split, so that mapping expires and
+// is dropped whenever the person's access changes. A session whose stop never arrives here keeps
+// its account entry until restart.
+const sessionAccounts = new Map<string, string>();
+const accountOwners = new Map<string, { userId: string; at: number }>();
+// Member delivery runs in arrival order per session, so a stop never overtakes the start before it.
+const memberDeliveries = new Map<string, Promise<void>>();
+
+function seesAllSessions(user: AuthUser): boolean {
+  return isStaff(user.role);
+}
+
 /**
  * Verify JWT token for WebSocket connections
  */
@@ -33,7 +55,8 @@ function verifyToken(token: string): AuthUser {
     throw new Error('JWT_SECRET not configured');
   }
 
-  const decoded = jwt.verify(token, secret) as AuthUser;
+  const decoded = jwt.verify(token, secret) as AuthUser & { iat?: number };
+  if (isTokenRevoked(decoded.iat)) throw new Error('token revoked');
   return decoded;
 }
 
@@ -111,19 +134,23 @@ export function initializeWebSocket(
   if (io) return io;
 
   io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-    cors: {
-      origin: process.env.CORS_ORIGIN || true,
-      credentials: true,
+    // The same rule as the REST API: credentials only for an origin Tracearr trusts.
+    cors: (req, callback) => {
+      const origin = req.headers.origin;
+      callback(null, {
+        // engine.io hands the cors package its raw IncomingMessage.
+        origin: !!origin && isTrustedOrigin(origin, requestHost(req as IncomingMessage)),
+        credentials: true,
+      });
+    },
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin;
+      callback(null, !origin || isTrustedOrigin(origin, requestHost(req)));
     },
     pingTimeout: 60000,
     pingInterval: 25000,
-    // Rooms and missed events survive a short drop (proxy blip, wifi handoff).
-    // skipMiddlewares defaults to true; keep auth running so a revoked session
-    // is rejected on reconnect.
-    connectionStateRecovery: {
-      maxDisconnectionDuration: 2 * 60 * 1000,
-      skipMiddlewares: false,
-    },
+    // No connectionStateRecovery: it replays missed packets to the old rooms before auth runs.
+    // Clients refetch on every reconnect instead.
     // When basePath is set, Socket.io must listen on the prefixed path.
     // Socket.io runs on the raw HTTP server (not Fastify), so rewriteUrl doesn't apply.
     ...(basePath && { path: `${basePath}/socket.io` }),
@@ -179,18 +206,17 @@ export function initializeWebSocket(
       void socket.join(`mobile:${user.deviceId}`);
     }
 
-    // Join server rooms for server-specific messages
-    if (user?.serverIds) {
+    if (user && seesAllSessions(user)) {
       for (const serverId of user.serverIds) {
         void socket.join(`server:${serverId}`);
       }
+      void socket.join('sessions');
+    } else if (user?.userId) {
+      void socket.join(`member:${user.userId}`);
     }
 
-    // Auto-subscribe to sessions on connect
-    void socket.join('sessions');
-
-    // Handle session subscriptions
     socket.on(WS_EVENTS.SUBSCRIBE_SESSIONS, () => {
+      if (!user || !seesAllSessions(user)) return;
       void socket.join('sessions');
       console.log(`[WebSocket] ${socket.id} subscribed to sessions`);
     });
@@ -228,6 +254,56 @@ export function broadcastToSessions<K extends keyof ServerToClientEvents>(
   }
 }
 
+async function personOf(serverUserId: string): Promise<string | undefined> {
+  const cached = accountOwners.get(serverUserId);
+  if (cached && Date.now() - cached.at < ACCESS_CACHE_TTL_MS) return cached.userId;
+  const [row] = await db
+    .select({ userId: serverUsers.userId })
+    .from(serverUsers)
+    .where(eq(serverUsers.id, serverUserId))
+    .limit(1);
+  if (!row) return undefined;
+  accountOwners.set(serverUserId, { userId: row.userId, at: Date.now() });
+  return row.userId;
+}
+
+function deliverToMember(sessionId: string, deliver: () => Promise<void>): Promise<void> {
+  const next = (memberDeliveries.get(sessionId) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(deliver);
+  memberDeliveries.set(sessionId, next);
+  const settle = () => {
+    if (memberDeliveries.get(sessionId) === next) memberDeliveries.delete(sessionId);
+  };
+  next.then(settle, settle);
+  return next;
+}
+
+/** Emits to the sessions room at once, then to the owning member's room. */
+export function broadcastSessionEvent(
+  event: 'session:started' | 'session:updated',
+  session: ActiveSession
+): Promise<void> {
+  broadcastToSessions(event, session);
+  if (!io) return Promise.resolve();
+  sessionAccounts.set(session.id, session.serverUserId);
+  return deliverToMember(session.id, async () => {
+    const userId = await personOf(session.serverUserId);
+    if (userId) io?.to(`member:${userId}`).emit(event, session);
+  });
+}
+
+export function broadcastSessionStopped(sessionId: string): Promise<void> {
+  broadcastToSessions('session:stopped', sessionId);
+  const serverUserId = sessionAccounts.get(sessionId);
+  if (!io || !serverUserId) return Promise.resolve();
+  sessionAccounts.delete(sessionId);
+  return deliverToMember(sessionId, async () => {
+    const userId = await personOf(serverUserId);
+    if (userId) io?.to(`member:${userId}`).emit('session:stopped', sessionId);
+  });
+}
+
 export function broadcastToServer<K extends keyof ServerToClientEvents>(
   serverId: string,
   event: K,
@@ -244,10 +320,20 @@ export function broadcastToServer<K extends keyof ServerToClientEvents>(
 }
 
 /**
- * Force-disconnect a specific mobile device's sockets.
- * Scans all connected sockets rather than relying on room membership.
+ * Force-disconnect a revoked mobile device's sockets on every instance, through the same pub/sub
+ * relay as disconnectUserSockets.
  */
-export function disconnectMobileDevice(deviceId: string): void {
+export async function disconnectMobileDevice(deviceId: string): Promise<void> {
+  const pubSub = getPubSubService();
+  if (pubSub) {
+    await pubSub.publish(WS_EVENTS.MOBILE_DEVICE_REVOKED, deviceId);
+    return;
+  }
+  dropMobileDeviceSockets(deviceId);
+}
+
+/** Scans all connected sockets rather than relying on room membership. */
+export function dropMobileDeviceSockets(deviceId: string): void {
   if (!io) return;
   for (const [, socket] of io.sockets.sockets) {
     const user = (socket.data as SocketData).user;
@@ -257,11 +343,26 @@ export function disconnectMobileDevice(deviceId: string): void {
   }
 }
 
-export function broadcastToAll<K extends keyof ServerToClientEvents>(
-  event: K,
-  ...args: Parameters<ServerToClientEvents[K]>
-): void {
-  if (io) {
-    (io.emit as (event: K, ...args: Parameters<ServerToClientEvents[K]>) => void)(event, ...args);
+/**
+ * Drops a person's sockets on every instance, so they reconnect into the rooms their role and
+ * accounts now give them. Each instance holds only its own sockets, so this goes through pub/sub
+ * and the relay in index.ts calls dropUserSockets; without pub/sub it acts locally.
+ */
+export async function disconnectUserSockets(userId: string): Promise<void> {
+  const pubSub = getPubSubService();
+  if (pubSub) {
+    await pubSub.publish(WS_EVENTS.USER_ACCESS_CHANGED, userId);
+    return;
+  }
+  dropUserSockets(userId);
+}
+
+export function dropUserSockets(userId: string): void {
+  for (const [serverUserId, owner] of accountOwners) {
+    if (owner.userId === userId) accountOwners.delete(serverUserId);
+  }
+  if (!io) return;
+  for (const [, socket] of io.sockets.sockets) {
+    if ((socket.data as SocketData).user?.userId === userId) socket.disconnect(true);
   }
 }

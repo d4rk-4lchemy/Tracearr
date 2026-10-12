@@ -111,7 +111,14 @@ describe('useUserRequests', () => {
       total: 0,
       page: 1,
       pageSize: 5,
-      summary: { total: 0, approvalRate: null, completed: 0, neverWatched: 0, medianWaitMs: null },
+      summary: {
+        total: 0,
+        approvalRate: null,
+        completed: 0,
+        neverWatched: 0,
+        medianWaitMs: null,
+        availableThisWeek: 0,
+      },
     });
 
     const client = new QueryClient();

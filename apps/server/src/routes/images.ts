@@ -127,52 +127,6 @@ export const imageRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * GET /images/avatar - Get a user avatar (with gravatar fallback)
-   *
-   * Note: No authentication required for same reason as /proxy
-   *
-   * Query params:
-   * - server: UUID of the server (optional if using gravatar)
-   * - url: The avatar path from server (optional)
-   * - email: Email for gravatar fallback (optional)
-   * - size: Avatar size (default 100)
-   */
-  app.get('/avatar', async (request, reply) => {
-    const query = request.query as Record<string, string | undefined>;
-    const server = query.server;
-    const url = query.url;
-    const size = parseInt(query.size ?? '100', 10);
-
-    // If we have server URL, try to fetch from media server
-    if (server && url) {
-      const result = await proxyImage({
-        serverId: server,
-        imagePath: url,
-        width: size,
-        height: size,
-        fallback: 'avatar',
-      });
-
-      reply.header('Cache-Control', 'public, max-age=3600');
-      reply.header('Content-Type', result.contentType);
-      return reply.send(result.data);
-    }
-
-    // Return fallback avatar
-    const result = await proxyImage({
-      serverId: 'fallback',
-      imagePath: 'fallback',
-      width: size,
-      height: size,
-      fallback: 'avatar',
-    });
-
-    reply.header('Cache-Control', 'public, max-age=86400');
-    reply.header('Content-Type', result.contentType);
-    return reply.send(result.data);
-  });
-
-  /**
    * GET /images/logo - Get the Tracearr logo
    *
    * Returns a static Tracearr logo for use in push notifications (server up/down).

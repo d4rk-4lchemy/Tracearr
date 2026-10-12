@@ -1,10 +1,31 @@
 import { Children, isValidElement, type ReactNode } from 'react';
 import { Link } from 'react-router';
+import type { LucideIcon } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+
+export function ShelfSkeleton({ title }: { title: string }) {
+  return (
+    <div className="space-y-3">
+      <h2 className="text-[16px] font-semibold tracking-[-0.01em]">{title}</h2>
+      <div className="flex gap-4 overflow-x-hidden">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="w-[138px] shrink-0 space-y-1.5">
+            <Skeleton className="aspect-[2/3] w-full rounded-md" />
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface ShelfProps {
   id: string;
   title: string;
+  /** Accent icon before the heading, the way dashboard sections carry one */
+  icon?: LucideIcon;
   /** Muted secondary text next to the heading, e.g. "deduped across servers". */
   caption?: string;
   /** When provided (with viewAllLabel), renders a link at the end of the shelf head. */
@@ -30,6 +51,7 @@ interface ShelfProps {
 export function Shelf({
   id,
   title,
+  icon: Icon,
   caption,
   viewAllHref,
   viewAllLabel,
@@ -42,11 +64,12 @@ export function Shelf({
 
   return (
     <section aria-labelledby={headingId} className={cn('space-y-2', className)}>
-      <div className="flex items-baseline gap-3">
+      <div className="flex items-center gap-2">
+        {Icon && <Icon className="text-primary h-5 w-5" />}
         <h2 id={headingId} className="text-[16px] font-semibold tracking-[-0.01em]">
           {title}
         </h2>
-        {caption && <span className="text-muted-foreground text-xs">{caption}</span>}
+        {caption && <span className="text-muted-foreground ml-1 text-xs">{caption}</span>}
         {viewAllHref && viewAllLabel && (
           <Link to={viewAllHref} className="text-primary ml-auto text-xs font-medium">
             {viewAllLabel} <span aria-hidden="true">→</span>

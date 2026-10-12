@@ -19,18 +19,13 @@ export const embyRoutes: FastifyPluginAsync = async (app) => {
   /**
    * POST /emby/connect-api-key - Connect an Emby server with API key (requires authentication)
    */
-  app.post('/emby/connect-api-key', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/emby/connect-api-key', { preHandler: [app.requireOwner] }, async (request, reply) => {
     const body = apiKeyConnectSchema.safeParse(request.body);
     if (!body.success) {
       return reply.badRequest('serverUrl, serverName, and apiKey are required');
     }
 
     const authUser = request.user;
-
-    // Only owners can add servers
-    if (authUser.role !== 'owner') {
-      return reply.forbidden('Only owners can add servers');
-    }
 
     const { serverUrl, serverName, apiKey, publicUrl } = body.data;
 

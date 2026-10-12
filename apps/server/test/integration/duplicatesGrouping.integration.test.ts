@@ -24,6 +24,7 @@ import {
 } from '@tracearr/test-utils/factories';
 import { createMockRedis } from '@tracearr/test-utils/mocks';
 import { libraryDuplicatesRoute } from '../../src/routes/library/duplicates.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
@@ -31,6 +32,7 @@ async function buildApp(authUser: AuthUser): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: FastifyRequest) => {
     (request as FastifyRequest & { user: AuthUser }).user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', createMockRedis() as unknown as Redis);
   await app.register(libraryDuplicatesRoute, { prefix: '/library' });
   return app;

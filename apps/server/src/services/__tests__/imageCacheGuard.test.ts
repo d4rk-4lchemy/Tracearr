@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('node:fs/promises', () => ({ statfs: vi.fn() }));
+vi.mock('node:fs/promises', () => ({ stat: vi.fn(), statfs: vi.fn() }));
 
-import { statfs } from 'node:fs/promises';
+import { stat, statfs } from 'node:fs/promises';
 import {
   ESTIMATED_POSTER_BYTES,
   cacheWriteAllowed,
@@ -10,6 +10,7 @@ import {
   setCacheTallyBytes,
   takeRefusedWrites,
   readDiskSpace,
+  isOnMountedVolume,
   writeDiskLimited,
   clearDiskLimited,
   readDiskLimited,
@@ -81,6 +82,20 @@ describe('imageCacheGuard', () => {
     vi.advanceTimersByTime(30_001);
     await readDiskSpace(DIR);
     expect(statfs).toHaveBeenCalledTimes(2);
+  });
+
+  it('tells a mounted volume from the root filesystem by device id', async () => {
+    const devices = (dirDev: number) =>
+      vi
+        .mocked(stat)
+        .mockImplementation(async (path) => ({ dev: path === '/' ? 1 : dirDev }) as never);
+
+    devices(2);
+    expect(await isOnMountedVolume(DIR)).toBe(true);
+    devices(1);
+    expect(await isOnMountedVolume(DIR)).toBe(false);
+    vi.mocked(stat).mockRejectedValue(new Error('ENOENT'));
+    expect(await isOnMountedVolume(DIR)).toBe(false);
   });
 
   it('fails open when statfs throws', async () => {

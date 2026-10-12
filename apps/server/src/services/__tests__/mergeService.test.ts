@@ -4,6 +4,7 @@ import {
   isLoginCapable,
   assertMergeDirection,
   planServerUserMoves,
+  stricterLoginAccess,
   MergeDirectionError,
   type MergeIdentitySnapshot,
 } from '../mergeService.js';
@@ -28,10 +29,6 @@ describe('isLoginCapable', () => {
   it('is true for LOGIN_ROLES roles', () => {
     expect(isLoginCapable(snapshot({ role: 'owner' }))).toBe(true);
     expect(isLoginCapable(snapshot({ role: 'admin' }))).toBe(true);
-  });
-
-  it('is false for viewer, which no longer carries login rights on its own', () => {
-    expect(isLoginCapable(snapshot({ role: 'viewer' }))).toBe(false);
   });
 
   it('is true when a password hash exists regardless of role', () => {
@@ -100,5 +97,23 @@ describe('planServerUserMoves', () => {
         serverId: shared,
       },
     ]);
+  });
+});
+
+describe('stricterLoginAccess', () => {
+  it.each([
+    ['block', 'allow', 'block'],
+    ['allow', 'block', 'block'],
+    ['default', 'allow', 'default'],
+    ['allow', 'default', 'default'],
+    ['block', 'default', 'block'],
+    ['allow', 'allow', 'allow'],
+  ] as const)('%s and %s keep %s', (a, b, kept) => {
+    expect(stricterLoginAccess(a, b)).toBe(kept);
+  });
+  it('counts a value it does not know as block', () => {
+    const unknown = 'sometimes' as never;
+    expect(stricterLoginAccess(unknown, 'allow')).toBe('block');
+    expect(stricterLoginAccess('default', unknown)).toBe('block');
   });
 });

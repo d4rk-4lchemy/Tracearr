@@ -1,7 +1,7 @@
 /**
  * Shared utilities for user components
  */
-import { trustLevel, type TrustLevel } from '@tracearr/shared';
+import { isDirectAvatarUrl, trustLevel, type TrustLevel } from '@tracearr/shared';
 import { imageProxyUrl } from '@/lib/api';
 
 /**
@@ -13,8 +13,7 @@ export function getAvatarUrl(
   size = 100
 ): string | null {
   if (!thumbUrl) return null;
-  // If thumbUrl is already a full URL (e.g., from Plex.tv), use it directly
-  if (thumbUrl.startsWith('http')) return thumbUrl;
+  if (thumbUrl.startsWith('http')) return isDirectAvatarUrl(thumbUrl) ? thumbUrl : null;
   // Otherwise, proxy through our server
   if (!serverId) return null;
   return imageProxyUrl(serverId, thumbUrl, size, size, 'avatar');

@@ -8,6 +8,7 @@ import type { CatalogLetterBucket } from '@tracearr/shared';
 import type * as UseMediaBrowseModule from '@/hooks/queries/useMediaBrowse';
 import type * as VirtualPosterGridModule from '@/components/media-browse/VirtualPosterGrid';
 import { MediaGrid } from './Grid';
+import { useDashboardStats } from '@/hooks/queries';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -29,6 +30,7 @@ vi.mock('@/hooks/queries', async () => {
     useGenres: vi.fn(),
     useCatalogCodecs: vi.fn(() => ({ data: { video: ['HEVC'], audio: [] } })),
     useLibraries: vi.fn(),
+    useDashboardStats: vi.fn(),
     buildLetterOffsets: actual.buildLetterOffsets,
     activeLetterForItem: actual.activeLetterForItem,
     activeLetterForRow: actual.activeLetterForRow,
@@ -37,6 +39,9 @@ vi.mock('@/hooks/queries', async () => {
     stableSerialize: actual.stableSerialize,
   };
 });
+
+const auth = vi.hoisted(() => ({ user: { role: 'owner', userId: 'user-1' } }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 vi.mock('@/hooks/useServer', () => ({
   useServer: vi.fn(),
@@ -154,6 +159,10 @@ function renderGrid(path = '/media/browse') {
 describe('MediaGrid', () => {
   beforeEach(() => {
     localStorage.clear();
+    auth.user.role = 'owner';
+    vi.mocked(useDashboardStats).mockReturnValue({
+      data: undefined,
+    } as unknown as ReturnType<typeof useDashboardStats>);
     mockUseGenres.mockReturnValue({
       data: { data: [] },
       isLoading: false,
@@ -198,6 +207,63 @@ describe('MediaGrid', () => {
       expect.anything()
     );
     expect(screen.queryByTestId('lens-picker')).not.toBeInTheDocument();
+  });
+
+  it("requests a member's own lens and drops the popularity sorts", async () => {
+    auth.user.role = 'member';
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult());
+    renderGrid();
+    expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ lens: 'user-1' }),
+      expect.anything()
+    );
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'media.grid.toolbar.sortLabel' }));
+    expect(
+      screen.getByRole('option', { name: 'media.grid.toolbar.sort.year' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: 'media.grid.toolbar.sort.plays' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('only asks for the dashboard stats on behalf of a member', () => {
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult());
+    renderGrid();
+    expect(useDashboardStats).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ enabled: false })
+    );
+  });
+
+  it('keeps the popularity sorts for a member when the server shares activity', async () => {
+    auth.user.role = 'member';
+    vi.mocked(useDashboardStats).mockReturnValue({
+      data: { othersActive: 0 },
+    } as unknown as ReturnType<typeof useDashboardStats>);
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult());
+    renderGrid();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'media.grid.toolbar.sortLabel' }));
+    expect(
+      screen.getByRole('option', { name: 'media.grid.toolbar.sort.plays' })
+    ).toBeInTheDocument();
+  });
+
+  it('sends Title, not a saved popularity sort, for a member who cannot pick one', () => {
+    auth.user.role = 'member';
+    localStorage.setItem('tracearr_media_filters_movie', JSON.stringify({ sort: 'plays' }));
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult());
+    renderGrid();
+
+    expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: 'title' }),
+      expect.anything()
+    );
   });
 
   it('shows the sync-aware LibraryEmptyState when no servers are selected', () => {
@@ -322,6 +388,30 @@ describe('MediaGrid', () => {
         type: 'show',
         filters: expect.objectContaining({ videoCodec: 'HEVC' }),
       }),
+      expect.anything()
+    );
+  });
+
+  it('seeds the watched filter from a `watched` link param', () => {
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
+
+    renderGrid('/media/browse?watched=unwatched');
+
+    expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filters: expect.objectContaining({ watched: 'unwatched' }) }),
+      expect.anything()
+    );
+  });
+
+  it('ignores a `watched` link param that is not a watched state', () => {
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
+
+    renderGrid('/media/browse?watched=everything');
+
+    expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ filters: expect.not.objectContaining({ watched: 'everything' }) }),
       expect.anything()
     );
   });

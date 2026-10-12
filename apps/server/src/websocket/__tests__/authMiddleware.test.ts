@@ -28,8 +28,13 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+vi.mock('../../services/settings.js', () => ({ getSetting: vi.fn() }));
+
 import { resolveBetterAuthSession } from '../../lib/sessionResolver.js';
 import { db } from '../../db/client.js';
+import jwt from 'jsonwebtoken';
+import { loadJwtRevokeSettings } from '../../plugins/auth.js';
+import { getSetting } from '../../services/settings.js';
 import { resolveSocketUser, checkMobileBlacklist } from '../index.js';
 import type { Redis } from 'ioredis';
 
@@ -69,6 +74,28 @@ describe('resolveSocketUser', () => {
     const user = await resolveSocketUser({ token: undefined, headers: { cookie: 'x=y' } });
 
     expect(user?.userId).toBe('u1');
+  });
+
+  it('refuses a legacy JWT issued before the revoke cutoff', async () => {
+    vi.stubEnv('JWT_SECRET', 'socket-test-secret-32-characters-long');
+    const now = Math.floor(Date.now() / 1000);
+    vi.mocked(getSetting).mockResolvedValue(new Date(now * 1000).toISOString() as never);
+    await loadJwtRevokeSettings();
+    const owner = { userId: 'u1', username: 'owner', role: 'owner', serverIds: [] };
+    const sign = (iat: number) =>
+      jwt.sign({ ...owner, iat }, 'socket-test-secret-32-characters-long');
+    vi.mocked(resolveBetterAuthSession).mockResolvedValue(null);
+
+    try {
+      await expect(resolveSocketUser({ token: sign(now - 60), headers: {} })).resolves.toBeNull();
+      await expect(resolveSocketUser({ token: sign(now + 1), headers: {} })).resolves.toMatchObject(
+        { userId: 'u1' }
+      );
+    } finally {
+      vi.mocked(getSetting).mockResolvedValue(null as never);
+      await loadJwtRevokeSettings();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('returns null when nothing verifies', async () => {

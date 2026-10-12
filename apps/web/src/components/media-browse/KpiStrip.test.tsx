@@ -2,7 +2,13 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { initI18n } from '@tracearr/translations';
 import type { MediaStatsResponse, MediaWatcherEntry } from '@tracearr/shared';
-import { KpiStrip, averageCompletion, finishedEveryEpisodeCount, formatKpiHours } from './KpiStrip';
+import {
+  KpiStrip,
+  MemberKpiStrip,
+  averageCompletion,
+  finishedEveryEpisodeCount,
+  formatKpiHours,
+} from './KpiStrip';
 
 beforeAll(async () => {
   await initI18n({ lng: 'en' });
@@ -170,5 +176,50 @@ describe('KpiStrip', () => {
     );
 
     expect(screen.getByText('—')).toBeInTheDocument();
+  });
+});
+
+describe('MemberKpiStrip', () => {
+  const render4 = (overrides: Partial<React.ComponentProps<typeof MemberKpiStrip>> = {}) =>
+    render(
+      <MemberKpiStrip
+        mediaType="show"
+        episodeCount={22}
+        watchers={[watcher({ plays: 5, watchTimeMs: 7_200_000, completionPct: 64 })]}
+        watchersLoading={false}
+        watchersError={false}
+        onRetryWatchers={vi.fn()}
+        othersCount={undefined}
+        {...overrides}
+      />
+    );
+
+  it("shows the member's own plays, completion and episodes watched", () => {
+    render4({ watchers: [watcher({ plays: 5, completionPct: 64, distinctEpisodesWatched: 14 })] });
+
+    expect(screen.getByText('Your plays')).toBeInTheDocument();
+    expect(screen.getByText('5')).toBeInTheDocument();
+    expect(screen.getByText('64%')).toBeInTheDocument();
+    expect(screen.getByText('14 of 22 episodes')).toBeInTheDocument();
+    expect(screen.getByText('Jul 1, 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Viewers')).not.toBeInTheDocument();
+  });
+
+  it('adds the others line only when the server sends a count', () => {
+    const { rerender } = render4();
+    expect(screen.queryByText(/Watched by/)).not.toBeInTheDocument();
+
+    rerender(
+      <MemberKpiStrip
+        mediaType="show"
+        episodeCount={22}
+        watchers={[watcher()]}
+        watchersLoading={false}
+        watchersError={false}
+        onRetryWatchers={vi.fn()}
+        othersCount={3}
+      />
+    );
+    expect(screen.getByText('Watched by 3 others')).toBeInTheDocument();
   });
 });

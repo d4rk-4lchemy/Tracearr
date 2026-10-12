@@ -4,7 +4,7 @@ FROM node:24-alpine3.23@sha256:9ec4a2e289874ed0d722e1772ec2de45d2801541db8612f36
 
 # pnpm's install script is what puts its native binary in place. corepack never runs it,
 # and npm 12 blocks it unless allowed, so both leave pnpm's shebang-less fallback shim instead.
-RUN npm install -g --allow-scripts=pnpm pnpm@12.4.2
+RUN npm install -g --allow-scripts=pnpm pnpm@12.10.1
 
 WORKDIR /app
 
@@ -38,7 +38,7 @@ RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --f
 # Production stage
 FROM node:24-alpine3.23@sha256:9ec4a2e289874ed0d722e1772ec2de45d2801541db8612f3638b26f128c69ac2 AS runner
 
-RUN npm install -g --allow-scripts=pnpm pnpm@12.4.2
+RUN npm install -g --allow-scripts=pnpm pnpm@12.10.1
 
 # Tailscale VPN binary (userspace networking, no root required)
 RUN apk add --no-cache tailscale postgresql-client

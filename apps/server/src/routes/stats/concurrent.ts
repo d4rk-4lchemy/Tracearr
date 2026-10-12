@@ -7,7 +7,8 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { statsQuerySchema } from '@tracearr/shared';
 import { resolveDateRange } from './utils.js';
-import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
+import { scopedServerFragment } from '../../lib/scope.js';
 import { queryConcurrentStreams } from './queries.js';
 
 /**
@@ -30,6 +31,7 @@ function getBucketInterval(period: string): string {
 }
 
 export const concurrentRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('stats', 'read')] };
   /**
    * GET /concurrent - Concurrent stream history (true concurrency)
    *
@@ -37,7 +39,7 @@ export const concurrentRoutes: FastifyPluginAsync = async (app) => {
    * calculates running totals, then finds peak per time bucket.
    * This scans the sessions table once instead of per-sample-point.
    */
-  app.get('/concurrent', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/concurrent', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -48,7 +50,7 @@ export const concurrentRoutes: FastifyPluginAsync = async (app) => {
     const dateRange = resolveDateRange(period, startDate, endDate);
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
     const bucketInterval = getBucketInterval(period);
     const rangeStart = dateRange.start ?? new Date(0);
     const rangeEnd = dateRange.end ?? new Date();

@@ -139,4 +139,34 @@ describe('HistoryFiltersBar', () => {
       expect.objectContaining({ mediaTypes: ['trailer'] })
     );
   });
+
+  const renderMemberBar = () =>
+    render(
+      <HistoryFiltersBar
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        filterOptions={filterOptions}
+        columnVisibility={DEFAULT_COLUMN_VISIBILITY}
+        onColumnVisibilityChange={vi.fn()}
+        isMember
+      />
+    );
+
+  it('has no Users filter for a member', async () => {
+    renderMemberBar();
+
+    await userEvent.click(screen.getByRole('button', { name: /Filters/ }));
+
+    expect(screen.queryByText('Users')).not.toBeInTheDocument();
+    expect(screen.getByText('Platforms')).toBeInTheDocument();
+  });
+
+  it('has no User column toggle for a member', async () => {
+    renderMemberBar();
+
+    await userEvent.click(screen.getByRole('button', { name: /Columns/ }));
+
+    expect(screen.queryByRole('menuitemcheckbox', { name: 'User' })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Date' })).toBeInTheDocument();
+  });
 });

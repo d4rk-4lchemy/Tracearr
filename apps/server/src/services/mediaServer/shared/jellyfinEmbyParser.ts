@@ -72,17 +72,6 @@ export interface JellyfinEmbyActivityEntry {
 }
 
 /**
- * Authentication result - identical structure for Jellyfin and Emby
- */
-export interface JellyfinEmbyAuthResult {
-  id: string;
-  username: string;
-  token: string;
-  serverId: string;
-  isAdmin: boolean;
-}
-
-/**
  * Item result for media enrichment - identical structure for Jellyfin and Emby
  */
 export interface JellyfinEmbyItemResult {
@@ -385,26 +374,6 @@ export function parseActivityLogResponse(data: unknown): JellyfinEmbyActivityEnt
   const items = (data as { Items?: unknown[] })?.Items;
   if (!Array.isArray(items)) return [];
   return items.map((item) => parseActivityLogItem(item as Record<string, unknown>));
-}
-
-// ============================================================================
-// Authentication Response Parsing
-// ============================================================================
-
-/**
- * Parse authentication response
- */
-export function parseAuthResponse(data: Record<string, unknown>): JellyfinEmbyAuthResult {
-  const user = getNestedObject(data, 'User') ?? {};
-  const policy = getNestedObject(user, 'Policy') ?? {};
-
-  return {
-    id: parseString(user.Id),
-    username: parseString(user.Name),
-    token: parseString(data.AccessToken),
-    serverId: parseString(data.ServerId),
-    isAdmin: parseBoolean(policy.IsAdministrator),
-  };
 }
 
 // ============================================================================

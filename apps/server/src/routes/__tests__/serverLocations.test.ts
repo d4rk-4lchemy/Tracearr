@@ -15,12 +15,14 @@ vi.mock('../../jobs/maintenanceQueue.js', () => ({
 import { getServerLocations, replaceServerLocations } from '../../services/serverLocations.js';
 import { enqueueServerLocationSyncIfBehind } from '../../jobs/maintenanceQueue.js';
 import { serverLocationRoutes } from '../serverLocations.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 const owner: AuthUser = { userId: randomUUID(), username: 'admin', role: 'owner', serverIds: [] };
-const viewer: AuthUser = {
+const admin: AuthUser = { userId: randomUUID(), username: 'ops', role: 'admin', serverIds: [] };
+const member: AuthUser = {
   userId: randomUUID(),
   username: 'viewer',
-  role: 'viewer',
+  role: 'member',
   serverIds: [],
 };
 const serverId = randomUUID();
@@ -41,6 +43,7 @@ async function build(user: AuthUser) {
   app.decorate('authenticate', async (request: unknown) => {
     (request as { user: AuthUser }).user = user;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(serverLocationRoutes, { prefix: '/servers' });
 }
 
@@ -59,11 +62,16 @@ afterEach(async () => {
 
 describe('server location routes', () => {
   it('is owner-only', async () => {
-    await build(viewer);
+    await build(admin);
     expect((await put([chicago])).statusCode).toBe(403);
     expect(
       (await app.inject({ method: 'GET', url: `/servers/${serverId}/locations` })).statusCode
     ).toBe(403);
+  });
+
+  it('is not found for a member', async () => {
+    await build(member);
+    expect((await put([chicago])).statusCode).toBe(404);
   });
 
   it('rejects out-of-range coordinates', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatEpisodeLabel } from '../media.js';
+import { formatEpisodeLabel, isDirectAvatarUrl } from '../media.js';
 
 describe('formatEpisodeLabel', () => {
   it('formats season 0 (Specials) as S00E01', () => {
@@ -40,5 +40,18 @@ describe('formatEpisodeLabel', () => {
 
   it('double-digit season and episode numbers pad correctly beyond two digits', () => {
     expect(formatEpisodeLabel(10, 25)).toBe('S10E25');
+  });
+});
+
+describe('isDirectAvatarUrl', () => {
+  it('loads Plex account avatars straight from plex.tv', () => {
+    expect(isDirectAvatarUrl('https://plex.tv/users/abc/avatar?c=1')).toBe(true);
+    expect(isDirectAvatarUrl('https://assets.plex.tv/avatar.png')).toBe(true);
+  });
+
+  it('never loads any other absolute address', () => {
+    expect(isDirectAvatarUrl('https://attacker.example/pixel.png')).toBe(false);
+    expect(isDirectAvatarUrl('https://plex.tv.attacker.example/x')).toBe(false);
+    expect(isDirectAvatarUrl('http://plex.tv/users/abc/avatar')).toBe(false);
   });
 });

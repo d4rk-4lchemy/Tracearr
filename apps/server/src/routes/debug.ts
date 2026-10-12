@@ -331,13 +331,7 @@ const readLogTail = async (filePath: string, limit: number): Promise<DebugLogEnt
 };
 
 export const debugRoutes: FastifyPluginAsync = async (app) => {
-  // All debug routes require owner
-  app.addHook('preHandler', async (request, reply) => {
-    await app.authenticate(request, reply);
-    if (request.user?.role !== 'owner') {
-      return reply.forbidden('Owner access required');
-    }
-  });
+  app.addHook('preHandler', app.requireOwner);
 
   /**
    * GET /debug/stats - Database statistics

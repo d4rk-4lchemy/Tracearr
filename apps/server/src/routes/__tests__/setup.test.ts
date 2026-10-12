@@ -21,9 +21,22 @@ vi.mock('../../utils/claimCode.js', () => ({
   isClaimCodeEnabled: vi.fn().mockReturnValue(false), // Default to disabled
 }));
 
+vi.mock('../../lib/authGuards.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  usableLoginMethods: vi.fn(),
+}));
+
+vi.mock('../../services/mediaServer/index.js', () => ({
+  JellyfinClient: { quickConnectEnabled: vi.fn().mockResolvedValue(true) },
+}));
+
 // Import the mocked modules and the routes
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { isClaimCodeEnabled } from '../../utils/claimCode.js';
+import { usableLoginMethods } from '../../lib/authGuards.js';
+import { JellyfinClient } from '../../services/mediaServer/index.js';
 import { setupRoutes } from '../setup.js';
 
 /**
@@ -33,20 +46,38 @@ import { setupRoutes } from '../setup.js';
  * 2. Jellyfin servers (where type = 'jellyfin')
  * 3. Owners (where role = 'owner')
  * 4. Password users (where passwordHash is not null)
- * Plus 1 settings query (localLoginEnabled), which falls through to its
- * default (true) when unmocked.
+ * then, only when member login is usable, the member-login servers (ordered).
+ * Returns the where conditions in call order.
  */
-function mockDbSelectMultiple(results: unknown[][]) {
+function mockDbSelectMultiple(results: unknown[][]): SQL[] {
   let callIndex = 0;
-  const createChain = () => ({
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockImplementation(() => {
-      return Promise.resolve(results[callIndex++] || []);
-    }),
-  });
+  const conditions: SQL[] = [];
+  const next = () => Promise.resolve(results[callIndex++] || []);
+  const createChain = () => {
+    const chain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockImplementation((condition: SQL) => {
+        conditions.push(condition);
+        return chain;
+      }),
+      limit: vi.fn().mockImplementation(next),
+      orderBy: vi.fn().mockImplementation(next),
+    };
+    return chain;
+  };
 
   vi.mocked(db.select).mockImplementation(() => createChain() as never);
+  return conditions;
+}
+
+function usable(methods: Partial<Record<'local' | 'plex' | 'oidc' | 'member', boolean>>) {
+  vi.mocked(usableLoginMethods).mockResolvedValue({
+    local: true,
+    plex: true,
+    oidc: false,
+    member: false,
+    ...methods,
+  });
 }
 
 /**
@@ -72,6 +103,7 @@ describe('Setup Routes', () => {
     vi.clearAllMocks();
     // Reset isClaimCodeEnabled to default (false)
     vi.mocked(isClaimCodeEnabled).mockReturnValue(false);
+    usable({});
   });
 
   afterEach(async () => {
@@ -110,7 +142,9 @@ describe('Setup Routes', () => {
           plex: true,
           oidc: false,
           oidcProviderName: null,
+          member: false,
         },
+        memberLoginServers: [],
       });
     });
 
@@ -146,7 +180,9 @@ describe('Setup Routes', () => {
           plex: true,
           oidc: false,
           oidcProviderName: null,
+          member: false,
         },
+        memberLoginServers: [],
       });
     });
 
@@ -179,7 +215,9 @@ describe('Setup Routes', () => {
           plex: true,
           oidc: false,
           oidcProviderName: null,
+          member: false,
         },
+        memberLoginServers: [],
       });
     });
 
@@ -212,7 +250,9 @@ describe('Setup Routes', () => {
           plex: true,
           oidc: false,
           oidcProviderName: null,
+          member: false,
         },
+        memberLoginServers: [],
       });
     });
 
@@ -245,7 +285,9 @@ describe('Setup Routes', () => {
           plex: true,
           oidc: false,
           oidcProviderName: null,
+          member: false,
         },
+        memberLoginServers: [],
       });
     });
 
@@ -278,7 +320,9 @@ describe('Setup Routes', () => {
           plex: true,
           oidc: false,
           oidcProviderName: null,
+          member: false,
         },
+        memberLoginServers: [],
       });
     });
 
@@ -311,7 +355,9 @@ describe('Setup Routes', () => {
           plex: true,
           oidc: false,
           oidcProviderName: null,
+          member: false,
         },
+        memberLoginServers: [],
       });
     });
 
@@ -344,8 +390,141 @@ describe('Setup Routes', () => {
           plex: true,
           oidc: false,
           oidcProviderName: null,
+          member: false,
         },
+        memberLoginServers: [],
       });
+    });
+
+    it('reports only the usable methods once an owner exists', async () => {
+      app = await buildTestApp();
+      usable({ local: false, plex: true, oidc: true, member: false });
+      mockDbSelectMultiple([[{ id: 'server-1' }], [], [{ id: 'owner-1' }], []]);
+
+      const response = await app.inject({ method: 'GET', url: '/setup/status' });
+
+      expect(response.json().authMethods).toEqual({
+        local: false,
+        plex: true,
+        oidc: true,
+        oidcProviderName: 'SSO',
+        member: false,
+      });
+      expect(db.select).toHaveBeenCalledTimes(4);
+    });
+
+    it('keeps local and plex open before an owner exists', async () => {
+      app = await buildTestApp();
+      usable({ local: false, plex: false });
+      mockDbSelectMultiple([[], [], [], []]);
+
+      const response = await app.inject({ method: 'GET', url: '/setup/status' });
+
+      expect(response.json().authMethods).toMatchObject({ local: true, plex: true });
+    });
+
+    it('lists member-login servers that have the flag on and are not historical', async () => {
+      app = await buildTestApp();
+      usable({ member: true });
+      const servers = [
+        { id: 'server-1', name: 'Home', type: 'jellyfin', url: 'http://home:8096' },
+        { id: 'server-2', name: 'Cabin', type: 'plex', url: 'http://cabin:32400' },
+      ];
+      const conditions = mockDbSelectMultiple([
+        [{ id: 'server-1' }],
+        [],
+        [{ id: 'owner-1' }],
+        [],
+        servers,
+      ]);
+
+      const response = await app.inject({ method: 'GET', url: '/setup/status' });
+
+      expect(response.json().authMethods.member).toBe(true);
+      expect(response.json().memberLoginServers).toEqual([
+        { id: 'server-1', name: 'Home', type: 'jellyfin', quickConnect: true },
+        { id: 'server-2', name: 'Cabin', type: 'plex', quickConnect: false },
+      ]);
+      expect(JellyfinClient.quickConnectEnabled).toHaveBeenCalledExactlyOnceWith(
+        'http://home:8096'
+      );
+      const memberCondition = conditions.at(-1);
+      if (!memberCondition) throw new Error('member-login server query was not issued');
+      const { sql } = new PgDialect().sqlToQuery(memberCondition);
+      expect(sql).toContain('"servers"."allow_member_login" = $1');
+      expect(sql).toContain('"servers"."historical_at" is null');
+    });
+
+    it.each(['?all', '?all=1', '?all=true'])(
+      'lists every server someone could sign in through with %s',
+      async (query) => {
+        app = await buildTestApp();
+        usable({ member: false });
+        const servers = [
+          { id: 'server-1', name: 'Home', type: 'jellyfin', url: 'http://home:8096' },
+          { id: 'server-3', name: 'Attic', type: 'emby', url: 'http://attic:8096' },
+        ];
+        const conditions = mockDbSelectMultiple([
+          [{ id: 'server-1' }],
+          [],
+          [{ id: 'owner-1' }],
+          [],
+          servers,
+        ]);
+
+        const response = await app.inject({ method: 'GET', url: `/setup/status${query}` });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().authMethods.member).toBe(true);
+        expect(response.json().memberLoginServers).toEqual([
+          { id: 'server-1', name: 'Home', type: 'jellyfin', quickConnect: true },
+          { id: 'server-3', name: 'Attic', type: 'emby', quickConnect: false },
+        ]);
+        const memberCondition = conditions.at(-1);
+        if (!memberCondition) throw new Error('member-login server query was not issued');
+        const { sql } = new PgDialect().sqlToQuery(memberCondition);
+        expect(sql).toContain('"servers"."historical_at" is null');
+        expect(sql).toContain('"servers"."allow_member_login"');
+        expect(sql).toContain(`"users"."login_access" = 'allow'`);
+        expect(sql).toContain('"server_users"."is_disabled" = $');
+      }
+    );
+
+    it('lists no member servers without ?all while member sign-in is not usable', async () => {
+      app = await buildTestApp();
+      usable({ member: false });
+      mockDbSelectMultiple([[{ id: 'server-1' }], [], [{ id: 'owner-1' }], []]);
+
+      const response = await app.inject({ method: 'GET', url: '/setup/status' });
+
+      expect(response.json().authMethods.member).toBe(false);
+      expect(response.json().memberLoginServers).toEqual([]);
+      expect(db.select).toHaveBeenCalledTimes(4);
+    });
+
+    it('refuses an all value it does not know', async () => {
+      app = await buildTestApp();
+      mockDbSelectMultiple([]);
+
+      const response = await app.inject({ method: 'GET', url: '/setup/status?all=maybe' });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('asks each Jellyfin server about Quick Connect at most once a minute', async () => {
+      app = await buildTestApp();
+      usable({ member: true });
+      const status = [[{ id: 'server-1' }], [], [{ id: 'owner-1' }], []];
+      const servers = [{ id: 'server-9', name: 'Den', type: 'jellyfin', url: 'http://den:8096' }];
+      mockDbSelectMultiple([...status, servers, ...status, servers]);
+
+      await app.inject({ method: 'GET', url: '/setup/status' });
+      const second = await app.inject({ method: 'GET', url: '/setup/status' });
+
+      expect(second.json().memberLoginServers).toEqual([
+        { id: 'server-9', name: 'Den', type: 'jellyfin', quickConnect: true },
+      ]);
+      expect(JellyfinClient.quickConnectEnabled).toHaveBeenCalledExactlyOnceWith('http://den:8096');
     });
   });
 });

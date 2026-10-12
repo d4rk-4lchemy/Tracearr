@@ -10,10 +10,12 @@ import { sql } from 'drizzle-orm';
 import { statsQuerySchema, serverIdFilterSchema } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { resolveDateRange } from './utils.js';
-import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
+import { scopedServerFragment, viewScope } from '../../lib/scope.js';
 import { MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
 
 export const contentRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('stats', 'read')] };
   /**
    * GET /top-content - Top movies and shows by play count
    *
@@ -26,7 +28,7 @@ export const contentRoutes: FastifyPluginAsync = async (app) => {
    *   for movies, to keep remakes apart) for sessions stamped before identity
    *   tracking existed, so the same movie/show on two servers counts once.
    */
-  app.get('/top-content', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/top-content', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -37,7 +39,7 @@ export const contentRoutes: FastifyPluginAsync = async (app) => {
     const dateRange = resolveDateRange(period, startDate, endDate);
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, await viewScope(request));
     const singleServer = resolvedIds?.length === 1;
 
     // For all-time queries, we need a base WHERE clause
@@ -232,7 +234,7 @@ export const contentRoutes: FastifyPluginAsync = async (app) => {
    * Ordered by plays desc. Libraries with no qualifying plays in the window
    * are omitted.
    */
-  app.get('/libraries', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/libraries', readStats, async (request, reply) => {
     const query = serverIdFilterSchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -241,7 +243,7 @@ export const contentRoutes: FastifyPluginAsync = async (app) => {
     const { serverId, serverIds } = query.data;
     const authUser = request.user;
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
 
     const result = await db.execute(sql`
       WITH recent_sessions AS (

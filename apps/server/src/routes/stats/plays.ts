@@ -16,7 +16,8 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { statsQuerySchema } from '@tracearr/shared';
 import { resolveDateRange } from './utils.js';
-import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
+import { scopedServerFragment, viewScope } from '../../lib/scope.js';
 import { queryPlaysOverTime, queryPlaysByDayOfWeek, queryPlaysByHourOfDay } from './queries.js';
 import { ACTIVITY_MEDIA_TYPES } from '../../constants/index.js';
 
@@ -46,13 +47,14 @@ function getBucketInterval(period: string): string {
 }
 
 export const playsRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('stats', 'read')] };
   /**
    * GET /plays - Plays over time (engagement-based)
    *
    * Returns validated plays (sessions >= 2 min) grouped by day.
    * Uses timezone-aware day bucketing so plays are grouped by user's local day.
    */
-  app.get('/plays', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/plays', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -70,7 +72,7 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
     const tz = timezone ?? 'UTC';
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
     const bucketInterval = getBucketInterval(period);
     const customEnd = period === 'custom' && dateRange.end ? dateRange.end : undefined;
     const mediaTypeFilter = mediaType ? sql`AND media_type = ${mediaType}` : undefined;
@@ -92,7 +94,7 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
    *
    * Returns validated plays (sessions >= 2 min) grouped by day of week.
    */
-  app.get('/plays-by-dayofweek', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/plays-by-dayofweek', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -105,7 +107,7 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
     const tz = timezone ?? 'UTC';
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, await viewScope(request));
     const customEnd = period === 'custom' ? dateRange.end : undefined;
 
     const data = await queryPlaysByDayOfWeek({
@@ -125,7 +127,7 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
    * Queries sessions table directly with duration filter since engagement
    * view only has daily granularity.
    */
-  app.get('/plays-by-hourofday', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/plays-by-hourofday', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -138,7 +140,7 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
     const tz = timezone ?? 'UTC';
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, await viewScope(request));
     const customEnd = period === 'custom' ? dateRange.end : undefined;
 
     const data = await queryPlaysByHourOfDay({

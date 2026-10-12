@@ -80,6 +80,8 @@ interface Props {
   columnVisibility: ColumnVisibility;
   onColumnVisibilityChange: (visibility: ColumnVisibility) => void;
   isMultiServer?: boolean;
+  /** Every row is the member's own, so there is no one to filter by. */
+  isMember?: boolean;
 }
 
 // Convert TimeRangeValue to Date filters
@@ -171,6 +173,7 @@ export function HistoryFiltersBar({
   columnVisibility,
   onColumnVisibilityChange,
   isMultiServer = false,
+  isMember = false,
 }: Props) {
   const { t } = useTranslation();
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
@@ -388,65 +391,67 @@ export function HistoryFiltersBar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             {/* User filter - multi-select */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <User className="mr-2 h-4 w-4" />
-                Users
-                {filters.serverUserIds?.length ? (
-                  <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-[10px]">
-                    {filters.serverUserIds.length}
-                  </Badge>
-                ) : null}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="p-0">
-                <ScrollArea className="h-[250px]">
-                  <div className="p-1">
-                    {filters.serverUserIds?.length ? (
-                      <>
-                        <DropdownMenuItem onClick={() => removeFilter('serverUserIds')}>
-                          <X />
-                          Clear all users
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                      </>
-                    ) : null}
-                    {sortedUsers.map((user) => {
-                      // A person may have multiple server accounts (merged identity);
-                      // select/deselect all of them together so their full history shows.
-                      const personIds = user.serverUserIds ?? [user.id];
-                      const isSelected = personIds.some(
-                        (id) => filters.serverUserIds?.includes(id) ?? false
-                      );
-                      return (
-                        <DropdownMenuCheckboxItem
-                          key={user.id}
-                          checked={isSelected}
-                          onCheckedChange={(checked) => {
-                            const current = filters.serverUserIds ?? [];
-                            const updated = checked
-                              ? [...new Set([...current, ...personIds])]
-                              : current.filter((id) => !personIds.includes(id));
-                            onFiltersChange({
-                              ...filters,
-                              serverUserIds: updated.length > 0 ? updated : undefined,
-                            });
-                          }}
-                          onSelect={(e) => e.preventDefault()}
-                        >
-                          <Avatar className="mr-2 h-5 w-5">
-                            <AvatarImage src={user.thumbUrl ?? undefined} />
-                            <AvatarFallback className="text-[8px]">
-                              {user.username?.[0]?.toUpperCase() ?? '?'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="truncate">{user.identityName || user.username}</span>
-                        </DropdownMenuCheckboxItem>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            {!isMember && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <User className="mr-2 h-4 w-4" />
+                  Users
+                  {filters.serverUserIds?.length ? (
+                    <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-[10px]">
+                      {filters.serverUserIds.length}
+                    </Badge>
+                  ) : null}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="p-0">
+                  <ScrollArea className="h-[250px]">
+                    <div className="p-1">
+                      {filters.serverUserIds?.length ? (
+                        <>
+                          <DropdownMenuItem onClick={() => removeFilter('serverUserIds')}>
+                            <X />
+                            Clear all users
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      ) : null}
+                      {sortedUsers.map((user) => {
+                        // A person may have multiple server accounts (merged identity);
+                        // select/deselect all of them together so their full history shows.
+                        const personIds = user.serverUserIds ?? [user.id];
+                        const isSelected = personIds.some(
+                          (id) => filters.serverUserIds?.includes(id) ?? false
+                        );
+                        return (
+                          <DropdownMenuCheckboxItem
+                            key={user.id}
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              const current = filters.serverUserIds ?? [];
+                              const updated = checked
+                                ? [...new Set([...current, ...personIds])]
+                                : current.filter((id) => !personIds.includes(id));
+                              onFiltersChange({
+                                ...filters,
+                                serverUserIds: updated.length > 0 ? updated : undefined,
+                              });
+                            }}
+                            onSelect={(e) => e.preventDefault()}
+                          >
+                            <Avatar className="mr-2 h-5 w-5">
+                              <AvatarImage src={user.thumbUrl ?? undefined} />
+                              <AvatarFallback className="text-[8px]">
+                                {user.username?.[0]?.toUpperCase() ?? '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate">{user.identityName || user.username}</span>
+                          </DropdownMenuCheckboxItem>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
 
             {/* Platform filter - multi-select */}
             <DropdownMenuSub>
@@ -693,7 +698,9 @@ export function HistoryFiltersBar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {HISTORY_COLUMNS.filter((col) => col.id !== 'server' || isMultiServer).map((column) => (
+            {HISTORY_COLUMNS.filter(
+              (col) => (col.id !== 'server' || isMultiServer) && (col.id !== 'user' || !isMember)
+            ).map((column) => (
               <DropdownMenuCheckboxItem
                 key={column.id}
                 checked={columnVisibility[column.id]}

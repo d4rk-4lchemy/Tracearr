@@ -40,6 +40,7 @@ import {
   buildLetterBuckets,
   expandMediaAliases,
 } from '../catalog.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 function normalize(sql: string): string {
   return sql.replace(/\s+/g, ' ').trim();
@@ -540,6 +541,7 @@ async function buildTestApp(
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', redis as never);
   await app.register(libraryCatalogRoute, { prefix: '/library' });
   return app;
@@ -550,7 +552,7 @@ function createOwnerUser(): AuthUser {
 }
 
 function createViewerUser(serverIds: string[]): AuthUser {
-  return { userId: randomUUID(), username: 'viewer', role: 'viewer', serverIds };
+  return { userId: randomUUID(), username: 'viewer', role: 'admin', serverIds };
 }
 
 function rawMovieRow(overrides: Partial<Record<string, unknown>> = {}) {

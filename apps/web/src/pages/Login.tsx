@@ -2,28 +2,26 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  Loader2,
-  ExternalLink,
-  User,
-  KeyRound,
-  LogIn,
-  AlertCircle,
-  AlertTriangle,
-} from 'lucide-react';
+import { Loader2, ExternalLink, User, KeyRound, LogIn, AlertTriangle } from 'lucide-react';
 import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { authClient } from '@/lib/authClient';
 import { api, BASE_URL } from '@/lib/api';
-import type { PlexDiscoveredServer, SetupStatus } from '@tracearr/shared';
+import { dropUserData } from '@/lib/queryCache';
+import { useSetupStatus } from '@/hooks/queries/useSetup';
+import { isNotPermitted, toastNotPermitted } from '@/lib/signInRefusal';
+import { SIGN_IN_ERROR_CODES, type PlexDiscoveredServer, type SetupStatus } from '@tracearr/shared';
 import { LogoIcon } from '@/components/brand/Logo';
 import { PlexServerSelector } from '@/components/auth/PlexServerSelector';
+import { AuthFormError } from '@/components/auth/AuthFormError';
+import { MemberLogin } from '@/components/auth/MemberLogin';
 
 // Plex brand color
 const PLEX_COLOR = 'bg-[#E5A00D] hover:bg-[#C88A0B]';
@@ -33,9 +31,10 @@ const DEFAULT_AUTH_METHODS: SetupStatus['authMethods'] = {
   plex: true,
   oidc: false,
   oidcProviderName: null,
+  member: false,
 };
 
-type AuthStep = 'claim-code-gate' | 'initial' | 'plex-waiting' | 'server-select';
+type AuthStep = 'initial' | 'plex-waiting' | 'server-select';
 
 export function Login() {
   const navigate = useNavigate();
@@ -44,11 +43,14 @@ export function Login() {
   const { t } = useTranslation(['pages', 'common', 'settings', 'notifications']);
   const { isAuthenticated, isLoading: authLoading } = useAuth();
 
-  // Setup status - default to false (Sign In mode) since most users are returning
-  const [setupLoading, setSetupLoading] = useState(true);
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [requiresClaimCode, setRequiresClaimCode] = useState(false);
-  const [authMethods, setAuthMethods] = useState<SetupStatus['authMethods']>(DEFAULT_AUTH_METHODS);
+  // Sign In mode unless the server says otherwise, since most visitors are returning users. If
+  // the server never answers, the defaults stand and it will say so when it comes back.
+  const { data: setup, isLoading: setupLoading } = useSetupStatus(searchParams.has('all'));
+  const needsSetup = setup?.needsSetup ?? false;
+  const requiresClaimCode = setup?.requiresClaimCode ?? false;
+  const authMethods = setup?.authMethods ?? DEFAULT_AUTH_METHODS;
+  const memberLoginServers = setup?.memberLoginServers ?? [];
+  const [claimCodeValidated, setClaimCodeValidated] = useState(false);
 
   // Auth flow state
   const [authStep, setAuthStep] = useState<AuthStep>('initial');
@@ -76,47 +78,17 @@ export function Login() {
   const [claimCode, setClaimCode] = useState('');
   const [claimCodeLoading, setClaimCodeLoading] = useState(false);
 
-  // Check setup status on mount with retry logic for server restarts
-  useEffect(() => {
-    async function checkSetup() {
-      const maxRetries = 3;
-      const delays = [0, 1000, 2000]; // immediate, 1s, 2s
-
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          if (attempt > 0) {
-            await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
-          }
-          const status = await api.setup.status();
-          setNeedsSetup(status.needsSetup);
-          setRequiresClaimCode(status.requiresClaimCode);
-          setAuthMethods(status.authMethods);
-
-          // Set initial auth step based on setup requirements
-          if (status.needsSetup && status.requiresClaimCode) {
-            setAuthStep('claim-code-gate');
-          }
-
-          setSetupLoading(false);
-          return; // Success - exit retry loop
-        } catch {
-          // Continue to next retry attempt
-        }
-      }
-
-      // All retries failed - server is unavailable
-      // Default to Sign In mode (needsSetup: false) since most users are returning users
-      // If they actually need setup, the server will tell them when it comes back
-      setNeedsSetup(false);
-      setSetupLoading(false);
-    }
-    void checkSetup();
-  }, []);
-
   // Surface OIDC callback errors (redirected here as /login?error=<code>)
   useEffect(() => {
-    if (searchParams.get('error')) {
-      setOidcError(t('pages:login.oidcError'));
+    const code = searchParams.get('error');
+    if (code === SIGN_IN_ERROR_CODES.notPermitted) {
+      toastNotPermitted(t('pages:login.member.notPermitted'));
+    } else if (code) {
+      setOidcError(
+        code === SIGN_IN_ERROR_CODES.refused
+          ? t('pages:login.member.refused')
+          : t('pages:login.oidcError')
+      );
     }
   }, [searchParams, t]);
 
@@ -146,7 +118,7 @@ export function Login() {
       toast.success(t('notifications:toast.success.claimCodeValidated.title'), {
         description: t('notifications:toast.success.claimCodeValidated.message'),
       });
-      setAuthStep('initial');
+      setClaimCodeValidated(true);
     } catch (error) {
       toast.error(t('notifications:toast.error.invalidClaimCode.title'), {
         description:
@@ -159,17 +131,36 @@ export function Login() {
     }
   };
 
+  // A new sign-in must not be served what the previous person left in the cache
+  const refreshSession = async () => {
+    dropUserData(queryClient);
+    await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+  };
+
+  const finishSignIn = async () => {
+    await refreshSession();
+    toast.success(t('notifications:toast.success.loggedIn.title'), {
+      description: t('notifications:toast.success.loggedIn.message'),
+    });
+    void navigate('/');
+  };
+
   // Poll for Plex PIN claim
-  const pollPlexPin = async (pinId: string) => {
+  const pollPlexPin = async (handle: string) => {
     try {
       const result = await api.auth.checkPlexPin({
-        pinId,
+        handle,
         ...(requiresClaimCode && { claimCode: claimCode.trim() }),
       });
 
+      if (result.expired) {
+        resetPlexAuth();
+        toast.error(t('pages:login.plexExpired'));
+        return;
+      }
       if (!result.authorized) {
         // Still waiting for PIN claim, continue polling
-        setTimeout(() => void pollPlexPin(pinId), 2000);
+        setTimeout(() => void pollPlexPin(handle), 2000);
         return;
       }
 
@@ -184,14 +175,14 @@ export function Login() {
         setAuthStep('server-select');
       } else if (result.user) {
         // User authenticated (returning or no servers) - session cookie is already set
-        await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-        toast.success(t('notifications:toast.success.loggedIn.title'), {
-          description: t('notifications:toast.success.loggedIn.message'),
-        });
-        void navigate('/');
+        await finishSignIn();
       }
     } catch (error) {
       resetPlexAuth();
+      if (isNotPermitted(error)) {
+        toastNotPermitted(t('pages:login.member.notPermitted'));
+        return;
+      }
       toast.error(t('notifications:toast.error.authFailed'), {
         description: error instanceof Error ? error.message : t('pages:login.plexAuthFailed'),
       });
@@ -218,7 +209,7 @@ export function Login() {
       }
 
       // Start polling
-      void pollPlexPin(result.pinId);
+      void pollPlexPin(result.handle);
     } catch (error) {
       closePlexPopup();
       setAuthStep('initial');
@@ -248,7 +239,7 @@ export function Login() {
       });
 
       if (result.authorized) {
-        await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+        await refreshSession();
         toast.success(t('notifications:toast.success.loggedIn.title'), {
           description: t('pages:login.connectedTo', { name: serverName }),
         });
@@ -303,7 +294,7 @@ export function Login() {
         return;
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+      await refreshSession();
       toast.success(t('notifications:toast.success.loggedIn.title'), {
         description: t('pages:login.accountCreated'),
       });
@@ -326,16 +317,16 @@ export function Login() {
         : authClient.signIn.username({ username: trimmedIdentifier.toLowerCase(), password });
       const { error } = await call;
 
+      if (error?.code === SIGN_IN_ERROR_CODES.notPermitted) {
+        toastNotPermitted(t('pages:login.member.notPermitted'));
+        return;
+      }
       if (error) {
         setFormError(error.message ?? t('pages:login.invalidCredentials'));
         return;
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      toast.success(t('notifications:toast.success.loggedIn.title'), {
-        description: t('notifications:toast.success.loggedIn.message'),
-      });
-      void navigate('/');
+      await finishSignIn();
     } finally {
       setLocalPending(false);
     }
@@ -346,8 +337,8 @@ export function Login() {
     setOidcPending(true);
     setOidcError(null);
 
-    const { error } = await authClient.signIn.oauth2({
-      providerId: 'oidc',
+    const { error } = await authClient.signIn.social({
+      provider: 'oidc',
       callbackURL: BASE_URL,
       errorCallbackURL: `${BASE_URL}login`,
       ...(requiresClaimCode && { additionalData: { claimCode: claimCode.trim() } }),
@@ -370,7 +361,7 @@ export function Login() {
   }
 
   // Claim code gate - shown before any setup options
-  if (authStep === 'claim-code-gate') {
+  if (needsSetup && requiresClaimCode && !claimCodeValidated) {
     return (
       <div className="bg-background flex min-h-screen flex-col items-center justify-center p-4">
         <div className="mb-8 flex flex-col items-center text-center">
@@ -465,7 +456,143 @@ export function Login() {
     );
   }
 
-  const hasPrimaryMethods = authMethods.plex || authMethods.oidc;
+  const memberServers = memberLoginServers.filter((server) => server.type !== 'plex');
+  // authMethods.plex is the owner's own Plex sign-in; a member's Plex server arrives in the
+  // member list and signs in through the same button.
+  const showPlex =
+    authMethods.plex ||
+    (authMethods.member && memberLoginServers.some((server) => server.type === 'plex'));
+  const showMember = authMethods.member && !needsSetup && memberServers.length > 0;
+  const hasPrimaryMethods = showPlex || authMethods.oidc;
+  const hasFormMethods = authMethods.local || showMember;
+
+  const localForm = needsSetup ? (
+    <form onSubmit={handleSignUp} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="name">{t('settings:account.displayName')}</Label>
+        <Input
+          id="name"
+          type="text"
+          autoComplete="name"
+          placeholder={t('pages:login.displayNamePlaceholder')}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          disabled={localPending}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="username">{t('pages:login.username')}</Label>
+        <Input
+          id="username"
+          type="text"
+          autoComplete="username"
+          placeholder={t('pages:login.usernamePlaceholder')}
+          value={signupUsername}
+          onChange={(e) => setSignupUsername(e.target.value)}
+          required
+          minLength={3}
+          maxLength={30}
+          disabled={localPending}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="email">{t('settings:account.email')}</Label>
+        <Input
+          id="email"
+          type="email"
+          autoComplete="email"
+          placeholder={t('pages:login.emailPlaceholder')}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          disabled={localPending}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="password">{t('settings:account.password')}</Label>
+        <Input
+          id="password"
+          type="password"
+          autoComplete="new-password"
+          placeholder={t('pages:login.passwordPlaceholder')}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={8}
+          disabled={localPending}
+        />
+      </div>
+      <AuthFormError message={formError} />
+      <Button type="submit" className="w-full" disabled={localPending}>
+        {localPending ? <Loader2 className="animate-spin" /> : <User />}
+        {t('settings:account.createAccount')}
+      </Button>
+    </form>
+  ) : (
+    <form onSubmit={handleSignIn} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="identifier">{t('pages:login.usernameOrEmail')}</Label>
+        <Input
+          id="identifier"
+          type="text"
+          autoComplete="username"
+          placeholder={t('pages:login.identifierPlaceholder')}
+          value={identifier}
+          onChange={(e) => setIdentifier(e.target.value)}
+          required
+          disabled={localPending}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="password">{t('settings:account.password')}</Label>
+        <Input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          placeholder={t('pages:login.yourPasswordPlaceholder')}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          disabled={localPending}
+        />
+      </div>
+      <AuthFormError message={formError} />
+      <Button type="submit" className="w-full" disabled={localPending}>
+        {localPending ? <Loader2 className="animate-spin" /> : <KeyRound />}
+        {t('common:actions.signIn')}
+      </Button>
+    </form>
+  );
+
+  const memberLogin = <MemberLogin servers={memberServers} onSignedIn={finishSignIn} />;
+
+  // Two forms with a password field each would stack into a long page on a phone
+  let formArea = (
+    <p className="text-muted-foreground text-center text-sm">
+      {t('pages:login.localDisabledHint')}
+    </p>
+  );
+  if (authMethods.local && showMember) {
+    formArea = (
+      <Tabs defaultValue="local">
+        <TabsList className="w-full">
+          <TabsTrigger value="local" className="flex-1">
+            {t('pages:login.member.tabLocal')}
+          </TabsTrigger>
+          <TabsTrigger value="member" className="flex-1">
+            {t('pages:login.member.tabMember')}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="local">{localForm}</TabsContent>
+        <TabsContent value="member">{memberLogin}</TabsContent>
+      </Tabs>
+    );
+  } else if (authMethods.local) {
+    formArea = localForm;
+  } else if (showMember) {
+    formArea = memberLogin;
+  }
 
   return (
     <div className="bg-background flex min-h-screen flex-col items-center justify-center p-4">
@@ -523,7 +650,7 @@ export function Login() {
             </div>
           ) : (
             <>
-              {authMethods.plex && (
+              {showPlex && (
                 <Button className={`w-full ${PLEX_COLOR} text-white`} onClick={handlePlexLogin}>
                   <MediaServerIcon type="plex" className="h-4 w-4" />
                   {needsSetup
@@ -549,7 +676,7 @@ export function Login() {
                 </Button>
               )}
 
-              {hasPrimaryMethods && (
+              {hasPrimaryMethods && hasFormMethods && (
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t" />
@@ -560,126 +687,7 @@ export function Login() {
                 </div>
               )}
 
-              {authMethods.local ? (
-                needsSetup ? (
-                  <form onSubmit={handleSignUp} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">{t('settings:account.displayName')}</Label>
-                      <Input
-                        id="name"
-                        type="text"
-                        autoComplete="name"
-                        placeholder={t('pages:login.displayNamePlaceholder')}
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        disabled={localPending}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="username">{t('pages:login.username')}</Label>
-                      <Input
-                        id="username"
-                        type="text"
-                        autoComplete="username"
-                        placeholder={t('pages:login.usernamePlaceholder')}
-                        value={signupUsername}
-                        onChange={(e) => setSignupUsername(e.target.value)}
-                        required
-                        minLength={3}
-                        maxLength={30}
-                        disabled={localPending}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">{t('settings:account.email')}</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        autoComplete="email"
-                        placeholder={t('pages:login.emailPlaceholder')}
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        disabled={localPending}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="password">{t('settings:account.password')}</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder={t('pages:login.passwordPlaceholder')}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        minLength={8}
-                        disabled={localPending}
-                      />
-                    </div>
-                    {formError && (
-                      <p
-                        className="text-destructive flex items-center gap-1.5 text-sm"
-                        role="alert"
-                      >
-                        <AlertCircle className="h-4 w-4 shrink-0" />
-                        {formError}
-                      </p>
-                    )}
-                    <Button type="submit" className="w-full" disabled={localPending}>
-                      {localPending ? <Loader2 className="animate-spin" /> : <User />}
-                      {t('settings:account.createAccount')}
-                    </Button>
-                  </form>
-                ) : (
-                  <form onSubmit={handleSignIn} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="identifier">{t('pages:login.usernameOrEmail')}</Label>
-                      <Input
-                        id="identifier"
-                        type="text"
-                        autoComplete="username"
-                        placeholder={t('pages:login.identifierPlaceholder')}
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
-                        required
-                        disabled={localPending}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="password">{t('settings:account.password')}</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        autoComplete="current-password"
-                        placeholder={t('pages:login.yourPasswordPlaceholder')}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        disabled={localPending}
-                      />
-                    </div>
-                    {formError && (
-                      <p
-                        className="text-destructive flex items-center gap-1.5 text-sm"
-                        role="alert"
-                      >
-                        <AlertCircle className="h-4 w-4 shrink-0" />
-                        {formError}
-                      </p>
-                    )}
-                    <Button type="submit" className="w-full" disabled={localPending}>
-                      {localPending ? <Loader2 className="animate-spin" /> : <KeyRound />}
-                      {t('common:actions.signIn')}
-                    </Button>
-                  </form>
-                )
-              ) : (
-                <p className="text-muted-foreground text-center text-sm">
-                  {t('pages:login.localDisabledHint')}
-                </p>
-              )}
+              {formArea}
             </>
           )}
         </CardContent>

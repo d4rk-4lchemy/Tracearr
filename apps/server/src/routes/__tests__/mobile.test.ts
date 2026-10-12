@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type { AuthUser } from '@tracearr/shared';
@@ -151,6 +151,14 @@ async function buildTestApp(authUser: AuthUser | null): Promise<FastifyInstance>
     }
   });
 
+  app.decorate('requireOwner', async (request: unknown, reply: FastifyReply) => {
+    if (authUser) {
+      (request as { user: AuthUser }).user = authUser;
+    }
+    if (authUser?.role === 'member') return reply.notFound();
+    if (authUser && authUser.role !== 'owner') return reply.forbidden('Owner access required');
+  });
+
   // Mock the requireMobile decorator (validates mobile JWT)
   app.decorate('requireMobile', async (request: unknown) => {
     if (authUser) {
@@ -196,7 +204,7 @@ function createViewerUser(): AuthUser {
   return {
     userId: randomUUID(),
     username: 'viewer',
-    role: 'viewer',
+    role: 'member',
     serverIds: [randomUUID()],
   };
 }
@@ -222,7 +230,7 @@ function createMobileViewerUser(serverId?: string): AuthUser {
   return {
     userId: randomUUID(),
     username: 'viewer',
-    role: 'viewer',
+    role: 'member',
     serverIds: serverId ? [serverId] : [randomUUID()],
     mobile: true,
     deviceId: 'device-viewer-123',
@@ -377,7 +385,7 @@ describe('Mobile Routes', () => {
       expect(body.maxDevices).toBe(5);
     });
 
-    it('rejects non-owner access with 403', async () => {
+    it('answers a member with 404', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -385,9 +393,7 @@ describe('Mobile Routes', () => {
         url: '/mobile',
       });
 
-      expect(response.statusCode).toBe(403);
-      const body = response.json();
-      expect(body.message).toBe('Only server owners can access mobile settings');
+      expect(response.statusCode).toBe(404);
     });
 
     it('returns empty sessions when none exist', async () => {
@@ -441,7 +447,7 @@ describe('Mobile Routes', () => {
       expect(setSetting).toHaveBeenCalledWith('mobileEnabled', true);
     });
 
-    it('rejects non-owner access with 403', async () => {
+    it('answers a member with 404', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -449,9 +455,7 @@ describe('Mobile Routes', () => {
         url: '/mobile/enable',
       });
 
-      expect(response.statusCode).toBe(403);
-      const body = response.json();
-      expect(body.message).toBe('Only server owners can enable mobile access');
+      expect(response.statusCode).toBe(404);
     });
   });
 
@@ -524,7 +528,7 @@ describe('Mobile Routes', () => {
       expect(response.headers['retry-after']).toBe('120');
     });
 
-    it('rejects non-owner access with 403', async () => {
+    it('answers a member with 404', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -532,9 +536,7 @@ describe('Mobile Routes', () => {
         url: '/mobile/pair-token',
       });
 
-      expect(response.statusCode).toBe(403);
-      const body = response.json();
-      expect(body.message).toBe('Only server owners can generate pairing tokens');
+      expect(response.statusCode).toBe(404);
     });
 
     it('token generation uses 15 minute expiry', async () => {
@@ -650,7 +652,7 @@ describe('Mobile Routes', () => {
       expect(callOrder).toEqual(['revoke', 'delete', 'revoke', 'delete', 'delete']);
     });
 
-    it('rejects non-owner access with 403', async () => {
+    it('answers a member with 404', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -658,9 +660,7 @@ describe('Mobile Routes', () => {
         url: '/mobile/disable',
       });
 
-      expect(response.statusCode).toBe(403);
-      const body = response.json();
-      expect(body.message).toBe('Only server owners can disable mobile access');
+      expect(response.statusCode).toBe(404);
     });
   });
 
@@ -738,7 +738,7 @@ describe('Mobile Routes', () => {
       expect(body.revokedCount).toBe(0);
     });
 
-    it('rejects non-owner access with 403', async () => {
+    it('answers a member with 404', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -746,7 +746,7 @@ describe('Mobile Routes', () => {
         url: '/mobile/sessions',
       });
 
-      expect(response.statusCode).toBe(403);
+      expect(response.statusCode).toBe(404);
     });
   });
 
@@ -873,7 +873,7 @@ describe('Mobile Routes', () => {
       expect(body.message).toBe('Invalid session ID format');
     });
 
-    it('rejects non-owner access with 403', async () => {
+    it('answers a member with 404', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -881,7 +881,7 @@ describe('Mobile Routes', () => {
         url: `/mobile/sessions/${randomUUID()}`,
       });
 
-      expect(response.statusCode).toBe(403);
+      expect(response.statusCode).toBe(404);
     });
   });
 
@@ -972,7 +972,7 @@ describe('Mobile Routes', () => {
       expect(response.statusCode).toBe(400);
     });
 
-    it('rejects non-owner access with 403', async () => {
+    it('answers a member with 404', async () => {
       app = await buildTestApp(viewerUser);
 
       const response = await app.inject({
@@ -981,8 +981,7 @@ describe('Mobile Routes', () => {
         payload: { deviceName: 'New Name' },
       });
 
-      expect(response.statusCode).toBe(403);
-      expect(response.json().message).toContain('Only server owners');
+      expect(response.statusCode).toBe(404);
     });
   });
 

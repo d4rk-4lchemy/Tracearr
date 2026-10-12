@@ -18,6 +18,7 @@ import { db } from '../db/client.js';
 import { users, mobileSessions } from '../db/schema.js';
 import { getSetting } from '../services/settings.js';
 import { resolveBetterAuthUser, resolveBetterAuthUserStrict } from '../lib/sessionResolver.js';
+import { permissionGuard, type Scope } from '../lib/scope.js';
 import { requireBetterAuthSecret, isBetterAuthSecretDerived } from '../lib/env.js';
 import { ErrorCodes, MobileAuthError } from '../utils/errors.js';
 import { hashSha256 } from '../utils/hash.js';
@@ -30,7 +31,7 @@ export async function loadJwtRevokeSettings(): Promise<void> {
   _jwtRevokedBefore = val ? Math.floor(new Date(val).getTime() / 1000) : null;
 }
 
-function isTokenRevoked(iat: number | undefined): boolean {
+export function isTokenRevoked(iat: number | undefined): boolean {
   return _jwtRevokedBefore !== null && iat !== undefined && iat < _jwtRevokedBefore;
 }
 
@@ -53,12 +54,23 @@ declare module 'fastify' {
   interface FastifyInstance {
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requireOwner: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    requirePermission: ReturnType<typeof permissionGuard>;
     requireMobile: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     authenticatePublicApi: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
   interface FastifyRequest {
     publicApiContext?: PublicApiContext;
+    /** Set by requirePermission; routes behind authenticate or requireOwner alone never read it. */
+    scope: Scope;
   }
+}
+
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+// Viewing as another user is read-only. better-auth's own endpoints, stop-impersonating and
+// sign-out among them, are mounted on the wildcard handler and never pass through here.
+function isImpersonatedWrite(request: FastifyRequest, user: AuthUser): boolean {
+  return user.impersonatedBy !== undefined && !READ_METHODS.has(request.method);
 }
 
 // Revocation blacklists a deviceId in Redis. Every decorator that accepts a
@@ -159,6 +171,9 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     const baUser = await resolveBetterAuthUser(request);
     if (baUser) {
       request.user = baUser;
+      if (isImpersonatedWrite(request, baUser)) {
+        return reply.forbidden('Viewing as another user is read-only');
+      }
       return;
     }
     try {
@@ -172,11 +187,17 @@ const authPlugin: FastifyPluginAsync = async (app) => {
     }
   });
 
+  app.decorate('requirePermission', permissionGuard(app));
+
   // Require owner role decorator - same dual-verify as authenticate, plus role check
   app.decorate('requireOwner', async function (request: FastifyRequest, reply: FastifyReply) {
     const baUser = await resolveBetterAuthUser(request);
     if (baUser) {
       request.user = baUser;
+      if (isImpersonatedWrite(request, baUser)) {
+        return reply.forbidden('Viewing as another user is read-only');
+      }
+      if (baUser.role === 'member') return reply.notFound();
       if (baUser.role !== 'owner') {
         return reply.forbidden('Owner access required');
       }
@@ -188,7 +209,9 @@ const authPlugin: FastifyPluginAsync = async (app) => {
         return reply.unauthorized('Session invalidated. Please log in again');
       }
       if (!(await assertMobileNotRevoked(app, request, reply))) return;
-      if (request.user.role !== 'owner') {
+      if (request.user.role === 'member') {
+        reply.notFound();
+      } else if (request.user.role !== 'owner') {
         reply.forbidden('Owner access required');
       }
     } catch {

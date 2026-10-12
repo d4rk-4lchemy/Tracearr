@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import type { ShelvesResponse } from '@tracearr/shared';
+import type { MostPopularShelfRow, ShelvesResponse } from '@tracearr/shared';
 import { MediaOverview } from './Overview';
 
 vi.mock('react-i18next', () => ({
@@ -23,6 +23,9 @@ vi.mock('@/hooks/queries', () => ({
 vi.mock('@/hooks/useServer', () => ({
   useServer: vi.fn(),
 }));
+
+const auth = vi.hoisted(() => ({ user: { role: 'owner' } }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 vi.mock('@/components/ui/time-range-picker', () => ({
   TimeRangePicker: ({
@@ -233,6 +236,7 @@ function mockShelvesReturn(overrides: Partial<ReturnType<typeof useShelves>> = {
 describe('MediaOverview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.user.role = 'owner';
     mockUseServer.mockReturnValue(serverReturn());
     mockUseLibraryStats.mockReturnValue(statsReturn());
     mockUseLibraryGrowth.mockReturnValue(growthReturn());
@@ -476,5 +480,116 @@ describe('MediaOverview', () => {
     expect(screen.getByText('media.landing.shelves.mostPopularShows')).toBeInTheDocument();
     expect(screen.getAllByText('media.landing.shelves.emptyRecentlyAdded')).toHaveLength(2);
     expect(screen.getAllByText('media.landing.shelves.emptyMostPopular')).toHaveLength(2);
+  });
+});
+
+describe('MediaOverview as a member', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.user.role = 'member';
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseLibraryStats.mockReturnValue(statsReturn());
+    mockUseLibraryGrowth.mockReturnValue(growthReturn());
+    mockUseLibraryStatus.mockReturnValue(statusReturn());
+  });
+
+  it('shows the counts line and the not-watched link, with no stat cards, growth chart or picker', () => {
+    mockShelvesReturn({ data: fullShelves() });
+
+    renderOverview();
+
+    expect(screen.getByText(/library\.overview\.movieCount.*300/)).toBeInTheDocument();
+    expect(screen.getByText(/library\.overview\.showCount.*40/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'library.overview.notWatchedByYou' })).toHaveAttribute(
+      'href',
+      '/media/browse?watched=unwatched'
+    );
+    expect(screen.queryByText('library.overview.totalItems')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('library-growth-chart')).not.toBeInTheDocument();
+    expect(screen.queryByText('switch-range')).not.toBeInTheDocument();
+    expect(screen.queryByText(/library\.overview\.lastUpdated/)).not.toBeInTheDocument();
+  });
+
+  it('skips the sync status and growth reads, and asks for a fixed month of shelves', () => {
+    mockShelvesReturn({ data: fullShelves() });
+
+    renderOverview();
+
+    expect(mockUseLibraryStatus).toHaveBeenCalledWith([]);
+    expect(mockUseLibraryGrowth.mock.calls[0]?.[0]).toEqual([]);
+    expect(mockUseShelves).toHaveBeenCalledWith(
+      ['srv-1'],
+      expect.objectContaining({ period: 'month' }),
+      false
+    );
+  });
+
+  it('shows no sync banner and no sync empty state even when every server is unready', () => {
+    mockUseLibraryStatus.mockReturnValue(
+      statusReturn({ 'srv-1': { isSynced: false, needsBackfill: true, isBackfillRunning: false } })
+    );
+    mockShelvesReturn({ data: fullShelves() });
+
+    renderOverview();
+
+    expect(screen.queryByTestId('library-empty-state')).not.toBeInTheDocument();
+    expect(screen.queryByText('library.overview.serversNeedSync')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Recently Added Movie').length).toBeGreaterThan(0);
+  });
+
+  it('never renders Recently Updated, even when the response has rows for it', () => {
+    mockShelvesReturn({ data: fullShelves() });
+
+    renderOverview();
+
+    expect(screen.queryByText('media.landing.shelves.recentlyUpdated')).not.toBeInTheDocument();
+    expect(screen.queryByText('Replaced Movie')).not.toBeInTheDocument();
+  });
+
+  it('leaves out every shelf with no rows, heading and empty note included', () => {
+    const shelves = fullShelves();
+    mockShelvesReturn({
+      data: { ...shelves, recentlyUpdated: [], mostPopularMovies: [], mostPopularShows: [] },
+    });
+
+    renderOverview();
+
+    expect(screen.getByText('media.landing.shelves.recentlyAddedMovies')).toBeInTheDocument();
+    for (const key of ['recentlyUpdated', 'mostPopularMovies', 'mostPopularShows']) {
+      expect(screen.queryByText(`media.landing.shelves.${key}`)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('media.landing.shelves.emptyMostPopular')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('media.landing.shelves.emptyRecentlyUpdated')
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a plain empty state with no sync buttons when the library has nothing', () => {
+    mockShelvesReturn({
+      data: { ...fullShelves(), meta: { movies: 0, shows: 0, totalFileSize: 0 } },
+    });
+
+    renderOverview();
+
+    expect(screen.getByText('library.overview.memberEmpty.title')).toBeInTheDocument();
+    expect(screen.queryByTestId('library-empty-state')).not.toBeInTheDocument();
+  });
+
+  it('renders Most Popular without play or viewer counts when the server leaves them off', () => {
+    const shelves = fullShelves();
+    const strip = ({ plays: _plays, viewers: _viewers, ...row }: MostPopularShelfRow) => row;
+    mockShelvesReturn({
+      data: {
+        ...shelves,
+        mostPopularMovies: shelves.mostPopularMovies.map(strip),
+        mostPopularShows: shelves.mostPopularShows.map(strip),
+      },
+    });
+
+    renderOverview();
+
+    expect(screen.getAllByText('Popular Movie').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/common:count\.play/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/media\.posterCard\.viewers/)).not.toBeInTheDocument();
   });
 });

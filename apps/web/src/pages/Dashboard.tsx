@@ -1,25 +1,29 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Clock, AlertTriangle, Tv, MapPin, Calendar, Users, Activity } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Play, Clock, AlertTriangle, MapPin, Calendar, Tv, Users, Activity } from 'lucide-react';
+import { useSearchParams } from 'react-router';
+import { Card } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
-import { NowPlayingCard } from '@/components/sessions';
 const StreamCard = lazy(() =>
   import('@/components/map/StreamCard').then((m) => ({ default: m.StreamCard }))
 );
-import { SessionDetailSheet } from '@/components/history/SessionDetailSheet';
 import { ServerResourceCharts } from '@/components/charts/ServerResourceCharts';
 import { ServerBandwidthChart } from '@/components/charts/BandwidthChart';
 import { ErrorState } from '@/components/library/ErrorState';
-import { NowPlayingCardSkeleton } from '@/components/ui/skeleton';
+import { NowPlayingSection } from '@/components/dashboard/NowPlayingSection';
+import { SectionHeading } from '@/components/dashboard/SectionHeading';
+import { PersonalDashboard } from '@/components/dashboard/PersonalDashboard';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useDashboardStats, useActiveSessions } from '@/hooks/queries';
 import { useServerLiveStats, useMultiServerLiveStats } from '@/hooks/queries/useServers';
+import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { useSocket } from '@/hooks/useSocket';
-import { pickServerColor, type ActiveSession } from '@tracearr/shared';
+import { pickServerColor } from '@tracearr/shared';
+import { cn } from '@/lib/utils';
 
-export function Dashboard() {
+function ServerDashboard({ actions }: { actions?: ReactNode }) {
   const { t } = useTranslation(['pages', 'common']);
   const { selectedServerIds, selectedServers, isMultiServer, selectedServerId } = useServer();
   const { isConnected } = useSocket();
@@ -36,10 +40,6 @@ export function Dashboard() {
     error: sessionsErrorObj,
     refetch: refetchSessions,
   } = useActiveSessions(selectedServerIds, isConnected);
-
-  // Session detail sheet state
-  const [selectedSession, setSelectedSession] = useState<ActiveSession | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
 
   const serverColorMap = useServerColorMap();
 
@@ -157,8 +157,7 @@ export function Dashboard() {
     [showMultiServerResources, multiLiveStats, seriesMeta]
   );
 
-  const activeCount = sessions?.length ?? 0;
-  const hasActiveStreams = activeCount > 0;
+  const hasActiveStreams = (sessions?.length ?? 0) > 0;
 
   if (statsError || sessionsError) {
     return (
@@ -179,10 +178,7 @@ export function Dashboard() {
     <div className="space-y-6">
       {/* Today Stats Section */}
       <section>
-        <div className="mb-4 flex items-center gap-2">
-          <Calendar className="text-primary h-5 w-5" />
-          <h2 className="text-lg font-semibold">{t('common:time.today')}</h2>
-        </div>
+        <SectionHeading icon={Calendar} title={t('common:time.today')} actions={actions} />
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           <StatCard
             icon={AlertTriangle}
@@ -237,59 +233,12 @@ export function Dashboard() {
         </div>
       </section>
 
-      {/* Now Playing Section */}
-      <section>
-        <div className="mb-4 flex items-center gap-2">
-          <Tv className="text-primary h-5 w-5" />
-          <h2 className="text-lg font-semibold">{t('dashboard.nowPlaying')}</h2>
-          {hasActiveStreams && (
-            <span className="bg-muted text-foreground rounded-full px-2 py-0.5 text-xs font-medium">
-              {t('common:count.stream', { count: activeCount })}
-            </span>
-          )}
-        </div>
-
-        {!sortedSessions ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <NowPlayingCardSkeleton key={i} />
-            ))}
-          </div>
-        ) : sortedSessions.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="bg-muted rounded-full p-4">
-                <Tv className="text-muted-foreground h-8 w-8" />
-              </div>
-              <h3 className="mt-4 font-semibold">{t('dashboard.noActiveStreams')}</h3>
-              <p className="text-muted-foreground mt-1 text-sm">
-                {t('dashboard.streamsAppearHere')}
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {sortedSessions.map((session) => (
-              <NowPlayingCard
-                key={session.id}
-                session={session}
-                onClick={() => {
-                  setSelectedSession(session);
-                  setSheetOpen(true);
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      <NowPlayingSection sessions={sortedSessions} />
 
       {/* Stream Map - only show when there are active streams */}
       {hasActiveStreams && (
         <section>
-          <div className="mb-4 flex items-center gap-2">
-            <MapPin className="text-primary h-5 w-5" />
-            <h2 className="text-lg font-semibold">{t('dashboard.streamLocations')}</h2>
-          </div>
+          <SectionHeading icon={MapPin} title={t('dashboard.streamLocations')} />
           <Card className="overflow-hidden py-0">
             <Suspense fallback={<div className="bg-muted/30 h-[320px] w-full animate-pulse" />}>
               <StreamCard
@@ -306,11 +255,10 @@ export function Dashboard() {
       {/* Server Resource Stats (single server, or per-server overlay lines) */}
       {(showServerResources || showMultiServerResources) && (
         <section>
-          <div className="mb-4 flex items-center gap-2">
-            <Activity className="text-primary h-5 w-5" />
-            <h2 className="text-lg font-semibold">{t('dashboard.serverResources')}</h2>
-          </div>
-          <div className={`grid gap-4 ${showBandwidthChart ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+          <SectionHeading icon={Activity} title={t('dashboard.serverResources')} />
+          <div
+            className={cn('grid gap-4', showBandwidthChart ? 'md:grid-cols-3' : 'md:grid-cols-2')}
+          >
             <ServerResourceCharts
               data={showServerResources ? serverStats : undefined}
               isLoading={
@@ -335,9 +283,87 @@ export function Dashboard() {
           </div>
         </section>
       )}
-
-      {/* Session Detail Sheet */}
-      <SessionDetailSheet session={selectedSession} open={sheetOpen} onOpenChange={setSheetOpen} />
     </div>
+  );
+}
+
+const VIEW_KEY = 'tracearr_dashboard_view';
+
+type DashboardView = 'admin' | 'me';
+
+function isView(value: unknown): value is DashboardView {
+  return value === 'admin' || value === 'me';
+}
+
+function storedView(): DashboardView | null {
+  try {
+    const stored = localStorage.getItem(VIEW_KEY);
+    return isView(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function ViewToggle({
+  value,
+  onChange,
+}: {
+  value: DashboardView;
+  onChange: (next: DashboardView) => void;
+}) {
+  const { t } = useTranslation('pages');
+
+  return (
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(next) => isView(next) && onChange(next)}
+      variant="outline"
+      size="sm"
+      aria-label={t('dashboard.view.label')}
+      className="w-full sm:w-auto"
+    >
+      <ToggleGroupItem value="admin" className="flex-1 sm:flex-none">
+        {t('dashboard.view.admin')}
+      </ToggleGroupItem>
+      <ToggleGroupItem value="me" className="flex-1 sm:flex-none">
+        {t('dashboard.view.me')}
+      </ToggleGroupItem>
+    </ToggleGroup>
+  );
+}
+
+export function Dashboard() {
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  if (user?.role === 'member') return <PersonalDashboard />;
+  // Viewing as an admin shows what that admin lands on, with no toggle and no stored choice
+  if (user?.impersonatedBy) return <ServerDashboard />;
+
+  const param = searchParams.get('view');
+  const view = isView(param) ? param : (storedView() ?? 'admin');
+
+  const select = (next: DashboardView) => {
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // storage is unavailable; the URL still carries the choice
+    }
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('view', next);
+        return params;
+      },
+      { replace: true }
+    );
+  };
+
+  const toggle = <ViewToggle value={view} onChange={select} />;
+  return view === 'me' ? (
+    <PersonalDashboard actions={toggle} />
+  ) : (
+    <ServerDashboard actions={toggle} />
   );
 }

@@ -25,6 +25,7 @@ import { createMockRedis } from '@tracearr/test-utils/mocks';
 import { sessionRoutes } from '../../src/routes/sessions.js';
 import { locationsRoutes } from '../../src/routes/stats/locations.js';
 import { mergeUsers } from '../../src/services/mergeService.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 function ownerAuth(userId: string) {
   return { userId, username: 'owner', role: 'owner' as const, serverIds: [] as string[] };
@@ -44,6 +45,11 @@ async function buildApp(
         request.user = ownerAuth('owner');
       })
   );
+  app.decorate('requirePermission', permissionGuard(app));
+  app.decorate('requireOwner', async (request: any, reply: any) => {
+    await app.authenticate(request, reply);
+    if (request.user.role !== 'owner') return reply.forbidden('Owner access required');
+  });
   await app.register(plugin as any);
   return app;
 }
@@ -128,7 +134,7 @@ describe('GET /sessions/filter-options - identity dedup', () => {
       request.user = {
         userId: randomUUID(),
         username: 'viewer',
-        role: 'viewer',
+        role: 'admin',
         serverIds: [serverA.id],
       };
     };

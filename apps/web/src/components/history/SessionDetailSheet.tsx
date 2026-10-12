@@ -5,6 +5,7 @@
 
 import { lazy, memo, Suspense, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '@/hooks/useAuth';
 import { Link } from 'react-router';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -52,7 +53,7 @@ import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { MediaPageLink } from '@/components/media/MediaPageLink';
 import { StreamDetailsPanel } from './StreamDetailsPanel';
 
-import { PLAYBACK_DECISION_LABEL_KEYS, POSTER_IMAGE_SIZE } from '@tracearr/shared';
+import { PLAYBACK_DECISION_LABEL_KEYS, POSTER_IMAGE_SIZE, isStaff } from '@tracearr/shared';
 import type {
   SessionWithDetails,
   ActiveSession,
@@ -222,6 +223,8 @@ function SessionContent({
   onNavigate: () => void;
 }) {
   const { t } = useTranslation();
+  const viewer = useAuth().user;
+  const canOpenUser = !!viewer && isStaff(viewer.role);
   const [locationOpen, setLocationOpen] = useState(false);
   const [segmentsOpen, setSegmentsOpen] = useState(false);
 
@@ -330,32 +333,46 @@ function SessionContent({
           </div>
         </div>
 
-        {/* User */}
-        <Link
-          to={`/users/${session.serverUserId}`}
-          className="hover:bg-muted/50 flex items-center gap-3 rounded-lg border p-3 transition-colors"
-        >
-          <Avatar className="h-9 w-9">
-            <AvatarImage
-              src={getAvatarUrl(session.serverId, session.user.thumbUrl, 36) ?? undefined}
-            />
-            <AvatarFallback>
-              {(session.user.identityName ?? session.user.username)?.[0]?.toUpperCase() ?? '?'}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <p className="truncate font-medium">
-              {session.user.identityName ?? session.user.username}
-            </p>
-            {session.user.identityName && session.user.identityName !== session.user.username && (
-              <p className="text-muted-foreground truncate text-xs">@{session.user.username}</p>
-            )}
-            {!session.user.identityName && (
-              <p className="text-muted-foreground text-xs">View profile</p>
-            )}
-          </div>
-          <ExternalLink className="text-muted-foreground h-4 w-4" />
-        </Link>
+        {/* User: a member sees their own account without a page to open */}
+        {(() => {
+          const body = (
+            <>
+              <Avatar className="h-9 w-9">
+                <AvatarImage
+                  src={getAvatarUrl(session.serverId, session.user.thumbUrl, 36) ?? undefined}
+                />
+                <AvatarFallback>
+                  {(session.user.identityName ?? session.user.username)?.[0]?.toUpperCase() ?? '?'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">
+                  {session.user.identityName ?? session.user.username}
+                </p>
+                {session.user.identityName &&
+                  session.user.identityName !== session.user.username && (
+                    <p className="text-muted-foreground truncate text-xs">
+                      @{session.user.username}
+                    </p>
+                  )}
+                {canOpenUser && !session.user.identityName && (
+                  <p className="text-muted-foreground text-xs">View profile</p>
+                )}
+              </div>
+            </>
+          );
+          return canOpenUser ? (
+            <Link
+              to={`/users/${session.serverUserId}`}
+              className="hover:bg-muted/50 flex items-center gap-3 rounded-lg border p-3 transition-colors"
+            >
+              {body}
+              <ExternalLink className="text-muted-foreground h-4 w-4" />
+            </Link>
+          ) : (
+            <div className="flex items-center gap-3 rounded-lg border p-3">{body}</div>
+          );
+        })()}
 
         {/* Server */}
         <Section icon={Server} title="Server">

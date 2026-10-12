@@ -35,6 +35,7 @@ vi.mock('../../../services/settings.js', () => ({
 
 import { db } from '../../../db/client.js';
 import { libraryMediaRoute } from '../media.js';
+import { permissionGuard } from '../../../lib/scope.js';
 
 function createSpyRedis() {
   const store = new Map<string, string>();
@@ -56,6 +57,7 @@ async function buildTestApp(
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = authUser;
   });
+  app.decorate('requirePermission', permissionGuard(app));
   app.decorate('redis', redis as never);
   await app.register(libraryMediaRoute, { prefix: '/library' });
   return app;
@@ -66,7 +68,7 @@ function createOwnerUser(): AuthUser {
 }
 
 function createViewerUser(serverIds: string[]): AuthUser {
-  return { userId: randomUUID(), username: 'viewer', role: 'viewer', serverIds };
+  return { userId: randomUUID(), username: 'viewer', role: 'admin', serverIds };
 }
 
 /**

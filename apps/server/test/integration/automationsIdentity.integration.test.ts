@@ -30,6 +30,7 @@ import { evaluateRulesAsync } from '../../src/services/automations/engine.js';
 import { getActiveAutomations } from '../../src/jobs/poller/database.js';
 import { resolveTargetSessions } from '../../src/services/automations/executors/targeting.js';
 import { automationRoutes } from '../../src/routes/automations.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 // A condition that always matches, so tests exercise scope filtering only.
 const ALWAYS_MATCH_CONDITIONS: AutomationConditions = {
@@ -401,6 +402,7 @@ describe('account-scoped automations', () => {
     app.decorate('authenticate', async (request: any) => {
       request.user = ownerUser;
     });
+    app.decorate('requirePermission', permissionGuard(app));
     app.decorate('requireOwner', async (request: any) => {
       request.user = ownerUser;
     });
@@ -551,12 +553,13 @@ describe('GET /automations person-scoped visibility', () => {
     const viewer = {
       userId: randomUUID(),
       username: 'viewer',
-      role: 'viewer',
+      role: 'admin',
       serverIds: [otherServer.id],
     };
     app.decorate('authenticate', async (request: any) => {
       request.user = viewer;
     });
+    app.decorate('requirePermission', permissionGuard(app));
     app.decorate('requireOwner', async (request: any, reply: any) => {
       request.user = viewer;
       await reply.forbidden('Owner access required');
@@ -591,12 +594,13 @@ describe('GET /automations person-scoped visibility', () => {
     const viewer = {
       userId: randomUUID(),
       username: 'viewer',
-      role: 'viewer',
+      role: 'admin',
       serverIds: [serverB.id],
     };
     app.decorate('authenticate', async (request: any) => {
       request.user = viewer;
     });
+    app.decorate('requirePermission', permissionGuard(app));
     app.decorate('requireOwner', async (request: any, reply: any) => {
       request.user = viewer;
       await reply.forbidden('Owner access required');

@@ -13,6 +13,7 @@ vi.mock('../library/index.js', () => ({ libraryStatsRoutes: async () => {} }));
 import { db } from '../../db/client.js';
 import { enqueueLibrarySync } from '../../jobs/librarySyncQueue.js';
 import { libraryRoutes } from '../library.js';
+import { permissionGuard } from '../../lib/scope.js';
 
 function mockServerRow(row: { historicalAt: Date | null }) {
   vi.mocked(db.select).mockReturnValue({
@@ -28,6 +29,7 @@ async function build(): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: { user?: unknown }) => {
     request.user = { userId: randomUUID(), role: 'owner', serverIds: [] };
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(libraryRoutes);
   return app;
 }

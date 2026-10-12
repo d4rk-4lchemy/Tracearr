@@ -11,8 +11,8 @@ import {
   type CSSProperties,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { CatalogRow, CatalogRowServerEntry, ServerType } from '@tracearr/shared';
-import { PosterCard, type PosterCardServer } from './PosterCard';
+import type { CatalogRow } from '@tracearr/shared';
+import { PosterCard, toPosterCardServers, type ServerLookupEntry } from './PosterCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -106,30 +106,6 @@ export function computeViewportInfo(
     topItem: Math.min(visibleStartRow * columnCount, totalItems - 1),
     columnCount,
   };
-}
-
-interface ServerLookupEntry {
-  name: string;
-  type: ServerType;
-  color?: string | null;
-}
-
-function toPosterCardServers(
-  entries: CatalogRowServerEntry[],
-  serverById: Map<string, ServerLookupEntry>
-): PosterCardServer[] {
-  return entries.map((entry) => {
-    const server = serverById.get(entry.serverId);
-    return {
-      serverId: entry.serverId,
-      name: server?.name ?? entry.serverId,
-      type: server?.type ?? 'plex',
-      color: server?.color ?? null,
-      addedAt: entry.addedAt,
-      videoResolution: entry.videoResolution,
-      versionCount: entry.versionCount,
-    };
-  });
 }
 
 /** One poster cell. Memoized so a virtualizer range update (which re-renders

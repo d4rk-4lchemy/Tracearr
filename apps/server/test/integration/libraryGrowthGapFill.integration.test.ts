@@ -21,6 +21,7 @@ import { createTestServer } from '@tracearr/test-utils/factories';
 import { createMockRedis } from '@tracearr/test-utils/mocks';
 import { db } from '../../src/db/client.js';
 import { libraryGrowthRoute } from '../../src/routes/library/growth.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 function ownerAuth(): AuthUser {
   return { userId: 'owner', username: 'owner', role: 'owner', serverIds: [] };
@@ -33,6 +34,7 @@ async function buildApp(): Promise<FastifyInstance> {
   app.decorate('authenticate', async (request: { user: AuthUser }) => {
     request.user = ownerAuth();
   });
+  app.decorate('requirePermission', permissionGuard(app));
   await app.register(libraryGrowthRoute);
   return app;
 }

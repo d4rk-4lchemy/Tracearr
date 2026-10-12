@@ -62,7 +62,7 @@ export const libraryResolutionRoute: FastifyPluginAsync = async (app) => {
    */
   app.get<{ Querystring: ResolutionQueryInput }>(
     '/resolution',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requirePermission('insights', 'read')] },
     async (request, reply) => {
       const query = resolutionQuerySchema.safeParse(request.query);
       if (!query.success) {

@@ -95,6 +95,8 @@ async function buildTestApp(): Promise<FastifyInstance> {
   app.decorate('jwt', mockJwt as never);
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   app.decorate('authenticate', async () => {});
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  app.decorate('requireOwner', async () => {});
   app.decorate('requireMobile', async (request: unknown) => {
     (request as { user: AuthUser }).user = {
       userId: randomUUID(),

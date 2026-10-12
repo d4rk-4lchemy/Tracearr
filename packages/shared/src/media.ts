@@ -29,3 +29,12 @@ export function formatEpisodeLabel(
   const gap = options.separator ?? (options.spaced ? ' ' : '');
   return `S${season}${gap}E${episode}`;
 }
+
+/**
+ * An avatar the browser may load straight from where it lives. plex.tv serves Plex account
+ * avatars; any other absolute address would let whoever set it see who opens the page, so those
+ * are never loaded and media server avatars go through the image proxy instead.
+ */
+export function isDirectAvatarUrl(url: string): boolean {
+  return /^https:\/\/([a-z0-9-]+\.)*plex\.tv\//i.test(url);
+}

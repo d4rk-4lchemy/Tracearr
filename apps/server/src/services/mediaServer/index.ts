@@ -111,10 +111,10 @@ export { DispatcharrClient } from './dispatcharr/client.js';
 export type { PlexServerResource, PlexServerConnection } from './plex/parser.js';
 
 // Jellyfin-specific types
-export type { JellyfinActivityEntry, JellyfinAuthResult } from './jellyfin/parser.js';
+export type { JellyfinActivityEntry } from './jellyfin/parser.js';
 
 // Emby-specific types
-export type { EmbyActivityEntry, EmbyAuthResult } from './emby/parser.js';
+export type { EmbyActivityEntry } from './emby/parser.js';
 
 // Parsers (for testing and direct use)
 export * as plexParser from './plex/parser.js';

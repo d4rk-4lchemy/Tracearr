@@ -100,10 +100,18 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
     const expectedOldSemantics = await oldSemanticsTodayPlaysCount(timezone);
     expect(expectedOldSemantics).toBe(2);
 
-    const allServersStats = await getDashboardStats({ serverIds: undefined, timezone });
+    const allServersStats = await getDashboardStats({
+      serverIds: undefined,
+      scope: 'all',
+      timezone,
+    });
     expect(allServersStats.todayPlays).toBe(expectedOldSemantics);
 
-    const filteredStats = await getDashboardStats({ serverIds: [server.id], timezone });
+    const filteredStats = await getDashboardStats({
+      serverIds: [server.id],
+      scope: 'all',
+      timezone,
+    });
     expect(filteredStats.todayPlays).toBe(expectedOldSemantics);
   });
 

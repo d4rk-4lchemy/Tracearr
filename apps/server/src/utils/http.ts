@@ -60,6 +60,10 @@ export class HttpClientError extends Error {
   }
 }
 
+export function isHttpStatus(error: unknown, ...statuses: number[]): boolean {
+  return error instanceof HttpClientError && statuses.includes(error.statusCode);
+}
+
 /**
  * Options for HTTP requests
  */

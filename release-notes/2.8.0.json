@@ -1,0 +1,147 @@
+{
+  "version": "2.8.0",
+  "date": "2026-10-11",
+  "headline": "Members can sign in",
+  "changes": [
+    {
+      "type": "new",
+      "text": "members sign in with a Jellyfin or Emby password, Jellyfin Quick Connect, or their Plex account"
+    },
+    {
+      "type": "new",
+      "text": "member sign-in is off by default; turn it on in Settings → Sign-in, then per server"
+    },
+    {
+      "type": "new",
+      "text": "each person is Allow, Block or Default on their user page; Allow works even with both switches off"
+    },
+    {
+      "type": "new",
+      "text": "/login?all also lists servers whose switch is off but where someone set to Allow has an account"
+    },
+    {
+      "type": "new",
+      "text": "someone the media server accepts but the owner keeps out is told to contact the server owner"
+    },
+    {
+      "type": "new",
+      "text": "members see their own history, stats and requests, browse libraries, and never a trust score or a violation"
+    },
+    {
+      "type": "new",
+      "text": "members land on a personal dashboard: last 30 days, top titles as posters, how you watch, all-time moments, requests"
+    },
+    {
+      "type": "new",
+      "text": "owners and admins switch the dashboard between Server and Personal, where Personal shows their own watching"
+    },
+    {
+      "type": "new",
+      "text": "the member Library overview is what's new plus Most Popular without counts, with a Not watched by you link"
+    },
+    {
+      "type": "improved",
+      "text": "Settings → Sign-in lists only the sign-in methods your owner account holds, and keeps the last one on"
+    },
+    {
+      "type": "new",
+      "text": "Settings → Sign-in lists everyone set to Allow or Block with their role, and adds or clears people from there"
+    },
+    {
+      "type": "new",
+      "text": "OIDC sign-in links to an allowed member by email or username"
+    },
+    {
+      "type": "new",
+      "text": "owners can view Tracearr as any admin or member from the user page, read-only for up to an hour"
+    },
+    {
+      "type": "new",
+      "text": "Show members anonymous server activity gives members counts of other streams and plays, never names or titles"
+    },
+    {
+      "type": "new",
+      "text": "the user page shows how many times each person signed in and when they last did"
+    },
+    {
+      "type": "note",
+      "text": "every admin becomes a member on upgrade; give Admin back on their user page or under Settings → Sign-in"
+    },
+    {
+      "type": "improved",
+      "text": "the login page only shows the sign-in methods that are switched on, including Plex"
+    },
+    {
+      "type": "fix",
+      "text": "signing in with OIDC on a new install now creates the owner instead of failing on a missing username"
+    },
+    {
+      "type": "fix",
+      "text": "open on server and notification links use the server's public address when one is set"
+    },
+    {
+      "type": "fix",
+      "text": "the supervised image fixes ownership of a separately mounted image cache and /data/backup"
+    },
+    {
+      "type": "fix",
+      "text": "the poster cache warning in Settings → General clears as soon as the cache is on a mounted volume"
+    },
+    {
+      "type": "improved",
+      "text": "a poster cache directory the server cannot write to is logged with the error code and uid"
+    },
+    {
+      "type": "fix",
+      "text": "a concurrent streams rule kills the stream again instead of skipping it as condition cleared",
+      "refs": ["#1308"]
+    },
+    {
+      "type": "fix",
+      "text": "newsletters keep sending after Redis drops and reconnects instead of stopping until a restart"
+    },
+    {
+      "type": "improved",
+      "text": "stream and trust score pushes start on for new phones and any phone that never opened its notification settings"
+    },
+    {
+      "type": "security",
+      "text": "a page on another port or subdomain of the same host can no longer act with your session"
+    },
+    {
+      "type": "security",
+      "text": "a Plex sign-in can only be finished in the browser that started it"
+    },
+    {
+      "type": "security",
+      "text": "crafted image paths can no longer reach other Plex, Jellyfin or Emby endpoints through the image proxy"
+    },
+    {
+      "type": "note",
+      "text": "TRUST_PROXY=true now trusts one proxy hop and is needed for x-forwarded-host; two chained proxies need TRUST_PROXY=2"
+    },
+    {
+      "type": "note",
+      "text": "TRUST_PROXY must be true, false, a hop count or proxy IPs/CIDRs; any other value stops startup"
+    },
+    {
+      "type": "note",
+      "text": "CORS_ORIGIN=* now allows only requests without a session; list any other origin that needs one"
+    }
+  ],
+  "highlights": [
+    {
+      "title": "Member sign-in",
+      "body": "People you share a server with can sign in to Tracearr with their Jellyfin, Emby or Plex account once you turn it on in Settings → Sign-in, server by server. On a user's page you can Allow or Block one person whatever the switch says. Members land on a personal dashboard of their own watching and requests, and never see a trust score, a violation, or anyone else's name or titles."
+    },
+    {
+      "title": "Jellyfin Quick Connect",
+      "body": "A Jellyfin member can sign in without typing a password: the login page shows a code, they enter it in Jellyfin under Quick Connect, and Tracearr signs them in once it is approved."
+    },
+    {
+      "title": "Sign-in methods and View as",
+      "body": "Settings → Sign-in shows the methods your owner account holds, each with a switch, and keeps the last one on. It also lists everyone set to Allow or Block with their role, so you can add a person, change their role or send them back to the default without opening their page. From a user's page, an owner can view Tracearr as any admin or member, read-only for up to an hour."
+    }
+  ],
+  "upgradeWarning": "Every admin becomes a member on upgrade. Give Admin back on their user page or under Settings → Sign-in."
+}

@@ -156,15 +156,10 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get(
     '/plex/available-servers',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requireOwner] },
     async (request, reply): Promise<PlexAvailableServersResponse> => {
       const authUser = request.user;
       const { accountId } = request.query as { accountId?: string };
-
-      // Only owners can add servers
-      if (authUser.role !== 'owner') {
-        return reply.forbidden('Only server owners can add servers');
-      }
 
       // Get user for ownership verification
       const user = await getUserById(authUser.userId);
@@ -240,15 +235,9 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get(
     '/plex/server-connections/:serverId',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requireOwner] },
     async (request, reply): Promise<{ server: PlexDiscoveredServer } | { server: null }> => {
-      const authUser = request.user;
       const { serverId } = request.params as { serverId: string };
-
-      // Only owners can edit servers
-      if (authUser.role !== 'owner') {
-        return reply.forbidden('Only server owners can edit servers');
-      }
 
       // Get the server from DB
       const serverRows = await db
@@ -381,12 +370,9 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
       } else {
         // Run the standard authenticate decorator (covers JWT verify +
         // isTokenRevoked). It sends the reply on failure, so short-circuit.
-        await app.authenticate(request, reply);
+        await app.requireOwner(request, reply);
         if (reply.sent) return undefined;
         const authUser = request.user;
-        if (authUser.role !== 'owner') {
-          return reply.forbidden('Only server owners can test connections');
-        }
         const user = await getUserById(authUser.userId);
         if (!user) {
           return reply.unauthorized('User not found');
@@ -458,7 +444,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
    * - accountId: Optional. If provided, uses the token from specified plex_account
    *              and sets the FK on the new server.
    */
-  app.post('/plex/add-server', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/plex/add-server', { preHandler: [app.requireOwner] }, async (request, reply) => {
     const body = plexAddServerSchema.safeParse(request.body);
     if (!body.success) {
       return reply.badRequest('serverUri, serverName, and clientIdentifier are required');
@@ -466,11 +452,6 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
 
     const { serverUri, serverName, clientIdentifier, accountId } = body.data;
     const authUser = request.user;
-
-    // Only owners can add servers
-    if (authUser.role !== 'owner') {
-      return reply.forbidden('Only server owners can add servers');
-    }
 
     // Get user for ownership verification
     const user = await getUserById(authUser.userId);
@@ -629,14 +610,9 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get(
     '/plex/accounts',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requireOwner] },
     async (request, reply): Promise<PlexAccountsResponse> => {
       const authUser = request.user;
-
-      // Only owners can manage Plex accounts
-      if (authUser.role !== 'owner') {
-        return reply.forbidden('Only server owners can manage Plex accounts');
-      }
 
       // Get user ID from auth
       const user = await getUserById(authUser.userId);
@@ -737,7 +713,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post(
     '/plex/link-account',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requireOwner] },
     async (request, reply): Promise<LinkPlexAccountResponse> => {
       const body = plexPinBodySchema.safeParse(request.body);
       if (!body.success) {
@@ -746,11 +722,6 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
 
       const { pin } = body.data;
       const authUser = request.user;
-
-      // Only owners can link Plex accounts
-      if (authUser.role !== 'owner') {
-        return reply.forbidden('Only server owners can link Plex accounts');
-      }
 
       // Get user
       const user = await getUserById(authUser.userId);
@@ -831,7 +802,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
    */
   app.post(
     '/plex/accounts/:id/reauthorize',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requireOwner] },
     async (request, reply): Promise<ReauthorizePlexAccountResponse> => {
       const params = plexAccountIdParamSchema.safeParse(request.params);
       if (!params.success) {
@@ -846,10 +817,6 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
       const { id } = params.data;
       const { pin } = body.data;
       const authUser = request.user;
-
-      if (authUser.role !== 'owner') {
-        return reply.forbidden('Only server owners can reauthorize Plex accounts');
-      }
 
       const user = await getUserById(authUser.userId);
       if (!user) {
@@ -977,7 +944,7 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
    */
   app.delete(
     '/plex/accounts/:id',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.requireOwner] },
     async (request, reply): Promise<UnlinkPlexAccountResponse> => {
       const params = plexAccountIdParamSchema.safeParse(request.params);
       if (!params.success) {
@@ -986,11 +953,6 @@ export const plexRoutes: FastifyPluginAsync = async (app) => {
 
       const { id } = params.data;
       const authUser = request.user;
-
-      // Only owners can unlink accounts
-      if (authUser.role !== 'owner') {
-        return reply.forbidden('Only server owners can unlink Plex accounts');
-      }
 
       // Get user
       const user = await getUserById(authUser.userId);

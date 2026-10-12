@@ -18,7 +18,7 @@ import { settings } from '../db/schema.js';
 /** Default values for public settings (returned by GET /settings). */
 const PUBLIC_DEFAULTS: Settings = {
   // Settings interface fields
-  allowGuestAccess: false,
+  loginMethods: { local: true, plex: true, oidc: true, member: false },
   unitSystem: 'metric',
   pollerEnabled: true,
   pollerIntervalMs: 15000,
@@ -46,6 +46,7 @@ const PUBLIC_DEFAULTS: Settings = {
   publicApiRateLimitPerMinute: 240,
   imagePrecacheEnabled: true,
   preferredPosterServerId: null,
+  memberServerActivity: false,
 };
 
 export interface ImportedHistoryLinkState {
@@ -67,7 +68,6 @@ export interface ImportedHistoryLinkState {
 const INTERNAL_DEFAULTS = {
   tailscaleState: null as string | null,
   jwtRevokedBefore: null as string | null, // ISO 8601 — tokens issued before this timestamp are rejected
-  localLoginEnabled: true,
   // ISO 8601 - set once when the last legacy:1 version sentinel clears; marks
   // where storage history changes meaning (multi-version rollups)
   mediaVersionsBackfilledAt: null as string | null,

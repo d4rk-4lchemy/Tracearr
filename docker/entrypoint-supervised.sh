@@ -259,6 +259,14 @@ if [ "$(stat -c %U /data/tracearr 2>/dev/null)" != "tracearr" ]; then
     log "Fixing Tracearr data directory ownership..."
     chown -R tracearr:tracearr /data/tracearr
 fi
+# Separate bind mounts that the /data/tracearr check above does not reach
+for dir in "$IMAGE_CACHE_DIR" /data/backup; do
+    mkdir -p "$dir"
+    if [ "$(stat -c %U "$dir" 2>/dev/null)" != "tracearr" ]; then
+        log "Fixing $dir ownership..."
+        chown -R tracearr:tracearr "$dir"
+    fi
+done
 if [ "$(stat -c %U /app 2>/dev/null)" != "tracearr" ]; then
     log "Fixing application directory ownership..."
     chown -R tracearr:tracearr /app

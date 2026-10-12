@@ -587,4 +587,19 @@ describe('getImageCacheStatus', () => {
     expect(status.freedBytesLastSweep).toBe(0);
     expect(status.deletedFilesLastSweep).toBe(0);
   });
+
+  it('drops a not-persisting flag as soon as the cache directory is a mounted volume', async () => {
+    const redis = makeRedisStub();
+    vi.mocked(getRedis).mockReturnValue(redis as never);
+    redis.store.set(REDIS_KEYS.IMAGE_CACHE_NOT_PERSISTING, '2026-10-01T00:00:00.000Z');
+    vi.mocked(statfs).mockRejectedValue(new Error('ENOSYS'));
+    mockLibraryItemsCount(0);
+
+    vi.mocked(stat).mockResolvedValue({ dev: 1 } as never);
+    expect((await getImageCacheStatus()).notPersisting).toBe(true);
+
+    mockLibraryItemsCount(0);
+    vi.mocked(stat).mockImplementation(async (path) => ({ dev: path === '/' ? 1 : 2 }) as never);
+    expect((await getImageCacheStatus()).notPersisting).toBe(false);
+  });
 });

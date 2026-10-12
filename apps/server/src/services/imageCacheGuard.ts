@@ -4,7 +4,7 @@
  * optional ceiling is reached, and counts what it refused.
  */
 
-import { statfs } from 'node:fs/promises';
+import { stat, statfs } from 'node:fs/promises';
 import { REDIS_KEYS } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
 
@@ -43,6 +43,17 @@ export async function readDiskSpace(
   const totalBytes = Number(stats.blocks) * Number(stats.bsize);
   diskMemo.set(dir, { at: Date.now(), freeBytes, totalBytes });
   return { freeBytes, totalBytes };
+}
+
+/** A volume or host path mounted at or above dir has its own device id; a
+ *  directory on the container's writable layer shares the root's. */
+export async function isOnMountedVolume(dir: string): Promise<boolean> {
+  try {
+    const [dirStat, rootStat] = await Promise.all([stat(dir), stat('/')]);
+    return dirStat.dev !== rootStat.dev;
+  } catch {
+    return false;
+  }
 }
 
 /** False when the write would breach the floor or the ceiling. A statfs failure fails open. */

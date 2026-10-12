@@ -79,6 +79,23 @@ describe('CopyButton', () => {
     );
   });
 
+  it('shows its children instead of the label and still copies the value', async () => {
+    const user = userEvent.setup();
+    render(
+      <CopyButton value="123456" label="Copy code">
+        123456
+      </CopyButton>
+    );
+
+    const button = screen.getByRole('button', { name: 'Copy code' });
+    expect(button).toHaveTextContent('123456');
+    expect(button).toHaveAttribute('data-size', 'default');
+
+    await user.click(button);
+
+    await expect(navigator.clipboard.readText()).resolves.toBe('123456');
+  });
+
   it('does not copy while disabled', async () => {
     const user = userEvent.setup();
     render(<CopyButton value="abc" label="Copy token" disabled />);

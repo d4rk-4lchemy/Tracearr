@@ -49,14 +49,20 @@
     "vodPlays": "",
     "vodWatchTime": "",
     "tvSessions": "",
-    "tvWatchTime": ""
+    "tvWatchTime": "",
+    "plays": "",
+    "watchTime": ""
   },
   "users": {
     "title": "",
     "showRemoved": "",
     "noUsersFound": "",
+    "selectAllUsers_one": "",
+    "selectAllUsers_other": "",
     "serversColumn": "",
     "resetTrustScore": "",
+    "resetTrustScoreTitle_one": "",
+    "resetTrustScoreTitle_other": "",
     "resetTrustScoreConfirm": "",
     "mergeUsers": "",
     "mergeTitleSuggestion": "",
@@ -72,6 +78,8 @@
     "mergeNeverActive": "",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
+    "mergeMoves_one": "",
+    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -87,9 +95,17 @@
     "mergeSameIdentity": "",
     "mergeSelectAllActive": "",
     "suggestionsTitle": "",
+    "suggestionsCount_one": "",
+    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
+    "suggestionsPairEmailMore_one": "",
+    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
+    "suggestionsPairEmailUsernameMore_one": "",
+    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
+    "suggestionsPairUsernameMore_one": "",
+    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "",
     "suggestionsReview": "",
     "suggestionsNotSame": "",
@@ -105,27 +121,13 @@
     "filterHasAccessTo": "",
     "filterHasAccessToPlaceholder": "",
     "filterHasAccessToHint": "",
-    "selectAllUsers_one": "",
     "selectAllUsers_few": "",
-    "selectAllUsers_other": "",
-    "resetTrustScoreTitle_one": "",
     "resetTrustScoreTitle_few": "",
-    "resetTrustScoreTitle_other": "",
-    "mergeMoves_one": "",
     "mergeMoves_few": "",
-    "mergeMoves_other": "",
-    "suggestionsCount_one": "",
     "suggestionsCount_few": "",
-    "suggestionsCount_other": "",
-    "suggestionsPairEmailMore_one": "",
     "suggestionsPairEmailMore_few": "",
-    "suggestionsPairEmailMore_other": "",
-    "suggestionsPairEmailUsernameMore_one": "",
     "suggestionsPairEmailUsernameMore_few": "",
-    "suggestionsPairEmailUsernameMore_other": "",
-    "suggestionsPairUsernameMore_one": "",
-    "suggestionsPairUsernameMore_few": "",
-    "suggestionsPairUsernameMore_other": ""
+    "suggestionsPairUsernameMore_few": ""
   },
   "userDetail": {
     "backToUsers": "",
@@ -171,10 +173,6 @@
   "library": {
     "title": "",
     "description": "",
-    "topMovies": "",
-    "topShows": "",
-    "noMoviePlays": "",
-    "noShowPlays": "",
     "overview": {
       "description": "",
       "lastUpdated": "",
@@ -201,11 +199,11 @@
         "movies": "",
         "shows": "",
         "movieCount_one": "",
-        "movieCount_few": "",
         "movieCount_other": "",
         "episodeCount_one": "",
-        "episodeCount_few": "",
-        "episodeCount_other": ""
+        "episodeCount_other": "",
+        "movieCount_few": "",
+        "episodeCount_few": ""
       }
     },
     "storage": {
@@ -305,8 +303,8 @@
         "fallbackBody": "",
         "progress": "",
         "snapshotsSuffix_one": "",
-        "snapshotsSuffix_few": "",
-        "snapshotsSuffix_other": ""
+        "snapshotsSuffix_other": "",
+        "snapshotsSuffix_few": ""
       },
       "multiServer": {
         "title": "",
@@ -329,11 +327,15 @@
     "versionsBackfill": {
       "banner": "",
       "action": "",
-      "syncStarted": "",
       "syncFailed_one": "",
-      "syncFailed_few": "",
-      "syncFailed_other": ""
-    }
+      "syncFailed_other": "",
+      "syncStarted": "",
+      "syncFailed_few": ""
+    },
+    "topMovies": "",
+    "topShows": "",
+    "noMoviePlays": "",
+    "noShowPlays": ""
   },
   "activity": {
     "title": "",
@@ -352,8 +354,12 @@
   "violations": {
     "title": "",
     "tryAdjustingFilters": "",
+    "selectAllViolations_one": "",
+    "selectAllViolations_other": "",
     "dismissViolation": "",
     "dismissViolationConfirm": "",
+    "dismissViolations_one": "",
+    "dismissViolations_other": "",
     "dismissViolationsConfirm": "",
     "noViolationsFound": "",
     "noViolationsRecorded": "",
@@ -362,6 +368,8 @@
     "allRules": "",
     "filterPeople": "",
     "allPeople": "",
+    "peopleSelectedCount_one": "",
+    "peopleSelectedCount_other": "",
     "personFilterPlaceholder": "",
     "personFilterEmpty": "",
     "personFilterError": "",
@@ -389,18 +397,12 @@
       "matched": "",
       "actual": "",
       "relatedSessions_one": "",
-      "relatedSessions_few": "",
-      "relatedSessions_other": ""
+      "relatedSessions_other": "",
+      "relatedSessions_few": ""
     },
-    "selectAllViolations_one": "",
     "selectAllViolations_few": "",
-    "selectAllViolations_other": "",
-    "dismissViolations_one": "",
     "dismissViolations_few": "",
-    "dismissViolations_other": "",
-    "peopleSelectedCount_one": "",
-    "peopleSelectedCount_few": "",
-    "peopleSelectedCount_other": ""
+    "peopleSelectedCount_few": ""
   },
   "automations": {
     "message": {
@@ -626,11 +628,11 @@
       "openInEditor": "",
       "tabsLabel": "",
       "emptyRan": "",
+      "emptyRanDescription_one": "",
+      "emptyRanDescription_other": "",
       "item": "",
       "recordedViolation": "",
-      "emptyRanDescription_one": "",
-      "emptyRanDescription_few": "",
-      "emptyRanDescription_other": ""
+      "emptyRanDescription_few": ""
     },
     "allKinds": "",
     "allStatuses": "",
@@ -712,6 +714,8 @@
       "searchPlaceholder": "",
       "noMatches": "",
       "clearSelection": "",
+      "selectedCount_one": "",
+      "selectedCount_other": "",
       "scope": {
         "label": "",
         "global": "",
@@ -832,14 +836,14 @@
         "placeholderAction": ""
       },
       "footer": {
-        "ready": "",
-        "search": "",
         "problems_one": "",
-        "problems_few": "",
         "problems_other": "",
         "remaining_one": "",
-        "remaining_few": "",
-        "remaining_other": ""
+        "remaining_other": "",
+        "ready": "",
+        "search": "",
+        "problems_few": "",
+        "remaining_few": ""
       },
       "leave": {
         "title": "",
@@ -861,9 +865,7 @@
         "sampleGone": "",
         "backToLive": ""
       },
-      "selectedCount_one": "",
-      "selectedCount_few": "",
-      "selectedCount_other": ""
+      "selectedCount_few": ""
     },
     "categories": {
       "session_behavior": "",
@@ -877,8 +879,12 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
+    "deleteAutomation_one": "",
+    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
+      "more_one": "",
+      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -897,11 +903,11 @@
       "appliesTo": "",
       "duration": {
         "minutes_one": "",
-        "minutes_few": "",
         "minutes_other": "",
         "days_one": "",
-        "days_few": "",
-        "days_other": ""
+        "days_other": "",
+        "minutes_few": "",
+        "days_few": ""
       },
       "triggers": {
         "sessionStarted": "",
@@ -1040,19 +1046,17 @@
         "boolean": "",
         "listed": ""
       },
-      "more_one": "",
-      "more_few": "",
-      "more_other": ""
+      "more_few": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
-      "noRuns": "",
       "runsLine_one": "",
-      "runsLine_few": "",
-      "runsLine_other": ""
+      "runsLine_other": "",
+      "noRuns": "",
+      "runsLine_few": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1751,9 +1755,7 @@
       "allTriggers": ""
     },
     "openGallery": "",
-    "deleteAutomation_one": "",
-    "deleteAutomation_few": "",
-    "deleteAutomation_other": ""
+    "deleteAutomation_few": ""
   },
   "terminateStream": {
     "title": "",
@@ -1786,8 +1788,12 @@
         "unknown": ""
       },
       "connectionsReachable": "",
+      "connectionsAvailable_one": "",
+      "connectionsAvailable_other": "",
       "hideFiltered": "",
       "showAll": "",
+      "moreConnections_one": "",
+      "moreConnections_other": "",
       "connectingTo": "",
       "ownerOnly": "",
       "noAccountsLinked": "",
@@ -1796,23 +1802,21 @@
       "linkAnotherAccount": "",
       "linking": "",
       "loginEnabled": "",
+      "serversConnected_one": "",
+      "serversConnected_other": "",
       "unlinkAccount": "",
       "reauthorizeAccount": "",
       "deleteServersFirst": "",
       "unlinkPlexAccount": "",
       "unlinkConfirm": "",
-      "connectionsAvailable_one": "",
       "connectionsAvailable_few": "",
-      "connectionsAvailable_other": "",
-      "moreConnections_one": "",
       "moreConnections_few": "",
-      "moreConnections_other": "",
-      "serversConnected_one": "",
-      "serversConnected_few": "",
-      "serversConnected_other": ""
+      "serversConnected_few": ""
     },
     "destinations": {
       "add": "",
+      "alertsGoTo_one": "",
+      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
       "deleteConfirm": "",
@@ -1910,18 +1914,16 @@
         "push": "",
         "webToast": ""
       },
+      "usedBy_one": "",
+      "usedBy_other": "",
+      "usedByNewsletters_one": "",
+      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
       "webToastNote": "",
-      "alertsGoTo_one": "",
       "alertsGoTo_few": "",
-      "alertsGoTo_other": "",
-      "usedBy_one": "",
       "usedBy_few": "",
-      "usedBy_other": "",
-      "usedByNewsletters_one": "",
-      "usedByNewsletters_few": "",
-      "usedByNewsletters_other": ""
+      "usedByNewsletters_few": ""
     },
     "jobs": {
       "runNow": "",
@@ -1980,6 +1982,8 @@
     "title": "",
     "description": "",
     "analyzedSessions": "",
+    "analyzedSessionsTooltip_one": "",
+    "analyzedSessionsTooltip_other": "",
     "directPlayRate": "",
     "videoAndAudio": "",
     "uniqueDevices": "",
@@ -2002,9 +2006,7 @@
     "topTranscodingUsers": "",
     "topTranscodingUsersDesc": "",
     "noTranscodingUsers": "",
-    "analyzedSessionsTooltip_one": "",
-    "analyzedSessionsTooltip_few": "",
-    "analyzedSessionsTooltip_other": ""
+    "analyzedSessionsTooltip_few": ""
   },
   "statsBandwidth": {
     "title": "",
@@ -2035,7 +2037,6 @@
     "backToSettings": "",
     "apiKeyAutoLoaded": "",
     "noApiKey": "",
-    "versionSwitcherLabel": "",
     "versionV1": "",
     "versionV2": "",
     "specLoadError": ""
@@ -2113,20 +2114,22 @@
         }
       },
       "card": {
-        "addedAgo": "dodato {{date}}",
-        "addedCompactAgo": "",
         "newEpisodes_one": "{{count}} nova epizoda",
-        "newEpisodes_few": "",
         "newEpisodes_other": "{{count}} novih epizoda",
         "replacedEpisodes_one": "",
-        "replacedEpisodes_few": "",
         "replacedEpisodes_other": "",
+        "addedAgo": "dodato {{date}}",
+        "addedCompactAgo": "",
         "newEpisodesChip_one": "",
-        "newEpisodesChip_few": "",
-        "newEpisodesChip_other": ""
+        "newEpisodesChip_other": "",
+        "newEpisodes_few": "",
+        "replacedEpisodes_few": "",
+        "newEpisodesChip_few": ""
       },
       "deadWeight": {
         "title": "",
+        "summary_one": "",
+        "summary_other": "",
         "empty": "",
         "columns": {
           "poster": "",
@@ -2136,9 +2139,7 @@
         },
         "viewAll": "",
         "viewAllTooltip": "",
-        "summary_one": "",
-        "summary_few": "",
-        "summary_other": ""
+        "summary_few": ""
       },
       "loadError": ""
     },
@@ -2154,10 +2155,10 @@
       "chart": {
         "title": "",
         "valueLabel": "",
-        "ariaLabel": "",
         "itemCount_one": "",
-        "itemCount_few": "",
-        "itemCount_other": ""
+        "itemCount_other": "",
+        "ariaLabel": "",
+        "itemCount_few": ""
       },
       "table": {
         "title": "",
@@ -2189,11 +2190,11 @@
         "loadError": "",
         "meta": {
           "seasons_one": "",
-          "seasons_few": "",
           "seasons_other": "",
           "episodes_one": "",
-          "episodes_few": "",
-          "episodes_other": ""
+          "episodes_other": "",
+          "seasons_few": "",
+          "episodes_few": ""
         },
         "availability": {
           "added": "",
@@ -2247,6 +2248,8 @@
         "title": "",
         "loadError": "",
         "empty": "",
+        "episodeCount_one": "",
+        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
@@ -2254,9 +2257,7 @@
           "partial": "",
           "unwatched": ""
         },
-        "episodeCount_one": "",
-        "episodeCount_few": "",
-        "episodeCount_other": ""
+        "episodeCount_few": ""
       },
       "platforms": {
         "title": "",
@@ -2294,6 +2295,8 @@
       "rankSuffix": ", rang {{rank}}",
       "onServers": "Na {{servers}}",
       "addedLabel": "Dodato {{date}}",
+      "viewers_one": "{{count}} gledalac",
+      "viewers_other": "{{count}} gledalaca",
       "watchedState": {
         "watched": "Gledano",
         "partial": "Delimično gledano",
@@ -2307,17 +2310,15 @@
         "resolution": ""
       },
       "rankChip": "",
-      "versionsChip": "",
-      "moreServers": "",
-      "viewers_one": "{{count}} gledalac",
-      "viewers_few": "",
-      "viewers_other": "{{count}} gledalaca",
       "playsCompact_one": "",
-      "playsCompact_few": "",
       "playsCompact_other": "",
+      "versionsChip": "",
       "versions_one": "",
-      "versions_few": "",
-      "versions_other": ""
+      "versions_other": "",
+      "moreServers": "",
+      "viewers_few": "",
+      "playsCompact_few": "",
+      "versions_few": ""
     },
     "grid": {
       "toolbar": {
@@ -2378,8 +2379,8 @@
         },
         "count": "",
         "countTotal_one": "",
-        "countTotal_few": "",
-        "countTotal_other": ""
+        "countTotal_other": "",
+        "countTotal_few": ""
       },
       "scrubber": {
         "label": "",
@@ -2463,13 +2464,13 @@
       "linkSeerr": "",
       "kpi": {
         "requested": "",
+        "landedOf_one": "",
+        "landedOf_other": "",
         "watched": "",
         "neverPlayed": "",
         "ofLanded": "",
         "onDisk": "",
-        "landedOf_one": "",
-        "landedOf_few": "",
-        "landedOf_other": ""
+        "landedOf_few": ""
       }
     },
     "funnel": {

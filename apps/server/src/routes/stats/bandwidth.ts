@@ -15,6 +15,7 @@ import { db } from '../../db/client.js';
 import '../../db/schema.js';
 import { resolveDateRange } from './utils.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { scopedServerFragment } from '../../lib/scope.js';
 import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
 
 // Extended schema with optional serverUserId filter
@@ -40,6 +41,7 @@ async function hasBandwidthAggregate(): Promise<boolean> {
 }
 
 export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
+  const readStats = { preHandler: [app.requirePermission('bandwidth', 'read')] };
   /**
    * GET /bandwidth/daily - Daily bandwidth usage over time
    *
@@ -49,7 +51,7 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
    * Groups by (date_bucket, server_id) so each row carries a serverId discriminator.
    * Single-server requests return one row per bucket; multi-server returns one per server per bucket.
    */
-  app.get('/bandwidth/daily', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/bandwidth/daily', readStats, async (request, reply) => {
     const query = bandwidthQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -61,7 +63,7 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
     const tz = timezone ?? 'UTC';
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds);
+    const serverFilter = scopedServerFragment(resolvedIds, request.scope);
     const userFilter = serverUserId ? sql`AND server_user_id = ${serverUserId}` : sql``;
     const useAggregate = await hasBandwidthAggregate();
 
@@ -156,7 +158,7 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
    * account they have on the resolved servers, with a representative account
    * (deterministic tiebreak) carrying the serverId/serverUserId for the row.
    */
-  app.get('/bandwidth/top-users', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/bandwidth/top-users', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -175,7 +177,12 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
     let result;
 
     if (useAggregate) {
-      const serverFilter = buildMultiServerFragment(resolvedIds, 'dbu.server_id');
+      const serverFilter = scopedServerFragment(
+        resolvedIds,
+        request.scope,
+        'dbu.server_id',
+        sql`dbu.server_user_id`
+      );
       const serverFilterSu2 = buildMultiServerFragment(resolvedIds, 'su2.server_id');
       const baseWhere = dateRange.start
         ? sql`WHERE dbu.day >= ${dateRange.start}`
@@ -211,7 +218,12 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
         LIMIT 10
       `);
     } else {
-      const serverFilter = buildMultiServerFragment(resolvedIds, 's.server_id');
+      const serverFilter = scopedServerFragment(
+        resolvedIds,
+        request.scope,
+        's.server_id',
+        sql`s.server_user_id`
+      );
       const serverFilterSu2 = buildMultiServerFragment(resolvedIds, 'su2.server_id');
       const baseWhere = dateRange.start
         ? sql`WHERE s.started_at >= ${dateRange.start}`
@@ -287,7 +299,7 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
    * Returns aggregate KPIs spanning all selected servers.
    * Also returns a byServer breakdown keyed by server ID when more than one server is in scope.
    */
-  app.get('/bandwidth/summary', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.get('/bandwidth/summary', readStats, async (request, reply) => {
     const query = statsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
@@ -298,7 +310,12 @@ export const bandwidthRoutes: FastifyPluginAsync = async (app) => {
     const dateRange = resolveDateRange(period, startDate, endDate);
 
     const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-    const serverFilter = buildMultiServerFragment(resolvedIds, 's.server_id');
+    const serverFilter = scopedServerFragment(
+      resolvedIds,
+      request.scope,
+      's.server_id',
+      sql`s.server_user_id`
+    );
 
     const baseWhere = dateRange.start
       ? sql`WHERE s.started_at >= ${dateRange.start}`

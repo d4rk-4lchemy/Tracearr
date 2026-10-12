@@ -13,6 +13,7 @@ import type { WatchedState } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { media, servers } from '../../db/schema.js';
 import { buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { scopeSessionsRaw, scopedServerFragment, type Scope } from '../../lib/scope.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
 import { buildPosterOrderFragment } from '../../routes/library/catalog.js';
 import { parseMediaRef } from './mediaRef.js';
@@ -526,7 +527,8 @@ export interface SeasonHeatSeasonRow {
  */
 export async function getSeasonHeat(
   canonical: MediaDetailRow,
-  serverIds: string[] | undefined
+  serverIds: string[] | undefined,
+  lensUserId: string | null
 ): Promise<SeasonHeatSeasonRow[] | null> {
   if (canonical.mediaType !== 'show') return null;
 
@@ -546,7 +548,7 @@ export async function getSeasonHeat(
           movieIds: allEpisodeIds,
           showIds: [],
           serverIds,
-          lensUserId: null,
+          lensUserId,
           episodeCounts: new Map(),
         })
       : new Map<string, WatchedState>();
@@ -588,7 +590,8 @@ export interface MediaStatsWindowResult {
  */
 export async function getMediaStats(
   scope: MediaScope,
-  serverIds: string[] | undefined
+  serverIds: string[] | undefined,
+  rowScope: Scope
 ): Promise<Record<StatsWindowKey, MediaStatsWindowResult>> {
   const serverRows = await db.select({ id: servers.id, name: servers.name }).from(servers);
   const serverNames = new Map(serverRows.map((s) => [s.id, s.name]));
@@ -605,9 +608,12 @@ export async function getMediaStats(
     MediaStatsWindowResult
   >;
   for (const win of STATS_WINDOWS) {
-    const serverFragment = buildMultiServerFragment(
+    const alias = scope.kind === 'season' ? 's' : 'p';
+    const serverFragment = scopedServerFragment(
       serverIds,
-      scope.kind === 'season' ? 's.server_id' : 'p.server_id'
+      rowScope,
+      `${alias}.server_id`,
+      sql.raw(`${alias}.server_user_id`)
     );
     const result =
       scope.kind === 'season'
@@ -786,16 +792,19 @@ export interface GetMediaHistoryPageArgs {
   pageSize: number;
   cursorValue: { startedAt: Date; id: string } | null;
   serverIds: string[] | undefined;
+  rowScope: Scope;
 }
 
 /** Chain-grain watch history for a media item's scope, same paging as /history. */
 export async function getMediaHistoryPage(
   args: GetMediaHistoryPageArgs
 ): Promise<Awaited<ReturnType<typeof runHistoryPage>>> {
-  const { scope, pageSize, cursorValue, serverIds } = args;
+  const { scope, pageSize, cursorValue, serverIds, rowScope } = args;
   const conditions = scopeSessionConditions(scope);
   const authCondition = buildServerAuthCondition(serverIds, 's.server_id');
   if (authCondition) conditions.push(authCondition);
+  const ownRows = scopeSessionsRaw(rowScope, sql`s.server_user_id`);
+  if (ownRows) conditions.push(ownRows);
   return runHistoryPage(conditions, pageSize, cursorValue, undefined);
 }
 
@@ -817,10 +826,16 @@ export interface MediaPlatformBreakdownRow {
 export async function getMediaPlatformBreakdown(
   mediaId: string,
   aliasIds: string[],
-  serverIds: string[] | undefined
+  serverIds: string[] | undefined,
+  rowScope: Scope
 ): Promise<MediaPlatformBreakdownRow[]> {
   const ids = aliasIds.length > 0 ? aliasIds : [mediaId];
-  const serverFragment = buildMultiServerFragment(serverIds, 's.server_id');
+  const serverFragment = scopedServerFragment(
+    serverIds,
+    rowScope,
+    's.server_id',
+    sql`s.server_user_id`
+  );
   const result = await db.execute(sql`
     SELECT
       s.platform,

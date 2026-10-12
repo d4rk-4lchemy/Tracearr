@@ -43,7 +43,7 @@ export const settingsNav: SettingsGroup[] = [
   {
     labelKey: 'nav.groups.access',
     sections: [
-      { nameKey: 'nav.sections.guest', href: '/settings/access/guest' },
+      { nameKey: 'nav.sections.memberLogin', href: '/settings/access/guest' },
       { nameKey: 'nav.sections.mobile', href: '/settings/access/mobile' },
       { nameKey: 'nav.sections.remote', href: '/settings/access/remote' },
     ],

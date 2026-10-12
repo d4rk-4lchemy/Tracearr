@@ -28,9 +28,11 @@
  * delay_seconds 0 this can run before any poll tick rediscovers it. The context
  * and target sessions are appended back into the count context only when
  * genuinely uncached (absent from the RAW cache list), never when
- * excludeUncountableSessions dropped them for being grace-flagged or pending -
- * live evaluation would exclude those too, so resurrecting them here would
- * count phantoms the live path never would.
+ * excludeUncountableSessions dropped them for being grace-flagged, which would
+ * count a stream the system already thinks stopped. A pending flag on either is
+ * stale instead: both have a DB row, a pending session has none, and a delay 0
+ * job runs before the confirming caller rewrites the entry it cached at first
+ * sight. The flag is cleared before filtering.
  *
  * A multi-target match fans out one kill job per target, all sharing one
  * violation id. A sibling stopped BY THIS violation is ACTION REACH, not the
@@ -230,7 +232,10 @@ export async function reverifyKillCondition(
   }
 
   const cacheService = getCacheService();
-  const cachedSessions = cacheService ? await cacheService.getAllActiveSessions() : [];
+  const persistedIds = new Set([contextSession.id, targetRow.id]);
+  const cachedSessions = (cacheService ? await cacheService.getAllActiveSessions() : []).map((s) =>
+    s.pending && persistedIds.has(s.id) ? { ...s, pending: false } : s
+  );
   const countableCachedSessions = excludeUncountableSessions(
     cachedSessions,
     gracePeriodSessionIds()
@@ -240,18 +245,18 @@ export async function reverifyKillCondition(
   // it back so conditions like concurrent_streams count it instead of
   // undercounting by one and self-aborting. Append ONLY when it is genuinely
   // uncached (absent from the RAW cache list). If it sits in the raw cache but
-  // excludeUncountableSessions dropped it (grace-flagged or pending), live
-  // evaluation would exclude it too, so trust the filter and leave it out.
+  // excludeUncountableSessions dropped it (grace-flagged), trust the filter
+  // and leave it out.
   const rawCacheIds = new Set(cachedSessions.map((s) => s.id));
   let activeSessions = buildRuleContextSessions(countableCachedSessions, contextSession, null);
   if (rawCacheIds.has(contextSession.id)) {
     // Raw-cached: trust excludeUncountableSessions rather than the unconditional
-    // append above. If the filter dropped it (grace/pending), it stays out.
+    // append above. If the filter dropped it (grace), it stays out.
     activeSessions = countableCachedSessions;
   }
   // The target, if it is a different still-playing session that is genuinely
-  // uncached, is counted too. Same grace/pending guard: a raw-cached target the
-  // filter dropped must stay dropped.
+  // uncached, is counted too. Same grace guard: a raw-cached target the filter
+  // dropped must stay dropped.
   if (
     targetRow.id !== contextSession.id &&
     !rawCacheIds.has(targetRow.id) &&
