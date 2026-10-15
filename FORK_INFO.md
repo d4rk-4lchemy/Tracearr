@@ -1,5 +1,48 @@
 # Tracearr Fork Information
 
+## October 15, 2026 — Tracearr 2.8.3 upstream merge
+
+Upstream `main` at `eb338121b` brings 2.8.1–2.8.3: member library
+permissions, media-account merge/split fixes, server/Seerr version refresh,
+media-subject run-list SQL correction, replaced library-copy retirement,
+image-specific precache backoff and a reachable admin Dashboard toggle when
+recent personal activity is empty or fails. Migration
+`0115_server_user_library_ids` and its snapshot/journal are byte-for-byte
+aligned with upstream; the separate Dispatcharr migration ledger is unchanged.
+
+Jellyfin/Emby user sync maps folder permissions to library IDs, while
+Dispatcharr sync keeps fetching only users and never requests a media catalog.
+A regression exercises that boundary with library sync enabled. Dispatcharr
+stays in general server/session scopes and outside library/Seerr/member-sign-in
+capabilities. The Personal Dashboard retains `mediaLibraryServerIds` for its
+catalog shelf. Auth modes, anonymous filtering, realtime/polling, lifecycle,
+device identity, termination, uncropped artwork and its cache markers, and
+two-channel versions are preserved. The image proxy adopts upstream failure
+classification alongside all fork URL/request/resize behavior.
+
+Exactly the unchanged PR-only CI and dual-registry release workflows remain,
+including the four native-build publication gate. Both Dockerfiles are unchanged;
+Helm and Vouch changes are excluded.
+
+Full non-Docker CI-equivalent validation passed with Node 24.22.0 / pnpm 12.10.1,
+a frozen-lockfile install, cleared Turbo cache and 4 GB heap. Heavy jobs ran
+sequentially on the 8 GB LXC, with two Vitest workers and Turbo concurrency one.
+Lint, typecheck, translations, all five server test groups, web, coverage and
+build passed on the first run. Server groups plus web passed 10,105 tests;
+coverage passed 6,552 tests (71.48% statements, 65.63% branches,
+75.69% functions, 72.69% lines), satisfying every threshold. Lint retains
+753 warnings and zero errors; its normalized delta replaces the removed server
+route assertion with an upstream merge-service assertion. Translations retains
+3,857 absent locale entries with English fallback. All 53 changed supported
+source/JSON files pass Prettier after formatting the new sync regression.
+Runtime warning counts are recorded in `.tmp/github-ci-warning-reference.md`.
+Logs: `.tmp/merge-283-<job>-20261015.log`; runner:
+`.tmp/merge-283-ci-20261015.log`.
+Docker integration and E2E are explicitly omitted at the user's request.
+Docker image builds, database upgrade execution and live-provider manual smoke
+are not performed. Library-access/merge SQL, copy retirement and migration
+execution therefore remain unverified against a running PostgreSQL database.
+
 ## October 12, 2026 — Tracearr 2.8.0 upstream merge
 
 Upstream `main` at `3965a1aa4` adds member sign-in, account-scoped reads,
@@ -255,9 +298,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `3965a1aa4`
-- Last shared upstream commit found during inspection: `1ba57a73f` (before merge)
-- Latest upstream commit merged into the current working tree: `3965a1aa4`
+- Source branch/SHA inspected: `main` at `eb338121b`
+- Last shared upstream commit found during inspection: `3965a1aa4` (before merge)
+- Latest upstream commit merged into the current working tree: `eb338121b`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

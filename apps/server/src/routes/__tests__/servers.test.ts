@@ -76,6 +76,10 @@ vi.mock('../../services/cache.js', () => ({
   getPubSubService: () => ({ publish: mockPublish }),
 }));
 
+vi.mock('../../jobs/serverUpdateChecker.js', () => ({
+  installedVersionOf: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('../../jobs/librarySyncQueue.js', () => ({
   enqueueLibrarySync: vi.fn().mockResolvedValue(undefined),
   rebuildAutoSyncSchedules: vi.fn().mockResolvedValue(undefined),
@@ -134,6 +138,7 @@ import {
 import { sseManager } from '../../services/sseManager.js';
 import { getServerLiveStats, getServerResourceStats } from '../../services/serverLiveStats.js';
 import { syncServer } from '../../services/sync.js';
+import { installedVersionOf } from '../../jobs/serverUpdateChecker.js';
 import { readServerIdentity, sharesKnownUsers } from '../../services/serverIdentity.js';
 import { revokeUnlessStillIn } from '../../lib/revoke.js';
 vi.mock('../../lib/redisShared.js', () => ({
@@ -1693,6 +1698,22 @@ describe('Server Routes', () => {
         syncUsers: true,
         syncLibraries: true,
       });
+    });
+
+    it('stores the version the server reports now', async () => {
+      app = await buildTestApp(ownerUser);
+      vi.mocked(installedVersionOf).mockResolvedValueOnce('10.11.12');
+      mockDbSelectLimit([mockServer]);
+      const update = mockDbUpdate();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/servers/${mockServer.id}/sync`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(installedVersionOf).toHaveBeenCalledWith(mockServer);
+      expect(update.set).toHaveBeenCalledWith(expect.objectContaining({ version: '10.11.12' }));
     });
 
     it('returns errors when sync has issues', async () => {
