@@ -227,8 +227,26 @@ async function syncMediaServerUsers(
       token,
       ignoreAnonymousStreams,
     });
-    const users = await client.getUsers();
-    return await syncServerUsers(serverId, users); // isPlexServer defaults to false
+    if (!supportsMediaLibrary(serverType)) {
+      return await syncServerUsers(serverId, await client.getUsers());
+    }
+    const [users, libraries] = await Promise.all([
+      client.getUsers(),
+      // Users still sync without the library list. Limited accounts then map to no libraries
+      // until the next sync, never to every library.
+      client.getLibraries().catch((err: unknown) => {
+        console.warn(`[Sync] ${serverName} library list failed, library limits map to none:`, err);
+        return [];
+      }),
+    ]);
+    // Jellyfin's policy names a folder by its ItemId. Emby's names it by Guid and grants nothing
+    // for an ItemId (checked on Emby 4.10), so a folder with a Guid only matches by it.
+    const libraryIdOf = new Map(libraries.map((l) => [l.guid ?? l.id, l.id]));
+    const withLibraryIds = users.map((user) => ({
+      ...user,
+      sharedLibraries: user.sharedLibraries?.flatMap((id) => libraryIdOf.get(id) ?? []),
+    }));
+    return await syncServerUsers(serverId, withLibraryIds); // isPlexServer defaults to false
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return {
