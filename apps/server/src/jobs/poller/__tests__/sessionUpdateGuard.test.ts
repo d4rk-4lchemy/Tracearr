@@ -8,7 +8,7 @@
  * tick mints a duplicate DB row for it).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const {
   mockCreateMediaServerClient,
@@ -384,6 +384,16 @@ describe('poller rediscovered-session guard against stop races', () => {
 });
 
 describe('Dispatcharr catch-up programme rollover', () => {
+  beforeEach(() => {
+    // Keep the fixture anchor and the parser's elapsed-time estimate on the same clock.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-19T07:02:00Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it.each(['polling', 'realtime'] as const)(
     'updates the existing row and cache without start/stop events in %s',
     async (mode) => {

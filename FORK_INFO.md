@@ -2,6 +2,11 @@
 
 ## October 20, 2026 — Dispatcharr catch-up programme rollover
 
+Rollover regression fixtures freeze `Date` for both polling and realtime and
+restore it after each case. Keep the fixture anchor and parser on the same
+clock: real elapsed milliseconds otherwise make exact progress assertions
+flaky under coverage. Production progress estimation is unchanged.
+
 Catch-up EPG lookups keep the programme at the playhead separate from the
 programme containing the original URL timestamp. Both replies use the same
 provider session ID: sending both lookups into one map lets the original
