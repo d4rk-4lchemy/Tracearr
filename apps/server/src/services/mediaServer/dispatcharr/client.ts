@@ -629,21 +629,16 @@ export class DispatcharrClient implements IMediaServerClient {
       if (!sessionId || !channelUuid || !programmeStart) return [];
       return [
         { session_id: sessionId, channel_uuid: channelUuid, programme_start: programmeStart },
-        {
-          session_id: sessionId,
-          channel_uuid: channelUuid,
-          programme_start: programmeStart,
-          position_secs: 0,
-        },
       ];
     });
-    const programmeBySessionId = await this.getCatchupProgrammes(programmeRequests);
-    const baseProgrammeBySessionId = new Map<string, DispatcharrCatchupProgramme>();
-    for (const request of programmeRequests) {
-      if (request.position_secs !== 0) continue;
-      const programme = programmeBySessionId.get(request.session_id);
-      if (programme) baseProgrammeBySessionId.set(request.session_id, programme);
-    }
+    // Both responses use the provider session ID. Keep the lookups separate so
+    // the URL's original programme cannot overwrite the programme at the playhead.
+    const [programmeBySessionId, baseProgrammeBySessionId] = await Promise.all([
+      this.getCatchupProgrammes(programmeRequests),
+      this.getCatchupProgrammes(
+        programmeRequests.map((request) => ({ ...request, position_secs: 0 }))
+      ),
+    ]);
     return parseSessionsFromCatchupStats(
       stats,
       resolvedUserMap,

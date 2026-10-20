@@ -593,12 +593,13 @@ function estimateCatchupPositionSeconds(
   if (playbackBaseSecs !== undefined) {
     const elapsedSinceAnchor =
       !paused && positionAnchorAt !== undefined ? nowSeconds - positionAnchorAt : 0;
-    let positionSecs = Math.max(0, playbackBaseSecs + Math.max(0, elapsedSinceAnchor));
+    let positionSecs = playbackBaseSecs + Math.max(0, elapsedSinceAnchor);
 
     if (Number.isFinite(currentStartMs) && Number.isFinite(baseStartMs)) {
-      positionSecs += Math.max(0, (baseStartMs - currentStartMs) / 1000);
+      positionSecs += (baseStartMs - currentStartMs) / 1000;
     }
 
+    positionSecs = Math.max(0, positionSecs);
     const durationSecs = asOptionalNumber(programme?.duration_secs);
     if (durationSecs !== undefined) {
       positionSecs = Math.min(positionSecs, durationSecs);

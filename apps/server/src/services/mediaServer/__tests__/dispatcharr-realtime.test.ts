@@ -42,9 +42,97 @@ describe('DispatcharrRealtimeConnector', () => {
     delete (globalThis as { WebSocket?: unknown }).WebSocket;
   });
 
+  it('advances catch-up EPG on a timeshift update without changing connection identity', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-19T10:00:00Z'));
+    vi.spyOn(DispatcharrClient.prototype, 'getWebSocketToken').mockResolvedValue('jwt-token');
+    vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockResolvedValue([]);
+    vi.spyOn(DispatcharrClient.prototype, 'getVodStatsSnapshot').mockResolvedValue({
+      vod_connections: [],
+    });
+    vi.spyOn(DispatcharrClient.prototype, 'getUserMap').mockResolvedValue(
+      new Map([['7', { id: '7', username: 'Viewer', isAdmin: false }]])
+    );
+    const stats = {
+      timeshift_sessions: [
+        {
+          session_id: 'catchup-1',
+          channel_uuid: 'channel-1',
+          programme_start: '2026-07-19:05-30',
+          position_anchor_at: Date.now() / 1000,
+          playback_base_secs: 5520,
+          connections: [{ client_id: 'client-1', user_id: '7' }],
+        },
+      ],
+    };
+    vi.spyOn(DispatcharrClient.prototype, 'getCatchupStatsSnapshot').mockResolvedValue(stats);
+    const original = {
+      title: 'Morning News',
+      start_time: '2026-07-19T05:30:00Z',
+      end_time: '2026-07-19T07:00:00Z',
+      duration_secs: 5400,
+    };
+    const next = {
+      title: 'Late News',
+      start_time: '2026-07-19T07:00:00Z',
+      end_time: '2026-07-19T08:00:00Z',
+      duration_secs: 3600,
+    };
+    let current = original;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        sessions: Array<{ session_id: string; position_secs?: number }>;
+      };
+      return new Response(
+        JSON.stringify({
+          sessions: body.sessions.map((request) => ({
+            ...(request.position_secs === 0 ? original : current),
+            session_id: request.session_id,
+          })),
+        }),
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+    });
+    const connector = new DispatcharrRealtimeConnector({
+      serverId: 'server-1',
+      serverName: 'Dispatcharr',
+      url: 'http://dispatcharr.local',
+      token: 'a.b.c',
+    });
+    try {
+      await connector.connect();
+      const ws = MockWebSocket.instances[0];
+      if (!ws) throw new Error('WebSocket was not created');
+      const initialSnapshot = nextSnapshot(connector);
+      ws.onopen?.call(ws, {});
+      const initial = await initialSnapshot;
+      expect(initial.sessions).toHaveLength(1);
+      expect(initial.sessions[0]).toMatchObject({ media: { title: 'Morning News' } });
+      current = next;
+      const changedSnapshot = nextSnapshot(connector);
+      ws.onmessage?.call(ws, {
+        data: JSON.stringify({ data: { type: 'timeshift_stats', stats: JSON.stringify(stats) } }),
+      });
+      const changed = await changedSnapshot;
+      expect(changed.sessions).toHaveLength(1);
+      expect(changed.sessions[0]).toMatchObject({
+        sessionKey: 'catchup:catchup-1:channel-1',
+        terminationKey: 'catchup-1',
+        media: { title: 'Late News', durationMs: 3_600_000 },
+        playback: { positionMs: 120_000 },
+        dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
+        dispatcharrCatchupEpgStartAt: '2026-07-19T07:00:00.000Z',
+      });
+    } finally {
+      connector.disconnect();
+    }
+  });
+
   it('merges interleaved channel_stats and vod_stats snapshots', async () => {
     vi.spyOn(DispatcharrClient.prototype, 'getWebSocketToken').mockResolvedValue('jwt-token');
-    vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockResolvedValue([{ channel_id: 'channel-1' }]);
+    vi.spyOn(DispatcharrClient.prototype, 'getStatusSnapshot').mockResolvedValue([
+      { channel_id: 'channel-1' },
+    ]);
     vi.spyOn(DispatcharrClient.prototype, 'getVodStatsSnapshot').mockResolvedValue({
       vod_connections: [],
     });
@@ -59,7 +147,9 @@ describe('DispatcharrRealtimeConnector', () => {
       },
     ]);
     vi.spyOn(DispatcharrClient.prototype, 'getLogoPathByChannelId').mockResolvedValue(new Map());
-    vi.spyOn(DispatcharrClient.prototype, 'getCurrentProgramByChannelId').mockResolvedValue(new Map());
+    vi.spyOn(DispatcharrClient.prototype, 'getCurrentProgramByChannelId').mockResolvedValue(
+      new Map()
+    );
     vi.spyOn(DispatcharrClient.prototype, 'buildSessionsFromNormalizedChannels').mockReturnValue([
       {
         sessionKey: 'channel-1:live-client',
@@ -162,10 +252,16 @@ describe('DispatcharrRealtimeConnector', () => {
       new Map([['7', { id: '7', username: 'User Seven', isAdmin: false }]])
     );
     vi.spyOn(DispatcharrClient.prototype, 'buildNormalizedChannelsFromStatus').mockResolvedValue([
-      { channelId: 'channel-1', channelName: 'Channel 1', clients: [{ client_id: 'live-1', user_id: '7' }] },
+      {
+        channelId: 'channel-1',
+        channelName: 'Channel 1',
+        clients: [{ client_id: 'live-1', user_id: '7' }],
+      },
     ]);
     vi.spyOn(DispatcharrClient.prototype, 'getLogoPathByChannelId').mockResolvedValue(new Map());
-    vi.spyOn(DispatcharrClient.prototype, 'getCurrentProgramByChannelId').mockResolvedValue(new Map());
+    vi.spyOn(DispatcharrClient.prototype, 'getCurrentProgramByChannelId').mockResolvedValue(
+      new Map()
+    );
     vi.spyOn(DispatcharrClient.prototype, 'buildSessionsFromNormalizedChannels').mockReturnValue([
       {
         sessionKey: 'channel-1:live-1',

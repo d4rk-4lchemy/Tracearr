@@ -1,5 +1,39 @@
 # Tracearr Fork Information
 
+## October 20, 2026 — Dispatcharr catch-up programme rollover
+
+Catch-up EPG lookups keep the programme at the playhead separate from the
+programme containing the original URL timestamp. Both replies use the same
+provider session ID: sending both lookups into one map lets the original
+programme overwrite the current one. Fetch them in separate batches (up to 50
+sessions each), including in the shared REST/realtime client.
+
+Estimated `playback_base_secs` progress uses the signed difference between the
+original and current programme starts, then clamps to the current programme
+window. When a pending catch-up connection changes its known EPG start, reset
+only programme-relative progress/max offsets; retain connection identity,
+start time, pause accounting and the original confirmation age. Preserve the
+maximum for partial/refetched data in the same EPG window. Programme titles,
+clocks, duration and progress update on the next existing REST/WebSocket
+refresh without splitting the connection or adding boundary timers. Public API
+and database schemas are unchanged.
+
+Validation passed with Node 24 / pnpm 12.14.0, a frozen-lockfile install,
+cleared Turbo cache, a 4 GB heap, sequential heavy jobs, at most two Vitest
+workers and Turbo concurrency one on this 8 GB LXC. Full lint, typecheck,
+translations, unit/services/routes/auth/security, web, coverage and build pass.
+The server groups and web total 10,542 passing tests; coverage passes 6,686
+with 72.28% statements, 66.64% branches, 76.46% functions and 73.51% lines,
+meeting all thresholds. Lint retains the same 715 normalized diagnostics.
+Regression tests cover distinct EPG batches (including 51 connections), REST
+and timeshift WebSocket updates, signed progress across multiple programmes,
+paused/URL-seek playback, missing EPG, pending confirmation/persistence and a
+same-ID card/hook rollover. Logs: `.tmp/catchup-ci-*.log`; sequential runner:
+`.tmp/validate-catchup.py`. Known warning counts are in the local CI reference.
+Docker integration/E2E, image builds and live-provider manual smoke were not
+run; provider/network/database behavior is exercised through test fixtures,
+not an actual continuously playing Dispatcharr stream.
+
 ## October 20, 2026 — Tracearr 2.9.0 upstream merge
 
 Upstream `main` at `498193355` brings the tabbed Stats/Library interface,

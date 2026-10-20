@@ -68,6 +68,42 @@ describe('useEstimatedProgress', () => {
     expect(result.current.estimatedProgressMs).toBe(62_000);
   });
 
+  it('starts the next catch-up timeline at zero and continues ticking with the same session ID', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-19T10:00:00Z'));
+    const initial = session({
+      dispatcharrPlaybackKind: 'catchup',
+      dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00Z',
+      progressMs: 5_400_000,
+      totalDurationMs: 5_400_000,
+      progressUpdatedAt: new Date(),
+    });
+    const { result, rerender } = renderHook(({ s }) => useEstimatedProgress(s), {
+      initialProps: { s: initial },
+    });
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(result.current.progressPercent).toBe(100);
+
+    rerender({
+      s: {
+        ...initial,
+        dispatcharrCatchupEpgStartAt: '2026-07-19T07:00:00Z',
+        progressMs: 0,
+        totalDurationMs: 3_600_000,
+        progressUpdatedAt: new Date(),
+      },
+    });
+    expect(result.current.estimatedProgressMs).toBe(0);
+    expect(result.current.progressPercent).toBe(0);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(result.current.estimatedProgressMs).toBe(2000);
+    expect(result.current.isEstimating).toBe(true);
+  });
+
   it('re-anchors on a session change', () => {
     vi.useFakeTimers();
     const { result, rerender } = renderHook(({ s }) => useEstimatedProgress(s), {

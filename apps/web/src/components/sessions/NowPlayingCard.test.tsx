@@ -319,6 +319,40 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     expect(getProgressTranslatePercent(container)).toBe(50);
   });
 
+  it('replaces the title, clocks and full timeline when the same catch-up connection reaches the next programme', () => {
+    setTimeFormat('24h');
+    const session = makeSession({
+      dispatcharrPlaybackKind: 'catchup',
+      dispatcharrCatchupAnchorAt: '2026-07-19T05:30:00.000Z',
+      dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00.000Z',
+      dispatcharrCatchupEpgEndAt: '2026-07-19T07:00:00.000Z',
+      totalDurationMs: 5_400_000,
+      progressMs: 5_400_000,
+    });
+    const { container, rerender } = render(<NowPlayingCard session={session} />);
+    expect(getProgressTranslatePercent(container)).toBe(0);
+    expect(screen.getByText('Morning News')).toBeTruthy();
+
+    rerender(
+      <NowPlayingCard
+        session={{
+          ...session,
+          mediaTitle: 'Late News',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T07:00:00.000Z',
+          dispatcharrCatchupEpgEndAt: '2026-07-19T08:00:00.000Z',
+          totalDurationMs: 3_600_000,
+          progressMs: 120_000,
+        }}
+      />
+    );
+    expect(screen.queryByText('Morning News')).toBeNull();
+    expect(screen.getByText('Late News')).toBeTruthy();
+    expect(screen.getByText('7:00')).toBeTruthy();
+    expect(screen.getByText('8:00')).toBeTruthy();
+    expect(screen.queryByText('5:30')).toBeNull();
+    expect(getProgressTranslatePercent(container)).toBeCloseTo(96.667, 2);
+  });
+
   it('keeps backend catch-up progress across refetches when programme_start is unchanged', () => {
     const initialProgressUpdatedAt = new Date('2026-07-19T05:30:00.000Z');
     const refetchProgressUpdatedAt = new Date('2026-07-19T05:31:00.000Z');

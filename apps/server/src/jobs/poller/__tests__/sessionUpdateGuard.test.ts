@@ -148,7 +148,7 @@ vi.mock('../sessionMapper.js', async (importOriginal) => ({
 }));
 vi.mock('../violations.js', () => ({ broadcastViolations: vi.fn() }));
 
-import { initializePoller, triggerServerPoll } from '../processor.js';
+import { initializePoller, processServerSessions, triggerServerPoll } from '../processor.js';
 import { getActiveAutomations } from '../database.js';
 
 const EXISTING_SESSION_ID = 'session-1';
@@ -381,4 +381,131 @@ describe('poller rediscovered-session guard against stop races', () => {
       expect.objectContaining({ overrides: expect.objectContaining({ state: 'paused' }) })
     );
   });
+});
+
+describe('Dispatcharr catch-up programme rollover', () => {
+  it.each(['polling', 'realtime'] as const)(
+    'updates the existing row and cache without start/stop events in %s',
+    async (mode) => {
+      vi.clearAllMocks();
+      const mapper =
+        await vi.importActual<typeof import('../sessionMapper.js')>('../sessionMapper.js');
+      const lifecycle =
+        await vi.importActual<typeof import('../sessionLifecycle.js')>('../sessionLifecycle.js');
+      const { parseSessionsFromCatchupStats } =
+        await import('../../../services/mediaServer/dispatcharr/parser.js');
+      mockMapMediaSession.mockImplementation(mapper.mapMediaSession);
+      mockBuildActiveSession.mockImplementation(lifecycle.buildActiveSession);
+      mockUpdateWhere.mockResolvedValue([{ id: EXISTING_SESSION_ID }]);
+      const server = {
+        id: 'server-1',
+        name: 'Dispatcharr',
+        type: 'dispatcharr' as const,
+        url: 'http://dispatcharr.local',
+        token: 'test-key',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const sessionKey = 'catchup:connection-1:channel-1';
+      const row = existingSessionRow({
+        sessionKey,
+        ratingKey: 'channel-1',
+        mediaTitle: 'Morning News',
+        mediaType: 'live',
+        totalDurationMs: 5_400_000,
+        progressMs: 5_400_000,
+      });
+      mockBatchFindActiveSessionsByComposite.mockResolvedValue(
+        new Map([['server-user-1::channel-1', [row]]])
+      );
+      const sessions = parseSessionsFromCatchupStats(
+        {
+          timeshift_sessions: [
+            {
+              session_id: 'connection-1',
+              channel_uuid: 'channel-1',
+              channel_name: 'News Channel',
+              programme_start: '2026-07-19:05-30',
+              position_anchor_at: Date.now() / 1000,
+              playback_base_secs: 5520,
+              connections: [{ client_id: 'device-1', user_id: 'user-123', user_agent: 'TiviMate' }],
+            },
+          ],
+        },
+        new Map([['user-123', { id: 'user-123', username: 'alice', isAdmin: false }]]),
+        new Map([
+          [
+            'connection-1',
+            {
+              title: 'Late News',
+              start_time: '2026-07-19T07:00:00Z',
+              end_time: '2026-07-19T08:00:00Z',
+              duration_secs: 3600,
+            },
+          ],
+        ]),
+        new Map([['connection-1', { start_time: '2026-07-19T05:30:00Z' }]])
+      );
+      mockCreateMediaServerClient.mockReturnValue({
+        getSessions: vi.fn().mockResolvedValue(sessions),
+      });
+      const cacheService = {
+        getPendingSession: vi.fn().mockResolvedValue(null),
+        hasTerminationCooldown: vi.fn().mockResolvedValue(false),
+        hasTerminationCooldownComposite: vi.fn().mockResolvedValue(false),
+        incrementalSyncActiveSessions: vi.fn().mockResolvedValue(undefined),
+      };
+      const publish = vi.fn().mockResolvedValue(undefined);
+      initializePoller(
+        cacheService as unknown as Parameters<typeof initializePoller>[0],
+        { publish, subscribe: vi.fn() } as unknown as Parameters<typeof initializePoller>[1]
+      );
+      const result = await processServerSessions(
+        server,
+        [],
+        new Set(['server-1:server-user-1:device-1:channel-1']),
+        [],
+        mode === 'realtime' ? { mediaSessions: sessions, immediateStops: true } : {}
+      );
+      expect(result.success).toBe(true);
+      expect(result.newSessions).toEqual([]);
+      expect(result.stoppedSessions).toEqual([]);
+      expect(result.updatedSessions).toHaveLength(1);
+      const updated = result.updatedSessions[0];
+      expect(updated).toMatchObject({
+        id: EXISTING_SESSION_ID,
+        sessionKey,
+        startedAt: row.startedAt,
+        mediaTitle: 'Late News',
+        totalDurationMs: 3_600_000,
+        progressMs: 120_000,
+        dispatcharrCatchupEpgStartAt: '2026-07-19T07:00:00.000Z',
+        dispatcharrCatchupEpgEndAt: '2026-07-19T08:00:00.000Z',
+        canTerminate: true,
+      });
+      expect(mockDb.update).toHaveBeenCalledTimes(1);
+      expect(mockDb.update.mock.results[0]?.value.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mediaTitle: 'Late News',
+          totalDurationMs: 3_600_000,
+          progressMs: 120_000,
+        })
+      );
+      await lifecycle.processPollResults({
+        ...result,
+        cachedSessions: [],
+        cacheService,
+        pubSubService: { publish },
+      });
+      expect(cacheService.incrementalSyncActiveSessions).toHaveBeenCalledWith(
+        [],
+        [],
+        [updated],
+        false
+      );
+      expect(publish).toHaveBeenCalledWith('session:updated', updated);
+      expect(publish).not.toHaveBeenCalledWith('session:started', expect.anything());
+      expect(publish).not.toHaveBeenCalledWith('session:stopped', expect.anything());
+    }
+  );
 });
