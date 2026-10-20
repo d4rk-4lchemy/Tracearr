@@ -20,7 +20,7 @@ const COLORS = {
 };
 
 export function QualityChart({ data, isLoading, height = 250 }: QualityChartProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'pages']);
   const options = useMemo<Highcharts.Options>(() => {
     if (!data || data.total === 0) {
       return {};
@@ -48,7 +48,12 @@ export function QualityChart({ data, isLoading, height = 250 }: QualityChartProp
         style: {
           color: 'hsl(var(--popover-foreground))',
         },
-        pointFormat: '<b>{point.y}</b> plays ({point.percentage:.1f}%)',
+        pointFormatter: function () {
+          return t('pages:activity.playsShare', {
+            count: this.y ?? 0,
+            percent: (this.percentage ?? 0).toFixed(1),
+          });
+        },
       },
       plotOptions: {
         pie: {
@@ -74,7 +79,7 @@ export function QualityChart({ data, isLoading, height = 250 }: QualityChartProp
       series: [
         {
           type: 'pie',
-          name: 'Quality',
+          name: t('labels.quality'),
           data: [
             {
               name: t(PLAYBACK_DECISION_LABEL_KEYS.directplay),
@@ -126,7 +131,7 @@ export function QualityChart({ data, isLoading, height = 250 }: QualityChartProp
   }
 
   if (!data || data.total === 0) {
-    return <ChartEmpty height={height} message="No quality data available" />;
+    return <ChartEmpty height={height} message={t('pages:activity.noQualityData')} />;
   }
 
   return (

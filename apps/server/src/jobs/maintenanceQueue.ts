@@ -22,7 +22,14 @@ import {
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import { getRedisPrefix } from '@tracearr/shared';
-import { extendJobLock, MAINTENANCE_LOCK_DURATION_MS } from './lockUtils.js';
+import { DEFAULT_LOCK_DURATION_MS, extendJobLock } from './lockUtils.js';
+import {
+  WORKER_DEFAULTS,
+  addSingleton,
+  registerQueue,
+  registerWorker,
+  yieldJob,
+} from './jobSafety.js';
 import {
   acquireHeavyOpsLock,
   releaseHeavyOpsLock,
@@ -35,7 +42,7 @@ import type {
   MaintenanceJobResult,
   MaintenanceJobType,
 } from '@tracearr/shared';
-import { WS_EVENTS, classifyByDimensions, RESOLUTION_TIERS } from '@tracearr/shared';
+import { WS_EVENTS, resolutionDisplayName, RESOLUTION_TIERS } from '@tracearr/shared';
 import { sql, isNotNull, isNull, inArray, or, and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { servers, sessions, serverUsers } from '../db/schema.js';
@@ -130,7 +137,8 @@ let maintenanceWorker: Worker<MaintenanceJobData> | null = null;
 // Track active job state
 let activeJobProgress: MaintenanceJobProgress | null = null;
 
-const LOCK_EXTENSION_INTERVAL = 60 * 1000;
+// Throttled lock checks must run more often than the lock can expire.
+const LOCK_EXTENSION_INTERVAL = DEFAULT_LOCK_DURATION_MS / 2;
 
 /**
  * Initialize the maintenance queue with Redis connection
@@ -162,6 +170,7 @@ export function initMaintenanceQueue(redisUrl: string): void {
   maintenanceQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('[Maintenance] Queue error:', err);
   });
+  registerQueue(maintenanceQueue);
 
   console.log('Maintenance queue initialized');
 }
@@ -179,6 +188,10 @@ export function initMaintenanceQueue(redisUrl: string): void {
  * blocking `app.listen()` on BullMQ's connection retry. Do not re-add
  * custom recovery here - see lockUtils.ts and heavyOpsLock.ts for the
  * concurrency fixes that make relying on native stalled detection safe.
+ *
+ * Only the heavy-ops wait yields on the abort signal; a running handler stops at
+ * its next fail-closed extendJobLock after a force-close, or is reclaimed by
+ * stalled detection.
  */
 export function startMaintenanceWorker(): void {
   if (!connectionOptions) {
@@ -194,7 +207,7 @@ export function startMaintenanceWorker(): void {
 
   maintenanceWorker = new Worker<MaintenanceJobData>(
     QUEUE_NAME,
-    async (job: Job<MaintenanceJobData>) => {
+    async (job: Job<MaintenanceJobData>, _token?: string, signal?: AbortSignal) => {
       const startTime = Date.now();
       const jobStartedAt = new Date().toISOString();
       const jobDescription = getMaintenanceJobDescription(job.data.type);
@@ -231,6 +244,11 @@ export function startMaintenanceWorker(): void {
           runToken
         )) !== null
       ) {
+        if (signal?.aborted) {
+          activeJobProgress = null;
+          await yieldJob(job, job.token, 0);
+        }
+
         // Update cached progress with waiting status
         activeJobProgress = {
           type: job.data.type,
@@ -302,19 +320,11 @@ export function startMaintenanceWorker(): void {
       connection: connectionOptions,
       prefix: bullPrefix,
       concurrency: 1, // Only 1 maintenance job at a time
-      // BullMQ's native stalled detection is THE recovery mechanism for jobs
-      // orphaned by a crash or restart - do not re-add custom recovery (see
-      // the comment on startMaintenanceWorker above). A job's lock key
-      // expires after lockDuration with nobody renewing it, gets swept every
-      // stalledInterval, and is poison-capped by maxStalledCount before
-      // failing out for good. Net recovery latency after a hard crash is
-      // ~2.5-5 minutes (time since the last lock renewal before lockDuration
-      // expiry) plus up to 30s for the next stalledInterval sweep.
-      lockDuration: MAINTENANCE_LOCK_DURATION_MS, // 5 minutes - batch loops extend it well before expiry
-      stalledInterval: 30 * 1000, // Check for stalled jobs every 30 seconds
-      maxStalledCount: 2, // Retry stalled jobs up to 2 times before failing
+      // Stalled detection is the crash recovery; see startMaintenanceWorker's doc comment.
+      ...WORKER_DEFAULTS,
     }
   );
+  registerWorker(maintenanceWorker);
 
   // Handle stalled jobs - clear state so UI updates correctly
   maintenanceWorker.on('stalled', (jobId) => {
@@ -1754,10 +1764,10 @@ export async function processNormalizeResolutionsJob(
 
       for (const session of batch) {
         try {
-          const recomputed = classifyByDimensions(
-            session.sourceVideoWidth,
-            session.sourceVideoHeight
-          );
+          const recomputed = resolutionDisplayName({
+            width: session.sourceVideoWidth,
+            height: session.sourceVideoHeight,
+          });
 
           if (recomputed && recomputed !== session.quality) {
             updates.push({ id: session.id, quality: recomputed });
@@ -3018,32 +3028,22 @@ export async function maybeEnqueueMaintenanceJob(
   type: MaintenanceJobType,
   userId: string,
   options?: MaintenanceJobData['options'],
-  jobOptions?: Omit<JobsOptions, 'jobId'>
+  jobOptions?: Pick<JobsOptions, 'attempts'>
 ): Promise<string | null> {
   if (!maintenanceQueue) {
     return null;
   }
 
-  // Check for existing active job
-  const activeJobs = await maintenanceQueue.getJobs(['active', 'waiting', 'delayed']);
-  if (activeJobs.length > 0) {
-    return null;
-  }
-
-  // Use a deterministic job ID to prevent race conditions
-  // BullMQ will reject if a job with this ID already exists
-  const newJobId = `maintenance-${type}-${Date.now()}`;
-  const job = await maintenanceQueue.add(
+  // One maintenance job of any type at a time, so every type shares the key.
+  const { jobId, accepted } = await addSingleton(
+    maintenanceQueue,
     `maintenance-${type}`,
-    {
-      type,
-      userId,
-      options,
-    },
-    { ...jobOptions, jobId: newJobId }
+    { type, userId, options },
+    'maintenance',
+    jobOptions
   );
+  if (!accepted) return null;
 
-  const jobId = job.id ?? newJobId;
   console.log(`[Maintenance] Enqueued job ${jobId} (${type})`);
   return jobId;
 }

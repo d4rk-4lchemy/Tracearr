@@ -10,7 +10,7 @@
 
 import { randomBytes, createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync, readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,8 @@ process.env.REDIS_URL ||= 'redis://localhost:6380';
 
 const WORKER_COUNT = 7;
 const TEMPLATE_DB = 'tracearr_test_template';
+// Hashed with the migrations; bump it when rebuildTemplate changes what a template holds
+const TEMPLATE_SETUP_VERSION = 1;
 const RUN_TOKEN_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 const ORPHAN_TOKEN_PATTERN = /^tracearr_test_r([a-z0-9]+)_w\d+$/;
 const execFileAsync = promisify(execFile);
@@ -127,9 +129,13 @@ function computeTemplateHash(migrationsFolders: readonly string[]): string {
         return `${migrationsFolder}:${file}:${mtimeMs}`;
       })
   );
-  return createHash('sha1')
-    .update(parts.join('|'))
-    .digest('hex');
+  return (
+    createHash('sha1')
+      .update(`${parts.join('|')}:${TEMPLATE_SETUP_VERSION}`)
+      // Include aggregate definitions without importing the DB singleton into Vitest.
+      .update(readFileSync(new URL('../db/timescale.ts', import.meta.url)))
+      .digest('hex')
+  );
 }
 
 async function readTemplateHash(client: pg.Client): Promise<string | null> {
@@ -154,15 +160,17 @@ async function rebuildTemplate(
   await client.query(`CREATE DATABASE "${TEMPLATE_DB}"`);
 
   try {
-    await execFileAsync(resolve(process.cwd(), 'node_modules/.bin/tsx'), [
-      resolve(dirname(fileURLToPath(import.meta.url)), 'migrateTemplate.integration.ts'),
-    ], {
-      env: {
-        ...process.env,
-        DATABASE_URL: dbUrl(baseUrl, TEMPLATE_DB),
-        TEST_DATABASE_URL: dbUrl(baseUrl, TEMPLATE_DB),
-      },
-    });
+    await execFileAsync(
+      resolve(process.cwd(), 'node_modules/.bin/tsx'),
+      [resolve(dirname(fileURLToPath(import.meta.url)), 'migrateTemplate.integration.ts')],
+      {
+        env: {
+          ...process.env,
+          DATABASE_URL: dbUrl(baseUrl, TEMPLATE_DB),
+          TEST_DATABASE_URL: dbUrl(baseUrl, TEMPLATE_DB),
+        },
+      }
+    );
   } finally {
     // The migration subprocess has exited, but TimescaleDB can still have a
     // background connection to the template for a moment.

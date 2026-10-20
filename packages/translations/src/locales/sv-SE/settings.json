@@ -21,7 +21,7 @@
       "destinations": "",
       "newsletters": "",
       "email": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -37,7 +37,7 @@
       "posters": "",
       "plexAccounts": "",
       "destinations": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -230,6 +230,13 @@
       "issueBlocked": "",
       "issueRestartRequired": "",
       "issueMalfunctioned": "",
+      "jellyfinStep1": "",
+      "jellyfinStep2": "",
+      "jellyfinStep3": "",
+      "jellyfinStep4": "",
+      "embyStep1": "",
+      "embyStep2": "",
+      "embyStep3": "",
       "openReleases": ""
     },
     "posterSource": {
@@ -237,7 +244,9 @@
       "description": "",
       "automatic": "",
       "emptyHint": "",
-      "ownerOnly": ""
+      "ownerOnly": "",
+      "precache": "",
+      "precacheDescription": ""
     },
     "version": {
       "installed": "",
@@ -246,11 +255,6 @@
     }
   },
   "mobile": {
-    "title": "Mobil app",
-    "pairDevice": "Para ihop enhet",
-    "generateToken": "Generera parkopplingstoken",
-    "scanQrCode": "",
-    "tokenExpires": "Token går ut i {{time}}",
     "lastSeen": "",
     "connectedOn": "",
     "noDevices": "Inga enheter anslutna",
@@ -258,7 +262,6 @@
     "revokeAll": "Återkalla alla sessioner",
     "getOnGooglePlay": "Hämta det på Google Play",
     "downloadOnAppStore": "Ladda ner på App Store",
-    "externalUrlRequired": "En extern URL måste konfigureras i allmänna inställningar för att mobilparkoppling ska fungera.",
     "mobileAccessDisabled": "Mobil åtkomst inaktiverad",
     "mobileAccessDisabledDesc": "Aktivera mobil åtkomst för att tillåta Tracearr mobilappen att ansluta till din server.",
     "enableMobileAccess": "Aktivera mobil åtkomst",
@@ -353,10 +356,41 @@
     "automatic": "",
     "startJob": "Starta jobb"
   },
-  "accessControl": {
-    "allowGuestAccess": "Tillåt gäståtkomst",
-    "allowGuestAccessDesc": "När den är inaktiverad, kan endast serverägaren logga in på Tracearr",
-    "singleOwnerNote": "Obs: När gäståtkomst är inaktiverad kan endast serverägaren logga in. Alla andra användare kommer att se ett meddelande \"Åtkomst nekad\"."
+  "memberLogin": {
+    "serverActivity": "",
+    "serverActivityDesc": "",
+    "noServers": "",
+    "addServer": "",
+    "serversLoadFailed": "",
+    "signIn": {
+      "title": "",
+      "titleDesc": "",
+      "local": "",
+      "localDesc": "",
+      "oidc": "",
+      "oidcDesc": "",
+      "plex": "",
+      "plexDesc": "",
+      "onlyWay": "",
+      "membersTitle": "",
+      "media": "",
+      "mediaDesc": "",
+      "servers": "",
+      "overrides": "",
+      "overridesDesc": "",
+      "overridesEmpty": "",
+      "overridesLoadFailed": "",
+      "addPerson": "",
+      "searchPeople": "",
+      "nobodyFound": "",
+      "accessLabel": "",
+      "roleLabel": "",
+      "allow": "",
+      "block": "",
+      "admin": "",
+      "member": "",
+      "backToDefault": ""
+    }
   },
   "import": {
     "noServers": "Inga servrar anslutna",
@@ -417,6 +451,13 @@
     "importFullRangeHelp": "",
     "skipOverlap": "",
     "skipDuplicatePlugin": "",
+    "importFailed": "",
+    "dropzone": {
+      "dropHere": "",
+      "dragOrClick": "",
+      "limit": "",
+      "removeFile": ""
+    },
     "overlapSkipped_one": "",
     "overlapSkipped_other": "",
     "duplicates_one": "",
@@ -580,7 +621,6 @@
       "cron": "",
       "inZone": ""
     },
-    "nextRun": "",
     "noNextRun": "",
     "neverSent": "",
     "lastSend": "",
@@ -1018,11 +1058,7 @@
     "neverSynced": "",
     "counts": {
       "requests_one": "",
-      "requests_other": "",
-      "unmatchedMedia_one": "",
-      "unmatchedMedia_other": "",
-      "unmatchedUsers_one": "",
-      "unmatchedUsers_other": ""
+      "requests_other": ""
     },
     "needsKey": "",
     "lastError": "",

@@ -1,7 +1,6 @@
 import { Tv, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { TopShowsResponse } from '@tracearr/shared';
-import type { Server } from '@tracearr/shared';
+import type { Server, TopShowsResponse } from '@tracearr/shared';
 import { Badge } from '@/components/ui/badge';
 import { DataTablePager } from '@/components/ui/data-table';
 import {
@@ -14,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { ServerBadge } from '@/components/server';
 import { EmptyState } from '@/components/ui/empty-state';
-import { getBingeScoreBadge, getCompletionBadge } from './badges';
+import { BingeScoreBadge, getCompletionBadge } from './badges';
 import {
   SortableTableHead,
   nextSortOrder,
@@ -51,7 +50,7 @@ export function TopShowsTable({
   selectedServers = [],
   isMultiServer = false,
 }: TopShowsTableProps) {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['pages', 'common']);
 
   const handleSort = (field: ShowSortBy) => {
     onSortChange(field, nextSortOrder(field, sortBy, sortOrder, 'desc'));
@@ -60,7 +59,7 @@ export function TopShowsTable({
   if (isLoading) {
     return (
       <div className="flex h-48 items-center justify-center">
-        <div className="text-muted-foreground">Loading TV shows...</div>
+        <div className="text-muted-foreground">{t('common:states.loading')}</div>
       </div>
     );
   }
@@ -69,8 +68,8 @@ export function TopShowsTable({
     return (
       <EmptyState
         icon={Zap}
-        title="No TV show watch data"
-        description="TV show watch statistics will appear here once episodes have been played."
+        title={t('library.watch.top.shows.empty.title')}
+        description={t('library.watch.top.shows.empty.description')}
       />
     );
   }
@@ -82,14 +81,14 @@ export function TopShowsTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[30%]">Show</TableHead>
+            <TableHead className="w-[30%]">{t('library.watch.binge.columns.show')}</TableHead>
             <SortableTableHead
               field="plays"
               sortBy={sortBy}
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Episodes
+              {t('common:media.episode_plural')}
             </SortableTableHead>
             <SortableTableHead
               field="watch_hours"
@@ -97,7 +96,7 @@ export function TopShowsTable({
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Watch Hours
+              {t('common:labels.watchHours')}
             </SortableTableHead>
             <SortableTableHead
               field="viewers"
@@ -105,7 +104,7 @@ export function TopShowsTable({
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Viewers
+              {t('common:labels.viewers')}
             </SortableTableHead>
             <SortableTableHead
               field="completion_rate"
@@ -113,7 +112,7 @@ export function TopShowsTable({
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Completion
+              {t('common:labels.completion')}
             </SortableTableHead>
             <SortableTableHead
               field="binge_score"
@@ -121,7 +120,7 @@ export function TopShowsTable({
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Binge Score
+              {t('library.watch.binge.columns.bingeScore')}
             </SortableTableHead>
           </TableRow>
         </TableHeader>
@@ -132,7 +131,7 @@ export function TopShowsTable({
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="gap-1 bg-blue-500/10 text-blue-500">
                     <Tv className="h-3 w-3" />
-                    TV
+                    {t('common:media.tv')}
                   </Badge>
                   <div>
                     <span className="font-medium">{item.showTitle}</span>
@@ -156,7 +155,7 @@ export function TopShowsTable({
               <TableCell>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{item.bingeScore.toFixed(0)}</span>
-                  {getBingeScoreBadge(item.bingeScore)}
+                  <BingeScoreBadge score={item.bingeScore} />
                 </div>
               </TableCell>
             </TableRow>
@@ -173,11 +172,11 @@ export function TopShowsTable({
         onNext={() => onPageChange(page + 1)}
         onPage={onPageChange}
         labels={{
-          navigation: t('table.pagination'),
-          status: t('table.pageOf', { page, total: totalPages }),
-          previous: t('actions.previous'),
-          next: t('actions.next'),
-          goToPage: t('table.goToPage'),
+          navigation: t('common:table.pagination'),
+          status: t('common:table.pageOf', { page, total: totalPages }),
+          previous: t('common:actions.previous'),
+          next: t('common:actions.next'),
+          goToPage: t('common:table.goToPage'),
         }}
         className="px-2"
       />

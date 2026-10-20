@@ -11,7 +11,12 @@ import { readFile, writeFile, rename, stat as fsStat, unlink, mkdir } from 'node
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { and, eq, isNull } from 'drizzle-orm';
-import { POSTER_IMAGE_SIZE, TIME_MS, isDirectAvatarUrl } from '@tracearr/shared';
+import {
+  POSTER_IMAGE_SIZE,
+  SQUARE_POSTER_SIZE,
+  TIME_MS,
+  isDirectAvatarUrl,
+} from '@tracearr/shared';
 import { db } from '../db/client.js';
 import { servers, libraryItems } from '../db/schema.js';
 import { assertSafeProbeUrl, SsrfBlockedError } from '../utils/ssrf.js';
@@ -706,12 +711,13 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     resizedOnly = false,
   } = options;
 
-  // A 360x540 poster is always the one versioned entry, whether or not the URL
-  // said so: the fingerprint is the path's own, so every surface shares the file.
+  // A 360x540 or 360x360 poster is always the versioned entry for its size, whether or
+  // not the URL said so: the fingerprint is the path's own, so every surface shares the file.
   const isPoster =
     fallback === 'poster' &&
-    width === POSTER_IMAGE_SIZE.width &&
-    height === POSTER_IMAGE_SIZE.height;
+    [POSTER_IMAGE_SIZE, SQUARE_POSTER_SIZE].some(
+      (size) => width === size.width && height === size.height
+    );
   const effectiveVersion = isPoster ? posterVersionFor(imagePath) : version;
 
   const { fileName, shard, versioned } = buildCacheKeyInfo(
@@ -767,7 +773,7 @@ export function getGravatarUrl(email: string | null | undefined, size: number = 
 
 /**
  * Size presets for non-poster images (avatars, logo, cast/art thumbnails).
- * Posters have exactly one size now: POSTER_IMAGE_SIZE.
+ * Posters use POSTER_IMAGE_SIZE, or SQUARE_POSTER_SIZE for artists and albums.
  */
 export const IMAGE_SIZES = {
   pushAvatar: { width: 80, height: 80 },
@@ -821,16 +827,17 @@ export function posterVersionFor(thumbPath: string): string {
   return createHash('sha1').update(thumbPath).digest('hex').slice(0, 8);
 }
 
-/** File name and shard of a poster's one cache entry: 360x540 at the path's own fingerprint. */
+/** File name and shard of a poster's cache entry at one size and the path's own fingerprint. */
 export function posterCacheFileName(
   serverId: string,
-  thumbPath: string
+  thumbPath: string,
+  size: { width: number; height: number } = POSTER_IMAGE_SIZE
 ): { fileName: string; shard: string } {
   const { fileName, shard } = buildCacheKeyInfo(
     serverId,
     thumbPath,
-    POSTER_IMAGE_SIZE.width,
-    POSTER_IMAGE_SIZE.height,
+    size.width,
+    size.height,
     posterVersionFor(thumbPath)
   );
   return { fileName, shard };
@@ -838,9 +845,10 @@ export function posterCacheFileName(
 
 export async function posterCacheEntryExists(
   serverId: string,
-  thumbPath: string
+  thumbPath: string,
+  size: { width: number; height: number } = POSTER_IMAGE_SIZE
 ): Promise<boolean> {
-  const { fileName, shard } = posterCacheFileName(serverId, thumbPath);
+  const { fileName, shard } = posterCacheFileName(serverId, thumbPath, size);
   try {
     await fsStat(join(IMAGE_CACHE_DIR, shard, fileName));
     return true;

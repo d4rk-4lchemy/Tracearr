@@ -10,11 +10,12 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
-  SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarSeparator,
   SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar';
@@ -23,16 +24,38 @@ import { Logo } from '@/components/brand/Logo';
 import { ServerSelector } from './ServerSelector';
 import { NavRunningTasks } from './NavRunningTasks';
 import { NavUser } from './NavUser';
-import { navigation, isNavItemActive, visibleItems, type NavItem } from './nav-data';
+import {
+  navigation,
+  footerNavigation,
+  isNavItemActive,
+  visibleItems,
+  type NavItem,
+} from './nav-data';
 import { UpdateDialog } from './UpdateDialog';
 import { WhatsNewDialog } from '@/components/whats-new/WhatsNewDialog';
-import { useRequestsConfigured, useVersion } from '@/hooks/queries';
+import { usePendingViolationsCount, useRequestsConfigured, useVersion } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { useSocket } from '@/hooks/useSocket';
 import { cn } from '@/lib/utils';
+import { withRangeParams } from '@/lib/rangeParams';
 import { RELEASE_NOTES, selectReopen, type WhatsNewSections } from '@/lib/releaseNotes';
 
-function NavMenuItem({ item }: { item: NavItem }) {
+function PendingViolationsBadge({ enabled }: { enabled: boolean }) {
+  const count = usePendingViolationsCount(enabled);
+  if (count === 0) return null;
+
+  return (
+    <>
+      <SidebarMenuBadge className="bg-warning/10 text-warning">{count}</SidebarMenuBadge>
+      <span
+        data-testid="nav-count-dot"
+        className="bg-warning absolute top-1.5 right-1.5 hidden size-1.5 rounded-full group-data-[collapsible=icon]:block"
+      />
+    </>
+  );
+}
+
+function NavMenuItem({ item, isStaff }: { item: NavItem; isStaff: boolean }) {
   const { setOpenMobile } = useSidebar();
   const { t } = useTranslation('nav');
   const location = useLocation();
@@ -40,14 +63,26 @@ function NavMenuItem({ item }: { item: NavItem }) {
   const label = t(item.nameKey);
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
-        <NavLink to={item.href} end={item.href === '/'} onClick={() => setOpenMobile(false)}>
-          <item.icon className="size-4" />
-          <span>{label}</span>
-        </NavLink>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
+    <>
+      {item.divider && (
+        <li role="none">
+          <SidebarSeparator className="my-2" />
+        </li>
+      )}
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
+          <NavLink
+            to={withRangeParams(item.href, location.search)}
+            end={item.href === '/'}
+            onClick={() => setOpenMobile(false)}
+          >
+            <item.icon className="size-4" />
+            <span>{label}</span>
+          </NavLink>
+        </SidebarMenuButton>
+        {item.badge === 'pendingViolations' && <PendingViolationsBadge enabled={isStaff} />}
+      </SidebarMenuItem>
+    </>
   );
 }
 
@@ -174,33 +209,29 @@ export function AppSidebar() {
         </div>
         <ServerSelector />
       </SidebarHeader>
-      {/* The rail is 48px of fixed width but unbounded height, and shadcn pins
-          SidebarContent to overflow-hidden there; 17 destinations overflow a
-          768px-tall laptop, so restore scrolling rather than clip them away. */}
+      {/* The rail pins SidebarContent to overflow-hidden at a fixed 48px width
+          and unbounded height; restore scrolling so a short window scrolls the
+          destinations instead of clipping them. */}
       <SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
-        {navigation.map((section) => {
-          const items = visibleItems(section, role, seerrConfigured);
-          if (items.length === 0) return null;
-
-          return (
-            <SidebarGroup key={section.labelKey}>
-              <SidebarGroupLabel>{t(section.labelKey)}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {items.map((item) => (
-                    <NavMenuItem key={item.href} item={item} />
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          );
-        })}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {visibleItems(navigation, role, seerrConfigured).map((item) => (
+                <NavMenuItem key={item.href} item={item} isStaff={isStaff} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        {/* Tasks first: the footer is bottom-anchored and grows upward, so a
-            task appearing moves only the footer's top edge and leaves the
-            account button under the pointer where it was. */}
+        {/* Tasks sit below the nav links and above the account button: the
+            footer is bottom-anchored and grows upward, so a task appearing
+            moves only the footer's top edge and leaves the account button
+            under the pointer where it was. */}
         <SidebarMenu>
+          {visibleItems(footerNavigation, role, seerrConfigured).map((item) => (
+            <NavMenuItem key={item.href} item={item} isStaff={isStaff} />
+          ))}
           {isStaff && <NavRunningTasks />}
           <NavUser />
         </SidebarMenu>

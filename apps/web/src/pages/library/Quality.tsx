@@ -1,9 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Film, Tv } from 'lucide-react';
-import { TimeRangePicker } from '@/components/ui/time-range-picker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   ErrorState,
   LibraryEmptyState,
@@ -13,11 +10,12 @@ import {
 import { QualityTimelineChart } from '@/components/charts';
 import { PerServerCardGrid } from '@/components/server';
 import { useLibraryQuality, useLibraryStatus } from '@/hooks/queries';
+import { QUALITY_MEDIA_TYPES, useMediaType } from '@/hooks/useMediaType';
 import { useServer } from '@/hooks/useServer';
-import { useTimeRange } from '@/hooks/useTimeRange';
+import { useTimeRange, type ApiLibraryParams } from '@/hooks/useTimeRange';
 import type { Server } from '@tracearr/shared';
 
-type MediaTypeFilter = 'all' | 'movies' | 'shows';
+type MediaTypeFilter = (typeof QUALITY_MEDIA_TYPES)[number];
 
 /**
  * Per-server quality evolution card rendered inside PerServerCardGrid.
@@ -25,16 +23,23 @@ type MediaTypeFilter = 'all' | 'movies' | 'shows';
  */
 function ServerQualityEvolutionCard({
   server,
-  apiPeriod,
+  apiParams,
   mediaType,
   timeRangePeriod,
 }: {
   server: Server;
-  apiPeriod: string;
+  apiParams: ApiLibraryParams;
   mediaType: MediaTypeFilter;
   timeRangePeriod: string;
 }) {
-  const quality = useLibraryQuality(server.id, apiPeriod, mediaType);
+  const quality = useLibraryQuality(
+    server.id,
+    apiParams.period,
+    mediaType,
+    true,
+    apiParams.startDate,
+    apiParams.endDate
+  );
 
   return (
     <QualityTimelineChart
@@ -48,34 +53,14 @@ function ServerQualityEvolutionCard({
 
 export function LibraryQuality() {
   const { t } = useTranslation(['pages', 'common']);
-  const {
-    mediaLibraryServers,
-    mediaLibraryServerIds,
-    isLoading: serversLoading,
-  } = useServer();
+  const { mediaLibraryServers, mediaLibraryServerIds, isLoading: serversLoading } = useServer();
   const isMultiServer = mediaLibraryServerIds.length > 1;
   const selectedServers = mediaLibraryServers;
   const selectedServerIds = mediaLibraryServerIds;
   // When single-server, the one selected ID drives the quality/status hooks
   const singleServerId = !isMultiServer ? (selectedServerIds[0] ?? null) : null;
-  const { value: timeRange, setValue: setTimeRange } = useTimeRange();
-  const [mediaType, setMediaType] = useState<MediaTypeFilter>('all');
-
-  // Map TimeRangePicker periods to API format
-  const apiPeriod = useMemo(() => {
-    switch (timeRange.period) {
-      case 'week':
-        return '7d';
-      case 'month':
-        return '30d';
-      case 'year':
-        return '1y';
-      case 'all':
-        return 'all';
-      default:
-        return '30d';
-    }
-  }, [timeRange.period]);
+  const { value: timeRange, apiLibraryParams } = useTimeRange();
+  const { value: mediaType } = useMediaType(QUALITY_MEDIA_TYPES);
 
   const serverIds = useMemo(() => selectedServers.map((s) => s.id), [selectedServers]);
   const statusResult = useLibraryStatus(serverIds);
@@ -83,24 +68,17 @@ export function LibraryQuality() {
   // Single-server quality fetch (only used for single-server error state + chart)
   const singleQuality = useLibraryQuality(
     singleServerId ?? undefined,
-    apiPeriod,
+    apiLibraryParams.period,
     mediaType,
-    !isMultiServer && selectedServerIds.length > 0
-  );
-
-  // Header component (used in all states)
-  const header = (
-    <div>
-      <h1 className="text-2xl font-bold">{t('library.quality.title')}</h1>
-      <p className="text-muted-foreground text-sm">{t('library.quality.description')}</p>
-    </div>
+    !isMultiServer && selectedServerIds.length > 0,
+    apiLibraryParams.startDate,
+    apiLibraryParams.endDate
   );
 
   // Show error state for single-server only; multi-server cards handle errors independently
   if (!isMultiServer && singleQuality.isError) {
     return (
       <div className="space-y-6">
-        {header}
         <ErrorState
           title={t('library.quality.failedToLoad')}
           message={singleQuality.error?.message ?? t('library.quality.failedToLoadDesc')}
@@ -111,7 +89,9 @@ export function LibraryQuality() {
   }
 
   if (!serversLoading && selectedServerIds.length === 0) {
-    return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
+    return (
+      <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>
+    );
   }
 
   // Gate on empty/setup state:
@@ -141,7 +121,6 @@ export function LibraryQuality() {
   if (needsSetup) {
     return (
       <div className="space-y-6">
-        {header}
         <LibraryEmptyState
           onComplete={singleQuality.refetch}
           serverIds={selectedServerIds}
@@ -153,36 +132,12 @@ export function LibraryQuality() {
 
   return (
     <div className="space-y-6">
-      {header}
-
-      {/* Quality Evolution Chart - page-level media-type tabs + time range apply to all cards */}
+      {/* Quality Evolution Chart - the layout's media type and time range apply to all cards */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              <CardTitle className="text-base font-medium">
-                {t('library.quality.qualityEvolution')}
-              </CardTitle>
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                value={mediaType}
-                onValueChange={(v) => v && setMediaType(v as MediaTypeFilter)}
-                aria-label={t('media.grid.toolbar.typeLabel')}
-              >
-                <ToggleGroupItem value="all">{t('library.quality.all')}</ToggleGroupItem>
-                <ToggleGroupItem value="movies">
-                  <Film />
-                  {t('common:media.movie_plural')}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="shows">
-                  <Tv />
-                  {t('common:media.tv')}
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-            <TimeRangePicker value={timeRange} onChange={setTimeRange} />
-          </div>
+          <CardTitle className="text-base font-medium">
+            {t('library.quality.qualityEvolution')}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {isMultiServer ? (
@@ -191,7 +146,7 @@ export function LibraryQuality() {
               renderServer={(server) => (
                 <ServerQualityEvolutionCard
                   server={server}
-                  apiPeriod={apiPeriod}
+                  apiParams={apiLibraryParams}
                   mediaType={mediaType}
                   timeRangePeriod={timeRange.period}
                 />

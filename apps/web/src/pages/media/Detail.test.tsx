@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { createMemoryRouter, MemoryRouter, RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ReactRouter from 'react-router';
 import type { MediaRequestEntry } from '@tracearr/shared';
@@ -25,6 +25,8 @@ vi.mock('@/hooks/queries', () => ({
   useMediaStats: vi.fn(),
   useMediaWatchers: vi.fn(),
   useSeasonHeat: vi.fn(),
+  useMediaChildren: vi.fn(),
+  useAlbumDetail: vi.fn(),
   useMediaPlatforms: vi.fn(),
   useMediaHistory: vi.fn(),
   useMediaRequests: vi.fn(),
@@ -65,6 +67,8 @@ import {
   useMediaStats,
   useMediaWatchers,
   useSeasonHeat,
+  useMediaChildren,
+  useAlbumDetail,
   useMediaPlatforms,
   useMediaHistory,
   useMediaRequests,
@@ -78,6 +82,8 @@ const mockUseMediaDetail = vi.mocked(useMediaDetail);
 const mockUseMediaStats = vi.mocked(useMediaStats);
 const mockUseMediaWatchers = vi.mocked(useMediaWatchers);
 const mockUseSeasonHeat = vi.mocked(useSeasonHeat);
+const mockUseMediaChildren = vi.mocked(useMediaChildren);
+const mockUseAlbumDetail = vi.mocked(useAlbumDetail);
 const mockUseMediaPlatforms = vi.mocked(useMediaPlatforms);
 const mockUseMediaHistory = vi.mocked(useMediaHistory);
 const mockUseMediaRequests = vi.mocked(useMediaRequests);
@@ -176,6 +182,8 @@ describe('MediaDetail page', () => {
     mockUseMediaStats.mockReturnValue(pendingQuery());
     mockUseMediaWatchers.mockReturnValue(pendingQuery());
     mockUseSeasonHeat.mockReturnValue(pendingQuery());
+    mockUseMediaChildren.mockReturnValue(pendingQuery());
+    mockUseAlbumDetail.mockReturnValue(pendingQuery());
     mockUseMediaPlatforms.mockReturnValue(pendingQuery());
     mockUseMediaHistory.mockReturnValue(
       pendingQuery({ hasNextPage: false, isFetchingNextPage: false, fetchNextPage: vi.fn() })
@@ -193,6 +201,7 @@ describe('MediaDetail page', () => {
 
     renderPage();
 
+    expect(mockUseMediaChildren).toHaveBeenCalledWith('media-1', ['srv-1'], false);
     expect(mockUseMediaRequests).toHaveBeenCalledWith('media-1', ['srv-1']);
     expect(mockUseMediaDetail).toHaveBeenCalledWith('media-1', ['srv-1'], 'all', undefined);
   });
@@ -546,6 +555,184 @@ describe('MediaDetail page', () => {
     expect(screen.queryByText('media.detail.seasons.title')).not.toBeInTheDocument();
   });
 
+  it('lists albums in place of seasons for an artist and labels its time as listening', () => {
+    mockUseMediaDetail.mockReturnValue(detailQuery('artist'));
+    const combined = { plays: 14, watchTimeMs: 5 * 3_600_000, uniqueUsers: 3 };
+    mockUseMediaStats.mockReturnValue(
+      pendingQuery({
+        isLoading: false,
+        data: { windows: { all_time: { combined }, last_30: { combined } } },
+      })
+    );
+    mockUseMediaChildren.mockReturnValue(
+      pendingQuery({
+        isLoading: false,
+        data: {
+          data: [
+            {
+              id: 'album-1',
+              mediaType: 'album',
+              title: 'Discovery',
+              seasonNumber: null,
+              episodeCount: null,
+              episodeNumber: null,
+              imdbId: null,
+              tmdbId: null,
+              tvdbId: null,
+              showMediaId: null,
+              genres: ['Electronic'],
+              year: 2001,
+              thumbPath: '/library/metadata/77/thumb/1700000000',
+              serverId: 'srv-1',
+              addedAt: '2026-09-30T18:12:00.000Z',
+              trackCount: 14,
+            },
+          ],
+        },
+      })
+    );
+
+    renderPage();
+
+    expect(mockUseSeasonHeat).toHaveBeenCalledWith('media-1', ['srv-1'], false);
+    expect(mockUseMediaChildren).toHaveBeenCalledWith('media-1', ['srv-1'], true);
+    expect(screen.queryByText('media.detail.seasons.title')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'media.detail.albums.title' })).toBeInTheDocument();
+    expect(screen.getByText('Discovery')).toBeInTheDocument();
+    expect(screen.getByText('common:labels.listenTime')).toBeInTheDocument();
+    expect(screen.queryByText('common:labels.watchTime')).not.toBeInTheDocument();
+  });
+
+  it('opens an album sheet as a history entry that Back closes', async () => {
+    mockUseServer.mockReturnValue({
+      ...mockUseServer(),
+      selectedServerIds: ['srv-1', 'tv-1'],
+      mediaLibraryServerIds: ['srv-1'],
+    });
+    mockUseMediaDetail.mockReturnValue(detailQuery('artist'));
+    mockUseMediaChildren.mockReturnValue(
+      pendingQuery({
+        isLoading: false,
+        data: {
+          data: [
+            {
+              id: 'album-1',
+              mediaType: 'album',
+              title: 'Discovery',
+              seasonNumber: null,
+              episodeCount: null,
+              episodeNumber: null,
+              imdbId: null,
+              tmdbId: null,
+              tvdbId: null,
+              showMediaId: null,
+              genres: ['Electronic'],
+              year: 2001,
+              thumbPath: null,
+              serverId: 'srv-1',
+              addedAt: '2026-09-30T18:12:00.000Z',
+              trackCount: 14,
+            },
+          ],
+        },
+      })
+    );
+    const router = createMemoryRouter([{ path: '/media/:id', element: <MediaDetail /> }], {
+      initialEntries: ['/media/media-1'],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Discovery/ }));
+    expect(router.state.location.search).toBe('?album=album-1');
+    expect(router.state.historyAction).toBe('PUSH');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(mockUseAlbumDetail).toHaveBeenLastCalledWith('album-1', ['srv-1'], true);
+
+    await act(() => router.navigate(-1));
+    expect(router.state.location.search).toBe('');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('treats an empty ?album= as no album', () => {
+    mockUseMediaDetail.mockReturnValue(detailQuery('artist'));
+    const router = createMemoryRouter([{ path: '/media/:id', element: <MediaDetail /> }], {
+      initialEntries: ['/media/media-1?album='],
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    );
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockUseAlbumDetail).toHaveBeenLastCalledWith('', ['srv-1'], false);
+  });
+
+  it('badges a finished track in an artist history as played', () => {
+    mockUseMediaDetail.mockReturnValue(detailQuery('artist'));
+    mockUseMediaHistory.mockReturnValue(
+      pendingQuery({
+        isLoading: false,
+        data: {
+          pages: [
+            {
+              data: [
+                {
+                  id: 'chain-1',
+                  server_id: 'srv-1',
+                  server_name: 'Plex',
+                  media_title: 'One More Time',
+                  started_at: '2026-07-01T12:00:00.000Z',
+                  duration_ms: 320_000,
+                  watched: true,
+                  user: {
+                    id: 'user-1',
+                    server_user_id: 'server-user-1',
+                    username: 'ari',
+                    thumb_url: null,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+      })
+    );
+
+    renderPage();
+
+    const row = screen.getByText('One More Time').closest('[role="row"]');
+    expect(row).toHaveTextContent('common:playback.played');
+    expect(row).not.toHaveTextContent('common:playback.watched');
+  });
+
+  it('labels watch time as watching for a movie and never asks for children', () => {
+    mockUseMediaDetail.mockReturnValue(detailQuery('movie'));
+    const combined = { plays: 2, watchTimeMs: 3_600_000, uniqueUsers: 1 };
+    mockUseMediaStats.mockReturnValue(
+      pendingQuery({
+        isLoading: false,
+        data: { windows: { all_time: { combined }, last_30: { combined } } },
+      })
+    );
+
+    renderPage();
+
+    expect(mockUseMediaChildren).toHaveBeenCalledWith('media-1', ['srv-1'], false);
+    expect(screen.getByText('common:labels.watchTime')).toBeInTheDocument();
+    expect(screen.queryByText('media.detail.albums.title')).not.toBeInTheDocument();
+  });
+
   it('shows the requests panel for a title that has requests', () => {
     mockUseMediaDetail.mockReturnValue(detailQuery('movie'));
     mockUseMediaRequests.mockReturnValue(
@@ -554,6 +741,7 @@ describe('MediaDetail page', () => {
 
     renderPage();
 
+    expect(mockUseMediaChildren).toHaveBeenCalledWith('media-1', ['srv-1'], false);
     expect(mockUseMediaRequests).toHaveBeenCalledWith('media-1', ['srv-1']);
     expect(screen.getByRole('heading', { name: 'requests.mediaPanel.title' })).toBeInTheDocument();
   });

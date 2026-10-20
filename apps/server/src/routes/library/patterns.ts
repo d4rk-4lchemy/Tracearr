@@ -20,6 +20,7 @@ import {
   libraryPatternsQuerySchema,
   type LibraryPatternsQueryInput,
 } from '@tracearr/shared';
+import { countedSessionSql } from '../../constants/index.js';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
 import { buildLibraryCacheKey } from './utils.js';
@@ -293,7 +294,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
                 JOIN library_items li ON sess.rating_key = li.rating_key
                   AND sess.server_id = li.server_id
                   AND li.removed_at IS NULL
-                WHERE sess.duration_ms >= 120000
+                WHERE ${countedSessionSql('sess')}
                   AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
                   ${serverFragmentLi}
                   ${libraryFilter}
@@ -332,7 +333,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
                  JOIN library_items li ON sess.rating_key = li.rating_key
                    AND sess.server_id = li.server_id
                    AND li.removed_at IS NULL
-                 WHERE sess.duration_ms >= 120000
+                 WHERE ${countedSessionSql('sess')}
                    AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
                    ${serverFragmentLi}
                    ${libraryFilter}
@@ -365,7 +366,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
                 JOIN library_items li ON sess.rating_key = li.rating_key
                   AND sess.server_id = li.server_id
                   AND li.removed_at IS NULL
-                WHERE sess.duration_ms >= 120000
+                WHERE ${countedSessionSql('sess')}
                   AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
                   ${serverFragmentLi}
                   ${libraryFilter}
@@ -413,7 +414,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
               JOIN library_items li ON sess.rating_key = li.rating_key
                 AND sess.server_id = li.server_id
                 AND li.removed_at IS NULL
-              WHERE sess.duration_ms >= 120000
+              WHERE ${countedSessionSql('sess')}
                 AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
                 ${serverFragmentLi}
                 ${libraryFilter}
@@ -424,7 +425,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
               JOIN library_items li ON sess.rating_key = li.rating_key
                 AND sess.server_id = li.server_id
                 AND li.removed_at IS NULL
-              WHERE sess.duration_ms >= 120000
+              WHERE ${countedSessionSql('sess')}
                 AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
                 ${serverFragmentLi}
                 ${libraryFilter}

@@ -163,22 +163,28 @@ describe('posterCacheFileName', () => {
 });
 
 describe('proxyImage poster fingerprint derivation', () => {
-  it('derives the fingerprint for a 360x540 poster even when no version was passed', async () => {
-    const serverId = randomUUID();
-    const path = '/library/metadata/1/thumb/2';
-    const version = posterVersionFor(path);
-    const baseHash = createHash('sha256')
-      .update(`${serverId}:${path}:360:540`)
-      .digest('hex')
-      .slice(0, 16);
-    vi.mocked(stat).mockResolvedValue({ mtimeMs: Date.now() } as never);
-    vi.mocked(readFile).mockResolvedValue(Buffer.from('webp'));
-    const result = await proxyImage({ serverId, imagePath: path, width: 360, height: 540 });
-    expect(result.cached).toBe(true);
-    expect(vi.mocked(readFile).mock.calls[0]?.[0]).toBe(
-      join(CACHE_DIR, baseHash.slice(0, 2), `${baseHash}:v${version}.webp`)
-    );
-  });
+  it.each([
+    { width: 360, height: 540 },
+    { width: 360, height: 360 },
+  ])(
+    'derives the fingerprint for a $width x $height poster even when no version was passed',
+    async ({ width, height }) => {
+      const serverId = randomUUID();
+      const path = '/library/metadata/1/thumb/2';
+      const version = posterVersionFor(path);
+      const baseHash = createHash('sha256')
+        .update(`${serverId}:${path}:${width}:${height}`)
+        .digest('hex')
+        .slice(0, 16);
+      vi.mocked(stat).mockResolvedValue({ mtimeMs: Date.now() } as never);
+      vi.mocked(readFile).mockResolvedValue(Buffer.from('webp'));
+      const result = await proxyImage({ serverId, imagePath: path, width, height });
+      expect(result.cached).toBe(true);
+      expect(vi.mocked(readFile).mock.calls[0]?.[0]).toBe(
+        join(CACHE_DIR, baseHash.slice(0, 2), `${baseHash}:v${version}.webp`)
+      );
+    }
+  );
 
   it('does not derive a fingerprint for another size or fallback', async () => {
     const serverId = randomUUID();

@@ -131,7 +131,7 @@ describe('DuplicatesTable', () => {
 
     expect(screen.getByText('Blade Runner 2049')).toBeInTheDocument();
     expect(screen.getByText('(2017)')).toBeInTheDocument();
-    expect(screen.getByText('Movie')).toBeInTheDocument();
+    expect(screen.getByText('media.movie')).toBeInTheDocument();
   });
 
   it('heads an episode group with the series title over the episode', () => {
@@ -146,7 +146,7 @@ describe('DuplicatesTable', () => {
 
     expect(screen.getByText('Breaking Bad')).toBeInTheDocument();
     expect(screen.getByText('S02 E02 · Grilled')).toBeInTheDocument();
-    expect(screen.getByText('TV')).toBeInTheDocument();
+    expect(screen.getByText('media.tv')).toBeInTheDocument();
   });
 
   it('labels each copy in an episode group with its own season and episode', async () => {
@@ -174,6 +174,6 @@ describe('DuplicatesTable', () => {
 
     expect(screen.getByText('Redbone')).toBeInTheDocument();
     expect(screen.getByText('Childish Gambino')).toBeInTheDocument();
-    expect(screen.getByText('Music')).toBeInTheDocument();
+    expect(screen.getByText('media.music')).toBeInTheDocument();
   });
 });

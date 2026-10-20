@@ -19,7 +19,6 @@ vi.mock('@/lib/api', () => ({
       status: vi.fn(),
       analytics: vi.fn(),
       unplayed: vi.fn(),
-      requesters: vi.fn(),
     },
   },
 }));
@@ -44,7 +43,6 @@ import {
   useRequestsConfigured,
   useRequestsAnalytics,
   useRequestsUnplayed,
-  useRequesters,
   useRequestServices,
   useTestRequestService,
   useCreateRequestService,
@@ -64,7 +62,6 @@ const mockUserRequests = vi.mocked(api.users.requests);
 const mockRequestsStatus = vi.mocked(api.requests.status);
 const mockRequestsAnalytics = vi.mocked(api.requests.analytics);
 const mockRequestsUnplayed = vi.mocked(api.requests.unplayed);
-const mockRequesters = vi.mocked(api.requests.requesters);
 const mockToastError = vi.mocked(toast.error);
 const mockToastSuccess = vi.mocked(toast.success);
 
@@ -193,34 +190,6 @@ describe('Requests page hooks', () => {
     expect(result.current.data).toEqual(response);
   });
 
-  it('useRequesters sends paging and sort with the sorted scope, not the enabled flag', async () => {
-    const response = { data: [], total: 120, page: 3, pageSize: 50 };
-    mockRequesters.mockResolvedValueOnce(response);
-
-    const client = new QueryClient();
-    const { result } = renderHook(
-      () =>
-        useRequesters(['s2', 's1'], {
-          page: 3,
-          pageSize: 50,
-          sortBy: 'name',
-          sortOrder: 'desc',
-          enabled: true,
-        }),
-      { wrapper: wrapper(client) }
-    );
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockRequesters).toHaveBeenCalledWith({
-      page: 3,
-      pageSize: 50,
-      sortBy: 'name',
-      sortOrder: 'desc',
-      serverIds: ['s1', 's2'],
-    });
-    expect(result.current.data).toEqual(response);
-  });
-
   it('never calls the client for the data hooks while disabled', () => {
     const listOptions = { page: 1, pageSize: 20, sortOrder: 'desc' as const, enabled: false };
 
@@ -229,15 +198,13 @@ describe('Requests page hooks', () => {
       () => [
         useRequestsAnalytics(['s1'], { enabled: false }),
         useRequestsUnplayed(['s1'], { ...listOptions, sortBy: 'fileSizeBytes' }),
-        useRequesters(['s1'], { ...listOptions, sortBy: 'watched' }),
       ],
       { wrapper: wrapper(client) }
     );
 
-    expect(result.current.map((query) => query.fetchStatus)).toEqual(['idle', 'idle', 'idle']);
+    expect(result.current.map((query) => query.fetchStatus)).toEqual(['idle', 'idle']);
     expect(mockRequestsAnalytics).not.toHaveBeenCalled();
     expect(mockRequestsUnplayed).not.toHaveBeenCalled();
-    expect(mockRequesters).not.toHaveBeenCalled();
   });
 });
 

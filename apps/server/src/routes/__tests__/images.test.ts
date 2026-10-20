@@ -435,23 +435,29 @@ describe('Image Routes', () => {
       expect(mockProxyImage).not.toHaveBeenCalled();
     });
 
-    it('rejects a versioned request whose height does not match the poster size', async () => {
+    it('takes a versioned request only at the poster or the square art size', async () => {
       app = await buildTestApp();
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/images/proxy',
-        query: {
-          server: validServerId,
-          url: '/path',
-          width: '360',
-          height: '500',
-          v: 'abcd1234',
-        },
+      mockProxyImage.mockResolvedValue({
+        data: Buffer.from('x'),
+        contentType: 'image/webp',
+        cached: true,
       });
+      const versioned = (height: string) =>
+        app.inject({
+          method: 'GET',
+          url: '/images/proxy',
+          query: { server: validServerId, url: '/path', width: '360', height, v: 'abcd1234' },
+        });
 
-      expect(response.statusCode).toBe(400);
+      expect((await versioned('500')).statusCode).toBe(400);
       expect(mockProxyImage).not.toHaveBeenCalled();
+
+      const square = await versioned('360');
+      expect(square.statusCode).toBe(200);
+      expect(square.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+      expect(mockProxyImage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ width: 360, height: 360, version: 'abcd1234' })
+      );
     });
 
     it('passes lqip through only when the query says 1', async () => {

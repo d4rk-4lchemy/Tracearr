@@ -12,6 +12,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { Layout } from '@/components/layout/Layout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { RoleRoute } from '@/components/auth/RoleRoute';
+import { RedirectWithSearch } from '@/components/RedirectWithSearch';
 import { RouteError } from '@/components/RouteError';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { BASE_URL } from '@/lib/basePath';
@@ -21,15 +22,27 @@ import { PlexCallback } from '@/pages/PlexCallback';
 import { Setup } from '@/pages/Setup';
 import { Dashboard } from '@/pages/Dashboard';
 import { Map } from '@/pages/Map';
-import { StatsActivity, StatsUsers, StatsDevices, StatsBandwidth } from '@/pages/stats';
-import { LibraryQuality, LibraryStorage, LibraryWatch } from '@/pages/library';
+import {
+  StatsActivity,
+  StatsPeople,
+  StatsDevices,
+  StatsBandwidth,
+  StatsLayout,
+} from '@/pages/stats';
+import {
+  LibraryGenres,
+  LibraryLayout,
+  LibraryQuality,
+  LibraryStorage,
+  LibraryWatch,
+} from '@/pages/library';
 import { MediaOverview } from '@/pages/media/Overview';
 import { MediaGrid } from '@/pages/media/Grid';
-import { MediaGenres } from '@/pages/media/Genres';
 import { MediaDetail } from '@/pages/media/Detail';
 import { Users } from '@/pages/Users';
 import { UserDetail } from '@/pages/UserDetail';
 import { Automations } from '@/pages/Automations';
+import { AutomationsLayout } from '@/pages/AutomationsLayout';
 import { AutomationBuilderPage } from '@/pages/AutomationBuilderPage';
 import { AutomationDetail } from '@/pages/AutomationDetail';
 import { Violations } from '@/pages/Violations';
@@ -99,21 +112,36 @@ export const appRoutes = (
         <Route index element={<Dashboard />} />
         <Route path="map" element={<Map />} />
 
-        {/* Stats routes */}
-        <Route path="stats" element={<Navigate to="/stats/activity" replace />} />
+        <Route path="stats" element={<StatsLayout />}>
+          <Route index element={<RedirectWithSearch to="/stats/activity" />} />
+          <Route path="activity" element={<StatsActivity />} />
+          <Route element={<RoleRoute roles={STAFF_ROLES} />}>
+            <Route path="people" element={<StatsPeople />} />
+            <Route path="devices" element={<StatsDevices />} />
+            <Route path="bandwidth" element={<StatsBandwidth />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Route>
         <Route path="stats/me" element={<Navigate to="/?view=me" replace />} />
-        <Route path="stats/activity" element={<StatsActivity />} />
-        <Route path="stats/library" element={<Navigate to="/media" replace />} />
+        <Route path="stats/library" element={<RedirectWithSearch to="/library" />} />
+        <Route path="stats/users" element={<RedirectWithSearch to="/stats/people" />} />
 
-        {/* Library routes - overview merged into Media, other pages untouched */}
-        <Route path="library" element={<Navigate to="/media" replace />} />
+        <Route path="library" element={<LibraryLayout />}>
+          <Route index element={<MediaOverview />} />
+          <Route path="genres" element={<LibraryGenres />} />
+          <Route element={<RoleRoute roles={STAFF_ROLES} />}>
+            <Route path="quality" element={<LibraryQuality />} />
+            <Route path="storage" element={<LibraryStorage />} />
+            <Route path="watch" element={<LibraryWatch />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Route>
 
-        {/* Media routes */}
-        <Route path="media" element={<MediaOverview />} />
+        <Route path="media" element={<RedirectWithSearch to="/library" />} />
+        <Route path="media/genres" element={<RedirectWithSearch to="/library/genres" />} />
         <Route path="media/browse" element={<MediaGrid />} />
         <Route path="media/movies" element={<Navigate to="/media/browse" replace />} />
-        <Route path="media/shows" element={<Navigate to="/media/browse?type=shows" replace />} />
-        <Route path="media/genres" element={<MediaGenres />} />
+        <Route path="media/shows" element={<Navigate to="/media/browse?type=show" replace />} />
         <Route path="media/:id" element={<MediaDetail />} />
 
         {/* Other routes */}
@@ -122,20 +150,16 @@ export const appRoutes = (
 
         {/* Members get the same 404 a mistyped URL gets */}
         <Route element={<RoleRoute roles={STAFF_ROLES} />}>
-          <Route path="stats/users" element={<StatsUsers />} />
-          <Route path="violations" element={<Violations />} />
-          <Route path="violations/:id" element={<ViolationDetail />} />
-          <Route path="stats/devices" element={<StatsDevices />} />
-          <Route path="stats/bandwidth" element={<StatsBandwidth />} />
-          <Route path="library/quality" element={<LibraryQuality />} />
-          <Route path="library/storage" element={<LibraryStorage />} />
-          <Route path="library/watch" element={<LibraryWatch />} />
-          <Route path="users" element={<Users />} />
-          <Route path="users/:id" element={<UserDetail />} />
-          <Route path="automations" element={<Automations />} />
+          <Route element={<AutomationsLayout />}>
+            <Route path="automations" element={<Automations />} />
+            <Route path="violations" element={<Violations />} />
+          </Route>
           <Route path="automations/new" element={<AutomationBuilderPage />} />
           <Route path="automations/:id" element={<AutomationDetail />} />
           <Route path="automations/:id/edit" element={<AutomationBuilderPage />} />
+          <Route path="violations/:id" element={<ViolationDetail />} />
+          <Route path="users" element={<Users />} />
+          <Route path="users/:id" element={<UserDetail />} />
           <Route path="settings/*" element={<Settings />} />
         </Route>
 

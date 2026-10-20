@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { Film, Tv, PieChart } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Film, Tv, PieChart, type LucideIcon } from 'lucide-react';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import {
   RESOLUTION_LABELS,
   resolutionBucket,
+  type LibraryResolutionResponse,
   type ResolutionBreakdown,
   type Server,
 } from '@tracearr/shared';
@@ -28,8 +30,6 @@ interface ResolutionDonutProps {
   isLoading?: boolean;
   height?: number;
   title: string;
-  icon?: React.ReactNode;
-  showHeader?: boolean;
   /** A bar click opens Browse filtered to that resolution for this type and server. */
   browseType: 'movie' | 'show';
   serverId?: string | null;
@@ -40,11 +40,10 @@ function ResolutionDonut({
   isLoading,
   height = 220,
   title,
-  icon,
-  showHeader = true,
   browseType,
   serverId,
 }: ResolutionDonutProps) {
+  const { t } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
   const chartData = useMemo(() => {
     if (!data) return [];
@@ -88,7 +87,12 @@ function ResolutionDonut({
         },
         formatter: function () {
           const pct = total > 0 ? (((this.y ?? 0) / total) * 100).toFixed(1) : '0';
-          return `<b>${this.key}</b>: ${this.y?.toLocaleString()} of ${total.toLocaleString()} titles (${pct}%)`;
+          return t('library.quality.resolution.tooltip', {
+            name: this.key,
+            value: this.y ?? 0,
+            total,
+            percent: pct,
+          });
         },
       },
       xAxis: {
@@ -142,7 +146,7 @@ function ResolutionDonut({
       series: [
         {
           type: 'bar',
-          name: 'Quality',
+          name: t('common:labels.quality'),
           data: chartData,
         },
       ],
@@ -166,174 +170,109 @@ function ResolutionDonut({
         ],
       },
     };
-  }, [chartData, data, height, navigate, browseType, serverId]);
+  }, [chartData, data, height, navigate, browseType, serverId, t]);
 
   if (isLoading) {
-    return (
-      <div>
-        {showHeader && (
-          <div className="mb-2 flex items-center gap-2">
-            {icon}
-            <h4 className="text-sm font-medium">{title}</h4>
-          </div>
-        )}
-        <ChartSkeleton height={height} />
-      </div>
-    );
+    return <ChartSkeleton height={height} />;
   }
 
   if (chartData.length === 0) {
     return (
-      <div>
-        {showHeader && (
-          <div className="mb-2 flex items-center gap-2">
-            {icon}
-            <h4 className="text-sm font-medium">{title}</h4>
-          </div>
-        )}
-        <EmptyState
-          icon={PieChart}
-          title="No data"
-          description={`No ${title.toLowerCase()} quality data available`}
-        />
-      </div>
+      <EmptyState
+        icon={PieChart}
+        title={t('common:empty.noData')}
+        description={t('library.quality.resolution.empty', { type: title.toLowerCase() })}
+      />
     );
   }
 
   return (
-    <div>
-      {showHeader && (
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {icon}
-            <h4 className="text-sm font-medium">{title}</h4>
-          </div>
-          <span className="text-muted-foreground text-sm">
-            {data?.total.toLocaleString()} items
-          </span>
-        </div>
-      )}
-      <HighchartsReact
-        highcharts={Highcharts}
-        options={options}
-        containerProps={{ style: { width: '100%', height: '100%' } }}
-      />
-    </div>
+    <HighchartsReact
+      highcharts={Highcharts}
+      options={options}
+      containerProps={{ style: { width: '100%', height: '100%' } }}
+    />
+  );
+}
+
+const RESOLUTION_KINDS = [
+  { key: 'movies', icon: Film, labelKey: 'common:media.movie_plural', browseType: 'movie' },
+  { key: 'tv', icon: Tv, labelKey: 'common:media.tvShows', browseType: 'show' },
+] as const satisfies readonly {
+  key: keyof LibraryResolutionResponse;
+  icon: LucideIcon;
+  labelKey: string;
+  browseType: 'movie' | 'show';
+}[];
+
+function ItemCount({ total }: { total: number | undefined }) {
+  const { t } = useTranslation('pages');
+  if (total === undefined) return null;
+  return (
+    <span className="text-muted-foreground text-sm">
+      {t('library.quality.resolution.itemCount', { count: total })}
+    </span>
   );
 }
 
 /** Per-server resolution content rendered inside PerServerCardGrid (no outer Card). */
 function ServerResolutionCard({ serverId }: { serverId: string }) {
+  const { t } = useTranslation(['pages', 'common']);
   const resolution = useLibraryResolution(serverId);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Film className="text-muted-foreground h-4 w-4" />
-            <h4 className="text-sm font-medium">Movies</h4>
+      {RESOLUTION_KINDS.map(({ key, icon: Icon, labelKey, browseType }) => (
+        <div key={key}>
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icon className="text-muted-foreground h-4 w-4" />
+              <h4 className="text-sm font-medium">{t(labelKey)}</h4>
+            </div>
+            <ItemCount total={resolution.data?.[key]?.total} />
           </div>
-          {resolution.data?.movies?.total !== undefined && (
-            <span className="text-muted-foreground text-sm">
-              {resolution.data.movies.total.toLocaleString()} items
-            </span>
-          )}
+          <ResolutionDonut
+            data={resolution.data?.[key]}
+            isLoading={resolution.isLoading}
+            title={t(labelKey)}
+            browseType={browseType}
+            serverId={serverId}
+          />
         </div>
-        <ResolutionDonut
-          data={resolution.data?.movies}
-          isLoading={resolution.isLoading}
-          title="Movies"
-          showHeader={false}
-          browseType="movie"
-          serverId={serverId}
-        />
-      </div>
-
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Tv className="text-muted-foreground h-4 w-4" />
-            <h4 className="text-sm font-medium">TV Shows</h4>
-          </div>
-          {resolution.data?.tv?.total !== undefined && (
-            <span className="text-muted-foreground text-sm">
-              {resolution.data.tv.total.toLocaleString()} items
-            </span>
-          )}
-        </div>
-        <ResolutionDonut
-          data={resolution.data?.tv}
-          isLoading={resolution.isLoading}
-          title="TV Shows"
-          showHeader={false}
-          browseType="show"
-          serverId={serverId}
-        />
-      </div>
+      ))}
     </div>
   );
 }
 
 /** Single-server layout - two side-by-side cards as the original design. */
 function SingleServerResolutionSection({ serverId }: { serverId?: string | null }) {
+  const { t } = useTranslation(['pages', 'common']);
   const resolution = useLibraryResolution(serverId);
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Film className="text-muted-foreground h-4 w-4" />
-              <CardTitle className="text-base font-medium">Movies</CardTitle>
+      {RESOLUTION_KINDS.map(({ key, icon: Icon, labelKey, browseType }) => (
+        <Card key={key}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Icon className="text-muted-foreground h-4 w-4" />
+                <CardTitle className="text-base font-medium">{t(labelKey)}</CardTitle>
+              </div>
+              <ItemCount total={resolution.data?.[key]?.total} />
             </div>
-            {resolution.data?.movies?.total !== undefined && (
-              <span className="text-muted-foreground text-sm">
-                {resolution.data.movies.total.toLocaleString()} items
-              </span>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ResolutionDonut
-            data={resolution.data?.movies}
-            isLoading={resolution.isLoading}
-            title="Movies"
-            icon={null}
-            showHeader={false}
-            browseType="movie"
-            serverId={serverId}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Tv className="text-muted-foreground h-4 w-4" />
-              <CardTitle className="text-base font-medium">TV Shows</CardTitle>
-            </div>
-            {resolution.data?.tv?.total !== undefined && (
-              <span className="text-muted-foreground text-sm">
-                {resolution.data.tv.total.toLocaleString()} items
-              </span>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ResolutionDonut
-            data={resolution.data?.tv}
-            isLoading={resolution.isLoading}
-            title="TV Shows"
-            icon={null}
-            showHeader={false}
-            browseType="show"
-            serverId={serverId}
-          />
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            <ResolutionDonut
+              data={resolution.data?.[key]}
+              isLoading={resolution.isLoading}
+              title={t(labelKey)}
+              browseType={browseType}
+              serverId={serverId}
+            />
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }

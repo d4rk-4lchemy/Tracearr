@@ -19,6 +19,7 @@ import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import { TIME_MS } from '@tracearr/shared';
 import { and, eq, lte, isNotNull } from 'drizzle-orm';
 import { everyAligned, getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { WORKER_DEFAULTS, registerQueue, registerWorker } from './jobSafety.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
 import { authAccounts, plexAccounts, servers, users } from '../db/schema.js';
@@ -73,6 +74,7 @@ export function initPlexTokenRefreshQueue(redisUrl: string): void {
   refreshQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('[PlexTokenRefresh] Queue error:', err);
   });
+  registerQueue(refreshQueue);
 
   console.log('[PlexTokenRefresh] Queue initialized');
 }
@@ -116,8 +118,10 @@ export function startPlexTokenRefreshWorker(): void {
       connection: connectionOptions,
       prefix: bullPrefix,
       concurrency: 1,
+      ...WORKER_DEFAULTS,
     }
   );
+  registerWorker(refreshWorker);
 
   refreshWorker.on('error', (error) => {
     if (!isMaintenance()) console.error('[PlexTokenRefresh] Worker error:', error);

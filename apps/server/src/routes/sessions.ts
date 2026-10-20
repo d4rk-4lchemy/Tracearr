@@ -1058,6 +1058,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       // No server access - return empty result
       const emptyAggregates: HistoryAggregates = {
         totalWatchTimeMs: 0,
+        listenTimeMs: 0,
         playCount: 0,
         uniqueUsers: 0,
         uniqueContent: 0,
@@ -1095,6 +1096,7 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
       SELECT
         COUNT(DISTINCT COALESCE(s.reference_id, s.id))::int as play_count,
         COALESCE(SUM(s.duration_ms), 0)::bigint as total_watch_time_ms,
+        COALESCE(SUM(s.duration_ms) FILTER (WHERE s.media_type = 'track'), 0)::bigint as listen_time_ms,
         COUNT(DISTINCT su_agg.user_id)::int as unique_users,
         ${uniqueContentExpr}::int as unique_content
       FROM sessions s
@@ -1106,12 +1108,14 @@ export const sessionRoutes: FastifyPluginAsync = async (app) => {
     const result = aggregateResult.rows[0] as {
       play_count: number;
       total_watch_time_ms: string;
+      listen_time_ms: string;
       unique_users: number;
       unique_content: number;
     };
 
     const aggregates: HistoryAggregates = {
       totalWatchTimeMs: Number(result.total_watch_time_ms),
+      listenTimeMs: Number(result.listen_time_ms),
       playCount: result.play_count,
       uniqueUsers: result.unique_users,
       uniqueContent: result.unique_content,

@@ -24,6 +24,7 @@ import {
   type MediaLibraryItem,
 } from './mediaServer/index.js';
 import { resolveMediaBatch, reconcileMediaDuplicates } from './library/mediaResolutionService.js';
+import { albumArtForTracks } from './library/trackArt.js';
 import {
   MEDIA_ANNOUNCE_CAP,
   MEDIA_BUFFER_CAP,
@@ -144,14 +145,11 @@ const FLAT_LIBRARY_TYPES = new Set(['movie', 'movies']);
 /**
  * Bump a server type's version when its listing query changes shape. A library
  * stamped with an older version gets one forced full scan, so items the old
- * query left out come back without anyone running a manual sync. Plex is at 3:
- * Plex's listing started storing plex_guid, and every parse now reads the Atmos
- * and edition fields, which existing copies only pick up through a full scan.
- * Jellyfin and Emby are at 3 since episodes and seasons with no image of their
- * own took the series poster.
+ * query left out come back without anyone running a manual sync. Every server
+ * type is at 4 since music libraries store album rows.
  */
 function libraryScanVersionFor(_serverType: ServerType): number {
-  return 3;
+  return 4;
 }
 
 // Auto-handoff throttles for the compressed-history identity backfill. The
@@ -300,6 +298,19 @@ export interface SyncResult {
 }
 
 /**
+ * Lets a sync job skip the libraries an earlier attempt finished. Libraries are the
+ * only abort points: a force-close mid-library leaves the lock to expire and stalled
+ * detection resumes from the last completed library.
+ */
+export interface SyncResume {
+  completedLibraryIds: ReadonlySet<string>;
+  onLibraryComplete: (libraryId: string) => Promise<void>;
+  signal?: AbortSignal;
+}
+
+export class SyncInterruptedError extends Error {}
+
+/**
  * Progress callback for real-time updates
  */
 export type OnProgressCallback = (progress: LibrarySyncProgress) => void;
@@ -409,12 +420,14 @@ export class LibrarySyncService {
    * @param serverId - The server ID to sync
    * @param onProgress - Optional callback for progress updates
    * @param triggeredBy - Whether sync was triggered manually or by scheduler
-   * @returns Array of SyncResult for each library
+   * @param resume - Libraries already done by an earlier attempt, and the abort signal
+   * @returns Array of SyncResult for each library synced in this call
    */
   async syncServer(
     serverId: string,
     onProgress?: OnProgressCallback,
-    triggeredBy: 'manual' | 'scheduled' = 'scheduled'
+    triggeredBy: 'manual' | 'scheduled' = 'scheduled',
+    resume?: SyncResume
   ): Promise<SyncResult[]> {
     const results: SyncResult[] = [];
 
@@ -479,8 +492,9 @@ export class LibrarySyncService {
     }
 
     // Sync each library
-    for (let i = 0; i < libraries.length; i++) {
-      const library = libraries[i]!;
+    for (const [i, library] of libraries.entries()) {
+      if (resume?.signal?.aborted) throw new SyncInterruptedError();
+      if (resume?.completedLibraryIds.has(library.id)) continue;
 
       const result = await this.syncLibrary({
         serverId,
@@ -499,6 +513,7 @@ export class LibrarySyncService {
       });
 
       results.push(result);
+      await resume?.onLibraryComplete(library.id);
     }
 
     // Every library is in, so a season can now absorb the episodes that arrived with it.
@@ -717,6 +732,9 @@ export class LibrarySyncService {
       syncState.lastFullScanAt !== null &&
       Date.now() - syncState.lastFullScanAt.getTime() >= FULL_SCAN_MAX_AGE_MS;
     const scanQueryChanged = syncState.scanVersion !== libraryScanVersionFor(serverType);
+    // Rows this scan inserts are ones the old listing query skipped. They take the
+    // server's added date so the newsletter and media.added do not report them as new.
+    const firstSeenFromAdded = scanQueryChanged && syncState.lastSyncedAt !== null;
     const forceFullScan =
       triggeredBy === 'manual' || fullScanDue || overcountMismatch || scanQueryChanged;
 
@@ -771,11 +789,12 @@ export class LibrarySyncService {
     // =========================================================================
     // INCREMENTAL PATH
     // =========================================================================
-    if (isIncremental && client.getLibraryItemsSince) {
+    const { lastSyncedAt } = syncState;
+    if (isIncremental && lastSyncedAt && client.getLibraryItemsSince) {
       try {
         const { items: newItems, totalCount: incrementalCount } = await client.getLibraryItemsSince(
           libraryId,
-          syncState.lastSyncedAt!,
+          lastSyncedAt,
           { libraryType }
         );
 
@@ -784,10 +803,7 @@ export class LibrarySyncService {
         let newLeaves: MediaLibraryItem[] = [];
         if (client.getLibraryLeavesSince && !FLAT_LIBRARY_TYPES.has(libraryType.toLowerCase())) {
           try {
-            const { items: leaves } = await client.getLibraryLeavesSince(
-              libraryId,
-              syncState.lastSyncedAt!
-            );
+            const { items: leaves } = await client.getLibraryLeavesSince(libraryId, lastSyncedAt);
             newLeaves = leaves;
           } catch (leafErr) {
             console.warn(
@@ -797,19 +813,24 @@ export class LibrarySyncService {
           }
         }
 
-        // Plex only - JF/Emby seasons already arrived via getLibraryLeavesSince above
-        let newSeasons: MediaLibraryItem[] = [];
-        if (libraryType.toLowerCase() === 'show' && client.getLibrarySeasonsSince) {
+        // Plex only - JF/Emby seasons arrive via getLibraryLeavesSince and albums via
+        // getLibraryItemsSince above
+        let newContainers: MediaLibraryItem[] = [];
+        const sectionType = libraryType.toLowerCase();
+        const fetchContainersSince =
+          sectionType === 'show'
+            ? client.getLibrarySeasonsSince?.bind(client)
+            : sectionType === 'artist'
+              ? client.getLibraryAlbumsSince?.bind(client)
+              : undefined;
+        if (fetchContainersSince) {
           try {
-            const { items: seasons } = await client.getLibrarySeasonsSince(
-              libraryId,
-              syncState.lastSyncedAt!
-            );
-            newSeasons = seasons;
-          } catch (seasonErr) {
+            const { items: containers } = await fetchContainersSince(libraryId, lastSyncedAt);
+            newContainers = containers;
+          } catch (containerErr) {
             console.warn(
-              `[LibrarySync] Incremental season fetch failed for ${libraryName}, skipping seasons:`,
-              seasonErr
+              `[LibrarySync] Incremental season/album fetch failed for ${libraryName}, skipping them:`,
+              containerErr
             );
           }
         }
@@ -817,7 +838,7 @@ export class LibrarySyncService {
         if (
           incrementalCount === 0 &&
           newLeaves.length === 0 &&
-          newSeasons.length === 0 &&
+          newContainers.length === 0 &&
           totalCount === syncState.lastItemCount
         ) {
           if (
@@ -860,7 +881,7 @@ export class LibrarySyncService {
         // Cap check: if too many items were returned, fall through to full scan
         // which also handles orphan detection
         const incrementalCap = Math.floor(totalCount * INCREMENTAL_CAP_RATIO);
-        const totalIncrementalItems = newItems.length + newLeaves.length + newSeasons.length;
+        const totalIncrementalItems = newItems.length + newLeaves.length + newContainers.length;
 
         if (incrementalCap > 0 && totalIncrementalItems > incrementalCap) {
           console.log(
@@ -870,7 +891,7 @@ export class LibrarySyncService {
         }
 
         const allItems: MediaLibraryItem[] = [];
-        const combinedItems = [...newItems, ...newLeaves, ...newSeasons];
+        const combinedItems = [...newItems, ...newContainers, ...newLeaves];
         let totalSkippedEmpty = 0;
 
         for (let i = 0; i < combinedItems.length; i += BATCH_SIZE) {
@@ -1010,7 +1031,8 @@ export class LibrarySyncService {
         libraryId,
         items,
         touchedMediaIds,
-        announce
+        announce,
+        firstSeenFromAdded
       );
       totalSkippedEmpty += itemsRes.skippedEmpty;
 
@@ -1040,209 +1062,109 @@ export class LibrarySyncService {
       }
     }
 
+    // Pages one of the follow-up listings below into the scan. A label turns on
+    // progress reporting for it.
+    const syncListing = async (
+      fetchPage: (page: {
+        offset: number;
+        limit: number;
+      }) => Promise<{ items: MediaLibraryItem[]; totalCount: number; rawCount?: number }>,
+      label?: string
+    ): Promise<void> => {
+      if (label && onProgress) {
+        onProgress({
+          serverId,
+          serverName,
+          status: 'running',
+          currentLibrary: libraryId,
+          currentLibraryName: libraryName,
+          totalLibraries,
+          processedLibraries,
+          totalItems: totalCount,
+          processedItems,
+          message: `${libraryName}: Fetching ${label}...`,
+          startedAt,
+        });
+      }
+
+      const { totalCount: listingCount } = await fetchPage({ offset: 0, limit: 1 });
+
+      let listingOffset = 0;
+      let listingProcessed = 0;
+
+      while (listingOffset < listingCount) {
+        const { items: pageItems, rawCount } = await fetchPage({
+          offset: listingOffset,
+          limit: BATCH_SIZE,
+        });
+
+        if ((rawCount ?? pageItems.length) === 0) break;
+
+        for (const item of pageItems) {
+          noteItem(item);
+        }
+
+        const pageRes = await this.upsertItems(
+          serverId,
+          libraryId,
+          pageItems,
+          touchedMediaIds,
+          announce,
+          firstSeenFromAdded
+        );
+        totalSkippedEmpty += pageRes.skippedEmpty;
+
+        listingProcessed += pageItems.length;
+        listingOffset += BATCH_SIZE;
+
+        if (label && onProgress) {
+          onProgress({
+            serverId,
+            serverName,
+            status: 'running',
+            currentLibrary: libraryId,
+            currentLibraryName: libraryName,
+            totalLibraries,
+            processedLibraries,
+            totalItems: totalCount + listingCount,
+            processedItems: processedItems + listingProcessed,
+            message: `${libraryName}: ${listingProcessed}/${listingCount} ${label} processed...`,
+            startedAt,
+          });
+        }
+
+        if (listingOffset < listingCount) {
+          await delay(BATCH_DELAY_MS);
+        }
+      }
+
+      processedItems += listingProcessed;
+    };
+
+    const getLeaves = client.getLibraryLeaves?.bind(client);
+    const getSeasons = client.getLibrarySeasons?.bind(client);
+    const getAlbums = client.getLibraryAlbums?.bind(client);
+
     // For TV libraries (contains shows), also fetch all episodes
     const hasShows = (typeCounts.show ?? 0) > 0;
-    if (hasShows && client.getLibraryLeaves) {
-      // Report episode fetching
-      if (onProgress) {
-        onProgress({
-          serverId,
-          serverName,
-          status: 'running',
-          currentLibrary: libraryId,
-          currentLibraryName: libraryName,
-          totalLibraries,
-          processedLibraries,
-          totalItems: totalCount,
-          processedItems,
-          message: `${libraryName}: Fetching episodes...`,
-          startedAt,
-        });
-      }
-
-      // Fetch episode count
-      const { totalCount: episodeCount } = await client.getLibraryLeaves(libraryId, {
-        offset: 0,
-        limit: 1,
-      });
-
-      // Fetch episodes in batches
-      let episodeOffset = 0;
-      let episodesProcessed = 0;
-
-      while (episodeOffset < episodeCount) {
-        const { items: episodes, rawCount } = await client.getLibraryLeaves(libraryId, {
-          offset: episodeOffset,
-          limit: BATCH_SIZE,
-        });
-
-        if ((rawCount ?? episodes.length) === 0) break;
-
-        for (const episode of episodes) {
-          noteItem(episode);
-        }
-
-        // Upsert episodes to database
-        const epRes = await this.upsertItems(
-          serverId,
-          libraryId,
-          episodes,
-          touchedMediaIds,
-          announce
-        );
-        totalSkippedEmpty += epRes.skippedEmpty;
-
-        episodesProcessed += episodes.length;
-        episodeOffset += BATCH_SIZE;
-
-        // Report progress
-        if (onProgress) {
-          onProgress({
-            serverId,
-            serverName,
-            status: 'running',
-            currentLibrary: libraryId,
-            currentLibraryName: libraryName,
-            totalLibraries,
-            processedLibraries,
-            totalItems: totalCount + episodeCount,
-            processedItems: processedItems + episodesProcessed,
-            message: `${libraryName}: ${episodesProcessed}/${episodeCount} episodes processed...`,
-            startedAt,
-          });
-        }
-
-        // Rate limit between batches
-        if (episodeOffset < episodeCount) {
-          await delay(BATCH_DELAY_MS);
-        }
-      }
-
-      processedItems += episodesProcessed;
+    if (hasShows && getLeaves) {
+      await syncListing((page) => getLeaves(libraryId, page), 'episodes');
     }
 
-    // Plex seasons: a dedicated type=3 fetch (JF/Emby get seasons for free
-    // through getLibraryLeaves above, so client.getLibrarySeasons is undefined there)
-    if (hasShows && client.getLibrarySeasons) {
-      const { totalCount: seasonCount } = await client.getLibrarySeasons(libraryId, {
-        offset: 0,
-        limit: 1,
-      });
-
-      let seasonOffset = 0;
-      let seasonsProcessed = 0;
-
-      while (seasonOffset < seasonCount) {
-        const { items: seasons, rawCount } = await client.getLibrarySeasons(libraryId, {
-          offset: seasonOffset,
-          limit: BATCH_SIZE,
-        });
-
-        if ((rawCount ?? seasons.length) === 0) break;
-
-        for (const season of seasons) {
-          noteItem(season);
-        }
-
-        const seasonRes = await this.upsertItems(
-          serverId,
-          libraryId,
-          seasons,
-          touchedMediaIds,
-          announce
-        );
-        totalSkippedEmpty += seasonRes.skippedEmpty;
-
-        seasonsProcessed += seasons.length;
-        seasonOffset += BATCH_SIZE;
-
-        if (seasonOffset < seasonCount) {
-          await delay(BATCH_DELAY_MS);
-        }
-      }
-
-      processedItems += seasonsProcessed;
+    // Plex seasons and albums: dedicated type=3 and type=9 fetches. JF/Emby get
+    // seasons through getLibraryLeaves and albums through getLibraryItems, so
+    // these client methods are undefined there.
+    if (hasShows && getSeasons) {
+      await syncListing((page) => getSeasons(libraryId, page));
     }
 
-    // For music libraries (contains artists), also fetch all tracks
+    // For music libraries (contains artists), also fetch all albums and tracks
     const hasArtists = (typeCounts.artist ?? 0) > 0;
-    if (hasArtists && client.getLibraryLeaves) {
-      // Report track fetching
-      if (onProgress) {
-        onProgress({
-          serverId,
-          serverName,
-          status: 'running',
-          currentLibrary: libraryId,
-          currentLibraryName: libraryName,
-          totalLibraries,
-          processedLibraries,
-          totalItems: totalCount,
-          processedItems,
-          message: `${libraryName}: Fetching tracks...`,
-          startedAt,
-        });
-      }
-
-      // Fetch track count
-      const { totalCount: trackCount } = await client.getLibraryLeaves(libraryId, {
-        offset: 0,
-        limit: 1,
-      });
-
-      // Fetch tracks in batches
-      let trackOffset = 0;
-      let tracksProcessed = 0;
-
-      while (trackOffset < trackCount) {
-        const { items: tracks, rawCount } = await client.getLibraryLeaves(libraryId, {
-          offset: trackOffset,
-          limit: BATCH_SIZE,
-        });
-
-        if ((rawCount ?? tracks.length) === 0) break;
-
-        for (const track of tracks) {
-          noteItem(track);
-        }
-
-        // Upsert tracks to database
-        const trkRes = await this.upsertItems(
-          serverId,
-          libraryId,
-          tracks,
-          touchedMediaIds,
-          announce
-        );
-        totalSkippedEmpty += trkRes.skippedEmpty;
-
-        tracksProcessed += tracks.length;
-        trackOffset += BATCH_SIZE;
-
-        // Report progress
-        if (onProgress) {
-          onProgress({
-            serverId,
-            serverName,
-            status: 'running',
-            currentLibrary: libraryId,
-            currentLibraryName: libraryName,
-            totalLibraries,
-            processedLibraries,
-            totalItems: totalCount + trackCount,
-            processedItems: processedItems + tracksProcessed,
-            message: `${libraryName}: ${tracksProcessed}/${trackCount} tracks processed...`,
-            startedAt,
-          });
-        }
-
-        // Rate limit between batches
-        if (trackOffset < trackCount) {
-          await delay(BATCH_DELAY_MS);
-        }
-      }
-
-      processedItems += tracksProcessed;
+    if (hasArtists && getAlbums) {
+      await syncListing((page) => getAlbums(libraryId, page));
+    }
+    if (hasArtists && getLeaves) {
+      await syncListing((page) => getLeaves(libraryId, page), 'tracks');
     }
 
     // Calculate delta
@@ -1566,7 +1488,8 @@ export class LibrarySyncService {
     libraryId: string,
     items: MediaLibraryItem[],
     touchedMediaIds?: Set<string>,
-    announce?: MediaAnnounce | null
+    announce?: MediaAnnounce | null,
+    firstSeenFromAdded = false
   ): Promise<{ skippedEmpty: number; collapsedDuplicates: number }> {
     if (items.length === 0) return { skippedEmpty: 0, collapsedDuplicates: 0 };
 
@@ -1616,6 +1539,8 @@ export class LibrarySyncService {
         episodeNumber: item.itemIndex ?? null,
       }))
     );
+
+    const albumArt = await albumArtForTracks(serverId, uniqueItems);
 
     // Past the cap the run announces nothing more, so it stops reading and diffing too;
     // the suppressed count then reports the batch that hit the cap, not every later one.
@@ -1677,10 +1602,15 @@ export class LibrarySyncService {
               itemIndex: item.itemIndex ?? null,
               mediaId: mediaIdByRatingKey.get(item.ratingKey) ?? null,
               genres: item.genres ?? null,
-              thumbPath: item.thumbPath ?? null,
+              thumbPath:
+                (item.mediaType === 'track' && item.parentRatingKey
+                  ? albumArt.get(item.parentRatingKey)
+                  : undefined) ??
+                item.thumbPath ??
+                null,
               removedAt: null,
               // insert-only: the conflict update never touches it
-              firstSeenAt: firstSeen,
+              firstSeenAt: firstSeenFromAdded ? createdAt : firstSeen,
               createdAt,
             });
           })
@@ -2278,13 +2208,13 @@ export class LibrarySyncService {
    */
   private async getActiveItemCount(serverId: string, libraryId: string): Promise<number> {
     // Top-level items only: the server's totalCount for a section counts
-    // shows/movies/artists, never their episodes/tracks/seasons, and those
+    // shows/movies/artists, never their episodes/tracks/seasons/albums, and those
     // leaves share this library_id - counting them here would make the
     // mismatch check fire on every sync of a non-flat library.
     const result = await db.execute(sql`
       SELECT count(*)::int AS count FROM library_items
       WHERE server_id = ${serverId} AND library_id = ${libraryId} AND removed_at IS NULL
-        AND media_type NOT IN ('episode', 'track', 'season')
+        AND media_type NOT IN ('episode', 'track', 'season', 'album')
     `);
     const row = result?.rows?.[0] as { count: number } | undefined;
     return row?.count ?? 0;

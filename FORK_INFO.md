@@ -1,5 +1,69 @@
 # Tracearr Fork Information
 
+## October 20, 2026 — Tracearr 2.9.0 upstream merge
+
+Upstream `main` at `498193355` brings the tabbed Stats/Library interface,
+People and person-range statistics, music/album browsing and shared covers,
+watched-threshold play counting (aggregate schema 18), PAL 576p normalization,
+restart-safe job deduplication/checkpoints and bounded shutdown. Migration
+`0116_known_tomorrow_man`, its snapshot and journal remain byte-for-byte
+aligned with upstream; the separate Dispatcharr migration ledger is unchanged.
+
+Dispatcharr retains both authentication modes, anonymous filtering,
+leader-owned realtime/polling, pending/catch-up lifecycle, stable device
+identity, termination, provider presentation and uncropped artwork/cache markers.
+The Dashboard retains separate TV metrics alongside upstream listen time.
+Activity includes Live TV as its own `live` media group alongside movie,
+show and music, with zero-filled day/hour series and the existing live filter.
+The People service replaces the old user-stat routes and includes Live TV in
+person activity. Library Genres, artist children and album sheets use
+`mediaLibraryServerIds`; Dispatcharr stays in general session/server scopes.
+Boot library syncs and poster precache reconciliation exclude Dispatcharr.
+
+Version checks adopt upstream's singleton helper: each add uses a fresh UUID,
+while Redis deduplication blocks only queued/running duplicates, preserving
+restart checks after completion. The fork's two-channel version API and
+notifications remain; the new showcase fixture uses that contract. Integration
+templates still migrate both ledgers in a subprocess, propagate all failures
+and keep DB imports out of Vitest global setup. Upstream policy disabling runs
+inside that subprocess; the template fingerprint includes both migration trees,
+aggregate source and the setup version, so existing templates are refreshed.
+
+Exactly PR-only CI and the unchanged dual-registry release workflow remain,
+including the four native-build publication gate. Helm, Vouch and upstream
+release/issue automation changes are excluded. Both Dockerfiles retain fork
+metadata/migrations and basemap generation/prefetch while adopting current base
+images and pnpm 12.14.0, matching packageManager/Actions and updated agent
+instructions.
+The pre-merge source already lacks the BuildKit cache mounts and
+`BASEMAP_CACHE_DIR` support described in older local cache notes; this merge
+retains the existing fetch/prefetch path.
+
+Full non-Docker CI-equivalent validation passed with Node 24 / pnpm 12.14.0,
+frozen-lockfile install, cleared Turbo cache and a 4 GB heap. Heavy jobs ran
+sequentially on the 8 GB LXC, with two Vitest workers and Turbo concurrency one.
+Lint, typecheck, translations, unit/services/routes/auth/security, web, shared,
+coverage and build all passed. Server groups plus web passed 10,499 tests;
+shared passed another 458. Coverage passed 6,660 tests (71.98% statements,
+66.23% branches, 76.32% functions, 73.23% lines), meeting every threshold.
+Final lint has 715 warnings, down 38 with no added normalized diagnostics;
+all 29 locales are in sync and all 300 fork-only localized additions survive.
+All 534 changed supported source/JSON/CSS/YAML files pass Prettier. Final
+lint and typecheck passed after formatting/build. Initial checks caught the
+showcase version mock, a queue fixture's missing provider type, two unused
+imports/variables and stale Activity SQL/translated-label assertions. Complete
+services, routes and web reruns passed after reconciliation; contract checks
+passed without regenerating or relaxing the public API fixture. Runtime
+warning counts are recorded in `.tmp/github-ci-warning-reference.md`.
+Logs: `.tmp/merge-290-<job>-20261020.log`; sequential runners:
+`.tmp/merge-290-ci[-resume|-resume2|-resume3]-20261020.log`.
+Successful reruns use `services-final`, `routes-final`, `web-final`, `lint-final`
+and `typecheck-final`; initial failed runs remain in their own logs.
+Docker integration and E2E are omitted at the user's request. Docker image
+builds, database upgrades and live-provider manual smoke are not performed;
+new SQL, aggregate rebuilds, queue recovery and template policy changes remain
+unverified against running PostgreSQL/Redis.
+
 ## October 15, 2026 — Tracearr 2.8.3 upstream merge
 
 Upstream `main` at `eb338121b` brings 2.8.1–2.8.3: member library
@@ -298,9 +362,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `eb338121b`
-- Last shared upstream commit found during inspection: `3965a1aa4` (before merge)
-- Latest upstream commit merged into the current working tree: `eb338121b`
+- Source branch/SHA inspected: `main` at `498193355`
+- Last shared upstream commit found during inspection: `eb338121b` (before merge)
+- Latest upstream commit merged into the current working tree: `498193355`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

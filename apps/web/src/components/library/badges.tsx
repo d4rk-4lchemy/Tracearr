@@ -1,15 +1,23 @@
-import { Film, Tv, Music } from 'lucide-react';
+import { Film, Tv, Music, type LucideIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 /**
- * Get binge score badge based on score thresholds.
+ * Binge score badge based on score thresholds.
  */
-export function getBingeScoreBadge(score: number) {
-  if (score >= 80) return <Badge variant="danger">Highly Addictive</Badge>;
-  if (score >= 60) return <Badge variant="warning">Addictive</Badge>;
-  if (score >= 40) return <Badge variant="secondary">Bingeable</Badge>;
-  return <Badge variant="outline">Casual Watch</Badge>;
+export function BingeScoreBadge({ score }: { score: number }) {
+  const { t } = useTranslation('pages');
+  if (score >= 80) {
+    return <Badge variant="danger">{t('library.watch.binge.tiers.highlyAddictive')}</Badge>;
+  }
+  if (score >= 60) {
+    return <Badge variant="warning">{t('library.watch.binge.tiers.addictive')}</Badge>;
+  }
+  if (score >= 40) {
+    return <Badge variant="secondary">{t('library.watch.binge.tiers.bingeable')}</Badge>;
+  }
+  return <Badge variant="outline">{t('library.watch.binge.tiers.casual')}</Badge>;
 }
 
 /**
@@ -22,12 +30,26 @@ export function getCompletionBadge(rate: number) {
   return <Badge variant="outline">{rate.toFixed(0)}%</Badge>;
 }
 
-const MOVIE_BADGE = { icon: Film, label: 'Movie', className: '' };
-const TV_BADGE = { icon: Tv, label: 'TV', className: 'bg-blue-500/10 text-blue-500' };
-const MUSIC_BADGE = { icon: Music, label: 'Music', className: 'bg-purple-500/10 text-purple-500' };
+interface MediaTypeBadgeConfig {
+  icon: LucideIcon;
+  labelKey: 'media.movie' | 'media.tv' | 'media.music';
+  className: string;
+}
+
+const MOVIE_BADGE: MediaTypeBadgeConfig = { icon: Film, labelKey: 'media.movie', className: '' };
+const TV_BADGE: MediaTypeBadgeConfig = {
+  icon: Tv,
+  labelKey: 'media.tv',
+  className: 'bg-blue-500/10 text-blue-500',
+};
+const MUSIC_BADGE: MediaTypeBadgeConfig = {
+  icon: Music,
+  labelKey: 'media.music',
+  className: 'bg-purple-500/10 text-purple-500',
+};
 
 /** Leaves carry their parent's badge: an episode reads TV, a track reads Music. */
-const MEDIA_TYPE_BADGES: Record<string, typeof MOVIE_BADGE> = {
+const MEDIA_TYPE_BADGES: Record<string, MediaTypeBadgeConfig> = {
   movie: MOVIE_BADGE,
   show: TV_BADGE,
   episode: TV_BADGE,
@@ -39,13 +61,14 @@ const MEDIA_TYPE_BADGES: Record<string, typeof MOVIE_BADGE> = {
  * Badge component for media type (Movie, TV, Music)
  */
 export function MediaTypeBadge({ mediaType }: { mediaType: string }) {
+  const { t } = useTranslation('common');
   const badge = MEDIA_TYPE_BADGES[mediaType];
   if (!badge) return null;
   const Icon = badge.icon;
   return (
     <Badge variant="secondary" className={cn('gap-1', badge.className)}>
       <Icon className="h-3 w-3" />
-      {badge.label}
+      {t(badge.labelKey)}
     </Badge>
   );
 }

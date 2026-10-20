@@ -3,6 +3,7 @@
  * across renders and nothing remounts. The rule cannot see that through the call.
  */
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -91,24 +92,31 @@ function getDeviceIcon(device: UserDevice) {
   return HardDrive;
 }
 
-function formatLocationShort(loc: {
-  city: string | null;
-  region: string | null;
-  country: string | null;
-}): string {
-  return formatLocationCompact(loc.city, loc.region, loc.country) ?? 'Unknown';
+function DevicesTitle() {
+  const { t } = useTranslation('nav');
+  return (
+    <div className="flex items-center gap-2">
+      <Monitor className="h-5 w-5" />
+      {t('devices')}
+    </div>
+  );
 }
 
 export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserDevicesCardProps) {
+  const { t } = useTranslation(['pages', 'common']);
   const [isExpanded, setIsExpanded] = useState(false);
+  const formatLocationShort = (loc: {
+    city: string | null;
+    region: string | null;
+    country: string | null;
+  }) => formatLocationCompact(loc.city, loc.region, loc.country) ?? t('common:labels.unknown');
 
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Monitor className="h-5 w-5" />
-            Devices
+          <CardTitle>
+            <DevicesTitle />
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -135,13 +143,12 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Monitor className="h-5 w-5" />
-            Devices
+          <CardTitle>
+            <DevicesTitle />
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground text-sm">No device data available</p>
+          <p className="text-muted-foreground text-sm">{t('common:empty.noDeviceData')}</p>
         </CardContent>
       </Card>
     );
@@ -155,12 +162,9 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Monitor className="h-5 w-5" />
-              Devices
-            </div>
+            <DevicesTitle />
             <Badge variant="secondary" className="font-normal">
-              {devices.length} unique
+              {t('pages:userDetail.uniqueCount', { count: devices.length })}
             </Badge>
           </CardTitle>
         </CardHeader>
@@ -171,7 +175,8 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
               const percentage =
                 totalSessions > 0 ? Math.round((device.sessionCount / totalSessions) * 100) : 0;
               const DeviceIcon = getDeviceIcon(device);
-              const displayName = getDeviceDisplayName(device) ?? 'Unknown Device';
+              const displayName =
+                getDeviceDisplayName(device) ?? t('pages:userDetail.unknownDevice');
               const locations = device.locations ?? [];
               const hasMultipleLocations = locations.length > 1;
               const primaryLocation = locations[0];
@@ -195,9 +200,7 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
                       )}
                     </div>
                     <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                      <span>
-                        {device.sessionCount} session{device.sessionCount !== 1 ? 's' : ''}
-                      </span>
+                      <span>{t('common:count.session', { count: device.sessionCount })}</span>
                       <span>·</span>
                       <span>
                         {formatDistanceToNow(new Date(device.lastSeenAt), { addSuffix: true })}
@@ -210,7 +213,7 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
                               <TooltipTrigger asChild>
                                 <span className="flex cursor-help items-center gap-1 text-yellow-500">
                                   <MapPin className="h-3 w-3 shrink-0" />
-                                  {locations.length} locations
+                                  {t('common:count.location', { count: locations.length })}
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="bottom" className="max-w-xs">
@@ -268,12 +271,14 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
               {isExpanded ? (
                 <>
                   <ChevronUp className="mr-2 h-4 w-4" />
-                  Show Less
+                  {t('common:actions.showLess')}
                 </>
               ) : (
                 <>
                   <ChevronDown className="mr-2 h-4 w-4" />
-                  View All ({devices.length - INITIAL_DISPLAY_COUNT} more)
+                  {t('pages:userDetail.viewAllMore', {
+                    count: devices.length - INITIAL_DISPLAY_COUNT,
+                  })}
                 </>
               )}
             </Button>

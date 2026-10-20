@@ -2,6 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
+import type { ComponentProps } from 'react';
 import type { SessionWithDetails } from '@tracearr/shared';
 import { DEFAULT_COLUMN_VISIBILITY } from './HistoryFilters';
 import { HistoryTable } from './HistoryTable';
@@ -139,7 +140,7 @@ describe('HistoryTable content layout', () => {
     expect(title.closest('span')?.className).toContain('min-w-0');
     expect(title.closest('span')?.className).toContain('flex-1');
 
-    const contentHeader = screen.getByRole('columnheader', { name: 'Content' });
+    const contentHeader = screen.getByRole('columnheader', { name: 'labels.content' });
     expect(contentHeader).toHaveStyle({ width: '300px', minWidth: '300px' });
 
     const contentCell = title.closest('td');
@@ -217,10 +218,10 @@ describe('HistoryTable live content display', () => {
 
     expect(screen.getByText('Classic Hits TV')).toBeInTheDocument();
     expect(screen.getByText('Evening Movie')).toBeInTheDocument();
-    expect(screen.queryByText('Abandoned')).not.toBeInTheDocument();
+    expect(screen.queryByText('pages:yourStats.tier.abandoned')).not.toBeInTheDocument();
     expect(screen.queryByText('Sampled')).not.toBeInTheDocument();
     expect(screen.queryByText('Engaged')).not.toBeInTheDocument();
-    expect(screen.queryByText('Watched')).not.toBeInTheDocument();
+    expect(screen.queryByText('common:playback.watched')).not.toBeInTheDocument();
   });
 
   it('falls back to the media title when a live session has no channel name', () => {
@@ -273,10 +274,10 @@ describe('HistoryTable live content display', () => {
     );
 
     expect(screen.getByText('News 24')).toBeInTheDocument();
-    expect(screen.queryByText('Watched')).not.toBeInTheDocument();
+    expect(screen.queryByText('common:playback.watched')).not.toBeInTheDocument();
     expect(screen.queryByText('Engaged')).not.toBeInTheDocument();
     expect(screen.queryByText('Sampled')).not.toBeInTheDocument();
-    expect(screen.queryByText('Abandoned')).not.toBeInTheDocument();
+    expect(screen.queryByText('pages:yourStats.tier.abandoned')).not.toBeInTheDocument();
   });
 
   it('shows a catch-up icon for Dispatcharr catch-up history rows', () => {
@@ -370,7 +371,8 @@ describe('HistoryTable live content display', () => {
 
 function renderTable(
   overrides: Partial<SessionWithDetails>,
-  onSessionClick?: (session: SessionWithDetails) => void
+  onSessionClick?: (session: SessionWithDetails) => void,
+  sort?: Pick<ComponentProps<typeof HistoryTable>, 'sortBy' | 'sortDir' | 'onSortChange'>
 ) {
   const session = {
     id: 'session-1',
@@ -398,6 +400,7 @@ function renderTable(
           sessions={[session]}
           onSessionClick={onSessionClick}
           columnVisibility={{ ...DEFAULT_COLUMN_VISIBILITY, progress: true }}
+          {...sort}
         />
       </TooltipProvider>
     </MemoryRouter>
@@ -410,14 +413,52 @@ describe('HistoryTable', () => {
 
     expect(screen.getByText('Heat')).toBeInTheDocument();
     expect(screen.queryByText(/^\d+%$/)).not.toBeInTheDocument();
-    expect(screen.queryByText('Abandoned')).not.toBeInTheDocument();
+    expect(screen.queryByText('pages:yourStats.tier.abandoned')).not.toBeInTheDocument();
   });
 
   it('shows 0% and the abandoned badge for a play whose position is a measured 0', () => {
     renderTable({ progressMs: 0 });
 
     expect(screen.getByText('0%')).toBeInTheDocument();
-    expect(screen.getByText('Abandoned')).toBeInTheDocument();
+    expect(screen.getByText('pages:yourStats.tier.abandoned')).toBeInTheDocument();
+  });
+
+  it('says played on a finished track and watched on a finished episode', () => {
+    const { unmount } = renderTable({
+      mediaType: 'track',
+      progressMs: 200_000,
+      totalDurationMs: 210_000,
+    });
+    expect(screen.getByText('common:playback.played')).toBeInTheDocument();
+    expect(screen.queryByText('common:playback.watched')).not.toBeInTheDocument();
+    unmount();
+
+    renderTable({ mediaType: 'episode', progressMs: 2_500_000, totalDurationMs: 2_700_000 });
+    expect(screen.getByText('common:playback.watched')).toBeInTheDocument();
+  });
+
+  it('sorts the data table from its date header', () => {
+    const onSortChange = vi.fn();
+    renderTable({}, undefined, { sortBy: 'startedAt', sortDir: 'desc', onSortChange });
+
+    const dateHeader = screen.getByRole('columnheader', { name: 'labels.date' });
+    expect(dateHeader).toHaveAttribute('aria-sort', 'descending');
+    fireEvent.click(screen.getByRole('button', { name: 'labels.date' }));
+    expect(onSortChange).toHaveBeenCalledWith('startedAt');
+  });
+
+  it('heads the empty table with translated column names and empty copy', () => {
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <HistoryTable sessions={[]} columnVisibility={DEFAULT_COLUMN_VISIBILITY} />
+        </TooltipProvider>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'labels.date' })).toBeInTheDocument();
+    expect(screen.getByText('empty.noSessionsFound')).toBeInTheDocument();
+    expect(screen.getByText('pages:violations.tryAdjustingFilters')).toBeInTheDocument();
   });
 
   it('links the show and the episode without opening the row', () => {

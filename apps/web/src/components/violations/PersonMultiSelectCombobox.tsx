@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronsUpDown, X } from 'lucide-react';
 import type { ServerUserWithIdentity } from '@tracearr/shared';
 import { cn } from '@/lib/utils';
@@ -63,6 +64,7 @@ export function PersonMultiSelectCombobox({
   className,
   resolveExtraName,
 }: PersonMultiSelectComboboxProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
@@ -115,7 +117,7 @@ export function PersonMultiSelectCombobox({
                 }}
               >
                 <X className="h-3.5 w-3.5" />
-                <span className="sr-only">Clear</span>
+                <span className="sr-only">{t('actions.clear')}</span>
               </span>
             )}
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />

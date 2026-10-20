@@ -4,6 +4,7 @@
  */
 
 import { Play, Clock, Users, Film } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { StatCard, formatWatchTime, formatNumber } from '@/components/ui/stat-card';
 import { cn } from '@/lib/utils';
 import type { HistoryAggregates as AggregatesType } from '@tracearr/shared';
@@ -16,6 +17,9 @@ interface Props {
 }
 
 export function HistoryAggregates({ aggregates, total, isLoading, isFetching }: Props) {
+  const { t } = useTranslation(['common', 'pages']);
+  const listenTimeMs = aggregates?.listenTimeMs ?? 0;
+
   return (
     <div
       className={cn(
@@ -25,25 +29,30 @@ export function HistoryAggregates({ aggregates, total, isLoading, isFetching }: 
     >
       <StatCard
         icon={Play}
-        label="Total Plays"
+        label={t('pages:history.totalPlays')}
         value={formatNumber(total ?? 0)}
         isLoading={isLoading}
       />
       <StatCard
         icon={Clock}
-        label="Watch Time"
-        value={formatWatchTime(aggregates?.totalWatchTimeMs ?? 0)}
+        label={t('common:labels.watchTime')}
+        value={formatWatchTime((aggregates?.totalWatchTimeMs ?? 0) - listenTimeMs)}
+        subValue={
+          listenTimeMs > 0
+            ? `${t('common:labels.listenTime')} ${formatWatchTime(listenTimeMs)}`
+            : undefined
+        }
         isLoading={isLoading}
       />
       <StatCard
         icon={Users}
-        label="Unique Users"
+        label={t('pages:history.uniqueUsers')}
         value={formatNumber(aggregates?.uniqueUsers ?? 0)}
         isLoading={isLoading}
       />
       <StatCard
         icon={Film}
-        label="Unique Titles"
+        label={t('pages:history.uniqueTitles')}
         value={formatNumber(aggregates?.uniqueContent ?? 0)}
         isLoading={isLoading}
       />

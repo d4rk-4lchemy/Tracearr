@@ -203,6 +203,11 @@ function ServerDashboard({ actions }: { actions?: ReactNode }) {
             icon={Clock}
             label={t('dashboard.vodWatchTime')}
             value={`${stats?.watchTimeHours ?? 0}h`}
+            subValue={
+              stats?.listenTimeHours
+                ? `${t('common:labels.listenTime')} ${stats.listenTimeHours}h`
+                : undefined
+            }
             isLoading={statsLoading}
             href="/stats/activity"
           />
@@ -228,7 +233,7 @@ function ServerDashboard({ actions }: { actions?: ReactNode }) {
             label={t('dashboard.activeUsers')}
             value={stats?.activeUsersToday ?? 0}
             isLoading={statsLoading}
-            href="/stats/users"
+            href="/stats/people"
           />
         </div>
       </section>
@@ -333,13 +338,36 @@ function ViewToggle({
   );
 }
 
+function DashboardPage({ children }: { children: ReactNode }) {
+  const { t } = useTranslation('nav');
+
+  return (
+    <>
+      <h1 className="sr-only">{t('dashboard')}</h1>
+      {children}
+    </>
+  );
+}
+
 export function Dashboard() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  if (user?.role === 'member') return <PersonalDashboard />;
+  if (user?.role === 'member') {
+    return (
+      <DashboardPage>
+        <PersonalDashboard />
+      </DashboardPage>
+    );
+  }
   // Viewing as an admin shows what that admin lands on, with no toggle and no stored choice
-  if (user?.impersonatedBy) return <ServerDashboard />;
+  if (user?.impersonatedBy) {
+    return (
+      <DashboardPage>
+        <ServerDashboard />
+      </DashboardPage>
+    );
+  }
 
   const param = searchParams.get('view');
   const view = isView(param) ? param : (storedView() ?? 'admin');
@@ -361,9 +389,13 @@ export function Dashboard() {
   };
 
   const toggle = <ViewToggle value={view} onChange={select} />;
-  return view === 'me' ? (
-    <PersonalDashboard actions={toggle} />
-  ) : (
-    <ServerDashboard actions={toggle} />
+  return (
+    <DashboardPage>
+      {view === 'me' ? (
+        <PersonalDashboard actions={toggle} />
+      ) : (
+        <ServerDashboard actions={toggle} />
+      )}
+    </DashboardPage>
   );
 }

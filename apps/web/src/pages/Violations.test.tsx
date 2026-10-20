@@ -345,7 +345,7 @@ describe('Violations', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText('violations failed')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+    await userEvent.click(screen.getByRole('button', { name: /actions.tryAgain/ }));
     expect(refetch).toHaveBeenCalled();
   });
 });

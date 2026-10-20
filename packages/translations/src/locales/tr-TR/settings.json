@@ -21,7 +21,7 @@
       "destinations": "",
       "newsletters": "",
       "email": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -37,7 +37,7 @@
       "posters": "",
       "plexAccounts": "",
       "destinations": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -230,6 +230,13 @@
       "issueBlocked": "",
       "issueRestartRequired": "",
       "issueMalfunctioned": "",
+      "jellyfinStep1": "",
+      "jellyfinStep2": "",
+      "jellyfinStep3": "",
+      "jellyfinStep4": "",
+      "embyStep1": "",
+      "embyStep2": "",
+      "embyStep3": "",
       "openReleases": ""
     },
     "posterSource": {
@@ -237,7 +244,9 @@
       "description": "",
       "automatic": "",
       "emptyHint": "",
-      "ownerOnly": ""
+      "ownerOnly": "",
+      "precache": "",
+      "precacheDescription": ""
     },
     "version": {
       "installed": "",
@@ -246,11 +255,6 @@
     }
   },
   "mobile": {
-    "title": "",
-    "pairDevice": "",
-    "generateToken": "",
-    "scanQrCode": "",
-    "tokenExpires": "",
     "lastSeen": "",
     "connectedOn": "",
     "noDevices": "",
@@ -258,7 +262,6 @@
     "revokeAll": "",
     "getOnGooglePlay": "",
     "downloadOnAppStore": "",
-    "externalUrlRequired": "",
     "mobileAccessDisabled": "",
     "mobileAccessDisabledDesc": "",
     "enableMobileAccess": "",
@@ -353,10 +356,41 @@
     "automatic": "",
     "startJob": ""
   },
-  "accessControl": {
-    "allowGuestAccess": "",
-    "allowGuestAccessDesc": "",
-    "singleOwnerNote": ""
+  "memberLogin": {
+    "serverActivity": "",
+    "serverActivityDesc": "",
+    "noServers": "",
+    "addServer": "",
+    "serversLoadFailed": "",
+    "signIn": {
+      "title": "",
+      "titleDesc": "",
+      "local": "",
+      "localDesc": "",
+      "oidc": "",
+      "oidcDesc": "",
+      "plex": "",
+      "plexDesc": "",
+      "onlyWay": "",
+      "membersTitle": "",
+      "media": "",
+      "mediaDesc": "",
+      "servers": "",
+      "overrides": "",
+      "overridesDesc": "",
+      "overridesEmpty": "",
+      "overridesLoadFailed": "",
+      "addPerson": "",
+      "searchPeople": "",
+      "nobodyFound": "",
+      "accessLabel": "",
+      "roleLabel": "",
+      "allow": "",
+      "block": "",
+      "admin": "",
+      "member": "",
+      "backToDefault": ""
+    }
   },
   "import": {
     "noServers": "",
@@ -417,6 +451,13 @@
     "importFullRangeHelp": "",
     "skipOverlap": "",
     "skipDuplicatePlugin": "",
+    "importFailed": "",
+    "dropzone": {
+      "dropHere": "",
+      "dragOrClick": "",
+      "limit": "",
+      "removeFile": ""
+    },
     "overlapSkipped_one": "",
     "overlapSkipped_other": "",
     "duplicates_one": "",
@@ -580,7 +621,6 @@
       "cron": "",
       "inZone": ""
     },
-    "nextRun": "",
     "noNextRun": "",
     "neverSent": "",
     "lastSend": "",
@@ -1018,11 +1058,7 @@
     "neverSynced": "",
     "counts": {
       "requests_one": "",
-      "requests_other": "",
-      "unmatchedMedia_one": "",
-      "unmatchedMedia_other": "",
-      "unmatchedUsers_one": "",
-      "unmatchedUsers_other": ""
+      "requests_other": ""
     },
     "needsKey": "",
     "lastError": "",

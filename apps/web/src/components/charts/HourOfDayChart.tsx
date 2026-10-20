@@ -1,26 +1,35 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
+import type { HourOfDayStats } from '@tracearr/shared';
 import { getHour12 } from '@/lib/timeFormat';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { ChartEmpty } from './ChartEmpty';
-
-interface HourOfDayData {
-  hour: number;
-  count: number;
-}
+import { buildMediaGroupSeries, stackedTooltipRows } from './chartUtils';
 
 interface HourOfDayChartProps {
-  data: HourOfDayData[] | undefined;
+  /** Rows carrying a mediaType stack movies, shows and music per hour. */
+  data: HourOfDayStats[] | undefined;
   isLoading?: boolean;
   height?: number;
 }
 
 export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChartProps) {
-  const options = useMemo<Highcharts.Options>(() => {
+  const { t } = useTranslation(['common', 'pages']);
+
+  const options = useMemo<Highcharts.Options | null>(() => {
     if (!data || data.length === 0) {
       return {};
     }
+
+    const hours = [...new Set(data.map((d) => d.hour))];
+    const hourIndex = new Map(hours.map((hour, index) => [hour, index]));
+    const stacked = data.some((d) => d.mediaType !== undefined);
+    const groups = stacked
+      ? buildMediaGroupSeries(data, (d) => hourIndex.get(d.hour) ?? d.hour)
+      : [];
+    if (stacked && groups.length === 0) return null;
 
     // Format hour labels based on time format preference
     const formatHour = (hour: number): string => {
@@ -49,10 +58,16 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
         enabled: false,
       },
       legend: {
-        enabled: false,
+        enabled: groups.length >= 2,
+        itemStyle: {
+          color: 'hsl(var(--muted-foreground))',
+        },
+        itemHoverStyle: {
+          color: 'hsl(var(--foreground))',
+        },
       },
       xAxis: {
-        categories: data.map((d) => formatHour(d.hour)),
+        categories: hours.map(formatHour),
         labels: {
           style: {
             color: 'hsl(var(--muted-foreground))',
@@ -76,17 +91,19 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
         min: 0,
       },
       plotOptions: {
-        column: {
-          borderRadius: 2,
-          color: 'hsl(var(--chart-2))',
-          pointPadding: 0.1,
-          groupPadding: 0.1,
-          states: {
-            hover: {
-              color: 'hsl(var(--chart-2) / 0.8)',
+        column: stacked
+          ? { borderRadius: 2, pointPadding: 0.1, groupPadding: 0.1, stacking: 'normal' }
+          : {
+              borderRadius: 2,
+              color: 'hsl(var(--chart-2))',
+              pointPadding: 0.1,
+              groupPadding: 0.1,
+              states: {
+                hover: {
+                  color: 'hsl(var(--chart-2) / 0.8)',
+                },
+              },
             },
-          },
-        },
       },
       tooltip: {
         backgroundColor: 'hsl(var(--popover))',
@@ -94,18 +111,30 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
         style: {
           color: 'hsl(var(--popover-foreground))',
         },
+        shared: stacked,
         formatter: function () {
-          const label = this.category ?? this.x;
-          return `<b>${label}</b><br/>Plays: ${this.y}`;
+          if (stacked) {
+            const rows = stackedTooltipRows(this.points ?? [], t('pages:history.totalPlays'));
+            return `<b>${this.category ?? this.x}</b><br/>${rows}`;
+          }
+          return `<b>${this.category ?? this.x}</b><br/>${t('labels.plays')}: ${this.y}`;
         },
       },
-      series: [
-        {
-          type: 'column',
-          name: 'Plays',
-          data: data.map((d) => d.count),
-        },
-      ],
+      series: stacked
+        ? groups.map((group): Highcharts.SeriesColumnOptions => ({
+            type: 'column',
+            name: t(group.labelKey),
+            color: group.color,
+            stacking: 'normal',
+            data: group.data,
+          }))
+        : [
+            {
+              type: 'column',
+              name: t('labels.plays'),
+              data: data.map((d) => d.count),
+            },
+          ],
       responsive: {
         rules: [
           {
@@ -126,14 +155,14 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
         ],
       },
     };
-  }, [data, height]);
+  }, [data, height, t]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;
   }
 
-  if (!data || data.length === 0) {
-    return <ChartEmpty height={height} message="No data available" />;
+  if (!data || data.length === 0 || !options) {
+    return <ChartEmpty height={height} message={t('empty.noData')} />;
   }
 
   return (

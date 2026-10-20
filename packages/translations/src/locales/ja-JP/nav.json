@@ -5,6 +5,8 @@
   "stats": "統計",
   "activity": "アクティビティ",
   "library": "ライブラリ",
+  "people": "",
+  "rules": "",
   "users": "ユーザー",
   "automations": "",
   "violations": "違反",
@@ -18,14 +20,10 @@
   "devices": "デバイス",
   "bandwidth": "",
   "jobs": "ジョブ",
-  "media": "メディア",
   "mediaBrowse": "閲覧",
   "mediaGenres": "ジャンル",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

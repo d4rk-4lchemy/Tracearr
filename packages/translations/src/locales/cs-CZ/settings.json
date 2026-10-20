@@ -21,7 +21,7 @@
       "destinations": "",
       "newsletters": "",
       "email": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -37,7 +37,7 @@
       "posters": "",
       "plexAccounts": "",
       "destinations": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -232,6 +232,13 @@
       "issueBlocked": "",
       "issueRestartRequired": "",
       "issueMalfunctioned": "",
+      "jellyfinStep1": "",
+      "jellyfinStep2": "",
+      "jellyfinStep3": "",
+      "jellyfinStep4": "",
+      "embyStep1": "",
+      "embyStep2": "",
+      "embyStep3": "",
       "openReleases": ""
     },
     "posterSource": {
@@ -239,7 +246,9 @@
       "description": "",
       "automatic": "",
       "emptyHint": "",
-      "ownerOnly": ""
+      "ownerOnly": "",
+      "precache": "",
+      "precacheDescription": ""
     },
     "version": {
       "installed": "",
@@ -248,11 +257,6 @@
     }
   },
   "mobile": {
-    "title": "Mobilní aplikace",
-    "pairDevice": "Párovat zařízení",
-    "generateToken": "Vygenerovat párovací token",
-    "scanQrCode": "",
-    "tokenExpires": "Token vyprší v {{time}}",
     "lastSeen": "",
     "connectedOn": "",
     "noDevices": "Zatím není spárováno žádné zařízení",
@@ -260,7 +264,6 @@
     "revokeAll": "Zrušit všechny relace",
     "getOnGooglePlay": "Získat na Google Play",
     "downloadOnAppStore": "Stáhnout v App Store",
-    "externalUrlRequired": "Aby mobilní párování fungovalo, musí být v obecném nastavení nakonfigurována externí URL.",
     "mobileAccessDisabled": "Mobilní přístup zakázán",
     "mobileAccessDisabledDesc": "Povolte mobilní přístup, aby se aplikace Tracearr mohla připojit k vašemu serveru.",
     "enableMobileAccess": "Povolit mobilní přístup",
@@ -357,10 +360,41 @@
     "automatic": "",
     "startJob": "Zahájit práci"
   },
-  "accessControl": {
-    "allowGuestAccess": "Povolit přístup k hostům",
-    "allowGuestAccessDesc": "Pokud je zakázáno, do Tracearr se může přihlásit pouze vlastník serveru",
-    "singleOwnerNote": "Poznámka: Pokud je přístup hosta zakázán, může se přihlásit pouze vlastník serveru. Všichni ostatní uživatelé uvidí zprávu \"Přístup odepřen\"."
+  "memberLogin": {
+    "serverActivity": "",
+    "serverActivityDesc": "",
+    "noServers": "",
+    "addServer": "",
+    "serversLoadFailed": "",
+    "signIn": {
+      "title": "",
+      "titleDesc": "",
+      "local": "",
+      "localDesc": "",
+      "oidc": "",
+      "oidcDesc": "",
+      "plex": "",
+      "plexDesc": "",
+      "onlyWay": "",
+      "membersTitle": "",
+      "media": "",
+      "mediaDesc": "",
+      "servers": "",
+      "overrides": "",
+      "overridesDesc": "",
+      "overridesEmpty": "",
+      "overridesLoadFailed": "",
+      "addPerson": "",
+      "searchPeople": "",
+      "nobodyFound": "",
+      "accessLabel": "",
+      "roleLabel": "",
+      "allow": "",
+      "block": "",
+      "admin": "",
+      "member": "",
+      "backToDefault": ""
+    }
   },
   "import": {
     "noServers": "Nejsou připojeny žádné servery",
@@ -421,6 +455,13 @@
     "importFullRangeHelp": "",
     "skipOverlap": "",
     "skipDuplicatePlugin": "",
+    "importFailed": "",
+    "dropzone": {
+      "dropHere": "",
+      "dragOrClick": "",
+      "limit": "",
+      "removeFile": ""
+    },
     "overlapSkipped_one": "",
     "overlapSkipped_few": "",
     "overlapSkipped_many": "",
@@ -592,7 +633,6 @@
       "cron": "",
       "inZone": ""
     },
-    "nextRun": "",
     "noNextRun": "",
     "neverSent": "",
     "lastSend": "",
@@ -1080,15 +1120,7 @@
       "requests_one": "",
       "requests_few": "",
       "requests_many": "",
-      "requests_other": "",
-      "unmatchedMedia_one": "",
-      "unmatchedMedia_few": "",
-      "unmatchedMedia_many": "",
-      "unmatchedMedia_other": "",
-      "unmatchedUsers_one": "",
-      "unmatchedUsers_few": "",
-      "unmatchedUsers_many": "",
-      "unmatchedUsers_other": ""
+      "requests_other": ""
     },
     "needsKey": "",
     "lastError": "",

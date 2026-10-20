@@ -1,16 +1,17 @@
 import { useMemo, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { format } from 'date-fns';
-import type { MediaRequestEntry } from '@tracearr/shared';
+import { verbKeysFor, type MediaRequestEntry } from '@tracearr/shared';
 import { ApiError } from '@/lib/api';
 import {
   useMediaDetail,
   useMediaStats,
   useMediaWatchers,
   useSeasonHeat,
+  useMediaChildren,
   useMediaPlatforms,
   useMediaHistory,
   useSession,
@@ -25,6 +26,8 @@ import { CopiesPanel } from '@/components/media-browse/CopiesPanel';
 import { KpiStrip, MemberKpiStrip } from '@/components/media-browse/KpiStrip';
 import { WatchersTable } from '@/components/media-browse/WatchersTable';
 import { SeasonHeatPanel } from '@/components/media-browse/SeasonHeatPanel';
+import { AlbumsPanel } from '@/components/media-browse/AlbumsPanel';
+import { AlbumSheet } from '@/components/media-browse/AlbumSheet';
 import { PlatformPanel } from '@/components/media-browse/PlatformPanel';
 import { MediaRequestsPanel } from '@/components/requests/MediaRequestsPanel';
 import { InlineErrorState } from '@/components/library/ErrorState';
@@ -49,13 +52,13 @@ const HISTORY_HEAD_CLASS = 'text-foreground h-10 px-2 font-medium whitespace-now
 const HISTORY_CELL_CLASS = 'p-2 whitespace-nowrap';
 
 function NotFoundState() {
-  const { t } = useTranslation(['pages', 'common']);
+  const { t } = useTranslation(['pages', 'common', 'nav']);
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-4 py-20 text-center">
       <h1 className="text-xl font-semibold">{t('media.detail.notFound.title')}</h1>
       <p className="text-muted-foreground max-w-md text-sm">{t('media.detail.notFound.message')}</p>
       <Button asChild variant="outline">
-        <Link to="/media">{t('media.detail.notFound.backLink')}</Link>
+        <Link to="/library">{t('nav:library')}</Link>
       </Button>
     </div>
   );
@@ -103,9 +106,11 @@ function HistoryPanel({
   onLoadMore,
   onRowClick,
   showUser,
+  mediaType,
 }: {
   historyRef: RefObject<HTMLDivElement | null>;
   showUser: boolean;
+  mediaType: string | undefined;
   rows: HistoryRow[];
   isLoading: boolean;
   isError: boolean;
@@ -279,7 +284,7 @@ function HistoryPanel({
                         <span className="truncate">{row.media_title}</span>
                         <Badge variant={row.watched ? 'success' : 'outline'} className="text-xs">
                           {row.watched
-                            ? t('media.detail.history.watched')
+                            ? t(verbKeysFor(mediaType).watched)
                             : t('media.detail.history.notWatched')}
                         </Badge>
                       </div>
@@ -315,6 +320,10 @@ export function MediaDetail() {
   // existing single-session endpoint resolves it - same as History deep-links.
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const { data: selectedSession } = useSession(selectedSessionId ?? '');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const albumId = searchParams.get('album') || null;
 
   const serverById = useMemo(
     () =>
@@ -344,7 +353,9 @@ export function MediaDetail() {
   const watchersQuery = useMediaWatchers(id, mediaLibraryServerIds);
   const mediaType = detailQuery.data?.mediaType;
   const isShow = mediaType === 'show';
+  const isArtist = mediaType === 'artist';
   const seasonHeatQuery = useSeasonHeat(id, mediaLibraryServerIds, isShow);
+  const childrenQuery = useMediaChildren(id, mediaLibraryServerIds, isArtist);
   const platformsQuery = useMediaPlatforms(id, mediaLibraryServerIds);
   const historyQuery = useMediaHistory(id, mediaLibraryServerIds);
   const requestsQuery = useMediaRequests(id, mediaLibraryServerIds);
@@ -359,6 +370,35 @@ export function MediaDetail() {
       null
     );
   }, [requestsQuery.data]);
+
+  const openAlbum = (next: string) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('album', next);
+        return params;
+      },
+      { state: { sheet: true } }
+    );
+  };
+
+  // Same history rule as the genre sheet: a sheet opened here steps back off its own entry, one
+  // reached through an ?album= link replaces it.
+  const closeAlbum = () => {
+    const state: unknown = location.state;
+    if (typeof state === 'object' && state !== null && 'sheet' in state && state.sheet === true) {
+      void navigate(-1);
+      return;
+    }
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.delete('album');
+        return params;
+      },
+      { replace: true }
+    );
+  };
 
   const notFoundStatus =
     detailQuery.error instanceof ApiError &&
@@ -447,11 +487,32 @@ export function MediaDetail() {
         />
       )}
 
+      {isArtist && (
+        <AlbumsPanel
+          albums={childrenQuery.data?.data}
+          isLoading={childrenQuery.isLoading}
+          isError={childrenQuery.isError}
+          onRetry={() => void childrenQuery.refetch()}
+          onSelect={openAlbum}
+        />
+      )}
+
+      {isArtist && (
+        <AlbumSheet
+          albumId={albumId}
+          serverIds={mediaLibraryServerIds}
+          serverById={serverById}
+          isMember={isMember}
+          onClose={closeAlbum}
+        />
+      )}
+
       <PlatformPanel
         data={platformsQuery.data?.data}
         isLoading={platformsQuery.isLoading}
         isError={platformsQuery.isError}
         onRetry={() => void platformsQuery.refetch()}
+        mediaType={mediaType}
       />
 
       <HistoryPanel
@@ -465,6 +526,7 @@ export function MediaDetail() {
         onLoadMore={() => void historyQuery.fetchNextPage()}
         onRowClick={setSelectedSessionId}
         showUser={!isMember}
+        mediaType={mediaType}
       />
 
       <SessionDetailSheet

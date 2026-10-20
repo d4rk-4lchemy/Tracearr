@@ -16,7 +16,10 @@ import {
   shelvesQuerySchema,
   REDIS_KEYS,
   CACHE_TTL,
-  POSTER_IMAGE_SIZE,
+  SQUARE_POSTER_SIZE,
+  posterSizeFor,
+  type AlbumShelfRow,
+  type LibraryMediaType,
   type ShelfRow,
   type RecentlyAddedShelfRow,
   type RecentlyUpdatedShelfRow,
@@ -26,19 +29,20 @@ import {
   type WatchedState,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
-import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
+import { resolveServerIds } from '../../utils/serverFiltering.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
 import {
+  albumCountSql,
   buildValueRollupCte,
   pickBestResolution,
   buildCatalogPageQuery,
   buildPosterOrderFragment,
+  posterFor,
 } from './catalog.js';
 import {
   fetchEpisodeCounts,
   resolveWatchedStates,
 } from '../../services/library/mediaWatchedService.js';
-import { buildProxyUrl, posterVersionFor } from '../../services/imageProxy.js';
 import { reAddedPredicate } from '../../services/library/reAdded.js';
 import { getSetting } from '../../services/settings.js';
 import {
@@ -48,14 +52,19 @@ import {
   type Scope,
 } from '../../lib/scope.js';
 import { resolveDateRange, type DateRange } from '../stats/utils.js';
-import { buildLibraryCacheKey, mediaSizeSubquery, withComputeSingleFlight } from './utils.js';
+import {
+  buildLibraryCacheKey,
+  mediaSizeSubquery,
+  neverPlayedSql,
+  withComputeSingleFlight,
+} from './utils.js';
 
 const SHELF_LIMIT = 20;
 const DEAD_WEIGHT_LIMIT = 10;
 
 export interface RawShelfRow {
   id: string;
-  media_type: 'movie' | 'show';
+  media_type: LibraryMediaType;
   title: string;
   year: number | null;
   genres: string[] | null;
@@ -71,6 +80,7 @@ export interface RawShelfRow {
       }[]
     | null;
   poster_copy: { thumbPath: string | null; dominantColor: string | null; serverId: string } | null;
+  album_count?: number | null;
 }
 
 interface RawRecentlyAddedShowRow extends RawShelfRow {
@@ -95,17 +105,6 @@ type CachedDeadWeightRow = CachedShelfRow & Pick<DeadWeightRow, 'fileBytes' | 'a
 export function toShelfRowBase(row: RawShelfRow): CachedShelfRow {
   const servers = row.servers ?? [];
   const poster = row.poster_copy;
-  const posterVersion = poster?.thumbPath ? posterVersionFor(poster.thumbPath) : null;
-  const posterUrl =
-    poster?.thumbPath && poster.serverId && posterVersion
-      ? buildProxyUrl({
-          serverId: poster.serverId,
-          path: poster.thumbPath,
-          ...POSTER_IMAGE_SIZE,
-          version: posterVersion,
-          fallback: 'poster',
-        })
-      : null;
 
   return {
     mediaId: row.id,
@@ -113,11 +112,11 @@ export function toShelfRowBase(row: RawShelfRow): CachedShelfRow {
     title: row.title,
     year: row.year,
     genres: row.genres ?? [],
-    posterUrl,
-    posterVersion,
+    ...posterFor(poster?.serverId, poster?.thumbPath, posterSizeFor(row.media_type)),
     dominantColor: poster?.dominantColor ?? null,
     servers,
     resolutionBest: pickBestResolution(servers),
+    ...(row.media_type === 'artist' && { albumCount: row.album_count ?? 0 }),
   };
 }
 
@@ -306,7 +305,7 @@ interface ValueCandidate {
  * drops candidates with no active library copy.
  */
 async function fetchMostPopular(
-  type: 'movie' | 'show',
+  type: LibraryMediaType,
   serverIds: string[] | undefined,
   scope: Scope,
   dateRange: DateRange,
@@ -344,6 +343,7 @@ async function fetchMostPopular(
        FROM library_items li
        WHERE li.media_id = m.id AND li.removed_at IS NULL AND li.thumb_path IS NOT NULL ${serverFragmentLi}
        ${posterOrderFragment} LIMIT 1) AS poster_copy
+      ${type === 'artist' ? sql`, ${albumCountSql(sql`m.id`, serverFragmentLi)} AS album_count` : sql``}
     FROM media m
     WHERE m.id = ANY(${uuidArraySql(ids)}) AND m.merged_into_id IS NULL
       ${buildActiveItemFragment(sql`m.id`, serverIds, scope)}
@@ -366,6 +366,48 @@ async function fetchMostPopular(
   return result;
 }
 
+interface RawAlbumShelfRow {
+  server_id: string;
+  rating_key: string;
+  title: string;
+  artist_title: string | null;
+  artist_media_id: string | null;
+  year: number | null;
+  thumb_path: string | null;
+  added_at: string | Date;
+}
+
+/**
+ * Newest album rows in scope, one per server copy rather than folded into a
+ * canonical album. An album whose artist row is missing is dropped, the same
+ * way a track with no artist row drops out of the artist rollups.
+ */
+async function fetchRecentlyAddedAlbums(
+  serverIds: string[] | undefined,
+  scope: Scope
+): Promise<AlbumShelfRow[]> {
+  const result = await db.execute(sql`
+    SELECT a.server_id, a.rating_key, a.title, a.parent_title AS artist_title,
+           ar.media_id AS artist_media_id, a.year, a.thumb_path, a.created_at AS added_at
+    FROM library_items a
+    JOIN library_items ar ON ar.server_id = a.server_id AND ar.rating_key = a.parent_rating_key
+      AND ar.media_type = 'artist' AND ar.removed_at IS NULL
+    WHERE a.media_type = 'album' AND a.removed_at IS NULL ${libraryFragment(serverIds, scope, 'a')}
+    ORDER BY a.created_at DESC, a.id DESC
+    LIMIT ${SHELF_LIMIT}
+  `);
+  return (result.rows as unknown as RawAlbumShelfRow[]).map((row) => ({
+    serverId: row.server_id,
+    ratingKey: row.rating_key,
+    title: row.title,
+    artistTitle: row.artist_title,
+    artistMediaId: row.artist_media_id,
+    year: row.year,
+    ...posterFor(row.server_id, row.thumb_path, SQUARE_POSTER_SIZE),
+    addedAt: new Date(row.added_at).toISOString(),
+  }));
+}
+
 interface DeadWeightCandidate {
   canonicalId: string;
   totalFileSize: number;
@@ -373,11 +415,8 @@ interface DeadWeightCandidate {
 
 /**
  * ALL never-watched canonical titles of one type (no LIMIT - the caller needs
- * an exact all-time count/size total, not just the display page), alias-aware
- * (a merged loser's plays exclude the canonical row) and, for shows,
- * episode-aware. user_media_plays_daily admits every session with a media_id,
- * so the play test is the measures rather than row existence. No poster/servers
- * lookup here - that's deferred to the
+ * an exact all-time count/size total, not just the display page), by
+ * neverPlayedSql. No poster/servers lookup here - that's deferred to the
  * detail query for only the top DEAD_WEIGHT_LIMIT candidates, so this stays
  * one correlated subquery (file size) per row instead of three.
  */
@@ -386,11 +425,8 @@ async function fetchDeadWeightCandidatesForType(
   serverIds: string[] | undefined,
   scope: Scope
 ): Promise<DeadWeightCandidate[]> {
-  const mediaCol = type === 'movie' ? sql`media_id` : sql`show_media_id`;
   const serverFragmentLi = libraryFragment(serverIds, scope, 'li');
   const serverFragmentLi2 = libraryFragment(serverIds, scope, 'li2');
-  const serverFragmentSelf = buildMultiServerFragment(serverIds, 'p.server_id');
-  const serverFragmentLoser = buildMultiServerFragment(serverIds, 'p2.server_id');
   const result = await db.execute(sql`
     SELECT m.id AS canonical_id,
       ${mediaSizeSubquery(sql`m.id`, serverFragmentLi2)} AS total_file_size
@@ -401,14 +437,7 @@ async function fetchDeadWeightCandidatesForType(
         SELECT 1 FROM library_items li
         WHERE li.media_id = m.id AND li.removed_at IS NULL ${serverFragmentLi}
       )
-      AND NOT EXISTS (
-        SELECT 1 FROM user_media_plays_daily p
-        WHERE p.${mediaCol} = m.id AND (p.counted OR p.any_watched) ${serverFragmentSelf}
-        UNION ALL
-        SELECT 1 FROM media loser
-        JOIN user_media_plays_daily p2 ON p2.${mediaCol} = loser.id
-        WHERE loser.merged_into_id = m.id AND (p2.counted OR p2.any_watched) ${serverFragmentLoser}
-      )
+      AND ${neverPlayedSql(type, sql`m.id`, serverIds)}
   `);
   return (result.rows as { canonical_id: string; total_file_size: string | number }[]).map(
     (row) => ({
@@ -640,20 +669,26 @@ async function fetchMeta(
     SELECT
       COUNT(*) FILTER (WHERE m.media_type = 'movie')::bigint AS movies,
       COUNT(*) FILTER (WHERE m.media_type = 'show')::bigint AS shows,
-      COALESCE(SUM(${mediaSizeSubquery(sql`m.id`, serverFragmentLi2)}), 0)::bigint AS total_file_size
+      COUNT(*) FILTER (WHERE m.media_type = 'artist')::bigint AS artists,
+      COUNT(*) FILTER (WHERE m.media_type = 'album')::bigint AS albums,
+      COALESCE(SUM(CASE WHEN m.media_type IN ('movie', 'show')
+        THEN ${mediaSizeSubquery(sql`m.id`, serverFragmentLi2)} END), 0)::bigint AS total_file_size
     FROM media m
     WHERE m.merged_into_id IS NULL
-      AND m.media_type IN ('movie', 'show')
+      AND m.media_type IN ('movie', 'show', 'artist', 'album')
       AND EXISTS (
         SELECT 1 FROM library_items li
         WHERE li.media_id = m.id AND li.removed_at IS NULL ${serverFragmentLi}
       )
   `);
   const row = result.rows[0] as
-    { movies: string; shows: string; total_file_size: string } | undefined;
+    | { movies: string; shows: string; artists: string; albums: string; total_file_size: string }
+    | undefined;
   return {
     movies: Number(row?.movies ?? 0),
     shows: Number(row?.shows ?? 0),
+    artists: Number(row?.artists ?? 0),
+    albums: Number(row?.albums ?? 0),
     totalFileSize: Number(row?.total_file_size ?? 0),
   };
 }
@@ -678,9 +713,9 @@ async function computeShelves(
   preferredPosterServerId: string | null,
   includeDeadWeight: boolean
 ): Promise<ShelvesResponse> {
-  // Eight independent whole-catalog aggregate queries, split into two ~5-wide
-  // Promise.all batches rather than one batch of 8 - a single request should
-  // not be able to fire every heavy aggregate at the connection pool at once.
+  // The independent whole-catalog aggregate queries run in two ~5-wide
+  // Promise.all batches rather than one - a single request should not be
+  // able to fire every heavy aggregate at the connection pool at once.
   const [
     movies,
     recentlyAddedShows,
@@ -701,10 +736,12 @@ async function computeShelves(
   const recentlyUpdated = [...movies.updated, ...updatedShows]
     .sort((a, b) => (b.sortAt ?? '').localeCompare(a.sortAt ?? ''))
     .slice(0, SHELF_LIMIT);
-  const [newlyAdded, watchedAgg, meta] = await Promise.all([
+  const [newlyAdded, watchedAgg, meta, recentlyAddedAlbums, mostPlayedArtists] = await Promise.all([
     fetchNewlyAdded(serverIds, scope, dateRange),
     fetchWatchedAggregate(serverIds, scope, dateRange),
     fetchMeta(serverIds, scope),
+    fetchRecentlyAddedAlbums(serverIds, scope),
+    fetchMostPopular('artist', serverIds, scope, dateRange, preferredPosterServerId),
   ]);
 
   const movieIds = new Set<string>();
@@ -734,6 +771,8 @@ async function computeShelves(
     ),
     mostPopularMovies: mostPopularMovies.map((row) => withWatched(row, watchedStates)),
     mostPopularShows: mostPopularShows.map((row) => withWatched(row, watchedStates)),
+    recentlyAddedAlbums,
+    mostPlayedArtists: mostPlayedArtists.map((row) => withWatched(row, watchedStates)),
     // Dead weight is never-watched by definition - no probe needed.
     deadWeight: deadWeight?.rows.map((row) => ({ ...row, watchedState: 'unwatched' as const })),
     kpis: {
@@ -753,9 +792,9 @@ async function computeShelves(
 
 /**
  * The cached shelves are everyone's. A member gets each title's watched state as their own, the
- * Most Popular shelves whatever the owner's activity switch says but never their play and viewer
- * counts, no Recently Updated (a replaced file is the owner's business), and the server's watched
- * figures only with the switch on.
+ * Most Popular and Most Played Artists shelves whatever the owner's activity switch says but
+ * never their play and viewer counts, no Recently Updated (a replaced file is the owner's
+ * business), and the server's watched figures only with the switch on.
  */
 async function forMember(
   response: ShelvesResponse,
@@ -796,6 +835,7 @@ async function forMember(
     recentlyUpdated: [],
     mostPopularMovies: response.mostPopularMovies.map(withoutCounts(watchedStates)),
     mostPopularShows: response.mostPopularShows.map(withoutCounts(watchedStates)),
+    mostPlayedArtists: response.mostPlayedArtists.map(withoutCounts(watchedStates)),
   };
 }
 
@@ -857,8 +897,10 @@ export const libraryShelvesRoute: FastifyPluginAsync = async (app) => {
       // payload's chip numbers are stale and must not be served as v5.
       // v8: the recently-added shelves drop copies that replace one the server
       // lost, and those move to recentlyUpdated, which a v7 payload lacks.
+      // v10: recentlyAddedAlbums, mostPlayedArtists and the music meta counts.
+      // v11: album rows carry posterVersion, and artist and album art is square.
       const cacheKey = buildLibraryCacheKey(
-        `${REDIS_KEYS.LIBRARY_SHELVES}:v9`,
+        `${REDIS_KEYS.LIBRARY_SHELVES}:v11`,
         serverCacheKey,
         periodCacheKey,
         undefined,

@@ -1,4 +1,5 @@
 export { StatsActivity } from './Activity';
-export { StatsUsers } from './Users';
+export { StatsPeople } from './People';
 export { StatsDevices } from './Devices';
 export { StatsBandwidth } from './Bandwidth';
+export { StatsLayout } from './StatsLayout';

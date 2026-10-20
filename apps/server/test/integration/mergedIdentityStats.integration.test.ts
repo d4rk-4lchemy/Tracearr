@@ -4,13 +4,14 @@
  * Confirms every leaderboard and user-count surface treats a merged person
  * (one identity, multiple server accounts) as ONE human, not one per account.
  *
- * Run with: pnpm --filter @tracearr/server test:integration -- mergedIdentityStats
+ * Run with: pnpm --filter @tracearr/server test:integration mergedIdentityStats
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import Fastify from 'fastify';
 import sensible from '@fastify/sensible';
 import type { Redis } from 'ioredis';
+import type { PersonRow } from '@tracearr/shared';
 import {
   createTestUser,
   createTestServer,
@@ -19,7 +20,7 @@ import {
 } from '@tracearr/test-utils/factories';
 import { createMockRedis } from '@tracearr/test-utils/mocks';
 import { db } from '../../src/db/client.js';
-import { usersRoutes } from '../../src/routes/stats/users.js';
+import { peopleRoutes } from '../../src/routes/stats/people.js';
 import { bandwidthRoutes } from '../../src/routes/stats/bandwidth.js';
 import { contentRoutes } from '../../src/routes/stats/content.js';
 import { engagementRoutes } from '../../src/routes/stats/engagement.js';
@@ -62,11 +63,23 @@ describe('merged identity stats', () => {
     initPreparedStatements();
   });
 
-  describe('GET /top-users', () => {
+  describe('GET /people ranked by plays', () => {
+    // user_media_plays_daily only holds sessions stamped with a media id
+    const rankedMovie = (serverId: string) =>
+      resolveMediaForItem({
+        mediaType: 'movie',
+        tmdbId: 551,
+        title: 'Ranked Movie',
+        year: 2020,
+        serverId,
+        ratingKey: 'ranked-rk',
+      });
+
     it('returns one entry for a merged person with plays/watch time summed, identity trust, and a representative serverUserId', async () => {
       const admin = await createTestUser({ role: 'owner' });
       const serverA = await createTestServer({ type: 'plex' });
       const serverB = await createTestServer({ type: 'jellyfin' });
+      const mediaId = await rankedMovie(serverA.id);
 
       const target = await createTestUser({ role: 'member', name: 'Merged Person' });
       const source = await createTestUser({ role: 'member' });
@@ -86,12 +99,14 @@ describe('merged identity stats', () => {
       await createTestSession({
         serverId: serverA.id,
         serverUserId: targetSu.id,
+        mediaId,
         durationMs: 600_000,
         totalDurationMs: 7_200_000,
       });
       await createTestSession({
         serverId: serverB.id,
         serverUserId: sourceSu.id,
+        mediaId,
         durationMs: 900_000,
         totalDurationMs: 7_200_000,
       });
@@ -101,46 +116,41 @@ describe('merged identity stats', () => {
       await createTestSession({
         serverId: serverA.id,
         serverUserId: unmergedSu.id,
+        mediaId,
         durationMs: 300_000,
         totalDurationMs: 7_200_000,
       });
 
       await mergeUsers(source.id, target.id, admin.id);
+      await db.execute(
+        sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
+      );
 
-      const app = await buildApp(usersRoutes);
-      const response = await app.inject({ method: 'GET', url: '/top-users?period=all' });
+      const app = await buildApp(peopleRoutes);
+      const response = await app.inject({ method: 'GET', url: '/people?period=all&rank=plays' });
       await app.close();
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      const rows = body.data as {
-        userId: string;
-        serverUserId: string;
-        playCount: number;
-        watchTimeHours: number;
-        trustScore: number;
-        identityServers?: { id: string; name: string }[];
-      }[];
+      const rows = body.data as PersonRow[];
 
       const mergedRows = rows.filter((r) => r.userId === target.id);
       expect(mergedRows).toHaveLength(1);
-      const mergedRow = mergedRows[0]!;
-      // Watch time summed across both accounts, rounded to 1 decimal by the route:
-      // Math.round((600000 + 900000) / 3600000 * 10) / 10
-      expect(mergedRow.watchTimeHours).toBe(0.4);
-      expect(mergedRow.playCount).toBe(2);
+      const mergedRow = mergedRows[0];
+      expect(mergedRow?.watchMs).toBe(1_500_000);
+      expect(mergedRow?.plays).toBe(2);
       // Representative account chosen by session count tiebreak (source has 30 > target's 10)
-      expect(mergedRow.serverUserId).toBe(sourceSu.id);
+      expect(mergedRow?.serverUserId).toBe(sourceSu.id);
       // Identity aggregate trust is the worst account: min(90, 50) = 50,
       // not the representative account's own score
-      expect(mergedRow.trustScore).toBe(50);
-      expect(mergedRow.identityServers?.map((s) => s.id).sort()).toEqual(
+      expect(mergedRow?.trustScore).toBe(50);
+      expect(mergedRow?.identityServers?.map((s) => s.id).sort()).toEqual(
         [serverA.id, serverB.id].sort()
       );
 
       const unmergedRows = rows.filter((r) => r.userId === unmerged.id);
       expect(unmergedRows).toHaveLength(1);
-      expect(unmergedRows[0]?.playCount).toBe(1);
+      expect(unmergedRows[0]?.plays).toBe(1);
       expect(unmergedRows[0]?.serverUserId).toBe(unmergedSu.id);
     });
 
@@ -148,6 +158,7 @@ describe('merged identity stats', () => {
       const admin = await createTestUser({ role: 'owner' });
       const serverA = await createTestServer({ type: 'plex' });
       const serverB = await createTestServer({ type: 'jellyfin' });
+      const mediaId = await rankedMovie(serverA.id);
 
       const target = await createTestUser({ role: 'member' });
       const source = await createTestUser({ role: 'member' });
@@ -157,34 +168,39 @@ describe('merged identity stats', () => {
       await createTestSession({
         serverId: serverA.id,
         serverUserId: targetSu.id,
+        mediaId,
         durationMs: 600_000,
         totalDurationMs: 7_200_000,
       });
       await createTestSession({
         serverId: serverB.id,
         serverUserId: sourceSu.id,
+        mediaId,
         durationMs: 900_000,
         totalDurationMs: 7_200_000,
       });
 
       await mergeUsers(source.id, target.id, admin.id);
+      await db.execute(
+        sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
+      );
 
-      const app = await buildApp(usersRoutes);
+      const app = await buildApp(peopleRoutes);
       const response = await app.inject({
         method: 'GET',
-        url: `/top-users?period=all&serverIds=${serverA.id}`,
+        url: `/people?period=all&rank=plays&serverIds=${serverA.id}`,
       });
       await app.close();
 
       expect(response.statusCode).toBe(200);
       const body = response.json();
-      const rows = body.data as { userId: string; playCount: number; watchTimeHours: number }[];
+      const rows = body.data as PersonRow[];
       const row = rows.find((r) => r.userId === target.id);
 
       expect(row).toBeDefined();
       // Only serverA's session counts - not the 900_000ms serverB session
-      expect(row?.playCount).toBe(1);
-      expect(row?.watchTimeHours).toBe(0.2);
+      expect(row?.plays).toBe(1);
+      expect(row?.watchMs).toBe(600_000);
     });
   });
 

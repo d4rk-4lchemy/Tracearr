@@ -8,6 +8,7 @@ vi.mock('@/lib/api', () => ({
   api: {
     users: {
       list: vi.fn(),
+      rangeStats: vi.fn(),
       merge: vi.fn(),
       dismissMergeSuggestion: vi.fn(),
       restoreMergeSuggestion: vi.fn(),
@@ -32,10 +33,12 @@ import {
   useDismissMergeSuggestion,
   useMergeUsers,
   useRestoreMergeSuggestion,
+  useUserRangeStats,
   useUsers,
 } from './useUsers';
 
 const mockList = vi.mocked(api.users.list);
+const mockRangeStats = vi.mocked(api.users.rangeStats);
 const mockMerge = vi.mocked(api.users.merge);
 const mockDismiss = vi.mocked(api.users.dismissMergeSuggestion);
 const mockRestore = vi.mocked(api.users.restoreMergeSuggestion);
@@ -177,5 +180,30 @@ describe('merge suggestion dismissals', () => {
     expect(mockToastError).toHaveBeenCalledWith('toast.error.mergeSuggestionRestoreFailed', {
       description: 'gone',
     });
+  });
+});
+
+describe('useUserRangeStats', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('asks for the range in the browser timezone with the scope and server ids', async () => {
+    mockRangeStats.mockResolvedValueOnce({} as Awaited<ReturnType<typeof api.users.rangeStats>>);
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(
+      () => useUserRangeStats('su-1', { period: 'week', scope: 'identity' }, ['server-1']),
+      { wrapper: wrapper(client) }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockRangeStats).toHaveBeenCalledWith(
+      'su-1',
+      { period: 'week', scope: 'identity', timezone },
+      ['server-1']
+    );
   });
 });

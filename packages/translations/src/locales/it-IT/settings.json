@@ -21,7 +21,7 @@
       "destinations": "",
       "newsletters": "",
       "email": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -37,7 +37,7 @@
       "posters": "",
       "plexAccounts": "",
       "destinations": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -230,6 +230,13 @@
       "issueBlocked": "",
       "issueRestartRequired": "",
       "issueMalfunctioned": "",
+      "jellyfinStep1": "",
+      "jellyfinStep2": "",
+      "jellyfinStep3": "",
+      "jellyfinStep4": "",
+      "embyStep1": "",
+      "embyStep2": "",
+      "embyStep3": "",
       "openReleases": ""
     },
     "posterSource": {
@@ -237,7 +244,9 @@
       "description": "",
       "automatic": "",
       "emptyHint": "",
-      "ownerOnly": ""
+      "ownerOnly": "",
+      "precache": "",
+      "precacheDescription": ""
     },
     "version": {
       "installed": "",
@@ -246,11 +255,6 @@
     }
   },
   "mobile": {
-    "title": "App Mobile",
-    "pairDevice": "Accoppia Dispositivo",
-    "generateToken": "Genera Token Di Accoppiamento",
-    "scanQrCode": "",
-    "tokenExpires": "Il token scade in {{time}}",
     "lastSeen": "",
     "connectedOn": "",
     "noDevices": "Nessun dispositivo connesso",
@@ -258,7 +262,6 @@
     "revokeAll": "Revoca Tutte Le Sessioni",
     "getOnGooglePlay": "Scaricalo su Google Play",
     "downloadOnAppStore": "Scarica su App Store",
-    "externalUrlRequired": "Un URL esterno deve essere configurato in Impostazioni Generali per l'accoppiamento mobile al lavoro.",
     "mobileAccessDisabled": "Accesso Mobile Disabilitato",
     "mobileAccessDisabledDesc": "Abilita l'accesso mobile per consentire all'app mobile Tracearr di connettersi al server.",
     "enableMobileAccess": "Abilita Accesso Mobile",
@@ -353,10 +356,41 @@
     "automatic": "",
     "startJob": "Inizia Lavoro"
   },
-  "accessControl": {
-    "allowGuestAccess": "Consenti Accesso Ospite",
-    "allowGuestAccessDesc": "Se disabilitato, solo il proprietario del server può accedere a Tracearr",
-    "singleOwnerNote": "Nota: Quando l'accesso ospite è disabilitato, solo il proprietario del server può accedere. Tutti gli altri utenti vedranno un messaggio \"Accesso negato\"."
+  "memberLogin": {
+    "serverActivity": "",
+    "serverActivityDesc": "",
+    "noServers": "",
+    "addServer": "",
+    "serversLoadFailed": "",
+    "signIn": {
+      "title": "",
+      "titleDesc": "",
+      "local": "",
+      "localDesc": "",
+      "oidc": "",
+      "oidcDesc": "",
+      "plex": "",
+      "plexDesc": "",
+      "onlyWay": "",
+      "membersTitle": "",
+      "media": "",
+      "mediaDesc": "",
+      "servers": "",
+      "overrides": "",
+      "overridesDesc": "",
+      "overridesEmpty": "",
+      "overridesLoadFailed": "",
+      "addPerson": "",
+      "searchPeople": "",
+      "nobodyFound": "",
+      "accessLabel": "",
+      "roleLabel": "",
+      "allow": "",
+      "block": "",
+      "admin": "",
+      "member": "",
+      "backToDefault": ""
+    }
   },
   "import": {
     "noServers": "Nessun Server Connesso",
@@ -417,6 +451,13 @@
     "importFullRangeHelp": "",
     "skipOverlap": "",
     "skipDuplicatePlugin": "",
+    "importFailed": "",
+    "dropzone": {
+      "dropHere": "",
+      "dragOrClick": "",
+      "limit": "",
+      "removeFile": ""
+    },
     "overlapSkipped_one": "",
     "overlapSkipped_other": "",
     "duplicates_one": "",
@@ -580,7 +621,6 @@
       "cron": "",
       "inZone": ""
     },
-    "nextRun": "",
     "noNextRun": "",
     "neverSent": "",
     "lastSend": "",
@@ -1018,11 +1058,7 @@
     "neverSynced": "",
     "counts": {
       "requests_one": "",
-      "requests_other": "",
-      "unmatchedMedia_one": "",
-      "unmatchedMedia_other": "",
-      "unmatchedUsers_one": "",
-      "unmatchedUsers_other": ""
+      "requests_other": ""
     },
     "needsKey": "",
     "lastError": "",

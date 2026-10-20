@@ -201,14 +201,14 @@ export function StreamMap({
         <div className="bg-background/50 absolute inset-0 flex items-center justify-center backdrop-blur-sm">
           <div className="text-muted-foreground flex items-center gap-2 text-sm">
             <div className="border-primary h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />
-            Loading map data...
+            {t('map.loadingData')}
           </div>
         </div>
       )}
 
       {!isLoading && !hasData && (
         <div className="bg-background/50 absolute inset-0 flex items-center justify-center">
-          <p className="text-muted-foreground text-sm">No location data for current filters</p>
+          <p className="text-muted-foreground text-sm">{t('map.noDataForFilters')}</p>
         </div>
       )}
     </div>
@@ -224,22 +224,21 @@ function LocationPopupContent({
   serverNameMap?: Record<string, string>;
   showServers: boolean;
 }) {
+  const { t } = useTranslation(['pages', 'common']);
   const servers = props.servers ?? [];
   const showBreakdown = showServers && serverNameMap && servers.length > 1;
   return (
     <div className="text-sm">
       <div className="font-semibold">
         {props.city ? `${props.city}, ` : ''}
-        {props.country || 'Unknown'}
+        {props.country || t('common:labels.unknown')}
         <LocalBadge
           isLocal={props.isLocal}
           country={props.country}
           className="ml-1.5 align-middle"
         />
       </div>
-      <div className="text-muted-foreground">
-        {props.count.toLocaleString()} stream{props.count !== 1 ? 's' : ''}
-      </div>
+      <div className="text-muted-foreground">{t('map.streamCount', { count: props.count })}</div>
       {showBreakdown && (
         <div className="mt-1.5 space-y-0.5 border-t pt-1.5">
           {servers.map((entry) => (

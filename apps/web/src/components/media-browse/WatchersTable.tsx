@@ -53,6 +53,8 @@ export function WatchersTable({
 }: WatchersTableProps) {
   const { t } = useTranslation(['pages', 'common']);
   const showEpisodes = mediaType === 'show';
+  const isArtist = mediaType === 'artist';
+  const title = t(isArtist ? 'media.detail.watchers.titleMusic' : 'media.detail.watchers.title');
 
   return (
     <section
@@ -60,7 +62,7 @@ export function WatchersTable({
       className="bg-card rounded-[calc(var(--radius)+2px)] border p-[16px_18px]"
     >
       <h2 id="watchers-heading" className="mb-3 text-[15px] font-semibold">
-        {t('media.detail.watchers.title')}
+        {title}
       </h2>
 
       {isError ? (
@@ -68,11 +70,14 @@ export function WatchersTable({
       ) : isLoading || watchers === undefined ? (
         <WatchersTableSkeleton />
       ) : watchers.length === 0 ? (
-        <EmptyState title={t('media.detail.watchers.empty')} className="py-6" />
+        <EmptyState
+          title={t(isArtist ? 'media.detail.watchers.emptyMusic' : 'media.detail.watchers.empty')}
+          className="py-6"
+        />
       ) : (
         <div className="overflow-x-auto">
-          <Table aria-label={t('media.detail.watchers.title')}>
-            <TableCaption className="sr-only">{t('media.detail.watchers.title')}</TableCaption>
+          <Table aria-label={title}>
+            <TableCaption className="sr-only">{title}</TableCaption>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>{t('common:labels.user')}</TableHead>
@@ -86,7 +91,11 @@ export function WatchersTable({
                 )}
                 <TableHead>{t('media.detail.watchers.columns.completion')}</TableHead>
                 <TableHead className="text-right">
-                  {t('media.detail.watchers.columns.lastWatched')}
+                  {t(
+                    isArtist
+                      ? 'media.detail.watchers.columns.lastPlayed'
+                      : 'media.detail.watchers.columns.lastWatched'
+                  )}
                 </TableHead>
               </TableRow>
             </TableHeader>

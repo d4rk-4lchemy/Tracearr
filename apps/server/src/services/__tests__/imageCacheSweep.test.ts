@@ -56,6 +56,7 @@ interface LibraryItemRow {
   id: string;
   serverId: string;
   thumbPath: string | null;
+  mediaType?: string;
 }
 
 function makeRedisStub() {
@@ -182,6 +183,30 @@ describe('sweepImageCache', () => {
     expect(result.deletedTmp).toBe(0);
     expect(result.files).toBe(1);
     expect(result.versionedFiles).toBe(1);
+  });
+
+  it('keeps both the square and the 2:3 file of an album, and only the 2:3 file of a track', async () => {
+    const serverId = randomUUID();
+    const albumPath = '/library/metadata/5/thumb/5';
+    const trackPath = '/library/metadata/6/thumb/6';
+    const square = { width: 360, height: 360 };
+    const albumSquare = posterCacheFileName(serverId, albumPath, square);
+    const albumPoster = posterCacheFileName(serverId, albumPath);
+    const trackSquare = posterCacheFileName(serverId, trackPath, square);
+
+    mockLibraryItemsPages([
+      { id: randomUUID(), serverId, thumbPath: albumPath, mediaType: 'album' },
+      { id: randomUUID(), serverId, thumbPath: trackPath, mediaType: 'track' },
+    ]);
+    mockCacheDirFiles([albumSquare, albumPoster, trackSquare]);
+
+    const result = await sweepImageCache({ cacheDir: CACHE_DIR });
+
+    expect(vi.mocked(unlink)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(unlink)).toHaveBeenCalledWith(
+      join(CACHE_DIR, trackSquare.shard, trackSquare.fileName)
+    );
+    expect(result.versionedFiles).toBe(2);
   });
 
   it('keeps the file of a removed item whose row still has a thumb path', async () => {

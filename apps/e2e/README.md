@@ -113,24 +113,61 @@ automatically.
 
 The screenshots the website and the README use come from this workspace too. Instead of
 photographing a real install, `showcase/` fills a database of its own with a fake cast - three
-servers, thirteen people, a 110-title library, ninety days of watch history, automations with
-runs, and a sent newsletter - and Playwright captures the UI against it.
+servers, thirteen people, a 110-title library, a Plex music library of about twenty artists with
+their albums and tracks, ninety days of watch and listen history, automations with runs, and a
+sent newsletter - and Playwright captures the UI against it.
 
-Posters and title metadata are exported once from a real install:
+Artwork and title metadata are exported once from a real install:
 
 ```bash
 node apps/e2e/showcase/exportFromDev.mjs
 ```
 
-That writes the git-ignored `showcase/assets/` (`titles.json` plus `posters/<n>.webp`), which the
-seed and the local asset server read. Then:
+That writes the git-ignored `showcase/assets/`: `titles.json` and `music.json` (artist, album and
+track titles, years and genres, nothing else) plus `posters/<n>.webp` (360x540 posters copied from
+the dev server's image cache) and `posters/sq<n>.webp` (360x360 artist and album art). Square art
+the cache lacks is requested through the dev server's image proxy, so the dev server has to be
+running on :3000 for the export. Any title whose art cannot be had, including a proxy answer that
+is the "No image" placeholder, is left out rather than seeded bare. Music comes from the dev server
+with the most artists (`DEV_MUSIC_SERVER_ID` overrides it); only artists with album art make the
+cut, the ones with the most albums first, and the first of them is the artist page capture.
+
+The image proxy only fetches paths shaped like the server type's own, so the seed stores posters
+as `/library/metadata/showcase/thumb/<n>` on Plex and `/Items/showcase/Images/Primary?tag=<n>` on
+Jellyfin and Emby, and `showcase/assetServer.ts` maps both back to `posters/<n>.webp`.
+
+The stream map needs the basemap (`pnpm basemap`, git-ignored at `data/basemap.pmtiles`); without
+it the map captures are blank and every page carries the bad-mounts banner. Then stop the dev
+server, because Playwright reuses whatever answers on :3000 and :5173 and would photograph the
+dev database instead:
 
 ```bash
 pnpm --filter @tracearr/e2e showcase
 ```
 
 Images land in `showcase/out/` as webp, one per capture; `SHOWCASE_OUT=/abs/dir` sends them
-somewhere else.
+somewhere else. The run takes the version badge from the newest file in `release-notes/` and
+drops the `server:down` pushes the poller sends about the fake servers, so neither the update
+badge nor the health banner shows. The server runs under `tsx watch`, so an edit under
+`apps/server` mid-run restarts it and the capture in flight fails on a redirect; rerun, or start
+the API without watch first with the same environment and Playwright reuses it.
+
+| Capture                                                                             | What it shows                                                    |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `dashboard`                                                                         | Dashboard with three streams playing                             |
+| `activity`, `stats-activity`                                                        | Stats Activity, plays stacked by movies, shows and music         |
+| `stats-people`, `stats-devices`, `stats-bandwidth`                                  | The other Stats tabs                                             |
+| `map`                                                                               | Stream map                                                       |
+| `automations`, `automation-detail`, `violations`                                    | Automations rules, one rule, the Violations tab                  |
+| `users`, `users-merge-suggestion`, `users-merge-dialog`                             | Users table, the merge callout and the merge dialog              |
+| `user-detail`, `user-accounts`                                                      | A user's overview and the linked accounts card on the Access tab |
+| `media-overview`, `media-shelves`                                                   | Library overview and its shelves                                 |
+| `library-genres`, `library-genres-sheet`                                            | Library Genres, then the sheet for the top genre                 |
+| `library-quality`, `library-storage`, `media-duplicates`                            | Library Quality and Storage, the duplicates card                 |
+| `media-browse`, `media-detail`                                                      | Browse movies and one movie                                      |
+| `media-browse-music`, `media-detail-artist`                                         | Browse artists, then an artist page with an album sheet open     |
+| `settings-email`, `settings-newsletters`, `newsletter-editor`, `newsletter-history` | Email and newsletter settings                                    |
+| `digest-email`                                                                      | The newsletter email itself                                      |
 
 `SHOWCASE=1` moves every default in `seed/env.ts`, `seed/prepareDatabase.mjs` and
 `playwright.config.ts` from `tracearr_e2e` to `tracearr_showcase` and the Redis prefix from

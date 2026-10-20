@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { Users } from './Users';
 
 vi.mock('react-i18next', () => ({
@@ -21,6 +21,14 @@ vi.mock('@/hooks/queries', () => ({
   useDismissedMergeSuggestions: () => ({ data: undefined }),
   useDismissMergeSuggestion: () => ({ mutate: vi.fn(), isPending: false }),
   useRestoreMergeSuggestion: () => ({ mutate: vi.fn(), isPending: false }),
+  useSettings: () => ({ data: { loginMethods: { member: true } } }),
+  useUserFull: vi.fn(),
+  useUpdateUser: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateUserIdentity: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+vi.mock('@/hooks/queries/useImpersonation', () => ({
+  useViewAs: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock('@/hooks/useServer', () => ({
@@ -31,7 +39,7 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: vi.fn(),
 }));
 
-import { useUsers } from '@/hooks/queries';
+import { useUserFull, useUsers } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -73,14 +81,25 @@ function lastQueryParams() {
 function renderUsers(path = '/users') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <Users />
+      <Routes>
+        <Route path="/users" element={<Users />} />
+        <Route path="/users/:id" element={<p>user detail page</p>} />
+      </Routes>
     </MemoryRouter>
   );
 }
 
+const twoServers = [
+  { id: 'server-1', name: 'Server One' },
+  { id: 'server-2', name: 'Server Two' },
+];
+
 describe('Users', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useUserFull).mockReturnValue({ data: undefined } as unknown as ReturnType<
+      typeof useUserFull
+    >);
     mockUseServer.mockReturnValue({
       selectedServerIds: [],
       selectedServers: [],
@@ -115,20 +134,190 @@ describe('Users', () => {
     expect(screen.getByText('common:errors.somethingWentWrong')).toBeInTheDocument();
     expect(screen.getByText('users failed')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+    await userEvent.click(screen.getByRole('button', { name: /actions.tryAgain/ }));
     expect(refetch).toHaveBeenCalled();
   });
 
-  it('wires a trust score header click into orderBy on the query, not a client-only sort', async () => {
+  it('wires a role header click into orderBy on the query, not a client-only sort', async () => {
     mockList([aliceRow], 1);
 
     renderUsers();
 
-    await userEvent.click(screen.getByText('common:labels.trustScore'));
+    await userEvent.click(screen.getByText('pages:userDetail.access.role'));
 
     const lastCall = lastQueryParams();
-    expect(lastCall).toMatchObject({ orderBy: 'trustScore' });
+    expect(lastCall).toMatchObject({ orderBy: 'role' });
     expect(['asc', 'desc']).toContain(lastCall?.orderDir);
+  });
+
+  it('renders role, sign-in, flags, joined and last activity columns and no servers column on a single server', () => {
+    mockList([{ ...aliceRow, loginAccess: 'allow', lastLoginAt: null }], 1);
+
+    renderUsers();
+
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
+    expect(headers).toEqual([
+      '',
+      'common:labels.user',
+      'pages:userDetail.access.role',
+      'pages:userDetail.access.signIn',
+      'common:labels.status',
+      'common:labels.joined',
+      'common:labels.lastActivity',
+      '',
+    ]);
+    expect(screen.getByText('pages:userDetail.access.roleMember')).toBeInTheDocument();
+    expect(screen.getByText('pages:userDetail.access.signInAllow')).toBeInTheDocument();
+    expect(screen.getByText('pages:users.signInOn')).toBeInTheDocument();
+    expect(screen.getByText(/pages:users\.neverSignedIn/)).toBeInTheDocument();
+    expect(screen.queryByText('common:count.server')).not.toBeInTheDocument();
+  });
+
+  it('shows a servers count column when more than one server is configured', () => {
+    mockUseServer.mockReturnValue({
+      selectedServerIds: [],
+      selectedServers: [],
+      servers: twoServers,
+    } as unknown as ReturnType<typeof useServer>);
+    mockList([{ ...aliceRow, email: 'alice@example.com', identityServers: twoServers }], 1);
+
+    renderUsers();
+
+    expect(screen.getByText(/common:count\.server/)).toBeInTheDocument();
+    expect(screen.getByText(/alice@example\.com/)).toBeInTheDocument();
+    expect(screen.getByText('pages:users.merged')).toBeInTheDocument();
+  });
+
+  it('shows the trust badge in flags only below 100 and links N pending to the filtered violations page', () => {
+    mockList(
+      [
+        { ...aliceRow, pendingViolations: 2 },
+        {
+          ...aliceRow,
+          id: 'su-2',
+          userId: 'u-2',
+          username: 'bob',
+          identityName: 'Bob',
+          identityTrustScore: 100,
+          trustScore: 100,
+          pendingViolations: 0,
+        },
+      ],
+      2
+    );
+
+    renderUsers();
+
+    expect(screen.getByText('80')).toBeInTheDocument();
+    expect(screen.queryByText('100')).not.toBeInTheDocument();
+    const links = screen.getAllByRole('link', { name: 'pages:users.pendingLink' });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/violations?people=u-1&status=pending');
+  });
+
+  it('sends role, signIn and pendingOnly filters and resets to page 1', async () => {
+    mockList([aliceRow], 250);
+
+    renderUsers();
+
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.next' }));
+    expect(lastQueryParams()).toMatchObject({ page: 2 });
+
+    await userEvent.click(screen.getByRole('button', { name: /filters/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: 'pages:userDetail.access.role' }));
+    await userEvent.click(
+      screen.getByRole('option', { name: 'pages:userDetail.access.roleAdmin' })
+    );
+    await userEvent.click(screen.getByRole('combobox', { name: 'pages:userDetail.access.signIn' }));
+    await userEvent.click(
+      screen.getByRole('option', { name: 'pages:userDetail.access.signInAllow' })
+    );
+    await userEvent.click(screen.getByRole('switch', { name: 'pages:users.filterPendingOnly' }));
+
+    await waitFor(() =>
+      expect(lastQueryParams()).toMatchObject({
+        role: 'admin',
+        signIn: 'allow',
+        pendingOnly: true,
+        page: 1,
+      })
+    );
+  });
+
+  it('sorts by trust score, lowest first, from the Status header', async () => {
+    mockList([aliceRow], 1);
+
+    renderUsers();
+
+    await userEvent.click(screen.getByText('common:labels.status'));
+
+    expect(lastQueryParams()).toMatchObject({ orderBy: 'trustScore', orderDir: 'asc' });
+  });
+
+  it('opens the row menu without navigating', async () => {
+    mockUseAuth.mockReturnValue({
+      user: { role: 'owner' },
+    } as unknown as ReturnType<typeof useAuth>);
+    mockList([aliceRow], 1);
+
+    renderUsers();
+
+    await userEvent.click(screen.getByRole('button', { name: 'pages:users.rowActions' }));
+
+    expect(
+      await screen.findByRole('menuitem', { name: 'pages:userDetail.editIdentity' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'pages:userDetail.adjustTrustScore' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'pages:userDetail.access.viewAs' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'pages:users.menuOpenViolations' })
+    ).toHaveAttribute('href', '/violations?people=u-1');
+    expect(screen.queryByText('user detail page')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'pages:userDetail.editIdentity' }));
+    expect(screen.queryByText('user detail page')).not.toBeInTheDocument();
+  });
+
+  it('holds Edit identity closed until the person has loaded, then seeds their contact email', async () => {
+    mockUseAuth.mockReturnValue({
+      user: { role: 'owner' },
+    } as unknown as ReturnType<typeof useAuth>);
+    mockList([aliceRow], 1);
+
+    renderUsers();
+    await userEvent.click(screen.getByRole('button', { name: 'pages:users.rowActions' }));
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'pages:userDetail.editIdentity' })
+    );
+
+    expect(vi.mocked(useUserFull)).toHaveBeenLastCalledWith('su-1');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens Edit identity with the loaded contact email', async () => {
+    mockUseAuth.mockReturnValue({
+      user: { role: 'owner' },
+    } as unknown as ReturnType<typeof useAuth>);
+    vi.mocked(useUserFull).mockImplementation(
+      (id: string) =>
+        ({
+          data: id ? { identity: { contactEmail: 'alice@news.example' } } : undefined,
+        }) as unknown as ReturnType<typeof useUserFull>
+    );
+    mockList([aliceRow], 1);
+
+    renderUsers();
+    await userEvent.click(screen.getByRole('button', { name: 'pages:users.rowActions' }));
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'pages:userDetail.editIdentity' })
+    );
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('alice@news.example')).toBeInTheDocument();
   });
 
   it('sends the search box to the server and returns to the first page once it settles', async () => {
@@ -185,6 +374,7 @@ describe('Users', () => {
           joinedBefore: undefined,
           activeAfter: undefined,
           activeBefore: undefined,
+          pendingOnly: false,
         },
       },
       expect.anything()

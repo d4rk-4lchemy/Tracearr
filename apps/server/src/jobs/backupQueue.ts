@@ -8,6 +8,7 @@
 import { Queue, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import type { BackupScheduleType } from '@tracearr/shared';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { WORKER_DEFAULTS, registerQueue, registerWorker } from './jobSafety.js';
 import { isMaintenance } from '../serverState.js';
 import { getSetting } from '../services/settings.js';
 import { BACKUP_DIR, createBackup, cleanupOldBackups } from '../services/backup.js';
@@ -41,6 +42,7 @@ export function initBackupQueue(redisUrl: string): void {
   backupQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('[Backup] Queue error:', err);
   });
+  registerQueue(backupQueue);
 
   console.log('[Backup] Queue initialized');
 }
@@ -83,8 +85,10 @@ export function startBackupWorker(): void {
       connection: connectionOptions,
       prefix: bullPrefix,
       concurrency: 1,
+      ...WORKER_DEFAULTS,
     }
   );
+  registerWorker(backupWorker);
 
   backupWorker.on('failed', (job, err) => {
     console.error(`[Backup] Job ${job?.id} failed:`, err.message);

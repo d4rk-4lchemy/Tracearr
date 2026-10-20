@@ -199,7 +199,7 @@ async function fetchRequestPlays(
     ) p
     JOIN server_users vsu ON vsu.id = p.server_user_id
     LEFT JOIN episodes ep ON ep.id = al.id
-    WHERE (p.counted OR p.any_watched)
+    WHERE p.counted
       AND (
         al.media_type <> 'show'
         OR COALESCE(jsonb_array_length(al.seasons), 0) = 0

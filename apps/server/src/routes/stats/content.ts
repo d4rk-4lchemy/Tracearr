@@ -12,7 +12,7 @@ import { db } from '../../db/client.js';
 import { resolveDateRange } from './utils.js';
 import { resolveServerIds } from '../../utils/serverFiltering.js';
 import { scopedServerFragment, viewScope } from '../../lib/scope.js';
-import { MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
+import { countedSessionSql, MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
 
 export const contentRoutes: FastifyPluginAsync = async (app) => {
   const readStats = { preHandler: [app.requirePermission('stats', 'read')] };
@@ -250,7 +250,7 @@ export const contentRoutes: FastifyPluginAsync = async (app) => {
         SELECT rating_key, server_id, reference_id, id, duration_ms
         FROM sessions
         WHERE started_at >= now() - interval '30 days'
-          AND duration_ms >= 120000
+          AND ${countedSessionSql()}
           ${MEDIA_TYPE_SQL_FILTER}
           ${serverFilter}
       )

@@ -12,7 +12,13 @@ import {
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { CatalogRow } from '@tracearr/shared';
-import { PosterCard, toPosterCardServers, type ServerLookupEntry } from './PosterCard';
+import {
+  PosterCard,
+  POSTER_ASPECT_CLASS,
+  toPosterCardServers,
+  type PosterAspect,
+  type ServerLookupEntry,
+} from './PosterCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -57,9 +63,9 @@ export function computeCardWidth(width: number, columnCount: number): number {
   return Math.max(MIN_CARD_WIDTH, (width - totalGap) / columnCount);
 }
 
-/** cardWidth * 1.5 (aspect-[2/3] poster) + the fixed two-line title footer + the row wrapper's own bottom padding. */
-export function computeRowHeight(cardWidth: number): number {
-  return cardWidth * 1.5 + ROW_FOOTER_HEIGHT + ROW_BOTTOM_PADDING;
+/** Card art height (2:3 poster or square) + the fixed two-line title footer + the row wrapper's own bottom padding. */
+export function computeRowHeight(cardWidth: number, aspect: PosterAspect = 'poster'): number {
+  return cardWidth * (aspect === 'square' ? 1 : 1.5) + ROW_FOOTER_HEIGHT + ROW_BOTTOM_PADDING;
 }
 
 /** Fixed grid-row count for a known item total - no loader rows; unloaded
@@ -125,6 +131,7 @@ const GridCell = memo(function GridCell({
   return (
     <PosterCard
       mediaId={row.mediaId}
+      mediaType={row.mediaType}
       title={row.title}
       year={row.year}
       posterUrl={row.posterUrl}
@@ -136,16 +143,17 @@ const GridCell = memo(function GridCell({
       watchedStateSelf={row.watchedStateSelf}
       plays={row.plays}
       viewers={row.viewers}
+      albumCount={row.albumCount}
       loading={eager ? 'eager' : 'lazy'}
       fetchPriority={eager ? 'high' : undefined}
     />
   );
 });
 
-function SkeletonCell() {
+function SkeletonCell({ aspect }: { aspect: PosterAspect }) {
   return (
     <div className="space-y-1.5">
-      <Skeleton className="aspect-[2/3] w-full rounded-md" />
+      <Skeleton className={cn('w-full rounded-md', POSTER_ASPECT_CLASS[aspect])} />
       <Skeleton className="h-3.5 w-full" />
     </div>
   );
@@ -185,6 +193,10 @@ interface VirtualPosterGridProps {
   onJumpCancelled?: () => void;
   /** Fired once a jump has landed stably (or exhausted its correction budget). */
   onJumpSettled?: () => void;
+  /** Artist art is square; row height and skeletons follow it. Fixed for the
+   * grid's lifetime: the measured row height is not re-taken on a change, so
+   * the parent remounts the grid (a `key`) to switch it. */
+  aspect?: PosterAspect;
   className?: string;
 }
 
@@ -212,6 +224,7 @@ export const VirtualPosterGrid = forwardRef<VirtualPosterGridHandle, VirtualPost
       onScrollIdle,
       onJumpCancelled,
       onJumpSettled,
+      aspect = 'poster',
       className,
     },
     handleRef
@@ -274,8 +287,8 @@ export const VirtualPosterGrid = forwardRef<VirtualPosterGridHandle, VirtualPost
     const [measuredRowHeight, setMeasuredRowHeight] = useState<number | null>(null);
     const measuredForCardWidthRef = useRef<number | null>(null);
     const rowHeight = useMemo(
-      () => measuredRowHeight ?? computeRowHeight(cardWidth),
-      [measuredRowHeight, cardWidth]
+      () => measuredRowHeight ?? computeRowHeight(cardWidth, aspect),
+      [measuredRowHeight, cardWidth, aspect]
     );
     const rowCount = useMemo(
       () => computeRowCount(totalItems, columnCount),
@@ -569,7 +582,7 @@ export const VirtualPosterGrid = forwardRef<VirtualPosterGridHandle, VirtualPost
                         eager={isEarlyRow}
                       />
                     ) : (
-                      <SkeletonCell key={`skeleton-${rowStart + column}`} />
+                      <SkeletonCell key={`skeleton-${rowStart + column}`} aspect={aspect} />
                     );
                   })}
                 </div>

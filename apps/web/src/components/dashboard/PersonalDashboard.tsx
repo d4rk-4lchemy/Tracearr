@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BarChart3, Calendar, Clock, Film, Flame, Play, Trophy } from 'lucide-react';
 import { Link } from 'react-router';
-import type { MyTopTitleRow } from '@tracearr/shared';
+import type { HistoryAggregates, MyTopTitleRow } from '@tracearr/shared';
 import { NowPlayingSection } from '@/components/dashboard/NowPlayingSection';
 import { SectionHeading } from '@/components/dashboard/SectionHeading';
 import {
@@ -32,7 +32,7 @@ import {
 import { useServer } from '@/hooks/useServer';
 import { useSocket } from '@/hooks/useSocket';
 import type { StatsTimeRange } from '@/lib/api';
-import { formatDelta, periodWindows } from '@/lib/periodWindows';
+import { deltaPercent, periodWindows } from '@/lib/periodWindows';
 import { cn } from '@/lib/utils';
 
 const ALL_TIME: StatsTimeRange = { period: 'all' };
@@ -54,7 +54,7 @@ function LastThirtyDays({
   othersStreaming: number | undefined;
   actions?: ReactNode;
 }) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const [now] = useState(() => new Date(Math.floor(Date.now() / 60_000) * 60_000));
   const windows = useMemo(() => periodWindows({ period: 'month' }, now), [now]);
   const current = useHistoryAggregates({ serverIds, self: true, ...windows.current });
@@ -74,11 +74,19 @@ function LastThirtyDays({
 
   const totals = current.data;
   const before = previous.isPlaceholderData ? undefined : previous.data;
-  const vsPrior = (cur: number | undefined, prev: number | undefined) => {
-    if (cur === undefined || prev === undefined) return undefined;
-    const delta = formatDelta(cur, prev);
-    return delta ? t('dashboard.me.vsPrior', { delta }) : undefined;
-  };
+  const watchMs = (agg: HistoryAggregates | undefined) =>
+    agg ? agg.totalWatchTimeMs - agg.listenTimeMs : undefined;
+  const listenMs = totals?.listenTimeMs ?? 0;
+  const watchNow = watchMs(totals);
+  const watchBefore = watchMs(before);
+  const watchDelta =
+    watchNow === undefined || watchBefore === undefined
+      ? null
+      : deltaPercent(watchNow, watchBefore);
+  const playsDelta =
+    totals === undefined || before === undefined
+      ? null
+      : deltaPercent(totals.playCount, before.playCount);
 
   return (
     <section>
@@ -94,16 +102,29 @@ function LastThirtyDays({
         <StatCard
           icon={Clock}
           label={t('dashboard.watchTime')}
-          value={formatWatchTime(totals?.totalWatchTimeMs ?? 0)}
+          value={formatWatchTime(watchNow ?? 0)}
+          delta={
+            watchDelta === null
+              ? undefined
+              : { value: watchDelta, label: t('userDetail.cards.vsPrior') }
+          }
           isLoading={!totals}
-          subValue={vsPrior(totals?.totalWatchTimeMs, before?.totalWatchTimeMs)}
+          subValue={
+            listenMs > 0
+              ? `${t('common:labels.listenTime')} ${formatWatchTime(listenMs)}`
+              : undefined
+          }
         />
         <StatCard
           icon={Play}
           label={t('dashboard.plays')}
           value={totals?.playCount ?? 0}
           isLoading={!totals}
-          subValue={vsPrior(totals?.playCount, before?.playCount)}
+          delta={
+            playsDelta === null
+              ? undefined
+              : { value: playsDelta, label: t('userDetail.cards.vsPrior') }
+          }
         />
         <StatCard
           icon={Film}
@@ -206,8 +227,8 @@ function TopTitles({ serverIds, className }: { serverIds: string[]; className?: 
 
 function HowYouWatch({ serverIds, className }: { serverIds: string[]; className?: string }) {
   const engagement = useEngagementStats(ALL_TIME, serverIds, { self: true });
-  const dayOfWeek = usePlaysByDayOfWeek(ALL_TIME, serverIds, true);
-  const hourOfDay = usePlaysByHourOfDay(ALL_TIME, serverIds, true);
+  const dayOfWeek = usePlaysByDayOfWeek(ALL_TIME, serverIds, { self: true });
+  const hourOfDay = usePlaysByHourOfDay(ALL_TIME, serverIds, { self: true });
 
   if (engagement.isLoading) return <Skeleton className={cn('h-44 rounded-xl', className)} />;
   const profile = activeProfile(engagement.data?.userProfiles);

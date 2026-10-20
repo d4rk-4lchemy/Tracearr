@@ -14,6 +14,7 @@ import {
 import { PerServerCardGrid } from '@/components/server';
 import { useLibraryWatch, useLibraryCompletion, useLibraryPatterns } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
+import { useTimeRange } from '@/hooks/useTimeRange';
 import { getHour12 } from '@/lib/timeFormat';
 
 function formatPeakHour(hour: number | undefined): string {
@@ -77,14 +78,11 @@ function ServerCompletionCard({ server }: ServerCompletionCardProps) {
 
 export function LibraryWatch() {
   const { t } = useTranslation(['pages', 'common']);
-  const {
-    mediaLibraryServerIds,
-    mediaLibraryServers,
-    isLoading: serversLoading,
-  } = useServer();
+  const { mediaLibraryServerIds, mediaLibraryServers, isLoading: serversLoading } = useServer();
   const selectedServerIds = mediaLibraryServerIds;
   const selectedServers = mediaLibraryServers;
   const isMultiServer = selectedServerIds.length > 1;
+  const { value: timeRange } = useTimeRange();
 
   // Watch data for KPIs - deduped across servers by the backend
   const watch = useLibraryWatch(selectedServerIds, null, 1, 20);
@@ -110,21 +108,10 @@ export function LibraryWatch() {
   // Patterns data for hourly/monthly charts, peak times, binge shows - aggregated across servers
   const patterns = useLibraryPatterns(selectedServerIds, null, 12); // 12 weeks = ~3 months
 
-  // Header component (used in all states)
-  const header = (
-    <div className="flex items-center justify-between">
-      <div>
-        <h1 className="text-2xl font-bold">{t('library.watch.title')}</h1>
-        <p className="text-muted-foreground text-sm">{t('library.watch.description')}</p>
-      </div>
-    </div>
-  );
-
   // Show error state with retry
   if (watch.isError || patterns.isError) {
     return (
       <div className="space-y-6">
-        {header}
         <ErrorState
           title={t('library.watch.failedToLoad')}
           message={
@@ -140,14 +127,15 @@ export function LibraryWatch() {
   }
 
   if (!serversLoading && selectedServerIds.length === 0) {
-    return <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>;
+    return (
+      <div className="text-muted-foreground py-12 text-center">{t('media.noLibraryServers')}</div>
+    );
   }
 
   // Show empty state if no watch data
   if (!watch.isLoading && (!watch.data?.items || watch.data.items.length === 0)) {
     return (
       <div className="space-y-6">
-        {header}
         <EmptyState
           icon={BarChart3}
           title={t('library.watch.noData')}
@@ -170,22 +158,24 @@ export function LibraryWatch() {
 
   return (
     <div className="space-y-6">
-      {header}
-
       {/* KPI Cards Grid - 4 columns on desktop, 2 on mobile */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard
           icon={Eye}
           label={t('library.watch.watched')}
           value={`${watch.data?.summary.watchedCount ?? 0}/${watch.data?.summary.totalItems ?? 0}`}
-          subValue={`${(watch.data?.summary.watchedPct ?? 0).toFixed(0)}${t('library.watch.percentWatched')}`}
+          subValue={t('library.watch.percentWatchedValue', {
+            pct: (watch.data?.summary.watchedPct ?? 0).toFixed(0),
+          })}
           isLoading={watch.isLoading}
         />
         <StatCard
           icon={Clock}
           label={t('library.watch.totalWatchTime')}
           value={formatWatchTime(watch.data?.summary.totalWatchMs ?? 0)}
-          subValue={`${(watch.data?.summary.avgWatchesPerItem ?? 0).toFixed(1)} ${t('library.watch.avgPerItem')}`}
+          subValue={t('library.watch.avgPerItemValue', {
+            value: (watch.data?.summary.avgWatchesPerItem ?? 0).toFixed(1),
+          })}
           isLoading={watch.isLoading}
         />
         <StatCard
@@ -209,6 +199,7 @@ export function LibraryWatch() {
         serverIds={selectedServerIds}
         selectedServers={selectedServers}
         isMultiServer={isMultiServer}
+        timeRange={timeRange}
       />
 
       {/* Completion Section */}

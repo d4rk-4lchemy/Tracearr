@@ -18,6 +18,7 @@ import {
 } from '@tracearr/shared';
 import { sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
+import { countedSessionSql } from '../../constants/index.js';
 import { db } from '../../db/client.js';
 import { buildAvatarUrl, buildPosterUrl } from '../../services/imageProxy.js';
 import { encodeCursor } from '../../utils/cursor.js';
@@ -337,7 +338,7 @@ async function aggregateChainPage(
       FROM sessions s
       ${whereClause}
       GROUP BY COALESCE(s.reference_id, s.id)
-      HAVING BOOL_OR(COALESCE(s.duration_ms, 0) >= 120000)${watchedFilter}
+      HAVING BOOL_OR(${countedSessionSql('s')})${watchedFilter}
     ),
     page AS (
       SELECT * FROM chains

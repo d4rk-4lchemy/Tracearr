@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { isNavItemActive, navigation, visibleItems, type NavItem } from './nav-data';
+import {
+  footerNavigation,
+  isNavItemActive,
+  navigation,
+  visibleItems,
+  type NavItem,
+} from './nav-data';
 
-const allItems: NavItem[] = navigation.flatMap((section) => section.items);
+const allItems: NavItem[] = [...navigation, ...footerNavigation];
 
 function byHref(href: string): NavItem {
   const found = allItems.find((item) => item.href === href);
@@ -14,6 +20,21 @@ function activeHrefs(pathname: string): string[] {
 }
 
 describe('navigation shape', () => {
+  it('exposes nine destinations in the sidebar and settings in the footer', () => {
+    expect(navigation.map((i) => i.href)).toEqual([
+      '/',
+      '/map',
+      '/history',
+      '/stats',
+      '/library',
+      '/media/browse',
+      '/requests',
+      '/users',
+      '/automations',
+    ]);
+    expect(footerNavigation.map((i) => i.href)).toEqual(['/settings']);
+  });
+
   it('exposes every destination exactly once', () => {
     const hrefs = allItems.map((item) => item.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
@@ -44,14 +65,21 @@ describe('isNavItemActive', () => {
     expect(isNavItemActive('/users-report', users)).toBe(false);
   });
 
-  it('keeps /media off while a deeper /media route is open', () => {
-    expect(activeHrefs('/media')).toEqual(['/media']);
-    expect(activeHrefs('/media/browse')).toEqual(['/media/browse']);
-    expect(activeHrefs('/media/genres')).toEqual(['/media/genres']);
+  it('lights automations for a violation page and browse for a media detail page', () => {
+    expect(isNavItemActive('/violations', byHref('/automations'))).toBe(true);
+    expect(isNavItemActive('/violations/abc', byHref('/automations'))).toBe(true);
+    expect(isNavItemActive('/media/abc', byHref('/media/browse'))).toBe(true);
+    expect(isNavItemActive('/media/abc', byHref('/library'))).toBe(false);
   });
 
-  it('matches descendants of an entry nothing sits below', () => {
-    expect(activeHrefs('/media/browse/123')).toEqual(['/media/browse']);
+  it('lights library for every library tab and stats for every stats tab', () => {
+    expect(activeHrefs('/library/genres')).toEqual(['/library']);
+    expect(activeHrefs('/library/storage')).toEqual(['/library']);
+    expect(activeHrefs('/stats/people')).toEqual(['/stats']);
+  });
+
+  it('lights nothing on bare /media, which is not a destination', () => {
+    expect(activeHrefs('/media')).toEqual([]);
   });
 
   it('never lights up two destinations at once', () => {
@@ -59,19 +87,23 @@ describe('isNavItemActive', () => {
       '/',
       '/map',
       '/history',
+      '/stats',
       '/stats/activity',
-      '/stats/users',
-      '/stats/devices',
+      '/stats/people',
       '/stats/bandwidth',
-      '/media',
-      '/media/browse',
-      '/media/genres',
+      '/library',
+      '/library/genres',
       '/library/quality',
       '/library/storage',
-      '/library/watch',
+      '/media/browse',
+      '/media/genres',
+      '/media/abc',
+      '/requests',
       '/users',
+      '/users/abc',
       '/automations',
       '/violations',
+      '/violations/abc',
       '/settings',
     ];
 
@@ -79,16 +111,11 @@ describe('isNavItemActive', () => {
       expect(activeHrefs(path), `${path} should mark exactly one entry`).toHaveLength(1);
     }
   });
-
-  it('separates the two user destinations', () => {
-    expect(activeHrefs('/stats/users')).toEqual(['/stats/users']);
-    expect(activeHrefs('/users')).toEqual(['/users']);
-  });
 });
 
 describe('visibleItems', () => {
   const hrefsFor = (role: Parameters<typeof visibleItems>[1], seerr = true) =>
-    navigation.flatMap((section) => visibleItems(section, role, seerr)).map((item) => item.href);
+    visibleItems(allItems, role, seerr).map((item) => item.href);
 
   it('gives the owner and admins every destination', () => {
     const all = allItems.map((item) => item.href);
@@ -97,38 +124,16 @@ describe('visibleItems', () => {
     expect(hrefsFor('admin')).toEqual(all);
   });
 
-  it('keeps management pages away from members', () => {
-    const member = hrefsFor('member');
-
-    for (const href of [
-      '/users',
-      '/automations',
-      '/settings',
-      '/stats/users',
-      '/stats/devices',
-      '/stats/bandwidth',
-      '/library/quality',
-      '/library/storage',
-      '/library/watch',
-      '/violations',
-    ]) {
-      expect(member).not.toContain(href);
-    }
-  });
-
-  it('leaves members the pages that show their own activity', () => {
-    const member = hrefsFor('member');
-
-    for (const href of ['/', '/map', '/history', '/media', '/requests']) {
-      expect(member).toContain(href);
-    }
-  });
-
-  it('keeps By User and Violations to the owner and admins, and has no Your Stats entry', () => {
-    expect(hrefsFor('member')).not.toContain('/stats/users');
-    expect(hrefsFor('owner')).toContain('/stats/users');
-    expect(hrefsFor('owner')).toContain('/violations');
-    expect(hrefsFor('owner')).not.toContain('/stats/me');
+  it('shows a member dashboard, map, history, stats, library, browse and requests only', () => {
+    expect(hrefsFor('member')).toEqual([
+      '/',
+      '/map',
+      '/history',
+      '/stats',
+      '/library',
+      '/media/browse',
+      '/requests',
+    ]);
   });
 
   it('still hides Requests until a Seerr is linked', () => {

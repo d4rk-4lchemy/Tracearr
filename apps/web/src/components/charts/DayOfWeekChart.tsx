@@ -1,26 +1,32 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
+import type { DayOfWeekStats } from '@tracearr/shared';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { ChartEmpty } from './ChartEmpty';
-
-interface DayOfWeekData {
-  day: number;
-  name: string;
-  count: number;
-}
+import { buildMediaGroupSeries, stackedTooltipRows } from './chartUtils';
 
 interface DayOfWeekChartProps {
-  data: DayOfWeekData[] | undefined;
+  /** Rows carrying a mediaType stack movies, shows and music per day. */
+  data: DayOfWeekStats[] | undefined;
   isLoading?: boolean;
   height?: number;
 }
 
 export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChartProps) {
-  const options = useMemo<Highcharts.Options>(() => {
+  const { t } = useTranslation(['common', 'pages']);
+
+  const options = useMemo<Highcharts.Options | null>(() => {
     if (!data || data.length === 0) {
       return {};
     }
+
+    const days = [...new Map(data.map((d) => [d.day, d.name]))];
+    const dayIndex = new Map(days.map(([day], index) => [day, index]));
+    const stacked = data.some((d) => d.mediaType !== undefined);
+    const groups = stacked ? buildMediaGroupSeries(data, (d) => dayIndex.get(d.day) ?? d.day) : [];
+    if (stacked && groups.length === 0) return null;
 
     return {
       chart: {
@@ -39,10 +45,16 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
         enabled: false,
       },
       legend: {
-        enabled: false,
+        enabled: groups.length >= 2,
+        itemStyle: {
+          color: 'hsl(var(--muted-foreground))',
+        },
+        itemHoverStyle: {
+          color: 'hsl(var(--foreground))',
+        },
       },
       xAxis: {
-        categories: data.map((d) => d.name),
+        categories: days.map(([, name]) => name),
         labels: {
           style: {
             color: 'hsl(var(--muted-foreground))',
@@ -64,15 +76,17 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
         min: 0,
       },
       plotOptions: {
-        column: {
-          borderRadius: 4,
-          color: 'hsl(var(--primary))',
-          states: {
-            hover: {
-              color: 'hsl(var(--primary) / 0.8)',
+        column: stacked
+          ? { borderRadius: 4, stacking: 'normal' }
+          : {
+              borderRadius: 4,
+              color: 'hsl(var(--primary))',
+              states: {
+                hover: {
+                  color: 'hsl(var(--primary) / 0.8)',
+                },
+              },
             },
-          },
-        },
       },
       tooltip: {
         backgroundColor: 'hsl(var(--popover))',
@@ -80,18 +94,30 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
         style: {
           color: 'hsl(var(--popover-foreground))',
         },
+        shared: stacked,
         formatter: function () {
-          const label = this.category ?? this.x;
-          return `<b>${label}</b><br/>Plays: ${this.y}`;
+          if (stacked) {
+            const rows = stackedTooltipRows(this.points ?? [], t('pages:history.totalPlays'));
+            return `<b>${this.category ?? this.x}</b><br/>${rows}`;
+          }
+          return `<b>${this.category ?? this.x}</b><br/>${t('labels.plays')}: ${this.y}`;
         },
       },
-      series: [
-        {
-          type: 'column',
-          name: 'Plays',
-          data: data.map((d) => d.count),
-        },
-      ],
+      series: stacked
+        ? groups.map((group): Highcharts.SeriesColumnOptions => ({
+            type: 'column',
+            name: t(group.labelKey),
+            color: group.color,
+            stacking: 'normal',
+            data: group.data,
+          }))
+        : [
+            {
+              type: 'column',
+              name: t('labels.plays'),
+              data: data.map((d) => d.count),
+            },
+          ],
       responsive: {
         rules: [
           {
@@ -111,14 +137,14 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
         ],
       },
     };
-  }, [data, height]);
+  }, [data, height, t]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;
   }
 
-  if (!data || data.length === 0) {
-    return <ChartEmpty height={height} message="No data available" />;
+  if (!data || data.length === 0 || !options) {
+    return <ChartEmpty height={height} message={t('empty.noData')} />;
   }
 
   return (

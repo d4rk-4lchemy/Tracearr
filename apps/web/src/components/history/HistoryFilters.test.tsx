@@ -1,9 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeAll, describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { initI18n } from '@tracearr/translations';
 import type { HistoryFilterOptions } from '@tracearr/shared';
 import { HistoryFiltersBar, DEFAULT_COLUMN_VISIBILITY } from './HistoryFilters';
 import type { HistoryFilters } from '@/hooks/queries/useHistory';
+
+beforeAll(async () => {
+  await initI18n({ lng: 'en' });
+});
 
 const mergedPerson = {
   id: 'su-representative',
@@ -42,6 +47,8 @@ function renderBar(
     <HistoryFiltersBar
       filters={{ ...filters, ...overrides }}
       onFiltersChange={onFiltersChange}
+      timeRange={{ period: 'month' }}
+      onTimeRangeChange={vi.fn()}
       filterOptions={filterOptions}
       columnVisibility={DEFAULT_COLUMN_VISIBILITY}
       onColumnVisibilityChange={vi.fn()}
@@ -145,6 +152,8 @@ describe('HistoryFiltersBar', () => {
       <HistoryFiltersBar
         filters={{}}
         onFiltersChange={vi.fn()}
+        timeRange={{ period: 'month' }}
+        onTimeRangeChange={vi.fn()}
         filterOptions={filterOptions}
         columnVisibility={DEFAULT_COLUMN_VISIBILITY}
         onColumnVisibilityChange={vi.fn()}

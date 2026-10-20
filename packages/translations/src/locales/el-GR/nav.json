@@ -5,6 +5,8 @@
   "stats": "Στατιστικά",
   "activity": "Δραστηριότητα",
   "library": "Βιβλιοθήκη",
+  "people": "",
+  "rules": "",
   "users": "Χρήστες",
   "automations": "",
   "violations": "Παραβιάσεις",
@@ -18,14 +20,10 @@
   "devices": "Συσκευές",
   "bandwidth": "Εύρος Ζώνης",
   "jobs": "Εργασίες",
-  "media": "Πολυμέσα",
   "mediaBrowse": "Περιήγηση",
   "mediaGenres": "Είδη",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

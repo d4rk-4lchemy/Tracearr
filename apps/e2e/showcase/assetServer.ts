@@ -1,15 +1,20 @@
 /**
  * The loopback origin the three showcase servers are seeded with. The image
- * proxy fetches posters through it in both the Plex and the Jellyfin/Emby
- * shape, and the web app loads avatars from it directly. Everything else
- * 404s: the poller hits /status/sessions and friends against the same url and
- * has to fail fast rather than hang.
+ * proxy only fetches paths shaped like the server type's own, so the seed
+ * writes posters as /library/metadata/showcase/thumb/<name> (Plex, fetched
+ * through /photo/:/transcode) and /Items/showcase/Images/Primary?tag=<name>
+ * (Jellyfin and Emby); both resolve to assets/posters/<name>.webp. The web app
+ * loads avatars from here directly. Everything else 404s: the poller hits
+ * /status/sessions and friends against the same url and has to fail fast
+ * rather than hang.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const POSTER_PATH = /^\/posters\/[A-Za-z0-9._-]+\.webp$/;
+const PLEX_POSTER = /^\/library\/metadata\/showcase\/thumb\/([A-Za-z0-9_-]+)$/;
+const ITEM_POSTER = '/Items/showcase/Images/Primary';
+const POSTER_NAME = /^[A-Za-z0-9_-]+$/;
 const AVATAR_PATH = /^\/avatars\/([A-Za-z0-9._-]+)\.svg$/;
 const TRANSCODE_PATH = '/photo/:/transcode';
 
@@ -55,17 +60,8 @@ function notFound(res: ServerResponse): void {
   res.end('not found');
 }
 
-async function sendPoster(
-  res: ServerResponse,
-  assetsDir: string,
-  requestPath: string
-): Promise<void> {
-  const root = path.resolve(assetsDir);
-  const full = path.resolve(root, `.${requestPath}`);
-  if (!full.startsWith(`${root}${path.sep}`)) {
-    notFound(res);
-    return;
-  }
+async function sendPoster(res: ServerResponse, assetsDir: string, name: string): Promise<void> {
+  const full = path.resolve(assetsDir, 'posters', `${name}.webp`);
   let body: Buffer;
   try {
     body = await readFile(full);
@@ -95,25 +91,22 @@ async function handle(req: IncomingMessage, res: ServerResponse, assetsDir: stri
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const pathname = decodeURIComponent(url.pathname);
 
-  if (pathname === TRANSCODE_PATH) {
-    const target = url.searchParams.get('url');
-    const targetPath = target === null ? null : new URL(target, 'http://127.0.0.1').pathname;
-    if (targetPath !== null && POSTER_PATH.test(targetPath)) {
-      await sendPoster(res, assetsDir, targetPath);
-      return;
-    }
-    notFound(res);
+  const plexPath = pathname === TRANSCODE_PATH ? url.searchParams.get('url') : pathname;
+  const plexPoster = plexPath === null ? undefined : PLEX_POSTER.exec(plexPath)?.[1];
+  if (plexPoster !== undefined) {
+    await sendPoster(res, assetsDir, plexPoster);
+    return;
+  }
+
+  const tag = pathname === ITEM_POSTER ? url.searchParams.get('tag') : null;
+  if (tag !== null && POSTER_NAME.test(tag)) {
+    await sendPoster(res, assetsDir, tag);
     return;
   }
 
   const avatar = AVATAR_PATH.exec(pathname);
   if (avatar?.[1] !== undefined) {
     sendAvatar(res, avatar[1], url.searchParams.get('i'));
-    return;
-  }
-
-  if (POSTER_PATH.test(pathname)) {
-    await sendPoster(res, assetsDir, pathname);
     return;
   }
 

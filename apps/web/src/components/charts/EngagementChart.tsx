@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { ChartEmpty } from './ChartEmpty';
-import type { EngagementTierBreakdown } from '@tracearr/shared';
+import type { EngagementTier, EngagementTierBreakdown } from '@tracearr/shared';
 
 interface EngagementBreakdownChartProps {
   data: EngagementTierBreakdown[] | undefined;
@@ -21,20 +22,22 @@ export const TIER_COLORS: Record<string, string> = {
   unknown: 'hsl(220, 9%, 46%)', // Gray
 };
 
-const TIER_LABELS: Record<string, string> = {
-  abandoned: 'Abandoned (<20%)',
-  sampled: 'Sampled (20-49%)',
-  engaged: 'Engaged (50-84%)',
-  watched: 'Watched (85%+)',
-  rewatched: 'Rewatched (200%+)',
-  unknown: 'Unknown',
-};
+const TIER_LABELS = {
+  abandoned: { key: 'pages:yourStats.tier.abandoned', range: '<20%' },
+  sampled: { key: 'pages:yourStats.tier.sampled', range: '20-49%' },
+  engaged: { key: 'pages:yourStats.tier.engaged', range: '50-84%' },
+  watched: { key: 'pages:yourStats.tier.watched', range: '85%+' },
+  rewatched: { key: 'pages:yourStats.tier.rewatched', range: '200%+' },
+  unknown: { key: 'common:labels.unknown', range: null },
+} as const satisfies Record<EngagementTier, { key: string; range: string | null }>;
 
 export function EngagementBreakdownChart({
   data,
   isLoading,
   height = 250,
 }: EngagementBreakdownChartProps) {
+  const { t } = useTranslation(['pages', 'common']);
+
   const options = useMemo<Highcharts.Options>(() => {
     if (!data || data.length === 0) {
       return {};
@@ -44,6 +47,11 @@ export function EngagementBreakdownChart({
     if (total === 0) {
       return {};
     }
+
+    const tierLabel = (tier: EngagementTier): string => {
+      const { key, range } = TIER_LABELS[tier];
+      return range ? `${t(key)} (${range})` : t(key);
+    };
 
     // Sort tiers in logical order
     const tierOrder = ['abandoned', 'sampled', 'engaged', 'watched', 'rewatched', 'unknown'];
@@ -73,7 +81,9 @@ export function EngagementBreakdownChart({
         style: {
           color: 'hsl(var(--popover-foreground))',
         },
-        pointFormat: '<b>{point.y}</b> items ({point.percentage:.1f}%)',
+        pointFormatter: function () {
+          return `<b>${t('pages:activity.tierItems', { count: this.y ?? 0 })}</b> (${(this.percentage ?? 0).toFixed(1)}%)`;
+        },
       },
       plotOptions: {
         pie: {
@@ -102,7 +112,7 @@ export function EngagementBreakdownChart({
           type: 'pie',
           name: 'Engagement',
           data: sortedData.map((d) => ({
-            name: TIER_LABELS[d.tier] ?? d.tier,
+            name: tierLabel(d.tier),
             y: d.count,
             color: TIER_COLORS[d.tier] ?? TIER_COLORS.unknown,
           })),
@@ -128,14 +138,14 @@ export function EngagementBreakdownChart({
         ],
       },
     };
-  }, [data, height]);
+  }, [data, height, t]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;
   }
 
   if (!data || data.length === 0) {
-    return <ChartEmpty height={height} message="No engagement data available" />;
+    return <ChartEmpty height={height} message={t('pages:activity.noEngagementData')} />;
   }
 
   return (

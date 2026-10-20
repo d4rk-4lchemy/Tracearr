@@ -31,10 +31,12 @@ export function useRegenerateApiKey() {
   });
 }
 
-export function useSettings() {
+/** GET /settings is owner only; other viewers pass `enabled: false` rather than collect 403s. */
+export function useSettings(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ['settings'],
     queryFn: api.settings.get,
+    enabled: options.enabled ?? true,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }

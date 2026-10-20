@@ -216,10 +216,11 @@ export const libraryCompletionRoute: FastifyPluginAsync = async (app) => {
       const serverFilter = buildMultiServerFragment(resolvedIds, 'li.server_id');
       const libraryFilter = libraryId ? sql`AND li.library_id = ${libraryId}` : sql``;
       // mediaType is always movie/episode/show; unfiltered item-level completion must
-      // still exclude season, which has no engagement of its own and would show as 0%.
+      // still exclude season and album, which have no engagement of their own and would
+      // show as 0%.
       const mediaTypeFilter = mediaType
         ? sql`AND li.media_type = ${mediaType}`
-        : sql`AND li.media_type != 'season'`;
+        : sql`AND li.media_type NOT IN ('season', 'album')`;
 
       // Status filter
       const statusFilterSql =

@@ -88,7 +88,7 @@ describe('PersonMultiSelectCombobox', () => {
   it('clears the whole selection via the trigger clear action', async () => {
     const { onChange } = renderCombobox({ value: ['user-1', 'user-2'] });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await userEvent.click(screen.getByRole('button', { name: 'actions.clear' }));
 
     expect(onChange).toHaveBeenCalledWith([]);
   });

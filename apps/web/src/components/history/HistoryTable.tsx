@@ -44,6 +44,7 @@ import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import {
   PLAYBACK_DECISION_LABEL_KEYS,
+  verbKeysFor,
   type SessionWithDetails,
   type SessionState,
   type MediaType,
@@ -56,48 +57,43 @@ import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { format } from 'date-fns';
 import { getTimeFormatString } from '@/lib/timeFormat';
 
-// Engagement tier config
-const ENGAGEMENT_TIER_CONFIG: Record<
-  EngagementTier,
-  { label: string; shortLabel: string; color: string; bgClass: string }
-> = {
+type ShownTier = Exclude<EngagementTier, 'unknown'>;
+
+const ENGAGEMENT_TIER_CONFIG = {
   abandoned: {
-    label: 'Abandoned (<20%)',
-    shortLabel: 'Abandoned',
+    labelKey: 'pages:yourStats.tier.abandoned',
+    range: '<20%',
     color: 'text-red-600',
     bgClass: 'bg-red-100 dark:bg-red-900/30',
   },
   sampled: {
-    label: 'Sampled (20-49%)',
-    shortLabel: 'Sampled',
+    labelKey: 'pages:yourStats.tier.sampled',
+    range: '20-49%',
     color: 'text-orange-600',
     bgClass: 'bg-orange-100 dark:bg-orange-900/30',
   },
   engaged: {
-    label: 'Engaged (50-84%)',
-    shortLabel: 'Engaged',
+    labelKey: 'pages:yourStats.tier.engaged',
+    range: '50-84%',
     color: 'text-yellow-600',
     bgClass: 'bg-yellow-100 dark:bg-yellow-900/30',
   },
   watched: {
-    label: 'Watched (85%+)',
-    shortLabel: 'Watched',
+    labelKey: 'pages:yourStats.tier.watched',
+    range: '85%+',
     color: 'text-green-600',
     bgClass: 'bg-green-100 dark:bg-green-900/30',
   },
   rewatched: {
-    label: 'Rewatched (200%+)',
-    shortLabel: 'Rewatched',
+    labelKey: 'pages:yourStats.tier.rewatched',
+    range: '200%+',
     color: 'text-blue-600',
     bgClass: 'bg-blue-100 dark:bg-blue-900/30',
   },
-  unknown: {
-    label: 'Unknown',
-    shortLabel: '?',
-    color: 'text-muted-foreground',
-    bgClass: 'bg-muted',
-  },
-};
+} as const satisfies Record<
+  ShownTier,
+  { labelKey: `pages:yourStats.tier.${ShownTier}`; range: string; color: string; bgClass: string }
+>;
 
 function getEngagementTier(progress: number | null): EngagementTier {
   if (progress === null) return 'unknown';
@@ -117,11 +113,13 @@ function EngagementTierBadge({
   state: SessionState;
   mediaType: MediaType;
 }) {
+  const { t } = useTranslation(['common', 'pages']);
   if (mediaType === 'live') return null;
   const tier = getEngagementTier(progress);
   if (tier === 'unknown' || state !== 'stopped') return null;
 
   const config = ENGAGEMENT_TIER_CONFIG[tier];
+  const label = t(tier === 'watched' ? verbKeysFor(mediaType).watched : config.labelKey);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -132,10 +130,12 @@ function EngagementTierBadge({
             config.bgClass
           )}
         >
-          {config.shortLabel}
+          {label}
         </span>
       </TooltipTrigger>
-      <TooltipContent>{config.label}</TooltipContent>
+      <TooltipContent>
+        {label} ({config.range})
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -159,17 +159,19 @@ interface Props {
   isMultiServer?: boolean;
 }
 
+const STATE_ICON_CONFIG = {
+  playing: { icon: Play, color: 'text-green-500', labelKey: 'playback.playing' },
+  paused: { icon: Pause, color: 'text-yellow-500', labelKey: 'playback.paused' },
+} as const;
+
 // State icon component
 function StateIcon({ state }: { state: SessionState }) {
+  const { t } = useTranslation();
   // keeps the date column aligned across playing and stopped rows
   if (state === 'stopped') return <span className="size-4 shrink-0" aria-hidden="true" />;
 
-  const config: Record<'playing' | 'paused', { icon: typeof Play; color: string; label: string }> =
-    {
-      playing: { icon: Play, color: 'text-green-500', label: 'Playing' },
-      paused: { icon: Pause, color: 'text-yellow-500', label: 'Paused' },
-    };
-  const { icon: Icon, color, label } = config[state];
+  const { icon: Icon, color, labelKey } = STATE_ICON_CONFIG[state];
+  const label = t(labelKey);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -181,17 +183,20 @@ function StateIcon({ state }: { state: SessionState }) {
 }
 
 // Media type icon component
+const MEDIA_TYPE_ICON_CONFIG = {
+  movie: { icon: Film, labelKey: 'common:media.movie' },
+  episode: { icon: Tv, labelKey: 'common:media.episode' },
+  track: { icon: Music, labelKey: 'common:media.music' },
+  live: { icon: Radio, labelKey: 'common:media.liveTV' },
+  photo: { icon: Image, labelKey: 'common:media.photo' },
+  trailer: { icon: Clapperboard, labelKey: 'pages:history.trailer' },
+  unknown: { icon: CircleHelp, labelKey: 'common:labels.unknown' },
+} as const satisfies Record<MediaType, { icon: typeof Film; labelKey: string }>;
+
 function MediaTypeIcon({ type }: { type: MediaType }) {
-  const config: Record<MediaType, { icon: typeof Film; label: string }> = {
-    movie: { icon: Film, label: 'Movie' },
-    episode: { icon: Tv, label: 'TV Episode' },
-    track: { icon: Music, label: 'Music' },
-    live: { icon: Radio, label: 'Live TV' },
-    photo: { icon: Image, label: 'Photo' },
-    trailer: { icon: Clapperboard, label: 'Trailer' },
-    unknown: { icon: CircleHelp, label: 'Unknown' },
-  };
-  const { icon: Icon, label } = config[type];
+  const { t } = useTranslation(['common', 'pages']);
+  const { icon: Icon, labelKey } = MEDIA_TYPE_ICON_CONFIG[type];
+  const label = t(labelKey);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -225,7 +230,9 @@ export const HistoryTableRow = memo(
       const mediaLinks = getMediaLinks(session);
       const progress = getSessionProgress(session);
       const colorMap = useServerColorMap();
-      const { t } = useTranslation();
+      const { t } = useTranslation(['common', 'pages']);
+      const verbKeys = verbKeysFor(session.mediaType);
+      const verbs = { watched: t(verbKeys.watched), watchTime: t(verbKeys.watchTime) };
       const serverColor = isMultiServer ? (colorMap.get(session.serverId) ?? null) : null;
       const accentStyle = serverColor
         ? { ...style, boxShadow: `inset 3px 0 0 0 ${serverColor}` }
@@ -350,10 +357,26 @@ export const HistoryTableRow = memo(
                 </TooltipTrigger>
                 <TooltipContent>
                   <div className="space-y-1 text-xs">
-                    {session.platform && <div>Platform: {session.platform}</div>}
-                    {session.product && <div>Product: {session.product}</div>}
-                    {session.device && <div>Device: {session.device}</div>}
-                    {session.playerName && <div>Player: {session.playerName}</div>}
+                    {session.platform && (
+                      <div>
+                        {t('labels.platform')}: {session.platform}
+                      </div>
+                    )}
+                    {session.product && (
+                      <div>
+                        {t('labels.product')}: {session.product}
+                      </div>
+                    )}
+                    {session.device && (
+                      <div>
+                        {t('labels.device')}: {session.device}
+                      </div>
+                    )}
+                    {session.playerName && (
+                      <div>
+                        {t('labels.player')}: {session.playerName}
+                      </div>
+                    )}
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -380,12 +403,27 @@ export const HistoryTableRow = memo(
                   </TooltipTrigger>
                   <TooltipContent>
                     <div className="space-y-1 text-xs">
-                      {session.geoCity && <div>City: {session.geoCity}</div>}
-                      {session.geoRegion && <div>Region: {session.geoRegion}</div>}
-                      {session.geoCountry && (
-                        <div>Country: {getCountryName(session.geoCountry)}</div>
+                      {session.geoCity && (
+                        <div>
+                          {t('pages:history.location.city')}: {session.geoCity}
+                        </div>
                       )}
-                      {session.ipAddress && <div>IP: {session.ipAddress}</div>}
+                      {session.geoRegion && (
+                        <div>
+                          {t('pages:history.location.region')}: {session.geoRegion}
+                        </div>
+                      )}
+                      {session.geoCountry && (
+                        <div>
+                          {t('pages:history.location.country')}:{' '}
+                          {getCountryName(session.geoCountry)}
+                        </div>
+                      )}
+                      {session.ipAddress && (
+                        <div>
+                          {t('labels.ipAddress')}: {session.ipAddress}
+                        </div>
+                      )}
                     </div>
                   </TooltipContent>
                 </Tooltip>
@@ -450,21 +488,22 @@ export const HistoryTableRow = memo(
                 <TooltipContent>
                   <div className="space-y-1 text-xs">
                     <div>
-                      Watch time: {formatDuration(session.durationMs, { style: 'compact' })}
+                      {verbs.watchTime}: {formatDuration(session.durationMs, { style: 'compact' })}
                     </div>
                     {session.pausedDurationMs > 0 && (
                       <div>
-                        Paused: {formatDuration(session.pausedDurationMs, { style: 'compact' })}
+                        {t('playback.paused')}:{' '}
+                        {formatDuration(session.pausedDurationMs, { style: 'compact' })}
                       </div>
                     )}
                     {session.totalDurationMs && (
                       <div>
-                        Media length:{' '}
+                        {t('labels.mediaLength')}:{' '}
                         {formatDuration(session.totalDurationMs, { style: 'compact' })}
                       </div>
                     )}
                     {session.segmentCount && session.segmentCount > 1 && (
-                      <div>Segments: {session.segmentCount}</div>
+                      <div>{t('count.segment', { count: session.segmentCount })}</div>
                     )}
                   </div>
                 </TooltipContent>
@@ -484,8 +523,8 @@ export const HistoryTableRow = memo(
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {progress}% complete
-                    {session.watched && ' (watched)'}
+                    {t('pages:media.detail.watchers.completionLabel', { percent: progress })}
+                    {session.watched && ` (${verbs.watched})`}
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -599,6 +638,7 @@ function getColumnStyle(column: keyof ColumnVisibility): React.CSSProperties {
   return { width, minWidth: width, maxWidth: width };
 }
 
+// Count visible columns for empty state colspan
 function getVisibleColumnCount(columnVisibility: ColumnVisibility, isMultiServer: boolean): number {
   return Object.entries(columnVisibility).filter(
     ([key, visible]) => visible && (key !== 'server' || isMultiServer)
@@ -614,6 +654,54 @@ function getMinTableWidth(columnVisibility: ColumnVisibility, isMultiServer: boo
 }
 
 // Sortable header component
+function HistoryTableHeader({
+  columnVisibility,
+  isMultiServer,
+  sort,
+}: {
+  columnVisibility: ColumnVisibility;
+  isMultiServer: boolean;
+  /** The loaded table sorts by date, content and duration; loading and empty states do not. */
+  sort?: Pick<Props, 'sortBy' | 'sortDir' | 'onSortChange'>;
+}) {
+  const { t } = useTranslation(['common', 'pages']);
+  const head = (column: keyof typeof COLUMN_WIDTHS, label: string, field?: SortableColumn) =>
+    sort && field ? (
+      <SortableTableHead
+        style={getColumnStyle(column)}
+        field={field}
+        sortBy={sort.sortBy}
+        sortOrder={sort.sortDir}
+        onSort={(next) => sort.onSortChange?.(next)}
+      >
+        {label}
+      </SortableTableHead>
+    ) : (
+      <TableHead style={getColumnStyle(column)}>{label}</TableHead>
+    );
+
+  return (
+    <thead
+      className="bg-card sticky top-0 z-10 [&_tr]:border-b"
+      style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
+    >
+      <tr>
+        {columnVisibility.date && head('date', t('labels.date'), 'startedAt')}
+        {columnVisibility.user && head('user', t('labels.user'))}
+        {columnVisibility.content && head('content', t('labels.content'), 'mediaTitle')}
+        {isMultiServer && columnVisibility.server && head('server', t('labels.server'))}
+        {columnVisibility.platform && head('platform', t('labels.platform'))}
+        {columnVisibility.location && head('location', t('labels.location'))}
+        {columnVisibility.ip && head('ip', t('labels.ipAddress'))}
+        {columnVisibility.quality && head('quality', t('labels.quality'))}
+        {columnVisibility.duration &&
+          head('duration', t('pages:history.columns.duration'), 'durationMs')}
+        {columnVisibility.progress && head('progress', t('pages:history.columns.progress'))}
+      </tr>
+    </thead>
+  );
+}
+
 export function HistoryTable({
   sessions,
   isLoading,
@@ -628,6 +716,7 @@ export function HistoryTable({
   onSortChange,
   isMultiServer = false,
 }: Props) {
+  const { t } = useTranslation(['common', 'pages']);
   const visibleColumnCount = getVisibleColumnCount(columnVisibility, isMultiServer);
   const minTableWidth = getMinTableWidth(columnVisibility, isMultiServer);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -664,39 +753,7 @@ export function HistoryTable({
         style={{ maxHeight: DATA_TABLE_VIEWPORT_MAX_HEIGHT }}
       >
         <table className="w-full caption-bottom text-sm" style={{ minWidth: minTableWidth }}>
-          <thead
-            className="bg-card sticky top-0 z-10 [&_tr]:border-b"
-            style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
-          >
-            <tr>
-              {columnVisibility.date && <TableHead style={getColumnStyle('date')}>Date</TableHead>}
-              {columnVisibility.user && <TableHead style={getColumnStyle('user')}>User</TableHead>}
-              {columnVisibility.content && (
-                <TableHead style={getColumnStyle('content')}>Content</TableHead>
-              )}
-              {isMultiServer && columnVisibility.server && (
-                <TableHead style={getColumnStyle('server')}>Server</TableHead>
-              )}
-              {columnVisibility.platform && (
-                <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
-              )}
-              {columnVisibility.location && (
-                <TableHead style={getColumnStyle('location')}>Location</TableHead>
-              )}
-              {columnVisibility.ip && (
-                <TableHead style={getColumnStyle('ip')}>IP Address</TableHead>
-              )}
-              {columnVisibility.quality && (
-                <TableHead style={getColumnStyle('quality')}>Quality</TableHead>
-              )}
-              {columnVisibility.duration && (
-                <TableHead style={getColumnStyle('duration')}>Duration</TableHead>
-              )}
-              {columnVisibility.progress && (
-                <TableHead style={getColumnStyle('progress')}>Progress</TableHead>
-              )}
-            </tr>
-          </thead>
+          <HistoryTableHeader columnVisibility={columnVisibility} isMultiServer={isMultiServer} />
           <tbody>
             {Array.from({ length: 10 }).map((_, i) => (
               <SkeletonRow
@@ -719,46 +776,14 @@ export function HistoryTable({
         style={{ maxHeight: DATA_TABLE_VIEWPORT_MAX_HEIGHT }}
       >
         <table className="w-full caption-bottom text-sm" style={{ minWidth: minTableWidth }}>
-          <thead
-            className="bg-card sticky top-0 z-10 [&_tr]:border-b"
-            style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
-          >
-            <tr>
-              {columnVisibility.date && <TableHead style={getColumnStyle('date')}>Date</TableHead>}
-              {columnVisibility.user && <TableHead style={getColumnStyle('user')}>User</TableHead>}
-              {columnVisibility.content && (
-                <TableHead style={getColumnStyle('content')}>Content</TableHead>
-              )}
-              {isMultiServer && columnVisibility.server && (
-                <TableHead style={getColumnStyle('server')}>Server</TableHead>
-              )}
-              {columnVisibility.platform && (
-                <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
-              )}
-              {columnVisibility.location && (
-                <TableHead style={getColumnStyle('location')}>Location</TableHead>
-              )}
-              {columnVisibility.ip && (
-                <TableHead style={getColumnStyle('ip')}>IP Address</TableHead>
-              )}
-              {columnVisibility.quality && (
-                <TableHead style={getColumnStyle('quality')}>Quality</TableHead>
-              )}
-              {columnVisibility.duration && (
-                <TableHead style={getColumnStyle('duration')}>Duration</TableHead>
-              )}
-              {columnVisibility.progress && (
-                <TableHead style={getColumnStyle('progress')}>Progress</TableHead>
-              )}
-            </tr>
-          </thead>
+          <HistoryTableHeader columnVisibility={columnVisibility} isMultiServer={isMultiServer} />
           <tbody>
             <tr>
               <td colSpan={visibleColumnCount} className="h-32 text-center">
                 <div className="text-muted-foreground flex flex-col items-center gap-2">
                   <Clock className="h-8 w-8" />
-                  <p>No sessions found</p>
-                  <p className="text-sm">Try adjusting your filters</p>
+                  <p>{t('empty.noSessionsFound')}</p>
+                  <p className="text-sm">{t('pages:violations.tryAdjustingFilters')}</p>
                 </div>
               </td>
             </tr>
@@ -778,63 +803,11 @@ export function HistoryTable({
       style={{ maxHeight: DATA_TABLE_VIEWPORT_MAX_HEIGHT }}
     >
       <table className="w-full caption-bottom text-sm" style={{ minWidth: minTableWidth }}>
-        <thead
-          className="bg-card sticky top-0 z-10 [&_tr]:border-b"
-          style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}
-        >
-          <tr>
-            {columnVisibility.date && (
-              <SortableTableHead
-                style={getColumnStyle('date')}
-                field="startedAt"
-                sortBy={sortBy}
-                sortOrder={sortDir}
-                onSort={(next) => onSortChange?.(next)}
-              >
-                Date
-              </SortableTableHead>
-            )}
-            {columnVisibility.user && <TableHead style={getColumnStyle('user')}>User</TableHead>}
-            {columnVisibility.content && (
-              <SortableTableHead
-                style={getColumnStyle('content')}
-                field="mediaTitle"
-                sortBy={sortBy}
-                sortOrder={sortDir}
-                onSort={(next) => onSortChange?.(next)}
-              >
-                Content
-              </SortableTableHead>
-            )}
-            {isMultiServer && columnVisibility.server && (
-              <TableHead style={getColumnStyle('server')}>Server</TableHead>
-            )}
-            {columnVisibility.platform && (
-              <TableHead style={getColumnStyle('platform')}>Platform</TableHead>
-            )}
-            {columnVisibility.location && (
-              <TableHead style={getColumnStyle('location')}>Location</TableHead>
-            )}
-            {columnVisibility.ip && <TableHead style={getColumnStyle('ip')}>IP Address</TableHead>}
-            {columnVisibility.quality && (
-              <TableHead style={getColumnStyle('quality')}>Quality</TableHead>
-            )}
-            {columnVisibility.duration && (
-              <SortableTableHead
-                style={getColumnStyle('duration')}
-                field="durationMs"
-                sortBy={sortBy}
-                sortOrder={sortDir}
-                onSort={(next) => onSortChange?.(next)}
-              >
-                Duration
-              </SortableTableHead>
-            )}
-            {columnVisibility.progress && (
-              <TableHead style={getColumnStyle('progress')}>Progress</TableHead>
-            )}
-          </tr>
-        </thead>
+        <HistoryTableHeader
+          columnVisibility={columnVisibility}
+          isMultiServer={isMultiServer}
+          sort={{ sortBy, sortDir, onSortChange }}
+        />
         <tbody
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`,

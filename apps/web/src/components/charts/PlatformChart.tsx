@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import { ChartSkeleton } from '@/components/ui/skeleton';
@@ -25,6 +26,7 @@ const COLORS = [
 ];
 
 export function PlatformChart({ data, isLoading, height = 200 }: PlatformChartProps) {
+  const { t } = useTranslation(['common', 'pages']);
   const options = useMemo<Highcharts.Options>(() => {
     if (!data || data.length === 0) {
       return {};
@@ -52,7 +54,12 @@ export function PlatformChart({ data, isLoading, height = 200 }: PlatformChartPr
         style: {
           color: 'hsl(var(--popover-foreground))',
         },
-        pointFormat: '<b>{point.y}</b> plays ({point.percentage:.1f}%)',
+        pointFormatter: function () {
+          return t('pages:activity.playsShare', {
+            count: this.y ?? 0,
+            percent: (this.percentage ?? 0).toFixed(1),
+          });
+        },
       },
       plotOptions: {
         pie: {
@@ -79,7 +86,7 @@ export function PlatformChart({ data, isLoading, height = 200 }: PlatformChartPr
       series: [
         {
           type: 'pie',
-          name: 'Platform',
+          name: t('labels.platform'),
           data: data.map((d, i) => ({
             name: d.name,
             y: d.count,
@@ -107,14 +114,14 @@ export function PlatformChart({ data, isLoading, height = 200 }: PlatformChartPr
         ],
       },
     };
-  }, [data, height]);
+  }, [data, height, t]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;
   }
 
   if (!data || data.length === 0) {
-    return <ChartEmpty height={height} message="No platform data available" />;
+    return <ChartEmpty height={height} message={t('pages:activity.noPlatformData')} />;
   }
 
   return (

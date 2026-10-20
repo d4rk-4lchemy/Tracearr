@@ -53,10 +53,20 @@ describe('WatchersTable', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
+  it('says played, not watched, on an artist page', () => {
+    const empty = renderTable({ mediaType: 'artist', watchers: [] });
+    expect(screen.getByText('No one has played this yet.')).toBeInTheDocument();
+    empty.unmount();
+
+    renderTable({ mediaType: 'artist', episodeCount: null, watchers: [watcher()] });
+    expect(screen.getByRole('columnheader', { name: 'Last played' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Last watched' })).toBeNull();
+  });
+
   it('shows an inline error with retry on failure', () => {
     const onRetry = vi.fn();
     renderTable({ isError: true, onRetry });
-    screen.getByRole('button', { name: /Try again/ }).click();
+    screen.getByRole('button', { name: /try again/i }).click();
     expect(onRetry).toHaveBeenCalled();
   });
 

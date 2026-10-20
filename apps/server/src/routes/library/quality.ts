@@ -5,8 +5,8 @@
  *
  * Supports filtering by media type:
  * - 'all': All video content (movies + TV)
- * - 'movies': Only movies
- * - 'shows': Only episodes
+ * - 'movie': Only movies
+ * - 'show': Only episodes
  */
 
 import type { FastifyPluginAsync } from 'fastify';
@@ -14,9 +14,9 @@ import { sql } from 'drizzle-orm';
 import {
   REDIS_KEYS,
   CACHE_TTL,
-  TIME_MS,
   libraryQualityQuerySchema,
   type LibraryQualityQueryInput,
+  type LibraryQualityResponse,
   type QualityDataPoint,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
@@ -26,33 +26,7 @@ import {
   resolveServerIds,
   buildMultiServerFragment,
 } from '../../utils/serverFiltering.js';
-import { buildLibraryCacheKey } from './utils.js';
-
-/** Library quality evolution response */
-interface LibraryQualityResponse {
-  period: string;
-  mediaType: 'all' | 'movies' | 'shows';
-  data: QualityDataPoint[];
-}
-
-/**
- * Calculate start date based on period string.
- */
-function getStartDate(period: '7d' | '30d' | '90d' | '1y' | 'all'): Date | null {
-  const now = new Date();
-  switch (period) {
-    case '7d':
-      return new Date(now.getTime() - 7 * TIME_MS.DAY);
-    case '30d':
-      return new Date(now.getTime() - 30 * TIME_MS.DAY);
-    case '90d':
-      return new Date(now.getTime() - 90 * TIME_MS.DAY);
-    case '1y':
-      return new Date(now.getTime() - 365 * TIME_MS.DAY);
-    case 'all':
-      return null;
-  }
-}
+import { buildLibraryCacheKey, resolveLibraryWindow } from './utils.js';
 
 export const libraryQualityRoute: FastifyPluginAsync = async (app) => {
   /**
@@ -63,8 +37,8 @@ export const libraryQualityRoute: FastifyPluginAsync = async (app) => {
    *
    * Media type filtering:
    * - 'all': All video libraries (movie_count > 0 OR episode_count > 0)
-   * - 'movies': Only movie libraries (movie_count > 0 AND episode_count = 0)
-   * - 'shows': Only TV libraries (episode_count > 0)
+   * - 'movie': Only movie libraries (movie_count > 0 AND episode_count = 0)
+   * - 'show': Only TV libraries (episode_count > 0)
    */
   app.get<{ Querystring: LibraryQualityQueryInput }>(
     '/quality',
@@ -76,6 +50,7 @@ export const libraryQualityRoute: FastifyPluginAsync = async (app) => {
       }
 
       const { serverId, period, mediaType, timezone } = query.data;
+      const { startDate, lastDay, cacheSegment } = resolveLibraryWindow(query.data);
       const authUser = request.user;
       const tz = timezone ?? 'UTC';
 
@@ -95,7 +70,7 @@ export const libraryQualityRoute: FastifyPluginAsync = async (app) => {
       const cacheKey = buildLibraryCacheKey(
         REDIS_KEYS.LIBRARY_QUALITY,
         serverCacheSegment,
-        `${period}:${mediaType}`,
+        `${cacheSegment}:${mediaType}`,
         tz
       );
 
@@ -109,10 +84,6 @@ export const libraryQualityRoute: FastifyPluginAsync = async (app) => {
         }
       }
 
-      // Calculate date range
-      const startDate = getStartDate(period);
-      const endDate = new Date();
-
       // Build server filter for library_stats_daily
       const serverFilter = buildMultiServerFragment(resolvedIds, 'lsd.server_id');
 
@@ -120,11 +91,11 @@ export const libraryQualityRoute: FastifyPluginAsync = async (app) => {
       // Libraries are typically homogeneous in Plex, so we filter based on content counts
       let mediaTypeFilter: ReturnType<typeof sql>;
       switch (mediaType) {
-        case 'movies':
+        case 'movie':
           // Movie-only libraries: have movies but no episodes
           mediaTypeFilter = sql`AND lsd.movie_count > 0 AND lsd.episode_count = 0`;
           break;
-        case 'shows':
+        case 'show':
           // TV libraries: have episodes
           mediaTypeFilter = sql`AND lsd.episode_count > 0`;
           break;
@@ -159,7 +130,7 @@ export const libraryQualityRoute: FastifyPluginAsync = async (app) => {
           SELECT d::date AS day
           FROM generate_series(
             ${effectiveStartDate.toISOString()}::date,
-            ${endDate.toISOString()}::date,
+            ${lastDay.toISOString()}::date,
             '1 day'::interval
           ) d
         ),
@@ -171,7 +142,7 @@ export const libraryQualityRoute: FastifyPluginAsync = async (app) => {
             ${perResolutionBucket((bucket) => `lsd.count_${bucket}`)}
           FROM library_stats_daily lsd
           WHERE lsd.day >= ${effectiveStartDate.toISOString()}::date
-            AND lsd.day <= ${endDate.toISOString()}::date
+            AND lsd.day <= ${lastDay.toISOString()}::date
             ${serverFilter}
             ${mediaTypeFilter}
         ),

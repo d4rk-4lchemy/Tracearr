@@ -6,7 +6,7 @@ import { ChevronDown, ExternalLink } from 'lucide-react';
 import { buildMediaServerItemUrl, formatMediaTech } from '@tracearr/shared';
 import type { MediaAvailabilityEntry, MediaRequestEntry, ServerType } from '@tracearr/shared';
 import type { MediaDetailData, MediaDetailStub } from '@/hooks/queries';
-import { buildPosterSrc } from './PosterCard';
+import { buildPosterSrc, POSTER_ASPECT_CLASS, type PosterAspect } from './PosterCard';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -105,11 +105,13 @@ function HeroPoster({
   posterUrl,
   posterVersion,
   dominantColor,
+  aspect,
 }: {
   title: string;
   posterUrl: string | null;
   posterVersion: string | null;
   dominantColor: string | null;
+  aspect: PosterAspect;
 }) {
   const [imgError, setImgError] = useState(false);
 
@@ -122,7 +124,10 @@ function HeroPoster({
   return (
     <div className="w-[150px] min-[761px]:w-[218px]">
       <div
-        className="border-border/50 relative aspect-[2/3] overflow-hidden rounded-[calc(var(--radius)+4px)] border shadow-[0_24px_60px_hsl(240_10%_2%/0.6)]"
+        className={cn(
+          'border-border/50 relative overflow-hidden rounded-[calc(var(--radius)+4px)] border shadow-[0_24px_60px_hsl(240_10%_2%/0.6)]',
+          POSTER_ASPECT_CLASS[aspect]
+        )}
         style={dominantColor ? { backgroundColor: dominantColor } : undefined}
       >
         {showFallback ? (
@@ -143,7 +148,7 @@ function HeroPoster({
           </div>
         ) : (
           <img
-            src={buildPosterSrc(posterUrl, posterVersion)}
+            src={buildPosterSrc(posterUrl, posterVersion, { square: aspect === 'square' })}
             alt=""
             loading="eager"
             fetchPriority="high"
@@ -173,16 +178,18 @@ function HeroBodySkeleton() {
   );
 }
 
-function OpenOnServerAction({
-  activeAvailability,
-  serverById,
-}: {
-  activeAvailability: MediaAvailabilityEntry[];
-  serverById: Map<string, HeroServerLookupEntry>;
-}) {
-  const { t } = useTranslation('pages');
+export interface OpenOnServerTarget {
+  serverId: string;
+  name: string;
+  url: string;
+}
 
-  const targets = activeAvailability.flatMap((entry) => {
+/** One deep link per copy whose server is known, falling back to the server's own address. */
+export function openOnServerTargets(
+  copies: Pick<MediaAvailabilityEntry, 'serverId' | 'ratingKey'>[],
+  serverById: Map<string, HeroServerLookupEntry>
+): OpenOnServerTarget[] {
+  return copies.flatMap((entry) => {
     const server = serverById.get(entry.serverId);
     if (!server) return [];
     const base = server.publicUrl ?? server.url;
@@ -195,6 +202,10 @@ function OpenOnServerAction({
     const url = itemUrl ?? base;
     return url ? [{ serverId: entry.serverId, name: server.name, url }] : [];
   });
+}
+
+export function OpenOnServerAction({ targets }: { targets: OpenOnServerTarget[] }) {
+  const { t } = useTranslation('pages');
 
   if (targets.length === 0) return null;
 
@@ -242,7 +253,7 @@ export function DetailHero({
   onFullHistoryClick,
   request,
 }: DetailHeroProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'nav', 'common']);
 
   const title = data?.title ?? stub?.title;
   const year = data?.year ?? stub?.year ?? null;
@@ -262,8 +273,10 @@ export function DetailHero({
     mediaType === 'movie'
       ? { label: t('media.movies.title'), href: '/media/browse' }
       : mediaType === 'show'
-        ? { label: t('media.shows.title'), href: '/media/browse?type=shows' }
-        : null;
+        ? { label: t('media.shows.title'), href: '/media/browse?type=show' }
+        : mediaType === 'artist'
+          ? { label: t('common:media.artist_plural'), href: '/media/browse?type=artist' }
+          : null;
 
   const activeAvailability = (availability ?? []).filter((a) => a.removedAt == null);
   const editionTitles = new Set(
@@ -322,7 +335,7 @@ export function DetailHero({
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link to="/media">{t('media.landing.title')}</Link>
+              <Link to="/library">{t('nav:library')}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           {segment && (
@@ -348,6 +361,7 @@ export function DetailHero({
           posterUrl={posterUrl}
           posterVersion={posterVersion}
           dominantColor={dominantColor}
+          aspect={mediaType === 'artist' ? 'square' : 'poster'}
         />
         <div>
           <h1 className="text-[34px] leading-tight font-bold tracking-[-0.025em] text-balance">
@@ -455,8 +469,7 @@ export function DetailHero({
                 </Button>
                 {!removedEverywhere && (
                   <OpenOnServerAction
-                    activeAvailability={activeAvailability}
-                    serverById={serverById}
+                    targets={openOnServerTargets(activeAvailability, serverById)}
                   />
                 )}
               </div>

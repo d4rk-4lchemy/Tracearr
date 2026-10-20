@@ -5,7 +5,7 @@
  * GET /top-shows - Top TV shows by engagement with binge scoring
  *
  * Features:
- * - Time period filtering (7d, 30d, 90d, 1y, all)
+ * - Time period filtering (7d, 30d, 90d, 1y, all, or a custom startDate/endDate)
  * - Multi-server support with serverIds[] query param
  * - Single-server path delegates to DB functions (exact main parity)
  * - Multi-server path uses inlined CTE + match-key dedup with serverIds[]
@@ -26,7 +26,7 @@ import { sql } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
-import { buildLibraryCacheKey } from './utils.js';
+import { buildLibraryCacheKey, resolveLibraryWindow } from './utils.js';
 
 /** Raw row returned by get_content_engagement() DB function */
 interface RawMovieRowSingle {
@@ -82,25 +82,6 @@ interface RawShowRowMulti {
   binge_score: string;
 }
 
-/** Convert period string to date range */
-function getPeriodDates(period: string): { startDate: Date | null; endDate: Date } {
-  const endDate = new Date();
-
-  switch (period) {
-    case '7d':
-      return { startDate: new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000), endDate };
-    case '30d':
-      return { startDate: new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000), endDate };
-    case '90d':
-      return { startDate: new Date(endDate.getTime() - 90 * 24 * 60 * 60 * 1000), endDate };
-    case '1y':
-      return { startDate: new Date(endDate.getTime() - 365 * 24 * 60 * 60 * 1000), endDate };
-    case 'all':
-    default:
-      return { startDate: null, endDate };
-  }
-}
-
 /**
  * For 'all' period, find the earliest engagement data as the start date.
  * Falls back to 2020-01-01 if no data exists.
@@ -132,7 +113,8 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { serverId, serverIds, period, sortBy, sortOrder, page, pageSize } = query.data;
+      const { serverId, serverIds, sortBy, sortOrder, page, pageSize } = query.data;
+      const { startDate, endDate, cacheSegment } = resolveLibraryWindow(query.data);
       const authUser = request.user;
 
       const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
@@ -154,7 +136,7 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
       const cacheKey = buildLibraryCacheKey(
         REDIS_KEYS.LIBRARY_TOP_MOVIES,
         serverCacheSegment,
-        `${period}-${sortBy}-${sortOrder}-${page}-${pageSize}`
+        `${cacheSegment}-${sortBy}-${sortOrder}-${page}-${pageSize}`
       );
 
       const cached = await app.redis.get(cacheKey);
@@ -166,7 +148,6 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
         }
       }
 
-      const { startDate, endDate } = getPeriodDates(period);
       const effectiveStartDate = await resolveStartDate(startDate);
       const offset = (page - 1) * pageSize;
 
@@ -570,7 +551,8 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { serverId, serverIds, period, sortBy, sortOrder, page, pageSize } = query.data;
+      const { serverId, serverIds, sortBy, sortOrder, page, pageSize } = query.data;
+      const { startDate, endDate, cacheSegment } = resolveLibraryWindow(query.data);
       const authUser = request.user;
 
       const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
@@ -591,7 +573,7 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
       const cacheKey = buildLibraryCacheKey(
         REDIS_KEYS.LIBRARY_TOP_SHOWS,
         serverCacheSegment,
-        `${period}-${sortBy}-${sortOrder}-${page}-${pageSize}`
+        `${cacheSegment}-${sortBy}-${sortOrder}-${page}-${pageSize}`
       );
 
       const cached = await app.redis.get(cacheKey);
@@ -603,7 +585,6 @@ export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
         }
       }
 
-      const { startDate, endDate } = getPeriodDates(period);
       const effectiveStartDate = await resolveStartDate(startDate);
       const offset = (page - 1) * pageSize;
 

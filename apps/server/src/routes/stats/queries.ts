@@ -12,23 +12,68 @@
 
 import type { SQL } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
+import {
+  PLAYS_MEDIA_GROUPS,
+  type DayOfWeekStats,
+  type HourOfDayStats,
+  type PlayStats,
+  type PlaysMediaGroup,
+  type QualityStats,
+} from '@tracearr/shared';
 import { db } from '../../db/client.js';
-import { ACTIVITY_MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
+import { countedSessionSql, ACTIVITY_MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
 import { playbackDecisionSql } from '../../utils/playbackDecisionSql.js';
-import type { QualityStats } from '@tracearr/shared';
 
-// Sessions shorter than 2 minutes are not counted as intentional plays
-const MIN_PLAY_DURATION_MS = 120000;
+/** Movies and episodes only, unless the caller counts every media type like the plays aggregate. */
+function primaryMediaFilter(allMediaTypes: boolean | undefined): SQL {
+  return allMediaTypes ? sql`` : ACTIVITY_MEDIA_TYPE_SQL_FILTER;
+}
+
+/**
+ * The pieces groupBy=mediaType adds to an Activity query: a media_group column, the filter
+ * widened to music, and media_group as the last GROUP BY and ORDER BY key. Without it the
+ * column and key are empty and the filter is the usual one, so that SQL is unchanged.
+ */
+function mediaGroupFragments(
+  groupByMediaType: boolean | undefined,
+  allMediaTypes: boolean | undefined
+): { column: SQL; filter: SQL; key: SQL } {
+  if (!groupByMediaType) {
+    return { column: sql``, filter: primaryMediaFilter(allMediaTypes), key: sql`` };
+  }
+  return {
+    column: sql`,
+      CASE media_type WHEN 'movie' THEN 'movie' WHEN 'episode' THEN 'show' WHEN 'live' THEN 'live' ELSE 'music' END AS media_group`,
+    filter: ACTIVITY_MEDIA_TYPE_SQL_FILTER,
+    key: sql`, media_group`,
+  };
+}
+
+interface MediaGroupCount {
+  count: number;
+  media_group?: PlaysMediaGroup;
+}
+
+/** One zero-filled set of slots, or one set per media group when the rows are grouped. */
+function fillSlots<R extends MediaGroupCount, T extends object>(
+  rows: R[],
+  slotOf: (row: R) => number,
+  groupByMediaType: boolean | undefined,
+  slots: (countAt: (slot: number) => number) => T[]
+): (T & { mediaType?: PlaysMediaGroup })[] {
+  const groups = groupByMediaType ? PLAYS_MEDIA_GROUPS : [undefined];
+  return groups.flatMap((mediaType) => {
+    const counts = new Map(
+      rows.filter((row) => row.media_group === mediaType).map((row) => [slotOf(row), row.count])
+    );
+    const filled = slots((slot) => counts.get(slot) ?? 0);
+    return mediaType ? filled.map((row) => ({ ...row, mediaType })) : filled;
+  });
+}
 
 // ============================================================================
 // Plays Over Time
 // ============================================================================
-
-export interface PlaysOverTimeRow {
-  date: string;
-  count: number;
-  serverId: string;
-}
 
 /**
  * Play counts bucketed over time with timezone-aware grouping, broken out per server.
@@ -44,39 +89,39 @@ export async function queryPlaysOverTime(params: {
   serverFilter: SQL;
   endDate?: Date;
   mediaTypeFilter?: SQL;
-}): Promise<PlaysOverTimeRow[]> {
+  allMediaTypes?: boolean;
+  groupByMediaType?: boolean;
+}): Promise<PlayStats[]> {
   const { rangeStart, timezone, bucketInterval, serverFilter, endDate, mediaTypeFilter } = params;
+  const group = mediaGroupFragments(params.groupByMediaType, params.allMediaTypes);
 
   const baseWhere = rangeStart
-    ? sql`WHERE started_at >= ${rangeStart} AND duration_ms >= ${MIN_PLAY_DURATION_MS}`
-    : sql`WHERE duration_ms >= ${MIN_PLAY_DURATION_MS}`;
+    ? sql`WHERE started_at >= ${rangeStart} AND ${countedSessionSql()}`
+    : sql`WHERE ${countedSessionSql()}`;
 
   const result = await db.execute(sql`
     SELECT
       time_bucket(${bucketInterval}::interval, started_at AT TIME ZONE ${timezone})::text AS date,
       server_id::text AS "serverId",
-      COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
+      COUNT(DISTINCT COALESCE(reference_id, id))::int AS count${group.column}
     FROM sessions
     ${baseWhere}
-    ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
+    ${group.filter}
     ${mediaTypeFilter ?? sql``}
     ${endDate ? sql`AND started_at < ${endDate}` : sql``}
     ${serverFilter}
-    GROUP BY 1, 2
-    ORDER BY 1, 2
+    GROUP BY 1, 2${group.key}
+    ORDER BY 1, 2${group.key}
   `);
 
-  return result.rows as unknown as PlaysOverTimeRow[];
+  const rows = result.rows as unknown as (PlayStats & MediaGroupCount)[];
+  if (!params.groupByMediaType) return rows;
+  return rows.map(({ media_group, ...row }) => ({ ...row, mediaType: media_group }));
 }
 
 // ============================================================================
 // Plays By Day of Week
 // ============================================================================
-
-export interface DayOfWeekRow {
-  day: number;
-  count: number;
-}
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
@@ -89,34 +134,35 @@ export async function queryPlaysByDayOfWeek(params: {
   timezone: string;
   serverFilter: SQL;
   endDate?: Date;
-}): Promise<{ day: number; name: string; count: number }[]> {
+  allMediaTypes?: boolean;
+  groupByMediaType?: boolean;
+}): Promise<DayOfWeekStats[]> {
   const { rangeStart, timezone, serverFilter, endDate } = params;
+  const group = mediaGroupFragments(params.groupByMediaType, params.allMediaTypes);
 
   const baseWhere = rangeStart
-    ? sql`WHERE started_at >= ${rangeStart} AND duration_ms >= ${MIN_PLAY_DURATION_MS}`
-    : sql`WHERE duration_ms >= ${MIN_PLAY_DURATION_MS}`;
+    ? sql`WHERE started_at >= ${rangeStart} AND ${countedSessionSql()}`
+    : sql`WHERE ${countedSessionSql()}`;
 
   const result = await db.execute(sql`
     SELECT
       EXTRACT(DOW FROM started_at AT TIME ZONE ${timezone})::int AS day,
-      COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
+      COUNT(DISTINCT COALESCE(reference_id, id))::int AS count${group.column}
     FROM sessions
     ${baseWhere}
-    ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
+    ${group.filter}
     ${endDate ? sql`AND started_at < ${endDate}` : sql``}
     ${serverFilter}
-    GROUP BY 1
-    ORDER BY 1
+    GROUP BY 1${group.key}
+    ORDER BY 1${group.key}
   `);
 
-  const dayStats = result.rows as unknown as DayOfWeekRow[];
-  const dayMap = new Map(dayStats.map((d) => [d.day, d.count]));
-
-  return Array.from({ length: 7 }, (_, i) => ({
-    day: i,
-    name: DAY_NAMES[i] ?? '',
-    count: dayMap.get(i) ?? 0,
-  }));
+  return fillSlots(
+    result.rows as unknown as (MediaGroupCount & { day: number })[],
+    (row) => row.day,
+    params.groupByMediaType,
+    (countAt) => DAY_NAMES.map((name, day) => ({ day, name, count: countAt(day) }))
+  );
 }
 
 // ============================================================================
@@ -132,33 +178,35 @@ export async function queryPlaysByHourOfDay(params: {
   timezone: string;
   serverFilter: SQL;
   endDate?: Date;
-}): Promise<{ hour: number; count: number }[]> {
+  allMediaTypes?: boolean;
+  groupByMediaType?: boolean;
+}): Promise<HourOfDayStats[]> {
   const { rangeStart, timezone, serverFilter, endDate } = params;
+  const group = mediaGroupFragments(params.groupByMediaType, params.allMediaTypes);
 
   const baseWhere = rangeStart
-    ? sql`WHERE started_at >= ${rangeStart} AND duration_ms >= ${MIN_PLAY_DURATION_MS}`
-    : sql`WHERE duration_ms >= ${MIN_PLAY_DURATION_MS}`;
+    ? sql`WHERE started_at >= ${rangeStart} AND ${countedSessionSql()}`
+    : sql`WHERE ${countedSessionSql()}`;
 
   const result = await db.execute(sql`
     SELECT
       EXTRACT(HOUR FROM started_at AT TIME ZONE ${timezone})::int AS hour,
-      COUNT(DISTINCT COALESCE(reference_id, id))::int AS count
+      COUNT(DISTINCT COALESCE(reference_id, id))::int AS count${group.column}
     FROM sessions
     ${baseWhere}
-    ${ACTIVITY_MEDIA_TYPE_SQL_FILTER}
+    ${group.filter}
     ${endDate ? sql`AND started_at < ${endDate}` : sql``}
     ${serverFilter}
-    GROUP BY 1
-    ORDER BY 1
+    GROUP BY 1${group.key}
+    ORDER BY 1${group.key}
   `);
 
-  const hourStats = result.rows as unknown as { hour: number; count: number }[];
-  const hourMap = new Map(hourStats.map((h) => [h.hour, h.count]));
-
-  return Array.from({ length: 24 }, (_, i) => ({
-    hour: i,
-    count: hourMap.get(i) ?? 0,
-  }));
+  return fillSlots(
+    result.rows as unknown as (MediaGroupCount & { hour: number })[],
+    (row) => row.hour,
+    params.groupByMediaType,
+    (countAt) => Array.from({ length: 24 }, (_, hour) => ({ hour, count: countAt(hour) }))
+  );
 }
 
 // ============================================================================

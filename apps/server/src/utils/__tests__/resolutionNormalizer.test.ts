@@ -286,6 +286,10 @@ describe('formatQualityString', () => {
     expect(formatQualityString({ videoWidth: 1440, videoHeight: 1080 })).toBe('1080p');
   });
 
+  it('names PAL SD 576p (Issue #1334)', () => {
+    expect(formatQualityString({ videoWidth: 720, videoHeight: 576 })).toBe('576p');
+  });
+
   it('should fall back to bitrate when no resolution', () => {
     expect(formatQualityString({ bitrate: 20000 })).toBe('20 Mbps');
     expect(formatQualityString({ bitrate: 54000 })).toBe('54 Mbps');

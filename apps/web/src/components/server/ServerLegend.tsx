@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { Server } from '@tracearr/shared';
 import { cn } from '@/lib/utils';
 
@@ -10,6 +11,7 @@ interface ServerLegendProps {
 }
 
 export function ServerLegend({ servers, variant = 'inline', className }: ServerLegendProps) {
+  const { t } = useTranslation();
   if (servers.length < 2) return null;
 
   const layout =
@@ -18,7 +20,11 @@ export function ServerLegend({ servers, variant = 'inline', className }: ServerL
       : 'inline-flex flex-wrap items-center gap-3';
 
   return (
-    <div role="group" aria-label="Server legend" className={cn(layout, 'text-xs', className)}>
+    <div
+      role="group"
+      aria-label={t('labels.serverLegend')}
+      className={cn(layout, 'text-xs', className)}
+    >
       {servers.map((server) => (
         <div key={server.id} className="flex items-center gap-1.5 py-0.5">
           <span

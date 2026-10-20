@@ -272,10 +272,10 @@ describe('removeImportDuplicatesBatch nothing-lost rules', () => {
     const verdict = await renderVerdict();
 
     expect(verdict.sql).toContain(
-      "bool_or(c.duration_ms >= 120000 AND (c.started_at AT TIME ZONE 'UTC')::date = (i.started_at AT TIME ZONE 'UTC')::date) AS counted_on_import_day"
+      "bool_or((COALESCE(c.duration_ms, 0) >= 120000 OR c.watched) AND (c.started_at AT TIME ZONE 'UTC')::date = (i.started_at AT TIME ZONE 'UTC')::date) AS counted_on_import_day"
     );
     expect(verdict.sql).toContain(
-      'AND (i.reference_id IS NOT NULL OR COALESCE(i.duration_ms, 0) < 120000 OR t.counted_on_import_day)'
+      'AND (i.reference_id IS NOT NULL OR NOT (COALESCE(i.duration_ms, 0) >= 120000 OR i.watched) OR t.counted_on_import_day)'
     );
   });
 
@@ -288,14 +288,14 @@ describe('removeImportDuplicatesBatch nothing-lost rules', () => {
     );
   });
 
-  it('keeps an import whose counted watch time the chain rows of 120 s or more do not cover', async () => {
+  it('keeps an import whose counted watch time the counted chain rows do not cover', async () => {
     const verdict = await renderVerdict();
 
     expect(verdict.sql).toContain(
-      'SUM(c.duration_ms) FILTER (WHERE c.duration_ms >= 120000) AS counted_ms'
+      'SUM(c.duration_ms) FILTER (WHERE (COALESCE(c.duration_ms, 0) >= 120000 OR c.watched)) AS counted_ms'
     );
     expect(verdict.sql).toContain(
-      'AND (COALESCE(i.duration_ms, 0) < 120000 OR i.duration_ms <= COALESCE(t.counted_ms, 0) + 15000)'
+      'AND (NOT (COALESCE(i.duration_ms, 0) >= 120000 OR i.watched) OR COALESCE(i.duration_ms, 0) <= COALESCE(t.counted_ms, 0) + 15000)'
     );
   });
 

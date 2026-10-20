@@ -88,7 +88,7 @@ describe('RequestsTable', () => {
         emptyTitle="No requests"
       />
     );
-    screen.getByRole('button', { name: /Try again/ }).click();
+    screen.getByRole('button', { name: /try again/i }).click();
     expect(onRetry).toHaveBeenCalled();
   });
 

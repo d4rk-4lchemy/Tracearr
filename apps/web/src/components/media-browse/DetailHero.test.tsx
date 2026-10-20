@@ -160,6 +160,37 @@ describe('DetailHero', () => {
     );
   });
 
+  it('links the breadcrumb to Browse on the title type, singular', () => {
+    const show = renderHero({ data: fullDetail() });
+    expect(screen.getByRole('link', { name: 'Shows' })).toHaveAttribute(
+      'href',
+      '/media/browse?type=show'
+    );
+    show.unmount();
+
+    renderHero({ data: fullDetail({ mediaType: 'artist', title: 'Daft Punk' }) });
+    expect(screen.getByRole('link', { name: 'Artists' })).toHaveAttribute(
+      'href',
+      '/media/browse?type=artist'
+    );
+  });
+
+  it('frames and requests artist art square', () => {
+    const { container } = renderHero({
+      data: fullDetail({
+        mediaType: 'artist',
+        title: 'Daft Punk',
+        posterUrl: '/api/v1/images/proxy?server=srv-plex&url=%2Flibrary%2Fmetadata%2F41%2Fthumb',
+        posterVersion: 'ab12cd34',
+      }),
+    });
+
+    const img = container.querySelector('img');
+    expect(img?.src).toContain('width=360');
+    expect(img?.src).toContain('height=360');
+    expect(img?.closest('.aspect-square')).not.toBeNull();
+  });
+
   it('strikes through and dims a removed-but-not-everywhere availability row', () => {
     const availability: MediaAvailabilityEntry[] = [
       {
@@ -290,7 +321,7 @@ describe('DetailHero', () => {
     const onRetry = vi.fn();
     renderHero({ isError: true, onRetry });
 
-    screen.getByRole('button', { name: /Try again/ }).click();
+    screen.getByRole('button', { name: /try again/i }).click();
     expect(onRetry).toHaveBeenCalled();
   });
 

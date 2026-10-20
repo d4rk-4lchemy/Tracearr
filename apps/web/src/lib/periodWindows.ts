@@ -33,9 +33,16 @@ export function periodWindows(
   };
 }
 
+/** Percent change, or null when there is no baseline to compare against. */
+export function deltaPercent(current: number, previous: number | null): number | null {
+  if (previous === null || previous <= 0) return null;
+  return ((current - previous) / previous) * 100;
+}
+
 /** Percent change as a signed string, or null when there is no baseline to compare against. */
-export function formatDelta(current: number, previous: number): string | null {
-  if (previous <= 0) return null;
-  const pct = Math.round(((current - previous) / previous) * 100);
-  return `${pct > 0 ? '+' : ''}${pct}%`;
+export function formatDelta(current: number, previous: number | null): string | null {
+  const pct = deltaPercent(current, previous);
+  if (pct === null) return null;
+  const rounded = Math.round(pct);
+  return `${rounded > 0 ? '+' : ''}${rounded}%`;
 }

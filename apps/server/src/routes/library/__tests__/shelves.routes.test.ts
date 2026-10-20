@@ -111,6 +111,8 @@ const isMostPopularCandidates = (text: string) =>
   text.includes('ORDER BY plays DESC, viewers DESC, watch_time_ms DESC');
 const isMovieGuard = (text: string) => text.includes("am.media_type = 'movie'");
 const isShowGuard = (text: string) => text.includes('p.show_media_id IS NOT NULL');
+const isArtistGuard = (text: string) => text.includes("p.media_type = 'track'");
+const isRecentlyAddedAlbums = (text: string) => text.includes('artist_media_id');
 const isDetailQuery = (text: string) =>
   text.includes('m.id = ANY(') && text.includes('AND EXISTS (');
 const isDeadWeightCandidates = (text: string) => text.includes('NOT EXISTS (');
@@ -151,6 +153,8 @@ describe('GET /library/shelves', () => {
       recentlyUpdated: [],
       mostPopularMovies: [],
       mostPopularShows: [],
+      recentlyAddedAlbums: [],
+      mostPlayedArtists: [],
       deadWeight: [],
       kpis: {
         watchedInPeriod: { titlesTouched: 0, totalTitles: 0 },
@@ -158,9 +162,9 @@ describe('GET /library/shelves', () => {
         newlyAdded: { count: 0, totalBytes: 0, playedCount: 0 },
         deadWeight: { count: 0, totalBytes: 0 },
       },
-      meta: { movies: 0, shows: 0, totalFileSize: 0 },
+      meta: { movies: 0, shows: 0, artists: 0, albums: 0, totalFileSize: 0 },
     });
-    expect(dbExecute).toHaveBeenCalledTimes(11);
+    expect(dbExecute).toHaveBeenCalledTimes(13);
   });
 
   it('includeDeadWeight=false skips the dead-weight compute and omits it from the response', async () => {
@@ -177,7 +181,7 @@ describe('GET /library/shelves', () => {
     expect(body.deadWeight).toBeUndefined();
     expect(body.kpis.deadWeight).toBeUndefined();
     // Two fewer queries than the default (movie + show dead-weight candidates skipped).
-    expect(dbExecute).toHaveBeenCalledTimes(9);
+    expect(dbExecute).toHaveBeenCalledTimes(11);
   });
 
   it('includeDeadWeight=false does not reuse (or pollute) the default request cache entry', async () => {
@@ -186,7 +190,7 @@ describe('GET /library/shelves', () => {
     mockEmptyCompute();
 
     await app.inject({ method: 'GET', url: '/library/shelves' });
-    expect(dbExecute).toHaveBeenCalledTimes(11);
+    expect(dbExecute).toHaveBeenCalledTimes(13);
 
     dbExecute.mockClear();
     const withoutDeadWeight = await app.inject({
@@ -195,7 +199,7 @@ describe('GET /library/shelves', () => {
     });
     expect(withoutDeadWeight.statusCode).toBe(200);
     // Distinct cache key -> full recompute, not a hit off the default entry.
-    expect(dbExecute).toHaveBeenCalledTimes(9);
+    expect(dbExecute).toHaveBeenCalledTimes(11);
     expect(redis.setex).toHaveBeenCalledTimes(2);
   });
 
@@ -261,7 +265,9 @@ describe('GET /library/shelves', () => {
         return Promise.resolve({ rows: [{ titles_touched: '1', watched_ms: '600000' }] });
       }
       if (isMeta(text)) {
-        return Promise.resolve({ rows: [{ movies: '5', shows: '2', total_file_size: '1000' }] });
+        return Promise.resolve({
+          rows: [{ movies: '5', shows: '2', artists: '0', albums: '0', total_file_size: '1000' }],
+        });
       }
       if (isEpisodeCounts(text)) {
         return Promise.resolve({ rows: [{ show_id: showId, episode_count: 5 }] });
@@ -312,7 +318,79 @@ describe('GET /library/shelves', () => {
       newlyAdded: { count: 1, totalBytes: 1000, playedCount: 1 },
       deadWeight: { count: 0, totalBytes: 0 },
     });
-    expect(body.meta).toEqual({ movies: 5, shows: 2, totalFileSize: 1000 });
+    expect(body.meta).toEqual({ movies: 5, shows: 2, artists: 0, albums: 0, totalFileSize: 1000 });
+  });
+
+  it('adds the music shelves: newest albums with their artist, most played artists, music counts', async () => {
+    const redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
+    const artistId = randomUUID();
+    const serverId = randomUUID();
+
+    dbExecute.mockImplementation(((query: unknown) => {
+      const { text } = renderQuery(query);
+      if (isRecentlyAddedAlbums(text)) {
+        return Promise.resolve({
+          rows: [
+            {
+              server_id: serverId,
+              rating_key: 'album-2',
+              title: 'Random Access Memories',
+              artist_title: 'Daft Punk',
+              artist_media_id: artistId,
+              year: 2013,
+              thumb_path: '/library/metadata/31/thumb/1',
+              added_at: '2024-05-02T10:00:00.000Z',
+            },
+          ],
+        });
+      }
+      if (isMostPopularCandidates(text) && isArtistGuard(text)) {
+        return Promise.resolve({ rows: [{ canonical_id: artistId, plays: '6', viewers: '2' }] });
+      }
+      if (isDetailQuery(text) && text.includes(artistId)) {
+        return Promise.resolve({
+          rows: [
+            rawShelfRow({ id: artistId, media_type: 'artist', title: 'Daft Punk', year: null }),
+          ],
+        });
+      }
+      if (isMeta(text)) {
+        return Promise.resolve({
+          rows: [{ movies: '0', shows: '0', artists: '1', albums: '2', total_file_size: '0' }],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    }) as never);
+
+    const response = await app.inject({ method: 'GET', url: '/library/shelves' });
+    expect(response.statusCode).toBe(200);
+    const body: ShelvesResponse = response.json();
+
+    expect(body.recentlyAddedAlbums).toEqual([
+      {
+        serverId,
+        ratingKey: 'album-2',
+        title: 'Random Access Memories',
+        artistTitle: 'Daft Punk',
+        artistMediaId: artistId,
+        year: 2013,
+        posterUrl: expect.stringMatching(new RegExp(`server=${serverId}.*width=360&height=360`)),
+        posterVersion: expect.stringMatching(/^[0-9a-f]{8}$/),
+        addedAt: '2024-05-02T10:00:00.000Z',
+      },
+    ]);
+    expect(body.mostPlayedArtists).toEqual([
+      expect.objectContaining({
+        mediaId: artistId,
+        mediaType: 'artist',
+        plays: 6,
+        viewers: 2,
+        rank: 1,
+      }),
+    ]);
+    expect(body.meta).toMatchObject({ artists: 1, albums: 2 });
+    expect(body.kpis.watchedInPeriod.totalTitles).toBe(0);
   });
 
   it('numbers popular ranks after dropping candidates with no active copy', async () => {
@@ -352,7 +430,7 @@ describe('GET /library/shelves', () => {
 
     const first = await app.inject({ method: 'GET', url: '/library/shelves?period=week' });
     expect(first.statusCode).toBe(200);
-    expect(dbExecute).toHaveBeenCalledTimes(11);
+    expect(dbExecute).toHaveBeenCalledTimes(13);
     expect(redis.setex).toHaveBeenCalledTimes(1);
 
     dbExecute.mockClear();
@@ -369,13 +447,13 @@ describe('GET /library/shelves', () => {
     app = await buildTestApp(createOwnerUser(), redis);
     mockEmptyCompute();
     await app.inject({ method: 'GET', url: '/library/shelves?period=week' });
-    expect(dbExecute).toHaveBeenCalledTimes(11);
+    expect(dbExecute).toHaveBeenCalledTimes(13);
 
     dbExecute.mockClear();
     const response = await app.inject({ method: 'GET', url: '/library/shelves?period=year' });
     expect(response.statusCode).toBe(200);
     // Different cache key -> full recompute, not a hit off the week entry.
-    expect(dbExecute).toHaveBeenCalledTimes(11);
+    expect(dbExecute).toHaveBeenCalledTimes(13);
     expect(redis.setex).toHaveBeenCalledTimes(2);
   });
 
@@ -397,7 +475,24 @@ describe('GET /library/shelves', () => {
     expect(body.kpis).toBeDefined();
     expect(body.period).toBe('month');
     // A full recompute happened - the v1 entry under the old key was never touched.
-    expect(dbExecute).toHaveBeenCalledTimes(11);
+    expect(dbExecute).toHaveBeenCalledTimes(13);
+  });
+
+  it('orders every poster_copy pick by known art before server and age', async () => {
+    const redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
+    mockEmptyCompute();
+
+    await app.inject({ method: 'GET', url: '/library/shelves' });
+    const posterPicks = dbExecute.mock.calls
+      .map(([query]) => renderQuery(query).text)
+      .filter((text) => text.includes('AS poster_copy'));
+    expect(posterPicks.length).toBeGreaterThan(0);
+    for (const text of posterPicks) {
+      expect(text).toContain(
+        "ORDER BY (li.thumb_path IS NOT NULL AND (li.thumb_path NOT LIKE '/Items/%' OR li.thumb_path LIKE '%?tag=%')) DESC, li.created_at DESC LIMIT 1) AS poster_copy"
+      );
+    }
   });
 
   it('reads the poster preference once per request and folds it into the cache key', async () => {
@@ -421,7 +516,7 @@ describe('GET /library/shelves', () => {
     getSettingMock.mockResolvedValueOnce(null);
     mockEmptyCompute();
     await app.inject({ method: 'GET', url: '/library/shelves?period=week' });
-    expect(dbExecute).toHaveBeenCalledTimes(11);
+    expect(dbExecute).toHaveBeenCalledTimes(13);
     expect(redis.setex).toHaveBeenCalledTimes(2);
   });
 
@@ -484,7 +579,7 @@ describe('GET /library/shelves', () => {
       const response = await app.inject({ method: 'GET', url: '/library/shelves' });
       expect(response.statusCode).toBe(200);
       // Fail-open: computed directly instead of blocking on the broken lock.
-      expect(dbExecute).toHaveBeenCalledTimes(11);
+      expect(dbExecute).toHaveBeenCalledTimes(13);
       expect(redis.setex).toHaveBeenCalledTimes(1);
     });
 
@@ -502,7 +597,7 @@ describe('GET /library/shelves', () => {
       const response = await pending;
 
       expect(response.statusCode).toBe(200);
-      expect(dbExecute).toHaveBeenCalledTimes(11);
+      expect(dbExecute).toHaveBeenCalledTimes(13);
     });
   });
 });

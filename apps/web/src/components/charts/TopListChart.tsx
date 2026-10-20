@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import { ChartSkeleton } from '@/components/ui/skeleton';
@@ -14,7 +15,7 @@ interface TopListChartProps {
   data: TopListItem[] | undefined;
   isLoading?: boolean;
   height?: number;
-  valueLabel?: string;
+  valueLabel: string;
   color?: string;
   /** Use distinct colors for each bar instead of single color */
   colorful?: boolean;
@@ -44,13 +45,14 @@ export function TopListChart({
   data,
   isLoading,
   height = 250,
-  valueLabel = 'Value',
+  valueLabel,
   color = 'hsl(var(--primary))',
   colorful = false,
   limit = 10,
   onItemClick,
   isItemClickable,
 }: TopListChartProps) {
+  const { t } = useTranslation();
   const options = useMemo<Highcharts.Options>(() => {
     if (!data || data.length === 0) {
       return {};
@@ -166,7 +168,7 @@ export function TopListChart({
   }
 
   if (!data || data.length === 0) {
-    return <ChartEmpty height={height} message="No data available" />;
+    return <ChartEmpty height={height} message={t('empty.noData')} />;
   }
 
   return (

@@ -1,0 +1,1 @@
+CREATE INDEX "sessions_server_grandparent_idx" ON "sessions" USING btree ("server_id","grandparent_rating_key");

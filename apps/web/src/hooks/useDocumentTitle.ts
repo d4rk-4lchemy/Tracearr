@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { navigation } from '@/components/layout/nav-data';
+import { footerNavigation, navigation } from '@/components/layout/nav-data';
 import { useActiveSessions } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
 import { useSocket } from '@/hooks/useSocket';
@@ -65,12 +65,23 @@ export function useStreamCountTitle(): void {
  * Build a flat map of href -> nameKey from navigation data
  */
 function buildRouteMap(): Map<string, NavKey> {
-  return new Map(
-    navigation.flatMap((section) => section.items.map((item) => [item.href, item.nameKey] as const))
-  );
+  return new Map([...navigation, ...footerNavigation].map((item) => [item.href, item.nameKey]));
 }
 
-const routeMap = buildRouteMap();
+/** Pages that left the sidebar but keep their own tab title. */
+const LEGACY_ROUTE_KEYS: [string, NavKey][] = [
+  ['/stats/activity', 'activity'],
+  ['/stats/people', 'people'],
+  ['/stats/devices', 'devices'],
+  ['/stats/bandwidth', 'bandwidth'],
+  ['/library/genres', 'mediaGenres'],
+  ['/library/quality', 'quality'],
+  ['/library/storage', 'storage'],
+  ['/library/watch', 'watch'],
+  ['/violations', 'violations'],
+];
+
+const routeMap = new Map<string, NavKey>([...LEGACY_ROUTE_KEYS, ...buildRouteMap()]);
 
 /** What a page called itself, by path, so the route derivation defers to it. */
 const pageTitles = new Map<string, string>();

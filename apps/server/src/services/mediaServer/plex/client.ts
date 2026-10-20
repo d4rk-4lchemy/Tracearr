@@ -422,11 +422,50 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
   async getLibrarySeasons(
     libraryId: string,
     options?: { offset?: number; limit?: number }
-  ): Promise<{ items: MediaLibraryItem[]; totalCount: number; rawCount?: number }> {
+  ): Promise<{ items: MediaLibraryItem[]; totalCount: number }> {
+    return this.getLibraryItemsOfType(libraryId, '3', options);
+  }
+
+  /** Get seasons updated since the given date. */
+  async getLibrarySeasonsSince(
+    libraryId: string,
+    since: Date,
+    _options?: { offset?: number; limit?: number }
+  ): Promise<{ items: MediaLibraryItem[]; totalCount: number }> {
+    return this.getLibraryItemsOfTypeSince(libraryId, '3', since);
+  }
+
+  /**
+   * Get all albums in a music library section (type=9), paged like
+   * getLibrarySeasons. Album genres hit the same two-tag list cap as artists.
+   */
+  async getLibraryAlbums(
+    libraryId: string,
+    options?: { offset?: number; limit?: number }
+  ): Promise<{ items: MediaLibraryItem[]; totalCount: number }> {
+    const result = await this.getLibraryItemsOfType(libraryId, '9', options);
+    return { ...result, items: await this.fillTruncatedGenres(result.items) };
+  }
+
+  /** Get albums updated since the given date. */
+  async getLibraryAlbumsSince(
+    libraryId: string,
+    since: Date,
+    _options?: { offset?: number; limit?: number }
+  ): Promise<{ items: MediaLibraryItem[]; totalCount: number }> {
+    const result = await this.getLibraryItemsOfTypeSince(libraryId, '9', since);
+    return { ...result, items: await this.fillTruncatedGenres(result.items) };
+  }
+
+  private async getLibraryItemsOfType(
+    libraryId: string,
+    type: string,
+    options?: { offset?: number; limit?: number }
+  ): Promise<{ items: MediaLibraryItem[]; totalCount: number }> {
     const offset = options?.offset ?? 0;
     const limit = options?.limit ?? 100;
 
-    const params = new URLSearchParams({ type: '3', includeGuids: '1' });
+    const params = new URLSearchParams({ type, includeGuids: '1' });
 
     const data = await fetchJson<unknown>(
       `${this.baseUrl}/library/sections/${libraryId}/all?${params}`,
@@ -448,15 +487,14 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
     return { items, totalCount };
   }
 
-  /** Get seasons updated since the given date. */
-  async getLibrarySeasonsSince(
+  private async getLibraryItemsOfTypeSince(
     libraryId: string,
-    since: Date,
-    _options?: { offset?: number; limit?: number }
+    type: string,
+    since: Date
   ): Promise<{ items: MediaLibraryItem[]; totalCount: number }> {
     const sinceUnix = Math.floor(since.getTime() / 1000);
     return this.fetchItemsSortedByUpdatedAt(`/library/sections/${libraryId}/all`, sinceUnix, {
-      extraParams: { type: '3' },
+      extraParams: { type },
       paginateViaHeaders: true,
     });
   }

@@ -5,6 +5,8 @@
   "stats": "Statistik",
   "activity": "Aktivitet",
   "library": "Bibliotek",
+  "people": "",
+  "rules": "",
   "users": "Användare",
   "automations": "",
   "violations": "Överträdelser",
@@ -18,14 +20,10 @@
   "devices": "Enheter",
   "bandwidth": "Bandbredd",
   "jobs": "Jobb",
-  "media": "",
   "mediaBrowse": "Bläddra",
   "mediaGenres": "Genrer",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

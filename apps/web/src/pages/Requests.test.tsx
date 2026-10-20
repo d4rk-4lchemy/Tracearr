@@ -2,11 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import type {
-  RequesterFollowThrough,
-  RequestOutcomeRow,
-  RequestsAnalyticsResponse,
-} from '@tracearr/shared';
+import type { RequestOutcomeRow, RequestsAnalyticsResponse } from '@tracearr/shared';
 import { Requests } from './Requests';
 
 vi.mock('react-i18next', () => ({
@@ -20,15 +16,16 @@ vi.mock('@/hooks/queries', () => ({
   useRequestsConfigured: vi.fn(),
   useRequestsAnalytics: vi.fn(),
   useRequestsUnplayed: vi.fn(),
-  useRequesters: vi.fn(),
 }));
 
 vi.mock('@/hooks/useServer', () => ({
   useServer: vi.fn(),
 }));
 
+const { mockRole } = vi.hoisted(() => ({ mockRole: { current: 'owner' } }));
+
 vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { role: 'owner' } }),
+  useAuth: () => ({ user: { role: mockRole.current } }),
 }));
 
 // Stub the funnel: the charts barrel drags in every Highcharts module.
@@ -42,18 +39,12 @@ vi.mock('@/components/charts', () => ({
   ),
 }));
 
-import {
-  useRequesters,
-  useRequestsAnalytics,
-  useRequestsConfigured,
-  useRequestsUnplayed,
-} from '@/hooks/queries';
+import { useRequestsAnalytics, useRequestsConfigured, useRequestsUnplayed } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
 
 const mockUseRequestsConfigured = vi.mocked(useRequestsConfigured);
 const mockUseRequestsAnalytics = vi.mocked(useRequestsAnalytics);
 const mockUseRequestsUnplayed = vi.mocked(useRequestsUnplayed);
-const mockUseRequesters = vi.mocked(useRequesters);
 const mockUseServer = vi.mocked(useServer);
 
 const analytics: RequestsAnalyticsResponse = {
@@ -83,22 +74,6 @@ const outcomeRow: RequestOutcomeRow = {
   },
 };
 
-const requesterRow: RequesterFollowThrough = {
-  requester: {
-    serverUserId: 'su-2',
-    userId: 'u-2',
-    serverId: 'srv-1',
-    username: 'bob',
-    identityName: 'Bob',
-    thumb: null,
-  },
-  requested: 5,
-  landed: 4,
-  watched: 2,
-  watchedByOthers: 1,
-  medianWaitMs: null,
-};
-
 function query(overrides: Record<string, unknown> = {}) {
   return {
     data: undefined,
@@ -121,7 +96,6 @@ function serverScope(selectedServerIds: string[]) {
 
 function mockLists(total: number) {
   mockUseRequestsUnplayed.mockReturnValue(query({ data: { data: [outcomeRow], total } }));
-  mockUseRequesters.mockReturnValue(query({ data: { data: [requesterRow], total } }));
 }
 
 function lastCall(mock: { mock: { calls: unknown[][] } }) {
@@ -139,6 +113,7 @@ function page() {
 describe('Requests page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRole.current = 'owner';
     mockUseServer.mockReturnValue(serverScope(['srv-1', 'srv-2']));
     mockUseRequestsConfigured.mockReturnValue(query({ data: { configured: true } }));
     mockUseRequestsAnalytics.mockReturnValue(query({ data: analytics }));
@@ -163,13 +138,6 @@ describe('Requests page', () => {
       sortBy: 'fileSizeBytes',
       sortOrder: 'desc',
     });
-    expect(mockUseRequesters).toHaveBeenCalledWith(['srv-1', 'srv-2'], {
-      page: 1,
-      pageSize: 20,
-      enabled: false,
-      sortBy: 'watched',
-      sortOrder: 'desc',
-    });
   });
 
   it('shows the error state instead of an all-zero page when the status call fails, and retry refetches the status', async () => {
@@ -186,7 +154,7 @@ describe('Requests page', () => {
     expect(screen.getByText('status failed')).toBeInTheDocument();
     expect(screen.queryByText('requests.page.kpi.requested')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+    await userEvent.click(screen.getByRole('button', { name: /actions.tryAgain/ }));
     expect(refetchStatus).toHaveBeenCalledTimes(1);
     expect(refetchAnalytics).not.toHaveBeenCalled();
   });
@@ -201,7 +169,7 @@ describe('Requests page', () => {
     expect(screen.queryByTestId('request-funnel')).not.toBeInTheDocument();
   });
 
-  it('fills the cards and funnel from analytics and renders both tables', () => {
+  it('fills the cards and funnel from analytics and renders the unplayed table and the people link', () => {
     render(page());
 
     expect(screen.getByText('12')).toBeInTheDocument();
@@ -219,24 +187,30 @@ describe('Requests page', () => {
       'requests.funnel.watched 6',
     ]);
 
-    expect(screen.getAllByRole('table')).toHaveLength(2);
+    expect(screen.getAllByRole('table')).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'Dune' })).toHaveAttribute('href', '/media/media-1');
-    expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /statsUsers.openPeople/ })).toHaveAttribute(
+      'href',
+      '/stats/people?rank=requests'
+    );
   });
 
-  it('sends both tables back to page 1 when the server picker changes', async () => {
+  it('leaves the people link off for a member, who cannot open it', () => {
+    mockRole.current = 'member';
+
+    render(page());
+
+    expect(screen.queryByRole('link', { name: /statsUsers.openPeople/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('table')).toHaveLength(1);
+  });
+
+  it('sends the unplayed table back to page 1 when the server picker changes', async () => {
     mockLists(45);
 
     const { rerender } = render(page());
 
-    const [unplayedNext, requestersNext] = screen.getAllByRole('button', {
-      name: 'common:actions.next',
-    });
-    if (!unplayedNext || !requestersNext) throw new Error('missing a pager');
-    await userEvent.click(unplayedNext);
-    await userEvent.click(requestersNext);
+    await userEvent.click(screen.getByRole('button', { name: 'common:actions.next' }));
     expect(lastCall(mockUseRequestsUnplayed)?.[1]).toMatchObject({ page: 2 });
-    expect(lastCall(mockUseRequesters)?.[1]).toMatchObject({ page: 2 });
 
     mockUseServer.mockReturnValue(serverScope(['srv-2']));
     rerender(page());
@@ -244,10 +218,6 @@ describe('Requests page', () => {
     expect(lastCall(mockUseRequestsUnplayed)).toEqual([
       ['srv-2'],
       { page: 1, pageSize: 20, enabled: true, sortBy: 'fileSizeBytes', sortOrder: 'desc' },
-    ]);
-    expect(lastCall(mockUseRequesters)).toEqual([
-      ['srv-2'],
-      { page: 1, pageSize: 20, enabled: true, sortBy: 'watched', sortOrder: 'desc' },
     ]);
   });
 });

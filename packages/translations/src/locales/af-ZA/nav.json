@@ -5,6 +5,8 @@
   "stats": "",
   "activity": "",
   "library": "",
+  "people": "",
+  "rules": "",
   "users": "",
   "automations": "",
   "violations": "",
@@ -18,14 +20,10 @@
   "devices": "",
   "bandwidth": "",
   "jobs": "",
-  "media": "",
   "mediaBrowse": "",
   "mediaGenres": "",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

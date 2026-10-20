@@ -4,13 +4,12 @@ export {
   useMyStats,
   useMyTopTitles,
   usePlaysStats,
-  useUserStats,
   useLocationStats,
   usePlaysByDayOfWeek,
   usePlaysByHourOfDay,
   usePlatformStats,
   useQualityStats,
-  useTopUsers,
+  usePeople,
   useTopContent,
   useConcurrentStats,
   useEngagementStats,
@@ -20,10 +19,8 @@ export {
   useDeviceCompatibilityMatrix,
   useDeviceHealth,
   useTranscodeHotspots,
-  useTopTranscodingUsers,
   // Bandwidth stats
   useBandwidthDaily,
-  useBandwidthTopUsers,
   useBandwidthSummary,
   type LocationStatsFilters,
   type StatsTimeRange,
@@ -55,6 +52,7 @@ export {
   useUsers,
   useUser,
   useUserFull,
+  useUserRangeStats,
   useUserSessions,
   useUpdateUser,
   useUpdateUserIdentity,
@@ -110,6 +108,7 @@ export {
   useBulkAcknowledgeViolations,
   useBulkDismissViolations,
 } from './useViolations';
+export { usePendingViolationsCount } from './usePendingViolationsCount';
 
 // Server hooks
 export {
@@ -155,7 +154,6 @@ export {
   useRequestsAnalytics,
   useRequestsConfigured,
   useRequestsUnplayed,
-  useRequesters,
   useRequestServices,
   useTestRequestService,
   useCreateRequestService,
@@ -229,7 +227,6 @@ export {
   useLibraryStats,
   useLibraryGrowth,
   useLibraryQuality,
-  useLibraryStorage,
   useLibraryStorageScoped,
   useLibraryDuplicates,
   useLibraryStale,
@@ -257,12 +254,14 @@ export {
   CATALOG_PAGE_SIZE,
   useShelves,
   useGenres,
+  useGenreDetail,
   useCatalogCodecs,
   useLibraries,
   useMediaDetail,
   useMediaStats,
   useMediaWatchers,
   useSeasonHeat,
+  useMediaChildren,
   useMediaPlatforms,
   useMediaHistory,
   findCachedMediaStub,
@@ -274,3 +273,4 @@ export {
   type MediaDetailStub,
   type MediaDetailData,
 } from './useMediaBrowse';
+export { useAlbumDetail } from './useAlbumDetail';

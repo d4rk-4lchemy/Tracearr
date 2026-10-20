@@ -36,6 +36,7 @@ vi.mock('../../services/librarySync.js', () => ({
   librarySyncService: { syncServer: vi.fn() },
   initLibrarySyncRedis: vi.fn(),
   maybeEnqueueImportedHistoryLink: vi.fn(),
+  SyncInterruptedError: class SyncInterruptedError extends Error {},
 }));
 
 vi.mock('../../services/sync.js', () => ({
@@ -62,7 +63,10 @@ vi.mock('../precachePassPolicy.js', () => ({
   resolvePrecachePass: vi.fn().mockResolvedValue(null),
 }));
 
-const mockQueueAdd = vi.fn().mockResolvedValue({ id: 'job-1' });
+const echoAdd = async (_name: string, _data: unknown, opts?: { jobId?: string }) => ({
+  id: opts?.jobId,
+});
+const mockQueueAdd = vi.fn(echoAdd);
 const mockQueueGetJobs = vi.fn().mockResolvedValue([]);
 const mockQueueClose = vi.fn().mockResolvedValue(undefined);
 const mockGetJobSchedulers = vi.fn().mockResolvedValue([]);
@@ -82,8 +86,9 @@ vi.mock('bullmq', () => ({
     };
   }),
   Worker: vi.fn().mockImplementation(function MockWorker() {
-    return { on: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
+    return { on: vi.fn(), once: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
   }),
+  DelayedError: class DelayedError extends Error {},
 }));
 
 vi.mock('ioredis', () => ({
@@ -92,8 +97,13 @@ vi.mock('ioredis', () => ({
   }),
 }));
 
-import { Worker } from 'bullmq';
-import { librarySyncService, maybeEnqueueImportedHistoryLink } from '../../services/librarySync.js';
+import { DelayedError, Worker } from 'bullmq';
+import {
+  librarySyncService,
+  maybeEnqueueImportedHistoryLink,
+  SyncInterruptedError,
+  type SyncResume,
+} from '../../services/librarySync.js';
 import { syncServer } from '../../services/sync.js';
 import { enqueueImagePrecache } from '../imagePrecacheQueue.js';
 import { resolvePrecachePass } from '../precachePassPolicy.js';
@@ -102,6 +112,7 @@ import {
   enqueueLibrarySync,
   enqueueLibrarySyncFromEvent,
   getAllActiveLibrarySyncs,
+  getLibrarySyncStatus,
   hasPendingLibrarySync,
   scheduleAutoSync,
   rebuildAutoSyncSchedules,
@@ -136,229 +147,186 @@ function plainJob(
   return { id: `event-sync-${serverId}-1`, data: { serverId, triggeredBy }, ...extra };
 }
 
-describe('enqueueLibrarySyncFromEvent', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    mockQueueAdd.mockResolvedValue({ id: 'job-1' });
-    mockQueueGetJobs.mockResolvedValue([]);
-    await shutdownLibrarySyncQueue();
-    initLibrarySyncQueue('redis://localhost:6379');
+/** What a scheduler slot produces since 2.9.0: a tick that only queues the real sync. */
+function tickJob(serverId: string, extra: Record<string, unknown> = {}) {
+  return schedulerJob(serverId, {
+    data: { serverId, triggeredBy: 'scheduled', kind: 'tick' },
+    ...extra,
   });
-
-  it('does nothing when the queue has not been initialized', async () => {
-    await shutdownLibrarySyncQueue();
-    await enqueueLibrarySyncFromEvent('srv-1');
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('enqueues a scheduled-triggered sync (not manual, to keep the incremental path eligible)', async () => {
-    await enqueueLibrarySyncFromEvent('srv-1');
-
-    expect(mockQueueAdd).toHaveBeenCalledWith(
-      'event-sync-srv-1',
-      { serverId: 'srv-1', triggeredBy: 'scheduled' },
-      expect.objectContaining({ jobId: expect.stringMatching(/^event-sync-srv-1-\d+$/) })
-    );
-  });
-
-  it('skips enqueueing when a sync is already active for the server', async () => {
-    mockQueueGetJobs.mockResolvedValue([plainJob('srv-1')]);
-
-    await enqueueLibrarySyncFromEvent('srv-1');
-
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-    // Running states and delayed are read separately so the scheduler-owned
-    // placeholder can be filtered out of delayed alone.
-    expect(mockQueueGetJobs).toHaveBeenCalledWith(['active', 'waiting']);
-    expect(mockQueueGetJobs).toHaveBeenCalledWith(['delayed']);
-  });
-
-  it('skips enqueueing when a WAITING job already exists for the server', async () => {
-    // Mock returns the pending job only if 'waiting' is among the requested
-    // states - pins that the states array was actually widened, not just that
-    // any getJobs response happens to contain a matching job.
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('waiting') ? [plainJob('srv-1')] : []
-    );
-
-    await enqueueLibrarySyncFromEvent('srv-1');
-
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('skips enqueueing when a DELAYED job already exists for the server', async () => {
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('delayed') ? [plainJob('srv-1')] : []
-    );
-
-    await enqueueLibrarySyncFromEvent('srv-1');
-
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('enqueues despite a scheduler-owned DELAYED job - that is a parked cron placeholder, not pending work', async () => {
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('delayed') ? [schedulerJob('srv-1')] : []
-    );
-
-    await enqueueLibrarySyncFromEvent('srv-1');
-
-    expect(mockQueueAdd).toHaveBeenCalledWith(
-      'event-sync-srv-1',
-      { serverId: 'srv-1', triggeredBy: 'scheduled' },
-      expect.objectContaining({ jobId: expect.stringMatching(/^event-sync-srv-1-\d+$/) })
-    );
-  });
-
-  it('skips enqueueing when a scheduler-produced job has reached ACTIVE - promoted jobs keep repeatJobKey but are real work', async () => {
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('active') ? [schedulerJob('srv-1')] : []
-    );
-
-    await enqueueLibrarySyncFromEvent('srv-1');
-
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('skips enqueueing when a scheduler-produced job has reached WAITING', async () => {
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('waiting') ? [schedulerJob('srv-1')] : []
-    );
-
-    await enqueueLibrarySyncFromEvent('srv-1');
-
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-  });
-
-  it('does not skip other servers active jobs', async () => {
-    mockQueueGetJobs.mockResolvedValue([plainJob('srv-other')]);
-
-    await enqueueLibrarySyncFromEvent('srv-1');
-
-    expect(mockQueueAdd).toHaveBeenCalled();
-  });
-});
+}
 
 describe('enqueueLibrarySync', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockQueueAdd.mockResolvedValue({ id: 'job-1' });
     mockQueueGetJobs.mockResolvedValue([]);
     await shutdownLibrarySyncQueue();
     initLibrarySyncQueue('redis://localhost:6379');
   });
 
-  it('throws "already in progress" when an ACTIVE job exists for the server', async () => {
-    const activeRemove = vi.fn().mockResolvedValue(undefined);
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('active') ? [plainJob('srv-1', 'manual', { remove: activeRemove })] : []
-    );
-
-    await expect(enqueueLibrarySync('srv-1')).rejects.toThrow(
-      'A sync is already in progress for this server'
-    );
-    expect(mockQueueAdd).not.toHaveBeenCalled();
-    // The throw happens before any removal pass runs over queued jobs.
-    expect(activeRemove).not.toHaveBeenCalled();
-  });
-
-  it('removes queued triggeredBy: scheduled jobs for the server, then adds the manual job', async () => {
+  it('manual: removes a waiting automatic job for the server and adds with the dedup key', async () => {
     const scheduledRemove = vi.fn().mockResolvedValue(undefined);
-    mockQueueGetJobs.mockImplementation(async (states: string[]) => {
-      if (states.includes('active')) return [];
-      return [plainJob('srv-1', 'scheduled', { remove: scheduledRemove })];
-    });
+    mockQueueGetJobs.mockResolvedValue([
+      plainJob('srv-1', 'scheduled', { remove: scheduledRemove }),
+    ]);
 
-    await enqueueLibrarySync('srv-1');
+    await enqueueLibrarySync('srv-1', 'manual', 'user-1');
 
+    expect(mockQueueGetJobs).toHaveBeenCalledWith(['waiting', 'delayed']);
     expect(scheduledRemove).toHaveBeenCalledTimes(1);
     expect(mockQueueAdd).toHaveBeenCalledWith(
       'manual-sync-srv-1',
-      expect.objectContaining({ serverId: 'srv-1', triggeredBy: 'manual' }),
-      expect.objectContaining({ jobId: expect.stringMatching(/^manual-srv-1-\d+$/) })
+      { serverId: 'srv-1', triggeredBy: 'manual', userId: 'user-1' },
+      expect.objectContaining({
+        deduplication: { id: 'sync-srv-1' },
+        jobId: expect.stringMatching(/^sync-srv-1-/),
+      })
+    );
+    expect(scheduledRemove.mock.invocationCallOrder[0]).toBeLessThan(
+      mockQueueAdd.mock.invocationCallOrder[0]!
     );
   });
 
-  it('does not remove a waiting job with triggeredBy: manual (another queued manual sync survives)', async () => {
+  it('manual: leaves a waiting manual job, scheduler ticks and other servers alone', async () => {
     const manualRemove = vi.fn().mockResolvedValue(undefined);
-    mockQueueGetJobs.mockImplementation(async (states: string[]) => {
-      if (states.includes('active')) return [];
-      return [plainJob('srv-1', 'manual', { remove: manualRemove })];
-    });
+    const parkedTickRemove = vi.fn().mockResolvedValue(undefined);
+    const promotedTickRemove = vi.fn().mockResolvedValue(undefined);
+    const otherServerRemove = vi.fn().mockResolvedValue(undefined);
+    mockQueueGetJobs.mockResolvedValue([
+      plainJob('srv-1', 'manual', { remove: manualRemove }),
+      tickJob('srv-1', { remove: parkedTickRemove }),
+      plainJob('srv-1', 'scheduled', {
+        data: { serverId: 'srv-1', triggeredBy: 'scheduled', kind: 'tick' },
+        remove: promotedTickRemove,
+      }),
+      plainJob('srv-other', 'scheduled', { remove: otherServerRemove }),
+    ]);
 
-    await enqueueLibrarySync('srv-1');
+    await enqueueLibrarySync('srv-1', 'manual');
 
     expect(manualRemove).not.toHaveBeenCalled();
-    expect(mockQueueAdd).toHaveBeenCalled();
-  });
-
-  it('does not remove queued scheduled jobs belonging to other servers', async () => {
-    const otherServerRemove = vi.fn().mockResolvedValue(undefined);
-    mockQueueGetJobs.mockImplementation(async (states: string[]) => {
-      if (states.includes('active')) return [];
-      return [plainJob('srv-other', 'scheduled', { remove: otherServerRemove })];
-    });
-
-    await enqueueLibrarySync('srv-1');
-
+    expect(parkedTickRemove).not.toHaveBeenCalled();
+    expect(promotedTickRemove).not.toHaveBeenCalled();
     expect(otherServerRemove).not.toHaveBeenCalled();
-    expect(mockQueueAdd).toHaveBeenCalled();
+    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
   });
 
-  it('never calls remove() on a scheduler-owned job - BullMQ refuses and it is only a parked placeholder', async () => {
-    const schedulerRemove = vi.fn().mockResolvedValue(undefined);
-    mockQueueGetJobs.mockImplementation(async (states: string[]) => {
-      if (states.includes('active')) return [];
-      return [schedulerJob('srv-1', { remove: schedulerRemove })];
-    });
+  it('manual: throws the in-progress message when the add is dropped', async () => {
+    mockQueueAdd.mockResolvedValueOnce({ id: 'someone-else' });
 
-    await enqueueLibrarySync('srv-1');
+    await expect(enqueueLibrarySync('srv-1', 'manual')).rejects.toThrow(
+      'A sync is already in progress for this server'
+    );
+  });
 
-    expect(schedulerRemove).not.toHaveBeenCalled();
-    expect(mockQueueAdd).toHaveBeenCalled();
+  it('event and boot: dropped adds resolve without throwing', async () => {
+    mockQueueAdd
+      .mockResolvedValueOnce({ id: 'someone-else' })
+      .mockResolvedValueOnce({ id: 'someone-else' });
+
+    await expect(enqueueLibrarySyncFromEvent('srv-1')).resolves.toBeUndefined();
+    await expect(enqueueLibrarySync('srv-1', 'boot')).resolves.toBe('someone-else');
+
+    expect(mockQueueAdd).toHaveBeenNthCalledWith(
+      1,
+      'event-sync-srv-1',
+      { serverId: 'srv-1', triggeredBy: 'scheduled' },
+      expect.objectContaining({ deduplication: { id: 'sync-srv-1' } })
+    );
+    expect(mockQueueAdd).toHaveBeenNthCalledWith(
+      2,
+      'boot-sync-srv-1',
+      { serverId: 'srv-1', triggeredBy: 'scheduled' },
+      expect.objectContaining({ deduplication: { id: 'sync-srv-1' } })
+    );
+    expect(mockQueueGetJobs).not.toHaveBeenCalled();
+  });
+
+  it('boot passes the stagger delay through', async () => {
+    await enqueueLibrarySync('srv-1', 'boot', undefined, 20_000);
+
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'boot-sync-srv-1',
+      { serverId: 'srv-1', triggeredBy: 'scheduled' },
+      expect.objectContaining({ delay: 20_000, deduplication: { id: 'sync-srv-1' } })
+    );
   });
 });
 
-describe('scheduleAutoSync - boot sync pending-job check', () => {
+describe('scheduleAutoSync', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockQueueAdd.mockResolvedValue({ id: 'job-1' });
     mockQueueGetJobs.mockResolvedValue([]);
     mockGetJobSchedulers.mockResolvedValue([]);
-    mockDbServers.mockResolvedValue([{ id: 'srv-1', name: 'Server One', type: 'plex' }]);
+    mockDbServers.mockResolvedValue([
+      { id: 'srv-1', name: 'Server One', type: 'plex' },
+      { id: 'srv-2', name: 'Server Two', type: 'plex' },
+    ]);
     await shutdownLibrarySyncQueue();
     initLibrarySyncQueue('redis://localhost:6379');
   });
 
-  it('builds the schedule from the live servers only', async () => {
-    await scheduleAutoSync();
-
-    expect(mockDbServers).toHaveBeenCalledTimes(1);
-    expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
-      'scheduled-srv-1',
-      { pattern: '10 */12 * * *', tz: 'UTC' },
-      { name: 'auto-sync-srv-1', data: { serverId: 'srv-1', triggeredBy: 'scheduled' } }
-    );
-  });
-
-  it('converts a BullMQ 5 schedule before reading servers, so it survives a failed read', async () => {
+  it('upserts one tick scheduler per live server with kind tick and no legacy conversion', async () => {
     const legacyKey = '1f51c6da23a36cd0d3cb411d01b79122';
     mockGetJobSchedulers.mockResolvedValue([
       { key: legacyKey, name: 'auto-sync-srv-1', pattern: '10 */12 * * *', tz: 'UTC' },
     ]);
-    mockDbServers.mockRejectedValueOnce(new Error('db down'));
 
-    await expect(scheduleAutoSync()).rejects.toThrow('db down');
+    await scheduleAutoSync();
 
+    expect(mockRemoveJobScheduler).toHaveBeenCalledWith(legacyKey);
+    expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(2);
     expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
       'scheduled-srv-1',
       { pattern: '10 */12 * * *', tz: 'UTC' },
-      { name: 'auto-sync-srv-1', data: { serverId: 'srv-1', triggeredBy: 'scheduled' } }
+      {
+        name: 'auto-sync-srv-1',
+        data: { serverId: 'srv-1', triggeredBy: 'scheduled', kind: 'tick' },
+      }
     );
-    expect(mockRemoveJobScheduler).toHaveBeenCalledWith(legacyKey);
+    expect(mockUpsertJobScheduler).toHaveBeenCalledWith(
+      'scheduled-srv-2',
+      { pattern: '14 */12 * * *', tz: 'UTC' },
+      {
+        name: 'auto-sync-srv-2',
+        data: { serverId: 'srv-2', triggeredBy: 'scheduled', kind: 'tick' },
+      }
+    );
+  });
+
+  it('queues one boot sync per server through the dedup key, no getJobs sweep', async () => {
+    await scheduleAutoSync();
+
+    expect(mockQueueAdd).toHaveBeenCalledTimes(2);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'boot-sync-srv-1',
+      { serverId: 'srv-1', triggeredBy: 'scheduled' },
+      expect.objectContaining({ delay: 10_000, deduplication: { id: 'sync-srv-1' } })
+    );
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'boot-sync-srv-2',
+      { serverId: 'srv-2', triggeredBy: 'scheduled' },
+      expect.objectContaining({ delay: 20_000, deduplication: { id: 'sync-srv-2' } })
+    );
+    expect(mockQueueGetJobs).not.toHaveBeenCalled();
+  });
+
+  it('excludes Dispatcharr from both boot syncs and repeat schedulers', async () => {
+    mockDbServers.mockResolvedValue([
+      { id: 'srv-1', name: 'Server One', type: 'plex' },
+      { id: 'tv-1', name: 'Dispatcharr', type: 'dispatcharr' },
+    ]);
+    await scheduleAutoSync();
+    expect(mockUpsertJobScheduler).toHaveBeenCalledTimes(1);
+    expect(mockQueueAdd).toHaveBeenCalledTimes(1);
+    expect(mockQueueAdd).toHaveBeenCalledWith(
+      'boot-sync-srv-1',
+      expect.anything(),
+      expect.anything()
+    );
   });
 
   it('rebuilds only the schedulers and never queues a boot sync', async () => {
+    mockDbServers.mockResolvedValue([{ id: 'srv-1', name: 'Server One', type: 'plex' }]);
     mockGetJobSchedulers.mockResolvedValue([{ key: 'old' }]);
 
     await rebuildAutoSyncSchedules();
@@ -385,89 +353,179 @@ describe('scheduleAutoSync - boot sync pending-job check', () => {
     expect(mockUpsertJobScheduler).not.toHaveBeenCalled();
     expect(mockQueueAdd).not.toHaveBeenCalled();
   });
+});
 
-  it('still queues boot sync when the only delayed job is the scheduler placeholder it just planted', async () => {
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('delayed') ? [schedulerJob('srv-1')] : []
+describe('worker processor', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    mockRedisScan.mockResolvedValue(['0', []]);
+    mockRedisDel.mockResolvedValue(0);
+    await shutdownLibrarySyncQueue();
+    initLibrarySyncQueue('redis://localhost:6379');
+  });
+
+  type Processor = (job: unknown, token?: string, signal?: AbortSignal) => Promise<unknown>;
+
+  function startProcessor(): Processor {
+    startLibrarySyncWorker();
+    return vi.mocked(Worker).mock.calls[0]![1] as Processor;
+  }
+
+  function fakeJob(data: Record<string, unknown>, name = 'event-sync-srv-1') {
+    const job = {
+      id: 'job-1',
+      name,
+      token: 'tok',
+      data,
+      updateProgress: vi.fn(),
+      extendLock: vi.fn().mockResolvedValue(1),
+      updateData: vi.fn(async (next: Record<string, unknown>) => {
+        job.data = next;
+      }),
+      moveToDelayed: vi.fn().mockResolvedValue(undefined),
+    };
+    return job;
+  }
+
+  it('a tick job enqueues a scheduled sync and returns without syncing', async () => {
+    const processor = startProcessor();
+    const job = fakeJob(
+      { serverId: 'srv-1', triggeredBy: 'scheduled', kind: 'tick' },
+      'auto-sync-srv-1'
     );
 
-    await scheduleAutoSync();
+    await expect(processor(job)).resolves.toEqual({ skipped: true, reason: 'tick' });
 
     expect(mockQueueAdd).toHaveBeenCalledWith(
-      'boot-sync-srv-1',
+      'auto-sync-srv-1',
       { serverId: 'srv-1', triggeredBy: 'scheduled' },
-      expect.objectContaining({ jobId: expect.stringMatching(/^boot-sync-srv-1-\d+$/) })
+      expect.objectContaining({ deduplication: { id: 'sync-srv-1' } })
+    );
+    expect(librarySyncService.syncServer).not.toHaveBeenCalled();
+    expect(syncServer).not.toHaveBeenCalled();
+  });
+
+  it('resumes from completedLibraryIds and forces cache invalidation', async () => {
+    let resume: SyncResume | undefined;
+    vi.mocked(librarySyncService.syncServer).mockImplementation(async (_id, _p, _t, r) => {
+      resume = r;
+      return [fakeSyncResult()];
+    });
+    const processor = startProcessor();
+
+    await processor(
+      fakeJob({ serverId: 'srv-1', triggeredBy: 'scheduled', completedLibraryIds: ['lib-a'] })
+    );
+
+    expect(resume?.completedLibraryIds.has('lib-a')).toBe(true);
+    expect(mockRedisScan).toHaveBeenCalled();
+  });
+
+  it('checkpoints after every library through onLibraryComplete', async () => {
+    vi.mocked(librarySyncService.syncServer).mockImplementation(async (_id, _p, _t, r) => {
+      await r!.onLibraryComplete('lib-a');
+      await r!.onLibraryComplete('lib-b');
+      return [];
+    });
+    const processor = startProcessor();
+    const job = fakeJob({ serverId: 'srv-1', triggeredBy: 'scheduled' });
+
+    await processor(job);
+
+    expect(job.extendLock).toHaveBeenCalledTimes(2);
+    expect(job.extendLock).toHaveBeenCalledWith('tok', 60_000);
+    expect(job.updateData).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ completedLibraryIds: ['lib-a'] })
+    );
+    expect(job.updateData).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ completedLibraryIds: ['lib-a', 'lib-b'] })
     );
   });
 
-  it('skips boot sync when a genuine non-scheduler job is already pending for the server', async () => {
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('waiting') ? [plainJob('srv-1')] : []
+  it('yields on SyncInterruptedError', async () => {
+    vi.mocked(librarySyncService.syncServer).mockRejectedValue(new SyncInterruptedError());
+    const processor = startProcessor();
+    const job = fakeJob({ serverId: 'srv-1', triggeredBy: 'scheduled' });
+    const controller = new AbortController();
+
+    await expect(processor(job, 'tok', controller.signal)).rejects.toBeInstanceOf(DelayedError);
+
+    expect(vi.mocked(librarySyncService.syncServer).mock.calls[0]![3]?.signal).toBe(
+      controller.signal
     );
-
-    await scheduleAutoSync();
-
-    expect(mockQueueAdd).not.toHaveBeenCalledWith(
-      'boot-sync-srv-1',
-      expect.anything(),
-      expect.anything()
-    );
-  });
-
-  it('sweeps banked duplicate queued jobs, keeping only the newest per server', async () => {
-    // Older releases banked one event-sync job per 30s bucket during a long
-    // scan, and the backlog survives restarts
-    const oldRemove = vi.fn().mockResolvedValue(undefined);
-    const olderRemove = vi.fn().mockResolvedValue(undefined);
-    const newestRemove = vi.fn().mockResolvedValue(undefined);
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('waiting')
-        ? [
-            plainJob('srv-1', 'scheduled', { id: 'e1', timestamp: 100, remove: oldRemove }),
-            plainJob('srv-1', 'scheduled', { id: 'e2', timestamp: 200, remove: olderRemove }),
-            plainJob('srv-1', 'scheduled', { id: 'e3', timestamp: 300, remove: newestRemove }),
-            schedulerJob('srv-1'),
-          ]
-        : []
-    );
-
-    await scheduleAutoSync();
-
-    expect(oldRemove).toHaveBeenCalledTimes(1);
-    expect(olderRemove).toHaveBeenCalledTimes(1);
-    expect(newestRemove).not.toHaveBeenCalled();
-    // The survivor counts as pending, so no boot sync stacks on top
-    expect(mockQueueAdd).not.toHaveBeenCalledWith(
-      'boot-sync-srv-1',
-      expect.anything(),
-      expect.anything()
-    );
-  });
-
-  it('keeps sweeping and boot-syncing when a stale job raced to active and cannot be removed', async () => {
-    const racedRemove = vi.fn().mockRejectedValue(new Error('job is active'));
-    const newestRemove = vi.fn().mockResolvedValue(undefined);
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('waiting')
-        ? [
-            plainJob('srv-1', 'scheduled', { id: 'e1', timestamp: 100, remove: racedRemove }),
-            plainJob('srv-1', 'scheduled', { id: 'e2', timestamp: 200, remove: newestRemove }),
-          ]
-        : []
-    );
-
-    await expect(scheduleAutoSync()).resolves.toBeUndefined();
-    expect(racedRemove).toHaveBeenCalledTimes(1);
-    expect(newestRemove).not.toHaveBeenCalled();
+    expect(job.moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'tok');
   });
 });
 
-describe('getAllActiveLibrarySyncs', () => {
+describe('hasPendingLibrarySync and getAllActiveLibrarySyncs', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockQueueGetJobs.mockResolvedValue([]);
     await shutdownLibrarySyncQueue();
     initLibrarySyncQueue('redis://localhost:6379');
+  });
+
+  it('ignore tick jobs in every state', async () => {
+    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
+      states.includes('delayed')
+        ? [tickJob('srv-1', { getState: vi.fn().mockResolvedValue('delayed') })]
+        : [
+            tickJob('srv-1', { getState: vi.fn().mockResolvedValue('active') }),
+            tickJob('srv-1', { getState: vi.fn().mockResolvedValue('waiting') }),
+          ]
+    );
+
+    expect(await hasPendingLibrarySync('srv-1')).toBe(false);
+    expect(await getAllActiveLibrarySyncs()).toEqual([]);
+    expect(await getLibrarySyncStatus('srv-1')).toEqual({ isActive: false });
+  });
+
+  it('getLibrarySyncStatus reads the active job first and never asks a job for its state', async () => {
+    const waiting = { ...plainJob('srv-1', 'scheduled', { id: 'waiting-1' }), getState: vi.fn() };
+    const active = {
+      ...plainJob('srv-1', 'manual', { id: 'active-1', progress: 40 }),
+      getState: vi.fn(),
+    };
+    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
+      states.includes('active') ? [active] : [waiting]
+    );
+
+    expect(await getLibrarySyncStatus('srv-1')).toEqual({
+      isActive: true,
+      progress: 40,
+      jobId: 'active-1',
+    });
+    expect(mockQueueGetJobs).toHaveBeenCalledTimes(1);
+    expect(active.getState).not.toHaveBeenCalled();
+
+    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
+      states.includes('active') ? [] : [waiting]
+    );
+    expect(await getLibrarySyncStatus('srv-1')).toEqual({
+      isActive: false,
+      progress: undefined,
+      jobId: 'waiting-1',
+    });
+    expect(waiting.getState).not.toHaveBeenCalled();
+  });
+
+  it('counts an active or waiting job for the server, never a delayed scheduler placeholder or another server', async () => {
+    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
+      states.includes('delayed') ? [schedulerJob('srv-1')] : [plainJob('srv-2')]
+    );
+    expect(await hasPendingLibrarySync('srv-1')).toBe(false);
+    expect(await hasPendingLibrarySync('srv-2')).toBe(true);
+
+    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
+      states.includes('delayed') ? [plainJob('srv-1')] : []
+    );
+    expect(await hasPendingLibrarySync('srv-1')).toBe(true);
+  });
+
+  it('counts as pending when the queue is not initialized', async () => {
+    await shutdownLibrarySyncQueue();
+    expect(await hasPendingLibrarySync('srv-1')).toBe(true);
   });
 
   it('excludes a delayed scheduler placeholder, includes a plain waiting job and an active scheduler-produced job', async () => {
@@ -494,32 +552,6 @@ describe('getAllActiveLibrarySyncs', () => {
     const result = await getAllActiveLibrarySyncs();
 
     expect(result.map((r) => r.serverId)).toEqual(['srv-1', 'srv-2']);
-  });
-});
-
-describe('hasPendingLibrarySync', () => {
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    await shutdownLibrarySyncQueue();
-    initLibrarySyncQueue('redis://localhost:6379');
-  });
-
-  it('counts an active or waiting job for the server, never a delayed scheduler placeholder or another server', async () => {
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('delayed') ? [schedulerJob('srv-1')] : [plainJob('srv-2')]
-    );
-    expect(await hasPendingLibrarySync('srv-1')).toBe(false);
-    expect(await hasPendingLibrarySync('srv-2')).toBe(true);
-
-    mockQueueGetJobs.mockImplementation(async (states: string[]) =>
-      states.includes('delayed') ? [plainJob('srv-1')] : []
-    );
-    expect(await hasPendingLibrarySync('srv-1')).toBe(true);
-  });
-
-  it('counts as pending when the queue is not initialized', async () => {
-    await shutdownLibrarySyncQueue();
-    expect(await hasPendingLibrarySync('srv-1')).toBe(true);
   });
 });
 

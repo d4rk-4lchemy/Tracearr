@@ -170,11 +170,50 @@ describe('CatalogToolbar', () => {
     vi.clearAllMocks();
   });
 
-  it('calls onTypeChange when the Shows toggle is pressed', async () => {
+  it('offers movies, TV shows and artists, and calls onTypeChange with the pick', async () => {
     const user = userEvent.setup();
     render(<CatalogToolbar {...baseProps} />);
-    await user.click(screen.getByRole('radio', { name: 'media.grid.toolbar.showsToggle' }));
-    expect(baseProps.onTypeChange).toHaveBeenCalledWith('show');
+    expect(screen.getAllByRole('radio').map((radio) => radio.textContent)).toEqual([
+      'common:media.movie_plural',
+      'common:media.tvShows',
+      'common:media.artist_plural',
+    ]);
+    await user.click(screen.getByRole('radio', { name: 'common:media.artist_plural' }));
+    expect(baseProps.onTypeChange).toHaveBeenCalledWith('artist');
+  });
+
+  it('leaves the watched, file and year filters and the year sort out for artists', async () => {
+    const user = userEvent.setup();
+    render(<CatalogToolbar {...baseProps} type="artist" />);
+
+    await user.click(screen.getByRole('combobox', { name: 'media.grid.toolbar.sortLabel' }));
+    expect(screen.queryByRole('option', { name: 'media.grid.toolbar.sort.year' })).toBeNull();
+    expect(screen.getByRole('option', { name: 'media.grid.toolbar.sort.plays' })).toBeVisible();
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: /media.grid.toolbar.filtersLabel/ }));
+    for (const label of [
+      'watchedLabel',
+      'resolutionLabel',
+      'videoCodecLabel',
+      'hdrLabel',
+      'audioCodecLabel',
+      'audioChannelsLabel',
+      'atmosLabel',
+    ]) {
+      expect(screen.queryByRole('combobox', { name: `media.grid.toolbar.${label}` })).toBeNull();
+    }
+    for (const label of ['yearFromLabel', 'yearToLabel', 'sizeGbMinLabel', 'sizeGbMaxLabel']) {
+      expect(screen.queryByRole('spinbutton', { name: `media.grid.toolbar.${label}` })).toBeNull();
+    }
+    expect(screen.getByRole('combobox', { name: 'media.grid.toolbar.genreLabel' })).toBeVisible();
+    expect(screen.getByRole('combobox', { name: 'media.grid.toolbar.serverLabel' })).toBeVisible();
+  });
+
+  it('counts artists without a size on the artist grid', () => {
+    render(<CatalogToolbar {...baseProps} type="artist" totalFileSize={0} />);
+    expect(screen.getByText('media.genres.sheet.artistCount:{"count":100}')).toBeInTheDocument();
+    expect(screen.queryByText(/countTotal/)).toBeNull();
   });
 
   it('debounces search input before calling onSearchChange', async () => {

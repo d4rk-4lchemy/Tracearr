@@ -24,7 +24,7 @@ export type DataTableDensity = 'comfortable' | 'default' | 'compact';
 
 /**
  * The header type scale, split out because it varies independently of density.
- * `micro` is the scale DeadWeightTable and Genres hand-wrote eight times.
+ * `micro` is the 10.5px semibold scale with wide tracking.
  */
 export type DataTableHeaderVariant = 'default' | 'micro';
 

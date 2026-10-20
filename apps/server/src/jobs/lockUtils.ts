@@ -5,12 +5,13 @@
 import type { Job } from 'bullmq';
 
 /**
- * Lock duration for maintenance jobs, shared between the Worker's `lockDuration`
- * option and extendJobLock's default extension so a manual extend can never
- * silently grant more time than the worker (and BullMQ's stalled detection)
- * think the job actually has.
+ * Worker lock, shared with WORKER_DEFAULTS and extendJobLock's default so a manual
+ * extend can never grant more time than the worker and stalled detection think the
+ * job has. BullMQ re-extends tracked jobs to this value every lockDuration / 2 while
+ * the process lives, so after a crash the job is reclaimable within this plus two
+ * stalled sweeps.
  */
-export const MAINTENANCE_LOCK_DURATION_MS = 5 * 60 * 1000;
+export const DEFAULT_LOCK_DURATION_MS = 60_000;
 
 /**
  * Extend the job lock, failing fast if extension fails.
@@ -24,10 +25,10 @@ export const MAINTENANCE_LOCK_DURATION_MS = 5 * 60 * 1000;
  * that calls this is meant to be a real abort point.
  *
  * @param job - The BullMQ job to extend the lock for
- * @param durationMs - How long to extend the lock (default: MAINTENANCE_LOCK_DURATION_MS)
+ * @param durationMs - How long to extend the lock (default: DEFAULT_LOCK_DURATION_MS)
  * @throws Error if the lock could not be extended or was lost
  */
-export async function extendJobLock(job: Job, durationMs: number = MAINTENANCE_LOCK_DURATION_MS) {
+export async function extendJobLock(job: Job, durationMs: number = DEFAULT_LOCK_DURATION_MS) {
   if (!job.token) {
     throw new Error(`Job ${job.id} has no lock token - cannot extend lock`);
   }
@@ -35,7 +36,7 @@ export async function extendJobLock(job: Job, durationMs: number = MAINTENANCE_L
   try {
     const result = await job.extendLock(job.token, durationMs);
     if (result === 0) {
-      throw new Error(`Lost lock for maintenance job ${job.id}`);
+      throw new Error(`Lost lock for job ${job.id}`);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

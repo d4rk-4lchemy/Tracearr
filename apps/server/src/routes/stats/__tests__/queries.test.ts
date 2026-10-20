@@ -32,8 +32,8 @@ const emptyServerFilter = sql``;
 
 function assertActivityMediaFilter(callIndex = 0): void {
   const { sql: query } = renderSql(vi.mocked(db.execute).mock.calls[callIndex]![0] as SQL);
-  expect(query).toContain("media_type IN ('movie', 'episode', 'live')");
-  expect(query).not.toMatch(/media_type IN \([^)]*\b(track|photo|trailer|unknown)\b/);
+  expect(query).toContain("media_type IN ('movie', 'episode', 'track', 'live')");
+  expect(query).not.toMatch(/media_type IN \([^)]*\b(photo|trailer|unknown)\b/);
 }
 
 describe('Activity stats queries', () => {
@@ -72,7 +72,10 @@ describe('Activity stats queries', () => {
         }),
     ],
     ['platforms', () => queryPlatforms({ rangeStart, serverFilter: emptyServerFilter })],
-    ['stream quality', () => queryQualityBreakdown({ rangeStart, serverFilter: emptyServerFilter })],
+    [
+      'stream quality',
+      () => queryQualityBreakdown({ rangeStart, serverFilter: emptyServerFilter }),
+    ],
   ])('uses the Activity media set for %s', async (_name, runQuery) => {
     await runQuery();
     assertActivityMediaFilter();
@@ -87,7 +90,7 @@ describe('Activity stats queries', () => {
     });
 
     const { sql: query } = renderSql(vi.mocked(db.execute).mock.calls[0]![0] as SQL);
-    expect(query).toContain('duration_ms >=');
+    expect(query).toContain('(COALESCE(duration_ms, 0) >= 120000 OR watched)');
     expect(query).toContain('COUNT(DISTINCT COALESCE(reference_id, id))');
   });
 });

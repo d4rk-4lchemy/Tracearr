@@ -2,7 +2,8 @@
  * Play statistics route tests
  *
  * Tests GET /stats/plays, including the frozen no-param contract mobile
- * consumes and the optional mediaType filter.
+ * consumes and the optional mediaType filter, and the groupBy=mediaType
+ * breakdown on all three Activity routes.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -127,8 +128,43 @@ describe('Plays Routes', () => {
       expect(response.json()).toEqual(PINNED_PLAYS_RESPONSE);
 
       // No mediaType filter clause should be present when the param is absent.
-      const { sql: query } = renderSql(vi.mocked(db.execute).mock.calls[0]![0] as SQL);
+      const { sql: query } = renderSql(vi.mocked(db.execute).mock.calls[0]?.[0] as SQL);
       expect(query).not.toContain('media_type =');
+      expect(query).toContain("AND media_type IN ('movie', 'episode', 'track', 'live')");
+      expect(query).not.toContain('media_group');
+    });
+
+    it('groups by media type when groupBy=mediaType, music included', async () => {
+      app = await buildTestApp(createOwnerUser());
+      vi.mocked(db.execute).mockResolvedValueOnce({
+        rows: [
+          { ...PINNED_PLAYS_ROWS[0], media_group: 'show' },
+          { ...PINNED_PLAYS_ROWS[0], count: 2, media_group: 'music' },
+          { ...PINNED_PLAYS_ROWS[0], count: 3, media_group: 'live' },
+        ],
+      } as never);
+
+      const response = await app.inject({ method: 'GET', url: '/stats/plays?groupBy=mediaType' });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        data: [
+          { ...PINNED_PLAYS_ROWS[0], mediaType: 'show' },
+          { ...PINNED_PLAYS_ROWS[0], count: 2, mediaType: 'music' },
+          { ...PINNED_PLAYS_ROWS[0], count: 3, mediaType: 'live' },
+        ],
+      });
+      const { sql: query } = renderSql(vi.mocked(db.execute).mock.calls[0]?.[0] as SQL);
+      expect(query).toContain('media_group');
+      expect(query).toContain("AND media_type IN ('movie', 'episode', 'track', 'live')");
+    });
+
+    it('rejects an unknown groupBy', async () => {
+      app = await buildTestApp(createOwnerUser());
+
+      const response = await app.inject({ method: 'GET', url: '/stats/plays?groupBy=genre' });
+
+      expect(response.statusCode).toBe(400);
     });
 
     it('filters to the requested mediaType and keeps the same response shape', async () => {
@@ -151,7 +187,7 @@ describe('Plays Routes', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ data: filteredRows });
 
-      const { sql: query, params } = renderSql(vi.mocked(db.execute).mock.calls[0]![0] as SQL);
+      const { sql: query, params } = renderSql(vi.mocked(db.execute).mock.calls[0]?.[0] as SQL);
       expect(query).toContain('media_type =');
       expect(params).toContain('movie');
     });
@@ -167,23 +203,23 @@ describe('Plays Routes', () => {
       });
 
       expect(response.statusCode).toBe(200);
-      const { params } = renderSql(vi.mocked(db.execute).mock.calls[0]![0] as SQL);
+      const { params } = renderSql(vi.mocked(db.execute).mock.calls[0]?.[0] as SQL);
       expect(params).toContain('episode');
     });
 
-    it('accepts mediaType=live', async () => {
+    it.each(['live', 'track'])('accepts mediaType=%s', async (mediaType) => {
       const ownerUser = createOwnerUser();
       app = await buildTestApp(ownerUser);
       vi.mocked(db.execute).mockResolvedValueOnce({ rows: [] } as never);
 
       const response = await app.inject({
         method: 'GET',
-        url: '/stats/plays?mediaType=live',
+        url: `/stats/plays?mediaType=${mediaType}`,
       });
 
       expect(response.statusCode).toBe(200);
       const { params } = renderSql(vi.mocked(db.execute).mock.calls[0]![0] as SQL);
-      expect(params).toContain('live');
+      expect(params).toContain(mediaType);
     });
 
     it('rejects a mediaType value outside the Activity media types', async () => {
@@ -192,7 +228,7 @@ describe('Plays Routes', () => {
 
       const response = await app.inject({
         method: 'GET',
-        url: '/stats/plays?mediaType=track',
+        url: '/stats/plays?mediaType=photo',
       });
 
       expect(response.statusCode).toBe(400);
@@ -222,6 +258,63 @@ describe('Plays Routes', () => {
       });
 
       expect(response.statusCode).toBe(403);
+    });
+  });
+
+  describe('GET /stats/plays-by-dayofweek and /stats/plays-by-hourofday', () => {
+    it('keep the primary media filter and the 7 and 24 rows without groupBy', async () => {
+      app = await buildTestApp(createOwnerUser());
+      vi.mocked(db.execute).mockResolvedValue({ rows: [{ day: 1, hour: 1, count: 4 }] } as never);
+
+      const days = await app.inject({ method: 'GET', url: '/stats/plays-by-dayofweek' });
+      const hours = await app.inject({ method: 'GET', url: '/stats/plays-by-hourofday' });
+
+      expect(days.json().data).toHaveLength(7);
+      expect(days.json().data[1]).toEqual({ day: 1, name: 'Mon', count: 4 });
+      expect(hours.json().data).toHaveLength(24);
+      expect(hours.json().data[1]).toEqual({ hour: 1, count: 4 });
+      for (const call of vi.mocked(db.execute).mock.calls) {
+        const { sql: query } = renderSql(call[0] as SQL);
+        expect(query).toContain("AND media_type IN ('movie', 'episode', 'track', 'live')");
+        expect(query).not.toContain('media_group');
+      }
+    });
+
+    it('zero-fill each media group with groupBy=mediaType', async () => {
+      app = await buildTestApp(createOwnerUser());
+      vi.mocked(db.execute).mockResolvedValue({
+        rows: [{ day: 1, hour: 1, count: 4, media_group: 'music' }],
+      } as never);
+
+      const days = await app.inject({
+        method: 'GET',
+        url: '/stats/plays-by-dayofweek?groupBy=mediaType',
+      });
+      const hours = await app.inject({
+        method: 'GET',
+        url: '/stats/plays-by-hourofday?groupBy=mediaType',
+      });
+
+      const dayRows = days.json().data as { day: number; count: number; mediaType: string }[];
+      expect(dayRows).toHaveLength(28);
+      for (const group of ['movie', 'show', 'music', 'live']) {
+        expect(dayRows.filter((row) => row.mediaType === group)).toHaveLength(7);
+      }
+      expect(dayRows.filter((row) => row.count > 0)).toEqual([
+        { day: 1, name: 'Mon', count: 4, mediaType: 'music' },
+      ]);
+
+      const hourRows = hours.json().data as { hour: number; count: number; mediaType: string }[];
+      expect(hourRows).toHaveLength(96);
+      expect(hourRows.filter((row) => row.count > 0)).toEqual([
+        { hour: 1, count: 4, mediaType: 'music' },
+      ]);
+
+      for (const call of vi.mocked(db.execute).mock.calls) {
+        const { sql: query } = renderSql(call[0] as SQL);
+        expect(query).toContain('media_group');
+        expect(query).toContain("AND media_type IN ('movie', 'episode', 'track', 'live')");
+      }
     });
   });
 });

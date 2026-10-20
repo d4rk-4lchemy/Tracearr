@@ -11,15 +11,19 @@ import {
   useCatalogLetters,
   useShelves,
   useGenres,
+  useGenreDetail,
   useMediaDetail,
   useMediaStats,
   useSeasonHeat,
+  useMediaChildren,
   useMediaHistory,
   buildLetterOffsets,
   activeLetterForItem,
   activeLetterForRow,
   type MediaDetailStub,
 } from './useMediaBrowse';
+
+import { useAlbumDetail } from './useAlbumDetail';
 
 function wrapper(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -283,7 +287,7 @@ describe('browse hooks forward the full serverIds selection', () => {
           newlyAdded: { count: 0, totalBytes: 0, playedCount: 0 },
           deadWeight: { count: 0, totalBytes: 0 },
         },
-        meta: { movies: 0, shows: 0, totalFileSize: 0 },
+        meta: { movies: 0, shows: 0, artists: 0, albums: 0, totalFileSize: 0 },
       })
     );
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -308,6 +312,92 @@ describe('browse hooks forward the full serverIds selection', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(requestedServerIds(fetchSpy)).toEqual(['server-a', 'server-b']);
+  });
+
+  it('useGenres sends the range and timezone only when given one, and keys on them', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => Promise.resolve(jsonResponse({ data: [] })));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const bare = renderHook(() => useGenres('show', ['server-a']), { wrapper: wrapper(client) });
+    await waitFor(() => expect(bare.result.current.isSuccess).toBe(true));
+    const ranged = renderHook(
+      () => useGenres('show', ['server-a'], { period: 'week', timezone: 'Europe/Berlin' }),
+      { wrapper: wrapper(client) }
+    );
+    await waitFor(() => expect(ranged.result.current.isSuccess).toBe(true));
+
+    const [bareUrl, rangedUrl] = fetchSpy.mock.calls.map(
+      (call) => new URL(call[0] as string, 'http://localhost')
+    );
+    expect(bareUrl?.searchParams.get('type')).toBe('show');
+    expect(bareUrl?.searchParams.has('period')).toBe(false);
+    expect(bareUrl?.searchParams.has('timezone')).toBe(false);
+    expect(rangedUrl?.searchParams.get('period')).toBe('week');
+    expect(rangedUrl?.searchParams.get('timezone')).toBe('Europe/Berlin');
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey)
+    ).toEqual([
+      ['media', 'genres', 'show', 'server-a'],
+      [
+        'media',
+        'genres',
+        'show',
+        'server-a',
+        { period: 'week', timezone: 'Europe/Berlin' },
+        'Europe/Berlin',
+      ],
+    ]);
+  });
+
+  it('useGenreDetail encodes the genre into the path and waits until enabled', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({}));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useGenreDetail('Sci-Fi & Fantasy', 'show', ['server-a'], { period: 'month' }, { enabled }),
+      { wrapper: wrapper(client), initialProps: { enabled: false } }
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const url = new URL(fetchSpy.mock.calls[0]?.[0] as string, 'http://localhost');
+    expect(url.pathname).toMatch(/\/library\/genres\/Sci-Fi%20%26%20Fantasy$/);
+    expect(url.searchParams.get('type')).toBe('show');
+    expect(url.searchParams.get('period')).toBe('month');
+    expect(url.searchParams.getAll('serverIds')).toEqual(['server-a']);
+  });
+
+  it('useGenreDetail keys on genre, type, servers, range and timezone', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(jsonResponse({})));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const range = { period: 'week' as const, timezone: 'Europe/Berlin' };
+
+    const { result, rerender } = renderHook(
+      ({ type }: { type: 'movie' | 'show' }) =>
+        useGenreDetail('Drama', type, ['server-b', 'server-a'], range),
+      { wrapper: wrapper(client), initialProps: { type: 'movie' } }
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    rerender({ type: 'show' });
+    await waitFor(() => expect(client.getQueryCache().getAll()).toHaveLength(2));
+
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey)
+    ).toEqual([
+      ['media', 'genres', 'detail', 'Drama', 'movie', 'server-a,server-b', range, 'Europe/Berlin'],
+      ['media', 'genres', 'detail', 'Drama', 'show', 'server-a,server-b', range, 'Europe/Berlin'],
+    ]);
   });
 
   it('useMediaDetail sends every selected server as a repeated serverIds param', async () => {
@@ -385,6 +475,37 @@ describe('browse hooks forward the full serverIds selection', () => {
     rerender({ enabled: true });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['artist children', useMediaChildren],
+    ['album detail', useAlbumDetail],
+  ] as const)('keeps %s idle with no library-capable server selected', (_name, useHook) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ data: [] }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useHook('media-1', [], true), { wrapper: wrapper(client) });
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("useMediaChildren waits for the caller, then asks for the artist's albums on its servers", async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ data: [] }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useMediaChildren('media-1', ['server-b', 'server-a'], enabled),
+      { wrapper: wrapper(client), initialProps: { enabled: false } }
+    );
+
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const url = new URL(fetchSpy.mock.calls[0]?.[0] as string, 'http://localhost');
+    expect(url.pathname).toMatch(/\/library\/media\/media-1\/children$/);
+    expect(requestedServerIds(fetchSpy)).toEqual(['server-a', 'server-b']);
   });
 
   it('useMediaHistory paginates by cursor via getNextPageParam', async () => {
@@ -475,6 +596,20 @@ describe('findCachedMediaStub', () => {
       recentlyUpdated: [],
       mostPopularMovies: [],
       mostPopularShows: [],
+      recentlyAddedAlbums: [],
+      mostPlayedArtists: [
+        {
+          ...stubFields,
+          mediaId: 'media-3',
+          mediaType: 'artist',
+          title: 'Daft Punk',
+          year: null,
+          albumCount: 4,
+          plays: 9,
+          viewers: 2,
+          rank: 1,
+        },
+      ],
       deadWeight: [],
       kpis: {
         watchedInPeriod: { titlesTouched: 0, totalTitles: 0 },
@@ -482,13 +617,14 @@ describe('findCachedMediaStub', () => {
         newlyAdded: { count: 0, totalBytes: 0, playedCount: 0 },
         deadWeight: { count: 0, totalBytes: 0 },
       },
-      meta: { movies: 0, shows: 0, totalFileSize: 0 },
+      meta: { movies: 0, shows: 0, artists: 0, albums: 0, totalFileSize: 0 },
     };
     client.setQueryData(['media', 'shelves', 'server-a', 'month'], shelves);
 
     const stub = findCachedMediaStub(client, 'media-2');
 
     expect(stub?.title).toBe('Shogun');
+    expect(findCachedMediaStub(client, 'media-3')?.title).toBe('Daft Punk');
   });
 
   it('returns undefined on a cache miss (e.g. a direct URL visit)', () => {

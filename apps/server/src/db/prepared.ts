@@ -17,7 +17,11 @@
 import { eq, gte, and, isNull, desc, sql, inArray } from 'drizzle-orm';
 import { db } from './client.js';
 import { sessions, automationRuns, users, serverUsers, servers, automations } from './schema.js';
-import { ACTIVITY_MEDIA_TYPES, PRIMARY_MEDIA_TYPES } from '../constants/index.js';
+import {
+  ACTIVITY_MEDIA_TYPES,
+  PLAYS_MEDIA_TYPES,
+  WATCH_AND_LISTEN_MS,
+} from '../constants/index.js';
 import { violationAliasConditions } from '../services/automations/aliasFilter.js';
 import { playbackDecisionSql } from '../utils/playbackDecisionSql.js';
 
@@ -32,9 +36,9 @@ function createStatements() {
 
     /**
      * Count unique plays (grouped by reference_id) since a given date
-     * Used for: Dashboard "Today's Plays" metric
+     * Used for: Dashboard "Today's Sessions" metric
      * Called: Every dashboard page load
-     * Note: Excludes live TV and music tracks
+     * Note: Excludes live TV
      */
     playsCountSince: db
       .select({
@@ -44,26 +48,24 @@ function createStatements() {
       .where(
         and(
           gte(sessions.startedAt, sql.placeholder('since')),
-          inArray(sessions.mediaType, PRIMARY_MEDIA_TYPES)
+          inArray(sessions.mediaType, PLAYS_MEDIA_TYPES)
         )
       )
       .prepare('plays_count_since'),
 
     /**
-     * Sum total watch time since a given date
-     * Used for: Dashboard "Watch Time" metric
+     * Sum watch time (movies and episodes) and listen time (music tracks) since a given date
+     * Used for: Dashboard "Watch Time" and "Listen Time" metrics
      * Called: Every dashboard page load
-     * Note: Excludes live TV and music tracks
+     * Note: Excludes live TV
      */
     watchTimeSince: db
-      .select({
-        totalMs: sql<number>`COALESCE(SUM(duration_ms), 0)::bigint`,
-      })
+      .select(WATCH_AND_LISTEN_MS)
       .from(sessions)
       .where(
         and(
           gte(sessions.startedAt, sql.placeholder('since')),
-          inArray(sessions.mediaType, PRIMARY_MEDIA_TYPES)
+          inArray(sessions.mediaType, PLAYS_MEDIA_TYPES)
         )
       )
       .prepare('watch_time_since'),
@@ -93,8 +95,8 @@ function createStatements() {
      * Count unique active identities (people, not accounts) since a given date
      * Used for: Dashboard "Active Users Today" metric
      * Called: Every dashboard page load
-     * Note: Excludes live TV and music tracks. A merged person with accounts
-     * on multiple servers counts once.
+     * Note: Excludes live TV. A merged person with accounts on multiple
+     * servers counts once.
      */
     uniqueUsersSince: db
       .select({
@@ -105,7 +107,7 @@ function createStatements() {
       .where(
         and(
           gte(sessions.startedAt, sql.placeholder('since')),
-          inArray(sessions.mediaType, PRIMARY_MEDIA_TYPES)
+          inArray(sessions.mediaType, PLAYS_MEDIA_TYPES)
         )
       )
       .prepare('unique_users_since'),
@@ -287,21 +289,6 @@ function createStatements() {
       .groupBy(sql`tier`)
       .prepare('quality_stats_since'),
 
-    /**
-     * Watch time by media type since a given date
-     * Used for: Watch time breakdown by content type
-     * Called: Stats page load
-     */
-    watchTimeByTypeSince: db
-      .select({
-        mediaType: sessions.mediaType,
-        totalMs: sql<number>`COALESCE(SUM(duration_ms), 0)::bigint`,
-      })
-      .from(sessions)
-      .where(gte(sessions.startedAt, sql.placeholder('since')))
-      .groupBy(sessions.mediaType)
-      .prepare('watch_time_by_type_since'),
-
     // ========================================================================
     // Rule Queries (hot-path for poller)
     // ========================================================================
@@ -405,7 +392,6 @@ export let userById: Statements['userById'];
 export let sessionById: Statements['sessionById'];
 export let playsByPlatformSince: Statements['playsByPlatformSince'];
 export let qualityStatsSince: Statements['qualityStatsSince'];
-export let watchTimeByTypeSince: Statements['watchTimeByTypeSince'];
 export let getActiveRules: Statements['getActiveRules'];
 export let getUserRecentSessions: Statements['getUserRecentSessions'];
 export let getUnackedViolations: Statements['getUnackedViolations'];
@@ -427,7 +413,6 @@ export function initPreparedStatements(): void {
   sessionById = s.sessionById;
   playsByPlatformSince = s.playsByPlatformSince;
   qualityStatsSince = s.qualityStatsSince;
-  watchTimeByTypeSince = s.watchTimeByTypeSince;
   getActiveRules = s.getActiveRules;
   getUserRecentSessions = s.getUserRecentSessions;
   getUnackedViolations = s.getUnackedViolations;
@@ -449,7 +434,6 @@ export type UserByIdResult = Awaited<ReturnType<typeof userById.execute>>;
 export type SessionByIdResult = Awaited<ReturnType<typeof sessionById.execute>>;
 export type PlaysByPlatformResult = Awaited<ReturnType<typeof playsByPlatformSince.execute>>;
 export type QualityStatsResult = Awaited<ReturnType<typeof qualityStatsSince.execute>>;
-export type WatchTimeByTypeResult = Awaited<ReturnType<typeof watchTimeByTypeSince.execute>>;
 export type ActiveRulesResult = Awaited<ReturnType<typeof getActiveRules.execute>>;
 export type UserRecentSessionsResult = Awaited<ReturnType<typeof getUserRecentSessions.execute>>;
 export type UnackedViolationsResult = Awaited<ReturnType<typeof getUnackedViolations.execute>>;

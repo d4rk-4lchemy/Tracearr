@@ -5,6 +5,8 @@
   "stats": "Statistici",
   "activity": "Activitate",
   "library": "Bibliotecă",
+  "people": "",
+  "rules": "",
   "users": "Utilizatori",
   "automations": "",
   "violations": "Încălcări",
@@ -18,14 +20,10 @@
   "devices": "Dispozitive",
   "bandwidth": "Lățimea benzii",
   "jobs": "Joburi",
-  "media": "",
   "mediaBrowse": "Răsfoiește",
   "mediaGenres": "Genuri",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

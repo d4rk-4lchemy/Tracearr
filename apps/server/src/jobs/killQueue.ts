@@ -17,6 +17,7 @@ import {
   type ActionResult,
 } from '../services/automations/executors/index.js';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { WORKER_DEFAULTS, registerQueue, registerWorker } from './jobSafety.js';
 import { isMaintenance } from '../serverState.js';
 import {
   reverifyKillCondition,
@@ -93,6 +94,7 @@ export function initKillQueue(redisUrl: string): void {
   killQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('[KillQueue] Queue error:', err);
   });
+  registerQueue(killQueue);
 
   console.log('[KillQueue] Queue initialized');
 }
@@ -128,8 +130,10 @@ export function startKillWorker(): void {
       connection: connectionOptions,
       prefix: bullPrefix,
       concurrency: 5,
+      ...WORKER_DEFAULTS,
     }
   );
+  registerWorker(killWorker);
 
   killWorker.on('error', (error) => {
     if (!isMaintenance()) console.error('[KillQueue] Worker error:', error);

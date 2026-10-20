@@ -1,7 +1,8 @@
+import { useState, type ReactNode } from 'react';
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { initI18n } from '@tracearr/translations';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -104,6 +105,16 @@ function bodyRows() {
   return bodies.flatMap((body) => within(body).queryAllByRole('row'));
 }
 
+function ActionsLayout() {
+  const [actions, setActions] = useState<ReactNode>(null);
+  return (
+    <>
+      <header>{actions}</header>
+      <Outlet context={{ setActions }} />
+    </>
+  );
+}
+
 function renderAutomations(path = '/automations') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -112,7 +123,9 @@ function renderAutomations(path = '/automations') {
       <TooltipProvider>
         <MemoryRouter initialEntries={[path]}>
           <Routes>
-            <Route path="/automations" element={<Automations />} />
+            <Route element={<ActionsLayout />}>
+              <Route path="/automations" element={<Automations />} />
+            </Route>
             <Route path="/automations/new" element={<p>the builder page</p>} />
             <Route path="/automations/:id" element={<p>the automation detail</p>} />
             <Route path="/automations/:id/edit" element={<p>the builder page</p>} />

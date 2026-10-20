@@ -54,15 +54,35 @@ function validateDateOrder(data: { startDate?: string; endDate?: string }) {
   return true;
 }
 
+/**
+ * Refinement: If dates provided, startDate must not be after endDate. For endpoints that include
+ * the end day, where equal dates mean that one day.
+ */
+function validateDateOrderInclusive(data: { startDate?: string; endDate?: string }) {
+  if (data.startDate && data.endDate) {
+    return new Date(data.startDate) <= new Date(data.endDate);
+  }
+  return true;
+}
+
 /** Standard date validation refinements for stats queries */
 export const dateValidationRefinements = {
   customPeriodRequiresDates: {
     refinement: requireDatesForCustomPeriod,
     message: 'Custom period requires startDate and endDate',
   },
+  datesTogether: {
+    refinement: (data: { startDate?: string; endDate?: string }) =>
+      !data.startDate === !data.endDate,
+    message: 'startDate and endDate go together',
+  },
   startBeforeEnd: {
     refinement: validateDateOrder,
     message: 'startDate must be before endDate',
+  },
+  startNotAfterEnd: {
+    refinement: validateDateOrderInclusive,
+    message: 'startDate must not be after endDate',
   },
 };
 
@@ -390,7 +410,14 @@ export const mergeSuggestionDismissalSchema = z
 export const mergeSuggestionPairParamSchema = z.object({ userA: uuidSchema, userB: uuidSchema });
 export const splitServerUserParamSchema = z.object({ id: uuidSchema });
 
-export const USER_SORT_FIELDS = ['username', 'trustScore', 'joinedAt', 'lastActivityAt'] as const;
+export const USER_SORT_FIELDS = [
+  'username',
+  'trustScore',
+  'joinedAt',
+  'lastActivityAt',
+  'role',
+  'pendingViolations',
+] as const;
 export const userSortFieldSchema = z.enum(USER_SORT_FIELDS);
 export type UserSortField = z.infer<typeof userSortFieldSchema>;
 
@@ -423,6 +450,10 @@ export const userRosterFilterSchema = serverIdFilterSchema.extend({
   joinedBefore: listDateBoundSchema,
   activeAfter: listDateBoundSchema,
   activeBefore: listDateBoundSchema,
+  role: z.enum(['owner', 'admin', 'member']).optional(),
+  signIn: z.enum(['allow', 'default', 'block']).optional(),
+  /** Only people with at least one unacknowledged violation on the scoped servers. */
+  pendingOnly: booleanStringSchema.optional(),
 });
 export type UserRosterFilters = z.infer<typeof userRosterFilterSchema>;
 
@@ -753,20 +784,69 @@ export const dashboardQuerySchema = z.object({
   timezone: timezoneSchema,
 });
 
-export const statsQuerySchema = z
-  .object({
-    period: statPeriodSchema.default('week'),
-    startDate: z.iso.datetime().optional(),
-    endDate: z.iso.datetime().optional(),
-    serverId: uuidSchema.optional(),
-    serverIds: serverIdsQuerySchema,
-    timezone: timezoneSchema,
-  })
+const statsQueryObjectSchema = z.object({
+  period: statPeriodSchema.default('week'),
+  startDate: z.iso.datetime().optional(),
+  endDate: z.iso.datetime().optional(),
+  serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
+  timezone: timezoneSchema,
+});
+
+export const statsQuerySchema = statsQueryObjectSchema
   .refine(dateValidationRefinements.customPeriodRequiresDates.refinement, {
     message: dateValidationRefinements.customPeriodRequiresDates.message,
   })
   .refine(dateValidationRefinements.startBeforeEnd.refinement, {
     message: dateValidationRefinements.startBeforeEnd.message,
+  });
+
+export const PLAYS_MEDIA_GROUPS = ['movie', 'show', 'music', 'live'] as const;
+export type PlaysMediaGroup = (typeof PLAYS_MEDIA_GROUPS)[number];
+
+// groupBy=mediaType splits an Activity series into one series per media group.
+export const playsBreakdownQuerySchema = statsQuerySchema.safeExtend({
+  groupBy: z.literal('mediaType').optional(),
+});
+
+export const playsQuerySchema = playsBreakdownQuerySchema.safeExtend({
+  mediaType: z.enum(['movie', 'episode', 'track', 'live']).optional(),
+});
+
+export const PEOPLE_RANKS = [
+  'plays',
+  'hours',
+  'data',
+  'transcodes',
+  'requests',
+  'lastSeen',
+] as const;
+export const peopleRankSchema = z.enum(PEOPLE_RANKS);
+export type PeopleRank = z.infer<typeof peopleRankSchema>;
+
+// Day-aligned windows include the end day, so a one-day custom range has equal dates.
+const dayWindowQuerySchema = statsQueryObjectSchema.refine(
+  dateValidationRefinements.customPeriodRequiresDates.refinement,
+  { message: dateValidationRefinements.customPeriodRequiresDates.message }
+);
+
+export const peopleQuerySchema = dayWindowQuerySchema
+  .safeExtend({
+    rank: peopleRankSchema.default('plays'),
+    page: paginationSchema.shape.page,
+    pageSize: paginationSchema.shape.pageSize,
+    search: z.string().trim().min(1).max(100).optional(),
+  })
+  .refine(dateValidationRefinements.startNotAfterEnd.refinement, {
+    message: dateValidationRefinements.startNotAfterEnd.message,
+  });
+
+export const userRangeStatsQuerySchema = dayWindowQuerySchema
+  .safeExtend({
+    scope: z.literal('identity').optional(),
+  })
+  .refine(dateValidationRefinements.startNotAfterEnd.refinement, {
+    message: dateValidationRefinements.startNotAfterEnd.message,
   });
 
 // Location stats with full filtering - uses same period system as statsQuerySchema
@@ -1168,26 +1248,97 @@ export const libraryGrowthQuerySchema = z
     endDate: z.iso.datetime().optional(),
     timezone: timezoneSchema,
   })
-  .refine(dateValidationRefinements.startBeforeEnd.refinement, {
-    message: dateValidationRefinements.startBeforeEnd.message,
+  .refine(dateValidationRefinements.startNotAfterEnd.refinement, {
+    message: dateValidationRefinements.startNotAfterEnd.message,
   });
 
-// Library quality evolution query schema
-export const libraryQualityQuerySchema = z.object({
-  serverId: z.uuid().optional(),
-  period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
-  mediaType: z.enum(['all', 'movies', 'shows']).default('all'),
-  timezone: timezoneSchema,
+export const LIBRARY_MEDIA_TYPES = ['movie', 'show', 'artist'] as const;
+export const libraryMediaTypeSchema = z.enum(LIBRARY_MEDIA_TYPES);
+export type LibraryMediaType = z.infer<typeof libraryMediaTypeSchema>;
+/** A media type picker value; 'all' is for pages that can also show every type at once. */
+export type MediaTypeOption = LibraryMediaType | 'all';
+
+export const genresQuerySchema = statsQueryObjectSchema
+  .extend({
+    type: libraryMediaTypeSchema.default('movie'),
+    period: statPeriodSchema.default('month'),
+  })
+  .refine(dateValidationRefinements.customPeriodRequiresDates.refinement, {
+    message: dateValidationRefinements.customPeriodRequiresDates.message,
+  })
+  .refine(dateValidationRefinements.startNotAfterEnd.refinement, {
+    message: dateValidationRefinements.startNotAfterEnd.message,
+  });
+export const genreDetailQuerySchema = genresQuerySchema;
+
+/** Sane upper bound for the catalog's size-on-disk filter inputs, in GB. */
+const CATALOG_SIZE_GB_MAX = 10000;
+
+export const catalogQuerySchema = z.object({
+  type: libraryMediaTypeSchema,
+  serverId: uuidSchema.optional(),
+  serverIds: serverIdsQuerySchema,
+  resolution: z.string().optional(),
+  genre: z.string().optional(),
+  yearFrom: z.coerce.number().int().optional(),
+  yearTo: z.coerce.number().int().optional(),
+  watched: z.enum(['watched', 'partial', 'unwatched']).optional(),
+  lens: z.union([uuidSchema, z.literal('all')]).default('all'),
+  search: z.string().max(100).optional(),
+  sort: z.enum(['title', 'added', 'year', 'plays', 'watch_time', 'viewers']).default('title'),
+  offset: z.coerce.number().int().min(0).default(0),
+  pageSize: z.coerce.number().int().min(1).max(100).default(60),
+  // `${serverId}:${libraryId}` - a library id is only unique within its server.
+  libraryKey: libraryKeySchema.optional(),
+  hdr: booleanStringSchema.default(false),
+  atmos: booleanStringSchema.default(false),
+  sizeGbMin: z.coerce.number().min(0).max(CATALOG_SIZE_GB_MAX).optional(),
+  sizeGbMax: z.coerce.number().min(0).max(CATALOG_SIZE_GB_MAX).optional(),
+  /** Display names as the codec charts show them ('HEVC', 'EAC3'). */
+  videoCodec: z.string().max(50).optional(),
+  audioCodec: z.string().max(50).optional(),
+  audioChannels: z.string().max(20).optional(),
 });
 
+// A custom window on a library period endpoint: both dates or neither; with them the period
+// token is ignored.
+const customWindowFields = {
+  startDate: z.iso.datetime().optional(),
+  endDate: z.iso.datetime().optional(),
+};
+
+function withCustomWindow<T extends z.ZodObject>(schema: T) {
+  return schema
+    .refine(dateValidationRefinements.datesTogether.refinement, {
+      message: dateValidationRefinements.datesTogether.message,
+    })
+    .refine(dateValidationRefinements.startBeforeEnd.refinement, {
+      message: dateValidationRefinements.startBeforeEnd.message,
+    });
+}
+
+// Library quality evolution query schema
+export const libraryQualityQuerySchema = withCustomWindow(
+  z.object({
+    serverId: z.uuid().optional(),
+    period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
+    ...customWindowFields,
+    mediaType: z.enum(['all', 'movie', 'show']).default('all'),
+    timezone: timezoneSchema,
+  })
+);
+
 // Library storage analytics query schema
-export const libraryStorageQuerySchema = z.object({
-  serverId: z.uuid().optional(),
-  serverIds: serverIdsQuerySchema, // Combined scope so mirror dedup spans servers
-  libraryId: z.uuid().optional(),
-  period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
-  timezone: timezoneSchema,
-});
+export const libraryStorageQuerySchema = withCustomWindow(
+  z.object({
+    serverId: z.uuid().optional(),
+    serverIds: serverIdsQuerySchema, // Combined scope so mirror dedup spans servers
+    libraryId: z.uuid().optional(),
+    period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
+    ...customWindowFields,
+    timezone: timezoneSchema,
+  })
+);
 
 // Library duplicates query schema (cross-server duplicate detection)
 export const libraryDuplicatesQuerySchema = z.object({
@@ -1212,7 +1363,7 @@ export const libraryStaleQuerySchema = z.object({
   serverId: z.uuid().optional(),
   serverIds: serverIdsQuerySchema,
   libraryId: z.uuid().optional(),
-  mediaType: z.enum(['movie', 'show', 'artist']).optional(),
+  mediaType: libraryMediaTypeSchema.optional(),
   staleDays: z.coerce.number().int().min(1).default(90), // Configurable threshold
   category: z.enum(['all', 'never_watched', 'stale']).default('all'),
   sortBy: z.enum(['size', 'days_stale', 'title', 'added_at']).default('size'),
@@ -1242,7 +1393,7 @@ export const libraryRoiQuerySchema = z.object({
   serverId: uuidSchema.optional(),
   serverIds: serverIdsQuerySchema,
   libraryId: z.string().optional(),
-  mediaType: z.enum(['movie', 'show', 'artist', 'all']).default('all'),
+  mediaType: z.enum([...LIBRARY_MEDIA_TYPES, 'all']).default('all'),
   // Filter by value category
   valueCategory: z.enum(['low_value', 'moderate_value', 'high_value', 'all']).default('all'),
   // Time range for watch calculations (affects recency weighting)
@@ -1298,17 +1449,20 @@ export const libraryCompletionQuerySchema = z.object({
 });
 
 // Library top content query schema (for top movies and top shows endpoints)
-export const topContentQuerySchema = z.object({
-  serverId: uuidSchema.optional(),
-  serverIds: serverIdsQuerySchema,
-  period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
-  sortBy: z
-    .enum(['plays', 'watch_hours', 'viewers', 'completion_rate', 'binge_score'])
-    .default('plays'),
-  sortOrder: z.enum(['asc', 'desc']).default('desc'),
-  page: z.coerce.number().int().positive().default(1),
-  pageSize: z.coerce.number().int().positive().max(50).default(20),
-});
+export const topContentQuerySchema = withCustomWindow(
+  z.object({
+    serverId: uuidSchema.optional(),
+    serverIds: serverIdsQuerySchema,
+    period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
+    ...customWindowFields,
+    sortBy: z
+      .enum(['plays', 'watch_hours', 'viewers', 'completion_rate', 'binge_score'])
+      .default('plays'),
+    sortOrder: z.enum(['asc', 'desc']).default('desc'),
+    page: z.coerce.number().int().positive().default(1),
+    pageSize: z.coerce.number().int().positive().max(50).default(20),
+  })
+);
 
 // Library shelves query schema (windowed recently-added/most-popular/dead-weight
 // command center) - same day/week/month/year/all/custom period convention as
@@ -1335,6 +1489,7 @@ export const shelvesQuerySchema = z
 export type LibraryStatsQueryInput = z.infer<typeof libraryStatsQuerySchema>;
 export type LibraryStatusQueryInput = z.infer<typeof libraryStatusQuerySchema>;
 export type LibraryGrowthQueryInput = z.infer<typeof libraryGrowthQuerySchema>;
+export type GenresQueryInput = z.infer<typeof genresQuerySchema>;
 export type LibraryQualityQueryInput = z.infer<typeof libraryQualityQuerySchema>;
 export type LibraryStorageQueryInput = z.infer<typeof libraryStorageQuerySchema>;
 export type LibraryDuplicatesQueryInput = z.infer<typeof libraryDuplicatesQuerySchema>;

@@ -27,7 +27,7 @@ export type PrimaryMediaType = (typeof PRIMARY_MEDIA_TYPES)[number];
  * Media types included in the Activity stats charts.
  * Unlike primary statistics, Activity includes Live TV from every server type.
  */
-export const ACTIVITY_MEDIA_TYPES = ['movie', 'episode', 'live'] as const;
+export const ACTIVITY_MEDIA_TYPES = ['movie', 'episode', 'track', 'live'] as const;
 export type ActivityMediaType = (typeof ACTIVITY_MEDIA_TYPES)[number];
 
 /**
@@ -43,9 +43,14 @@ export type ExcludedMediaType = (typeof EXCLUDED_MEDIA_TYPES)[number];
  */
 export const EXCLUDED_MEDIA_TYPES_SET = new Set<string>(EXCLUDED_MEDIA_TYPES);
 
+/** Primary media types plus music: what the Activity media breakdown and today's plays count. */
+export const PLAYS_MEDIA_TYPES = [...PRIMARY_MEDIA_TYPES, 'track'] as const;
+
+const inClause = (types: readonly string[]) => types.map((t) => `'${t}'`).join(', ');
+
 // Generate SQL IN clause from array - single source of truth
-const primaryTypesInClause = PRIMARY_MEDIA_TYPES.map((t) => `'${t}'`).join(', ');
-const activityTypesInClause = ACTIVITY_MEDIA_TYPES.map((t) => `'${t}'`).join(', ');
+const primaryTypesInClause = inClause(PRIMARY_MEDIA_TYPES);
+const activityTypesInClause = inClause(ACTIVITY_MEDIA_TYPES);
 
 /**
  * SQL fragment for filtering to primary media types in raw queries.
@@ -86,3 +91,14 @@ export const ACTIVITY_MEDIA_TYPE_SQL_FILTER_S = sql.raw(
  * Used directly in CREATE MATERIALIZED VIEW statements.
  */
 export const PRIMARY_MEDIA_TYPES_SQL_LITERAL = `media_type IN (${primaryTypesInClause})`;
+
+/** AND-prefixed filter to PLAYS_MEDIA_TYPES for raw sessions queries. */
+export const PLAYS_MEDIA_TYPE_SQL_FILTER = sql.raw(
+  `AND media_type IN (${inClause(PLAYS_MEDIA_TYPES)})`
+);
+
+/** Select fields for watch time (movies and episodes) and listen time (tracks) in one pass. */
+export const WATCH_AND_LISTEN_MS = {
+  totalMs: sql<number>`COALESCE(SUM(duration_ms) FILTER (WHERE ${PRIMARY_MEDIA_TYPE_CONDITION}), 0)::bigint`,
+  listenMs: sql<number>`COALESCE(SUM(duration_ms) FILTER (WHERE media_type = 'track'), 0)::bigint`,
+};

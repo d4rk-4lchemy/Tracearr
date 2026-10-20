@@ -11,9 +11,10 @@ import type {
   TriggerNode,
 } from './automations/index.js';
 import type { NotificationToast } from './destinations.js';
+import type { ListMeta } from './listQuery.js';
 import type { UpgradeWarning } from './releaseNotes.js';
 import type { ResolutionBucket } from './resolution.js';
-import type { statPeriodSchema } from './schemas.js';
+import type { LibraryMediaType, PlaysMediaGroup, statPeriodSchema } from './schemas.js';
 import type { z } from 'zod';
 import type { LOGIN_ACCESS } from './constants.js';
 
@@ -159,6 +160,9 @@ export interface ServerUserWithIdentity extends ServerUser {
   // the client from role alone picks the wrong direction.
   // Only populated by the list endpoint.
   loginCapable?: boolean;
+  // Unacknowledged violations across this identity's accounts on the scoped servers.
+  // Only populated by the list endpoint.
+  pendingViolations?: number;
 }
 
 // Server User detail with stats - returned by GET /users/:id
@@ -716,6 +720,8 @@ export interface DashboardStats {
   tvSessions: number;
   tvChannels: number;
   tvWatchTimeHours: number;
+  /** Music tracks since the start of the day; watchTimeHours covers movies and episodes */
+  listenTimeHours: number;
   /** Absent for members, who never see violations */
   alertsLast24h?: number;
   /** Absent for members, who get othersActive instead */
@@ -768,6 +774,8 @@ export interface PlayStats {
   date: string;
   count: number;
   serverId: string;
+  /** Present only with groupBy=mediaType */
+  mediaType?: PlaysMediaGroup;
 }
 
 export interface UserStats {
@@ -835,11 +843,15 @@ export interface DayOfWeekStats {
   day: number; // 0 = Sunday, 6 = Saturday
   name: string; // 'Sun', 'Mon', etc.
   count: number;
+  /** Present only with groupBy=mediaType */
+  mediaType?: PlaysMediaGroup;
 }
 
 export interface HourOfDayStats {
   hour: number; // 0-23
   count: number;
+  /** Present only with groupBy=mediaType */
+  mediaType?: PlaysMediaGroup;
 }
 
 export interface QualityStats {
@@ -874,6 +886,108 @@ export interface TopUserStats {
   topContent: string | null; // Most watched show/movie name
   /** Every server this identity has an account on, scoped to accessible servers */
   identityServers?: { id: string; name: string }[];
+}
+
+export interface RangeSeriesPoint {
+  date: string;
+  count: number;
+}
+
+export interface UserRangeStats {
+  range: { start: string | null; end: string; priorStart: string | null; priorEnd: string | null };
+  plays: number;
+  priorPlays: number | null;
+  watchMs: number;
+  priorWatchMs: number | null;
+  /** Percent of counted chains, null when there are none. */
+  finishedRate: number | null;
+  abandonedRate: number | null;
+  directPlayRate: number | null;
+  transcodes: number;
+  /** Percent of counted chains played on the local network, null when there are none. */
+  localShare: number | null;
+  bytes: number;
+  avgBitrateKbps: number | null;
+  activeDays: number;
+  daysInRange: number | null;
+  currentStreak: number;
+  playsByDay: RangeSeriesPoint[];
+  priorPlaysByDay: RangeSeriesPoint[];
+  serverAvgPlaysByDay: RangeSeriesPoint[];
+  playsByDow: DayOfWeekStats[];
+  playsByHour: HourOfDayStats[];
+  serverPeakHour: number | null;
+  personPeakHour: number | null;
+  mediaTypeSplit: { movie: number; episode: number; track: number; other: number };
+  /** Top 6 */
+  topGenres: { genre: string; plays: number }[];
+  /** Top 5 */
+  mostFinished: {
+    mediaId: string;
+    title: string;
+    type: string;
+    finished: number;
+    thumbPath: string | null;
+    serverId: string;
+  }[];
+  /** Top 5 by sessions */
+  devices: {
+    device: string;
+    platform: string | null;
+    sessions: number;
+    directPlayRate: number | null;
+    lastSeenAt: string | null;
+  }[];
+  /** Top 5 by sessions */
+  locations: {
+    city: string | null;
+    region: string | null;
+    country: string | null;
+    sessions: number;
+    isLocal: boolean;
+    lastSeenAt: string | null;
+  }[];
+}
+
+export interface PersonRow {
+  userId: string;
+  serverUserId: string;
+  username: string;
+  identityName: string | null;
+  thumbUrl: string | null;
+  serverId: string | null;
+  trustScore: number | null;
+  plays: number;
+  watchMs: number;
+  bytes: number;
+  directPlayRate: number | null;
+  transcodes: number;
+  transcodeShare: number | null;
+  /** All time, not bound by the range. */
+  requests: number;
+  requestsWatched: number;
+  lastPlayAt: string | null;
+  /** 7 buckets of plays across the range, oldest first */
+  trend: number[];
+  identityServers?: { id: string; name: string }[];
+}
+
+export interface PeopleSummary {
+  activePeople: number;
+  totalPeople: number;
+  /** Percent of counted plays held by the top three people by plays */
+  topThreeShare: number | null;
+  topTranscoderShare: number | null;
+  topTranscoderCount: number;
+  totalTranscodes: number;
+  quietPeople: number;
+  quietDays: 90;
+}
+
+export interface PeopleResponse {
+  data: PersonRow[];
+  summary: PeopleSummary;
+  meta: ListMeta;
 }
 
 export interface TopContentStats {
@@ -1362,6 +1476,8 @@ export interface PaginatedResponse<T> {
 export interface HistoryAggregates {
   /** Total watch time in milliseconds across all matching sessions */
   totalWatchTimeMs: number;
+  /** The music track share of totalWatchTimeMs */
+  listenTimeMs: number;
   /** Count of unique plays (grouped by reference_id) */
   playCount: number;
   /** Count of unique users in the result set */
@@ -2426,7 +2542,7 @@ export interface QualityDataPoint {
 
 export interface LibraryQualityResponse {
   period: string;
-  mediaType: 'all' | 'movies' | 'shows';
+  mediaType: 'all' | 'movie' | 'show';
   data: QualityDataPoint[];
 }
 
@@ -2440,6 +2556,18 @@ export interface StoragePrediction {
   predicted: string;
   min: string;
   max: string;
+}
+
+/** One library of the server, sized from its live items */
+export interface StorageLibraryRow {
+  /** The media server's own library id */
+  libraryId: string;
+  name: string;
+  /** Server-native: Plex movie/show/artist, Jellyfin and Emby movies/tvshows/music */
+  mediaType: string;
+  /** Active items with at least one active version larger than zero bytes */
+  itemCount: number;
+  sizeBytes: number;
 }
 
 export interface LibraryStorageResponse {
@@ -2471,6 +2599,8 @@ export interface LibraryStorageResponse {
     currentDataDays: number;
     message?: string;
   };
+  /** Largest first; libraries with no sized items are listed with zeros */
+  libraries: StorageLibraryRow[];
 }
 
 // Library Duplicates Response (GET /library/duplicates)
@@ -2731,7 +2861,7 @@ export interface CatalogRowServerEntry {
 
 export interface CatalogRow {
   mediaId: string;
-  mediaType: 'movie' | 'show';
+  mediaType: LibraryMediaType;
   title: string;
   year: number | null;
   genres: string[];
@@ -2742,10 +2872,12 @@ export interface CatalogRow {
   resolutionBest: string | null;
   watchedState: WatchedState;
   /** Same probe, scoped to the requesting admin's own identity instead of
-   * the anyone-grain lens - "have I personally watched this". */
-  watchedStateSelf: WatchedState;
+   * the anyone-grain lens - "have I personally watched this". Absent for artists. */
+  watchedStateSelf?: WatchedState;
   plays: number;
   viewers: number;
+  /** Artists only: distinct album titles across the artist's copies in scope. */
+  albumCount?: number;
 }
 
 export interface CatalogResponseMeta {
@@ -2871,7 +3003,23 @@ export interface ShelvesKpis {
 export interface ShelvesResponseMeta {
   movies: number;
   shows: number;
+  artists: number;
+  albums: number;
   totalFileSize: number;
+}
+
+/** One server's album row; albums do not fold across servers here. */
+export interface AlbumShelfRow {
+  serverId: string;
+  ratingKey: string;
+  title: string;
+  artistTitle: string | null;
+  /** The artist copy's media row, for linking to the artist page. */
+  artistMediaId: string | null;
+  year: number | null;
+  posterUrl: string | null;
+  posterVersion: string | null;
+  addedAt: string;
 }
 
 export interface ShelvesResponse {
@@ -2881,6 +3029,8 @@ export interface ShelvesResponse {
   recentlyUpdated: RecentlyUpdatedShelfRow[];
   mostPopularMovies: MostPopularShelfRow[];
   mostPopularShows: MostPopularShelfRow[];
+  recentlyAddedAlbums: AlbumShelfRow[];
+  mostPlayedArtists: MostPopularShelfRow[];
   deadWeight?: DeadWeightRow[];
   kpis: ShelvesKpis;
   meta: ShelvesResponseMeta;
@@ -2888,15 +3038,75 @@ export interface ShelvesResponse {
 
 // Genres aggregate endpoint (GET /library/genres)
 
+export interface GenreTopViewer {
+  userId: string;
+  serverUserId: string;
+  name: string;
+  /** Raw avatar path of the viewer's busiest account, proxied through serverId. */
+  thumbUrl: string | null;
+  serverId: string;
+  /** Percent of the genre's counted plays */
+  share: number;
+}
+
 export interface GenreRow {
   genre: string;
+  /** All-time canonical items */
   itemCount: number;
+  /** All-time, deduped like mediaSizeSubquery */
+  sizeBytes: number;
+  /** Counted chains in range */
   plays: number;
+  /** Null when the range is all time */
+  priorPlays: number | null;
   watchTimeMs: number;
+  /** Percent of judged chains finished; null when no chain was judged */
+  finishedRate: number | null;
+  topViewer: GenreTopViewer | null;
+  neverPlayed: { count: number; bytes: number };
+  /** Counted plays in 7 equal buckets across the range, oldest first */
+  trend: number[];
 }
 
 export interface GenresResponse {
   data: GenreRow[];
+  /** All genres of the type, over the range, in the viewer's timezone */
+  hourly: HourOfDayStats[];
+  totals: { items: number; plays: number; priorPlays: number | null };
+  range: { start: string | null; end: string; priorStart: string | null; priorEnd: string | null };
+}
+
+export interface GenreTitle {
+  mediaId: string;
+  title: string;
+  year: number | null;
+  serverId: string;
+  thumbPath: string | null;
+  plays: number;
+  sizeBytes: number;
+}
+
+export interface GenreDetailResponse {
+  genre: string;
+  kpis: {
+    plays: number;
+    priorPlays: number | null;
+    finishedRate: number | null;
+    abandonedRate: number | null;
+    itemCount: number;
+    sizeBytes: number;
+    itemShare: number | null;
+    playShare: number | null;
+  };
+  weekly: RangeSeriesPoint[];
+  priorWeekly: RangeSeriesPoint[];
+  hourly: HourOfDayStats[];
+  /** Top three */
+  topViewers: GenreTopViewer[];
+  /** Top eight by plays */
+  topTitles: GenreTitle[];
+  /** Top eight by size among titles with no counted play */
+  neverPlayed: GenreTitle[];
 }
 
 // Media detail endpoints (GET /library/media/:id and sub-resources)
@@ -2964,7 +3174,7 @@ export interface MediaDetailResponse {
 
 export interface MediaChildEntry {
   id: string;
-  mediaType: 'season' | 'episode';
+  mediaType: 'season' | 'episode' | 'album';
   title: string;
   seasonNumber: number | null;
   episodeCount: number | null;
@@ -2974,10 +3184,57 @@ export interface MediaChildEntry {
   tvdbId: number | null;
   showMediaId: string | null;
   genres: string[] | null;
+  /** Albums only: one entry per server copy, art and date from that copy. */
+  year?: number | null;
+  thumbPath?: string | null;
+  serverId?: string;
+  addedAt?: string;
+  trackCount?: number;
 }
 
 export interface MediaChildrenResponse {
   data: MediaChildEntry[];
+}
+
+export interface AlbumCopy {
+  serverId: string;
+  ratingKey: string;
+}
+
+export interface AlbumListener {
+  name: string;
+  plays: number;
+  /** Percent of the album's all-time plays. */
+  share: number;
+}
+
+export interface AlbumTrack {
+  index: number | null;
+  title: string;
+  durationMs: number | null;
+  plays: number;
+  lastPlayedAt: string | null;
+}
+
+/** GET /library/media/:id/album. Tracks are deduped by number and title across the album's copies. */
+export interface AlbumDetailResponse {
+  album: {
+    id: string;
+    title: string;
+    artistTitle: string | null;
+    artistMediaId: string | null;
+    year: number | null;
+    trackCount: number;
+    durationMs: number | null;
+    addedAt: string;
+    posterUrl: string | null;
+    posterVersion: string | null;
+    copies: AlbumCopy[];
+  };
+  last30: { plays: number; priorPlays: number; listenMs: number };
+  /** `listeners` is empty when the caller may not see other people's activity. */
+  allTime: { plays: number; listeners: AlbumListener[]; finishedRate: number | null };
+  tracks: AlbumTrack[];
 }
 
 export interface MediaStatsMeasures {

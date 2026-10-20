@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts/highcharts-more';
 import { HighchartsReact } from 'highcharts-react-official';
 import type { LibraryStorageResponse } from '@tracearr/shared';
@@ -43,6 +44,7 @@ export function StoragePredictionChart({
   period = 'month',
   showPredictions: showPredictionsProp = true,
 }: StoragePredictionChartProps) {
+  const { t } = useTranslation('pages');
   const options = useMemo<Highcharts.Options>(() => {
     if (!data?.history || data.history.length === 0) {
       return {};
@@ -138,7 +140,7 @@ export function StoragePredictionChart({
     const series: Highcharts.SeriesOptionsType[] = [
       {
         type: 'area',
-        name: 'Historical',
+        name: t('library.charts.storage.historical'),
         data: historicalData,
         fillColor: {
           linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
@@ -165,7 +167,7 @@ export function StoragePredictionChart({
     if (predictionPoints.length > 0) {
       series.push({
         type: 'line',
-        name: 'Prediction',
+        name: t('library.charts.storage.prediction'),
         data: predictionLineData,
         color: 'hsl(var(--chart-2))',
         dashStyle: 'ShortDash',
@@ -178,7 +180,7 @@ export function StoragePredictionChart({
 
       series.push({
         type: 'arearange',
-        name: 'Confidence',
+        name: t('library.storage.confidence'),
         data: confidenceBandData,
         color: 'hsl(var(--chart-2))',
         fillOpacity: 0.15,
@@ -247,7 +249,7 @@ export function StoragePredictionChart({
                   value: lastHistoricalDate,
                   dashStyle: 'Dash',
                   label: {
-                    text: 'Now',
+                    text: t('library.charts.storage.now'),
                     style: {
                       color: 'hsl(var(--muted-foreground))',
                       fontSize: '10px',
@@ -261,7 +263,7 @@ export function StoragePredictionChart({
       },
       yAxis: {
         title: {
-          text: `Storage (${unitLabel})`,
+          text: t('library.charts.storage.axis', { unit: unitLabel }),
           style: {
             color: 'hsl(var(--muted-foreground))',
           },
@@ -300,7 +302,12 @@ export function StoragePredictionChart({
             if (point.series.type === 'arearange') {
               // Show range for confidence band - access low/high from the point
               const rangePoint = point as unknown as { low: number; high: number; color: string };
-              html += `<br/><span style="color:${point.color}">●</span> Range: ${rangePoint.low?.toFixed(1)} - ${rangePoint.high?.toFixed(1)} ${unitLabel}`;
+              const range = t('library.charts.storage.range', {
+                low: rangePoint.low?.toFixed(1),
+                high: rangePoint.high?.toFixed(1),
+                unit: unitLabel,
+              });
+              html += `<br/><span style="color:${point.color}">●</span> ${range}`;
             } else {
               html += `<br/><span style="color:${point.color}">●</span> ${point.series.name}: ${point.y?.toFixed(1)} ${unitLabel}`;
             }
@@ -351,7 +358,7 @@ export function StoragePredictionChart({
         ],
       },
     };
-  }, [data, height, period, showPredictionsProp]);
+  }, [data, height, period, showPredictionsProp, t]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;
@@ -361,8 +368,8 @@ export function StoragePredictionChart({
     return (
       <EmptyState
         icon={TrendingUp}
-        title="No storage data"
-        description="Storage history will appear here once available"
+        title={t('library.charts.storage.empty.title')}
+        description={t('library.charts.storage.empty.description')}
       />
     );
   }

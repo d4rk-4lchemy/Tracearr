@@ -17,6 +17,8 @@ interface UserCellProps {
   size?: 'sm' | 'md';
   /** The @username under the name, rendered only where it differs from it. */
   showUsername?: boolean;
+  /** Muted facts on the handle's line, such as the email. */
+  details?: string[];
   link?: boolean;
   trailing?: ReactNode;
   /** A removed account: the name reads as struck through. */
@@ -32,6 +34,7 @@ export function UserCell({
   serverId,
   size = 'sm',
   showUsername = false,
+  details = [],
   link = true,
   trailing,
   muted,
@@ -42,6 +45,7 @@ export function UserCell({
   const small = size === 'sm';
   const avatarUrl = getAvatarUrl(serverId, thumbUrl, small ? 24 : 40);
   const handle = showUsername && username !== null && username !== name ? `@${username}` : null;
+  const subline = [...(handle === null ? [] : [handle]), ...details].join(' · ');
 
   const body = (
     <>
@@ -65,8 +69,8 @@ export function UserCell({
         >
           {name}
         </span>
-        {handle !== null && (
-          <span className="text-muted-foreground block truncate text-xs">{handle}</span>
+        {subline !== '' && (
+          <span className="text-muted-foreground block truncate text-xs">{subline}</span>
         )}
       </span>
     </>

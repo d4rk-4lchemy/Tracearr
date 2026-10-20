@@ -104,6 +104,7 @@ function load({
   streams = [] as { id: string }[],
   others = undefined as number | undefined,
   titles = [bear, dune] as unknown[],
+  listenTimeMs = 0,
 } = {}) {
   vi.mocked(useMyStats).mockReturnValue(
     query({
@@ -119,8 +120,20 @@ function load({
   vi.mocked(useHistoryAggregates).mockImplementation((filters) =>
     query(
       filters?.endDate && filters.startDate && filters.startDate.getTime() < Date.now() - 4e9
-        ? { playCount: 4, totalWatchTimeMs: 1_800_000, uniqueContent: 3, uniqueUsers: 1 }
-        : { playCount: 5, totalWatchTimeMs: 6_360_000, uniqueContent: 5, uniqueUsers: 1 }
+        ? {
+            playCount: 4,
+            totalWatchTimeMs: 1_800_000,
+            listenTimeMs: 0,
+            uniqueContent: 3,
+            uniqueUsers: 1,
+          }
+        : {
+            playCount: 5,
+            totalWatchTimeMs: 6_360_000,
+            listenTimeMs,
+            uniqueContent: 5,
+            uniqueUsers: 1,
+          }
     )
   );
   vi.mocked(useEngagementStats).mockReturnValue(
@@ -169,8 +182,19 @@ describe('PersonalDashboard', () => {
     renderPage();
 
     expect(screen.getByText('1h 46m')).toBeInTheDocument();
-    expect(screen.getByText(/dashboard\.me\.vsPrior.*\+25%/)).toBeInTheDocument();
-    expect(screen.getByText(/dashboard\.me\.vsPrior.*\+253%/)).toBeInTheDocument();
+    expect(screen.getByText('+25%')).toBeInTheDocument();
+    expect(screen.getByText('+253%')).toBeInTheDocument();
+    expect(screen.getAllByText('(userDetail.cards.vsPrior)')).toHaveLength(2);
+  });
+
+  it('takes listen time out of watch time and the change, and names it under the value', () => {
+    load({ listenTimeMs: 3_600_000 });
+
+    renderPage();
+
+    expect(screen.getByText('46m')).toBeInTheDocument();
+    expect(screen.getByText('(common:labels.listenTime 1h 0m)')).toBeInTheDocument();
+    expect(screen.getByText('+53%')).toBeInTheDocument();
   });
 
   it('shows the day streak tile once, and not at all with no streak', () => {
@@ -277,7 +301,7 @@ describe('PersonalDashboard', () => {
     expect(vi.mocked(useEngagementStats).mock.calls[0]?.[2]).toMatchObject({ self: true });
     expect(vi.mocked(useEngagementStats).mock.calls[0]?.[0]).toEqual({ period: 'all' });
     for (const hook of [usePlaysByDayOfWeek, usePlaysByHourOfDay]) {
-      expect(vi.mocked(hook).mock.calls[0]?.[2]).toBe(true);
+      expect(vi.mocked(hook).mock.calls[0]?.[2]).toEqual({ self: true });
     }
     expect(vi.mocked(useMyTopTitles)).toHaveBeenCalledWith(['srv-1']);
     expect(vi.mocked(useActiveSessions).mock.calls[0]?.[2]).toBe(true);

@@ -25,7 +25,9 @@ import {
 } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
+import { useTimeRange } from '@/hooks/useTimeRange';
 import { PLAYBACK_DECISIONS, type SessionWithDetails } from '@tracearr/shared';
+import type { TimeRangeValue } from '@/components/ui/time-range-picker';
 
 // Local storage key for column visibility
 const COLUMN_VISIBILITY_KEY = 'tracearr-history-columns';
@@ -67,8 +69,36 @@ function parseCommaSeparated<T extends string>(
   return values.length > 0 ? values : undefined;
 }
 
+const PRESET_DAYS: Partial<Record<TimeRangeValue['period'], number>> = {
+  day: 1,
+  week: 7,
+  month: 30,
+  year: 365,
+};
+
+type DateWindow = { startDate: Date; endDate: Date } | null;
+
+function resolveWindow(
+  period: TimeRangeValue['period'],
+  startDate: string | undefined,
+  endDate: string | undefined
+): DateWindow {
+  if (startDate && endDate) {
+    return { startDate: new Date(startDate), endDate: new Date(endDate) };
+  }
+  if (period === 'all') return null;
+  const now = new Date();
+  return {
+    startDate: new Date(now.getTime() - (PRESET_DAYS[period] ?? 30) * 86_400_000),
+    endDate: now,
+  };
+}
+
 // Parse URL search params into filter object
-function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
+function parseFiltersFromUrl(
+  searchParams: URLSearchParams,
+  dateWindow: DateWindow
+): HistoryFilters {
   const filters: HistoryFilters = {};
 
   const userIds = searchParams.get('userIds');
@@ -119,26 +149,9 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
   const search = searchParams.get('search');
   if (search) filters.search = search;
 
-  const startDate = searchParams.get('startDate');
-  const endDate = searchParams.get('endDate');
-  const period = searchParams.get('period');
-
-  if (startDate) {
-    const parsed = new Date(startDate);
-    if (!isNaN(parsed.getTime())) filters.startDate = parsed;
-  }
-
-  if (endDate) {
-    const parsed = new Date(endDate);
-    if (!isNaN(parsed.getTime())) filters.endDate = parsed;
-  }
-
-  // Default to 30d only on fresh page load (no period param)
-  // If period=all, user explicitly wants all data
-  if (!filters.startDate && !filters.endDate && period !== 'all') {
-    const now = new Date();
-    filters.startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    filters.endDate = now;
+  if (dateWindow) {
+    filters.startDate = dateWindow.startDate;
+    filters.endDate = dateWindow.endDate;
   }
 
   const watched = searchParams.get('watched');
@@ -159,8 +172,9 @@ function parseFiltersFromUrl(searchParams: URLSearchParams): HistoryFilters {
   return filters;
 }
 
-// Convert filter object to URL search params
-function filtersToUrlParams(filters: HistoryFilters): URLSearchParams {
+// Convert filter object to URL search params. A filter set with a window keeps the range params
+// useTimeRange owns; one without a window is the all-time range.
+function filtersToUrlParams(filters: HistoryFilters, current: URLSearchParams): URLSearchParams {
   const params = new URLSearchParams();
 
   if (filters.serverUserIds?.length) params.set('userIds', filters.serverUserIds.join(','));
@@ -173,9 +187,14 @@ function filtersToUrlParams(filters: HistoryFilters): URLSearchParams {
   if (filters.platforms?.length) params.set('platforms', filters.platforms.join(','));
   if (filters.geoCountries?.length) params.set('countries', filters.geoCountries.join(','));
   if (filters.search) params.set('search', filters.search);
-  if (filters.startDate) params.set('startDate', filters.startDate.toISOString());
-  if (filters.endDate) params.set('endDate', filters.endDate.toISOString());
-  if (!filters.startDate && !filters.endDate) params.set('period', 'all');
+  if (!filters.startDate && !filters.endDate) {
+    params.set('period', 'all');
+  } else {
+    for (const key of ['period', 'from', 'to']) {
+      const value = current.get(key);
+      if (value !== null) params.set(key, value);
+    }
+  }
   if (filters.watched !== undefined) params.set('watched', String(filters.watched));
   if (filters.subtitleBurnIn) params.set('subtitleBurnIn', 'true');
   if (filters.orderBy && filters.orderBy !== 'startedAt') params.set('orderBy', filters.orderBy);
@@ -189,6 +208,7 @@ export function History() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { value: range, setValue: setRange, apiParams } = useTimeRange();
   const { selectedServerIds, isMultiServer } = useServer();
   const { user } = useAuth();
   const isMember = user?.role === 'member';
@@ -210,15 +230,23 @@ export function History() {
     [isMember, columnVisibility]
   );
 
+  // A preset window is computed from now, so it is keyed on the range alone: a sort or
+  // filter change must not shift it and refetch the aggregates.
+  const { startDate: apiStart, endDate: apiEnd } = apiParams;
+  const dateWindow = useMemo(
+    () => resolveWindow(range.period, apiStart, apiEnd),
+    [range.period, apiStart, apiEnd]
+  );
+
   // Parse filters from URL on mount and when URL changes
   const filters = useMemo(() => {
-    const parsed = parseFiltersFromUrl(searchParams);
+    const parsed = parseFiltersFromUrl(searchParams, dateWindow);
     // Apply selected servers from context if not set in URL
     if (!parsed.serverIds?.length && selectedServerIds.length > 0) {
       parsed.serverIds = selectedServerIds;
     }
     return parsed;
-  }, [searchParams, selectedServerIds]);
+  }, [searchParams, dateWindow, selectedServerIds]);
 
   // Query hooks
   const {
@@ -263,10 +291,9 @@ export function History() {
   // Handle filter changes - update URL
   const handleFiltersChange = useCallback(
     (newFilters: HistoryFilters) => {
-      const params = filtersToUrlParams(newFilters);
-      setSearchParams(params, { replace: true });
+      setSearchParams(filtersToUrlParams(newFilters, searchParams), { replace: true });
     },
-    [setSearchParams]
+    [searchParams, setSearchParams]
   );
 
   // Handle column visibility changes - save to local storage
@@ -302,11 +329,7 @@ export function History() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold">{t('pages:history.title')}</h1>
-        <p className="text-muted-foreground">{t('pages:history.description')}</p>
-      </div>
+      <h1 className="sr-only">{t('pages:history.title')}</h1>
 
       {/* Aggregates Summary */}
       {aggregatesIsError ? (
@@ -329,6 +352,8 @@ export function History() {
           <HistoryFiltersBar
             filters={filters}
             onFiltersChange={handleFiltersChange}
+            timeRange={range}
+            onTimeRangeChange={setRange}
             filterOptions={filterOptions}
             isFetching={isFetching || filterOptionsLoading}
             columnVisibility={columnVisibility}

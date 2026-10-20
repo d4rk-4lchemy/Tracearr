@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -31,6 +32,7 @@ export function TerminateSessionDialog({
   mediaTitle,
   username,
 }: TerminateSessionDialogProps) {
+  const { t } = useTranslation(['pages', 'common']);
   const [reason, setReason] = useState('');
   const terminateSession = useTerminateSession();
 
@@ -57,23 +59,21 @@ export function TerminateSessionDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
         <DialogHeader>
-          <DialogTitle>Terminate Stream</DialogTitle>
+          <DialogTitle>{t('terminateStream.title')}</DialogTitle>
           <DialogDescription>
-            Stop &ldquo;{mediaTitle}&rdquo; for @{username}?
+            {t('terminateStream.stopMedia', { mediaTitle, username })}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="reason">Message to user (optional)</Label>
+          <Label htmlFor="reason">{t('terminateStream.messageLabel')}</Label>
           <Input
             id="reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g., Please don't share your account"
+            placeholder={t('terminateStream.messagePlaceholder')}
             maxLength={500}
           />
-          <p className="text-muted-foreground text-xs">
-            This message will be shown to them during playback
-          </p>
+          <p className="text-muted-foreground text-xs">{t('terminateStream.messageHint')}</p>
         </div>
         <DialogFooter>
           <Button
@@ -81,14 +81,16 @@ export function TerminateSessionDialog({
             onClick={() => handleOpenChange(false)}
             disabled={terminateSession.isPending}
           >
-            Cancel
+            {t('common:actions.cancel')}
           </Button>
           <Button
             variant="destructive"
             onClick={handleTerminate}
             disabled={terminateSession.isPending}
           >
-            {terminateSession.isPending ? 'Terminating...' : 'Kill Stream'}
+            {terminateSession.isPending
+              ? t('terminateStream.terminating')
+              : t('automations.actions.kill_stream.label')}
           </Button>
         </DialogFooter>
       </DialogContent>

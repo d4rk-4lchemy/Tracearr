@@ -18,6 +18,7 @@ import {
   hasHyperLogLog,
   getStartOfDayInTimezone,
   getStartOfNextDayInTimezone,
+  previousRange,
 } from '../utils.js';
 
 // Mock the database module
@@ -225,6 +226,23 @@ describe('buildDateRangeFilter', () => {
     const result = buildDateRangeFilter(range);
     const sqlStrings = getSqlStrings(result);
     expect(sqlStrings.trim()).toBe('');
+  });
+});
+
+describe('previousRange', () => {
+  it('returns the equal-length window ending at the range start', () => {
+    const range = {
+      start: new Date('2026-10-01T00:00:00Z'),
+      end: new Date('2026-10-31T00:00:00Z'),
+    };
+    expect(previousRange(range)).toEqual({
+      start: new Date('2026-09-01T00:00:00Z'),
+      end: new Date('2026-10-01T00:00:00Z'),
+    });
+  });
+
+  it('returns null for an open range', () => {
+    expect(previousRange({ start: null, end: new Date() })).toBeNull();
   });
 });
 

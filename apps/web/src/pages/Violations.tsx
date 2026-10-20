@@ -538,13 +538,6 @@ export function Violations() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">{t('pages:violations.title')}</h1>
-        <p className="text-muted-foreground text-sm">
-          {t('common:count.violation', { count: total })}
-        </p>
-      </div>
-
       {/* Person filter summary: one card when reading a single person's record,
           a compact combined strip when several are selected. */}
       {selectedPeople.length === 1 && selectedPeople[0] && (
@@ -653,6 +646,9 @@ export function Violations() {
               errorMessage={t('pages:violations.personFilterError')}
               loadingMessage={t('common:states.loading')}
             />
+            <p className="text-muted-foreground ml-auto text-sm">
+              {t('common:count.violation', { count: total })}
+            </p>
           </FilterBar>
 
           {isError ? (

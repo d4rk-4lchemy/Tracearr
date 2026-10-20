@@ -83,5 +83,8 @@ if [[ "${NODE_OPTIONS:-}" != *"--max-old-space-size"* ]]; then
     fi
 fi
 
+# tracearr, redis and postgres stop one after another, all inside Docker's default 10s
+export SHUTDOWN_GRACE_MS="${SHUTDOWN_GRACE_MS:-5000}"
+
 echo "[Tracearr] Starting application..."
 exec node /app/apps/server/dist/index.js

@@ -86,7 +86,7 @@ describe('Map', () => {
     expect(screen.getByText('common:errors.somethingWentWrong')).toBeInTheDocument();
     expect(screen.getByText('locations failed')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+    await userEvent.click(screen.getByRole('button', { name: /actions.tryAgain/ }));
     expect(refetch).toHaveBeenCalled();
   });
 

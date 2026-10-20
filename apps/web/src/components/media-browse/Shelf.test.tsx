@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { Shelf } from './Shelf';
+import { Shelf, ShelfSkeleton } from './Shelf';
 
 describe('Shelf', () => {
   it('renders a labelled region with list semantics', () => {
@@ -87,5 +87,24 @@ describe('Shelf', () => {
       </MemoryRouter>
     );
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+});
+
+describe('ShelfSkeleton', () => {
+  const artOf = (container: HTMLElement) =>
+    container.querySelectorAll('[data-slot="skeleton"]:first-child');
+
+  it('draws poster art by default and square art for music shelves', () => {
+    const { container, unmount } = render(<ShelfSkeleton title="Recently added" />);
+    expect(artOf(container)).toHaveLength(6);
+    artOf(container).forEach((art) => expect(art).toHaveClass('aspect-[2/3]'));
+    unmount();
+
+    const square = render(<ShelfSkeleton title="Recently added albums" aspect="square" />);
+    expect(artOf(square.container)).toHaveLength(6);
+    artOf(square.container).forEach((art) => {
+      expect(art).toHaveClass('aspect-square');
+      expect(art).not.toHaveClass('aspect-[2/3]');
+    });
   });
 });

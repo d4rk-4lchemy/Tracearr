@@ -79,7 +79,6 @@ import { sessionRoutes as authSessionRoutes } from './auth/session.js';
 import { libraryStatsRoutes } from './library/index.js';
 import { requestRoutes } from './requests.js';
 import { serverRoutes } from './servers.js';
-import { usersRoutes as statsUsersRoutes } from './stats/users.js';
 
 const OWN = '11111111-1111-4111-8111-111111111111';
 const SERVER = '33333333-3333-4333-8333-333333333333';
@@ -101,7 +100,6 @@ async function build(user: AuthUser): Promise<void> {
   await app.register(authPlugin);
   await app.register(authSessionRoutes, { prefix: '/auth' });
   await app.register(serverRoutes, { prefix: '/servers' });
-  await app.register(statsUsersRoutes, { prefix: '/stats' });
   await app.register(libraryStatsRoutes, { prefix: '/library' });
   await app.register(requestRoutes, { prefix: '/requests' });
   await app.ready();
@@ -214,27 +212,6 @@ describe('server list and profile', () => {
 
     expect(body.serverIds).toEqual([SERVER, OTHER_SERVER]);
     expect(body.aggregateTrustScore).toBe(100);
-  });
-
-  it("leaves the trust score off a member's own leaderboard row", async () => {
-    await build(member);
-    vi.mocked(db.execute).mockResolvedValue({
-      rows: [
-        {
-          user_id: 'u-member',
-          aggregate_trust_score: 40,
-          server_user_id: OWN,
-          play_count: 1,
-          watch_time_ms: '0',
-        },
-      ],
-    } as never);
-
-    const res = await app.inject({ method: 'GET', url: '/stats/top-users' });
-
-    expect(res.json<{ data: Record<string, unknown>[] }>().data[0]).not.toHaveProperty(
-      'trustScore'
-    );
   });
 });
 
@@ -369,6 +346,8 @@ describe('browse and shelves for a member', () => {
     recentlyUpdated: [shelf(MEDIA)],
     mostPopularMovies: [{ ...shelf(MEDIA), plays: 12, viewers: 4, rank: 1 }],
     mostPopularShows: [],
+    recentlyAddedAlbums: [{ serverId: SERVER, ratingKey: 'album-1', title: 'Discovery' }],
+    mostPlayedArtists: [{ ...shelf(MEDIA), mediaType: 'artist', plays: 7, viewers: 3, rank: 1 }],
     deadWeight: [shelf(MEDIA)],
     kpis: {
       hoursWatched: 1,
@@ -414,6 +393,10 @@ describe('browse and shelves for a member', () => {
       expect(shelves.mostPopularMovies[0]).toMatchObject({ mediaId: MEDIA, rank: 1 });
       expect(shelves.mostPopularMovies[0]).not.toHaveProperty('plays');
       expect(shelves.mostPopularMovies[0]).not.toHaveProperty('viewers');
+      expect(shelves.mostPlayedArtists[0]).toMatchObject({ mediaId: MEDIA, rank: 1 });
+      expect(shelves.mostPlayedArtists[0]).not.toHaveProperty('plays');
+      expect(shelves.mostPlayedArtists[0]).not.toHaveProperty('viewers');
+      expect(shelves.recentlyAddedAlbums).toEqual(cachedShelves.recentlyAddedAlbums);
     }
   });
 
@@ -431,12 +414,21 @@ describe('browse and shelves for a member', () => {
   it("counts a member's own plays on the genres page, cached under the member segment", async () => {
     await build(member);
 
-    await app.inject({ method: 'GET', url: '/library/genres?type=show' });
+    for (const type of ['show', 'artist']) {
+      const res = await app.inject({ method: 'GET', url: `/library/genres?type=${type}` });
+      expect(res.statusCode).toBe(200);
+    }
 
-    const engagement = executed().find((q) => q.text.includes('user_media_plays_daily'));
-    expect(engagement?.params).toContain(OWN);
+    const plays = executed().filter((q) => q.text.includes('total_plays'));
+    expect(plays).toHaveLength(2);
+    for (const query of plays) expect(query.params).toContain(OWN);
+    const hourly = executed().filter((q) => q.text.includes('EXTRACT(HOUR'));
+    expect(hourly).toHaveLength(2);
+    for (const query of hourly) expect(query.params).toContain(OWN);
     expect(cacheWrites()).toContainEqual(
-      expect.stringMatching(new RegExp(`^${REDIS_KEYS.LIBRARY_GENRES}:.*:member:u-member$`))
+      expect.stringMatching(
+        new RegExp(`^${REDIS_KEYS.LIBRARY_GENRES}:${SERVER}:show:UTC:month:.*:member:u-member$`)
+      )
     );
   });
 

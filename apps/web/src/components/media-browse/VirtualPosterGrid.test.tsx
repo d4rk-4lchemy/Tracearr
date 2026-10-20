@@ -69,6 +69,10 @@ describe('computeCardWidth / computeRowHeight', () => {
   it('row height is card width * 1.5 plus the 72px two-line-title footer plus the 16px row bottom padding', () => {
     expect(computeRowHeight(140)).toBe(140 * 1.5 + 72 + 16);
   });
+
+  it('square rows are as tall as the card is wide, plus the same footer and padding', () => {
+    expect(computeRowHeight(140, 'square')).toBe(140 + 72 + 16);
+  });
 });
 
 describe('computeGridHeight', () => {
@@ -155,6 +159,19 @@ beforeEach(() => {
 });
 
 describe('sparse rendering', () => {
+  it('renders square skeleton cells for square art', () => {
+    const { container } = render(
+      <VirtualPosterGrid
+        {...baseGridProps}
+        aspect="square"
+        totalItems={4}
+        getRow={() => undefined}
+      />
+    );
+    expect(container.querySelector('.aspect-square.animate-pulse')).not.toBeNull();
+    expect(container.querySelector('.aspect-\\[2\\/3\\]')).toBeNull();
+  });
+
   it('renders loaded rows as cards and unloaded cells as skeletons in place', () => {
     // jsdom reports a 0px container => 2 columns. Rows 0-1 are loaded, the
     // rest of the total is not.

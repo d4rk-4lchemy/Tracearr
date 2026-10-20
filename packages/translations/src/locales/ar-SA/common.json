@@ -68,7 +68,8 @@
     "transcode": "تحويل الترميز",
     "hwTranscode": "",
     "burnIn": "",
-    "watched": ""
+    "watched": "",
+    "played": ""
   },
   "severity": {
     "low": "منخفض",
@@ -133,6 +134,7 @@
     "serverOwner": "مالك الخادم",
     "resolution": "قرار",
     "watchTime": "وقت المشاهدة",
+    "listenTime": "",
     "pausedTime": "وقت الإيقاف المؤقت",
     "sessionDetails": "تفاصيل الجلسة",
     "recentSessions": "الجلسات الأخيرة",
@@ -152,7 +154,13 @@
     "streamDetails": "",
     "transcodeReason": "",
     "loadMore": "",
-    "playback": ""
+    "playback": "",
+    "plays": "",
+    "weekOf": "",
+    "viewers": "",
+    "watchHours": "",
+    "completion": "",
+    "serverLegend": ""
   },
   "search": {
     "searchUsers": "البحث عن المستخدمين...",
@@ -185,6 +193,7 @@
     "episode_plural": "الحلقات",
     "track": "التتبع",
     "track_plural": "المسارات",
+    "artist_plural": "",
     "liveTV": "التلفزيون المباشر",
     "photo": "صورة",
     "tv": "التلفاز",
@@ -333,7 +342,9 @@
     "noDeviceData": "لا تتوفر بيانات الجهاز",
     "noJobHistory": "لا يوجد تاريخ عمل بعد",
     "noSessionsFound": "لم يتم العثور على جلسات",
-    "noUserData": "لا تتوفر بيانات المستخدم"
+    "noUserData": "لا تتوفر بيانات المستخدم",
+    "noPlayData": "",
+    "noLocationData": ""
   },
   "confirmations": {
     "unsavedChanges": "لديك تغييرات غير محفوظة. هل أنت متأكد من أنك تريد المغادرة؟"

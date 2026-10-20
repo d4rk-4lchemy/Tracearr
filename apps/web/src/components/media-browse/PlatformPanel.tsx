@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import type { MediaPlatformBreakdownEntry } from '@tracearr/shared';
+import { verbKeysFor, type MediaPlatformBreakdownEntry } from '@tracearr/shared';
 import {
   Table,
   TableBody,
@@ -20,6 +20,7 @@ interface PlatformPanelProps {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  mediaType: string | undefined;
 }
 
 function PlatformPanelSkeleton() {
@@ -36,7 +37,13 @@ function PlatformPanelSkeleton() {
   );
 }
 
-export function PlatformPanel({ data, isLoading, isError, onRetry }: PlatformPanelProps) {
+export function PlatformPanel({
+  data,
+  isLoading,
+  isError,
+  onRetry,
+  mediaType,
+}: PlatformPanelProps) {
   const { t } = useTranslation(['pages', 'common']);
 
   return (
@@ -64,9 +71,7 @@ export function PlatformPanel({ data, isLoading, isError, onRetry }: PlatformPan
                 <TableHead className="text-right">
                   {t('media.detail.platforms.columns.plays')}
                 </TableHead>
-                <TableHead className="text-right">
-                  {t('media.detail.platforms.columns.watchTime')}
-                </TableHead>
+                <TableHead className="text-right">{t(verbKeysFor(mediaType).watchTime)}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

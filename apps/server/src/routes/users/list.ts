@@ -63,6 +63,7 @@ import { disconnectUserSockets } from '../../websocket/index.js';
 import { parseDateString } from '../../utils/parsing.js';
 import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
 import { PLAY_COUNT } from '../../constants/index.js';
+import { VIOLATION_ALIAS_SQL } from '../../services/automations/aliasFilter.js';
 
 /** What a trust-score notification says moved the score when a person did it by hand. */
 const OWNER_TRUST_REASON = 'changed by an owner';
@@ -74,7 +75,8 @@ const RESET_TRUST_REASON = 'reset by an owner';
  * Sort keys, all on the identity row so the LIMIT can ride an index on `users`
  * instead of sorting the whole server_users x users product. The directions and
  * NULLS placement mirror the users_* roster indexes in schema.ts exactly; see
- * buildOrderBy.
+ * buildOrderBy. `pendingViolations` is the exception: it names the page query's
+ * select-list count, which no index covers, so that sort counts every identity.
  *
  * `username` orders on the identity's display name rather than the
  * representative account's server username. Those differ only when users.name
@@ -89,7 +91,18 @@ const USER_SORT_KEYS: Record<UserSortField, SortKey> = {
   trustScore: { key: sql`u.aggregate_trust_score`, defaultDir: 'desc', nulls: 'last' },
   joinedAt: { key: sql`u.first_joined_at`, defaultDir: 'desc', nulls: 'last' },
   lastActivityAt: { key: sql`u.last_activity_at`, defaultDir: 'desc', nulls: 'last' },
+  role: { key: sql`u.role`, defaultDir: 'asc', nulls: 'last' },
+  pendingViolations: { key: sql`"pendingViolations"`, defaultDir: 'desc', nulls: 'last' },
 };
+
+/** Unacknowledged violations on any of the identity `u`'s accounts on the resolved servers. */
+function pendingViolationsFrom(resolvedIds: string[] | undefined): SQL {
+  return sql`FROM automation_runs v
+    JOIN server_users vsu ON vsu.id = v.server_user_id
+    WHERE vsu.user_id = u.id AND ${VIOLATION_ALIAS_SQL}
+      AND v.acknowledged_at IS NULL AND v.dismissed_at IS NULL
+      ${buildMultiServerFragment(resolvedIds, 'vsu.server_id')}`;
+}
 
 interface UserRosterSql {
   /** undefined = every server; [] = none of the requested servers are visible. */
@@ -168,6 +181,18 @@ export function buildUserRosterSql(
     identityConditions.push(sql`u.login_access <> 'default'`);
   }
 
+  if (filters.role) {
+    identityConditions.push(sql`u.role = ${filters.role}`);
+  }
+
+  if (filters.signIn) {
+    identityConditions.push(sql`u.login_access = ${filters.signIn}`);
+  }
+
+  if (filters.pendingOnly) {
+    identityConditions.push(sql`EXISTS (SELECT 1 ${pendingViolationsFrom(resolvedIds)})`);
+  }
+
   const joinedAfter = utcDayStart(filters.joinedAfter);
   if (joinedAfter) {
     identityConditions.push(sql`u.first_joined_at >= ${joinedAfter}`);
@@ -234,6 +259,7 @@ export function buildUserRosterPageQuery(params: {
             sql`, `
           )})
       ) AS "authAccountCount",
+      (SELECT count(*)::int ${pendingViolationsFrom(roster.resolvedIds)}) AS "pendingViolations",
       rep.id AS "id",
       rep.server_id AS "serverId",
       s.name AS "serverName",
@@ -303,6 +329,7 @@ interface RosterPageRow {
   identityLastActivityAt: string | null;
   plexAccountCount: number;
   authAccountCount: number;
+  pendingViolations: number;
   id: string;
   serverId: string;
   serverName: string;
@@ -350,6 +377,7 @@ interface UserRosterRow {
   identityJoinedAt: string | null;
   identityLastActivityAt: string | null;
   loginCapable: boolean;
+  pendingViolations: number;
   identityServers: IdentityServer[];
 }
 
@@ -482,6 +510,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
         linkedPlexAccountCount: row.plexAccountCount,
         authAccountCount: row.authAccountCount,
       }),
+      pendingViolations: row.pendingViolations,
       // Fallback is unreachable in practice: the row's own server is always part of the
       // batched scope above. Kept as a safety net, not an expected path.
       identityServers: identityServersByUserId.get(row.userId) ?? [

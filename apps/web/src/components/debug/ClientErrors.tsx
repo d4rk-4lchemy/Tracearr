@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RotateCcw, Trash2, TriangleAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { clearClientErrors, getClientErrors } from '@/lib/clientErrors';
 
 export function ClientErrors() {
+  const { t } = useTranslation(['pages', 'common']);
   const [errors, setErrors] = useState(getClientErrors);
 
   return (
@@ -13,18 +15,16 @@ export function ClientErrors() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <TriangleAlert className="h-5 w-5" />
-          Browser Errors
+          {t('debug.clientErrors.title')}
           {errors.length > 0 && <Badge variant="secondary">{errors.length}</Badge>}
         </CardTitle>
-        <CardDescription>
-          Uncaught errors from this tab since it was loaded. Not persisted.
-        </CardDescription>
+        <CardDescription>{t('debug.clientErrors.description')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setErrors(getClientErrors())}>
             <RotateCcw />
-            Refresh
+            {t('common:actions.refresh')}
           </Button>
           <Button
             variant="outline"
@@ -35,12 +35,12 @@ export function ClientErrors() {
             }}
           >
             <Trash2 />
-            Clear
+            {t('common:actions.clear')}
           </Button>
         </div>
 
         {errors.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No errors captured</p>
+          <p className="text-muted-foreground text-sm">{t('debug.clientErrors.empty')}</p>
         ) : (
           <div className="space-y-2">
             {errors.map((err) => (

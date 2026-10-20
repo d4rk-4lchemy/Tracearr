@@ -30,7 +30,7 @@ export function ConcurrentChart({
   height = 250,
   period = 'month',
 }: ConcurrentChartProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'pages']);
   const options = useMemo<Highcharts.Options>(() => {
     if (!data || data.length === 0) {
       return {};
@@ -136,7 +136,13 @@ export function ConcurrentChart({
 
           let dateStr: string;
           if (period === 'all') {
-            dateStr = `Week of ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+            dateStr = t('labels.weekOf', {
+              date: date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              }),
+            });
           } else if (period === 'year' || period === 'month') {
             dateStr = date.toLocaleDateString('en-US', {
               month: 'short',
@@ -154,7 +160,7 @@ export function ConcurrentChart({
             total += point.y || 0;
             html += `<br/><span style="color:${point.color}">●</span> ${point.series.name}: ${point.y}`;
           });
-          html += `<br/><b>Peak Concurrent: ${total}</b>`;
+          html += `<br/><b>${t('pages:activity.peakConcurrent', { value: total })}</b>`;
 
           return html;
         },
@@ -253,7 +259,7 @@ export function ConcurrentChart({
   }
 
   if (!data || data.length === 0) {
-    return <ChartEmpty height={height} message="No concurrent stream data available" />;
+    return <ChartEmpty height={height} message={t('pages:activity.noConcurrentData')} />;
   }
 
   return (

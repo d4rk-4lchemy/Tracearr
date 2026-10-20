@@ -14,8 +14,8 @@ import {
 } from '@/components/ui/select';
 import { TimeRangePicker } from '@/components/ui/time-range-picker';
 import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { X, Flame, CircleDot } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { ErrorState } from '@/components/library/ErrorState';
 import { useLocationStats } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
@@ -23,7 +23,7 @@ import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { useTimeRange } from '@/hooks/useTimeRange';
 
 export function Map() {
-  const { t } = useTranslation(['pages', 'common']);
+  const { t } = useTranslation(['pages', 'common', 'nav']);
   const [searchParams, setSearchParams] = useSearchParams();
   const { value: timeRange, setValue: setTimeRange } = useTimeRange();
   const { selectedServerIds, selectedServers, isMultiServer } = useServer();
@@ -190,6 +190,7 @@ export function Map() {
     <div className="-m-6 flex h-[calc(100vh-3rem)] flex-col md:h-screen">
       {/* Filter bar */}
       <div className="bg-card/50 relative z-20 flex items-center gap-3 border-b px-4 py-2 backdrop-blur">
+        <h1 className="sr-only">{t('nav:map')}</h1>
         {/* Time range picker */}
         <TimeRangePicker value={timeRange} onChange={setTimeRange} />
 
@@ -242,36 +243,25 @@ export function Map() {
         <div className="bg-border h-4 w-px" />
 
         {/* View mode toggle */}
-        <div className="bg-muted/50 flex h-8 rounded-md border p-0.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setViewMode('heatmap')}
-            className={cn(
-              'h-7 gap-1.5 rounded-sm px-2.5 text-xs',
-              filters.viewMode === 'heatmap'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-transparent'
-            )}
-          >
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          size="sm"
+          value={filters.viewMode}
+          onValueChange={(mode) => {
+            if (mode === 'heatmap' || mode === 'circles') setViewMode(mode);
+          }}
+          aria-label={t('map.viewMode')}
+        >
+          <ToggleGroupItem value="heatmap" className="gap-1.5 px-2.5 text-xs">
             <Flame className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t('map.heatmap')}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setViewMode('circles')}
-            className={cn(
-              'h-7 gap-1.5 rounded-sm px-2.5 text-xs',
-              filters.viewMode === 'circles'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground hover:bg-transparent'
-            )}
-          >
+          </ToggleGroupItem>
+          <ToggleGroupItem value="circles" className="gap-1.5 px-2.5 text-xs">
             <CircleDot className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t('map.circles')}</span>
-          </Button>
-        </div>
+          </ToggleGroupItem>
+        </ToggleGroup>
 
         {/* Summary stats - right side */}
         <div className="ml-auto flex items-center gap-4 text-sm">

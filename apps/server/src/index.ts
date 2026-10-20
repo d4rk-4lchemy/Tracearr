@@ -130,6 +130,7 @@ import {
   broadcastToSessions,
   broadcastSessionEvent,
   broadcastSessionStopped,
+  disconnectAllSockets,
   dropMobileDeviceSockets,
   dropUserSockets,
 } from './websocket/index.js';
@@ -150,7 +151,12 @@ import {
   sweepDestinationConfigs,
 } from './services/notifications/destinationsMigration.js';
 import { initKillQueue, startKillWorker, shutdownKillQueue } from './jobs/killQueue.js';
-import { initImportQueue, startImportWorker, shutdownImportQueue } from './jobs/importQueue.js';
+import {
+  initImportQueue,
+  startImportWorker,
+  shutdownImportQueue,
+  IMPORT_LOCK_DURATION_MS,
+} from './jobs/importQueue.js';
 import {
   initMaintenanceQueue,
   startMaintenanceWorker,
@@ -166,6 +172,7 @@ import {
 import {
   initImagePrecacheQueue,
   startImagePrecacheWorker,
+  enqueueImagePrecache,
   shutdownImagePrecacheQueue,
 } from './jobs/imagePrecacheQueue.js';
 import {
@@ -212,6 +219,9 @@ import {
   shutdownRunRetentionQueue,
 } from './jobs/runRetentionQueue.js';
 import { initHeavyOpsLock } from './jobs/heavyOpsLock.js';
+import { registeredQueue, shutdownAllJobs } from './jobs/jobSafety.js';
+import { reconcileJobsOnBoot } from './jobs/jobsBoot.js';
+import { DEFAULT_LOCK_DURATION_MS } from './jobs/lockUtils.js';
 import { startConnectionBudget, stopConnectionBudget } from './services/connectionBudget.js';
 import { initPushRateLimiter } from './services/pushRateLimiter.js';
 import { initializeV2Rules } from './services/automations/v2Integration.js';
@@ -236,6 +246,8 @@ import { servers } from './db/schema.js';
 import { initializeClaimCode } from './utils/claimCode.js';
 import { registerService, unregisterService } from './services/serviceTracker.js';
 import { backfillMissingServerIdentifiers } from './services/serverIdentity.js';
+import { supportsMediaLibrary } from '@tracearr/shared';
+import { liveServers } from './services/liveServers.js';
 import {
   getServerMode,
   setServerMode,
@@ -259,6 +271,10 @@ import {
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 const HOST = process.env.HOST ?? '0.0.0.0';
+const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS) || 8000;
+// Set by the signal handler; the exit timer runs from the signal, so job
+// shutdown gets what is left of the budget, not a fresh one.
+let shutdownDeadline: number | null = null;
 const RECOVERY_INTERVAL_MS = 10_000;
 // A migration failure is usually deterministic (bad SQL, missing privilege) rather
 // than a transient outage, so retry it more slowly than the plain connectivity probe.
@@ -461,7 +477,8 @@ async function buildApp() {
   // Health check endpoint — always reachable, even in maintenance mode.
   // Every value returned here is read from in-memory caches; nothing awaits
   // a network call, so the handler is effectively synchronous.
-  app.get('/health', (_request, reply) => {
+  // Rate limited, the probe reads as an outage and the client goes offline
+  app.get('/health', { config: { rateLimit: false } }, (_request, reply) => {
     // The web client polls this to decide if we're up; a cached answer is a wrong answer
     reply.header('Cache-Control', 'no-store');
     const dbHealthy = isDbHealthy();
@@ -619,9 +636,11 @@ async function buildApp() {
     app.log.info('Static file serving enabled for production');
   }
 
-  // server.close() waits for active responses; an open event connection is one, so end them first.
+  // server.close() runs in Fastify's own onClose, before ours, and waits for active responses and
+  // upgraded sockets. Open event connections and Socket.io clients are both, so end them first.
   app.addHook('preClose', async () => {
     closeAllPublicEventConnections('shutdown');
+    disconnectAllSockets();
   });
 
   // Cleanup hook — handles both maintenance and ready mode resources
@@ -653,20 +672,7 @@ async function buildApp() {
     await sseManager.stop();
     await stopLeaderLease();
     await tailscaleService.shutdown();
-    await shutdownNotificationQueue();
-    await shutdownKillQueue();
-    await shutdownImportQueue();
-    await shutdownMaintenanceQueue();
-    await shutdownLibrarySyncQueue();
-    await shutdownImagePrecacheQueue();
-    await shutdownVersionCheckQueue();
-    await shutdownInactivityCheckQueue();
-    await shutdownRequestSyncQueue();
-    await shutdownBackupQueue();
-    await shutdownNewsletterQueues();
-    closeAllTransporters();
-    await shutdownPlexTokenRefreshQueue();
-    await shutdownRunRetentionQueue();
+    await shutdownQueues(app);
   });
 
   // Probe DB and Redis to decide if we can initialize services now
@@ -931,14 +937,109 @@ async function initializeServices(app: FastifyInstance) {
   initPushRateLimiter(app.redis);
   app.log.info('Push notification rate limiter initialized');
 
+  // Every queue exists before reconcileJobsOnBoot reads it, and no worker runs until it is done.
   try {
     initNotificationQueue(redisUrl);
-    startNotificationWorker();
     initKillQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize notification queue');
+  }
+  try {
+    initImportQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize import queue');
+  }
+  try {
+    initMaintenanceQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize maintenance queue');
+  }
+  try {
+    initLibrarySyncQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize library sync queue');
+  }
+  try {
+    initImagePrecacheQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize image precache queue');
+  }
+  try {
+    initVersionCheckQueue(redisUrl, app.redis, pubSubService.publish.bind(pubSubService));
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize version check queue');
+  }
+  try {
+    initInactivityCheckQueue(redisUrl, app.redis, pubSubService.publish.bind(pubSubService));
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize inactivity check queue');
+  }
+  try {
+    initRequestSyncQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize request sync queue');
+  }
+  try {
+    initBackupQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize backup queue');
+  }
+  try {
+    initNewsletterQueues(redisUrl);
+  } catch (error) {
+    app.log.error({ err: error }, 'Failed to initialize newsletter queues');
+  }
+  try {
+    initRunRetentionQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize run retention queue');
+  }
+  try {
+    initPlexTokenRefreshQueue(redisUrl);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to initialize plex token refresh queue');
+  }
+
+  // Initialize heavy operations lock (coordinates import + maintenance jobs)
+  await initHeavyOpsLock(app.redis);
+  app.log.info('Heavy operations lock initialized');
+
+  try {
+    await reconcileJobsOnBoot({
+      redis: app.redis,
+      queues: registeredQueue,
+      listServerIds: async () =>
+        (await liveServers()).filter((r) => supportsMediaLibrary(r.type)).map((r) => r.id),
+      enqueuePrecachePass: (serverId) => enqueueImagePrecache(serverId),
+      importLockMs: IMPORT_LOCK_DURATION_MS,
+      workerLockMs: DEFAULT_LOCK_DURATION_MS,
+    });
+  } catch (err) {
+    app.log.error(
+      { err },
+      'Job queue reconciliation failed; workers start against the queues as they are'
+    );
+  }
+
+  // Picks up a sync lost to a restart or a busy queue, and the first run after upgrading
+  void enqueueServerLocationSyncIfBehind().catch((err: unknown) => {
+    app.log.error({ err }, 'Failed to check for a pending server location sync');
+  });
+
+  // Size the pg pool from the server's real max_connections and the live
+  // instance count (no-op when DATABASE_POOL_MAX is set explicitly)
+  try {
+    await startConnectionBudget(app.redis);
+  } catch (err) {
+    app.log.warn({ err }, 'Connection budget unavailable, keeping default pool size');
+  }
+
+  try {
+    startNotificationWorker();
     startKillWorker();
     pushReceiptInterval = setInterval(
       () => {
-        processPushReceipts().catch((err) => {
+        processPushReceipts().catch((err: unknown) => {
           app.log.warn({ err }, 'Failed to process push receipts');
         });
       },
@@ -952,7 +1053,7 @@ async function initializeServices(app: FastifyInstance) {
     // Cleanup expired/invalid mobile tokens every hour
     mobileTokenCleanupInterval = setInterval(
       () => {
-        cleanupMobileTokens().catch((err) => {
+        cleanupMobileTokens().catch((err: unknown) => {
           app.log.warn({ err }, 'Failed to cleanup mobile tokens');
         });
       },
@@ -971,7 +1072,6 @@ async function initializeServices(app: FastifyInstance) {
 
   // Initialize import queue (uses Redis for job storage)
   try {
-    initImportQueue(redisUrl);
     startImportWorker();
     app.log.info('Import queue initialized');
   } catch (err) {
@@ -981,7 +1081,6 @@ async function initializeServices(app: FastifyInstance) {
 
   // Initialize maintenance queue (uses Redis for job storage)
   try {
-    initMaintenanceQueue(redisUrl);
     startMaintenanceWorker();
     app.log.info('Maintenance queue initialized');
   } catch (err) {
@@ -989,30 +1088,12 @@ async function initializeServices(app: FastifyInstance) {
     // Don't throw - maintenance jobs are non-critical
   }
 
-  // Initialize heavy operations lock (coordinates import + maintenance jobs)
-  await initHeavyOpsLock(app.redis);
-  app.log.info('Heavy operations lock initialized');
-
-  // Picks up a sync lost to a restart or a busy queue, and the first run after upgrading
-  void enqueueServerLocationSyncIfBehind().catch((err: unknown) => {
-    app.log.error({ err }, 'Failed to check for a pending server location sync');
-  });
-
-  // Size the pg pool from the server's real max_connections and the live
-  // instance count (no-op when DATABASE_POOL_MAX is set explicitly)
-  try {
-    await startConnectionBudget(app.redis);
-  } catch (err) {
-    app.log.warn({ err }, 'Connection budget unavailable, keeping default pool size');
-  }
-
   // Initialize library sync queue (uses Redis for job storage)
   try {
-    initLibrarySyncQueue(redisUrl);
     startLibrarySyncWorker();
     // Schedule auto-sync after a small delay to ensure all services are initialized
     setTimeout(() => {
-      scheduleAutoSync().catch((err) => {
+      scheduleAutoSync().catch((err: unknown) => {
         app.log.error({ err }, 'Failed to schedule library auto-sync');
       });
     }, 5000);
@@ -1024,8 +1105,7 @@ async function initializeServices(app: FastifyInstance) {
 
   // Initialize image precache queue (uses Redis for job storage)
   try {
-    initImagePrecacheQueue(redisUrl);
-    await startImagePrecacheWorker();
+    startImagePrecacheWorker();
     app.log.info('Image precache queue initialized');
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize image precache queue');
@@ -1035,9 +1115,10 @@ async function initializeServices(app: FastifyInstance) {
 
   // Initialize version check queue (uses Redis for job storage and caching)
   try {
-    initVersionCheckQueue(redisUrl, app.redis, pubSubService.publish.bind(pubSubService));
     startVersionCheckWorker();
-    void scheduleVersionChecks();
+    void scheduleVersionChecks().catch((err: unknown) => {
+      app.log.error({ err }, 'Failed to schedule version checks');
+    });
     app.log.info('Version check queue initialized');
   } catch (err) {
     app.log.error({ err }, 'Failed to initialize version check queue');
@@ -1049,7 +1130,6 @@ async function initializeServices(app: FastifyInstance) {
 
   // Initialize inactivity check queue (monitors inactive accounts)
   try {
-    initInactivityCheckQueue(redisUrl, app.redis, pubSubService.publish.bind(pubSubService));
     startInactivityCheckWorker();
     void scheduleInactivityChecks();
     app.log.info('Inactivity check queue initialized');
@@ -1059,9 +1139,8 @@ async function initializeServices(app: FastifyInstance) {
   }
 
   try {
-    initRequestSyncQueue(redisUrl);
     startRequestSyncWorker();
-    scheduleRequestSync().catch((err) => {
+    scheduleRequestSync().catch((err: unknown) => {
       app.log.error({ err }, 'Failed to schedule request sync');
     });
     app.log.info('Request sync queue initialized');
@@ -1071,7 +1150,6 @@ async function initializeServices(app: FastifyInstance) {
 
   // Initialize backup queue (scheduled backups)
   try {
-    initBackupQueue(redisUrl);
     startBackupWorker();
 
     // Read backup schedule from settings and configure repeatable job
@@ -1085,7 +1163,6 @@ async function initializeServices(app: FastifyInstance) {
   }
 
   try {
-    initNewsletterQueues(redisUrl);
     await resyncNewsletterSchedules(await listNewsletters());
     startNewsletterWorkers();
     app.log.info('Newsletter queues initialized');
@@ -1095,7 +1172,6 @@ async function initializeServices(app: FastifyInstance) {
 
   // Initialize run retention queue (daily purge of aged automation runs)
   try {
-    initRunRetentionQueue(redisUrl);
     startRunRetentionWorker();
     void scheduleRunRetention();
     app.log.info('Run retention queue initialized');
@@ -1105,7 +1181,6 @@ async function initializeServices(app: FastifyInstance) {
 
   // Initialize plex token refresh queue (renews strong-PIN JWT tokens before they expire)
   try {
-    initPlexTokenRefreshQueue(redisUrl);
     startPlexTokenRefreshWorker();
     void schedulePlexTokenRefresh();
     app.log.info('Plex token refresh queue initialized');
@@ -1210,6 +1285,28 @@ async function initializeServices(app: FastifyInstance) {
   setLastMigrationError(null);
   setInitStep(null);
   setServerMode('ready');
+}
+
+async function shutdownQueues(app: FastifyInstance): Promise<void> {
+  await shutdownAllJobs(
+    shutdownDeadline ? Math.max(shutdownDeadline - Date.now(), 0) : SHUTDOWN_GRACE_MS
+  );
+  await Promise.all([
+    shutdownNotificationQueue(),
+    shutdownKillQueue(),
+    shutdownImportQueue(),
+    shutdownMaintenanceQueue(),
+    shutdownLibrarySyncQueue(),
+    shutdownImagePrecacheQueue(),
+    shutdownVersionCheckQueue(),
+    shutdownInactivityCheckQueue(),
+    shutdownRequestSyncQueue(),
+    shutdownBackupQueue(),
+    shutdownNewsletterQueues(),
+    shutdownPlexTokenRefreshQueue(),
+    shutdownRunRetentionQueue(),
+  ]).catch((err: unknown) => app.log.error({ err }, 'Error shutting down queues'));
+  closeAllTransporters();
 }
 
 // ============================================================================
@@ -1540,22 +1637,11 @@ async function start() {
     const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
     for (const signal of signals) {
       process.once(signal, () => {
-        app.log.info(`Received ${signal}, shutting down gracefully...`);
+        app.log.info(`Received ${signal}, shutting down (budget ${SHUTDOWN_GRACE_MS}ms)...`);
+        shutdownDeadline = Date.now() + SHUTDOWN_GRACE_MS;
+        setTimeout(() => process.exit(1), SHUTDOWN_GRACE_MS).unref();
         stopPoller();
         void stopConnectionBudget(app.redis);
-        void tailscaleService.shutdown();
-        void Promise.all([shutdownNotificationQueue(), shutdownNewsletterQueues()]).finally(() =>
-          closeAllTransporters()
-        );
-        void shutdownKillQueue();
-        void shutdownImportQueue();
-        void shutdownLibrarySyncQueue();
-        void shutdownImagePrecacheQueue();
-        void shutdownVersionCheckQueue();
-        void shutdownInactivityCheckQueue();
-        void shutdownBackupQueue();
-        void shutdownPlexTokenRefreshQueue();
-        void shutdownRunRetentionQueue();
         void app.close().then(() => process.exit(0));
       });
     }
@@ -1589,24 +1675,7 @@ async function start() {
         }
 
         // Shut down BullMQ workers/queues (closes their internal Redis connections)
-        void Promise.all([
-          shutdownNotificationQueue(),
-          shutdownKillQueue(),
-          shutdownImportQueue(),
-          shutdownMaintenanceQueue(),
-          shutdownLibrarySyncQueue(),
-          shutdownImagePrecacheQueue(),
-          shutdownVersionCheckQueue(),
-          shutdownInactivityCheckQueue(),
-          shutdownBackupQueue(),
-          shutdownNewsletterQueues(),
-          shutdownPlexTokenRefreshQueue(),
-          shutdownRunRetentionQueue(),
-        ])
-          .finally(() => closeAllTransporters())
-          .catch((err: unknown) => {
-            app.log.error({ err }, 'Error shutting down queues during maintenance');
-          });
+        void shutdownQueues(app);
 
         // Stop the DB health interval — initializeServices will recreate it on recovery.
         if (dbHealthInterval) {
