@@ -12,6 +12,9 @@ describe('buildUsersRosterParams', () => {
       joinedBefore: undefined,
       activeAfter: undefined,
       activeBefore: undefined,
+      role: undefined,
+      signIn: undefined,
+      pendingOnly: false,
     });
   });
 
@@ -55,5 +58,15 @@ describe('buildUsersRosterParams', () => {
     const params = buildUsersRosterParams({ search: 'bob', showRemoved: true }, []);
 
     expect(params).toMatchObject({ search: 'bob', includeRemoved: true });
+  });
+
+  it('passes the role, sign-in and pending filters and drops values the API does not know', () => {
+    expect(
+      buildUsersRosterParams({ role: 'admin', signIn: 'allow', pendingOnly: true }, [])
+    ).toMatchObject({ role: 'admin', signIn: 'allow', pendingOnly: true });
+    expect(buildUsersRosterParams({ role: 'disabled', signIn: 'maybe' }, [])).toMatchObject({
+      role: undefined,
+      signIn: undefined,
+    });
   });
 });

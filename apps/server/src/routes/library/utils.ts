@@ -7,7 +7,22 @@
 
 import { sql, type SQL } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
-import { REDIS_KEYS } from '@tracearr/shared';
+import { REDIS_KEYS, TIME_MS } from '@tracearr/shared';
+import { scopeFragment, type Scope } from '../../lib/scope.js';
+import { buildMultiServerFragment } from '../../utils/serverFiltering.js';
+
+// A library_items row `li` whose thumb_path names a real image. Jellyfin/Emby paths carry
+// ?tag= only when the item had a Primary image at sync time; an untagged one 404s. The same
+// test as HAS_KNOWN_IMAGE in jobs/imagePrecacheQueue.ts, and false rather than NULL for a
+// NULL path so it sorts as a boolean.
+export const LI_HAS_KNOWN_IMAGE = sql`(li.thumb_path IS NOT NULL
+  AND (li.thumb_path NOT LIKE '/Items/%' OR li.thumb_path LIKE '%?tag=%'))`;
+
+// The active artist row a track rolls up to; t is the track, matched on the outer row.
+export const ARTIST_OF_TRACK = sql`
+  FROM library_items t
+  JOIN library_items ar ON ar.server_id = t.server_id AND ar.rating_key = t.grandparent_rating_key
+    AND ar.media_type = 'artist' AND ar.removed_at IS NULL`;
 
 /**
  * Bytes for one canonical title. Identical file_size across copies of the same
@@ -44,6 +59,31 @@ export function mediaSizeSubquery(mediaIdExpr: SQL, serverFragment: SQL): SQL {
 }
 
 /**
+ * True when a canonical title has no counted play on the servers, alias-aware (a merged
+ * loser's plays count for the canonical row) and, for shows, episode-aware.
+ * user_media_plays_daily admits every session with a media_id, so the test is `counted`
+ * rather than row existence. A member's scope narrows the plays to their own accounts.
+ */
+export function neverPlayedSql(
+  type: 'movie' | 'show',
+  mediaIdExpr: SQL,
+  serverIds: string[] | undefined,
+  scope: Scope = 'all'
+): SQL {
+  const mediaCol = sql.raw(type === 'movie' ? 'media_id' : 'show_media_id');
+  return sql`NOT EXISTS (
+    SELECT 1 FROM user_media_plays_daily p
+    WHERE p.${mediaCol} = ${mediaIdExpr} AND p.counted
+      ${buildMultiServerFragment(serverIds, 'p.server_id')}${scopeFragment(scope, sql`p.server_user_id`)}
+    UNION ALL
+    SELECT 1 FROM media loser
+    JOIN user_media_plays_daily p2 ON p2.${mediaCol} = loser.id
+    WHERE loser.merged_into_id = ${mediaIdExpr} AND p2.counted
+      ${buildMultiServerFragment(serverIds, 'p2.server_id')}${scopeFragment(scope, sql`p2.server_user_id`)}
+  )`;
+}
+
+/**
  * Mirror-deduped total bytes for a scope: the same physical file indexed by
  * several libraries or servers counts once (#478). Identity is the canonical
  * media id (item id fallback) + per-version file size; two distinct files
@@ -63,6 +103,39 @@ export function dedupedStorageBytesSql(serverFilter: SQL, libraryFilter: SQL): S
         ${libraryFilter}
     ) d
   )`;
+}
+
+const LIBRARY_PERIOD_DAYS = { '7d': 7, '30d': 30, '90d': 90, '1y': 365 } as const;
+
+export type LibraryPeriod = keyof typeof LIBRARY_PERIOD_DAYS | 'all';
+
+/**
+ * The window a library period endpoint reads: [startDate, endDate) when both are given (the
+ * period token is then ignored), else the token's length ending now, with a null start for all
+ * time. `lastDay` is the bound for queries that compare whole days inclusively: a custom end
+ * minus a millisecond, so a day-aligned end does not pull in a day past the selection, and now
+ * for presets so today is included. `cacheSegment` names the window in a cache key.
+ */
+export function resolveLibraryWindow(
+  query: { period: LibraryPeriod; startDate?: string; endDate?: string },
+  now = new Date()
+): { startDate: Date | null; endDate: Date; lastDay: Date; cacheSegment: string } {
+  if (query.startDate && query.endDate) {
+    const endDate = new Date(query.endDate);
+    return {
+      startDate: new Date(query.startDate),
+      endDate,
+      lastDay: new Date(endDate.getTime() - 1),
+      cacheSegment: `custom:${query.startDate}:${query.endDate}`,
+    };
+  }
+  const days = query.period === 'all' ? null : LIBRARY_PERIOD_DAYS[query.period];
+  return {
+    startDate: days === null ? null : new Date(now.getTime() - days * TIME_MS.DAY),
+    endDate: now,
+    lastDay: now,
+    cacheSegment: query.period,
+  };
 }
 
 /**

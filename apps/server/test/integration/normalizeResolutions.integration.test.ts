@@ -135,4 +135,23 @@ describe('normalize_resolutions maintenance job', () => {
     const [row] = await db.select().from(sessions).where(eq(sessions.id, session.id));
     expect(row?.quality).toBe('1080p');
   });
+
+  it('relabels PAL SD sessions stored as 480p to 576p (issue #1334)', async () => {
+    const server = await createTestServer({ type: 'emby' });
+    const user = await createTestUser({ role: 'member' });
+    const serverUser = await createTestServerUser({ userId: user.id, serverId: server.id });
+
+    const session = await createTestSession({
+      serverId: server.id,
+      serverUserId: serverUser.id,
+      quality: '480p',
+    });
+    await setDimensions(session.id, 720, 576);
+
+    const result = await processNormalizeResolutionsJob(fakeJob());
+    expect(result.updated).toBe(1);
+
+    const [row] = await db.select().from(sessions).where(eq(sessions.id, session.id));
+    expect(row?.quality).toBe('576p');
+  });
 });

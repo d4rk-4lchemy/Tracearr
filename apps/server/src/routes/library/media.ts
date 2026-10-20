@@ -1,7 +1,7 @@
 /**
  * Media detail endpoint
  *
- * GET /media/:id, /children, /stats, /watchers, /history, /platforms - the
+ * GET /media/:id, /children, /album, /stats, /watchers, /history, /platforms - the
  * canonical-media detail surface for the Media detail page, scoped to the
  * caller's accessible servers. :id is a media uuid only; provider refs
  * (movie:tmdb:584, used by the public API) are rejected with 400 here.
@@ -17,6 +17,8 @@ import {
   REDIS_KEYS,
   CACHE_TTL,
   POSTER_IMAGE_SIZE,
+  SQUARE_POSTER_SIZE,
+  type AlbumDetailResponse,
   type MediaAvailabilityEntry,
   type MediaDetailResponse,
   type MediaChildEntry,
@@ -44,6 +46,7 @@ import { resolveMediaAliases } from '../../services/library/mediaResolutionServi
 import { buildProxyUrl, posterVersionFor } from '../../services/imageProxy.js';
 import { listMediaRequests } from '../../services/requests/reads.js';
 import { getSetting } from '../../services/settings.js';
+import { getAlbumDetail } from '../../services/library/albumDetail.js';
 import {
   buildMediaScope,
   getAvailability,
@@ -137,6 +140,13 @@ function toChildEntry(r: MediaChildRow): MediaChildEntry {
     tvdbId: r.tvdb_id,
     showMediaId: r.show_media_id,
     genres: r.genres,
+    ...(r.media_type === 'album' && {
+      year: r.year ?? null,
+      thumbPath: r.thumb_path ?? null,
+      serverId: r.server_id,
+      addedAt: r.added_at ? new Date(r.added_at).toISOString() : undefined,
+      trackCount: r.track_count,
+    }),
   };
 }
 
@@ -232,10 +242,10 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
       return reply.notFound();
     }
 
-    // detail-v4: response gained the poster fields
+    // detail-v5: artist art became square
     const cacheKey = mediaCacheKey(
       canonical.id,
-      `detail-v4${libraryCacheSegment(request.scope)}`,
+      `detail-v5${libraryCacheSegment(request.scope)}`,
       resolvedIds
     );
     const cached = await readCache<MediaDetailResponse>(app.redis, cacheKey);
@@ -276,7 +286,7 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
           ? buildProxyUrl({
               serverId: poster.serverId,
               path: poster.thumbPath,
-              ...POSTER_IMAGE_SIZE,
+              ...(canonical.mediaType === 'artist' ? SQUARE_POSTER_SIZE : POSTER_IMAGE_SIZE),
               version: posterVersion,
               fallback: 'poster',
             })
@@ -289,8 +299,8 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * GET /media/:id/children - Seasons of a show, or episodes of a season.
-   * Movie and episode ids have no children and return 404.
+   * GET /media/:id/children - Seasons of a show, episodes of a season, or an
+   * artist's albums. Movie and episode ids have no children and return 404.
    */
   app.get('/media/:id/children', readMedia, async (request, reply) => {
     const params = mediaIdParamSchema.safeParse(request.params);
@@ -319,6 +329,42 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
     if (rows === null) return reply.notFound();
 
     const response: MediaChildrenResponse = { data: rows.map(toChildEntry) };
+    await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_MEDIA_DETAIL, JSON.stringify(response));
+    return response;
+  });
+
+  /**
+   * GET /media/:id/album - The album sheet: copies, tracks deduped by number and title, plays over
+   * the last 30 UTC days and all time. 404 unless the id is an album with an active copy in scope.
+   */
+  app.get('/media/:id/album', readMedia, async (request, reply) => {
+    const params = mediaIdParamSchema.safeParse(request.params);
+    if (!params.success) return reply.badRequest('Invalid media id');
+    const query = mediaScopeQuerySchema.safeParse(request.query);
+    if (!query.success) return reply.badRequest('Invalid query parameters');
+
+    const resolvedIds = resolveServerIds(request.user, undefined, query.data.serverIds);
+    const canonical = await resolveCanonicalMediaByRef(params.data.id);
+    if (canonical?.mediaType !== 'album') return reply.notFound();
+
+    const cacheKey = mediaCacheKey(
+      canonical.id,
+      `album${memberCacheSegment(request.scope)}${libraryCacheSegment(request.scope)}`,
+      resolvedIds
+    );
+    const cached = await readCache<AlbumDetailResponse>(app.redis, cacheKey);
+    if (cached) return cached;
+
+    const aliases = await resolveMediaAliases(canonical.id);
+    const response = await getAlbumDetail({
+      album: canonical,
+      aliases: aliases.length > 0 ? aliases : [canonical.id],
+      serverIds: resolvedIds,
+      scope: request.scope,
+      preferredServerId: await getSetting('preferredPosterServerId'),
+    });
+    if (!response) return reply.notFound();
+
     await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_MEDIA_DETAIL, JSON.stringify(response));
     return response;
   });
@@ -539,13 +585,7 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
     const cached = await readCache<MediaPlatformBreakdownResponse>(app.redis, cacheKey);
     if (cached) return cached;
 
-    const aliasIds = scope.kind === 'season' ? scope.showAliases : scope.aliases;
-    const rows = await getMediaPlatformBreakdown(
-      canonical.id,
-      aliasIds,
-      resolvedIds,
-      request.scope
-    );
+    const rows = await getMediaPlatformBreakdown(scope, resolvedIds, request.scope);
     const response: MediaPlatformBreakdownResponse = { data: rows.map(toPlatformEntry) };
     await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_MEDIA_DETAIL, JSON.stringify(response));
     return response;

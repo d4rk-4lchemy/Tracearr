@@ -5,6 +5,7 @@
 import { Queue, UnrecoverableError, Worker, type Job, type ConnectionOptions } from 'bullmq';
 import type { GroupEvidence } from '@tracearr/shared';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { WORKER_DEFAULTS, registerQueue, registerWorker } from './jobSafety.js';
 import {
   eventTypeOf,
   type NotificationEvent,
@@ -74,6 +75,7 @@ export function initNotificationQueue(redisUrl: string): void {
   notificationQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('Notification queue error:', err);
   });
+  registerQueue(notificationQueue);
 
   // Create dead letter queue for jobs that fail all retries
   dlqQueue = new Queue<NotificationJob>(DLQ_NAME, {
@@ -93,6 +95,7 @@ export function initNotificationQueue(redisUrl: string): void {
   dlqQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('Notification DLQ error:', err);
   });
+  registerQueue(dlqQueue);
 
   console.log('Notification queue initialized');
 }
@@ -141,8 +144,10 @@ export function startNotificationWorker(): void {
         max: 30, // Max 30 jobs per duration
         duration: 1000, // Per second (rate limit for external services)
       },
+      ...WORKER_DEFAULTS,
     }
   );
+  registerWorker(notificationWorker);
 
   notificationWorker.on('failed', (job, error) => {
     if (!job) return;

@@ -34,10 +34,10 @@ function Shell({ ownTitle }: { ownTitle?: string }) {
   return null;
 }
 
-function renderShell(count: number, ownTitle?: string) {
+function renderShell(count: number, ownTitle?: string, path = '/') {
   mockUseActiveSessions.mockReturnValue({ data: sessions(count) });
   return render(
-    <MemoryRouter initialEntries={['/']}>
+    <MemoryRouter initialEntries={[path]}>
       <Shell ownTitle={ownTitle} />
     </MemoryRouter>
   );
@@ -90,6 +90,24 @@ describe('document title', () => {
   it('keeps the count on a page that names itself', () => {
     renderShell(2, 'My Automation');
     expect(document.title).toBe('(2) My Automation | Tracearr');
+  });
+
+  it.each([
+    ['/stats/activity', 'activity'],
+    ['/stats/people', 'people'],
+    ['/stats/devices', 'devices'],
+    ['/stats/bandwidth', 'bandwidth'],
+    ['/library/genres', 'mediaGenres'],
+    ['/library/quality', 'quality'],
+    ['/library/storage', 'storage'],
+    ['/library/watch', 'watch'],
+    ['/violations', 'violations'],
+    ['/stats', 'stats'],
+    ['/library', 'library'],
+    ['/settings', 'settings'],
+  ])('titles %s from its nav key', (path, key) => {
+    renderShell(0, undefined, path);
+    expect(document.title).toBe(`${key} | Tracearr`);
   });
 
   it('stops counting once the authenticated shell unmounts', () => {

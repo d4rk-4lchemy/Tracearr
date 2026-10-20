@@ -5,6 +5,7 @@
  * was showing: a filter added here narrows the list and the reset together.
  */
 
+import { LOGIN_ACCESS, type UserRosterFilters } from '@tracearr/shared';
 import type { DateRangeValue, FilterState } from '@/components/ui/filters';
 
 export type UsersFilterState = FilterState & {
@@ -13,6 +14,9 @@ export type UsersFilterState = FilterState & {
   joined?: DateRangeValue;
   active?: DateRangeValue;
   showRemoved?: true;
+  role?: string;
+  signIn?: string;
+  pendingOnly?: true;
 };
 
 export const USERS_FILTER_DEFAULTS: UsersFilterState = {};
@@ -26,7 +30,12 @@ export interface UsersRosterParams {
   joinedBefore: string | undefined;
   activeAfter: string | undefined;
   activeBefore: string | undefined;
+  role: UserRosterFilters['role'];
+  signIn: UserRosterFilters['signIn'];
+  pendingOnly: boolean;
 }
+
+export const ROSTER_ROLES = ['owner', 'admin', 'member'] as const;
 
 /**
  * The two server inputs answer different questions and must not be merged.
@@ -49,5 +58,8 @@ export function buildUsersRosterParams(
     joinedBefore: filters.joined?.to,
     activeAfter: filters.active?.from,
     activeBefore: filters.active?.to,
+    role: ROSTER_ROLES.find((role) => role === filters.role),
+    signIn: LOGIN_ACCESS.find((access) => access === filters.signIn),
+    pendingOnly: filters.pendingOnly === true,
   };
 }

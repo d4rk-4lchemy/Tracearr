@@ -3,9 +3,9 @@
  *
  * user_media_plays_daily has one row per user, media, chain and UTC day. A chain
  * (COALESCE(reference_id, id)) is counted when any segment reaches the 120s play
- * gate; readers count distinct counted chain_ids, so a chain that crosses UTC
- * midnight is one play. media_plays_daily rolls the per-user cagg up to
- * per-media-day with a distinct-user count.
+ * gate or is marked watched; readers count distinct counted chain_ids, so a
+ * chain that crosses UTC midnight is one play. media_plays_daily rolls the
+ * per-user cagg up to per-media-day with a distinct-user count.
  *
  * Run with: pnpm --filter @tracearr/server test:integration mediaPlaysAggregate
  */
@@ -130,6 +130,57 @@ describe('identity-aware plays aggregates', () => {
     `);
     expect(mediaRows.rows).toHaveLength(1);
     expect(mediaRows.rows[0]).toEqual({ plays: 2, unique_users: 1 });
+  });
+
+  it('counts a play under 2 minutes once it passed the watched threshold, with its time', async () => {
+    const server = await createTestServer({ type: 'emby' });
+    const user = await createTestUser({ role: 'member' });
+    const account = await createTestServerUser({ userId: user.id, serverId: server.id });
+
+    const mediaId = await resolveMediaForItem({
+      mediaType: 'track',
+      musicBrainzId: 'b1a9c0e9-d987-4042-ae91-78d6a3267d69',
+      title: 'Intro: I Switched My Robot Off',
+      serverId: server.id,
+      ratingKey: 'rk-intro',
+    });
+
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaId,
+      mediaType: 'track',
+      ratingKey: 'rk-intro',
+      startedAt: at(0),
+      durationMs: 23_000,
+      totalDurationMs: 23_000,
+      referenceId: null,
+      watched: true,
+      shortSession: true,
+    });
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaId,
+      mediaType: 'track',
+      ratingKey: 'rk-intro',
+      startedAt: at(60 * 60_000),
+      durationMs: 5_000,
+      totalDurationMs: 23_000,
+      referenceId: null,
+      watched: false,
+      shortSession: true,
+    });
+
+    await refresh();
+
+    expect(await countedChains(account.id, mediaId)).toBe(1);
+    const time = await db.execute(sql`
+      SELECT SUM(watched_ms)::int AS ms
+      FROM user_media_plays_daily
+      WHERE server_user_id = ${account.id} AND media_id = ${mediaId}
+    `);
+    expect(time.rows[0]).toEqual({ ms: 23_000 });
   });
 
   it('counts a chain that crosses UTC midnight once', async () => {

@@ -111,6 +111,92 @@ describe('updatePendingSession', () => {
     expect(updatedData.processed.transcodeInfo).toEqual({ dispatcharrProviderName: 'Provider A' });
   });
 
+  it.each([0, 2000])(
+    'resets programme offsets to %i without restarting pending confirmation',
+    (progressMs) => {
+      const pending: PendingSessionData = {
+        ...basePending,
+        server: { id: 'srv-1', name: 'Dispatcharr', type: 'dispatcharr' },
+        confirmation: {
+          ...basePending.confirmation,
+          maxViewOffset: 5_399_000,
+          initialViewOffset: 5_390_000,
+        },
+        processed: {
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00Z',
+          progressMs: 5_399_000,
+        } as PendingSessionData['processed'],
+      };
+      const nextProcessed = {
+        ...pending.processed,
+        mediaTitle: 'Late News',
+        dispatcharrCatchupEpgStartAt: '2026-07-19T07:00:00Z',
+        progressMs,
+      };
+      const { updatedData, isConfirmed } = updatePendingSession(
+        pending,
+        'playing',
+        progressMs,
+        pending.startedAt + 5000,
+        undefined,
+        nextProcessed
+      );
+      expect(isConfirmed).toBe(false);
+      expect(updatedData.processed.progressMs).toBe(progressMs);
+      expect(updatedData.confirmation).toEqual({
+        ...pending.confirmation,
+        initialViewOffset: progressMs,
+        maxViewOffset: progressMs,
+      });
+      expect(updatedData.id).toBe(pending.id);
+      expect(updatedData.startedAt).toBe(pending.startedAt);
+
+      const confirmed = updatePendingSession(
+        updatedData,
+        'playing',
+        progressMs + 26000,
+        pending.startedAt + 31000,
+        undefined,
+        { ...nextProcessed, progressMs: progressMs + 26000 }
+      );
+      expect(confirmed.isConfirmed).toBe(true);
+      expect(confirmed.updatedData.confirmation.maxViewOffset).toBe(progressMs + 26000);
+    }
+  );
+
+  it.each([
+    { kind: 'catchup', previous: '2026-07-19T05:30:00Z', next: '2026-07-19T07:30:00+02:00' },
+    { kind: 'catchup', previous: '2026-07-19T05:30:00Z', next: undefined },
+    { kind: 'catchup', previous: undefined, next: '2026-07-19T07:00:00Z' },
+    { kind: 'catchup', previous: 'invalid', next: '2026-07-19T07:00:00Z' },
+    { kind: 'vod', previous: '2026-07-19T05:30:00Z', next: '2026-07-19T07:00:00Z' },
+  ] as const)(
+    'preserves maximum progress unless catch-up EPG changes: $kind / $previous / $next',
+    ({ kind, previous, next }) => {
+      const pending: PendingSessionData = {
+        ...basePending,
+        server: { id: 'srv-1', name: 'Dispatcharr', type: 'dispatcharr' },
+        confirmation: { ...basePending.confirmation, maxViewOffset: 5000, initialViewOffset: 1000 },
+        processed: {
+          dispatcharrPlaybackKind: kind,
+          dispatcharrCatchupEpgStartAt: previous,
+          progressMs: 5000,
+        } as PendingSessionData['processed'],
+      };
+      const { updatedData } = updatePendingSession(
+        pending,
+        'playing',
+        2000,
+        pending.startedAt + 5000,
+        undefined,
+        { ...pending.processed, dispatcharrCatchupEpgStartAt: next, progressMs: 2000 }
+      );
+      expect(updatedData.processed.progressMs).toBe(5000);
+      expect(updatedData.confirmation).toEqual(pending.confirmation);
+    }
+  );
+
   it('tracks pause accumulation across updates', () => {
     // First: play → pause
     const { updatedData: paused } = updatePendingSession(

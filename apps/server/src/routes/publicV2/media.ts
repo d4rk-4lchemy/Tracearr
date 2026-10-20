@@ -103,7 +103,8 @@ export function registerMediaRoutes(app: FastifyInstance, routeConfig: RouteConf
     async (request, reply) => {
       const { ref } = request.params as { ref: string };
       const canonical = await resolveCanonicalMediaByRef(ref);
-      if (!canonical) return reply.notFound();
+      // The documented children are seasons and episodes; artist albums stay internal.
+      if (!canonical || canonical.mediaType === 'artist') return reply.notFound();
 
       const data = await getChildren(canonical, undefined);
       if (data === null) return reply.notFound();

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useTranslation } from 'react-i18next';
 import { Search, SlidersHorizontal, X } from 'lucide-react';
 import {
+  LIBRARY_MEDIA_TYPES,
   RESOLUTION_LABELS,
   formatMediaTech,
   type GenreRow,
+  type LibraryMediaType,
   type LibraryOption,
   type WatchedState,
 } from '@tracearr/shared';
@@ -29,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MediaTypeToggle } from '@/components/media-browse/MediaTypeToggle';
+import { MediaTypeControl } from '@/components/layout/MediaTypeControl';
 import { stableSerialize, type CatalogSort } from '@/hooks/queries';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { formatBytes } from '@/lib/formatters';
@@ -82,6 +84,22 @@ export function activeFilterCount(filters: PersistedGridFilters): number {
 const SORT_OPTIONS: CatalogSort[] = ['title', 'added', 'year', 'plays', 'watch_time', 'viewers'];
 const POPULARITY_SORTS: CatalogSort[] = ['plays', 'watch_time', 'viewers'];
 
+/** Artists carry no watched state, year or video files: the catalog rejects the
+ * watched filter and the year sort for them, and the file filters match nothing. */
+export function filtersForType(
+  filters: PersistedGridFilters,
+  type: LibraryMediaType
+): PersistedGridFilters {
+  if (type !== 'artist') return filters;
+  const { genre, serverId, libraryKey, sort } = filters;
+  return {
+    ...(genre !== undefined && { genre }),
+    ...(serverId !== undefined && { serverId }),
+    ...(libraryKey !== undefined && { libraryKey }),
+    sort: sort === 'year' ? DEFAULT_GRID_FILTERS.sort : sort,
+  };
+}
+
 /** A popularity sort saved in this browser reads as Title wherever those sorts are hidden. */
 export function visibleSort(sort: CatalogSort, hidePopularitySorts: boolean): CatalogSort {
   return hidePopularitySorts && POPULARITY_SORTS.includes(sort) ? DEFAULT_GRID_FILTERS.sort : sort;
@@ -89,21 +107,28 @@ export function visibleSort(sort: CatalogSort, hidePopularitySorts: boolean): Ca
 const WATCHED_OPTIONS: WatchedState[] = ['unwatched', 'partial', 'watched'];
 
 /** Server-reported library mediaType tokens, lowercased: Plex uses the
- * singular ('movie'/'show'), Jellyfin/Emby use CollectionType ('movies'/
- * 'tvshows'). Anything outside these sets (music, photos, mixed, ...) is a
- * definitively different content type, not "untyped". */
+ * singular ('movie'/'show'/'artist'), Jellyfin/Emby use CollectionType
+ * ('movies'/'tvshows'/'music'). Anything outside these sets (photos, mixed,
+ * ...) is a definitively different content type, not "untyped". */
 const MOVIE_LIBRARY_TYPES = new Set(['movie', 'movies']);
 const SHOW_LIBRARY_TYPES = new Set(['show', 'shows', 'tvshows', 'tv']);
+const MUSIC_LIBRARY_TYPES = new Set(['artist', 'music']);
+
+const LIBRARY_TYPES_FOR_GRID: Record<LibraryMediaType, Set<string>> = {
+  movie: MOVIE_LIBRARY_TYPES,
+  show: SHOW_LIBRARY_TYPES,
+  artist: MUSIC_LIBRARY_TYPES,
+};
 
 /** Libraries offered for one grid type: its own type plus untyped/unknown
  * libraries, so a library synced before mediaType existed still shows up. A
- * library classified as the other content type (or a non-video type like
- * music/photos) never appears in either grid's list. */
+ * library classified as another content type (or one no grid browses, like
+ * photos) never appears in this grid's list. */
 export function librariesForGridType(
   libraries: LibraryOption[],
-  type: 'movie' | 'show'
+  type: LibraryMediaType
 ): LibraryOption[] {
-  const matchSet = type === 'movie' ? MOVIE_LIBRARY_TYPES : SHOW_LIBRARY_TYPES;
+  const matchSet = LIBRARY_TYPES_FOR_GRID[type];
   return libraries.filter((lib) => {
     const mediaType = lib.mediaType.toLowerCase().trim();
     if (!mediaType || mediaType === 'unknown') return true;
@@ -115,11 +140,11 @@ export function libraryKeyFor(library: Pick<LibraryOption, 'serverId' | 'library
   return `${library.serverId}:${library.libraryId}`;
 }
 
-function storageKey(type: 'movie' | 'show'): string {
+function storageKey(type: LibraryMediaType): string {
   return `tracearr_media_filters_${type}`;
 }
 
-export function loadPersistedFilters(type: 'movie' | 'show'): PersistedGridFilters {
+export function loadPersistedFilters(type: LibraryMediaType): PersistedGridFilters {
   try {
     const raw = localStorage.getItem(storageKey(type));
     if (!raw) return { ...DEFAULT_GRID_FILTERS };
@@ -130,7 +155,7 @@ export function loadPersistedFilters(type: 'movie' | 'show'): PersistedGridFilte
   }
 }
 
-export function persistFilters(type: 'movie' | 'show', filters: PersistedGridFilters): void {
+export function persistFilters(type: LibraryMediaType, filters: PersistedGridFilters): void {
   try {
     localStorage.setItem(storageKey(type), stableSerialize(filters));
   } catch {
@@ -241,8 +266,8 @@ function FilterChip({ label, removeLabel, onRemove }: FilterChipProps) {
 }
 
 interface CatalogToolbarProps {
-  type: 'movie' | 'show';
-  onTypeChange: (type: 'movie' | 'show') => void;
+  type: LibraryMediaType;
+  onTypeChange: (type: LibraryMediaType) => void;
   search: string;
   onSearchChange: (search: string) => void;
   filters: PersistedGridFilters;
@@ -285,9 +310,11 @@ export function CatalogToolbar({
   const isMobile = useIsMobile();
   const [searchInput, setSearchInput] = useState(search);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const sortOptions = hidePopularitySorts
-    ? SORT_OPTIONS.filter((sort) => !POPULARITY_SORTS.includes(sort))
-    : SORT_OPTIONS;
+  const isArtist = type === 'artist';
+  const sortOptions = SORT_OPTIONS.filter(
+    (sort) =>
+      !(hidePopularitySorts && POPULARITY_SORTS.includes(sort)) && !(isArtist && sort === 'year')
+  );
 
   // Debounced commits below merge onto this instead of the `filters` closure
   // captured when their timer was scheduled, so a filter change elsewhere
@@ -500,133 +527,146 @@ export function CatalogToolbar({
     return list;
   }, [filters, servers, selectedLibrary, t, watchedLabel, onFiltersChange]);
 
+  // Artists have no files, so their count carries no size.
   const countLine =
-    totalItems !== undefined && totalFileSize !== undefined
-      ? t('media.grid.toolbar.countTotal', {
-          count: totalItems,
-          size: formatBytes(totalFileSize, 1, { minUnit: 'GB' }),
-        })
-      : undefined;
+    totalItems === undefined
+      ? undefined
+      : isArtist
+        ? t('media.genres.sheet.artistCount', { count: totalItems })
+        : totalFileSize !== undefined
+          ? t('media.grid.toolbar.countTotal', {
+              count: totalItems,
+              size: formatBytes(totalFileSize, 1, { minUnit: 'GB' }),
+            })
+          : undefined;
 
   const filterFields = (
     <div className="space-y-4">
-      <div className="space-y-1.5">
-        <span className="text-muted-foreground block text-xs">
-          {t('media.grid.toolbar.watchedLabel')}
-        </span>
-        <Select
-          value={filters.watched ?? ALL_SENTINEL}
-          onValueChange={(value) =>
-            onFiltersChange({
-              ...filters,
-              watched: value === ALL_SENTINEL ? undefined : (value as WatchedState),
-            })
-          }
-        >
-          <SelectTrigger aria-label={t('media.grid.toolbar.watchedLabel')}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.watched.all')}</SelectItem>
-            {WATCHED_OPTIONS.map((state) => (
-              <SelectItem key={state} value={state}>
-                {watchedLabel(state)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {!isArtist && (
+        <div className="space-y-1.5">
+          <span className="text-muted-foreground block text-xs">
+            {t('media.grid.toolbar.watchedLabel')}
+          </span>
+          <Select
+            value={filters.watched ?? ALL_SENTINEL}
+            onValueChange={(value) =>
+              onFiltersChange({
+                ...filters,
+                watched: value === ALL_SENTINEL ? undefined : (value as WatchedState),
+              })
+            }
+          >
+            <SelectTrigger aria-label={t('media.grid.toolbar.watchedLabel')}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.watched.all')}</SelectItem>
+              {WATCHED_OPTIONS.map((state) => (
+                <SelectItem key={state} value={state}>
+                  {watchedLabel(state)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-      <div className="space-y-1.5">
-        <span className="text-muted-foreground block text-xs">
-          {t('media.grid.toolbar.resolutionLabel')}
-        </span>
-        <Select
-          value={filters.resolution ?? ALL_SENTINEL}
-          onValueChange={(value) =>
-            onFiltersChange({
-              ...filters,
-              resolution: value === ALL_SENTINEL ? undefined : value,
-            })
-          }
-        >
-          <SelectTrigger aria-label={t('media.grid.toolbar.resolutionLabel')}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.resolutionAll')}</SelectItem>
-            {RESOLUTION_LABELS.map((resolution) => (
-              <SelectItem key={resolution} value={resolution}>
-                {resolution}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {!isArtist && (
+        <>
+          <div className="space-y-1.5">
+            <span className="text-muted-foreground block text-xs">
+              {t('media.grid.toolbar.resolutionLabel')}
+            </span>
+            <Select
+              value={filters.resolution ?? ALL_SENTINEL}
+              onValueChange={(value) =>
+                onFiltersChange({
+                  ...filters,
+                  resolution: value === ALL_SENTINEL ? undefined : value,
+                })
+              }
+            >
+              <SelectTrigger aria-label={t('media.grid.toolbar.resolutionLabel')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_SENTINEL}>
+                  {t('media.grid.toolbar.resolutionAll')}
+                </SelectItem>
+                {RESOLUTION_LABELS.map((resolution) => (
+                  <SelectItem key={resolution} value={resolution}>
+                    {resolution}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-      <CodecSelect
-        label={t('media.grid.toolbar.videoCodecLabel')}
-        allLabel={t('media.grid.toolbar.videoCodecAll')}
-        value={filters.videoCodec}
-        options={videoCodecs}
-        onChange={(videoCodec) => onFiltersChange({ ...filters, videoCodec })}
-      />
+          <CodecSelect
+            label={t('media.grid.toolbar.videoCodecLabel')}
+            allLabel={t('media.grid.toolbar.videoCodecAll')}
+            value={filters.videoCodec}
+            options={videoCodecs}
+            onChange={(videoCodec) => onFiltersChange({ ...filters, videoCodec })}
+          />
 
-      <div className="space-y-1.5">
-        <span className="text-muted-foreground block text-xs">
-          {t('media.grid.toolbar.hdrLabel')}
-        </span>
-        <Select
-          value={filters.hdr ? 'hdr' : ALL_SENTINEL}
-          onValueChange={(value) =>
-            onFiltersChange({ ...filters, hdr: value === 'hdr' ? true : undefined })
-          }
-        >
-          <SelectTrigger aria-label={t('media.grid.toolbar.hdrLabel')}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.hdrAll')}</SelectItem>
-            <SelectItem value="hdr">{t('media.grid.toolbar.hdrOnly')}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+          <div className="space-y-1.5">
+            <span className="text-muted-foreground block text-xs">
+              {t('media.grid.toolbar.hdrLabel')}
+            </span>
+            <Select
+              value={filters.hdr ? 'hdr' : ALL_SENTINEL}
+              onValueChange={(value) =>
+                onFiltersChange({ ...filters, hdr: value === 'hdr' ? true : undefined })
+              }
+            >
+              <SelectTrigger aria-label={t('media.grid.toolbar.hdrLabel')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.hdrAll')}</SelectItem>
+                <SelectItem value="hdr">{t('media.grid.toolbar.hdrOnly')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-      <CodecSelect
-        label={t('media.grid.toolbar.audioCodecLabel')}
-        allLabel={t('media.grid.toolbar.audioCodecAll')}
-        value={filters.audioCodec}
-        options={audioCodecs}
-        onChange={(audioCodec) => onFiltersChange({ ...filters, audioCodec })}
-      />
+          <CodecSelect
+            label={t('media.grid.toolbar.audioCodecLabel')}
+            allLabel={t('media.grid.toolbar.audioCodecAll')}
+            value={filters.audioCodec}
+            options={audioCodecs}
+            onChange={(audioCodec) => onFiltersChange({ ...filters, audioCodec })}
+          />
 
-      <CodecSelect
-        label={t('media.grid.toolbar.audioChannelsLabel')}
-        allLabel={t('media.grid.toolbar.audioChannelsAll')}
-        value={filters.audioChannels}
-        options={audioChannelOptions}
-        onChange={(audioChannels) => onFiltersChange({ ...filters, audioChannels })}
-      />
+          <CodecSelect
+            label={t('media.grid.toolbar.audioChannelsLabel')}
+            allLabel={t('media.grid.toolbar.audioChannelsAll')}
+            value={filters.audioChannels}
+            options={audioChannelOptions}
+            onChange={(audioChannels) => onFiltersChange({ ...filters, audioChannels })}
+          />
 
-      <div className="space-y-1.5">
-        <span className="text-muted-foreground block text-xs">
-          {t('media.grid.toolbar.atmosLabel')}
-        </span>
-        <Select
-          value={filters.atmos ? 'atmos' : ALL_SENTINEL}
-          onValueChange={(value) =>
-            onFiltersChange({ ...filters, atmos: value === 'atmos' ? true : undefined })
-          }
-        >
-          <SelectTrigger aria-label={t('media.grid.toolbar.atmosLabel')}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.atmosAll')}</SelectItem>
-            <SelectItem value="atmos">{t('media.grid.toolbar.atmosOnly')}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+          <div className="space-y-1.5">
+            <span className="text-muted-foreground block text-xs">
+              {t('media.grid.toolbar.atmosLabel')}
+            </span>
+            <Select
+              value={filters.atmos ? 'atmos' : ALL_SENTINEL}
+              onValueChange={(value) =>
+                onFiltersChange({ ...filters, atmos: value === 'atmos' ? true : undefined })
+              }
+            >
+              <SelectTrigger aria-label={t('media.grid.toolbar.atmosLabel')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_SENTINEL}>{t('media.grid.toolbar.atmosAll')}</SelectItem>
+                <SelectItem value="atmos">{t('media.grid.toolbar.atmosOnly')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      )}
 
       <div className="space-y-1.5">
         <span className="text-muted-foreground block text-xs">
@@ -652,32 +692,34 @@ export function CatalogToolbar({
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1.5">
-          <span className="text-muted-foreground block text-xs">
-            {t('media.grid.toolbar.yearFromLabel')}
-          </span>
-          <Input
-            type="number"
-            inputMode="numeric"
-            aria-label={t('media.grid.toolbar.yearFromLabel')}
-            value={yearFromInput}
-            onChange={(e) => setYearFromInput(e.target.value)}
-          />
+      {!isArtist && (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1.5">
+            <span className="text-muted-foreground block text-xs">
+              {t('media.grid.toolbar.yearFromLabel')}
+            </span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              aria-label={t('media.grid.toolbar.yearFromLabel')}
+              value={yearFromInput}
+              onChange={(e) => setYearFromInput(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <span className="text-muted-foreground block text-xs">
+              {t('media.grid.toolbar.yearToLabel')}
+            </span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              aria-label={t('media.grid.toolbar.yearToLabel')}
+              value={yearToInput}
+              onChange={(e) => setYearToInput(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <span className="text-muted-foreground block text-xs">
-            {t('media.grid.toolbar.yearToLabel')}
-          </span>
-          <Input
-            type="number"
-            inputMode="numeric"
-            aria-label={t('media.grid.toolbar.yearToLabel')}
-            value={yearToInput}
-            onChange={(e) => setYearToInput(e.target.value)}
-          />
-        </div>
-      </div>
+      )}
 
       <div className="space-y-1.5">
         <span className="text-muted-foreground block text-xs">
@@ -753,36 +795,38 @@ export function CatalogToolbar({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1.5">
-          <span className="text-muted-foreground block text-xs">
-            {t('media.grid.toolbar.sizeGbMinLabel')}
-          </span>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={SIZE_GB_MAX}
-            aria-label={t('media.grid.toolbar.sizeGbMinLabel')}
-            value={sizeGbMinInput}
-            onChange={(e) => setSizeGbMinInput(e.target.value)}
-          />
+      {!isArtist && (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1.5">
+            <span className="text-muted-foreground block text-xs">
+              {t('media.grid.toolbar.sizeGbMinLabel')}
+            </span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={SIZE_GB_MAX}
+              aria-label={t('media.grid.toolbar.sizeGbMinLabel')}
+              value={sizeGbMinInput}
+              onChange={(e) => setSizeGbMinInput(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <span className="text-muted-foreground block text-xs">
+              {t('media.grid.toolbar.sizeGbMaxLabel')}
+            </span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={SIZE_GB_MAX}
+              aria-label={t('media.grid.toolbar.sizeGbMaxLabel')}
+              value={sizeGbMaxInput}
+              onChange={(e) => setSizeGbMaxInput(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <span className="text-muted-foreground block text-xs">
-            {t('media.grid.toolbar.sizeGbMaxLabel')}
-          </span>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={SIZE_GB_MAX}
-            aria-label={t('media.grid.toolbar.sizeGbMaxLabel')}
-            value={sizeGbMaxInput}
-            onChange={(e) => setSizeGbMaxInput(e.target.value)}
-          />
-        </div>
-      </div>
+      )}
 
       {mobileScrubber && isMobile && (
         <div className="space-y-1.5">
@@ -816,7 +860,7 @@ export function CatalogToolbar({
       aria-label={t('media.grid.toolbar.ariaLabel')}
     >
       <div className="flex flex-wrap items-center gap-2.5">
-        <MediaTypeToggle value={type} onChange={onTypeChange} />
+        <MediaTypeControl value={type} onChange={onTypeChange} options={LIBRARY_MEDIA_TYPES} />
 
         <div className="relative max-w-[240px] min-w-[160px] flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />

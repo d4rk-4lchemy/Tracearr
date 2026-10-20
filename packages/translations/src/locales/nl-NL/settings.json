@@ -21,7 +21,7 @@
       "destinations": "",
       "newsletters": "",
       "email": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -37,7 +37,7 @@
       "posters": "",
       "plexAccounts": "",
       "destinations": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -230,6 +230,13 @@
       "issueBlocked": "De server meldt dat de plugin is geïnstalleerd en actief, maar Tracearr krijgt een 404 foutmelding van het eindpunt. Een reverse proxy die het pad blokkeert is meestal de oorzaak.",
       "issueRestartRequired": "De plugin is geïnstalleerd, maar de mediaserver moet opnieuw worden opgestart voordat deze geactiveerd wordt.",
       "issueMalfunctioned": "De server meldt dat de plugin niet geladen kon worden. Het bijwerken van de plugin of de mediaserver lost dit probleem meestal op.",
+      "jellyfinStep1": "",
+      "jellyfinStep2": "",
+      "jellyfinStep3": "",
+      "jellyfinStep4": "",
+      "embyStep1": "",
+      "embyStep2": "",
+      "embyStep3": "",
       "openReleases": "Open releases pagina"
     },
     "posterSource": {
@@ -237,7 +244,9 @@
       "description": "Als een titel op meerdere servers beschikbaar is, gebruik dan de poster van die server. Als die server geen poster heeft, gebruiken we de meest recent toegevoegde versie.",
       "automatic": "Automatisch (meest recent)",
       "emptyHint": "Voeg een server toe om een ​​voorkeursbron voor posters te kiezen.",
-      "ownerOnly": ""
+      "ownerOnly": "",
+      "precache": "",
+      "precacheDescription": ""
     },
     "version": {
       "installed": "",
@@ -246,11 +255,6 @@
     }
   },
   "mobile": {
-    "title": "Mobiele app",
-    "pairDevice": "Apparaat koppelen",
-    "generateToken": "Koppeltoken genereren",
-    "scanQrCode": "QR-code scannen",
-    "tokenExpires": "Token verloopt in {{time}}",
     "lastSeen": "",
     "connectedOn": "",
     "noDevices": "Geen apparaten verbonden",
@@ -258,7 +262,6 @@
     "revokeAll": "Alle sessies intrekken",
     "getOnGooglePlay": "Verkrijg het op Google Play",
     "downloadOnAppStore": "Download in de App Store",
-    "externalUrlRequired": "Een externe URL moet worden geconfigureerd in Algemene instellingen om mobiele koppeling te laten werken.",
     "mobileAccessDisabled": "Mobiele toegang uitgeschakeld",
     "mobileAccessDisabledDesc": "Schakel mobiele toegang in om de Tracearr mobiele app verbinding te maken met uw server.",
     "enableMobileAccess": "Inschakelen mobiele toegang",
@@ -353,10 +356,41 @@
     "automatic": "",
     "startJob": "Taak starten"
   },
-  "accessControl": {
-    "allowGuestAccess": "Gasttoegang toestaan",
-    "allowGuestAccessDesc": "Indien uitgeschakeld kan alleen de server eigenaar inloggen op Tracearr",
-    "singleOwnerNote": "Opmerking: Wanneer gasttoegang is uitgeschakeld, kan alleen de servereigenaar inloggen. Alle andere gebruikers zien het bericht \"Toegang Geweigerd\"."
+  "memberLogin": {
+    "serverActivity": "",
+    "serverActivityDesc": "",
+    "noServers": "",
+    "addServer": "",
+    "serversLoadFailed": "",
+    "signIn": {
+      "title": "",
+      "titleDesc": "",
+      "local": "",
+      "localDesc": "",
+      "oidc": "",
+      "oidcDesc": "",
+      "plex": "",
+      "plexDesc": "",
+      "onlyWay": "",
+      "membersTitle": "",
+      "media": "",
+      "mediaDesc": "",
+      "servers": "",
+      "overrides": "",
+      "overridesDesc": "",
+      "overridesEmpty": "",
+      "overridesLoadFailed": "",
+      "addPerson": "",
+      "searchPeople": "",
+      "nobodyFound": "",
+      "accessLabel": "",
+      "roleLabel": "",
+      "allow": "",
+      "block": "",
+      "admin": "",
+      "member": "",
+      "backToDefault": ""
+    }
   },
   "import": {
     "noServers": "Geen servers verbonden",
@@ -417,6 +451,13 @@
     "importFullRangeHelp": "",
     "skipOverlap": "Overlappende record - de tijdstempel valt binnen de periode die Tracearr al bijhoudt voor deze server. Schakel 'volledige bereikimport' in om deze mee te nemen.",
     "skipDuplicatePlugin": "Dubbele record - reeds rechtstreeks geïmporteerd of eerder binnengekomen via een Jellystat import van dezelfde plugingegevens.",
+    "importFailed": "",
+    "dropzone": {
+      "dropHere": "",
+      "dragOrClick": "",
+      "limit": "",
+      "removeFile": ""
+    },
     "overlapSkipped_one": "",
     "overlapSkipped_other": "{{count}} overgeslagen vanwege overlapping",
     "duplicates_one": "",
@@ -580,7 +621,6 @@
       "cron": "",
       "inZone": ""
     },
-    "nextRun": "",
     "noNextRun": "",
     "neverSent": "",
     "lastSend": "",
@@ -1018,11 +1058,7 @@
     "neverSynced": "",
     "counts": {
       "requests_one": "",
-      "requests_other": "",
-      "unmatchedMedia_one": "",
-      "unmatchedMedia_other": "",
-      "unmatchedUsers_one": "",
-      "unmatchedUsers_other": ""
+      "requests_other": ""
     },
     "needsKey": "",
     "lastError": "",

@@ -7,26 +7,25 @@ interface ProtectedRouteProps {
 }
 
 /**
- * Wraps routes that require authentication.
- * Redirects to /login if user is not authenticated.
+ * Wraps routes that require authentication. Only a confirmed sign-out goes to
+ * /login: a session check with no answer yet (a 429, or a query paused while
+ * the health probe fails) keeps waiting, or the user lands on the dashboard
+ * after login instead of the page they asked for.
  */
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isSignedOut } = useAuth();
   const location = useLocation();
 
-  // Show loading spinner while checking auth status
-  if (isLoading) {
+  if (isSignedOut) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (!isAuthenticated) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="text-muted-foreground h-8 w-8 animate-spin" />
       </div>
     );
-  }
-
-  // Redirect to login if not authenticated
-  if (!isAuthenticated) {
-    // Save the attempted URL for redirecting after login
-    return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;

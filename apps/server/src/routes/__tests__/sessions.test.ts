@@ -5,6 +5,7 @@
  * - GET /sessions - List historical sessions with filters
  * - GET /sessions/active - Get currently active streams
  * - GET /sessions/:id - Get a specific session
+ * - GET /sessions/history/aggregates - Totals over the filtered history
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -1139,6 +1140,37 @@ describe('Session Routes', () => {
       const [row] = JSON.parse(response.body).data;
       expect(row.mediaId).toBe(mediaId);
       expect(row.showMediaId).toBe(showMediaId);
+    });
+  });
+
+  describe('GET /sessions/history/aggregates', () => {
+    it('returns listen time as the track share of the same sum as watch time', async () => {
+      app = await buildTestApp(createOwnerUser());
+      mockDb.execute.mockResolvedValueOnce({
+        rows: [
+          {
+            play_count: 3,
+            total_watch_time_ms: '5400000',
+            listen_time_ms: '1800000',
+            unique_users: 1,
+            unique_content: 2,
+          },
+        ],
+      });
+
+      const response = await app.inject({ method: 'GET', url: '/sessions/history/aggregates' });
+
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual({
+        totalWatchTimeMs: 5400000,
+        listenTimeMs: 1800000,
+        playCount: 3,
+        uniqueUsers: 1,
+        uniqueContent: 2,
+      });
+      const { sql: query } = renderSql(mockDb.execute.mock.calls[0][0] as SQL);
+      expect(query).toContain("SUM(s.duration_ms) FILTER (WHERE s.media_type = 'track')");
+      expect(query).toContain("s.media_type <> 'trailer'");
     });
   });
 });

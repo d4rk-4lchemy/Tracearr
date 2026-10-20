@@ -6,8 +6,8 @@
  * double-processing, a TOCTOU race between reading a lock and acting on it,
  * and an async recovery call blocking `app.listen()` behind BullMQ's
  * infinite-retry connection. That custom recovery is gone. Recovery is now
- * BullMQ's own stalled-job detection, tuned to be timely (lockDuration down
- * from 1h to 5m). These tests prove that's actually safe:
+ * BullMQ's own stalled-job detection, tuned to be timely (the 60 s lock from
+ * WORKER_DEFAULTS in jobs/jobSafety.ts). These tests prove that's actually safe:
  *
  * - a crashed job's lock genuinely expires and gets reclaimed within a
  *   bounded window, not before
@@ -20,7 +20,7 @@
  * - nothing between buildApp() and app.listen() can hang on a BullMQ
  *   connection retry anymore
  *
- * Run with: pnpm --filter @tracearr/server test:integration -- maintenanceQueueRecovery
+ * Run with: pnpm --filter @tracearr/server test:integration maintenanceQueueRecovery
  */
 
 import { randomUUID } from 'node:crypto';

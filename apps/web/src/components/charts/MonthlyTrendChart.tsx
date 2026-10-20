@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import type { MonthlyTrend } from '@tracearr/shared';
@@ -28,6 +29,7 @@ const formatMonth = (monthStr: string): string => {
 };
 
 export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTrendChartProps) {
+  const { t } = useTranslation('pages');
   const options = useMemo<Highcharts.Options>(() => {
     if (!data || data.length === 0) {
       return {};
@@ -71,7 +73,7 @@ export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTren
       },
       yAxis: {
         title: {
-          text: 'Watch Count',
+          text: t('library.charts.monthly.watchCount'),
           style: {
             color: 'hsl(var(--muted-foreground))',
           },
@@ -110,13 +112,15 @@ export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTren
           const item = data.find((d) => d.month === monthStr);
           const monthLabel = item ? formatMonth(item.month) : formatMonth(monthStr);
           const uniqueItems = item?.uniqueItems ?? 0;
-          return `<b>${monthLabel}</b><br/>Watches: ${this.y}<br/>Unique Items: ${uniqueItems}`;
+          const watches = t('library.charts.watchesValue', { count: this.y ?? 0 });
+          const unique = t('library.charts.monthly.uniqueItems', { count: uniqueItems });
+          return `<b>${monthLabel}</b><br/>${watches}<br/>${unique}`;
         },
       },
       series: [
         {
           type: 'line',
-          name: 'Watch Count',
+          name: t('library.charts.monthly.watchCount'),
           data: data.map((d) => [parseMonth(d.month), d.watchCount]),
         },
       ],
@@ -149,7 +153,7 @@ export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTren
         ],
       },
     };
-  }, [data, height]);
+  }, [data, height, t]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;
@@ -159,8 +163,8 @@ export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTren
     return (
       <EmptyState
         icon={TrendingUp}
-        title="No monthly data"
-        description="Monthly watch trends will appear here once data is available"
+        title={t('library.charts.monthly.empty.title')}
+        description={t('library.charts.monthly.empty.description')}
       />
     );
   }

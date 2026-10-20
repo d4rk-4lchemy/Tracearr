@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { Marker, type StyleSpecification } from 'maplibre-gl';
 import {
   formatEpisodeLabel,
@@ -81,6 +82,7 @@ export function StreamCard({
   isMultiServer,
   serverColorMap,
 }: StreamCardProps) {
+  const { t } = useTranslation('common');
   const dark = useResolvedDark();
   const lang = useMapLang();
   const basemapOk = useBasemapAvailable();
@@ -213,7 +215,7 @@ export function StreamCard({
 
       {!hasData && (
         <div className="bg-background/50 absolute inset-0 flex items-center justify-center">
-          <p className="text-muted-foreground text-sm">No location data available</p>
+          <p className="text-muted-foreground text-sm">{t('empty.noLocationData')}</p>
         </div>
       )}
 
@@ -293,17 +295,18 @@ function SessionPopupContent({ session }: { session: ActiveSession }) {
 }
 
 function LocationPopupContent({ location }: { location: LocationStats }) {
+  const { t } = useTranslation(['pages', 'common']);
   return (
     <div className="text-foreground p-3">
       <div className="flex items-center gap-2">
         <MapPin className="h-4 w-4 text-blue-500" />
         <div>
-          <p className="font-semibold">{location.city || 'Unknown'}</p>
+          <p className="font-semibold">{location.city || t('common:labels.unknown')}</p>
           <p className="text-muted-foreground text-xs">{location.country}</p>
         </div>
       </div>
       <div className="border-border mt-2 flex items-center justify-between border-t pt-2 text-sm">
-        <span className="text-muted-foreground">Total streams</span>
+        <span className="text-muted-foreground">{t('map.totalStreams')}</span>
         <span className="font-medium">{location.count}</span>
       </div>
     </div>

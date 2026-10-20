@@ -219,6 +219,48 @@ describe('roster signInOverride', () => {
   });
 });
 
+describe('roster pending violations', () => {
+  it('selects a pending violations count per identity, scoped to the resolved servers', () => {
+    const serverId = randomUUID();
+    const { text, params } = pageSql(filters({ serverIds: [serverId] }));
+    const count = text.slice(
+      text.indexOf('FROM automation_runs v'),
+      text.indexOf('"pendingViolations"')
+    );
+
+    expect(count).toContain("v.kind = 'policy' AND v.outcome = 'completed'");
+    expect(count).toContain('v.acknowledged_at IS NULL AND v.dismissed_at IS NULL');
+    expect(count).toContain('AND vsu.server_id =');
+    expect(params).toContain(serverId);
+  });
+
+  it('filters by role, sign-in and pending-only', () => {
+    const { text, params } = pageSql(
+      filters({ role: 'admin', signIn: 'block', pendingOnly: true })
+    );
+    const where = text.slice(text.lastIndexOf(') rep ON true'));
+
+    expect(where).toContain('u.role =');
+    expect(where).toContain('u.login_access =');
+    expect(where).toContain('EXISTS (SELECT 1 FROM automation_runs v');
+    expect(params).toContain('admin');
+    expect(params).toContain('block');
+    expect(pageSql(filters()).text).not.toContain('u.role =');
+  });
+
+  it('sorts by role and by pending violations with the documented defaults', () => {
+    expect(orderClause('role')).toBe('u.role ASC NULLS LAST, u.id ASC');
+    expect(orderClause('pendingViolations')).toBe('"pendingViolations" DESC NULLS LAST, u.id ASC');
+  });
+
+  it('reaches the bulk seed query with pendingOnly', () => {
+    const roster = buildUserRosterSql(filters({ pendingOnly: true }), owner());
+    const rendered = renderSql(buildUserRosterAccountIdQuery(roster));
+
+    expect(normalize(rendered.sql)).toContain('EXISTS (SELECT 1 FROM automation_runs v');
+  });
+});
+
 describe('roster hasAccessTo', () => {
   it('requires an active account on every listed server, not any of them', () => {
     const plex = randomUUID();
@@ -388,6 +430,7 @@ describe('GET /users', () => {
             // A member with a Better Auth row: the client's canLogin(role)
             // guess says false here and picks the wrong merge direction.
             authAccountCount: 1,
+            pendingViolations: 2,
             id: serverUserId,
             serverId,
             serverName: 'Plex',
@@ -442,6 +485,7 @@ describe('GET /users', () => {
       updatedAt: '2024-06-02T14:29:35.040Z',
       identityJoinedAt: '2023-01-05T00:00:00.000Z',
       identityLastActivityAt: '2024-06-02T14:29:35.040Z',
+      pendingViolations: 2,
     });
     expect(body.data[0].identityServers).toEqual([
       { id: serverId, name: 'Plex', serverUserId, removedAt: null },

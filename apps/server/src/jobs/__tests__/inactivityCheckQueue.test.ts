@@ -304,4 +304,20 @@ describe('scheduleInactivityChecks', () => {
     expect(timing.startDate.getTime()).toBeGreaterThanOrEqual(Date.now());
     expect(template).toEqual({ name: 'scheduled-check', data: { type: 'check' } });
   });
+
+  it('queues the delayed startup check through its dedup key', async () => {
+    mockGetActiveAutomations.mockResolvedValue([inactivityRule('a')]);
+
+    await scheduleInactivityChecks();
+
+    expect(queueRef.current.add).toHaveBeenCalledWith(
+      'startup-check',
+      { type: 'check' },
+      {
+        delay: expect.any(Number),
+        deduplication: { id: 'inactivity-check-startup' },
+        jobId: expect.stringMatching(/^inactivity-check-startup-/),
+      }
+    );
+  });
 });

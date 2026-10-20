@@ -8,7 +8,8 @@
  * sargable `started_at >= todayStart AND started_at < todayStart + interval
  * '1 day'` range using the same todayStart already computed for the rest of
  * the function. This file confirms the rewrite keeps identical semantics,
- * including across a day boundary in a non-UTC timezone.
+ * including across a day boundary in a non-UTC timezone, and that music counts
+ * as a play and as listen time without reaching watch time.
  *
  * Run with: pnpm test:integration
  */
@@ -115,6 +116,45 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
     expect(filteredStats.todayPlays).toBe(expectedOldSemantics);
   });
 
+  it('counts a track today in todayPlays, todaySessions, activeUsersToday and listenTimeHours, not in watchTimeHours', async () => {
+    const timezone = 'UTC';
+    const todayStart = getStartOfDayInTimezone(timezone);
+
+    const server = await createTestServer({ type: 'plex' });
+    const user = await createTestUser();
+    const serverUser = await createTestServerUser({ serverId: server.id, userId: user.id });
+    const listener = await createTestServerUser({
+      serverId: server.id,
+      userId: (await createTestUser()).id,
+    });
+    const startedAt = new Date(todayStart.getTime() + 60_000);
+
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: serverUser.id,
+      mediaType: 'movie',
+      startedAt,
+      durationMs: 5_400_000,
+      totalDurationMs: 7_200_000,
+    });
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: listener.id,
+      mediaType: 'track',
+      startedAt,
+      durationMs: 1_080_000,
+      totalDurationMs: 1_080_000,
+    });
+
+    for (const serverIds of [undefined, [server.id]]) {
+      const stats = await getDashboardStats({ serverIds, scope: 'all', timezone });
+      expect(stats.todayPlays).toBe(2);
+      expect(stats.todaySessions).toBe(2);
+      expect(stats.activeUsersToday).toBe(2);
+      expect(stats.watchTimeHours).toBe(1.5);
+      expect(stats.listenTimeHours).toBe(0.3);
+    }
+  });
   it('keeps VOD metrics separate from TV metrics while counting live sessions in active users', async () => {
     const timezone = 'UTC';
     const todayStart = getStartOfDayInTimezone(timezone);
@@ -132,7 +172,7 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
       totalDurationMs: 30 * 60 * 1000,
     });
 
-    const stats = await getDashboardStats({ serverIds: [server.id], timezone });
+    const stats = await getDashboardStats({ serverIds: [server.id], scope: 'all', timezone });
     expect(stats.todayPlays).toBe(0);
     expect(stats.todaySessions).toBe(0);
     expect(stats.watchTimeHours).toBe(0);
@@ -164,7 +204,7 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
       totalDurationMs: 0,
     });
 
-    const stats = await getDashboardStats({ serverIds: [server.id], timezone });
+    const stats = await getDashboardStats({ serverIds: [server.id], scope: 'all', timezone });
     expect(stats.tvSessions).toBe(1);
     expect(stats.tvChannels).toBe(1);
     expect(stats.tvWatchTimeHours).toBe(2);
@@ -203,7 +243,7 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
       totalDurationMs: 0,
     });
 
-    const stats = await getDashboardStats({ serverIds: undefined, timezone });
+    const stats = await getDashboardStats({ serverIds: undefined, scope: 'all', timezone });
     expect(stats.tvSessions).toBeGreaterThanOrEqual(1);
     expect(stats.tvChannels).toBeGreaterThanOrEqual(1);
     expect(stats.tvWatchTimeHours).toBeGreaterThanOrEqual(1.5);
@@ -228,7 +268,7 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
       totalDurationMs: 0,
     });
 
-    const stats = await getDashboardStats({ serverIds: [server.id], timezone });
+    const stats = await getDashboardStats({ serverIds: [server.id], scope: 'all', timezone });
     expect(stats.tvChannels).toBe(1);
     expect(stats.tvWatchTimeHours).toBe(1.5);
   });
@@ -302,13 +342,18 @@ describe('dashboard stats: today plays across a day boundary (non-UTC timezone)'
       WHERE id = ${secondChannel.id}
     `);
 
-    const allServersStats = await getDashboardStats({ serverIds: undefined, timezone });
+    const allServersStats = await getDashboardStats({
+      serverIds: undefined,
+      scope: 'all',
+      timezone,
+    });
     expect(allServersStats.tvSessions).toBeGreaterThanOrEqual(3);
     expect(allServersStats.tvChannels).toBeGreaterThanOrEqual(2);
 
     const filteredStats = await getDashboardStats({
       serverIds: [dispatcharrServer.id, jellyfinServer.id],
       timezone,
+      scope: 'all',
     });
     expect(filteredStats.tvSessions).toBe(3);
     expect(filteredStats.tvChannels).toBe(2);

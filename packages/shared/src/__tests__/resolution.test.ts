@@ -3,6 +3,7 @@ import {
   classifyByDimensions,
   normalizeResolutionLabel,
   normalizeResolution,
+  resolutionDisplayName,
   resolutionTierRank,
   resolutionBucket,
   resolutionBucketSpellings,
@@ -11,6 +12,7 @@ import {
   RESOLUTION_BUCKETS,
   RESOLUTION_TIERS,
 } from '../resolution.js';
+import { formatResolutionDisplay } from '../constants.js';
 
 describe('classifyByDimensions', () => {
   // Golden table - see docs for the underlying research (jellyfin-web /
@@ -180,5 +182,26 @@ describe('resolution bucket spellings', () => {
         expect(resolutionBucketSpellings(bucket!)).toContain(spelling);
       }
     }
+  });
+});
+
+describe('resolutionDisplayName', () => {
+  it('names PAL SD by its 576 lines while it stays in the 480p tier', () => {
+    expect(resolutionDisplayName({ width: 720, height: 576 })).toBe('576p');
+    expect(resolutionDisplayName({ width: 1024, height: 576 })).toBe('576p');
+    expect(resolutionDisplayName({ label: '576i' })).toBe('576p');
+    expect(resolutionBucket('576p')).toBe('480p');
+  });
+
+  it('keeps NTSC SD and every other tier on the tier name', () => {
+    expect(resolutionDisplayName({ width: 720, height: 480 })).toBe('480p');
+    expect(resolutionDisplayName({ width: 720, height: 486 })).toBe('480p');
+    expect(resolutionDisplayName({ width: 1920, height: 1080 })).toBe('1080p');
+    expect(resolutionDisplayName({ width: 352, height: 288 })).toBe('SD');
+    expect(resolutionDisplayName({})).toBeNull();
+  });
+
+  it('labels the dimensions in formatResolutionDisplay', () => {
+    expect(formatResolutionDisplay(720, 576)).toBe('720×576 (576p)');
   });
 });

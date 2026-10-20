@@ -52,16 +52,16 @@ import {
 
 // Column definitions for visibility toggle
 export const HISTORY_COLUMNS = [
-  { id: 'date', label: 'Date', defaultVisible: true },
-  { id: 'user', label: 'User', defaultVisible: true },
-  { id: 'content', label: 'Content', defaultVisible: true },
-  { id: 'server', label: 'Server', defaultVisible: true },
-  { id: 'platform', label: 'Platform', defaultVisible: true },
-  { id: 'location', label: 'Location', defaultVisible: true },
-  { id: 'ip', label: 'IP Address', defaultVisible: false },
-  { id: 'quality', label: 'Quality', defaultVisible: true },
-  { id: 'duration', label: 'Duration', defaultVisible: true },
-  { id: 'progress', label: 'Progress', defaultVisible: true },
+  { id: 'date', labelKey: 'common:labels.date', defaultVisible: true },
+  { id: 'user', labelKey: 'common:labels.user', defaultVisible: true },
+  { id: 'content', labelKey: 'common:labels.content', defaultVisible: true },
+  { id: 'server', labelKey: 'common:labels.server', defaultVisible: true },
+  { id: 'platform', labelKey: 'common:labels.platform', defaultVisible: true },
+  { id: 'location', labelKey: 'common:labels.location', defaultVisible: true },
+  { id: 'ip', labelKey: 'common:labels.ipAddress', defaultVisible: false },
+  { id: 'quality', labelKey: 'common:labels.quality', defaultVisible: true },
+  { id: 'duration', labelKey: 'pages:history.columns.duration', defaultVisible: true },
+  { id: 'progress', labelKey: 'pages:history.columns.progress', defaultVisible: true },
 ] as const;
 
 export type HistoryColumnId = (typeof HISTORY_COLUMNS)[number]['id'];
@@ -75,6 +75,8 @@ export const DEFAULT_COLUMN_VISIBILITY: ColumnVisibility = Object.fromEntries(
 interface Props {
   filters: HistoryFilters;
   onFiltersChange: (filters: HistoryFilters) => void;
+  timeRange: TimeRangeValue;
+  onTimeRangeChange: (timeRange: TimeRangeValue) => void;
   filterOptions?: HistoryFilterOptions;
   isFetching?: boolean;
   columnVisibility: ColumnVisibility;
@@ -82,57 +84,6 @@ interface Props {
   isMultiServer?: boolean;
   /** Every row is the member's own, so there is no one to filter by. */
   isMember?: boolean;
-}
-
-// Convert TimeRangeValue to Date filters
-function timeRangeToDateFilters(timeRange: TimeRangeValue): { startDate?: Date; endDate?: Date } {
-  if (timeRange.period === 'custom' && timeRange.startDate && timeRange.endDate) {
-    return { startDate: timeRange.startDate, endDate: timeRange.endDate };
-  }
-
-  const now = new Date();
-  const endDate = now;
-  let startDate: Date | undefined;
-
-  switch (timeRange.period) {
-    case 'day':
-      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      break;
-    case 'week':
-      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      break;
-    case 'month':
-      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      break;
-    case 'year':
-      startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-      break;
-    case 'all':
-    default:
-      return {};
-  }
-
-  return { startDate, endDate };
-}
-
-// Convert Date filters back to TimeRangeValue
-function dateFiltersToTimeRange(startDate?: Date, endDate?: Date): TimeRangeValue {
-  if (!startDate && !endDate) {
-    return { period: 'all' };
-  }
-
-  if (startDate && endDate) {
-    const diff = endDate.getTime() - startDate.getTime();
-    const days = diff / (24 * 60 * 60 * 1000);
-
-    if (days >= 6 && days <= 8) return { period: 'week' };
-    if (days >= 29 && days <= 31) return { period: 'month' };
-    if (days >= 364 && days <= 366) return { period: 'year' };
-
-    return { period: 'custom', startDate, endDate };
-  }
-
-  return { period: 'all' };
 }
 
 // Filter chip component
@@ -168,6 +119,8 @@ function FilterChip({
 export function HistoryFiltersBar({
   filters,
   onFiltersChange,
+  timeRange,
+  onTimeRangeChange,
   filterOptions,
   isFetching,
   columnVisibility,
@@ -175,7 +128,7 @@ export function HistoryFiltersBar({
   isMultiServer = false,
   isMember = false,
 }: Props) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'pages', 'nav']);
   const [searchInput, setSearchInput] = useState(filters.search ?? '');
 
   // Sync search input with filters
@@ -183,23 +136,19 @@ export function HistoryFiltersBar({
     setSearchInput(filters.search ?? '');
   }, [filters.search]);
 
-  // Convert current date filters to TimeRangeValue
-  const timeRange = useMemo(
-    () => dateFiltersToTimeRange(filters.startDate, filters.endDate),
-    [filters.startDate, filters.endDate]
+  const mediaTypeOptions = useMemo(
+    () => [
+      { value: 'movie' as const, label: t('common:media.movie_plural'), icon: Film },
+      { value: 'episode' as const, label: t('common:media.tvShows'), icon: Tv },
+      { value: 'track' as const, label: t('common:media.music'), icon: Music },
+      { value: 'live' as const, label: t('common:media.liveTV'), icon: Radio },
+      { value: 'trailer' as const, label: t('pages:history.filters.trailers'), icon: Clapperboard },
+    ],
+    [t]
   );
-
-  // Handle time range change
-  const handleTimeRangeChange = useCallback(
-    (newTimeRange: TimeRangeValue) => {
-      const dateFilters = timeRangeToDateFilters(newTimeRange);
-      onFiltersChange({
-        ...filters,
-        startDate: dateFilters.startDate,
-        endDate: dateFilters.endDate,
-      });
-    },
-    [filters, onFiltersChange]
+  const mediaTypeLabels = useMemo(
+    () => Object.fromEntries(mediaTypeOptions.map((o) => [o.value, o.label])),
+    [mediaTypeOptions]
   );
 
   const activeFilters = useMemo(() => {
@@ -217,21 +166,26 @@ export function HistoryFiltersBar({
         filterOptions?.users?.filter((u) =>
           (u.serverUserIds ?? [u.id]).some((id) => filters.serverUserIds?.includes(id))
         ) ?? [];
-      const userNames = matchedUsers.map((u) => u.identityName || u.username || 'Unknown');
+      const userNames = matchedUsers.map(
+        (u) => u.identityName || u.username || t('common:labels.unknown')
+      );
       active.push({
         key: 'serverUserIds',
-        label: 'Users',
-        value: userNames.length > 2 ? `${userNames.length} selected` : userNames.join(', '),
+        label: t('nav:users'),
+        value:
+          userNames.length > 2
+            ? t('pages:history.filters.selected', { count: userNames.length })
+            : userNames.join(', '),
         icon: User,
       });
     }
     if (filters.platforms?.length) {
       active.push({
         key: 'platforms',
-        label: 'Platforms',
+        label: t('pages:activity.platforms'),
         value:
           filters.platforms.length > 2
-            ? `${filters.platforms.length} selected`
+            ? t('pages:history.filters.selected', { count: filters.platforms.length })
             : filters.platforms.join(', '),
         icon: Monitor,
       });
@@ -239,27 +193,23 @@ export function HistoryFiltersBar({
     if (filters.geoCountries?.length) {
       active.push({
         key: 'geoCountries',
-        label: 'Countries',
+        label: t('pages:history.filters.countries'),
         value:
           filters.geoCountries.length > 2
-            ? `${filters.geoCountries.length} selected`
+            ? t('pages:history.filters.selected', { count: filters.geoCountries.length })
             : filters.geoCountries.join(', '),
         icon: Globe,
       });
     }
     if (filters.mediaTypes?.length) {
-      const labels: Record<string, string> = {
-        movie: 'Movies',
-        episode: 'TV Shows',
-        track: 'Music',
-        live: 'Live TV',
-        trailer: 'Trailers',
-      };
-      const typeLabels = filters.mediaTypes.map((t) => labels[t] || t);
+      const typeLabels = filters.mediaTypes.map((type) => mediaTypeLabels[type] ?? type);
       active.push({
         key: 'mediaTypes',
-        label: 'Types',
-        value: typeLabels.length > 2 ? `${typeLabels.length} selected` : typeLabels.join(', '),
+        label: t('pages:history.filters.types'),
+        value:
+          typeLabels.length > 2
+            ? t('pages:history.filters.selected', { count: typeLabels.length })
+            : typeLabels.join(', '),
         icon: Film,
       });
     }
@@ -269,10 +219,10 @@ export function HistoryFiltersBar({
       );
       active.push({
         key: 'transcodeDecisions',
-        label: 'Quality',
+        label: t('common:labels.quality'),
         value:
           decisionLabels.length > 2
-            ? `${decisionLabels.length} selected`
+            ? t('pages:history.filters.selected', { count: decisionLabels.length })
             : decisionLabels.join(', '),
         icon: filters.transcodeDecisions.includes('transcode') ? Zap : MonitorPlay,
       });
@@ -280,7 +230,7 @@ export function HistoryFiltersBar({
     if (filters.subtitleBurnIn) {
       active.push({
         key: 'subtitleBurnIn',
-        label: 'Quality',
+        label: t('common:labels.quality'),
         value: t('playback.burnIn'),
         icon: Subtitles,
       });
@@ -288,14 +238,17 @@ export function HistoryFiltersBar({
     if (filters.network) {
       active.push({
         key: 'network',
-        label: 'Network',
-        value: filters.network === 'local' ? 'Local' : 'Remote',
+        label: t('pages:history.filters.network'),
+        value:
+          filters.network === 'local'
+            ? t('common:labels.local')
+            : t('pages:history.filters.remote'),
         icon: filters.network === 'local' ? Wifi : Globe,
       });
     }
 
     return active;
-  }, [filters, filterOptions?.users, t]);
+  }, [filters, filterOptions?.users, mediaTypeLabels, t]);
 
   // Debounced search effect
   useEffect(() => {
@@ -352,12 +305,12 @@ export function HistoryFiltersBar({
     <div className="space-y-3">
       {/* Row 1: Time range, search, filter dropdown, and columns dropdown */}
       <div className="flex flex-wrap items-center gap-3">
-        <TimeRangePicker value={timeRange} onChange={handleTimeRangeChange} />
+        <TimeRangePicker value={timeRange} onChange={onTimeRangeChange} />
 
         <div className="relative max-w-[400px] min-w-[200px] flex-1">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
           <Input
-            placeholder="Search titles, users, locations, IPs..."
+            placeholder={t('pages:history.searchPlaceholder')}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="h-8 pr-8 pl-8 text-sm"
@@ -380,7 +333,7 @@ export function HistoryFiltersBar({
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 gap-1.5">
               <ListFilter className="h-4 w-4" />
-              Filters
+              {t('common:labels.filters')}
               {activeFilterCount > 0 && (
                 <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
                   {activeFilterCount}
@@ -395,7 +348,7 @@ export function HistoryFiltersBar({
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <User className="mr-2 h-4 w-4" />
-                  Users
+                  {t('nav:users')}
                   {filters.serverUserIds?.length ? (
                     <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-[10px]">
                       {filters.serverUserIds.length}
@@ -409,7 +362,7 @@ export function HistoryFiltersBar({
                         <>
                           <DropdownMenuItem onClick={() => removeFilter('serverUserIds')}>
                             <X />
-                            Clear all users
+                            {t('pages:history.filters.clearUsers')}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                         </>
@@ -457,7 +410,7 @@ export function HistoryFiltersBar({
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Monitor className="mr-2 h-4 w-4" />
-                Platforms
+                {t('pages:activity.platforms')}
                 {filters.platforms?.length ? (
                   <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-[10px]">
                     {filters.platforms.length}
@@ -471,7 +424,7 @@ export function HistoryFiltersBar({
                       <>
                         <DropdownMenuItem onClick={() => removeFilter('platforms')}>
                           <X />
-                          Clear all platforms
+                          {t('pages:history.filters.clearPlatforms')}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                       </>
@@ -511,7 +464,7 @@ export function HistoryFiltersBar({
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Globe className="mr-2 h-4 w-4" />
-                Countries
+                {t('pages:history.filters.countries')}
                 {filters.geoCountries?.length ? (
                   <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-[10px]">
                     {filters.geoCountries.length}
@@ -525,7 +478,7 @@ export function HistoryFiltersBar({
                       <>
                         <DropdownMenuItem onClick={() => removeFilter('geoCountries')}>
                           <X />
-                          Clear all countries
+                          {t('pages:history.filters.clearCountries')}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                       </>
@@ -565,20 +518,14 @@ export function HistoryFiltersBar({
 
             {/* Media Type - multi-select checkboxes */}
             <DropdownMenuLabel className="flex items-center justify-between">
-              Media Type
+              {t('pages:history.filters.mediaType')}
               {filters.mediaTypes?.length ? (
                 <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                   {filters.mediaTypes.length}
                 </Badge>
               ) : null}
             </DropdownMenuLabel>
-            {[
-              { value: 'movie' as const, label: 'Movies', icon: Film },
-              { value: 'episode' as const, label: 'TV Shows', icon: Tv },
-              { value: 'track' as const, label: 'Music', icon: Music },
-              { value: 'live' as const, label: 'Live TV', icon: Radio },
-              { value: 'trailer' as const, label: 'Trailers', icon: Clapperboard },
-            ].map(({ value, label, icon: Icon }) => {
+            {mediaTypeOptions.map(({ value, label, icon: Icon }) => {
               const isSelected = filters.mediaTypes?.includes(value) ?? false;
               return (
                 <DropdownMenuCheckboxItem
@@ -588,7 +535,7 @@ export function HistoryFiltersBar({
                     const current = filters.mediaTypes ?? [];
                     const updated = checked
                       ? [...current, value]
-                      : current.filter((t) => t !== value);
+                      : current.filter((type) => type !== value);
                     onFiltersChange({
                       ...filters,
                       mediaTypes: updated.length > 0 ? updated : undefined,
@@ -606,7 +553,7 @@ export function HistoryFiltersBar({
 
             {/* Quality - multi-select checkboxes */}
             <DropdownMenuLabel className="flex items-center justify-between">
-              Quality
+              {t('common:labels.quality')}
               {filters.transcodeDecisions?.length ? (
                 <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                   {filters.transcodeDecisions.length}
@@ -650,7 +597,7 @@ export function HistoryFiltersBar({
             </DropdownMenuCheckboxItem>
 
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>Network</DropdownMenuLabel>
+            <DropdownMenuLabel>{t('pages:history.filters.network')}</DropdownMenuLabel>
             {(['local', 'remote'] as const).map((value) => (
               <DropdownMenuCheckboxItem
                 key={value}
@@ -666,7 +613,7 @@ export function HistoryFiltersBar({
                 ) : (
                   <Globe className="mr-2 h-4 w-4" />
                 )}
-                {value === 'local' ? 'Local' : 'Remote'}
+                {value === 'local' ? t('common:labels.local') : t('pages:history.filters.remote')}
               </DropdownMenuCheckboxItem>
             ))}
 
@@ -676,7 +623,7 @@ export function HistoryFiltersBar({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={clearFilters} className="text-muted-foreground">
                   <X />
-                  Clear all filters
+                  {t('pages:history.filters.clearFilters')}
                 </DropdownMenuItem>
               </>
             )}
@@ -688,7 +635,7 @@ export function HistoryFiltersBar({
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 gap-1.5">
               <Columns3 className="h-4 w-4" />
-              Columns
+              {t('pages:history.filters.columns')}
               {hiddenColumnCount > 0 && (
                 <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
                   {HISTORY_COLUMNS.length - hiddenColumnCount}
@@ -706,7 +653,7 @@ export function HistoryFiltersBar({
                 checked={columnVisibility[column.id]}
                 onCheckedChange={() => toggleColumn(column.id)}
               >
-                {column.label}
+                {t(column.labelKey)}
               </DropdownMenuCheckboxItem>
             ))}
           </DropdownMenuContent>
@@ -734,7 +681,7 @@ export function HistoryFiltersBar({
 
           {filters.search && (
             <FilterChip
-              label="Search"
+              label={t('common:actions.search')}
               value={filters.search}
               icon={Search}
               onRemove={() => {
@@ -751,7 +698,7 @@ export function HistoryFiltersBar({
             onClick={clearFilters}
           >
             <X className="h-3.5 w-3.5" />
-            Clear all
+            {t('common:filters.clearAll')}
           </Button>
         </div>
       )}

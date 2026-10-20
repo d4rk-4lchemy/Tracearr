@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
-import type { MediaStatsResponse, MediaWatcherEntry } from '@tracearr/shared';
+import { Calendar, CheckCircle2, Clock, Play, Users } from 'lucide-react';
+import { verbKeysFor, type MediaStatsResponse, type MediaWatcherEntry } from '@tracearr/shared';
 import { StatCard, formatNumber } from '@/components/ui/stat-card';
 import { InlineErrorState } from '@/components/library/ErrorState';
 
@@ -43,7 +44,7 @@ export function KpiStrip({
   watchersError,
   onRetryWatchers,
 }: KpiStripProps) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
 
   const watcherList = watchers ?? [];
   const avgCompletion = averageCompletion(watcherList);
@@ -52,7 +53,9 @@ export function KpiStrip({
   const completionDetailKey =
     mediaType === 'movie'
       ? 'media.detail.kpis.completion.detailMovie'
-      : 'media.detail.kpis.completion.detail';
+      : mediaType === 'artist'
+        ? 'media.detail.kpis.completion.detailMusic'
+        : 'media.detail.kpis.completion.detail';
 
   return (
     <div
@@ -73,13 +76,15 @@ export function KpiStrip({
       ) : (
         <>
           <StatCard
+            icon={Play}
             label={t('media.detail.kpis.plays.label')}
             value={formatNumber(stats.windows.all_time.combined.plays)}
             subValue={t('media.detail.kpis.plays.caption')}
             variant="kpi"
           />
           <StatCard
-            label={t('media.detail.kpis.watchTime.label')}
+            icon={Clock}
+            label={t(verbKeysFor(mediaType).watchTime)}
             value={formatKpiHours(stats.windows.all_time.combined.watchTimeMs)}
             subValue={t('media.detail.kpis.watchTime.detail', {
               hours: Math.round(stats.windows.last_30.combined.watchTimeMs / 3_600_000),
@@ -87,7 +92,12 @@ export function KpiStrip({
             variant="kpi"
           />
           <StatCard
-            label={t('media.detail.kpis.viewers.label')}
+            icon={Users}
+            label={t(
+              mediaType === 'artist'
+                ? 'media.detail.kpis.viewers.labelMusic'
+                : 'media.detail.kpis.viewers.label'
+            )}
             value={formatNumber(stats.windows.all_time.combined.uniqueUsers)}
             subValue={t('media.detail.kpis.viewers.detail')}
             variant="kpi"
@@ -106,6 +116,7 @@ export function KpiStrip({
         <StatCard label="" value="" isLoading variant="kpi" />
       ) : (
         <StatCard
+          icon={CheckCircle2}
           label={t('media.detail.kpis.completion.label')}
           value={avgCompletion != null ? `${avgCompletion}%` : '—'}
           subValue={t(completionDetailKey, { finished: finishedCount, total: totalWatchers })}
@@ -149,6 +160,7 @@ export function MemberKpiStrip({
   );
   const episodesWatched = Math.max(0, ...own.map((w) => w.distinctEpisodesWatched ?? 0));
   const showEpisodes = mediaType === 'show' && episodesWatched > 0 && !!episodeCount;
+  const isArtist = mediaType === 'artist';
 
   return (
     <div
@@ -170,16 +182,21 @@ export function MemberKpiStrip({
       ) : (
         <>
           <StatCard
+            icon={Play}
             label={t('media.detail.kpis.yourPlays')}
             value={formatNumber(plays)}
             variant="kpi"
           />
           <StatCard
-            label={t('media.detail.kpis.yourWatchTime')}
+            icon={Clock}
+            label={t(
+              isArtist ? 'media.detail.kpis.yourListenTime' : 'media.detail.kpis.yourWatchTime'
+            )}
             value={formatKpiHours(watchTimeMs)}
             variant="kpi"
           />
           <StatCard
+            icon={CheckCircle2}
             label={t('media.detail.kpis.yourCompletion')}
             value={completion != null ? `${completion}%` : '-'}
             subValue={
@@ -193,7 +210,8 @@ export function MemberKpiStrip({
             variant="kpi"
           />
           <StatCard
-            label={t('media.detail.kpis.lastWatched')}
+            icon={Calendar}
+            label={t(isArtist ? 'media.detail.kpis.lastPlayed' : 'media.detail.kpis.lastWatched')}
             value={lastWatchedDay ? format(parseISO(lastWatchedDay), 'MMM d, yyyy') : '-'}
             variant="kpi"
           />
@@ -201,7 +219,9 @@ export function MemberKpiStrip({
       )}
       {othersCount !== undefined && othersCount > 0 && (
         <p className="text-muted-foreground col-span-full text-xs">
-          {t('media.detail.kpis.watchedByOthers', { count: othersCount })}
+          {t(isArtist ? 'media.detail.kpis.playedByOthers' : 'media.detail.kpis.watchedByOthers', {
+            count: othersCount,
+          })}
         </p>
       )}
     </div>

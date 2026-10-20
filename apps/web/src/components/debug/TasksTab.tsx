@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { RefreshCw, Activity, Clock, AlertCircle, CheckCircle2, Cpu, Radio } from 'lucide-react';
 import {
   Card,
@@ -45,75 +47,77 @@ interface TasksData {
   timestamp: string;
 }
 
-const QUEUE_INFO: Array<{
-  key: keyof TasksData['queues'];
-  name: string;
-  description: string;
-  hasDlq?: boolean;
-}> = [
+const QUEUE_INFO = [
   {
     key: 'notifications',
-    name: 'Notifications',
-    description: 'Discord, webhooks, push',
+    nameKey: 'debug.tasksTab.queues.notifications',
+    descriptionKey: 'debug.tasksTab.queues.notificationsDesc',
     hasDlq: true,
   },
   {
     key: 'imports',
-    name: 'Imports',
-    description: 'Tautulli / Jellystat history',
+    nameKey: 'debug.tasksTab.queues.imports',
+    descriptionKey: 'debug.tasksTab.queues.importsDesc',
     hasDlq: true,
   },
   {
     key: 'maintenance',
-    name: 'Maintenance',
-    description: 'Data normalization & cleanup',
+    nameKey: 'debug.tasksTab.queues.maintenance',
+    descriptionKey: 'debug.tasksTab.queues.maintenanceDesc',
   },
   {
     key: 'librarySync',
-    name: 'Library Sync',
-    description: 'Library metadata sync',
+    nameKey: 'debug.tasksTab.queues.librarySync',
+    descriptionKey: 'debug.tasksTab.queues.librarySyncDesc',
   },
   {
     key: 'versionCheck',
-    name: 'Version Check',
-    description: 'GitHub release checking',
+    nameKey: 'debug.tasksTab.queues.versionCheck',
+    descriptionKey: 'debug.tasksTab.queues.versionCheckDesc',
   },
   {
     key: 'inactivityCheck',
-    name: 'Inactivity Check',
-    description: 'Account inactivity monitoring',
+    nameKey: 'debug.tasksTab.queues.inactivityCheck',
+    descriptionKey: 'debug.tasksTab.queues.inactivityCheckDesc',
   },
   {
     key: 'backup',
-    name: 'Backup',
-    description: 'Scheduled database backups',
+    nameKey: 'debug.tasksTab.queues.backup',
+    descriptionKey: 'debug.tasksTab.queues.backupDesc',
   },
-];
+] as const satisfies ReadonlyArray<{
+  key: keyof TasksData['queues'];
+  nameKey: string;
+  descriptionKey: string;
+  hasDlq?: boolean;
+}>;
+
+type Translate = TFunction<['pages', 'common']>;
 
 /**
  * Format a schedule from BullMQ into a human-readable string.
  * Handles cron patterns (e.g. "10 *\/12 * * *") and "every Nms" intervals.
  */
-function formatSchedule(schedule: string): string {
+function formatSchedule(schedule: string, t: Translate): string {
   // Handle "every Nms" format
   const everyMatch = schedule.match(/^every (\d+)ms$/);
   if (everyMatch?.[1]) {
     const ms = parseInt(everyMatch[1], 10);
-    return `Every ${formatInterval(ms)}`;
+    return t('debug.tasksTab.every', { interval: formatInterval(ms, t) });
   }
 
   // Handle common cron patterns
   const cronMatch = schedule.match(/^\d+\s+\*\/(\d+)\s+\*\s+\*\s+\*$/);
   if (cronMatch?.[1]) {
     const hours = parseInt(cronMatch[1], 10);
-    return `Every ${hours}h`;
+    return t('debug.tasksTab.every', { interval: `${hours}h` });
   }
 
   return schedule;
 }
 
-function formatInterval(ms: number): string {
-  if (ms === 0) return 'Event-driven';
+function formatInterval(ms: number, t: Translate): string {
+  if (ms === 0) return t('debug.tasksTab.eventDriven');
   const seconds = ms / 1000;
   if (seconds < 60) return `${seconds}s`;
   const minutes = seconds / 60;
@@ -123,6 +127,7 @@ function formatInterval(ms: number): string {
 }
 
 export function TasksTab() {
+  const { t } = useTranslation(['pages', 'common']);
   const tasks = useQuery({
     queryKey: ['debug', 'tasks'],
     queryFn: () => debugFetch<TasksData>('/tasks'),
@@ -130,11 +135,11 @@ export function TasksTab() {
   });
 
   if (tasks.isLoading) {
-    return <p className="text-muted-foreground text-sm">Loading tasks...</p>;
+    return <p className="text-muted-foreground text-sm">{t('debug.tasksTab.loading')}</p>;
   }
 
   if (tasks.isError || !tasks.data) {
-    return <p className="text-destructive text-sm">Failed to load task status</p>;
+    return <p className="text-destructive text-sm">{t('debug.tasksTab.failedToLoad')}</p>;
   }
 
   const { queues, services, publicEventConnections } = tasks.data;
@@ -146,9 +151,9 @@ export function TasksTab() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Activity className="h-5 w-5" />
-            Job Queues
+            {t('debug.tasksTab.jobQueues')}
           </CardTitle>
-          <CardDescription>BullMQ background job processing queues</CardDescription>
+          <CardDescription>{t('debug.tasksTab.jobQueuesDesc')}</CardDescription>
           <CardAction>
             <Button
               variant="outline"
@@ -165,14 +170,16 @@ export function TasksTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-muted-foreground border-b text-left text-xs">
-                  <th className="pr-4 pb-2 font-medium">Name</th>
-                  <th className="pr-4 pb-2 font-medium">Description</th>
-                  <th className="pr-4 pb-2 font-medium">Schedule</th>
-                  <th className="pr-2 pb-2 text-right font-medium">Waiting</th>
-                  <th className="pr-2 pb-2 text-right font-medium">Active</th>
-                  <th className="pr-2 pb-2 text-right font-medium">Completed</th>
-                  <th className="pr-2 pb-2 text-right font-medium">Failed</th>
-                  <th className="pb-2 text-right font-medium">Scheduled</th>
+                  <th className="pr-4 pb-2 font-medium">{t('common:labels.name')}</th>
+                  <th className="pr-4 pb-2 font-medium">{t('debug.tasksTab.description')}</th>
+                  <th className="pr-4 pb-2 font-medium">{t('debug.tasksTab.schedule')}</th>
+                  <th className="pr-2 pb-2 text-right font-medium">{t('common:tasks.waiting')}</th>
+                  <th className="pr-2 pb-2 text-right font-medium">{t('common:states.active')}</th>
+                  <th className="pr-2 pb-2 text-right font-medium">
+                    {t('debug.tasksTab.completed')}
+                  </th>
+                  <th className="pr-2 pb-2 text-right font-medium">{t('common:states.failed')}</th>
+                  <th className="pb-2 text-right font-medium">{t('debug.tasksTab.scheduled')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,30 +187,36 @@ export function TasksTab() {
                   const stats = queues[info.key];
                   const isActive = stats ? stats.active > 0 : false;
                   const hasFailed = stats ? stats.failed > 0 : false;
-                  const hasDlqItems = info.hasDlq && (stats?.dlqSize ?? 0) > 0;
+                  const hasDlqItems = 'hasDlq' in info && (stats?.dlqSize ?? 0) > 0;
 
                   return (
                     <tr key={info.key} className="border-b last:border-0">
                       <td className="py-2.5 pr-4">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{info.name}</span>
+                          <span className="font-medium">{t(info.nameKey)}</span>
                           {isActive && (
                             <Badge variant="default" className="gap-1 px-1.5 py-0 text-[10px]">
                               <Cpu className="h-2.5 w-2.5" />
-                              Processing
+                              {t('debug.tasksTab.processing')}
                             </Badge>
                           )}
                           {(hasFailed || hasDlqItems) && (
                             <Badge variant="danger" className="gap-1 px-1.5 py-0 text-[10px]">
                               <AlertCircle className="h-2.5 w-2.5" />
-                              {hasDlqItems ? `DLQ: ${stats?.dlqSize}` : 'Failed'}
+                              {hasDlqItems
+                                ? t('debug.tasksTab.dlq', { count: stats?.dlqSize ?? 0 })
+                                : t('common:states.failed')}
                             </Badge>
                           )}
                         </div>
                       </td>
-                      <td className="text-muted-foreground py-2.5 pr-4">{info.description}</td>
                       <td className="text-muted-foreground py-2.5 pr-4">
-                        {stats?.schedule ? formatSchedule(stats.schedule) : 'On demand'}
+                        {t(info.descriptionKey)}
+                      </td>
+                      <td className="text-muted-foreground py-2.5 pr-4">
+                        {stats?.schedule
+                          ? formatSchedule(stats.schedule, t)
+                          : t('debug.tasksTab.onDemand')}
                       </td>
                       {stats ? (
                         <>
@@ -231,7 +244,7 @@ export function TasksTab() {
                         </>
                       ) : (
                         <td colSpan={5} className="text-muted-foreground py-2.5 text-center">
-                          Not initialized
+                          {t('debug.tasksTab.notInitialized')}
                         </td>
                       )}
                     </tr>
@@ -249,19 +262,19 @@ export function TasksTab() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
-              Background Services
+              {t('debug.tasksTab.backgroundServices')}
             </CardTitle>
-            <CardDescription>Interval-based and event-driven background services</CardDescription>
+            <CardDescription>{t('debug.tasksTab.backgroundServicesDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-muted-foreground border-b text-left text-xs">
-                    <th className="pr-4 pb-2 font-medium">Name</th>
-                    <th className="pr-4 pb-2 font-medium">Description</th>
-                    <th className="pr-4 pb-2 font-medium">Interval</th>
-                    <th className="pb-2 font-medium">Status</th>
+                    <th className="pr-4 pb-2 font-medium">{t('common:labels.name')}</th>
+                    <th className="pr-4 pb-2 font-medium">{t('debug.tasksTab.description')}</th>
+                    <th className="pr-4 pb-2 font-medium">{t('debug.tasksTab.interval')}</th>
+                    <th className="pb-2 font-medium">{t('common:labels.status')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -270,18 +283,18 @@ export function TasksTab() {
                       <td className="py-2.5 pr-4 font-medium">{service.name}</td>
                       <td className="text-muted-foreground py-2.5 pr-4">{service.description}</td>
                       <td className="text-muted-foreground py-2.5 pr-4">
-                        {formatInterval(service.intervalMs)}
+                        {formatInterval(service.intervalMs, t)}
                       </td>
                       <td className="py-2.5">
                         {service.running ? (
                           <Badge variant="success" className="gap-1 text-xs">
                             <CheckCircle2 className="h-3 w-3" />
-                            Running
+                            {t('common:tasks.running')}
                           </Badge>
                         ) : (
                           <Badge variant="danger" className="gap-1 text-xs">
                             <AlertCircle className="h-3 w-3" />
-                            Stopped
+                            {t('common:labels.stopped')}
                           </Badge>
                         )}
                       </td>
@@ -298,11 +311,9 @@ export function TasksTab() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Radio className="h-5 w-5" />
-            Event Connections
+            {t('debug.tasksTab.eventConnections')}
           </CardTitle>
-          <CardDescription>
-            Open public API event connections (GET /api/v2/public/events) held by this process
-          </CardDescription>
+          <CardDescription>{t('debug.tasksTab.eventConnectionsDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-2xl font-semibold tabular-nums">{publicEventConnections.open}</p>

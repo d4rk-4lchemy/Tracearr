@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,20 +17,30 @@ interface UserLocationsCardProps {
 
 const INITIAL_DISPLAY_COUNT = 5;
 
+function LocationsTitle() {
+  const { t } = useTranslation('pages');
+  return (
+    <div className="flex items-center gap-2">
+      <MapPin className="h-5 w-5" />
+      {t('userDetail.locations')}
+    </div>
+  );
+}
+
 export function UserLocationsCard({
   locations,
   isLoading,
   totalSessions = 0,
 }: UserLocationsCardProps) {
+  const { t } = useTranslation(['pages', 'common']);
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (isLoading) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            Locations
+          <CardTitle>
+            <LocationsTitle />
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -56,13 +67,12 @@ export function UserLocationsCard({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            Locations
+          <CardTitle>
+            <LocationsTitle />
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground text-sm">No location data available</p>
+          <p className="text-muted-foreground text-sm">{t('common:empty.noLocationData')}</p>
         </CardContent>
       </Card>
     );
@@ -75,12 +85,9 @@ export function UserLocationsCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            Locations
-          </div>
+          <LocationsTitle />
           <Badge variant="secondary" className="font-normal">
-            {locations.length} unique
+            {t('pages:userDetail.uniqueCount', { count: locations.length })}
           </Badge>
         </CardTitle>
       </CardHeader>
@@ -102,18 +109,16 @@ export function UserLocationsCard({
                   </div>
                   <div>
                     <p className="font-medium">
-                      {location.city ?? 'Unknown City'}
+                      {location.city ?? t('pages:userDetail.unknownCity')}
                       {location.region && (
                         <span className="text-muted-foreground">, {location.region}</span>
                       )}
                     </p>
                     <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                      <span>{location.country ?? 'Unknown'}</span>
+                      <span>{location.country ?? t('common:labels.unknown')}</span>
                       <LocalBadge isLocal={location.isLocal} country={location.country} />
                       <span>·</span>
-                      <span>
-                        {location.sessionCount} session{location.sessionCount !== 1 ? 's' : ''}
-                      </span>
+                      <span>{t('common:count.session', { count: location.sessionCount })}</span>
                       <span>·</span>
                       <span>
                         {formatDistanceToNow(new Date(location.lastSeenAt), { addSuffix: true })}
@@ -127,7 +132,7 @@ export function UserLocationsCard({
                   </Badge>
                   {location.ipAddresses.length > 1 && (
                     <p className="text-muted-foreground mt-1 text-xs">
-                      {location.ipAddresses.length} IPs
+                      {t('pages:userDetail.ipCount', { count: location.ipAddresses.length })}
                     </p>
                   )}
                 </div>
@@ -148,12 +153,14 @@ export function UserLocationsCard({
             {isExpanded ? (
               <>
                 <ChevronUp className="mr-2 h-4 w-4" />
-                Show Less
+                {t('common:actions.showLess')}
               </>
             ) : (
               <>
                 <ChevronDown className="mr-2 h-4 w-4" />
-                View All ({locations.length - INITIAL_DISPLAY_COUNT} more)
+                {t('pages:userDetail.viewAllMore', {
+                  count: locations.length - INITIAL_DISPLAY_COUNT,
+                })}
               </>
             )}
           </Button>

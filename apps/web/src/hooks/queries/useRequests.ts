@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import type {
   CreateRequestServiceInput,
   MyRequestsQuery,
-  RequesterSort,
   RequestUnplayedSort,
   TestRequestServiceInput,
   UpdateRequestServiceInput,
@@ -77,20 +76,6 @@ export function useRequestsUnplayed(
   return useQuery({
     queryKey: [...REQUESTS_KEY, 'unplayed', sortedServerIds.join(','), params],
     queryFn: () => api.requests.unplayed({ ...params, serverIds: sortedServerIds }),
-    enabled: enabled ?? true,
-    placeholderData: (prev) => prev,
-  });
-}
-
-export function useRequesters(
-  serverIds: string[],
-  options: RequestsListOptions & { sortBy: RequesterSort }
-) {
-  const sortedServerIds = [...serverIds].sort();
-  const { enabled, ...params } = options;
-  return useQuery({
-    queryKey: [...REQUESTS_KEY, 'requesters', sortedServerIds.join(','), params],
-    queryFn: () => api.requests.requesters({ ...params, serverIds: sortedServerIds }),
     enabled: enabled ?? true,
     placeholderData: (prev) => prev,
   });

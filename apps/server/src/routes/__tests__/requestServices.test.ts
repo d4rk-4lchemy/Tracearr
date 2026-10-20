@@ -445,6 +445,22 @@ describe('Request Service Routes', () => {
       expect(enqueueRequestSync).not.toHaveBeenCalled();
     });
 
+    it('409s when a sync for the service is already queued', async () => {
+      app = await buildTestApp(ownerUser);
+      vi.mocked(getRequestService).mockResolvedValue(makeRow());
+      vi.mocked(enqueueRequestSync).mockRejectedValue(
+        new Error('A sync is already in progress for this service')
+      );
+
+      const response = await app.inject({
+        method: 'POST',
+        url: `/request-services/${SERVICE_ID}/sync`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().message).toBe('A sync is already in progress for this service');
+    });
+
     it('500s when the queue cannot take the job', async () => {
       app = await buildTestApp(ownerUser);
       vi.mocked(getRequestService).mockResolvedValue(makeRow());

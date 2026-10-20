@@ -190,6 +190,7 @@ vi.mock('../../../services/serverLocations.js', async (importOriginal) => ({
   resolveSessionGeo: (...args: unknown[]) => mockResolveSessionGeo(...args) as unknown,
 }));
 
+import { updatePendingSession } from '../pendingConfirmation.js';
 import { confirmAndPersistSession, createSessionWithRulesAtomic } from '../sessionLifecycle.js';
 import { resetDispatcherForTests } from '../../../services/automations/events/dispatcher.js';
 import {
@@ -531,6 +532,61 @@ describe('confirmAndPersistSession geo', () => {
     );
     expect(result.geo).toEqual(placed);
   });
+
+  it.each([0, 2000])(
+    'persists the new catch-up programme at %i without restoring the old maximum',
+    async (progressMs) => {
+      const previous = pending({
+        server: { ...server, type: 'dispatcharr' },
+        processed: {
+          ...processed,
+          mediaType: 'live',
+          dispatcharrPlaybackKind: 'catchup',
+          dispatcharrCatchupEpgStartAt: '2026-07-19T05:30:00Z',
+          progressMs: 5_400_000,
+        },
+        confirmation: {
+          confirmedPlayback: false,
+          firstSeenAt: startedAt,
+          maxViewOffset: 5_400_000,
+          initialViewOffset: 5_390_000,
+        },
+      });
+      const next = {
+        ...previous.processed,
+        mediaTitle: 'Late News',
+        totalDurationMs: 3_600_000,
+        dispatcharrCatchupEpgStartAt: '2026-07-19T07:00:00Z',
+        progressMs,
+      };
+      const { updatedData, isConfirmed } = updatePendingSession(
+        previous,
+        'playing',
+        progressMs,
+        Date.now(),
+        undefined,
+        next
+      );
+      expect(isConfirmed).toBe(true);
+      const result = await confirmAndPersistSession({
+        pendingData: updatedData,
+        activeAutomations: [],
+        activeSessions: [],
+        recentSessions: [],
+      });
+      expect(insertValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: previous.id,
+          mediaTitle: 'Late News',
+          totalDurationMs: 3_600_000,
+          progressMs: progressMs || null,
+        })
+      );
+      expect(result.insertedSession.id).toBe(previous.id);
+      expect(result.insertedSession.startedAt).toEqual(new Date(startedAt));
+      expect(result.insertedSession.progressMs ?? 0).toBe(progressMs);
+    }
+  );
 
   it('keeps the geo a remote pending session was seen with', async () => {
     const seen: SessionGeo = {

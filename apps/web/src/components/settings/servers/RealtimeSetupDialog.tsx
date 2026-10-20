@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
 import type { Server, ServerConnectionStatus } from '@tracearr/shared';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -18,6 +18,8 @@ const ISSUE_KEYS = {
   restart_required: 'servers.realtimeDialog.issueRestartRequired',
   malfunctioned: 'servers.realtimeDialog.issueMalfunctioned',
 } as const;
+
+const BOLD = { strong: <strong /> };
 
 export function RealtimeSetupDialog({
   server,
@@ -105,14 +107,14 @@ export function RealtimeSetupDialog({
           ) : server.type === 'jellyfin' ? (
             <>
               <ol className="list-decimal space-y-2 pl-4">
-                <li>In your Jellyfin dashboard, go to Plugins &rarr; Repositories.</li>
+                <li>{t('servers.realtimeDialog.jellyfinStep1')}</li>
                 <li>
-                  Add a repository named <strong>Tracearr</strong> with the URL below.
+                  <Trans t={t} i18nKey="servers.realtimeDialog.jellyfinStep2" components={BOLD} />
                 </li>
                 <li>
-                  Open the Catalog tab and install <strong>Tracearr SSE</strong>.
+                  <Trans t={t} i18nKey="servers.realtimeDialog.jellyfinStep3" components={BOLD} />
                 </li>
-                <li>Restart Jellyfin, and Tracearr will detect it automatically.</li>
+                <li>{t('servers.realtimeDialog.jellyfinStep4')}</li>
               </ol>
               <div className="space-y-1">
                 <p className="text-foreground text-xs font-medium">
@@ -134,11 +136,11 @@ export function RealtimeSetupDialog({
             </>
           ) : (
             <ol className="list-decimal space-y-2 pl-4">
-              <li>In your Emby dashboard, go to Plugins &rarr; Catalog.</li>
+              <li>{t('servers.realtimeDialog.embyStep1')}</li>
               <li>
-                Find <strong>Tracearr SSE</strong> in the Notifications row and install it.
+                <Trans t={t} i18nKey="servers.realtimeDialog.embyStep2" components={BOLD} />
               </li>
-              <li>Restart Emby, and Tracearr will detect it automatically.</li>
+              <li>{t('servers.realtimeDialog.embyStep3')}</li>
             </ol>
           )}
           <p className="text-xs">

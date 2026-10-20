@@ -5,6 +5,8 @@
   "stats": "إحصائيات",
   "activity": "النشاط",
   "library": "المكتبة",
+  "people": "",
+  "rules": "",
   "users": "المستخدمون",
   "automations": "",
   "violations": "الانتهاكات",
@@ -18,14 +20,10 @@
   "devices": "الأجهزة",
   "bandwidth": "عرض التردد",
   "jobs": "الوظائف",
-  "media": "وسائط",
   "mediaBrowse": "تصفح",
   "mediaGenres": "الأنواع",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

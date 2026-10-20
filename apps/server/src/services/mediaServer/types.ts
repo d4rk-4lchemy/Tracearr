@@ -629,6 +629,35 @@ export interface IMediaServerClient {
   ): Promise<{ items: MediaLibraryItem[]; totalCount: number }>;
 
   /**
+   * Get all albums for a music library with pagination support. Plex-only:
+   * JF/Emby return MusicAlbum items through getLibraryItems, so this stays
+   * undefined for those clients.
+   *
+   * @param libraryId - The library identifier
+   * @param options - Pagination options
+   * @returns Promise with album items and total count
+   */
+  getLibraryAlbums?(
+    libraryId: string,
+    options?: { offset?: number; limit?: number }
+  ): Promise<{ items: MediaLibraryItem[]; totalCount: number }>;
+
+  /**
+   * Get albums added or changed since a given date. Plex-only counterpart to
+   * getLibraryAlbums.
+   *
+   * @param libraryId - The library identifier
+   * @param since - Only return albums added or modified after this date
+   * @param options - Pagination options
+   * @returns Promise with album items and total count
+   */
+  getLibraryAlbumsSince?(
+    libraryId: string,
+    since: Date,
+    options?: { offset?: number; limit?: number }
+  ): Promise<{ items: MediaLibraryItem[]; totalCount: number }>;
+
+  /**
    * Ask the server whether each item's files are still on disk. Plex-only:
    * its listings keep reporting a file until the library trash is emptied, and
    * only the metadata endpoint says whether the file is really there. JF/Emby

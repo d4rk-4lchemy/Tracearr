@@ -21,7 +21,7 @@
       "destinations": "",
       "newsletters": "",
       "email": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -37,7 +37,7 @@
       "posters": "",
       "plexAccounts": "",
       "destinations": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -229,6 +229,13 @@
       "issueBlocked": "",
       "issueRestartRequired": "",
       "issueMalfunctioned": "",
+      "jellyfinStep1": "",
+      "jellyfinStep2": "",
+      "jellyfinStep3": "",
+      "jellyfinStep4": "",
+      "embyStep1": "",
+      "embyStep2": "",
+      "embyStep3": "",
       "openReleases": ""
     },
     "posterSource": {
@@ -236,7 +243,9 @@
       "description": "",
       "automatic": "",
       "emptyHint": "",
-      "ownerOnly": ""
+      "ownerOnly": "",
+      "precache": "",
+      "precacheDescription": ""
     },
     "version": {
       "installed": "",
@@ -245,11 +254,6 @@
     }
   },
   "mobile": {
-    "title": "モバイルアプリ",
-    "pairDevice": "デバイスをペアリングする",
-    "generateToken": "ペアトークンを生成する",
-    "scanQrCode": "",
-    "tokenExpires": "トークンの有効期限は {{time}} です。",
     "lastSeen": "",
     "connectedOn": "",
     "noDevices": "まだペアリングされたデバイスはありません",
@@ -257,7 +261,6 @@
     "revokeAll": "すべてのセッションを取り消す",
     "getOnGooglePlay": "Google Playで入手",
     "downloadOnAppStore": "App Storeでダウンロード",
-    "externalUrlRequired": "モバイルペアリングを機能させるには、一般設定で外部 URL を設定する必要があります。",
     "mobileAccessDisabled": "モバイルアクセスは無効です",
     "mobileAccessDisabledDesc": "Tracearrモバイルアプリがあなたのサーバーに接続できるようにするには、モバイルアクセスを有効にします。",
     "enableMobileAccess": "モバイルアクセスを有効にする",
@@ -351,10 +354,41 @@
     "automatic": "",
     "startJob": "作業を開始"
   },
-  "accessControl": {
-    "allowGuestAccess": "ゲストアクセスを許可する",
-    "allowGuestAccessDesc": "無効にすると、サーバーの所有者のみが Tracearr にログインできます。",
-    "singleOwnerNote": "注: ゲストアクセスが無効になっている場合、サーバーの所有者のみがサインインできます。他のすべてのユーザーには「アクセス拒否」メッセージが表示されます。"
+  "memberLogin": {
+    "serverActivity": "",
+    "serverActivityDesc": "",
+    "noServers": "",
+    "addServer": "",
+    "serversLoadFailed": "",
+    "signIn": {
+      "title": "",
+      "titleDesc": "",
+      "local": "",
+      "localDesc": "",
+      "oidc": "",
+      "oidcDesc": "",
+      "plex": "",
+      "plexDesc": "",
+      "onlyWay": "",
+      "membersTitle": "",
+      "media": "",
+      "mediaDesc": "",
+      "servers": "",
+      "overrides": "",
+      "overridesDesc": "",
+      "overridesEmpty": "",
+      "overridesLoadFailed": "",
+      "addPerson": "",
+      "searchPeople": "",
+      "nobodyFound": "",
+      "accessLabel": "",
+      "roleLabel": "",
+      "allow": "",
+      "block": "",
+      "admin": "",
+      "member": "",
+      "backToDefault": ""
+    }
   },
   "import": {
     "noServers": "サーバーが接続されていません",
@@ -415,6 +449,13 @@
     "importFullRangeHelp": "",
     "skipOverlap": "",
     "skipDuplicatePlugin": "",
+    "importFailed": "",
+    "dropzone": {
+      "dropHere": "",
+      "dragOrClick": "",
+      "limit": "",
+      "removeFile": ""
+    },
     "overlapSkipped_other": "",
     "duplicates_other": ""
   },
@@ -574,7 +615,6 @@
       "cron": "",
       "inZone": ""
     },
-    "nextRun": "",
     "noNextRun": "",
     "neverSent": "",
     "lastSend": "",
@@ -987,9 +1027,7 @@
     "syncedAgo": "",
     "neverSynced": "",
     "counts": {
-      "requests_other": "",
-      "unmatchedMedia_other": "",
-      "unmatchedUsers_other": ""
+      "requests_other": ""
     },
     "needsKey": "",
     "lastError": "",

@@ -7,31 +7,26 @@
  * GET /plays-by-dayofweek - Plays grouped by day of week
  * GET /plays-by-hourofday - Plays grouped by hour of day
  *
+ * All three take groupBy=mediaType, which adds music and returns one series
+ * per media group (movie, show, music), each row tagged with mediaType.
+ *
  * All endpoints use engagement-based counting which filters out
  * sessions shorter than 2 minutes (Netflix-style "intent" threshold).
  */
 
 import type { FastifyPluginAsync } from 'fastify';
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
-import { statsQuerySchema } from '@tracearr/shared';
+import { playsBreakdownQuerySchema, playsQuerySchema } from '@tracearr/shared';
 import { resolveDateRange } from './utils.js';
 import { resolveServerIds } from '../../utils/serverFiltering.js';
 import { scopedServerFragment, viewScope } from '../../lib/scope.js';
 import { queryPlaysOverTime, queryPlaysByDayOfWeek, queryPlaysByHourOfDay } from './queries.js';
-import { ACTIVITY_MEDIA_TYPES } from '../../constants/index.js';
-
-// /plays queries the sessions table directly (already restricted to Activity
-// media types), so the optional filter only ever needs to narrow within that set.
-const playsMediaTypeQuerySchema = z.object({
-  mediaType: z.enum(ACTIVITY_MEDIA_TYPES).optional(),
-});
 
 /**
  * Get bucket interval based on the requested period.
  * Returns interval string for TimescaleDB time_bucket().
  */
-function getBucketInterval(period: string): string {
+export function getBucketInterval(period: string): string {
   switch (period) {
     case 'day':
       return '1 hour';
@@ -55,17 +50,13 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
    * Uses timezone-aware day bucketing so plays are grouped by user's local day.
    */
   app.get('/plays', readStats, async (request, reply) => {
-    const query = statsQuerySchema.safeParse(request.query);
+    const query = playsQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
     }
-    const mediaTypeQuery = playsMediaTypeQuerySchema.safeParse(request.query);
-    if (!mediaTypeQuery.success) {
-      return reply.badRequest('Invalid query parameters');
-    }
 
-    const { period, startDate, endDate, serverId, serverIds, timezone } = query.data;
-    const { mediaType } = mediaTypeQuery.data;
+    const { period, startDate, endDate, serverId, serverIds, timezone, mediaType, groupBy } =
+      query.data;
     const authUser = request.user;
     const dateRange = resolveDateRange(period, startDate, endDate);
     // Default to UTC for backwards compatibility
@@ -84,6 +75,7 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
       serverFilter,
       endDate: customEnd,
       mediaTypeFilter,
+      groupByMediaType: groupBy === 'mediaType',
     });
 
     return { data };
@@ -95,12 +87,12 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
    * Returns validated plays (sessions >= 2 min) grouped by day of week.
    */
   app.get('/plays-by-dayofweek', readStats, async (request, reply) => {
-    const query = statsQuerySchema.safeParse(request.query);
+    const query = playsBreakdownQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
     }
 
-    const { period, startDate, endDate, serverId, serverIds, timezone } = query.data;
+    const { period, startDate, endDate, serverId, serverIds, timezone, groupBy } = query.data;
     const authUser = request.user;
     const dateRange = resolveDateRange(period, startDate, endDate);
     // Default to UTC for backwards compatibility
@@ -115,6 +107,7 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
       timezone: tz,
       serverFilter,
       endDate: customEnd,
+      groupByMediaType: groupBy === 'mediaType',
     });
 
     return { data };
@@ -128,12 +121,12 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
    * view only has daily granularity.
    */
   app.get('/plays-by-hourofday', readStats, async (request, reply) => {
-    const query = statsQuerySchema.safeParse(request.query);
+    const query = playsBreakdownQuerySchema.safeParse(request.query);
     if (!query.success) {
       return reply.badRequest('Invalid query parameters');
     }
 
-    const { period, startDate, endDate, serverId, serverIds, timezone } = query.data;
+    const { period, startDate, endDate, serverId, serverIds, timezone, groupBy } = query.data;
     const authUser = request.user;
     const dateRange = resolveDateRange(period, startDate, endDate);
     // Default to UTC for backwards compatibility
@@ -148,6 +141,7 @@ export const playsRoutes: FastifyPluginAsync = async (app) => {
       timezone: tz,
       serverFilter,
       endDate: customEnd,
+      groupByMediaType: groupBy === 'mediaType',
     });
 
     return { data };

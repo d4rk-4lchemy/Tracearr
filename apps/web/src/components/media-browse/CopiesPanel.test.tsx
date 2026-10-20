@@ -55,7 +55,7 @@ describe('CopiesPanel', () => {
   it('shows an inline error with retry on failure', () => {
     const onRetry = vi.fn();
     renderPanel({ isError: true, onRetry });
-    screen.getByRole('button', { name: /Try again/ }).click();
+    screen.getByRole('button', { name: /try again/i }).click();
     expect(onRetry).toHaveBeenCalled();
   });
 

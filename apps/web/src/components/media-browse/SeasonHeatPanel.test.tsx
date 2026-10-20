@@ -32,7 +32,7 @@ describe('SeasonHeatPanel', () => {
   it('shows an inline error with retry on failure', () => {
     const onRetry = vi.fn();
     render(<SeasonHeatPanel seasons={undefined} isLoading={false} isError onRetry={onRetry} />);
-    screen.getByRole('button', { name: /Try again/ }).click();
+    screen.getByRole('button', { name: /try again/i }).click();
     expect(onRetry).toHaveBeenCalled();
   });
 

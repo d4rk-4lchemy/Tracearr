@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { ArrowRight, Video, AudioLines, Subtitles, Cpu, ChevronDown, Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -50,32 +51,33 @@ interface StreamDetailsPanelProps {
 
 // Component for showing "N/A" with tooltip when stream bitrate is unavailable (Jellyfin/Emby only)
 function UnavailableBitrate() {
+  const { t } = useTranslation('pages');
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="text-muted-foreground inline-flex cursor-help items-center gap-1">
-          N/A
+          {t('history.stream.notAvailable')}
           <Info className="h-3 w-3" />
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-[250px]">
-        <p className="text-xs">
-          Jellyfin and Emby do not expose individual video/audio bitrates during transcoding—only
-          the total stream bitrate is available.
-        </p>
+        <p className="text-xs">{t('history.stream.bitrateUnavailable')}</p>
       </TooltipContent>
     </Tooltip>
   );
 }
 
 // Format channels (e.g., 8 -> "7.1", 6 -> "5.1", 2 -> "Stereo")
-function formatChannels(channels: number | null | undefined): string {
+function formatChannels(
+  channels: number | null | undefined,
+  t: TFunction<['common', 'pages']>
+): string {
   if (!channels) return '—';
   if (channels === 8) return '7.1';
   if (channels === 6) return '5.1';
-  if (channels === 2) return 'Stereo';
-  if (channels === 1) return 'Mono';
-  return `${channels}ch`;
+  if (channels === 2) return t('pages:history.stream.stereo');
+  if (channels === 1) return t('pages:history.stream.mono');
+  return t('pages:history.stream.channelCount', { count: channels });
 }
 
 function formatFramerate(framerate: string | number | null | undefined): string {
@@ -206,6 +208,7 @@ function SectionHeader({
 }
 
 function SectionColumnLabels({ className }: { className?: string }) {
+  const { t } = useTranslation('pages');
   return (
     <div
       className={cn(
@@ -214,8 +217,10 @@ function SectionColumnLabels({ className }: { className?: string }) {
       )}
     >
       <span />
-      <span className="font-medium tracking-wide uppercase">Source</span>
-      <span className="text-right font-medium tracking-wide uppercase">Stream</span>
+      <span className="font-medium tracking-wide uppercase">{t('history.stream.source')}</span>
+      <span className="text-right font-medium tracking-wide uppercase">
+        {t('history.stream.stream')}
+      </span>
     </div>
   );
 }
@@ -239,7 +244,7 @@ export function StreamDetailsPanel({
   bitrate,
   serverType,
 }: StreamDetailsPanelProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'pages']);
   const [transcodeOpen, setTranscodeOpen] = useState(false);
   const decisionBadge = (decision: string | null) => {
     const { variant, labelKey } = getDecisionBadge(decision);
@@ -249,15 +254,18 @@ export function StreamDetailsPanel({
   // Check if we have any stream details to show
   const hasVideoDetails = sourceVideoCodec || streamVideoCodec || sourceVideoWidth;
   const hasAudioDetails = sourceAudioCodec || streamAudioCodec || sourceAudioChannels;
+  // Atmos is metadata inside the core codec, so a direct play or copy keeps it
+  const atmosSuffix = sourceAudioDetails?.atmos ? ' Atmos' : '';
   const hasSubtitleDetails = subtitleInfo?.codec || subtitleInfo?.language;
-  const hasTranscodeDetails = transcodeInfo && (transcodeInfo.hwDecoding || transcodeInfo.hwEncoding);
+  const hasTranscodeDetails =
+    transcodeInfo && (transcodeInfo.hwDecoding || transcodeInfo.hwEncoding);
   const ffmpegSpeed = transcodeInfo?.speed;
 
   // If no details at all, show a simple message
   if (!hasVideoDetails && !hasAudioDetails) {
     return (
       <div className="text-muted-foreground py-2 text-sm">
-        No detailed stream information available
+        {t('pages:history.stream.noDetails')}
       </div>
     );
   }
@@ -275,7 +283,7 @@ export function StreamDetailsPanel({
         <>
           {transcodeInfo?.sourceContainer && (
             <ComparisonRow
-              label="Container"
+              label={t('pages:history.stream.container')}
               sourceValue={formatMediaTech(transcodeInfo.sourceContainer)}
               streamValue={formatMediaTech(
                 transcodeInfo.streamContainer ?? transcodeInfo.sourceContainer
@@ -285,16 +293,16 @@ export function StreamDetailsPanel({
           <div className="space-y-1">
             {!!bitrate && (
               <div className="flex justify-between py-1 text-sm">
-                <span className="text-muted-foreground">Bitrate</span>
+                <span className="text-muted-foreground">{t('pages:history.stream.bitrate')}</span>
                 <span className="font-medium">{formatBitrate(bitrate)}</span>
               </div>
             )}
             {ffmpegSpeed !== undefined && (
               <div className="flex justify-between py-1 text-sm">
-                <span className="text-muted-foreground">Speed</span>
+                <span className="text-muted-foreground">{t('pages:history.stream.speed')}</span>
                 <span className={cn('font-medium', ffmpegSpeed < 1 && 'text-amber-500')}>
                   {ffmpegSpeed.toFixed(2)}x
-                  {transcodeInfo?.throttled && ' (throttled)'}
+                  {transcodeInfo?.throttled && ` ${t('pages:history.stream.throttled')}`}
                 </span>
               </div>
             )}
@@ -310,7 +318,7 @@ export function StreamDetailsPanel({
           <div>
             <SectionHeader
               icon={Video}
-              title="Video"
+              title={t('pages:history.stream.video')}
               badge={
                 <Badge variant={videoBadge.variant} className="text-xs">
                   {videoBadge.label}
@@ -320,13 +328,13 @@ export function StreamDetailsPanel({
             <div className="space-y-0.5 rounded-md border p-2">
               <SectionColumnLabels className="border-border/50 mb-1 border-b pb-1" />
               <ComparisonRow
-                label="Codec"
+                label={t('pages:history.stream.codec')}
                 sourceValue={formatCodec(sourceVideoCodec)}
                 streamValue={formatCodec(streamVideoCodec ?? sourceVideoCodec)}
               />
 
               <ComparisonRow
-                label="Resolution"
+                label={t('labels.resolution')}
                 sourceValue={formatResolutionDisplay(sourceVideoWidth, sourceVideoHeight)}
                 streamValue={formatResolutionDisplay(
                   streamVideoDetails?.width ?? sourceVideoWidth,
@@ -334,7 +342,7 @@ export function StreamDetailsPanel({
                 )}
               />
               <ComparisonRow
-                label="Bitrate"
+                label={t('pages:history.stream.bitrate')}
                 sourceValue={formatBitrate(sourceVideoDetails?.bitrate)}
                 streamValue={
                   // Show N/A with tooltip for Jellyfin/Emby transcodes without stream bitrate
@@ -350,7 +358,7 @@ export function StreamDetailsPanel({
               {/* Extended video details - only show if we have them */}
               {sourceVideoDetails?.framerate && (
                 <ComparisonRow
-                  label="Framerate"
+                  label={t('pages:history.stream.framerate')}
                   sourceValue={formatFramerate(sourceVideoDetails.framerate)}
                   streamValue={formatFramerate(
                     streamVideoDetails?.framerate ?? sourceVideoDetails.framerate
@@ -359,7 +367,7 @@ export function StreamDetailsPanel({
               )}
               {sourceVideoDetails?.dynamicRange && (
                 <ComparisonRow
-                  label="HDR"
+                  label={t('pages:history.stream.hdr')}
                   sourceValue={formatMediaTech(sourceVideoDetails.dynamicRange)}
                   streamValue={formatMediaTech(
                     streamVideoDetails?.dynamicRange ?? sourceVideoDetails.dynamicRange
@@ -368,21 +376,21 @@ export function StreamDetailsPanel({
               )}
               {sourceVideoDetails?.profile && (
                 <ComparisonRow
-                  label="Profile"
+                  label={t('pages:history.stream.profile')}
                   sourceValue={sourceVideoDetails.profile}
                   showArrow={false}
                 />
               )}
               {sourceVideoDetails?.colorSpace && (
                 <ComparisonRow
-                  label="Color"
+                  label={t('pages:history.stream.color')}
                   sourceValue={`${sourceVideoDetails.colorSpace}${sourceVideoDetails.colorDepth ? ` ${sourceVideoDetails.colorDepth}bit` : ''}`}
                   showArrow={false}
                 />
               )}
               {videoDecision == 'transcode' && videoTranscodeReasons.length > 0 && (
                 <ComparisonRow
-                  label="Transcode Reason"
+                  label={t('labels.transcodeReason')}
                   sourceValue={videoTranscodeReasons.join(', ')}
                   showArrow={false}
                   sourceClassName="break-words"
@@ -399,7 +407,7 @@ export function StreamDetailsPanel({
         <div>
           <SectionHeader
             icon={AudioLines}
-            title="Audio"
+            title={t('pages:history.stream.audio')}
             badge={
               <Badge variant={audioBadge.variant} className="text-xs">
                 {audioBadge.label}
@@ -409,19 +417,20 @@ export function StreamDetailsPanel({
           <div className="space-y-0.5 rounded-md border p-2">
             <SectionColumnLabels className="border-border/50 mb-1 border-b pb-1" />
             <ComparisonRow
-              label="Codec"
-              sourceValue={
-                formatCodec(sourceAudioCodec) + (sourceAudioDetails?.atmos ? ' Atmos' : '')
+              label={t('pages:history.stream.codec')}
+              sourceValue={formatCodec(sourceAudioCodec) + atmosSuffix}
+              streamValue={
+                formatCodec(streamAudioCodec ?? sourceAudioCodec) +
+                (audioDecision === 'transcode' ? '' : atmosSuffix)
               }
-              streamValue={formatCodec(streamAudioCodec ?? sourceAudioCodec)}
             />
             <ComparisonRow
-              label="Channels"
-              sourceValue={formatChannels(sourceAudioChannels)}
-              streamValue={formatChannels(streamAudioDetails?.channels ?? sourceAudioChannels)}
+              label={t('pages:history.stream.channels')}
+              sourceValue={formatChannels(sourceAudioChannels, t)}
+              streamValue={formatChannels(streamAudioDetails?.channels ?? sourceAudioChannels, t)}
             />
             <ComparisonRow
-              label="Bitrate"
+              label={t('pages:history.stream.bitrate')}
               sourceValue={formatBitrate(sourceAudioDetails?.bitrate)}
               streamValue={
                 // Show N/A with tooltip for Jellyfin/Emby transcodes without stream bitrate
@@ -436,21 +445,21 @@ export function StreamDetailsPanel({
             />
             {sourceAudioDetails?.language && (
               <ComparisonRow
-                label="Language"
+                label={t('pages:history.stream.language')}
                 sourceValue={sourceAudioDetails.language}
                 streamValue={streamAudioDetails?.language ?? sourceAudioDetails.language}
               />
             )}
             {sourceAudioDetails?.sampleRate && (
               <ComparisonRow
-                label="Sample Rate"
+                label={t('pages:history.stream.sampleRate')}
                 sourceValue={`${sourceAudioDetails.sampleRate / 1000} kHz`}
                 showArrow={false}
               />
             )}
             {audioDecision == 'transcode' && audioTranscodeReasons.length > 0 && (
               <ComparisonRow
-                label="Transcode Reason"
+                label={t('labels.transcodeReason')}
                 sourceValue={audioTranscodeReasons.join(', ')}
                 showArrow={false}
                 sourceClassName="break-words"
@@ -466,7 +475,7 @@ export function StreamDetailsPanel({
         <div>
           <SectionHeader
             icon={Subtitles}
-            title="Subtitles"
+            title={t('pages:history.stream.subtitles')}
             badge={
               subtitleInfo?.decision ? (
                 <Badge variant={decisionBadge(subtitleInfo.decision).variant} className="text-xs">
@@ -477,7 +486,7 @@ export function StreamDetailsPanel({
           />
           <div className="space-y-0.5 rounded-md border p-2">
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Format:</span>
+              <span className="text-muted-foreground">{t('pages:history.stream.format')}:</span>
               <span>{formatCodec(subtitleInfo?.codec)}</span>
               {subtitleInfo?.language && (
                 <>
@@ -487,7 +496,7 @@ export function StreamDetailsPanel({
               )}
               {subtitleInfo?.forced && (
                 <Badge variant="outline" className="text-xs">
-                  Forced
+                  {t('pages:history.stream.forced')}
                 </Badge>
               )}
             </div>
@@ -501,7 +510,7 @@ export function StreamDetailsPanel({
           <CollapsibleTrigger className="hover:text-foreground text-muted-foreground flex w-full items-center justify-between py-2 text-sm font-medium transition-colors">
             <div className="flex items-center gap-2">
               <Cpu className="h-4 w-4" />
-              Transcode Details
+              {t('pages:history.stream.transcodeDetails')}
             </div>
             <ChevronDown
               className={cn('h-4 w-4 transition-transform', transcodeOpen && 'rotate-180')}
@@ -511,13 +520,17 @@ export function StreamDetailsPanel({
             <div className="space-y-1.5 rounded-md border p-2 text-sm">
               {transcodeInfo?.hwDecoding && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">HW Decode</span>
+                  <span className="text-muted-foreground">
+                    {t('pages:history.stream.hwDecode')}
+                  </span>
                   <span>{transcodeInfo.hwDecoding}</span>
                 </div>
               )}
               {transcodeInfo?.hwEncoding && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">HW Encode</span>
+                  <span className="text-muted-foreground">
+                    {t('pages:history.stream.hwEncode')}
+                  </span>
                   <span>{transcodeInfo.hwEncoding}</span>
                 </div>
               )}

@@ -102,7 +102,7 @@ import {
   maybeEnqueueImportedHistoryLink,
 } from '../librarySync.js';
 import { MEDIA_BUFFER_CAP, flushMediaAnnounceRun } from '../library/mediaAnnounce.js';
-import type { MediaLibraryItem } from '../mediaServer/types.js';
+import type { IMediaServerClient, MediaLibraryItem } from '../mediaServer/types.js';
 import type { LibrarySyncProgress } from '@tracearr/shared';
 import type { Redis } from 'ioredis';
 
@@ -366,6 +366,9 @@ function mockMediaServerClient(options: {
           libraryId: string,
           opts?: { offset?: number; limit?: number }
         ) => Promise<{ items: MediaLibraryItem[]; totalCount: number; rawCount?: number }>),
+    getLibraryLeaves: undefined as IMediaServerClient['getLibraryLeaves'],
+    getLibraryAlbums: undefined as IMediaServerClient['getLibraryAlbums'],
+    getLibraryAlbumsSince: undefined as IMediaServerClient['getLibraryAlbumsSince'],
     findExistingRatingKeys: undefined as
       | undefined
       | ((ratingKeys: string[], library: { id: string; type: string }) => Promise<Set<string>>),
@@ -395,7 +398,7 @@ function syncStateReads(lastSyncedAt: string, lastItemCount: string) {
     .mockResolvedValueOnce(lastItemCount)
     .mockResolvedValueOnce(null)
     .mockResolvedValueOnce(null)
-    .mockResolvedValueOnce('3');
+    .mockResolvedValueOnce('4');
 }
 
 /**
@@ -1862,7 +1865,7 @@ describe('LibrarySyncService', () => {
       });
     });
 
-    it('counts only top-level items for the mismatch check, never episodes or tracks', async () => {
+    it('counts only top-level items for the mismatch check, never episodes, tracks, seasons or albums', async () => {
       // A TV library's server total counts shows only; local episodes share
       // the library_id and must not inflate the local side of the check or
       // every sync of a non-flat library would escalate to a full scan.
@@ -1884,7 +1887,9 @@ describe('LibrarySyncService', () => {
       ).getActiveItemCount('server-1', 'lib-1');
 
       expect(countQueries).toHaveLength(1);
-      expect(countQueries[0]).toContain("media_type NOT IN ('episode', 'track', 'season')");
+      expect(countQueries[0]).toContain(
+        "media_type NOT IN ('episode', 'track', 'season', 'album')"
+      );
       expect(countQueries[0]).toContain('removed_at IS NULL');
     });
 
@@ -2189,6 +2194,50 @@ describe('LibrarySyncService', () => {
       expect(client.getLibraryLeavesSince).toHaveBeenCalled();
     });
 
+    it('fetches new Plex albums for a music library even when no new artists exist', async () => {
+      const mockServer = createMockServer({ id: serverId });
+      const lastSyncedAt = new Date(Date.now() - 60_000);
+      const newAlbum = createMockLibraryItem({
+        ratingKey: 'album-1',
+        title: 'Mezzanine',
+        mediaType: 'album',
+        parentRatingKey: 'artist-1',
+        fileSize: undefined,
+      });
+      const mockRedis = createMockRedis({
+        get: syncStateReads(lastSyncedAt.toISOString(), '5'),
+      });
+      initLibrarySyncRedis(mockRedis);
+
+      setupSelectForIncrementalTest(mockServer);
+      vi.mocked(db.execute).mockResolvedValue({ rows: [{ count: 5 }] } as never);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+
+      const client = mockMediaServerClient({
+        libraries: [createMockLibrary({ name: 'Music', type: 'artist' })],
+        totalCount: 5,
+        itemsSince: [],
+        totalCountSince: 0,
+      });
+      client.getLibraryAlbumsSince = vi
+        .fn()
+        .mockResolvedValue({ items: [newAlbum], totalCount: 1 });
+
+      const service = new LibrarySyncService();
+      const results = await service.syncServer(serverId);
+
+      expect(client.getLibraryAlbumsSince).toHaveBeenCalledWith('1', expect.any(Date));
+      expect(results[0]!.itemsAdded).toBe(1);
+      const albumBatch = vi
+        .mocked(resolveMediaBatch)
+        .mock.calls.find((call) => call[0].some((i) => i.mediaType === 'album'));
+      expect(albumBatch?.[0]).toEqual([
+        expect.objectContaining({ ratingKey: 'album-1', parentRatingKey: 'artist-1' }),
+      ]);
+    });
+
     it('falls back to full scan when getLibraryItemsSince throws', async () => {
       const mockServer = createMockServer({ id: serverId });
       const mockItems = [createMockLibraryItem({ ratingKey: 'item-1' })];
@@ -2380,6 +2429,60 @@ describe('LibrarySyncService', () => {
       await service.syncServer(mockServer.id);
 
       expect(client.getLibrarySeasons).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('album sync (Plex full scan)', () => {
+    it('fetches albums for a music library via getLibraryAlbums and upserts them beside the tracks', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const artistItem = createMockLibraryItem({
+        ratingKey: 'artist-1',
+        title: 'Massive Attack',
+        mediaType: 'artist',
+        fileSize: undefined,
+      });
+      const albumItem = createMockLibraryItem({
+        ratingKey: 'album-1',
+        title: 'Mezzanine',
+        mediaType: 'album',
+        parentRatingKey: 'artist-1',
+        parentTitle: 'Massive Attack',
+        fileSize: undefined,
+      });
+      const trackItem = createMockLibraryItem({
+        ratingKey: 'track-1',
+        title: 'Teardrop',
+        mediaType: 'track',
+        parentRatingKey: 'album-1',
+        grandparentRatingKey: 'artist-1',
+      });
+
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      const client = mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '7', name: 'Music', type: 'artist' })],
+        items: [artistItem],
+        totalCount: 1,
+      });
+      client.getLibraryLeaves = vi.fn().mockResolvedValue({ items: [trackItem], totalCount: 1 });
+      client.getLibraryAlbums = vi.fn().mockResolvedValue({ items: [albumItem], totalCount: 1 });
+
+      await service.syncServer(mockServer.id);
+
+      expect(client.getLibraryAlbums).toHaveBeenCalledWith('7', { offset: 0, limit: 200 });
+      const upserted = vi
+        .mocked(resolveMediaBatch)
+        .mock.calls.flatMap((call) => call[0].map((i) => [i.ratingKey, i.mediaType]));
+      expect(upserted).toEqual(
+        expect.arrayContaining([
+          ['artist-1', 'artist'],
+          ['album-1', 'album'],
+          ['track-1', 'track'],
+        ])
+      );
     });
   });
 

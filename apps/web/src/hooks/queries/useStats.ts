@@ -1,7 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { serverScopeFromIds, serverScopeKey } from '@tracearr/shared';
-import type { MediaType, DeviceCompatibilityMatrix } from '@tracearr/shared';
-import { api, type StatsTimeRange, getBrowserTimezone } from '@/lib/api';
+import type { MediaType, DeviceCompatibilityMatrix, PeopleRank } from '@tracearr/shared';
+import {
+  api,
+  type PlaysBreakdownOptions,
+  type PlaysGroupBy,
+  type StatsTimeRange,
+  getBrowserTimezone,
+} from '@/lib/api';
 
 // Re-export for backwards compatibility and convenience
 export type { StatsTimeRange };
@@ -43,21 +49,18 @@ export function useMyTopTitles(serverIds: string[]) {
   });
 }
 
-export function usePlaysStats(timeRange?: StatsTimeRange, serverIds?: string[]) {
+export function usePlaysStats(
+  timeRange?: StatsTimeRange,
+  serverIds?: string[],
+  options?: { groupBy?: PlaysGroupBy }
+) {
   // Include timezone in cache key since plays are grouped by local day
   const timezone = getBrowserTimezone();
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
+  const groupBy = options?.groupBy;
   return useQuery({
-    queryKey: ['stats', 'plays', timeRange, serverIdsKey, timezone],
-    queryFn: () => api.stats.plays(timeRange ?? { period: 'week' }, serverIds),
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-}
-
-export function useUserStats(timeRange?: StatsTimeRange, serverId?: string | null) {
-  return useQuery({
-    queryKey: ['stats', 'users', timeRange, serverId],
-    queryFn: () => api.stats.users(timeRange ?? { period: 'month' }, serverId ?? undefined),
+    queryKey: ['stats', 'plays', timeRange, serverIdsKey, timezone, groupBy],
+    queryFn: () => api.stats.plays(timeRange ?? { period: 'week' }, serverIds, groupBy),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -93,14 +96,16 @@ export function useLocationStats(filters?: LocationStatsFilters) {
 export function usePlaysByDayOfWeek(
   timeRange?: StatsTimeRange,
   serverIds?: string[],
-  self = false
+  options: PlaysBreakdownOptions = {}
 ) {
   // Include timezone in cache key since day-of-week varies by timezone
   const timezone = getBrowserTimezone();
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
+  const { self = false, groupBy } = options;
   return useQuery({
-    queryKey: ['stats', 'plays-by-dayofweek', timeRange, serverIdsKey, timezone, self],
-    queryFn: () => api.stats.playsByDayOfWeek(timeRange ?? { period: 'month' }, serverIds, self),
+    queryKey: ['stats', 'plays-by-dayofweek', timeRange, serverIdsKey, timezone, self, groupBy],
+    queryFn: () =>
+      api.stats.playsByDayOfWeek(timeRange ?? { period: 'month' }, serverIds, { self, groupBy }),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -108,14 +113,16 @@ export function usePlaysByDayOfWeek(
 export function usePlaysByHourOfDay(
   timeRange?: StatsTimeRange,
   serverIds?: string[],
-  self = false
+  options: PlaysBreakdownOptions = {}
 ) {
   // Include timezone in cache key since hour-of-day varies by timezone
   const timezone = getBrowserTimezone();
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
+  const { self = false, groupBy } = options;
   return useQuery({
-    queryKey: ['stats', 'plays-by-hourofday', timeRange, serverIdsKey, timezone, self],
-    queryFn: () => api.stats.playsByHourOfDay(timeRange ?? { period: 'month' }, serverIds, self),
+    queryKey: ['stats', 'plays-by-hourofday', timeRange, serverIdsKey, timezone, self, groupBy],
+    queryFn: () =>
+      api.stats.playsByHourOfDay(timeRange ?? { period: 'month' }, serverIds, { self, groupBy }),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -138,11 +145,16 @@ export function useQualityStats(timeRange?: StatsTimeRange, serverIds?: string[]
   });
 }
 
-export function useTopUsers(timeRange?: StatsTimeRange, serverIds?: string[]) {
+export function usePeople(
+  timeRange: StatsTimeRange,
+  serverIds: string[],
+  opts: { rank?: PeopleRank; page?: number; pageSize?: number; search?: string } = {}
+) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery({
-    queryKey: ['stats', 'top-users', timeRange, serverIdsKey],
-    queryFn: () => api.stats.topUsers(timeRange ?? { period: 'month' }, serverIds),
+    queryKey: ['stats', 'people', timeRange, serverIdsKey, opts, getBrowserTimezone()],
+    queryFn: () => api.stats.people(timeRange, serverIds, opts),
+    placeholderData: keepPreviousData,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }
@@ -290,15 +302,6 @@ export function useTranscodeHotspots(timeRange?: StatsTimeRange, serverIds?: str
   });
 }
 
-export function useTopTranscodingUsers(timeRange?: StatsTimeRange, serverIds?: string[]) {
-  const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
-  return useQuery({
-    queryKey: ['stats', 'top-transcoding-users', timeRange, serverIdsKey],
-    queryFn: () => api.stats.topTranscodingUsers(timeRange ?? { period: 'month' }, serverIds),
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-}
-
 // Bandwidth stats
 export function useBandwidthDaily(
   timeRange?: StatsTimeRange,
@@ -312,15 +315,6 @@ export function useBandwidthDaily(
     queryKey: ['stats', 'bandwidth-daily', timeRange, serverIdsKey, serverUserId, timezone],
     queryFn: () =>
       api.stats.bandwidthDaily(timeRange ?? { period: 'month' }, serverIds, serverUserId),
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-}
-
-export function useBandwidthTopUsers(timeRange?: StatsTimeRange, serverIds?: string[]) {
-  const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
-  return useQuery({
-    queryKey: ['stats', 'bandwidth-top-users', timeRange, serverIdsKey],
-    queryFn: () => api.stats.bandwidthTopUsers(timeRange ?? { period: 'month' }, serverIds),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 }

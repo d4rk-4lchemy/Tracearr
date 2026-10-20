@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Database,
   HardDrive,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 import { TIME_MS } from '@tracearr/shared';
 import type {
+  AlbumShelfRow,
   CatalogRowServerEntry,
   GrowthDataPoint,
   LibraryGrowthResponse,
@@ -19,6 +21,7 @@ import type {
   RecentlyUpdatedShelfRow,
   RecentlyAddedShelfRow,
   Server,
+  ShelvesResponse,
 } from '@tracearr/shared';
 import { Shelf, ShelfSkeleton } from '@/components/media-browse/Shelf';
 import {
@@ -34,8 +37,8 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LibraryStatsSkeleton } from '@/components/ui/skeleton';
 import { StatCard, formatNumber } from '@/components/ui/stat-card';
-import { TimeRangePicker, type TimeRangeValue } from '@/components/ui/time-range-picker';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { TimeRangeValue } from '@/components/ui/time-range-picker';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   useLibraryStats,
   useLibraryGrowth,
@@ -45,7 +48,7 @@ import {
 } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
-import { useTimeRange } from '@/hooks/useTimeRange';
+import { toApiDayParams, useTimeRange } from '@/hooks/useTimeRange';
 import { browseHref } from '@/lib/browseLinks';
 import { formatBytes, formatCompactAge } from '@/lib/formatters';
 import { getHour12 } from '@/lib/timeFormat';
@@ -232,7 +235,53 @@ function MostPopularCard({
         plays={row.plays}
         viewers={row.viewers}
         rank={row.rank}
+        mediaType={row.mediaType}
+        albumCount={row.albumCount}
       />
+    </div>
+  );
+}
+
+/** An album row is one server's copy; the card opens its artist when the artist is known. */
+function RecentlyAddedAlbumCard({
+  row,
+  serverById,
+}: {
+  row: AlbumShelfRow;
+  serverById: Map<string, ServerLookupEntry>;
+}) {
+  const { t } = useTranslation('pages');
+  const meta = joinMeta([
+    row.artistTitle,
+    t('media.landing.card.addedCompactAgo', { age: formatCompactAge(row.addedAt) }),
+  ]);
+
+  return (
+    <div className="space-y-1.5">
+      <PosterCard
+        mediaId={row.artistMediaId}
+        mediaType="album"
+        title={row.title}
+        year={row.year}
+        posterUrl={row.posterUrl}
+        posterVersion={row.posterVersion}
+        dominantColor={null}
+        servers={toPosterCardServers(
+          [
+            {
+              serverId: row.serverId,
+              addedAt: row.addedAt,
+              videoResolution: null,
+              fileSize: null,
+              versionCount: 0,
+            },
+          ],
+          serverById
+        )}
+        resolutionBest={null}
+        watchedState="unwatched"
+      />
+      <CardMeta>{meta}</CardMeta>
     </div>
   );
 }
@@ -256,8 +305,8 @@ function EmptyShelf({ id, title, message }: { id: string; title: string; message
 interface ShelfSection {
   id: string;
   title: string;
-  caption: string;
-  viewAllHref: string;
+  caption?: string;
+  viewAllHref?: string;
   emptyMessage: string;
   itemWidthClassName?: string;
   /** Recently Updated is a file-replacement log the owner reads; members never see it. */
@@ -289,7 +338,8 @@ export function MediaOverview() {
   } = useServer();
   const { user } = useAuth();
   const isMember = user?.role === 'member';
-  const { value: pickedRange, setValue: setTimeRange } = useTimeRange();
+  const queryClient = useQueryClient();
+  const { value: pickedRange } = useTimeRange();
   const timeRange = isMember ? MEMBER_TIME_RANGE : pickedRange;
 
   const mediaLibraryServerIds = scopedServerIds ?? selectedServerIds;
@@ -327,14 +377,10 @@ export function MediaOverview() {
           endDate: endDate.toISOString(),
         };
       }
-      case 'custom':
-        return timeRange.startDate && timeRange.endDate
-          ? {
-              period: '30d',
-              startDate: timeRange.startDate.toISOString(),
-              endDate: timeRange.endDate.toISOString(),
-            }
-          : { period: '30d' };
+      case 'custom': {
+        const { startDate, endDate } = toApiDayParams(timeRange);
+        return startDate && endDate ? { period: '30d', startDate, endDate } : { period: '30d' };
+      }
       default:
         return { period: '30d' };
     }
@@ -406,14 +452,7 @@ export function MediaOverview() {
     [servers]
   );
 
-  const apiTimeRange = useMemo(
-    () => ({
-      period: timeRange.period,
-      startDate: timeRange.startDate?.toISOString(),
-      endDate: timeRange.endDate?.toISOString(),
-    }),
-    [timeRange]
-  );
+  const apiTimeRange = useMemo(() => toApiDayParams(timeRange), [timeRange]);
 
   const {
     data: shelves,
@@ -429,7 +468,9 @@ export function MediaOverview() {
     !shelvesIsError &&
     !!shelves &&
     shelves.meta.movies === 0 &&
-    shelves.meta.shows === 0;
+    shelves.meta.shows === 0 &&
+    shelves.meta.artists === 0;
+  const hasMusic = !!shelves && shelves.meta.artists > 0;
 
   const recentlyAddedCaption = t('media.landing.shelves.captionRecentlyAdded');
   const mostPopularCaption = t(`media.landing.shelves.captionMostPopular.${timeRange.period}`);
@@ -447,36 +488,16 @@ export function MediaOverview() {
     showCount > 0 ? t('library.overview.showCount', { count: showCount }) : null,
   ]);
 
-  const header = isMember ? (
+  const toolbar = isMember ? (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-bold">{t('library.title')}</h1>
-        <p className="text-muted-foreground text-sm">{t('library.overview.memberDescription')}</p>
-        {memberCounts && <p className="text-muted-foreground mt-1 text-xs">{memberCounts}</p>}
-      </div>
+      <p className="text-muted-foreground text-xs">{memberCounts}</p>
       <Button variant="outline" size="sm" asChild>
         <Link to={browseHref('movie', { watched: 'unwatched' })}>
           {t('library.overview.notWatchedByYou')}
         </Link>
       </Button>
     </div>
-  ) : (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 className="text-2xl font-bold">{t('library.title')}</h1>
-        <p className="text-muted-foreground text-sm">{t('library.overview.description')}</p>
-        {!statsIsLoading && !statsIsError && (
-          <div className="text-muted-foreground mt-1 flex items-center gap-1 text-xs">
-            <Calendar className="h-3 w-3" />
-            <span>
-              {t('library.overview.lastUpdated')} {formatLastUpdated(stats?.asOf)}
-            </span>
-          </div>
-        )}
-      </div>
-      <TimeRangePicker value={timeRange} onChange={setTimeRange} />
-    </div>
-  );
+  ) : null;
 
   if (hasNoServers || allServersUnready || hasEmptyLibrary) {
     if (mediaLibraryServerIds.length === 0 && selectedServerIds.length > 0) {
@@ -486,7 +507,7 @@ export function MediaOverview() {
     }
     return (
       <div className="space-y-6">
-        {header}
+        {toolbar}
         {isMember ? (
           <EmptyState
             icon={LibraryIcon}
@@ -500,12 +521,22 @@ export function MediaOverview() {
     );
   }
 
-  const shelfSkeletonTitles = [
-    t('media.landing.shelves.recentlyAddedMovies'),
-    t('media.landing.shelves.recentlyAddedShows'),
-    ...(isMember ? [] : [t('media.landing.shelves.recentlyUpdated')]),
-    t('media.landing.shelves.mostPopularMovies'),
-    t('media.landing.shelves.mostPopularShows'),
+  const shelfSkeletons: { title: string; aspect?: 'square' }[] = [
+    { title: t('media.landing.shelves.recentlyAddedMovies') },
+    { title: t('media.landing.shelves.recentlyAddedShows') },
+    ...(isMember ? [] : [{ title: t('media.landing.shelves.recentlyUpdated') }]),
+    { title: t('media.landing.shelves.mostPopularMovies') },
+    { title: t('media.landing.shelves.mostPopularShows') },
+    // Music shelves only skeleton in when an earlier response showed artists,
+    // so a movie and show install never sees two shelves appear and vanish.
+    ...(queryClient
+      .getQueriesData<ShelvesResponse>({ queryKey: ['media', 'shelves'] })
+      .some(([, cached]) => (cached?.meta.artists ?? 0) > 0)
+      ? [
+          { title: t('media.landing.shelves.recentlyAddedAlbums'), aspect: 'square' as const },
+          { title: t('media.landing.shelves.mostPlayedArtists'), aspect: 'square' as const },
+        ]
+      : []),
   ];
 
   const shelfSections: ShelfSection[] = shelves
@@ -524,7 +555,7 @@ export function MediaOverview() {
           id: 'recently-added-shows',
           title: t('media.landing.shelves.recentlyAddedShows'),
           caption: recentlyAddedCaption,
-          viewAllHref: '/media/browse?type=shows',
+          viewAllHref: '/media/browse?type=show',
           emptyMessage: t('media.landing.shelves.emptyRecentlyAdded'),
           cards: shelves.recentlyAddedShows.map((row) => (
             <RecentlyAddedCard key={row.mediaId} row={row} serverById={serverById} />
@@ -556,19 +587,46 @@ export function MediaOverview() {
           id: 'most-popular-shows',
           title: t('media.landing.shelves.mostPopularShows'),
           caption: mostPopularCaption,
-          viewAllHref: '/media/browse?type=shows',
+          viewAllHref: '/media/browse?type=show',
           emptyMessage: t('media.landing.shelves.emptyMostPopular'),
           itemWidthClassName: 'w-[174px]',
           cards: shelves.mostPopularShows.map((row) => (
             <MostPopularCard key={row.mediaId} row={row} serverById={serverById} />
           )),
         },
+        ...(hasMusic
+          ? [
+              {
+                id: 'recently-added-albums',
+                title: t('media.landing.shelves.recentlyAddedAlbums'),
+                emptyMessage: t('media.landing.shelves.emptyRecentlyAdded'),
+                cards: shelves.recentlyAddedAlbums.map((row) => (
+                  <RecentlyAddedAlbumCard
+                    key={`${row.serverId}:${row.ratingKey}`}
+                    row={row}
+                    serverById={serverById}
+                  />
+                )),
+              },
+              {
+                id: 'most-played-artists',
+                title: t('media.landing.shelves.mostPlayedArtists'),
+                caption: mostPopularCaption,
+                viewAllHref: '/media/browse?type=artist',
+                emptyMessage: t('media.landing.shelves.emptyMostPopular'),
+                itemWidthClassName: 'w-[174px]',
+                cards: shelves.mostPlayedArtists.map((row) => (
+                  <MostPopularCard key={row.mediaId} row={row} serverById={serverById} />
+                )),
+              },
+            ]
+          : []),
       ].filter((section) => !isMember || (!section.staffOnly && section.cards.length > 0))
     : [];
 
   return (
     <div className="space-y-8">
-      {header}
+      {toolbar}
 
       {!isMember && (
         <div className="space-y-6">
@@ -586,7 +644,7 @@ export function MediaOverview() {
               {unreadyServers.length > 0 && (
                 <div className="bg-muted border-border flex flex-wrap items-center gap-2 rounded-lg border px-4 py-3 text-sm">
                   <span className="text-muted-foreground shrink-0">
-                    {t('library.overview.serversNeedSync', 'These servers need to sync:')}
+                    {t('library.overview.serversNeedSync')}
                   </span>
                   {isMultiServer
                     ? unreadyServers.map((server) => (
@@ -640,6 +698,14 @@ export function MediaOverview() {
                   <CardTitle className="text-base font-medium">
                     {t('library.overview.libraryGrowth')}
                   </CardTitle>
+                  {!statsIsLoading && !statsIsError && (
+                    <CardAction className="text-muted-foreground flex items-center gap-1 text-xs">
+                      <Calendar className="h-3 w-3" />
+                      <span>
+                        {t('library.overview.lastUpdated')} {formatLastUpdated(stats?.asOf)}
+                      </span>
+                    </CardAction>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <LibraryGrowthChart
@@ -657,8 +723,8 @@ export function MediaOverview() {
 
       {shelvesIsLoading ? (
         <div className="space-y-8" data-testid="media-landing-skeleton">
-          {shelfSkeletonTitles.map((title) => (
-            <ShelfSkeleton key={title} title={title} />
+          {shelfSkeletons.map(({ title, aspect }) => (
+            <ShelfSkeleton key={title} title={title} aspect={aspect} />
           ))}
         </div>
       ) : shelvesIsError ? (

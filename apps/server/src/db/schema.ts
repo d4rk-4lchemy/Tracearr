@@ -536,6 +536,7 @@ export const sessions = pgTable(
     // predicate and idx_sessions_open_last_seen (partial, timescale.ts) matches it exactly
     index('sessions_media_idx').on(table.mediaId, table.startedAt),
     index('sessions_show_media_idx').on(table.showMediaId, table.startedAt),
+    index('sessions_server_grandparent_idx').on(table.serverId, table.grandparentRatingKey),
   ]
 );
 

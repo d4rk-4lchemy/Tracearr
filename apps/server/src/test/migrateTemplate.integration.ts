@@ -8,7 +8,8 @@
  */
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runMigrations, closeDatabase } from '../db/client.js';
+import { sql } from 'drizzle-orm';
+import { db, runMigrations, closeDatabase } from '../db/client.js';
 import { initTimescaleDB } from '../db/timescale.js';
 
 const dbDir = resolve(dirname(fileURLToPath(import.meta.url)), '../db');
@@ -19,6 +20,12 @@ try {
     fork: resolve(dbDir, 'fork-migrations'),
   });
   await initTimescaleDB();
+  // Clones must not race their own aggregate refreshes with inherited policy jobs.
+  await db.execute(sql`
+    SELECT alter_job(job_id, scheduled => false)
+    FROM timescaledb_information.jobs
+    WHERE hypertable_name IS NOT NULL
+  `);
 } finally {
   await closeDatabase();
 }

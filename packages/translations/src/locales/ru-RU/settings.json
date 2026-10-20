@@ -21,7 +21,7 @@
       "destinations": "",
       "newsletters": "",
       "email": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -37,7 +37,7 @@
       "posters": "",
       "plexAccounts": "",
       "destinations": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -232,6 +232,13 @@
       "issueBlocked": "",
       "issueRestartRequired": "",
       "issueMalfunctioned": "",
+      "jellyfinStep1": "",
+      "jellyfinStep2": "",
+      "jellyfinStep3": "",
+      "jellyfinStep4": "",
+      "embyStep1": "",
+      "embyStep2": "",
+      "embyStep3": "",
       "openReleases": ""
     },
     "posterSource": {
@@ -239,7 +246,9 @@
       "description": "",
       "automatic": "",
       "emptyHint": "",
-      "ownerOnly": ""
+      "ownerOnly": "",
+      "precache": "",
+      "precacheDescription": ""
     },
     "version": {
       "installed": "",
@@ -248,11 +257,6 @@
     }
   },
   "mobile": {
-    "title": "Мобильное приложение",
-    "pairDevice": "Сопрячь устройство",
-    "generateToken": "Сгенерировать токен сопряжения",
-    "scanQrCode": "",
-    "tokenExpires": "Токен истекает в {{time}}",
     "lastSeen": "",
     "connectedOn": "",
     "noDevices": "Устройства не подключены",
@@ -260,7 +264,6 @@
     "revokeAll": "Отозвать все сессии",
     "getOnGooglePlay": "Получить на Google Play",
     "downloadOnAppStore": "Скачать на App Store",
-    "externalUrlRequired": "Внешний URL-адрес должен быть настроен в Общие настройки для подключения мобильных устройств.",
     "mobileAccessDisabled": "Мобильный доступ отключен",
     "mobileAccessDisabledDesc": "Разрешить мобильный доступ к приложению Tracearr подключаться к серверу.",
     "enableMobileAccess": "Включить мобильный доступ",
@@ -357,10 +360,41 @@
     "automatic": "",
     "startJob": "Начать работу"
   },
-  "accessControl": {
-    "allowGuestAccess": "Разрешить гостевой доступ",
-    "allowGuestAccessDesc": "Когда отключено, только владелец сервера может войти в Tracearr",
-    "singleOwnerNote": "Примечание: Если гостевой доступ отключен, авторизоваться могут только владелец сервера. Все другие пользователи увидят сообщение \"Отказано в доступе\"."
+  "memberLogin": {
+    "serverActivity": "",
+    "serverActivityDesc": "",
+    "noServers": "",
+    "addServer": "",
+    "serversLoadFailed": "",
+    "signIn": {
+      "title": "",
+      "titleDesc": "",
+      "local": "",
+      "localDesc": "",
+      "oidc": "",
+      "oidcDesc": "",
+      "plex": "",
+      "plexDesc": "",
+      "onlyWay": "",
+      "membersTitle": "",
+      "media": "",
+      "mediaDesc": "",
+      "servers": "",
+      "overrides": "",
+      "overridesDesc": "",
+      "overridesEmpty": "",
+      "overridesLoadFailed": "",
+      "addPerson": "",
+      "searchPeople": "",
+      "nobodyFound": "",
+      "accessLabel": "",
+      "roleLabel": "",
+      "allow": "",
+      "block": "",
+      "admin": "",
+      "member": "",
+      "backToDefault": ""
+    }
   },
   "import": {
     "noServers": "Серверы не подключены",
@@ -421,6 +455,13 @@
     "importFullRangeHelp": "",
     "skipOverlap": "",
     "skipDuplicatePlugin": "",
+    "importFailed": "",
+    "dropzone": {
+      "dropHere": "",
+      "dragOrClick": "",
+      "limit": "",
+      "removeFile": ""
+    },
     "overlapSkipped_one": "",
     "overlapSkipped_few": "",
     "overlapSkipped_many": "",
@@ -592,7 +633,6 @@
       "cron": "",
       "inZone": ""
     },
-    "nextRun": "",
     "noNextRun": "",
     "neverSent": "",
     "lastSend": "",
@@ -1080,15 +1120,7 @@
       "requests_one": "",
       "requests_few": "",
       "requests_many": "",
-      "requests_other": "",
-      "unmatchedMedia_one": "",
-      "unmatchedMedia_few": "",
-      "unmatchedMedia_many": "",
-      "unmatchedMedia_other": "",
-      "unmatchedUsers_one": "",
-      "unmatchedUsers_few": "",
-      "unmatchedUsers_many": "",
-      "unmatchedUsers_other": ""
+      "requests_other": ""
     },
     "needsKey": "",
     "lastError": "",

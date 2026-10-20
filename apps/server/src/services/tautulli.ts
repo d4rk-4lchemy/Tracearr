@@ -94,6 +94,29 @@ export class TautulliApiError extends Error {
   }
 }
 
+export class ImportInterruptedError extends Error {
+  constructor() {
+    super('import interrupted by shutdown');
+    this.name = 'ImportInterruptedError';
+  }
+}
+
+/** What a resumed import needs from the pages an earlier attempt finished. */
+export interface ImportResumeState {
+  minImportDate: string | null;
+  maxImportDate: string | null;
+  failedPages: number[];
+}
+
+interface ImportHistoryOptions {
+  overwriteFriendlyNames?: boolean;
+  startPage?: number;
+  resumeState?: ImportResumeState;
+  signal?: AbortSignal;
+  /** Called after every finished or skipped page with the next page to fetch. */
+  onPageDone?: (nextPage: number, state: ImportResumeState) => Promise<void>;
+}
+
 export function isFatalImportError(err: unknown): boolean {
   if (err instanceof TautulliApiError) return err.status === 401 || err.status === 403;
   return err instanceof Error && err.message.startsWith('Invalid Tautulli API response');
@@ -741,13 +764,13 @@ export class TautulliService {
    * - Batches UPDATE operations in transactions
    * - Caches GeoIP lookups per IP address
    * - Throttles WebSocket updates (every 100 records or 2 seconds)
-   * - Extends BullMQ lock on progress to prevent stalls with large imports
+   * - Resumes at options.startPage and stops at a page boundary once options.signal aborts
    */
   static async importHistory(
     serverId: string,
     pubSubService?: PubSubService,
     onProgress?: (progress: TautulliImportProgress) => Promise<void>,
-    options?: { overwriteFriendlyNames?: boolean }
+    options?: ImportHistoryOptions
   ): Promise<TautulliImportResult> {
     const changes = { imported: 0, updated: 0, complete: false };
     try {
@@ -767,7 +790,7 @@ export class TautulliService {
     serverId: string,
     pubSubService: PubSubService | undefined,
     onProgress: ((progress: TautulliImportProgress) => Promise<void>) | undefined,
-    options: { overwriteFriendlyNames?: boolean } | undefined,
+    options: ImportHistoryOptions | undefined,
     changes: { imported: number; updated: number; complete: boolean }
   ): Promise<TautulliImportResult> {
     const overwriteFriendlyNames = options?.overwriteFriendlyNames ?? false;
@@ -881,8 +904,13 @@ export class TautulliService {
     const insertedThisRun = new Set<string>();
 
     // Track date range of imported data for bounded aggregate refresh
-    let minImportDate: Date | null = null;
-    let maxImportDate: Date | null = null;
+    const seed = options?.resumeState;
+    let minImportDate: Date | null = seed?.minImportDate ? new Date(seed.minImportDate) : null;
+    let maxImportDate: Date | null = seed?.maxImportDate ? new Date(seed.maxImportDate) : null;
+    const widenImportRange = (at: Date) => {
+      if (!minImportDate || at < minImportDate) minImportDate = at;
+      if (!maxImportDate || at > maxImportDate) maxImportDate = at;
+    };
 
     const absorbingGroups: AbsorbingGroup[] = [];
     const collectAbsorbed = (record: TautulliHistoryRecord, serverUserId: string) => {
@@ -907,8 +935,14 @@ export class TautulliService {
     let alreadyTracked = 0;
     let ungrouped = 0;
     let noMetadata = 0;
-    let page = 0;
-    const failedPages: number[] = [];
+    let page = options?.startPage ?? 0;
+    let mergedAway = 0;
+    const failedPages: number[] = [...(seed?.failedPages ?? [])];
+    const resumeState = (): ImportResumeState => ({
+      minImportDate: minImportDate?.toISOString() ?? null,
+      maxImportDate: maxImportDate?.toISOString() ?? null,
+      failedPages: [...failedPages],
+    });
 
     // Throttle tracking for progress updates
     let lastProgressTime = Date.now();
@@ -927,6 +961,7 @@ export class TautulliService {
 
     // Process all pages
     while (page * PAGE_SIZE < total) {
+      if (options?.signal?.aborted) throw new ImportInterruptedError();
       progress.status = 'processing';
       progress.currentPage = page + 1;
       progress.message = `Processing page ${page + 1} of ${progress.totalPages}`;
@@ -947,6 +982,7 @@ export class TautulliService {
         );
         failedPages.push(page + 1);
         page++;
+        await options?.onPageDone?.(page, resumeState());
         continue;
       }
 
@@ -1142,11 +1178,7 @@ export class TautulliService {
               changes.updated++;
               progress.updatedRecords++;
 
-              const recordStartedAt = new Date(record.started * 1000);
-              if (!minImportDate || recordStartedAt < minImportDate)
-                minImportDate = recordStartedAt;
-              if (!maxImportDate || recordStartedAt > maxImportDate)
-                maxImportDate = recordStartedAt;
+              widenImportRange(new Date(record.started * 1000));
             } else {
               skipped++;
               progress.skippedRecords++;
@@ -1161,8 +1193,7 @@ export class TautulliService {
           const startedAt = new Date(record.started * 1000);
 
           // Track date range for bounded aggregate refresh
-          if (!minImportDate || startedAt < minImportDate) minImportDate = startedAt;
-          if (!maxImportDate || startedAt > maxImportDate) maxImportDate = startedAt;
+          widenImportRange(startedAt);
 
           const ratingKeyStr =
             typeof record.rating_key === 'number' ? String(record.rating_key) : null;
@@ -1373,34 +1404,33 @@ export class TautulliService {
       // Flush batches at end of each page
       await flushBatches();
 
+      // A regroup in Tautulli folds plays an earlier import stored as their own
+      // group into another group, whose root this page just rewrote with the
+      // merged total. The old rows would count that watch time twice. They go
+      // before the page is reported done, so a resumed import never skips them.
+      if (absorbingGroups.length > 0) {
+        progress.message = 'Removing plays Tautulli merged into another play...';
+        publishProgress(progress);
+        const groups = absorbingGroups.splice(0);
+        for (let i = 0; i < groups.length; i += ABSORBED_GROUPS_PER_TX) {
+          const deletedStarts = await TautulliService.deleteAbsorbedImports(
+            serverId,
+            groups.slice(i, i + ABSORBED_GROUPS_PER_TX)
+          );
+          mergedAway += deletedStarts.length;
+          for (const started of deletedStarts) widenImportRange(new Date(started));
+        }
+      }
+
       page++;
+      await options?.onPageDone?.(page, resumeState());
     }
 
     // Final flush for any remaining records
     await flushBatches();
 
-    // A regroup in Tautulli folds plays an earlier import stored as their own
-    // group into another group, whose root the loop above just rewrote with the
-    // merged total. The old rows would count that watch time twice.
-    let mergedAway = 0;
-    if (absorbingGroups.length > 0) {
-      progress.message = 'Removing plays Tautulli merged into another play...';
-      publishProgress(progress);
-      for (let i = 0; i < absorbingGroups.length; i += ABSORBED_GROUPS_PER_TX) {
-        const deletedStarts = await TautulliService.deleteAbsorbedImports(
-          serverId,
-          absorbingGroups.slice(i, i + ABSORBED_GROUPS_PER_TX)
-        );
-        mergedAway += deletedStarts.length;
-        for (const started of deletedStarts) {
-          const startedAt = new Date(started);
-          if (!minImportDate || startedAt < minImportDate) minImportDate = startedAt;
-          if (!maxImportDate || startedAt > maxImportDate) maxImportDate = startedAt;
-        }
-      }
-      if (mergedAway > 0) {
-        console.log(`[Import] Removed ${mergedAway} plays Tautulli merged into another play`);
-      }
+    if (mergedAway > 0) {
+      console.log(`[Import] Removed ${mergedAway} plays Tautulli merged into another play`);
     }
 
     // An imported day only reaches the aggregates if a refresh covers it: once the

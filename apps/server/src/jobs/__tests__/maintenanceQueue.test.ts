@@ -37,7 +37,7 @@ vi.mock('../../services/cache.js', () => ({
 
 vi.mock('../lockUtils.js', () => ({
   extendJobLock: vi.fn(),
-  MAINTENANCE_LOCK_DURATION_MS: 300_000,
+  DEFAULT_LOCK_DURATION_MS: 60_000,
 }));
 
 import { db } from '../../db/client.js';
@@ -187,8 +187,13 @@ describe('enqueueServerLocationSyncIfBehind', () => {
     expect(mockAdd).toHaveBeenCalledWith(
       'maintenance-sync_server_locations',
       { type: 'sync_server_locations', userId: 'system', options: { trigger: 'auto' } },
-      { jobId: expect.any(String), attempts: 1 }
+      {
+        jobId: expect.stringMatching(/^maintenance-/),
+        attempts: 1,
+        deduplication: { id: 'maintenance' },
+      }
     );
+    expect(mockGetJobs).not.toHaveBeenCalled();
   });
 
   it('queues nothing when every server is synced', async () => {
@@ -200,18 +205,19 @@ describe('enqueueServerLocationSyncIfBehind', () => {
   });
 
   it('returns false when another maintenance job holds the queue', async () => {
-    mockGetJobs.mockResolvedValue([{ id: 'busy' }]);
+    mockAdd.mockResolvedValueOnce({ id: 'maintenance-busy' });
 
     await expect(enqueueServerLocationSyncIfBehind()).resolves.toBe(false);
 
-    expect(mockAdd).not.toHaveBeenCalled();
+    expect(mockGetJobs).not.toHaveBeenCalled();
   });
 
   it('leaves a manual run on the queue default attempts', async () => {
     await enqueueMaintenanceJob('sync_server_locations', 'owner');
 
     expect(mockAdd).toHaveBeenCalledWith('maintenance-sync_server_locations', expect.anything(), {
-      jobId: expect.any(String),
+      jobId: expect.stringMatching(/^maintenance-/),
+      deduplication: { id: 'maintenance' },
     });
   });
 });

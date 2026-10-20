@@ -23,6 +23,7 @@ import type {
   MediaStatsResponse,
   MediaWatchersResponse,
   MediaPlatformBreakdownResponse,
+  MediaChildrenResponse,
 } from '@tracearr/shared';
 import {
   createTestServer,
@@ -36,6 +37,7 @@ import { db } from '../../src/db/client.js';
 import { libraryMediaRoute } from '../../src/routes/library/media.js';
 import { resolveMediaForItem } from '../../src/services/library/mediaResolutionService.js';
 import { permissionGuard } from '../../src/lib/scope.js';
+import { seedArtistOnTwoServers } from './musicFixtures.js';
 
 async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; redis: Redis }> {
   const app = Fastify({ logger: false });
@@ -443,5 +445,57 @@ describe('media detail scoping against a real database', () => {
     expect(scopedDetail.availability).toHaveLength(1);
     expect(scopedDetail.availability[0]!.episodeFileSize).toBe(18_000_000_000);
     expect(scopedDetail.availability[0]!.episodeResolutions).toEqual(['1080p', '4k']);
+  });
+});
+
+describe('artist media detail against a real database', () => {
+  it('reads an artist page from the track sessions under each of its copies', async () => {
+    const music = await seedArtistOnTwoServers();
+    const base = `/library/media/${music.artistMediaId}`;
+    const { app } = await buildApp(ownerFor());
+
+    const stats = (
+      await app.inject({ method: 'GET', url: `${base}/stats` })
+    ).json<MediaStatsResponse>();
+    expect(stats.windows.all_time.combined).toMatchObject({ plays: 3, uniqueUsers: 2 });
+    expect(stats.windows.all_time.perServer).toHaveLength(2);
+
+    const watchers = (
+      await app.inject({ method: 'GET', url: `${base}/watchers` })
+    ).json<MediaWatchersResponse>();
+    expect(watchers.watchers.map((w) => w.plays).sort()).toEqual([1, 2]);
+
+    const platforms = (
+      await app.inject({ method: 'GET', url: `${base}/platforms` })
+    ).json<MediaPlatformBreakdownResponse>();
+    expect(platforms.data.reduce((sum, p) => sum + p.plays, 0)).toBe(3);
+
+    const history = (await app.inject({ method: 'GET', url: `${base}/history` })).json<{
+      data: unknown[];
+    }>();
+    expect(history.data).toHaveLength(3);
+
+    const children = (
+      await app.inject({ method: 'GET', url: `${base}/children` })
+    ).json<MediaChildrenResponse>();
+    expect(children.data.map((c) => [c.mediaType, c.title, c.year, c.trackCount])).toEqual([
+      ['album', 'Discovery', 2001, 1],
+      ['album', 'Discovery', 2001, 1],
+      ['album', 'Homework', 1997, 1],
+      ['album', 'Homework', 1997, 1],
+    ]);
+    expect(new Set(children.data.map((c) => c.serverId))).toEqual(
+      new Set([music.serverA, music.serverB])
+    );
+
+    const { app: viewer } = await buildApp(viewerFor([music.serverA]));
+    const scoped = (
+      await viewer.inject({ method: 'GET', url: `${base}/stats` })
+    ).json<MediaStatsResponse>();
+    expect(scoped.windows.all_time.combined.plays).toBe(2);
+    const scopedChildren = (
+      await viewer.inject({ method: 'GET', url: `${base}/children` })
+    ).json<MediaChildrenResponse>();
+    expect(scopedChildren.data.map((c) => c.serverId)).toEqual([music.serverA, music.serverA]);
   });
 });

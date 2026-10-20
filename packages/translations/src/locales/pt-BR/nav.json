@@ -5,6 +5,8 @@
   "stats": "Estatísticas",
   "activity": "Atividade",
   "library": "Biblioteca",
+  "people": "",
+  "rules": "",
   "users": "Usuários",
   "automations": "",
   "violations": "Violações",
@@ -18,14 +20,10 @@
   "devices": "",
   "bandwidth": "",
   "jobs": "",
-  "media": "Mídia",
   "mediaBrowse": "Navegar",
   "mediaGenres": "Gêneros",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

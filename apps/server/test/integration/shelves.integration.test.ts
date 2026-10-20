@@ -38,6 +38,7 @@ import {
   shutdownLibrarySyncQueue,
 } from '../../src/jobs/librarySyncQueue.js';
 import { permissionGuard } from '../../src/lib/scope.js';
+import { seedArtistOnTwoServers } from './musicFixtures.js';
 
 async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; redis: Redis }> {
   const app = Fastify({ logger: false });
@@ -889,7 +890,7 @@ describe('shelves command center endpoint against a real database', () => {
     expect(body.recentlyAddedMovies.map((r) => r.title)).toContain('V1 Cache Movie');
 
     const versionedKey = buildLibraryCacheKey(
-      `${REDIS_KEYS.LIBRARY_SHELVES}:v9`,
+      `${REDIS_KEYS.LIBRARY_SHELVES}:v11`,
       'all',
       'month',
       undefined,
@@ -913,21 +914,21 @@ describe('shelves command center endpoint against a real database', () => {
     });
 
     const weekKey = buildLibraryCacheKey(
-      `${REDIS_KEYS.LIBRARY_SHELVES}:v9`,
+      `${REDIS_KEYS.LIBRARY_SHELVES}:v11`,
       'all',
       'week',
       undefined,
       'auto:dw1'
     );
     const weekKeyDw0 = buildLibraryCacheKey(
-      `${REDIS_KEYS.LIBRARY_SHELVES}:v9`,
+      `${REDIS_KEYS.LIBRARY_SHELVES}:v11`,
       'all',
       'week',
       undefined,
       'auto:dw0'
     );
     const yearKey = buildLibraryCacheKey(
-      `${REDIS_KEYS.LIBRARY_SHELVES}:v9`,
+      `${REDIS_KEYS.LIBRARY_SHELVES}:v11`,
       'all',
       'year',
       undefined,
@@ -996,7 +997,13 @@ describe('shelves command center endpoint against a real database', () => {
 
     const { statusCode, body } = await fetchShelves(app);
     expect(statusCode).toBe(200);
-    expect(body.meta).toEqual({ movies: 2, shows: 1, totalFileSize: 3_000_000 });
+    expect(body.meta).toEqual({
+      movies: 2,
+      shows: 1,
+      artists: 0,
+      albums: 0,
+      totalFileSize: 3_000_000,
+    });
     expect(body.kpis.watchedInPeriod.totalTitles).toBe(3);
   });
 
@@ -1567,7 +1574,7 @@ describe('shelves preferred poster source', () => {
     expect(autoRow.posterUrl).toContain(`v=${autoRow.posterVersion}`);
 
     const autoKey = buildLibraryCacheKey(
-      `${REDIS_KEYS.LIBRARY_SHELVES}:v9`,
+      `${REDIS_KEYS.LIBRARY_SHELVES}:v11`,
       'all',
       'year',
       undefined,
@@ -1580,7 +1587,7 @@ describe('shelves preferred poster source', () => {
     // back server B's already-cached poster.
     await setSetting('preferredPosterServerId', serverA.id);
     const preferredKey = buildLibraryCacheKey(
-      `${REDIS_KEYS.LIBRARY_SHELVES}:v9`,
+      `${REDIS_KEYS.LIBRARY_SHELVES}:v11`,
       'all',
       'year',
       undefined,
@@ -1606,7 +1613,7 @@ describe('shelves cache invalidation on library sync', () => {
 
   it('a sync invalidates the versioned cached shelves key', async () => {
     initLibrarySyncQueue(process.env.REDIS_URL ?? 'redis://localhost:6380');
-    const key = buildLibraryCacheKey(`${REDIS_KEYS.LIBRARY_SHELVES}:v9`, 'all', 'month');
+    const key = buildLibraryCacheKey(`${REDIS_KEYS.LIBRARY_SHELVES}:v11`, 'all', 'month');
     const { getRedis } = await import('../../src/lib/redisShared.js');
     const redis = getRedis();
     await redis.set(key, JSON.stringify({ marker: true }));
@@ -1615,5 +1622,39 @@ describe('shelves cache invalidation on library sync', () => {
     await invalidateLibraryCaches(randomUUID());
 
     expect(await redis.get(key)).toBeNull();
+  });
+});
+
+describe('music shelves against a real database', () => {
+  it('lists the newest album rows and the most played artist, and counts music in meta', async () => {
+    const music = await seedArtistOnTwoServers();
+    const { app } = await buildApp(ownerFor());
+
+    const res = await app.inject({ method: 'GET', url: '/library/shelves' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<ShelvesResponse>();
+
+    expect(body.recentlyAddedAlbums.map((a) => [a.serverId, a.ratingKey, a.title])).toEqual(
+      music.albumsNewestFirst.map((a) => [a.serverId, a.ratingKey, a.title])
+    );
+    for (const album of body.recentlyAddedAlbums) {
+      expect(album).toMatchObject({
+        artistTitle: 'Daft Punk',
+        artistMediaId: music.artistMediaId,
+        posterUrl: expect.any(String),
+        posterVersion: expect.stringMatching(/^[0-9a-f]{8}$/),
+      });
+    }
+    expect(body.mostPlayedArtists).toEqual([
+      expect.objectContaining({
+        mediaId: music.artistMediaId,
+        mediaType: 'artist',
+        albumCount: 2,
+        plays: 3,
+        viewers: 2,
+        rank: 1,
+      }),
+    ]);
+    expect(body.meta).toMatchObject({ movies: 0, shows: 0, artists: 1, albums: 3 });
   });
 });

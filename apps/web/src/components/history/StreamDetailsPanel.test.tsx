@@ -27,9 +27,9 @@ describe('StreamDetailsPanel speed placement', () => {
       />
     );
 
-    expect(screen.getByText('Speed')).toBeTruthy();
+    expect(screen.getByText('pages:history.stream.speed')).toBeTruthy();
     expect(screen.getByText('1.03x')).toBeTruthy();
-    expect(screen.getByText('Transcode Details')).toBeTruthy();
-    expect(screen.getAllByText('Speed')).toHaveLength(1);
+    expect(screen.getByText('pages:history.stream.transcodeDetails')).toBeTruthy();
+    expect(screen.getAllByText('pages:history.stream.speed')).toHaveLength(1);
   });
 });

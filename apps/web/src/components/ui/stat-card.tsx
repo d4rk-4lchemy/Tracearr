@@ -13,20 +13,70 @@ interface StatCardProps {
   label: string;
   value: string | number;
   subValue?: string;
+  /** Percent change against the prior period; the label names the comparison. */
+  delta?: { value: number; label?: string };
+  /** Muted text after the value, e.g. "of 43". */
+  valueSuffix?: string;
   isLoading?: boolean;
   href?: string;
   /** Cut a long value (a show title) with an ellipsis instead of letting it overflow. */
   truncateValue?: boolean;
   /**
-   * 'kpi' is the media detail unit's iconless, raised-surface treatment
-   * (uppercase label, larger value, sub-value on its own line). Default is
-   * unchanged - it's shared with Dashboard/History. The kpi variant's h-full
-   * only applies to the card div itself - when href is set, the <Link>
-   * wrapper around it has no h-full, so a linked kpi tile would collapse to
-   * content height inside an equal-height grid row. No caller passes href
-   * with kpi today.
+   * 'kpi' is the media detail unit's raised-surface treatment (uppercase label, larger value,
+   * sub-value on its own line). It fills its grid cell, so every tile in a row is one height.
    */
   variant?: 'default' | 'kpi';
+  /** kpi only: tighter padding and a 20px value, for tiles inside a sheet. */
+  compact?: boolean;
+}
+
+const deltaFormat = new Intl.NumberFormat(undefined, {
+  signDisplay: 'exceptZero',
+  maximumFractionDigits: 0,
+});
+
+function deltaTone(value: number): string {
+  const rounded = Math.round(value);
+  if (rounded > 0) return 'text-success';
+  if (rounded < 0) return 'text-destructive';
+  return 'text-muted-foreground';
+}
+
+/** The kpi chip is larger so it spans the three-line value, label and sub-line block. */
+function IconChip({ icon: Icon, large }: { icon: LucideIcon; large?: boolean }) {
+  return (
+    <div
+      className={cn(
+        'bg-primary/10 flex shrink-0 items-center justify-center rounded-md',
+        large ? 'size-11' : 'h-9 w-9'
+      )}
+    >
+      <Icon className={cn('text-primary', large ? 'size-5' : 'h-4 w-4')} />
+    </div>
+  );
+}
+
+function ValueExtras({
+  delta,
+  valueSuffix,
+}: Pick<StatCardProps, 'delta' | 'valueSuffix'>): React.JSX.Element {
+  return (
+    <>
+      {valueSuffix && (
+        <span className="text-muted-foreground ml-1 text-xs font-normal">{valueSuffix}</span>
+      )}
+      {delta && (
+        <>
+          <span className={cn('ml-2 text-xs font-medium', deltaTone(delta.value))}>
+            {deltaFormat.format(delta.value)}%
+          </span>
+          {delta.label && (
+            <span className="text-muted-foreground ml-1 text-xs font-normal">({delta.label})</span>
+          )}
+        </>
+      )}
+    </>
+  );
 }
 
 export function StatCard({
@@ -34,28 +84,47 @@ export function StatCard({
   label,
   value,
   subValue,
+  delta,
+  valueSuffix,
   isLoading,
   href,
   truncateValue,
   variant = 'default',
+  compact,
 }: StatCardProps) {
   const card =
     variant === 'kpi' ? (
-      <div className="bg-card-raised h-full rounded-[calc(var(--radius)+2px)] border p-[14px_16px]">
-        {isLoading ? (
-          <>
-            <Skeleton className="h-6 w-16" />
-            <Skeleton className="mt-2 h-3 w-20" />
-          </>
-        ) : (
-          <>
-            <div className="text-[22px] font-bold tracking-[-0.02em] tabular-nums">{value}</div>
-            <div className="text-muted-foreground mt-0.5 text-[11px] font-semibold tracking-[0.06em] uppercase">
-              {label}
-            </div>
-            {subValue && <div className="text-muted-foreground mt-1 text-[11px]">{subValue}</div>}
-          </>
+      <div
+        className={cn(
+          'bg-card-raised flex h-full items-center gap-3 rounded-[calc(var(--radius)+2px)] border',
+          compact ? 'p-[10px_12px]' : 'p-[14px_16px]'
         )}
+      >
+        {Icon && <IconChip icon={Icon} large />}
+        <div className="min-w-0 flex-1">
+          {isLoading ? (
+            <>
+              <Skeleton className="h-6 w-16" />
+              <Skeleton className="mt-2 h-3 w-20" />
+            </>
+          ) : (
+            <>
+              <div
+                className={cn(
+                  'font-bold tracking-[-0.02em] tabular-nums',
+                  compact ? 'text-[20px] leading-7' : 'text-[22px]'
+                )}
+              >
+                {value}
+                <ValueExtras delta={delta} valueSuffix={valueSuffix} />
+              </div>
+              <div className="text-muted-foreground mt-0.5 text-[11px] font-semibold tracking-[0.06em] uppercase">
+                {label}
+              </div>
+              {subValue && <div className="text-muted-foreground mt-1 text-[11px]">{subValue}</div>}
+            </>
+          )}
+        </div>
       </div>
     ) : (
       <div
@@ -64,11 +133,7 @@ export function StatCard({
           href && 'card-hover'
         )}
       >
-        {Icon && (
-          <div className="bg-primary/10 flex h-9 w-9 shrink-0 items-center justify-center rounded-md">
-            <Icon className="text-primary h-4 w-4" />
-          </div>
-        )}
+        {Icon && <IconChip icon={Icon} />}
         <div className="min-w-0 flex-1">
           {isLoading ? (
             <>
@@ -81,6 +146,7 @@ export function StatCard({
                 className={cn('text-lg font-semibold tabular-nums', truncateValue && 'truncate')}
               >
                 {value}
+                <ValueExtras delta={delta} valueSuffix={valueSuffix} />
               </div>
               <div className="text-muted-foreground text-xs">
                 {label}
@@ -95,7 +161,10 @@ export function StatCard({
   return href ? (
     <Link
       to={href}
-      className="group focus-visible:ring-ring focus-visible:ring-offset-background block rounded-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+      className={cn(
+        'group focus-visible:ring-ring focus-visible:ring-offset-background block rounded-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
+        variant === 'kpi' && 'h-full'
+      )}
     >
       {card}
     </Link>

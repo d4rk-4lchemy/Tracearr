@@ -149,6 +149,7 @@ export interface ShowcasePlace {
   lon: number;
   asnNumber: number | null;
   asnOrganization: string | null;
+  /** RFC 5737 documentation ranges, so no capture shows an address anyone holds. */
   ip: string;
   /** Hours ahead of UTC, so evening sessions land in the person's own evening. */
   utcOffset: number;
@@ -216,7 +217,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: -122.3321,
       asnNumber: 7922,
       asnOrganization: 'Comcast Cable',
-      ip: '73.109.42.17',
+      ip: '198.51.100.17',
       utcOffset: -7,
     },
     accounts: [
@@ -242,7 +243,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: -97.7431,
       asnNumber: 20115,
       asnOrganization: 'Charter Communications',
-      ip: '24.28.116.9',
+      ip: '198.51.100.9',
       utcOffset: -5,
     },
     accounts: [{ server: 'plex', username: 'lortega', trust: 100 }],
@@ -266,7 +267,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: -97.7431,
       asnNumber: 20115,
       asnOrganization: 'Charter Communications',
-      ip: '24.28.116.41',
+      ip: '198.51.100.41',
       utcOffset: -5,
     },
     accounts: [{ server: 'jellyfin', username: 'lortega', trust: 100 }],
@@ -288,7 +289,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: -79.3832,
       asnNumber: 812,
       asnOrganization: 'Rogers Communications',
-      ip: '99.229.14.88',
+      ip: '198.51.100.88',
       utcOffset: -4,
     },
     accounts: [
@@ -313,7 +314,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: 13.405,
       asnNumber: 3320,
       asnOrganization: 'Deutsche Telekom',
-      ip: '87.138.55.23',
+      ip: '203.0.113.23',
       utcOffset: 2,
     },
     accounts: [
@@ -338,7 +339,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: -0.1276,
       asnNumber: 2856,
       asnOrganization: 'British Telecommunications',
-      ip: '81.132.9.144',
+      ip: '203.0.113.144',
       utcOffset: 1,
     },
     accounts: [{ server: 'emby', username: 'aisha', trust: 100 }],
@@ -360,7 +361,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: 139.6503,
       asnNumber: 4713,
       asnOrganization: 'NTT Communications',
-      ip: '126.72.18.55',
+      ip: '203.0.113.55',
       utcOffset: 9,
     },
     accounts: [{ server: 'jellyfin', username: 'kenji', trust: 92 }],
@@ -382,7 +383,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: 9.19,
       asnNumber: 30722,
       asnOrganization: 'Vodafone Italia',
-      ip: '79.44.201.6',
+      ip: '203.0.113.6',
       utcOffset: 2,
     },
     accounts: [{ server: 'plex', username: 'sofiar', trust: 100 }],
@@ -404,7 +405,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: -118.2437,
       asnNumber: 20115,
       asnOrganization: 'Charter Communications',
-      ip: '76.90.183.204',
+      ip: '198.51.100.204',
       utcOffset: -7,
     },
     accounts: [
@@ -429,7 +430,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: 2.3522,
       asnNumber: 3215,
       asnOrganization: 'Orange',
-      ip: '90.63.77.12',
+      ip: '203.0.113.12',
       utcOffset: 2,
     },
     accounts: [{ server: 'jellyfin', username: 'emmal', trust: 100 }],
@@ -451,7 +452,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: -87.6298,
       asnNumber: 7018,
       asnOrganization: 'AT&T Internet',
-      ip: '68.203.16.72',
+      ip: '198.51.100.72',
       utcOffset: -5,
     },
     accounts: [{ server: 'plex', username: 'noahf', trust: 100, removedDaysAgo: 20 }],
@@ -473,7 +474,7 @@ export const PEOPLE: ShowcasePerson[] = [
       lon: 3.3792,
       asnNumber: 29465,
       asnOrganization: 'MTN Nigeria',
-      ip: '41.184.22.90',
+      ip: '203.0.113.90',
       utcOffset: 1,
     },
     accounts: [{ server: 'emby', username: 'grace', trust: 100 }],
@@ -496,7 +497,7 @@ export const SAO_PAULO: ShowcasePlace = {
   lon: -46.6333,
   asnNumber: 26599,
   asnOrganization: 'Telefonica Brasil',
-  ip: '189.4.77.201',
+  ip: '203.0.113.201',
   utcOffset: -3,
 };
 
@@ -510,7 +511,7 @@ export const SHANGHAI: ShowcasePlace = {
   lon: 121.4737,
   asnNumber: 4812,
   asnOrganization: 'China Telecom',
-  ip: '116.226.44.3',
+  ip: '203.0.113.3',
   utcOffset: 8,
 };
 
@@ -525,17 +526,37 @@ export interface ShowcaseTitle {
   poster: string;
 }
 
+export interface ShowcaseAlbum {
+  title: string;
+  year: number | null;
+  genres: string[];
+  /** Square art under assets/posters/. */
+  art: string;
+  tracks: { title: string }[];
+}
+
+export interface ShowcaseArtist {
+  name: string;
+  genres: string[];
+  art: string;
+  albums: ShowcaseAlbum[];
+}
+
 /** Written by showcase/exportFromDev.mjs; git-ignored, so its absence is a setup step, not a bug. */
-export function loadTitles(): ShowcaseTitle[] {
-  const file = resolve(import.meta.dirname, 'assets/titles.json');
+function readAsset(name: string): unknown {
+  const file = resolve(import.meta.dirname, 'assets', name);
   try {
-    return JSON.parse(readFileSync(file, 'utf8')) as ShowcaseTitle[];
+    return JSON.parse(readFileSync(file, 'utf8'));
   } catch {
     throw new Error(
       `${file} is missing. Run "node apps/e2e/showcase/exportFromDev.mjs" against a real install first.`
     );
   }
 }
+
+export const loadTitles = (): ShowcaseTitle[] => readAsset('titles.json') as ShowcaseTitle[];
+
+export const loadMusic = (): ShowcaseArtist[] => readAsset('music.json') as ShowcaseArtist[];
 
 export interface ActiveStreamSpec {
   key: string;

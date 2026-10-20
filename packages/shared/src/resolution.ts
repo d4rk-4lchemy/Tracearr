@@ -166,3 +166,22 @@ export function normalizeResolution(input: ResolutionInput): ResolutionLabel | n
   const { label, width, height } = input;
   return classifyByDimensions(width, height) ?? normalizeResolutionLabel(label);
 }
+
+// PAL SD (576 lines) shares the 480p tier with NTSC; anything this tall in that tier is PAL.
+const PAL_SD_MIN_HEIGHT = 560;
+
+/**
+ * The resolution a person reads: the tier, except PAL SD, which keeps its 576 lines.
+ * Tiers, buckets and rules stay on normalizeResolution; a stored "576p" still
+ * buckets as 480p.
+ */
+export function resolutionDisplayName(input: ResolutionInput): string | null {
+  const tier = normalizeResolution(input);
+  if (tier !== '480p') return tier;
+
+  const { label, width, height } = input;
+  const labelLines =
+    !width && !height && label ? LINE_COUNT_LABEL.exec(label.toLowerCase().trim()) : null;
+  const lines = height ?? (labelLines ? Number(labelLines[1]) : null);
+  return lines && lines >= PAL_SD_MIN_HEIGHT ? '576p' : tier;
+}

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { CheckCircle, XCircle, SkipForward } from 'lucide-react';
 import type { ActionResult } from '@tracearr/shared';
 
@@ -10,11 +11,14 @@ interface ActionResultsListProps {
  * Shows success/failure/skipped status for each action.
  */
 export function ActionResultsList({ results }: ActionResultsListProps) {
+  const { t } = useTranslation('pages');
   if (results.length === 0) return null;
 
   return (
     <div className="space-y-2">
-      <h4 className="text-muted-foreground text-sm font-medium">Actions</h4>
+      <h4 className="text-muted-foreground text-sm font-medium">
+        {t('violations.detail.actionResults')}
+      </h4>
       <ul className="space-y-1">
         {results.map((result, index) => (
           <li key={index} className="flex items-center gap-2 text-sm">

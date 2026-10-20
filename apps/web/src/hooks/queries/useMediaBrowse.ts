@@ -4,13 +4,19 @@ import type {
   CatalogResponse,
   CatalogRow,
   CatalogRowServerEntry,
+  LibraryMediaType,
   MediaDetailResponse,
   MediaSeasonHeatResponse,
   ShelfRow,
   ShelvesResponse,
   WatchedState,
 } from '@tracearr/shared';
-import { api, type MediaHistoryPageResponse, type StatsTimeRange } from '@/lib/api';
+import {
+  api,
+  getBrowserTimezone,
+  type MediaHistoryPageResponse,
+  type StatsTimeRange,
+} from '@/lib/api';
 
 export type CatalogSort = 'title' | 'added' | 'year' | 'plays' | 'watch_time' | 'viewers';
 
@@ -56,7 +62,7 @@ function sortKeysDeep(value: unknown): unknown {
 }
 
 export interface UseCatalogArgs {
-  type: 'movie' | 'show';
+  type: LibraryMediaType;
   serverIds: string[];
   lens: string;
   filters: CatalogFilters;
@@ -67,7 +73,7 @@ export interface UseCatalogArgs {
 export const CATALOG_PAGE_SIZE = 60;
 
 function catalogBaseKey(args: {
-  type: 'movie' | 'show';
+  type: LibraryMediaType;
   sortedServerIds: string[];
   lens: string;
   filters: CatalogFilters;
@@ -281,17 +287,49 @@ export function useShelves(
   });
 }
 
-export function useGenres(type: 'movie' | 'show', serverIds: string[]) {
+/** Browse's genre filter calls this without a range, so the range only joins the key when given. */
+export function useGenres(type: LibraryMediaType, serverIds: string[], timeRange?: StatsTimeRange) {
   const sortedServerIds = [...serverIds].sort();
   return useQuery({
-    queryKey: ['media', 'genres', type, sortedServerIds.join(',')],
-    queryFn: () => api.library.genres(type, sortedServerIds),
+    queryKey: [
+      'media',
+      'genres',
+      type,
+      sortedServerIds.join(','),
+      ...(timeRange ? [timeRange, timeRange.timezone ?? getBrowserTimezone()] : []),
+    ],
+    queryFn: () => api.library.genres(type, sortedServerIds, timeRange),
     staleTime: 5 * 60_000,
     enabled: serverIds.length > 0,
   });
 }
 
-export function useCatalogCodecs(type: 'movie' | 'show', serverIds: string[]) {
+export function useGenreDetail(
+  genre: string,
+  type: LibraryMediaType,
+  serverIds: string[],
+  timeRange: StatsTimeRange,
+  { enabled = true }: { enabled?: boolean } = {}
+) {
+  const sortedServerIds = [...serverIds].sort();
+  return useQuery({
+    queryKey: [
+      'media',
+      'genres',
+      'detail',
+      genre,
+      type,
+      sortedServerIds.join(','),
+      timeRange,
+      timeRange.timezone ?? getBrowserTimezone(),
+    ],
+    queryFn: () => api.library.genreDetail(genre, type, sortedServerIds, timeRange),
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
+export function useCatalogCodecs(type: LibraryMediaType, serverIds: string[]) {
   const sortedServerIds = [...serverIds].sort();
   return useQuery({
     queryKey: ['media', 'codecs', type, sortedServerIds.join(',')],
@@ -406,6 +444,7 @@ export function findCachedMediaStub(
       ...data.recentlyAddedShows,
       ...data.mostPopularMovies,
       ...data.mostPopularShows,
+      ...data.mostPlayedArtists,
       ...(data.deadWeight ?? []),
     ].find((r) => r.mediaId === mediaId);
     if (row) return toStub(row);
@@ -449,6 +488,17 @@ export function useSeasonHeat(id: string, serverIds: string[], enabled = true) {
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     enabled,
+  });
+}
+
+export function useMediaChildren(id: string, serverIds: string[], enabled = true) {
+  const sortedServerIds = [...serverIds].sort();
+  return useQuery({
+    queryKey: ['media', 'children', id, sortedServerIds.join(',')],
+    queryFn: () => api.library.media.children(id, sortedServerIds),
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    enabled: enabled && serverIds.length > 0,
   });
 }
 

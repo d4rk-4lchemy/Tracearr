@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useSearchParams, type Location } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, ExternalLink, User, KeyRound, LogIn, AlertTriangle } from 'lucide-react';
@@ -39,6 +39,9 @@ type AuthStep = 'initial' | 'plex-waiting' | 'server-select';
 export function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const from = (useLocation().state as { from?: Location } | null)?.from;
+  const redirectTo =
+    searchParams.get('redirect') || (from ? `${from.pathname}${from.search}${from.hash}` : '/');
   const queryClient = useQueryClient();
   const { t } = useTranslation(['pages', 'common', 'settings', 'notifications']);
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -95,10 +98,9 @@ export function Login() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      const redirectTo = searchParams.get('redirect') || '/';
       void navigate(redirectTo, { replace: true });
     }
-  }, [isAuthenticated, authLoading, navigate, searchParams]);
+  }, [isAuthenticated, authLoading, navigate, redirectTo]);
 
   // Close Plex popup helper
   const closePlexPopup = () => {
@@ -142,7 +144,7 @@ export function Login() {
     toast.success(t('notifications:toast.success.loggedIn.title'), {
       description: t('notifications:toast.success.loggedIn.message'),
     });
-    void navigate('/');
+    void navigate(redirectTo);
   };
 
   // Poll for Plex PIN claim
@@ -243,7 +245,7 @@ export function Login() {
         toast.success(t('notifications:toast.success.loggedIn.title'), {
           description: t('pages:login.connectedTo', { name: serverName }),
         });
-        void navigate('/');
+        void navigate(redirectTo);
       }
     } catch (error) {
       toast.error(t('common:errors.connectionFailed'), {
@@ -298,7 +300,7 @@ export function Login() {
       toast.success(t('notifications:toast.success.loggedIn.title'), {
         description: t('pages:login.accountCreated'),
       });
-      void navigate('/');
+      void navigate(redirectTo);
     } finally {
       setLocalPending(false);
     }

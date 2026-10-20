@@ -11,7 +11,14 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { Queue, UnrecoverableError, Worker, type Job, type ConnectionOptions } from 'bullmq';
+import {
+  DelayedError,
+  Queue,
+  UnrecoverableError,
+  Worker,
+  type Job,
+  type ConnectionOptions,
+} from 'bullmq';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
 import { isMaintenance } from '../serverState.js';
 import type {
@@ -22,7 +29,11 @@ import type {
   PlaybackReportingImportProgress,
   PlaybackReportingImportResult,
 } from '@tracearr/shared';
-import { TautulliService } from '../services/tautulli.js';
+import {
+  ImportInterruptedError,
+  TautulliService,
+  type ImportResumeState,
+} from '../services/tautulli.js';
 import { importJellystatBackup } from '../services/jellystat.js';
 import {
   JellystatUploadMissingError,
@@ -34,6 +45,13 @@ import {
 import { importPlaybackReporting } from '../services/playbackReporting.js';
 import { getPubSubService } from '../services/cache.js';
 import { extendJobLock } from './lockUtils.js';
+import {
+  WORKER_DEFAULTS,
+  checkpoint,
+  registerQueue,
+  registerWorker,
+  yieldJob,
+} from './jobSafety.js';
 import { withSessionsCompressionPaused } from '../db/timescale.js';
 import {
   acquireHeavyOpsLock,
@@ -48,7 +66,8 @@ export interface TautulliImportJobData {
   type: 'tautulli';
   serverId: string;
   userId: string; // Audit trail - who initiated the import
-  checkpoint?: number; // Resume from this page (for future use)
+  checkpoint?: number; // next page to fetch; written after every finished page
+  resumeState?: ImportResumeState; // written with checkpoint; the finished pages' date range and failed pages
   overwriteFriendlyNames?: boolean; // Whether to overwrite existing friendly names
   includeStreamDetails?: boolean; // (BETA) Fetch detailed codec/bitrate info via additional API calls
 }
@@ -135,6 +154,7 @@ export function initImportQueue(redisUrl: string): void {
   importQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('[Import] Queue error:', err);
   });
+  registerQueue(importQueue);
 
   dlqQueue = new Queue<ImportJobData>(DLQ_NAME, {
     connection: connectionOptions,
@@ -153,6 +173,7 @@ export function initImportQueue(redisUrl: string): void {
   dlqQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('[Import] DLQ error:', err);
   });
+  registerQueue(dlqQueue);
 
   console.log('Import queue initialized');
 }
@@ -289,6 +310,9 @@ function buildFailedProgress(
   };
 }
 
+// Longer than the default lock: the synchronous JSON.parse of a large Jellystat upload blocks the lock renewer.
+export const IMPORT_LOCK_DURATION_MS = 5 * 60_000;
+
 /**
  * Start the import worker to process queued jobs
  */
@@ -303,36 +327,6 @@ export function startImportWorker(): void {
   }
 
   const bullPrefix = getBullPrefix();
-
-  // Recover any stuck jobs from a previous crash before starting the worker
-  if (importQueue) {
-    importQueue
-      .getJobs(['active'])
-      .then(async (stuckJobs) => {
-        if (stuckJobs.length > 0) {
-          console.log(
-            `[Import] Found ${stuckJobs.length} stuck job(s) from previous run, recovering...`
-          );
-          for (const job of stuckJobs) {
-            try {
-              // Move back to waiting so the new worker can pick it up
-              await job.retry('failed');
-              console.log(`[Import] Recovered stuck job ${job.id} - moved to waiting`);
-            } catch (err) {
-              console.warn(`[Import] Failed to recover job ${job.id}, removing:`, err);
-              try {
-                await job.remove();
-              } catch {
-                // Job might have already been handled
-              }
-            }
-          }
-        }
-      })
-      .catch((err) => {
-        console.warn('[Import] Failed to check for stuck jobs:', err);
-      });
-  }
 
   if (importQueue) {
     importQueue
@@ -354,7 +348,7 @@ export function startImportWorker(): void {
 
   importWorker = new Worker<ImportJobData>(
     QUEUE_NAME,
-    async (job: Job<ImportJobData>) => {
+    async (job: Job<ImportJobData>, _token?: string, signal?: AbortSignal) => {
       const startTime = Date.now();
       const jobDescription =
         job.data.type === 'tautulli'
@@ -388,6 +382,8 @@ export function startImportWorker(): void {
         (lockHolder = await acquireHeavyOpsLock('import', job.id!, jobDescription, runToken)) !==
         null
       ) {
+        if (signal?.aborted) await yieldJob(job, job.token, 0);
+
         // Update cached progress with waiting status
         activeImportProgress = {
           jobId: job.id!,
@@ -412,7 +408,7 @@ export function startImportWorker(): void {
         );
 
         // Extend BullMQ job lock while waiting
-        await extendJobLock(job);
+        await extendJobLock(job, IMPORT_LOCK_DURATION_MS);
 
         // Wait before retry
         await new Promise((resolve) => setTimeout(resolve, WAIT_INTERVAL_MS));
@@ -435,13 +431,19 @@ export function startImportWorker(): void {
       // Backstop renewal independent of how often processImportJob itself calls extendHeavyOpsLock.
       const stopHeartbeat = startHeavyOpsLockHeartbeat(job.id!, runToken);
       try {
-        const result = await withSessionsCompressionPaused(() => processImportJob(job));
+        const result = await withSessionsCompressionPaused(() => processImportJob(job, signal));
         const duration = Math.round((Date.now() - startTime) / 1000);
         console.log(`[Import] Job ${job.id} completed in ${duration}s:`, result);
         return result;
       } catch (error) {
         const duration = Math.round((Date.now() - startTime) / 1000);
-        console.error(`[Import] Job ${job.id} failed after ${duration}s:`, error);
+        if (error instanceof DelayedError) {
+          console.log(
+            `[Import] Job ${job.id} interrupted after ${duration}s; it resumes from its checkpoint`
+          );
+        } else {
+          console.error(`[Import] Job ${job.id} failed after ${duration}s:`, error);
+        }
         throw error;
       } finally {
         stopHeartbeat();
@@ -455,16 +457,16 @@ export function startImportWorker(): void {
       connection: connectionOptions,
       prefix: bullPrefix,
       concurrency: 1, // Only 1 import at a time per worker
-      // Large imports (300k+ records) can take hours - extend lock to prevent stalled job detection
-      lockDuration: 2 * 60 * 60 * 1000, // 2 hours - large imports can take a long time
-      stalledInterval: 30 * 1000, // Check for stalled jobs every 30 seconds
-      maxStalledCount: 2, // Retry stalled jobs up to 2 times before failing
+      ...WORKER_DEFAULTS,
+      lockDuration: IMPORT_LOCK_DURATION_MS,
       limiter: {
         max: 1,
         duration: 60000, // Max 1 new import per minute (prevents spam)
       },
     }
   );
+
+  registerWorker(importWorker);
 
   // Handle stalled jobs
   importWorker.on('stalled', (jobId) => {
@@ -515,21 +517,25 @@ export function startImportWorker(): void {
 /**
  * Process a single import job (routes to appropriate handler based on type)
  */
-async function processImportJob(job: Job<ImportJobData>): Promise<ImportJobResult> {
+async function processImportJob(
+  job: Job<ImportJobData>,
+  signal: AbortSignal | undefined
+): Promise<ImportJobResult> {
   if (job.data.type === 'jellystat') {
     return processJellystatImportJob(job as Job<JellystatImportJobData>);
   }
   if (job.data.type === 'playback-reporting') {
     return processPlaybackReportingImportJob(job as Job<PlaybackReportingImportJobData>);
   }
-  return processTautulliImportJob(job as Job<TautulliImportJobData>);
+  return processTautulliImportJob(job as Job<TautulliImportJobData>, signal);
 }
 
 /**
  * Process a Tautulli import job
  */
 async function processTautulliImportJob(
-  job: Job<TautulliImportJobData>
+  job: Job<TautulliImportJobData>,
+  signal: AbortSignal | undefined
 ): Promise<TautulliImportResult> {
   const { serverId, overwriteFriendlyNames = false, includeStreamDetails = false } = job.data;
   const pubSubService = getPubSubService();
@@ -549,11 +555,6 @@ async function processTautulliImportJob(
       activeImportProgress.progress = progress;
     }
 
-    // Extend locks - fails fast if lock is lost to avoid wasted work on large imports.
-    // The aggregate refresh at the end of an import runs one CALL per aggregate over
-    // the whole import range with no progress ticks of its own, so the last tick before
-    // it has to cover that on its own.
-    await extendJobLock(job, 30 * 60 * 1000);
     await extendHeavyOpsLock(job.id!);
 
     // Publish to WebSocket for UI
@@ -566,12 +567,20 @@ async function processTautulliImportJob(
   };
 
   // Run the actual import with progress callback
-  const result = await TautulliService.importHistory(
-    serverId,
-    pubSubService ?? undefined,
-    onProgress,
-    { overwriteFriendlyNames }
-  );
+  let result: TautulliImportResult;
+  try {
+    result = await TautulliService.importHistory(serverId, pubSubService ?? undefined, onProgress, {
+      overwriteFriendlyNames,
+      startPage: job.data.checkpoint ?? 0,
+      resumeState: job.data.resumeState,
+      signal,
+      onPageDone: (nextPage, resumeState) =>
+        checkpoint(job, { checkpoint: nextPage, resumeState }, IMPORT_LOCK_DURATION_MS),
+    });
+  } catch (error) {
+    if (error instanceof ImportInterruptedError) await yieldJob(job, job.token, 0);
+    throw error;
+  }
 
   // (BETA) Enrich sessions with detailed stream data
   if (includeStreamDetails && result.success) {

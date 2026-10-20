@@ -46,14 +46,7 @@ import {
   useDismissViolation,
   useSettings,
 } from '@/hooks/queries';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   User,
   ArrowLeft,
@@ -477,25 +470,6 @@ export function ViolationDetail() {
         </div>
       </div>
 
-      {/* Timestamps row */}
-      <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        <span className="flex items-center gap-1.5">
-          <Clock className="h-4 w-4" />
-          {t('pages:violations.detail.detected')}{' '}
-          {formatDistanceToNow(new Date(violation.createdAt), { addSuffix: true })}
-        </span>
-        {violation.acknowledgedAt && (
-          <>
-            <span>·</span>
-            <span className="flex items-center gap-1.5">
-              <Check className="h-4 w-4 text-green-600" />
-              {t('common:states.acknowledged')}{' '}
-              {formatDistanceToNow(new Date(violation.acknowledgedAt), { addSuffix: true })}
-            </span>
-          </>
-        )}
-      </div>
-
       {/* Top row: Violation Details + User Info */}
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Violation Details */}
@@ -776,28 +750,17 @@ export function ViolationDetail() {
       </Card>
 
       {/* Dismiss Confirmation Dialog */}
-      <Dialog open={dismissConfirmOpen} onOpenChange={setDismissConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('pages:violations.dismissViolation')}</DialogTitle>
-            <DialogDescription>{t('pages:violations.dismissViolationConfirm')}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDismissConfirmOpen(false)}>
-              {t('common:actions.cancel')}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDismiss}
-              disabled={dismissViolation.isPending}
-            >
-              {dismissViolation.isPending
-                ? t('common:states.dismissing')
-                : t('common:actions.dismiss')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={dismissConfirmOpen}
+        onOpenChange={setDismissConfirmOpen}
+        title={t('pages:violations.dismissViolation')}
+        description={t('pages:violations.dismissViolationConfirm')}
+        confirmLabel={t('common:actions.dismiss')}
+        confirmLoadingLabel={t('common:states.dismissing')}
+        cancelLabel={t('common:actions.cancel')}
+        onConfirm={handleDismiss}
+        isLoading={dismissViolation.isPending}
+      />
     </div>
   );
 }

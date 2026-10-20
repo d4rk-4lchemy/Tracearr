@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { TimeRangePicker } from '@/components/ui/time-range-picker';
 import {
   PlaysChart,
   PlatformChart,
@@ -25,17 +24,19 @@ import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
 import { useTimeRange } from '@/hooks/useTimeRange';
 
+const BY_MEDIA_TYPE = { groupBy: 'mediaType' } as const;
+
 export function StatsActivity() {
   const { t } = useTranslation(['pages', 'common']);
-  const { value: timeRange, setValue: setTimeRange, apiParams } = useTimeRange();
-  const { selectedServerIds, selectedServers, isMultiServer } = useServer();
+  const { value: timeRange, apiParams } = useTimeRange();
+  const { selectedServerIds } = useServer();
   const { user } = useAuth();
   const isMember = user?.role === 'member';
 
   // Fetch all stats with the same time range and server filter
-  const plays = usePlaysStats(apiParams, selectedServerIds);
-  const dayOfWeek = usePlaysByDayOfWeek(apiParams, selectedServerIds);
-  const hourOfDay = usePlaysByHourOfDay(apiParams, selectedServerIds);
+  const plays = usePlaysStats(apiParams, selectedServerIds, BY_MEDIA_TYPE);
+  const dayOfWeek = usePlaysByDayOfWeek(apiParams, selectedServerIds, BY_MEDIA_TYPE);
+  const hourOfDay = usePlaysByHourOfDay(apiParams, selectedServerIds, BY_MEDIA_TYPE);
   const platforms = usePlatformStats(apiParams, selectedServerIds);
   const quality = useQualityStats(apiParams, selectedServerIds);
   const concurrent = useConcurrentStats(apiParams, selectedServerIds);
@@ -43,21 +44,12 @@ export function StatsActivity() {
 
   // Transform data for charts
   const platformData = platforms.data?.map((p) => ({
-    name: p.platform ?? 'Unknown',
+    name: p.platform ?? t('common:labels.unknown'),
     count: p.count,
   }));
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{t('activity.title')}</h1>
-          <p className="text-muted-foreground text-sm">{t('activity.description')}</p>
-        </div>
-        <TimeRangePicker value={timeRange} onChange={setTimeRange} />
-      </div>
-
       <div className="grid gap-6 md:grid-cols-2">
         {/* Plays Over Time */}
         <Card>
@@ -76,8 +68,7 @@ export function StatsActivity() {
                 isLoading={plays.isLoading}
                 height={250}
                 period={timeRange.period}
-                isMultiServer={isMultiServer}
-                servers={selectedServers}
+                stackBy="mediaType"
               />
             )}
           </CardContent>

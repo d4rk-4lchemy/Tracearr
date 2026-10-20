@@ -69,38 +69,22 @@ export function useLibraryGrowth(
   });
 }
 
-/**
- * Fetch library quality evolution (resolution breakdown over time)
- * @param mediaType - Filter by media type: 'all' | 'movies' | 'shows'
- */
+/** Fetch library quality evolution (resolution breakdown over time) */
 export function useLibraryQuality(
   serverId?: string | null,
   period: string = '30d',
-  mediaType: 'all' | 'movies' | 'shows' = 'all',
-  enabled: boolean = true
+  mediaType: LibraryQualityResponse['mediaType'] = 'all',
+  enabled: boolean = true,
+  startDate?: string,
+  endDate?: string
 ) {
   const timezone = getBrowserTimezone();
   return useQuery<LibraryQualityResponse>({
-    queryKey: ['library', 'quality', serverId, period, mediaType, timezone],
-    queryFn: () => api.library.quality(serverId ?? undefined, period, mediaType),
+    queryKey: ['library', 'quality', serverId, period, mediaType, timezone, startDate, endDate],
+    queryFn: () =>
+      api.library.quality(serverId ?? undefined, period, mediaType, startDate, endDate),
     staleTime: LIBRARY_STALE_TIME,
     enabled,
-  });
-}
-
-/**
- * Fetch storage analytics with growth predictions
- */
-export function useLibraryStorage(
-  serverId?: string | null,
-  libraryId?: string | null,
-  period: string = '30d'
-) {
-  const timezone = getBrowserTimezone();
-  return useQuery<LibraryStorageResponse>({
-    queryKey: ['library', 'storage', serverId, libraryId, period, timezone],
-    queryFn: () => api.library.storage(serverId ?? undefined, libraryId ?? undefined, period),
-    staleTime: LIBRARY_STALE_TIME,
   });
 }
 
@@ -112,13 +96,15 @@ export function useLibraryStorage(
 export function useLibraryStorageScoped(
   serverIds: string[],
   period: string = '30d',
-  enabled: boolean = true
+  enabled: boolean = true,
+  startDate?: string,
+  endDate?: string
 ) {
   const timezone = getBrowserTimezone();
   const sortedIds = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery<LibraryStorageResponse>({
-    queryKey: ['library', 'storage', 'scoped', sortedIds, period, timezone],
-    queryFn: () => api.library.storageScoped(serverIds, period),
+    queryKey: ['library', 'storage', 'scoped', sortedIds, period, timezone, startDate, endDate],
+    queryFn: () => api.library.storageScoped(serverIds, period, startDate, endDate),
     staleTime: LIBRARY_STALE_TIME,
     enabled: enabled && serverIds.length > 0,
   });
@@ -330,12 +316,35 @@ export function useTopMovies(
   sortBy: string = 'plays',
   sortOrder: string = 'desc',
   page: number = 1,
-  pageSize: number = 20
+  pageSize: number = 20,
+  startDate?: string,
+  endDate?: string
 ) {
   const sortedIds = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery<TopMoviesResponse>({
-    queryKey: ['library', 'top-movies', sortedIds, period, sortBy, sortOrder, page, pageSize],
-    queryFn: () => api.library.topMovies(serverIds, period, sortBy, sortOrder, page, pageSize),
+    queryKey: [
+      'library',
+      'top-movies',
+      sortedIds,
+      period,
+      sortBy,
+      sortOrder,
+      page,
+      pageSize,
+      startDate,
+      endDate,
+    ],
+    queryFn: () =>
+      api.library.topMovies(
+        serverIds,
+        period,
+        sortBy,
+        sortOrder,
+        page,
+        pageSize,
+        startDate,
+        endDate
+      ),
     staleTime: LIBRARY_STALE_TIME,
     enabled: serverIds.length > 0,
   });
@@ -350,12 +359,35 @@ export function useTopShows(
   sortBy: string = 'plays',
   sortOrder: string = 'desc',
   page: number = 1,
-  pageSize: number = 20
+  pageSize: number = 20,
+  startDate?: string,
+  endDate?: string
 ) {
   const sortedIds = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery<TopShowsResponse>({
-    queryKey: ['library', 'top-shows', sortedIds, period, sortBy, sortOrder, page, pageSize],
-    queryFn: () => api.library.topShows(serverIds, period, sortBy, sortOrder, page, pageSize),
+    queryKey: [
+      'library',
+      'top-shows',
+      sortedIds,
+      period,
+      sortBy,
+      sortOrder,
+      page,
+      pageSize,
+      startDate,
+      endDate,
+    ],
+    queryFn: () =>
+      api.library.topShows(
+        serverIds,
+        period,
+        sortBy,
+        sortOrder,
+        page,
+        pageSize,
+        startDate,
+        endDate
+      ),
     staleTime: LIBRARY_STALE_TIME,
     enabled: serverIds.length > 0,
   });

@@ -112,7 +112,7 @@ interface LocalDateTimeParts {
 /**
  * Read an instant's wall-clock date/time in a given timezone.
  */
-function getLocalDateTimeParts(tz: string, date: Date): LocalDateTimeParts {
+export function getLocalDateTimeParts(tz: string, date: Date): LocalDateTimeParts {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     year: 'numeric',
@@ -221,15 +221,15 @@ export interface DateRange {
  * @param period - The period type
  * @param startDate - Custom start date (ISO string), required when period='custom'
  * @param endDate - Custom end date (ISO string), required when period='custom'
+ * @param now - The instant presets end at
  * @returns DateRange with start (null for all-time) and end dates
  */
 export function resolveDateRange(
   period: StatsPeriod,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  now = new Date()
 ): DateRange {
-  const now = new Date();
-
   switch (period) {
     case 'day':
       return { start: new Date(now.getTime() - TIME_MS.DAY), end: now };
@@ -250,6 +250,13 @@ export function resolveDateRange(
         end: new Date(endDate),
       };
   }
+}
+
+/** The window of equal length ending where `range` starts, for period-over-period comparison. */
+export function previousRange(range: DateRange): { start: Date; end: Date } | null {
+  if (!range.start) return null;
+  const length = range.end.getTime() - range.start.getTime();
+  return { start: new Date(range.start.getTime() - length), end: range.start };
 }
 
 /**

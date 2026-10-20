@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileJson, Upload, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ export function FileDropzone({
   disabled = false,
   error,
 }: FileDropzoneProps) {
+  const { t } = useTranslation('settings');
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,10 +139,10 @@ export function FileDropzone({
           </div>
           <div className="text-center">
             <p className="font-medium">
-              {isDragging ? 'Drop file here' : 'Drag & drop or click to select'}
+              {isDragging ? t('import.dropzone.dropHere') : t('import.dropzone.dragOrClick')}
             </p>
             <p className="text-muted-foreground mt-1 text-sm">
-              {accept} files up to {formatFileSize(maxSize)}
+              {t('import.dropzone.limit', { accept, size: formatFileSize(maxSize) })}
             </p>
           </div>
         </div>
@@ -161,7 +163,7 @@ export function FileDropzone({
             className="shrink-0"
           >
             <X className="h-4 w-4" />
-            <span className="sr-only">Remove file</span>
+            <span className="sr-only">{t('import.dropzone.removeFile')}</span>
           </Button>
         </div>
       )}

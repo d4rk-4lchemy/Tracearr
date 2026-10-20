@@ -17,6 +17,7 @@ import { isMaintenance } from '../serverState.js';
 import { batchGetIdentityServerUserIds, getActiveAutomations } from './poller/database.js';
 import { broadcastViolations } from './poller/violations.js';
 import { everyAligned, getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { WORKER_DEFAULTS, addSingleton, registerQueue, registerWorker } from './jobSafety.js';
 
 // Queue name
 const QUEUE_NAME = 'inactivity-check';
@@ -87,6 +88,7 @@ export function initInactivityCheckQueue(
   inactivityQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('[Inactivity] Queue error:', err);
   });
+  registerQueue(inactivityQueue);
 
   console.log('[Inactivity] Queue initialized');
 }
@@ -124,8 +126,10 @@ export function startInactivityCheckWorker(): void {
       connection: connectionOptions,
       prefix: bullPrefix,
       concurrency: 1, // Only one check at a time to avoid DB contention
+      ...WORKER_DEFAULTS,
     }
   );
+  registerWorker(inactivityWorker);
 
   inactivityWorker.on('error', (error) => {
     if (!isMaintenance()) console.error('[Inactivity] Worker error:', error);
@@ -168,12 +172,13 @@ export async function scheduleInactivityChecks(): Promise<void> {
 
   // Schedule a delayed startup check to allow server to fully initialize
   // This prevents false positives during server startup
-  await inactivityQueue.add(
+  await addSingleton(
+    inactivityQueue,
     'startup-check',
     { type: 'check' },
+    'inactivity-check-startup',
     {
       delay: STARTUP_DELAY_MS,
-      jobId: `startup-${Date.now()}`,
     }
   );
 

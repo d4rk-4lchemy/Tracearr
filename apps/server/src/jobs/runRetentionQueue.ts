@@ -25,6 +25,7 @@ import {
   type AutomationKind,
 } from '@tracearr/shared';
 import { everyAligned, getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { WORKER_DEFAULTS, registerQueue, registerWorker } from './jobSafety.js';
 import { isMaintenance } from '../serverState.js';
 import { db } from '../db/client.js';
 import { automations } from '../db/schema.js';
@@ -82,6 +83,7 @@ export function initRunRetentionQueue(redisUrl: string): void {
   retentionQueue.on('error', (err) => {
     if (!isMaintenance()) console.error('[RunRetention] Queue error:', err);
   });
+  registerQueue(retentionQueue);
 
   console.log('[RunRetention] Queue initialized');
 }
@@ -125,8 +127,10 @@ export function startRunRetentionWorker(): void {
       connection: connectionOptions,
       prefix: bullPrefix,
       concurrency: 1,
+      ...WORKER_DEFAULTS,
     }
   );
+  registerWorker(retentionWorker);
 
   retentionWorker.on('error', (error) => {
     if (!isMaintenance()) console.error('[RunRetention] Worker error:', error);

@@ -45,12 +45,13 @@ function ownerUser(): AuthUser {
 async function requestDuplicates(
   app: FastifyInstance,
   serverIds: string[],
-  extra = ''
+  extra = '',
+  includeFuzzy = false
 ): Promise<DuplicatesResponse> {
   const scope = serverIds.map((id) => `serverIds=${id}`).join('&');
   const response = await app.inject({
     method: 'GET',
-    url: `/library/duplicates?includeFuzzy=false&${scope}${extra}`,
+    url: `/library/duplicates?includeFuzzy=${includeFuzzy}&${scope}${extra}`,
   });
   expect(response.statusCode).toBe(200);
   return response.json<DuplicatesResponse>();
@@ -297,6 +298,31 @@ describe('GET /library/duplicates (real SQL)', () => {
     expect(item.grandparentTitle).toBe('Breaking Bad');
     expect(item.seasonNumber).toBe(2);
     expect(item.episodeNumber).toBe(2);
+  });
+
+  it('never fuzzy-matches same-titled episodes of different shows', async () => {
+    const server = await createTestServer();
+    const pilot = (show: string, fileSize: number) =>
+      createTestLibraryItem({
+        serverId: server.id,
+        title: 'Pilot',
+        mediaType: 'episode',
+        year: 2015,
+        grandparentTitle: show,
+        parentIndex: 1,
+        itemIndex: 1,
+        fileSize,
+      });
+    await pilot('Powers', 101);
+    await pilot('Powerless', 99);
+    await pilot('Powers', 98);
+
+    const app = await buildApp(ownerUser());
+    const body = await requestDuplicates(app, [server.id], '&minConfidence=60', true);
+
+    expect(body.summary.totalGroups).toBe(1);
+    expect(body.duplicates[0]?.matchType).toBe('fuzzy');
+    expect(body.duplicates[0]?.items).toHaveLength(2);
   });
 
   it('orders by reclaimable bytes and sums the summary over all groups', async () => {

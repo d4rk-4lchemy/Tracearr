@@ -21,7 +21,7 @@
       "destinations": "",
       "newsletters": "",
       "email": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -37,7 +37,7 @@
       "posters": "",
       "plexAccounts": "",
       "destinations": "",
-      "guest": "",
+      "memberLogin": "",
       "mobile": "",
       "remote": "",
       "import": "",
@@ -230,6 +230,13 @@
       "issueBlocked": "",
       "issueRestartRequired": "",
       "issueMalfunctioned": "",
+      "jellyfinStep1": "",
+      "jellyfinStep2": "",
+      "jellyfinStep3": "",
+      "jellyfinStep4": "",
+      "embyStep1": "",
+      "embyStep2": "",
+      "embyStep3": "",
       "openReleases": ""
     },
     "posterSource": {
@@ -237,7 +244,9 @@
       "description": "",
       "automatic": "",
       "emptyHint": "",
-      "ownerOnly": ""
+      "ownerOnly": "",
+      "precache": "",
+      "precacheDescription": ""
     },
     "version": {
       "installed": "",
@@ -246,11 +255,6 @@
     }
   },
   "mobile": {
-    "title": "",
-    "pairDevice": "Gerät koppeln",
-    "generateToken": "Kopplungs-Token generieren",
-    "scanQrCode": "QR-Code scannen",
-    "tokenExpires": "Token läuft in {{time}} ab",
     "lastSeen": "",
     "connectedOn": "",
     "noDevices": "Keine Geräte verbunden",
@@ -258,7 +262,6 @@
     "revokeAll": "Alle Sitzungen widerrufen",
     "getOnGooglePlay": "Holen Sie es bei Google Play",
     "downloadOnAppStore": "Im App Store herunterladen",
-    "externalUrlRequired": "Eine externe URL muss in den allgemeinen Einstellungen konfiguriert werden, damit die Kopplung mobiler Geräte funktioniert.",
     "mobileAccessDisabled": "Mobiler Zugriff deaktiviert",
     "mobileAccessDisabledDesc": "Mobiler Zugriff aktivieren, damit die Tracearr Mobile App sich mit Ihrem Server verbinden kann.",
     "enableMobileAccess": "Mobiler Zugriff aktivieren",
@@ -353,10 +356,41 @@
     "automatic": "",
     "startJob": "Job starten"
   },
-  "accessControl": {
-    "allowGuestAccess": "Gastzugang erlauben",
-    "allowGuestAccessDesc": "Wenn deaktiviert, kann sich nur der Serverbesitzer bei Tracearr anmelden",
-    "singleOwnerNote": "Hinweis: Wenn der Gastzugang deaktiviert ist, kann sich nur der Serverbesitzer anmelden. Alle anderen Benutzer sehen eine \"Access Denied\"-Nachricht."
+  "memberLogin": {
+    "serverActivity": "",
+    "serverActivityDesc": "",
+    "noServers": "",
+    "addServer": "",
+    "serversLoadFailed": "",
+    "signIn": {
+      "title": "",
+      "titleDesc": "",
+      "local": "",
+      "localDesc": "",
+      "oidc": "",
+      "oidcDesc": "",
+      "plex": "",
+      "plexDesc": "",
+      "onlyWay": "",
+      "membersTitle": "",
+      "media": "",
+      "mediaDesc": "",
+      "servers": "",
+      "overrides": "",
+      "overridesDesc": "",
+      "overridesEmpty": "",
+      "overridesLoadFailed": "",
+      "addPerson": "",
+      "searchPeople": "",
+      "nobodyFound": "",
+      "accessLabel": "",
+      "roleLabel": "",
+      "allow": "",
+      "block": "",
+      "admin": "",
+      "member": "",
+      "backToDefault": ""
+    }
   },
   "import": {
     "noServers": "Keine Server verbunden",
@@ -417,6 +451,13 @@
     "importFullRangeHelp": "",
     "skipOverlap": "",
     "skipDuplicatePlugin": "",
+    "importFailed": "",
+    "dropzone": {
+      "dropHere": "",
+      "dragOrClick": "",
+      "limit": "",
+      "removeFile": ""
+    },
     "overlapSkipped_one": "",
     "overlapSkipped_other": "",
     "duplicates_one": "",
@@ -580,7 +621,6 @@
       "cron": "",
       "inZone": ""
     },
-    "nextRun": "",
     "noNextRun": "",
     "neverSent": "",
     "lastSend": "",
@@ -1018,11 +1058,7 @@
     "neverSynced": "",
     "counts": {
       "requests_one": "",
-      "requests_other": "",
-      "unmatchedMedia_one": "",
-      "unmatchedMedia_other": "",
-      "unmatchedUsers_one": "",
-      "unmatchedUsers_other": ""
+      "requests_other": ""
     },
     "needsKey": "",
     "lastError": "",

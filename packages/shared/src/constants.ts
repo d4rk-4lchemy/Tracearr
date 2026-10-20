@@ -5,6 +5,7 @@
 import {
   classifyByDimensions,
   normalizeResolutionLabel,
+  resolutionDisplayName,
   type ResolutionLabel,
 } from './resolution.js';
 
@@ -283,9 +284,11 @@ export const REDIS_KEYS = {
   // trusts a stamp taken against the directory the process is using now.
   LIBRARY_PRECACHE_LAST_FULL_DIR: (serverId: string) =>
     `${_redisPrefix}tracearr:library:precache:last-full-dir:${serverId}`,
-  // Poster cache: one-time boot reconciliation marker, the last sweep's tally,
-  // and the disk-limited flag the precache sets when the guard refused writes.
+  // One-time boot reconciliation markers: the 2.2 poster cache change (no longer
+  // read) and the 2.9 job queue cleanup. Then the last poster sweep's tally and
+  // the disk-limited flag the precache sets when the guard refused writes.
   IMAGE_CACHE_SCHEMA: `${_redisPrefix}tracearr:image-cache:schema`,
+  JOBS_SCHEMA: `${_redisPrefix}tracearr:jobs:schema`,
   IMAGE_CACHE_TALLY: `${_redisPrefix}tracearr:image-cache:tally`,
   IMAGE_CACHE_DISK_LIMITED: `${_redisPrefix}tracearr:image-cache:disk-limited`,
   // Global, not per-server: the cache directory is one path for the whole process.
@@ -420,8 +423,17 @@ export const NOTIFICATION_EVENTS = {
   TRUST_SCORE_CHANGED: 'trust_score_changed',
 } as const;
 
-/** The one size a poster is cached at. Every poster URL the server hands out uses it. */
+/** The 2:3 size a poster is cached at, for every row but artists and albums. */
 export const POSTER_IMAGE_SIZE = { width: 360, height: 540 } as const;
+
+/** Artist and album art is square; the one other size a versioned poster URL may ask for. */
+export const SQUARE_POSTER_SIZE = { width: 360, height: 360 } as const;
+
+export function posterSizeFor(
+  mediaType: string
+): typeof POSTER_IMAGE_SIZE | typeof SQUARE_POSTER_SIZE {
+  return mediaType === 'artist' || mediaType === 'album' ? SQUARE_POSTER_SIZE : POSTER_IMAGE_SIZE;
+}
 
 // API version
 /**
@@ -820,7 +832,7 @@ export function formatResolutionDisplay(
   width: number | null | undefined,
   height: number | null | undefined
 ): string {
-  const label = getResolutionLabel(width, height);
+  const label = resolutionDisplayName({ width, height });
   if (!label) return '—';
 
   if (width && height) return `${width}×${height} (${label})`;

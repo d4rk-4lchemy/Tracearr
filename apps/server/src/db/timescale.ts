@@ -9,6 +9,7 @@ import { createRawPgClient, db, recreatePool } from './client.js';
 import { sql, type SQL } from 'drizzle-orm';
 import type pg from 'pg';
 import { PRIMARY_MEDIA_TYPES_SQL_LITERAL } from '../constants/mediaTypes.js';
+import { countedSession, countedSessionSql } from '../constants/sessions.js';
 
 /**
  * Schema version for continuous aggregate definitions.
@@ -52,8 +53,10 @@ import { PRIMARY_MEDIA_TYPES_SQL_LITERAL } from '../constants/mediaTypes.js';
  * - 17: user_media_plays_daily is grouped by resume chain (chain_id) and the
  *       plays count became a counted flag. A chain counts when any segment
  *       passes the 120s gate, once, instead of only when its head does.
+ * - 18: A session counts toward plays and watch time when it passes the 120s
+ *       gate or is marked watched, so short tracks played to the end count.
  */
-export const AGGREGATE_SCHEMA_VERSION = 17;
+export const AGGREGATE_SCHEMA_VERSION = 18;
 
 /** Config for a continuous aggregate view */
 interface AggregateDefinition {
@@ -100,9 +103,9 @@ function getAggregateDefinitions(): AggregateDefinition[] {
           MAX(season_number) AS season_number,
           MAX(episode_number) AS episode_number,
           MAX(year) AS year,
-          SUM(CASE WHEN duration_ms >= 120000 THEN duration_ms ELSE 0 END) AS watched_ms,
-          MAX(CASE WHEN duration_ms >= 120000 THEN progress_ms ELSE NULL END) AS max_progress_ms,
-          COUNT(*) FILTER (WHERE duration_ms >= 120000) AS valid_session_count,
+          SUM(CASE WHEN ${countedSession()} THEN duration_ms ELSE 0 END) AS watched_ms,
+          MAX(CASE WHEN ${countedSession()} THEN progress_ms ELSE NULL END) AS max_progress_ms,
+          COUNT(*) FILTER (WHERE ${countedSession()}) AS valid_session_count,
           COUNT(*) AS total_session_count,
           BOOL_OR(watched) AS any_marked_watched
         FROM sessions
@@ -134,8 +137,8 @@ function getAggregateDefinitions(): AggregateDefinition[] {
           COALESCE(reference_id, id) AS chain_id,
           MAX(show_media_id::text)::uuid AS show_media_id,
           MAX(media_type) AS media_type,
-          BOOL_OR(COALESCE(duration_ms, 0) >= 120000) AS counted,
-          SUM(CASE WHEN duration_ms >= 120000 THEN duration_ms ELSE 0 END) AS watched_ms,
+          BOOL_OR(${countedSession()}) AS counted,
+          SUM(CASE WHEN ${countedSession()} THEN duration_ms ELSE 0 END) AS watched_ms,
           MAX(progress_ms) AS max_progress_ms,
           MAX(total_duration_ms) AS content_duration_ms,
           BOOL_OR(watched) AS any_watched
@@ -2416,7 +2419,7 @@ async function ensureEngagementViews(): Promise<void> {
       FROM sessions
       WHERE media_type = 'episode'
         AND grandparent_title IS NOT NULL
-        AND duration_ms >= 120000
+        AND ${countedSessionSql()}
         AND stopped_at IS NOT NULL
     )
     SELECT

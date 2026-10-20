@@ -827,7 +827,7 @@ export const serverRoutes: FastifyPluginAsync = async (app) => {
             syncedAt: new Date().toISOString(),
           };
         }
-        librarySyncJobId = await enqueueLibrarySync(id, authUser.userId);
+        librarySyncJobId = await enqueueLibrarySync(id, 'manual', authUser.userId);
         app.log.info({ serverId: id, jobId: librarySyncJobId }, 'Library sync job enqueued');
       } catch (err) {
         // Don't fail the whole sync if library sync can't be queued

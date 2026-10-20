@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import { ChartSkeleton } from '@/components/ui/skeleton';
@@ -27,13 +28,22 @@ export function CompletionDonutChart({
   isLoading,
   height = 250,
 }: CompletionDonutChartProps) {
+  const { t } = useTranslation(['pages', 'common']);
   const chartData = useMemo(() => {
     return [
-      { name: 'Completed', y: completed, color: COMPLETION_COLORS.completed },
-      { name: 'In Progress', y: inProgress, color: COMPLETION_COLORS.inProgress },
-      { name: 'Not Started', y: notStarted, color: COMPLETION_COLORS.notStarted },
+      { name: t('library.watch.completed'), y: completed, color: COMPLETION_COLORS.completed },
+      {
+        name: t('library.charts.completion.inProgress'),
+        y: inProgress,
+        color: COMPLETION_COLORS.inProgress,
+      },
+      {
+        name: t('library.charts.completion.notStarted'),
+        y: notStarted,
+        color: COMPLETION_COLORS.notStarted,
+      },
     ].filter((d) => d.y > 0);
-  }, [completed, inProgress, notStarted]);
+  }, [completed, inProgress, notStarted, t]);
 
   const options = useMemo<Highcharts.Options>(() => {
     if (chartData.length === 0) {
@@ -62,7 +72,12 @@ export function CompletionDonutChart({
         style: {
           color: 'hsl(var(--popover-foreground))',
         },
-        pointFormat: '<b>{point.y}</b> items ({point.percentage:.1f}%)',
+        pointFormatter: function () {
+          return t('library.charts.completion.tooltip', {
+            count: this.y ?? 0,
+            percent: (this.percentage ?? 0).toFixed(1),
+          });
+        },
       },
       plotOptions: {
         pie: {
@@ -88,7 +103,7 @@ export function CompletionDonutChart({
       series: [
         {
           type: 'pie',
-          name: 'Completion',
+          name: t('common:labels.completion'),
           data: chartData,
         },
       ],
@@ -112,7 +127,7 @@ export function CompletionDonutChart({
         ],
       },
     };
-  }, [chartData, height]);
+  }, [chartData, height, t]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;
@@ -122,8 +137,8 @@ export function CompletionDonutChart({
     return (
       <EmptyState
         icon={PieChart}
-        title="No completion data"
-        description="Completion breakdown will appear here once watch data is available"
+        title={t('library.charts.completion.empty.title')}
+        description={t('library.charts.completion.empty.description')}
       />
     );
   }

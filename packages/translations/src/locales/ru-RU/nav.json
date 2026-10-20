@@ -5,6 +5,8 @@
   "stats": "Статистика",
   "activity": "Активность",
   "library": "Библиотека",
+  "people": "",
+  "rules": "",
   "users": "Пользователи",
   "automations": "",
   "violations": "Нарушения",
@@ -18,14 +20,10 @@
   "devices": "Устройства",
   "bandwidth": "Трафик",
   "jobs": "Задания",
-  "media": "Медиа",
   "mediaBrowse": "Обзор",
   "mediaGenres": "Жанры",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

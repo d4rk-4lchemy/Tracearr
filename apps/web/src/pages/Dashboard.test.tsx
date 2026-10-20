@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router';
 import { Dashboard } from './Dashboard';
@@ -260,7 +260,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('common:errors.somethingWentWrong')).toBeInTheDocument();
     expect(screen.getByText('stats failed')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /try again/i }));
+    await userEvent.click(screen.getByRole('button', { name: /actions.tryAgain/ }));
     expect(refetchStats).toHaveBeenCalled();
     expect(refetchSessions).toHaveBeenCalled();
   });
@@ -348,6 +348,19 @@ describe('Dashboard', () => {
       expect(screen.queryByTestId('personal')).not.toBeInTheDocument();
     });
 
+    it('has no visible h1 and keeps the toggle in the Today heading', () => {
+      renderDashboard();
+
+      const h1 = screen.getByRole('heading', { level: 1, name: 'dashboard' });
+      expect(h1).toHaveClass('sr-only');
+      const today = screen.getByText('common:time.today');
+      expect(
+        within(today.parentElement as HTMLElement).getByRole('radio', {
+          name: 'dashboard.view.admin',
+        })
+      ).toBeInTheDocument();
+    });
+
     it('opens the personal view from ?view=me, with the toggle in its first heading', () => {
       renderDashboard('/?view=me');
 
@@ -404,6 +417,33 @@ describe('Dashboard', () => {
       expect(screen.queryByRole('radio')).not.toBeInTheDocument();
       expect(localStorage.getItem('tracearr_dashboard_view')).toBe('me');
     });
+  });
+
+  it('adds listen time under watch time only when music was played today', () => {
+    const stats = (listenTimeHours: number) =>
+      ({
+        data: { todayPlays: 4, todaySessions: 4, watchTimeHours: 2.5, listenTimeHours },
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      }) as unknown as ReturnType<typeof useDashboardStats>;
+    mockUseActiveSessions.mockReturnValue({
+      data: [],
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useActiveSessions>);
+
+    mockUseDashboardStats.mockReturnValue(stats(0));
+    const { unmount } = renderDashboard();
+    expect(screen.getByText('2.5h')).toBeInTheDocument();
+    expect(screen.queryByText(/common:labels\.listenTime/)).not.toBeInTheDocument();
+    unmount();
+
+    mockUseDashboardStats.mockReturnValue(stats(1));
+    renderDashboard();
+    expect(screen.getByText('(common:labels.listenTime 1h)')).toBeInTheDocument();
   });
 
   it('leaves the server view with the active users tile and no member extras', () => {

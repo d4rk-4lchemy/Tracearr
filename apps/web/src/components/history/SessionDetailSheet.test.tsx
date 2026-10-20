@@ -89,6 +89,15 @@ describe('SessionDetailSheet', () => {
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
   });
 
+  it('labels the time spent as listen time for a track and watch time for a movie', () => {
+    const { unmount } = renderSheet({ mediaType: 'track', mediaTitle: 'Teardrop' });
+    expect(screen.getByText('common:labels.listenTime')).toBeInTheDocument();
+    unmount();
+
+    renderSheet({});
+    expect(screen.getByText('common:labels.watchTime')).toBeInTheDocument();
+  });
+
   it('links a movie title to its media page', () => {
     renderSheet({ mediaId: 'movie-1' });
 

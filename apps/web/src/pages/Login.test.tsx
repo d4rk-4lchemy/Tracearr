@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { SetupStatus } from '@tracearr/shared';
 
@@ -9,9 +9,8 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ isAuthenticated: false, isLoading: false }),
-}));
+const auth = vi.hoisted(() => ({ isAuthenticated: false, isLoading: false }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => auth }));
 
 const setup = vi.hoisted(() => ({ data: undefined as unknown, all: undefined as unknown }));
 vi.mock('@/hooks/queries/useSetup', () => ({
@@ -88,6 +87,7 @@ const plexButton = () => screen.queryByRole('button', { name: /settings:plex.sig
 
 describe('Login blocks', () => {
   beforeEach(() => {
+    auth.isAuthenticated = false;
     setup.data = undefined;
     vi.clearAllMocks();
   });
@@ -229,5 +229,28 @@ describe('Login blocks', () => {
     signInEmail.mockResolvedValueOnce({ error: { code: 'INVALID', message: 'Wrong password' } });
     await userEvent.click(screen.getByRole('button', { name: /signIn/i }));
     expect(await screen.findByText('Wrong password')).toBeInTheDocument();
+  });
+
+  it('returns a signed-in user to the page that sent them to login', () => {
+    auth.isAuthenticated = true;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: '/login',
+              state: { from: { pathname: '/settings', search: '?tab=1', hash: '' } },
+            },
+          ]}
+        >
+          <Routes>
+            <Route path="login" element={<Login />} />
+            <Route path="settings" element={<p>settings page</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(screen.getByText('settings page')).toBeInTheDocument();
   });
 });

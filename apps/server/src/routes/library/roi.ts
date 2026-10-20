@@ -10,7 +10,7 @@
  * - Deletion suggestions for low-value, unwatched content
  *
  * Uses LEFT JOIN with sessions table to correlate watch time with storage.
- * A play is one resume chain (COALESCE(reference_id, id)) gated at 2 minutes (120000ms).
+ * A play is one resume chain (COALESCE(reference_id, id)) that ran 2 minutes or was watched.
  */
 
 import type { FastifyPluginAsync } from 'fastify';
@@ -21,6 +21,7 @@ import {
   libraryRoiQuerySchema,
   type LibraryRoiQueryInput,
 } from '@tracearr/shared';
+import { countedSessionSql } from '../../constants/index.js';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
 import { buildLibraryCacheKey } from './utils.js';
@@ -257,8 +258,8 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
           -- (or any entry's children) counts for the title
           SELECT b.ident,
                  COUNT(DISTINCT COALESCE(sess.reference_id, sess.id))
-                   FILTER (WHERE COALESCE(sess.duration_ms, 0) >= 120000) AS watch_count,
-                 COALESCE(SUM(sess.duration_ms) FILTER (WHERE sess.duration_ms >= 120000), 0) AS total_watch_ms,
+                   FILTER (WHERE ${countedSessionSql('sess')}) AS watch_count,
+                 COALESCE(SUM(sess.duration_ms) FILTER (WHERE ${countedSessionSql('sess')}), 0) AS total_watch_ms,
                  MAX(sess.stopped_at) AS last_watched_at
           FROM top_items b
           LEFT JOIN library_items child ON b.media_type IN ('show', 'artist')
@@ -476,7 +477,7 @@ export const libraryRoiRoute: FastifyPluginAsync = async (app) => {
           ),
           ident_watch AS (
             SELECT b.ident,
-              COALESCE(SUM(sess.duration_ms) FILTER (WHERE sess.duration_ms >= 120000), 0) AS total_watch_ms,
+              COALESCE(SUM(sess.duration_ms) FILTER (WHERE ${countedSessionSql('sess')}), 0) AS total_watch_ms,
               MAX(sess.stopped_at) AS last_watched_at
             FROM top_items b
             LEFT JOIN library_items child ON b.media_type IN ('show', 'artist')

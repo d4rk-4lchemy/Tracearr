@@ -45,6 +45,12 @@ const BROWSE_PARAM = {
   channels: 'audioChannels',
 } as const;
 
+const VIDEO_CHARTS = [
+  { kind: 'video', titleKey: 'library.quality.codec.videoCodecs' },
+  { kind: 'audio', titleKey: 'library.quality.codec.audioCodecs' },
+  { kind: 'channels', titleKey: 'library.quality.codec.audioChannels' },
+] as const;
+
 /** A codec chart whose bars open Browse filtered to that codec, as movies or TV shows. */
 function BrowsableCodecChart({
   kind,
@@ -57,7 +63,7 @@ function BrowsableCodecChart({
   isLoading: boolean;
   serverId: string | null | undefined;
 }) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const [menu, setMenu] = useState<{ entry: CodecEntry; x: number; y: number } | null>(null);
   const entries = breakdown?.codecs ?? [];
 
@@ -67,7 +73,7 @@ function BrowsableCodecChart({
         data={toChartData(breakdown)}
         isLoading={isLoading}
         height={220}
-        valueLabel="Items"
+        valueLabel={t('common:labels.items')}
         colorful
         onItemClick={(index, point) => {
           const entry = entries[index];
@@ -127,6 +133,7 @@ function BrowsableCodecChart({
 
 /** Codec tabs content - shared by both single-server and per-server card renderers. */
 function CodecTabsContent({ serverId }: { serverId: string | null | undefined }) {
+  const { t } = useTranslation(['pages', 'common']);
   const [activeTab, setActiveTab] = useState<'video' | 'music'>('video');
   const codecs = useLibraryCodecs(serverId);
 
@@ -140,7 +147,7 @@ function CodecTabsContent({ serverId }: { serverId: string | null | undefined })
       <TabsList className="mb-4">
         <TabsTrigger value="video" className="gap-2">
           <Film className="h-4 w-4" />
-          Movies / TV
+          {t('library.quality.codec.moviesAndTv')}
           {codecs.data?.video.total !== undefined && (
             <span className="text-muted-foreground ml-1">
               ({codecs.data.video.total.toLocaleString()})
@@ -149,7 +156,7 @@ function CodecTabsContent({ serverId }: { serverId: string | null | undefined })
         </TabsTrigger>
         <TabsTrigger value="music" className="gap-2">
           <Music className="h-4 w-4" />
-          Music
+          {t('common:media.music')}
           {codecs.data?.music.total !== undefined && (
             <span className="text-muted-foreground ml-1">
               ({codecs.data.music.total.toLocaleString()})
@@ -162,38 +169,22 @@ function CodecTabsContent({ serverId }: { serverId: string | null | undefined })
         {!codecs.isLoading && !hasVideoData ? (
           <EmptyState
             icon={Film}
-            title="No video content"
-            description="Video codec data will appear once movies or TV shows are in your library."
+            title={t('library.quality.codec.noVideo.title')}
+            description={t('library.quality.codec.noVideo.description')}
           />
         ) : (
           <div className="grid gap-6 md:grid-cols-3">
-            <div>
-              <h4 className="mb-3 text-sm font-medium">Video Codecs</h4>
-              <BrowsableCodecChart
-                kind="video"
-                breakdown={codecs.data?.video}
-                isLoading={codecs.isLoading}
-                serverId={serverId}
-              />
-            </div>
-            <div>
-              <h4 className="mb-3 text-sm font-medium">Audio Codecs</h4>
-              <BrowsableCodecChart
-                kind="audio"
-                breakdown={codecs.data?.audio}
-                isLoading={codecs.isLoading}
-                serverId={serverId}
-              />
-            </div>
-            <div>
-              <h4 className="mb-3 text-sm font-medium">Audio Channels</h4>
-              <BrowsableCodecChart
-                kind="channels"
-                breakdown={codecs.data?.channels}
-                isLoading={codecs.isLoading}
-                serverId={serverId}
-              />
-            </div>
+            {VIDEO_CHARTS.map(({ kind, titleKey }) => (
+              <div key={kind}>
+                <h4 className="mb-3 text-sm font-medium">{t(titleKey)}</h4>
+                <BrowsableCodecChart
+                  kind={kind}
+                  breakdown={codecs.data?.[kind]}
+                  isLoading={codecs.isLoading}
+                  serverId={serverId}
+                />
+              </div>
+            ))}
           </div>
         )}
       </TabsContent>
@@ -202,17 +193,17 @@ function CodecTabsContent({ serverId }: { serverId: string | null | undefined })
         {!codecs.isLoading && !hasMusicData ? (
           <EmptyState
             icon={Music}
-            title="No music content"
-            description="Music codec data will appear once music tracks are in your library."
+            title={t('library.quality.codec.noMusic.title')}
+            description={t('library.quality.codec.noMusic.description')}
           />
         ) : (
           <div>
-            <h4 className="mb-3 text-sm font-medium">Audio Codecs</h4>
+            <h4 className="mb-3 text-sm font-medium">{t('library.quality.codec.audioCodecs')}</h4>
             <TopListChart
               data={musicData}
               isLoading={codecs.isLoading}
-              height={280}
-              valueLabel="Tracks"
+              height={220}
+              valueLabel={t('common:media.track_plural')}
               colorful
             />
           </div>
@@ -220,11 +211,6 @@ function CodecTabsContent({ serverId }: { serverId: string | null | undefined })
       </TabsContent>
     </Tabs>
   );
-}
-
-/** Per-server codec content rendered inside PerServerCardGrid (no outer Card). */
-function ServerCodecCard({ serverId }: { serverId: string }) {
-  return <CodecTabsContent serverId={serverId} />;
 }
 
 /**
@@ -238,11 +224,13 @@ export function CodecDistributionSection({
   selectedServers,
   isMultiServer,
 }: CodecDistributionSectionProps) {
+  const { t } = useTranslation('pages');
+
   if (isMultiServer && selectedServers && selectedServers.length > 0) {
     return (
       <PerServerCardGrid
         servers={selectedServers}
-        renderServer={(server) => <ServerCodecCard serverId={server.id} />}
+        renderServer={(server) => <CodecTabsContent serverId={server.id} />}
       />
     );
   }
@@ -251,7 +239,7 @@ export function CodecDistributionSection({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base font-medium">Codec Distribution</CardTitle>
+        <CardTitle className="text-base font-medium">{t('library.quality.codec.title')}</CardTitle>
       </CardHeader>
       <CardContent>
         <CodecTabsContent serverId={serverId} />

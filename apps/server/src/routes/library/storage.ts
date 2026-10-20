@@ -1,7 +1,8 @@
 /**
  * Library Storage Analytics Route
  *
- * GET /storage - Storage usage, trends, and linear regression predictions
+ * GET /storage - Storage usage, trends, linear regression predictions, and a
+ * live per-library breakdown
  *
  * Uses library_items.file_size and created_at for accurate storage tracking
  * based on when items were actually added to the media server.
@@ -17,6 +18,7 @@ import {
   type LibraryStorageQueryInput,
   type LibraryStorageResponse,
   type StorageHistoryPoint,
+  type StorageLibraryRow,
   type StoragePrediction,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
@@ -26,7 +28,7 @@ import {
   resolveServerIds,
   buildMultiServerFragment,
 } from '../../utils/serverFiltering.js';
-import { buildLibraryCacheKey, dedupedStorageBytesSql } from './utils.js';
+import { buildLibraryCacheKey, dedupedStorageBytesSql, resolveLibraryWindow } from './utils.js';
 
 // ============================================================================
 // Linear Regression Implementation
@@ -132,25 +134,6 @@ export function selectGrowthFit<T extends GrowthFitRow>(
 // ============================================================================
 
 /**
- * Calculate start date based on period string.
- */
-function getStartDate(period: '7d' | '30d' | '90d' | '1y' | 'all'): Date | null {
-  const now = new Date();
-  switch (period) {
-    case '7d':
-      return new Date(now.getTime() - 7 * TIME_MS.DAY);
-    case '30d':
-      return new Date(now.getTime() - 30 * TIME_MS.DAY);
-    case '90d':
-      return new Date(now.getTime() - 90 * TIME_MS.DAY);
-    case '1y':
-      return new Date(now.getTime() - 365 * TIME_MS.DAY);
-    case 'all':
-      return null;
-  }
-}
-
-/**
  * Determine prediction confidence based on R-squared value.
  */
 function getConfidenceLevel(r2: number): 'high' | 'medium' | 'low' {
@@ -206,7 +189,8 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
         return reply.badRequest('Invalid query parameters');
       }
 
-      const { serverId, serverIds, libraryId, period, timezone } = query.data;
+      const { serverId, serverIds, libraryId, timezone } = query.data;
+      const { startDate, lastDay, cacheSegment } = resolveLibraryWindow(query.data);
       const authUser = request.user;
       const tz = timezone ?? 'UTC';
 
@@ -222,11 +206,11 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
       const serverCacheSegment =
         resolvedIds !== undefined ? resolvedIds.slice().sort().join(',') : 'all';
 
-      // Build cache key with all varying params
+      // v2: the response carries libraries[]
       const cacheKey = buildLibraryCacheKey(
-        REDIS_KEYS.LIBRARY_STORAGE,
+        `${REDIS_KEYS.LIBRARY_STORAGE}:v2`,
         serverCacheSegment,
-        period,
+        cacheSegment,
         tz
       );
       const fullCacheKey = libraryId ? `${cacheKey}:${libraryId}` : cacheKey;
@@ -240,10 +224,6 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
           // Fall through to compute
         }
       }
-
-      // Calculate date range
-      const startDate = getStartDate(period);
-      const endDate = new Date();
 
       // Build server filter for library_stats_daily
       const serverFilter = buildMultiServerFragment(resolvedIds, 'lsd.server_id');
@@ -276,7 +256,7 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
           SELECT d::date AS day
           FROM generate_series(
             ${effectiveStartDate.toISOString()}::date,
-            ${endDate.toISOString()}::date,
+            ${lastDay.toISOString()}::date,
             '1 day'::interval
           ) d
         ),
@@ -289,7 +269,7 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
             COALESCE(SUM(lsd.total_items), 0)::int AS total_items
           FROM library_stats_daily lsd
           WHERE lsd.day >= ${effectiveStartDate.toISOString()}::date
-            AND lsd.day <= ${endDate.toISOString()}::date
+            AND lsd.day <= ${lastDay.toISOString()}::date
             ${serverFilter}
             ${libraryFilter}
           GROUP BY lsd.day::date
@@ -351,6 +331,37 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
         )}::bigint AS total
       `);
       const dedupedBytes = (dedupedResult.rows[0] as { total: string } | undefined)?.total;
+
+      // Every library in scope, empty ones as zeros. An item counts once however many of its
+      // versions are sized, the snapshot rule.
+      const librariesResult = await db.execute(sql`
+        SELECT
+          l.library_id AS "libraryId",
+          l.name,
+          l.media_type AS "mediaType",
+          COALESCE(sized.item_count, 0)::int AS "itemCount",
+          COALESCE(sized.size_bytes, 0)::bigint AS "sizeBytes"
+        FROM libraries l
+        LEFT JOIN (
+          SELECT
+            li.server_id,
+            li.library_id,
+            COUNT(DISTINCT li.id) AS item_count,
+            SUM(v.file_size) AS size_bytes
+          FROM library_items li
+          JOIN library_item_versions v
+            ON v.library_item_id = li.id AND v.removed_at IS NULL AND v.file_size > 0
+          WHERE li.removed_at IS NULL
+            ${buildMultiServerFragment(resolvedIds, 'li.server_id')}
+          GROUP BY li.server_id, li.library_id
+        ) sized ON sized.server_id = l.server_id AND sized.library_id = l.library_id
+        WHERE 1=1
+          ${buildMultiServerFragment(resolvedIds, 'l.server_id')}
+        ORDER BY "sizeBytes" DESC, l.name
+      `);
+      const libraries: StorageLibraryRow[] = (
+        librariesResult.rows as Array<Omit<StorageLibraryRow, 'sizeBytes'> & { sizeBytes: string }>
+      ).map((row) => ({ ...row, sizeBytes: Number(row.sizeBytes) }));
 
       const current = {
         totalSizeBytes: dedupedBytes ?? latestRow?.total_size_bytes ?? '0',
@@ -427,6 +438,7 @@ export const libraryStorageRoute: FastifyPluginAsync = async (app) => {
         history,
         growthRate,
         predictions,
+        libraries,
       };
 
       // Cache for 5 minutes

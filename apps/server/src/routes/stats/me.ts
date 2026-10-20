@@ -15,7 +15,7 @@ import {
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { ownScope, scopeFragment, type Scope } from '../../lib/scope.js';
-import { MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
+import { countedSessionSql, MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
 import { buildMultiServerFragment, resolveServerIds } from '../../utils/serverFiltering.js';
 import { getSetting } from '../../services/settings.js';
 import {
@@ -25,7 +25,6 @@ import {
 import { buildPosterOrderFragment } from '../library/catalog.js';
 import { toShelfRowBase, type RawShelfRow } from '../library/shelves.js';
 
-const MIN_PLAY_DURATION_MS = 120000;
 const DAY_MS = 86_400_000;
 const TOP_TITLES_LIMIT = 10;
 
@@ -73,12 +72,13 @@ async function computeMyStats(mine: Exclude<Scope, 'all'>, timezone: string): Pr
   }
 
   // Local days, not UTC buckets: an 11 PM play in New York belongs to that evening. A day counts
-  // toward the streaks on a movie or episode play of two minutes or more; watch time sums every
-  // non-trailer session like the history aggregates do, so all time never reads below last 30 days.
+  // toward the streaks on a movie or episode play that ran 2 minutes or was watched; watch time
+  // sums every non-trailer session like the history aggregates do, so all time never reads below
+  // last 30 days.
   const [days, first, binge, genres] = await Promise.all([
     db.execute(sql`
       SELECT to_char((started_at AT TIME ZONE ${timezone})::date, 'YYYY-MM-DD') AS day,
-             BOOL_OR(duration_ms >= ${MIN_PLAY_DURATION_MS} ${MEDIA_TYPE_SQL_FILTER}) AS counts,
+             BOOL_OR(${countedSessionSql()} ${MEDIA_TYPE_SQL_FILTER}) AS counts,
              COALESCE(SUM(duration_ms) FILTER (WHERE media_type <> 'trailer'), 0)::bigint AS watched_ms
       FROM sessions
       WHERE true ${scopeFragment(mine)}
@@ -87,7 +87,7 @@ async function computeMyStats(mine: Exclude<Scope, 'all'>, timezone: string): Pr
     db.execute(sql`
       SELECT media_title, grandparent_title, COALESCE(media_id, show_media_id) AS media_id, started_at
       FROM sessions
-      WHERE duration_ms >= ${MIN_PLAY_DURATION_MS} ${MEDIA_TYPE_SQL_FILTER} ${scopeFragment(mine)}
+      WHERE ${countedSessionSql()} ${MEDIA_TYPE_SQL_FILTER} ${scopeFragment(mine)}
       ORDER BY started_at
       LIMIT 1
     `),

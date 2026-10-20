@@ -4,11 +4,12 @@
  * genres.routes.test.ts mocks db.execute, so it proves handler mechanics but
  * never the SQL itself: canonical-grain item counts, the alias-safe merge
  * bucketing (a merged loser's plays land on the canonical row's genre
- * buckets), server scoping, and the type filter all live in the query.
+ * buckets), chain grouping, server scoping, the type filter and the artist
+ * roll-up through track rows all live in the query.
  * This suite drives the real route (app.inject) against the per-worker test
  * database and asserts on the actual returned rows.
  *
- * Run with: pnpm --filter @tracearr/server test:integration -- genres
+ * Run with: pnpm --filter @tracearr/server test:integration genres
  */
 
 import { randomUUID } from 'node:crypto';
@@ -17,7 +18,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import sensible from '@fastify/sensible';
 import type { Redis } from 'ioredis';
 import { eq, sql } from 'drizzle-orm';
-import type { AuthUser, GenresResponse } from '@tracearr/shared';
+import type { AuthUser, GenreDetailResponse, GenresResponse } from '@tracearr/shared';
 import {
   createTestServer,
   createTestUser,
@@ -34,6 +35,7 @@ import {
   mergeMediaRows,
 } from '../../src/services/library/mediaResolutionService.js';
 import { permissionGuard } from '../../src/lib/scope.js';
+import { seedArtistOnTwoServers } from './musicFixtures.js';
 
 async function buildApp(authUser: AuthUser): Promise<{ app: FastifyInstance; redis: Redis }> {
   const app = Fastify({ logger: false });
@@ -165,13 +167,15 @@ interface SeedSessionOptions {
   mediaId: string;
   showMediaId?: string;
   ratingKey: string;
-  mediaType?: 'movie' | 'episode';
+  mediaType?: 'movie' | 'episode' | 'track';
   durationMs: number;
+  startedAt?: Date;
+  referenceId?: string;
 }
 
-async function seedSession(opts: SeedSessionOptions): Promise<void> {
-  const startedAt = new Date();
-  await createTestSession({
+async function seedSession(opts: SeedSessionOptions): Promise<string> {
+  const startedAt = opts.startedAt ?? new Date();
+  const session = await createTestSession({
     serverId: opts.serverId,
     serverUserId: opts.serverUserId,
     mediaId: opts.mediaId,
@@ -179,7 +183,7 @@ async function seedSession(opts: SeedSessionOptions): Promise<void> {
     ratingKey: opts.ratingKey,
     mediaType: opts.mediaType ?? 'movie',
     state: 'stopped',
-    referenceId: null,
+    referenceId: opts.referenceId ?? null,
     durationMs: opts.durationMs,
     totalDurationMs: Math.max(opts.durationMs, 7_200_000),
     progressMs: opts.durationMs,
@@ -187,15 +191,81 @@ async function seedSession(opts: SeedSessionOptions): Promise<void> {
     startedAt,
     stoppedAt: startedAt,
   });
+  return session.id;
+}
+
+interface SeedTrackOptions {
+  serverId: string;
+  ratingKey: string;
+  title: string;
+  artistRatingKey: string;
+  fileSize: number;
+}
+
+async function seedTrack(opts: SeedTrackOptions): Promise<string> {
+  const mediaId = await resolveMediaForItem({
+    mediaType: 'track',
+    title: opts.title,
+    serverId: opts.serverId,
+    ratingKey: opts.ratingKey,
+    grandparentRatingKey: opts.artistRatingKey,
+  });
+  await createTestLibraryItem({
+    serverId: opts.serverId,
+    ratingKey: opts.ratingKey,
+    title: opts.title,
+    mediaType: 'track',
+    grandparentRatingKey: opts.artistRatingKey,
+    mediaId,
+    fileSize: opts.fileSize,
+  });
+  return mediaId;
+}
+
+async function seedArtist(opts: {
+  serverId: string;
+  ratingKey: string;
+  title: string;
+  genres: string[];
+}): Promise<string> {
+  const mediaId = await resolveMediaForItem({
+    mediaType: 'artist',
+    title: opts.title,
+    serverId: opts.serverId,
+    ratingKey: opts.ratingKey,
+  });
+  await createTestLibraryItem({
+    serverId: opts.serverId,
+    ratingKey: opts.ratingKey,
+    title: opts.title,
+    mediaType: 'artist',
+    mediaId,
+    genres: opts.genres,
+    withoutVersion: true,
+  });
+  await db.update(media).set({ genres: opts.genres }).where(eq(media.id, mediaId));
+  return mediaId;
 }
 
 async function fetchGenres(
   app: FastifyInstance,
-  type: 'movie' | 'show',
+  type: 'movie' | 'show' | 'artist',
   extraQuery = ''
 ): Promise<{ statusCode: number; body: GenresResponse }> {
   const res = await app.inject({ method: 'GET', url: `/library/genres?type=${type}${extraQuery}` });
   return { statusCode: res.statusCode, body: res.json<GenresResponse>() };
+}
+
+async function fetchGenre(
+  app: FastifyInstance,
+  type: 'movie' | 'show' | 'artist',
+  genre: string
+): Promise<{ statusCode: number; body: GenreDetailResponse }> {
+  const res = await app.inject({
+    method: 'GET',
+    url: `/library/genres/${encodeURIComponent(genre)}?type=${type}`,
+  });
+  return { statusCode: res.statusCode, body: res.json<GenreDetailResponse>() };
 }
 
 describe('genres aggregate endpoint against a real database', () => {
@@ -474,5 +544,178 @@ describe('genres aggregate endpoint against a real database', () => {
     );
     expect(leakStatus).toBe(200);
     expect(leakBody.data.find((row) => row.genre === 'Thriller')).toBeUndefined();
+  });
+
+  it('counts a show chain spanning two UTC days once and lists the genre sheet', async () => {
+    const server = await createTestServer({ type: 'plex' });
+    const user = await createTestUser();
+    const account = await createTestServerUser({ serverId: server.id, userId: user.id });
+    const { app } = await buildApp(ownerFor([server.id]));
+
+    const show = await seedShow({
+      serverId: server.id,
+      ratingKey: 'chain-western-show',
+      title: 'Chain Western Show',
+      year: 2020,
+      tvdbId: 905_101,
+      genres: ['Western'],
+    });
+    const episode = await seedEpisode({
+      serverId: server.id,
+      ratingKey: 'chain-western-show-e1',
+      title: 'Chain Western Show E1',
+      year: 2020,
+      tvdbId: 905_111,
+      showMediaId: show,
+    });
+    const unplayed = await seedShow({
+      serverId: server.id,
+      ratingKey: 'chain-western-unplayed',
+      title: 'Unplayed Western Show',
+      year: 2021,
+      tvdbId: 905_201,
+      genres: ['Western'],
+    });
+
+    const midnight = new Date();
+    midnight.setUTCHours(0, 0, 0, 0);
+    const first = await seedSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaId: episode,
+      showMediaId: show,
+      ratingKey: 'chain-western-show-e1',
+      mediaType: 'episode',
+      durationMs: 600_000,
+      startedAt: new Date(midnight.getTime() - 10 * 60_000),
+    });
+    await seedSession({
+      serverId: server.id,
+      serverUserId: account.id,
+      mediaId: episode,
+      showMediaId: show,
+      ratingKey: 'chain-western-show-e1',
+      mediaType: 'episode',
+      durationMs: 600_000,
+      startedAt: new Date(midnight.getTime() + 10 * 60_000),
+      referenceId: first,
+    });
+    await refreshPlaysAggregate();
+
+    const { body } = await fetchGenres(app, 'show');
+    const western = body.data.find((row) => row.genre === 'Western');
+    expect(western).toMatchObject({
+      itemCount: 2,
+      plays: 1,
+      watchTimeMs: 1_200_000,
+      neverPlayed: { count: 1, bytes: 0 },
+      topViewer: { userId: user.id, serverUserId: account.id, share: 100 },
+    });
+    expect(western?.trend.reduce((sum, n) => sum + n, 0)).toBe(1);
+
+    const { statusCode, body: sheet } = await fetchGenre(app, 'show', 'Western');
+    expect(statusCode).toBe(200);
+    expect(sheet.kpis).toMatchObject({ plays: 1, itemCount: 2 });
+    expect(sheet.topTitles.map((title) => title.mediaId)).toEqual([show]);
+    expect(sheet.neverPlayed.map((title) => title.mediaId)).toEqual([unplayed]);
+    expect(sheet.topViewers).toEqual([
+      expect.objectContaining({
+        serverUserId: account.id,
+        serverId: server.id,
+        thumbUrl: account.thumbUrl ?? null,
+      }),
+    ]);
+
+    expect((await fetchGenre(app, 'show', 'Polka')).statusCode).toBe(404);
+  });
+
+  it('rolls track plays and sizes up to the artist genre, dropping a track with no artist row', async () => {
+    const server = await createTestServer({ type: 'plex' });
+    const user = await createTestUser();
+    const account = await createTestServerUser({ serverId: server.id, userId: user.id });
+    const { app } = await buildApp(ownerFor([server.id]));
+
+    await seedArtist({
+      serverId: server.id,
+      ratingKey: 'artist-rock-1',
+      title: 'Rock Artist One',
+      genres: ['Rock'],
+    });
+    const track = await seedTrack({
+      serverId: server.id,
+      ratingKey: 'artist-rock-1-t1',
+      title: 'Rock Track One',
+      artistRatingKey: 'artist-rock-1',
+      fileSize: 5_000_000,
+    });
+    const orphan = await seedTrack({
+      serverId: server.id,
+      ratingKey: 'orphan-track-1',
+      title: 'Orphan Track One',
+      artistRatingKey: 'artist-missing',
+      fileSize: 7_000_000,
+    });
+    for (const [mediaId, ratingKey] of [
+      [track, 'artist-rock-1-t1'],
+      [orphan, 'orphan-track-1'],
+    ] as const) {
+      await seedSession({
+        serverId: server.id,
+        serverUserId: account.id,
+        mediaId,
+        ratingKey,
+        mediaType: 'track',
+        durationMs: 200_000,
+      });
+    }
+    await refreshPlaysAggregate();
+
+    const { statusCode, body } = await fetchGenres(app, 'artist');
+    expect(statusCode).toBe(200);
+    expect(body.data.find((row) => row.genre === 'Rock')).toMatchObject({
+      itemCount: 1,
+      sizeBytes: 5_000_000,
+      plays: 1,
+      neverPlayed: { count: 0, bytes: 0 },
+    });
+    expect(body.totals.plays).toBe(1);
+    expect(body.hourly.reduce((sum, hour) => sum + hour.count, 0)).toBe(1);
+
+    const { body: sheet } = await fetchGenre(app, 'artist', 'Rock');
+    expect(sheet.kpis).toMatchObject({ plays: 1, playShare: 100, itemShare: 100 });
+    expect(sheet.topTitles).toEqual([
+      expect.objectContaining({ title: 'Rock Artist One', plays: 1, sizeBytes: 5_000_000 }),
+    ]);
+  });
+
+  it('counts an artist held on two servers once, with its mirrored tracks sized once', async () => {
+    const music = await seedArtistOnTwoServers();
+    await db
+      .update(media)
+      .set({ genres: ['Electronic'] })
+      .where(eq(media.id, music.artistMediaId));
+    await createTestLibraryItem({
+      serverId: music.serverA,
+      ratingKey: 'artist-unresolved',
+      title: 'Unresolved Artist',
+      mediaType: 'artist',
+      genres: ['Electronic'],
+      withoutVersion: true,
+    });
+    const { app } = await buildApp(ownerFor());
+
+    const { statusCode, body } = await fetchGenres(app, 'artist');
+    expect(statusCode).toBe(200);
+    expect(body.data.find((row) => row.genre === 'Electronic')).toMatchObject({
+      itemCount: 1,
+      sizeBytes: 18_000_000,
+      plays: 3,
+      neverPlayed: { count: 0, bytes: 0 },
+    });
+
+    const { body: sheet } = await fetchGenre(app, 'artist', 'Electronic');
+    expect(sheet.topTitles).toEqual([
+      expect.objectContaining({ title: 'Daft Punk', plays: 3, sizeBytes: 18_000_000 }),
+    ]);
   });
 });

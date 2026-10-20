@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Archive, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { formatMediaTech, type StaleResponse } from '@tracearr/shared';
@@ -26,6 +27,7 @@ import { useLibraryStale } from '@/hooks/queries/useLibrary';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { ServerColumnCell } from '@/components/server';
 import { formatBytes } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/empty-state';
 import { MediaTypeBadge } from './badges';
 
@@ -33,22 +35,13 @@ type MediaTypeFilter = 'all' | 'movie' | 'show' | 'artist';
 type SortBy = 'size' | 'title' | 'days_stale' | 'added_at';
 type SortOrder = 'asc' | 'desc';
 
-/**
- * Format days stale into human-readable string
- */
-function formatStaleTime(days: number): string {
-  if (days < 30) return `${days} day${days !== 1 ? 's' : ''}`;
-  if (days < 365) {
-    const months = Math.floor(days / 30);
-    return `${months} month${months !== 1 ? 's' : ''}`;
-  }
+function formatStaleTime(days: number, t: TFunction<'pages'>): string {
+  if (days < 30) return t('library.storage.stale.age.days', { count: days });
+  if (days < 365) return t('library.storage.stale.age.months', { count: Math.floor(days / 30) });
   const years = Math.floor(days / 365);
-  const remainingDays = days % 365;
-  const months = Math.floor(remainingDays / 30);
-  if (months === 0) {
-    return `${years} year${years !== 1 ? 's' : ''}`;
-  }
-  return `${years}y ${months}m`;
+  const months = Math.floor((days % 365) / 30);
+  if (months === 0) return t('library.storage.stale.age.years', { count: years });
+  return t('library.storage.stale.age.yearsMonths', { years, months });
 }
 
 /**
@@ -56,6 +49,7 @@ function formatStaleTime(days: number): string {
  * Yellow: < 1 year, Orange: 1-2 years, Red: > 2 years
  */
 function StaleBadge({ daysStale }: { daysStale: number }) {
+  const { t } = useTranslation('pages');
   const colorClass =
     daysStale > 730
       ? 'bg-red-500/10 text-red-500'
@@ -65,8 +59,31 @@ function StaleBadge({ daysStale }: { daysStale: number }) {
 
   return (
     <Badge variant="secondary" className={colorClass}>
-      {formatStaleTime(daysStale)}
+      {formatStaleTime(daysStale, t)}
     </Badge>
+  );
+}
+
+interface SortButtonProps {
+  column: SortBy;
+  sortBy: SortBy;
+  sortOrder: SortOrder;
+  onSort: (column: SortBy) => void;
+  className?: string;
+  children: ReactNode;
+}
+
+function SortButton({ column, sortBy, sortOrder, onSort, className, children }: SortButtonProps) {
+  const active = sortBy === column;
+  const Icon = !active ? ArrowUpDown : sortOrder === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <button
+      className={cn('hover:text-foreground flex items-center gap-1', className)}
+      onClick={() => onSort(column)}
+    >
+      {children}
+      <Icon className={cn('h-4 w-4', !active && 'opacity-50')} />
+    </button>
   );
 }
 
@@ -87,7 +104,7 @@ export function StaleContentTabs({
   isMultiServer,
   selectedServers,
 }: StaleContentTabsProps) {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['pages', 'common']);
 
   const [activeTab, setActiveTab] = useState<'never-watched' | 'stale'>('never-watched');
   const [staleDays, setStaleDays] = useState('90');
@@ -99,21 +116,17 @@ export function StaleContentTabs({
 
   const colorMap = useServerColorMap();
 
-  // Reset pages when filters change
-  useEffect(() => {
-    setStalePage(1);
-  }, [staleDays]);
-
-  useEffect(() => {
+  const resetPages = () => {
     setNeverWatchedPage(1);
     setStalePage(1);
-  }, [mediaTypeFilter, sortBy, sortOrder]);
+  };
 
   // Convert filter value to API param
   const mediaTypeParam = mediaTypeFilter === 'all' ? undefined : mediaTypeFilter;
 
   // Handle sort click
   const handleSort = (column: SortBy) => {
+    resetPages();
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
@@ -146,6 +159,8 @@ export function StaleContentTabs({
     sortOrder
   );
 
+  const sort = { sortBy, sortOrder, onSort: handleSort };
+
   const handleTabChange = (value: string) => {
     setActiveTab(value as 'never-watched' | 'stale');
   };
@@ -160,7 +175,7 @@ export function StaleContentTabs({
     if (isLoading) {
       return (
         <div className="flex h-48 items-center justify-center">
-          <div className="text-muted-foreground">Loading...</div>
+          <div className="text-muted-foreground">{t('common:states.loading')}</div>
         </div>
       );
     }
@@ -169,8 +184,8 @@ export function StaleContentTabs({
       return (
         <EmptyState
           icon={Archive}
-          title="No stale content"
-          description="All content in your library has been watched recently."
+          title={t('library.storage.stale.empty.title')}
+          description={t('library.storage.stale.empty.description')}
         />
       );
     }
@@ -182,79 +197,31 @@ export function StaleContentTabs({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[60px]">Type</TableHead>
+              <TableHead className="w-[60px]">{t('common:labels.type')}</TableHead>
               <TableHead>
-                <button
-                  className="hover:text-foreground flex items-center gap-1"
-                  onClick={() => handleSort('title')}
-                >
-                  Title
-                  {sortBy === 'title' ? (
-                    sortOrder === 'asc' ? (
-                      <ArrowUp className="h-4 w-4" />
-                    ) : (
-                      <ArrowDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="h-4 w-4 opacity-50" />
-                  )}
-                </button>
+                <SortButton column="title" {...sort}>
+                  {t('library.storage.colTitle')}
+                </SortButton>
               </TableHead>
-              {isMultiServer && <TableHead>Server</TableHead>}
+              {isMultiServer && <TableHead>{t('common:labels.server')}</TableHead>}
               <TableHead className="text-right">
-                <button
-                  className="hover:text-foreground ml-auto flex items-center gap-1"
-                  onClick={() => handleSort('size')}
-                >
-                  Size
-                  {sortBy === 'size' ? (
-                    sortOrder === 'asc' ? (
-                      <ArrowUp className="h-4 w-4" />
-                    ) : (
-                      <ArrowDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="h-4 w-4 opacity-50" />
-                  )}
-                </button>
+                <SortButton column="size" className="ml-auto" {...sort}>
+                  {t('common:labels.size')}
+                </SortButton>
               </TableHead>
               <TableHead>
-                <button
-                  className="hover:text-foreground flex items-center gap-1"
-                  onClick={() => handleSort('added_at')}
-                >
-                  Added
-                  {sortBy === 'added_at' ? (
-                    sortOrder === 'asc' ? (
-                      <ArrowUp className="h-4 w-4" />
-                    ) : (
-                      <ArrowDown className="h-4 w-4" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="h-4 w-4 opacity-50" />
-                  )}
-                </button>
+                <SortButton column="added_at" {...sort}>
+                  {t('library.overview.added')}
+                </SortButton>
               </TableHead>
               {showStaleColumn && (
                 <TableHead>
-                  <button
-                    className="hover:text-foreground flex items-center gap-1"
-                    onClick={() => handleSort('days_stale')}
-                  >
-                    Stale For
-                    {sortBy === 'days_stale' ? (
-                      sortOrder === 'asc' ? (
-                        <ArrowUp className="h-4 w-4" />
-                      ) : (
-                        <ArrowDown className="h-4 w-4" />
-                      )
-                    ) : (
-                      <ArrowUpDown className="h-4 w-4 opacity-50" />
-                    )}
-                  </button>
+                  <SortButton column="days_stale" {...sort}>
+                    {t('library.storage.stale.columns.staleFor')}
+                  </SortButton>
                 </TableHead>
               )}
-              <TableHead>Quality</TableHead>
+              <TableHead>{t('common:labels.quality')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -312,11 +279,11 @@ export function StaleContentTabs({
           onNext={() => onPageChange(page + 1)}
           onPage={onPageChange}
           labels={{
-            navigation: t('table.pagination'),
-            status: t('table.pageOf', { page, total: totalPages }),
-            previous: t('actions.previous'),
-            next: t('actions.next'),
-            goToPage: t('table.goToPage'),
+            navigation: t('common:table.pagination'),
+            status: t('common:table.pageOf', { page, total: totalPages }),
+            previous: t('common:actions.previous'),
+            next: t('common:actions.next'),
+            goToPage: t('common:table.goToPage'),
           }}
           className="px-2"
         />
@@ -329,10 +296,14 @@ export function StaleContentTabs({
       <div className="mb-4 flex items-center justify-between">
         <TabsList>
           <TabsTrigger value="never-watched">
-            Never Watched ({neverWatched.data?.summary.neverWatched.count ?? 0})
+            {t('library.storage.stale.tabs.neverWatched', {
+              count: neverWatched.data?.summary.neverWatched.count ?? 0,
+            })}
           </TabsTrigger>
           <TabsTrigger value="stale">
-            Stale Content ({stale.data?.summary.stale.count ?? 0})
+            {t('library.storage.stale.tabs.stale', {
+              count: stale.data?.summary.stale.count ?? 0,
+            })}
           </TabsTrigger>
         </TabsList>
 
@@ -340,30 +311,39 @@ export function StaleContentTabs({
           {/* Media type filter */}
           <Select
             value={mediaTypeFilter}
-            onValueChange={(v) => setMediaTypeFilter(v as MediaTypeFilter)}
+            onValueChange={(v) => {
+              setMediaTypeFilter(v as MediaTypeFilter);
+              resetPages();
+            }}
           >
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="movie">Movies</SelectItem>
-              <SelectItem value="show">TV Shows</SelectItem>
-              <SelectItem value="artist">Music</SelectItem>
+              <SelectItem value="all">{t('library.storage.stale.allTypes')}</SelectItem>
+              <SelectItem value="movie">{t('common:media.movie_plural')}</SelectItem>
+              <SelectItem value="show">{t('common:media.tvShows')}</SelectItem>
+              <SelectItem value="artist">{t('common:media.music')}</SelectItem>
             </SelectContent>
           </Select>
 
           {/* Threshold selector (only for stale tab) */}
           {activeTab === 'stale' && (
-            <Select value={staleDays} onValueChange={setStaleDays}>
+            <Select
+              value={staleDays}
+              onValueChange={(v) => {
+                setStaleDays(v);
+                setStalePage(1);
+              }}
+            >
               <SelectTrigger className="w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="90">Unwatched for 3+ months</SelectItem>
-                <SelectItem value="180">Unwatched for 6+ months</SelectItem>
-                <SelectItem value="365">Unwatched for 1+ year</SelectItem>
-                <SelectItem value="730">Unwatched for 2+ years</SelectItem>
+                <SelectItem value="90">{t('library.storage.stale.threshold.months3')}</SelectItem>
+                <SelectItem value="180">{t('library.storage.stale.threshold.months6')}</SelectItem>
+                <SelectItem value="365">{t('library.storage.stale.threshold.year1')}</SelectItem>
+                <SelectItem value="730">{t('library.storage.stale.threshold.years2')}</SelectItem>
               </SelectContent>
             </Select>
           )}

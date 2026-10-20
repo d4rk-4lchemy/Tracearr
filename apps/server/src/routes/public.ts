@@ -943,12 +943,13 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
 
     const { timezone, serverId } = query.data;
 
-    return getDashboardStats({
+    const { listenTimeHours: _listenTimeHours, ...stats } = await getDashboardStats({
       serverIds: serverId ? [serverId] : undefined,
       scope: 'all',
       timezone,
       redis: app.redis,
     });
+    return stats;
   });
 
   /**

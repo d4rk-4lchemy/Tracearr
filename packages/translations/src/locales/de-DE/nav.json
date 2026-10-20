@@ -5,6 +5,8 @@
   "stats": "Statistiken",
   "activity": "Aktivität",
   "library": "Bibliothek",
+  "people": "",
+  "rules": "",
   "users": "Benutzer",
   "automations": "",
   "violations": "Verstöße",
@@ -18,14 +20,10 @@
   "devices": "Geräte",
   "bandwidth": "Bandbreite",
   "jobs": "Aufträge",
-  "media": "Medien",
   "mediaBrowse": "Durchsuchen",
   "mediaGenres": "",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": "Navigation an-/ausschalten"
 }

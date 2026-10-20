@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -28,14 +29,15 @@ export function EditTrustScoreDialog({
   currentScore,
   username,
 }: EditTrustScoreDialogProps) {
+  const { t } = useTranslation(['pages', 'common']);
   const [score, setScore] = useState(currentScore);
   const mutation = useUpdateUser();
 
-  useEffect(() => {
-    if (open) {
-      setScore(currentScore);
-    }
-  }, [open, currentScore]);
+  const [synced, setSynced] = useState({ open, currentScore });
+  if (synced.open !== open || synced.currentScore !== currentScore) {
+    setSynced({ open, currentScore });
+    if (open) setScore(currentScore);
+  }
 
   const handleSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -59,12 +61,14 @@ export function EditTrustScoreDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Adjust Trust Score</DialogTitle>
-          <DialogDescription>Set the trust score for @{username}. Range: 0–100.</DialogDescription>
+          <DialogTitle>{t('userDetail.adjustTrustScore')}</DialogTitle>
+          <DialogDescription>
+            {t('userDetail.adjustTrustScoreDesc', { username })}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="trustScore">Trust Score</Label>
+            <Label htmlFor="trustScore">{t('common:labels.trustScore')}</Label>
             <div className="flex items-center gap-3">
               <Input
                 id="trustScore"
@@ -85,10 +89,10 @@ export function EditTrustScoreDialog({
               onClick={() => handleOpenChange(false)}
               disabled={mutation.isPending}
             >
-              Cancel
+              {t('common:actions.cancel')}
             </Button>
             <Button type="submit" disabled={mutation.isPending || previewScore === currentScore}>
-              {mutation.isPending ? 'Saving...' : 'Save'}
+              {mutation.isPending ? t('common:states.saving') : t('common:actions.save')}
             </Button>
           </DialogFooter>
         </form>

@@ -132,7 +132,8 @@ registry.registerPath({
 const PLAY_SEMANTICS =
   'A play is one resume chain: sessions are grouped by COALESCE(reference_id, id), where ' +
   'reference_id IS NULL marks the chain start. A chain counts once when any of its sessions ' +
-  'reaches 2 minutes (COALESCE(duration_ms, 0) >= 120000), including a chain that crosses UTC ' +
+  'reaches 2 minutes or passes the watched threshold for its media type ' +
+  '(COALESCE(duration_ms, 0) >= 120000 OR watched), including a chain that crosses UTC ' +
   'midnight. Rating keys the media server never provided are returned as null.';
 
 const ServerTypeEnum = z.enum(['plex', 'jellyfin', 'emby', 'dispatcharr']);

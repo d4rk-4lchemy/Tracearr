@@ -7,7 +7,7 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { POSTER_IMAGE_SIZE } from '@tracearr/shared';
+import { POSTER_IMAGE_SIZE, SQUARE_POSTER_SIZE } from '@tracearr/shared';
 import { posterVersionFor, proxyImage } from '../services/imageProxy.js';
 import { readLogoPng } from '../services/notifications/emailLogo.js';
 
@@ -35,7 +35,7 @@ const proxyQuerySchema = z
     height: z.coerce.number().int().min(10).max(2000).optional().default(450),
     fallback: z.enum(['poster', 'avatar', 'art']).optional().default('poster'),
     // Cache-busting fingerprint (posterVersionFor output). Presence marks the
-    // response cache as long-lived/immutable, so only the one poster size is allowed.
+    // response cache as long-lived/immutable, so only the poster sizes are allowed.
     v: z
       .string()
       .regex(/^[0-9a-f]{8}$/i)
@@ -46,9 +46,11 @@ const proxyQuerySchema = z
   .refine(
     (data) =>
       data.v === undefined ||
-      (data.width === POSTER_IMAGE_SIZE.width && data.height === POSTER_IMAGE_SIZE.height),
+      [POSTER_IMAGE_SIZE, SQUARE_POSTER_SIZE].some(
+        (size) => data.width === size.width && data.height === size.height
+      ),
     {
-      message: `Versioned requests must be ${POSTER_IMAGE_SIZE.width}x${POSTER_IMAGE_SIZE.height}`,
+      message: `Versioned requests must be ${POSTER_IMAGE_SIZE.width}x${POSTER_IMAGE_SIZE.height} or ${SQUARE_POSTER_SIZE.width}x${SQUARE_POSTER_SIZE.height}`,
       path: ['width'],
     }
   )

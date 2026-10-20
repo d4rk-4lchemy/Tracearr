@@ -10,7 +10,6 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/hooks/queries', () => ({
   useSettings: vi.fn(),
-  useImageCacheStatus: vi.fn(),
 }));
 
 vi.mock('@/hooks/useDebouncedSave', () => ({
@@ -18,7 +17,7 @@ vi.mock('@/hooks/useDebouncedSave', () => ({
   TEXT_INPUT_DELAY: 1000,
 }));
 
-import { useImageCacheStatus, useSettings } from '@/hooks/queries';
+import { useSettings } from '@/hooks/queries';
 import { useDebouncedSave } from '@/hooks/useDebouncedSave';
 
 type DebouncedSaveReturn = ReturnType<typeof useDebouncedSave>;
@@ -52,10 +51,6 @@ describe('Behavior', () => {
       data: DEFAULT_VALUES as unknown as Settings,
       isLoading: false,
     } as unknown as ReturnType<typeof useSettings>);
-    vi.mocked(useImageCacheStatus).mockReturnValue({
-      data: undefined,
-      isLoading: true,
-    } as unknown as ReturnType<typeof useImageCacheStatus>);
     vi.mocked(useDebouncedSave).mockImplementation(((key: string) =>
       saveResult(DEFAULT_VALUES[key])) as typeof useDebouncedSave);
   });
@@ -103,5 +98,11 @@ describe('Behavior', () => {
     await userEvent.click(screen.getByRole('switch', { name: 'general.enhancedGeoIP' }));
 
     expect(setValue).toHaveBeenCalledWith(true);
+  });
+
+  it('leaves the poster cache card to the Posters section', () => {
+    render(<Behavior />);
+
+    expect(screen.queryByText('general.imageCache.title')).not.toBeInTheDocument();
   });
 });

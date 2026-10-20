@@ -4,6 +4,7 @@ import { runRequestSync, type SyncMode } from '../services/requests/sync.js';
 import { listRequestServices } from '../services/requests/store.js';
 import { isMaintenance } from '../serverState.js';
 import { everyAligned, getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { WORKER_DEFAULTS, addSingleton, registerQueue, registerWorker } from './jobSafety.js';
 
 const QUEUE_NAME = 'request-sync';
 const INCREMENTAL_EVERY_MS = 15 * TIME_MS.MINUTE;
@@ -33,6 +34,7 @@ export function initRequestSyncQueue(redisUrl: string): void {
   queue.on('error', (err) => {
     if (!isMaintenance()) console.error('[RequestSync] Queue error:', err);
   });
+  registerQueue(queue);
   console.log('[RequestSync] Queue initialized');
 }
 
@@ -47,8 +49,9 @@ export function startRequestSyncWorker(): void {
         `[RequestSync] ${job.data.mode} for ${job.data.serviceId}: ${result.skipped ? 'skipped' : `${result.upserted} upserted, ${result.markedDeleted} marked deleted`}`
       );
     },
-    { connection: connectionOptions, prefix: getBullPrefix(), concurrency: 1 }
+    { connection: connectionOptions, prefix: getBullPrefix(), concurrency: 1, ...WORKER_DEFAULTS }
   );
+  registerWorker(worker);
   worker.on('error', (error) => {
     if (!isMaintenance()) console.error('[RequestSync] Worker error:', error);
   });
@@ -88,11 +91,14 @@ export async function isRequestSyncActive(serviceId: string): Promise<boolean> {
 
 export async function enqueueRequestSync(serviceId: string, mode: SyncMode): Promise<string> {
   if (!queue) throw new Error('Request sync queue not initialized');
-  if (await isRequestSyncActive(serviceId)) {
-    throw new Error('A sync is already in progress for this service');
-  }
-  const job = await queue.add(`manual-${mode}-${serviceId}`, { serviceId, mode });
-  return job.id ?? '';
+  const { jobId, accepted } = await addSingleton(
+    queue,
+    `manual-${mode}-${serviceId}`,
+    { serviceId, mode },
+    `request-sync-${serviceId}`
+  );
+  if (!accepted) throw new Error('A sync is already in progress for this service');
+  return jobId;
 }
 
 export async function shutdownRequestSyncQueue(): Promise<void> {

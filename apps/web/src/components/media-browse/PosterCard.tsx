@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import {
   formatMediaTech,
   resolutionTierRank,
   POSTER_IMAGE_SIZE,
+  SQUARE_POSTER_SIZE,
   type CatalogRowServerEntry,
+  type LibraryMediaType,
   type ServerType,
   type WatchedState,
 } from '@tracearr/shared';
@@ -15,15 +17,23 @@ import { ServerDots } from './ServerDots';
 import { dedupeServersById } from './dedupeServersById';
 import { HoverOverlay, type HoverOverlayServer } from './HoverOverlay';
 
-/** One URL per poster: the server keeps one cached copy at 360x540. The grid alone asks for the LQIP race. */
+export type PosterAspect = 'poster' | 'square';
+
+export const POSTER_ASPECT_CLASS = {
+  poster: 'aspect-[2/3]',
+  square: 'aspect-square',
+} as const satisfies Record<PosterAspect, string>;
+
+/** One URL per poster: the server keeps one cached copy at 360x540, or 360x360 for square art. The grid alone asks for the LQIP race. */
 export function buildPosterSrc(
   posterUrl: string,
   posterVersion: string | null,
-  options: { lqip?: boolean } = {}
+  options: { lqip?: boolean; square?: boolean } = {}
 ): string {
   const url = new URL(posterUrl, window.location.origin);
-  url.searchParams.set('width', String(POSTER_IMAGE_SIZE.width));
-  url.searchParams.set('height', String(POSTER_IMAGE_SIZE.height));
+  const size = options.square ? SQUARE_POSTER_SIZE : POSTER_IMAGE_SIZE;
+  url.searchParams.set('width', String(size.width));
+  url.searchParams.set('height', String(size.height));
   if (posterVersion) url.searchParams.set('v', posterVersion);
   else url.searchParams.delete('v');
   if (options.lqip) url.searchParams.set('lqip', '1');
@@ -67,6 +77,60 @@ function fallbackGradient(dominantColor: string | null): string {
     return 'linear-gradient(160deg, hsl(var(--muted)) 0%, hsl(var(--card-raised)) 100%)';
   }
   return `linear-gradient(160deg, ${dominantColor} 0%, ${darkenHex(dominantColor)} 100%)`;
+}
+
+interface PosterArtProps {
+  src: string | null;
+  title: string;
+  dominantColor: string | null;
+  /** The two-line title under the initials; off where the tile is too small to read it. */
+  caption?: boolean;
+  loading?: 'eager' | 'lazy';
+  fetchPriority?: 'high' | 'low' | 'auto';
+}
+
+/** The poster image, or the initials tile when there is no image or it fails to load. */
+export function PosterArt({
+  src,
+  title,
+  dominantColor,
+  caption = true,
+  loading,
+  fetchPriority,
+}: PosterArtProps) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+
+  if (!src || failedSrc === src) {
+    return (
+      <div
+        className="flex h-full w-full flex-col items-center justify-center gap-0.5 p-2 text-center"
+        style={{ background: fallbackGradient(dominantColor) }}
+      >
+        <span
+          aria-hidden="true"
+          className="text-foreground/85 text-[34px] leading-none font-bold tracking-[-0.02em] [text-shadow:0_2px_12px_hsl(240_10%_2%/0.4)]"
+        >
+          {posterInitials(title)}
+        </span>
+        {caption && (
+          <small className="text-foreground/75 line-clamp-2 text-[9px] font-semibold tracking-[0.14em] uppercase">
+            {title}
+          </small>
+        )}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      loading={loading}
+      decoding="async"
+      fetchPriority={fetchPriority}
+      onError={() => setFailedSrc(src)}
+      className="h-full w-full object-cover"
+    />
+  );
 }
 
 export interface PosterCardServer extends HoverOverlayServer {
@@ -114,7 +178,10 @@ function distinctResolutions(servers: { videoResolution?: string | null }[]): st
 }
 
 interface PosterCardProps {
-  mediaId: string;
+  /** Link target; null renders the card without a link (an album whose artist is unknown). */
+  mediaId: string | null;
+  /** Artist and album art is square; everything else is a 2:3 poster. */
+  mediaType?: LibraryMediaType | 'album';
   title: string;
   year: number | null;
   posterUrl: string | null;
@@ -131,6 +198,8 @@ interface PosterCardProps {
   rank?: number;
   /** Corner chip on Recently Added shelves for grouped shows; mutually exclusive with rank. */
   newEpisodes?: number;
+  /** Artists only; shown where a movie shows its year. */
+  albumCount?: number;
   loading?: 'eager' | 'lazy';
   fetchPriority?: 'high' | 'low' | 'auto';
   className?: string;
@@ -147,6 +216,7 @@ interface PosterCardProps {
  */
 export function PosterCard({
   mediaId,
+  mediaType,
   title,
   year,
   posterUrl,
@@ -160,18 +230,14 @@ export function PosterCard({
   viewers,
   rank,
   newEpisodes,
+  albumCount,
   loading = 'lazy',
   fetchPriority,
   className,
 }: PosterCardProps) {
   const { t } = useTranslation('pages');
-  const [imgError, setImgError] = useState(false);
-
-  useEffect(() => {
-    setImgError(false);
-  }, [posterUrl]);
-
-  const showFallback = !posterUrl || imgError;
+  const isMusic = mediaType === 'artist' || mediaType === 'album';
+  const aspect: PosterAspect = isMusic ? 'square' : 'poster';
   const showRank = rank != null;
   const hasNewEpisodes = newEpisodes != null && newEpisodes > 0;
   const showNewEpisodesChip = !showRank && hasNewEpisodes;
@@ -179,8 +245,10 @@ export function PosterCard({
   const newEpisodesSuffix = hasNewEpisodes
     ? `, ${t('media.landing.card.newEpisodes', { count: newEpisodes })}`
     : '';
-  const watchedSuffix =
-    watchedState === 'watched'
+  // Artists and albums carry no watched state.
+  const watchedSuffix = isMusic
+    ? ''
+    : watchedState === 'watched'
       ? `, ${t(watchedLabelKey(watchedStateSelf))}`
       : watchedState === 'partial'
         ? `, ${t('media.posterCard.watchedState.partial')}`
@@ -202,8 +270,12 @@ export function PosterCard({
     ? `, ${t('media.posterCard.versions', { count: fileCount })}`
     : '';
 
+  const albumCountLabel =
+    albumCount != null ? t('media.posterCard.albumCount', { count: albumCount }) : null;
+
   const accessibleName =
     (year != null ? `${title} (${year})` : title) +
+    (albumCountLabel ? `, ${albumCountLabel}` : '') +
     rankSuffix +
     newEpisodesSuffix +
     watchedSuffix +
@@ -235,41 +307,28 @@ export function PosterCard({
           {rank}
         </span>
       )}
-      <Link
-        to={`/media/${mediaId}`}
-        aria-label={accessibleName}
-        className="focus-visible:ring-ring block rounded-md focus-visible:ring-2 focus-visible:outline-none"
-      >
+      <CardSurface mediaId={mediaId} accessibleName={accessibleName}>
         <div
-          className="bg-muted relative aspect-[2/3] overflow-hidden rounded-[calc(var(--radius)+2px)] transition-transform duration-200 group-hover:-translate-y-[3px] group-hover:shadow-[0_12px_32px_hsl(240_10%_2%/0.7)]"
+          className={cn(
+            'bg-muted relative overflow-hidden rounded-[calc(var(--radius)+2px)] transition-transform duration-200 group-hover:-translate-y-[3px] group-hover:shadow-[0_12px_32px_hsl(240_10%_2%/0.7)]',
+            POSTER_ASPECT_CLASS[aspect]
+          )}
           style={dominantColor ? { backgroundColor: dominantColor } : undefined}
         >
-          {showFallback ? (
-            <div
-              className="flex h-full w-full flex-col items-center justify-center gap-0.5 p-2 text-center"
-              style={{ background: fallbackGradient(dominantColor) }}
-            >
-              <span
-                aria-hidden="true"
-                className="text-foreground/85 text-[34px] leading-none font-bold tracking-[-0.02em] [text-shadow:0_2px_12px_hsl(240_10%_2%/0.4)]"
-              >
-                {posterInitials(title)}
-              </span>
-              <small className="text-foreground/75 line-clamp-2 text-[9px] font-semibold tracking-[0.14em] uppercase">
-                {title}
-              </small>
-            </div>
-          ) : (
-            <img
-              src={buildPosterSrc(posterUrl, posterVersion, { lqip: true })}
-              alt=""
-              loading={loading}
-              decoding="async"
-              fetchPriority={fetchPriority}
-              onError={() => setImgError(true)}
-              className="h-full w-full object-cover"
-            />
-          )}
+          <PosterArt
+            src={
+              posterUrl
+                ? buildPosterSrc(posterUrl, posterVersion, {
+                    lqip: true,
+                    square: aspect === 'square',
+                  })
+                : null
+            }
+            title={title}
+            dominantColor={dominantColor}
+            loading={loading}
+            fetchPriority={fetchPriority}
+          />
           {(showNewEpisodesChip || showVersionsChip) && (
             <div className="absolute top-1.5 left-1.5 flex flex-col items-start gap-1">
               {showNewEpisodesChip && (
@@ -290,9 +349,11 @@ export function PosterCard({
               )}
             </div>
           )}
-          <div className="absolute top-1.5 right-1.5">
-            <WatchedBadge watchedState={watchedState} watchedStateSelf={watchedStateSelf} />
-          </div>
+          {!isMusic && (
+            <div className="absolute top-1.5 right-1.5">
+              <WatchedBadge watchedState={watchedState} watchedStateSelf={watchedStateSelf} />
+            </div>
+          )}
           <div className="absolute right-1.5 bottom-1.5">
             <ServerDots
               servers={servers}
@@ -302,6 +363,7 @@ export function PosterCard({
           <HoverOverlay
             title={title}
             year={year}
+            albumCountLabel={albumCountLabel}
             servers={servers}
             resolution={resolutionBest}
             plays={plays}
@@ -313,7 +375,28 @@ export function PosterCard({
         <div className="mt-1.5">
           <span className="line-clamp-2 h-10 text-sm leading-5 font-medium">{title}</span>
         </div>
-      </Link>
+      </CardSurface>
     </div>
+  );
+}
+
+function CardSurface({
+  mediaId,
+  accessibleName,
+  children,
+}: {
+  mediaId: string | null;
+  accessibleName: string;
+  children: ReactNode;
+}) {
+  if (mediaId === null) return <div>{children}</div>;
+  return (
+    <Link
+      to={`/media/${mediaId}`}
+      aria-label={accessibleName}
+      className="focus-visible:ring-ring block rounded-md focus-visible:ring-2 focus-visible:outline-none"
+    >
+      {children}
+    </Link>
   );
 }

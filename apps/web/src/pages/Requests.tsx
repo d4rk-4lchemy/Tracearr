@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { HardDrive, Inbox, CheckCircle2, PlugZap } from 'lucide-react';
-import type { RequesterSort, RequestUnplayedSort } from '@tracearr/shared';
+import { isStaff, type RequestUnplayedSort } from '@tracearr/shared';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/library';
@@ -10,14 +10,10 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { RequestFunnelChart } from '@/components/charts';
 import { RequestOutcomeTable } from '@/components/requests/RequestOutcomeTable';
-import { RequesterFollowThroughTable } from '@/components/requests/RequesterFollowThroughTable';
+import { PeopleLink } from '@/components/stats/PeopleLink';
 import type { SortingState } from '@/components/ui/data-table';
-import {
-  useRequesters,
-  useRequestsAnalytics,
-  useRequestsConfigured,
-  useRequestsUnplayed,
-} from '@/hooks/queries';
+import { useRequestsAnalytics, useRequestsConfigured, useRequestsUnplayed } from '@/hooks/queries';
+import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
 import { formatBytes, formatPercent } from '@/lib/formatters';
 
@@ -33,6 +29,7 @@ function sortParams<T extends string>(sorting: SortingState, fallback: T) {
 
 export function Requests() {
   const { t } = useTranslation('pages');
+  const { user } = useAuth();
   const { selectedServerIds } = useServer();
   const status = useRequestsConfigured();
   const configured = status.data?.configured ?? false;
@@ -41,10 +38,6 @@ export function Requests() {
   const [unplayedSorting, setUnplayedSorting] = useState<SortingState>([
     { id: 'fileSizeBytes', desc: true },
   ]);
-  const [requesterPage, setRequesterPage] = useState(1);
-  const [requesterSorting, setRequesterSorting] = useState<SortingState>([
-    { id: 'watched', desc: true },
-  ]);
 
   const analytics = useRequestsAnalytics(selectedServerIds, { enabled: configured });
   const unplayed = useRequestsUnplayed(selectedServerIds, {
@@ -52,12 +45,6 @@ export function Requests() {
     pageSize: PAGE_SIZE,
     enabled: configured,
     ...sortParams<RequestUnplayedSort>(unplayedSorting, 'fileSizeBytes'),
-  });
-  const requesters = useRequesters(selectedServerIds, {
-    page: requesterPage,
-    pageSize: PAGE_SIZE,
-    enabled: configured,
-    ...sortParams<RequesterSort>(requesterSorting, 'watched'),
   });
 
   const data = analytics.data;
@@ -71,24 +58,14 @@ export function Requests() {
   if (pagedScope !== serverScope) {
     setPagedScope(serverScope);
     setUnplayedPage(1);
-    setRequesterPage(1);
   }
 
   const onUnplayedSort = (sorting: SortingState) => {
     setUnplayedSorting(sorting);
     setUnplayedPage(1);
   };
-  const onRequesterSort = (sorting: SortingState) => {
-    setRequesterSorting(sorting);
-    setRequesterPage(1);
-  };
 
-  const header = (
-    <div>
-      <h1 className="text-2xl font-bold">{t('requests.page.title')}</h1>
-      <p className="text-muted-foreground text-sm">{t('requests.page.description')}</p>
-    </div>
-  );
+  const header = <h1 className="sr-only">{t('requests.page.title')}</h1>;
 
   if (status.isSuccess && !configured) {
     return (
@@ -193,26 +170,13 @@ export function Requests() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('requests.followThrough.title')}</CardTitle>
-          <CardDescription>{t('requests.followThrough.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <RequesterFollowThroughTable
-            rows={requesters.data?.data}
-            total={requesters.data?.total ?? 0}
-            page={requesterPage}
-            pageSize={PAGE_SIZE}
-            onPageChange={setRequesterPage}
-            sorting={requesterSorting}
-            onSortingChange={onRequesterSort}
-            isLoading={requesters.isLoading}
-            isError={requesters.isError}
-            onRetry={() => void requesters.refetch()}
-          />
-        </CardContent>
-      </Card>
+      {user && isStaff(user.role) && (
+        <PeopleLink
+          rank="requests"
+          titleKey="statsUsers.linkTitle.requests"
+          descriptionKey="statsUsers.linkBody.requests"
+        />
+      )}
     </div>
   );
 }

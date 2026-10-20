@@ -1,0 +1,172 @@
+{
+  "version": "2.9.0",
+  "date": "2026-10-19",
+  "headline": "A shorter sidebar, tabbed Stats and Library, People, and music",
+  "highlights": [
+    {
+      "title": "Navigation",
+      "body": "The sidebar is down to nine entries. Stats, Library and Automations are tabbed sections. Stats and Library share one time range picker, and the range stays across tabs and sidebar links. Violations sits under Automations with a pending count on the sidebar. Old URLs redirect."
+    },
+    {
+      "title": "People",
+      "body": "Stats has a People tab that ranks everyone by plays, hours, data, transcode share, requests or last seen, with search and paging. Users is a management table with role and sign-in columns, and a Status column that links each pending count to Violations. A user page shows stats for the selected range against the prior range and the server average."
+    },
+    {
+      "title": "Music",
+      "body": "Browse has a Music tab with an artist grid, and artist pages list albums with year and track count beside a Listeners panel. Overview has shelves for new albums and most played artists. Activity charts split plays into movies, shows and music. History and the Dashboard show listen time beside watch time, and tracks say played instead of watched."
+    }
+  ],
+  "changes": [
+    {
+      "type": "new",
+      "text": "sidebar drops to nine entries; Stats and Library share one time range, Automations is tabbed"
+    },
+    {
+      "type": "new",
+      "text": "Violations is a tab under Automations, and the sidebar shows the pending count"
+    },
+    {
+      "type": "new",
+      "text": "People tab in Stats ranks every person by plays, hours, data, transcodes, requests or last seen"
+    },
+    {
+      "type": "new",
+      "text": "Genres tab shows library share beside play share, prior-range deltas, finished rate and never played"
+    },
+    {
+      "type": "new",
+      "text": "click a genre for a sheet with its viewers, top titles, hourly pattern and never-played titles"
+    },
+    {
+      "type": "new",
+      "text": "Library tabs share one media type control (movies, TV shows or artists) that stays in the URL and in links"
+    },
+    {
+      "type": "new",
+      "text": "music libraries sync albums with their own art and added date"
+    },
+    {
+      "type": "new",
+      "text": "Browse has a Music tab with an artist grid, and artist pages list albums, listeners and plays"
+    },
+    {
+      "type": "new",
+      "text": "clicking an album on an artist page opens a sheet with its tracks, plays, listeners and listen time"
+    },
+    {
+      "type": "new",
+      "text": "Overview shelves for recently added albums and most played artists"
+    },
+    {
+      "type": "new",
+      "text": "Activity charts split plays into movies, shows and music"
+    },
+    {
+      "type": "new",
+      "text": "listen time shows beside watch time on History and the Dashboard when music was played"
+    },
+    {
+      "type": "new",
+      "text": "Storage lists every library with its item count and size"
+    },
+    {
+      "type": "new",
+      "text": "poster caching after library syncs can be turned off in Settings → Servers → Posters"
+    },
+    {
+      "type": "improved",
+      "text": "page headers are gone; the controls row (tabs, time range, filters) is the header on list pages and sections"
+    },
+    {
+      "type": "improved",
+      "text": "Users is a management table with role, sign-in and pending flags, and filters for each"
+    },
+    {
+      "type": "improved",
+      "text": "user pages show range stats, prior-range and server-average comparisons, when, what and where cards, and tabs"
+    },
+    {
+      "type": "improved",
+      "text": "the Top 3 podium is gone; the People table is the ranking"
+    },
+    {
+      "type": "improved",
+      "text": "Bandwidth shows the top five people by data; Bandwidth, Devices and Requests link to People for the full ranking"
+    },
+    {
+      "type": "improved",
+      "text": "Quality, Storage and Most Watched take custom date ranges"
+    },
+    {
+      "type": "improved",
+      "text": "History's date range is in the URL like every other page"
+    },
+    {
+      "type": "improved",
+      "text": "Stats tables, session and stream details, dialogs, badges and empty states are translated"
+    },
+    {
+      "type": "fix",
+      "text": "a member whose library limits change no longer sees the old cached genres for up to an hour"
+    },
+    {
+      "type": "fix",
+      "text": "plays under 2 minutes that pass the watched threshold, like short tracks, count in stats and the v2 history API",
+      "refs": ["#1329"]
+    },
+    {
+      "type": "fix",
+      "text": "music rows in History say played instead of watched",
+      "refs": ["#1000"]
+    },
+    {
+      "type": "fix",
+      "text": "background tasks no longer pile up after restarts; one sync or poster warm-up per server, resumed where it stopped"
+    },
+    {
+      "type": "fix",
+      "text": "a Tautulli import interrupted by a restart continues from the last finished page"
+    },
+    {
+      "type": "fix",
+      "text": "a busy server no longer bounces you to the dashboard; you stay on the page, and signing in returns you to it"
+    },
+    {
+      "type": "fix",
+      "text": "PAL SD shows as 576p in Now Playing and history; Normalize Resolutions under Jobs relabels older plays",
+      "refs": ["#1334"]
+    },
+    {
+      "type": "fix",
+      "text": "a custom range of one day no longer fails with an error on People and user pages"
+    },
+    {
+      "type": "note",
+      "text": "Storage's never-watched count matches Stale, and the Dead Weight list is in the Stale card"
+    },
+    {
+      "type": "note",
+      "text": "stats rebuild in the background after updating and show the last 7 days until done; music play counts will go up"
+    },
+    {
+      "type": "note",
+      "text": "today's plays, sessions and active users count music on the Dashboard and the v1 /stats/today"
+    },
+    {
+      "type": "note",
+      "text": "moved pages: /media is now /library and the /stats/users page is now /stats/people; old links redirect"
+    },
+    {
+      "type": "note",
+      "text": "the /api/v1/stats/users and /api/v1/stats/top-users API endpoints were removed; /api/v1/stats/people replaces them"
+    },
+    {
+      "type": "note",
+      "text": "the first scan after this update is a full scan so albums appear; items it finds are not announced as new"
+    },
+    {
+      "type": "note",
+      "text": "first boot after updating clears queued tasks once and queues one poster pass per server; syncs restart, imports stay"
+    }
+  ]
+}

@@ -65,7 +65,7 @@ test.describe('Old media URLs redirect to Browse', () => {
   test('/media/shows lands on Browse with the shows grid active', async ({ page }) => {
     await page.goto('/media/shows');
 
-    await expect(page).toHaveURL(/\/media\/browse\?type=shows$/);
+    await expect(page).toHaveURL(/\/media\/browse\?type=show$/);
     await expect(
       page.getByRole('region', { name: 'Shows' }).getByRole('link').first()
     ).toBeVisible();
@@ -268,7 +268,7 @@ test.describe('Movies grid filters', () => {
 
 test.describe('Shows grid', () => {
   test('renders show cards', async ({ page }) => {
-    await page.goto('/media/browse?type=shows');
+    await page.goto('/media/browse?type=show');
     const region = page.getByRole('region', { name: 'Shows' });
     await expect(region.getByRole('link').first()).toBeVisible();
   });

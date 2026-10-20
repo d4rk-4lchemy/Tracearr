@@ -312,11 +312,17 @@ const StatsTodayQuery = z.object({
 const StatsTodayResponse = z
   .object({
     activeStreams: z.number().int().openapi({ example: 5 }),
-    todayPlays: z
-      .number()
-      .int()
-      .openapi({ description: 'Validated VOD plays (>= 2 min)', example: 47 }),
-    watchTimeHours: z.number().openapi({ description: 'VOD hours watched today', example: 12.5 }),
+    todayPlays: z.number().int().openapi({
+      description:
+        'Counted plays of movies, episodes and music tracks today (>= 2 min or past the watched threshold)',
+      example: 47,
+    }),
+    todaySessions: z.number().int().openapi({
+      description:
+        'Plays of movies, episodes and music tracks started today, including ones too short to count',
+      example: 52,
+    }),
+    watchTimeHours: z.number().openapi({ description: 'Hours watched today', example: 12.5 }),
     tvSessions: z
       .number()
       .int()

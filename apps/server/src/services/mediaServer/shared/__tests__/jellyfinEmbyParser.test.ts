@@ -644,6 +644,44 @@ describe('parseLibraryItemsResponse', () => {
     expect(result[0]!.thumbPath).toBe('/Items/track-4/Images/Primary?tag=own');
   });
 
+  it('gives an Emby album with no own image the cover Emby reports from one of its tracks', () => {
+    const input = [
+      {
+        Id: '76952',
+        Name: '#SELFIE: The Remixes',
+        Type: 'MusicAlbum',
+        ImageTags: {},
+        PrimaryImageItemId: '70217',
+        PrimaryImageTag: '48364e5cd4c7cdac3b3c296999fecfc0_639047018375581113',
+        DateCreated: '2025-11-02T18:24:11Z',
+      },
+    ];
+
+    const result = parseLibraryItemsResponse(input);
+
+    expect(result[0]!.thumbPath).toBe(
+      '/Items/70217/Images/Primary?tag=48364e5cd4c7cdac3b3c296999fecfc0_639047018375581113'
+    );
+  });
+
+  it('points a track with no own image at the album image it inherits', () => {
+    const input = [
+      {
+        Id: 'track-5',
+        Name: 'Track',
+        Type: 'Audio',
+        ImageTags: {},
+        AlbumId: 'album-9',
+        PrimaryImageItemId: 'album-9',
+        PrimaryImageTag: 'albumtag',
+      },
+    ];
+
+    const result = parseLibraryItemsResponse(input);
+
+    expect(result[0]!.thumbPath).toBe('/Items/album-9/Images/Primary?tag=albumtag');
+  });
+
   it('gives an episode with no image the parent poster Jellyfin reports, else the series poster', () => {
     const input = [
       {
@@ -778,23 +816,26 @@ describe('parseLibraryItemsResponse', () => {
     expect(item!.musicBrainzId).toBe('f3e5c1a0-track');
   });
 
-  // MusicAlbum items aren't in ALLOWED_LIBRARY_ITEM_TYPES so never reach parseLibraryItemsResponse
-  // in production; parseLibraryItem itself is tested directly here.
   it('parses an album item, carrying its own parent artist as parentTitle/parentRatingKey', () => {
-    const item = parseLibraryItem({
-      Id: 'album456',
-      Name: 'Album Name',
-      Type: 'MusicAlbum',
-      AlbumArtist: 'Artist Name',
-      AlbumArtists: [{ Name: 'Artist Name', Id: 'artist789' }],
-      ProviderIds: { MusicBrainzAlbum: 'album-mbid' },
-      DateCreated: '2024-03-10T08:00:00Z',
-    });
+    const [item] = parseLibraryItemsResponse([
+      {
+        Id: 'album456',
+        Name: 'Album Name',
+        Type: 'MusicAlbum',
+        AlbumArtist: 'Artist Name',
+        AlbumArtists: [{ Name: 'Artist Name', Id: 'artist789' }],
+        ProviderIds: { MusicBrainzAlbum: 'album-mbid' },
+        ImageTags: { Primary: 'albumtag' },
+        DateCreated: '2024-03-10T08:00:00Z',
+      },
+    ]);
 
-    expect(item.mediaType).toBe('album');
-    expect(item.parentTitle).toBe('Artist Name');
-    expect(item.parentRatingKey).toBe('artist789');
-    expect(item.musicBrainzId).toBe('album-mbid');
+    expect(item!.mediaType).toBe('album');
+    expect(item!.parentTitle).toBe('Artist Name');
+    expect(item!.parentRatingKey).toBe('artist789');
+    expect(item!.musicBrainzId).toBe('album-mbid');
+    expect(item!.thumbPath).toBe('/Items/album456/Images/Primary?tag=albumtag');
+    expect(item!.addedAt).toEqual(new Date('2024-03-10T08:00:00Z'));
   });
 
   it('uses AlbumArtists ID for grandparentRatingKey on compilation albums', () => {
@@ -949,8 +990,8 @@ describe('parseLibraryItemsResponse', () => {
 
     const result = parseLibraryItemsResponse(input);
 
-    expect(result).toHaveLength(6);
-    expect(result.map((r) => r.ratingKey)).toEqual(['1', '9', '10', '11', '12', '14']);
+    expect(result).toHaveLength(7);
+    expect(result.map((r) => r.ratingKey)).toEqual(['1', '9', '10', '11', '12', '14', '15']);
     expect(result.map((r) => r.mediaType)).toEqual([
       'movie',
       'show',
@@ -958,6 +999,7 @@ describe('parseLibraryItemsResponse', () => {
       'episode',
       'track',
       'artist',
+      'album',
     ]);
   });
 

@@ -26,6 +26,7 @@
     "connectedTo": "已连接到 {{name}}",
     "plexAuthFailed": "Plex身份验证失败",
     "plexStartFailed": "启动Plex登录失败",
+    "plexExpired": "",
     "serverConnectFailed": "无法连接至服务器",
     "createAccountFailed": "创建账户失败",
     "invalidCredentials": "无效的电子邮件或密码",
@@ -35,10 +36,28 @@
     "claimCodeLabel": "索赔代码",
     "claimCodeHint": "当容器启动时在服务器日志中打印索赔码",
     "validateClaimCode": "验证索赔代码",
-    "claimCodeSecurityNote": "此安全措施确保只有授权的用户能够完成首次设置"
+    "claimCodeSecurityNote": "此安全措施确保只有授权的用户能够完成首次设置",
+    "member": {
+      "tabLocal": "",
+      "tabMember": "",
+      "server": "",
+      "signingInTo": "",
+      "passwordHint": "",
+      "quickConnectHint": "",
+      "waiting": "",
+      "copyCode": "",
+      "usePassword": "",
+      "useQuickConnect": "",
+      "codeExpired": "",
+      "newCode": "",
+      "refused": "",
+      "notPermitted": ""
+    }
   },
   "dashboard": {
     "alerts": "警报",
+    "plays": "播放次数",
+    "watchTime": "观看时长",
     "activeUsers": "活动用户",
     "nowPlaying": "正在播放",
     "streamLocations": "流位置",
@@ -46,21 +65,93 @@
     "bandwidth": "带宽",
     "noActiveStreams": "没有活动流",
     "streamsAppearHere": "当用户开始观看时活跃的流将出现在这里",
+    "dayStreak": "",
+    "view": {
+      "label": "",
+      "admin": "",
+      "me": ""
+    },
+    "me": {
+      "last30": "",
+      "streakDetail": "",
+      "topTitles": "",
+      "welcome": {
+        "title": "",
+        "description": "",
+        "browse": ""
+      },
+      "requests": {
+        "title": "",
+        "requestedAgo": "",
+        "seeAll": "",
+        "availableThisWeek_other": ""
+      },
+      "episodes_other": ""
+    },
+    "resources": {
+      "system": "",
+      "perServer": "",
+      "average": ""
+    },
+    "unknownLocation": "",
+    "unknownQuality": "",
+    "othersStreaming_other": "",
     "vodPlays": "",
     "vodWatchTime": "",
     "tvSessions": "",
-    "tvWatchTime": "",
-    "plays": "播放次数",
-    "watchTime": "观看时长"
+    "tvWatchTime": ""
+  },
+  "yourStats": {
+    "titles": "",
+    "howYouWatch": "",
+    "viewerType": {
+      "completionist": {
+        "label": "",
+        "desc": ""
+      },
+      "rewatcher": {
+        "label": "",
+        "desc": ""
+      },
+      "sampler": {
+        "label": "",
+        "desc": ""
+      },
+      "casual": {
+        "label": "",
+        "desc": ""
+      }
+    },
+    "habits": "",
+    "seeActivity": "",
+    "allTime": "",
+    "watchTime": "",
+    "span": {
+      "minutes_other": "",
+      "hours_other": "",
+      "days_other": "",
+      "weeks_other": ""
+    },
+    "longestStreak": "",
+    "firstPlay": "",
+    "biggestBinge": "",
+    "topGenres": "",
+    "allTimeCaption": "",
+    "tier": {
+      "watched": "",
+      "engaged": "",
+      "sampled": "",
+      "abandoned": "",
+      "rewatched": ""
+    },
+    "days_other": "",
+    "bingeValue_other": ""
   },
   "users": {
     "title": "用户",
     "showRemoved": "显示已删除",
     "noUsersFound": "未找到用户。",
-    "selectAllUsers_other": "选择所有{{count}}个用户",
-    "serversColumn": "服务器",
     "resetTrustScore": "重置信任分数",
-    "resetTrustScoreTitle_other": "重置{{count}}个用户的信任分数",
     "resetTrustScoreConfirm": "您确定要重置信任分数为100吗？此操作不能撤消。",
     "mergeUsers": "合并用户",
     "mergeTitleSuggestion": "这些人是否是同一人？",
@@ -76,7 +167,6 @@
     "mergeNeverActive": "从未激活",
     "mergeMoreServers": "",
     "mergeWhatHappens": "",
-    "mergeMoves_other": "",
     "mergeMovesNoCount": "",
     "mergeCarriesOver": "",
     "mergeDeleted": "",
@@ -92,13 +182,9 @@
     "mergeSameIdentity": "这些账户已经属于同一用户",
     "mergeSelectAllActive": "清除选中的全部选项，然后只选择两个用户进行合并",
     "suggestionsTitle": "可能重复的用户",
-    "suggestionsCount_other": "",
     "suggestionsPairEmail": "",
-    "suggestionsPairEmailMore_other": "",
     "suggestionsPairEmailUsername": "",
-    "suggestionsPairEmailUsernameMore_other": "",
     "suggestionsPairUsername": "",
-    "suggestionsPairUsernameMore_other": "",
     "suggestionsSheetDescription": "合并时保留一个用户并删除另一个用户。一对被标记为不是同一个人停止显示直到你还原。",
     "suggestionsReview": "审查",
     "suggestionsNotSame": "不是同一个人",
@@ -113,13 +199,29 @@
     "suggestionsError": "无法加载合并建议",
     "filterHasAccessTo": "有访问权限",
     "filterHasAccessToPlaceholder": "任何服务器",
-    "filterHasAccessToHint": "在选择的每个服务器上显示活跃账户的用户。"
+    "filterHasAccessToHint": "在选择的每个服务器上显示活跃账户的用户。",
+    "merged": "",
+    "filterRoleAll": "",
+    "filterSignInAll": "",
+    "filterPendingOnly": "",
+    "rowActions": "",
+    "menuOpenViolations": "",
+    "signInOn": "",
+    "signInOff": "",
+    "signedInAgo": "",
+    "neverSignedIn": "",
+    "selectAllUsers_other": "选择所有{{count}}个用户",
+    "resetTrustScoreTitle_other": "重置{{count}}个用户的信任分数",
+    "mergeMoves_other": "",
+    "suggestionsCount_other": "",
+    "suggestionsPairEmailMore_other": "",
+    "suggestionsPairEmailUsernameMore_other": "",
+    "suggestionsPairUsernameMore_other": "",
+    "pendingLink_other": ""
   },
   "userDetail": {
     "backToUsers": "返回用户",
     "userNotFound": "用户未找到",
-    "userInfo": "用户信息",
-    "statistics": "统计",
     "sessions": "会话",
     "violations": "违规",
     "terminationHistory": "终止历史记录",
@@ -147,20 +249,141 @@
     "contactEmailLabel": "通讯地址：",
     "contactEmailNone": "未设置",
     "contactEmailNoLogin": "不允许登录。",
-    "locations": "位置"
+    "locations": "位置",
+    "access": {
+      "title": "",
+      "signIn": "",
+      "signInAllow": "",
+      "signInDefault": "",
+      "signInBlock": "",
+      "signInDefaultOn": "",
+      "signInDefaultOff": "",
+      "signInDefaultUnknown": "",
+      "role": "",
+      "roleAdmin": "",
+      "roleMember": "",
+      "roleHint": "",
+      "disabled": "",
+      "pending": "",
+      "signIns": "",
+      "lastSignIn": "",
+      "never": "",
+      "viewAs": "",
+      "viewAsLabel": "",
+      "viewAsHint": ""
+    },
+    "tabs": {
+      "access": ""
+    },
+    "cards": {
+      "vsPrior": "",
+      "perActiveDay": "",
+      "finished": "",
+      "abandoned": "",
+      "avgBitrate": "",
+      "daysActive": "",
+      "ofDays": "",
+      "streak": "",
+      "transcodes_other": ""
+    },
+    "overview": {
+      "playsOverTime": "",
+      "priorRange": "",
+      "serverAverage": "",
+      "byHour": "",
+      "peak": "",
+      "serverPeak": "",
+      "what": "",
+      "otherMedia": "",
+      "mostFinished": "",
+      "where": "",
+      "directPlayShare": "",
+      "localShare": "",
+      "viewAllDevices": "",
+      "allSessions": "",
+      "finishedCount_other": ""
+    },
+    "uniqueCount": "",
+    "unknownCity": "",
+    "unknownDevice": "",
+    "viewAllMore": "",
+    "adjustTrustScoreDesc": "",
+    "ipCount_other": ""
   },
   "history": {
     "title": "历史记录",
-    "description": "",
     "totalPlays": "",
     "uniqueTitles": "",
-    "uniqueUsers": ""
+    "uniqueUsers": "",
+    "searchPlaceholder": "",
+    "columns": {
+      "duration": "",
+      "progress": ""
+    },
+    "location": {
+      "city": "",
+      "region": "",
+      "country": "",
+      "continent": "",
+      "postalCode": "",
+      "coordinates": "",
+      "asn": "",
+      "asnOrg": ""
+    },
+    "trailer": "",
+    "filters": {
+      "columns": "",
+      "countries": "",
+      "mediaType": "",
+      "types": "",
+      "network": "",
+      "remote": "",
+      "trailers": "",
+      "clearUsers": "",
+      "clearPlatforms": "",
+      "clearCountries": "",
+      "clearFilters": "",
+      "selected_other": ""
+    },
+    "detail": {
+      "watch": "",
+      "summary": "",
+      "segmentsShown_other": ""
+    },
+    "stream": {
+      "notAvailable": "",
+      "bitrateUnavailable": "",
+      "stereo": "",
+      "mono": "",
+      "noDetails": "",
+      "source": "",
+      "stream": "",
+      "container": "",
+      "bitrate": "",
+      "video": "",
+      "audio": "",
+      "subtitles": "",
+      "codec": "",
+      "framerate": "",
+      "hdr": "",
+      "profile": "",
+      "color": "",
+      "channels": "",
+      "language": "",
+      "sampleRate": "",
+      "format": "",
+      "forced": "",
+      "transcodeDetails": "",
+      "hwDecode": "",
+      "hwEncode": "",
+      "speed": "",
+      "throttled": "",
+      "channelCount_other": ""
+    }
   },
   "library": {
     "title": "媒体库",
-    "description": "",
     "overview": {
-      "description": "",
       "lastUpdated": "最后更新：",
       "totalItems": "项目总数",
       "shows": "剧集",
@@ -172,11 +395,16 @@
       "thisWeek": "本周",
       "thisMonth": "本月",
       "thisYear": "今年：",
-      "serversNeedSync": "这些服务器需要同步："
+      "serversNeedSync": "这些服务器需要同步：",
+      "notWatchedByYou": "",
+      "memberEmpty": {
+        "title": "",
+        "description": ""
+      },
+      "movieCount_other": "",
+      "showCount_other": ""
     },
     "quality": {
-      "title": "品质",
-      "description": "",
       "qualityEvolution": "质量进化",
       "all": "所有的",
       "failedToLoad": "加载质量数据失败",
@@ -186,20 +414,34 @@
         "shows": "",
         "movieCount_other": "",
         "episodeCount_other": ""
+      },
+      "codec": {
+        "title": "",
+        "moviesAndTv": "",
+        "videoCodecs": "",
+        "audioCodecs": "",
+        "audioChannels": "",
+        "noVideo": {
+          "title": "",
+          "description": ""
+        },
+        "noMusic": {
+          "title": "",
+          "description": ""
+        }
+      },
+      "resolution": {
+        "tooltip": "",
+        "empty": "",
+        "itemCount_other": ""
       }
     },
     "storage": {
-      "title": "存储",
-      "description": "",
       "totalStorage": "总存储",
       "growthRate": "增长",
       "duplicates": "重复项",
-      "groups": "组",
-      "recoverable": "可恢复",
       "staleContent": "陈旧内容",
       "staleContentDesc": "",
-      "items": "项目",
-      "unused": "未使用",
       "storageTrend": "存储趋势",
       "confidence": "置信度",
       "confidenceHigh": "高",
@@ -211,8 +453,6 @@
       "contentROIDesc": "",
       "avgHoursPerGB": "avg小时/GB",
       "insufficientData": "数据不足",
-      "of": "共",
-      "days": "天",
       "failedToLoad": "加载存储数据失败",
       "failedToLoadDesc": "无法获取存储数据。请重试。",
       "duplicatesTitle": "副本",
@@ -230,15 +470,75 @@
       "mirror": "镜像",
       "missingOnServer": "",
       "missingOnServerHint": "",
-      "copyPath": ""
+      "copyPath": "",
+      "libraries": {
+        "title": "",
+        "columns": {
+          "library": "",
+          "share": ""
+        },
+        "serverFailed": ""
+      },
+      "stale": {
+        "tabs": {
+          "neverWatched": "",
+          "stale": ""
+        },
+        "empty": {
+          "title": "",
+          "description": ""
+        },
+        "columns": {
+          "staleFor": ""
+        },
+        "allTypes": "",
+        "threshold": {
+          "months3": "",
+          "months6": "",
+          "year1": "",
+          "years2": ""
+        },
+        "age": {
+          "yearsMonths": "",
+          "days_other": "",
+          "months_other": "",
+          "years_other": ""
+        }
+      },
+      "growthPerMonth": "",
+      "dataDaysProgress": "",
+      "recoverableSize": "",
+      "unusedSize": "",
+      "roi": {
+        "empty": {
+          "title": "",
+          "description": ""
+        },
+        "columns": {
+          "hoursPerGb": "",
+          "value": ""
+        },
+        "category": {
+          "low": "",
+          "moderate": "",
+          "high": ""
+        },
+        "deletionSuggested": ""
+      },
+      "matchBadge": {
+        "exact": "",
+        "likely": "",
+        "possible": "",
+        "fuzzy": "",
+        "versions": "",
+        "label": ""
+      },
+      "groupCount_other": "",
+      "itemCount_other": ""
     },
     "watch": {
-      "title": "观看分析",
-      "description": "",
       "watched": "观看了",
-      "percentWatched": "%已观看",
       "totalWatchTime": "总观看时长",
-      "avgPerItem": "每个项目avg",
       "completed": "已完成",
       "peakHour": "高峰小时",
       "viewingHours": "查看时间",
@@ -252,7 +552,43 @@
       "noData": "尚无观看数据",
       "noDataDesc": "播放内容后，观看分析将显示在这里。有观看活动后再来查看。",
       "failedToLoad": "加载观看分析失败",
-      "failedToLoadDesc": "无法获取观看数据。"
+      "failedToLoadDesc": "无法获取观看数据。",
+      "mostWatched": "",
+      "binge": {
+        "columns": {
+          "show": "",
+          "servers": "",
+          "consecutive": "",
+          "bingeScore": "",
+          "maxPerDay": ""
+        },
+        "empty": {
+          "title": "",
+          "description": ""
+        },
+        "tiers": {
+          "highlyAddictive": "",
+          "addictive": "",
+          "bingeable": "",
+          "casual": ""
+        }
+      },
+      "percentWatchedValue": "",
+      "avgPerItemValue": "",
+      "top": {
+        "movies": {
+          "empty": {
+            "title": "",
+            "description": ""
+          }
+        },
+        "shows": {
+          "empty": {
+            "title": "",
+            "description": ""
+          }
+        }
+      }
     },
     "emptyState": {
       "checkingStatus": "正在检查库状态……",
@@ -307,35 +643,86 @@
     "versionsBackfill": {
       "banner": "正在为此服务器收集文件版本数据。运行库同步完成。",
       "action": "立即同步",
-      "syncFailed_other": "在 {{count}} 台服务器上同步启动失败(s),请检查您的权限和服务器状态。",
-      "syncStarted": "库同步开始。"
+      "syncStarted": "库同步开始。",
+      "syncFailed_other": "在 {{count}} 台服务器上同步启动失败(s),请检查您的权限和服务器状态。"
     },
-    "topMovies": "热门电影",
-    "topShows": "热门电视节目",
-    "noMoviePlays": "此期间没有电影播放",
-    "noShowPlays": "此期间没有电视节目播放"
+    "charts": {
+      "storage": {
+        "historical": "",
+        "prediction": "",
+        "now": "",
+        "axis": "",
+        "range": "",
+        "empty": {
+          "title": "",
+          "description": ""
+        }
+      },
+      "qualityTimeline": {
+        "empty": {
+          "title": "",
+          "description": ""
+        },
+        "titles_other": ""
+      },
+      "monthly": {
+        "watchCount": "",
+        "empty": {
+          "title": "",
+          "description": ""
+        },
+        "uniqueItems_other": ""
+      },
+      "growth": {
+        "empty": {
+          "title": "",
+          "description": ""
+        }
+      },
+      "hourly": {
+        "watches": "",
+        "empty": {
+          "title": "",
+          "description": ""
+        }
+      },
+      "completion": {
+        "inProgress": "",
+        "notStarted": "",
+        "empty": {
+          "title": "",
+          "description": ""
+        },
+        "tooltip_other": ""
+      },
+      "watchesValue_other": ""
+    }
   },
   "activity": {
-    "title": "活动",
-    "description": "",
     "playsOverTime": "播放次数趋势",
     "concurrentStreams": "并发流",
     "engagementBreakdown": "参与度分析",
     "howUsersEngage": "用户如何参与内容",
+    "howYouEngage": "",
     "playsVsSessions": "播放与会话",
     "playsVsSessionsDesc": "完整观看次数 — 当总观看时间覆盖内容的整个播放时长时计为一次播放",
     "activityByDayOfWeek": "每周活跃度",
     "activityByHourOfDay": "每小时活跃度",
     "platforms": "平台",
-    "streamQuality": "流质量"
+    "streamQuality": "流质量",
+    "noEngagementData": "",
+    "noPlatformData": "",
+    "noQualityData": "",
+    "noConcurrentData": "",
+    "peakConcurrent": "",
+    "tierItems_other": "",
+    "playsShare_other": ""
   },
   "violations": {
     "title": "违规",
     "tryAdjustingFilters": "尝试调整筛选条件",
-    "selectAllViolations_other": "选择所有符合筛选条件的{{count}}个违规项",
     "dismissViolation": "忽略违规",
     "dismissViolationConfirm": "确定要忽略此违规吗？它将从违规日志中永久移除。",
-    "dismissViolations_other": "忽略 {{count}} 条违规",
     "dismissViolationsConfirm": "确定要忽略吗？这将把它们从违规日志中永久移除，并恢复相关的信任分数。",
     "noViolationsFound": "未发现任何违规行为",
     "noViolationsRecorded": "尚未记录任何违规。",
@@ -344,7 +731,6 @@
     "allRules": "所有规则",
     "filterPeople": "人员",
     "allPeople": "所有人",
-    "peopleSelectedCount_other": "{{count}} 人",
     "personFilterPlaceholder": "按人筛选",
     "personFilterEmpty": "没有找到匹配的人",
     "personFilterError": "加载会话失败",
@@ -371,8 +757,12 @@
       "conditionGroup": "条件组{{index}}",
       "matched": "{{matched}}{{total}}匹配",
       "actual": "实际的",
+      "actionResults": "",
       "relatedSessions_other": "{{count}}相关会话"
-    }
+    },
+    "selectAllViolations_other": "选择所有符合筛选条件的{{count}}个违规项",
+    "dismissViolations_other": "忽略 {{count}} 条违规",
+    "peopleSelectedCount_other": "{{count}} 人"
   },
   "automations": {
     "message": {
@@ -598,9 +988,9 @@
       "openInEditor": "以此运行在生成器中打开",
       "tabsLabel": "按结果过滤",
       "emptyRan": "还没有匹配的内容",
-      "emptyRanDescription_other": "",
       "item": "项目",
-      "recordedViolation": "记录了一条违规"
+      "recordedViolation": "记录了一条违规",
+      "emptyRanDescription_other": ""
     },
     "allKinds": "所有类型",
     "allStatuses": "所有状态",
@@ -682,7 +1072,6 @@
       "searchPlaceholder": "搜索……",
       "noMatches": "无匹配",
       "clearSelection": "清除选定内容",
-      "selectedCount_other": "",
       "scope": {
         "label": "这适用于",
         "global": "所有人",
@@ -803,10 +1192,10 @@
         "placeholderAction": ""
       },
       "footer": {
-        "problems_other": "",
-        "remaining_other": "",
         "ready": "",
-        "search": ""
+        "search": "",
+        "problems_other": "",
+        "remaining_other": ""
       },
       "leave": {
         "title": "",
@@ -827,7 +1216,8 @@
         "sampleTitle": "",
         "sampleGone": "",
         "backToLive": ""
-      }
+      },
+      "selectedCount_other": ""
     },
     "categories": {
       "session_behavior": "",
@@ -841,10 +1231,8 @@
     "createAutomation": "",
     "customAutomation": "",
     "deleteAutomationConfirm": "",
-    "deleteAutomation_other": "",
     "deleteAutomationsConfirm": "",
     "describe": {
-      "more_other": "",
       "noValues": "",
       "includesSameDevice": "",
       "uniqueIps": "",
@@ -1001,15 +1389,16 @@
         "text": "",
         "boolean": "",
         "listed": ""
-      }
+      },
+      "more_other": ""
     },
     "description": "",
     "detail": {
       "notFound": "",
       "title": "",
       "unsaved": "",
-      "runsLine_other": "",
-      "noRuns": ""
+      "noRuns": "",
+      "runsLine_other": ""
     },
     "disable": "",
     "editAutomation": "",
@@ -1384,8 +1773,6 @@
     "recordsOnly": "",
     "scope": {
       "global": "",
-      "person": "",
-      "account": "",
       "crossServer": ""
     },
     "searchPlaceholder": "",
@@ -1707,7 +2094,8 @@
       "trigger": "",
       "allTriggers": ""
     },
-    "openGallery": ""
+    "openGallery": "",
+    "deleteAutomation_other": ""
   },
   "terminateStream": {
     "title": "终止流",
@@ -1740,10 +2128,8 @@
         "unknown": "连接失败"
       },
       "connectionsReachable": "{{reachable}} 个 {{total}} 个连接可达",
-      "connectionsAvailable_other": "{{count}} 个可用连接",
       "hideFiltered": "隐藏已过滤",
       "showAll": "显示全部",
-      "moreConnections_other": "+{{count}} 个更多连接",
       "connectingTo": "正在连接到{{name}}……",
       "ownerOnly": "",
       "noAccountsLinked": "没有关联的Plex账户",
@@ -1752,16 +2138,17 @@
       "linkAnotherAccount": "链接另一个Plex账户",
       "linking": "正在连接……",
       "loginEnabled": "登录已启用",
-      "serversConnected_other": "{{count}} 台服务器已连接",
       "unlinkAccount": "取消链接此Plex账户",
       "reauthorizeAccount": "",
       "deleteServersFirst": "请先删除通过此帐户连接的活动服务器，或将其标记为历史服务器",
       "unlinkPlexAccount": "取消链接Plex账户",
-      "unlinkConfirm": "您确定要取消链接此Plex帐户吗？在您再次链接之前，您将无法从此帐户添加服务器。"
+      "unlinkConfirm": "您确定要取消链接此Plex帐户吗？在您再次链接之前，您将无法从此帐户添加服务器。",
+      "connectionsAvailable_other": "{{count}} 个可用连接",
+      "moreConnections_other": "+{{count}} 个更多连接",
+      "serversConnected_other": "{{count}} 台服务器已连接"
     },
     "destinations": {
       "add": "",
-      "alertsGoTo_other": "",
       "builtinNote": "",
       "clearSecret": "",
       "deleteConfirm": "",
@@ -1859,26 +2246,19 @@
         "push": "",
         "webToast": ""
       },
-      "usedBy_other": "",
-      "usedByNewsletters_other": "",
       "violationsOff": "",
       "violationsOn": "",
-      "webToastNote": ""
-    },
-    "jobs": {
-      "runNow": "现在运行",
-      "running": "运行中……",
-      "lastRun": "上次运行",
-      "nextRun": "下次运行",
-      "schedule": "计划"
-    },
-    "mobile": {
-      "editDisplayName": "编辑显示昵称",
-      "editDisplayNameDesc": "更改此设备在您的设备列表中的显示方式",
-      "displayName": "显示名称",
-      "displayNamePlaceholder": "例如，我的 iPhone",
-      "updating": "更新中……"
+      "webToastNote": "",
+      "alertsGoTo_other": "",
+      "usedBy_other": "",
+      "usedByNewsletters_other": ""
     }
+  },
+  "impersonation": {
+    "banner": "",
+    "stop": "",
+    "stopLabel": "",
+    "stopViewing": ""
   },
   "maintenance": {
     "startingTitle": "Tracearr 正在启动……",
@@ -1910,19 +2290,21 @@
     "allTypes": "所有类型",
     "heatmap": "热图",
     "circles": "圆形",
+    "viewMode": "",
     "streams": "流",
     "locations": "位置",
     "allActivity": "所有活动",
     "basemapMissing": "",
     "webglUnavailable": "",
     "webglHint": "",
-    "badMounts": ""
+    "badMounts": "",
+    "loadingData": "",
+    "noDataForFilters": "",
+    "totalStreams": "",
+    "streamCount_other": ""
   },
   "devices": {
-    "title": "设备兼容性",
-    "description": "",
     "analyzedSessions": "",
-    "analyzedSessionsTooltip_other": "",
     "directPlayRate": "直接播放率",
     "videoAndAudio": "",
     "uniqueDevices": "唯一设备",
@@ -1942,13 +2324,9 @@
     "directPlayHigh": "*80% direct",
     "directPlayMid": "",
     "directPlayLow": "",
-    "topTranscodingUsers": "热门转码用户",
-    "topTranscodingUsersDesc": "",
-    "noTranscodingUsers": "未找到转码用户"
+    "analyzedSessionsTooltip_other": ""
   },
   "statsBandwidth": {
-    "title": "带宽",
-    "description": "",
     "dataTransferred": "已传输数据",
     "avgBitrate": "平均比特率",
     "avgBitrateMbps": "平均比特率 (Mbps)",
@@ -1957,15 +2335,44 @@
     "uniqueUsers": "唯一用户",
     "dailyUsage": "每日带宽使用",
     "dailyUsageDesc": "",
-    "topUsers": "顶部带宽用户",
-    "topUsersDesc": "",
-    "noData": "没有可用的带宽数据"
+    "noData": "没有可用的带宽数据",
+    "topPeopleTitle": "",
+    "topPeopleCaption": ""
   },
   "statsUsers": {
     "noActivity": "尚无活动",
     "noActivityDesc": "开始串流以在这里查看您的顶级用户",
-    "top3": "顶部3",
-    "runnersUp": "向上运行者"
+    "rankBy": "",
+    "rank": {
+      "hours": "",
+      "transcodes": "",
+      "requests": "",
+      "lastSeen": ""
+    },
+    "summary": {
+      "active": "",
+      "activeOf": "",
+      "topThreeShare": "",
+      "transcoderShare": "",
+      "transcodesOf": "",
+      "quiet": "",
+      "quietDays": ""
+    },
+    "columns": {
+      "person": "",
+      "requests": "",
+      "trend": ""
+    },
+    "requestsAllTime": "",
+    "linkTitle": {
+      "transcodes": "",
+      "requests": ""
+    },
+    "linkBody": {
+      "transcodes": "",
+      "requests": ""
+    },
+    "openPeople": ""
   },
   "plexCallback": {
     "authComplete": "身份验证完成",
@@ -2022,21 +2429,60 @@
     "selected": "已选择",
     "snapshots": "",
     "of": "共",
-    "logExplorerUnavailable": "日志浏览器仅在 Docker 环境中可用"
+    "logExplorerUnavailable": "日志浏览器仅在 Docker 环境中可用",
+    "tasksTab": {
+      "loading": "",
+      "failedToLoad": "",
+      "jobQueues": "",
+      "jobQueuesDesc": "",
+      "description": "",
+      "schedule": "",
+      "completed": "",
+      "scheduled": "",
+      "processing": "",
+      "onDemand": "",
+      "notInitialized": "",
+      "backgroundServices": "",
+      "backgroundServicesDesc": "",
+      "interval": "",
+      "eventConnections": "",
+      "eventConnectionsDesc": "",
+      "every": "",
+      "eventDriven": "",
+      "queues": {
+        "notifications": "",
+        "notificationsDesc": "",
+        "imports": "",
+        "importsDesc": "",
+        "maintenance": "",
+        "maintenanceDesc": "",
+        "librarySync": "",
+        "librarySyncDesc": "",
+        "versionCheck": "",
+        "versionCheckDesc": "",
+        "inactivityCheck": "",
+        "inactivityCheckDesc": "",
+        "backup": "",
+        "backupDesc": ""
+      },
+      "dlq_other": ""
+    },
+    "clientErrors": {
+      "title": "",
+      "description": "",
+      "empty": ""
+    }
   },
   "media": {
     "landing": {
-      "title": "媒体",
-      "lens": {
-        "label": "以用户身份查看",
-        "allUsers": "所有用户"
-      },
       "shelves": {
         "recentlyAddedMovies": "最近添加的电影",
         "recentlyAddedShows": "最近添加的剧集",
         "recentlyUpdated": "",
         "mostPopularMovies": "最受欢迎的电影",
         "mostPopularShows": "最受欢迎的剧集",
+        "recentlyAddedAlbums": "",
+        "mostPlayedArtists": "",
         "emptyRecentlyAdded": "这段时间里没有添加任何内容",
         "emptyRecentlyUpdated": "",
         "emptyMostPopular": "这段时间内没有播放",
@@ -2052,24 +2498,13 @@
         }
       },
       "card": {
+        "addedCompactAgo": "{{age}}前添加",
         "newEpisodes_other": "{{count}} 集新内容",
         "replacedEpisodes_other": "",
-        "addedAgo": "{{date}}添加",
-        "addedCompactAgo": "{{age}}前添加",
         "newEpisodesChip_other": ""
       },
       "deadWeight": {
-        "title": "",
-        "summary_other": "",
-        "empty": "没有可回收的内容：媒体库中的所有内容都已被观看",
-        "columns": {
-          "poster": "海报",
-          "title": "标题",
-          "added": "已添加",
-          "servers": "服务器"
-        },
-        "viewAll": "查看全部",
-        "viewAllTooltip": "即将呈现"
+        "viewAll": "查看全部"
       },
       "loadError": "无法加载您的媒体库"
     },
@@ -2080,29 +2515,50 @@
       "title": "剧集"
     },
     "genres": {
-      "title": "类型",
-      "subtitle": "视图中的每个服务器按类型播放和观看时间。",
+      "cards": {
+        "withPlays": "",
+        "ofGenres": "",
+        "topFiveShare": "",
+        "largestRise": "",
+        "largestFall": ""
+      },
+      "share": {
+        "title": "",
+        "items": "",
+        "plays": "",
+        "sortGap": "",
+        "showAll": ""
+      },
+      "trends": {
+        "title": ""
+      },
       "chart": {
-        "title": "按类型统计的播放次数",
-        "valueLabel": "播放",
-        "itemCount_other": "",
-        "ariaLabel": "按性别排列的游戏条形图，排序最高至最低。完整的细目见下表。"
+        "itemCount_other": ""
       },
       "table": {
         "title": "流派分类",
         "columns": {
           "genre": "流派",
           "plays": "播放",
-          "watchTime": "观看时长"
-        },
-        "browseMovies": "",
-        "browseShows": ""
+          "watchTime": "观看时长",
+          "topViewer": ""
+        }
       },
       "empty": {
         "title": "尚未抓取任何流派",
         "description": "流派来自您的媒体服务器的元数据同步。请在下次同步完成后重新查看。"
       },
-      "loadError": "无法加载类型"
+      "loadError": "无法加载类型",
+      "sheet": {
+        "description": "",
+        "whoPlays": "",
+        "ofCountedPlays": "",
+        "topTitles": "",
+        "topArtists": "",
+        "browse": "",
+        "allGenresPeak": "",
+        "artistCount_other": ""
+      }
     },
     "detail": {
       "title": "媒体详情",
@@ -2111,8 +2567,7 @@
       },
       "notFound": {
         "title": "未找到媒体",
-        "message": "此标题不存在或您没有访问权限。",
-        "backLink": "返回媒体"
+        "message": "此标题不存在或您没有访问权限。"
       },
       "hero": {
         "loadError": "无法加载此标题",
@@ -2135,6 +2590,13 @@
       },
       "kpis": {
         "ariaLabel": "观看统计",
+        "yourPlays": "",
+        "yourWatchTime": "",
+        "yourListenTime": "",
+        "yourCompletion": "",
+        "lastWatched": "",
+        "lastPlayed": "",
+        "episodesOf": "",
         "loadError": "无法加载观看统计数据",
         "completionLoadError": "无法加载完成",
         "plays": {
@@ -2142,43 +2604,65 @@
           "caption": "恢复链，排除短会话"
         },
         "watchTime": {
-          "label": "观看时长",
           "detail": ""
         },
         "viewers": {
           "label": "观众",
+          "labelMusic": "",
           "detail": "跨越所有服务器"
         },
         "completion": {
           "label": "平均完成",
           "detail": "",
-          "detailMovie": ""
-        }
+          "detailMovie": "",
+          "detailMusic": ""
+        },
+        "watchedByOthers_other": "",
+        "playedByOthers_other": ""
       },
       "watchers": {
         "title": "观看者",
+        "titleMusic": "",
         "loadError": "无法加载观看者",
         "empty": "目前还没有人看到这一点。",
+        "emptyMusic": "",
         "lastWatchedAgo": "{{age}} 以前",
         "completionLabel": "",
         "columns": {
           "plays": "播放",
           "episodes": "剧集",
           "completion": "完成",
-          "lastWatched": "上次观看"
+          "lastWatched": "上次观看",
+          "lastPlayed": ""
         }
       },
       "seasons": {
         "title": "季",
         "loadError": "无法加载季数据",
         "empty": "暂无季数据",
-        "episodeCount_other": "",
         "watchedPct": "",
         "stripSummary": "",
         "episodeLabel": {
           "watched": "",
           "partial": "",
           "unwatched": ""
+        },
+        "episodeCount_other": ""
+      },
+      "albums": {
+        "title": "",
+        "loadError": "",
+        "trackCount_other": ""
+      },
+      "album": {
+        "kind": "",
+        "loadError": "",
+        "finishedCaption": "",
+        "vsPrior30": "",
+        "tracksCaption": "",
+        "columns": {
+          "title": "",
+          "length": ""
         }
       },
       "platforms": {
@@ -2187,15 +2671,13 @@
         "empty": "暂无季数据",
         "unknown": "未知",
         "columns": {
-          "plays": "播放",
-          "watchTime": "观看时长"
+          "plays": "播放"
         }
       },
       "history": {
         "title": "历史记录",
         "loadError": "无法加载历史记录",
         "empty": "尚无播放记录",
-        "watched": "已观看",
         "notWatched": "未完成",
         "columns": {
           "duration": "持续时长"
@@ -2217,31 +2699,21 @@
       "rankSuffix": "，排名第 {{rank}} 位",
       "onServers": "可在 {{servers}} 观看",
       "addedLabel": "{{date}}添加",
-      "viewers_other": "{{count}} 位观众",
       "watchedState": {
         "watched": "已观看",
         "partial": "部分观看",
         "watchedByOthers": "其他人已观看的",
         "watchedByYou": "您已观看的"
       },
-      "tileLabel": {
-        "added": "添加",
-        "plays": "播放",
-        "viewers": "观众",
-        "resolution": "分辨率"
-      },
-      "rankChip": "",
-      "playsCompact_other": "",
       "versionsChip": "",
+      "moreServers": "",
+      "viewers_other": "{{count}} 位观众",
       "versions_other": "",
-      "moreServers": ""
+      "albumCount_other": ""
     },
     "grid": {
       "toolbar": {
         "ariaLabel": "筛选和排序",
-        "typeLabel": "媒体类型",
-        "moviesToggle": "电影总数",
-        "showsToggle": "剧集",
         "searchPlaceholder": "",
         "searchLabel": "搜索标题",
         "filtersLabel": "过滤器",
@@ -2301,13 +2773,8 @@
         "current": ""
       },
       "loaderError": "无法加载更多标题",
-      "retry": "重试",
-      "clearJumpAction": "清除",
-      "showingFrom": "",
-      "showAll": "显示全部",
       "emptyFilter": "没有匹配这些过滤规则的标题",
       "emptySearch": "",
-      "emptyAnchored": "",
       "loadError": "无法加载该目录"
     },
     "noLibraryServers": ""
@@ -2371,18 +2838,17 @@
     },
     "page": {
       "title": "请求",
-      "description": "人们提出了什么要求，出了什么，他们是否发挥了作用。",
       "failedToLoad": "无法加载请求分析",
       "notConfigured": "没有连接的 Seerr",
       "notConfiguredDescription": "将 Seerr 实例链接到服务器，此页面在第一次同步后填充。",
       "linkSeerr": "Link Seerr",
       "kpi": {
         "requested": "已请求",
-        "landedOf_other": "",
         "watched": "已观看",
         "neverPlayed": "从未播放过",
         "ofLanded": "",
-        "onDisk": "{{size}}在磁盘上"
+        "onDisk": "{{size}}在磁盘上",
+        "landedOf_other": ""
       }
     },
     "funnel": {
@@ -2408,19 +2874,6 @@
       "onDisk": "在磁盘上",
       "untitled": "无标题",
       "failedToLoad": "无法加载这些请求"
-    },
-    "followThrough": {
-      "title": "请求者",
-      "description": "谁询问什么，他们是否看着它，是否还有任何其他人这样做。",
-      "person": "个人",
-      "asked": "已询问",
-      "landed": "已到达",
-      "watched": "已观看",
-      "watchedByOthers": "其他人已观看的",
-      "medianWait": "中途等待",
-      "emptyTitle": "尚无请求者",
-      "emptyDescription": "请求在连接的 Seerr 同步后显示在这里。",
-      "failedToLoad": "无法加载请求者"
     }
   }
 }

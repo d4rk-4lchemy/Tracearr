@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { format, formatDistanceToNow, parseISO } from 'date-fns';
-import { Clock, Crown, Merge, RotateCcw, User as UserIcon } from 'lucide-react';
+import { format, formatDistanceToNowStrict, parseISO } from 'date-fns';
+import { Merge, RotateCcw, User as UserIcon } from 'lucide-react';
 import type { ServerUserWithIdentity, UserSortField } from '@tracearr/shared';
 import {
   MERGE_SAME_SERVER_CONFIRMATION_REQUIRED,
@@ -32,12 +32,15 @@ import {
   type FilterDescriptor,
 } from '@/components/ui/filters';
 import { ErrorState } from '@/components/library/ErrorState';
-import { ServerColumnCell } from '@/components/server';
 import { MergeSuggestionsCallout } from '@/components/users/MergeSuggestionsCallout';
+import { EditTrustScoreDialog } from '@/components/users/EditTrustScoreDialog';
+import { EditUserIdentityDialog } from '@/components/users/EditUserIdentityDialog';
 import { MergeUsersDialog } from '@/components/users/MergeUsersDialog';
-import { RemovedBadge } from '@/components/users/RemovedBadge';
-import { TrustScoreBadge } from '@/components/users/TrustScoreBadge';
+import { ROLE_LABEL_KEYS } from '@/components/users/roleLabels';
+import { SignInCell } from '@/components/users/SignInCell';
 import { UserCell } from '@/components/users/UserCell';
+import { UserFlagsCell } from '@/components/users/UserFlagsCell';
+import { UserRowMenu } from '@/components/users/UserRowMenu';
 import { getIdentityServers } from '@/components/users/identityServerPills';
 import {
   deriveMergeActionState,
@@ -46,13 +49,14 @@ import {
   withSameServerCombine,
   type MergeRequest,
 } from '@/components/users/mergeSelection';
-import { useBulkResetTrust, useMergeUsers, useUsers } from '@/hooks/queries';
+import { useBulkResetTrust, useMergeUsers, useUserFull, useUsers } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { useRowSelection } from '@/hooks/useRowSelection';
 import { useServer } from '@/hooks/useServer';
 import { liveFirst } from '@/lib/servers';
 import {
   buildUsersRosterParams,
+  ROSTER_ROLES,
   USERS_FILTER_DEFAULTS,
   type UsersFilterState,
 } from './usersFilters';
@@ -80,10 +84,9 @@ function RelativeTimeCell({
   fallback: string;
 }) {
   return (
-    <div className="text-muted-foreground flex items-center gap-2 text-sm">
-      <Clock className="h-4 w-4" />
-      {value ? formatDistanceToNow(new Date(value), { addSuffix: true }) : fallback}
-    </div>
+    <span className="text-muted-foreground text-sm whitespace-nowrap">
+      {value ? formatDistanceToNowStrict(new Date(value), { addSuffix: true }) : fallback}
+    </span>
   );
 }
 
@@ -101,6 +104,10 @@ export function Users() {
   const [resetTrustConfirmOpen, setResetTrustConfirmOpen] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [mergeRequest, setMergeRequest] = useState<MergeRequest | null>(null);
+  const [identityTarget, setIdentityTarget] = useState<ServerUserWithIdentity | null>(null);
+  const [trustTarget, setTrustTarget] = useState<ServerUserWithIdentity | null>(null);
+  // The roster row carries no contact email, so the dialog reads it from the person's detail.
+  const identityDetail = useUserFull(identityTarget?.id ?? '');
 
   const serverOptions = useMemo(
     () =>
@@ -173,6 +180,29 @@ export function Users() {
         key: 'showRemoved',
         label: t('pages:users.showRemoved'),
       },
+      {
+        kind: 'select',
+        key: 'role',
+        label: t('pages:userDetail.access.role'),
+        allLabel: t('pages:users.filterRoleAll'),
+        options: ROSTER_ROLES.map((role) => ({ value: role, label: t(ROLE_LABEL_KEYS[role]) })),
+      },
+      {
+        kind: 'select',
+        key: 'signIn',
+        label: t('pages:userDetail.access.signIn'),
+        allLabel: t('pages:users.filterSignInAll'),
+        options: [
+          { value: 'allow', label: t('pages:userDetail.access.signInAllow') },
+          { value: 'default', label: t('pages:userDetail.access.signInDefault') },
+          { value: 'block', label: t('pages:userDetail.access.signInBlock') },
+        ],
+      },
+      {
+        kind: 'boolean',
+        key: 'pendingOnly',
+        label: t('pages:users.filterPendingOnly'),
+      },
     ];
   }, [t, serverOptions]);
 
@@ -240,6 +270,8 @@ export function Users() {
     [clearSelection]
   );
 
+  const multiServer = servers.length > 1;
+
   const columns = useMemo(
     () =>
       columnHelper.columns([
@@ -247,67 +279,58 @@ export function Users() {
           header: t('common:labels.user'),
           cell: ({ row }) => {
             const user = row.original;
-            return (
-              <UserCell
-                serverUserId={user.id}
-                username={user.username}
-                identityName={user.identityName}
-                thumbUrl={user.thumbUrl}
-                serverId={user.serverId}
-                size="md"
-                showUsername
-                // The row already opens the person, so the cell does not link too.
-                link={false}
-                muted={user.removedAt !== null}
-                trailing={
-                  <>
-                    {user.role === 'owner' && (
-                      <span title={t('common:labels.serverOwner')}>
-                        <Crown className="h-4 w-4 text-yellow-500" />
-                      </span>
-                    )}
-                    {user.removedAt && <RemovedBadge removedAt={user.removedAt} />}
-                  </>
-                }
-              />
-            );
-          },
-        }),
-        columnHelper.display({
-          id: 'servers',
-          header: t('pages:users.serversColumn'),
-          meta: {
-            headerClassName: 'hidden md:table-cell',
-            cellClassName: 'hidden md:table-cell',
-          },
-          cell: ({ row }) => {
-            const user = row.original;
-            const memberServers = getIdentityServers(user.identityServers, {
+            const serverCount = getIdentityServers(user.identityServers, {
               id: user.serverId,
               name: user.serverName,
-            });
+            }).length;
             return (
-              <div className="flex flex-wrap items-center gap-1">
-                {memberServers.map((server) => (
-                  <ServerColumnCell key={server.id} server={server} />
-                ))}
+              <div className="max-w-56">
+                <UserCell
+                  serverUserId={user.id}
+                  username={user.username}
+                  identityName={user.identityName}
+                  thumbUrl={user.thumbUrl}
+                  serverId={user.serverId}
+                  size="md"
+                  showUsername
+                  details={[
+                    ...(user.email ? [user.email] : []),
+                    ...(multiServer ? [t('common:count.server', { count: serverCount })] : []),
+                  ]}
+                  // The row already opens the person, so the cell does not link too.
+                  link={false}
+                  muted={user.removedAt !== null}
+                />
               </div>
             );
           },
         }),
+        columnHelper.accessor('role', {
+          header: t('pages:userDetail.access.role'),
+          cell: ({ row }) => (
+            <span className="text-sm">{t(ROLE_LABEL_KEYS[row.original.role])}</span>
+          ),
+        }),
+        columnHelper.display({
+          id: 'signIn',
+          header: t('pages:userDetail.access.signIn'),
+          cell: ({ row }) => <SignInCell row={row.original} isOwner={isOwner} />,
+        }),
         columnHelper.accessor('identityTrustScore', {
           id: 'trustScore',
-          header: t('common:labels.trustScore'),
-          cell: ({ row }) => (
-            <TrustScoreBadge
-              score={row.original.identityTrustScore ?? row.original.trustScore}
-              showLabel
-            />
-          ),
+          header: t('common:labels.status'),
+          // Lowest trust first, so the people worth a look come to the top.
+          sortDescFirst: false,
+          cell: ({ row }) => <UserFlagsCell row={row.original} />,
         }),
         columnHelper.accessor('identityJoinedAt', {
           id: 'joinedAt',
           header: t('common:labels.joined'),
+          // The first column to give way, so the table fits a 1280px screen without scrolling.
+          meta: {
+            headerClassName: 'hidden min-[1400px]:table-cell',
+            cellClassName: 'hidden min-[1400px]:table-cell',
+          },
           cell: ({ row }) => (
             <RelativeTimeCell
               value={row.original.identityJoinedAt}
@@ -325,8 +348,20 @@ export function Users() {
             />
           ),
         }),
+        columnHelper.display({
+          id: 'actions',
+          meta: { align: 'end', width: '3rem' },
+          cell: ({ row }) => (
+            <UserRowMenu
+              row={row.original}
+              isOwner={isOwner}
+              onEditIdentity={setIdentityTarget}
+              onAdjustTrust={setTrustTarget}
+            />
+          ),
+        }),
       ]),
-    [t]
+    [t, multiServer, isOwner]
   );
 
   const selection = useMemo(
@@ -441,10 +476,7 @@ export function Users() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">{t('pages:users.title')}</h1>
-        <p className="text-muted-foreground text-sm">{t('common:count.user', { count: total })}</p>
-      </div>
+      <h1 className="sr-only">{t('pages:users.title')}</h1>
 
       {isOwner && (
         <MergeSuggestionsCallout
@@ -466,7 +498,11 @@ export function Users() {
               done: t('common:filters.done'),
               removeFilter: (label: string) => t('common:filters.remove', { label }),
             }}
-          />
+          >
+            <p className="text-muted-foreground ml-auto text-sm">
+              {t('common:count.user', { count: total })}
+            </p>
+          </FilterBar>
 
           {isError ? (
             <ErrorState
@@ -536,6 +572,31 @@ export function Users() {
         confirmLabel={t('pages:users.resetTrustScore')}
         onConfirm={handleBulkResetTrust}
         isLoading={bulkResetTrust.isPending}
+      />
+
+      <EditUserIdentityDialog
+        // The contact email comes from the person's detail; opening before it lands would
+        // re-seed the form under whatever was already typed.
+        open={
+          identityTarget !== null && (identityDetail.data !== undefined || identityDetail.isError)
+        }
+        onOpenChange={(open) => {
+          if (!open) setIdentityTarget(null);
+        }}
+        userId={identityTarget?.id ?? ''}
+        currentName={identityTarget?.identityName ?? null}
+        currentContactEmail={identityDetail.data?.identity.contactEmail ?? null}
+        username={identityTarget?.username ?? ''}
+      />
+
+      <EditTrustScoreDialog
+        open={trustTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setTrustTarget(null);
+        }}
+        userId={trustTarget?.id ?? ''}
+        currentScore={trustTarget?.trustScore ?? 0}
+        username={trustTarget?.username ?? ''}
       />
 
       {mergeRequest && (

@@ -4,14 +4,25 @@ import type { LucideIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
-export function ShelfSkeleton({ title }: { title: string }) {
+export function ShelfSkeleton({
+  title,
+  aspect = 'poster',
+}: {
+  title: string;
+  aspect?: 'poster' | 'square';
+}) {
   return (
     <div className="space-y-3">
       <h2 className="text-[16px] font-semibold tracking-[-0.01em]">{title}</h2>
       <div className="flex gap-4 overflow-x-hidden">
         {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} className="w-[138px] shrink-0 space-y-1.5">
-            <Skeleton className="aspect-[2/3] w-full rounded-md" />
+            <Skeleton
+              className={cn(
+                'w-full rounded-md',
+                aspect === 'square' ? 'aspect-square' : 'aspect-[2/3]'
+              )}
+            />
             <Skeleton className="h-3.5 w-full" />
             <Skeleton className="h-3 w-2/3" />
           </div>

@@ -50,8 +50,25 @@ export function updatePendingSession(
     now,
   });
 
-  const currentViewOffset = viewOffset ?? pendingData.confirmation.maxViewOffset;
-  const updatedConfirmation = updateConfirmationState(pendingData.confirmation, currentViewOffset);
+  const previousProgrammeStart = Date.parse(
+    pendingData.processed.dispatcharrCatchupEpgStartAt ?? ''
+  );
+  const nextProgrammeStart = Date.parse(processed?.dispatcharrCatchupEpgStartAt ?? '');
+  const catchupProgrammeChanged =
+    pendingData.server.type === 'dispatcharr' &&
+    pendingData.processed.dispatcharrPlaybackKind === 'catchup' &&
+    processed?.dispatcharrPlaybackKind === 'catchup' &&
+    Number.isFinite(previousProgrammeStart) &&
+    Number.isFinite(nextProgrammeStart) &&
+    previousProgrammeStart !== nextProgrammeStart;
+
+  // Progress belongs to the EPG window, but confirmation age belongs to the
+  // connection. Do not carry a completed programme's offsets into the next one.
+  const confirmation = catchupProgrammeChanged
+    ? { ...pendingData.confirmation, initialViewOffset: null, maxViewOffset: 0 }
+    : pendingData.confirmation;
+  const currentViewOffset = viewOffset ?? confirmation.maxViewOffset;
+  const updatedConfirmation = updateConfirmationState(confirmation, currentViewOffset);
   const confirmed = isPlaybackConfirmed(
     updatedConfirmation,
     currentViewOffset,
@@ -60,11 +77,11 @@ export function updatePendingSession(
     confirmThresholdMs
   );
 
-  // The latest snapshot owns metadata, while progress is monotonic.  Provider
-  // snapshots can be partial or arrive out of order, so never let one regress
-  // the progress shown on the pending card or persisted at confirmation.
+  // The latest snapshot owns metadata; progress is monotonic within its window.
+  // Partial or out-of-order snapshots must not regress the progress shown on
+  // the pending card or persisted at confirmation.
   const latestProgressMs = Math.max(
-    pendingData.processed.progressMs ?? 0,
+    catchupProgrammeChanged ? 0 : (pendingData.processed.progressMs ?? 0),
     processed?.progressMs ?? 0
   );
   const refreshedProcessed =

@@ -341,6 +341,46 @@ describe('PosterCard', () => {
     renderCard({ watchedState: 'watched', watchedStateSelf: undefined });
     expect(screen.getByRole('link', { name: 'The Matrix (1999), Watched' })).toBeInTheDocument();
   });
+
+  it('renders an artist square, with its album count where a movie shows its year', () => {
+    const { container } = renderCard({
+      mediaType: 'artist',
+      title: 'Daft Punk',
+      year: null,
+      albumCount: 3,
+      resolutionBest: null,
+      watchedState: 'unwatched',
+    });
+    expect(container.querySelector('.aspect-square.overflow-hidden')).not.toBeNull();
+    expect(container.querySelector('.aspect-\\[2\\/3\\]')).toBeNull();
+    expect(screen.getByText('3 albums')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Daft Punk, 3 albums' })).toHaveAttribute(
+      'href',
+      '/media/media-1'
+    );
+    const img = container.querySelector('img');
+    expect(img!.src).toContain('width=360');
+    expect(img!.src).toContain('height=360');
+  });
+
+  it('shows no watched mark on artist or album cards', () => {
+    const artist = renderCard({ mediaType: 'artist', year: null, watchedState: 'watched' });
+    expect(artist.container.querySelector('.bg-warning, .bg-success')).toBeNull();
+    expect(screen.queryByText('Watched')).toBeNull();
+    expect(screen.getByRole('link', { name: 'The Matrix' })).toBeInTheDocument();
+    artist.unmount();
+
+    const album = renderCard({ mediaType: 'album', watchedState: 'partial' });
+    expect(album.container.querySelector('svg circle')).toBeNull();
+    expect(screen.queryByText('Partially watched')).toBeNull();
+  });
+
+  it('renders an album square and without a link when it has nowhere to go', () => {
+    const { container } = renderCard({ mediaType: 'album', mediaId: null, title: 'Discovery' });
+    expect(container.querySelector('.aspect-square.overflow-hidden')).not.toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.getAllByText('Discovery').length).toBeGreaterThan(0);
+  });
 });
 
 describe('buildPosterSrc', () => {
@@ -362,6 +402,12 @@ describe('buildPosterSrc', () => {
     const src = buildPosterSrc(url, null);
     const parsed = new URL(src, 'http://localhost');
     expect(parsed.searchParams.has('v')).toBe(false);
+  });
+
+  it('asks for the square size when told the art is square', () => {
+    const parsed = new URL(buildPosterSrc(url, 'abc12345', { square: true }), 'http://localhost');
+    expect(parsed.searchParams.get('width')).toBe('360');
+    expect(parsed.searchParams.get('height')).toBe('360');
   });
 
   it('adds lqip=1 only when asked', () => {

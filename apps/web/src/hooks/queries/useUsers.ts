@@ -2,13 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
+  getClientTimezone,
   MERGE_SAME_SERVER_CONFIRMATION_REQUIRED,
   serverScopeFromIds,
   serverScopeKey,
   type UpdateUserAccessInput,
   type UserRosterFilters,
 } from '@tracearr/shared';
-import { api, type UserListParams } from '@/lib/api';
+import { api, type StatsTimeRange, type UserListParams } from '@/lib/api';
 
 export function useUsers(params: UserListParams = {}, options: { enabled?: boolean } = {}) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(params.serverIds));
@@ -42,6 +43,21 @@ export function useUserFull(id: string, params: { scope?: 'identity' } = {}) {
     queryFn: () => api.users.getFull(id, params),
     enabled: !!id,
     staleTime: 1000 * 60, // 1 minute
+  });
+}
+
+export function useUserRangeStats(
+  id: string,
+  params: { scope?: 'identity' } & StatsTimeRange,
+  serverIds: string[]
+) {
+  const timezone = getClientTimezone();
+  const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
+  return useQuery({
+    queryKey: ['users', 'range-stats', id, params, serverIdsKey, timezone],
+    queryFn: () => api.users.rangeStats(id, { ...params, timezone }, serverIds),
+    enabled: !!id,
+    staleTime: 1000 * 60 * 5,
   });
 }
 

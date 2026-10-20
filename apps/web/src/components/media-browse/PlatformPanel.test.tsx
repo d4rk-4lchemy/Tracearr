@@ -10,14 +10,30 @@ beforeAll(async () => {
 
 describe('PlatformPanel', () => {
   it('shows the empty-state copy when there is no platform data', () => {
-    render(<PlatformPanel data={[]} isLoading={false} isError={false} onRetry={vi.fn()} />);
+    render(
+      <PlatformPanel
+        data={[]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        mediaType="movie"
+      />
+    );
     expect(screen.getByText('No platform data yet')).toBeInTheDocument();
   });
 
   it('shows an inline error with retry on failure', () => {
     const onRetry = vi.fn();
-    render(<PlatformPanel data={undefined} isLoading={false} isError onRetry={onRetry} />);
-    screen.getByRole('button', { name: /Try again/ }).click();
+    render(
+      <PlatformPanel
+        data={undefined}
+        isLoading={false}
+        isError
+        onRetry={onRetry}
+        mediaType="movie"
+      />
+    );
+    screen.getByRole('button', { name: /try again/i }).click();
     expect(onRetry).toHaveBeenCalled();
   });
 
@@ -26,10 +42,33 @@ describe('PlatformPanel', () => {
       { platform: 'Chrome', player: 'Plex Web', plays: 12, watchTimeMs: 9_000_000 },
       { platform: null, player: null, plays: 2, watchTimeMs: 60_000 },
     ];
-    render(<PlatformPanel data={data} isLoading={false} isError={false} onRetry={vi.fn()} />);
+    render(
+      <PlatformPanel
+        data={data}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        mediaType="movie"
+      />
+    );
 
+    expect(screen.getByRole('columnheader', { name: 'Watch Time' })).toBeInTheDocument();
     expect(screen.getByText('Chrome')).toBeInTheDocument();
     expect(screen.getByText('Plex Web')).toBeInTheDocument();
     expect(screen.getByText('Unknown')).toBeInTheDocument();
+  });
+
+  it('heads the time column as listening on an artist page', () => {
+    render(
+      <PlatformPanel
+        data={[{ platform: 'Android', player: 'Plexamp', plays: 4, watchTimeMs: 900_000 }]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        mediaType="artist"
+      />
+    );
+
+    expect(screen.getByRole('columnheader', { name: 'Listen Time' })).toBeInTheDocument();
   });
 });

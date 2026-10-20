@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
+import { countedSessionSql } from '../constants/index.js';
 import { db } from '../db/client.js';
 import { servers } from '../db/schema.js';
 import { getSessionChunkRanges, uncapDecompressionForTx } from '../db/timescale.js';
@@ -155,8 +156,8 @@ export async function removeImportDuplicatesBatch(
         SELECT pr.i_id, c.root_id, c.media_id,
           bool_or(c.watched) AS any_watched,
           SUM(COALESCE(c.duration_ms, 0)) AS total_ms,
-          SUM(c.duration_ms) FILTER (WHERE c.duration_ms >= 120000) AS counted_ms,
-          bool_or(c.duration_ms >= 120000 AND (c.started_at AT TIME ZONE 'UTC')::date = (i.started_at AT TIME ZONE 'UTC')::date) AS counted_on_import_day
+          SUM(c.duration_ms) FILTER (WHERE ${countedSessionSql('c')}) AS counted_ms,
+          bool_or(${countedSessionSql('c')} AND (c.started_at AT TIME ZONE 'UTC')::date = (i.started_at AT TIME ZONE 'UTC')::date) AS counted_on_import_day
         FROM chain c
         JOIN unnest(${uuids(pairIds)}, ${uuids(rootIds)}) AS pr(i_id, root_id) ON pr.root_id = c.root_id
         JOIN sessions i ON i.id = pr.i_id AND ${candidateBounds('i', server, window)}
@@ -172,9 +173,9 @@ export async function removeImportDuplicatesBatch(
         AND r.reference_id IS DISTINCT FROM i.id
         AND r.media_id IS NOT DISTINCT FROM i.media_id
         AND (NOT i.watched OR t.any_watched)
-        AND (i.reference_id IS NOT NULL OR COALESCE(i.duration_ms, 0) < 120000 OR t.counted_on_import_day)
+        AND (i.reference_id IS NOT NULL OR NOT ${countedSessionSql('i')} OR t.counted_on_import_day)
         AND COALESCE(i.duration_ms, 0) <= COALESCE(t.total_ms, 0) + 15000
-        AND (COALESCE(i.duration_ms, 0) < 120000 OR i.duration_ms <= COALESCE(t.counted_ms, 0) + 15000)
+        AND (NOT ${countedSessionSql('i')} OR COALESCE(i.duration_ms, 0) <= COALESCE(t.counted_ms, 0) + 15000)
         AND NOT EXISTS (SELECT 1 FROM automation_runs ar WHERE ar.session_id = i.id)
         AND NOT EXISTS (SELECT 1 FROM termination_logs tl WHERE tl.session_id = i.id)
         AND NOT EXISTS (SELECT 1 FROM sessions lc WHERE lc.server_id = ${server.id}::uuid AND lc.server_user_id = ANY(${uuids(users)}) AND lc.started_at >= ${minPairStarted}::timestamptz AND lc.reference_id = ANY(${uuids(pairIds)}) AND lc.reference_id = i.id AND lc.external_session_id IS NULL)

@@ -5,6 +5,8 @@
   "stats": "Статистика",
   "activity": "Активність",
   "library": "Бібліотека",
+  "people": "",
+  "rules": "",
   "users": "Користувачі",
   "automations": "Автоматизації",
   "violations": "Порушення",
@@ -18,14 +20,10 @@
   "devices": "Пристрої",
   "bandwidth": "Пропускна здатність",
   "jobs": "Завдання",
-  "media": "Медіа",
   "mediaBrowse": "Огляд",
   "mediaGenres": "Жанри",
   "session": "Сеанс",
   "user": "Користувач",
   "violation": "Порушення",
-  "monitor": "Моніторинг",
-  "manage": "Керування",
-  "userStats": "За користувачами",
   "toggleSidebar": "Перемкнути навігацію"
 }

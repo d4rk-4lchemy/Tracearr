@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { forwardRef, useImperativeHandle } from 'react';
 import type { CatalogLetterBucket } from '@tracearr/shared';
 import type * as UseMediaBrowseModule from '@/hooks/queries/useMediaBrowse';
@@ -144,12 +144,17 @@ function lettersResult(
   } as unknown as ReturnType<typeof useCatalogLetters>;
 }
 
+function SearchSpy() {
+  return <output data-testid="location-search">{useLocation().search}</output>;
+}
+
 function renderGrid(path = '/media/browse') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const result = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
         <MediaGrid />
+        <SearchSpy />
       </MemoryRouter>
     </QueryClientProvider>
   );
@@ -381,7 +386,7 @@ describe('MediaGrid', () => {
     mockUseServer.mockReturnValue(serverReturn());
     mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
 
-    renderGrid('/media/browse?type=shows&videoCodec=HEVC');
+    renderGrid('/media/browse?type=show&videoCodec=HEVC');
 
     expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -412,6 +417,87 @@ describe('MediaGrid', () => {
 
     expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
       expect.objectContaining({ filters: expect.not.objectContaining({ watched: 'everything' }) }),
+      expect.anything()
+    );
+  });
+
+  it('browses artists on ?type=artist with square cards and no year sort', async () => {
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
+
+    renderGrid('/media/browse?type=artist');
+
+    expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: 'artist' }),
+      expect.anything()
+    );
+    expect(mockUseGenres).toHaveBeenLastCalledWith('artist', ['srv-1']);
+    const lastProps = gridPropsSpy.mock.calls[gridPropsSpy.mock.calls.length - 1]?.[0];
+    expect(lastProps).toMatchObject({ aspect: 'square', ariaLabel: 'common:media.artist_plural' });
+    expect(screen.getByRole('radio', { name: 'common:media.artist_plural' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'media.grid.toolbar.sortLabel' }));
+    expect(screen.queryByRole('option', { name: 'media.grid.toolbar.sort.year' })).toBeNull();
+  });
+
+  it('asks for artists by title with no watched filter when the URL or storage carries either', () => {
+    localStorage.setItem('tracearr_media_filters_artist', JSON.stringify({ sort: 'year' }));
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
+
+    renderGrid('/media/browse?type=artist&watched=watched');
+
+    const [args] =
+      mockUseCatalogWindow.mock.calls[mockUseCatalogWindow.mock.calls.length - 1] ?? [];
+    expect(args).toMatchObject({ type: 'artist', sort: 'title' });
+    expect(args?.filters.watched).toBeUndefined();
+    expect(screen.queryByText('media.grid.toolbar.watched.watched')).toBeNull();
+  });
+
+  it('strips watched and a year sort from an artist URL', () => {
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
+
+    renderGrid('/media/browse?type=artist&watched=watched&sort=year&genre=House');
+
+    expect(screen.getByTestId('location-search').textContent).toBe('?type=artist&genre=House');
+  });
+
+  it('never asks for artists with the year sort or watched filter a movie list had', async () => {
+    localStorage.setItem(
+      'tracearr_media_filters_movie',
+      JSON.stringify({ sort: 'year', watched: 'watched', resolution: '4K' })
+    );
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
+    renderGrid('/media/browse');
+
+    await userEvent.click(screen.getByRole('radio', { name: 'common:media.artist_plural' }));
+
+    const artistCalls = [
+      ...mockUseCatalogWindow.mock.calls.map(([args]) => args),
+      ...mockUseCatalogLetters.mock.calls.map(([args]) => args),
+    ].filter((args) => args.type === 'artist');
+    expect(artistCalls.length).toBeGreaterThan(0);
+    for (const args of artistCalls) {
+      expect(args.sort).not.toBe('year');
+      expect(args.filters.watched).toBeUndefined();
+      expect(args.filters.resolution).toBeUndefined();
+    }
+  });
+
+  it('switches to artists through the type control with a singular type param', async () => {
+    mockUseServer.mockReturnValue(serverReturn());
+    mockUseCatalogWindow.mockReturnValue(windowResult({ totalItems: 5 }));
+    renderGrid('/media/browse');
+
+    await userEvent.click(screen.getByRole('radio', { name: 'common:media.artist_plural' }));
+
+    expect(mockUseCatalogWindow).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: 'artist' }),
       expect.anything()
     );
   });
@@ -634,7 +720,7 @@ describe('MediaGrid', () => {
 
     // The toggle navigates without unmounting MediaGrid (same route, only the
     // `type` query param changes).
-    await user.click(screen.getByLabelText('media.grid.toolbar.showsToggle'));
+    await user.click(screen.getByRole('radio', { name: 'common:media.tvShows' }));
     expect(lastProps().scrollRestore).toEqual({ key: 'show', offset: null });
     expect(lastCatalogArgs()?.filters.resolution).toBeUndefined();
 
@@ -661,7 +747,7 @@ describe('MediaGrid', () => {
     const user = userEvent.setup();
     renderGrid('/media/browse');
 
-    await user.click(screen.getByLabelText('media.grid.toolbar.showsToggle'));
+    await user.click(screen.getByRole('radio', { name: 'common:media.tvShows' }));
 
     const state = window.history.state as { usr?: { freshBrowse?: boolean } } | null;
     expect(state?.usr?.freshBrowse).toBeUndefined();
@@ -678,12 +764,12 @@ describe('MediaGrid', () => {
     // Initial arrival (not a toggle) restores the saved offset.
     expect(lastProps().scrollRestore).toEqual({ key: 'movie', offset: 3200 });
 
-    await user.click(screen.getByLabelText('media.grid.toolbar.showsToggle'));
+    await user.click(screen.getByRole('radio', { name: 'common:media.tvShows' }));
     expect(lastProps().scrollRestore).toEqual({ key: 'show', offset: null });
 
     // Toggling back to movies is still a toggle transition, so it lands
     // fresh too - it does not resurrect the 3200 offset movies had moments ago.
-    await user.click(screen.getByLabelText('media.grid.toolbar.moviesToggle'));
+    await user.click(screen.getByRole('radio', { name: 'common:media.movie_plural' }));
     expect(lastProps().scrollRestore).toEqual({ key: 'movie', offset: null });
   });
 });

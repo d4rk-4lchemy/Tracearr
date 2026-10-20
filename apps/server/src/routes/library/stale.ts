@@ -19,6 +19,7 @@ import {
   libraryStaleQuerySchema,
   type LibraryStaleQueryInput,
 } from '@tracearr/shared';
+import { countedSessionSql } from '../../constants/index.js';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
 import { resolutionRankSql } from '../../utils/resolutionBuckets.js';
@@ -219,7 +220,7 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
             AND child.removed_at IS NULL
           LEFT JOIN sessions sess ON sess.server_id = b.server_id
             AND sess.rating_key = COALESCE(child.rating_key, b.rating_key)
-            AND sess.duration_ms >= 120000
+            AND ${countedSessionSql('sess')}
           GROUP BY b.ident
         ),
         child_resolutions AS (
@@ -420,7 +421,7 @@ export const libraryStaleRoute: FastifyPluginAsync = async (app) => {
             LEFT JOIN library_items child ON b.media_type IN ('show', 'artist')
               AND child.grandparent_rating_key = b.rating_key AND child.server_id = b.server_id AND child.removed_at IS NULL
             LEFT JOIN sessions sess ON sess.server_id = b.server_id
-              AND sess.rating_key = COALESCE(child.rating_key, b.rating_key) AND sess.duration_ms >= 120000
+              AND sess.rating_key = COALESCE(child.rating_key, b.rating_key) AND ${countedSessionSql('sess')}
             GROUP BY b.ident
           ),
           idents AS (SELECT DISTINCT ident FROM top_items),

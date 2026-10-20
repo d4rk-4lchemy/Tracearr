@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import { SERVER_STATS_CONFIG, type ServerResourceDataPoint } from '@tracearr/shared';
@@ -67,6 +68,16 @@ const pointsFor = (
   key: ProcessKey | HostKey
 ): [number, number | null][] => data.map((p) => [p.at * 1000, p[key]]);
 
+function AverageChip({ color, value }: { color: string; value: number | null | undefined }) {
+  const { t } = useTranslation('pages');
+  return (
+    <span>
+      <span style={{ color }}>●</span> {t('dashboard.resources.average')}{' '}
+      <span className="text-foreground font-medium">{value ?? '—'}%</span>
+    </span>
+  );
+}
+
 function ResourceChart({
   title,
   icon,
@@ -80,6 +91,7 @@ function ResourceChart({
   processLabel,
   clockSkewMs = 0,
 }: ResourceChartProps) {
+  const { t } = useTranslation(['pages', 'common']);
   const chartRef = useRef<HighchartsReact.RefObject | null>(null);
   const isMulti = !!multiSeries && multiSeries.length > 0;
   const hasData = isMulti ? multiSeries.some((s) => s.data.length > 0) : !!data?.length;
@@ -115,7 +127,7 @@ function ResourceChart({
           },
           {
             type: 'area',
-            name: 'System',
+            name: t('dashboard.resources.system'),
             color: COLORS.system,
             data: withGaps(pointsFor(data ?? [], hostKey), gap),
             fillColor: {
@@ -206,7 +218,7 @@ function ResourceChart({
         ],
       },
     };
-  }, [data, processKey, hostKey, multiSeries, isMulti, hasData, processLabel, clockSkewMs]);
+  }, [data, processKey, hostKey, multiSeries, isMulti, hasData, processLabel, clockSkewMs, t]);
 
   const header = (
     <CardHeader>
@@ -214,7 +226,11 @@ function ResourceChart({
         {icon}
         {title}
         {/* Per-process, not per-host: an order of magnitude smaller */}
-        {isMulti && <span className="text-muted-foreground font-normal">per server</span>}
+        {isMulti && (
+          <span className="text-muted-foreground font-normal">
+            {t('dashboard.resources.perServer')}
+          </span>
+        )}
       </CardTitle>
     </CardHeader>
   );
@@ -235,7 +251,7 @@ function ResourceChart({
       <Card>
         {header}
         <CardContent>
-          <ChartEmpty height={180} message="No data available" />
+          <ChartEmpty height={180} message={t('common:empty.noData')} />
         </CardContent>
       </Card>
     );
@@ -261,23 +277,12 @@ function ResourceChart({
                 values.length > 0
                   ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length)
                   : null;
-              return (
-                <span key={s.serverId}>
-                  <span style={{ color: s.color }}>●</span> Avg:{' '}
-                  <span className="text-foreground font-medium">{avg ?? '—'}%</span>
-                </span>
-              );
+              return <AverageChip key={s.serverId} color={s.color} value={avg} />;
             })
           ) : (
             <>
-              <span>
-                <span style={{ color: COLORS.process }}>●</span> Avg:{' '}
-                <span className="text-foreground font-medium">{processAvg ?? '—'}%</span>
-              </span>
-              <span>
-                <span style={{ color: COLORS.system }}>●</span> Avg:{' '}
-                <span className="text-foreground font-medium">{hostAvg ?? '—'}%</span>
-              </span>
+              <AverageChip color={COLORS.process} value={processAvg} />
+              <AverageChip color={COLORS.system} value={hostAvg} />
             </>
           )}
         </div>

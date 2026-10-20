@@ -1,13 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Smartphone, Monitor, CheckCircle2, ArrowRightLeft, Users } from 'lucide-react';
+import { Smartphone, Monitor, CheckCircle2, ArrowRightLeft } from 'lucide-react';
 import { formatMediaTech } from '@tracearr/shared';
-import type {
-  DeviceCompatibilityMatrix,
-  TopTranscodingUserRow,
-  TranscodeHotspotRow,
-} from '@tracearr/shared';
-import { Link } from 'react-router';
+import type { DeviceCompatibilityMatrix, TranscodeHotspotRow } from '@tracearr/shared';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { StatCard } from '@/components/ui/stat-card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -28,10 +23,8 @@ import {
   DataTableViewport,
   useDataTable,
 } from '@/components/ui/data-table';
-import { TimeRangePicker } from '@/components/ui/time-range-picker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -39,13 +32,12 @@ import {
   useDeviceCompatibilityMatrix,
   useDeviceHealth,
   useTranscodeHotspots,
-  useTopTranscodingUsers,
 } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
 import { useTimeRange } from '@/hooks/useTimeRange';
 import { cn } from '@/lib/utils';
-import { getAvatarUrl } from '@/components/users/utils';
 import { PerServerCardGrid, ServerColumnCell } from '@/components/server';
+import { PeopleLink } from '@/components/stats/PeopleLink';
 import type { Server } from '@tracearr/shared';
 
 // Color coding for direct play percentage
@@ -68,16 +60,12 @@ function getProgressColor(pct: number): string {
 }
 
 const hotspotColumn = createDataTableColumnHelper<TranscodeHotspotRow>();
-const transcodingUserColumn = createDataTableColumnHelper<TopTranscodingUserRow>();
 
 // The hotspots query groups by these four, so together they identify a row.
 const getHotspotRowId = (row: TranscodeHotspotRow) =>
   `${row.serverId}-${row.device}-${row.videoCodec}-${row.audioCodec}`;
 
-const getTranscodingUserRowId = (row: TopTranscodingUserRow) =>
-  `${row.serverUserId}-${row.serverId}`;
-
-// Neither table renders a pager, so one page has to hold every row the endpoint returns.
+// The table renders no pager, so one page has to hold every row the endpoint returns.
 const UNPAGINATED_PAGE_SIZE = 100;
 
 // Inline matrix renderer driven by pre-fetched data (used by both single and per-server views).
@@ -210,14 +198,13 @@ function MatrixView({ data, isLoading, error, onRetry }: MatrixViewProps) {
 
 export function StatsDevices() {
   const { t } = useTranslation(['pages', 'common']);
-  const { value: timeRange, setValue: setTimeRange, apiParams } = useTimeRange();
+  const { apiParams } = useTimeRange();
   const { selectedServerIds, selectedServers, isMultiServer } = useServer();
 
   const compatibility = useDeviceCompatibility(apiParams, selectedServerIds);
   const matrixResult = useDeviceCompatibilityMatrix(selectedServerIds, apiParams);
   const deviceHealth = useDeviceHealth(apiParams, selectedServerIds);
   const hotspots = useTranscodeHotspots(apiParams, selectedServerIds);
-  const topTranscodingUsers = useTopTranscodingUsers(apiParams, selectedServerIds);
 
   const summary = compatibility.data?.summary;
 
@@ -281,95 +268,6 @@ export function StatsDevices() {
     [t, isMultiServer, resolveServer]
   );
 
-  const transcodingUserColumns = useMemo(
-    () =>
-      transcodingUserColumn.columns([
-        transcodingUserColumn.accessor('username', {
-          header: t('common:labels.user'),
-          enableSorting: false,
-          cell: ({ row }) => {
-            const user = row.original;
-            return (
-              <Link
-                to={`/users/${user.serverUserId}`}
-                className="flex items-center gap-3 hover:underline"
-              >
-                <Avatar className="h-8 w-8">
-                  <AvatarImage
-                    src={getAvatarUrl(user.serverId, user.avatar, 32) ?? undefined}
-                    alt={user.username}
-                  />
-                  <AvatarFallback>
-                    {(user.identityName ?? user.username).slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="font-medium">{user.identityName ?? user.username}</span>
-              </Link>
-            );
-          },
-        }),
-        ...(isMultiServer
-          ? [
-              transcodingUserColumn.display({
-                id: 'server',
-                header: t('common:labels.server'),
-                enableSorting: false,
-                cell: ({ row }) => {
-                  const server = resolveServer(row.original.serverId);
-                  return server ? <ServerColumnCell server={server} /> : null;
-                },
-              }),
-            ]
-          : []),
-        transcodingUserColumn.accessor('totalSessions', {
-          header: t('common:labels.sessions'),
-          enableSorting: false,
-          meta: { numeric: true, cellClassName: 'text-muted-foreground' },
-          cell: ({ row }) => row.original.totalSessions.toLocaleString(),
-        }),
-        transcodingUserColumn.accessor('directPlayPct', {
-          header: t('common:playback.directPlay'),
-          enableSorting: false,
-          meta: { numeric: true },
-          cell: ({ row }) => (
-            <Badge
-              variant="outline"
-              className={cn(
-                'border-transparent',
-                row.original.directPlayPct >= 80
-                  ? 'bg-green-500/20 text-green-600 dark:text-green-400'
-                  : row.original.directPlayPct >= 50
-                    ? 'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400'
-                    : 'bg-red-500/20 text-red-600 dark:text-red-400'
-              )}
-            >
-              {row.original.directPlayPct}%
-            </Badge>
-          ),
-        }),
-        transcodingUserColumn.accessor('transcodeCount', {
-          header: t('devices.transcodes'),
-          enableSorting: false,
-          meta: { numeric: true, cellClassName: 'font-mono text-orange-600 dark:text-orange-400' },
-          cell: ({ row }) => row.original.transcodeCount.toLocaleString(),
-        }),
-        transcodingUserColumn.accessor('pctOfTotalTranscodes', {
-          header: t('devices.pctOfTotal'),
-          enableSorting: false,
-          meta: { numeric: true },
-          cell: ({ row }) => (
-            <Badge
-              variant="destructive"
-              className="border-orange-500/30 bg-orange-500/20 text-orange-600 dark:text-orange-400"
-            >
-              {row.original.pctOfTotalTranscodes}%
-            </Badge>
-          ),
-        }),
-      ]),
-    [t, isMultiServer, resolveServer]
-  );
-
   const { table: hotspotsTable } = useDataTable<TranscodeHotspotRow>({
     columns: hotspotColumns,
     data: hotspotRows,
@@ -377,24 +275,8 @@ export function StatsDevices() {
     pageSize: UNPAGINATED_PAGE_SIZE,
   });
 
-  const { table: transcodingUsersTable } = useDataTable<TopTranscodingUserRow>({
-    columns: transcodingUserColumns,
-    data: topTranscodingUsers.data?.data,
-    getRowId: getTranscodingUserRowId,
-    pageSize: UNPAGINATED_PAGE_SIZE,
-  });
-
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t('devices.title')}</h1>
-          <p className="text-muted-foreground text-sm">{t('devices.description')}</p>
-        </div>
-        <TimeRangePicker value={timeRange} onChange={setTimeRange} />
-      </div>
-
       {/* Summary Cards */}
       {compatibility.isError ? (
         <InlineErrorState
@@ -402,7 +284,7 @@ export function StatsDevices() {
           onRetry={() => void compatibility.refetch()}
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-4">
           <Tooltip>
             <TooltipTrigger asChild>
               <div tabIndex={0} className="cursor-help">
@@ -578,39 +460,11 @@ export function StatsDevices() {
         </CardContent>
       </Card>
 
-      {/* Top Transcoding Users */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('devices.topTranscodingUsers')}</CardTitle>
-          <CardDescription>{t('devices.topTranscodingUsersDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {topTranscodingUsers.isError ? (
-            <InlineErrorState
-              message={topTranscodingUsers.error?.message ?? t('common:errors.unexpectedError')}
-              onRetry={() => void topTranscodingUsers.refetch()}
-            />
-          ) : (
-            <DataTableRoot density="compact">
-              <DataTableViewport flush>
-                <DataTableHeader table={transcodingUsersTable} />
-                <DataTableBody
-                  table={transcodingUsersTable}
-                  isLoading={topTranscodingUsers.isLoading}
-                  loadingLabel={t('common:states.loading')}
-                  empty={
-                    <DataTableEmpty
-                      table={transcodingUsersTable}
-                      icon={Users}
-                      title={t('devices.noTranscodingUsers')}
-                    />
-                  }
-                />
-              </DataTableViewport>
-            </DataTableRoot>
-          )}
-        </CardContent>
-      </Card>
+      <PeopleLink
+        rank="transcodes"
+        titleKey="statsUsers.linkTitle.transcodes"
+        descriptionKey="statsUsers.linkBody.transcodes"
+      />
     </div>
   );
 }

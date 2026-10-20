@@ -18,7 +18,8 @@ function makeClient() {
 /** Helper: build a Plex API response with items that have updatedAt timestamps */
 function makeItemsResponse(
   items: Array<{ ratingKey: string; title: string; updatedAt: number; addedAt?: number }>,
-  totalSize?: number
+  totalSize?: number,
+  type = 'movie'
 ) {
   return {
     MediaContainer: {
@@ -27,7 +28,7 @@ function makeItemsResponse(
       Metadata: items.map((i) => ({
         ratingKey: i.ratingKey,
         title: i.title,
-        type: 'movie',
+        type,
         updatedAt: i.updatedAt,
         addedAt: i.addedAt ?? i.updatedAt - 86400,
         Media: [{ Part: [{ file: `/movies/${i.title}.mkv`, size: 1000000 }] }],
@@ -344,6 +345,65 @@ describe('PlexClient sort-based incremental sync', () => {
 
       expect(result.items).toHaveLength(1);
       expect(result.items[0]!.title).toBe('New');
+    });
+  });
+
+  describe('getLibraryAlbums', () => {
+    it('requests type=9 and paginates via headers, not query params', async () => {
+      mockFetchJson.mockResolvedValue(emptyResponse());
+      const client = makeClient();
+
+      await client.getLibraryAlbums('7', { offset: 40, limit: 20 });
+
+      const [url, options] = mockFetchJson.mock.calls[0]! as [string, { headers?: unknown }];
+      expect(url).toContain('/library/sections/7/all');
+      expect(url).toContain('type=9');
+      expect(url).not.toContain('X-Plex-Container-Start');
+      expect(options.headers).toMatchObject({
+        'X-Plex-Container-Start': '40',
+        'X-Plex-Container-Size': '20',
+      });
+    });
+
+    it('parses album rows', async () => {
+      mockFetchJson.mockResolvedValue(
+        makeItemsResponse([{ ratingKey: 'a1', title: 'Blue Lines', updatedAt: 1 }], 1, 'album')
+      );
+
+      const client = makeClient();
+      const result = await client.getLibraryAlbums('7', { offset: 0, limit: 1 });
+
+      expect(result.totalCount).toBe(1);
+      expect(result.items.map((i) => i.mediaType)).toEqual(['album']);
+    });
+  });
+
+  describe('getLibraryAlbumsSince', () => {
+    it('filters type=9, sorts by updatedAt, paginates via headers and stops at the cutoff', async () => {
+      const since = new Date('2024-06-01T00:00:00Z');
+      const sinceUnix = Math.floor(since.getTime() / 1000);
+
+      mockFetchJson.mockResolvedValue(
+        makeItemsResponse(
+          [
+            { ratingKey: 'new-album', title: 'New', updatedAt: sinceUnix + 100 },
+            { ratingKey: 'old-album', title: 'Old', updatedAt: sinceUnix - 100 },
+          ],
+          undefined,
+          'album'
+        )
+      );
+
+      const client = makeClient();
+      const result = await client.getLibraryAlbumsSince('7', since);
+
+      const [url, options] = mockFetchJson.mock.calls[0]! as [string, { headers?: unknown }];
+      expect(url).toContain('/library/sections/7/all');
+      expect(url).toContain('type=9');
+      expect(url).toContain('sort=updatedAt%3Adesc');
+      expect(url).not.toContain('X-Plex-Container-Start');
+      expect(options.headers).toMatchObject({ 'X-Plex-Container-Start': '0' });
+      expect(result.items.map((i) => [i.ratingKey, i.mediaType])).toEqual([['new-album', 'album']]);
     });
   });
 });

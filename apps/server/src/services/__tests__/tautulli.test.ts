@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import {
+  ImportInterruptedError,
   TautulliService,
   TautulliApiError,
   TautulliHistoryRecordSchema,
@@ -2549,6 +2550,72 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
     });
   });
 
+  function historyPageStarts(): Array<string | null> {
+    return mockFetch.mock.calls
+      .map((call: unknown[]) => new URL(String(call[0])).searchParams)
+      .filter((params) => params.get('cmd') === 'get_history' && params.get('length') === '5000')
+      .map((params) => params.get('start'));
+  }
+
+  it('starts at options.startPage and reports each finished page through onPageDone', async () => {
+    mockFetch = mockTautulliFetch([], 2 * 5000 + 1);
+    global.fetch = mockFetch as typeof global.fetch;
+    const onPageDone = vi.fn().mockResolvedValue(undefined);
+
+    await TautulliService.importHistory(SERVER_ID, undefined, undefined, {
+      startPage: 1,
+      onPageDone,
+    });
+
+    expect(historyPageStarts()).toEqual(['5000', '10000']);
+    expect(onPageDone.mock.calls.map(([nextPage]) => nextPage)).toEqual([2, 3]);
+  });
+
+  it('throws ImportInterruptedError at a page boundary once the signal aborts', async () => {
+    mockFetch = mockTautulliFetch([], 2 * 5000 + 1);
+    global.fetch = mockFetch as typeof global.fetch;
+    const controller = new AbortController();
+
+    await expect(
+      TautulliService.importHistory(SERVER_ID, undefined, undefined, {
+        signal: controller.signal,
+        onPageDone: async () => controller.abort(),
+      })
+    ).rejects.toBeInstanceOf(ImportInterruptedError);
+
+    expect(historyPageStarts()).toEqual(['0']);
+  });
+
+  it('refreshes aggregates over the seeded range joined with the resumed pages', async () => {
+    const started = Math.floor(CUTOFF.getTime() / 1000) - 3600;
+    mockFetch = mockTautulliFetch([makeRecord({ reference_id: 1, started })], 1);
+    global.fetch = mockFetch as typeof global.fetch;
+
+    await TautulliService.importHistory(SERVER_ID, undefined, undefined, {
+      resumeState: {
+        minImportDate: '2024-01-01T00:00:00.000Z',
+        maxImportDate: '2024-01-02T00:00:00.000Z',
+        failedPages: [],
+      },
+    });
+
+    expect(refreshAggregates).toHaveBeenCalledWith({
+      startTime: new Date('2023-12-31T00:00:00.000Z'),
+      endTime: new Date((started + 24 * 60 * 60) * 1000),
+    });
+  });
+
+  it('reports the failed pages of the earlier attempt in the summary', async () => {
+    mockFetch = mockTautulliFetch([], 0);
+    global.fetch = mockFetch as typeof global.fetch;
+
+    const result = await TautulliService.importHistory(SERVER_ID, undefined, undefined, {
+      resumeState: { minImportDate: null, maxImportDate: null, failedPages: [3] },
+    });
+
+    expect(result.message).toContain('1 pages not fetched (3)');
+  });
+
   describe('plays Tautulli merged into another group since the last import', () => {
     const DAY_SEC = 24 * 60 * 60;
     const rootStarted = Math.floor(CUTOFF.getTime() / 1000) - 30 * DAY_SEC;
@@ -2632,6 +2699,40 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
         startTime: new Date((rootStarted - DAY_SEC) * 1000),
         endTime: new Date(new Date(absorbedStartedIso).getTime() + DAY_SEC * 1000),
       });
+    });
+
+    it('deletes the absorbed plays of a page before reporting it done, with their days in the range', async () => {
+      mockFetch = mockTautulliFetch([mergedRecord()], 1);
+      global.fetch = mockFetch as typeof global.fetch;
+      existingRoot();
+      const execute = mockMergeTransaction([
+        {
+          rows: [
+            {
+              id: 'absorbed-session',
+              started_at: absorbedStartedIso,
+              server_user_id: SERVER_USER_ID,
+              r_id: 'root-session',
+              r_started: new Date(rootStarted * 1000).toISOString(),
+              r_ref: null,
+            },
+          ],
+        },
+        { rows: [] },
+        { rows: [{ started_at: absorbedStartedIso }] },
+      ]);
+      const onPageDone = vi.fn().mockResolvedValue(undefined);
+
+      await TautulliService.importHistory(SERVER_ID, undefined, undefined, { onPageDone });
+
+      expect(onPageDone).toHaveBeenCalledWith(1, {
+        minImportDate: new Date(rootStarted * 1000).toISOString(),
+        maxImportDate: absorbedStartedIso,
+        failedPages: [],
+      });
+      expect(execute.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        onPageDone.mock.invocationCallOrder[0]!
+      );
     });
 
     it('selects and deletes only rows in the Tautulli import form on this server', async () => {

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Zap } from 'lucide-react';
 import type { BingeShow } from '@tracearr/shared';
 import type { Server } from '@tracearr/shared';
@@ -11,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import { ServerBadge } from '@/components/server';
 import { EmptyState } from '@/components/ui/empty-state';
-import { getBingeScoreBadge } from './badges';
+import { BingeScoreBadge } from './badges';
 
 interface BingeHighlightsTableProps {
   data: BingeShow[] | undefined;
@@ -32,10 +33,12 @@ export function BingeHighlightsTable({
   selectedServers = [],
   isMultiServer = false,
 }: BingeHighlightsTableProps) {
+  const { t } = useTranslation(['pages', 'common']);
+
   if (isLoading) {
     return (
       <div className="flex h-48 items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-muted-foreground">{t('common:states.loading')}</div>
       </div>
     );
   }
@@ -44,8 +47,8 @@ export function BingeHighlightsTable({
     return (
       <EmptyState
         icon={Zap}
-        title="No binge patterns detected"
-        description="Watch multiple episodes in a row to see binge patterns."
+        title={t('library.watch.binge.empty.title')}
+        description={t('library.watch.binge.empty.description')}
       />
     );
   }
@@ -54,12 +57,12 @@ export function BingeHighlightsTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Show</TableHead>
-          {isMultiServer && <TableHead>Servers</TableHead>}
-          <TableHead>Episodes</TableHead>
-          <TableHead>Consecutive</TableHead>
-          <TableHead>Binge Score</TableHead>
-          <TableHead>Max/Day</TableHead>
+          <TableHead>{t('library.watch.binge.columns.show')}</TableHead>
+          {isMultiServer && <TableHead>{t('library.watch.binge.columns.servers')}</TableHead>}
+          <TableHead>{t('common:media.episode_plural')}</TableHead>
+          <TableHead>{t('library.watch.binge.columns.consecutive')}</TableHead>
+          <TableHead>{t('library.watch.binge.columns.bingeScore')}</TableHead>
+          <TableHead>{t('library.watch.binge.columns.maxPerDay')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -99,7 +102,7 @@ export function BingeHighlightsTable({
               <TableCell>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{show.bingeScore.toFixed(0)}</span>
-                  {getBingeScoreBadge(show.bingeScore)}
+                  <BingeScoreBadge score={show.bingeScore} />
                 </div>
               </TableCell>
               <TableCell className="text-muted-foreground">{show.maxEpisodesInOneDay}</TableCell>

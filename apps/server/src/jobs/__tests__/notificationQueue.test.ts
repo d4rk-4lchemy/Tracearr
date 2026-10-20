@@ -30,6 +30,7 @@ interface MockWorker {
   processor: (job: unknown) => Promise<void>;
   handlers: Map<string, (...args: any[]) => void>;
   on: ReturnType<typeof vi.fn>;
+  once: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
 }
 
@@ -87,6 +88,7 @@ vi.mock('bullmq', async (importOriginal) => ({
         handlers.set(event, fn);
         return instance;
       }),
+      once: vi.fn(),
       close: vi.fn(),
     };
     workerInstances.push(instance);

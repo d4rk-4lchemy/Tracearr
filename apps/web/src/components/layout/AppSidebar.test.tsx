@@ -27,16 +27,18 @@ vi.mock('@/hooks/useSocket', () => ({
   useSocket: () => ({ serverConnectionStatuses: new Map(), isConnected: false }),
 }));
 
-const { seerr, versionState, dismissMutate } = vi.hoisted(() => ({
+const { seerr, versionState, dismissMutate, pendingCount } = vi.hoisted(() => ({
   seerr: { configured: false },
   versionState: { data: undefined as unknown, isLoading: true },
   dismissMutate: vi.fn(),
+  pendingCount: vi.fn<(enabled: boolean) => number>(),
 }));
 
 vi.mock('@/hooks/queries', () => ({
   useVersion: () => versionState,
   useRequestsConfigured: () => ({ data: seerr }),
   useDismissWhatsNew: () => ({ mutate: dismissMutate }),
+  usePendingViolationsCount: pendingCount,
 }));
 
 const auth = vi.hoisted(() => ({ role: 'owner' }));
@@ -47,14 +49,14 @@ vi.mock('@/hooks/useAuth', () => ({
   }),
 }));
 
-function renderSidebar(initialPath = '/media') {
+function renderSidebar(initialPath = '/stats/activity', defaultOpen = true) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   return render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <MemoryRouter initialEntries={[initialPath]}>
-          <SidebarProvider>
+          <SidebarProvider defaultOpen={defaultOpen}>
             <AppSidebar />
           </SidebarProvider>
         </MemoryRouter>
@@ -70,6 +72,8 @@ describe('AppSidebar navigation', () => {
     versionState.data = undefined;
     versionState.isLoading = true;
     dismissMutate.mockReset();
+    pendingCount.mockReset();
+    pendingCount.mockReturnValue(0);
   });
 
   it('hides the Requests entry until a Seerr is linked', () => {
@@ -85,50 +89,80 @@ describe('AppSidebar navigation', () => {
     expect(screen.getByText('requests')).toBeInTheDocument();
   });
 
-  it('renders the Media group with Overview/Browse/Genres and the moved library entries', () => {
+  it('renders nine entries, no group labels, and settings in the footer', () => {
+    seerr.configured = true;
     renderSidebar();
 
-    expect(screen.getByText('media')).toBeInTheDocument();
-    expect(screen.getByText('overview')).toBeInTheDocument();
-    expect(screen.getByText('mediaBrowse')).toBeInTheDocument();
-    expect(screen.getByText('mediaGenres')).toBeInTheDocument();
-    expect(screen.getByText('quality')).toBeInTheDocument();
-    expect(screen.getByText('storage')).toBeInTheDocument();
-    expect(screen.getByText('watch')).toBeInTheDocument();
+    for (const name of [
+      'dashboard',
+      'map',
+      'history',
+      'stats',
+      'library',
+      'mediaBrowse',
+      'requests',
+      'users',
+      'automations',
+    ]) {
+      expect(screen.getByRole('link', { name })).toBeInTheDocument();
+    }
+    for (const label of ['monitor', 'media', 'manage']) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+    const settings = screen.getByRole('link', { name: 'settings' });
+    expect(settings.closest('[data-sidebar="footer"]')).not.toBeNull();
   });
 
-  it('does not render a separate top-level Library group', () => {
-    renderSidebar();
+  it('keeps every direct child of a menu list an li, including the Users divider', () => {
+    seerr.configured = true;
+    const { container } = renderSidebar();
 
-    expect(screen.queryByText('library')).not.toBeInTheDocument();
+    const separator = container.querySelector('[data-sidebar="separator"]');
+    expect(separator?.parentElement?.tagName).toBe('LI');
+    const lists = container.querySelectorAll('[data-sidebar="menu"]');
+    expect(lists.length).toBeGreaterThan(0);
+    for (const list of lists) {
+      for (const child of list.children) expect(child.tagName).toBe('LI');
+    }
   });
 
-  it('links the moved library entries to their unchanged paths', () => {
-    renderSidebar();
+  it('carries the current range onto sidebar links and drops other params', () => {
+    renderSidebar('/stats/activity?period=week&view=me');
 
-    expect(screen.getByRole('link', { name: /quality/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'library' })).toHaveAttribute(
       'href',
-      '/library/quality'
+      '/library?period=week'
     );
-    expect(screen.getByRole('link', { name: /storage/i })).toHaveAttribute(
-      'href',
-      '/library/storage'
-    );
-    expect(screen.getByRole('link', { name: /watch/i })).toHaveAttribute('href', '/library/watch');
   });
 
-  it('links the new media entries to their static paths', () => {
+  it('shows the pending violation count on Automations for staff and nothing at zero', () => {
+    pendingCount.mockReturnValue(3);
+    const { unmount } = renderSidebar();
+
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('3')).toHaveClass('bg-warning/10', 'text-warning');
+    expect(pendingCount).toHaveBeenCalledWith(true);
+    unmount();
+
+    pendingCount.mockReturnValue(0);
     renderSidebar();
 
-    expect(screen.getByRole('link', { name: /^overview$/i })).toHaveAttribute('href', '/media');
-    expect(screen.getByRole('link', { name: /mediaBrowse/i })).toHaveAttribute(
-      'href',
-      '/media/browse'
-    );
-    expect(screen.getByRole('link', { name: /mediaGenres/i })).toHaveAttribute(
-      'href',
-      '/media/genres'
-    );
+    expect(screen.queryByText('3')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-count-dot')).not.toBeInTheDocument();
+  });
+
+  it('does not fetch the count for a member', () => {
+    auth.role = 'member';
+    renderSidebar();
+
+    expect(pendingCount).not.toHaveBeenCalled();
+  });
+
+  it('keeps the count as a dot when the rail is collapsed', () => {
+    pendingCount.mockReturnValue(3);
+    renderSidebar('/stats/activity', false);
+
+    expect(screen.getByTestId('nav-count-dot')).toBeInTheDocument();
   });
 
   it('opens the release notes when the version is clicked, and closing never writes anything', () => {
@@ -156,29 +190,24 @@ describe('AppSidebar navigation', () => {
     expect(dismissMutate).not.toHaveBeenCalled();
   });
 
-  it('shows a member only the pages that are theirs, and labels the sections they have left', () => {
+  it('shows a member only dashboard, map, history, stats, library, browse and requests', () => {
     auth.role = 'member';
     seerr.configured = true;
     renderSidebar();
 
-    for (const name of ['dashboard', 'history', 'activity', 'overview', 'requests']) {
+    for (const name of [
+      'dashboard',
+      'map',
+      'history',
+      'stats',
+      'library',
+      'mediaBrowse',
+      'requests',
+    ]) {
       expect(screen.getByText(name)).toBeInTheDocument();
     }
-    for (const name of [
-      'users',
-      'settings',
-      'automations',
-      'userStats',
-      'quality',
-      'storage',
-      'violations',
-      'yourStats',
-    ]) {
+    for (const name of ['users', 'settings', 'automations']) {
       expect(screen.queryByText(name)).not.toBeInTheDocument();
-    }
-    expect(screen.queryByText('manage')).not.toBeInTheDocument();
-    for (const label of ['monitor', 'stats', 'media']) {
-      expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
 });

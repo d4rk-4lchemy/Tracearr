@@ -138,6 +138,26 @@ describe('KpiStrip', () => {
     expect(screen.getByText('1 of 1 watched to completion')).toBeInTheDocument();
   });
 
+  it('speaks of listening, not episodes, for an artist', () => {
+    render(
+      <KpiStrip
+        mediaType="artist"
+        stats={stats()}
+        statsLoading={false}
+        statsError={false}
+        onRetryStats={vi.fn()}
+        watchers={[watcher({ completionPct: 100 }), watcher({ completionPct: 40 })]}
+        watchersLoading={false}
+        watchersError={false}
+        onRetryWatchers={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Listen Time')).toBeInTheDocument();
+    expect(screen.getByText('1 of 2 listened to the end')).toBeInTheDocument();
+    expect(screen.queryByText(/episode/)).not.toBeInTheDocument();
+  });
+
   it('shows an inline error with retry when stats fails to load, independent of watchers', () => {
     const onRetryStats = vi.fn();
     render(
@@ -154,7 +174,7 @@ describe('KpiStrip', () => {
       />
     );
 
-    screen.getByRole('button', { name: /Try again/ }).click();
+    screen.getByRole('button', { name: /try again/i }).click();
     expect(onRetryStats).toHaveBeenCalled();
     // The completion tile still renders even though stats failed.
     expect(screen.getByText('100%')).toBeInTheDocument();
@@ -203,6 +223,15 @@ describe('MemberKpiStrip', () => {
     expect(screen.getByText('14 of 22 episodes')).toBeInTheDocument();
     expect(screen.getByText('Jul 1, 2026')).toBeInTheDocument();
     expect(screen.queryByText('Viewers')).not.toBeInTheDocument();
+  });
+
+  it("labels an artist's numbers as listening and playing", () => {
+    render4({ mediaType: 'artist', episodeCount: null });
+
+    expect(screen.getByText('Your listen time')).toBeInTheDocument();
+    expect(screen.getByText('Last played')).toBeInTheDocument();
+    expect(screen.queryByText('Your watch time')).not.toBeInTheDocument();
+    expect(screen.queryByText('Last watched')).not.toBeInTheDocument();
   });
 
   it('adds the others line only when the server sends a count', () => {

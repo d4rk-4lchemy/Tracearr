@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { MatchType } from '@tracearr/shared';
 import { Badge } from '@/components/ui/badge';
 
@@ -6,31 +7,28 @@ interface MatchTypeBadgeProps {
   confidence: number;
 }
 
-const MATCH_LABELS: Record<MatchType, string> = {
-  imdb: 'IMDB',
-  tmdb: 'TMDB',
-  tvdb: 'TVDB',
-  fuzzy: 'Fuzzy',
-  version: 'Versions',
-};
+const MATCH_LABEL_KEYS = {
+  imdb: null,
+  tmdb: null,
+  tvdb: null,
+  fuzzy: 'library.storage.matchBadge.fuzzy',
+  version: 'library.storage.matchBadge.versions',
+} as const satisfies Record<MatchType, string | null>;
 
 /**
- * Get confidence level label and badge variant based on confidence score.
+ * Get confidence level label key and badge variant based on confidence score.
  * - high (>= 0.9): "Exact" with success variant (green)
  * - medium (>= 0.7): "Likely" with warning variant (yellow)
  * - low (< 0.7): "Possible" with secondary variant (neutral)
  */
-function getConfidenceInfo(confidence: number): {
-  label: string;
-  variant: 'success' | 'warning' | 'secondary';
-} {
+function getConfidenceInfo(confidence: number) {
   if (confidence >= 0.9) {
-    return { label: 'Exact', variant: 'success' };
+    return { labelKey: 'library.storage.matchBadge.exact', variant: 'success' } as const;
   }
   if (confidence >= 0.7) {
-    return { label: 'Likely', variant: 'warning' };
+    return { labelKey: 'library.storage.matchBadge.likely', variant: 'warning' } as const;
   }
-  return { label: 'Possible', variant: 'secondary' };
+  return { labelKey: 'library.storage.matchBadge.possible', variant: 'secondary' } as const;
 }
 
 /**
@@ -38,12 +36,14 @@ function getConfidenceInfo(confidence: number): {
  * Format: "{confidenceLabel} ({matchLabel})" e.g. "Exact (IMDB)", "Possible (Fuzzy)"
  */
 export function MatchTypeBadge({ matchType, confidence }: MatchTypeBadgeProps) {
-  const matchLabel = MATCH_LABELS[matchType];
-  const { label: confidenceLabel, variant } = getConfidenceInfo(confidence);
+  const { t } = useTranslation('pages');
+  const matchKey = MATCH_LABEL_KEYS[matchType];
+  const matchLabel = matchKey ? t(matchKey) : matchType.toUpperCase();
+  const { labelKey, variant } = getConfidenceInfo(confidence);
 
   return (
     <Badge variant={variant}>
-      {confidenceLabel} ({matchLabel})
+      {t('library.storage.matchBadge.label', { confidence: t(labelKey), match: matchLabel })}
     </Badge>
   );
 }

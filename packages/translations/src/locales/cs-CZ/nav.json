@@ -5,6 +5,8 @@
   "stats": "Statistiky",
   "activity": "Aktivita",
   "library": "Knihovna",
+  "people": "",
+  "rules": "",
   "users": "Uživatelé",
   "automations": "",
   "violations": "Porušení",
@@ -18,14 +20,10 @@
   "devices": "Zařízení",
   "bandwidth": "Šířka pásma",
   "jobs": "Pracovní místa",
-  "media": "Média",
   "mediaBrowse": "Procházet",
   "mediaGenres": "Žánry",
   "session": "",
   "user": "",
   "violation": "",
-  "monitor": "",
-  "manage": "",
-  "userStats": "",
   "toggleSidebar": ""
 }

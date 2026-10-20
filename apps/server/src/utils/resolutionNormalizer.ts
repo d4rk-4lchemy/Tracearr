@@ -15,6 +15,7 @@
 
 import {
   normalizeResolution as normalizeResolutionShared,
+  resolutionDisplayName,
   type ResolutionLabel,
 } from '@tracearr/shared';
 
@@ -55,8 +56,8 @@ export function formatQualityString(quality: {
     : quality.videoHeight;
 
   // Prefer resolution-based display
-  const resolution = normalizeResolution({
-    resolution: quality.videoResolution,
+  const resolution = resolutionDisplayName({
+    label: quality.videoResolution,
     width: effectiveWidth,
     height: effectiveHeight,
   });

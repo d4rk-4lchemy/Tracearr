@@ -33,6 +33,7 @@ const { queues, workers, FakeQueue, FakeWorker } = vi.hoisted(() => {
     processor: (job: unknown) => unknown;
     opts: unknown;
     on = vi.fn();
+    once = vi.fn();
     close = vi.fn(async () => undefined);
     constructor(name: string, processor: (job: unknown) => unknown, opts?: unknown) {
       this.name = name;

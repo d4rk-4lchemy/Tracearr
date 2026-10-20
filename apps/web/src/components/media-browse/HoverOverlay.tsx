@@ -16,6 +16,8 @@ const MAX_SERVER_ROWS = 2;
 interface HoverOverlayProps {
   title: string;
   year: number | null;
+  /** Artists have no year; their album count takes its place. */
+  albumCountLabel?: string | null;
   servers: HoverOverlayServer[];
   resolution: string | null;
   plays?: number;
@@ -37,6 +39,7 @@ interface HoverOverlayProps {
 export function HoverOverlay({
   title,
   year,
+  albumCountLabel,
   servers,
   resolution,
   plays,
@@ -45,7 +48,7 @@ export function HoverOverlay({
 }: HoverOverlayProps) {
   const { t } = useTranslation(['pages', 'common']);
 
-  const metaLine = [year != null ? String(year) : null, resolution]
+  const metaLine = [year != null ? String(year) : albumCountLabel, resolution]
     .filter((part): part is string => part != null)
     .join(' · ');
 

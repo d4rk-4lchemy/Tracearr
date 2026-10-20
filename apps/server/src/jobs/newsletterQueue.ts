@@ -6,6 +6,7 @@ import {
   type NewsletterSendTrigger,
 } from '@tracearr/shared';
 import { getBullPrefix, queueConnectionOptions } from './queueConnection.js';
+import { WORKER_DEFAULTS, registerQueue, registerWorker } from './jobSafety.js';
 import { isMaintenance } from '../serverState.js';
 import { getDestination } from '../services/notifications/destinationStore.js';
 import {
@@ -76,6 +77,7 @@ export function initNewsletterQueues(redisUrl: string): void {
     q.on('error', (err) => {
       if (!isMaintenance()) console.error(`[Newsletters] queue ${q.name} error:`, err);
     });
+    registerQueue(q);
   }
 }
 
@@ -102,8 +104,9 @@ export function startNewsletterWorkers(): void {
       }
       console.log(`[Newsletters] run ${job.id} for ${job.data.newsletterId}: ${result.outcome}`);
     },
-    { connection, prefix, concurrency: 1 }
+    { connection, prefix, concurrency: 1, ...WORKER_DEFAULTS }
   );
+  registerWorker(runWorker);
   runWorker.on('error', (err) => {
     if (!isMaintenance()) console.error('[Newsletters] run worker error:', err);
   });
@@ -121,8 +124,9 @@ export function startNewsletterWorkers(): void {
         throw error;
       }
     },
-    { connection, prefix, concurrency: 2 }
+    { connection, prefix, concurrency: 2, ...WORKER_DEFAULTS }
   );
+  registerWorker(deliveryWorker);
   deliveryWorker.on('failed', (job, error) => {
     if (!job) return;
     const exhausted = job.attemptsMade >= (job.opts.attempts ?? DELIVERY_ATTEMPTS);

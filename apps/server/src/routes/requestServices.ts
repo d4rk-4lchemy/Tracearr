@@ -163,7 +163,14 @@ export async function requestServiceRoutes(app: FastifyInstance): Promise<void> 
     if (await isRequestSyncActive(current.id)) {
       return reply.conflict('A sync is already in progress for this service');
     }
-    const jobId = await enqueueRequestSync(current.id, 'full');
-    return reply.code(202).send({ jobId });
+    try {
+      const jobId = await enqueueRequestSync(current.id, 'full');
+      return await reply.code(202).send({ jobId });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('already in progress')) {
+        return reply.conflict(error.message);
+      }
+      throw error;
+    }
   });
 }

@@ -1,7 +1,6 @@
 import { Film, BarChart3 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { TopMoviesResponse } from '@tracearr/shared';
-import type { Server } from '@tracearr/shared';
+import type { Server, TopMoviesResponse } from '@tracearr/shared';
 import { Badge } from '@/components/ui/badge';
 import { DataTablePager } from '@/components/ui/data-table';
 import {
@@ -51,7 +50,7 @@ export function TopMoviesTable({
   selectedServers = [],
   isMultiServer = false,
 }: TopMoviesTableProps) {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['pages', 'common']);
 
   const handleSort = (field: MovieSortBy) => {
     onSortChange(field, nextSortOrder(field, sortBy, sortOrder, 'desc'));
@@ -60,7 +59,7 @@ export function TopMoviesTable({
   if (isLoading) {
     return (
       <div className="flex h-48 items-center justify-center">
-        <div className="text-muted-foreground">Loading movies...</div>
+        <div className="text-muted-foreground">{t('common:states.loading')}</div>
       </div>
     );
   }
@@ -69,8 +68,8 @@ export function TopMoviesTable({
     return (
       <EmptyState
         icon={BarChart3}
-        title="No movie watch data"
-        description="Movie watch statistics will appear here once content has been played."
+        title={t('library.watch.top.movies.empty.title')}
+        description={t('library.watch.top.movies.empty.description')}
       />
     );
   }
@@ -82,14 +81,14 @@ export function TopMoviesTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[40%]">Title</TableHead>
+            <TableHead className="w-[40%]">{t('library.storage.colTitle')}</TableHead>
             <SortableTableHead
               field="plays"
               sortBy={sortBy}
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Plays
+              {t('common:labels.plays')}
             </SortableTableHead>
             <SortableTableHead
               field="watch_hours"
@@ -97,7 +96,7 @@ export function TopMoviesTable({
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Watch Hours
+              {t('common:labels.watchHours')}
             </SortableTableHead>
             <SortableTableHead
               field="viewers"
@@ -105,7 +104,7 @@ export function TopMoviesTable({
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Viewers
+              {t('common:labels.viewers')}
             </SortableTableHead>
             <SortableTableHead
               field="completion_rate"
@@ -113,7 +112,7 @@ export function TopMoviesTable({
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Completion
+              {t('common:labels.completion')}
             </SortableTableHead>
           </TableRow>
         </TableHeader>
@@ -124,7 +123,7 @@ export function TopMoviesTable({
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="gap-1">
                     <Film className="h-3 w-3" />
-                    Movie
+                    {t('common:media.movie')}
                   </Badge>
                   <div>
                     <span className="font-medium">{item.title}</span>
@@ -159,11 +158,11 @@ export function TopMoviesTable({
         onNext={() => onPageChange(page + 1)}
         onPage={onPageChange}
         labels={{
-          navigation: t('table.pagination'),
-          status: t('table.pageOf', { page, total: totalPages }),
-          previous: t('actions.previous'),
-          next: t('actions.next'),
-          goToPage: t('table.goToPage'),
+          navigation: t('common:table.pagination'),
+          status: t('common:table.pageOf', { page, total: totalPages }),
+          previous: t('common:actions.previous'),
+          next: t('common:actions.next'),
+          goToPage: t('common:table.goToPage'),
         }}
         className="px-2"
       />

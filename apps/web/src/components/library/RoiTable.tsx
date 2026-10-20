@@ -1,7 +1,6 @@
 import { BarChart } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { RoiResponse } from '@tracearr/shared';
-import type { Server } from '@tracearr/shared';
+import type { RoiResponse, Server } from '@tracearr/shared';
 import { Badge } from '@/components/ui/badge';
 import { DataTablePager } from '@/components/ui/data-table';
 import {
@@ -64,7 +63,7 @@ export function RoiTable({
   isMultiServer = false,
   selectedServers = [],
 }: RoiTableProps) {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['pages', 'common']);
 
   const colorMap = useServerColorMap();
 
@@ -78,10 +77,10 @@ export function RoiTable({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">All Types</SelectItem>
-        <SelectItem value="movie">Movies</SelectItem>
-        <SelectItem value="show">TV Shows</SelectItem>
-        <SelectItem value="artist">Music</SelectItem>
+        <SelectItem value="all">{t('library.storage.stale.allTypes')}</SelectItem>
+        <SelectItem value="movie">{t('common:media.movie_plural')}</SelectItem>
+        <SelectItem value="show">{t('common:media.tvShows')}</SelectItem>
+        <SelectItem value="artist">{t('common:media.music')}</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -91,7 +90,7 @@ export function RoiTable({
       <div className="space-y-4">
         <div className="flex items-center justify-end">{filterSelect}</div>
         <div className="flex h-48 items-center justify-center">
-          <div className="text-muted-foreground">Loading ROI data...</div>
+          <div className="text-muted-foreground">{t('common:states.loading')}</div>
         </div>
       </div>
     );
@@ -103,8 +102,8 @@ export function RoiTable({
         <div className="flex items-center justify-end">{filterSelect}</div>
         <EmptyState
           icon={BarChart}
-          title="No ROI data available"
-          description="ROI analysis requires watch history data to calculate content value."
+          title={t('library.storage.roi.empty.title')}
+          description={t('library.storage.roi.empty.description')}
         />
       </div>
     );
@@ -120,34 +119,34 @@ export function RoiTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[60px]">Type</TableHead>
+            <TableHead className="w-[60px]">{t('common:labels.type')}</TableHead>
             <SortableTableHead
               field="title"
               sortBy={sortBy}
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Title
+              {t('library.storage.colTitle')}
             </SortableTableHead>
-            {isMultiServer && <TableHead>Server</TableHead>}
+            {isMultiServer && <TableHead>{t('common:labels.server')}</TableHead>}
             <SortableTableHead
               field="file_size"
               sortBy={sortBy}
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Size
+              {t('common:labels.size')}
             </SortableTableHead>
-            <TableHead>Watch Hours</TableHead>
+            <TableHead>{t('common:labels.watchHours')}</TableHead>
             <SortableTableHead
               field="watch_hours_per_gb"
               sortBy={sortBy}
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              Hours/GB
+              {t('library.storage.roi.columns.hoursPerGb')}
             </SortableTableHead>
-            <TableHead>Value</TableHead>
+            <TableHead>{t('library.storage.roi.columns.value')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -202,11 +201,11 @@ export function RoiTable({
         onNext={() => onPageChange(page + 1)}
         onPage={onPageChange}
         labels={{
-          navigation: t('table.pagination'),
-          status: t('table.pageOf', { page, total: totalPages }),
-          previous: t('actions.previous'),
-          next: t('actions.next'),
-          goToPage: t('table.goToPage'),
+          navigation: t('common:table.pagination'),
+          status: t('common:table.pageOf', { page, total: totalPages }),
+          previous: t('common:actions.previous'),
+          next: t('common:actions.next'),
+          goToPage: t('common:table.goToPage'),
         }}
         className="px-2"
       />

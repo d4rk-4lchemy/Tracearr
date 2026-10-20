@@ -13,6 +13,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type {
+  AlbumDetailResponse,
   AuthUser,
   MediaDetailResponse,
   MediaChildrenResponse,
@@ -21,6 +22,7 @@ import type {
   MediaPlatformBreakdownResponse,
   MediaSeasonHeatResponse,
 } from '@tracearr/shared';
+import { renderSql } from '../../../test/helpers.js';
 
 vi.mock('../../../db/client.js', () => ({
   db: {
@@ -136,6 +138,25 @@ describe('GET /library/media/:id and sub-resources', () => {
     expect(db.select).not.toHaveBeenCalled();
   });
 
+  it('hands out square art for an artist', async () => {
+    app = await buildTestApp(createOwnerUser(), createSpyRedis());
+    const row = rawMediaRow({ mediaType: 'artist', matchKey: 'artist:title:daft punk' });
+
+    queueSelect([row], [{ id: row.id }]);
+    dbExecute.mockResolvedValueOnce({ rows: [] } as never);
+    dbExecute.mockResolvedValueOnce({
+      rows: [
+        { thumb_path: '/library/metadata/41/thumb', dominant_color: null, server_id: 'srv-1' },
+      ],
+    } as never);
+
+    const response = await app.inject({ method: 'GET', url: `/library/media/${row.id}` });
+    expect(response.statusCode).toBe(200);
+    const body: MediaDetailResponse = response.json();
+    expect(body.mediaType).toBe('artist');
+    expect(body.posterUrl).toContain('width=360&height=360');
+  });
+
   it('shapes the detail response in camelCase and caches it', async () => {
     const redis = createSpyRedis();
     app = await buildTestApp(createOwnerUser(), redis);
@@ -175,6 +196,7 @@ describe('GET /library/media/:id and sub-resources', () => {
       dominantColor: '#334455',
     });
     expect(body.posterUrl).toContain('server=srv-1');
+    expect(body.posterUrl).toContain('width=360&height=540');
     expect(body.posterUrl).toContain(`v=${body.posterVersion}`);
     expect(body.availability).toEqual([
       {
@@ -357,6 +379,172 @@ describe('GET /library/media/:id and sub-resources', () => {
         genres: null,
       },
     ]);
+  });
+
+  it("lists an artist's albums per server copy with their track counts", async () => {
+    const redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
+    const artist = rawMediaRow({ mediaType: 'artist', matchKey: 'artist:mbid:1', tmdbId: null });
+    const albumId = randomUUID();
+    const serverId = randomUUID();
+
+    queueSelect([artist], [{ id: artist.id }]);
+    dbExecute.mockResolvedValueOnce({
+      rows: [
+        {
+          id: albumId,
+          title: 'Discovery',
+          year: 2001,
+          genres: ['Electronic'],
+          thumb_path: '/library/metadata/20/thumb/1',
+          server_id: serverId,
+          added_at: '2023-04-05T06:07:08.000Z',
+          track_count: 14,
+        },
+      ],
+    } as never);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/library/media/${artist.id}/children`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<MediaChildrenResponse>().data).toEqual([
+      {
+        id: albumId,
+        mediaType: 'album',
+        title: 'Discovery',
+        seasonNumber: null,
+        episodeCount: null,
+        episodeNumber: null,
+        imdbId: null,
+        tmdbId: null,
+        tvdbId: null,
+        showMediaId: null,
+        genres: ['Electronic'],
+        year: 2001,
+        thumbPath: '/library/metadata/20/thumb/1',
+        serverId,
+        addedAt: '2023-04-05T06:07:08.000Z',
+        trackCount: 14,
+      },
+    ]);
+    const { sql: albumSql } = renderSql(dbExecute.mock.calls[0]![0] as never);
+    expect(albumSql).toContain("a.media_type = 'album'");
+    expect(albumSql).toContain('t.parent_rating_key = a.rating_key');
+  });
+
+  it('404s the album sheet for an id that is not an album', async () => {
+    app = await buildTestApp(createOwnerUser(), createSpyRedis());
+    const artist = rawMediaRow({ mediaType: 'artist', matchKey: 'artist:mbid:1', tmdbId: null });
+
+    queueSelect([artist]);
+    const response = await app.inject({ method: 'GET', url: `/library/media/${artist.id}/album` });
+    expect(response.statusCode).toBe(404);
+    expect(dbExecute).not.toHaveBeenCalled();
+  });
+
+  it('404s the album sheet when the album has no active copy in scope', async () => {
+    app = await buildTestApp(createOwnerUser(), createSpyRedis());
+    const album = rawMediaRow({ mediaType: 'album', matchKey: 'album:mbid:1', tmdbId: null });
+
+    queueSelect([album], [{ id: album.id }]);
+    const response = await app.inject({ method: 'GET', url: `/library/media/${album.id}/album` });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('shapes the album sheet response and caches it', async () => {
+    const redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
+    const album = rawMediaRow({
+      mediaType: 'album',
+      matchKey: 'album:mbid:1',
+      tmdbId: null,
+      title: 'The Click',
+      year: 2017,
+    });
+    const serverId = randomUUID();
+
+    queueSelect([album], [{ id: album.id }]);
+    dbExecute
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            server_id: serverId,
+            rating_key: '9001',
+            year: 2017,
+            parent_title: 'AJR',
+            thumb_path: '/library/metadata/9001/thumb/1731801600',
+            created_at: '2024-11-17T20:00:00.000Z',
+            artist_media_id: 'artist-1',
+          },
+        ],
+      } as never)
+      .mockResolvedValueOnce({
+        rows: [
+          { plays: 3, prior_plays: 1, listen_ms: '600000', all_plays: 4, finished: 3, judged: 4 },
+        ],
+      } as never)
+      .mockResolvedValueOnce({ rows: [{ name: 'Becca', plays: 4 }] } as never)
+      .mockResolvedValueOnce({
+        rows: [
+          { track_index: 1, title: 'Overture', plays: 4, last_played: '2026-10-18T00:00:00.000Z' },
+        ],
+      } as never);
+
+    const response = await app.inject({ method: 'GET', url: `/library/media/${album.id}/album` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<AlbumDetailResponse>()).toEqual({
+      album: {
+        id: album.id,
+        title: 'The Click',
+        artistTitle: 'AJR',
+        artistMediaId: 'artist-1',
+        year: 2017,
+        trackCount: 1,
+        durationMs: null,
+        addedAt: '2024-11-17T20:00:00.000Z',
+        posterUrl: expect.stringContaining('width=360&height=360'),
+        posterVersion: expect.any(String),
+        copies: [{ serverId, ratingKey: '9001' }],
+      },
+      last30: { plays: 3, priorPlays: 1, listenMs: 600000 },
+      allTime: { plays: 4, listeners: [{ name: 'Becca', plays: 4, share: 100 }], finishedRate: 75 },
+      tracks: [
+        {
+          index: 1,
+          title: 'Overture',
+          durationMs: null,
+          plays: 4,
+          lastPlayedAt: '2026-10-18T00:00:00.000Z',
+        },
+      ],
+    });
+    expect(redis.setex).toHaveBeenCalledTimes(1);
+    const { sql: copiesSql } = renderSql(dbExecute.mock.calls[0]![0] as never);
+    expect(copiesSql.replace(/\s+/g, ' ')).toContain(
+      "ORDER BY (li.thumb_path IS NOT NULL AND (li.thumb_path NOT LIKE '/Items/%' OR li.thumb_path LIKE '%?tag=%')) DESC, li.created_at DESC"
+    );
+  });
+
+  it('scopes artist stats to track sessions under the artist copies', async () => {
+    const redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
+    const artist = rawMediaRow({ mediaType: 'artist', matchKey: 'artist:mbid:1', tmdbId: null });
+
+    queueSelect([artist], [{ id: artist.id }], []);
+    dbExecute.mockResolvedValue({ rows: [] } as never);
+
+    const response = await app.inject({ method: 'GET', url: `/library/media/${artist.id}/stats` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<MediaStatsResponse>().mediaType).toBe('artist');
+    expect(dbExecute).toHaveBeenCalledTimes(3);
+    for (const [query] of dbExecute.mock.calls) {
+      const { sql: text, params } = renderSql(query as never);
+      expect(text).toContain("s.media_type = 'track'");
+      expect(text).toContain('(s.server_id, s.grandparent_rating_key) IN');
+      expect(params).toContain(artist.id);
+    }
   });
 
   it('shapes the stats response in camelCase across all three windows', async () => {

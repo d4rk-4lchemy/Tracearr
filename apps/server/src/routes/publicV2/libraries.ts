@@ -95,7 +95,7 @@ async function buildLibraryRollups() {
       COALESCE(SUM(li.file_size), 0) AS total_file_size
     FROM library_items li
     JOIN servers sv ON sv.id = li.server_id
-    WHERE li.removed_at IS NULL AND li.media_type != 'season'
+    WHERE li.removed_at IS NULL AND li.media_type NOT IN ('season', 'album')
     GROUP BY li.server_id, sv.type, li.library_id
     ORDER BY li.server_id, li.library_id
   `);
@@ -107,7 +107,7 @@ async function buildLibraryRollups() {
       COALESCE(li.video_resolution, 'unknown') AS resolution,
       COUNT(*) AS count
     FROM library_items li
-    WHERE li.removed_at IS NULL AND li.media_type != 'season'
+    WHERE li.removed_at IS NULL AND li.media_type NOT IN ('season', 'album')
     GROUP BY li.server_id, li.library_id, COALESCE(li.video_resolution, 'unknown')
   `);
 

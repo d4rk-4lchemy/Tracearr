@@ -36,16 +36,14 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { Redis } from 'ioredis';
 import { sql, type SQL } from 'drizzle-orm';
-import { z } from 'zod';
+import type { z } from 'zod';
 import {
-  uuidSchema,
-  serverIdsQuerySchema,
-  libraryKeySchema,
-  booleanStringSchema,
+  catalogQuerySchema,
   REDIS_KEYS,
   CACHE_TTL,
   LETTER_RAIL_ALPHABET,
   POSTER_IMAGE_SIZE,
+  posterSizeFor,
   resolutionTierRank,
   resolutionBucket,
   type CatalogResponse,
@@ -53,6 +51,7 @@ import {
   type CatalogLetterBucket,
   type CatalogLettersResponse,
   type CatalogCodecOptionsResponse,
+  type LibraryMediaType,
   type WatchedState,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
@@ -73,7 +72,13 @@ import {
 import { buildProxyUrl, posterVersionFor } from '../../services/imageProxy.js';
 import { getSetting } from '../../services/settings.js';
 import type { DateRange } from '../stats/utils.js';
-import { mediaSizeSubquery, buildLibraryCacheKey, withComputeSingleFlight } from './utils.js';
+import {
+  ARTIST_OF_TRACK,
+  LI_HAS_KNOWN_IMAGE,
+  mediaSizeSubquery,
+  buildLibraryCacheKey,
+  withComputeSingleFlight,
+} from './utils.js';
 import {
   codecPredicate,
   fetchCodecOptions,
@@ -82,40 +87,20 @@ import {
   type RawCodec,
 } from './codecFilter.js';
 
-/** Sane upper bound for the size-on-disk filter inputs, in GB. */
-const CATALOG_SIZE_GB_MAX = 10000;
-
-const catalogQuerySchema = z.object({
-  type: z.enum(['movie', 'show']),
-  serverId: uuidSchema.optional(),
-  serverIds: serverIdsQuerySchema,
-  resolution: z.string().optional(),
-  genre: z.string().optional(),
-  yearFrom: z.coerce.number().int().optional(),
-  yearTo: z.coerce.number().int().optional(),
-  watched: z.enum(['watched', 'partial', 'unwatched']).optional(),
-  lens: z.union([uuidSchema, z.literal('all')]).default('all'),
-  search: z.string().max(100).optional(),
-  sort: z.enum(['title', 'added', 'year', 'plays', 'watch_time', 'viewers']).default('title'),
-  offset: z.coerce.number().int().min(0).default(0),
-  pageSize: z.coerce.number().int().min(1).max(100).default(60),
-  // `${serverId}:${libraryId}` - a library id is only unique within its server.
-  libraryKey: libraryKeySchema.optional(),
-  hdr: booleanStringSchema.default(false),
-  atmos: booleanStringSchema.default(false),
-  sizeGbMin: z.coerce.number().min(0).max(CATALOG_SIZE_GB_MAX).optional(),
-  sizeGbMax: z.coerce.number().min(0).max(CATALOG_SIZE_GB_MAX).optional(),
-  /** Display names as the codec charts show them ('HEVC', 'EAC3'). */
-  videoCodec: z.string().max(50).optional(),
-  audioCodec: z.string().max(50).optional(),
-  audioChannels: z.string().max(20).optional(),
-});
-
 type CatalogQueryInput = z.infer<typeof catalogQuerySchema>;
+
+/** Artists carry no year and no watched state, so that sort and that filter are invalid for them. */
+function fitsType(query: Pick<CatalogQueryInput, 'type' | 'sort' | 'watched'>): boolean {
+  return query.type !== 'artist' || (query.sort !== 'year' && query.watched === undefined);
+}
+
+const catalogPageQuerySchema = catalogQuerySchema.refine(fitsType);
 
 // Same filter fields as catalogQuerySchema, minus the window params -
 // letters is an unpaginated aggregate over the whole filtered set.
-const catalogLettersQuerySchema = catalogQuerySchema.omit({ offset: true, pageSize: true });
+const catalogLettersQuerySchema = catalogQuerySchema
+  .omit({ offset: true, pageSize: true })
+  .refine(fitsType);
 
 const catalogCodecsQuerySchema = catalogQuerySchema.pick({
   type: true,
@@ -159,7 +144,7 @@ export function parseLibraryKey(
 }
 
 export interface CatalogPageQueryParams {
-  type: 'movie' | 'show';
+  type: LibraryMediaType;
   sort: CatalogSort;
   offset: number;
   genre: string | null;
@@ -183,7 +168,7 @@ export interface CatalogPageQueryParams {
 }
 
 export interface CatalogTotalsQueryParams {
-  type: 'movie' | 'show';
+  type: LibraryMediaType;
   sort: CatalogSort;
   genre: string | null;
   yearFrom: number | null;
@@ -205,7 +190,7 @@ export interface CatalogTotalsQueryParams {
 
 interface RawCatalogRow {
   id: string;
-  media_type: 'movie' | 'show';
+  media_type: LibraryMediaType;
   title: string;
   year: number | null;
   genres: string[] | null;
@@ -224,6 +209,7 @@ interface RawCatalogRow {
       }[]
     | null;
   poster_copy: { thumbPath: string | null; dominantColor: string | null; serverId: string } | null;
+  album_count?: number | null;
 }
 
 const VALUE_SORT_COLUMN: Record<'plays' | 'watch_time' | 'viewers', string> = {
@@ -288,22 +274,47 @@ export async function expandMediaAliases(canonicalIds: string[]): Promise<string
  * resolves a row back to its canonical id.
  */
 export function buildValueRollupCte(
-  type: 'movie' | 'show',
+  type: LibraryMediaType,
   serverIds: string[] | undefined,
   idsFilter: string[] | undefined,
   dateRange?: DateRange
 ): SQL {
-  const mediaCol = type === 'movie' ? sql`p.media_id` : sql`p.show_media_id`;
+  const mediaCol = {
+    movie: sql`p.media_id`,
+    show: sql`p.show_media_id`,
+    artist: sql`artist.media_id`,
+  }[type];
   const serverFragment = buildMultiServerFragment(serverIds, 'p.server_id');
-  const showGuard = type === 'show' ? sql`AND p.show_media_id IS NOT NULL` : sql``;
-  // p.media_id is set on every session-backed row regardless of type, so
-  // without this an episode with a null/unresolved show_media_id (or any
-  // future linkage regression) would join into the movie candidate list via
-  // its own media_id and get counted as a "movie".
-  const movieTypeGuard = type === 'movie' ? sql`AND am.media_type = 'movie'` : sql``;
+  // A track's plays count toward the artist copy it sits under on its server;
+  // a track whose artist row is missing drops out.
+  const artistJoin =
+    type === 'artist'
+      ? sql`JOIN LATERAL (
+          SELECT ar.media_id ${ARTIST_OF_TRACK}
+          WHERE t.media_id = p.media_id AND t.server_id = p.server_id AND t.media_type = 'track'
+          ORDER BY ar.id
+          LIMIT 1
+        ) artist ON true`
+      : sql``;
+  // The movie guard: p.media_id is set on every session-backed row regardless
+  // of type, so without it an episode with a null/unresolved show_media_id (or
+  // any future linkage regression) would join into the movie candidate list
+  // via its own media_id and get counted as a "movie".
+  const typeGuard = {
+    movie: sql`AND am.media_type = 'movie'`,
+    show: sql`AND p.show_media_id IS NOT NULL`,
+    artist: sql`AND p.media_type = 'track'`,
+  }[type];
+  // Artists also narrow p to their own tracks first, so the artist LATERAL runs
+  // only for those rows instead of every track play in the window.
   const idsFragment =
     idsFilter && idsFilter.length > 0
-      ? sql`AND ${mediaCol} = ANY(${uuidArraySql(idsFilter)})`
+      ? type === 'artist'
+        ? sql`AND (p.media_id, p.server_id) IN (
+            SELECT t.media_id, t.server_id ${ARTIST_OF_TRACK}
+            WHERE ar.media_id = ANY(${uuidArraySql(idsFilter)}) AND t.media_type = 'track'
+          ) AND ${mediaCol} = ANY(${uuidArraySql(idsFilter)})`
+        : sql`AND ${mediaCol} = ANY(${uuidArraySql(idsFilter)})`
       : sql``;
   const windowFragment = buildPlaysWindowFragment(dateRange);
   return sql`
@@ -313,9 +324,10 @@ export function buildValueRollupCte(
              SUM(p.watched_ms)::bigint AS watch_time_ms,
              COUNT(DISTINCT su.user_id)::bigint AS viewers
       FROM user_media_plays_daily p
+      ${artistJoin}
       JOIN media am ON am.id = ${mediaCol}
       JOIN server_users su ON su.id = p.server_user_id
-      WHERE 1=1 ${windowFragment} ${showGuard} ${movieTypeGuard} ${serverFragment} ${idsFragment}
+      WHERE 1=1 ${windowFragment} ${typeGuard} ${serverFragment} ${idsFragment}
       GROUP BY COALESCE(am.merged_into_id, ${mediaCol})
     )
   `;
@@ -343,7 +355,7 @@ function episodeVersionsScope(showIdCol: string): SQL {
 }
 
 function buildCommonWhere(params: {
-  type: 'movie' | 'show';
+  type: LibraryMediaType;
   genre: string | null;
   yearFrom: number | null;
   yearTo: number | null;
@@ -467,23 +479,24 @@ function buildCommonWhere(params: {
 
 /**
  * ORDER BY fragment for the poster_copy subquery (li already scoped to
- * thumb_path IS NOT NULL by the caller). With a preferred server, booleans
- * sort false < true so DESC puts a matching copy first; when the preferred
- * server has no poster row it simply isn't in this set, so the newest-first
- * tiebreak naturally falls back to the current behavior. A preferred id that
- * no longer matches any server (e.g. the server was deleted) resolves the
- * same way - no special-casing needed.
+ * thumb_path IS NOT NULL by the caller). A copy with a real image comes first,
+ * so an untagged Jellyfin/Emby path never beats another server's poster. Then,
+ * with a preferred server, booleans sort false < true so DESC puts a matching
+ * copy first; when the preferred server has no poster row it simply isn't in
+ * this set, so the newest-first tiebreak naturally falls back to the current
+ * behavior. A preferred id that no longer matches any server (e.g. the server
+ * was deleted) resolves the same way - no special-casing needed.
  */
 export function buildPosterOrderFragment(preferredServerId: string | null | undefined): SQL {
-  if (!preferredServerId) return sql`ORDER BY li.created_at DESC`;
-  return sql`ORDER BY (li.server_id = ${preferredServerId}) DESC, li.created_at DESC`;
+  if (!preferredServerId) return sql`ORDER BY ${LI_HAS_KNOWN_IMAGE} DESC, li.created_at DESC`;
+  return sql`ORDER BY ${LI_HAS_KNOWN_IMAGE} DESC, (li.server_id = ${preferredServerId}) DESC, li.created_at DESC`;
 }
 
 /** Base WHERE + ORDER BY for one sort variant, shared by the page and
  * candidates builders so a window and the letter rail can never disagree on
  * which rows exist at which positions. */
 function buildSortedBody(params: {
-  type: 'movie' | 'show';
+  type: LibraryMediaType;
   sort: CatalogSort;
   commonWhere: SQL;
   selectExtra: SQL;
@@ -553,8 +566,30 @@ function buildSortedBody(params: {
   };
 }
 
-/** Attaches the per-row servers json_agg and poster pick to a page CTE. */
-function withRowDecorations(pageCte: SQL, serverFragmentLi: SQL, posterOrderFragment: SQL): SQL {
+/**
+ * Distinct album titles under an artist's active copies in scope; lower()
+ * folds the same album held on two servers into one.
+ */
+export function albumCountSql(artistIdCol: SQL, serverFragmentLi: SQL): SQL {
+  return sql`(
+    SELECT COUNT(DISTINCT lower(a.title))::int
+    FROM library_items li
+    JOIN library_items a ON a.server_id = li.server_id AND a.parent_rating_key = li.rating_key
+      AND a.media_type = 'album' AND a.removed_at IS NULL
+    WHERE li.media_id = ${artistIdCol} AND li.media_type = 'artist' AND li.removed_at IS NULL
+      ${serverFragmentLi}
+  )`;
+}
+
+/** Attaches the per-row servers json_agg, poster pick and, for artists, album count to a page CTE. */
+function withRowDecorations(
+  type: LibraryMediaType,
+  pageCte: SQL,
+  serverFragmentLi: SQL,
+  posterOrderFragment: SQL
+): SQL {
+  const albumCount =
+    type === 'artist' ? sql`, ${albumCountSql(sql`p.id`, serverFragmentLi)} AS album_count` : sql``;
   return sql`
     ${pageCte}
     SELECT p.*,
@@ -576,7 +611,7 @@ function withRowDecorations(pageCte: SQL, serverFragmentLi: SQL, posterOrderFrag
                                 'serverId', li.server_id)
        FROM library_items li
        WHERE li.media_id = p.id AND li.removed_at IS NULL AND li.thumb_path IS NOT NULL ${serverFragmentLi}
-       ${posterOrderFragment} LIMIT 1) AS poster_copy
+       ${posterOrderFragment} LIMIT 1) AS poster_copy${albumCount}
     FROM page p
   `;
 }
@@ -605,7 +640,7 @@ export function buildCatalogPageQuery(params: CatalogPageQueryParams): SQL {
   const pageCte = needsRollup
     ? sql`WITH ${buildValueRollupCte(type, serverIds, undefined)}, page AS (${pageBody})`
     : sql`WITH page AS (${pageBody})`;
-  return withRowDecorations(pageCte, serverFragmentLi, posterOrderFragment);
+  return withRowDecorations(type, pageCte, serverFragmentLi, posterOrderFragment);
 }
 
 /**
@@ -714,7 +749,7 @@ export function buildLetterBucketCase(): SQL {
 }
 
 export interface CatalogFilterParams {
-  type: 'movie' | 'show';
+  type: LibraryMediaType;
   genre: string | null;
   yearFrom: number | null;
   yearTo: number | null;
@@ -812,7 +847,7 @@ export function buildLetterBuckets(counts: Map<string, number>): CatalogLetterBu
 
 async function fetchPageEngagement(
   ids: string[],
-  type: 'movie' | 'show',
+  type: LibraryMediaType,
   serverIds: string[] | undefined
 ): Promise<Map<string, { plays: number; viewers: number }>> {
   const result = new Map<string, { plays: number; viewers: number }>();
@@ -845,7 +880,7 @@ export const WATCHED_PROBE_CHUNK = 100;
 
 async function resolveWatchedStatesChunked(
   ids: string[],
-  type: 'movie' | 'show',
+  type: LibraryMediaType,
   serverIds: string[] | undefined,
   lensUserId: string | null
 ): Promise<Map<string, WatchedState>> {
@@ -990,6 +1025,7 @@ async function getWatchedCandidates(
 /** Hydrates display rows for an already-ordered id window (the watched
  * path); output preserves the input order. */
 async function fetchRowsByIds(
+  type: LibraryMediaType,
   ids: string[],
   serverIds: string[] | undefined,
   scope: Scope,
@@ -1004,7 +1040,7 @@ async function fetchRowsByIds(
     WHERE m.id = ANY(${uuidArraySql(ids)})
   )`;
   const result = await db.execute(
-    withRowDecorations(pageCte, serverFragmentLi, posterOrderFragment)
+    withRowDecorations(type, pageCte, serverFragmentLi, posterOrderFragment)
   );
   const byId = new Map((result.rows as unknown as RawCatalogRow[]).map((row) => [row.id, row]));
   return ids.map((id) => byId.get(id)).filter((row): row is RawCatalogRow => row !== undefined);
@@ -1023,6 +1059,26 @@ export function pickBestResolution(servers: { videoResolution: string | null }[]
   return best;
 }
 
+/** Proxy URL and cache version for one copy's art; both null when it has none. */
+export function posterFor(
+  serverId: string | null | undefined,
+  thumbPath: string | null | undefined,
+  size: { width: number; height: number } = POSTER_IMAGE_SIZE
+): Pick<CatalogRow, 'posterUrl' | 'posterVersion'> {
+  const posterVersion = thumbPath ? posterVersionFor(thumbPath) : null;
+  const posterUrl =
+    thumbPath && serverId && posterVersion
+      ? buildProxyUrl({
+          serverId,
+          path: thumbPath,
+          ...size,
+          version: posterVersion,
+          fallback: 'poster',
+        })
+      : null;
+  return { posterUrl, posterVersion };
+}
+
 function toCatalogRow(
   row: RawCatalogRow,
   watchedState: WatchedState,
@@ -1031,17 +1087,6 @@ function toCatalogRow(
 ): CatalogRow {
   const servers = row.servers ?? [];
   const poster = row.poster_copy;
-  const posterVersion = poster?.thumbPath ? posterVersionFor(poster.thumbPath) : null;
-  const posterUrl =
-    poster?.thumbPath && poster.serverId && posterVersion
-      ? buildProxyUrl({
-          serverId: poster.serverId,
-          path: poster.thumbPath,
-          ...POSTER_IMAGE_SIZE,
-          version: posterVersion,
-          fallback: 'poster',
-        })
-      : null;
 
   return {
     mediaId: row.id,
@@ -1049,13 +1094,12 @@ function toCatalogRow(
     title: row.title,
     year: row.year,
     genres: row.genres ?? [],
-    posterUrl,
-    posterVersion,
+    ...posterFor(poster?.serverId, poster?.thumbPath, posterSizeFor(row.media_type)),
     dominantColor: poster?.dominantColor ?? null,
     servers,
     resolutionBest: pickBestResolution(servers),
     watchedState,
-    watchedStateSelf,
+    ...(row.media_type === 'artist' ? { albumCount: row.album_count ?? 0 } : { watchedStateSelf }),
     plays: engagement.plays,
     viewers: engagement.viewers,
   };
@@ -1105,7 +1149,7 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
     '/catalog',
     { preHandler: [app.requirePermission('media', 'read')] },
     async (request, reply) => {
-      const query = catalogQuerySchema.safeParse(request.query);
+      const query = catalogPageQuerySchema.safeParse(request.query);
       if (!query.success) {
         return reply.badRequest('Invalid query parameters');
       }
@@ -1172,7 +1216,7 @@ export const libraryCatalogRoute: FastifyPluginAsync = async (app) => {
         totalFileSize = candidates.totalFileSize;
         const windowIds = candidates.ids.slice(offset, offset + pageSize);
         const [windowRows, selfEpisodeCounts] = await Promise.all([
-          fetchRowsByIds(windowIds, resolvedIds, request.scope, preferredPosterServerId),
+          fetchRowsByIds(type, windowIds, resolvedIds, request.scope, preferredPosterServerId),
           type === 'show'
             ? fetchEpisodeCounts(windowIds, resolvedIds)
             : Promise.resolve(new Map<string, number>()),
