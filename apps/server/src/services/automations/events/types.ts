@@ -143,6 +143,21 @@ export interface AccountTrustChangedEvent extends BaseEvent {
   reason: string | null;
 }
 
+export interface AccountMediaDownloadedEvent extends BaseEvent {
+  type: 'account.media_downloaded';
+  server: EvaluationServer;
+  serverUser: EvaluationServerUser;
+  session: null;
+  download: {
+    title: string;
+    app: string | null;
+    device: string | null;
+    /** Across the person's accounts on every server, and on this event's server alone. */
+    last24h: number;
+    last24hOnServer: number;
+  };
+}
+
 interface MediaEventBase extends BaseEvent {
   server: EvaluationServer;
   media: MediaSubject;
@@ -211,6 +226,7 @@ export type RuleEvent =
   | AccountInactiveForEvent
   | AccountNewDeviceEvent
   | AccountTrustChangedEvent
+  | AccountMediaDownloadedEvent
   | MediaAddedEvent
   | MediaUpgradedEvent
   | ServerDownEvent

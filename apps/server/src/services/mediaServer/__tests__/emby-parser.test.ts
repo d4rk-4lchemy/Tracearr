@@ -19,6 +19,8 @@ import {
   parseWatchHistoryResponse,
   parseActivityLogItem,
   parseActivityLogResponse,
+  parseSyncJobItems,
+  parseSyncJobs,
 } from '../emby/parser.js';
 import { createAllSharedParserTests } from './shared/jellyfinEmbyParserTests.js';
 
@@ -320,5 +322,94 @@ describe('Emby Parser - transcode progress parity', () => {
     expect(info?.hwDecoding).toBeUndefined();
     expect(info?.hwRequested).toBeUndefined();
     expect(info?.progress).toBe(5);
+  });
+});
+
+describe('sync job parsing', () => {
+  it('reads a sync job with its numeric user and target', () => {
+    expect(
+      parseSyncJobs({
+        Items: [
+          {
+            Id: 1,
+            TargetId: '22D01846-6841-432B-9C71-8CF676E49F0E',
+            TargetName: 'iPhone (Emby for iOS) - connor@example.com',
+            Quality: '1500000',
+            Container: 'mkv',
+            Progress: 100,
+            Name: 'Mentally Divergent',
+            Status: 'Completed',
+            UserId: 1,
+            ItemId: 78146,
+            DateCreated: '2026-10-20T17:11:31.0000000Z',
+            DateLastModified: '2026-10-20T17:13:28.0000000Z',
+          },
+        ],
+        TotalRecordCount: 1,
+      })
+    ).toEqual([
+      {
+        id: 1,
+        userId: '1',
+        itemId: '78146',
+        name: 'Mentally Divergent',
+        targetId: '22D01846-6841-432B-9C71-8CF676E49F0E',
+        targetName: 'iPhone (Emby for iOS) - connor@example.com',
+        quality: '1500000',
+        status: 'Completed',
+        dateCreated: '2026-10-20T17:11:31.0000000Z',
+        dateLastModified: '2026-10-20T17:13:28.0000000Z',
+      },
+    ]);
+  });
+
+  it('reads the delivered file of a synced item, its dimensions from the video stream', () => {
+    const [synced, converting] = parseSyncJobItems({
+      Items: [
+        {
+          Id: 1,
+          JobId: 1,
+          ItemId: 78146,
+          MediaSourceId: 'mediasource_78146',
+          Status: 'Synced',
+          DateCreated: '2026-10-20T17:11:31.0000000Z',
+          MediaSource: {
+            Container: 'mkv',
+            Size: 192015871,
+            Bitrate: 591668,
+            MediaStreams: [
+              { Type: 'Video', Codec: 'h264', Width: 720, Height: 404, BitRate: 591668 },
+              { Type: 'Audio', Codec: 'aac', BitRate: 192000 },
+              { Type: 'Subtitle', Codec: 'subrip' },
+            ],
+          },
+        },
+        {
+          Id: 2,
+          JobId: 1,
+          ItemId: 78147,
+          Status: 'Converting',
+          DateCreated: '2026-10-20T17:12:00Z',
+        },
+      ],
+    });
+
+    expect(synced).toEqual({
+      id: 1,
+      jobId: 1,
+      itemId: '78146',
+      status: 'Synced',
+      dateCreated: '2026-10-20T17:11:31.0000000Z',
+      mediaSource: {
+        size: 192015871,
+        bitrate: 591668,
+        container: 'mkv',
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+        width: 720,
+        height: 404,
+      },
+    });
+    expect(converting).toMatchObject({ id: 2, status: 'Converting', mediaSource: null });
   });
 });

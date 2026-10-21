@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { SQL } from 'drizzle-orm';
 import type {
   Condition,
   Operator,
@@ -8,6 +9,8 @@ import type {
   EngineAutomation,
 } from '@tracearr/shared';
 import type { EvaluatorResult, MediaQuality, SessionEvaluationContext } from '../types.js';
+import { db } from '../../../db/client.js';
+import { queryChain, renderCall, renderSql } from '../../../test/helpers.js';
 import { synthesizeTriggers } from '../triggers.js';
 import {
   evaluatorRegistry,
@@ -17,6 +20,8 @@ import {
   normalizePlatform,
   calculateDistanceKm,
 } from '../evaluators/index.js';
+
+vi.mock('../../../db/client.js', () => ({ db: { select: vi.fn() } }));
 
 // Mock geoipService
 vi.mock('../../geoip.js', () => ({
@@ -1740,6 +1745,91 @@ describe('Session Behavior Evaluators', () => {
       expect(run('lte').matched).toBe(false);
       expect(run('gte').actual).toBeNull();
       expect(run('gte').details).toMatchObject({ neverActive: true });
+    });
+  });
+
+  describe('downloads_in_window', () => {
+    const condition = createCondition({
+      field: 'downloads_in_window',
+      operator: 'gt',
+      value: 5,
+      params: { window_hours: 24 },
+    });
+
+    function counts(n: number) {
+      const chain = queryChain(vi.fn, [{ count: n }]);
+      vi.mocked(db.select).mockReturnValueOnce(chain as never);
+      return chain;
+    }
+
+    it('matches above the threshold and not at it', async () => {
+      const evaluator = evaluatorRegistry.downloads_in_window;
+      counts(6);
+      expect((await evaluator(createTestContext(), condition)).matched).toBe(true);
+      counts(5);
+      const atThreshold = await evaluator(createTestContext(), condition);
+      expect(atThreshold).toMatchObject({ matched: false, actual: 5 });
+    });
+
+    it("counts the identity's accounts when known, else the account alone", async () => {
+      const evaluator = evaluatorRegistry.downloads_in_window;
+      const merged = counts(0);
+      await evaluator(
+        createTestContext({ identityServerUserIds: ['user-1', 'user-2'] }),
+        condition
+      );
+      expect(renderCall(merged).params).toEqual(expect.arrayContaining(['user-1', 'user-2']));
+
+      const alone = counts(0);
+      await evaluator(createTestContext(), condition);
+      const where = renderCall(alone);
+      expect(where.params).toContain('user-1');
+      expect(where.params).not.toContain('user-2');
+      expect(where.text).not.toContain('media_downloads.server_id');
+    });
+
+    it('narrows to the server a server-scoped rule names', async () => {
+      const chain = counts(0);
+      await evaluatorRegistry.downloads_in_window(
+        createTestContext({ rule: createMockRule({ serverId: 'server-9' }) }),
+        condition
+      );
+      const where = renderCall(chain);
+      expect(where.text).toContain('media_downloads.server_id =');
+      expect(where.params).toContain('server-9');
+    });
+  });
+
+  describe('download_bytes_in_window', () => {
+    const GB = 1024 ** 3;
+    const condition = createCondition({
+      field: 'download_bytes_in_window',
+      operator: 'gt',
+      value: 50,
+      params: { window_hours: 24 },
+    });
+
+    function bytes(n: number) {
+      const chain = queryChain(vi.fn, [{ bytes: n }]);
+      vi.mocked(db.select).mockReturnValueOnce(chain as never);
+      return chain;
+    }
+
+    it('compares the summed gigabytes, delivered size first, null sizes and converted pulls without a delivered size counting zero', async () => {
+      const evaluator = evaluatorRegistry.download_bytes_in_window;
+      const chain = bytes(60 * GB);
+      expect(await evaluator(createTestContext(), condition)).toMatchObject({
+        matched: true,
+        actual: 60,
+      });
+      const fields = vi.mocked(db.select).mock.calls.at(-1)?.[0] as { bytes: SQL };
+      expect(renderSql(fields.bytes).sql).toBe(
+        "coalesce(sum(coalesce(media_downloads.delivered_bytes, case when media_downloads.source = 'jellyfin_transcode' then null else media_downloads.file_size_bytes end)), 0)"
+      );
+      expect(renderCall(chain).text).toContain('media_downloads.first_seen_at >=');
+
+      bytes(40 * GB);
+      expect((await evaluator(createTestContext(), condition)).matched).toBe(false);
     });
   });
 

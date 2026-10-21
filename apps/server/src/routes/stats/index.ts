@@ -11,6 +11,7 @@ import { qualityRoutes } from './quality.js';
 import { concurrentRoutes } from './concurrent.js';
 import { meRoutes } from './me.js';
 import { peopleRoutes } from './people.js';
+import { downloadsRoutes } from './downloads.js';
 
 export const statsRoutes: FastifyPluginAsync = async (app) => {
   // Register all sub-route plugins
@@ -27,6 +28,7 @@ export const statsRoutes: FastifyPluginAsync = async (app) => {
   await app.register(concurrentRoutes);
   await app.register(meRoutes);
   await app.register(peopleRoutes);
+  await app.register(downloadsRoutes);
 };
 
 // Re-export utilities for potential use by other modules

@@ -19,6 +19,7 @@ export {
   useDeviceCompatibilityMatrix,
   useDeviceHealth,
   useTranscodeHotspots,
+  useDownloadsStats,
   // Bandwidth stats
   useBandwidthDaily,
   useBandwidthSummary,
@@ -54,6 +55,7 @@ export {
   useUserFull,
   useUserRangeStats,
   useUserSessions,
+  useUserDownloads,
   useUpdateUser,
   useUpdateUserIdentity,
   useUpdateUserAccess,

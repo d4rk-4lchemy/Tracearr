@@ -191,11 +191,16 @@ function gateFor(args: RecordRunArgs): SQL | undefined {
       completed
     );
   }
-  // The hourly account path is level-triggered: any completed row for the pair blocks, forever.
+  // Inactivity is a standing state, so any completed row for the pair blocks it forever;
+  // re-arming would re-record it every hour after an acknowledge. A download burst is an
+  // event and re-arms the way a session does.
   return and(
     eq(automationRuns.automationId, automation.id),
     eq(automationRuns.serverUserId, scope.serverUserId),
     eq(automationRuns.kind, 'policy'),
+    trigger.type === 'account.media_downloaded'
+      ? or(isNull(automationRuns.acknowledgedAt), isNotNull(automationRuns.dismissedAt))
+      : undefined,
     completed
   );
 }

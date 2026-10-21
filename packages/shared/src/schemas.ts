@@ -801,6 +801,8 @@ export const statsQuerySchema = statsQueryObjectSchema
     message: dateValidationRefinements.startBeforeEnd.message,
   });
 
+export const downloadsListQuerySchema = statsQuerySchema.safeExtend(paginationSchema.shape);
+
 export const PLAYS_MEDIA_GROUPS = ['movie', 'show', 'music', 'live'] as const;
 export type PlaysMediaGroup = (typeof PLAYS_MEDIA_GROUPS)[number];
 

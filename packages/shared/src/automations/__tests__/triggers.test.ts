@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  NOTIFICATION_ONLY_TRIGGERS,
   TRIGGERS,
   TRIGGER_GROUPS,
   TRIGGER_TYPES,
@@ -62,6 +63,16 @@ describe('trigger contexts', () => {
     // An automation on both renders whichever fired, so it keeps only the shared names
     expect(variablesFor([started, newDevice])).not.toContain('session.episodeNumber');
     expect(variablesFor([started, newDevice])).toContain('session.mediaTitle');
+  });
+});
+
+describe('download trigger', () => {
+  it('sits in the account context under accounts and may record a violation', () => {
+    expect(TRIGGER_TYPES).toContain('account.media_downloaded');
+    expect(TRIGGERS['account.media_downloaded'].context).toBe('account');
+    expect(TRIGGERS['account.media_downloaded'].group).toBe('accounts');
+    expect(TRIGGERS['account.media_downloaded'].variables).toContain('download.last24h');
+    expect(NOTIFICATION_ONLY_TRIGGERS).not.toContain('account.media_downloaded');
   });
 });
 

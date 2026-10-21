@@ -67,6 +67,53 @@ export interface PluginSessionEvent {
 const LIBRARY_ADDED_EVENT = 'library.item.added';
 const LIBRARY_REMOVED_EVENT = 'library.item.removed';
 
+// Plugin v0.6+: one event per activity log download entry. The payload is informational;
+// the activity log stays the source of truth, so this only makes the download poll immediate.
+const DOWNLOAD_EVENT = 'library.item.downloaded';
+
+// Plugin Jellyfin builds: a device pulled a transcode without playing it for 20 s. Null fields
+// are omitted from the JSON.
+const TRANSCODE_PULL_EVENT = 'download.transcoded';
+
+export interface PluginTranscodePullEvent {
+  phase: 'started' | 'ended';
+  userId: string;
+  deviceId: string;
+  itemId: string | null;
+  bitrate: number | null;
+  width: number | null;
+  height: number | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  container: string | null;
+  bytesTranscoded: number | null;
+  completionPercentage: number | null;
+}
+
+function parseTranscodePullEvent(data: string): PluginTranscodePullEvent | null {
+  const raw = JSON.parse(data) as Record<string, unknown>;
+  const text = (key: string) => (typeof raw[key] === 'string' ? raw[key] : null);
+  const number = (key: string) => (typeof raw[key] === 'number' ? raw[key] : null);
+  const phase = raw.phase;
+  const userId = text('userId');
+  const deviceId = text('deviceId');
+  if ((phase !== 'started' && phase !== 'ended') || !userId || !deviceId) return null;
+  return {
+    phase,
+    userId,
+    deviceId,
+    itemId: text('itemId'),
+    bitrate: number('bitrate'),
+    width: number('width'),
+    height: number('height'),
+    videoCodec: text('videoCodec'),
+    audioCodec: text('audioCodec'),
+    container: text('container'),
+    bytesTranscoded: number('bytesTranscoded'),
+    completionPercentage: number('completionPercentage'),
+  };
+}
+
 export interface PluginLibraryEvent {
   type: 'added' | 'removed';
   itemId: string | null;
@@ -87,6 +134,8 @@ export interface JellyfinEmbyEventSourceEvents {
   'session:event': PluginSessionEvent;
   'library:event': PluginLibraryEvent;
   'stats:event': PluginServerStats;
+  'download:event': Record<string, never>;
+  'download:transcoded': PluginTranscodePullEvent;
   'connection:state': SSEConnectionState;
   'connection:error': Error;
 }
@@ -117,6 +166,8 @@ export class JellyfinEmbyEventSource extends EventEmitter {
   private pingListener: ((e: EventSourceMessage) => void) | null = null;
   private helloListener: ((ev: EventSourceMessage) => void) | null = null;
   private statsListener: ((e: EventSourceMessage) => void) | null = null;
+  private downloadListener: ((e: EventSourceMessage) => void) | null = null;
+  private transcodePullListener: ((e: EventSourceMessage) => void) | null = null;
   private errorListener: ((e: Event) => void) | null = null;
 
   constructor(config: {
@@ -264,6 +315,22 @@ export class JellyfinEmbyEventSource extends EventEmitter {
       this.libraryAddedListener = handleLibraryEvent('added');
       this.libraryRemovedListener = handleLibraryEvent('removed');
       this.statsListener = handleStatsEvent;
+      this.downloadListener = () => {
+        this.lastEventTime = new Date();
+        this.resetHeartbeatMonitor();
+        this.emit('download:event', {});
+      };
+      this.transcodePullListener = (ev: EventSourceMessage) => {
+        this.lastEventTime = new Date();
+        this.resetHeartbeatMonitor();
+        if (!ev.data) return;
+        try {
+          const event = parseTranscodePullEvent(ev.data);
+          if (event) this.emit('download:transcoded', event);
+        } catch {
+          // malformed payload - the sessions poll still sees the pull
+        }
+      };
       this.pingListener = () => {
         this.lastEventTime = new Date();
         this.resetHeartbeatMonitor();
@@ -306,6 +373,8 @@ export class JellyfinEmbyEventSource extends EventEmitter {
       this.eventSource.addEventListener(LIBRARY_ADDED_EVENT, this.libraryAddedListener);
       this.eventSource.addEventListener(LIBRARY_REMOVED_EVENT, this.libraryRemovedListener);
       this.eventSource.addEventListener(SERVER_STATS_EVENT, this.statsListener);
+      this.eventSource.addEventListener(DOWNLOAD_EVENT, this.downloadListener);
+      this.eventSource.addEventListener(TRANSCODE_PULL_EVENT, this.transcodePullListener);
       this.eventSource.addEventListener('ping', this.pingListener);
       this.eventSource.addEventListener('hello', this.helloListener);
     } catch (error) {
@@ -351,6 +420,12 @@ export class JellyfinEmbyEventSource extends EventEmitter {
     if (this.statsListener) {
       this.eventSource.removeEventListener(SERVER_STATS_EVENT, this.statsListener);
     }
+    if (this.downloadListener) {
+      this.eventSource.removeEventListener(DOWNLOAD_EVENT, this.downloadListener);
+    }
+    if (this.transcodePullListener) {
+      this.eventSource.removeEventListener(TRANSCODE_PULL_EVENT, this.transcodePullListener);
+    }
     if (this.pingListener) {
       this.eventSource.removeEventListener('ping', this.pingListener);
     }
@@ -363,6 +438,9 @@ export class JellyfinEmbyEventSource extends EventEmitter {
     this.openListener = null;
     this.libraryAddedListener = null;
     this.libraryRemovedListener = null;
+    this.statsListener = null;
+    this.downloadListener = null;
+    this.transcodePullListener = null;
     this.pingListener = null;
     this.helloListener = null;
     this.errorListener = null;

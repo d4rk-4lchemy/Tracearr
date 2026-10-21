@@ -113,6 +113,7 @@ export function edgeKeyOf(event: ContextEvaluatingEvent, node: TriggerNode | nul
     case 'account.trust_changed':
       return `${String(event.previous)}->${String(event.next)}`;
     case 'session.stopped':
+    case 'account.media_downloaded':
     case 'server.down':
     case 'server.up':
       return event.at.toISOString();
@@ -293,7 +294,11 @@ function sessionRules(marker?: Record<string, true>, fresh?: boolean) {
   };
 }
 
-const ACCOUNT_TRIGGERS = ['account.inactive_for', 'account.trust_changed'] as const;
+const ACCOUNT_TRIGGERS = [
+  'account.inactive_for',
+  'account.trust_changed',
+  'account.media_downloaded',
+] as const;
 
 const MEDIA_TRIGGERS = ['media.added', 'media.upgraded'] as const;
 

@@ -4,6 +4,7 @@ import {
   Globe,
   Mail,
   MessageSquare,
+  Send,
   Share2,
   Smartphone,
   Webhook,
@@ -18,6 +19,7 @@ const ICONS: Record<string, LucideIcon> = {
   Smartphone,
   Globe,
   Mail,
+  Send,
 };
 
 export function iconFor(kind: DestinationKind): LucideIcon {

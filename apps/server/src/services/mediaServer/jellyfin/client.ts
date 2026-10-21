@@ -24,6 +24,7 @@ import {
   parseLibraryItemsResponse,
   parseUser,
 } from './parser.js';
+import type { DeviceSession } from '../shared/jellyfinEmbyParser.js';
 
 // Re-export types with platform-specific aliases for backward compatibility
 export type JellyfinActivityEntry = JellyfinEmbyActivityEntry;
@@ -75,6 +76,10 @@ export class JellyfinClient extends BaseMediaServerClient {
     });
 
     return parseActivityLogResponse(data);
+  }
+
+  override async getTranscodePullSessions(): Promise<DeviceSession[]> {
+    return this.getDeviceSessions();
   }
 
   // ==========================================================================

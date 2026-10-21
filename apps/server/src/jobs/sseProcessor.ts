@@ -18,6 +18,7 @@ import { db } from '../db/client.js';
 import { servers, serverUserExternalAliases, serverUsers, sessions, users } from '../db/schema.js';
 import { getGeoIPSettings } from '../routes/settings.js';
 import type { CacheService, PubSubService } from '../services/cache.js';
+import { pollAllDownloads } from '../services/downloads/activityLogPoll.js';
 import { createMediaServerClient } from '../services/mediaServer/index.js';
 import { isLiveServer, liveServers } from '../services/liveServers.js';
 import { extractLiveUuid } from '../services/mediaServer/plex/plexUtils.js';
@@ -753,6 +754,7 @@ async function handleProgress(event: {
 async function handleReconciliation(): Promise<void> {
   sseLogger.debug('Triggering reconciliation poll');
   await triggerReconciliationPoll();
+  await pollAllDownloads();
 
   // Run maintenance tasks during reconciliation
   await sweepOrphanedPendingSessions();

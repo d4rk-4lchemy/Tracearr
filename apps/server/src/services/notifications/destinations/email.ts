@@ -3,13 +3,11 @@ import { UnrecoverableError } from 'bullmq';
 import {
   DESTINATION_TEXT_PROFILES,
   DESTINATION_TYPES,
-  POSTER_IMAGE_SIZE,
   addressList,
   escapeFor,
   type EmailBrandingSettings,
 } from '@tracearr/shared';
 import { renderEvent, renderTest, type EventCard, type EventEmailInput } from '@tracearr/emails';
-import { proxyImage } from '../../imageProxy.js';
 import { getNetworkSettings } from '../../settings.js';
 import { resolveEmailBranding } from '../emailBranding.js';
 import { readLogoPng } from '../emailLogo.js';
@@ -27,6 +25,7 @@ import {
   type SmtpConfig,
 } from './emailTransport.js';
 import { fitted, ownText, textOf } from './overrides.js';
+import { fetchPoster, posterFilename } from './poster.js';
 import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
 import type { NotificationEvent } from '../events.js';
 import type { MediaAddedContext, MediaUpgradedContext, NotificationPayload } from '../types.js';
@@ -56,13 +55,6 @@ export interface EmailMessage {
   attachments: EmailAttachment[];
 }
 
-const POSTER_EXTENSIONS: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-};
-
 const PROFILE = DESTINATION_TEXT_PROFILES.email;
 
 const NO_ALERT_RECIPIENTS =
@@ -88,30 +80,19 @@ function eventLogo(setting: EmailBrandingSettings['logo']): {
   return { ref: attachment ? `cid:${attachment.cid}` : null, attachment };
 }
 
-/** A placeholder svg or a failed fetch means no poster, never a failed send. */
-async function fetchPoster(
+async function posterAttachment(
   serverId: string,
   thumbPath: string | null
 ): Promise<EmailAttachment | null> {
-  if (thumbPath === null || thumbPath === '') return null;
-  try {
-    const result = await proxyImage({
-      serverId,
-      imagePath: thumbPath,
-      ...POSTER_IMAGE_SIZE,
-      fallback: 'poster',
-    });
-    if (!result.contentType.startsWith('image/') || result.contentType.includes('svg')) return null;
-    const base = result.contentType.split(';')[0]?.trim() ?? '';
-    return {
-      filename: `poster.${POSTER_EXTENSIONS[base] ?? 'jpg'}`,
-      cid: 'poster',
-      content: result.data,
-      contentType: result.contentType,
-    };
-  } catch {
-    return null;
-  }
+  const poster = await fetchPoster(serverId, thumbPath);
+  return poster
+    ? {
+        filename: posterFilename(poster.contentType),
+        cid: 'poster',
+        content: poster.data,
+        contentType: poster.contentType,
+      }
+    : null;
 }
 
 function qualityLines(ctx: MediaAddedContext | MediaUpgradedContext): string[] {
@@ -238,7 +219,7 @@ async function build(event: NotificationEvent, ctx: RenderContext): Promise<Emai
 
   let card: EventCard | null = violationCard(payload);
   if (payload.context.type === 'media_added' || payload.context.type === 'media_upgraded') {
-    const poster = await fetchPoster(payload.context.serverId, payload.context.thumbPath);
+    const poster = await posterAttachment(payload.context.serverId, payload.context.thumbPath);
     if (poster) attachments.push(poster);
     card = await mediaCard(payload.context, poster);
   }

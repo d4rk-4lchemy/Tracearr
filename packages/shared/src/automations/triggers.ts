@@ -136,6 +136,17 @@ export const TRIGGERS = {
     group: 'accounts',
     variables: [...ACCOUNT_VARS, 'trust.previous', 'trust.new', 'trust.reason'],
   },
+  'account.media_downloaded': {
+    context: 'account',
+    group: 'accounts',
+    variables: [
+      ...ACCOUNT_VARS,
+      'download.title',
+      'download.app',
+      'download.device',
+      'download.last24h',
+    ],
+  },
   'media.added': { context: 'media', group: 'library', variables: MEDIA_VARS },
   'media.upgraded': {
     context: 'media',
@@ -186,6 +197,7 @@ export const TRIGGER_INTRODUCED_IN: Partial<Record<TriggerType, string>> = {
   'session.first_seen': '2.3.0',
   'newsletter.sent': '2.3.0',
   'newsletter.failed': '2.3.0',
+  'account.media_downloaded': '3.0.0',
 };
 export const TRIGGER_TYPES = Object.keys(TRIGGERS) as TriggerType[];
 

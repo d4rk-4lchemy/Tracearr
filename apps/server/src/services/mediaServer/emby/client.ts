@@ -7,8 +7,10 @@
  * Based on Emby OpenAPI specification v4.1.1.0
  */
 
+import { REDIS_KEYS } from '@tracearr/shared';
+import { getRedis } from '../../../lib/redisShared.js';
 import { fetchJson, HttpClientError } from '../../../utils/http.js';
-import type { MediaServerAuth } from '../types.js';
+import type { MediaServerAuth, MediaServerConfig } from '../types.js';
 import {
   BaseMediaServerClient,
   type JellyfinEmbyActivityEntry,
@@ -23,8 +25,13 @@ import {
   parseActivityLogResponse,
   parseItemsResponse,
   parseLibraryItemsResponse,
+  parseSyncJobItems,
+  parseSyncJobs,
   parseUser,
 } from './parser.js';
+import type { EmbySyncJob, EmbySyncJobItem } from '../shared/jellyfinEmbyParser.js';
+
+const USER_GUID_TTL_SECONDS = 24 * 60 * 60;
 
 // Re-export types with platform-specific aliases for backward compatibility
 export type EmbyActivityEntry = JellyfinEmbyActivityEntry;
@@ -51,6 +58,13 @@ export class EmbyClient extends BaseMediaServerClient {
     parseUser,
   };
 
+  private readonly cacheScope: string;
+
+  constructor(config: MediaServerConfig) {
+    super(config);
+    this.cacheScope = config.id ?? this.baseUrl;
+  }
+
   // ==========================================================================
   // Emby-Specific: Activity Log (PascalCase query params)
   // ==========================================================================
@@ -76,6 +90,49 @@ export class EmbyClient extends BaseMediaServerClient {
     });
 
     return parseActivityLogResponse(data);
+  }
+
+  // App downloads write no activity entry; they exist only as sync jobs
+  override async getSyncJobs(): Promise<EmbySyncJob[]> {
+    const data = await fetchJson<unknown>(`${this.baseUrl}/Sync/Jobs`, {
+      headers: this.buildHeaders(),
+      service: 'emby',
+      timeout: 10000,
+    });
+    return parseSyncJobs(data);
+  }
+
+  override async getSyncJobItems(): Promise<EmbySyncJobItem[]> {
+    const data = await fetchJson<unknown>(`${this.baseUrl}/Sync/JobItems`, {
+      headers: this.buildHeaders(),
+      service: 'emby',
+      timeout: 10000,
+    });
+    return parseSyncJobItems(data);
+  }
+
+  /**
+   * The activity log names users by Emby's numeric internal id; serverUsers holds the GUID.
+   * A deleted user answers 404 and resolves to null; both outcomes are cached.
+   */
+  override async resolveUserGuid(numericId: string): Promise<string | null> {
+    const redis = getRedis();
+    const key = REDIS_KEYS.EMBY_USER_GUID(this.cacheScope, numericId);
+    const cached = await redis.get(key);
+    if (cached !== null) return cached || null;
+
+    let guid = '';
+    try {
+      const user = await fetchJson<{ Id?: unknown }>(
+        `${this.baseUrl}/Users/${encodeURIComponent(numericId)}`,
+        { headers: this.buildHeaders(), service: 'emby' }
+      );
+      if (typeof user.Id === 'string') guid = user.Id;
+    } catch (error) {
+      if (!(error instanceof HttpClientError && error.statusCode === 404)) throw error;
+    }
+    await redis.set(key, guid, 'EX', USER_GUID_TTL_SECONDS);
+    return guid || null;
   }
 
   // ==========================================================================

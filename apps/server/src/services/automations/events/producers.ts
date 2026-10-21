@@ -1,4 +1,5 @@
 import {
+  TIME_MS,
   WS_EVENTS,
   type EngineAutomation,
   type ServerDownReason,
@@ -7,6 +8,7 @@ import {
 import { getActiveAutomations } from '../../../jobs/poller/database.js';
 import { automationsLogger } from '../../../utils/logger.js';
 import { getPubSubService } from '../../cache.js';
+import { countDownloads } from '../../downloads/queries.js';
 import { isLiveServer } from '../../liveServers.js';
 import {
   assembleEvaluationInputs,
@@ -180,6 +182,52 @@ export async function dispatchTrustChanged(args: {
         previous: args.previous,
         next: args.next,
         reason: args.reason,
+      },
+      context.inputs
+    );
+  });
+}
+
+/** Older rows are the first poll's 24 h seed or a catch-up after downtime: stored, never announced. */
+export const DISPATCH_FRESHNESS_MS = 10 * 60 * 1000;
+
+/** The recorder announces each row it opened; collapsed repeats of the same item never reach here. */
+export async function dispatchMediaDownloaded(args: {
+  serverId: string;
+  serverUserId: string;
+  title: string;
+  app: string | null;
+  device: string | null;
+  firstSeenAt: Date;
+}): Promise<void> {
+  if (Date.now() - args.firstSeenAt.getTime() > DISPATCH_FRESHNESS_MS) return;
+  await guarded('account.media_downloaded', async () => {
+    const rules = await listeningRules('account.media_downloaded');
+    if (!rules) return;
+    const context = await loadEvaluationContext(args.serverId, args.serverUserId, rules);
+    if (!context) return;
+    const identity = context.serverUser.identityServerUserIds;
+    const ids = identity.length > 0 ? identity : [args.serverUserId];
+    const since = new Date(Date.now() - TIME_MS.DAY);
+    // Both counts, so the variable can match whichever one a server-scoped condition read.
+    const [last24h, last24hOnServer] = await Promise.all([
+      countDownloads(ids, since),
+      countDownloads(ids, since, args.serverId),
+    ]);
+    await dispatch(
+      {
+        type: 'account.media_downloaded',
+        at: new Date(),
+        server: context.server,
+        serverUser: context.serverUser,
+        session: null,
+        download: {
+          title: args.title,
+          app: args.app,
+          device: args.device,
+          last24h,
+          last24hOnServer,
+        },
       },
       context.inputs
     );

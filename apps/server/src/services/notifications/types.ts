@@ -480,6 +480,10 @@ function variablesOf(event: NotificationEvent): Record<string, string> {
         durationMinutes: scalar(data.durationMinutes),
         minutes: scalar(data.minutes),
         days: scalar(data.days),
+        'download.title': scalar(data.downloadTitle),
+        'download.app': scalar(data.downloadApp),
+        'download.device': scalar(data.downloadDevice),
+        'download.last24h': scalar(data.downloadsLast24h),
       };
     }
     case 'session_started':

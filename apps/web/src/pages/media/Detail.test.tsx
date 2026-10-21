@@ -746,6 +746,54 @@ describe('MediaDetail page', () => {
     expect(screen.getByRole('heading', { name: 'requests.mediaPanel.title' })).toBeInTheDocument();
   });
 
+  it('shows the downloads panel only when the title has downloads', () => {
+    const base = detailQuery('movie') as { data: Record<string, unknown> };
+    const withDownloads = {
+      ...base,
+      data: {
+        ...base.data,
+        downloads: [
+          {
+            id: 'd-1',
+            serverId: 'srv-1',
+            serverName: 'Server',
+            serverUserId: 'su-1',
+            username: 'agelwarg',
+            identityName: 'Alice',
+            thumbUrl: null,
+            firstSeenAt: '2026-10-19T10:00:00.000Z',
+            lastSeenAt: '2026-10-19T10:00:00.000Z',
+            fileSizeBytes: 1024,
+            deliveredBytes: null,
+            playerName: 'Living room',
+            product: null,
+            platform: null,
+            app: null,
+            device: null,
+          },
+        ],
+      },
+    };
+    mockUseMediaDetail.mockReturnValue(withDownloads as never);
+
+    renderPage();
+
+    expect(screen.getByRole('heading', { name: 'pages:downloads.panelTitle' })).toBeInTheDocument();
+    expect(screen.getByText('Living room')).toBeInTheDocument();
+    expect(screen.getByText('1 KB')).toBeInTheDocument();
+  });
+
+  it('hides the downloads panel when the title has none', () => {
+    const base = detailQuery('movie') as { data: Record<string, unknown> };
+    mockUseMediaDetail.mockReturnValue({ ...base, data: { ...base.data, downloads: [] } } as never);
+
+    renderPage();
+
+    expect(
+      screen.queryByRole('heading', { name: 'pages:downloads.panelTitle' })
+    ).not.toBeInTheDocument();
+  });
+
   it('names the earliest request that is still live in the hero line', () => {
     mockUseMediaDetail.mockReturnValue(detailQuery('movie'));
     mockUseMediaRequests.mockReturnValue(

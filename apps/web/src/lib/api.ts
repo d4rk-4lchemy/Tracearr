@@ -143,6 +143,8 @@ import type {
   LibraryMediaType,
   LibrariesResponse,
   MediaDetailResponse,
+  MediaDownloadRow,
+  DownloadsStats,
   MediaChildrenResponse,
   AlbumDetailResponse,
   MediaStatsResponse,
@@ -913,6 +915,12 @@ class ApiClient {
       );
       return response.data;
     },
+    downloads: (id: string, params?: { page?: number; pageSize?: number; scope?: 'identity' }) => {
+      const query = new URLSearchParams(params as Record<string, string>).toString();
+      return this.request<{ data: MediaDownloadRow[]; total: number }>(
+        `/users/${id}/downloads?${query}`
+      );
+    },
     terminations: (
       id: string,
       params?: { page?: number; pageSize?: number; scope?: 'identity' }
@@ -1244,6 +1252,11 @@ class ApiClient {
       if (opts.pageSize) params.set('pageSize', String(opts.pageSize));
       if (opts.search) params.set('search', opts.search);
       return this.request<PeopleResponse>(`/stats/people?${params.toString()}`);
+    },
+    downloads: (timeRange: StatsTimeRange, serverIds: string[] | undefined, page = 1) => {
+      const params = this.buildStatsParamsMulti(timeRange, serverIds);
+      params.set('page', String(page));
+      return this.request<DownloadsStats>(`/stats/downloads?${params.toString()}`);
     },
     plays: async (timeRange?: StatsTimeRange, serverIds?: string[], groupBy?: PlaysGroupBy) => {
       const params = this.buildStatsParamsMulti(timeRange ?? { period: 'week' }, serverIds);

@@ -15,6 +15,7 @@ import { EditUserIdentityDialog } from '@/components/users/EditUserIdentityDialo
 import { getPersonRemovedState } from '@/components/users/removedStatus';
 import { applyUserDetailScope, getUserDetailScope } from '@/components/users/userDetailScope';
 import { AccessTab } from '@/components/users/detail/AccessTab';
+import { DOWNLOADS_PAGE_SIZE, DownloadsTab } from '@/components/users/detail/DownloadsTab';
 import { OverviewTab } from '@/components/users/detail/OverviewTab';
 import { SessionsTab } from '@/components/users/detail/SessionsTab';
 import { UserDetailHeader } from '@/components/users/detail/UserDetailHeader';
@@ -23,6 +24,7 @@ import { ViolationsTab } from '@/components/users/detail/ViolationsTab';
 import {
   useRequestsConfigured,
   useSplitServerUser,
+  useUserDownloads,
   useUserFull,
   useUserRangeStats,
 } from '@/hooks/queries';
@@ -32,7 +34,7 @@ import { useServer } from '@/hooks/useServer';
 import { useTimeRange } from '@/hooks/useTimeRange';
 import { api } from '@/lib/api';
 
-const TABS = ['overview', 'sessions', 'requests', 'violations', 'access'] as const;
+const TABS = ['overview', 'sessions', 'requests', 'violations', 'downloads', 'access'] as const;
 type UserDetailTab = (typeof TABS)[number];
 
 // Shares the requests card's first-page query, so the tab count costs no extra request.
@@ -106,6 +108,11 @@ export function UserDetail() {
   );
   const requests = useUserRequests(effectiveId, { scope: identityScope, ...REQUESTS_FIRST_PAGE });
   const requestsConfigured = useRequestsConfigured().data?.configured ?? false;
+  const downloads = useUserDownloads(effectiveId, {
+    page: 1,
+    pageSize: DOWNLOADS_PAGE_SIZE,
+    scope: identityScope,
+  });
 
   if (isLoading) {
     return (
@@ -152,6 +159,7 @@ export function UserDetail() {
     : getPersonRemovedState(identity.serverUsers);
 
   const requestsTotal = requests.data?.total ?? 0;
+  const downloadsTotal = downloads.data?.total ?? 0;
   const tabs: { value: UserDetailTab; label: string; count?: number }[] = [
     { value: 'overview', label: t('nav:overview') },
     { value: 'sessions', label: t('common:labels.sessions'), count: fullData.sessions.total },
@@ -159,6 +167,15 @@ export function UserDetail() {
       ? [{ value: 'requests' as const, label: t('nav:requests'), count: requestsTotal }]
       : []),
     { value: 'violations', label: t('nav:violations'), count: fullData.violations.total },
+    ...(downloadsTotal > 0
+      ? [
+          {
+            value: 'downloads' as const,
+            label: t('pages:userDetail.tabs.downloads'),
+            count: downloadsTotal,
+          },
+        ]
+      : []),
     ...(isOwner || isMergedIdentity
       ? [{ value: 'access' as const, label: t('pages:userDetail.tabs.access') }]
       : []),
@@ -237,6 +254,14 @@ export function UserDetail() {
             serverUserId={effectiveId}
             identityUserId={identity.userId}
             isSpecificServerScope={isSpecificServerScope}
+            scope={identityScope}
+            showServer={showServer}
+          />
+        </TabsContent>
+        <TabsContent value="downloads">
+          <DownloadsTab
+            key={panelKey}
+            userId={effectiveId}
             scope={identityScope}
             showServer={showServer}
           />

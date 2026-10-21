@@ -17,9 +17,11 @@
 import { EventEmitter } from 'events';
 import {
   SSE_CONFIG,
+  type PlexActivityNotification,
   type PlexSSENotification,
   type PlexPlaySessionNotification,
   type PlexTimelineEntry,
+  type PlexTranscodeNotification,
   type SSEConnectionState,
 } from '@tracearr/shared';
 import { plexHeaders } from '../../../utils/http.js';
@@ -35,6 +37,9 @@ const TIMELINE_STATE_DELETED = 9;
 
 // Re-probe cadence once the reconnect budget is spent; polling covers data meanwhile
 const FALLBACK_RETRY_MS = 3 * 60 * 1000;
+
+// A download start whose 'ended' never arrived is dropped after this
+const DOWNLOAD_START_TTL_MS = 60 * 60 * 1000;
 
 // EventSource types for Node.js (using eventsource package)
 interface EventSourceMessage {
@@ -64,6 +69,18 @@ interface EventSource {
   removeEventListener(type: string, listener: (ev: EventSourceMessage) => void): void;
 }
 
+/** A finished download-to-file transcode: Plex converts an app download before the transfer starts */
+export interface StaticTranscode {
+  key: string;
+  size: number;
+  /** ms */
+  duration: number;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  container: string | null;
+  at: Date;
+}
+
 // Event types emitted by PlexEventSource
 export interface PlexEventSourceEvents {
   'session:playing': PlexPlaySessionNotification;
@@ -72,6 +89,17 @@ export interface PlexEventSourceEvents {
   'session:progress': PlexPlaySessionNotification;
   'library:added': { ratingKey: string };
   'library:removed': { ratingKey: string };
+  'download:ended': {
+    userId: string;
+    ratingKey: string;
+    title: string;
+    partId: string | null;
+    /** The client's clientIdentifier; null for a web or raw download */
+    deviceId: string | null;
+    /** Null when the stream connected after the activity started */
+    startedAt: Date | null;
+  };
+  'transcode:static:ended': StaticTranscode;
   'connection:state': SSEConnectionState;
   'connection:error': Error;
 }
@@ -107,12 +135,15 @@ export class PlexEventSource extends EventEmitter {
   private lastEventTime: Date | null = null;
   private connectedAt: Date | null = null;
   private lastError: Error | null = null;
+  private readonly downloadStarts = new Map<string, Date>();
 
   // close() doesn't remove addEventListener listeners, so we track refs for manual cleanup
   private messageListener: ((e: EventSourceMessage) => void) | null = null;
   private playingListener: ((e: EventSourceMessage) => void) | null = null;
   private notificationListener: ((e: EventSourceMessage) => void) | null = null;
   private timelineListener: ((e: EventSourceMessage) => void) | null = null;
+  private activityListener: ((e: EventSourceMessage) => void) | null = null;
+  private transcodeEndListener: ((e: EventSourceMessage) => void) | null = null;
   private pingListener: ((e: EventSourceMessage) => void) | null = null;
 
   constructor(config: { serverId: string; serverName: string; url: string; token: string }) {
@@ -207,6 +238,8 @@ export class PlexEventSource extends EventEmitter {
       // event 'timeline' or folds it into 'notification'; handleMessage checks
       // both shapes, so this listener is a best-effort extra, not a requirement
       this.timelineListener = (event: EventSourceMessage) => this.handleMessage(event);
+      this.activityListener = (event: EventSourceMessage) => this.handleMessage(event);
+      this.transcodeEndListener = (event: EventSourceMessage) => this.handleMessage(event);
       this.pingListener = (_event: EventSourceMessage) => this.resetHeartbeatMonitor();
 
       // eventsource v4 requires addEventListener instead of onmessage
@@ -215,6 +248,8 @@ export class PlexEventSource extends EventEmitter {
       this.eventSource.addEventListener('playing', this.playingListener);
       this.eventSource.addEventListener('notification', this.notificationListener);
       this.eventSource.addEventListener('timeline', this.timelineListener);
+      this.eventSource.addEventListener('activity', this.activityListener);
+      this.eventSource.addEventListener('transcodeSession.end', this.transcodeEndListener);
 
       // Plex sends ping events every 10 seconds as keepalive
       this.eventSource.addEventListener('ping', this.pingListener);
@@ -269,6 +304,12 @@ export class PlexEventSource extends EventEmitter {
     if (this.timelineListener) {
       this.eventSource.removeEventListener('timeline', this.timelineListener);
     }
+    if (this.activityListener) {
+      this.eventSource.removeEventListener('activity', this.activityListener);
+    }
+    if (this.transcodeEndListener) {
+      this.eventSource.removeEventListener('transcodeSession.end', this.transcodeEndListener);
+    }
     if (this.pingListener) {
       this.eventSource.removeEventListener('ping', this.pingListener);
     }
@@ -279,7 +320,10 @@ export class PlexEventSource extends EventEmitter {
     this.playingListener = null;
     this.notificationListener = null;
     this.timelineListener = null;
+    this.activityListener = null;
+    this.transcodeEndListener = null;
     this.pingListener = null;
+    this.downloadStarts.clear();
   }
 
   /**
@@ -313,6 +357,18 @@ export class PlexEventSource extends EventEmitter {
         for (const entry of Array.isArray(entries) ? entries : [entries]) {
           this.handleTimelineEntry(entry);
         }
+        return;
+      }
+
+      // Named 'activity' events carry one unwrapped notification; userID and subtitle are filled on 'ended'
+      if ('ActivityNotification' in data && !('NotificationContainer' in data)) {
+        this.handleActivityNotification(data.ActivityNotification as PlexActivityNotification);
+        return;
+      }
+
+      // Named 'transcodeSession.end' events carry one unwrapped session
+      if ('TranscodeSession' in data && !('NotificationContainer' in data)) {
+        this.handleTranscodeEnded(data.TranscodeSession as PlexTranscodeNotification);
         return;
       }
 
@@ -382,6 +438,46 @@ export class PlexEventSource extends EventEmitter {
     } else if (entry.state === TIMELINE_STATE_ADDED) {
       this.emit('library:added', { ratingKey });
     }
+  }
+
+  private handleActivityNotification(notification: PlexActivityNotification): void {
+    const { Activity: activity } = notification;
+    if (activity.type !== 'media.download') return;
+    const now = new Date();
+    for (const [uuid, startedAt] of this.downloadStarts) {
+      if (now.getTime() - startedAt.getTime() > DOWNLOAD_START_TTL_MS)
+        this.downloadStarts.delete(uuid);
+    }
+    if (notification.event === 'started') {
+      this.downloadStarts.set(notification.uuid, now);
+      return;
+    }
+    if (notification.event !== 'ended') return;
+    const startedAt = this.downloadStarts.get(notification.uuid) ?? null;
+    this.downloadStarts.delete(notification.uuid);
+    const ratingKey = activity.Context?.metadataID;
+    if (!ratingKey) return;
+    this.emit('download:ended', {
+      userId: String(activity.userID),
+      ratingKey,
+      title: activity.subtitle,
+      partId: activity.Context?.partID || null,
+      deviceId: activity.Context?.deviceID || null,
+      startedAt,
+    });
+  }
+
+  private handleTranscodeEnded(transcode: PlexTranscodeNotification): void {
+    if (!transcode.complete || transcode.context !== 'static') return;
+    this.emit('transcode:static:ended', {
+      key: transcode.key,
+      size: transcode.size,
+      duration: transcode.duration,
+      videoCodec: transcode.videoCodec || null,
+      audioCodec: transcode.audioCodec || null,
+      container: transcode.container || null,
+      at: new Date(),
+    });
   }
 
   /**

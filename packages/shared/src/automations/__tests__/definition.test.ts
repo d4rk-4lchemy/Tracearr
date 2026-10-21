@@ -37,8 +37,8 @@ const base = {
 };
 
 describe('catalog', () => {
-  it('has eighteen triggers with a context and a group', () => {
-    expect(TRIGGER_TYPES).toHaveLength(18);
+  it('has nineteen triggers with a context and a group', () => {
+    expect(TRIGGER_TYPES).toHaveLength(19);
     for (const t of TRIGGER_TYPES)
       expect(TRIGGERS[t].context).toMatch(/session|account|media|server|install/);
     expect(TRIGGERS['server.down'].context).toBe('server');
@@ -55,8 +55,8 @@ describe('catalog', () => {
     expect(TRIGGERS['newsletter.failed'].context).toBe('install');
     expect(TRIGGERS['newsletter.failed'].group).toBe('notifications');
   });
-  it('has 36 condition fields each with requires and operators', () => {
-    expect(Object.keys(CONDITION_FIELDS)).toHaveLength(36);
+  it('has 38 condition fields each with requires and operators', () => {
+    expect(Object.keys(CONDITION_FIELDS)).toHaveLength(38);
     expect(CONDITION_FIELDS.server_id.requires).toBe('server');
     expect(CONDITION_FIELDS.inactive_days.requires).toBe('account');
     expect(CONDITION_FIELDS.is_transcoding.requires).toBe('session');
@@ -366,6 +366,8 @@ describe('definition refinements', () => {
   it('offers a trust trigger its account fields and a device trigger the session ones', () => {
     expect(fieldsAvailableFor(contextOf([trustChanged]))).toEqual([
       'inactive_days',
+      'downloads_in_window',
+      'download_bytes_in_window',
       'user_id',
       'trust_score',
       'account_age_days',

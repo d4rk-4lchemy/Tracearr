@@ -16,6 +16,8 @@ import {
   parseLibraryItemsResponse,
   parseLibraryItem,
   parseItem,
+  parseDeviceSessions,
+  parseItemMediaSources,
 } from '../jellyfinEmbyParser.js';
 
 describe('Live TV EPG normalization contract', () => {
@@ -1221,3 +1223,99 @@ function twoSourcesFixture() {
     },
   ];
 }
+
+describe('download enrichment parsing', () => {
+  it('keeps idle device sessions from a raw /Sessions response', () => {
+    expect(
+      parseDeviceSessions([
+        {
+          UserId: '171eb71d15f048d9bf4757336999d2eb',
+          Client: 'Emby for iOS',
+          DeviceName: 'iPhone',
+          DeviceId: '22D01846-6841-432B-9C71-8CF676E49F0E',
+          RemoteEndPoint: '192.168.50.238',
+          TranscodingInfo: {
+            Bitrate: 1500000,
+            Width: 1280,
+            Height: 720,
+            VideoCodec: 'h264',
+            AudioCodec: 'aac',
+            Container: 'mp4',
+            CompletionPercentage: null,
+          },
+        },
+        {
+          Client: 'Tracearr',
+          DeviceName: 'Tracearr Server',
+          DeviceId: 'tracearr-server',
+          NowPlayingItem: { Id: 'bf01da2708ae716a7d2bd441376de12f' },
+        },
+      ])
+    ).toEqual([
+      {
+        userId: '171eb71d15f048d9bf4757336999d2eb',
+        deviceId: '22D01846-6841-432B-9C71-8CF676E49F0E',
+        client: 'Emby for iOS',
+        deviceName: 'iPhone',
+        remoteEndPoint: '192.168.50.238',
+        nowPlaying: false,
+        transcoding: {
+          bitrate: 1500000,
+          width: 1280,
+          height: 720,
+          videoCodec: 'h264',
+          audioCodec: 'aac',
+          container: 'mp4',
+          completionPercentage: null,
+        },
+      },
+      {
+        userId: null,
+        deviceId: 'tracearr-server',
+        client: 'Tracearr',
+        deviceName: 'Tracearr Server',
+        remoteEndPoint: null,
+        nowPlaying: true,
+        transcoding: null,
+      },
+    ]);
+  });
+
+  it('lists the MediaSources of an /Items?Ids=&Fields=MediaSources response', () => {
+    expect(
+      parseItemMediaSources({
+        Items: [
+          {
+            Id: 'bf01da2708ae716a7d2bd441376de12f',
+            MediaSources: [
+              {
+                Id: 'bf01da2708ae716a7d2bd441376de12f',
+                Size: 11980085714,
+                Container: 'mkv',
+                MediaStreams: [
+                  {
+                    Type: 'Video',
+                    Codec: 'hevc',
+                    Width: 3840,
+                    Height: 2160,
+                    VideoRangeType: 'HDR10',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+    ).toEqual([
+      {
+        id: 'bf01da2708ae716a7d2bd441376de12f',
+        size: 11980085714,
+        container: 'mkv',
+        videoResolution: '4k',
+        videoCodec: 'HEVC',
+        videoDynamicRange: 'hdr10',
+      },
+    ]);
+    expect(parseItemMediaSources({ Items: [] })).toEqual([]);
+  });
+});

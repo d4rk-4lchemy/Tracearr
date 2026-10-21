@@ -13,7 +13,17 @@ import {
   HttpClientError,
   isHttpStatus,
 } from '../../../utils/http.js';
+import { extractIpFromEndpoint } from '../../../utils/parsing.js';
+import { normalizeClient } from '../../../utils/platformNormalizer.js';
 import { assertSafeProbeUrl } from '../../../utils/ssrf.js';
+import {
+  parseDeviceSessions,
+  parseItemMediaSources,
+  type DeviceSession,
+  type EmbySyncJob,
+  type EmbySyncJobItem,
+  type ItemMediaSource,
+} from './jellyfinEmbyParser.js';
 import type {
   IMediaServerClient,
   IMediaServerClientWithHistory,
@@ -24,6 +34,8 @@ import type {
   MediaWatchHistoryItem,
   MediaServerAuth,
   MediaServerConfig,
+  DownloadSourceDescription,
+  DownloadSourceRequest,
 } from '../types.js';
 import { enrichLiveTvSessions } from './liveTvEpg.js';
 
@@ -654,6 +666,99 @@ export abstract class BaseMediaServerClient
     });
 
     return this.parsers.parseItemsResponse(data);
+  }
+
+  async getItemMediaSources(itemId: string): Promise<ItemMediaSource[]> {
+    const params = new URLSearchParams({ Ids: itemId, Fields: 'MediaSources' });
+    const data = await fetchJson<unknown>(`${this.baseUrl}/Items?${params}`, {
+      headers: this.buildHeaders(),
+      service: this.serverType,
+      timeout: 10000,
+    });
+    return parseItemMediaSources(data);
+  }
+
+  /** Raw /Sessions: unlike getSessions, keeps the idle device sessions of clients not playing */
+  async getDeviceSessions(): Promise<DeviceSession[]> {
+    const data = await fetchJson<unknown[]>(`${this.baseUrl}/Sessions`, {
+      headers: this.buildHeaders(),
+      service: this.serverType,
+      timeout: 10000,
+    });
+    return parseDeviceSessions(Array.isArray(data) ? data : []);
+  }
+
+  async describeDownloadSource(request: DownloadSourceRequest): Promise<DownloadSourceDescription> {
+    const [sourcesResult, sessionsResult] = await Promise.allSettled([
+      request.itemKey ? this.getItemMediaSources(request.itemKey) : [],
+      this.getDeviceSessions(),
+    ]);
+    // The download endpoint serves the item's primary file, the first source
+    const source = sourcesResult.status === 'fulfilled' ? sourcesResult.value[0] : undefined;
+    const sessions = sessionsResult.status === 'fulfilled' ? sessionsResult.value : [];
+    // A sync target names its device exactly; an activity entry only by client and device name
+    const session = sessions.find((candidate) =>
+      request.deviceId
+        ? candidate.deviceId === request.deviceId
+        : request.userId !== null &&
+          candidate.userId === request.userId &&
+          candidate.client === request.app &&
+          candidate.deviceName === request.device
+    );
+    const named = session
+      ? { deviceId: session.deviceId, playerName: session.deviceName, product: session.client }
+      : request.deviceId
+        ? { deviceId: request.deviceId, playerName: request.device, product: request.app }
+        : { deviceId: null, playerName: null, product: null };
+    return {
+      version: source
+        ? {
+            key: source.id,
+            size: source.size,
+            container: source.container,
+            videoResolution: source.videoResolution,
+            videoCodec: source.videoCodec,
+            videoDynamicRange: source.videoDynamicRange,
+          }
+        : null,
+      // The download endpoint never converts, so the source size is what left the server
+      delivered: source
+        ? {
+            bytes: source.size,
+            videoCodec: null,
+            audioCodec: null,
+            container: null,
+            bitrateKbps: null,
+            resolution: null,
+          }
+        : null,
+      device: {
+        ...named,
+        platform: named.product
+          ? normalizeClient(named.product, undefined, this.serverType).platform
+          : null,
+      },
+      ipAddress: extractIpFromEndpoint(session?.remoteEndPoint, '') || null,
+    };
+  }
+
+  /** Activity entries name a Jellyfin user by the GUID serverUsers stores; Emby overrides this */
+  async resolveUserGuid(userId: string): Promise<string | null> {
+    return userId;
+  }
+
+  /** App downloads; only Emby has them, as sync jobs */
+  async getSyncJobs(): Promise<EmbySyncJob[]> {
+    return [];
+  }
+
+  async getSyncJobItems(): Promise<EmbySyncJobItem[]> {
+    return [];
+  }
+
+  /** Device sessions to watch for a transcode pulled without playback; only Jellyfin clients download that way */
+  async getTranscodePullSessions(): Promise<DeviceSession[]> {
+    return [];
   }
 
   private static readonly PLAYBACK_REPORTING_PATHS = {

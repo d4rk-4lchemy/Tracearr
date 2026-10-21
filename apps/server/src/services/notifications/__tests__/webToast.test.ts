@@ -236,8 +236,8 @@ describe('webToastType.render text limits', () => {
       { type: 'session_started', payload: session },
       automationCtx({ title: 't'.repeat(300), body: 'b'.repeat(2500) })
     );
-    expect([...(rendered.toast?.title ?? '')]).toHaveLength(200);
-    expect([...(rendered.toast?.message ?? '')]).toHaveLength(2000);
+    expect(Array.from(rendered.toast?.title ?? '')).toHaveLength(200);
+    expect(Array.from(rendered.toast?.message ?? '')).toHaveLength(2000);
   });
 });
 

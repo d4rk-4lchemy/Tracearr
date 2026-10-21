@@ -1,0 +1,55 @@
+{
+  "version": "3.0.0",
+  "date": "2026-10-20",
+  "headline": "Download tracking and Telegram",
+  "highlights": [
+    {
+      "title": "Downloads",
+      "body": "Tracearr now records who downloads what from Plex, Jellyfin and Emby: the file, the device, and for app downloads the quality that was actually delivered. There is a Downloads tab under Stats, a tab on each user and a panel on each media page. A Download burst automation alerts when one person pulls more than a set number of items in a day.",
+      "docs": "https://docs.tracearr.com/configuration/downloads"
+    },
+    {
+      "title": "Telegram",
+      "body": "Telegram joins the notification destinations. Give it a bot token and a chat ID; messages come through as plain text with the title in bold, media alerts carry the poster, and links to the media page show as buttons. ntfy, Gotify and Pushover notifications now link to the media page too.",
+      "docs": "https://docs.tracearr.com/configuration/destinations"
+    }
+  ],
+  "changes": [
+    {
+      "type": "new",
+      "text": "Telegram is a notification destination, set up with a bot token and a chat ID"
+    },
+    {
+      "type": "new",
+      "text": "Telegram notifications for added and upgraded media carry the poster"
+    },
+    {
+      "type": "new",
+      "text": "media notifications on ntfy, Gotify, Pushover and Telegram open the media page"
+    },
+    {
+      "type": "improved",
+      "text": "Gotify and ntfy notification priority follows the event severity"
+    },
+    {
+      "type": "improved",
+      "text": "server back online no longer bypasses Pushover quiet hours"
+    },
+    {
+      "type": "new",
+      "text": "downloads from Plex, Jellyfin and Emby show under Stats, on each user and on the media page"
+    },
+    {
+      "type": "new",
+      "text": "an automation can fire when a person downloads more than N items or gigabytes in a window"
+    },
+    {
+      "type": "new",
+      "text": "converted downloads record the quality the app received, not the file on the server"
+    },
+    {
+      "type": "note",
+      "text": "without the 0.6.0 SSE plugin, downloads are picked up every 30 seconds instead of immediately"
+    }
+  ]
+}

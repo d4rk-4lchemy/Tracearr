@@ -5,9 +5,7 @@ import {
   fitText,
   isPlacedLocal,
   LOCAL_NETWORK_COUNTRY,
-  POSTER_IMAGE_SIZE,
 } from '@tracearr/shared';
-import { proxyImage } from '../../imageProxy.js';
 import { mediaHeadline, mediaSubtitle, qualityMoves } from '../formatters/media.js';
 import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
 import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
@@ -20,6 +18,7 @@ import { buildMediaLinks } from '../mediaLinks.js';
 import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
 import { ownText, textOf } from './overrides.js';
+import { fetchPoster, posterFilename, type Poster } from './poster.js';
 import {
   formatDuration,
   getMediaDisplay,
@@ -55,19 +54,6 @@ export interface DiscordConfig {
 const AVATAR_URL =
   'https://raw.githubusercontent.com/connorgallopo/Tracearr/main/apps/web/public/web-app-manifest-192x192-transparent.png';
 
-/** Discord picks the renderer off the extension, so the name has to match the bytes. */
-const POSTER_EXTENSIONS: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-};
-
-function posterFilename(contentType: string): string {
-  const base = contentType.split(';')[0]?.trim() ?? '';
-  return `poster.${POSTER_EXTENSIONS[base] ?? 'jpg'}`;
-}
-
 export interface DiscordEmbed {
   title: string;
   description?: string;
@@ -83,7 +69,7 @@ export interface DiscordEmbed {
 /** The embed, plus the poster bytes it references when one was available. */
 export interface DiscordMessage {
   embed: DiscordEmbed;
-  poster?: { data: Buffer; contentType: string };
+  poster?: Poster;
 }
 
 function buildViolationEmbed(payload: NotificationPayload, ctx: ViolationContext): DiscordEmbed {
@@ -342,32 +328,6 @@ function buildMediaUpgradedEmbed(
 function buildOwnText(payload: NotificationPayload, color: number): DiscordEmbed {
   const text = ownText(payload);
   return { title: text.title, description: text.message, color };
-}
-
-/**
- * The poster, as bytes. A miss degrades to no thumbnail rather than failing the send -
- * proxyImage answers an unreachable server with an SVG placeholder, which Discord will
- * not render, so only a raster image is worth uploading.
- */
-async function fetchPoster(
-  serverId: string,
-  thumbPath: string | null
-): Promise<{ data: Buffer; contentType: string } | undefined> {
-  if (thumbPath === null || thumbPath === '') return undefined;
-  try {
-    const result = await proxyImage({
-      serverId,
-      imagePath: thumbPath,
-      ...POSTER_IMAGE_SIZE,
-      fallback: 'poster',
-    });
-    if (!result.contentType.startsWith('image/') || result.contentType.includes('svg')) {
-      return undefined;
-    }
-    return { data: result.data, contentType: result.contentType };
-  } catch {
-    return undefined;
-  }
 }
 
 async function buildMediaMessage(

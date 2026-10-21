@@ -293,6 +293,16 @@ export function useDeviceHealth(timeRange?: StatsTimeRange, serverIds?: string[]
   });
 }
 
+export function useDownloadsStats(timeRange?: StatsTimeRange, serverIds?: string[], page = 1) {
+  const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
+  return useQuery({
+    queryKey: ['stats', 'downloads', timeRange, serverIdsKey, page],
+    queryFn: () => api.stats.downloads(timeRange ?? { period: 'month' }, serverIds, page),
+    staleTime: 1000 * 60,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useTranscodeHotspots(timeRange?: StatsTimeRange, serverIds?: string[]) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery({

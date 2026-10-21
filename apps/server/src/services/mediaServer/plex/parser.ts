@@ -1590,6 +1590,71 @@ function versionResolution(media: Record<string, unknown>): string | undefined {
   })?.toLowerCase();
 }
 
+function mediaQuality(media: Record<string, unknown>) {
+  return {
+    videoResolution: versionResolution(media),
+    videoDynamicRange:
+      normalizeDynamicRange(parseOptionalString(media.videoDynamicRange)) ?? undefined,
+    videoCodec: parseOptionalString(media.videoCodec)?.toUpperCase(),
+    audioCodec: parseOptionalString(media.audioCodec)?.toUpperCase(),
+  };
+}
+
+export interface PlexPartDetails {
+  /** The Media id holding the part, our serverVersionKey */
+  mediaId: string;
+  size: number | null;
+  container: string | null;
+  videoResolution: string | null;
+  videoCodec: string | null;
+  videoDynamicRange: string | null;
+  audioCodec: string | null;
+}
+
+/** The part with this id and the quality of its Media, from a /library/metadata/{ratingKey} response */
+export function parsePartDetails(data: unknown, partId: string): PlexPartDetails | null {
+  const item = (data as { MediaContainer?: { Metadata?: Array<Record<string, unknown>> } })
+    ?.MediaContainer?.Metadata?.[0];
+  const mediaList = Array.isArray(item?.Media)
+    ? (item.Media as Array<Record<string, unknown>>)
+    : [];
+  for (const media of mediaList) {
+    const parts = Array.isArray(media.Part) ? (media.Part as Array<Record<string, unknown>>) : [];
+    const part = parts.find((candidate) => String(candidate.id) === partId);
+    if (!part || media.id == null) continue;
+    const quality = mediaQuality(media);
+    return {
+      mediaId: String(media.id),
+      size: parseOptionalNumber(part.size) ?? null,
+      container: parseOptionalString(part.container)?.toLowerCase() ?? null,
+      videoResolution: quality.videoResolution ?? null,
+      videoCodec: quality.videoCodec ?? null,
+      videoDynamicRange: quality.videoDynamicRange ?? null,
+      audioCodec: quality.audioCodec ?? null,
+    };
+  }
+  return null;
+}
+
+export interface PlexDevice {
+  clientIdentifier: string;
+  name: string;
+  platform: string;
+  product: string;
+}
+
+/** GET /devices: every client the server has seen, by clientIdentifier */
+export function parseDevicesResponse(data: unknown): PlexDevice[] {
+  const devices = (data as { MediaContainer?: { Device?: unknown } })?.MediaContainer?.Device;
+  if (!Array.isArray(devices)) return [];
+  return (devices as Array<Record<string, unknown>>).map((device) => ({
+    clientIdentifier: parseString(device.clientIdentifier),
+    name: parseString(device.name),
+    platform: parseString(device.platform),
+    product: parseString(device.product),
+  }));
+}
+
 /**
  * Map Plex type to MediaLibraryItem mediaType
  */
@@ -1637,11 +1702,7 @@ function parseLibraryItem(item: Record<string, unknown>): MediaLibraryItem {
       // Media.id is always present in practice; the index form only guards
       // malformed payloads so a version is never silently dropped
       serverVersionKey: media.id != null ? String(media.id) : `idx:${index}`,
-      videoResolution: versionResolution(media),
-      videoDynamicRange:
-        normalizeDynamicRange(parseOptionalString(media.videoDynamicRange)) ?? undefined,
-      videoCodec: parseOptionalString(media.videoCodec)?.toUpperCase(),
-      audioCodec: parseOptionalString(media.audioCodec)?.toUpperCase(),
+      ...mediaQuality(media),
       audioChannels: parseOptionalNumber(media.audioChannels),
       audioAtmos: isAtmos(parseOptionalString(media.audioProfile)),
       editionTitle: parseOptionalBoundedString(item.editionTitle, 100) || undefined,

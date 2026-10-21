@@ -218,6 +218,8 @@
     "user_other": "{{count}} users",
     "session_one": "{{count}} session",
     "session_other": "{{count}} sessions",
+    "download_one": "{{count}} download",
+    "download_other": "{{count}} downloads",
     "stream_one": "{{count}} stream",
     "stream_other": "{{count}} streams",
     "server_one": "{{count}} server",

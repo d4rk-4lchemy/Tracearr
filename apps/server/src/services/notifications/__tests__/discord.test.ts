@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ViolationWithDetails } from '@tracearr/shared';
 
 const mockProxyImage = vi.fn();
 vi.mock('../../imageProxy.js', () => ({
@@ -13,6 +12,7 @@ vi.mock('../mediaLinks.js', () => ({
 
 import { createMockActiveSession } from '../../../test/fixtures.js';
 import { discordType, fitEmbed, type DiscordEmbed } from '../destinations/discord.js';
+import { mediaUpgraded, session, violation } from './fixtures.js';
 import type { NotificationEvent } from '../events.js';
 import type { RenderContext } from '../destinations/types.js';
 
@@ -24,27 +24,6 @@ const destination = { id: 'dest-1', name: 'My Discord' };
 const systemCtx: RenderContext = { destination, source: { kind: 'system' } };
 const deliverCtx = { destination, signal: AbortSignal.timeout(5000) };
 
-const violation: ViolationWithDetails = {
-  id: 'violation-123',
-  ruleId: 'rule-456',
-  serverUserId: 'user-789',
-  sessionId: 'session-123',
-  severity: 'warning',
-  data: { reason: 'test violation' },
-  acknowledgedAt: null,
-  createdAt: new Date('2026-01-02T03:04:05.000Z'),
-  user: {
-    id: 'user-789',
-    username: 'testuser',
-    serverId: 'server-id',
-    thumbUrl: null,
-    identityName: 'Test User',
-  },
-  rule: { id: 'rule-456', name: 'Test Rule', type: 'concurrent_streams' },
-};
-
-const session = createMockActiveSession({ durationMs: 3_725_000 });
-
 const fieldNames = (embed: DiscordEmbed): string[] => (embed.fields ?? []).map((f) => f.name);
 
 const render = async (
@@ -52,52 +31,12 @@ const render = async (
   ctx: RenderContext = systemCtx
 ): Promise<DiscordEmbed> => (await discordType.render(event, config, ctx)).embed;
 
-const mediaUpgraded: NotificationEvent = {
-  type: 'media_upgraded',
-  payload: {
-    serverId: 'server-1',
-    serverName: 'Basement',
-    serverType: 'plex',
-    libraryItemId: 'item-1',
-    ratingKey: 'rk-1',
-    mediaId: null,
-    parentTitle: null,
-    grandparentRatingKey: null,
-    parentRatingKey: null,
-    parentIndex: null,
-    itemIndex: null,
-    imdbId: null,
-    tmdbId: null,
-    tvdbId: null,
-    thumbPath: null,
-    title: 'Cars',
-    grandparentTitle: null,
-    mediaType: 'movie',
-    year: 2006,
-    libraryName: 'Movies',
-    to: {
-      resolution: '4k',
-      dynamicRange: 'hdr10',
-      videoCodec: 'HEVC',
-      audioCodec: 'TRUEHD',
-      audioChannels: 8,
-      fileSize: 42_000_000_000,
-    },
-    from: {
-      resolution: '1080p',
-      dynamicRange: 'sdr',
-      videoCodec: 'H264',
-      audioCodec: 'AC3',
-      audioChannels: 6,
-      fileSize: 8_000_000_000,
-    },
-    changed: ['resolution'],
-  },
-};
-
 describe('discordType.render', () => {
   it('builds the violation embed with severity color and rule fields', async () => {
-    const embed = await render({ type: 'violation', payload: violation });
+    const embed = await render({
+      type: 'violation',
+      payload: { ...violation, severity: 'warning' },
+    });
 
     expect(embed.title).toBe('Violation Detected');
     expect(embed.color).toBe(0xf39c12);
@@ -575,8 +514,8 @@ describe('discord text handling', () => {
 
   it('cuts title and description to their limits', () => {
     const embed = fitEmbed({ title: 't'.repeat(300), description: 'd'.repeat(5000), color: 1 });
-    expect([...embed.title]).toHaveLength(256);
-    expect([...(embed.description ?? '')]).toHaveLength(4096);
+    expect(Array.from(embed.title)).toHaveLength(256);
+    expect(Array.from(embed.description ?? '')).toHaveLength(4096);
   });
 
   it('keeps the whole embed within 6000 characters by cutting the description', () => {

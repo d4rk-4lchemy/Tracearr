@@ -1,5 +1,50 @@
 # Tracearr Fork Information
 
+## October 21, 2026 — Tracearr 3.0 development upstream merge
+
+Upstream `main` at `307f421d1` adds Plex/Jellyfin/Emby download tracking,
+Stats/User/Media download views, download-burst automations, Telegram delivery,
+shared notification text/poster rendering and 3.0.0 release notes. This is the
+current development main, including the 3.0.0 beta history. Migration
+`0117_media_downloads`, its snapshot and journal remain byte-for-byte aligned
+with upstream; the separate Dispatcharr fork ledger is unchanged.
+
+The User Devices reconciliation keeps Dispatcharr's stable device identity
+before provider connection IDs in upstream's shared grouping helper, while
+adding provider download counts. A mixed-provider regression covers parallel
+Dispatcharr connections, separate stable devices and Plex downloads.
+Download polling remains limited to Jellyfin/Emby, with separate Plex events;
+Dispatcharr has no catalog/download-source capability. Media Detail downloads
+inherit the existing `mediaLibraryServerIds` query scope. Dispatcharr auth,
+settings, leader-owned realtime/polling, catch-up rollover/lifecycle,
+termination, bandwidth keys, Live TV Activity series, uncropped artwork/cache
+markers and two-channel version handling remain intact.
+
+Exactly the existing PR-only CI and dual-registry release workflows remain,
+including the four native-build publication gate. Both Dockerfiles and the
+fork Helm chart are unchanged. All 300 fork-only localized additions survive.
+
+Validation uses Node 24 / pnpm 12.14.0, frozen-lockfile install, cleared Turbo
+cache and a 4 GB heap. Heavy jobs run sequentially on the 8 GB LXC, with two
+Vitest workers and Turbo concurrency one. Lint has 707 warnings and zero
+errors, down eight with no added normalized diagnostics. Typecheck and the
+translation check pass; the latter reports 1,102 absent locale entries for
+new upstream strings, with English fallback. All five server groups and web
+pass 10,669 tests without skips; shared adds 465 passing tests. Coverage passes
+6,763 tests with 72.57% statements, 66.95% branches, 76.62% functions and 73.81%
+lines, meeting all thresholds. The complete build passes. All 124 changed
+supported source/JSON files pass Prettier; only the reconciled device-query
+helper needed formatting. Final full lint/typecheck pass after formatting and
+build. CI structure and invocation remain unchanged.
+Logs: `.tmp/merge-300-<job>-20261021.log`; sequential runner:
+`.tmp/validate-merge-300.py`, output `.tmp/merge-300-runner-20261021.log`.
+The warning reference records runtime counts and the normalized lint delta.
+
+Docker integration/E2E are omitted at the user's request. Docker image builds,
+database upgrades and live-provider manual smoke are not performed; download
+SQL, migration execution and live provider behavior remain unverified against
+running PostgreSQL/Redis/providers.
+
 ## October 20, 2026 — Dispatcharr catch-up programme rollover
 
 Rollover regression fixtures freeze `Date` for both polling and realtime and
@@ -401,9 +446,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `498193355`
-- Last shared upstream commit found during inspection: `eb338121b` (before merge)
-- Latest upstream commit merged into the current working tree: `498193355`
+- Source branch/SHA inspected: `main` at `307f421d1`
+- Last shared upstream commit found during inspection: `498193355` (before merge)
+- Latest upstream commit merged into the current working tree: `307f421d1`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

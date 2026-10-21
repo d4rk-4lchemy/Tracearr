@@ -290,7 +290,8 @@
       "viewAsHint": "See Tracearr the way they do. It is read-only."
     },
     "tabs": {
-      "access": "Access"
+      "access": "Access",
+      "downloads": "Downloads"
     },
     "cards": {
       "vsPrior": "vs prior",
@@ -882,6 +883,12 @@
         "product": "App",
         "location": "Location"
       },
+      "download": {
+        "title": "Downloaded title",
+        "app": "Downloading app",
+        "device": "Downloading device",
+        "last24h": "Downloads in the last 24 hours"
+      },
       "trust": {
         "previous": "Previous score",
         "new": "New score",
@@ -938,7 +945,7 @@
             "description": "Minimum time between notifications"
           },
           "priority": {
-            "description": "Used by Pushover, Gotify and ntfy"
+            "description": "Used by Pushover, Gotify, ntfy and Telegram"
           }
         },
         "ran": "Sent a notification"
@@ -1319,6 +1326,7 @@
         "accountInactiveFor": "an account has been inactive for {{duration}}",
         "accountNewDevice": "an account plays from a new device",
         "accountTrustChanged": "an account's trust score changes",
+        "accountMediaDownloaded": "an account downloads media",
         "mediaAdded": "media is added",
         "mediaUpgraded": "media is upgraded",
         "serverDown": "a server goes down",
@@ -1347,6 +1355,8 @@
         "travel_speed_kmh": "the travel speed",
         "unique_ips_in_window": "the number of IP addresses",
         "unique_devices_in_window": "the number of devices",
+        "downloads_in_window": "the number of downloads",
+        "download_bytes_in_window": "the data downloaded",
         "inactive_days": "the time since the last stream",
         "current_pause_minutes": "the current pause",
         "total_pause_minutes": "the total pause time",
@@ -1525,6 +1535,14 @@
       "unique_devices_in_window": {
         "label": "Unique Devices in Window",
         "description": "Number of unique devices in the time window"
+      },
+      "downloads_in_window": {
+        "label": "Downloads in Window",
+        "description": "Number of items downloaded in the time window"
+      },
+      "download_bytes_in_window": {
+        "label": "Downloaded Data in Window",
+        "description": "Gigabytes downloaded in the time window"
       },
       "inactive_days": {
         "label": "Days Inactive",
@@ -1918,6 +1936,11 @@
         "description": "Raise a violation when an account streams from more IP addresses in a window than you allow.",
         "keywords": "ip addresses vpn sharing devices window"
       },
+      "download-burst": {
+        "name": "Download burst",
+        "description": "Alert when one person downloads more items than you allow in a day.",
+        "keywords": "download offline sync hoarding burst limit"
+      },
       "geo-restriction": {
         "name": "Blocked countries",
         "description": "Raise a violation when a stream comes from a country you block.",
@@ -2080,6 +2103,10 @@
           "description": "An account's trust score changes, whether an automation or an owner moved it.",
           "synonyms": "trust, score, reputation, penalty, adjusted"
         },
+        "accountMediaDownloaded": {
+          "description": "An account downloads an item through the server's download endpoint, once per item.",
+          "synonyms": "download, offline, sync, save, hoarding"
+        },
         "mediaAdded": {
           "description": "A library item shows up on a server for the first time.",
           "synonyms": "new, added, library, movie, episode, import"
@@ -2223,6 +2250,9 @@
         "authToken": "Auth token",
         "userKey": "User key",
         "apiToken": "API token",
+        "botToken": "Bot token",
+        "chatId": "Chat ID",
+        "topicId": "Topic ID",
         "preset": "Provider",
         "host": "SMTP host",
         "port": "Port",
@@ -2244,6 +2274,7 @@
       },
       "hints": {
         "authTokenOptional": "Optional for public topics",
+        "telegramTopic": "Forum groups only. Leave blank for a normal chat or channel.",
         "smtpPreset": "Fills the host, port and security for common providers. Amazon SES and Mailgun EU need the region edited into the host.",
         "smtpVerifyCertificate": "Checks the mail server's TLS certificate against a trusted authority. Turn it off only for a server with a self-signed certificate, such as a local bridge: anyone on the path between Tracearr and the mail server can then intercept the connection.",
         "smtpUsernameOptional": "Leave blank when the server needs no login",
@@ -2301,6 +2332,7 @@
         "gotify": "Gotify",
         "apprise": "Apprise",
         "pushover": "Pushover",
+        "telegram": "Telegram",
         "email": "Email",
         "push": "Mobile push",
         "webToast": "Browser toasts"
@@ -2387,6 +2419,20 @@
     "directPlayHigh": "≥80% Direct",
     "directPlayMid": "50-79%",
     "directPlayLow": "<50%"
+  },
+  "downloads": {
+    "dataDownloaded": "Data downloaded",
+    "peopleDownloading": "People downloading",
+    "mostDownloaded": "Most downloaded",
+    "unknownUser": "Unknown user",
+    "appOnDevice": "{{app}} on {{device}}",
+    "deliveredAs": "delivered as {{format}} at {{bitrate}}",
+    "deliveredAsFormat": "delivered as {{format}}",
+    "deliveredAtBitrate": "delivered at {{bitrate}}",
+    "requests_one": "({{count}} request)",
+    "requests_other": "({{count}} requests)",
+    "empty": "No downloads in this range. Downloads are items pulled through the server's download button or endpoint. Plex only reports them while Tracearr is connected.",
+    "panelTitle": "Downloads"
   },
   "statsBandwidth": {
     "dataTransferred": "Data Transferred",

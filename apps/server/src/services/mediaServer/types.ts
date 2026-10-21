@@ -270,6 +270,53 @@ export interface MediaLibrary {
 // Library Item Types
 // ============================================================================
 
+/** What a download pulled from the server, as far as the server reports it */
+export interface DeliveredFile {
+  bytes: number | null;
+  videoCodec: string | null;
+  audioCodec: string | null;
+  container: string | null;
+  bitrateKbps: number | null;
+  /** WIDTHxHEIGHT; only an Emby sync item states it */
+  resolution: string | null;
+}
+
+export interface DownloadSourceRequest {
+  /** The server's item id (Plex ratingKey, Jellyfin/Emby ItemId) */
+  itemKey: string | null;
+  /** Plex Context.partID */
+  partId: string | null;
+  /** Set when the signal names its device: Plex clientIdentifier, Emby sync TargetId */
+  deviceId: string | null;
+  /** The account's externalId */
+  userId: string | null;
+  /** Client and device names the server logged with the download */
+  app: string | null;
+  device: string | null;
+}
+
+export interface DownloadSourceDescription {
+  /** The source file; key is our serverVersionKey */
+  version: {
+    key: string;
+    size: number | null;
+    container: string | null;
+    videoResolution: string | null;
+    videoCodec: string | null;
+    videoDynamicRange: string | null;
+  } | null;
+  /** What left the server when nothing converted it */
+  delivered: DeliveredFile | null;
+  /** Named as the sessions table names them */
+  device: {
+    deviceId: string | null;
+    playerName: string | null;
+    product: string | null;
+    platform: string | null;
+  };
+  ipAddress: string | null;
+}
+
 /**
  * One physical file of a library item (a Plex Media child or a JF/Emby
  * MediaSource). Multi-part files collapse into fileSize + partCount.
@@ -505,6 +552,12 @@ export interface IMediaServerClient {
 
   /** The version the server reports for itself, unnormalized (Plex carries a build hash). */
   getSoftwareVersion?(): Promise<string | null>;
+
+  /**
+   * The file and client behind a download. Best effort per lookup: a failed
+   * request leaves its fields null and keeps the rest.
+   */
+  describeDownloadSource?(request: DownloadSourceRequest): Promise<DownloadSourceDescription>;
 
   /**
    * Terminate a playback session

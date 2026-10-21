@@ -5,6 +5,8 @@
  * Provides a unified interface for session tracking, user management, and library access.
  */
 
+import { REDIS_KEYS } from '@tracearr/shared';
+import { getRedis } from '../../../lib/redisShared.js';
 import {
   fetchJson,
   fetchText,
@@ -12,6 +14,7 @@ import {
   getPlexClientIdentifier,
   HttpClientError,
 } from '../../../utils/http.js';
+import { normalizeClient } from '../../../utils/platformNormalizer.js';
 import { assertSafeProbeUrl, SsrfBlockedError } from '../../../utils/ssrf.js';
 import type {
   IMediaServerClient,
@@ -22,6 +25,8 @@ import type {
   MediaLibraryItem,
   MediaWatchHistoryItem,
   MediaServerConfig,
+  DownloadSourceDescription,
+  DownloadSourceRequest,
 } from '../types.js';
 import {
   parseSessionsResponse,
@@ -39,8 +44,12 @@ import {
   parseFileExistence,
   parseGenresByRatingKey,
   parseRatingKeys,
+  parsePartDetails,
+  parseDevicesResponse,
   getTranscodingSessionRatingKeys,
   keepSession,
+  type PlexDevice,
+  type PlexPartDetails,
   type PlexServerResource,
   type PlexStatisticsDataPoint,
   type PlexBandwidthStats,
@@ -48,6 +57,9 @@ import {
 } from './parser.js';
 
 const PLEX_TV_BASE = 'https://plex.tv';
+
+const DEVICE_TTL_SECONDS = 24 * 60 * 60;
+const MISSING_DEVICE_TTL_SECONDS = 60 * 60;
 
 /** ratingKeys per /library/metadata request when filling in genres. */
 const METADATA_BATCH_SIZE = 100;
@@ -74,10 +86,12 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
 
   private readonly baseUrl: string;
   private readonly token: string;
+  private readonly cacheScope: string;
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/$/, '');
     this.token = config.token;
+    this.cacheScope = config.id ?? this.baseUrl;
   }
 
   /**
@@ -161,6 +175,77 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
     } catch {
       return null;
     }
+  }
+
+  async getPartDetails(ratingKey: string, partId: string): Promise<PlexPartDetails | null> {
+    const data = await fetchJson<unknown>(
+      `${this.baseUrl}/library/metadata/${encodeURIComponent(ratingKey)}`,
+      { headers: this.buildHeaders(), service: 'plex', timeout: 10000 }
+    );
+    return parsePartDetails(data, partId);
+  }
+
+  /** A client by its clientIdentifier, from GET /devices; cached 24 h when found, 1 h when not */
+  async getDevice(clientIdentifier: string): Promise<Omit<PlexDevice, 'clientIdentifier'> | null> {
+    const redis = getRedis();
+    const key = REDIS_KEYS.PLEX_DEVICE(this.cacheScope, clientIdentifier);
+    const cached = await redis.get(key);
+    if (cached !== null) {
+      return cached ? (JSON.parse(cached) as Omit<PlexDevice, 'clientIdentifier'>) : null;
+    }
+
+    const data = await fetchJson<unknown>(`${this.baseUrl}/devices`, {
+      headers: this.buildHeaders(),
+      service: 'plex',
+      timeout: 10000,
+    });
+    const match = parseDevicesResponse(data).find(
+      (device) => device.clientIdentifier === clientIdentifier
+    );
+    if (!match) {
+      await redis.set(key, '', 'EX', MISSING_DEVICE_TTL_SECONDS);
+      return null;
+    }
+    const device = { name: match.name, platform: match.platform, product: match.product };
+    await redis.set(key, JSON.stringify(device), 'EX', DEVICE_TTL_SECONDS);
+    return device;
+  }
+
+  /** Plex logs no client address for a download; the part and the app's deviceID are all it has */
+  async describeDownloadSource(request: DownloadSourceRequest): Promise<DownloadSourceDescription> {
+    const [partResult, deviceResult] = await Promise.allSettled([
+      request.itemKey && request.partId
+        ? this.getPartDetails(request.itemKey, request.partId)
+        : null,
+      request.deviceId ? this.getDevice(request.deviceId) : null,
+    ]);
+    const part = partResult.status === 'fulfilled' ? partResult.value : null;
+    const device = deviceResult.status === 'fulfilled' ? deviceResult.value : null;
+    return {
+      version: part && {
+        key: part.mediaId,
+        size: part.size,
+        container: part.container,
+        videoResolution: part.videoResolution,
+        videoCodec: part.videoCodec,
+        videoDynamicRange: part.videoDynamicRange,
+      },
+      delivered: part && {
+        bytes: part.size,
+        videoCodec: part.videoCodec,
+        audioCodec: part.audioCodec,
+        container: part.container,
+        bitrateKbps: null,
+        resolution: null,
+      },
+      device: {
+        deviceId: request.deviceId,
+        playerName: device?.name ?? null,
+        product: device?.product || null,
+        platform: device ? normalizeClient(device.platform, undefined, 'plex').platform : null,
+      },
+      ipAddress: null,
+    };
   }
 
   /**
