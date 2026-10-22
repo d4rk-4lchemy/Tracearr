@@ -403,4 +403,32 @@ describe('destination text profiles', () => {
     });
     expect(escapeFor(DESTINATION_TEXT_PROFILES.gotify)('**x**')).toBe('**x**');
   });
+
+  it('describes telegram with a bot token, chat id and optional topic', () => {
+    const fields = DESTINATION_TYPES.telegram.fields;
+    expect(fields.map((f) => [f.key, f.input, f.required, f.secret])).toEqual([
+      ['botToken', 'secret', true, true],
+      ['chatId', 'text', true, false],
+      ['topicId', 'number', false, false],
+    ]);
+    expect(fields[2]?.hint).toBe('telegramTopic');
+    expect(DESTINATION_TYPES.telegram.icon).toBe('Send');
+  });
+
+  it('accepts a blank or whole-number telegram topic and rejects anything else', () => {
+    const schema = configSchemaForFields(DESTINATION_TYPES.telegram.fields);
+    const parse = (topicId: string) => schema.safeParse({ botToken: 't', chatId: '1', topicId });
+    expect(parse('abc').success).toBe(false);
+    expect(parse('0').success).toBe(false);
+    expect(parse('').success).toBe(true);
+    expect(parse('42').success).toBe(true);
+  });
+
+  it('fits a telegram title and body inside one 4096 byte message', () => {
+    expect(DESTINATION_TEXT_PROFILES.telegram).toEqual({
+      escape: 'none',
+      title: { max: 256, unit: 'bytes' },
+      body: { max: 3839, unit: 'bytes' },
+    });
+  });
 });

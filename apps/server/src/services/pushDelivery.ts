@@ -23,6 +23,7 @@ const TRIGGER_PREFERENCE = {
   'account.inactive_for': 'onViolationDetected',
   'account.new_device': 'onNewDevice',
   'account.trust_changed': 'onTrustScoreChanged',
+  'account.media_downloaded': 'onViolationDetected',
   'media.added': null,
   'media.upgraded': null,
   'server.down': 'onServerDown',

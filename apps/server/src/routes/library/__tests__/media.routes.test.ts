@@ -24,18 +24,26 @@ import type {
 } from '@tracearr/shared';
 import { renderSql } from '../../../test/helpers.js';
 
+const { scopeRedis } = vi.hoisted(() => ({ scopeRedis: { get: vi.fn(), set: vi.fn() } }));
+
 vi.mock('../../../db/client.js', () => ({
   db: {
     execute: vi.fn(),
     select: vi.fn(),
   },
 }));
+vi.mock('../../../lib/redisShared.js', () => ({ getRedis: () => scopeRedis }));
 
 vi.mock('../../../services/settings.js', () => ({
   getSetting: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock('../../../services/downloads/queries.js', () => ({
+  queryMediaDownloads: vi.fn().mockResolvedValue([]),
+}));
+
 import { db } from '../../../db/client.js';
+import { queryMediaDownloads } from '../../../services/downloads/queries.js';
 import { libraryMediaRoute } from '../media.js';
 import { permissionGuard } from '../../../lib/scope.js';
 
@@ -123,6 +131,7 @@ describe('GET /library/media/:id and sub-resources', () => {
     dbExecute.mockReset();
     dbExecute.mockResolvedValue({ rows: [] } as never);
     vi.mocked(db.select).mockReset();
+    vi.mocked(queryMediaDownloads).mockReset().mockResolvedValue([]);
   });
 
   afterEach(async () => {
@@ -217,6 +226,56 @@ describe('GET /library/media/:id and sub-resources', () => {
       },
     ]);
     expect(redis.setex).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the downloads for the media and its merged ids, outside the cache', async () => {
+    const redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
+    const row = rawMediaRow();
+    const mergedId = randomUUID();
+    const download = { id: randomUUID(), title: 'Dune' };
+    vi.mocked(queryMediaDownloads).mockResolvedValue([download] as never);
+
+    queueSelect([row], [{ id: row.id }, { id: mergedId }]);
+    const response = await app.inject({ method: 'GET', url: `/library/media/${row.id}` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<MediaDetailResponse>().downloads).toEqual([download]);
+    expect(queryMediaDownloads).toHaveBeenCalledWith([row.id, mergedId], undefined);
+    expect(redis.setex.mock.calls[0]?.[2]).toContain('"downloads":[]');
+  });
+
+  it("reads a cache hit's downloads with its merged ids, without resolving aliases again", async () => {
+    const redis = createSpyRedis();
+    app = await buildTestApp(createOwnerUser(), redis);
+    const row = rawMediaRow();
+    const mergedId = randomUUID();
+
+    queueSelect([row], [{ id: row.id }, { id: mergedId }], [row]);
+    await app.inject({ method: 'GET', url: `/library/media/${row.id}` });
+    const response = await app.inject({ method: 'GET', url: `/library/media/${row.id}` });
+
+    expect(response.statusCode).toBe(200);
+    expect(redis.setex).toHaveBeenCalledTimes(1);
+    expect(db.select).toHaveBeenCalledTimes(3);
+    expect(queryMediaDownloads).toHaveBeenLastCalledWith([row.id, mergedId], undefined);
+  });
+
+  it('returns no downloads to a member', async () => {
+    const userId = randomUUID();
+    const serverId = randomUUID();
+    scopeRedis.get.mockResolvedValue(
+      JSON.stringify({ serverUserIds: [randomUUID()], serverIds: [serverId], libraryIds: {} })
+    );
+    app = await buildTestApp(
+      { userId, username: 'member', role: 'member', serverIds: [] },
+      createSpyRedis()
+    );
+    const row = rawMediaRow();
+    queueSelect([row], [{ id: row.id }]);
+    const response = await app.inject({ method: 'GET', url: `/library/media/${row.id}` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json<MediaDetailResponse>().downloads).toEqual([]);
+    expect(queryMediaDownloads).not.toHaveBeenCalled();
   });
 
   it('lists two same-server copies separately, each with its own library name', async () => {

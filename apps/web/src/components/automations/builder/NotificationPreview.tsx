@@ -37,7 +37,7 @@ const PLAIN: DestinationTextProfile = {
   body: { max: SEND_BODY_MAX, unit: 'chars' },
 };
 
-const PRIORITY_KINDS: readonly DestinationKind[] = ['pushover', 'gotify', 'ntfy'];
+const PRIORITY_KINDS: readonly DestinationKind[] = ['pushover', 'gotify', 'ntfy', 'telegram'];
 
 const samples: Record<string, string> = VARIABLE_SAMPLES;
 const lookup = (name: string) => samples[resolveVariable(name)];

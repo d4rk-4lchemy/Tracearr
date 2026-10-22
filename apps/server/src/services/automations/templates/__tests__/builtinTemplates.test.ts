@@ -69,12 +69,13 @@ const TABLE: Array<[string, string, string]> = [
   ['device-velocity', 'policies', 'policy'],
   ['geo-restriction', 'policies', 'policy'],
   ['account-inactivity', 'policies', 'policy'],
+  ['download-burst', 'policies', 'policy'],
   ['no-4k-transcodes', 'policies', 'policy'],
   ['kill-paused-streams', 'housekeeping', 'notification'],
 ];
 
 describe('builtin template envelopes', () => {
-  it('bundles the twenty-two templates the design names, in its order', () => {
+  it('bundles the twenty-three templates the design names, in its order', () => {
     expect(BUILTIN_ENVELOPES.map((envelope) => envelope.slug)).toEqual(TABLE.map(([slug]) => slug));
   });
 

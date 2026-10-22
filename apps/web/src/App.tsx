@@ -27,6 +27,7 @@ import {
   StatsPeople,
   StatsDevices,
   StatsBandwidth,
+  StatsDownloads,
   StatsLayout,
 } from '@/pages/stats';
 import {
@@ -119,6 +120,7 @@ export const appRoutes = (
             <Route path="people" element={<StatsPeople />} />
             <Route path="devices" element={<StatsDevices />} />
             <Route path="bandwidth" element={<StatsBandwidth />} />
+            <Route path="downloads" element={<StatsDownloads />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Route>

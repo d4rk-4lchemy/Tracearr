@@ -43,10 +43,12 @@ RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --f
 # =============================================================================
 # Production All-in-One Image
 # =============================================================================
-FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+# Same image and digest as the builder, so the runtime Node is the pinned one and every
+# layer below rebuilds when that pin moves instead of staying in the build cache.
+FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
 
 # Install dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
@@ -57,24 +59,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 24
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs \
-    && npm install -g --allow-scripts=pnpm pnpm@12.14.0 \
-    && rm -rf /var/lib/apt/lists/*
+RUN npm install -g --allow-scripts=pnpm pnpm@12.14.0
 
 # Install PostgreSQL 15 + TimescaleDB
-# timescaledb-2-postgresql-15 is pinned to the 2.28.x line, not left to float:
-# TimescaleDB 2.28.x is the last line PG15 supports (2.29+ requires PG16+), and an
-# unpinned install could silently jump to a release this image's PG15 can't run.
-# Bumping this pin past 2.28.x means a PG major upgrade (dump/restore) first.
+# TimescaleDB 2.28.x is the last line PG15 supports (2.29+ requires PG16+).
+# Keep this pin on that line. Bumping past 2.28.x means a PG major
+# upgrade (dump/restore) first. Dockerfile.timescale carries the same pin.
+# renovate: datasource=deb depName=timescaledb-2-postgresql-15
+ARG TIMESCALEDB_VERSION=2.28.3~debian12-1518
 RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey | gpg --dearmor -o /usr/share/keyrings/timescaledb-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/timescaledb-keyring.gpg] https://packagecloud.io/timescale/timescaledb/debian/ bookworm main" > /etc/apt/sources.list.d/timescaledb.list \
     && apt-get update \
-    && TIMESCALEDB_VERSION="$(apt-cache madison timescaledb-2-postgresql-15 | awk '{print $3}' | grep -m1 '^2\.28\.')" \
-    && if [ -z "$TIMESCALEDB_VERSION" ]; then echo "No 2.28.x timescaledb-2-postgresql-15 package found" >&2; exit 1; fi \
     && apt-get install -y --no-install-recommends \
         postgresql-15 \
         "timescaledb-2-postgresql-15=${TIMESCALEDB_VERSION}" \
@@ -83,18 +80,23 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmo
     && rm -rf /var/lib/apt/lists/*
 
 # Install Tailscale VPN binary (userspace networking, no root required)
+# renovate: datasource=deb depName=tailscale
+ARG TAILSCALE_VERSION=1.104.2
 RUN curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg -o /usr/share/keyrings/tailscale-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/tailscale-keyring.gpg] https://pkgs.tailscale.com/stable/debian bookworm main" > /etc/apt/sources.list.d/tailscale.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends tailscale \
+    && apt-get install -y --no-install-recommends "tailscale=${TAILSCALE_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Redis 8 from official Redis repository
+# redis-server depends on the exact same redis-tools version, so both take the pin.
+# renovate: datasource=deb depName=redis-server
+ARG REDIS_VERSION=6:8.10.2-1rl1~bookworm1
 RUN curl -fsSL https://packages.redis.io/gpg | gpg --dearmor -o /usr/share/keyrings/redis-keyring.gpg \
     && chmod 644 /usr/share/keyrings/redis-keyring.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/redis-keyring.gpg] https://packages.redis.io/deb bookworm main" > /etc/apt/sources.list.d/redis.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends redis-server \
+    && apt-get install -y --no-install-recommends "redis-server=${REDIS_VERSION}" "redis-tools=${REDIS_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
 # Note: PostgreSQL config is applied during initdb in entrypoint-supervised.sh

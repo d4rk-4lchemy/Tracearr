@@ -814,8 +814,7 @@ export async function createSessionWithRulesAtomic(
     // resumable session whose wall-clock duration is at most
     // ACTIVE_SESSION_CHUNK_BOUND_MS. Only live TV channels and stuck sessions
     // kept alive by polling can run longer than that; those rows lose resume
-    // chaining here, an accepted tradeoff, and they are already invisible to
-    // the stale sweep's own ACTIVE_SESSION_CHUNK_BOUND_MS bound.
+    // chaining here, an accepted tradeoff.
     const chunkBound = new Date(Date.now() - RESUME_CHUNK_BOUND_MS);
     const recentSameContent = await db
       .select()
@@ -1142,7 +1141,14 @@ export async function confirmAndPersistSession(
         lastPausedAt: pendingData.lastPausedAt ? new Date(pendingData.lastPausedAt) : null,
         ...(latestProgressMs > 0 && { progressMs: latestProgressMs }),
       })
-      .where(eq(sessions.id, result.insertedSession.id));
+      .where(
+        and(
+          eq(sessions.id, result.insertedSession.id),
+          // started_at is the compression orderby; without it an id-only write reads every
+          // compressed batch of the hypertable
+          gte(sessions.startedAt, new Date(result.insertedSession.startedAt.getTime() - 60_000))
+        )
+      );
 
     // Update the returned session object to reflect the correct values
     result.insertedSession.startedAt = actualStartedAt;
@@ -1225,7 +1231,13 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
           shortSession,
           ...(forceStopped && { forceStopped: true }),
         })
-        .where(and(eq(sessions.id, session.id), isNull(sessions.stoppedAt)))
+        .where(
+          and(
+            eq(sessions.id, session.id),
+            gte(sessions.startedAt, new Date(session.startedAt.getTime() - 60_000)),
+            isNull(sessions.stoppedAt)
+          )
+        )
         .returning({ id: sessions.id });
 
       wasUpdated = result.length > 0;

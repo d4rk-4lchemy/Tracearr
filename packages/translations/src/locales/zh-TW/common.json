@@ -216,6 +216,7 @@
   "count": {
     "user_other": "{{count}} 個使用者",
     "session_other": "{{count}} 個會話",
+    "download_other": "",
     "stream_other": "{{count}} 個串流",
     "server_other": "{{count}} 個伺服器",
     "automation_other": "",

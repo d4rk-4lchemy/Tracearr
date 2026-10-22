@@ -12,6 +12,7 @@ const TABS: SectionTabDef[] = [
   { nameKey: 'people', href: '/stats/people', staff: true },
   { nameKey: 'devices', href: '/stats/devices', staff: true },
   { nameKey: 'bandwidth', href: '/stats/bandwidth', staff: true },
+  { nameKey: 'downloads', href: '/stats/downloads', staff: true },
 ];
 
 export function StatsLayout() {

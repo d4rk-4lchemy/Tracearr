@@ -1,0 +1,105 @@
+{
+  "version": "3.0.0",
+  "date": "2026-10-21",
+  "headline": "Download tracking, Telegram and a new map",
+  "highlights": [
+    {
+      "title": "Downloads",
+      "body": "Tracearr now records who downloads what from Plex, Jellyfin and Emby: the file, the device, and for app downloads the quality that was actually delivered. There is a Downloads tab under Stats, a tab on each user and a panel on each media page. A Download burst automation alerts when one person pulls more than a set number of items or gigabytes in a window.",
+      "docs": "https://docs.tracearr.com/configuration/downloads"
+    },
+    {
+      "title": "Telegram",
+      "body": "Telegram joins the notification destinations. Give it a bot token and a chat ID; messages come through as plain text with the title in bold, media alerts carry the poster, and links to the media page show as buttons. ntfy, Gotify and Pushover notifications now link to the media page too.",
+      "docs": "https://docs.tracearr.com/configuration/destinations"
+    },
+    {
+      "title": "Map",
+      "body": "The map now shows every location with a list beside it ranked by streams, which follows the part of the map in view. Selecting a place shows its people, devices, first and last seen, and latest streams; overlapping places merge into an area with the same detail. Each location links to History filtered to its city and region."
+    }
+  ],
+  "changes": [
+    {
+      "type": "new",
+      "text": "Telegram is a notification destination, set up with a bot token and a chat ID"
+    },
+    {
+      "type": "new",
+      "text": "Telegram notifications for added and upgraded media carry the poster"
+    },
+    {
+      "type": "new",
+      "text": "media notifications on ntfy, Gotify, Pushover and Telegram open the media page"
+    },
+    {
+      "type": "improved",
+      "text": "Gotify and ntfy priority and the Apprise type follow the event severity unless an automation sets one"
+    },
+    {
+      "type": "improved",
+      "text": "server back online no longer bypasses Pushover quiet hours"
+    },
+    {
+      "type": "new",
+      "text": "downloads from Plex, Jellyfin and Emby show under Stats, on each user and on the media page"
+    },
+    {
+      "type": "new",
+      "text": "an automation can fire when a person downloads more than N items or gigabytes in a window"
+    },
+    {
+      "type": "new",
+      "text": "converted downloads record the quality the app received, not the file on the server"
+    },
+    {
+      "type": "new",
+      "text": "the map has a list of locations ranked by streams that follows the part of the map in view"
+    },
+    {
+      "type": "new",
+      "text": "selecting a location shows its people, devices, first and last seen, and latest streams",
+      "refs": ["#439"]
+    },
+    {
+      "type": "new",
+      "text": "overlapping locations merge into an area that lists its places and people"
+    },
+    {
+      "type": "new",
+      "text": "a location links to History filtered to its city and region",
+      "refs": ["#1353"]
+    },
+    {
+      "type": "fix",
+      "text": "the map shows every location instead of the 500 busiest, and its totals count all of them"
+    },
+    {
+      "type": "fix",
+      "text": "a custom date range on Stats, Map, History and user pages includes the whole last day in your time zone"
+    },
+    {
+      "type": "improved",
+      "text": "session writes and maintenance walks no longer scan compressed history, which was slow on small hosts"
+    },
+    {
+      "type": "improved",
+      "text": "maintenance walks pause between batches so polling and the UI stay responsive on a single core"
+    },
+    {
+      "type": "fix",
+      "text": "a session left open through downtime is closed at the time it was last seen, however old it is"
+    },
+    {
+      "type": "fix",
+      "text": "merging accounts refreshes the daily aggregates so the merged person's older history stays in stats"
+    },
+    {
+      "type": "note",
+      "text": "without the 0.6.0 SSE plugin, downloads are picked up every 30 seconds instead of immediately"
+    },
+    {
+      "type": "note",
+      "text": "Plex downloads come from its websocket, so one made while Tracearr is disconnected from Plex is not recorded"
+    }
+  ]
+}

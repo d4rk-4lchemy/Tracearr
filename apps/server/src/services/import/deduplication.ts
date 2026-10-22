@@ -26,7 +26,7 @@ export interface ExistingSession {
   id: string;
   externalSessionId: string | null;
   ratingKey: string | null;
-  startedAt: Date | null;
+  startedAt: Date;
   serverUserId: string;
   totalDurationMs: number | null;
   stoppedAt: Date | null;

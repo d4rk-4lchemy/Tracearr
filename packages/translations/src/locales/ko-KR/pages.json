@@ -273,7 +273,8 @@
       "viewAsHint": ""
     },
     "tabs": {
-      "access": ""
+      "access": "",
+      "downloads": ""
     },
     "cards": {
       "vsPrior": "",
@@ -837,6 +838,12 @@
         "product": "",
         "location": ""
       },
+      "download": {
+        "title": "",
+        "app": "",
+        "device": "",
+        "last24h": ""
+      },
       "trust": {
         "previous": "",
         "new": "",
@@ -1264,6 +1271,7 @@
         "accountInactiveFor": "계정이 {{duration}} 동안 비활성화되었습니다",
         "accountNewDevice": "계정이 새 기기에서 재생함",
         "accountTrustChanged": "계정의 신뢰 점수가 변경됩니다.",
+        "accountMediaDownloaded": "",
         "mediaAdded": "미디어가 추가되었습니다",
         "mediaUpgraded": "미디어가 업그레이드되었습니다",
         "serverDown": "서버가 오프라인이 됨",
@@ -1292,6 +1300,8 @@
         "travel_speed_kmh": "이동 속도",
         "unique_ips_in_window": "마지막 스트림 이후의 시간",
         "unique_devices_in_window": "장치 수",
+        "downloads_in_window": "",
+        "download_bytes_in_window": "",
         "inactive_days": "마지막 스트림 이후의 시간",
         "current_pause_minutes": "현재 일시중지",
         "total_pause_minutes": "총 일시 정지 시간",
@@ -1470,6 +1480,14 @@
       "unique_devices_in_window": {
         "label": "기간 내 고유 기기",
         "description": "해당 기간의 고유 장치 수"
+      },
+      "downloads_in_window": {
+        "label": "",
+        "description": ""
+      },
+      "download_bytes_in_window": {
+        "label": "",
+        "description": ""
       },
       "inactive_days": {
         "label": "비활성 일수",
@@ -1863,6 +1881,11 @@
         "description": "설정한 기간에 허용 개수보다 많은 IP 주소에서 스트리밍하면 위반으로 기록합니다.",
         "keywords": "차단된 국가"
       },
+      "download-burst": {
+        "name": "",
+        "description": "",
+        "keywords": ""
+      },
       "geo-restriction": {
         "name": "차단된 국가",
         "description": "차단한 국가에서 스트리밍하면 위반으로 기록합니다.",
@@ -2025,6 +2048,10 @@
           "description": "자동화나 소유자가 계정의 신뢰 점수를 변경한 시점입니다.",
           "synonyms": "신뢰, 점수, 평판, 페널티, 조정됨"
         },
+        "accountMediaDownloaded": {
+          "description": "",
+          "synonyms": ""
+        },
         "mediaAdded": {
           "description": "라이브러리 항목이 처음으로 서버에 표시됩니다.",
           "synonyms": "신규, 추가됨, 라이브러리, 영화, 에피소드, 가져오기"
@@ -2164,6 +2191,9 @@
         "authToken": "인증 토큰",
         "userKey": "사용자 키",
         "apiToken": "API 토큰",
+        "botToken": "",
+        "chatId": "",
+        "topicId": "",
         "preset": "제공업체",
         "host": "SMTP 호스트",
         "port": "포트",
@@ -2185,6 +2215,7 @@
       },
       "hints": {
         "authTokenOptional": "공개 주제의 경우 선택사항",
+        "telegramTopic": "",
         "smtpPreset": "",
         "smtpVerifyCertificate": "메일 서버의 TLS 인증서를 신뢰할 수 있는 인증 기관과 대조해 확인합니다. 로컬 브리지처럼 자체 서명 인증서를 사용하는 서버에서만 끄세요. 이 기능을 끄면 Tracearr와 메일 서버 사이의 경로에 있는 누군가가 연결을 가로챌 수 있습니다.",
         "smtpUsernameOptional": "서버에 로그인이 필요하지 않으면 비워 두세요.",
@@ -2242,6 +2273,7 @@
         "gotify": "Gotify",
         "apprise": "Apprise",
         "pushover": "Pushover",
+        "telegram": "",
         "email": "이메일",
         "push": "모바일 푸시",
         "webToast": "브라우저 알림"
@@ -2301,7 +2333,23 @@
     "loadingData": "",
     "noDataForFilters": "",
     "totalStreams": "",
-    "streamCount_other": ""
+    "byStreams": "",
+    "noMapPosition": "",
+    "allLocations": "",
+    "people": "",
+    "devices": "",
+    "latestStreams": "",
+    "firstSeen": "",
+    "lastSeen": "",
+    "areaName": "",
+    "areaPlaces": "",
+    "noneInView": "",
+    "showAll": "",
+    "streamCount_other": "",
+    "peopleCount_other": "",
+    "viewInHistory_other": "",
+    "streamsAcrossPlaces_other": "",
+    "inViewCount_other": ""
   },
   "devices": {
     "analyzedSessions": "분석된 세션",
@@ -2325,6 +2373,19 @@
     "directPlayMid": "50-79%",
     "directPlayLow": "50% 미만",
     "analyzedSessionsTooltip_other": "최소 {{count}}개의 세션과 알려진 코덱이 포함된 장치 + 코덱 조합의 세션입니다. 코덱 정보가 없는 드문 조합과 세션은 계산되지 않습니다."
+  },
+  "downloads": {
+    "dataDownloaded": "",
+    "peopleDownloading": "",
+    "mostDownloaded": "",
+    "unknownUser": "",
+    "appOnDevice": "",
+    "deliveredAs": "",
+    "deliveredAsFormat": "",
+    "deliveredAtBitrate": "",
+    "empty": "",
+    "panelTitle": "",
+    "requests_other": ""
   },
   "statsBandwidth": {
     "dataTransferred": "전송된 데이터",

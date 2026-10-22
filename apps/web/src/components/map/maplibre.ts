@@ -1,16 +1,13 @@
 import { addProtocol, setWorkerUrl } from 'maplibre-gl';
-import type {
-  DataDrivenPropertyValueSpecification,
-  ExpressionSpecification,
-  LayerSpecification,
-  StyleSpecification,
-} from 'maplibre-gl';
+import type { ExpressionSpecification, LayerSpecification, StyleSpecification } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { PMTiles, Protocol } from 'pmtiles';
 import { type Flavor, layers as flavorLayers, namedFlavor } from '@protomaps/basemaps';
 import type { Feature, FeatureCollection } from 'geojson';
 import type { LocationStats } from '@tracearr/shared';
 import { API_BASE_URL } from '@/lib/api';
+import { type Area, circleRadius } from './areas';
+import { locationKey } from './locationKey';
 
 setWorkerUrl(workerUrl);
 
@@ -44,6 +41,11 @@ const MAX_OVERZOOM = 2;
 
 export function mapMaxZoom(archiveZoom = archiveMaxZoom): number {
   return archiveZoom === null ? 14 : Math.max(HEAT_FADE.end, archiveZoom + MAX_OVERZOOM);
+}
+
+// The world is 512 px wide at zoom 0, so below this zoom the map would show it more than once.
+export function worldFillZoom(width: number): number {
+  return width > 512 ? Math.log2(width / 512) : 0;
 }
 
 let webglSupport: boolean | null = null;
@@ -160,10 +162,21 @@ export function heatmapLayer(
   };
 }
 
+export const HIGHLIGHTED: ExpressionSpecification = [
+  'any',
+  ['boolean', ['feature-state', 'hover'], false],
+  ['boolean', ['feature-state', 'selected'], false],
+];
+
+/** Highlighting raises a circle's opacity to at least 0.75 and never lowers it. */
+export function highlightOpacity(base: ExpressionSpecification | number): ExpressionSpecification {
+  return ['case', HIGHLIGHTED, ['max', 0.75, base], base];
+}
+
 export function crossfadeCircleLayers(
   source: string,
-  color: DataDrivenPropertyValueSpecification<string>,
-  strokeColor: DataDrivenPropertyValueSpecification<string>,
+  color: ExpressionSpecification | string,
+  strokeColor: ExpressionSpecification | string,
   dark: boolean
 ): LayerSpecification[] {
   return [
@@ -173,18 +186,10 @@ export function crossfadeCircleLayers(
       source,
       minzoom: HEAT_FADE.start,
       paint: {
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          9,
-          ['+', 3, ['*', 9, ['sqrt', ['get', 'w']]]],
-          13,
-          ['+', 5, ['*', 18, ['sqrt', ['get', 'w']]]],
-        ],
+        'circle-radius': ['get', 'r'],
         'circle-color': color,
-        'circle-stroke-color': strokeColor,
-        'circle-stroke-width': 1.5,
+        'circle-stroke-color': ['case', HIGHLIGHTED, '#ffffff', strokeColor],
+        'circle-stroke-width': ['case', HIGHLIGHTED, 2, 1.5],
         'circle-opacity': [
           'interpolate',
           ['linear'],
@@ -192,7 +197,7 @@ export function crossfadeCircleLayers(
           HEAT_FADE.start,
           0,
           HEAT_FADE.circlesIn,
-          0.55,
+          highlightOpacity(0.55),
         ],
         'circle-stroke-opacity': [
           'interpolate',
@@ -225,61 +230,192 @@ export function crossfadeCircleLayers(
 }
 
 export interface LocationFeatureProps {
+  key: string;
   w: number;
+  r: number;
   count: number;
-  city: string | null;
-  country: string | null;
-  isLocal: boolean;
   serverId: string | null;
-  servers: { serverId: string; count: number }[] | null;
+  members: number;
 }
 
-// Nested GeoJSON properties cross the tile worker as JSON strings and come
-// back that way from map events.
-export function readLocationFeature(props: Record<string, unknown>): LocationFeatureProps {
-  const { servers } = props;
-  return {
-    w: Number(props.w),
-    count: Number(props.count),
-    city: typeof props.city === 'string' ? props.city : null,
-    country: typeof props.country === 'string' ? props.country : null,
-    isLocal: props.isLocal === true,
-    serverId: typeof props.serverId === 'string' ? props.serverId : null,
-    servers:
-      typeof servers === 'string'
-        ? (JSON.parse(servers) as LocationFeatureProps['servers'])
-        : Array.isArray(servers)
-          ? (servers as LocationFeatureProps['servers'])
-          : null,
+type PlacedLocation = LocationStats & { lat: number; lon: number };
+
+export function hasMapPosition(l: LocationStats): l is PlacedLocation {
+  return l.lat !== null && l.lon !== null;
+}
+
+/** Longitudes in [-180, 180]; west is past east when the view crosses the antimeridian. */
+export interface ViewBounds {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
+export function inView(l: PlacedLocation, b: ViewBounds): boolean {
+  const lonIn =
+    b.west <= b.east ? l.lon >= b.west && l.lon <= b.east : l.lon >= b.west || l.lon <= b.east;
+  return lonIn && l.lat >= b.south && l.lat <= b.north;
+}
+
+interface Slice {
+  serverId: string | null;
+  count: number;
+}
+
+function slices(l: PlacedLocation, perServer: boolean): Slice[] {
+  if (perServer && l.servers?.length) {
+    return l.servers.map((s) => ({ serverId: s.serverId || null, count: s.count }));
+  }
+  return [{ serverId: null, count: l.count }];
+}
+
+const sliceServer = (l: PlacedLocation, serverId: string | null) =>
+  serverId ?? l.servers?.[0]?.serverId ?? null;
+
+interface Group {
+  key: string;
+  members: PlacedLocation[];
+}
+
+function placed(locations: LocationStats[], areas: Area[] | undefined) {
+  const valid = locations.filter(hasMapPosition);
+  const maxCount = Math.max(...valid.map((l) => l.count), 1);
+  const max = Math.log10(maxCount + 1);
+  const byKey = new Map(valid.map((l) => [locationKey(l), l]));
+  const groups: Group[] = areas
+    ? areas.map((a) => ({ key: a.key, members: a.members.flatMap((k) => byKey.get(k) ?? []) }))
+    : valid.map((l) => ({ key: locationKey(l), members: [l] }));
+  return { maxCount, weight: (count: number) => Math.log10(count + 1) / max, groups };
+}
+
+/** Each server's total across the group, and the first member that has that server. */
+function groupSlices(members: PlacedLocation[], perServer: boolean) {
+  const sums = new Map<string | null, { count: number; carrier: PlacedLocation }>();
+  for (const m of members) {
+    for (const s of slices(m, perServer)) {
+      const sum = sums.get(s.serverId);
+      if (sum) sum.count += s.count;
+      else sums.set(s.serverId, { count: s.count, carrier: m });
+    }
+  }
+  return sums;
+}
+
+/** Sizes a group the way multi-server mode draws it: by its largest per-server sum. */
+export function largestServerCount(locations: LocationStats[]): (memberKeys: string[]) => number {
+  const byKey = new Map(locations.filter(hasMapPosition).map((l) => [locationKey(l), l]));
+  return (keys) => {
+    const sums = groupSlices(
+      keys.flatMap((k) => byKey.get(k) ?? []),
+      true
+    );
+    return Math.max(0, ...[...sums.values()].map((s) => s.count));
   };
 }
 
+function pointFeature(lon: number, lat: number, properties: LocationFeatureProps): Feature {
+  return { type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties };
+}
+
+/** Without areas, one feature per place; with them, one per area (per server in both cases). */
 export function locationsGeojson(
   locations: LocationStats[],
-  perServer: boolean
+  perServer: boolean,
+  areas?: Area[]
 ): FeatureCollection {
-  const valid = locations.filter((l) => l.lat && l.lon);
-  const max = Math.log10(Math.max(...valid.map((l) => l.count), 1) + 1);
-  const feature = (l: LocationStats, count: number, serverId: string | null): Feature => ({
-    type: 'Feature',
-    geometry: { type: 'Point', coordinates: [l.lon, l.lat] },
-    properties: {
-      w: Math.log10(count + 1) / max,
-      count,
-      city: l.city,
-      country: l.country,
-      isLocal: l.isLocal,
-      serverId: serverId ?? l.servers?.[0]?.serverId ?? null,
-      servers: l.servers ?? null,
-    } satisfies LocationFeatureProps,
+  const { maxCount, weight, groups } = placed(locations, areas);
+  const features = groups.flatMap(({ key, members }) => {
+    const anchor = members[0];
+    if (!anchor) return [];
+    return [...groupSlices(members, perServer)].map(([serverId, { count }]) =>
+      pointFeature(anchor.lon, anchor.lat, {
+        key,
+        w: weight(count),
+        r: circleRadius(count, maxCount, members.length > 1),
+        count,
+        serverId: sliceServer(anchor, serverId),
+        members: members.length,
+      })
+    );
   });
-  const features = perServer
-    ? valid.flatMap((l) =>
-        (l.servers?.length ? l.servers : [{ serverId: '', count: l.count }]).map((s) =>
-          feature(l, s.count, s.serverId || null)
-        )
-      )
-    : valid.map((l) => feature(l, l.count, null));
+  return { type: 'FeatureCollection', features };
+}
+
+export interface PlaceCircle {
+  key: string;
+  serverId: string | null;
+  count: number;
+  lon: number;
+  lat: number;
+  r: number;
+  w: number;
+}
+
+/**
+ * Where each place's circle (per server) sits under a grouping. Inside an area the first member
+ * with a server carries the area's circle and the rest shrink to nothing at its anchor, so a
+ * transition starts and ends on exactly what the settled grouping draws.
+ */
+export function placeCircles(
+  locations: LocationStats[],
+  perServer: boolean,
+  areas: Area[]
+): Map<string, PlaceCircle> {
+  const { maxCount, weight, groups } = placed(locations, areas);
+  const circles = new Map<string, PlaceCircle>();
+  for (const { members } of groups) {
+    const anchor = members[0];
+    if (!anchor) continue;
+    const sums = groupSlices(members, perServer);
+    for (const m of members) {
+      const key = locationKey(m);
+      for (const s of slices(m, perServer)) {
+        const sum = sums.get(s.serverId);
+        circles.set(JSON.stringify([key, s.serverId]), {
+          key,
+          serverId: sliceServer(m, s.serverId),
+          count: s.count,
+          lon: anchor.lon,
+          lat: anchor.lat,
+          r: sum?.carrier === m ? circleRadius(sum.count, maxCount, members.length > 1) : 0,
+          w: weight(sum?.count ?? s.count),
+        });
+      }
+    }
+  }
+  return circles;
+}
+
+export function lerpCircles(
+  from: Map<string, PlaceCircle>,
+  to: Map<string, PlaceCircle>,
+  t: number
+): Map<string, PlaceCircle> {
+  const lerp = (a: number, b: number) => a + (b - a) * t;
+  return new Map(
+    [...to].map(([id, c]) => {
+      const f = from.get(id) ?? c;
+      return [
+        id,
+        {
+          ...c,
+          lon: lerp(f.lon, c.lon),
+          lat: lerp(f.lat, c.lat),
+          r: lerp(f.r, c.r),
+          w: lerp(f.w, c.w),
+        },
+      ];
+    })
+  );
+}
+
+export function circlesGeojson(circles: Map<string, PlaceCircle>): FeatureCollection {
+  const features = [...circles.values()]
+    .filter((c) => c.r > 0)
+    .map(({ key, serverId, count, lon, lat, r, w }) =>
+      pointFeature(lon, lat, { key, w, r, count, serverId, members: 1 })
+    );
   return { type: 'FeatureCollection', features };
 }
 

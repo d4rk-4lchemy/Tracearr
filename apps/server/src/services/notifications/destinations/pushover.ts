@@ -1,29 +1,16 @@
 import {
   DESTINATION_TEXT_PROFILES,
   DESTINATION_TYPES,
-  escapeFor,
+  fitText,
   type NotificationPriority,
 } from '@tracearr/shared';
-import { formatPluginUpdateMessage } from '../formatters/pluginUpdate.js';
-import { formatServerUpdateMessage, formatTracearrUpdateMessage } from '../formatters/updates.js';
-import { formatViolationMessage } from '../formatters/violation.js';
-import { toNotificationPayload } from '../types.js';
 import { deliverFetch } from './fetch.js';
-import { fitted, ownText, textOf } from './overrides.js';
-import { formatDuration, getMediaDisplay, getUserDisplayName } from './sessionText.js';
-import type {
-  NotificationPayload,
-  PluginUpdateContext,
-  ServerContext,
-  ServerUpdateContext,
-  SessionContext,
-  TracearrUpdateContext,
-  ViolationContext,
-} from '../types.js';
+import { renderText, TEST_TEXT } from './text.js';
 import type { DeliverContext, DestinationType } from './types.js';
 
 const PUSHOVER_API_URL = 'https://api.pushover.net/1/messages.json';
 const PROFILE = DESTINATION_TEXT_PROFILES.pushover;
+const URL_TITLE_LIMIT = { max: 100, unit: 'chars' } as const;
 
 const PUSHOVER_PRIORITY: Record<NotificationPriority, string> = {
   lowest: '-2',
@@ -32,6 +19,15 @@ const PUSHOVER_PRIORITY: Record<NotificationPriority, string> = {
   high: '1',
   urgent: '2',
 };
+// Events that render their own text have no fixed alert level of their own; without one from the
+// automation they go out quiet, as they did before severity drove the other destinations.
+const QUIET_BY_DEFAULT = new Set([
+  'media_added',
+  'media_upgraded',
+  'new_device',
+  'trust_score_changed',
+  'newsletter_send',
+]);
 /** Pushover refuses an emergency without these and repeats it until acknowledged. */
 const EMERGENCY = { retry: '60', expire: '3600' };
 
@@ -46,150 +42,8 @@ export interface PushoverMessage {
   priority: string;
   retry?: string;
   expire?: string;
-}
-
-function severityToPushoverPriority(severity: string): string {
-  const map: Record<string, string> = { high: '1', warning: '0', low: '-1' };
-  return map[severity] ?? '-1';
-}
-
-function buildViolation(payload: NotificationPayload, ctx: ViolationContext): PushoverMessage {
-  return {
-    ...textOf(payload, {
-      title: payload.title,
-      message: formatViolationMessage(ctx.violation),
-    }),
-    priority: severityToPushoverPriority(ctx.violation.severity),
-  };
-}
-
-function buildSessionStarted(payload: NotificationPayload, ctx: SessionContext): PushoverMessage {
-  const { session } = ctx;
-  const { title: mediaTitle, subtitle } = getMediaDisplay(session);
-  const userName = getUserDisplayName(session);
-  const mediaDisplay = subtitle ? `${mediaTitle} - ${subtitle}` : mediaTitle;
-
-  return {
-    ...textOf(payload, {
-      title: 'Stream Started',
-      message: `${userName} started watching ${mediaDisplay}`,
-    }),
-    priority: '-1',
-  };
-}
-
-function buildSessionStopped(payload: NotificationPayload, ctx: SessionContext): PushoverMessage {
-  const { session } = ctx;
-  const { title: mediaTitle, subtitle } = getMediaDisplay(session);
-  const userName = getUserDisplayName(session);
-  const mediaDisplay = subtitle ? `${mediaTitle} - ${subtitle}` : mediaTitle;
-  const durationStr = session.durationMs ? ` (${formatDuration(session.durationMs)})` : '';
-
-  return {
-    ...textOf(payload, {
-      title: 'Stream Ended',
-      message: `${userName} finished watching ${mediaDisplay}${durationStr}`,
-    }),
-    priority: '-1',
-  };
-}
-
-function buildServerDown(payload: NotificationPayload, ctx: ServerContext): PushoverMessage {
-  return {
-    ...textOf(payload, {
-      title: 'Server Offline',
-      message: `${ctx.serverName} is not responding`,
-    }),
-    priority: '1',
-  };
-}
-
-function buildServerUp(payload: NotificationPayload, ctx: ServerContext): PushoverMessage {
-  return {
-    ...textOf(payload, { title: 'Server Online', message: `${ctx.serverName} is back online` }),
-    priority: '1',
-  };
-}
-
-function buildPluginUpdate(
-  payload: NotificationPayload,
-  ctx: PluginUpdateContext
-): PushoverMessage {
-  return {
-    ...textOf(payload, {
-      title: 'Plugin Update Available',
-      message: `${ctx.serverName}: ${formatPluginUpdateMessage(ctx)}`,
-    }),
-    priority: '-1',
-  };
-}
-
-function buildServerUpdate(
-  payload: NotificationPayload,
-  ctx: ServerUpdateContext
-): PushoverMessage {
-  return {
-    ...textOf(payload, {
-      title: 'Server Update Available',
-      message: formatServerUpdateMessage(ctx),
-    }),
-    priority: '-1',
-  };
-}
-
-function buildTracearrUpdate(
-  payload: NotificationPayload,
-  ctx: TracearrUpdateContext
-): PushoverMessage {
-  return {
-    ...textOf(payload, {
-      title: 'Tracearr Update Available',
-      message: formatTracearrUpdateMessage(ctx),
-    }),
-    priority: '-1',
-  };
-}
-
-function buildOwnText(payload: NotificationPayload): PushoverMessage {
-  return { ...ownText(payload), priority: '-1' };
-}
-
-function build(payload: NotificationPayload): PushoverMessage {
-  switch (payload.context.type) {
-    case 'violation_detected':
-      return buildViolation(payload, payload.context);
-    case 'stream_started':
-      return buildSessionStarted(payload, payload.context);
-    case 'stream_stopped':
-      return buildSessionStopped(payload, payload.context);
-    case 'server_down':
-      return buildServerDown(payload, payload.context);
-    case 'server_up':
-      return buildServerUp(payload, payload.context);
-    case 'plugin_update_available':
-      return buildPluginUpdate(payload, payload.context);
-    case 'server_update_available':
-      return buildServerUpdate(payload, payload.context);
-    case 'tracearr_update_available':
-      return buildTracearrUpdate(payload, payload.context);
-    case 'media_added':
-    case 'media_upgraded':
-    case 'new_device':
-    case 'trust_score_changed':
-    case 'newsletter_send':
-      return buildOwnText(payload);
-  }
-}
-
-function withPriority(
-  message: PushoverMessage,
-  priority: NotificationPriority | undefined
-): PushoverMessage {
-  if (priority === undefined) return message;
-  const value = PUSHOVER_PRIORITY[priority];
-  return value === '2'
-    ? { ...message, priority: value, ...EMERGENCY }
-    : { ...message, priority: value };
+  url?: string;
+  url_title?: string;
 }
 
 async function post(
@@ -208,6 +62,8 @@ async function post(
     params.set('retry', body.retry);
     params.set('expire', body.expire);
   }
+  if (body.url !== undefined) params.set('url', body.url);
+  if (body.url_title !== undefined) params.set('url_title', body.url_title);
 
   await deliverFetch(
     PUSHOVER_API_URL,
@@ -223,20 +79,19 @@ async function post(
 export const pushoverType: DestinationType<PushoverConfig, PushoverMessage> = {
   kind: 'pushover',
   events: DESTINATION_TYPES.pushover.events,
-  render: (event, _config, ctx) => {
-    const payload = toNotificationPayload(event, ctx.source, escapeFor(PROFILE));
-    const message = build(payload);
-    return withPriority({ ...message, ...fitted(message, PROFILE) }, payload.automation?.priority);
+  render: async (event, _config, ctx) => {
+    const { text, priority, links, payload } = await renderText(event, ctx.source, PROFILE);
+    const link = links[0];
+    const level =
+      payload.automation?.priority ??
+      (QUIET_BY_DEFAULT.has(payload.context.type) ? 'low' : priority);
+    return {
+      ...text,
+      priority: PUSHOVER_PRIORITY[level],
+      ...(level === 'urgent' && EMERGENCY),
+      ...(link && { url: link.url, url_title: fitText(link.label, URL_TITLE_LIMIT) }),
+    };
   },
   deliver: (body, config, ctx) => post(config, body, ctx),
-  test: (config, ctx) =>
-    post(
-      config,
-      {
-        title: 'Test Notification',
-        message: 'This is a test notification from Tracearr',
-        priority: '-1',
-      },
-      ctx
-    ),
+  test: (config, ctx) => post(config, { ...TEST_TEXT, priority: PUSHOVER_PRIORITY.low }, ctx),
 };

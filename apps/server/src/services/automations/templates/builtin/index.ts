@@ -2,6 +2,7 @@ import { templateEnvelopeSchema, type TemplateEnvelope } from '@tracearr/shared'
 import accountInactivity from './account-inactivity.json' with { type: 'json' };
 import concurrentStreams from './concurrent-streams.json' with { type: 'json' };
 import deviceVelocity from './device-velocity.json' with { type: 'json' };
+import downloadBurst from './download-burst.json' with { type: 'json' };
 import geoRestriction from './geo-restriction.json' with { type: 'json' };
 import impossibleTravel from './impossible-travel.json' with { type: 'json' };
 import killPausedStreams from './kill-paused-streams.json' with { type: 'json' };
@@ -47,6 +48,7 @@ export const BUILTIN_ENVELOPES: TemplateEnvelope[] = [
   deviceVelocity,
   geoRestriction,
   accountInactivity,
+  downloadBurst,
   no4kTranscodes,
   killPausedStreams,
 ].map((envelope) => templateEnvelopeSchema.parse(envelope));

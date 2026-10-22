@@ -65,6 +65,7 @@ import { getHeavyOpsStatus } from '../jobs/heavyOpsLock.js';
 import { sanitizeText, scrubStringFields } from '../utils/sanitizeText.js';
 import {
   getImportedHistoryLinkState,
+  getSetting,
   getSettings,
   setImportedHistoryLinkState,
 } from './settings.js';
@@ -152,27 +153,35 @@ function libraryScanVersionFor(_serverType: ServerType): number {
   return 4;
 }
 
-// Auto-handoff throttles for the compressed-history identity backfill. The
-// probe decompress-scans all compressed history when it comes back false (the
-// steady state - media_id is in neither segmentby nor orderby), so it must
-// not run on every event sync. New library items are what flips the probe
-// from false to true, so item-adding syncs probe freely; a daily allowance
-// catches the rarer flips (an existing item resolving media_id later). The
-// enqueue floor caps the retry loop when a walk keeps failing on a bad chunk
-// - one auto walk per floor interval, while the manual button stays
-// unthrottled. The floor gates the whole probe, not just the enqueue, so it
-// also delays post-success probing: a new item batch landing right after a
-// successful walk still waits out the floor before the next probe runs -
-// a latency trade-off, not a bug. Module-level state: resets on restart,
-// which just allows one extra probe/enqueue - acceptable.
+// Auto-handoff throttles for the compressed-history identity backfill. Only
+// an upserted library item can create identity work for the sessions under its
+// rating key, so the probe asks only about the keys upserted since it last
+// answered, per server. It runs at most once a day; a probe that finds work
+// but cannot queue the job (the queue is busy) spends nothing and keeps its
+// keys for the next sync. The enqueue floor caps the retry loop when a walk
+// keeps failing on a bad chunk - one auto walk per floor interval, while the
+// manual button stays unthrottled - and the failure count stops auto walks
+// altogether after MAX_AUTO_IDENTITY_ATTEMPTS in a row. Module-level state:
+// a restart drops the pending keys and allows one extra probe.
 const AUTO_BACKFILL_PROBE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const AUTO_BACKFILL_ENQUEUE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const MAX_AUTO_IDENTITY_ATTEMPTS = 5;
 let lastAutoBackfillProbeAt = 0;
 let lastAutoBackfillEnqueueAt = 0;
+const pendingProbeKeys = new Map<string, Set<string>>();
 
 export function _resetAutoBackfillThrottleForTests(): void {
   lastAutoBackfillProbeAt = 0;
   lastAutoBackfillEnqueueAt = 0;
+  pendingProbeKeys.clear();
+}
+
+/** True when some server's pending keys still have identity work below the horizon. */
+async function pendingKeysHaveIdentityWork(horizon: Date): Promise<boolean> {
+  for (const [serverId, keys] of pendingProbeKeys) {
+    if (await hasStampableSessionsBefore(horizon, serverId, [...keys])) return true;
+  }
+  return false;
 }
 
 // The imported history link hand-off keeps its own throttle state on the same
@@ -597,37 +606,49 @@ export class LibrarySyncService {
     // job, not the tail of every sync (an unwindowed batch here is what OOM-crash-
     // looped postgres in the field). Never let a backfill failure skip the
     // reconcile/cache steps below - the item upserts above already succeeded.
-    try {
-      const horizon = await getSessionsCompressionHorizon();
-      const repaired = await backfillSessionIdentityBatch(
-        10000,
-        horizon ? { start: horizon } : undefined
-      );
-      if (repaired.updated > 0 && repaired.oldest) {
-        await refreshAggregates({ startTime: repaired.oldest, endTime: new Date() });
-      }
-      // Compressed history can't be stamped here (one sync-tail transaction
-      // must not decompress old chunks) - hand it to the maintenance walk
-      // instead of relying on someone finding the button. maybeEnqueue
-      // dedupes: the queue is single-flight, so a pending job already covers
-      // this. Both the probe and the enqueue are throttled (see the interval
-      // constants): the probe is expensive when it answers false, and a walk
-      // that keeps dying on one bad chunk would otherwise re-enqueue on every
-      // sync forever.
-      const addedItems = results.some((r) => r.itemsAdded > 0);
-      const now = Date.now();
-      const probeAllowed =
-        now - lastAutoBackfillEnqueueAt >= AUTO_BACKFILL_ENQUEUE_INTERVAL_MS &&
-        (addedItems || now - lastAutoBackfillProbeAt >= AUTO_BACKFILL_PROBE_INTERVAL_MS);
-      if (horizon && probeAllowed) {
-        lastAutoBackfillProbeAt = now;
-        if (await hasStampableSessionsBefore(horizon)) {
-          const enqueued = await maybeEnqueueMaintenanceJob('backfill_session_identity', 'system');
-          if (enqueued) lastAutoBackfillEnqueueAt = now;
+    // Skipped when the sync upserted nothing, and while an import or maintenance
+    // job holds the heavy-ops lock: its walk may be updating the same session
+    // rows, and two unordered UPDATE ... FROM joins over them can deadlock.
+    if (results.some((r) => r.itemsProcessed > 0) && !(await getHeavyOpsStatus())) {
+      try {
+        const horizon = await getSessionsCompressionHorizon();
+        const repaired = await backfillSessionIdentityBatch(
+          10000,
+          horizon ? { start: horizon } : undefined
+        );
+        if (repaired.updated > 0 && repaired.oldest) {
+          await refreshAggregates({ startTime: repaired.oldest, endTime: new Date() });
         }
+        // Compressed history can't be stamped here (one sync-tail transaction
+        // must not decompress old chunks) - hand it to the maintenance walk
+        // instead of relying on someone finding the button. maybeEnqueue
+        // dedupes: the queue is single-flight, so a pending job already covers
+        // this. See the interval constants for the throttles.
+        const now = Date.now();
+        if (!horizon) {
+          pendingProbeKeys.clear();
+        } else if (
+          pendingProbeKeys.size > 0 &&
+          now - lastAutoBackfillEnqueueAt >= AUTO_BACKFILL_ENQUEUE_INTERVAL_MS &&
+          now - lastAutoBackfillProbeAt >= AUTO_BACKFILL_PROBE_INTERVAL_MS &&
+          (await getSetting('identityBackfillAutoAttempts')) < MAX_AUTO_IDENTITY_ATTEMPTS
+        ) {
+          if (!(await pendingKeysHaveIdentityWork(horizon))) {
+            lastAutoBackfillProbeAt = now;
+            pendingProbeKeys.clear();
+          } else if (
+            await maybeEnqueueMaintenanceJob('backfill_session_identity', 'system', {
+              trigger: 'auto',
+            })
+          ) {
+            lastAutoBackfillProbeAt = now;
+            lastAutoBackfillEnqueueAt = now;
+            pendingProbeKeys.clear();
+          }
+        }
+      } catch (err) {
+        console.error('[LibrarySync] Session identity backfill failed, continuing sync:', err);
       }
-    } catch (err) {
-      console.error('[LibrarySync] Session identity backfill failed, continuing sync:', err);
     }
 
     // Duplicate media rows can only appear when items were actually processed
@@ -1792,6 +1813,10 @@ export class LibrarySyncService {
         WHERE m.id = best.media_id AND m.genres IS DISTINCT FROM best.genres
       `);
     }
+
+    const probeKeys = pendingProbeKeys.get(serverId) ?? new Set<string>();
+    for (const item of uniqueItems) probeKeys.add(item.ratingKey);
+    pendingProbeKeys.set(serverId, probeKeys);
 
     const resolvedIds = uniqueItems.map((i) => mediaIdByRatingKey.get(i.ratingKey));
     if (touchedMediaIds) {

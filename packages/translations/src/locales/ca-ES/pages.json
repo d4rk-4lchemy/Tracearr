@@ -280,7 +280,8 @@
       "viewAsHint": ""
     },
     "tabs": {
-      "access": ""
+      "access": "",
+      "downloads": ""
     },
     "cards": {
       "vsPrior": "",
@@ -852,6 +853,12 @@
         "product": "Aplicació",
         "location": "Ubicació"
       },
+      "download": {
+        "title": "",
+        "app": "",
+        "device": "",
+        "last24h": ""
+      },
       "trust": {
         "previous": "Puntuació anterior",
         "new": "Puntuació nova",
@@ -1285,6 +1292,7 @@
         "accountInactiveFor": "un compte fa {{duration}} que està inactiu",
         "accountNewDevice": "un compte reprodueix des d'un dispositiu nou",
         "accountTrustChanged": "canvia la puntuació de confiança d'un compte",
+        "accountMediaDownloaded": "",
         "mediaAdded": "s'afegeix contingut multimèdia",
         "mediaUpgraded": "es millora contingut multimèdia",
         "serverDown": "cau un servidor",
@@ -1313,6 +1321,8 @@
         "travel_speed_kmh": "la velocitat de desplaçament",
         "unique_ips_in_window": "el nombre d'adreces IP",
         "unique_devices_in_window": "el nombre de dispositius",
+        "downloads_in_window": "",
+        "download_bytes_in_window": "",
         "inactive_days": "el temps des de l'última transmissió",
         "current_pause_minutes": "la pausa actual",
         "total_pause_minutes": "el temps de pausa total",
@@ -1493,6 +1503,14 @@
       "unique_devices_in_window": {
         "label": "Dispositius únics en el període",
         "description": "Nombre de dispositius únics en el període de temps"
+      },
+      "downloads_in_window": {
+        "label": "",
+        "description": ""
+      },
+      "download_bytes_in_window": {
+        "label": "",
+        "description": ""
       },
       "inactive_days": {
         "label": "Dies d'inactivitat",
@@ -1886,6 +1904,11 @@
         "description": "Genera un incompliment quan un compte transmet des de més adreces IP en un període de les que permeteu.",
         "keywords": "adreces ip vpn compartició dispositius període"
       },
+      "download-burst": {
+        "name": "",
+        "description": "",
+        "keywords": ""
+      },
       "geo-restriction": {
         "name": "Països blocats",
         "description": "Genera un incompliment quan una transmissió prové d'un país que bloqueu.",
@@ -2048,6 +2071,10 @@
           "description": "La puntuació de confiança d'un compte canvia, tant si l'ha modificat una automatització com un propietari.",
           "synonyms": "confiança, puntuació, reputació, penalització, ajustat"
         },
+        "accountMediaDownloaded": {
+          "description": "",
+          "synonyms": ""
+        },
         "mediaAdded": {
           "description": "Un element de la biblioteca apareix en un servidor per primera vegada.",
           "synonyms": "nou, afegit, biblioteca, pel·lícula, episodi, importació"
@@ -2191,6 +2218,9 @@
         "authToken": "Testimoni d'autenticació",
         "userKey": "Clau d'usuari",
         "apiToken": "Testimoni d'API",
+        "botToken": "",
+        "chatId": "",
+        "topicId": "",
         "preset": "Proveïdor",
         "host": "Amfitrió SMTP",
         "port": "Port",
@@ -2212,6 +2242,7 @@
       },
       "hints": {
         "authTokenOptional": "Opcional per als temes públics",
+        "telegramTopic": "",
         "smtpPreset": "Emplena l'amfitrió, el port i la seguretat dels proveïdors habituals. Per a Amazon SES i Mailgun EU, cal afegir la regió a l'amfitrió.",
         "smtpVerifyCertificate": "Comprova el certificat TLS del servidor de correu amb una autoritat de confiança. Desactiveu-ho només per a un servidor amb un certificat autosignat, com ara un pont local: llavors qualsevol que sigui al camí entre Tracearr i el servidor de correu pot interceptar la connexió.",
         "smtpUsernameOptional": "Deixeu-ho en blanc si el servidor no necessita cap inici de sessió",
@@ -2269,6 +2300,7 @@
         "gotify": "Gotify",
         "apprise": "Apprise",
         "pushover": "Pushover",
+        "telegram": "",
         "email": "Correu electrònic",
         "push": "Push mòbil",
         "webToast": "Notificacions emergents del navegador"
@@ -2331,7 +2363,23 @@
     "loadingData": "",
     "noDataForFilters": "",
     "totalStreams": "",
-    "streamCount_other": ""
+    "byStreams": "",
+    "noMapPosition": "",
+    "allLocations": "",
+    "people": "",
+    "devices": "",
+    "latestStreams": "",
+    "firstSeen": "",
+    "lastSeen": "",
+    "areaName": "",
+    "areaPlaces": "",
+    "noneInView": "",
+    "showAll": "",
+    "streamCount_other": "",
+    "peopleCount_other": "",
+    "viewInHistory_other": "",
+    "streamsAcrossPlaces_other": "",
+    "inViewCount_other": ""
   },
   "devices": {
     "analyzedSessions": "Sessions analitzades",
@@ -2356,6 +2404,19 @@
     "directPlayLow": "<50 %",
     "analyzedSessionsTooltip_one": "Sessions en combinacions de dispositiu + còdec amb un mínim de {{count}} sessió i un còdec conegut. Les combinacions poc freqüents i les sessions sense informació de còdec no es compten.",
     "analyzedSessionsTooltip_other": "Sessions en combinacions de dispositiu + còdec amb un mínim de {{count}} sessions i un còdec conegut. Les combinacions poc freqüents i les sessions sense informació de còdec no es compten."
+  },
+  "downloads": {
+    "dataDownloaded": "",
+    "peopleDownloading": "",
+    "mostDownloaded": "",
+    "unknownUser": "",
+    "appOnDevice": "",
+    "deliveredAs": "",
+    "deliveredAsFormat": "",
+    "deliveredAtBitrate": "",
+    "empty": "",
+    "panelTitle": "",
+    "requests_other": ""
   },
   "statsBandwidth": {
     "dataTransferred": "Dades transferides",

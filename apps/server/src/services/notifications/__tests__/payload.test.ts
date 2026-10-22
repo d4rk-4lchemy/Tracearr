@@ -626,6 +626,10 @@ describe('variables per trigger', () => {
       durationMinutes: 10,
       minutes: 30,
       days: 45,
+      downloadTitle: 'Dune: Part Two',
+      downloadApp: 'Jellyfin Android',
+      downloadDevice: 'Pixel 8',
+      downloadsLast24h: 6,
     },
   };
   const episodeMedia = {
@@ -731,6 +735,7 @@ describe('variables per trigger', () => {
     'account.inactive_for': ['violation'],
     'account.new_device': ['new_device'],
     'account.trust_changed': ['trust_score_changed'],
+    'account.media_downloaded': ['violation'],
     'media.added': ['media_added'],
     'media.upgraded': ['media_upgraded'],
     'server.down': ['server_down'],

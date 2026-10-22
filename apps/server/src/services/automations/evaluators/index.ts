@@ -20,6 +20,7 @@ import { automationsLogger } from '../../../utils/logger.js';
 import { LOCAL_NETWORK_COUNTRY, normalizeToCountryCode } from '../../../utils/country.js';
 import { isLocalSession } from '../../../utils/localSession.js';
 import { normalizeResolution } from '../../../utils/resolutionNormalizer.js';
+import { countDownloads, sumDownloadBytes } from '../../downloads/queries.js';
 import { geoipService } from '../../geoip.js';
 import { compare } from '../comparisons.js';
 import type {
@@ -547,6 +548,40 @@ const evaluateInactiveDays: AccountConditionEvaluator = (
     matched: compare(inactiveDays, condition.operator, condition.value),
     actual: inactiveDays,
     details: { lastActivityAt: serverUser.lastActivityAt },
+  };
+};
+
+function downloadWindow(context: AccountEvaluationContext, condition: Condition) {
+  const windowHours = condition.params?.window_hours ?? 24;
+  const ids = context.identityServerUserIds?.length
+    ? context.identityServerUserIds
+    : [context.serverUser.id];
+  return { windowHours, ids, since: new Date(Date.now() - windowHours * TIME_MS.HOUR) };
+}
+
+const evaluateDownloadsInWindow: AccountConditionEvaluator = async (
+  context: AccountEvaluationContext,
+  condition: Condition
+): Promise<EvaluatorResult> => {
+  const { windowHours, ids, since } = downloadWindow(context, condition);
+  const downloads = await countDownloads(ids, since, context.rule.serverId);
+  return {
+    matched: compare(downloads, condition.operator, condition.value),
+    actual: downloads,
+    details: { windowHours },
+  };
+};
+
+const evaluateDownloadBytesInWindow: AccountConditionEvaluator = async (
+  context: AccountEvaluationContext,
+  condition: Condition
+): Promise<EvaluatorResult> => {
+  const { windowHours, ids, since } = downloadWindow(context, condition);
+  const gigabytes = (await sumDownloadBytes(ids, since, context.rule.serverId)) / 1024 ** 3;
+  return {
+    matched: compare(gigabytes, condition.operator, condition.value),
+    actual: gigabytes,
+    details: { windowHours },
   };
 };
 
@@ -1179,6 +1214,8 @@ export const evaluatorRegistry: Record<ConditionField, ConditionEvaluator> = {
   unique_ips_in_window: evaluateUniqueIpsInWindow,
   unique_devices_in_window: evaluateUniqueDevicesInWindow,
   inactive_days: evaluateInactiveDays,
+  downloads_in_window: evaluateDownloadsInWindow,
+  download_bytes_in_window: evaluateDownloadBytesInWindow,
   current_pause_minutes: evaluateCurrentPauseMinutes,
   total_pause_minutes: evaluateTotalPauseMinutes,
 

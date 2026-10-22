@@ -22,6 +22,7 @@ import {
 import { queryUserDevices } from '../../src/routes/users/queries.js';
 import { batchGetRecentUserSessions } from '../../src/jobs/poller/database.js';
 import { compressSessionChunks } from '../../src/test/compressChunks.js';
+import { permissionGuard } from '../../src/lib/scope.js';
 
 async function account(type: 'dispatcharr' | 'plex' | 'jellyfin' | 'emby' = 'dispatcharr') {
   const server = await createTestServer({ type });
@@ -133,6 +134,7 @@ describe('Dispatcharr devices on TimescaleDB', () => {
         serverIds: [],
       } as typeof request.user;
     });
+    app.decorate('requirePermission', permissionGuard(app));
     await app.register(sessionRoutes, { prefix: '/sessions' });
     await app.register(locationsRoutes, { prefix: '/stats' });
     try {
@@ -186,6 +188,37 @@ describe('Dispatcharr devices on TimescaleDB', () => {
       expect(
         (await queryUserDevices(db, other.serverUserId)).map((row) => row.deviceId).sort()
       ).toEqual(['machine-1', 'machine-2']);
+    }
+  });
+
+  it('counts stable Dispatcharr devices in both map routes alongside provider devices', async () => {
+    const owner = await account();
+    const plex = await account('plex');
+    const location = { geoCity: 'Paris', geoRegion: 'Ile-de-France', geoCountry: 'FR' };
+    for (const [i, product] of ['VLC/3.0', 'VLC/3.0', 'VLC/4.0'].entries()) {
+      await createTestSession({ ...owner, ...location, product, deviceId: `client-${i}` });
+    }
+    for (const deviceId of ['plex-1', 'plex-2']) {
+      await createTestSession({ ...plex, ...location, product: 'VLC/3.0', deviceId });
+    }
+
+    const app = Fastify();
+    await app.register(sensible);
+    app.decorate('authenticate', async (request) => {
+      request.user = { userId: 'owner', username: 'owner', role: 'owner', serverIds: [] };
+    });
+    app.decorate('requirePermission', permissionGuard(app));
+    await app.register(locationsRoutes);
+    try {
+      const place = encodeURIComponent(JSON.stringify(['FR', 'Ile-de-France', 'Paris', false]));
+      for (const url of ['/locations?period=all', `/locations/people?period=all&place=${place}`]) {
+        const response = await app.inject(url);
+        expect(response.statusCode).toBe(200);
+        expect(response.json().data).toHaveLength(1);
+        expect(response.json().data[0]).toMatchObject({ count: 5, deviceCount: 4, peopleCount: 2 });
+      }
+    } finally {
+      await app.close();
     }
   });
 });

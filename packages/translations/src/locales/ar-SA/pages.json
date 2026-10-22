@@ -308,7 +308,8 @@
       "viewAsHint": ""
     },
     "tabs": {
-      "access": ""
+      "access": "",
+      "downloads": ""
     },
     "cards": {
       "vsPrior": "",
@@ -912,6 +913,12 @@
         "product": "",
         "location": ""
       },
+      "download": {
+        "title": "",
+        "app": "",
+        "device": "",
+        "last24h": ""
+      },
       "trust": {
         "previous": "",
         "new": "",
@@ -1369,6 +1376,7 @@
         "accountInactiveFor": "",
         "accountNewDevice": "",
         "accountTrustChanged": "",
+        "accountMediaDownloaded": "",
         "mediaAdded": "",
         "mediaUpgraded": "",
         "serverDown": "",
@@ -1397,6 +1405,8 @@
         "travel_speed_kmh": "",
         "unique_ips_in_window": "",
         "unique_devices_in_window": "",
+        "downloads_in_window": "",
+        "download_bytes_in_window": "",
         "inactive_days": "",
         "current_pause_minutes": "",
         "total_pause_minutes": "",
@@ -1583,6 +1593,14 @@
         "description": ""
       },
       "unique_devices_in_window": {
+        "label": "",
+        "description": ""
+      },
+      "downloads_in_window": {
+        "label": "",
+        "description": ""
+      },
+      "download_bytes_in_window": {
         "label": "",
         "description": ""
       },
@@ -1978,6 +1996,11 @@
         "description": "",
         "keywords": ""
       },
+      "download-burst": {
+        "name": "",
+        "description": "",
+        "keywords": ""
+      },
       "geo-restriction": {
         "name": "",
         "description": "",
@@ -2140,6 +2163,10 @@
           "description": "",
           "synonyms": ""
         },
+        "accountMediaDownloaded": {
+          "description": "",
+          "synonyms": ""
+        },
         "mediaAdded": {
           "description": "",
           "synonyms": ""
@@ -2299,6 +2326,9 @@
         "authToken": "",
         "userKey": "",
         "apiToken": "",
+        "botToken": "",
+        "chatId": "",
+        "topicId": "",
         "preset": "",
         "host": "",
         "port": "",
@@ -2320,6 +2350,7 @@
       },
       "hints": {
         "authTokenOptional": "",
+        "telegramTopic": "",
         "smtpPreset": "",
         "smtpVerifyCertificate": "",
         "smtpUsernameOptional": "",
@@ -2377,6 +2408,7 @@
         "gotify": "",
         "apprise": "",
         "pushover": "",
+        "telegram": "",
         "email": "",
         "push": "",
         "webToast": ""
@@ -2451,7 +2483,23 @@
     "loadingData": "",
     "noDataForFilters": "",
     "totalStreams": "",
-    "streamCount_other": ""
+    "byStreams": "",
+    "noMapPosition": "",
+    "allLocations": "",
+    "people": "",
+    "devices": "",
+    "latestStreams": "",
+    "firstSeen": "",
+    "lastSeen": "",
+    "areaName": "",
+    "areaPlaces": "",
+    "noneInView": "",
+    "showAll": "",
+    "streamCount_other": "",
+    "peopleCount_other": "",
+    "viewInHistory_other": "",
+    "streamsAcrossPlaces_other": "",
+    "inViewCount_other": ""
   },
   "devices": {
     "analyzedSessions": "",
@@ -2480,6 +2528,19 @@
     "analyzedSessionsTooltip_few": "",
     "analyzedSessionsTooltip_many": "",
     "analyzedSessionsTooltip_other": ""
+  },
+  "downloads": {
+    "dataDownloaded": "",
+    "peopleDownloading": "",
+    "mostDownloaded": "",
+    "unknownUser": "",
+    "appOnDevice": "",
+    "deliveredAs": "",
+    "deliveredAsFormat": "",
+    "deliveredAtBitrate": "",
+    "empty": "",
+    "panelTitle": "",
+    "requests_other": ""
   },
   "statsBandwidth": {
     "dataTransferred": "البيانات المنقولة",

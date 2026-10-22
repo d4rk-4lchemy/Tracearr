@@ -41,6 +41,8 @@ export async function deliverFetch(
   });
   if (!response.ok) {
     const text = (await response.text().catch(() => '')).slice(0, 500);
-    throw new Error(`${ctx.destination.name}: ${response.status} ${text}`.trim());
+    throw Object.assign(new Error(`${ctx.destination.name}: ${response.status} ${text}`.trim()), {
+      status: response.status,
+    });
   }
 }

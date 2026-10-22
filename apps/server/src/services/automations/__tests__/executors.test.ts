@@ -1683,6 +1683,45 @@ describe('Action Executor Registry', () => {
       );
     });
 
+    it('stamps what a download trigger carried, counting what the rule scope counted', async () => {
+      const serverUser = createMockServerUser();
+      const downloadContext = (serverId: string | null): EvaluationContext => {
+        const base = createAccountContext(serverUser);
+        return {
+          ...base,
+          rule: { ...base.rule, serverId },
+          trigger: {
+            type: 'account.media_downloaded',
+            at: new Date(),
+            server: { id: 'server-1', name: 'Test Server', type: 'jellyfin' },
+            serverUser: evaluationServerUser(serverUser),
+            session: null,
+            download: {
+              title: 'Dune: Part Two',
+              app: null,
+              device: 'Pixel 8',
+              last24h: 6,
+              last24hOnServer: 2,
+            },
+          },
+        };
+      };
+      const sentData = () =>
+        (mockDeps.enqueueAutomationNotification as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]
+          ?.event.payload.data;
+
+      await executeActions(downloadContext(null), [{ type: 'send', to: ['d1'] }]);
+      expect(sentData()).toMatchObject({
+        downloadTitle: 'Dune: Part Two',
+        downloadApp: null,
+        downloadDevice: 'Pixel 8',
+        downloadsLast24h: 6,
+      });
+
+      await executeActions(downloadContext('server-1'), [{ type: 'send', to: ['d1'] }]);
+      expect(sentData()).toMatchObject({ downloadsLast24h: 2 });
+    });
+
     it('renders {{minutes}} as whole minutes, of the pause the firing node measures', async () => {
       // The wake fires a second past the threshold, so the raw reading is 30.0166 minutes.
       const at = new Date('2026-08-21T12:00:01.000Z');

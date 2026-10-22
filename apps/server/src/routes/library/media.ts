@@ -47,6 +47,7 @@ import { buildProxyUrl, posterVersionFor } from '../../services/imageProxy.js';
 import { listMediaRequests } from '../../services/requests/reads.js';
 import { getSetting } from '../../services/settings.js';
 import { getAlbumDetail } from '../../services/library/albumDetail.js';
+import { queryMediaDownloads } from '../../services/downloads/queries.js';
 import {
   buildMediaScope,
   getAvailability,
@@ -248,11 +249,15 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
       `detail-v5${libraryCacheSegment(request.scope)}`,
       resolvedIds
     );
+    // Downloads are staff-only and the cached body is shared across scopes, so they are read per request
+    const readDownloads = async (mergedIds: string[]) =>
+      request.scope === 'all' ? queryMediaDownloads([canonical.id, ...mergedIds], resolvedIds) : [];
     const cached = await readCache<MediaDetailResponse>(app.redis, cacheKey);
-    if (cached) return cached;
+    if (cached) return { ...cached, downloads: await readDownloads(cached.mergedIds) };
 
     const aliases = await resolveMediaAliases(canonical.id);
     const mergedIds = aliases.filter((aliasId) => aliasId !== canonical.id);
+
     const { availability, seasonCount, episodeCount } = await getAvailability(
       canonical.id,
       canonical.mediaType,
@@ -293,9 +298,10 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
           : null,
       posterVersion,
       dominantColor: poster?.dominantColor ?? null,
+      downloads: [],
     };
     await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_MEDIA_DETAIL, JSON.stringify(response));
-    return response;
+    return { ...response, downloads: await readDownloads(mergedIds) };
   });
 
   /**

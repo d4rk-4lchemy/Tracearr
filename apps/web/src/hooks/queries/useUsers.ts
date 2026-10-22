@@ -73,6 +73,18 @@ export function useUserSessions(
   });
 }
 
+export function useUserDownloads(
+  id: string,
+  params: { page?: number; pageSize?: number; scope?: 'identity' } = {}
+) {
+  return useQuery({
+    queryKey: ['users', 'downloads', id, params],
+    queryFn: () => api.users.downloads(id, params),
+    enabled: !!id,
+    staleTime: 1000 * 60,
+  });
+}
+
 export function useUpdateUser() {
   const queryClient = useQueryClient();
 

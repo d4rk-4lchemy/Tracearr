@@ -201,6 +201,12 @@ export function UserDevicesCard({ devices, isLoading, totalSessions = 0 }: UserD
                     </div>
                     <div className="text-muted-foreground flex items-center gap-2 text-xs">
                       <span>{t('common:count.session', { count: device.sessionCount })}</span>
+                      {device.downloadCount > 0 && (
+                        <>
+                          <span>·</span>
+                          <span>{t('common:count.download', { count: device.downloadCount })}</span>
+                        </>
+                      )}
                       <span>·</span>
                       <span>
                         {formatDistanceToNow(new Date(device.lastSeenAt), { addSuffix: true })}

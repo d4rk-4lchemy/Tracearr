@@ -19,6 +19,7 @@ import {
   ListFilter,
   User,
   Globe,
+  MapPin,
   Wifi,
   Monitor,
   ChevronDown,
@@ -199,6 +200,23 @@ export function HistoryFiltersBar({
             ? t('pages:history.filters.selected', { count: filters.geoCountries.length })
             : filters.geoCountries.join(', '),
         icon: Globe,
+      });
+    }
+    const unknown = t('common:labels.unknown');
+    if (filters.geoCity || filters.geoCityMissing) {
+      active.push({
+        key: filters.geoCity ? 'geoCity' : 'geoCityMissing',
+        label: t('pages:history.location.city'),
+        value: filters.geoCity || unknown,
+        icon: MapPin,
+      });
+    }
+    if (filters.geoRegion || filters.geoRegionMissing) {
+      active.push({
+        key: filters.geoRegion ? 'geoRegion' : 'geoRegionMissing',
+        label: t('pages:history.location.region'),
+        value: filters.geoRegion || unknown,
+        icon: MapPin,
       });
     }
     if (filters.mediaTypes?.length) {

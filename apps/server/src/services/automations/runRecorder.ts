@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import {
   REDIS_KEYS,
   WS_EVENTS,
@@ -159,6 +159,14 @@ export function buildRunValues(args: RecordRunArgs): typeof automationRuns.$infe
  * Each branch reads its own kind, so flipping an automation's kind re-arms it
  * instead of inheriting the other kind's history.
  */
+/** The longest download window the automation's conditions use, 24 h when none sets one. */
+function burstWindowMs(automation: EngineAutomation): number {
+  const hours = automation.conditions.groups
+    .flatMap((group) => group.conditions)
+    .map((condition) => condition.params?.window_hours ?? 24);
+  return Math.max(24, ...hours) * 60 * 60 * 1000;
+}
+
 function gateFor(args: RecordRunArgs): SQL | undefined {
   const { automation, scope, trigger } = args;
   const completed = eq(automationRuns.outcome, 'completed');
@@ -191,11 +199,21 @@ function gateFor(args: RecordRunArgs): SQL | undefined {
       completed
     );
   }
-  // The hourly account path is level-triggered: any completed row for the pair blocks, forever.
+  // Inactivity is a standing state, so any completed row for the pair blocks it forever;
+  // re-arming would re-record it every hour after an acknowledge. A download burst is an
+  // event and re-arms the way a session does, except that an account's subject never
+  // changes, so a dismissal only covers the burst it was about: runs older than the
+  // window no longer block.
   return and(
     eq(automationRuns.automationId, automation.id),
     eq(automationRuns.serverUserId, scope.serverUserId),
     eq(automationRuns.kind, 'policy'),
+    trigger.type === 'account.media_downloaded'
+      ? and(
+          or(isNull(automationRuns.acknowledgedAt), isNotNull(automationRuns.dismissedAt)),
+          gte(automationRuns.createdAt, new Date(Date.now() - burstWindowMs(automation)))
+        )
+      : undefined,
     completed
   );
 }

@@ -222,6 +222,7 @@
     "session_few": "",
     "session_many": "",
     "session_other": "",
+    "download_other": "",
     "stream_one": "{{count}} поток",
     "stream_few": "",
     "stream_many": "",

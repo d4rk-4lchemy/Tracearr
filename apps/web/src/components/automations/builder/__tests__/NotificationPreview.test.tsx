@@ -12,6 +12,7 @@ vi.mock('@/hooks/queries/useDestinations', () => ({
       { id: 'd-hook', type: 'json_webhook', name: 'My Webhook' },
       { id: 'd-email', type: 'email', name: 'My Email' },
       { id: 'd-apprise', type: 'apprise', name: 'My Apprise' },
+      { id: 'd-telegram', type: 'telegram', name: 'My Telegram' },
       { id: 'd-toast', type: 'web_toast', name: 'My Toasts' },
       { id: 'd-app', type: 'push', name: 'My App' },
     ],
@@ -136,6 +137,11 @@ describe('NotificationPreview', () => {
     expect(screen.getByText('Priority: High')).toBeInTheDocument();
     rerender(<NotificationPreview body="hi" to={['d-push']} />);
     expect(screen.getByText('Priority: Automatic')).toBeInTheDocument();
+  });
+
+  it('shows the set priority on Telegram', () => {
+    render(<NotificationPreview body="hi" to={['d-telegram']} priority="high" />);
+    expect(screen.getByText('Priority: High')).toBeInTheDocument();
   });
 
   it('shows no priority on Apprise', () => {

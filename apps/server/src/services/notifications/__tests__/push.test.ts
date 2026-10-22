@@ -207,12 +207,14 @@ describe('pushType.render text limits', () => {
       { type: 'session_started', payload: session },
       automationCtx({ body: 'b'.repeat(1500) })
     );
-    expect(rendered.kind === 'event' ? [...(rendered.override?.body ?? '')].length : 0).toBe(1024);
+    expect(rendered.kind === 'event' ? Array.from(rendered.override?.body ?? '').length : 0).toBe(
+      1024
+    );
   });
 
   it('cuts the text path body to 1024 characters', async () => {
     const rendered = await render(mediaAdded, automationCtx({ body: 'b'.repeat(1500) }));
-    expect(rendered.kind === 'text' ? [...rendered.body].length : 0).toBe(1024);
+    expect(rendered.kind === 'text' ? Array.from(rendered.body).length : 0).toBe(1024);
   });
 });
 

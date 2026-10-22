@@ -292,3 +292,95 @@ describe('the account triggers against the real gate', () => {
     expect(await storedRuns(automationId)).toBe(2);
   });
 });
+
+describe('the account policy gate', () => {
+  async function seedPolicy(type: 'account.media_downloaded' | 'account.inactive_for') {
+    const owner = await createTestUser({ role: 'owner' });
+    const server = await createTestServer({ type: 'jellyfin' });
+    const serverUser = await createTestServerUser({ userId: owner.id, serverId: server.id });
+    const node: TriggerNode =
+      type === 'account.inactive_for'
+        ? { id: randomUUID(), type, enabled: true, params: { days: 30 } }
+        : { id: randomUUID(), type, enabled: true };
+    const [row] = await db
+      .insert(automations)
+      .values({
+        name: 'account policy',
+        kind: 'policy',
+        severity: 'warning',
+        isActive: true,
+        conditions: { groups: [] },
+        actions: { actions: [] },
+        triggers: [node],
+      })
+      .returning();
+    if (!row) throw new Error('failed to insert the automation');
+    const automation: EngineAutomation = {
+      id: row.id,
+      name: row.name,
+      description: null,
+      serverId: null,
+      serverUserId: null,
+      userId: null,
+      enforceAcrossServers: false,
+      isActive: true,
+      severity: 'warning',
+      kind: 'policy',
+      conditions: { groups: [] },
+      actions: { actions: [] },
+      triggers: [node],
+      cooldownMinutes: null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+    return () =>
+      recordRun({
+        automation,
+        result: matched,
+        serverUserId: serverUser.id,
+        serverId: server.id,
+        scope: { kind: 'account', serverUserId: serverUser.id },
+        session: null,
+        trigger: { type, nodeId: node.id, edgeKey: null, at: new Date() },
+      });
+  }
+
+  const mark = (id: string, column: 'acknowledgedAt' | 'dismissedAt') =>
+    db
+      .update(automationRuns)
+      .set({ [column]: new Date() })
+      .where(eq(automationRuns.id, id));
+
+  it('re-arms a download burst once acknowledged, and not while open or dismissed', async () => {
+    const record = await seedPolicy('account.media_downloaded');
+
+    const first = await record();
+    if (!first) throw new Error('first run was not recorded');
+    expect(await record()).toBeNull();
+
+    await mark(first.id, 'acknowledgedAt');
+    const second = await record();
+    if (!second) throw new Error('acknowledged run did not re-arm');
+
+    await mark(second.id, 'acknowledgedAt');
+    await mark(second.id, 'dismissedAt');
+    expect(await record()).toBeNull();
+
+    // A dismissal covers the burst it was about: past the 24 h default window it no longer blocks
+    await db
+      .update(automationRuns)
+      .set({ createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000) })
+      .where(eq(automationRuns.id, second.id));
+    expect(await record()).not.toBeNull();
+  });
+
+  it('keeps an inactivity run blocked after it is acknowledged', async () => {
+    const record = await seedPolicy('account.inactive_for');
+
+    const first = await record();
+    if (!first) throw new Error('first run was not recorded');
+    await mark(first.id, 'acknowledgedAt');
+
+    expect(await record()).toBeNull();
+  });
+});

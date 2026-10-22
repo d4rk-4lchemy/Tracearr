@@ -45,8 +45,10 @@ export async function syncLocationBatch(
   serverId: string,
   range: LocationRange,
   window: Required<BackfillWindow> | null,
-  batchSize = LOCATION_SYNC_BATCH_SIZE
-): Promise<{ count: number; oldest: Date | null }> {
+  batchSize = LOCATION_SYNC_BATCH_SIZE,
+  /** The previous batch's oldest started_at. Inclusive: a row this walk wrote no longer matches, so only its unwritten ties come back. */
+  before?: string
+): Promise<{ count: number; oldest: Date | null; cursor?: string }> {
   const start = laterOf(range.from, window?.start ?? null);
   const end = earlierOf(range.to, window?.end ?? null);
   if (start && end && start >= end) return { count: 0, oldest: null };
@@ -63,6 +65,7 @@ export async function syncLocationBatch(
       sql`s.server_id = ${serverId}::uuid`,
       ...(start ? [sql`s.started_at >= ${ts(start)}`] : []),
       ...(end ? [sql`s.started_at < ${ts(end)}`] : []),
+      ...(before ? [sql`s.started_at <= ${before}::timestamptz`] : []),
     ],
     sql` AND `
   );
@@ -125,7 +128,7 @@ export async function syncLocationBatch(
         WHERE ${inBatch} AND id = ANY(${uuidArraySql(publicIds)})
       `);
     }
-    return { count: rows.length, oldest: new Date(oldest.started_at) };
+    return { count: rows.length, oldest: new Date(oldest.started_at), cursor: oldest.started_at };
   });
 }
 
@@ -178,7 +181,7 @@ export async function runServerLocationSyncWalk(deps: {
   ) => {
     const result = await drainWindowsWithBisection(
       rangeWindows,
-      (window) => syncLocationBatch(serverId, range, window, batchSize),
+      (window, before) => syncLocationBatch(serverId, range, window, batchSize, before),
       {
         batchSize,
         label: 'ServerLocationSync',

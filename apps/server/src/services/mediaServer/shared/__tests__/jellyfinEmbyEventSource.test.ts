@@ -330,6 +330,77 @@ describe('JellyfinEmbyEventSource detection', () => {
     ]);
   });
 
+  it('emits download:event for library.item.downloaded', async () => {
+    const events: unknown[] = [];
+    const src = new JellyfinEmbyEventSource({
+      serverId: 'srv-1',
+      serverName: 'My Emby',
+      url: 'http://emby.local:8096',
+      serverType: 'emby',
+      token: 'abc',
+    });
+
+    src.on('download:event', (e: unknown) => events.push(e));
+    await src.connect();
+    stub._triggerOpen();
+
+    stub._emit(
+      'library.item.downloaded',
+      JSON.stringify({ userId: '16', itemId: null, itemName: '(500) Days of Summer' })
+    );
+
+    expect(events).toEqual([{}]);
+  });
+
+  it('emits download:transcoded with omitted fields as null and drops an event without a device', async () => {
+    const events: unknown[] = [];
+    const src = new JellyfinEmbyEventSource({
+      serverId: 'srv-1',
+      serverName: 'My Jellyfin',
+      url: 'http://jellyfin.local:8096',
+      serverType: 'jellyfin',
+      token: 'abc',
+    });
+
+    src.on('download:transcoded', (e: unknown) => events.push(e));
+    await src.connect();
+    stub._triggerOpen();
+
+    stub._emit(
+      'download.transcoded',
+      JSON.stringify({
+        phase: 'started',
+        userId: '72decdb0b0124b43b9086978ba823d1f',
+        deviceId: 'streamyfin-device-1',
+        bitrate: 1500000,
+        width: 1280,
+        height: 720,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+        container: 'mp4',
+        completionPercentage: 3.5,
+      })
+    );
+    stub._emit('download.transcoded', JSON.stringify({ phase: 'ended', userId: 'u' }));
+
+    expect(events).toEqual([
+      {
+        phase: 'started',
+        userId: '72decdb0b0124b43b9086978ba823d1f',
+        deviceId: 'streamyfin-device-1',
+        itemId: null,
+        bitrate: 1500000,
+        width: 1280,
+        height: 720,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+        container: 'mp4',
+        bytesTranscoded: null,
+        completionPercentage: 3.5,
+      },
+    ]);
+  });
+
   it('never emits library:event when the plugin does not send library events', async () => {
     const events: unknown[] = [];
     const src = new JellyfinEmbyEventSource({

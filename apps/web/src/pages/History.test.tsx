@@ -92,7 +92,8 @@ function queriedWindowDays(url: string): number {
     </MemoryRouter>
   );
   const filters = queries.useHistorySessions.mock.calls[0]?.[0] as HistoryFilters;
-  return Math.round((filters.endDate!.getTime() - filters.startDate!.getTime()) / 86_400_000);
+  const end = filters.endDate?.getTime() ?? Date.now();
+  return Math.round((end - filters.startDate!.getTime()) / 86_400_000);
 }
 
 describe('History date window', () => {
@@ -108,8 +109,8 @@ describe('History date window', () => {
     expect(queriedWindowDays('/history?period=week')).toBe(7);
   });
 
-  it('uses the custom range dates', () => {
-    expect(queriedWindowDays('/history?period=custom&from=2026-10-01&to=2026-10-11')).toBe(10);
+  it('uses the custom range dates through the whole last day', () => {
+    expect(queriedWindowDays('/history?period=custom&from=2026-10-01&to=2026-10-11')).toBe(11);
   });
 
   it('leaves the window open for period=all', () => {
@@ -173,6 +174,60 @@ describe('History URL params', () => {
     const params = writtenParams(view);
     expect(params.get('period')).toBe('all');
     expect(params.has('from')).toBe(false);
+  });
+});
+
+describe('History location params', () => {
+  function queriedFilters(url: string): HistoryFilters {
+    queries.useHistorySessions.mockClear();
+    renderAt(url);
+    return queries.useHistorySessions.mock.calls[0]?.[0] as HistoryFilters;
+  }
+
+  it('queries the exact city and region from the URL', () => {
+    const filters = queriedFilters(
+      '/history?city=Z%C3%BCrich&region=Rh%C3%B4ne-Alpes%20%26%20Co&countries=CH'
+    );
+    expect(filters).toMatchObject({
+      geoCity: 'Zürich',
+      geoRegion: 'Rhône-Alpes & Co',
+      geoCountries: ['CH'],
+    });
+  });
+
+  it('queries a missing city and region from noCity and noRegion', () => {
+    const filters = queriedFilters('/history?countries=DE&noCity=true&noRegion=true');
+    expect(filters).toMatchObject({ geoCityMissing: true, geoRegionMissing: true });
+    expect(filters.geoCity).toBeUndefined();
+  });
+
+  it('keeps the location keys when another filter changes', () => {
+    const view = renderAt(
+      '/history?city=Z%C3%BCrich&region=Rh%C3%B4ne-Alpes%20%26%20Co&countries=CH&noCity=true&noRegion=true'
+    );
+
+    act(() => bar.props?.onFiltersChange({ ...bar.props.filters, search: 'alice' }));
+
+    const params = writtenParams(view);
+    expect(params.get('city')).toBe('Zürich');
+    expect(params.get('region')).toBe('Rhône-Alpes & Co');
+    expect(params.get('noCity')).toBe('true');
+    expect(params.get('noRegion')).toBe('true');
+    expect(params.get('search')).toBe('alice');
+  });
+
+  it('drops only the removed location key', () => {
+    const view = renderAt('/history?city=Ogden&region=Utah&countries=US');
+
+    act(() => {
+      const { geoCity: _, ...rest } = bar.props?.filters ?? {};
+      bar.props?.onFiltersChange(rest);
+    });
+
+    const params = writtenParams(view);
+    expect(params.has('city')).toBe(false);
+    expect(params.get('region')).toBe('Utah');
+    expect(params.get('countries')).toBe('US');
   });
 });
 

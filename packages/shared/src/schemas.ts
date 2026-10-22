@@ -525,6 +525,8 @@ export const historyQuerySchema = z.object({
   geoCountries: commaSeparatedArray(z.string().max(100)),
   geoCity: z.string().max(255).optional(), // City name
   geoRegion: z.string().max(255).optional(), // State/province
+  geoCityMissing: booleanStringSchema.optional(),
+  geoRegionMissing: booleanStringSchema.optional(),
   network: z.enum(['local', 'remote']).optional(),
 
   transcodeDecisions: commaSeparatedArray(z.enum(PLAYBACK_DECISIONS)),
@@ -801,6 +803,8 @@ export const statsQuerySchema = statsQueryObjectSchema
     message: dateValidationRefinements.startBeforeEnd.message,
   });
 
+export const downloadsListQuerySchema = statsQuerySchema.safeExtend(paginationSchema.shape);
+
 export const PLAYS_MEDIA_GROUPS = ['movie', 'show', 'music', 'live'] as const;
 export type PlaysMediaGroup = (typeof PLAYS_MEDIA_GROUPS)[number];
 
@@ -869,6 +873,38 @@ export const locationStatsQuerySchema = z
   .refine(dateValidationRefinements.startBeforeEnd.refinement, {
     message: dateValidationRefinements.startBeforeEnd.message,
   });
+
+const placeNameSchema = z.string().nullable();
+
+// The full people of one place, named by its key (the JSON of [country, region, city, isLocal]),
+// or of every placed location whose coordinate lies inside a box.
+export const locationPeopleQuerySchema = locationStatsQuerySchema
+  .safeExtend({
+    place: z
+      .string()
+      .transform((key): unknown => {
+        try {
+          return JSON.parse(key);
+        } catch {
+          return undefined;
+        }
+      })
+      .pipe(z.tuple([placeNameSchema, placeNameSchema, placeNameSchema, z.boolean()]))
+      .optional(),
+    west: z.coerce.number().optional(),
+    south: z.coerce.number().optional(),
+    east: z.coerce.number().optional(),
+    north: z.coerce.number().optional(),
+  })
+  .refine(
+    (q) => {
+      const box = [q.west, q.south, q.east, q.north];
+      return q.place === undefined
+        ? box.every((v) => v !== undefined)
+        : box.every((v) => v === undefined);
+    },
+    { message: 'Pass place, or west, south, east and north' }
+  );
 
 // ============================================================================
 // Webhook & Settings Schemas
@@ -1520,6 +1556,7 @@ export type ServerIdFilterInput = z.infer<typeof serverIdFilterSchema>;
 export type DashboardQueryInput = z.infer<typeof dashboardQuerySchema>;
 export type StatsQueryInput = z.infer<typeof statsQuerySchema>;
 export type LocationStatsQueryInput = z.infer<typeof locationStatsQuerySchema>;
+export type LocationPeopleQueryInput = z.infer<typeof locationPeopleQuerySchema>;
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 export type TautulliImportInput = z.infer<typeof tautulliImportSchema>;
 

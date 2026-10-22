@@ -168,9 +168,9 @@ function accountInactivityMessage(serverUser: ServerUser): string {
   return `Account "${serverUser.username}" has been inactive for ${days} days`;
 }
 
-/** The numbers a trigger measured, so `{{minutes}}` and friends render off a violation shape. */
-function triggerNumbers(context: EvaluationContext): Record<string, number> {
-  const { trigger, triggerNode, serverUser } = context;
+/** What a trigger measured, so `{{minutes}}` and friends render off a violation shape. */
+function triggerValues(context: EvaluationContext): Record<string, number | string | null> {
+  const { trigger, triggerNode, serverUser, rule } = context;
   if (!trigger) return {};
   switch (trigger.type) {
     case 'session.held_for': {
@@ -194,6 +194,16 @@ function triggerNumbers(context: EvaluationContext): Record<string, number> {
       const days = serverUser ? inactiveDays(serverUser) : null;
       return days === null ? {} : { days };
     }
+    case 'account.media_downloaded':
+      return {
+        downloadTitle: trigger.download.title,
+        downloadApp: trigger.download.app,
+        downloadDevice: trigger.download.device,
+        // A server-scoped condition counted this server only; the variable says what it saw.
+        downloadsLast24h: rule.serverId
+          ? trigger.download.last24hOnServer
+          : trigger.download.last24h,
+      };
     default:
       return {};
   }
@@ -409,7 +419,7 @@ function violationEventFor(context: EvaluationContext): NotificationEvent | null
               grandparentTitle: session.grandparentTitle,
             }
           : {}),
-        ...triggerNumbers(context),
+        ...triggerValues(context),
       },
       rule: { id: rule.id, name: rule.name, type: null },
       server: { id: server.id, name: server.name, type: server.type },

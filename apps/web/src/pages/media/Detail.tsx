@@ -30,6 +30,7 @@ import { AlbumsPanel } from '@/components/media-browse/AlbumsPanel';
 import { AlbumSheet } from '@/components/media-browse/AlbumSheet';
 import { PlatformPanel } from '@/components/media-browse/PlatformPanel';
 import { MediaRequestsPanel } from '@/components/requests/MediaRequestsPanel';
+import { MediaDownloadsPanel } from '@/components/media/MediaDownloadsPanel';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -433,6 +434,8 @@ export function MediaDetail() {
         onRetry={() => void detailQuery.refetch()}
         serverById={serverById}
       />
+
+      <MediaDownloadsPanel rows={detailQuery.data?.downloads} />
 
       {mediaType !== 'episode' && (
         <MediaRequestsPanel

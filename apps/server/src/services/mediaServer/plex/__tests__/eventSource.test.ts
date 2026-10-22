@@ -231,4 +231,108 @@ describe('PlexEventSource library timeline parsing', () => {
     expect(playing).toHaveLength(0);
     expect(progress).toHaveLength(1);
   });
+
+  it('emits download:ended for an ended media.download activity and ignores the rest', async () => {
+    const src = await connectedSource();
+    const downloads: unknown[] = [];
+    src.on('download:ended', (e) => downloads.push(e));
+
+    const notification = (event: string, type: string) =>
+      JSON.stringify({
+        ActivityNotification: {
+          event,
+          uuid: 'a1',
+          Activity: {
+            uuid: 'a1',
+            type,
+            cancellable: false,
+            userID: 1,
+            title: 'Media download by Gallapagos',
+            subtitle: '2 Fast 2 Furious',
+            progress: 0,
+            Context: { deviceID: '', metadataID: '2733', partID: '42961' },
+          },
+        },
+      });
+    stub._emit('activity', notification('started', 'media.download'));
+    stub._emit('activity', notification('ended', 'library.refresh.items'));
+    stub._emit('activity', notification('ended', 'media.download'));
+
+    expect(downloads).toEqual([
+      {
+        userId: '1',
+        ratingKey: '2733',
+        title: '2 Fast 2 Furious',
+        partId: '42961',
+        deviceId: null,
+        startedAt: expect.any(Date),
+      },
+    ]);
+  });
+
+  it('drops a download start older than an hour', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const src = await connectedSource();
+      const downloads: Array<{ startedAt: Date | null }> = [];
+      src.on('download:ended', (e) => downloads.push(e));
+      const notification = (event: string) =>
+        JSON.stringify({
+          ActivityNotification: {
+            event,
+            uuid: 'a1',
+            Activity: {
+              uuid: 'a1',
+              type: 'media.download',
+              userID: 1,
+              subtitle: 'New Harlem',
+              Context: { deviceID: '', metadataID: '181284', partID: '111093' },
+            },
+          },
+        });
+
+      stub._emit('activity', notification('started'));
+      vi.setSystemTime(Date.now() + 61 * 60 * 1000);
+      stub._emit('activity', notification('ended'));
+
+      expect(downloads[0]?.startedAt).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('emits transcode:static:ended for a completed static transcode only', async () => {
+    const src = await connectedSource();
+    const ended: unknown[] = [];
+    src.on('transcode:static:ended', (e) => ended.push(e));
+
+    const session = (context: string, complete: boolean) =>
+      JSON.stringify({
+        TranscodeSession: {
+          key: '/transcode/sessions/bb37ccc5-08ec-4329-b250-8bb32b0f432a',
+          complete,
+          progress: complete ? 100 : 7,
+          size: complete ? 434094245 : -1,
+          duration: 2888261,
+          context,
+          videoCodec: 'h264',
+          audioCodec: 'opus',
+          container: 'mkv',
+        },
+      });
+    stub._emit('transcodeSession.end', session('streaming', false));
+    stub._emit('transcodeSession.end', session('static', true));
+
+    expect(ended).toEqual([
+      {
+        key: '/transcode/sessions/bb37ccc5-08ec-4329-b250-8bb32b0f432a',
+        size: 434094245,
+        duration: 2888261,
+        videoCodec: 'h264',
+        audioCodec: 'opus',
+        container: 'mkv',
+        at: expect.any(Date),
+      },
+    ]);
+  });
 });

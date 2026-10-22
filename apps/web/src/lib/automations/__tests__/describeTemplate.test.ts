@@ -258,7 +258,7 @@ describe('template copy', () => {
     >;
     const slugs = Object.keys(shipped);
 
-    expect(slugs).toHaveLength(22);
+    expect(slugs).toHaveLength(23);
     expect(slugs).toContain('new-device');
     expect(slugs).toContain('trust-score-changed');
 

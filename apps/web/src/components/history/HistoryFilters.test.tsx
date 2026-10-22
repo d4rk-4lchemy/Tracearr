@@ -1,5 +1,5 @@
 import { beforeAll, describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { initI18n } from '@tracearr/translations';
 import type { HistoryFilterOptions } from '@tracearr/shared';
@@ -177,5 +177,31 @@ describe('HistoryFiltersBar', () => {
 
     expect(screen.queryByRole('menuitemcheckbox', { name: 'User' })).not.toBeInTheDocument();
     expect(screen.getByRole('menuitemcheckbox', { name: 'Date' })).toBeInTheDocument();
+  });
+  it('shows the city and region as chips and removes only the one clicked', async () => {
+    const { onFiltersChange } = renderBar({
+      geoCountries: ['US'],
+      geoCity: 'Ogden',
+      geoRegion: 'Utah',
+    });
+
+    const cityChip = screen.getByText('Ogden').closest('[data-slot="badge"]');
+    expect(screen.getByText('Utah')).toBeInTheDocument();
+    if (!(cityChip instanceof HTMLElement)) throw new Error('no city chip');
+    await userEvent.click(within(cityChip).getByRole('button'));
+
+    expect(onFiltersChange).toHaveBeenCalledWith({ geoCountries: ['US'], geoRegion: 'Utah' });
+  });
+
+  it('shows a missing city and region as Unknown chips', async () => {
+    const { onFiltersChange } = renderBar({ geoCityMissing: true, geoRegionMissing: true });
+
+    const chips = screen.getAllByText('Unknown');
+    expect(chips).toHaveLength(2);
+    const regionChip = chips[1]?.closest('[data-slot="badge"]');
+    if (!(regionChip instanceof HTMLElement)) throw new Error('no region chip');
+    await userEvent.click(within(regionChip).getByRole('button'));
+
+    expect(onFiltersChange).toHaveBeenCalledWith({ geoCityMissing: true });
   });
 });

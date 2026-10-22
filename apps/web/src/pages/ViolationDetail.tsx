@@ -37,6 +37,7 @@ import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { fieldLabel, operatorLabel } from '@/lib/automations';
 import { getCountryName, getMediaDisplay, getMediaLinks } from '@/lib/utils';
+import { locationKey } from '@/components/map/locationKey';
 import { MediaPageLink } from '@/components/media/MediaPageLink';
 import { ServerBadge } from '@/components/server';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
@@ -226,21 +227,20 @@ export function ViolationDetail() {
 
     for (const session of allSessions) {
       if (session.geoLat == null || session.geoLon == null) continue;
-      const key = `${session.geoLat},${session.geoLon},${session.isLocal}`;
+      const location: LocationStats = {
+        city: session.geoCity,
+        region: session.geoRegion,
+        country: session.geoCountry,
+        isLocal: session.isLocal,
+        lat: session.geoLat,
+        lon: session.geoLon,
+        count: 1,
+        peopleCount: 1,
+      };
+      const key = locationKey(location);
       const existing = locationMap.get(key);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        locationMap.set(key, {
-          city: session.geoCity,
-          region: session.geoRegion,
-          country: session.geoCountry,
-          isLocal: session.isLocal,
-          lat: session.geoLat,
-          lon: session.geoLon,
-          count: 1,
-        });
-      }
+      if (existing) existing.count += 1;
+      else locationMap.set(key, location);
     }
 
     return Array.from(locationMap.values());

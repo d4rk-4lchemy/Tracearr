@@ -40,8 +40,19 @@ FROM node:24-alpine3.23@sha256:e44c87c7dd212720eb00469aeac89504ca2be77b8f0d6dbff
 
 RUN npm install -g --allow-scripts=pnpm pnpm@12.14.0
 
-# Tailscale VPN binary (userspace networking, no root required)
-RUN apk add --no-cache tailscale postgresql-client
+RUN apk upgrade --no-cache && apk add --no-cache postgresql-client
+
+# Tailscale VPN binary (userspace networking, no root required). Alpine's package
+# trails upstream, so this takes Tailscale's static build at the same pin as
+# Dockerfile.supervised.
+# renovate: datasource=deb depName=tailscale
+ARG TAILSCALE_VERSION=1.104.2
+ARG TARGETARCH
+RUN wget -qO /tmp/tailscale.tgz "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TARGETARCH}.tgz" \
+    && tar -xzf /tmp/tailscale.tgz -C /tmp \
+    && mv "/tmp/tailscale_${TAILSCALE_VERSION}_${TARGETARCH}/tailscale" /usr/bin/tailscale \
+    && mv "/tmp/tailscale_${TAILSCALE_VERSION}_${TARGETARCH}/tailscaled" /usr/sbin/tailscaled \
+    && rm -rf /tmp/tailscale.tgz "/tmp/tailscale_${TAILSCALE_VERSION}_${TARGETARCH}"
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \

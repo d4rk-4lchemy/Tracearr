@@ -7,6 +7,7 @@ import { jsonWebhookType } from './jsonWebhook.js';
 import { ntfyType } from './ntfy.js';
 import { pushType } from './push.js';
 import { pushoverType } from './pushover.js';
+import { telegramType } from './telegram.js';
 import { webToastType } from './webToast.js';
 import type { DestinationType } from './types.js';
 
@@ -18,6 +19,7 @@ const registry: Record<DestinationKind, DestinationType<any, any>> = {
   gotify: gotifyType,
   apprise: appriseType,
   pushover: pushoverType,
+  telegram: telegramType,
   email: emailType,
   push: pushType,
   web_toast: webToastType,

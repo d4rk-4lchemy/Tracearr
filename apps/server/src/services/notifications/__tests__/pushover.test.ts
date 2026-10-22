@@ -1,171 +1,87 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { NotificationPriority, ViolationWithDetails } from '@tracearr/shared';
-import { createMockActiveSession } from '../../../test/fixtures.js';
+import type { NotificationPriority } from '@tracearr/shared';
+import type { NotificationEvent } from '../events.js';
+
+const mockBuildMediaLinks = vi.fn();
+vi.mock('../mediaLinks.js', () => ({
+  buildMediaLinks: (...args: unknown[]) => mockBuildMediaLinks(...args) as unknown,
+}));
+
 import {
   pushoverType,
   type PushoverConfig,
   type PushoverMessage,
 } from '../destinations/pushover.js';
-import type { NotificationEvent } from '../events.js';
+import { mediaUpgraded, session, severityEvents } from './fixtures.js';
 import type { RenderContext } from '../destinations/types.js';
+
+mockBuildMediaLinks.mockResolvedValue([
+  { label: 'Tracearr', url: 'https://t.example/media/1' },
+  { label: 'Plex', url: 'https://plex.example/item' },
+]);
 
 const config: PushoverConfig = { userKey: 'u_user_key_123', apiToken: 'a_api_token_456' };
 const destination = { id: 'dest-1', name: 'My Pushover' };
 const systemCtx: RenderContext = { destination, source: { kind: 'system' } };
 const deliverCtx = { destination, signal: AbortSignal.timeout(5000) };
 
-const violation: ViolationWithDetails = {
-  id: 'violation-123',
-  ruleId: 'rule-456',
-  serverUserId: 'user-789',
-  sessionId: 'session-123',
-  severity: 'warning',
-  data: { reason: 'test violation' },
-  acknowledgedAt: null,
-  createdAt: new Date('2026-01-02T03:04:05.000Z'),
-  user: {
-    id: 'user-789',
-    username: 'testuser',
-    serverId: 'server-id',
-    thumbUrl: null,
-    identityName: 'Test User',
-  },
-  rule: { id: 'rule-456', name: 'Test Rule', type: 'concurrent_streams' },
-};
-
-const session = createMockActiveSession({ durationMs: 3_725_000 });
-
 const render = async (
   event: Parameters<typeof pushoverType.render>[0],
   ctx: RenderContext = systemCtx
 ): Promise<PushoverMessage> => pushoverType.render(event, config, ctx);
 
-const mediaUpgraded: NotificationEvent = {
-  type: 'media_upgraded',
-  payload: {
-    serverId: 'server-1',
-    serverName: 'Basement',
-    serverType: 'plex',
-    libraryItemId: 'item-1',
-    ratingKey: 'rk-1',
-    mediaId: null,
-    parentTitle: null,
-    grandparentRatingKey: null,
-    parentRatingKey: null,
-    parentIndex: null,
-    itemIndex: null,
-    imdbId: null,
-    tmdbId: null,
-    tvdbId: null,
-    thumbPath: null,
-    title: 'Cars',
-    grandparentTitle: null,
-    mediaType: 'movie',
-    year: 2006,
-    libraryName: 'Movies',
-    to: {
-      resolution: '4k',
-      dynamicRange: 'hdr10',
-      videoCodec: 'HEVC',
-      audioCodec: 'TRUEHD',
-      audioChannels: 8,
-      fileSize: 42_000_000_000,
-    },
-    from: {
-      resolution: '1080p',
-      dynamicRange: 'sdr',
-      videoCodec: 'H264',
-      audioCodec: 'AC3',
-      audioChannels: 6,
-      fileSize: 8_000_000_000,
-    },
-    changed: ['resolution'],
-  },
-};
-
 describe('pushoverType.render', () => {
-  it('builds the violation params with the severity priority', async () => {
-    const message = await render({ type: 'violation', payload: violation });
-
-    expect(message).toEqual({
-      title: 'Violation Detected',
-      message: 'User Test User triggered Test Rule (Warning severity)',
-      priority: '0',
-    });
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it('maps a high severity violation to priority 1', async () => {
-    const message = await render({
-      type: 'violation',
-      payload: { ...violation, severity: 'high' },
-    });
-
-    expect(message.priority).toBe('1');
+  it('sets the priority from the event severity', async () => {
+    const messages = await Promise.all(severityEvents.map((event) => render(event)));
+    expect(messages.map((m) => m.priority)).toEqual(['1', '-1', '1', '-1']);
   });
 
-  it('builds the stream started params', async () => {
-    const message = await render({ type: 'session_started', payload: session });
-
-    expect(message).toEqual({
-      title: 'Stream Started',
-      message: 'testuser started watching Test Movie - 2024',
-      priority: '-1',
-    });
-  });
-
-  it('builds the stream stopped params with a formatted duration', async () => {
-    const message = await render({ type: 'session_stopped', payload: session });
-
-    expect(message).toEqual({
-      title: 'Stream Ended',
-      message: 'testuser finished watching Test Movie - 2024 (1h 2m)',
-      priority: '-1',
-    });
-  });
-
-  it('builds the server down params at priority 1', async () => {
-    const message = await render({
-      type: 'server_down',
-      payload: { serverName: 'Plex Server', serverId: 's1' },
-    });
-
-    expect(message).toEqual({
-      title: 'Server Offline',
-      message: 'Plex Server is not responding',
-      priority: '1',
-    });
-  });
-
-  it('builds the server up params at priority 1', async () => {
-    const message = await render({
-      type: 'server_up',
-      payload: { serverName: 'Plex Server', serverId: 's1' },
-    });
-
-    expect(message).toEqual({
-      title: 'Server Online',
-      message: 'Plex Server is back online',
-      priority: '1',
-    });
-  });
-
-  it('builds the plugin update params', async () => {
-    const message = await render({
-      type: 'plugin_update_available',
+  it('sends an own-text event quiet whatever its severity, unless the automation sets a level', async () => {
+    const failedSend = {
+      type: 'newsletter_send',
       payload: {
-        serverId: 'server-1',
-        serverName: 'Jellyfin',
-        serverType: 'jellyfin',
-        installedVersion: '0.2.0',
-        latestVersion: '0.3.0',
-        downloadUrl: 'https://example.com/plugin.zip',
+        newsletterId: 'n-1',
+        sendId: 'send-1',
+        name: 'Weekly',
+        outcome: 'failed',
+        trigger: 'schedule',
+        recipientCount: 42,
+        itemCounts: { movies: 3, shows: 1, episodes: 4, albums: 0, mostWatched: 0 },
+        error: 'smtp down',
+        windowStart: '2026-08-26T00:00:00.000Z',
+        windowEnd: '2026-09-02T00:00:00.000Z',
+        historyUrl: null,
       },
-    });
+    } as NotificationEvent;
+    expect((await render(failedSend)).priority).toBe('-1');
+    expect((await render(failedSend, automationCtx('high'))).priority).toBe('1');
+  });
 
-    expect(message.title).toBe('Plugin Update Available');
-    expect(message.message).toContain('Jellyfin: ');
-    expect(message.message).toContain('latest 0.3.0');
-    expect(message.priority).toBe('-1');
+  it('links the first media link, and a stream start has none', async () => {
+    const f = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal('fetch', f);
+    const media = await render(mediaUpgraded);
+    await pushoverType.deliver(media, config, deliverCtx);
+    const sent = new URLSearchParams(f.mock.calls[0]?.[1].body);
+    expect(sent.get('url')).toBe('https://t.example/media/1');
+    expect(sent.get('url_title')).toBe('Tracearr');
+
+    const stream = await render({ type: 'session_started', payload: session });
+    expect(stream.url).toBeUndefined();
+    expect(stream.url_title).toBeUndefined();
+  });
+
+  it('cuts a long link label to the url title limit', async () => {
+    mockBuildMediaLinks.mockResolvedValueOnce([
+      { label: 'x'.repeat(150), url: 'https://t.example/media/1' },
+    ]);
+    const { url_title } = await render(mediaUpgraded);
+    expect(Array.from(url_title ?? '')).toHaveLength(100);
+    expect(url_title?.endsWith('…')).toBe(true);
   });
 });
 
@@ -230,117 +146,19 @@ describe('pushoverType.deliver', () => {
   });
 });
 
-const newDevice = {
-  type: 'new_device',
-  payload: {
-    serverId: 'server-1',
-    serverName: 'Basement',
-    serverType: 'plex',
-    serverUserId: 'su-1',
-    sessionId: 'sess-1',
-    userName: 'Test User',
-    username: 'testuser',
-    identityName: 'Test User',
-    mediaTitle: 'Cars',
-    mediaType: 'movie',
-    deviceName: 'Living Room TV',
-    platform: 'tvOS',
-    product: 'Plex for Apple TV',
-    location: 'Boston, Massachusetts',
-  },
-} as const;
-
-const trustChanged = {
-  type: 'trust_score_changed',
-  payload: {
-    serverId: 'server-1',
-    serverName: 'Basement',
-    serverType: 'plex',
-    serverUserId: 'su-1',
-    userName: 'Test User',
-    username: 'testuser',
-    identityName: 'Test User',
-    previousScore: 90,
-    newScore: 40,
-    reason: 'Sharing penalty',
-  },
-} as const;
-
-const newsletterSend = {
-  type: 'newsletter_send',
-  payload: {
-    newsletterId: 'n-1',
-    sendId: 'send-1',
-    name: 'Weekly',
-    outcome: 'partial',
-    trigger: 'schedule',
-    recipientCount: 42,
-    itemCounts: { movies: 3, shows: 1, episodes: 4, albums: 0, mostWatched: 0 },
-    error: null,
-    windowStart: '2026-08-26T00:00:00.000Z',
-    windowEnd: '2026-09-02T00:00:00.000Z',
-    historyUrl: null,
-  },
-} as const;
-
-const automationCtx = (
-  over: { title?: string; body?: string; priority?: NotificationPriority } = {}
-): RenderContext => ({
+const automationCtx = (priority?: NotificationPriority): RenderContext => ({
   destination,
-  source: { kind: 'automation', automationId: 'a-1', automationName: 'Now playing', ...over },
+  source: {
+    kind: 'automation',
+    automationId: 'a-1',
+    automationName: 'Now playing',
+    ...(priority && { priority }),
+  },
 });
 
 describe('pushoverType.render with an automation source', () => {
-  it('keeps the builtin stream text when nothing is overridden', async () => {
-    const message = await render({ type: 'session_started', payload: session }, automationCtx());
-
-    expect(message.title).toBe('Stream Started');
-  });
-
-  it('renders a new device and a trust move from the payload text', async () => {
-    const device = await render(newDevice, automationCtx());
-    expect(device.title).toBe('New device');
-    expect(device.message).toBe(
-      'Test User connected from a new device: Living Room TV from Boston, Massachusetts'
-    );
-
-    const trust = await render(trustChanged, automationCtx());
-    expect(trust.title).toBe('Trust score changed');
-    expect(trust.message).toBe("Test User's trust score dropped from 90 to 40: Sharing penalty");
-  });
-
-  it('renders a media upgrade, and an override still wins', async () => {
-    const message = await render(mediaUpgraded, automationCtx());
-    expect(message.title).toBe('Media upgraded');
-    expect(message.message).toBe('Cars (2006) on Basement was upgraded: resolution 1080p → 4K');
-
-    const overridden = await render(mediaUpgraded, automationCtx({ body: '4K at last' }));
-    expect(overridden.message).toBe('4K at last');
-  });
-
-  it('uses the rendered override for a stream start', async () => {
-    const message = await render(
-      { type: 'session_started', payload: session },
-      automationCtx({ title: 'Heads up', body: '{{user.username}} pressed play' })
-    );
-
-    expect(message.title).toBe('Heads up');
-    expect(message.message).toBe('testuser pressed play');
-  });
-
-  it('carries the newsletter outcome as its own text', async () => {
-    const message = await render(newsletterSend, automationCtx());
-    expect(message.title).toBe('Newsletter partly sent');
-    expect(message.message).toBe('Weekly reached only part of its 42 recipients');
-  });
-
-  it('cuts the title to 250 and the message to 1024 characters', async () => {
-    const message = await render(
-      { type: 'session_started', payload: session },
-      automationCtx({ title: 't'.repeat(300), body: 'b'.repeat(1500) })
-    );
-    expect([...message.title]).toHaveLength(250);
-    expect([...message.message]).toHaveLength(1024);
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('maps every send priority and keeps the event priority without one', async () => {
@@ -348,7 +166,7 @@ describe('pushoverType.render with an automation source', () => {
     for (const [priority, value] of Object.entries(expected)) {
       const message = await render(
         { type: 'session_started', payload: session },
-        automationCtx({ priority: priority as keyof typeof expected })
+        automationCtx(priority as keyof typeof expected)
       );
       expect(message.priority).toBe(value);
     }
@@ -361,7 +179,7 @@ describe('pushoverType.render with an automation source', () => {
     vi.stubGlobal('fetch', f);
     const urgent = await render(
       { type: 'session_started', payload: session },
-      automationCtx({ priority: 'urgent' })
+      automationCtx('urgent')
     );
     await pushoverType.deliver(urgent, config, deliverCtx);
     const sent = new URLSearchParams(f.mock.calls[0]?.[1].body);
@@ -370,12 +188,8 @@ describe('pushoverType.render with an automation source', () => {
     expect(sent.get('expire')).toBe('3600');
 
     f.mockClear();
-    const high = await render(
-      { type: 'session_started', payload: session },
-      automationCtx({ priority: 'high' })
-    );
+    const high = await render({ type: 'session_started', payload: session }, automationCtx('high'));
     await pushoverType.deliver(high, config, deliverCtx);
     expect(new URLSearchParams(f.mock.calls[0]?.[1].body).has('retry')).toBe(false);
-    vi.unstubAllGlobals();
   });
 });

@@ -17,6 +17,7 @@ import {
   boolean,
   integer,
   bigint,
+  doublePrecision,
   real,
   jsonb,
   index,
@@ -80,6 +81,7 @@ import type {
   SubtitleInfo,
   AutomationConditions,
   AutomationActions,
+  MediaDownloadSource,
 } from '@tracearr/shared';
 
 // Re-export for consumers of this module
@@ -849,6 +851,7 @@ export const destinationKindEnum = [
   'gotify',
   'apprise',
   'pushover',
+  'telegram',
   'email',
   'push',
   'web_toast',
@@ -1118,6 +1121,64 @@ export const terminationLogs = pgTable(
     index('termination_logs_triggered_by_idx').on(table.triggeredByUserId),
     index('termination_logs_rule_idx').on(table.ruleId),
     index('termination_logs_created_at_idx').on(table.createdAt),
+  ]
+);
+
+// One item downloaded by one user; repeat requests within the collapse window update the row
+export const mediaDownloads = pgTable(
+  'media_downloads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    serverId: uuid('server_id')
+      .notNull()
+      .references(() => servers.id, { onDelete: 'cascade' }),
+    serverUserId: uuid('server_user_id').references(() => serverUsers.id, { onDelete: 'cascade' }),
+    libraryItemId: uuid('library_item_id').references(() => libraryItems.id, {
+      onDelete: 'set null',
+    }),
+    ratingKey: varchar('rating_key', { length: 255 }),
+    title: text('title').notNull(),
+    app: text('app'),
+    device: text('device'),
+    source: varchar('source', { length: 20 }).notNull().$type<MediaDownloadSource>(),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull(),
+    requestCount: integer('request_count').notNull().default(1),
+    libraryItemVersionId: uuid('library_item_version_id').references(() => libraryItemVersions.id, {
+      onDelete: 'set null',
+    }),
+    videoResolution: varchar('video_resolution', { length: 20 }),
+    videoCodec: varchar('video_codec', { length: 50 }),
+    videoDynamicRange: varchar('video_dynamic_range', { length: 20 }),
+    container: varchar('container', { length: 50 }),
+    fileSizeBytes: bigint('file_size_bytes', { mode: 'number' }),
+    ipAddress: varchar('ip_address', { length: 45 }),
+    isLocal: boolean('is_local'),
+    geoCity: text('geo_city'),
+    geoRegion: text('geo_region'),
+    geoCountry: text('geo_country'),
+    geoLat: doublePrecision('geo_lat'),
+    geoLon: doublePrecision('geo_lon'),
+    deliveredBytes: bigint('delivered_bytes', { mode: 'number' }),
+    // Stamped at insert from library_items like sessions.mediaId; survives item deletion
+    mediaId: uuid('media_id'),
+    deviceId: varchar('device_id', { length: 255 }),
+    playerName: varchar('player_name', { length: 255 }),
+    product: varchar('product', { length: 255 }),
+    platform: varchar('platform', { length: 100 }),
+    deliveredVideoCodec: varchar('delivered_video_codec', { length: 50 }),
+    deliveredAudioCodec: varchar('delivered_audio_codec', { length: 50 }),
+    deliveredContainer: varchar('delivered_container', { length: 50 }),
+    deliveredBitrateKbps: integer('delivered_bitrate_kbps'),
+    deliveredResolution: varchar('delivered_resolution', { length: 20 }),
+    // A converted pull's last non-null CompletionPercentage, rounded
+    completionPercent: integer('completion_percent'),
+  },
+  (t) => [
+    index('media_downloads_user_first_seen_idx').on(t.serverUserId, t.firstSeenAt),
+    index('media_downloads_server_item_last_seen_idx').on(t.serverId, t.ratingKey, t.lastSeenAt),
+    index('media_downloads_server_first_seen_idx').on(t.serverId, t.firstSeenAt),
+    index('media_downloads_media_id_idx').on(t.mediaId),
   ]
 );
 

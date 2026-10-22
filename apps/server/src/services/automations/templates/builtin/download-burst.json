@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "slug": "download-burst",
+  "name": "Download burst",
+  "description": "Alert when one person downloads more items than you allow in a day.",
+  "group": "policies",
+  "kind": "policy",
+  "minServerVersion": "3.0.0",
+  "inputs": [
+    {
+      "key": "downloads",
+      "kind": "number",
+      "label": "Downloads allowed",
+      "required": false,
+      "default": 5,
+      "min": 1,
+      "max": 1000
+    }
+  ],
+  "definition": {
+    "kind": "policy",
+    "severity": "warning",
+    "triggers": [
+      {
+        "id": "1f1c0b6e-9c1a-4b2e-8d7a-000000002301",
+        "type": "account.media_downloaded",
+        "enabled": true
+      }
+    ],
+    "conditions": {
+      "groups": [
+        {
+          "id": "1f1c0b6e-9c1a-4b2e-8d7a-000000002302",
+          "enabled": true,
+          "conditions": [
+            {
+              "id": "1f1c0b6e-9c1a-4b2e-8d7a-000000002303",
+              "enabled": true,
+              "field": "downloads_in_window",
+              "operator": "gt",
+              "value": {
+                "$input": "downloads"
+              },
+              "params": {
+                "window_hours": 24
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "actions": {
+      "actions": []
+    },
+    "scope": {}
+  },
+  "fingerprint": "3040a4ce32a4db4d9a5848ebe5beb2afb10544f822bacaf1fe99dcc8fdd8a322"
+}

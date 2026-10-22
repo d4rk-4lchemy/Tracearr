@@ -15,6 +15,8 @@ const CONDITION_FIELD_LABELS: Record<ConditionField, string> = {
   unique_ips_in_window: 'Unique IPs',
   unique_devices_in_window: 'Unique Devices',
   inactive_days: 'Inactive Days',
+  downloads_in_window: 'Downloads',
+  download_bytes_in_window: 'Downloaded Data',
   current_pause_minutes: 'Current Pause Duration',
   total_pause_minutes: 'Total Pause Duration',
   source_resolution: 'Source Resolution',

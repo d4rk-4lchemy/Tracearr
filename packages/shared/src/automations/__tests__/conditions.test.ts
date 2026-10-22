@@ -44,6 +44,41 @@ describe('condition field descriptors', () => {
     expect(fieldsAvailableFor('server')).toEqual(['server_id']);
   });
 
+  it('counts downloads in a window for an account, across the identity', () => {
+    const descriptor = CONDITION_FIELDS.downloads_in_window;
+    expect(descriptor.requires).toBe('account');
+    expect(descriptor.flags.windowHours).toBe(true);
+    expect(descriptor.identityAware).toBe(true);
+    expect(
+      conditionSchema.safeParse({
+        field: 'downloads_in_window',
+        operator: 'gt',
+        value: 5,
+        params: { window_hours: 24 },
+      }).success
+    ).toBe(true);
+  });
+
+  it('sums downloaded gigabytes in a window for an account, across the identity', () => {
+    const descriptor = CONDITION_FIELDS.download_bytes_in_window;
+    expect(descriptor).toMatchObject({
+      requires: 'account',
+      unit: 'gb',
+      min: 1,
+      max: 10000,
+      identityAware: true,
+    });
+    expect(descriptor.flags.windowHours).toBe(true);
+    expect(
+      conditionSchema.safeParse({
+        field: 'download_bytes_in_window',
+        operator: 'gt',
+        value: 50,
+        params: { window_hours: 24 },
+      }).success
+    ).toBe(true);
+  });
+
   it('splits the media group by context, so neither side sees the other half', () => {
     const session = fieldsAvailableFor('session');
     expect(session).toContain('season_number');

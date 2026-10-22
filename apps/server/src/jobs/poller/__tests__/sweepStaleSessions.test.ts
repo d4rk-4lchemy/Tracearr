@@ -12,9 +12,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mockDbSelect = vi.fn();
 const mockStopSessionAtomic = vi.fn();
 const mockEnqueueNotification = vi.fn();
+const mockCompressionHorizon = vi.fn();
 
 vi.mock('../../../db/client.js', () => ({
   db: { select: (...args: unknown[]) => mockDbSelect(...args) },
+}));
+
+vi.mock('../../../db/timescale.js', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getSessionsCompressionHorizon: () => mockCompressionHorizon(),
 }));
 
 vi.mock('../../../db/schema.js', async (importOriginal) => {
@@ -139,6 +145,37 @@ describe('sweepStaleSessions', () => {
     });
     expect(pubSubService.publish).toHaveBeenCalledWith('session:stopped', 'session-1');
     expect(mockEnqueueNotification).not.toHaveBeenCalled();
+  });
+
+  it('stops a routinely stale row at sweep time and a row lost through downtime at its last poll', async () => {
+    const routineRow = { ...staleSessionRow, lastSeenAt: new Date(Date.now() - 7 * 60 * 1000) };
+    const lostRow = {
+      ...staleSessionRow,
+      id: 'session-2',
+      lastSeenAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+    };
+    mockDbSequence([routineRow, lostRow]);
+    mockStopSessionAtomic.mockResolvedValue({ wasUpdated: true });
+
+    const before = Date.now();
+    await sweepStaleSessions();
+
+    const routine = mockStopSessionAtomic.mock.calls[0]?.[0] as { stoppedAt: Date };
+    expect(routine.stoppedAt.getTime()).toBeGreaterThanOrEqual(before);
+    expect(mockStopSessionAtomic.mock.calls[1]?.[0]).toMatchObject({
+      stoppedAt: lostRow.lastSeenAt,
+    });
+  });
+
+  it('reads below the compression horizon only on the startup pass', async () => {
+    mockCompressionHorizon.mockResolvedValue(new Date());
+    mockDbSequence([]);
+    await sweepStaleSessions();
+    expect(mockCompressionHorizon).toHaveBeenCalledTimes(1);
+
+    mockDbSequence([]);
+    await sweepStaleSessions({ includeCompressed: true });
+    expect(mockCompressionHorizon).toHaveBeenCalledTimes(1);
   });
 
   it('removes the cache entry without invalidating per-session, then invalidates dashboard stats once', async () => {

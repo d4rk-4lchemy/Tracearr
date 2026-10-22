@@ -55,8 +55,13 @@ vi.mock('../../jobs/maintenanceQueue.js', () => ({
   maybeEnqueueMaintenanceJob: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock('../../jobs/heavyOpsLock.js', () => ({
+  getHeavyOpsStatus: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock('../settings.js', () => ({
   getImportedHistoryLinkState: vi.fn(),
+  getSetting: vi.fn(),
   getSettings: vi.fn(),
   setImportedHistoryLinkState: vi.fn(),
 }));
@@ -86,10 +91,12 @@ import {
   hasStampableSessionsBefore,
 } from '../../jobs/sessionIdentityBackfill.js';
 import { maybeEnqueueMaintenanceJob } from '../../jobs/maintenanceQueue.js';
+import { getHeavyOpsStatus } from '../../jobs/heavyOpsLock.js';
 import { listPlexServers } from '../../jobs/importedHistoryLinking.js';
 import { getSessionsCompressionHorizon } from '../../db/timescale.js';
 import {
   getImportedHistoryLinkState,
+  getSetting,
   getSettings,
   setImportedHistoryLinkState,
 } from '../settings.js';
@@ -448,6 +455,7 @@ beforeEach(() => {
   _resetReconcileThrottleForTests();
   vi.mocked(getImportedHistoryLinkState).mockResolvedValue(LINK_DONE as never);
   vi.mocked(getSettings).mockResolvedValue(NO_TAUTULLI as never);
+  vi.mocked(getSetting).mockResolvedValue(0 as never);
   vi.mocked(listPlexServers).mockResolvedValue([]);
 });
 
@@ -608,11 +616,81 @@ describe('LibrarySyncService', () => {
 
       await service.syncServer(mockServer.id);
 
-      expect(hasStampableSessionsBefore).toHaveBeenCalledWith(horizon);
+      expect(hasStampableSessionsBefore).toHaveBeenCalledWith(horizon, mockServer.id, ['item-1']);
       expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledWith(
         'backfill_session_identity',
-        'system'
+        'system',
+        { trigger: 'auto' }
       );
+    });
+
+    it('stops handing compressed history to the walk after five failed automatic walks', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+        totalCount: 1,
+      });
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(getSetting).mockResolvedValue(5 as never);
+
+      await service.syncServer(mockServer.id);
+
+      expect(getSetting).toHaveBeenCalledWith('identityBackfillAutoAttempts');
+      expect(hasStampableSessionsBefore).not.toHaveBeenCalled();
+      expect(maybeEnqueueMaintenanceJob).not.toHaveBeenCalled();
+    });
+
+    it('skips the identity tail on a sync that upserted nothing', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [],
+        totalCount: 0,
+      });
+
+      await service.syncServer(mockServer.id);
+
+      expect(backfillSessionIdentityBatch).not.toHaveBeenCalled();
+      expect(hasStampableSessionsBefore).not.toHaveBeenCalled();
+    });
+
+    it('skips the identity tail while an import or maintenance job holds the heavy-ops lock', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+        totalCount: 1,
+      });
+      vi.mocked(getHeavyOpsStatus).mockResolvedValue({
+        jobType: 'maintenance',
+        jobId: 'maintenance-1',
+        description: 'Backfilling media identity',
+        startedAt: new Date().toISOString(),
+        runToken: 'token',
+      });
+
+      await service.syncServer(mockServer.id);
+
+      expect(backfillSessionIdentityBatch).not.toHaveBeenCalled();
+      vi.mocked(getHeavyOpsStatus).mockResolvedValue(null);
     });
 
     it('stops re-probing after an enqueue, so a walk dying on one bad chunk cannot loop', async () => {
@@ -642,8 +720,8 @@ describe('LibrarySyncService', () => {
       expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
 
       // The walk it just queued can fail on a bad chunk and leave the probe
-      // answering true forever. Both syncs add items, so only the enqueue
-      // floor can be what stops the second one.
+      // answering true forever; the enqueue floor is what stops the second
+      // sync from queueing it again.
       await runSync();
       expect(hasStampableSessionsBefore).toHaveBeenCalledTimes(1);
       expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
@@ -691,7 +769,7 @@ describe('LibrarySyncService', () => {
       vi.mocked(hasStampableSessionsBefore).mockResolvedValue(false);
     });
 
-    it('probes at most once a day on syncs that add no items', async () => {
+    it('probes at most once a day once a probe finds nothing', async () => {
       const service = new LibrarySyncService();
       const mockServer = createMockServer();
       const runSync = async () => {
@@ -702,8 +780,8 @@ describe('LibrarySyncService', () => {
         mockTransaction();
         mockMediaServerClient({
           libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
-          items: [],
-          totalCount: 0,
+          items: [createMockLibraryItem({ ratingKey: 'item-1' })],
+          totalCount: 1,
         });
         await service.syncServer(mockServer.id);
       };
@@ -713,10 +791,9 @@ describe('LibrarySyncService', () => {
       );
       vi.mocked(hasStampableSessionsBefore).mockResolvedValue(false);
 
-      // A false probe decompress-scans every compressed chunk below the
-      // horizon, and event syncs fire twice a minute. Nothing new landed in
-      // the library on the second sync, so nothing can have flipped the
-      // answer - the daily allowance is what keeps that off the hot path.
+      // Plex marks every metadata touch as an upsert, so event syncs that
+      // upsert items fire twice a minute. A no has to close the gate for the
+      // day, or the probe runs on every one of them.
       await runSync();
       await runSync();
 
@@ -963,7 +1040,8 @@ describe('LibrarySyncService', () => {
 
         expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledWith(
           'backfill_session_identity',
-          'system'
+          'system',
+          { trigger: 'auto' }
         );
         expect(linkEnqueues()).toHaveLength(1);
       });

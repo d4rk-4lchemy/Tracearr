@@ -25,6 +25,7 @@ vi.mock('@/hooks/queries', () => ({
   useUserFull: vi.fn(),
   useUserRangeStats: vi.fn(),
   useUserSessions: vi.fn(),
+  useUserDownloads: vi.fn(),
   useViolations: vi.fn(),
   useUserTerminations: vi.fn(),
   useRequestsConfigured: vi.fn(),
@@ -50,6 +51,7 @@ import {
   useRequestsConfigured,
   useUserFull,
   useUserRangeStats,
+  useUserDownloads,
   useUserSessions,
   useUserTerminations,
   useViolations,
@@ -204,6 +206,10 @@ describe('UserDetail', () => {
       data: { data: fullData.sessions.data, total: 12 },
       isLoading: false,
     } as unknown as ReturnType<typeof useUserSessions>);
+    vi.mocked(useUserDownloads).mockReturnValue({
+      data: { data: [], total: 4 },
+      isLoading: false,
+    } as unknown as ReturnType<typeof useUserDownloads>);
     vi.mocked(useViolations).mockReturnValue({
       data: { data: [violation], meta: { page: 1, pageSize: 10, total: 1 } },
       isLoading: false,
@@ -267,6 +273,31 @@ describe('UserDetail', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('?period=week&tab=sessions');
     expect(screen.getByRole('tab', { name: /common:labels.sessions/ })).toHaveTextContent('12');
     expect(screen.getByRole('tab', { name: /nav:violations/ })).toHaveTextContent('3');
+  });
+
+  it('shows the downloads tab with its count between violations and access, and hides it at zero', () => {
+    renderDetail();
+
+    const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
+    const downloads = screen.getByRole('tab', { name: /pages:userDetail.tabs.downloads/ });
+    expect(downloads).toHaveTextContent('4');
+    expect(tabs.indexOf(downloads.textContent)).toBe(
+      tabs.findIndex((label) => label?.includes('nav:violations')) + 1
+    );
+    expect(tabs[tabs.length - 1]).toContain('pages:userDetail.tabs.access');
+  });
+
+  it('has no downloads tab when the person has none', () => {
+    vi.mocked(useUserDownloads).mockReturnValue({
+      data: { data: [], total: 0 },
+      isLoading: false,
+    } as unknown as ReturnType<typeof useUserDownloads>);
+
+    renderDetail();
+
+    expect(
+      screen.queryByRole('tab', { name: /pages:userDetail.tabs.downloads/ })
+    ).not.toBeInTheDocument();
   });
 
   it('falls back to overview for an unknown tab value', () => {

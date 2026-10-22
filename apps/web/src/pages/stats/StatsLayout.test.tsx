@@ -41,7 +41,7 @@ describe('StatsLayout', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'nav:stats' })).toHaveClass('sr-only');
     expect(screen.getByRole('banner')).toContainElement(screen.getByText('range picker'));
     const nav = screen.getByRole('navigation', { name: 'nav:stats' });
-    for (const key of ['activity', 'people', 'devices', 'bandwidth']) {
+    for (const key of ['activity', 'people', 'devices', 'bandwidth', 'downloads']) {
       expect(nav).toContainElement(screen.getByRole('link', { name: `nav:${key}` }));
     }
   });
@@ -53,6 +53,13 @@ describe('StatsLayout', () => {
     expect(screen.queryByRole('navigation', { name: 'nav:stats' })).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'nav:stats' })).toHaveClass('sr-only');
     expect(screen.getByText('range picker')).toBeInTheDocument();
+  });
+
+  it('hides the downloads tab from a member', () => {
+    auth.role = 'member';
+    renderLayout();
+
+    expect(screen.queryByRole('link', { name: 'nav:downloads' })).toBeNull();
   });
 
   it('renders the child route inside the layout', () => {

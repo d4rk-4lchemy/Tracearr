@@ -23,6 +23,7 @@ import {
 } from 'drizzle-orm';
 import {
   rankMergeTarget,
+  TIME_MS,
   type LoginAccess,
   type MergeRankInput,
   type UserRole,
@@ -50,11 +51,17 @@ import {
   newsletters,
   newsletterSendRecipients,
   terminationLogs,
+  mediaDownloads,
   authAccounts,
   userMergeAudits,
   dismissals,
 } from '../db/schema.js';
-import { uncapDecompressionForTx } from '../db/timescale.js';
+import {
+  floorToUtcDay,
+  getTimescaleStatus,
+  safeFullRefreshAggregate,
+  uncapDecompressionForTx,
+} from '../db/timescale.js';
 import { invalidateAutomationsCache } from '../jobs/poller/database.js';
 import { getAuth } from '../lib/auth.js';
 import { refreshUserSessionSnapshots, revokeSessionsForUsers } from '../lib/revoke.js';
@@ -372,6 +379,10 @@ async function combineServerUsers(
     .update(mediaRequests)
     .set({ serverUserId: targetServerUserId })
     .where(eq(mediaRequests.serverUserId, sourceServerUserId));
+  await tx
+    .update(mediaDownloads)
+    .set({ serverUserId: targetServerUserId })
+    .where(eq(mediaDownloads.serverUserId, sourceServerUserId));
 
   // Per-user rule overrides: primary wins on name conflicts, the rest move over.
   // Conflicting source rules are dropped rather than kept as duplicates; their
@@ -460,6 +471,7 @@ export async function mergeUsers(
     throw new MergeValidationError('cannot merge an identity into itself');
   }
 
+  let combinedHistory: { oldest: Date | null; newest: Date | null } | undefined;
   const result = await db.transaction(async (tx) => {
     const source = await loadIdentitySnapshot(tx, sourceUserId);
     const target = await loadIdentitySnapshot(tx, targetUserId);
@@ -501,6 +513,17 @@ export async function mergeUsers(
     await (await getAuth().$context).internalAdapter.deleteUserSessions(sourceUserId);
 
     const keptName = await shownName(tx, targetUserId);
+
+    const combinedSourceIds = plan.combines.map((c) => c.sourceServerUserId);
+    if (combinedSourceIds.length > 0) {
+      [combinedHistory] = await tx
+        .select({
+          oldest: sql<Date | null>`min(${sessions.startedAt})`.mapWith(sessions.startedAt),
+          newest: sql<Date | null>`max(${sessions.startedAt})`.mapWith(sessions.startedAt),
+        })
+        .from(sessions)
+        .where(inArray(sessions.serverUserId, combinedSourceIds));
+    }
 
     const droppedRuleNames: string[] = [];
     for (const combine of plan.combines) {
@@ -651,7 +674,36 @@ export async function mergeUsers(
   await refreshUserSessionSnapshots(targetUserId);
   await revokeSessionsForUsers([sourceUserId, targetUserId]);
 
+  if (combinedHistory?.oldest && combinedHistory.newest) {
+    void refreshCombinedHistory(combinedHistory.oldest, combinedHistory.newest);
+  }
+
   return result;
+}
+
+// The continuous aggregates group by server_user_id and their policies only revisit the last few
+// days, so older buckets keep the absorbed account's id until something refreshes them. Not awaited:
+// years of history take minutes in batches. A failed batch stays invalidated for the next refresh
+// that covers it.
+async function refreshCombinedHistory(oldest: Date, newest: Date): Promise<void> {
+  try {
+    const timescale = await getTimescaleStatus();
+    if (!timescale.extensionInstalled) return;
+    // Materializing today's bucket would hide every session recorded after it from real-time reads.
+    const end = new Date(
+      Math.min(newest.getTime() + TIME_MS.DAY, floorToUtcDay(new Date()).getTime())
+    );
+    for (const aggregate of timescale.continuousAggregates) {
+      const failures = await safeFullRefreshAggregate(aggregate, oldest, end);
+      if (failures.length > 0) {
+        console.warn(
+          `[Merge] ${failures.length} ${aggregate} refresh batch(es) failed for combined history`
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[Merge] Aggregate refresh after a same-server combine failed:', err);
+  }
 }
 
 export async function splitServerUser(

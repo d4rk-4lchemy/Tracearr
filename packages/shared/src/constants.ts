@@ -136,6 +136,18 @@ export const REDIS_KEYS = {
     `${_redisPrefix}tracearr:servers:${serverId}:stats:samples`,
   SERVER_STATS_BANDWIDTH_SAMPLES: (serverId: string) =>
     `${_redisPrefix}tracearr:servers:${serverId}:stats:bandwidth:samples`,
+  DOWNLOAD_CURSOR: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:downloads:cursor`,
+  SYNC_CURSOR: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:downloads:sync-cursor`,
+  SYNC_RECORDED: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:downloads:sync-recorded`,
+  TRANSCODE_PULLS: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:downloads:transcode-pulls`,
+  PLEX_DEVICE: (serverId: string, clientIdentifier: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:plex-device:${clientIdentifier}`,
+  EMBY_USER_GUID: (serverId: string, numericId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:emby-user:${numericId}`,
   get PUBSUB_EVENTS() {
     return `${_redisPrefix}tracearr:events`;
   },

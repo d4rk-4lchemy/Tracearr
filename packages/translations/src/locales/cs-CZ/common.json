@@ -222,6 +222,7 @@
     "session_few": "",
     "session_many": "",
     "session_other": "{{count}} relace",
+    "download_other": "",
     "stream_one": "",
     "stream_few": "",
     "stream_many": "",

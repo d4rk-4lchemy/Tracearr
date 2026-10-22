@@ -7,7 +7,7 @@
  * driven the way the poller drives it reaches the recorder as a server subject.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActiveSession, EngineAutomation, Session, TriggerNode } from '@tracearr/shared';
 import type { EvaluationServer } from '../events/types.js';
 
@@ -45,6 +45,11 @@ const mockLoadEvaluationContext = vi.fn();
 vi.mock('../events/contextAssembly.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   loadEvaluationContext: (...args: unknown[]) => mockLoadEvaluationContext(...args),
+}));
+
+const mockCountDownloads = vi.fn();
+vi.mock('../../downloads/queries.js', () => ({
+  countDownloads: (...args: unknown[]) => mockCountDownloads(...args),
 }));
 
 const mockEvaluateRulesAsync = vi.fn();
@@ -89,7 +94,9 @@ vi.mock('../../../utils/logger.js', () => ({
 import { setContextAssemblyDeps } from '../events/contextAssembly.js';
 import { resetDispatcherForTests, subscribe } from '../events/dispatcher.js';
 import {
+  DISPATCH_FRESHNESS_MS,
   dispatchMediaAdded,
+  dispatchMediaDownloaded,
   dispatchMediaUpgraded,
   dispatchNewsletterSend,
   dispatchPluginUpdate,
@@ -263,6 +270,71 @@ describe('dispatchTrustChanged', () => {
     });
 
     expect(seen).toHaveLength(0);
+  });
+});
+
+describe('dispatchMediaDownloaded', () => {
+  const download = (ageMs: number) => ({
+    serverId: 'server-1',
+    serverUserId: 'su-1',
+    title: 'Dune: Part Two',
+    app: 'Jellyfin Android',
+    device: 'Pixel 8',
+    firstSeenAt: new Date(Date.now() - ageMs),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetDispatcherForTests();
+    const rules = [automation([node('account.media_downloaded')])];
+    mockGetActiveAutomations.mockResolvedValue(rules);
+    const serverUser = { id: 'su-1', userId: 'u-1', identityServerUserIds: ['su-1', 'su-2'] };
+    const inputs = { activeAutomations: rules, activeSessions: [], recentSessions: [] };
+    mockLoadEvaluationContext.mockResolvedValue({ server, serverUser, inputs });
+    mockCountDownloads.mockImplementation((_ids: string[], _since: Date, serverId?: string) =>
+      Promise.resolve(serverId ? 4 : 7)
+    );
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('never dispatches a download first seen past the freshness window', async () => {
+    const seen = captureEvents('account.media_downloaded');
+
+    await dispatchMediaDownloaded(download(11 * 60 * 1000));
+
+    expect(DISPATCH_FRESHNESS_MS).toBe(10 * 60 * 1000);
+    expect(seen).toHaveLength(0);
+    expect(mockGetActiveAutomations).not.toHaveBeenCalled();
+  });
+
+  it('carries the item and both 24 hour counts, with no session', async () => {
+    const now = new Date('2026-10-20T15:00:00Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(now);
+    const seen = captureEvents('account.media_downloaded');
+
+    await dispatchMediaDownloaded(download(60 * 1000));
+
+    const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    expect(mockCountDownloads).toHaveBeenCalledWith(['su-1', 'su-2'], cutoff);
+    expect(mockCountDownloads).toHaveBeenCalledWith(['su-1', 'su-2'], cutoff, 'server-1');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.event).toMatchObject({
+      type: 'account.media_downloaded',
+      server,
+      serverUser: { id: 'su-1' },
+      session: null,
+      download: {
+        title: 'Dune: Part Two',
+        app: 'Jellyfin Android',
+        device: 'Pixel 8',
+        last24h: 7,
+        last24hOnServer: 4,
+      },
+    });
   });
 });
 

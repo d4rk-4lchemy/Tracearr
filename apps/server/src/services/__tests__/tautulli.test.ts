@@ -2307,7 +2307,7 @@ describe('TautulliService.importHistory cutoff and safe updates', () => {
       id: 'existing-id',
       externalSessionId: null,
       ratingKey: null,
-      startedAt: null,
+      startedAt: new Date(0),
       serverUserId: SERVER_USER_ID,
       totalDurationMs: null,
       stoppedAt: new Date(0),

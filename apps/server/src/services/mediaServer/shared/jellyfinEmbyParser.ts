@@ -384,6 +384,117 @@ export function parseActivityLogResponse(data: unknown): JellyfinEmbyActivityEnt
 }
 
 // ============================================================================
+// Download Enrichment Parsing
+// ============================================================================
+
+export interface DeviceSession {
+  userId: string | null;
+  deviceId: string | null;
+  client: string | null;
+  deviceName: string | null;
+  remoteEndPoint: string | null;
+  nowPlaying: boolean;
+  /** TranscodingInfo; Jellyfin leaves it on a session that is not playing after the transcode ends, with completionPercentage null */
+  transcoding: {
+    /** bps */
+    bitrate: number | null;
+    width: number | null;
+    height: number | null;
+    videoCodec: string | null;
+    audioCodec: string | null;
+    container: string | null;
+    completionPercentage: number | null;
+  } | null;
+}
+
+export interface ItemMediaSource {
+  id: string;
+  size: number | null;
+  container: string | null;
+  videoResolution: string | null;
+  videoCodec: string | null;
+  videoDynamicRange: string | null;
+}
+
+export interface EmbySyncJob {
+  id: number;
+  /** Emby's numeric internal user id, as the activity log names users */
+  userId: string;
+  itemId: string;
+  name: string;
+  /** Equals the DeviceId of the target device's session */
+  targetId: string;
+  /** "<device> (<app>) - <user>" */
+  targetName: string;
+  /** Target bitrate in bps, as a string */
+  quality: string | null;
+  status: string;
+  dateCreated: string;
+  dateLastModified: string;
+}
+
+export interface EmbySyncJobItem {
+  id: number;
+  jobId: number;
+  itemId: string;
+  status: string;
+  dateCreated: string;
+  /** The delivered file; present once the item is Synced */
+  mediaSource: {
+    size: number | null;
+    bitrate: number | null;
+    container: string | null;
+    videoCodec: string | null;
+    audioCodec: string | null;
+    width: number | null;
+    height: number | null;
+  } | null;
+}
+
+/** Every session /Sessions lists, idle device sessions included */
+export function parseDeviceSessions(data: unknown[]): DeviceSession[] {
+  return data.map((raw) => {
+    const session = (raw ?? {}) as Record<string, unknown>;
+    const transcoding = getNestedObject(session, 'TranscodingInfo');
+    return {
+      userId: parseOptionalString(session.UserId) ?? null,
+      deviceId: parseOptionalString(session.DeviceId) ?? null,
+      client: parseOptionalString(session.Client) ?? null,
+      deviceName: parseOptionalString(session.DeviceName) ?? null,
+      remoteEndPoint: parseOptionalString(session.RemoteEndPoint) ?? null,
+      nowPlaying: getNestedObject(session, 'NowPlayingItem') !== undefined,
+      transcoding: transcoding
+        ? {
+            bitrate: parseOptionalNumber(transcoding.Bitrate) ?? null,
+            width: parseOptionalNumber(transcoding.Width) ?? null,
+            height: parseOptionalNumber(transcoding.Height) ?? null,
+            videoCodec: parseOptionalString(transcoding.VideoCodec) ?? null,
+            audioCodec: parseOptionalString(transcoding.AudioCodec) ?? null,
+            container: parseOptionalString(transcoding.Container) ?? null,
+            completionPercentage: parseOptionalNumber(transcoding.CompletionPercentage) ?? null,
+          }
+        : null,
+    };
+  });
+}
+
+/** The MediaSources of the first item in an /Items?Ids=&Fields=MediaSources response, in order */
+export function parseItemMediaSources(data: unknown): ItemMediaSource[] {
+  const item = (data as { Items?: Array<Record<string, unknown>> })?.Items?.[0];
+  if (!item) return [];
+  return extractVersions(item.MediaSources, item.MediaStreams, parseString(item.Id)).map(
+    (version) => ({
+      id: version.serverVersionKey,
+      size: version.fileSize ?? null,
+      container: version.container ?? null,
+      videoResolution: version.videoResolution ?? null,
+      videoCodec: version.videoCodec ?? null,
+      videoDynamicRange: version.videoDynamicRange ?? null,
+    })
+  );
+}
+
+// ============================================================================
 // Items Parsing (for media enrichment)
 // ============================================================================
 
