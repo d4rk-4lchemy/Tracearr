@@ -19,6 +19,15 @@ const PUSHOVER_PRIORITY: Record<NotificationPriority, string> = {
   high: '1',
   urgent: '2',
 };
+// Events that render their own text have no fixed alert level of their own; without one from the
+// automation they go out quiet, as they did before severity drove the other destinations.
+const QUIET_BY_DEFAULT = new Set([
+  'media_added',
+  'media_upgraded',
+  'new_device',
+  'trust_score_changed',
+  'newsletter_send',
+]);
 /** Pushover refuses an emergency without these and repeats it until acknowledged. */
 const EMERGENCY = { retry: '60', expire: '3600' };
 
@@ -71,12 +80,15 @@ export const pushoverType: DestinationType<PushoverConfig, PushoverMessage> = {
   kind: 'pushover',
   events: DESTINATION_TYPES.pushover.events,
   render: async (event, _config, ctx) => {
-    const { text, priority, links } = await renderText(event, ctx.source, PROFILE);
+    const { text, priority, links, payload } = await renderText(event, ctx.source, PROFILE);
     const link = links[0];
+    const level =
+      payload.automation?.priority ??
+      (QUIET_BY_DEFAULT.has(payload.context.type) ? 'low' : priority);
     return {
       ...text,
-      priority: PUSHOVER_PRIORITY[priority],
-      ...(priority === 'urgent' && EMERGENCY),
+      priority: PUSHOVER_PRIORITY[level],
+      ...(level === 'urgent' && EMERGENCY),
       ...(link && { url: link.url, url_title: fitText(link.label, URL_TITLE_LIMIT) }),
     };
   },

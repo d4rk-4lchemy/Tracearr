@@ -93,6 +93,7 @@ export async function insertDownload(
   // Plex activities name no client; the resolved device's app stands in
   const app = signal.app ?? enrichment.device.product ?? enrichment.device.platform;
   const device = signal.device ?? enrichment.device.playerName;
+  const varchar = (value: string | null | undefined, max: number) => value?.slice(0, max) ?? null;
   const delivered = signal.delivered ?? enrichment.delivered;
   const [row] = await db
     .insert(mediaDownloads)
@@ -121,8 +122,10 @@ export async function insertDownload(
       deliveredContainer: delivered?.container ?? null,
       deliveredBitrateKbps: delivered?.bitrateKbps ?? null,
       deliveredResolution: delivered?.resolution ?? null,
-      ...enrichment.device,
-      deviceId: enrichment.device.deviceId ?? signal.deviceId ?? null,
+      playerName: varchar(enrichment.device.playerName, 255),
+      product: varchar(enrichment.device.product, 255),
+      platform: varchar(enrichment.device.platform, 100),
+      deviceId: varchar(enrichment.device.deviceId ?? signal.deviceId, 255),
     })
     .returning({ id: mediaDownloads.id, firstSeenAt: mediaDownloads.firstSeenAt });
   if (!row) throw new Error('media_downloads insert returned no row');

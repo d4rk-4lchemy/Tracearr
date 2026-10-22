@@ -218,6 +218,7 @@
     "user_other": "{{count}} usuaris",
     "session_one": "{{count}} sessió",
     "session_other": "{{count}} sessions",
+    "download_other": "",
     "stream_one": "{{count}} transmissió",
     "stream_other": "{{count}} transmissions",
     "server_one": "{{count}} servidor",

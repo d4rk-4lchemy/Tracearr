@@ -50,7 +50,7 @@ import { pollServerDownloads } from './downloads/activityLogPoll.js';
 import { deliveredFromTranscode } from './downloads/enrich.js';
 import { recordDownload } from './downloads/recorder.js';
 import { recordTranscodePullEvent } from './downloads/transcodePull.js';
-import { getServerUserByExternalId } from './userService.js';
+import { getServerUserIdByExternalId } from '../jobs/poller/database.js';
 import { getRedis } from '../lib/redisShared.js';
 import { probeSsePlugin } from './mediaServer/shared/ssePluginProbe.js';
 import { broadcastToSessions } from '../websocket/index.js';
@@ -600,10 +600,9 @@ export class SSEManager extends EventEmitter {
         if (delivered) lastStaticTranscode = null;
         downloads = downloads
           .then(async () => {
-            const user = await getServerUserByExternalId(serverId, userId);
             await recordDownload({
               serverId,
-              serverUserId: user?.id ?? null,
+              serverUserId: await getServerUserIdByExternalId(serverId, userId),
               ratingKey,
               title,
               app: null,

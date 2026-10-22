@@ -20,7 +20,14 @@ import {
 } from '@tracearr/test-utils/factories';
 import { db } from '../../src/db/client.js';
 import { resolveMediaForItem } from '../../src/services/library/mediaResolutionService.js';
-import { backfillSessionIdentityBatch } from '../../src/jobs/sessionIdentityBackfill.js';
+import {
+  backfillSessionIdentityBatch,
+  hasStampableSessionsBefore,
+  runSessionIdentityBackfillWalk,
+} from '../../src/jobs/sessionIdentityBackfill.js';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const daysAgo = (days: number) => new Date(Date.now() - days * DAY_MS);
 
 describe('session identity backfill', () => {
   it('backfills identity onto old sessions from library items', async () => {
@@ -268,5 +275,131 @@ describe('session identity backfill', () => {
       sql`SELECT media_id FROM sessions WHERE server_id = ${server.id}`
     );
     expect((rows[0] as { media_id: string | null }).media_id).toBe(mediaId);
+  });
+
+  it('continues below the previous batch instead of re-reading the rows above it', async () => {
+    const server = await createTestServer({ type: 'plex' });
+    const user = await createTestUser();
+    const su = await createTestServerUser({ userId: user.id, serverId: server.id });
+    const mediaId = await resolveMediaForItem({
+      mediaType: 'movie',
+      imdbId: 'tt0322259',
+      title: '2 Fast 2 Furious',
+      year: 2003,
+      serverId: server.id,
+      ratingKey: '2733',
+    });
+    await createTestLibraryItem({ serverId: server.id, ratingKey: '2733', mediaId });
+    for (const days of [1, 2, 3]) {
+      await createTestSession({
+        serverId: server.id,
+        serverUserId: su.id,
+        ratingKey: '2733',
+        startedAt: daysAgo(days),
+      });
+    }
+
+    const first = await backfillSessionIdentityBatch(2);
+    expect(first.updated).toBe(2);
+    // A row above the cursor that matches again is left for the next walk.
+    await db.execute(sql`
+      UPDATE sessions SET media_id = NULL
+      WHERE server_id = ${server.id} AND started_at = (
+        SELECT max(started_at) FROM sessions WHERE server_id = ${server.id}
+      )
+    `);
+
+    const second = await backfillSessionIdentityBatch(2, undefined, first.cursor);
+    expect(second.updated).toBe(1);
+    expect(second.cursor).toEqual([null, null, null]);
+    const { rows } = await db.execute(sql`
+      SELECT media_id FROM sessions WHERE server_id = ${server.id} ORDER BY started_at DESC
+    `);
+    expect(rows.map((r) => (r as { media_id: string | null }).media_id)).toEqual([
+      null,
+      mediaId,
+      mediaId,
+    ]);
+  });
+
+  it('stamps a row the unlink pass freed above where the fresh stamp stopped', async () => {
+    const server = await createTestServer({ type: 'plex' });
+    const user = await createTestUser();
+    const su = await createTestServerUser({ userId: user.id, serverId: server.id });
+    const movieId = await resolveMediaForItem({
+      mediaType: 'movie',
+      imdbId: 'tt0322259',
+      title: '2 Fast 2 Furious',
+      year: 2003,
+      serverId: server.id,
+      ratingKey: '2733',
+    });
+    const showId = await resolveMediaForItem({
+      mediaType: 'show',
+      tvdbId: 81189,
+      title: 'Breaking Bad',
+      year: 2008,
+      serverId: server.id,
+      ratingKey: 'show-rk',
+    });
+    await createTestLibraryItem({ serverId: server.id, ratingKey: '2733', mediaId: movieId });
+    // Newest, and linked to a container: only the unlink pass can free it for
+    // a fresh stamp, after the fresh pass of the same batch has already run.
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: su.id,
+      ratingKey: '2733',
+      mediaId: showId,
+      startedAt: daysAgo(1),
+    });
+    for (const days of [2, 3]) {
+      await createTestSession({
+        serverId: server.id,
+        serverUserId: su.id,
+        ratingKey: '2733',
+        startedAt: daysAgo(days),
+      });
+    }
+
+    await runSessionIdentityBackfillWalk({
+      batchSize: 1,
+      getCompressedRanges: async () => [],
+      getChunkRanges: async () => [],
+    });
+
+    const { rows } = await db.execute(
+      sql`SELECT media_id FROM sessions WHERE server_id = ${server.id}`
+    );
+    expect(rows.map((r) => (r as { media_id: string | null }).media_id)).toEqual([
+      movieId,
+      movieId,
+      movieId,
+    ]);
+  });
+
+  it('probes only the rating keys it is given', async () => {
+    const server = await createTestServer({ type: 'plex' });
+    const user = await createTestUser();
+    const su = await createTestServerUser({ userId: user.id, serverId: server.id });
+    const mediaId = await resolveMediaForItem({
+      mediaType: 'movie',
+      imdbId: 'tt0322259',
+      title: '2 Fast 2 Furious',
+      year: 2003,
+      serverId: server.id,
+      ratingKey: '2733',
+    });
+    await createTestLibraryItem({ serverId: server.id, ratingKey: '2733', mediaId });
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: su.id,
+      ratingKey: '2733',
+      startedAt: daysAgo(2),
+    });
+
+    await expect(hasStampableSessionsBefore(new Date(), server.id, ['other-rk'])).resolves.toBe(
+      false
+    );
+    await expect(hasStampableSessionsBefore(new Date(), server.id, ['2733'])).resolves.toBe(true);
   });
 });

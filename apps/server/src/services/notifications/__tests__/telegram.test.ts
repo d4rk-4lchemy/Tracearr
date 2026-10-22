@@ -96,6 +96,16 @@ describe('telegramType.render', () => {
     expect(r.links).toEqual(links);
   });
 
+  it('drops buttons whose url telegram cannot open, like a LAN server address', async () => {
+    mockBuildMediaLinks.mockResolvedValueOnce([
+      ...links,
+      { label: 'Jellyfin', url: 'http://jellyfin:8096/web/#/details?id=1' },
+      { label: 'Emby', url: 'http://192.168.1.20:8096/web/index.html#!/item?id=1' },
+    ]);
+    const r = await render(mediaUpgraded);
+    expect(r.links).toEqual(links);
+  });
+
   it('fetches the poster on a media event and refits the body to the caption limit', async () => {
     const poster = { data: Buffer.from('img'), contentType: 'image/webp' };
     mockProxyImage.mockReset().mockResolvedValue(poster);
@@ -240,6 +250,55 @@ describe('telegramType.deliver', () => {
     const photo = form.get('photo') as File;
     expect(photo).toBeInstanceOf(Blob);
     expect(photo.name).toBe('poster.webp');
+  });
+
+  it('resends as plain text when telegram refuses the photo', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          '{"ok":false,"error_code":400,"description":"Bad Request: IMAGE_PROCESS_FAILED"}',
+          {
+            status: 400,
+          }
+        )
+      )
+      .mockResolvedValueOnce(new Response('{"ok":true}', { status: 200 }));
+    vi.stubGlobal('fetch', f);
+    const poster = { data: Buffer.from('img'), contentType: 'image/webp' };
+    await telegramType.deliver(
+      { title: 'T', message: 'm', silent: false, links, poster },
+      config,
+      deliverCtx
+    );
+    expect(f).toHaveBeenCalledTimes(2);
+    const [url, init] = f.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe('https://api.telegram.org/bot123:abc/sendMessage');
+    const body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.text).toBe('T\nm');
+    expect(body.reply_markup).toEqual({
+      inline_keyboard: [
+        [
+          { text: 'Tracearr', url: 'https://t.example/m/1' },
+          { text: 'Plex', url: 'https://plex.example/i' },
+        ],
+      ],
+    });
+  });
+
+  it('still throws when the photo upload fails for another reason', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('{"ok":false}', { status: 502 }))
+    );
+    const poster = { data: Buffer.from('img'), contentType: 'image/webp' };
+    await expect(
+      telegramType.deliver(
+        { title: 'T', message: 'm', silent: false, links: [], poster },
+        config,
+        deliverCtx
+      )
+    ).rejects.toThrow('502');
   });
 
   it('sends two links as one keyboard row with the photo', async () => {

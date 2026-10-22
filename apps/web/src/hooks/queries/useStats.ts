@@ -1,8 +1,10 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, skipToken, useQuery } from '@tanstack/react-query';
 import { serverScopeFromIds, serverScopeKey } from '@tracearr/shared';
 import type { MediaType, DeviceCompatibilityMatrix, PeopleRank } from '@tracearr/shared';
 import {
   api,
+  type LocationFilterParams,
+  type LocationPeopleSelector,
   type PlaysBreakdownOptions,
   type PlaysGroupBy,
   type StatsTimeRange,
@@ -65,30 +67,38 @@ export function usePlaysStats(
   });
 }
 
-export interface LocationStatsFilters {
-  timeRange?: StatsTimeRange;
-  serverUserId?: string;
-  serverUserIds?: string[];
-  serverIds?: string[];
-  mediaType?: 'movie' | 'episode' | 'track';
-}
+export type LocationStatsFilters = LocationFilterParams;
 
-export function useLocationStats(filters?: LocationStatsFilters) {
+function locationFiltersKey(filters?: LocationStatsFilters) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(filters?.serverIds));
   const serverUserIdsKey = filters?.serverUserIds?.length
     ? [...filters.serverUserIds].sort().join(',')
     : undefined;
+  return [
+    serverIdsKey,
+    filters?.serverUserId,
+    serverUserIdsKey,
+    filters?.mediaType,
+    filters?.timeRange,
+  ] as const;
+}
+
+export function useLocationStats(filters?: LocationStatsFilters) {
   return useQuery({
-    queryKey: [
-      'stats',
-      'locations',
-      serverIdsKey,
-      filters?.serverUserId,
-      serverUserIdsKey,
-      filters?.mediaType,
-      filters?.timeRange,
-    ],
+    queryKey: ['stats', 'locations', ...locationFiltersKey(filters)],
     queryFn: () => api.stats.locations(filters),
+    staleTime: 1000 * 60, // 1 minute
+  });
+}
+
+/** Every person of the selected place or area, which the list only carries the first few of. */
+export function useLocationPeople(
+  filters: LocationStatsFilters | undefined,
+  of: LocationPeopleSelector | null
+) {
+  return useQuery({
+    queryKey: ['stats', 'locations', 'people', ...locationFiltersKey(filters), of],
+    queryFn: of ? () => api.stats.locationPeople(filters, of) : skipToken,
     staleTime: 1000 * 60, // 1 minute
   });
 }

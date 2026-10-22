@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, isNull } from 'drizzle-orm';
 import type { EngineAutomation } from '@tracearr/shared';
 import { db } from '../../../db/client.js';
 import { sessions } from '../../../db/schema.js';
@@ -17,6 +17,7 @@ const RETRY_MS = 30_000;
 
 interface PendingWake {
   timer: ReturnType<typeof setTimeout>;
+  startedAt: Date;
   fireAt: number;
   anchor: number;
   /** The held_for node this wake is for; null when it is the compound-rule recheck. */
@@ -26,6 +27,7 @@ interface PendingWake {
 
 interface PausedSessionLike {
   id: string;
+  startedAt: Date;
   lastPausedAt: Date | null;
   pausedDurationMs: number | null;
 }
@@ -66,7 +68,7 @@ export function schedulePauseWake(
 
   const overdue = opts.evaluateIfPast && earliest !== null && earliest.at <= now;
   const crossing = overdue && earliest ? { at: now, nodeId: earliest.nodeId } : next;
-  if (crossing) arm(session.id, crossing.at, anchor, crossing.nodeId);
+  if (crossing) arm(session.id, session.startedAt, crossing.at, anchor, crossing.nodeId);
 }
 
 export function cancelPauseWake(sessionId: string): void {
@@ -81,12 +83,18 @@ export function stopPauseWakes(): void {
   for (const id of Array.from(pending.keys())) cancelPauseWake(id);
 }
 
-function arm(sessionId: string, fireAt: number, anchor: number, nodeId: string | null): void {
+function arm(
+  sessionId: string,
+  startedAt: Date,
+  fireAt: number,
+  anchor: number,
+  nodeId: string | null
+): void {
   cancelPauseWake(sessionId);
   const gen = ++generation;
   const delay = Math.min(Math.max(0, fireAt - Date.now()), MAX_TIMER_MS);
   const timer = setTimeout(() => void fire(sessionId, gen), delay);
-  pending.set(sessionId, { timer, fireAt, anchor, nodeId, gen });
+  pending.set(sessionId, { timer, startedAt, fireAt, anchor, nodeId, gen });
 }
 
 /** The entry stays in `pending` while its fire is in flight; a cancel or a newer schedule replaces it and the stale fire bails at its next check. */
@@ -95,8 +103,18 @@ function owned(sessionId: string, gen: number): PendingWake | null {
   return entry?.gen === gen ? entry : null;
 }
 
-function readSession(sessionId: string) {
-  return db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
+// started_at is the compression orderby; an id-only read scans every compressed batch.
+function readSession(sessionId: string, startedAt: Date) {
+  return db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.id, sessionId),
+        gte(sessions.startedAt, new Date(startedAt.getTime() - 60_000))
+      )
+    )
+    .limit(1);
 }
 
 async function fire(sessionId: string, gen: number): Promise<void> {
@@ -105,12 +123,12 @@ async function fire(sessionId: string, gen: number): Promise<void> {
   const now = Date.now();
   // Timers can land early; re-arm for the remainder rather than evaluate before the boundary.
   if (now < entry.fireAt) {
-    arm(sessionId, entry.fireAt, entry.anchor, entry.nodeId);
+    arm(sessionId, entry.startedAt, entry.fireAt, entry.anchor, entry.nodeId);
     return;
   }
 
   try {
-    const [row] = await readSession(sessionId);
+    const [row] = await readSession(sessionId, entry.startedAt);
     if (!owned(sessionId, gen)) return;
     if (row?.state !== 'paused' || row.stoppedAt || !row.lastPausedAt) {
       cancelPauseWake(sessionId);
@@ -145,12 +163,14 @@ async function fire(sessionId: string, gen: number): Promise<void> {
       ctx.inputs
     );
     if (violations.length > 0 && deps.pubSubService) {
-      await broadcastViolations(violations, row.id, deps.pubSubService);
+      await broadcastViolations(violations, row, deps.pubSubService);
     }
     if (owned(sessionId, gen)) schedulePauseWake(row, rules);
   } catch (error) {
     automationsLogger.error('Pause wake failed', { sessionId, error });
-    if (owned(sessionId, gen)) arm(sessionId, Date.now() + RETRY_MS, entry.anchor, entry.nodeId);
+    if (owned(sessionId, gen)) {
+      arm(sessionId, entry.startedAt, Date.now() + RETRY_MS, entry.anchor, entry.nodeId);
+    }
   }
 }
 

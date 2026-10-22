@@ -58,13 +58,14 @@ const result = {
 
 describe('broadcastViolations', () => {
   const pubSub = { publish: vi.fn() };
+  const session = { id: 'sess-1', startedAt: new Date('2026-01-01T00:00:00Z') };
   beforeEach(() => {
     vi.clearAllMocks();
     mockLimit.mockResolvedValue([details]);
   });
 
-  it('joins from sessions when given a session id', async () => {
-    await broadcastViolations([result], 'sess-1', pubSub);
+  it('joins from sessions when given a session', async () => {
+    await broadcastViolations([result], session, pubSub);
     expect(mockFrom).toHaveBeenCalledWith(sessions);
     expect(pubSub.publish).toHaveBeenNthCalledWith(
       1,
@@ -81,7 +82,7 @@ describe('broadcastViolations', () => {
   });
 
   it('follows the violations with one run event naming only the stale lists', async () => {
-    await broadcastViolations([result], 'sess-1', pubSub);
+    await broadcastViolations([result], session, pubSub);
 
     expect(pubSub.publish).toHaveBeenCalledTimes(2);
     expect(pubSub.publish).toHaveBeenNthCalledWith(2, WS_EVENTS.RUN_FINISHED, [
@@ -98,8 +99,8 @@ describe('broadcastViolations', () => {
   });
 
   it('does nothing without a pubsub service or without violations', async () => {
-    await broadcastViolations([result], 'sess-1', null);
-    await broadcastViolations([], 'sess-1', pubSub);
+    await broadcastViolations([result], session, null);
+    await broadcastViolations([], session, pubSub);
     expect(pubSub.publish).not.toHaveBeenCalled();
     expect(mockEnqueue).not.toHaveBeenCalled();
   });

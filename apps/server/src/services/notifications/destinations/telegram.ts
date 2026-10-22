@@ -1,4 +1,9 @@
-import { DESTINATION_TEXT_PROFILES, DESTINATION_TYPES, fitText } from '@tracearr/shared';
+import {
+  DESTINATION_TEXT_PROFILES,
+  DESTINATION_TYPES,
+  fitText,
+  isPubliclyRoutableUrl,
+} from '@tracearr/shared';
 import { deliverFetch } from './fetch.js';
 import { fetchPoster, posterFilename, type Poster } from './poster.js';
 import { renderText, TEST_TEXT } from './text.js';
@@ -26,7 +31,8 @@ export interface TelegramMessage {
 /**
  * The title is bolded by entity rather than parse_mode, so the text needs no escaping.
  * A poster goes as sendPhoto multipart with Content-Type left unset so undici writes
- * the boundary itself.
+ * the boundary itself. When Telegram refuses the photo (a 400 on the upload itself)
+ * the message goes again as plain text so the alert still arrives.
  */
 async function post(
   config: TelegramConfig,
@@ -45,8 +51,8 @@ async function post(
     }),
   };
 
-  if (!body.poster) {
-    await deliverFetch(
+  const sendMessage = () =>
+    deliverFetch(
       url('sendMessage'),
       {
         method: 'POST',
@@ -60,8 +66,8 @@ async function post(
       },
       ctx
     );
-    return;
-  }
+
+  if (!body.poster) return sendMessage();
 
   const form = new FormData();
   for (const [key, value] of Object.entries({ ...fields, caption: text })) {
@@ -73,7 +79,12 @@ async function post(
     new Blob([new Uint8Array(body.poster.data)], { type: body.poster.contentType }),
     posterFilename(body.poster.contentType)
   );
-  await deliverFetch(url('sendPhoto'), { method: 'POST', body: form }, ctx);
+  try {
+    await deliverFetch(url('sendPhoto'), { method: 'POST', body: form }, ctx);
+  } catch (error) {
+    if ((error as { status?: number }).status !== 400) throw error;
+    await sendMessage();
+  }
 }
 
 export const telegramType: DestinationType<TelegramConfig, TelegramMessage> = {
@@ -89,7 +100,7 @@ export const telegramType: DestinationType<TelegramConfig, TelegramMessage> = {
     return {
       ...text,
       silent: priority === 'lowest' || priority === 'low',
-      links,
+      links: links.filter((l) => isPubliclyRoutableUrl(l.url)),
       ...(poster && { poster, message: fitText(text.message, CAPTION_BODY) }),
     };
   },

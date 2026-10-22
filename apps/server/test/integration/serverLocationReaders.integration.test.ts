@@ -114,6 +114,7 @@ describe('local flag readers', () => {
       'Chicago|false|2',
       'Chicago|true|1',
       'Paris|false|1',
+      'null|true|1',
     ]);
     for (const row of rows) {
       expect(row.servers).toEqual([{ serverId: server.id, count: row.count }]);

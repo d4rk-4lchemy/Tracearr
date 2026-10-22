@@ -13,7 +13,7 @@ const { redis, client } = vi.hoisted(() => ({
 vi.mock('../../../db/client.js', () => ({ db: { select: vi.fn(), update: vi.fn() } }));
 vi.mock('../../../lib/redisShared.js', () => ({ getRedis: () => redis.current }));
 vi.mock('../../mediaServer/index.js', () => ({ createMediaServerClient: vi.fn(() => client) }));
-vi.mock('../../userService.js', () => ({ getServerUserByExternalId: vi.fn() }));
+vi.mock('../../../jobs/poller/database.js', () => ({ getServerUserIdByExternalId: vi.fn() }));
 vi.mock('../recorder.js', () => ({ insertDownload: vi.fn(), matchLibraryItem: vi.fn() }));
 vi.mock('../enrich.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../enrich.js')>()),
@@ -21,7 +21,7 @@ vi.mock('../enrich.js', async (importOriginal) => ({
 }));
 
 import { db } from '../../../db/client.js';
-import { getServerUserByExternalId } from '../../userService.js';
+import { getServerUserIdByExternalId } from '../../../jobs/poller/database.js';
 import { enrichDownload } from '../enrich.js';
 import { insertDownload, matchLibraryItem } from '../recorder.js';
 import {
@@ -101,8 +101,8 @@ beforeEach(() => {
   vi.mocked(db.select).mockReset();
   vi.mocked(db.update).mockReset();
   vi.mocked(db.update).mockImplementation(() => queryChain(vi.fn, undefined) as never);
-  vi.mocked(getServerUserByExternalId).mockReset();
-  vi.mocked(getServerUserByExternalId).mockResolvedValue({ id: 'su-1' } as never);
+  vi.mocked(getServerUserIdByExternalId).mockReset();
+  vi.mocked(getServerUserIdByExternalId).mockResolvedValue('su-1');
   vi.mocked(insertDownload).mockReset();
   vi.mocked(insertDownload).mockImplementation(async () => ({
     id: `row-${vi.mocked(insertDownload).mock.calls.length}`,
@@ -161,7 +161,7 @@ describe('pollServerTranscodePulls', () => {
       },
       null
     );
-    expect(getServerUserByExternalId).toHaveBeenCalledWith(SERVER.id, USER_GUID);
+    expect(getServerUserIdByExternalId).toHaveBeenCalledWith(SERVER.id, USER_GUID);
   });
 
   it('opens nothing for a session that is playing', async () => {

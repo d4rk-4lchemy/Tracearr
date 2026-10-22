@@ -787,23 +787,32 @@ export interface UserStats {
 }
 
 export interface LocationUserInfo {
-  id: string;
+  id: string; // Representative server_user id
   username: string;
+  identityName: string | null;
   thumbUrl: string | null;
+  serverId: string; // The representative account's server, which owns thumbUrl
+  serverUserIds: string[]; // Every account of the identity within the caller's servers
+  count: number; // Plays at this location
 }
+
+/** The people each location of the /stats/locations list carries; the list draws this many avatars. */
+export const LOCATION_LIST_PEOPLE = 3;
 
 export interface LocationStats {
   city: string | null;
   region: string | null; // State/province
   country: string | null;
   isLocal: boolean;
-  lat: number;
-  lon: number;
+  lat: number | null; // Null when no session in the group has coordinates
+  lon: number | null;
   count: number;
   lastActivity?: Date;
   firstActivity?: Date;
-  // Contextual data - populated based on filters
-  users?: LocationUserInfo[]; // Top users at this location (when not filtering by userId)
+  // Count DESC then name: the first LOCATION_LIST_PEOPLE in the list, every person from
+  // /stats/locations/people. One entry under a user filter.
+  users?: LocationUserInfo[];
+  peopleCount: number;
   deviceCount?: number; // Unique devices from this location
   // Per-server breakdown ordered by count DESC; servers[0] is the dominant server
   servers?: { serverId: string; count: number }[];
@@ -822,7 +831,6 @@ export interface LocationFilterOptions {
     identityName: string | null;
     serverUserIds: string[];
   }[];
-  servers: { id: string; name: string }[];
   mediaTypes: MediaType[];
 }
 
@@ -830,6 +838,10 @@ export interface LocationStatsResponse {
   data: LocationStats[];
   summary: LocationStatsSummary;
   availableFilters: LocationFilterOptions;
+}
+
+export interface LocationPeopleResponse {
+  data: LocationStats[];
 }
 
 export interface LibraryStats {

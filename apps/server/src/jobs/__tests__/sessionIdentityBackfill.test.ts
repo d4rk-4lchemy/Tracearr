@@ -103,7 +103,7 @@ describe('backfillSessionIdentityBatch', () => {
 
     const result = await backfillSessionIdentityBatch(5000);
 
-    expect(result).toEqual({ updated: 0, oldest: null });
+    expect(result).toEqual({ updated: 0, oldest: null, cursor: [null, null, null] });
   });
 
   it('lifts the decompression cap inside the transaction when the GUC exists', async () => {
@@ -142,7 +142,7 @@ describe('backfillSessionIdentityBatch', () => {
     const [fresh] = await renderBatchPasses();
     const [select, update] = fresh!.sql.split('UPDATE sessions s');
     const probeExecute = mockExecute({ rows: [{ stampable: false }] });
-    await hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'));
+    await hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'), 'server-1', ['rk-1']);
     const [freshProbe] = renderSql(probeExecute.mock.calls[0]![0] as SQL).sql.split(
       /\)\s*OR EXISTS/
     );
@@ -203,7 +203,9 @@ describe('hasStampableSessionsBefore', () => {
   it('answers from a single statement', async () => {
     const execute = mockExecute({ rows: [{ stampable: true }] });
 
-    await expect(hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'))).resolves.toBe(true);
+    await expect(
+      hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'), 'server-1', ['rk-1'])
+    ).resolves.toBe(true);
     expect(execute).toHaveBeenCalledTimes(1);
     expect(renderSql(execute.mock.calls[0]![0] as SQL).sql).toMatch(
       /^\s*SELECT EXISTS \([\s\S]*\) OR EXISTS \([\s\S]*\) OR EXISTS \([\s\S]*\) AS stampable\s*$/
@@ -213,14 +215,16 @@ describe('hasStampableSessionsBefore', () => {
   it('returns false when no probe finds work', async () => {
     const execute = mockExecute({ rows: [{ stampable: false }] });
 
-    await expect(hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'))).resolves.toBe(false);
+    await expect(
+      hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'), 'server-1', ['rk-1'])
+    ).resolves.toBe(false);
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
   it('bounds every probe below the cutoff', async () => {
     const execute = mockExecute({ rows: [{ stampable: false }] });
 
-    await hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'));
+    await hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'), 'server-1', ['rk-1']);
 
     const { sql: text, params } = renderSql(execute.mock.calls[0]![0] as SQL);
     for (const probe of text.split(/\)\s*OR EXISTS/)) {
@@ -233,7 +237,7 @@ describe('hasStampableSessionsBefore', () => {
 describe('probe / batch predicate drift', () => {
   it('pins each probe predicate and keeps it in step with the batch query it mirrors', async () => {
     const probeExecute = mockExecute({ rows: [{ stampable: false }] });
-    await hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'));
+    await hasStampableSessionsBefore(new Date('2026-08-01T00:00:00Z'), 'server-1', ['rk-1']);
     const [freshProbe, repairProbe, unlinkProbe] = renderSql(
       probeExecute.mock.calls[0]![0] as SQL
     ).sql.split(/\)\s*OR EXISTS/);
@@ -271,7 +275,7 @@ describe('probe / batch predicate drift', () => {
 });
 
 describe('runSessionIdentityBackfillWalk', () => {
-  it('drains the uncompressed region, then each compressed chunk, then sweeps leftovers', async () => {
+  it('drains the uncompressed region, then each compressed chunk, then the uncompressed chunks below it', async () => {
     const windows: Array<unknown> = [];
     const runBatch = vi.fn(async (_limit: number, window?: unknown) => {
       windows.push(window);
@@ -281,21 +285,30 @@ describe('runSessionIdentityBackfillWalk', () => {
       { start: new Date('2026-02-01T00:00:00Z'), end: new Date('2026-02-08T00:00:00Z') },
       { start: new Date('2026-01-25T00:00:00Z'), end: new Date('2026-02-01T00:00:00Z') },
     ];
+    const above = {
+      start: new Date('2026-02-08T00:00:00Z'),
+      end: new Date('2026-02-15T00:00:00Z'),
+    };
+    const straggler = {
+      start: new Date('2026-01-18T00:00:00Z'),
+      end: new Date('2026-01-25T00:00:00Z'),
+    };
 
     const result = await runSessionIdentityBackfillWalk({
       batchSize: 5000,
       getCompressedRanges: async () => ranges,
+      getChunkRanges: async () => [above, ...ranges, straggler],
       runBatch,
     });
 
     expect(result).toEqual({ total: 0, earliest: null, failedRanges: [] });
     // Pass 1: from the horizon (newest compressed range_end). Pass 2: one window
-    // per compressed chunk. Pass 3: unwindowed sweep.
+    // per compressed chunk. Pass 3: the uncompressed chunk below the horizon.
     expect(windows).toEqual([
       { start: ranges[0]!.end },
       { start: ranges[0]!.start, end: ranges[0]!.end },
       { start: ranges[1]!.start, end: ranges[1]!.end },
-      undefined,
+      straggler,
     ]);
   });
 
@@ -307,6 +320,7 @@ describe('runSessionIdentityBackfillWalk', () => {
     const result = await runSessionIdentityBackfillWalk({
       batchSize: 3,
       getCompressedRanges: async () => [],
+      getChunkRanges: async () => [],
       runBatch,
     });
 
@@ -324,6 +338,10 @@ describe('runSessionIdentityBackfillWalk', () => {
       chunk,
       { start: new Date('2026-01-25T00:00:00Z'), end: new Date('2026-02-01T00:00:00Z') },
     ];
+    const straggler = {
+      start: new Date('2026-01-18T00:00:00Z'),
+      end: new Date('2026-01-25T00:00:00Z'),
+    };
     // Every sub-window of the first chunk fails, however narrow, so the walk
     // halves it all the way down before recording the leaves.
     const attemptedInChunk = new Set<string>();
@@ -341,6 +359,7 @@ describe('runSessionIdentityBackfillWalk', () => {
     const result = await runSessionIdentityBackfillWalk({
       batchSize: 5000,
       getCompressedRanges: async () => ranges,
+      getChunkRanges: async () => [...ranges, straggler],
       runBatch,
     });
 
@@ -361,10 +380,10 @@ describe('runSessionIdentityBackfillWalk', () => {
       expect(new Date(to!).getTime()).toBeLessThanOrEqual(chunk.end.getTime());
     }
 
-    // Second chunk still attempted; no unwindowed sweep after a failure.
+    // Second chunk still attempted; no sweep below the horizon after a failure.
     const calledWindows = runBatch.mock.calls.map((c) => c[1]);
     expect(calledWindows).toContainEqual({ start: ranges[1]!.start, end: ranges[1]!.end });
-    expect(calledWindows).not.toContain(undefined);
+    expect(calledWindows).not.toContainEqual(straggler);
     vi.restoreAllMocks();
   });
 
@@ -387,6 +406,7 @@ describe('runSessionIdentityBackfillWalk', () => {
       runSessionIdentityBackfillWalk({
         batchSize: 5000,
         getCompressedRanges: async () => ranges,
+        getChunkRanges: async () => ranges,
         runBatch,
       })
     ).rejects.toThrow(/^Aborting walk: 40 failed ranges - this looks like a systemic fault/);
@@ -396,13 +416,19 @@ describe('runSessionIdentityBackfillWalk', () => {
     vi.restoreAllMocks();
   });
 
-  it('records a failing unwindowed sweep instead of discarding what the walk committed', async () => {
+  it('records a failing chunk below the horizon instead of discarding what the walk committed', async () => {
     const ranges = [
       { start: new Date('2026-02-01T00:00:00Z'), end: new Date('2026-02-08T00:00:00Z') },
     ];
+    const straggler = {
+      start: new Date('2026-01-25T00:00:00Z'),
+      end: new Date('2026-02-01T00:00:00Z'),
+    };
     const runBatch = vi.fn(async (_limit: number, window?: { start?: Date; end?: Date }) => {
-      // A chunk compressed mid-walk makes the sweep trip the decompression cap.
-      if (!window) throw new Error('tuple decompression limit exceeded');
+      // A chunk compressed mid-walk makes its window trip the decompression cap.
+      if (window?.end && window.end <= straggler.end) {
+        throw new Error('tuple decompression limit exceeded');
+      }
       return { updated: 2, oldest: new Date('2026-02-02T00:00:00Z') };
     });
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -410,10 +436,16 @@ describe('runSessionIdentityBackfillWalk', () => {
     const result = await runSessionIdentityBackfillWalk({
       batchSize: 5000,
       getCompressedRanges: async () => ranges,
+      getChunkRanges: async () => [...ranges, straggler],
       runBatch,
     });
 
-    expect(result.failedRanges).toEqual(['unwindowed sweep']);
+    expect(result.failedRanges.length).toBeGreaterThan(0);
+    for (const label of result.failedRanges) {
+      const [from, to] = label.split(' → ');
+      expect(new Date(from!).getTime()).toBeGreaterThanOrEqual(straggler.start.getTime());
+      expect(new Date(to!).getTime()).toBeLessThanOrEqual(straggler.end.getTime());
+    }
     // Pass 1 and the chunk range both committed - their totals survive.
     expect(result.total).toBe(4);
     expect(result.earliest).toEqual(new Date('2026-02-02T00:00:00Z'));
@@ -433,6 +465,7 @@ describe('runSessionIdentityBackfillWalk', () => {
       runSessionIdentityBackfillWalk({
         batchSize: 5000,
         getCompressedRanges: async () => ranges,
+        getChunkRanges: async () => ranges,
         runBatch,
         onBatch: async () => {
           batches++;
@@ -455,6 +488,7 @@ describe('runSessionIdentityBackfillWalk', () => {
     await runSessionIdentityBackfillWalk({
       batchSize: 3,
       getCompressedRanges: async () => [],
+      getChunkRanges: async () => [],
       runBatch,
       onBatch: async (total) => {
         totals.push(total);
@@ -467,12 +501,15 @@ describe('runSessionIdentityBackfillWalk', () => {
 
   it('skips the sweep when there are no compressed chunks (pass 1 already covered everything)', async () => {
     const runBatch = vi.fn().mockResolvedValue({ updated: 0, oldest: null });
+    const getChunkRanges = vi.fn(async () => []);
     await runSessionIdentityBackfillWalk({
       batchSize: 5000,
       getCompressedRanges: async () => [],
+      getChunkRanges,
       runBatch,
     });
     expect(runBatch).toHaveBeenCalledTimes(1);
-    expect(runBatch).toHaveBeenCalledWith(5000, undefined);
+    expect(runBatch).toHaveBeenCalledWith(5000, undefined, undefined);
+    expect(getChunkRanges).not.toHaveBeenCalled();
   });
 });

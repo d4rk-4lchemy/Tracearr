@@ -25,9 +25,8 @@ import {
 } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
-import { useTimeRange } from '@/hooks/useTimeRange';
+import { type DateWindow, resolveWindow, useTimeRange } from '@/hooks/useTimeRange';
 import { PLAYBACK_DECISIONS, type SessionWithDetails } from '@tracearr/shared';
-import type { TimeRangeValue } from '@/components/ui/time-range-picker';
 
 // Local storage key for column visibility
 const COLUMN_VISIBILITY_KEY = 'tracearr-history-columns';
@@ -67,31 +66,6 @@ function parseCommaSeparated<T extends string>(
     return filtered.length > 0 ? filtered : undefined;
   }
   return values.length > 0 ? values : undefined;
-}
-
-const PRESET_DAYS: Partial<Record<TimeRangeValue['period'], number>> = {
-  day: 1,
-  week: 7,
-  month: 30,
-  year: 365,
-};
-
-type DateWindow = { startDate: Date; endDate: Date } | null;
-
-function resolveWindow(
-  period: TimeRangeValue['period'],
-  startDate: string | undefined,
-  endDate: string | undefined
-): DateWindow {
-  if (startDate && endDate) {
-    return { startDate: new Date(startDate), endDate: new Date(endDate) };
-  }
-  if (period === 'all') return null;
-  const now = new Date();
-  return {
-    startDate: new Date(now.getTime() - (PRESET_DAYS[period] ?? 30) * 86_400_000),
-    endDate: now,
-  };
 }
 
 // Parse URL search params into filter object
@@ -146,6 +120,13 @@ function parseFiltersFromUrl(
   const countries = parseCommaSeparated<string>(searchParams.get('countries'));
   if (countries) filters.geoCountries = countries;
 
+  const city = searchParams.get('city');
+  if (city) filters.geoCity = city;
+  if (searchParams.get('noCity') === 'true') filters.geoCityMissing = true;
+  const region = searchParams.get('region');
+  if (region) filters.geoRegion = region;
+  if (searchParams.get('noRegion') === 'true') filters.geoRegionMissing = true;
+
   const search = searchParams.get('search');
   if (search) filters.search = search;
 
@@ -186,6 +167,10 @@ function filtersToUrlParams(filters: HistoryFilters, current: URLSearchParams): 
   if (filters.network) params.set('network', filters.network);
   if (filters.platforms?.length) params.set('platforms', filters.platforms.join(','));
   if (filters.geoCountries?.length) params.set('countries', filters.geoCountries.join(','));
+  if (filters.geoCity) params.set('city', filters.geoCity);
+  if (filters.geoCityMissing) params.set('noCity', 'true');
+  if (filters.geoRegion) params.set('region', filters.geoRegion);
+  if (filters.geoRegionMissing) params.set('noRegion', 'true');
   if (filters.search) params.set('search', filters.search);
   if (!filters.startDate && !filters.endDate) {
     params.set('period', 'all');

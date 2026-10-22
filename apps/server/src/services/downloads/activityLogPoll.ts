@@ -5,7 +5,7 @@ import { servers } from '../../db/schema.js';
 import { getRedis } from '../../lib/redisShared.js';
 import { liveServerCondition, type ServerRow } from '../liveServers.js';
 import { createMediaServerClient } from '../mediaServer/index.js';
-import { getServerUserByExternalId } from '../userService.js';
+import { getServerUserIdByExternalId } from '../../jobs/poller/database.js';
 import { deliveredFile } from './enrich.js';
 import { recordDownload, type DownloadSignal } from './recorder.js';
 import { pollServerTranscodePulls } from './transcodePull.js';
@@ -49,8 +49,7 @@ async function resolveServerUserId(
   userId: string | null
 ): Promise<string | null> {
   const externalId = userId ? await client.resolveUserGuid(userId) : null;
-  const user = externalId ? await getServerUserByExternalId(server.id, externalId) : null;
-  return user?.id ?? null;
+  return externalId ? getServerUserIdByExternalId(server.id, externalId) : null;
 }
 
 async function readEntries(
@@ -108,7 +107,10 @@ async function pollServer(server: ServerRow): Promise<void> {
     try {
       for (const entry of entries) {
         if (entry.type === DOWNLOAD_ENTRY_TYPE) {
-          await recordDownload(await toSignal(server, client, entry));
+          // One bad entry must not hold the cursor, or no later download on the server records
+          await recordDownload(await toSignal(server, client, entry)).catch((error: unknown) => {
+            console.error(`[Downloads] Entry ${entry.id} on ${server.name} not recorded:`, error);
+          });
         }
         last = entry.id;
       }
@@ -122,7 +124,8 @@ function syncSignal(
   server: ServerRow,
   job: EmbySyncJob,
   item: EmbySyncJobItem,
-  serverUserId: string | null
+  serverUserId: string | null,
+  seenAt: Date
 ): DownloadSignal {
   const target = SYNC_TARGET_PATTERN.exec(job.targetName);
   const source = item.mediaSource;
@@ -134,7 +137,7 @@ function syncSignal(
     app: target?.[2] ?? null,
     device: target?.[1] ?? null,
     source: 'emby_sync',
-    seenAt: new Date(job.dateLastModified),
+    seenAt,
     deviceId: job.targetId || null,
     delivered: source && deliveredFile(source, source.size),
   };
@@ -169,7 +172,9 @@ async function pollSync(server: ServerRow): Promise<void> {
         !(await redis.sismember(recordedKey, String(item.id)))
       ) {
         const serverUserId = await resolveServerUserId(server, client, job.userId);
-        await recordDownload(syncSignal(server, job, item, serverUserId));
+        // A long-lived job's DateLastModified can predate the item finishing; past the seed the poll time is closer
+        const seenAt = seedFrom === null ? new Date() : new Date(job.dateLastModified);
+        await recordDownload(syncSignal(server, job, item, serverUserId, seenAt));
         await redis.sadd(recordedKey, String(item.id));
       }
       highestDone = Math.max(highestDone, item.id);

@@ -40,6 +40,7 @@ import {
   getServerTrackingStart,
   queryExistingByExternalIds,
   queryExistingByTimeKeys,
+  sessionRowById,
   type SessionUpdate,
   type TimeBounds,
 } from './import/index.js';
@@ -1167,6 +1168,7 @@ export class TautulliService {
             if (startsMatch && hasChanges) {
               updateBatch.push({
                 id: existingByRef.id,
+                startedAt: existingByRef.startedAt,
                 stoppedAt: newStoppedAt,
                 durationMs: newDurationMs,
                 pausedDurationMs: newPausedDurationMs,
@@ -1224,6 +1226,7 @@ export class TautulliService {
               ) {
                 updateBatch.push({
                   id: existingByTime.id,
+                  startedAt: existingByTime.startedAt,
                   externalSessionId: referenceIdStr,
                   stoppedAt: newStoppedAt,
                   durationMs: newDurationMs,
@@ -1839,13 +1842,13 @@ export class TautulliService {
         if (pendingUpdates.length > 0) {
           await db.transaction(async (tx) => {
             // The cap on decompressed tuples is per transaction, so it adds up
-            // across every UPDATE below, and `WHERE id = ?` matches no
+            // across every UPDATE below, and the id plus started_at match no
             // segmentby column - each row decompresses its segment. Enrichment
             // ran uncapped before the cap came back globally; keep that, scoped
             // to this transaction.
             await uncapDecompressionForTx(tx);
             for (const update of pendingUpdates) {
-              await tx.update(sessions).set(update.data).where(eq(sessions.id, update.id));
+              await tx.update(sessions).set(update.data).where(sessionRowById(update));
             }
           });
           for (const update of pendingUpdates) {

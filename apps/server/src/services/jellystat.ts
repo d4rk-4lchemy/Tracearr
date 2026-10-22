@@ -62,6 +62,7 @@ import {
   flushInsertBatch,
   type MediaEnrichment,
   queryExistingByExternalIds,
+  sessionRowById,
   type ExistingSession,
   type TimeBounds,
 } from './import/index.js';
@@ -828,7 +829,11 @@ export async function importJellystatBackup(
       const identityByRatingKey = await batchGetLibraryItemIdentity(serverId, chunkRatingKeys);
 
       const insertBatch: (typeof sessions.$inferInsert)[] = [];
-      const updateBatch: Array<{ id: string; data: Partial<typeof sessions.$inferInsert> }> = [];
+      const updateBatch: Array<{
+        id: string;
+        startedAt: Date;
+        data: Partial<typeof sessions.$inferInsert>;
+      }> = [];
 
       for (const activity of chunk) {
         progress.processedRecords++;
@@ -904,7 +909,11 @@ export async function importJellystatBackup(
               }
             }
             if (Object.keys(data).length > 0) {
-              updateBatch.push({ id: existingSession.id, data });
+              updateBatch.push({
+                id: existingSession.id,
+                startedAt: existingSession.startedAt,
+                data,
+              });
               updated++;
               continue;
             }
@@ -1008,13 +1017,13 @@ export async function importJellystatBackup(
       if (updateBatch.length > 0) {
         await db.transaction(async (tx) => {
           // Every UPDATE here shares one transaction, so the decompression cap
-          // accumulates across the whole batch, and `WHERE id = ?` matches no
+          // accumulates across the whole batch, and the id plus started_at match no
           // segmentby column - each row decompresses its segment. Imports ran
           // uncapped before the cap came back globally; keep that, scoped to
           // this transaction.
           await uncapDecompressionForTx(tx);
           for (const update of updateBatch) {
-            await tx.update(sessions).set(update.data).where(eq(sessions.id, update.id));
+            await tx.update(sessions).set(update.data).where(sessionRowById(update));
           }
         });
       }

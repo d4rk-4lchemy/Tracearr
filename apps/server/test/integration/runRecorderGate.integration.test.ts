@@ -365,6 +365,13 @@ describe('the account policy gate', () => {
     await mark(second.id, 'acknowledgedAt');
     await mark(second.id, 'dismissedAt');
     expect(await record()).toBeNull();
+
+    // A dismissal covers the burst it was about: past the 24 h default window it no longer blocks
+    await db
+      .update(automationRuns)
+      .set({ createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000) })
+      .where(eq(automationRuns.id, second.id));
+    expect(await record()).not.toBeNull();
   });
 
   it('keeps an inactivity run blocked after it is acknowledged', async () => {

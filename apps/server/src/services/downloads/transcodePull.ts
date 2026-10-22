@@ -5,7 +5,7 @@ import { mediaDownloads } from '../../db/schema.js';
 import { getRedis } from '../../lib/redisShared.js';
 import { createMediaServerClient } from '../mediaServer/index.js';
 import { createLogger } from '../../utils/logger.js';
-import { getServerUserByExternalId } from '../userService.js';
+import { getServerUserIdByExternalId } from '../../jobs/poller/database.js';
 import { deliveredFile, enrichDownload, sourceColumns } from './enrich.js';
 import { insertDownload, matchLibraryItem, type DownloadSignal } from './recorder.js';
 import type { ServerRow } from '../liveServers.js';
@@ -53,8 +53,7 @@ async function withPulls(serverId: string, run: (pulls: Pulls) => Promise<void>)
 }
 
 async function serverUserId(serverId: string, userId: string | null): Promise<string | null> {
-  const user = userId ? await getServerUserByExternalId(serverId, userId) : null;
-  return user?.id ?? null;
+  return userId ? getServerUserIdByExternalId(serverId, userId) : null;
 }
 
 async function updateRow(

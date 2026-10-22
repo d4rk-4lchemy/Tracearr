@@ -1,5 +1,59 @@
 # Tracearr Fork Information
 
+## October 22, 2026 — Tracearr 3.0.0 release upstream merge
+
+Upstream `main` at `e6c1cd9eb` completes the 3.0.0 release with a redesigned
+map (location list, place/area panels and History links), exclusive custom
+range ends, download/Telegram corrections and bounded history maintenance.
+Session writes use stored start times to prune compressed history; stale
+cleanup scans compressed history at startup and stops downtime-orphaned rows
+at their last observation. Identity/import walks yield between batches and
+library-triggered identity probes are scoped to changed keys and throttled.
+Upstream migrations remain byte-for-byte aligned; the separate Dispatcharr
+migration ledger is unchanged.
+
+The map's shared location CTE resolves Dispatcharr's stable device identity
+from the original session before aggregation, preserving provider device IDs
+for Plex/Jellyfin/Emby in both location endpoints. A mixed-provider integration
+regression covers five plays/four devices in the list and place detail; its
+fixture also uses the real permission guard. The Map query memo depends on
+API range parameters. Dispatcharr authentication/settings, leader-owned
+realtime/polling, pending/catch-up lifecycle and termination, library/Seerr
+exclusions, Live TV Activity, uncropped artwork/cache markers and two-channel
+versions remain intact. All 300 existing fork-only localized entries survive.
+
+Exactly the existing PR-only CI and dual-registry release workflows remain
+unchanged, including the four native-build publication gate. Helm and
+Renovate configuration changes are excluded. Both Dockerfiles retain fork
+metadata, fork migrations, basemap generation/prefetch and pnpm 12.14.0,
+while adopting upstream's pinned Tailscale packages and OS upgrades. Supervised
+runtime now uses the builder's pinned Node image instead of NodeSource, with
+explicit Redis/Timescale package versions; the standalone Timescale Dockerfile
+uses the same PG15-compatible 2.28.x pin. Package pins require manual upkeep
+under the fork's existing automation policy.
+
+Full non-Docker CI-equivalent validation passes with Node 24 / pnpm 12.14.0,
+frozen-lockfile install, a cleared Turbo cache and a 4 GB heap. Heavy jobs run
+sequentially on the 8 GB LXC, with two Vitest workers and Turbo concurrency one.
+Lint, typecheck, translations, all five server groups, web, coverage and build
+pass. Server groups plus web pass 10,779 tests without skips; shared adds 465.
+Coverage passes 6,774 tests with 72.55% statements, 66.93% branches, 76.53%
+functions and 73.78% lines, meeting all thresholds. All 29 locales are in sync.
+All 207 changed supported source/JSON/YAML files pass Prettier. Final lint and
+typecheck pass after build. Lint has 709 warnings and zero errors, up two:
+upstream's new LocationList/LocationPanel virtualizers add the existing
+`react(incompatible-library)` diagnostic class. Two initial Map memo dependency
+warnings are resolved; the normalized delta and unchanged runtime warning
+counts are recorded in the local warning reference.
+Logs: `.tmp/merge-300-final-<job>-20261022.log`; sequential runners:
+`.tmp/validate-merge-300-final.py` and `.tmp/finish-merge-300-final.py`.
+Preservation audit: `.tmp/merge-300-final-preservation-audit.json`.
+
+Docker integration/E2E are omitted at the user's request. Docker image builds,
+database upgrade execution and live-provider manual smoke are not performed;
+the new map/device SQL regression, compressed-history maintenance and image
+package installation remain unverified against running services/images.
+
 ## October 21, 2026 — Tracearr 3.0 development upstream merge
 
 Upstream `main` at `307f421d1` adds Plex/Jellyfin/Emby download tracking,
@@ -446,9 +500,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `307f421d1`
-- Last shared upstream commit found during inspection: `498193355` (before merge)
-- Latest upstream commit merged into the current working tree: `307f421d1`
+- Source branch/SHA inspected: `main` at `e6c1cd9eb`
+- Last shared upstream commit found during inspection: `307f421d1` (before merge)
+- Latest upstream commit merged into the current working tree: `e6c1cd9eb`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { AttributionControl, Map as MLMap, NavigationControl, Popup } from 'maplibre-gl';
 import type { LngLatLike, StyleSpecification } from 'maplibre-gl';
@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { recordClientError } from '@/lib/clientErrors';
 import { useTheme } from '@/components/theme-provider';
 import { autoFitBounds, type FitPoint } from './autoFitBounds';
-import { checkBasemap, isWebglSupported, mapMaxZoom } from './maplibre';
+import { checkBasemap, isWebglSupported, mapMaxZoom, worldFillZoom } from './maplibre';
 
 export function useResolvedDark(): boolean {
   const { theme } = useTheme();
@@ -41,19 +41,14 @@ interface UseMapOptions {
   navControl?: boolean;
   center?: LngLatLike;
   zoom?: number;
+  /** Omitted: the zoom at which one copy of the world fills the map's width, kept current on resize. */
   minZoom?: number;
 }
 
 export function useMapLibre(
   containerRef: RefObject<HTMLDivElement | null>,
   style: StyleSpecification | null,
-  {
-    interactive = true,
-    navControl = true,
-    center = [0, 20],
-    zoom = 2,
-    minZoom = 2,
-  }: UseMapOptions = {}
+  { interactive = true, navControl = true, center = [0, 20], zoom = 2, minZoom }: UseMapOptions = {}
 ): MLMap | null {
   const [map, setMap] = useState<MLMap | null>(null);
   const styleRef = useRef(style);
@@ -62,12 +57,13 @@ export function useMapLibre(
 
   useEffect(() => {
     if (!containerRef.current || !styleRef.current || !isWebglSupported()) return;
+    const container = containerRef.current;
     const m = new MLMap({
-      container: containerRef.current,
+      container,
       style: styleRef.current,
       center,
       zoom,
-      minZoom,
+      minZoom: minZoom ?? worldFillZoom(container.clientWidth),
       maxZoom: mapMaxZoom(),
       interactive,
       attributionControl: false,
@@ -76,6 +72,9 @@ export function useMapLibre(
     m.addControl(new AttributionControl({ compact: !interactive }));
     if (interactive && navControl) {
       m.addControl(new NavigationControl({ showCompass: false }), 'bottom-right');
+    }
+    if (minZoom === undefined) {
+      m.on('resize', () => m.setMinZoom(worldFillZoom(container.clientWidth)));
     }
     setMap(m);
     return () => {
@@ -143,13 +142,18 @@ interface AutoFitOptions {
   suspend?: boolean;
 }
 
+/**
+ * Returns `fitMissed`: when the points changed while suspended, it fits them now and returns
+ * true, so a caller restoring its own camera on resume can skip that.
+ */
 export function useAutoFit(
   map: MLMap | null,
   points: FitPoint[],
   { maxZoom, filterKey, isLoading, suspend }: AutoFitOptions
-): void {
+): () => boolean {
   const prevKeyRef = useRef('');
   const userMovedRef = useRef(false);
+  const missedRef = useRef<FitPoint[] | null>(null);
 
   useEffect(() => {
     if (!map) return;
@@ -180,11 +184,24 @@ export function useAutoFit(
     if (key === prevKeyRef.current) return;
     const isInitial = prevKeyRef.current === '';
     prevKeyRef.current = key;
-    if (suspend && !isInitial) return;
-    if (isInitial || !userMovedRef.current) {
-      const bounds = autoFitBounds(points);
-      if (!bounds) return;
-      map.fitBounds(bounds, { padding: 50, maxZoom, duration: 600 });
+    if (suspend && !isInitial) {
+      missedRef.current = points;
+      return;
     }
+    missedRef.current = null;
+    if (isInitial || !userMovedRef.current) fitTo(map, points, maxZoom);
   }, [map, points, isLoading, maxZoom, suspend]);
+
+  return useCallback(() => {
+    const missed = missedRef.current;
+    missedRef.current = null;
+    return Boolean(map && missed && fitTo(map, missed, maxZoom));
+  }, [map, maxZoom]);
+}
+
+export function fitTo(map: MLMap, points: FitPoint[], maxZoom: number): boolean {
+  const bounds = autoFitBounds(points);
+  if (!bounds) return false;
+  map.fitBounds(bounds, { padding: 50, maxZoom, duration: 600 });
+  return true;
 }

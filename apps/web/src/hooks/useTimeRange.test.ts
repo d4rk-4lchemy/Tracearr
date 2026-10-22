@@ -2,7 +2,7 @@ import { createElement, type ReactNode } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
-import { useTimeRange } from './useTimeRange';
+import { resolveWindow, useTimeRange } from './useTimeRange';
 
 function setup(url: string) {
   return renderHook(() => useTimeRange(), {
@@ -32,6 +32,10 @@ describe('useTimeRange apiLibraryParams', () => {
 
   it('gives apiDayParams a preset as its period alone', () => {
     expect(setup('/library/genres?period=week').apiDayParams).toEqual({ period: 'week' });
+  });
+
+  it('gives a preset window no end so later sessions still match', () => {
+    expect(resolveWindow('week', undefined, undefined)).toEqual({ startDate: expect.any(Date) });
   });
 
   it('falls back to the default period when a custom range is missing a date', () => {
@@ -83,6 +87,25 @@ describe.each(['America/New_York', 'Pacific/Auckland'])('useTimeRange days in %s
       period: 'custom',
       startDate: '2026-09-01T00:00:00.000Z',
       endDate: '2026-09-30T00:00:00.000Z',
+    });
+  });
+
+  it('sends the session routes an exclusive end: the day after the last picked day', () => {
+    const { apiParams } = setup('/stats/activity?period=custom&from=2026-09-01&to=2026-09-30');
+
+    expect(apiParams).toEqual({
+      period: 'custom',
+      startDate: new Date(2026, 8, 1).toISOString(),
+      endDate: new Date(2026, 9, 1).toISOString(),
+    });
+  });
+
+  it('ends a custom window where the day after the last picked day starts', () => {
+    const { apiParams } = setup('/history?period=custom&from=2026-09-01&to=2026-09-30');
+
+    expect(resolveWindow('custom', apiParams.startDate, apiParams.endDate)).toEqual({
+      startDate: new Date(2026, 8, 1),
+      endDate: new Date(2026, 9, 1),
     });
   });
 

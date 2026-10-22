@@ -17,11 +17,11 @@ const { redis, client } = vi.hoisted(() => ({
 vi.mock('../../../db/client.js', () => ({ db: { select: vi.fn() } }));
 vi.mock('../../../lib/redisShared.js', () => ({ getRedis: () => redis.current }));
 vi.mock('../../mediaServer/index.js', () => ({ createMediaServerClient: vi.fn(() => client) }));
-vi.mock('../../userService.js', () => ({ getServerUserByExternalId: vi.fn() }));
+vi.mock('../../../jobs/poller/database.js', () => ({ getServerUserIdByExternalId: vi.fn() }));
 vi.mock('../recorder.js', () => ({ recordDownload: vi.fn() }));
 
 import { db } from '../../../db/client.js';
-import { getServerUserByExternalId } from '../../userService.js';
+import { getServerUserIdByExternalId } from '../../../jobs/poller/database.js';
 import { recordDownload } from '../recorder.js';
 import { pollServerDownloads, pollServerSyncJobs } from '../activityLogPoll.js';
 
@@ -90,8 +90,8 @@ beforeEach(() => {
   client.resolveUserGuid.mockImplementation(async (id: string) => id);
   client.getSyncJobs.mockReset();
   client.getSyncJobItems.mockReset();
-  vi.mocked(getServerUserByExternalId).mockReset();
-  vi.mocked(getServerUserByExternalId).mockResolvedValue({ id: 'su-1' } as never);
+  vi.mocked(getServerUserIdByExternalId).mockReset();
+  vi.mocked(getServerUserIdByExternalId).mockResolvedValue('su-1');
   vi.mocked(recordDownload).mockReset();
   vi.mocked(recordDownload).mockResolvedValue({} as never);
 });
@@ -118,26 +118,28 @@ describe('pollServerDownloads', () => {
       source: 'activity_log',
       seenAt: new Date('2026-10-20T14:46:04.213Z'),
     });
-    expect(getServerUserByExternalId).toHaveBeenCalledWith(
+    expect(getServerUserIdByExternalId).toHaveBeenCalledWith(
       SERVER,
       '72decdb0b0124b43b9086978ba823d1f'
     );
     expect(store._store.get(CURSOR_KEY)).toBe('548');
   });
 
-  it('reads from the cursor and advances it only after recording', async () => {
+  it('reads from the cursor and advances past an entry that fails to record', async () => {
     const store = mockRedis();
     store._store.set(CURSOR_KEY, '546');
     client.getActivityLog.mockResolvedValue([jellyfinDownload, playback(546), playback(545)]);
-    vi.mocked(recordDownload).mockRejectedValueOnce(new Error('db down'));
-
-    await expect(pollServerDownloads(SERVER)).rejects.toThrow('db down');
-    expect(client.getActivityLog).toHaveBeenCalledWith({ limit: 100, hasUserId: true });
-    expect(store._store.get(CURSOR_KEY)).toBe('546');
+    vi.mocked(recordDownload).mockRejectedValueOnce(new Error('value too long'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     await pollServerDownloads(SERVER);
-    expect(recordDownload).toHaveBeenCalledTimes(2);
+    expect(client.getActivityLog).toHaveBeenCalledWith({ limit: 100, hasUserId: true });
+    expect(error).toHaveBeenCalledOnce();
     expect(store._store.get(CURSOR_KEY)).toBe('547');
+
+    await pollServerDownloads(SERVER);
+    expect(recordDownload).toHaveBeenCalledTimes(1);
+    error.mockRestore();
   });
 
   it('falls back to the 24 hour window when a full page lies past the cursor', async () => {
@@ -167,7 +169,7 @@ describe('pollServerDownloads', () => {
     await pollServerDownloads(SERVER);
 
     expect(client.resolveUserGuid).toHaveBeenCalledWith('16');
-    expect(getServerUserByExternalId).toHaveBeenCalledWith(
+    expect(getServerUserIdByExternalId).toHaveBeenCalledWith(
       SERVER,
       'e5c1a0b2d3f44a5b8c9d0e1f2a3b4c5d'
     );
@@ -191,7 +193,7 @@ describe('pollServerDownloads', () => {
 
     await pollServerDownloads(SERVER);
 
-    expect(getServerUserByExternalId).not.toHaveBeenCalled();
+    expect(getServerUserIdByExternalId).not.toHaveBeenCalled();
     expect(recordDownload).toHaveBeenCalledWith(
       expect.objectContaining({ serverUserId: null, title: '(500) Days of Summer' })
     );
@@ -283,7 +285,8 @@ describe('pollServerSyncJobs', () => {
       app: 'Emby for iOS',
       device: 'iPhone',
       source: 'emby_sync',
-      seenAt: new Date('2026-10-20T14:13:28.000Z'),
+      // past the seed the poll time stands in: a long job's DateLastModified can predate the item
+      seenAt: NOW,
       deviceId: TARGET,
       delivered: {
         bytes: 192015871,
@@ -295,7 +298,7 @@ describe('pollServerSyncJobs', () => {
       },
     });
     expect(client.resolveUserGuid).toHaveBeenCalledWith('1');
-    expect(getServerUserByExternalId).toHaveBeenCalledWith(
+    expect(getServerUserIdByExternalId).toHaveBeenCalledWith(
       SERVER,
       '171eb71d15f048d9bf4757336999d2eb'
     );

@@ -32,6 +32,7 @@ import type {
   PlayStats,
   DayOfWeekStats,
   HourOfDayStats,
+  LocationPeopleResponse,
   LocationStatsResponse,
   UserLocation,
   UserDevice,
@@ -338,6 +339,8 @@ function appendHistoryFilterParams(
   if (params.geoCountries?.length) searchParams.set('geoCountries', params.geoCountries.join(','));
   if (params.geoCity) searchParams.set('geoCity', params.geoCity);
   if (params.geoRegion) searchParams.set('geoRegion', params.geoRegion);
+  if (params.geoCityMissing) searchParams.set('geoCityMissing', 'true');
+  if (params.geoRegionMissing) searchParams.set('geoRegionMissing', 'true');
   if (params.network) searchParams.set('network', params.network);
   if (params.transcodeDecisions?.length)
     searchParams.set('transcodeDecisions', params.transcodeDecisions.join(','));
@@ -414,6 +417,37 @@ export interface StatsTimeRange {
   startDate?: string; // ISO date string
   endDate?: string; // ISO date string
   timezone?: string; // IANA timezone (e.g., 'America/Los_Angeles')
+}
+
+export interface LocationFilterParams {
+  timeRange?: StatsTimeRange;
+  serverUserId?: string;
+  serverUserIds?: string[];
+  serverIds?: string[];
+  mediaType?: 'movie' | 'episode' | 'track';
+}
+
+/** One place by its locationKey, or every placed location inside a box. */
+export type LocationPeopleSelector =
+  { place: string } | { west: number; south: number; east: number; north: number };
+
+function locationSearchParams(params: LocationFilterParams | undefined): URLSearchParams {
+  const searchParams = new URLSearchParams();
+  if (params?.timeRange?.period) searchParams.set('period', params.timeRange.period);
+  if (params?.timeRange?.startDate) searchParams.set('startDate', params.timeRange.startDate);
+  if (params?.timeRange?.endDate) searchParams.set('endDate', params.timeRange.endDate);
+  if (params?.serverUserIds?.length) {
+    searchParams.set('serverUserIds', params.serverUserIds.join(','));
+  } else if (params?.serverUserId) {
+    searchParams.set('serverUserId', params.serverUserId);
+  }
+  if (params?.serverIds?.length) {
+    for (const id of params.serverIds) {
+      searchParams.append('serverIds', id);
+    }
+  }
+  if (params?.mediaType) searchParams.set('mediaType', params.mediaType);
+  return searchParams;
 }
 
 /** Splits plays into movie, show and music rows. */
@@ -896,8 +930,9 @@ class ApiClient {
       return this.request<UserRangeStats>(`/users/${id}/stats?${params.toString()}`);
     },
     sessions: (id: string, params?: { page?: number; pageSize?: number; scope?: 'identity' }) => {
-      const query = new URLSearchParams(params as Record<string, string>).toString();
-      return this.request<PaginatedResponse<Session>>(`/users/${id}/sessions?${query}`);
+      return this.request<PaginatedResponse<Session>>(
+        `/users/${id}/sessions?${listSearchParams(params ?? {})}`
+      );
     },
     locations: async (id: string, params?: { scope?: 'identity' }) => {
       const query = new URLSearchParams();
@@ -916,18 +951,16 @@ class ApiClient {
       return response.data;
     },
     downloads: (id: string, params?: { page?: number; pageSize?: number; scope?: 'identity' }) => {
-      const query = new URLSearchParams(params as Record<string, string>).toString();
       return this.request<{ data: MediaDownloadRow[]; total: number }>(
-        `/users/${id}/downloads?${query}`
+        `/users/${id}/downloads?${listSearchParams(params ?? {})}`
       );
     },
     terminations: (
       id: string,
       params?: { page?: number; pageSize?: number; scope?: 'identity' }
     ) => {
-      const query = new URLSearchParams(params as Record<string, string>).toString();
       return this.request<PaginatedResponse<TerminationLogWithDetails>>(
-        `/users/${id}/terminations?${query}`
+        `/users/${id}/terminations?${listSearchParams(params ?? {})}`
       );
     },
     bulkResetTrust: (params: {
@@ -1266,30 +1299,23 @@ class ApiClient {
       );
       return response.data;
     },
-    locations: async (params?: {
-      timeRange?: StatsTimeRange;
-      serverUserId?: string;
-      serverUserIds?: string[];
-      serverIds?: string[];
-      mediaType?: 'movie' | 'episode' | 'track';
-    }) => {
-      const searchParams = new URLSearchParams();
-      if (params?.timeRange?.period) searchParams.set('period', params.timeRange.period);
-      if (params?.timeRange?.startDate) searchParams.set('startDate', params.timeRange.startDate);
-      if (params?.timeRange?.endDate) searchParams.set('endDate', params.timeRange.endDate);
-      if (params?.serverUserIds?.length) {
-        searchParams.set('serverUserIds', params.serverUserIds.join(','));
-      } else if (params?.serverUserId) {
-        searchParams.set('serverUserId', params.serverUserId);
-      }
-      if (params?.serverIds?.length) {
-        for (const id of params.serverIds) {
-          searchParams.append('serverIds', id);
+    locations: async (params?: LocationFilterParams) => {
+      const query = locationSearchParams(params).toString();
+      return this.request<LocationStatsResponse>(`/stats/locations${query ? `?${query}` : ''}`);
+    },
+    locationPeople: async (
+      params: LocationFilterParams | undefined,
+      of: LocationPeopleSelector
+    ) => {
+      const searchParams = locationSearchParams(params);
+      if ('place' in of) {
+        searchParams.set('place', of.place);
+      } else {
+        for (const side of ['west', 'south', 'east', 'north'] as const) {
+          searchParams.set(side, String(of[side]));
         }
       }
-      if (params?.mediaType) searchParams.set('mediaType', params.mediaType);
-      const query = searchParams.toString();
-      return this.request<LocationStatsResponse>(`/stats/locations${query ? `?${query}` : ''}`);
+      return this.request<LocationPeopleResponse>(`/stats/locations/people?${searchParams}`);
     },
     playsByDayOfWeek: async (
       timeRange?: StatsTimeRange,

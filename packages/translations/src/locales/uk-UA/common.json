@@ -222,6 +222,7 @@
     "session_few": "",
     "session_many": "",
     "session_other": "{{count}} сеансів",
+    "download_other": "",
     "stream_one": "{{count}} потік",
     "stream_few": "",
     "stream_many": "",

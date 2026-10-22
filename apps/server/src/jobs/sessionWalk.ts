@@ -67,12 +67,17 @@ export async function sessionWalkWindows(
  * way. Once WALK_FAILURE_ABORT_THRESHOLD ranges have failed the walk rejects
  * instead of continuing; that many failures means the database, not the
  * chunks.
+ *
+ * Each batch gets the cursor the previous batch of the same drain returned, so
+ * it can continue below where that batch stopped instead of re-reading the
+ * window from the top. A bisected half starts without one.
  */
-export async function drainWindowsWithBisection(
+export async function drainWindowsWithBisection<TCursor = string>(
   windows: Required<BackfillWindow>[] | null,
   runBatch: (
-    window: Required<BackfillWindow> | null
-  ) => Promise<{ count: number; oldest: Date | null }>,
+    window: Required<BackfillWindow> | null,
+    cursor: TCursor | undefined
+  ) => Promise<{ count: number; oldest: Date | null; cursor?: TCursor }>,
   opts: {
     batchSize: number;
     label: string;
@@ -86,13 +91,15 @@ export async function drainWindowsWithBisection(
   const failedRanges: string[] = [];
 
   const drain = async (window: Required<BackfillWindow> | null) => {
+    let cursor: TCursor | undefined;
     for (;;) {
-      let batch: { count: number; oldest: Date | null };
+      let batch: { count: number; oldest: Date | null; cursor?: TCursor };
       try {
-        batch = await runBatch(window);
+        batch = await runBatch(window, cursor);
       } catch (err) {
         throw new BackfillRangeError(err);
       }
+      cursor = batch.cursor;
       total += batch.count;
       if (batch.oldest && (!earliest || batch.oldest < earliest)) earliest = batch.oldest;
       // Deliberately outside the try: onBatch extends the job lock, and a lost

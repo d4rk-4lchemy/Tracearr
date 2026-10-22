@@ -226,6 +226,7 @@
     "session_few": "جلسات {{count}}",
     "session_many": "جلسات {{count}}",
     "session_other": "جلسات {{count}}",
+    "download_other": "",
     "stream_zero": "",
     "stream_one": "بث {{count}}",
     "stream_two": "",

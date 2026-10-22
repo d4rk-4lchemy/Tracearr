@@ -52,7 +52,7 @@ export function UserDetail() {
   const { user: authUser } = useAuth();
   const isOwner = authUser?.role === 'owner';
   const splitMutation = useSplitServerUser();
-  const { value: timeRange, setValue: setTimeRange, apiParams } = useTimeRange();
+  const { value: timeRange, setValue: setTimeRange, apiDayParams } = useTimeRange();
 
   const [isEditIdentityOpen, setIsEditIdentityOpen] = useState(false);
   const [trustEditTarget, setTrustEditTarget] = useState<{
@@ -103,7 +103,8 @@ export function UserDetail() {
   const { data: fullData, isLoading } = useUserFull(effectiveId, { scope: identityScope });
   const rangeStats = useUserRangeStats(
     effectiveId,
-    { ...apiParams, scope: identityScope },
+    // The stats route reads a custom end as a picked UTC day and adds the day itself
+    { ...apiDayParams, scope: identityScope },
     selectedServerIds
   );
   const requests = useUserRequests(effectiveId, { scope: identityScope, ...REQUESTS_FIRST_PAGE });

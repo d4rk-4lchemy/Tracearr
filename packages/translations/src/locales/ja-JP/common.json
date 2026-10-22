@@ -216,6 +216,7 @@
   "count": {
     "user_other": "{{count}} ユーザー",
     "session_other": "{{count}} セッション",
+    "download_other": "",
     "stream_other": "",
     "server_other": "{{count}} サーバー",
     "automation_other": "",

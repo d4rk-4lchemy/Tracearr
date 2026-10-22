@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Job } from 'bullmq';
+import { UnrecoverableError, type Job } from 'bullmq';
 
 const { mockGetJobs, mockAdd } = vi.hoisted(() => ({ mockGetJobs: vi.fn(), mockAdd: vi.fn() }));
 
@@ -139,6 +139,16 @@ describe('runSessionMaintenanceWalk', () => {
     await run(walk, true);
 
     expect(seen).toEqual([0, 88]);
+  });
+
+  it('fails a walk with skipped ranges without letting BullMQ retry it', async () => {
+    const result = run(async () => ({
+      total: 0,
+      failedRanges: ['2026-01-01T00:00:00.000Z → 2026-01-02T00:00:00.000Z'],
+      details: '',
+    }));
+
+    await expect(result).rejects.toBeInstanceOf(UnrecoverableError);
   });
 });
 

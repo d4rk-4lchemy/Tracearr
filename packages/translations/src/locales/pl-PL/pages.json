@@ -294,7 +294,8 @@
       "viewAsHint": ""
     },
     "tabs": {
-      "access": ""
+      "access": "",
+      "downloads": ""
     },
     "cards": {
       "vsPrior": "",
@@ -882,6 +883,12 @@
         "product": "Aplikacja",
         "location": "Lokalizacja"
       },
+      "download": {
+        "title": "",
+        "app": "",
+        "device": "",
+        "last24h": ""
+      },
       "trust": {
         "previous": "Poprzedni wynik",
         "new": "Nowy wynik",
@@ -1327,6 +1334,7 @@
         "accountInactiveFor": "konto pozostaje nieaktywne przez {{duration}}",
         "accountNewDevice": "konto odtwarza z nowego urządzenia",
         "accountTrustChanged": "zmienia się wynik zaufania konta",
+        "accountMediaDownloaded": "",
         "mediaAdded": "multimedia zostają dodane",
         "mediaUpgraded": "multimedia zostają ulepszone",
         "serverDown": "serwer staje się nieaktywny",
@@ -1355,6 +1363,8 @@
         "travel_speed_kmh": "prędkość podróży",
         "unique_ips_in_window": "liczba adresów IP",
         "unique_devices_in_window": "liczba urządzeń",
+        "downloads_in_window": "",
+        "download_bytes_in_window": "",
         "inactive_days": "czas od ostatniego strumienia",
         "current_pause_minutes": "bieżący czas wstrzymania",
         "total_pause_minutes": "całkowity czas wstrzymania",
@@ -1539,6 +1549,14 @@
       "unique_devices_in_window": {
         "label": "Unikalne urządzenia w przedziale",
         "description": "Liczba unikalnych urządzeń w przedziale czasowym"
+      },
+      "downloads_in_window": {
+        "label": "",
+        "description": ""
+      },
+      "download_bytes_in_window": {
+        "label": "",
+        "description": ""
       },
       "inactive_days": {
         "label": "Dni nieaktywności",
@@ -1932,6 +1950,11 @@
         "description": "Zgłoś naruszenie, gdy konto korzysta z większej liczby adresów IP w danym okresie, niż pozwalasz.",
         "keywords": "ip adresy vpn udostępnianie urządzenia okno okres"
       },
+      "download-burst": {
+        "name": "",
+        "description": "",
+        "keywords": ""
+      },
       "geo-restriction": {
         "name": "Zablokowane kraje",
         "description": "Zgłoś naruszenie, gdy strumień pochodzi z kraju, który blokujesz.",
@@ -2094,6 +2117,10 @@
           "description": "Zmienia się wynik zaufania konta, niezależnie od tego, czy zmieniła go automatyzacja, czy właściciel.",
           "synonyms": "zaufanie, poziom, wynik, reputacja, kara, korekta"
         },
+        "accountMediaDownloaded": {
+          "description": "",
+          "synonyms": ""
+        },
         "mediaAdded": {
           "description": "Element biblioteki po raz pierwszy pojawia się na serwerze.",
           "synonyms": "nowy, dodany, biblioteka, film, odcinek, import"
@@ -2245,6 +2272,9 @@
         "authToken": "Token uwierzytelniający",
         "userKey": "Klucz użytkownika",
         "apiToken": "Token API",
+        "botToken": "",
+        "chatId": "",
+        "topicId": "",
         "preset": "Dostawca",
         "host": "Host SMTP",
         "port": "Port",
@@ -2266,6 +2296,7 @@
       },
       "hints": {
         "authTokenOptional": "Opcjonalnie w przypadku tematów publicznych",
+        "telegramTopic": "",
         "smtpPreset": "Uzupełnia host, port i zabezpieczenia dla popularnych dostawców. Dla Amazon SES i Mailgun EU trzeba wpisać region w nazwie hosta.",
         "smtpVerifyCertificate": "Sprawdza certyfikat TLS serwera poczty względem zaufanego urzędu certyfikacji. Wyłącz tylko dla serwera z certyfikatem samopodpisanym, np. lokalnego mostka: każdy na trasie między Tracearr a serwerem poczty może wtedy przechwycić połączenie.",
         "smtpUsernameOptional": "Pozostaw puste, gdy serwer nie wymaga logowania",
@@ -2323,6 +2354,7 @@
         "gotify": "Gotify",
         "apprise": "Apprise",
         "pushover": "Pushover",
+        "telegram": "",
         "email": "E-mail",
         "push": "Powiadomienia push",
         "webToast": "Powiadomienia w przeglądarce"
@@ -2391,7 +2423,23 @@
     "loadingData": "",
     "noDataForFilters": "",
     "totalStreams": "",
-    "streamCount_other": ""
+    "byStreams": "",
+    "noMapPosition": "",
+    "allLocations": "",
+    "people": "",
+    "devices": "",
+    "latestStreams": "",
+    "firstSeen": "",
+    "lastSeen": "",
+    "areaName": "",
+    "areaPlaces": "",
+    "noneInView": "",
+    "showAll": "",
+    "streamCount_other": "",
+    "peopleCount_other": "",
+    "viewInHistory_other": "",
+    "streamsAcrossPlaces_other": "",
+    "inViewCount_other": ""
   },
   "devices": {
     "analyzedSessions": "Analizowane sesje",
@@ -2418,6 +2466,19 @@
     "analyzedSessionsTooltip_few": "Sesje w kombinacjach urządzenie + kodek z co najmniej {{count}} sesjami i znanym kodekiem. Rzadkie kombinacje i sesje bez informacji o kodeku nie są brane pod uwagę.",
     "analyzedSessionsTooltip_many": "Sesje w kombinacjach urządzenie + kodek z co najmniej {{count}} sesjami i znanym kodekiem. Rzadkie kombinacje i sesje bez informacji o kodeku nie są brane pod uwagę.",
     "analyzedSessionsTooltip_other": "Sesje w kombinacjach urządzenie + kodek z co najmniej {{count}} sesjami i znanym kodekiem. Rzadkie kombinacje i sesje bez informacji o kodeku nie są brane pod uwagę."
+  },
+  "downloads": {
+    "dataDownloaded": "",
+    "peopleDownloading": "",
+    "mostDownloaded": "",
+    "unknownUser": "",
+    "appOnDevice": "",
+    "deliveredAs": "",
+    "deliveredAsFormat": "",
+    "deliveredAtBitrate": "",
+    "empty": "",
+    "panelTitle": "",
+    "requests_other": ""
   },
   "statsBandwidth": {
     "dataTransferred": "Przesłane dane",

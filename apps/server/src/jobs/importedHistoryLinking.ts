@@ -64,14 +64,28 @@ const AUTO_LINK_WARNING_MS = 48 * 60 * 60 * 1000;
 
 /**
  * An import at or after the server's cutoff can be a play Tracearr also
- * tracked, so linking it would count that play twice.
+ * tracked, so linking it would count that play twice. `before` is the previous
+ * batch's oldest started_at, inclusive: a linked row is no longer an orphan, so
+ * only its unlinked ties come back.
  */
-function sessionBounds(alias: string, serverId: string, cutoff: Date, window: Window): SQL {
+function sessionBounds(
+  alias: string,
+  serverId: string,
+  cutoff: Date,
+  window: Window,
+  before: string | undefined
+): SQL {
   const a = sql.raw(alias);
-  const server = sql`${a}.server_id = ${serverId}::uuid`;
-  const beforeCutoff = sql`${a}.started_at < ${ts(cutoff)}`;
-  if (!window) return sql`${server} AND ${beforeCutoff}`;
-  return sql`${server} AND ${a}.started_at >= ${ts(window.start)} AND ${a}.started_at < ${ts(window.end)} AND ${beforeCutoff}`;
+  const bounds = [sql`${a}.server_id = ${serverId}::uuid`];
+  if (window) {
+    bounds.push(
+      sql`${a}.started_at >= ${ts(window.start)}`,
+      sql`${a}.started_at < ${ts(window.end)}`
+    );
+  }
+  bounds.push(sql`${a}.started_at < ${ts(cutoff)}`);
+  if (before) bounds.push(sql`${a}.started_at <= ${before}::timestamptz`);
+  return sql.join(bounds, sql` AND `);
 }
 
 function startsAfterCutoff(window: Window, cutoff: Date): boolean {
@@ -108,9 +122,10 @@ async function linkPicked(
   serverId: string,
   cutoff: Date,
   window: Window,
+  before: string | undefined,
   pick: SQL,
   target: SQL
-): Promise<{ count: number; oldest: Date | null }> {
+): Promise<{ count: number; oldest: Date | null; cursor?: string }> {
   if (startsAfterCutoff(window, cutoff)) return { count: 0, oldest: null };
   const starts = await db.transaction(async (tx) => {
     const picked = (await tx.execute(pick)).rows as unknown as PickedLink[];
@@ -137,7 +152,7 @@ async function linkPicked(
         show_media_id, imdb_id, tmdb_id, tvdb_id)
       WHERE s.id = p.id AND s.started_at = p.started_at
         AND s.rating_key = p.rating_key AND s.external_session_id = p.external_session_id
-        AND ${sessionBounds('s', serverId, cutoff, window)}
+        AND ${sessionBounds('s', serverId, cutoff, window, before)}
         AND s.media_type = p.media_type
         AND ${target}
         AND ${orphan('s')}
@@ -148,7 +163,9 @@ async function linkPicked(
   // Counting written rows, not picked ones: a picked row left unwritten would
   // be picked again, and the drain loop only stops on a short batch.
   const oldest = starts.sort(byInstant)[0];
-  return { count: starts.length, oldest: oldest ? new Date(oldest) : null };
+  return oldest
+    ? { count: starts.length, oldest: new Date(oldest), cursor: oldest }
+    : { count: 0, oldest: null };
 }
 
 /**
@@ -162,8 +179,9 @@ async function linkOrphanSessionsBatch(
   cutoff: Date,
   links: OrphanKeyLink[],
   limit: number,
-  window: Window
-): Promise<{ count: number; oldest: Date | null }> {
+  window: Window,
+  before: string | undefined
+): Promise<{ count: number; oldest: Date | null; cursor?: string }> {
   const pairs = links.flatMap((link) =>
     link.externalSessionIds.map((externalSessionId) => ({ link, externalSessionId }))
   );
@@ -175,6 +193,7 @@ async function linkOrphanSessionsBatch(
     serverId,
     cutoff,
     window,
+    before,
     sql`
       SELECT o.id, o.started_at, o.rating_key, o.external_session_id, l.media_type, l.media_id,
         CASE WHEN l.media_type = 'episode' THEN l.show_media_id END AS show_media_id,
@@ -192,10 +211,11 @@ async function linkOrphanSessionsBatch(
       ) AS l(rating_key, external_session_id, media_type, media_id, show_media_id, imdb_id, tmdb_id, tvdb_id)
         ON l.rating_key = o.rating_key AND l.external_session_id = o.external_session_id
           AND l.media_type = o.media_type
-      WHERE ${sessionBounds('o', serverId, cutoff, window)}
+      WHERE ${sessionBounds('o', serverId, cutoff, window, before)}
         AND o.rating_key = ANY(${sql.param(links.map((l) => l.ratingKey))}::text[])
         AND o.media_type IN ('movie', 'episode')
         AND ${orphan('o')}
+      ORDER BY o.started_at DESC
       LIMIT ${limit}
     `,
     sql`s.media_type IN ('movie', 'episode')
@@ -214,18 +234,20 @@ async function linkOrphanMoviesByProviderIdBatch(
   serverId: string,
   cutoff: Date,
   limit: number,
-  window: Window
-): Promise<{ count: number; oldest: Date | null }> {
+  window: Window,
+  before: string | undefined
+): Promise<{ count: number; oldest: Date | null; cursor?: string }> {
   return linkPicked(
     serverId,
     cutoff,
     window,
+    before,
     sql`
       WITH orphan AS (
         SELECT o.id, o.started_at, o.rating_key, o.external_session_id,
           o.imdb_id, o.tmdb_id, o.tvdb_id
         FROM sessions o
-        WHERE ${sessionBounds('o', serverId, cutoff, window)}
+        WHERE ${sessionBounds('o', serverId, cutoff, window, before)}
           AND o.media_type = 'movie'
           AND ${orphan('o')}
           AND (o.imdb_id IS NOT NULL OR o.tmdb_id IS NOT NULL)
@@ -260,6 +282,7 @@ async function linkOrphanMoviesByProviderIdBatch(
         AND (o.imdb_id IS NULL OR c.imdb_id IS NULL OR c.imdb_id = o.imdb_id)
         AND (o.tmdb_id IS NULL OR c.tmdb_id IS NULL OR c.tmdb_id = o.tmdb_id)
         AND (o.tvdb_id IS NULL OR c.tvdb_id IS NULL OR c.tvdb_id = o.tvdb_id)
+      ORDER BY o.started_at DESC
       LIMIT ${limit}
     `,
     sql`s.media_type = 'movie'`
@@ -280,7 +303,7 @@ async function collectOrphanKeys(
     const result = await db.execute(sql`
       SELECT DISTINCT o.rating_key, o.media_type
       FROM sessions o
-      WHERE ${sessionBounds('o', serverId, cutoff, window)}
+      WHERE ${sessionBounds('o', serverId, cutoff, window, undefined)}
         AND o.media_type IN ('movie', 'episode')
         AND ${orphan('o')}
     `);
@@ -421,12 +444,15 @@ export async function runImportedHistoryLinkingWalk(
     serverId: string,
     windows: Required<BackfillWindow>[] | null,
     pass: keyof typeof linked,
-    runBatch: (window: Window) => Promise<{ count: number; oldest: Date | null }>
+    runBatch: (
+      window: Window,
+      cursor: string | undefined
+    ) => Promise<{ count: number; oldest: Date | null; cursor?: string }>
   ) => {
     const result = await drainWindowsWithBisection(
       windows,
-      async (window) => {
-        const batch = await runBatch(window);
+      async (window, cursor) => {
+        const batch = await runBatch(window, cursor);
         total += batch.count;
         linked[pass] += batch.count;
         if (batch.oldest && (!earliest || batch.oldest < earliest)) earliest = batch.oldest;
@@ -564,8 +590,8 @@ export async function runImportedHistoryLinkingWalk(
         }
         return links.filter((l) => keys.has(l.ratingKey));
       };
-      const drained = await drain(server.id, windows, 'guid', (window) =>
-        linkOrphanSessionsBatch(server.id, cutoff, linksFor(window), batchSize, window)
+      const drained = await drain(server.id, windows, 'guid', (window, cursor) =>
+        linkOrphanSessionsBatch(server.id, cutoff, linksFor(window), batchSize, window, cursor)
       );
       if (!drained) complete = false;
     }
@@ -597,8 +623,8 @@ export async function runImportedHistoryLinkingWalk(
 
       outcome.providerPassDone =
         before.providerPassDoneServers.includes(server.id) ||
-        (await drain(server.id, windows, 'provider', (window) =>
-          linkOrphanMoviesByProviderIdBatch(server.id, cutoff, batchSize, window)
+        (await drain(server.id, windows, 'provider', (window, cursor) =>
+          linkOrphanMoviesByProviderIdBatch(server.id, cutoff, batchSize, window, cursor)
         ));
 
       const guidComplete = tautulli ? await guidPass(server, cutoff, tautulli, windows) : true;

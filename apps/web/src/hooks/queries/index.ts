@@ -5,6 +5,7 @@ export {
   useMyTopTitles,
   usePlaysStats,
   useLocationStats,
+  useLocationPeople,
   usePlaysByDayOfWeek,
   usePlaysByHourOfDay,
   usePlatformStats,

@@ -53,6 +53,7 @@ import {
   resolutionRankSql,
 } from '../utils/resolutionBuckets.js';
 import { getCacheService, getPubSubService } from '../services/cache.js';
+import { sessionRowById } from '../services/import/batchProcessor.js';
 import { getSetting, setSetting } from '../services/settings.js';
 import { recomputeAllIdentityDates } from '../services/userService.js';
 import {
@@ -63,6 +64,7 @@ import {
   withSessionsCompressionPaused,
   invalidateTimescaleStatusCache,
   getCompressedSessionChunkRanges,
+  getSessionChunkRanges,
   type AggregateRefreshProgress,
   type FailedRefreshBatch,
 } from '../db/timescale.js';
@@ -139,6 +141,8 @@ let activeJobProgress: MaintenanceJobProgress | null = null;
 
 // Throttled lock checks must run more often than the lock can expire.
 const LOCK_EXTENSION_INTERVAL = DEFAULT_LOCK_DURATION_MS / 2;
+
+const WALK_BATCH_PAUSE_MS = 100;
 
 /**
  * Initialize the maintenance queue with Redis connection
@@ -495,6 +499,7 @@ async function processNormalizePlayersJob(
       const batch = await db
         .select({
           id: sessions.id,
+          startedAt: sessions.startedAt,
           product: sessions.product,
           playerName: sessions.playerName,
           device: sessions.device,
@@ -515,7 +520,7 @@ async function processNormalizePlayersJob(
       if (lastRecord) lastId = lastRecord.id;
 
       // Collect updates for batch processing
-      const updates: Array<{ id: string; device: string; platform: string }> = [];
+      const updates: Array<{ id: string; startedAt: Date; device: string; platform: string }> = [];
 
       for (const session of batch) {
         try {
@@ -546,6 +551,7 @@ async function processNormalizePlayersJob(
           if (needsUpdate) {
             updates.push({
               id: session.id,
+              startedAt: session.startedAt,
               device: normalized.device,
               platform: normalizedPlatform,
             });
@@ -569,7 +575,7 @@ async function processNormalizePlayersJob(
                 device: update.device,
                 platform: update.platform,
               })
-              .where(eq(sessions.id, update.id));
+              .where(sessionRowById(update));
             totalUpdated++;
           } catch (error) {
             console.error(`[Maintenance] Error updating session ${update.id}:`, error);
@@ -715,6 +721,7 @@ async function processNormalizeCountriesJob(
       const batch = await db
         .select({
           id: sessions.id,
+          startedAt: sessions.startedAt,
           geoCity: sessions.geoCity,
           geoCountry: sessions.geoCountry,
         })
@@ -733,7 +740,12 @@ async function processNormalizeCountriesJob(
       if (lastRecord) lastId = lastRecord.id;
 
       // Collect updates for batch processing
-      const updates: Array<{ id: string; geoCity: string | null; geoCountry: string }> = [];
+      const updates: Array<{
+        id: string;
+        startedAt: Date;
+        geoCity: string | null;
+        geoCountry: string;
+      }> = [];
 
       for (const session of batch) {
         try {
@@ -744,6 +756,7 @@ async function processNormalizeCountriesJob(
           if (currentCity?.toLowerCase() === 'local') {
             updates.push({
               id: session.id,
+              startedAt: session.startedAt,
               geoCity: null,
               geoCountry: 'Local Network',
             });
@@ -764,6 +777,7 @@ async function processNormalizeCountriesJob(
             if (currentCountry !== 'Local Network') {
               updates.push({
                 id: session.id,
+                startedAt: session.startedAt,
                 geoCity: currentCity,
                 geoCountry: 'Local Network',
               });
@@ -779,6 +793,7 @@ async function processNormalizeCountriesJob(
           if (isoCode) {
             updates.push({
               id: session.id,
+              startedAt: session.startedAt,
               geoCity: currentCity,
               geoCountry: isoCode,
             });
@@ -799,7 +814,7 @@ async function processNormalizeCountriesJob(
             await db
               .update(sessions)
               .set({ geoCity: update.geoCity, geoCountry: update.geoCountry })
-              .where(eq(sessions.id, update.id));
+              .where(sessionRowById(update));
             totalUpdated++;
           } catch (error) {
             console.error(`[Maintenance] Error updating session ${update.id}:`, error);
@@ -943,6 +958,7 @@ export async function processFixImportedProgressJob(
       const batch = await db
         .select({
           id: sessions.id,
+          startedAt: sessions.startedAt,
           durationMs: sessions.durationMs,
           watched: sessions.watched,
           mediaType: sessions.mediaType,
@@ -962,7 +978,12 @@ export async function processFixImportedProgressJob(
       if (lastRecord) lastId = lastRecord.id;
 
       // Collect updates for batch processing
-      const updates: Array<{ id: string; progressMs: number; totalDurationMs: number }> = [];
+      const updates: Array<{
+        id: string;
+        startedAt: Date;
+        progressMs: number;
+        totalDurationMs: number;
+      }> = [];
 
       for (const session of batch) {
         try {
@@ -1001,6 +1022,7 @@ export async function processFixImportedProgressJob(
 
           updates.push({
             id: session.id,
+            startedAt: session.startedAt,
             progressMs,
             totalDurationMs,
           });
@@ -1020,7 +1042,7 @@ export async function processFixImportedProgressJob(
                 progressMs: update.progressMs,
                 totalDurationMs: update.totalDurationMs,
               })
-              .where(and(eq(sessions.id, update.id), missingBoth))
+              .where(and(sessionRowById(update), missingBoth))
               .returning({ id: sessions.id });
             if (written.length > 0) totalUpdated++;
             else totalSkipped++;
@@ -1218,6 +1240,24 @@ export async function processRebuildTimescaleViewsJob(
 async function processBackfillSessionIdentityJob(
   job: Job<MaintenanceJobData>
 ): Promise<MaintenanceJobResult> {
+  let result: MaintenanceJobResult;
+  try {
+    result = await walkSessionIdentity(job);
+  } catch (error) {
+    if (job.data.options?.trigger === 'auto') {
+      await getSetting('identityBackfillAutoAttempts')
+        .then((attempts) => setSetting('identityBackfillAutoAttempts', attempts + 1))
+        .catch((err: unknown) =>
+          console.error('[Maintenance] Could not count the failed identity backfill:', err)
+        );
+    }
+    throw error;
+  }
+  await setSetting('identityBackfillAutoAttempts', 0);
+  return result;
+}
+
+function walkSessionIdentity(job: Job<MaintenanceJobData>): Promise<MaintenanceJobResult> {
   return runSessionMaintenanceWalk(job, {
     type: 'backfill_session_identity',
     startMessage: 'Backfilling media identity onto history sessions...',
@@ -1231,6 +1271,7 @@ async function processBackfillSessionIdentityJob(
       ...(await runSessionIdentityBackfillWalk({
         batchSize: 5000,
         getCompressedRanges: getCompressedSessionChunkRanges,
+        getChunkRanges: getSessionChunkRanges,
         onBatch,
         onCommit,
       })),
@@ -1326,6 +1367,8 @@ export async function runSessionMaintenanceWalk(
     failurePrefix: string;
     /** False when the running total counts rows looked at, not rows changed. */
     totalCountsUpdates: boolean;
+    /** Sleep after every batch, so a single-core Postgres can serve the poller between them. */
+    batchPauseMs?: number;
     walk: (
       onBatch: (total: number) => Promise<void>,
       onCommit: (oldest: Date | null) => void
@@ -1431,6 +1474,9 @@ export async function runSessionMaintenanceWalk(
               await extendLock();
               lastLockExtension = Date.now();
             }
+            await new Promise((resolve) =>
+              setTimeout(resolve, opts.batchPauseMs ?? WALK_BATCH_PAUSE_MS)
+            );
           },
           (oldest) => {
             if (oldest && (!earliest || oldest < earliest)) earliest = oldest;
@@ -1461,11 +1507,13 @@ export async function runSessionMaintenanceWalk(
 
     // Fail-closed like every other handler in this file: skipped ranges and
     // failed refresh batches must surface as a failed job, but only after the
-    // successful ranges' work (including the refresh above) has landed.
+    // successful ranges' work (including the refresh above) has landed. Not
+    // retried: a retry re-walks from the newest chunk and re-refreshes, only
+    // to fail on the same ranges.
     if (allFailures.length > 0) {
       const shown = allFailures.slice(0, 5).join(', ');
       const more = allFailures.length > 5 ? ` … and ${allFailures.length - 5} more` : '';
-      throw new Error(
+      throw new UnrecoverableError(
         `${opts.failurePrefix} ${allFailures.length} range(s)/refresh batch(es): ${shown}${more}`
       );
     }
@@ -1741,6 +1789,7 @@ export async function processNormalizeResolutionsJob(
       const batch = await db
         .select({
           id: sessions.id,
+          startedAt: sessions.startedAt,
           quality: sessions.quality,
           sourceVideoWidth: sessions.sourceVideoWidth,
           sourceVideoHeight: sessions.sourceVideoHeight,
@@ -1760,7 +1809,7 @@ export async function processNormalizeResolutionsJob(
       if (lastRecord) lastId = lastRecord.id;
 
       // Collect updates for batch processing
-      const updates: Array<{ id: string; quality: string }> = [];
+      const updates: Array<{ id: string; startedAt: Date; quality: string }> = [];
 
       for (const session of batch) {
         try {
@@ -1770,7 +1819,7 @@ export async function processNormalizeResolutionsJob(
           });
 
           if (recomputed && recomputed !== session.quality) {
-            updates.push({ id: session.id, quality: recomputed });
+            updates.push({ id: session.id, startedAt: session.startedAt, quality: recomputed });
           } else {
             totalSkipped++;
           }
@@ -1787,7 +1836,7 @@ export async function processNormalizeResolutionsJob(
             await db
               .update(sessions)
               .set({ quality: update.quality })
-              .where(eq(sessions.id, update.id));
+              .where(sessionRowById(update));
             totalUpdated++;
           } catch (error) {
             console.error(`[Maintenance] Error updating session ${update.id}:`, error);

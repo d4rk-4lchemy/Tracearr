@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NotificationPriority } from '@tracearr/shared';
+import type { NotificationEvent } from '../events.js';
 
 const mockBuildMediaLinks = vi.fn();
 vi.mock('../mediaLinks.js', () => ({
@@ -37,6 +38,27 @@ describe('pushoverType.render', () => {
   it('sets the priority from the event severity', async () => {
     const messages = await Promise.all(severityEvents.map((event) => render(event)));
     expect(messages.map((m) => m.priority)).toEqual(['1', '-1', '1', '-1']);
+  });
+
+  it('sends an own-text event quiet whatever its severity, unless the automation sets a level', async () => {
+    const failedSend = {
+      type: 'newsletter_send',
+      payload: {
+        newsletterId: 'n-1',
+        sendId: 'send-1',
+        name: 'Weekly',
+        outcome: 'failed',
+        trigger: 'schedule',
+        recipientCount: 42,
+        itemCounts: { movies: 3, shows: 1, episodes: 4, albums: 0, mostWatched: 0 },
+        error: 'smtp down',
+        windowStart: '2026-08-26T00:00:00.000Z',
+        windowEnd: '2026-09-02T00:00:00.000Z',
+        historyUrl: null,
+      },
+    } as NotificationEvent;
+    expect((await render(failedSend)).priority).toBe('-1');
+    expect((await render(failedSend, automationCtx('high'))).priority).toBe('1');
   });
 
   it('links the first media link, and a stream start has none', async () => {

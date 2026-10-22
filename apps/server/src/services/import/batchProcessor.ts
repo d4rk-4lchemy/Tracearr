@@ -10,7 +10,7 @@
  * Used by both Tautulli and Jellystat importers.
  */
 
-import { eq } from 'drizzle-orm';
+import { and, between, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { sessions } from '../../db/schema.js';
 import { uncapDecompressionForTx } from '../../db/timescale.js';
@@ -22,6 +22,19 @@ const DEFAULT_INSERT_CHUNK_SIZE = 500;
 const DEFAULT_UPDATE_CHUNK_SIZE = 10;
 
 /**
+ * Match one session by id plus a window on its started_at. started_at is the compression
+ * orderby, so without the window an id-only write reads every compressed batch. The minute of
+ * slack covers the microseconds a JS Date drops from the stored timestamptz.
+ */
+export function sessionRowById(row: { id: string; startedAt: Date }) {
+  const at = row.startedAt.getTime();
+  return and(
+    eq(sessions.id, row.id),
+    between(sessions.startedAt, new Date(at - 60_000), new Date(at + 60_000))
+  );
+}
+
+/**
  * Session insert data type
  */
 export type NewSession = typeof sessions.$inferInsert;
@@ -31,6 +44,8 @@ export type NewSession = typeof sessions.$inferInsert;
  */
 export interface SessionUpdate {
   id: string;
+  /** The stored row's started_at, used only to locate the row */
+  startedAt: Date;
   externalSessionId?: string;
   stoppedAt?: Date;
   durationMs?: number;
@@ -147,8 +162,8 @@ export async function flushUpdateBatch(
 
     await Promise.all(
       chunk.map((update) => {
-        const { id, ...data } = update;
-        return db.update(sessions).set(data).where(eq(sessions.id, id));
+        const { id, startedAt, ...data } = update;
+        return db.update(sessions).set(data).where(sessionRowById({ id, startedAt }));
       })
     );
 

@@ -85,6 +85,7 @@ function pausedRow(overrides: Record<string, unknown> = {}) {
     serverId: 'srv1',
     serverUserId: 'su1',
     state: 'paused',
+    startedAt: new Date(t0 - 30 * MIN),
     lastPausedAt: new Date(t0),
     pausedDurationMs: 0,
     stoppedAt: null,
@@ -294,7 +295,7 @@ describe('pauseWakes', () => {
     });
   });
 
-  it('broadcasts returned violations with the session id', async () => {
+  it('broadcasts returned violations with the session', async () => {
     const pubSubService = { publish: vi.fn() };
     setPauseWakeDeps({ pubSubService });
     mockDispatch.mockResolvedValue({
@@ -303,7 +304,11 @@ describe('pauseWakes', () => {
     });
     schedulePauseWake(pausedRow(), [pauseRule(10)]);
     await vi.advanceTimersByTimeAsync(10 * MIN + 1001);
-    expect(mockBroadcast).toHaveBeenCalledWith(expect.any(Array), 's1', pubSubService);
+    expect(mockBroadcast).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ id: 's1' }),
+      pubSubService
+    );
   });
 
   it('never arms a timer on a follower', () => {

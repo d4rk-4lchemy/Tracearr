@@ -2208,6 +2208,10 @@ export async function initTimescaleDB(): Promise<{
     } else {
       actions.push('Compression already enabled with correct settings');
     }
+    // withSessionsCompressionPaused removes the policy for the length of an import or walk
+    // and only a clean finish puts it back. compression_enabled stays true without it, so a
+    // kill mid-run would otherwise leave old chunks uncompressed until someone noticed.
+    await addSessionsCompressionPolicy();
   }
 
   // Create partial indexes for optimized filtered queries

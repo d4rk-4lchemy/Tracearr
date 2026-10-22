@@ -540,7 +540,7 @@ describe('SSE Processor - Media Change Detection', () => {
 
     expect(mockBroadcastViolations).toHaveBeenCalledWith(
       mockViolations,
-      'session-new',
+      expect.objectContaining({ id: 'session-new' }),
       mockPubSubService
     );
   });

@@ -110,7 +110,7 @@ export async function queryUserLocations(
   window?: { start: Date; end: Date }
 ): Promise<UserLocation[]> {
   const bounds = window
-    ? sql`AND started_at >= ${window.start} AND started_at <= ${window.end}`
+    ? sql`AND started_at >= ${window.start} AND started_at < ${window.end}`
     : sql``;
   const result = await dbOrTx.execute(sql`
     WITH plays AS (

@@ -216,6 +216,7 @@
   "count": {
     "user_other": "사용자 {{count}}명",
     "session_other": "세션 {{count}}개",
+    "download_other": "",
     "stream_other": "스트림 {{count}}개",
     "server_other": "서버 {{count}}대",
     "automation_other": "자동화 {{count}}개",

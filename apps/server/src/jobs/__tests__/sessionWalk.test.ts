@@ -91,6 +91,25 @@ describe('drainWindowsWithBisection', () => {
     ).rejects.toThrow('Lost lock for maintenance job 42');
     expect(runBatch).toHaveBeenCalledTimes(1);
   });
+
+  it("hands each batch the previous batch's cursor and starts every window without one", async () => {
+    const runBatch = vi
+      .fn()
+      .mockResolvedValueOnce({ count: 2, oldest: null, cursor: 'first' })
+      .mockResolvedValueOnce({ count: 1, oldest: null, cursor: 'second' })
+      .mockResolvedValueOnce({ count: 0, oldest: null });
+
+    await drainWindowsWithBisection(
+      [
+        window('2026-02-08T00:00:00Z', '2026-02-15T00:00:00Z'),
+        window('2026-02-01T00:00:00Z', '2026-02-08T00:00:00Z'),
+      ],
+      runBatch,
+      { ...OPTS, batchSize: 2 }
+    );
+
+    expect(runBatch.mock.calls.map((c) => c[1])).toEqual([undefined, 'first', undefined]);
+  });
 });
 
 describe('sessionWalkWindows', () => {

@@ -216,6 +216,7 @@
   "count": {
     "user_other": "",
     "session_other": "",
+    "download_other": "",
     "stream_other": "",
     "server_other": "",
     "automation_other": "",

@@ -13,12 +13,13 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { describe, it, expect } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { describe, it, expect, vi } from 'vitest';
+import { eq, sql } from 'drizzle-orm';
 import {
   createTestUser,
   createTestServer,
   createTestServerUser,
+  createTestSession,
 } from '@tracearr/test-utils/factories';
 import { db } from '../../src/db/client.js';
 import {
@@ -355,6 +356,43 @@ describe('a same-server combine keeps the absorbed external id resolvable', () =
     for (const alias of aliases) {
       expect(alias.serverUserId).toBe(finalAccount.id);
     }
+  });
+
+  it('re-materializes the absorbed account history older than the refresh policy window', async () => {
+    const admin = await createTestUser({ role: 'owner' });
+    const server = await createTestServer({ type: 'plex' });
+    const owner = await createTestUser({ role: 'owner' });
+    const duplicate = await createTestUser({ role: 'member' });
+    const ownerAccount = await createTestServerUser({ userId: owner.id, serverId: server.id });
+    const duplicateAccount = await createTestServerUser({
+      userId: duplicate.id,
+      serverId: server.id,
+    });
+
+    const startedAt = new Date(Date.now() - 30 * 86_400_000);
+    await createTestSession({
+      serverId: server.id,
+      serverUserId: duplicateAccount.id,
+      state: 'stopped',
+      startedAt,
+      stoppedAt: new Date(startedAt.getTime() + 3_600_000),
+      durationMs: 3_600_000,
+    });
+    await db.execute(
+      sql`CALL refresh_continuous_aggregate('daily_bandwidth_by_user'::regclass, NULL, NULL)`
+    );
+
+    await mergeUsers(duplicate.id, owner.id, admin.id, { confirmSameServerCombine: true });
+
+    await vi.waitFor(
+      async () => {
+        const rows = await db.execute(sql`
+          SELECT server_user_id FROM daily_bandwidth_by_user WHERE server_id = ${server.id}::uuid
+        `);
+        expect(rows.rows).toEqual([{ server_user_id: ownerAccount.id }]);
+      },
+      { timeout: 10_000, interval: 100 }
+    );
   });
 });
 

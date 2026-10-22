@@ -36,6 +36,7 @@ export {
   flushUpdateBatch,
   createInsertBatchCollector,
   createUpdateBatchCollector,
+  sessionRowById,
 } from './batchProcessor.js';
 
 // Progress Tracking
