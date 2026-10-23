@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # Build stage
-FROM node:24-alpine3.23@sha256:e44c87c7dd212720eb00469aeac89504ca2be77b8f0d6dbffb30665d5fcc59e1 AS builder
+FROM node:24-alpine3.23@sha256:0468540aa58203ff9e40c2aab3907c52644ab818af6176b1c70a026137dc92a2 AS builder
 
 # pnpm's install script is what puts its native binary in place. corepack never runs it,
 # and npm 12 blocks it unless allowed, so both leave pnpm's shebang-less fallback shim instead.
@@ -36,7 +36,7 @@ RUN if [ ! -s data/basemap.pmtiles ]; then \
 RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --filter=@tracearr/web
 
 # Production stage
-FROM node:24-alpine3.23@sha256:e44c87c7dd212720eb00469aeac89504ca2be77b8f0d6dbffb30665d5fcc59e1 AS runner
+FROM node:24-alpine3.23@sha256:0468540aa58203ff9e40c2aab3907c52644ab818af6176b1c70a026137dc92a2 AS runner
 
 RUN npm install -g --allow-scripts=pnpm pnpm@12.14.0
 

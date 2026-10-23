@@ -34,15 +34,40 @@ export async function deliverFetch(
     );
   }
   const { url, headers } = buildFetchOptions(rawUrl);
-  const response = await fetch(url, {
-    ...init,
-    headers: { ...headers, ...init.headers },
-    signal: ctx.signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: { ...headers, ...init.headers },
+      signal: ctx.signal,
+    });
+  } catch (error) {
+    const reason = connectFailure(error);
+    throw new Error(`${ctx.destination.name}: could not reach ${new URL(url).host}: ${reason}`, {
+      cause: error instanceof Error && error.cause instanceof Error ? error.cause : error,
+    });
+  }
   if (!response.ok) {
     const text = (await response.text().catch(() => '')).slice(0, 500);
     throw Object.assign(new Error(`${ctx.destination.name}: ${response.status} ${text}`.trim()), {
       status: response.status,
+      body: text,
     });
   }
+}
+
+/**
+ * fetch rejects with a bare "fetch failed"; the reason is on its cause. A dual-stack host
+ * fails with an AggregateError whose own message is empty and whose errors hold one
+ * "connect ETIMEDOUT 1.2.3.4:443" per address tried.
+ */
+function connectFailure(error: unknown): string {
+  if (error instanceof Error && error.name === 'TimeoutError') return 'timed out';
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
+  if (cause instanceof AggregateError && cause.errors.length > 0) {
+    return cause.errors
+      .map((e: unknown) => (e instanceof Error ? e.message : String(e)))
+      .join('; ');
+  }
+  return cause instanceof Error ? cause.message : String(cause);
 }

@@ -230,18 +230,6 @@ function createStatements() {
     // Session Queries
     // ========================================================================
 
-    /**
-     * Get session by ID
-     * Used for: Session detail page, violation context
-     * Called: When viewing session details
-     */
-    sessionById: db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.id, sql.placeholder('id')))
-      .limit(1)
-      .prepare('session_by_id'),
-
     // ========================================================================
     // Stats Queries (hot-path for dashboard and analytics pages)
     // ========================================================================
@@ -389,7 +377,6 @@ export let serverUserByExternalId: Statements['serverUserByExternalId'];
 export let sessionByServerAndKey: Statements['sessionByServerAndKey'];
 export let serverUserById: Statements['serverUserById'];
 export let userById: Statements['userById'];
-export let sessionById: Statements['sessionById'];
 export let playsByPlatformSince: Statements['playsByPlatformSince'];
 export let qualityStatsSince: Statements['qualityStatsSince'];
 export let getActiveRules: Statements['getActiveRules'];
@@ -410,7 +397,6 @@ export function initPreparedStatements(): void {
   sessionByServerAndKey = s.sessionByServerAndKey;
   serverUserById = s.serverUserById;
   userById = s.userById;
-  sessionById = s.sessionById;
   playsByPlatformSince = s.playsByPlatformSince;
   qualityStatsSince = s.qualityStatsSince;
   getActiveRules = s.getActiveRules;
@@ -431,7 +417,6 @@ export type ServerUserByExternalIdResult = Awaited<
 >;
 export type ServerUserByIdResult = Awaited<ReturnType<typeof serverUserById.execute>>;
 export type UserByIdResult = Awaited<ReturnType<typeof userById.execute>>;
-export type SessionByIdResult = Awaited<ReturnType<typeof sessionById.execute>>;
 export type PlaysByPlatformResult = Awaited<ReturnType<typeof playsByPlatformSince.execute>>;
 export type QualityStatsResult = Awaited<ReturnType<typeof qualityStatsSince.execute>>;
 export type ActiveRulesResult = Awaited<ReturnType<typeof getActiveRules.execute>>;

@@ -5,7 +5,8 @@ import { Field, FieldDescription, FieldLabel, FieldTitle } from '@/components/ui
 import { Input } from '@/components/ui/input';
 import { LocationPicker } from '@/components/map/LocationPicker';
 import { CountrySelect } from '@/components/settings/shared/CountrySelect';
-import { coordinate, emptyDraft, todayString, type LocationDraft } from './serverLocationDrafts';
+import { todayString } from '@/lib/dateFormat';
+import { coordinate, emptyDraft, type LocationDraft } from './serverLocationDrafts';
 
 const parsed = (value: string) =>
   value.trim() === '' || !Number.isFinite(Number(value)) ? null : Number(value);

@@ -56,6 +56,7 @@ describe('identity backfill on a compressed chunk', () => {
         await createTestSession({
           serverId: server.id,
           serverUserId: account.id,
+          externalSessionId: null,
           state: 'stopped',
           ratingKey: 'rk-compressed',
           startedAt: new Date(startedAt.getTime() + i * 60_000),

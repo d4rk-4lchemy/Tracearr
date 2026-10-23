@@ -58,8 +58,9 @@ import { tokenStorage, api, BASE_URL } from '@/lib/api';
 import { debugFetch, debugRawFetch } from '@/lib/debugFetch';
 import { TasksTab } from '@/components/debug/TasksTab';
 import { toast } from 'sonner';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatDate, formatWatchTime } from '@/lib/dateFormat';
 import { useTranslation } from 'react-i18next';
 import { getBrowserDocument, getBrowserWindow } from '@/lib/browser';
 
@@ -221,15 +222,6 @@ export function Debug() {
     }
   };
 
-  const formatUptime = (seconds: number) => {
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    if (days > 0) return `${days}d ${hours}h ${mins}m`;
-    if (hours > 0) return `${hours}h ${mins}m`;
-    return `${mins}m`;
-  };
-
   const handleLogsRefresh = () => {
     void logFiles.refetch();
     void logEntries.refetch();
@@ -350,7 +342,7 @@ export function Debug() {
             const date = new Date(row.original.snapshot_time);
             return (
               <div className="text-xs">
-                <div>{format(date, 'MMM d, yyyy')}</div>
+                <div>{formatDate(date, { dateStyle: 'medium' })}</div>
                 <div className="text-muted-foreground">
                   {formatDistanceToNow(date, { addSuffix: true })}
                 </div>
@@ -572,7 +564,7 @@ export function Debug() {
                         {envInfo.data.container.isDocker ? 'Yes' : 'No'}
                       </div>
                       <div className="text-muted-foreground">Uptime</div>
-                      <div className="font-mono">{formatUptime(envInfo.data.uptime)}</div>
+                      <div className="font-mono">{formatWatchTime(envInfo.data.uptime * 1000)}</div>
                       <div className="text-muted-foreground">Heap Used</div>
                       <div className="font-mono">{envInfo.data.memoryUsage.heapUsed}</div>
                       <div className="text-muted-foreground">RSS</div>
@@ -633,7 +625,9 @@ export function Debug() {
                       <div className="text-muted-foreground">Load Average (1m / 5m / 15m)</div>
                       <div className="font-mono">{envInfo.data.loadAverage.join(' / ')}</div>
                       <div className="text-muted-foreground">System Uptime</div>
-                      <div className="font-mono">{formatUptime(envInfo.data.systemUptime)}</div>
+                      <div className="font-mono">
+                        {formatWatchTime(envInfo.data.systemUptime * 1000)}
+                      </div>
                     </div>
 
                     {envInfo.data.processes.length > 0 && (

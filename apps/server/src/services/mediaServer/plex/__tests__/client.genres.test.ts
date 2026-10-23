@@ -64,6 +64,46 @@ describe('PlexClient genre fill', () => {
     ]);
   });
 
+  it('runs at most three metadata batches at once and lands each genre on its item', async () => {
+    const movies = Array.from({ length: 700 }, (_, i) => movie(String(i + 1), ['Action', 'Crime']));
+    let inFlight = 0;
+    let peak = 0;
+    mockFetchJson.mockImplementation(async (url) => {
+      const keys = /\/library\/metadata\/([^?]+)\?/.exec(String(url))?.[1];
+      if (!keys) return container(movies);
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= 1;
+      return container(
+        keys.split(',').map((key) => ({ ratingKey: key, Genre: [{ tag: `Genre ${key}` }] }))
+      );
+    });
+
+    const { items } = await makeClient().getLibraryItems('3');
+
+    expect(mockFetchJson).toHaveBeenCalledTimes(8);
+    expect(peak).toBe(3);
+    expect(items.map((i) => i.ratingKey)).toEqual(movies.map((m) => m.ratingKey));
+    expect(items.every((i) => i.genres?.[0] === `Genre ${i.ratingKey}`)).toBe(true);
+  });
+
+  it('rejects with the batch error and starts no new batch after it', async () => {
+    const movies = Array.from({ length: 700 }, (_, i) => movie(String(i + 1), ['Action', 'Crime']));
+    let metadataCalls = 0;
+    mockFetchJson.mockImplementation(async (url) => {
+      if (!String(url).includes('/library/metadata/')) return container(movies);
+      metadataCalls += 1;
+      if (metadataCalls === 1) throw new Error('batch failed');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return container([]);
+    });
+
+    await expect(makeClient().getLibraryItems('3')).rejects.toThrow('batch failed');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(metadataCalls).toBe(3);
+  });
+
   it('makes no metadata call when no item hits the cap', async () => {
     mockFetchJson.mockResolvedValueOnce(container([movie('1', ['Comedy']), movie('2', [])]));
 

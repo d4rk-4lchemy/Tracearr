@@ -1,3 +1,4 @@
+import { UnrecoverableError } from 'bullmq';
 import {
   DESTINATION_TEXT_PROFILES,
   DESTINATION_TYPES,
@@ -28,6 +29,54 @@ export interface TelegramMessage {
   poster?: Poster;
 }
 
+interface TelegramFailure {
+  description?: string;
+  parameters?: { retry_after?: number; migrate_to_chat_id?: number };
+}
+
+function parseFailure(body: string | undefined): TelegramFailure {
+  try {
+    return JSON.parse(body ?? '') as TelegramFailure;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Rethrows a refused call with Telegram's own description. A 429 carries `retryAfterMs` for
+ * the queue to wait out; any other 4xx is the token, the chat or the message and cannot
+ * succeed on retry, so it fails without spending the remaining attempts.
+ */
+async function call(
+  config: TelegramConfig,
+  method: string,
+  init: Parameters<typeof deliverFetch>[1],
+  ctx: DeliverContext
+): Promise<void> {
+  try {
+    await deliverFetch(`https://api.telegram.org/bot${config.botToken}/${method}`, init, ctx);
+  } catch (error) {
+    const { status, body } = error as { status?: number; body?: string };
+    if (status === undefined) throw error;
+    const { description, parameters } = parseFailure(body);
+    let message = `${ctx.destination.name}: ${status} ${description ?? 'no description'}`;
+    if (parameters?.migrate_to_chat_id !== undefined) {
+      message += `. The group is now a supergroup with chat ID ${parameters.migrate_to_chat_id}; update the destination to use it.`;
+    } else if (status === 401 || status === 404) {
+      message += '. Check the bot token.';
+    }
+    if (status === 429 || status >= 500) {
+      throw Object.assign(new Error(message, { cause: error }), {
+        status,
+        ...(parameters?.retry_after !== undefined && {
+          retryAfterMs: parameters.retry_after * 1000,
+        }),
+      });
+    }
+    throw Object.assign(new UnrecoverableError(message), { status, cause: error });
+  }
+}
+
 /**
  * The title is bolded by entity rather than parse_mode, so the text needs no escaping.
  * A poster goes as sendPhoto multipart with Content-Type left unset so undici writes
@@ -39,7 +88,6 @@ async function post(
   body: TelegramMessage,
   ctx: DeliverContext
 ): Promise<void> {
-  const url = (method: string) => `https://api.telegram.org/bot${config.botToken}/${method}`;
   const text = `${body.title}\n${body.message}`;
   const entities = [{ type: 'bold', offset: 0, length: body.title.length }];
   const fields = {
@@ -52,8 +100,9 @@ async function post(
   };
 
   const sendMessage = () =>
-    deliverFetch(
-      url('sendMessage'),
+    call(
+      config,
+      'sendMessage',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,7 +129,7 @@ async function post(
     posterFilename(body.poster.contentType)
   );
   try {
-    await deliverFetch(url('sendPhoto'), { method: 'POST', body: form }, ctx);
+    await call(config, 'sendPhoto', { method: 'POST', body: form }, ctx);
   } catch (error) {
     if ((error as { status?: number }).status !== 400) throw error;
     await sendMessage();

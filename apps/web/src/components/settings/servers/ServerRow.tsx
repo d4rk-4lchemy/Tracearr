@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
 import {
   AlertTriangle,
   ArrowUpCircle,
@@ -39,6 +38,7 @@ import { RealtimeSetupDialog } from '@/components/settings/servers/RealtimeSetup
 import { RequestServiceLine } from '@/components/settings/request-services';
 import { TooltipIconButton } from '@/components/settings/shared/TooltipIconButton';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/dateFormat';
 
 const PLUGIN_ISSUES = ['blocked', 'restart_required', 'malfunctioned'];
 
@@ -137,12 +137,14 @@ export function ServerRow({
             </ItemDescription>
 
             <p className="text-muted-foreground text-xs">
-              {t('servers.added', { date: format(new Date(server.createdAt), 'MMM d, yyyy') })}
+              {t('servers.added', {
+                date: formatDate(new Date(server.createdAt), { dateStyle: 'medium' }),
+              })}
             </p>
             {server.historicalAt && (
               <p className="text-muted-foreground text-xs">
                 {t('servers.historicalSince', {
-                  date: format(new Date(server.historicalAt), 'MMM d, yyyy'),
+                  date: formatDate(new Date(server.historicalAt), { dateStyle: 'medium' }),
                 })}
               </p>
             )}

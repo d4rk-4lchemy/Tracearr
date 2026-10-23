@@ -409,6 +409,17 @@ describe('GET /library/media/:id and sub-resources', () => {
     ]);
   });
 
+  it('answers an empty list for a show that has no library items', async () => {
+    app = await buildTestApp(createOwnerUser(), createSpyRedis());
+    const show = rawMediaRow({ mediaType: 'show', showMediaId: null });
+
+    queueSelect([show], []);
+
+    const response = await app.inject({ method: 'GET', url: `/library/media/${show.id}/children` });
+    expect(response.statusCode).toBe(200);
+    expect((response.json() as MediaChildrenResponse).data).toEqual([]);
+  });
+
   it('shapes the children response in camelCase for a show', async () => {
     const redis = createSpyRedis();
     app = await buildTestApp(createOwnerUser(), redis);

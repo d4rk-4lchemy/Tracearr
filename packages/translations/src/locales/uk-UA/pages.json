@@ -544,14 +544,8 @@
         },
         "columns": {
           "hoursPerGb": "",
-          "value": ""
-        },
-        "category": {
-          "low": "",
-          "moderate": "",
-          "high": ""
-        },
-        "deletionSuggested": ""
+          "lastWatched": ""
+        }
       },
       "matchBadge": {
         "exact": "",
@@ -571,7 +565,7 @@
       "peakHour": "Пікова година",
       "viewingHours": "Години перегляду",
       "peak": "Пік:",
-      "monthlyTrends": "Щомісячні тренди",
+      "viewingTrend": "",
       "busiest": "Берегий:",
       "quietest": "Тест:",
       "bingeHighlights": "Помітні марафони перегляду",
@@ -593,12 +587,6 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "tiers": {
-          "highlyAddictive": "",
-          "addictive": "",
-          "bingeable": "",
-          "casual": ""
         }
       },
       "percentWatchedValue": "",
@@ -704,8 +692,7 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "uniqueItems_other": ""
+        }
       },
       "growth": {
         "empty": {

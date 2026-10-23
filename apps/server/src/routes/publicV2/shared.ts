@@ -411,7 +411,11 @@ async function aggregateChainPage(
       u.name as user_name,
       u.username as user_username
     FROM page p
-    JOIN sessions s ON s.id = p.first_session_id
+    -- p.chain_started_at is not a planner-time constant; the InitPlan bounds are what let
+    -- TimescaleDB exclude chunks at runtime
+    JOIN sessions s ON s.id = p.first_session_id AND s.started_at = p.chain_started_at
+      AND s.started_at >= (SELECT MIN(chain_started_at) FROM page)
+      AND s.started_at <= (SELECT MAX(chain_started_at) FROM page)
     JOIN server_users su ON su.id = s.server_user_id
     JOIN servers sv ON sv.id = s.server_id
     LEFT JOIN users u ON u.id = su.user_id

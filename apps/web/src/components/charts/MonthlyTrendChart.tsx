@@ -2,38 +2,35 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
-import type { MonthlyTrend } from '@tracearr/shared';
+import type { PatternsResponse, TrendBucket } from '@tracearr/shared';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { TrendingUp } from 'lucide-react';
+import { formatTrendDate, parseChartDate, toIsoDate } from '@/lib/dateFormat';
+
+const DAY_MS = 86_400_000;
+const MIN_TICK_INTERVAL: Record<TrendBucket, number> = {
+  day: DAY_MS,
+  week: 7 * DAY_MS,
+  month: 28 * DAY_MS,
+};
+
+const isEmpty = (trend: PatternsResponse['trend'] | undefined) =>
+  !trend || trend.points.every((p) => p.watchCount === 0);
 
 interface MonthlyTrendChartProps {
-  data: MonthlyTrend[] | undefined;
+  trend: PatternsResponse['trend'] | undefined;
   isLoading?: boolean;
   height?: number;
 }
 
-function parseMonth(monthStr: string): number {
-  const parts = monthStr.split('-');
-  const year = parseInt(parts[0] ?? '2020');
-  const month = parseInt(parts[1] ?? '1') - 1;
-  return new Date(year, month, 1).getTime();
-}
-
-const formatMonth = (monthStr: string): string => {
-  const parts = monthStr.split('-');
-  const year = parts[0] ?? '2020';
-  const month = parts[1] ?? '01';
-  const date = new Date(parseInt(year), parseInt(month) - 1);
-  return date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
-};
-
-export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTrendChartProps) {
+export function MonthlyTrendChart({ trend, isLoading, height = 250 }: MonthlyTrendChartProps) {
   const { t } = useTranslation('pages');
   const options = useMemo<Highcharts.Options>(() => {
-    if (!data || data.length === 0) {
+    if (!trend || isEmpty(trend)) {
       return {};
     }
+    const { bucket, points } = trend;
 
     return {
       chart: {
@@ -57,11 +54,11 @@ export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTren
       xAxis: {
         type: 'datetime',
         tickPixelInterval: 100,
-        dateTimeLabelFormats: {
-          month: { main: `%b '%y` },
-          year: { main: '%Y' },
-        },
+        minTickInterval: MIN_TICK_INTERVAL[bucket],
         labels: {
+          formatter: function () {
+            return formatTrendDate(toIsoDate(new Date(this.value)), bucket);
+          },
           style: {
             color: 'hsl(var(--muted-foreground))',
           },
@@ -107,21 +104,15 @@ export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTren
           color: 'hsl(var(--popover-foreground))',
         },
         formatter: function () {
-          const date = new Date(this.x);
-          const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-          const item = data.find((d) => d.month === monthStr);
-          const monthLabel = item ? formatMonth(item.month) : formatMonth(monthStr);
-          const uniqueItems = item?.uniqueItems ?? 0;
           const watches = t('library.charts.watchesValue', { count: this.y ?? 0 });
-          const unique = t('library.charts.monthly.uniqueItems', { count: uniqueItems });
-          return `<b>${monthLabel}</b><br/>${watches}<br/>${unique}`;
+          return `<b>${formatTrendDate(toIsoDate(new Date(this.x)), bucket)}</b><br/>${watches}`;
         },
       },
       series: [
         {
           type: 'line',
           name: t('library.charts.monthly.watchCount'),
-          data: data.map((d) => [parseMonth(d.month), d.watchCount]),
+          data: points.map((p) => [parseChartDate(p.start), p.watchCount]),
         },
       ],
       responsive: {
@@ -153,13 +144,13 @@ export function MonthlyTrendChart({ data, isLoading, height = 250 }: MonthlyTren
         ],
       },
     };
-  }, [data, height, t]);
+  }, [trend, height, t]);
 
   if (isLoading) {
     return <ChartSkeleton height={height} />;
   }
 
-  if (!data || data.length === 0) {
+  if (isEmpty(trend)) {
     return (
       <EmptyState
         icon={TrendingUp}

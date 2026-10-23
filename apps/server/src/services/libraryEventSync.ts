@@ -32,6 +32,46 @@ const DEBOUNCE_WINDOW_MS = 30_000;
 
 const pendingWindows = new Map<string, NodeJS.Timeout>();
 
+// A playing item the library does not hold yet is offered to the sync once per cooldown,
+// not once per poll tick: a play sits on the same unknown key for its whole length, and an
+// item the targeted sync cannot bring in (a library Tracearr does not sync, a since-query
+// that misses it) would otherwise open a sync window every 30 s until the play ends. The
+// scheduled sync stays the backstop. The map is bounded; the oldest entry goes first.
+export const UNKNOWN_KEY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const UNKNOWN_KEY_MEMORY_LIMIT = 10_000;
+const reportedUnknownKeys = new Map<string, number>();
+
+/**
+ * A live play whose rating key has no library item on its server: what is playing exists
+ * there, so the item is new and the next incremental sync brings it in. The sync tail then
+ * stamps the play by its exact rating key. Same debounce and known-item probe as a server
+ * event; a key is offered at most once per cooldown.
+ */
+export function requestSyncForUnknownKeys(
+  server: { id: string; name: string },
+  ratingKeys: Iterable<string>
+): void {
+  const now = Date.now();
+  for (const ratingKey of ratingKeys) {
+    const key = `${server.id}:${ratingKey}`;
+    const last = reportedUnknownKeys.get(key);
+    if (last !== undefined && now - last < UNKNOWN_KEY_COOLDOWN_MS) continue;
+    reportedUnknownKeys.delete(key);
+    reportedUnknownKeys.set(key, now);
+    while (reportedUnknownKeys.size > UNKNOWN_KEY_MEMORY_LIMIT) {
+      const oldest = reportedUnknownKeys.keys().next().value;
+      if (oldest === undefined) break;
+      reportedUnknownKeys.delete(oldest);
+    }
+    recordLibraryEvent({
+      serverId: server.id,
+      serverName: server.name,
+      type: 'added',
+      itemId: ratingKey,
+    });
+  }
+}
+
 export function recordLibraryEvent(event: LibraryChangeEvent): void {
   if (event.type === 'removed' && event.itemId) {
     void librarySyncService
@@ -104,6 +144,7 @@ export function clearPendingLibraryEventSync(serverId: string): void {
 }
 
 export function clearPendingLibraryEventSyncs(): void {
+  reportedUnknownKeys.clear();
   for (const timer of pendingWindows.values()) {
     clearTimeout(timer);
   }

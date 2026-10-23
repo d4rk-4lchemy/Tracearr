@@ -56,6 +56,10 @@ vi.mock('../../db/client.js', () => ({
   db: { select: vi.fn() },
 }));
 
+vi.mock('../library/importedPlayIdentity.js', () => ({
+  resolveImportedPlays: vi.fn(async () => ({ identities: new Map(), ambiguousShows: 0 })),
+}));
+
 vi.mock('../../db/timescale.js', () => ({
   refreshAggregates: vi.fn().mockResolvedValue(undefined),
   checkAggregateNeedsRebuild: vi.fn().mockResolvedValue({ needsRebuild: false }),

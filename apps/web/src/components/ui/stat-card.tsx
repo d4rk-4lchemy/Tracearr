@@ -173,29 +173,6 @@ export function StatCard({
   );
 }
 
-// Format duration in human readable format
-export function formatWatchTime(ms: number): string {
-  if (!ms) return '0m';
-  const totalMinutes = Math.floor(ms / 60000);
-  const minutes = totalMinutes % 60;
-  const hours = Math.floor(totalMinutes / 60);
-  const remainingHours = hours % 24;
-  const days = Math.floor(hours / 24);
-  const remainingDays = days % 365;
-  const years = Math.floor(days / 365);
-
-  if (years > 0) {
-    return `${years}yr ${remainingDays}d ${remainingHours}h`;
-  }
-  if (days > 0) {
-    return `${days}d ${remainingHours}h`;
-  }
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-  return `${minutes}m`;
-}
-
 // Format large numbers with commas
 export function formatNumber(n: number): string {
   return n.toLocaleString();

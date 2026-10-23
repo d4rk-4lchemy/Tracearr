@@ -16,7 +16,6 @@ vi.mock('highcharts-react-official', () => ({
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-vi.mock('@/lib/timeFormat', () => ({ getHour12: () => false }));
 
 function day(mediaType: PlaysMediaGroup, plays: Record<number, number>): HourOfDayStats[] {
   return Array.from({ length: 24 }, (_, hour) => ({ hour, count: plays[hour] ?? 0, mediaType }));

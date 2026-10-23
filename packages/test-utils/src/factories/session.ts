@@ -104,7 +104,7 @@ export function buildSession(overrides: SessionData): Required<SessionData> {
     tmdbId: overrides.tmdbId ?? null,
     tvdbId: overrides.tvdbId ?? null,
     shortSession: overrides.shortSession ?? false,
-    externalSessionId: overrides.externalSessionId ?? `ext-session-${index}`,
+    externalSessionId: overrides.externalSessionId ?? null,
     startedAt: overrides.startedAt ?? now,
     stoppedAt: overrides.stoppedAt ?? null,
     lastSeenAt: overrides.lastSeenAt ?? overrides.stoppedAt ?? now,

@@ -138,6 +138,92 @@ export function resolveLibraryWindow(
   };
 }
 
+/** The first UTC midnight at or after a date; a date already on a midnight is unchanged. */
+export function ceilToUtcDay(date: Date): Date {
+  return new Date(Math.ceil(date.getTime() / TIME_MS.DAY) * TIME_MS.DAY);
+}
+
+/**
+ * A window over a user_media_plays_daily day column. `day` is a UTC bucket, so a preset's start
+ * rounds up to the next UTC midnight: N days cover exactly N UTC days ending today, like the
+ * show page. A custom start is already a midnight and is exact.
+ */
+export function rollupDayWindowSql(
+  window: { startDate: Date | null; endDate: Date },
+  dayCol: SQL
+): SQL {
+  const lower = window.startDate
+    ? sql` AND ${dayCol} >= ${ceilToUtcDay(window.startDate)}::timestamptz`
+    : sql``;
+  return sql`${lower} AND ${dayCol} < ${window.endDate}::timestamptz`;
+}
+
+// Movie and episode plays keyed by the top-level title they count for: the show for an
+// episode, the movie itself otherwise, a merged alias folded one hop into its winner.
+function rollupIdentPlaysSql(filters: SQL): SQL {
+  return sql`
+    SELECT p.chain_id, p.counted, p.watched_ms, p.day,
+      (CASE WHEN p.show_media_id IS NOT NULL THEN COALESCE(sh.merged_into_id, p.show_media_id)
+            ELSE COALESCE(pm.merged_into_id, p.media_id) END)::text AS ident
+    FROM user_media_plays_daily p
+    LEFT JOIN media pm ON pm.id = p.media_id
+    LEFT JOIN media sh ON sh.id = p.show_media_id
+    WHERE p.media_type IN ('movie', 'episode') ${filters}`;
+}
+
+/** Plays and watch time per title ident within the window. Filters reference the aggregate as p. */
+export function rollupIdentWatchCte(
+  window: { startDate: Date | null; endDate: Date },
+  serverFilterOnP: SQL
+): SQL {
+  return sql`
+    SELECT ident,
+      COUNT(DISTINCT chain_id) FILTER (WHERE counted) AS watch_count,
+      SUM(watched_ms) AS total_watch_ms,
+      MAX(day) AS last_day
+    FROM (${rollupIdentPlaysSql(sql`${rollupDayWindowSql(window, sql`p.day`)} ${serverFilterOnP}`)}) x
+    GROUP BY ident`;
+}
+
+/** The last UTC day each title ident was played, over all time. */
+export function identLastWatchedCte(serverFilterOnP: SQL): SQL {
+  return sql`
+    SELECT ident, MAX(day) AS last_day
+    FROM (${rollupIdentPlaysSql(serverFilterOnP)}) x
+    GROUP BY ident`;
+}
+
+/**
+ * Bytes per title ident at episode grain: DISTINCT (title, file, size) keeps two episodes of
+ * equal size apart and counts a file mirrored across servers or libraries once. An episode
+ * with no media link still belongs to the show item its grandparent rating key names, so
+ * the show's size stays whole while matching is incomplete. Filters reference library_items
+ * as li, the same fragments a top-level item query uses.
+ */
+export function identSizesCte(serverFilterOnLi: SQL, libraryFilter: SQL): SQL {
+  return sql`
+    SELECT ident, SUM(sz) AS file_size FROM (
+      SELECT DISTINCT
+        COALESCE(sh.merged_into_id, m.show_media_id, gpm.merged_into_id, gp.media_id, gp.id,
+                 m.merged_into_id, li.media_id, li.id)::text AS ident,
+        COALESCE(m.merged_into_id, li.media_id, li.id)::text AS file_ident,
+        v.file_size AS sz
+      FROM library_items li
+      JOIN library_item_versions v
+        ON v.library_item_id = li.id AND v.removed_at IS NULL AND v.file_size IS NOT NULL
+      LEFT JOIN media m ON m.id = li.media_id
+      LEFT JOIN media sh ON sh.id = m.show_media_id
+      LEFT JOIN library_items gp ON li.media_id IS NULL AND li.media_type = 'episode'
+        AND gp.server_id = li.server_id AND gp.rating_key = li.grandparent_rating_key
+        AND gp.media_type = 'show' AND gp.removed_at IS NULL
+      LEFT JOIN media gpm ON gpm.id = gp.media_id
+      WHERE li.removed_at IS NULL AND li.media_type IN ('movie', 'episode')
+        ${serverFilterOnLi}
+        ${libraryFilter}
+    ) d
+    GROUP BY ident`;
+}
+
 /**
  * Generate cache key with all varying parameters to prevent cache collisions.
  *

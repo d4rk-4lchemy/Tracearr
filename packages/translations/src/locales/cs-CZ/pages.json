@@ -544,14 +544,8 @@
         },
         "columns": {
           "hoursPerGb": "",
-          "value": ""
-        },
-        "category": {
-          "low": "",
-          "moderate": "",
-          "high": ""
-        },
-        "deletionSuggested": ""
+          "lastWatched": ""
+        }
       },
       "matchBadge": {
         "exact": "",
@@ -571,7 +565,7 @@
       "peakHour": "Špičková hodina",
       "viewingHours": "Prohlížení hodin",
       "peak": "Špička:",
-      "monthlyTrends": "Měsíční trendy",
+      "viewingTrend": "",
       "busiest": "Nejlepší:",
       "quietest": "Nejvíce ticho:",
       "bingeHighlights": "Nejvýraznější maratony",
@@ -593,12 +587,6 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "tiers": {
-          "highlyAddictive": "",
-          "addictive": "",
-          "bingeable": "",
-          "casual": ""
         }
       },
       "percentWatchedValue": "",
@@ -704,8 +692,7 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "uniqueItems_other": ""
+        }
       },
       "growth": {
         "empty": {

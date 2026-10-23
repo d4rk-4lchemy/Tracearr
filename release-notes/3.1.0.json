@@ -1,0 +1,92 @@
+{
+  "version": "3.1.0",
+  "date": "2026-10-23",
+  "headline": "Faster on large libraries and long play histories",
+  "highlights": [
+    {
+      "title": "Faster as history grows",
+      "body": "History, user pages and Stale Content read only the time they show instead of every session, so they stay quick on servers with years of plays. Library syncs spend less time waiting on slow servers, and large libraries no longer run the database out of memory during a sync."
+    },
+    {
+      "title": "Dates follow your region",
+      "body": "Dates and times use your region's format, and Settings → General → Locale sets the date format and the first day of the week."
+    }
+  ],
+  "changes": [
+    {
+      "type": "new",
+      "text": "dates follow your region, and Settings → General → Locale sets the date format and first day of the week",
+      "refs": ["#661", "#786"]
+    },
+    {
+      "type": "improved",
+      "text": "notifications that can't reach a destination name the host and address tried instead of \"fetch failed\""
+    },
+    {
+      "type": "improved",
+      "text": "Telegram errors show Telegram's own reason and point at a bad bot token or a supergroup's new chat ID"
+    },
+    {
+      "type": "improved",
+      "text": "Storage ROI, Watch and Most Watched follow the date range picker and count the same plays by media identity"
+    },
+    {
+      "type": "improved",
+      "text": "imported play history counts on the Library tabs, including titles no longer in the library"
+    },
+    {
+      "type": "improved",
+      "text": "Stale Content loads in under a second on large libraries instead of many seconds"
+    },
+    {
+      "type": "improved",
+      "text": "user pages and their termination history load faster on servers with years of history"
+    },
+    {
+      "type": "improved",
+      "text": "history and user session pages read only the days on screen instead of every session"
+    },
+    {
+      "type": "improved",
+      "text": "library syncs stop pausing after pages a slow server already took long to return, and fetch Plex genres in parallel"
+    },
+    {
+      "type": "improved",
+      "text": "links to Tracearr show the logo banner in chat previews, and search engines are asked not to index it"
+    },
+    {
+      "type": "fix",
+      "text": "Telegram and other notifications no longer fail with \"fetch failed\" on slow internet that takes over 250 ms to connect"
+    },
+    {
+      "type": "fix",
+      "text": "Telegram alerts held back by its rate limit now wait it out instead of being dropped after three quick retries"
+    },
+    {
+      "type": "fix",
+      "text": "Helm chart StatefulSets no longer stay OutOfSync in Argo CD over their volume claim templates",
+      "refs": ["#1360"]
+    },
+    {
+      "type": "fix",
+      "text": "the Helm network policy lets Tracearr reach an external Redis on a port other than 6379"
+    },
+    {
+      "type": "fix",
+      "text": "library syncs on large libraries no longer run the database out of memory while checking older history"
+    },
+    {
+      "type": "note",
+      "text": "imported plays with the same name and year as a library title count as that title"
+    },
+    {
+      "type": "note",
+      "text": "Most Watched counts plays of two minutes or more, a resumed watch once, instead of runtime watched"
+    },
+    {
+      "type": "note",
+      "text": "Argo CD renders the Helm chart without cluster access, so set secrets.existingSecret or both secrets there",
+      "docs": "https://docs.tracearr.com/getting-started/installation/kubernetes"
+    }
+  ]
+}

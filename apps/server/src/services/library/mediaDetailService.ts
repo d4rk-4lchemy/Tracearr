@@ -16,6 +16,7 @@ import { media, servers } from '../../db/schema.js';
 import { buildMultiServerFragment } from '../../utils/serverFiltering.js';
 import {
   libraryFragment,
+  scopeFragment,
   scopeSessionsRaw,
   scopedServerFragment,
   type Scope,
@@ -185,8 +186,10 @@ export interface PosterCopy {
 }
 
 /**
- * Whether a member's library limit hides a title: it has copies on their servers and none of
- * them in a library they can open. A title with no copies at all stays reachable.
+ * Whether a member's library limit hides a title. Hidden when it has copies on their servers
+ * and none of them in a library they can open, and also when it has no copies anywhere
+ * (imported history of a title the library never held) unless one of the member's own
+ * accounts played it. Staff, and members without a library limit, see every title.
  */
 export async function hiddenByLibraryLimit(
   mediaId: string,
@@ -195,13 +198,20 @@ export async function hiddenByLibraryLimit(
 ): Promise<boolean> {
   if (scope === 'all' || Object.keys(scope.libraryIds ?? {}).length === 0) return false;
   const result = await db.execute(sql`
-    SELECT EXISTS (
+    SELECT (EXISTS (
         SELECT 1 FROM library_items li
         WHERE li.media_id = ${mediaId} ${buildMultiServerFragment(serverIds, 'li.server_id')}
       ) AND NOT EXISTS (
         SELECT 1 FROM library_items li
         WHERE li.media_id = ${mediaId} ${libraryFragment(serverIds, scope, 'li')}
-      ) AS hidden
+      )) OR (NOT EXISTS (
+        SELECT 1 FROM library_items li WHERE li.media_id = ${mediaId}
+      ) AND NOT EXISTS (
+        SELECT 1 FROM user_media_plays_daily p
+        WHERE (p.media_id IN (SELECT id FROM media WHERE id = ${mediaId} OR merged_into_id = ${mediaId})
+            OR p.show_media_id IN (SELECT id FROM media WHERE id = ${mediaId} OR merged_into_id = ${mediaId}))
+          ${scopeFragment(scope, sql`p.server_user_id`)}
+      )) AS hidden
   `);
   return (result.rows[0] as { hidden: boolean } | undefined)?.hidden === true;
 }

@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { CalendarDays, CheckCircle2, Clock, HardDrive, MonitorPlay, Play } from 'lucide-react';
 import { formatBitrate, type UserRangeStats } from '@tracearr/shared';
-import { formatNumber, formatWatchTime, StatCard } from '@/components/ui/stat-card';
+import { formatNumber, StatCard } from '@/components/ui/stat-card';
+import { formatWatchTime } from '@/lib/dateFormat';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { formatBytes } from '@/lib/formatters';
 

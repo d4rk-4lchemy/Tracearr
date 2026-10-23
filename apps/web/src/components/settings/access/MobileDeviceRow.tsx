@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { Loader2, Pencil, Smartphone, Trash2 } from 'lucide-react';
 import type { MobileSession } from '@tracearr/shared';
+import { formatDate } from '@/lib/dateFormat';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -63,7 +64,7 @@ export function MobileDeviceRow({ session }: { session: MobileSession }) {
             </ItemDescription>
             <p className="text-muted-foreground text-xs">
               {t('mobile.connectedOn', {
-                date: format(new Date(session.createdAt), 'MMM d, yyyy'),
+                date: formatDate(new Date(session.createdAt), { dateStyle: 'medium' }),
               })}
             </p>
           </ItemContent>

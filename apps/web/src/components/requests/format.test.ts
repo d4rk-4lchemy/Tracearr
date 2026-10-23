@@ -90,7 +90,7 @@ function makeEntry(overrides: Partial<MediaRequestEntry> = {}): MediaRequestEntr
 describe('heroRequestLine', () => {
   it('fills name, date and the landed tail for a completed request', () => {
     const entry = makeEntry();
-    const line = heroRequestLine(entry, 'Alice', t, 'MMM d, yyyy');
+    const line = heroRequestLine(entry, 'Alice', t);
     const date = format(new Date(entry.requestedAt), 'MMM d, yyyy');
     expect(line).toBe(
       `requests.hero.line:{"name":"Alice","date":"${date}","tail":"requests.hero.landed:{\\"wait\\":\\"1d\\"}"}`
@@ -101,8 +101,7 @@ describe('heroRequestLine', () => {
     const line = heroRequestLine(
       makeEntry({ status: 'declined', availableAt: null, waitMs: null }),
       'Alice',
-      t,
-      'MMM d, yyyy'
+      t
     );
     expect(line).toContain('"tail":"requests.wait.declined"');
   });
@@ -111,8 +110,7 @@ describe('heroRequestLine', () => {
     const line = heroRequestLine(
       makeEntry({ status: 'pending', availableAt: null, waitMs: null }),
       'Alice',
-      t,
-      'MMM d, yyyy'
+      t
     );
     expect(line).toContain('"tail":"requests.hero.waiting"');
   });

@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import { Archive, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { formatMediaTech, type StaleResponse } from '@tracearr/shared';
@@ -26,6 +25,7 @@ import {
 import { useLibraryStale } from '@/hooks/queries/useLibrary';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { ServerColumnCell } from '@/components/server';
+import { formatStaleTime } from '@/lib/dateFormat';
 import { formatBytes } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -34,15 +34,6 @@ import { MediaTypeBadge } from './badges';
 type MediaTypeFilter = 'all' | 'movie' | 'show' | 'artist';
 type SortBy = 'size' | 'title' | 'days_stale' | 'added_at';
 type SortOrder = 'asc' | 'desc';
-
-function formatStaleTime(days: number, t: TFunction<'pages'>): string {
-  if (days < 30) return t('library.storage.stale.age.days', { count: days });
-  if (days < 365) return t('library.storage.stale.age.months', { count: Math.floor(days / 30) });
-  const years = Math.floor(days / 365);
-  const months = Math.floor((days % 365) / 30);
-  if (months === 0) return t('library.storage.stale.age.years', { count: years });
-  return t('library.storage.stale.age.yearsMonths', { years, months });
-}
 
 /**
  * Badge component for staleness with color coding

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { format, formatDistanceToNow, parseISO } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { AlertTriangle, Check, Trash2, UserRoundSearch, X } from 'lucide-react';
 import type { ViolationWithDetails } from '@tracearr/shared';
 import { VIOLATION_SORT_FIELDS, listPageCount, type ViolationSortField } from '@tracearr/shared';
+import { formatFilterDateRange, formatIsoDay } from '@/lib/dateFormat';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { BulkActionsToolbar, type BulkAction } from '@/components/ui/bulk-actions-toolbar';
@@ -74,8 +75,6 @@ function isViolationSortField(id: string): id is ViolationSortField {
 const violationColumn = createDataTableColumnHelper<ViolationWithDetails>();
 const getViolationId = (violation: ViolationWithDetails) => violation.id;
 
-const formatFilterDate = (isoDate: string) => format(parseISO(isoDate), 'MMM d, yyyy');
-
 export function Violations() {
   const { t } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
@@ -142,15 +141,8 @@ export function Violations() {
           clearStart: t('common:filters.clearStartDate'),
           clearEnd: t('common:filters.clearEndDate'),
         },
-        formatValue: (value: DateRangeValue) => {
-          const from = value.from ? formatFilterDate(value.from) : undefined;
-          const to = value.to ? formatFilterDate(value.to) : undefined;
-          if (from && to) return t('common:filters.dateBetween', { from, to });
-          if (from) return t('common:filters.dateAfter', { date: from });
-          if (to) return t('common:filters.dateBefore', { date: to });
-          return '';
-        },
-        formatDate: formatFilterDate,
+        formatValue: (value: DateRangeValue) => formatFilterDateRange(value, t),
+        formatDate: formatIsoDay,
       },
       {
         kind: 'multiSelect',

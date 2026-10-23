@@ -1,12 +1,15 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HardDrive, TrendingUp, Copy, Archive } from 'lucide-react';
+import type { LibraryRoiQueryInput } from '@tracearr/shared';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { type TimeRangePeriod } from '@/components/ui/time-range-picker';
+import { formatCustomRange } from '@/lib/dateFormat';
 import {
   ErrorState,
   InlineErrorState,
@@ -48,16 +51,20 @@ export function LibraryStorage() {
   // Pagination state for tables
   const [duplicatesPage, setDuplicatesPage] = useState(1);
   const [roiPage, setRoiPage] = useState(1);
+  const rangeKey = `${apiPeriod}:${startDate}:${endDate}`;
+  const [prevRangeKey, setPrevRangeKey] = useState(rangeKey);
+  if (prevRangeKey !== rangeKey) {
+    setPrevRangeKey(rangeKey);
+    setRoiPage(1);
+  }
 
   // Storage trend chart toggle
   const [showPredictions, setShowPredictions] = useState(true);
 
   // ROI sorting and filtering state - default to high ROI first
-  const [roiSortBy, setRoiSortBy] = useState<
-    'watch_hours_per_gb' | 'value_score' | 'file_size' | 'title'
-  >('watch_hours_per_gb');
+  const [roiSortBy, setRoiSortBy] = useState<LibraryRoiQueryInput['sortBy']>('watch_hours_per_gb');
   const [roiSortOrder, setRoiSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [roiMediaType, setRoiMediaType] = useState<'all' | 'movie' | 'show' | 'artist'>('all');
+  const [roiMediaType, setRoiMediaType] = useState<LibraryRoiQueryInput['mediaType']>('all');
 
   // Fan out storage per server - storage endpoint is single-server only
   const storageMulti = useMultiServerQuery(selectedServerIds, (id) => ({
@@ -182,6 +189,9 @@ export function LibraryStorage() {
   const roi = useLibraryRoi(
     selectedServerIds,
     null,
+    apiPeriod,
+    startDate,
+    endDate,
     roiPage,
     10,
     roiMediaType === 'all' ? undefined : roiMediaType,
@@ -271,6 +281,16 @@ export function LibraryStorage() {
       </div>
     );
   }
+
+  const presetRangeLabels: Partial<Record<TimeRangePeriod, string>> = {
+    week: t('common:periods.last7Days'),
+    year: t('common:periods.lastYear'),
+    all: t('common:time.allTime'),
+  };
+  const rangeLabel =
+    timeRange.period === 'custom' && timeRange.startDate && timeRange.endDate
+      ? formatCustomRange(timeRange.startDate, timeRange.endDate)
+      : (presetRangeLabels[timeRange.period] ?? t('common:periods.last30Days'));
 
   // Confidence badge applies only in single-server mode
   const singleServerConfidence = singleStorageEntry?.data?.predictions.confidence;
@@ -477,7 +497,9 @@ export function LibraryStorage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-medium">{t('library.storage.contentROI')}</CardTitle>
-          <p className="text-muted-foreground text-sm">{t('library.storage.contentROIDesc')}</p>
+          <p className="text-muted-foreground text-sm">
+            {t('library.storage.contentROIDesc')} · {rangeLabel}
+          </p>
           {roi.data?.summary && (
             <CardAction className="text-right">
               <p className="text-2xl font-bold">{roi.data.summary.avgWatchHoursPerGb.toFixed(2)}</p>

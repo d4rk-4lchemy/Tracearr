@@ -1,17 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { parseChartDate, buildPerServerSeries } from './chartUtils';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import Highcharts from 'highcharts';
+import { buildPerServerSeries, chartLang } from './chartUtils';
 
-describe('parseChartDate', () => {
-  it('parses an ISO date string to local midnight timestamp', () => {
-    const ts = parseChartDate('2026-01-28');
-    expect(ts).toBe(new Date('2026-01-28T00:00:00').getTime());
-  });
-
-  it('parses a PostgreSQL timestamp with space separator', () => {
-    const ts = parseChartDate('2026-01-28 05:00:00+00');
-    expect(ts).toBe(new Date('2026-01-28T05:00:00+00:00').getTime());
-  });
-});
+vi.mock('@tracearr/translations', () => ({
+  getCurrentLanguage: () => 'en',
+}));
 
 describe('buildPerServerSeries', () => {
   const servers = [
@@ -82,5 +75,21 @@ describe('buildPerServerSeries', () => {
   it('returns an empty array when no servers are provided', () => {
     const series = buildPerServerSeries(rows, [], (r) => [0, r.count]);
     expect(series).toHaveLength(0);
+  });
+});
+
+describe('chartLang', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('formats dates for the chosen region but keeps the browser number separators', () => {
+    localStorage.setItem('tracearr_date_region', 'SE');
+    const lang = chartLang();
+    expect(lang.locale).toBe('en-SE-u-ca-gregory-nu-latn');
+
+    const chart = Highcharts.chart(document.createElement('div'), { lang });
+    expect(chart.numberFormatter(1234.5, 1)).toBe('1,234.5');
+    chart.destroy();
   });
 });

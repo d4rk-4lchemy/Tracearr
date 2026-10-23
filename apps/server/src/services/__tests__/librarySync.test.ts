@@ -47,8 +47,13 @@ vi.mock('../automations/events/producers.js', () => ({
 }));
 
 vi.mock('../../jobs/sessionIdentityBackfill.js', () => ({
+  IDENTITY_PASSES_VERSION: 1,
   backfillSessionIdentityBatch: vi.fn().mockResolvedValue({ updated: 0, oldest: null }),
   hasStampableSessionsBefore: vi.fn().mockResolvedValue(false),
+  fullScanFloors: vi.fn().mockResolvedValue(new Map()),
+  unhandledGoneKeyFloors: vi.fn().mockResolvedValue(new Map()),
+  markGoneKeyFloorsHandled: vi.fn().mockResolvedValue(undefined),
+  hasConfirmedAbsentTrackedRows: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('../../jobs/maintenanceQueue.js', () => ({
@@ -64,6 +69,7 @@ vi.mock('../settings.js', () => ({
   getSetting: vi.fn(),
   getSettings: vi.fn(),
   setImportedHistoryLinkState: vi.fn(),
+  setSetting: vi.fn(),
 }));
 
 vi.mock('../../jobs/importedHistoryLinking.js', () => ({
@@ -78,6 +84,7 @@ vi.mock('../../jobs/importedHistoryLinking.js', () => ({
 vi.mock('../../db/timescale.js', async (importOriginal) => ({
   ...(await importOriginal<typeof TimescaleModule>()),
   getSessionsCompressionHorizon: vi.fn().mockResolvedValue(null),
+  refreshAggregates: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Import after mocking
@@ -87,18 +94,24 @@ import { libraries as librariesTable } from '../../db/schema.js';
 import { createMediaServerClient } from '../mediaServer/index.js';
 import { reconcileMediaDuplicates, resolveMediaBatch } from '../library/mediaResolutionService.js';
 import {
+  IDENTITY_PASSES_VERSION,
   backfillSessionIdentityBatch,
   hasStampableSessionsBefore,
+  hasConfirmedAbsentTrackedRows,
+  unhandledGoneKeyFloors,
+  markGoneKeyFloorsHandled,
+  fullScanFloors,
 } from '../../jobs/sessionIdentityBackfill.js';
 import { maybeEnqueueMaintenanceJob } from '../../jobs/maintenanceQueue.js';
 import { getHeavyOpsStatus } from '../../jobs/heavyOpsLock.js';
 import { listPlexServers } from '../../jobs/importedHistoryLinking.js';
-import { getSessionsCompressionHorizon } from '../../db/timescale.js';
+import { getSessionsCompressionHorizon, refreshAggregates } from '../../db/timescale.js';
 import {
   getImportedHistoryLinkState,
   getSetting,
   getSettings,
   setImportedHistoryLinkState,
+  setSetting,
 } from '../settings.js';
 import {
   LibrarySyncService,
@@ -455,7 +468,9 @@ beforeEach(() => {
   _resetReconcileThrottleForTests();
   vi.mocked(getImportedHistoryLinkState).mockResolvedValue(LINK_DONE as never);
   vi.mocked(getSettings).mockResolvedValue(NO_TAUTULLI as never);
-  vi.mocked(getSetting).mockResolvedValue(0 as never);
+  // Settings read as a current install: the passes version is the code's, counters are zero.
+  vi.mocked(getSetting).mockImplementation((async (key: string) =>
+    key === 'identityPassesVersion' ? IDENTITY_PASSES_VERSION : 0) as never);
   vi.mocked(listPlexServers).mockResolvedValue([]);
 });
 
@@ -667,6 +682,252 @@ describe('LibrarySyncService', () => {
       expect(hasStampableSessionsBefore).not.toHaveBeenCalled();
     });
 
+    it('runs the identity tail once after an upgrade added a pass, even when the sync upserted nothing', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const idle = () => {
+        setupSelectForIncrementalTest(mockServer);
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          items: [],
+          totalCount: 0,
+        });
+      };
+      vi.mocked(getSetting).mockImplementation((async (key: string) =>
+        key === 'identityPassesVersion' ? IDENTITY_PASSES_VERSION - 1 : 0) as never);
+
+      // Compressed history: the walk is queued without the probe, under the enqueue floor.
+      idle();
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      await service.syncServer(mockServer.id);
+      expect(backfillSessionIdentityBatch).toHaveBeenCalledTimes(1);
+      expect(backfillSessionIdentityBatch).toHaveBeenCalledWith(
+        10000,
+        { start: new Date('2026-07-01T00:00:00.000Z') },
+        undefined,
+        { resolveImports: true, absentKeyFloors: new Map() }
+      );
+      expect(hasStampableSessionsBefore).not.toHaveBeenCalled();
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledWith(
+        'backfill_session_identity',
+        'system',
+        { trigger: 'auto' }
+      );
+      expect(setSetting).not.toHaveBeenCalledWith('identityPassesVersion', expect.anything());
+
+      // Nothing compressed: the inline batch covered everything, so the version is stamped here.
+      _resetAutoBackfillThrottleForTests();
+      idle();
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(null);
+      await service.syncServer(mockServer.id);
+      expect(backfillSessionIdentityBatch).toHaveBeenCalledTimes(2);
+      expect(setSetting).toHaveBeenCalledWith('identityPassesVersion', IDENTITY_PASSES_VERSION);
+    });
+
+    it('follows a full inline batch from its cursor when nothing is compressed, stamping the version only once a batch comes back short', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [],
+        totalCount: 0,
+      });
+      vi.mocked(getSetting).mockImplementation((async (key: string) =>
+        key === 'identityPassesVersion' ? IDENTITY_PASSES_VERSION - 1 : 0) as never);
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(null);
+      const cursor = [null, null, null, '2026-05-01T00:00:00.000Z'];
+      vi.mocked(backfillSessionIdentityBatch)
+        .mockResolvedValueOnce({
+          updated: 10000,
+          examined: 10000,
+          oldest: new Date('2026-05-01T00:00:00.000Z'),
+          cursor,
+        } as never)
+        .mockResolvedValueOnce({
+          updated: 40,
+          examined: 40,
+          oldest: new Date('2026-04-02T00:00:00.000Z'),
+          cursor: [null, null, null, null],
+        } as never);
+
+      await service.syncServer(mockServer.id);
+
+      expect(backfillSessionIdentityBatch).toHaveBeenCalledTimes(2);
+      expect(backfillSessionIdentityBatch).toHaveBeenLastCalledWith(10000, undefined, cursor, {
+        resolveImports: true,
+        absentKeyFloors: new Map(),
+      });
+      expect(refreshAggregates).toHaveBeenCalledWith({
+        startTime: new Date('2026-04-02T00:00:00.000Z'),
+        endTime: expect.any(Date),
+      });
+      expect(setSetting).toHaveBeenCalledWith('identityPassesVersion', IDENTITY_PASSES_VERSION);
+    });
+
+    it('resolves tracked plays on confirmed-gone keys in the tail without a library change, and queues the walk for compressed ones', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [],
+        totalCount: 0,
+      });
+      const floors = new Map([[mockServer.id, new Date('2026-09-01T00:00:00.000Z')]]);
+      const windows = new Map([
+        [mockServer.id, { floor: new Date('2026-09-01T00:00:00.000Z'), after: null }],
+      ]);
+      vi.mocked(fullScanFloors).mockResolvedValue(floors);
+      vi.mocked(unhandledGoneKeyFloors).mockResolvedValue(windows);
+      vi.mocked(hasConfirmedAbsentTrackedRows).mockResolvedValue(true);
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+
+      await service.syncServer(mockServer.id);
+
+      expect(backfillSessionIdentityBatch).toHaveBeenCalledWith(
+        10000,
+        { start: new Date('2026-07-01T00:00:00.000Z') },
+        undefined,
+        { resolveImports: true, absentKeyFloors: windows }
+      );
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledWith(
+        'backfill_session_identity',
+        'system',
+        { trigger: 'auto' }
+      );
+      // Rows below the horizon are the walk's to finish; it marks the floor when it completes.
+      expect(markGoneKeyFloorsHandled).not.toHaveBeenCalled();
+
+      // Once the walk has handled the floor, a tail with nothing else to do runs no batch and queues nothing.
+      vi.mocked(unhandledGoneKeyFloors).mockResolvedValue(new Map());
+      vi.mocked(hasConfirmedAbsentTrackedRows).mockResolvedValue(false);
+      vi.clearAllMocks();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [],
+        totalCount: 0,
+      });
+      await service.syncServer(mockServer.id);
+      expect(backfillSessionIdentityBatch).not.toHaveBeenCalled();
+      expect(maybeEnqueueMaintenanceJob).not.toHaveBeenCalled();
+      vi.mocked(fullScanFloors).mockResolvedValue(new Map());
+    });
+
+    it('marks a gone-key floor handled only once nothing below the horizon is owed and the inline batch was not full', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      const idle = () => {
+        setupSelectForIncrementalTest(mockServer);
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          items: [],
+          totalCount: 0,
+        });
+      };
+      const floors = new Map([[mockServer.id, new Date('2026-09-01T00:00:00.000Z')]]);
+      const windows = new Map([
+        [mockServer.id, { floor: new Date('2026-09-01T00:00:00.000Z'), after: null }],
+      ]);
+      vi.mocked(fullScanFloors).mockResolvedValue(floors);
+      vi.mocked(unhandledGoneKeyFloors).mockResolvedValue(windows);
+      vi.mocked(hasConfirmedAbsentTrackedRows).mockResolvedValue(true);
+
+      // Rows below the horizon and the enqueue throttled: the walk is owed, the floor stays open.
+      idle();
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      vi.mocked(maybeEnqueueMaintenanceJob).mockResolvedValueOnce(null);
+      await service.syncServer(mockServer.id);
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(1);
+      expect(markGoneKeyFloorsHandled).not.toHaveBeenCalled();
+
+      // A later tail tries the enqueue again; the walk, not the tail, will mark the floor.
+      _resetAutoBackfillThrottleForTests();
+      idle();
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(
+        new Date('2026-07-01T00:00:00.000Z')
+      );
+      await service.syncServer(mockServer.id);
+      expect(maybeEnqueueMaintenanceJob).toHaveBeenCalledTimes(2);
+      expect(markGoneKeyFloorsHandled).not.toHaveBeenCalled();
+
+      // Nothing compressed but the inline batch came back full: more rows may remain.
+      idle();
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(null);
+      vi.mocked(backfillSessionIdentityBatch).mockResolvedValueOnce({
+        updated: 10000,
+        examined: 10000,
+        oldest: null,
+      } as never);
+      await service.syncServer(mockServer.id);
+      expect(markGoneKeyFloorsHandled).not.toHaveBeenCalled();
+
+      // Nothing compressed and a partial batch: handled.
+      idle();
+      vi.mocked(getSessionsCompressionHorizon).mockResolvedValueOnce(null);
+      vi.mocked(backfillSessionIdentityBatch).mockResolvedValueOnce({
+        updated: 3,
+        examined: 3,
+        oldest: null,
+      } as never);
+      await service.syncServer(mockServer.id);
+      expect(markGoneKeyFloorsHandled).toHaveBeenCalledWith(windows);
+
+      vi.mocked(fullScanFloors).mockResolvedValue(new Map());
+      vi.mocked(unhandledGoneKeyFloors).mockResolvedValue(new Map());
+      vi.mocked(hasConfirmedAbsentTrackedRows).mockResolvedValue(false);
+    });
+
+    it('marks an unhandled floor handled when no gone-key row sits under it', async () => {
+      const service = new LibrarySyncService();
+      const mockServer = createMockServer();
+      setupSelectForIncrementalTest(mockServer);
+      mockInsertChain([{ id: randomUUID() }]);
+      mockDeleteChain();
+      mockTransaction();
+      mockMediaServerClient({
+        libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+        items: [],
+        totalCount: 0,
+      });
+      const floors = new Map([[mockServer.id, new Date('2026-09-01T00:00:00.000Z')]]);
+      const windows = new Map([
+        [mockServer.id, { floor: new Date('2026-09-01T00:00:00.000Z'), after: null }],
+      ]);
+      vi.mocked(fullScanFloors).mockResolvedValue(floors);
+      vi.mocked(unhandledGoneKeyFloors).mockResolvedValue(windows);
+      vi.mocked(hasConfirmedAbsentTrackedRows).mockResolvedValue(false);
+
+      await service.syncServer(mockServer.id);
+
+      expect(backfillSessionIdentityBatch).not.toHaveBeenCalled();
+      expect(markGoneKeyFloorsHandled).toHaveBeenCalledWith(windows);
+      vi.mocked(fullScanFloors).mockResolvedValue(new Map());
+      vi.mocked(unhandledGoneKeyFloors).mockResolvedValue(new Map());
+    });
+
     it('skips the identity tail while an import or maintenance job holds the heavy-ops lock', async () => {
       const service = new LibrarySyncService();
       const mockServer = createMockServer();
@@ -825,7 +1086,10 @@ describe('LibrarySyncService', () => {
       // the expensive probe must not run at all.
       expect(hasStampableSessionsBefore).not.toHaveBeenCalled();
       expect(maybeEnqueueMaintenanceJob).not.toHaveBeenCalled();
-      expect(backfillSessionIdentityBatch).toHaveBeenCalledWith(10000, undefined);
+      expect(backfillSessionIdentityBatch).toHaveBeenCalledWith(10000, undefined, undefined, {
+        resolveImports: false,
+        absentKeyFloors: new Map(),
+      });
     });
 
     it('leaves the maintenance queue alone when nothing is left below the horizon', async () => {
@@ -1097,6 +1361,67 @@ describe('LibrarySyncService', () => {
       expect(client.getLibraryItems).toHaveBeenCalledTimes(3); // count probe + 2 pages
       expect(results[0]!.itemsProcessed).toBe(1);
       expect(results[0]!.itemsAdded).toBe(1);
+    });
+
+    describe('page pacing', () => {
+      async function runTwoPageScan(pageMs: number) {
+        const service = new LibrarySyncService();
+        const mockServer = createMockServer();
+        let selectCallCount = 0;
+        vi.mocked(db.select).mockImplementation(() => {
+          selectCallCount++;
+          const first = () => Promise.resolve(selectCallCount === 1 ? [mockServer] : []);
+          const chain = {
+            from: vi.fn().mockReturnThis(),
+            innerJoin: vi.fn().mockReturnThis(),
+            where: vi
+              .fn()
+              .mockImplementation(() =>
+                Object.assign(Promise.resolve([]), { limit: vi.fn().mockImplementation(first) })
+              ),
+            limit: vi.fn().mockImplementation(first),
+            returning: vi.fn().mockResolvedValue([]),
+          };
+          return chain as never;
+        });
+        mockInsertChain([{ id: randomUUID() }]);
+        mockDeleteChain();
+        mockTransaction();
+        const client = mockMediaServerClient({
+          libraries: [createMockLibrary({ id: '1', name: 'Movies' })],
+          totalCount: 300,
+        });
+        client.getLibraryItems = vi.fn().mockImplementation(async (_id: string, opts?: unknown) => {
+          const { offset } = (opts ?? {}) as { offset?: number };
+          if (offset === undefined) return { items: [], totalCount: 300 };
+          if (pageMs > 0) await new Promise((resolve) => setTimeout(resolve, pageMs));
+          return {
+            items: [createMockLibraryItem({ ratingKey: `item-${offset}` })],
+            totalCount: 300,
+            rawCount: offset === 0 ? 200 : 100,
+          };
+        });
+
+        const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+        await service.syncServer(mockServer.id);
+        expect(client.getLibraryItems).toHaveBeenCalledTimes(3);
+        return setTimeoutSpy.mock.calls
+          .map(([, ms]) => ms)
+          .filter((ms): ms is number => typeof ms === 'number' && ms > 0 && ms <= 150);
+      }
+
+      it('waits the full pause after a page the server answered instantly', async () => {
+        const pauses = await runTwoPageScan(0);
+
+        expect(pauses).toHaveLength(1);
+        expect(pauses[0]).toBeGreaterThan(0);
+      });
+
+      it('adds no pause after a page that took longer than the pause', async () => {
+        const pauses = await runTwoPageScan(200);
+
+        expect(pauses).toEqual([]);
+      });
     });
 
     it('should skip photo libraries during sync', async () => {

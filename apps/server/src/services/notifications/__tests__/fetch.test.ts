@@ -51,6 +51,21 @@ describe('deliverFetch', () => {
     );
   });
 
+  it('names the host and every address tried when the connection fails', async () => {
+    const cause = new AggregateError([
+      new Error('connect ETIMEDOUT 149.154.167.220:443'),
+      new Error('connect ENETUNREACH 2001:67c:4e8:f004::9:443'),
+    ]);
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed', { cause })));
+    const error = await deliverFetch('https://api.telegram.org/bot1:x/sendMessage', {}, ctx).catch(
+      (e: unknown) => e as Error
+    );
+    expect(error?.message).toBe(
+      'D: could not reach api.telegram.org: connect ETIMEDOUT 149.154.167.220:443; connect ENETUNREACH 2001:67c:4e8:f004::9:443'
+    );
+    expect(error?.cause).toBe(cause);
+  });
+
   it('resolves on 2xx', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     await expect(

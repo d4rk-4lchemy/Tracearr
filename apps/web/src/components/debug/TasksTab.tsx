@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatInterval } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import { debugFetch } from '@/lib/debugFetch';
 
@@ -103,7 +104,9 @@ function formatSchedule(schedule: string, t: Translate): string {
   const everyMatch = schedule.match(/^every (\d+)ms$/);
   if (everyMatch?.[1]) {
     const ms = parseInt(everyMatch[1], 10);
-    return t('debug.tasksTab.every', { interval: formatInterval(ms, t) });
+    return t('debug.tasksTab.every', {
+      interval: formatInterval(ms, t('debug.tasksTab.eventDriven')),
+    });
   }
 
   // Handle common cron patterns
@@ -114,16 +117,6 @@ function formatSchedule(schedule: string, t: Translate): string {
   }
 
   return schedule;
-}
-
-function formatInterval(ms: number, t: Translate): string {
-  if (ms === 0) return t('debug.tasksTab.eventDriven');
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = seconds / 60;
-  if (minutes < 60) return `${minutes}m`;
-  const hours = minutes / 60;
-  return `${hours}h`;
 }
 
 export function TasksTab() {
@@ -283,7 +276,7 @@ export function TasksTab() {
                       <td className="py-2.5 pr-4 font-medium">{service.name}</td>
                       <td className="text-muted-foreground py-2.5 pr-4">{service.description}</td>
                       <td className="text-muted-foreground py-2.5 pr-4">
-                        {formatInterval(service.intervalMs, t)}
+                        {formatInterval(service.intervalMs, t('debug.tasksTab.eventDriven'))}
                       </td>
                       <td className="py-2.5">
                         {service.running ? (

@@ -9,10 +9,6 @@ const OPTIONS: ComboboxOption[] = ZONES.map((zone) => ({
   group: zone.includes('/') ? zone.slice(0, zone.indexOf('/')) : zone,
 }));
 
-export function browserTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
-}
-
 /** A stored alias the browser does not list (US/Eastern) is kept as its own option, so the picker never blanks a saved value. */
 export function TimezoneSelect({
   value,

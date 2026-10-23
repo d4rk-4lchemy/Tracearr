@@ -23,6 +23,7 @@ import {
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { serverUsers, sessions, users } from '../../db/schema.js';
+import { sessionRowById } from '../../db/sessionRow.js';
 import { toRuleSession } from '../../services/automations/events/contextAssembly.js';
 import { dispatch } from '../../services/automations/events/dispatcher.js';
 import { matchesTrigger } from '../../services/automations/events/evaluate.js';
@@ -1141,14 +1142,7 @@ export async function confirmAndPersistSession(
         lastPausedAt: pendingData.lastPausedAt ? new Date(pendingData.lastPausedAt) : null,
         ...(latestProgressMs > 0 && { progressMs: latestProgressMs }),
       })
-      .where(
-        and(
-          eq(sessions.id, result.insertedSession.id),
-          // started_at is the compression orderby; without it an id-only write reads every
-          // compressed batch of the hypertable
-          gte(sessions.startedAt, new Date(result.insertedSession.startedAt.getTime() - 60_000))
-        )
-      );
+      .where(sessionRowById(result.insertedSession));
 
     // Update the returned session object to reflect the correct values
     result.insertedSession.startedAt = actualStartedAt;
@@ -1231,13 +1225,7 @@ export async function stopSessionAtomic(input: SessionStopInput): Promise<Sessio
           shortSession,
           ...(forceStopped && { forceStopped: true }),
         })
-        .where(
-          and(
-            eq(sessions.id, session.id),
-            gte(sessions.startedAt, new Date(session.startedAt.getTime() - 60_000)),
-            isNull(sessions.stoppedAt)
-          )
-        )
+        .where(and(sessionRowById(session), isNull(sessions.stoppedAt)))
         .returning({ id: sessions.id });
 
       wasUpdated = result.length > 0;

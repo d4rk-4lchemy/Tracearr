@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/table';
 import { ServerBadge } from '@/components/server';
 import { EmptyState } from '@/components/ui/empty-state';
-import { BingeScoreBadge } from './badges';
 
 interface BingeHighlightsTableProps {
   data: BingeShow[] | undefined;
@@ -75,7 +74,7 @@ export function BingeHighlightsTable({
             : undefined;
 
           return (
-            <TableRow key={show.showTitle} style={accentStyle}>
+            <TableRow key={show.showMediaId} style={accentStyle}>
               <TableCell>
                 <span className="font-medium">{show.showTitle}</span>
               </TableCell>
@@ -99,12 +98,7 @@ export function BingeHighlightsTable({
                   </span>
                 </div>
               </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{show.bingeScore.toFixed(0)}</span>
-                  <BingeScoreBadge score={show.bingeScore} />
-                </div>
-              </TableCell>
+              <TableCell className="font-medium">{show.bingeScore.toFixed(0)}</TableCell>
               <TableCell className="text-muted-foreground">{show.maxEpisodesInOneDay}</TableCell>
             </TableRow>
           );

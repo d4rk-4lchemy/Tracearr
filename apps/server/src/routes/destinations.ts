@@ -70,10 +70,16 @@ function assertSafeUrls(kind: DestinationKind, config: Record<string, unknown>):
 }
 
 /** Code and message only: a TLS altname error carries the whole peer certificate, and the config holds secrets. */
-function testFailure(error: unknown): { code?: string; message: string } {
+function testFailure(error: unknown): { code?: string; message: string; errors?: string[] } {
   const failure = error instanceof Error && error.cause instanceof Error ? error.cause : error;
   if (!(failure instanceof Error)) return { message: String(failure) };
-  return { code: (failure as { code?: string }).code, message: failure.message };
+  return {
+    code: (failure as { code?: string }).code,
+    message: failure.message,
+    ...(failure instanceof AggregateError && {
+      errors: failure.errors.map((e: unknown) => (e instanceof Error ? e.message : String(e))),
+    }),
+  };
 }
 
 const unsavedTestSchema = z.strictObject({

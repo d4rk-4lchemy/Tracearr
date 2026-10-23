@@ -8,8 +8,8 @@ import {
   type PlaysBreakdownOptions,
   type PlaysGroupBy,
   type StatsTimeRange,
-  getBrowserTimezone,
 } from '@/lib/api';
+import { browserTimeZone } from '@/lib/dateFormat';
 
 // Re-export for backwards compatibility and convenience
 export type { StatsTimeRange };
@@ -19,7 +19,7 @@ export function useDashboardStats(
   options?: { enabled?: boolean; keepPrevious?: boolean }
 ) {
   // Include timezone in cache key since "today" varies by timezone
-  const timezone = getBrowserTimezone();
+  const timezone = browserTimeZone();
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery({
     queryKey: ['stats', 'dashboard', serverIdsKey, timezone],
@@ -32,7 +32,7 @@ export function useDashboardStats(
 }
 
 export function useMyStats() {
-  const timezone = getBrowserTimezone();
+  const timezone = browserTimeZone();
   return useQuery({
     queryKey: ['stats', 'me', timezone],
     queryFn: () => api.stats.me(),
@@ -57,7 +57,7 @@ export function usePlaysStats(
   options?: { groupBy?: PlaysGroupBy }
 ) {
   // Include timezone in cache key since plays are grouped by local day
-  const timezone = getBrowserTimezone();
+  const timezone = browserTimeZone();
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   const groupBy = options?.groupBy;
   return useQuery({
@@ -109,7 +109,7 @@ export function usePlaysByDayOfWeek(
   options: PlaysBreakdownOptions = {}
 ) {
   // Include timezone in cache key since day-of-week varies by timezone
-  const timezone = getBrowserTimezone();
+  const timezone = browserTimeZone();
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   const { self = false, groupBy } = options;
   return useQuery({
@@ -126,7 +126,7 @@ export function usePlaysByHourOfDay(
   options: PlaysBreakdownOptions = {}
 ) {
   // Include timezone in cache key since hour-of-day varies by timezone
-  const timezone = getBrowserTimezone();
+  const timezone = browserTimeZone();
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   const { self = false, groupBy } = options;
   return useQuery({
@@ -162,7 +162,7 @@ export function usePeople(
 ) {
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery({
-    queryKey: ['stats', 'people', timeRange, serverIdsKey, opts, getBrowserTimezone()],
+    queryKey: ['stats', 'people', timeRange, serverIdsKey, opts, browserTimeZone()],
     queryFn: () => api.stats.people(timeRange, serverIds, opts),
     placeholderData: keepPreviousData,
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -329,7 +329,7 @@ export function useBandwidthDaily(
   serverUserId?: string
 ) {
   // Include timezone in cache key since bandwidth is grouped by local day
-  const timezone = getBrowserTimezone();
+  const timezone = browserTimeZone();
   const serverIdsKey = serverScopeKey(serverScopeFromIds(serverIds));
   return useQuery({
     queryKey: ['stats', 'bandwidth-daily', timeRange, serverIdsKey, serverUserId, timezone],

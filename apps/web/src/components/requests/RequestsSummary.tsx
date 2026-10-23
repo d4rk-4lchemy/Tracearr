@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { UserRequestsSummary } from '@tracearr/shared';
-import { formatDuration, formatPercent } from '@/lib/formatters';
+import { formatPercent } from '@/lib/formatters';
+import { formatDuration } from '@/lib/dateFormat';
 
 interface RequestsSummaryProps {
   summary: UserRequestsSummary;

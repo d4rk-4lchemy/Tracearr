@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { InlineErrorState } from '@/components/library/ErrorState';
-import { formatCompactAge } from '@/lib/formatters';
+import { formatCompactAge } from '@/lib/dateFormat';
 import { formatNumber } from '@/components/ui/stat-card';
 import { getAvatarUrl } from '@/components/users/utils';
 

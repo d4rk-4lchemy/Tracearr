@@ -4,6 +4,7 @@ import * as React from 'react';
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { DayPicker, getDefaultClassNames, type DayButton } from 'react-day-picker';
 
+import { formatDate, getWeekStart } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 
@@ -55,8 +56,11 @@ function Calendar({
         className
       )}
       captionLayout={captionLayout}
+      weekStartsOn={getWeekStart()}
       formatters={{
-        formatMonthDropdown: (date) => date.toLocaleString('default', { month: 'short' }),
+        formatCaption: (date) => formatDate(date, { month: 'long', year: 'numeric' }),
+        formatWeekdayName: (date) => formatDate(date, { weekday: 'short' }),
+        formatMonthDropdown: (date) => formatDate(date, { month: 'short' }),
         ...formatters,
       }}
       classNames={{

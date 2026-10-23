@@ -1,5 +1,5 @@
 import type { HourOfDayStats } from '@tracearr/shared';
-import { getHour12 } from '@/lib/timeFormat';
+import { formatHourOfDay } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 
 interface HourStripProps {
@@ -13,13 +13,6 @@ interface HourStripProps {
 }
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
-
-export function formatHour(hour: number): string {
-  return new Date(2024, 0, 1, hour).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    hour12: getHour12(),
-  });
-}
 
 /** The busiest hour, or null when nothing was played. */
 export function peakHourOf(data: HourOfDayStats[]): number | null {
@@ -47,10 +40,10 @@ export function HourStrip({ data, peakHour, peakLabel, comparePeakLabel, label }
               key={hour}
               data-hour={hour}
               data-peak={isPeak || undefined}
-              title={`${formatHour(hour)}: ${count}`}
+              title={`${formatHourOfDay(hour)}: ${count}`}
               className={cn('bg-muted relative h-6 rounded-sm', isPeak && 'ring-foreground ring-1')}
             >
-              <span className="sr-only">{`${formatHour(hour)}: ${count}`}</span>
+              <span className="sr-only">{`${formatHourOfDay(hour)}: ${count}`}</span>
               <div
                 className="bg-primary absolute inset-0 rounded-sm"
                 style={{ opacity: max > 0 ? count / max : 0 }}

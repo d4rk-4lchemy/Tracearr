@@ -32,6 +32,11 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+vi.mock('sharp', async (importOriginal) => {
+  const real = (await importOriginal<typeof import('sharp')>()).default;
+  return { default: Object.assign(vi.fn(real), real) };
+});
+
 vi.mock('../imageCacheGuard.js', () => ({
   cacheWriteAllowed: vi.fn(async () => true),
   noteCacheWrite: vi.fn(),
@@ -728,6 +733,10 @@ describe('persistDominantColorIfNeeded', () => {
       .png()
       .toBuffer();
 
+  beforeEach(() => {
+    mockSelectChain([{ id: 'uncolored-row' }]);
+  });
+
   it('coalesces concurrent persists for the same image into one write', async () => {
     // Fire-and-forget persists from earlier proxyImage tests can settle
     // during this one and hit the shared db.update mock - drain them and
@@ -782,6 +791,39 @@ describe('persistDominantColorIfNeeded', () => {
     await persistDominantColorIfNeeded(randomUUID(), '/thumb/wrapped', await red1x1());
 
     expect(chain.where).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips decode and write when every row for the image already has a color', async () => {
+    const select = mockSelectChain([]);
+    const buffer = await red1x1();
+    vi.mocked(sharp).mockClear();
+    vi.mocked(db.update).mockClear();
+
+    await persistDominantColorIfNeeded(randomUUID(), '/thumb/known', buffer);
+
+    expect(select.limit).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(sharp)).not.toHaveBeenCalled();
+    expect(vi.mocked(db.update)).not.toHaveBeenCalled();
+  });
+
+  it('writes when any row for the image still has no color, using the same predicate', async () => {
+    const select = mockSelectChain([{ id: 'uncolored-row' }]);
+    const chain = mockUpdateChain();
+
+    await persistDominantColorIfNeeded(randomUUID(), '/thumb/unknown', await red1x1());
+
+    expect(chain.set).toHaveBeenCalledWith({ dominantColor: '#ff0000' });
+    expect(chain.where.mock.calls[0]?.[0]).toBe(select.where.mock.calls[0]?.[0]);
+  });
+
+  it('still writes when the fast-path read fails', async () => {
+    const select = mockSelectChain([]);
+    select.limit.mockRejectedValueOnce(new Error('read failed'));
+    const chain = mockUpdateChain();
+
+    await persistDominantColorIfNeeded(randomUUID(), '/thumb/read-failed', await red1x1());
+
+    expect(chain.set).toHaveBeenCalledWith({ dominantColor: '#ff0000' });
   });
 
   it('does not retry non-deadlock failures and never throws', async () => {

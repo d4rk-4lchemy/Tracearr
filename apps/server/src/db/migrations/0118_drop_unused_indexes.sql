@@ -1,0 +1,25 @@
+DROP INDEX IF EXISTS sessions_started_at_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS sessions_server_user_time_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS sessions_server_time_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS sessions_state_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS sessions_media_type_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS sessions_transcode_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS sessions_platform_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_transcode_partial;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_source_resolution;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_source_video_codec;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_source_audio_codec;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_source_audio_channels;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_source_dynamic_range;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_source_video_details_gin;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_stream_audio_codec;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_stream_video_codec;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_transcode_info_gin;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_hw_encoding;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_music_artist;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_live_channel;--> statement-breakpoint
+DROP INDEX IF EXISTS idx_sessions_live_tv_partial;--> statement-breakpoint
+DROP INDEX IF EXISTS users_name_trgm_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS server_users_username_trgm_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS mobile_sessions_refresh_token_idx;--> statement-breakpoint
+DROP INDEX IF EXISTS notification_prefs_mobile_session_idx;

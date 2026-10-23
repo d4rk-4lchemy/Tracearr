@@ -91,6 +91,8 @@ const INTERNAL_DEFAULTS = {
   } as Omit<ImportedHistoryLinkState, 'armedAt'> & { armedAt?: string },
   // Automatic identity backfill walks that failed since the last one that finished; any finished walk resets it.
   identityBackfillAutoAttempts: 0 as number,
+  // The passes version the last finished identity walk ran; below the code's, the next sync tail queues one.
+  identityPassesVersion: 0 as number,
 };
 
 type InternalSettings = typeof INTERNAL_DEFAULTS;

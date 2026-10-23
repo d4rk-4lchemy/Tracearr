@@ -14,11 +14,10 @@ import {
   ItemTitle,
 } from '@/components/ui/item';
 import { Skeleton } from '@/components/ui/skeleton';
-import { dateLabel } from '@/components/settings/shared/dateLabel';
+import { dateLabel, windowLabel } from '@/lib/dateFormat';
 import { useNewsletterSends } from '@/hooks/queries';
 import { countsLine, outcomeVariant, type Translate } from '../newsletterFormat';
 import { SendDetailSheet } from './SendDetailSheet';
-import { windowLabel } from './previewSummary';
 
 export function SendHistory({
   newsletterId,
@@ -27,7 +26,7 @@ export function SendHistory({
   newsletterId: string;
   timezone: string;
 }) {
-  const { t, i18n } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common']);
   // i18next's overload set can't match the simpler Translate shape countsLine expects for its dynamically built keys.
   const translate = t as Translate;
   const [page, setPage] = useState(1);
@@ -74,8 +73,8 @@ export function SendHistory({
                 {t(`newsletters.history.trigger.${send.trigger}`)}
                 {' · '}
                 {t('newsletters.history.window', {
-                  start: windowLabel(send.windowStart, i18n.language, timezone),
-                  end: windowLabel(send.windowEnd, i18n.language, timezone),
+                  start: windowLabel(send.windowStart, timezone),
+                  end: windowLabel(send.windowEnd, timezone),
                 })}
               </ItemTitle>
               <ItemDescription>

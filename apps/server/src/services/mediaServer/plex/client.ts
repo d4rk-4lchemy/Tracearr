@@ -16,6 +16,7 @@ import {
 } from '../../../utils/http.js';
 import { normalizeClient } from '../../../utils/platformNormalizer.js';
 import { assertSafeProbeUrl, SsrfBlockedError } from '../../../utils/ssrf.js';
+import { mapWithConcurrency } from '../../../utils/concurrency.js';
 import type {
   IMediaServerClient,
   IMediaServerClientWithHistory,
@@ -63,6 +64,7 @@ const MISSING_DEVICE_TTL_SECONDS = 60 * 60;
 
 /** ratingKeys per /library/metadata request when filling in genres. */
 const METADATA_BATCH_SIZE = 100;
+const GENRE_LOOKUP_CONCURRENCY = 3;
 
 /**
  * Drops the per-item elements a genre lookup doesn't read; on a real server
@@ -379,20 +381,31 @@ export class PlexClient implements IMediaServerClient, IMediaServerClientWithHis
    */
   private async fillTruncatedGenres(items: MediaLibraryItem[]): Promise<MediaLibraryItem[]> {
     const capped = items.filter((item) => (item.genres?.length ?? 0) >= 2);
-    const fullGenres = new Map<string, string[]>();
-
+    const batches: string[][] = [];
     for (let start = 0; start < capped.length; start += METADATA_BATCH_SIZE) {
-      const ratingKeys = capped
-        .slice(start, start + METADATA_BATCH_SIZE)
-        .map((item) => item.ratingKey);
-      const data = await fetchJson<unknown>(
-        `${this.baseUrl}/library/metadata/${ratingKeys.join(',')}?${GENRE_LOOKUP_PARAMS}`,
-        { headers: this.buildHeaders(), service: 'plex', timeout: 30000 }
-      );
-      for (const [ratingKey, genres] of parseGenresByRatingKey(data)) {
-        fullGenres.set(ratingKey, genres);
-      }
+      batches.push(capped.slice(start, start + METADATA_BATCH_SIZE).map((item) => item.ratingKey));
     }
+
+    // Once a batch fails the whole fill rejects, so the remaining batches are not sent.
+    let failed = false;
+    const batchGenres = await mapWithConcurrency(
+      batches,
+      GENRE_LOOKUP_CONCURRENCY,
+      async (ratingKeys) => {
+        if (failed) return new Map<string, string[]>();
+        try {
+          const data = await fetchJson<unknown>(
+            `${this.baseUrl}/library/metadata/${ratingKeys.join(',')}?${GENRE_LOOKUP_PARAMS}`,
+            { headers: this.buildHeaders(), service: 'plex', timeout: 30000 }
+          );
+          return parseGenresByRatingKey(data);
+        } catch (err) {
+          failed = true;
+          throw err;
+        }
+      }
+    );
+    const fullGenres = new Map(batchGenres.flatMap((genres) => [...genres]));
 
     return items.map((item) => {
       const genres = fullGenres.get(item.ratingKey);

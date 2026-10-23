@@ -1,5 +1,4 @@
-import { format } from 'date-fns';
-import { getTimeFormatString } from '@/lib/timeFormat';
+import { formatDate } from '@/lib/dateFormat';
 
 function parseUtcMs(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -11,5 +10,5 @@ export function formatDispatcharrCatchupClock(value: string | null | undefined):
   const parsedMs = parseUtcMs(value);
   if (parsedMs === null) return '--:--';
 
-  return format(new Date(parsedMs), getTimeFormatString());
+  return formatDate(new Date(parsedMs), { hour: 'numeric', minute: '2-digit' });
 }

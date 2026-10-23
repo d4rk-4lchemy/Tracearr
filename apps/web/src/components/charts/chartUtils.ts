@@ -1,18 +1,18 @@
 import type Highcharts from 'highcharts';
 import type { PlaysMediaGroup, Server } from '@tracearr/shared';
+import { getFormatLocale } from '@/lib/dateFormat';
 
 /**
- * Parse a date string to timestamp for Highcharts datetime axis.
- * Handles ISO dates ("YYYY-MM-DD") and PostgreSQL timestamps ("YYYY-MM-DD HH:mm:ss+TZ").
+ * Dates in the person's formatting locale. Highcharts would format numbers in that locale too,
+ * so the browser's separators are pinned to keep numbers matching the rest of the app.
  */
-export function parseChartDate(dateStr: string): number {
-  if (dateStr.includes(' ')) {
-    // PostgreSQL timestamp: "2026-01-28 05:00:00+00" -> "2026-01-28T05:00:00+00:00"
-    const normalized = dateStr.replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
-    return new Date(normalized).getTime();
-  }
-  // Date-only: "2026-01-28" -> local midnight
-  return new Date(dateStr + 'T00:00:00').getTime();
+export function chartLang(): Highcharts.LangOptions {
+  const parts = new Intl.NumberFormat().formatToParts(1234567.5);
+  return {
+    locale: getFormatLocale(),
+    decimalPoint: parts.find((part) => part.type === 'decimal')?.value,
+    thousandsSep: parts.find((part) => part.type === 'group')?.value,
+  };
 }
 
 /**

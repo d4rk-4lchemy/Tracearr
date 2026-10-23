@@ -1,5 +1,59 @@
 # Tracearr Fork Information
 
+## October 23, 2026 — Tracearr 3.1.1 upstream merge
+
+Upstream `main` at `908871aea` brings 3.1.0/3.1.1: library Watch/ROI/patterns
+follow the selected range and media identity, imported history gains title-based
+identity resolution, and session/history writes use shared time-bounded row
+predicates. Termination logs store session start times, user pages batch session
+counts, unused indexes are dropped and library sync pacing accounts for work
+already elapsed. Telegram connection/retry handling, share previews, regional
+date formatting/week starts and pinned Node 24.22.1 images are retained.
+Upstream migrations `0118_drop_unused_indexes` and
+`0119_termination_log_session_started_at`, snapshots and journal remain
+byte-for-byte aligned; the separate Dispatcharr migration ledger is unchanged.
+
+Unknown-key library discovery is guarded by `supportsMediaLibrary`, so a
+Dispatcharr VOD session cannot schedule catalog work. A poller regression
+exercises that REST fallback path. The fork's authoritative stop retry carries
+the original session start time with its exact active-session ID. Catch-up
+clocks use upstream's new shared date formatter, keeping invalid-EPG placeholders
+and time-format preferences. The Watch tab adopts the new summary while keeping
+library-capable server scope and an explicit empty-library state; component
+coverage includes Dispatcharr-only selection. Existing Dispatcharr auth/settings,
+leader-owned realtime/polling, pending/catch-up rollover and termination,
+stable device identity, Live TV Activity, uncropped artwork/cache markers,
+library/Seerr exclusions and two-channel versions remain intact.
+
+Exactly the existing PR-only CI and dual-registry release workflows remain
+unchanged, including the four native-build publication gate. Helm, Renovate and
+Vouch changes are excluded. Both Dockerfiles adopt upstream's Node image pins
+while preserving fork metadata, fork migrations, basemap generation/prefetch
+and pnpm 12.14.0. All 300 fork-only localized entries survive unchanged.
+Preservation audit: `.tmp/merge-311-preservation-audit.json`.
+
+Full non-Docker CI-equivalent validation passes with Node 24 / pnpm 12.14.0,
+frozen-lockfile install, a cleared Turbo cache and a 4 GB heap. Heavy jobs run
+sequentially on the 8 GB LXC, with two Vitest workers and Turbo concurrency one.
+Lint, typecheck, translations, all five server groups, web, coverage and build
+pass; final lint/typecheck pass after build. Server groups plus web pass 10,881
+tests without skips (unit 2,498; services 4,379; routes 1,362; auth 43;
+security 106; web 2,493). Coverage passes 6,824 tests with 71.95% statements,
+66.50% branches, 75.72% functions and 73.24% lines, meeting all thresholds.
+All 29 locales remain in sync, and all 285 changed supported source/JSON/YAML
+files pass Prettier. Final lint retains the same 709 normalized diagnostics
+and zero errors; runtime warning counts are unchanged. Initial validation
+catches retired formatter imports and two fixture mismatches; complete affected
+jobs pass after correction. Logs: `.tmp/merge-311-<job>-20261023.log`; runners:
+`.tmp/validate-merge-311{,-resume,-resume2,-resume3}.py` and
+`.tmp/finish-merge-311.py`. Final successful job names and warning details are
+recorded in `.tmp/github-ci-warning-reference.md`.
+
+Docker integration/E2E are omitted at the user's request. Docker image builds,
+database upgrade execution and live-provider manual smoke are not performed;
+new library/identity/history SQL, index/migration execution and Node image
+installation remain unverified against running services/images/providers.
+
 ## October 22, 2026 — Tracearr 3.0.0 release upstream merge
 
 Upstream `main` at `e6c1cd9eb` completes the 3.0.0 release with a redesigned
@@ -500,9 +554,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `e6c1cd9eb`
-- Last shared upstream commit found during inspection: `307f421d1` (before merge)
-- Latest upstream commit merged into the current working tree: `e6c1cd9eb`
+- Source branch/SHA inspected: `main` at `908871aea`
+- Last shared upstream commit found during inspection: `e6c1cd9eb` (before merge)
+- Latest upstream commit merged into the current working tree: `908871aea`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

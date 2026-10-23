@@ -22,6 +22,7 @@ import {
 import { MediaServerIcon } from '@/components/icons/MediaServerIcon';
 import { StepBadge } from '@/components/settings/shared/StepBadge';
 import { TimezoneSelect } from '@/components/settings/shared/TimezoneSelect';
+import { browserTimeZone } from '@/lib/dateFormat';
 import { api } from '@/lib/api';
 import { ImportProgressCard, type ImportProgressData } from './ImportProgressCard';
 import type { Server, PlaybackReportingImportProgress } from '@tracearr/shared';
@@ -58,7 +59,7 @@ export function PlaybackReportingImportSection({
   const [checkOldestDate, setCheckOldestDate] = useState<string | undefined>();
   const [checkNewestDate, setCheckNewestDate] = useState<string | undefined>();
 
-  const [timezone, setTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [timezone, setTimezone] = useState(browserTimeZone);
   const [enrichMedia, setEnrichMedia] = useState(true);
   const [importFullRange, setImportFullRange] = useState(false);
 

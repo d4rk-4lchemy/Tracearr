@@ -8,9 +8,9 @@ import {
   type ReleaseChangeType,
   type ReleaseNotesFile,
 } from '@tracearr/shared';
-import { formatDate } from '@tracearr/translations';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { formatDateString } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 
 const ISSUES_URL = 'https://github.com/connorgallopo/Tracearr/issues';
@@ -57,7 +57,7 @@ export function ReleaseSection({ notes, defaultOpen, installed, latest }: Releas
   const { t } = useTranslation(['settings']);
   const [open, setOpen] = useState(defaultOpen);
   const parsed = parseVersion(notes.version);
-  const date = formatDate(new Date(`${notes.date}T00:00:00`));
+  const date = formatDateString(notes.date, { dateStyle: 'medium' });
   const changes = [...notes.changes].sort(
     (a, b) => RELEASE_CHANGE_TYPES.indexOf(a.type) - RELEASE_CHANGE_TYPES.indexOf(b.type)
   );

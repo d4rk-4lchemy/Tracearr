@@ -19,7 +19,8 @@ import {
 } from '@/components/ui/table';
 import { ServerColumnCell } from '@/components/server';
 import { UserCell } from '@/components/users';
-import { formatBytes, safeFormatDistanceToNow } from '@/lib/formatters';
+import { formatBytes } from '@/lib/formatters';
+import { safeFormatDistanceToNow } from '@/lib/dateFormat';
 import { formatLocationCompact } from '@/lib/utils';
 
 const MUTED_DASH = <span className="text-muted-foreground">—</span>;

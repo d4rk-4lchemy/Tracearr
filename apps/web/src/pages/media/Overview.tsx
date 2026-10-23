@@ -50,21 +50,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useServer } from '@/hooks/useServer';
 import { toApiDayParams, useTimeRange } from '@/hooks/useTimeRange';
 import { browseHref } from '@/lib/browseLinks';
-import { formatBytes, formatCompactAge } from '@/lib/formatters';
-import { getHour12 } from '@/lib/timeFormat';
-
-function formatLastUpdated(dateStr: string | null | undefined): string {
-  if (!dateStr) return '';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: getHour12(),
-  });
-}
+import { formatBytes } from '@/lib/formatters';
+import { formatCompactAge, formatLastUpdated } from '@/lib/dateFormat';
 
 /**
  * Aggregate multi-server growth response into a single-server-shaped object.

@@ -4,8 +4,13 @@
 
 import { sql, type SQL } from 'drizzle-orm';
 
-// Count unique plays — COALESCE(reference_id, id) collapses pause/resume chains into one play
-export const PLAY_COUNT = sql<number>`count(distinct coalesce(reference_id, id))::int`;
+// Count unique plays: COALESCE(reference_id, id) collapses pause/resume chains into one play
+export function playCountSql(alias = ''): SQL {
+  const col = alias ? `${alias}.` : '';
+  return sql.raw(`count(distinct coalesce(${col}reference_id, ${col}id))`);
+}
+
+export const PLAY_COUNT = sql<number>`${playCountSql()}::int`;
 
 // A session counts toward plays and watch time once it runs 2 minutes or passes the
 // watched threshold for its media type, so a track or short film played to the end counts.

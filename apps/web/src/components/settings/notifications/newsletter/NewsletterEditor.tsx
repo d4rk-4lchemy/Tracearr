@@ -48,7 +48,7 @@ interface EditorFormProps {
 }
 
 function EditorForm({ seed: initialSeed, newsletter }: EditorFormProps) {
-  const { t, i18n } = useTranslation(['settings', 'common', 'pages']);
+  const { t } = useTranslation(['settings', 'common', 'pages']);
   const translate = t as Translate;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -102,7 +102,7 @@ function EditorForm({ seed: initialSeed, newsletter }: EditorFormProps) {
   const blocker = useUnsavedChanges(dirty);
   const recipientsView = useRecipientsView(state, newsletter?.id ?? null);
   const resolvable = recipientsState(recipientsView.empty, recipientsView.query.data);
-  const schedule = scheduleSummary(state.schedule, state.timezone, translate, i18n.language);
+  const schedule = scheduleSummary(state.schedule, state.timezone, translate);
   const summary = resolvable.known
     ? translate('newsletters.editor.headerSummary', {
         schedule,

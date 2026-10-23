@@ -7,6 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { invalidateTimescaleStatusCache } from '../db/timescale.js';
 
 const SERIALIZATION_FAILURE = '40001';
 const MAX_ATTEMPTS = 5;
@@ -26,6 +27,7 @@ export async function compressSessionChunks(olderThanDays?: number): Promise<unk
   for (let attempt = 1; ; attempt++) {
     try {
       const result = await db.execute(sql`SELECT compress_chunk(c, true) FROM ${chunks} AS c`);
+      invalidateTimescaleStatusCache();
       return result.rows;
     } catch (error) {
       if (attempt >= MAX_ATTEMPTS || !isSerializationFailure(error)) throw error;

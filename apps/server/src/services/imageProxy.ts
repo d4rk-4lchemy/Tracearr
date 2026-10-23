@@ -290,20 +290,22 @@ export async function persistDominantColorIfNeeded(
   const inFlight = inFlightColorPersists.get(key);
   if (inFlight) return inFlight;
 
+  const missingColor = and(
+    eq(libraryItems.serverId, serverId),
+    eq(libraryItems.thumbPath, imagePath),
+    isNull(libraryItems.dominantColor)
+  );
   const attempt = (async () => {
     try {
+      const uncolored = await db
+        .select({ id: libraryItems.id })
+        .from(libraryItems)
+        .where(missingColor)
+        .limit(1)
+        .catch(() => [{}]);
+      if (uncolored.length === 0) return;
       const hex = await computeDominantColorHex(imageBuffer);
-      const write = () =>
-        db
-          .update(libraryItems)
-          .set({ dominantColor: hex })
-          .where(
-            and(
-              eq(libraryItems.serverId, serverId),
-              eq(libraryItems.thumbPath, imagePath),
-              isNull(libraryItems.dominantColor)
-            )
-          );
+      const write = () => db.update(libraryItems).set({ dominantColor: hex }).where(missingColor);
       try {
         await write();
       } catch (err) {

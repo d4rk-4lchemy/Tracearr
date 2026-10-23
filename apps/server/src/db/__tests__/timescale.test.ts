@@ -23,6 +23,7 @@ import {
   shouldResumeBackfillInsteadOfRebuild,
   getCompressedSessionChunkRanges,
   getSessionsCompressionHorizon,
+  getCachedSessionsCompressionHorizon,
   uncapDecompressionForTx,
   MAX_TUPLES_DECOMPRESSED_GUC,
 } from '../timescale.js';
@@ -573,8 +574,15 @@ describe('compressed sessions chunk catalog', () => {
     );
   }
 
+  function catalogReads(): number {
+    return executeMock().mock.calls.filter((c: unknown[]) =>
+      executedSql(c).includes('timescaledb_information.chunks')
+    ).length;
+  }
+
   beforeEach(() => {
     executeMock().mockReset();
+    invalidateTimescaleStatusCache();
   });
 
   afterEach(() => {
@@ -617,6 +625,45 @@ describe('compressed sessions chunk catalog', () => {
     stubChunks([{ horizon: null }]);
 
     expect(await getSessionsCompressionHorizon()).toBeNull();
+  });
+
+  it('serves the horizon from cache within the TTL', async () => {
+    stubChunks([{ horizon: new Date('2026-03-03T00:00:00.000Z') }]);
+
+    const first = await getCachedSessionsCompressionHorizon();
+    const second = await getCachedSessionsCompressionHorizon();
+
+    expect(first).toEqual(new Date('2026-03-03T00:00:00.000Z'));
+    expect(second).toEqual(first);
+    expect(catalogReads()).toBe(1);
+    expect(executeMock()).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-reads after invalidateTimescaleStatusCache', async () => {
+    stubChunks([{ horizon: new Date('2026-03-03T00:00:00.000Z') }]);
+
+    await getCachedSessionsCompressionHorizon();
+    invalidateTimescaleStatusCache();
+    await getCachedSessionsCompressionHorizon();
+
+    expect(catalogReads()).toBe(2);
+  });
+
+  it('caches a null horizon too', async () => {
+    stubChunks([]);
+
+    expect(await getCachedSessionsCompressionHorizon()).toBeNull();
+    expect(await getCachedSessionsCompressionHorizon()).toBeNull();
+    expect(catalogReads()).toBe(1);
+  });
+
+  it('getSessionsCompressionHorizon never reads the cache', async () => {
+    stubChunks([{ horizon: new Date('2026-03-03T00:00:00.000Z') }]);
+
+    await getCachedSessionsCompressionHorizon();
+    await getSessionsCompressionHorizon();
+
+    expect(catalogReads()).toBe(2);
   });
 });
 

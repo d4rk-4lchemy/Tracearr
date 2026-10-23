@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { UnrecoverableError } from 'bullmq';
+import { DelayedError, UnrecoverableError } from 'bullmq';
 import type * as BullMq from 'bullmq';
 import type { ActiveSession, ViolationWithDetails } from '@tracearr/shared';
 import type * as NotificationQueue from '../notificationQueue.js';
@@ -61,6 +61,7 @@ const {
 }));
 
 vi.mock('bullmq', async (importOriginal) => ({
+  DelayedError: (await importOriginal<typeof BullMq>()).DelayedError,
   UnrecoverableError: (await importOriginal<typeof BullMq>()).UnrecoverableError,
   Queue: vi.fn(function (name: string) {
     const instance: MockQueue = {
@@ -705,6 +706,33 @@ describe('worker processing', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     await expect(runProcessor(job())).rejects.toThrow('502 from discord');
+    error.mockRestore();
+  });
+
+  it('waits out a rate limit without spending an attempt', async () => {
+    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
+    mockDeliver.mockRejectedValue(Object.assign(new Error('429'), { retryAfterMs: 35_000 }));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const moveToDelayed = vi.fn();
+    const before = Date.now();
+
+    await expect(runProcessor(job({ timestamp: before, moveToDelayed }))).rejects.toBeInstanceOf(
+      DelayedError
+    );
+    expect(moveToDelayed.mock.calls[0]?.[0]).toBeGreaterThanOrEqual(before + 35_000);
+    warn.mockRestore();
+  });
+
+  it('fails a rate-limited job as usual once it has waited an hour', async () => {
+    mockGetDestination.mockResolvedValue(destination({ id: 'd1' }));
+    mockDeliver.mockRejectedValue(Object.assign(new Error('429'), { retryAfterMs: 35_000 }));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const moveToDelayed = vi.fn();
+
+    await expect(
+      runProcessor(job({ timestamp: Date.now() - 61 * 60 * 1000, moveToDelayed }))
+    ).rejects.toThrow('429');
+    expect(moveToDelayed).not.toHaveBeenCalled();
     error.mockRestore();
   });
 });

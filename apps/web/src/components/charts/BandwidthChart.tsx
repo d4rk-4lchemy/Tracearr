@@ -13,6 +13,7 @@ import {
   zeroFillSeconds,
 } from './liveStatsAxis';
 import { ChartSkeleton } from '@/components/ui/skeleton';
+import { formatDuration } from '@/lib/dateFormat';
 import { ChartEmpty } from './ChartEmpty';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowUpDown } from 'lucide-react';
@@ -197,11 +198,7 @@ export function ServerBandwidthChart({
             Math.round((Date.now() + clockSkewMs - Number(this.x)) / 1000)
           );
           const timeLabel =
-            secsAgo === 0
-              ? 'Now'
-              : secsAgo >= 60
-                ? `${Math.floor(secsAgo / 60)}m ${secsAgo % 60}s ago`
-                : `${secsAgo}s ago`;
+            secsAgo === 0 ? 'Now' : `${formatDuration(secsAgo * 1000, { style: 'compact' })} ago`;
 
           const rows = matched
             .map(

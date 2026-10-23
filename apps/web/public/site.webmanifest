@@ -1,7 +1,7 @@
 {
   "name": "Tracearr",
   "short_name": "Tracearr",
-  "description": "Streaming access manager for Plex and Jellyfin",
+  "description": "Monitoring and stats for Plex, Jellyfin, and Emby media servers",
   "icons": [
     {
       "src": "./web-app-manifest-192x192.png",

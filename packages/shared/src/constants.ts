@@ -222,9 +222,6 @@ export const REDIS_KEYS = {
   get LIBRARY_PATTERNS() {
     return `${_redisPrefix}tracearr:library:patterns`;
   },
-  get LIBRARY_COMPLETION() {
-    return `${_redisPrefix}tracearr:library:completion`;
-  },
   get LIBRARY_TOP_MOVIES() {
     return `${_redisPrefix}tracearr:library:top-movies`;
   },
@@ -280,6 +277,15 @@ export const REDIS_KEYS = {
   // net is time-based so event-sync bursts can't drag it forward
   LIBRARY_SYNC_FULL_SCAN_AT: (serverId: string, libraryId: string) =>
     `${_redisPrefix}tracearr:library:sync:fullscan:${serverId}:${libraryId}`,
+  // When a full scan of the library last completed. Unlike LIBRARY_SYNC_FULL_SCAN_AT, which an
+  // incremental sync seeds for the full-scan-due clock, this is written by a full scan only, so
+  // it says a rating key absent from the library was absent from the server at that time
+  LIBRARY_SYNC_FULL_SCAN_DONE: (serverId: string, libraryId: string) =>
+    `${_redisPrefix}tracearr:library:sync:fullscan-done:${serverId}:${libraryId}`,
+  // The floor (earliest completed-scan marker across the server's libraries) the sync tail last
+  // handled tracked plays on gone rating keys for; the tail looks again only once it advances
+  LIBRARY_SYNC_GONE_KEYS_HANDLED: (serverId: string) =>
+    `${_redisPrefix}tracearr:library:sync:gonekeys-handled:${serverId}`,
   // Accepted structural shortfall from the last full scan - see COUNT_MISMATCH_* in librarySync.ts
   LIBRARY_SYNC_SHORTFALL: (serverId: string, libraryId: string) =>
     `${_redisPrefix}tracearr:library:sync:shortfall:${serverId}:${libraryId}`,
@@ -396,7 +402,6 @@ export const CACHE_TTL = {
   LIBRARY_WATCH: 300, // 5 minutes
   LIBRARY_ROI: 3600, // 1 hour (ROI changes slowly)
   LIBRARY_PATTERNS: 3600, // 1 hour (patterns change slowly)
-  LIBRARY_COMPLETION: 300, // 5 minutes
   LIBRARY_TOP_MOVIES: 300, // 5 minutes
   LIBRARY_TOP_SHOWS: 300, // 5 minutes
   LIBRARY_CODECS: 300, // 5 minutes

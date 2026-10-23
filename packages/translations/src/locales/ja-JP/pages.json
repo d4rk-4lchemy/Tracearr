@@ -517,14 +517,8 @@
         },
         "columns": {
           "hoursPerGb": "",
-          "value": ""
-        },
-        "category": {
-          "low": "",
-          "moderate": "",
-          "high": ""
-        },
-        "deletionSuggested": ""
+          "lastWatched": ""
+        }
       },
       "matchBadge": {
         "exact": "",
@@ -544,7 +538,7 @@
       "peakHour": "ピーク時間",
       "viewingHours": "表示時間",
       "peak": "ピーク:",
-      "monthlyTrends": "毎月のトレンド",
+      "viewingTrend": "",
       "busiest": "最も印象的な:",
       "quietest": "",
       "bingeHighlights": "一気見ハイライト",
@@ -566,12 +560,6 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "tiers": {
-          "highlyAddictive": "",
-          "addictive": "",
-          "bingeable": "",
-          "casual": ""
         }
       },
       "percentWatchedValue": "",
@@ -671,8 +659,7 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "uniqueItems_other": ""
+        }
       },
       "growth": {
         "empty": {

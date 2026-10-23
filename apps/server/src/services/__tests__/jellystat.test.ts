@@ -1618,6 +1618,10 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
+vi.mock('../library/importedPlayIdentity.js', () => ({
+  resolveImportedPlays: vi.fn(async () => ({ identities: new Map(), ambiguousShows: 0 })),
+}));
+
 vi.mock('../../db/timescale.js', () => ({
   checkAggregateNeedsRebuild: vi.fn().mockResolvedValue({ needsRebuild: false }),
   refreshAggregates: vi.fn().mockResolvedValue(undefined),

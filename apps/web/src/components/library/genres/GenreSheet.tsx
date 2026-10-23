@@ -3,7 +3,8 @@ import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Layers, Library, Play } from 'lucide-react';
 import type { GenreDetailResponse, GenreTitle, LibraryMediaType } from '@tracearr/shared';
-import { formatHour, HourStrip, peakHourOf } from '@/components/charts/HourStrip';
+import { HourStrip, peakHourOf } from '@/components/charts/HourStrip';
+import { formatHourOfDay } from '@/lib/dateFormat';
 import { PlaysChart, priorRangeComparison } from '@/components/charts/PlaysChart';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { PosterThumb } from '@/components/media-browse/PosterThumb';
@@ -177,12 +178,14 @@ function GenreDetailBody({
           peakLabel={
             peakHour === null
               ? undefined
-              : t('pages:userDetail.overview.peak', { hour: formatHour(peakHour) })
+              : t('pages:userDetail.overview.peak', { hour: formatHourOfDay(peakHour) })
           }
           comparePeakLabel={
             comparePeakHour === null
               ? undefined
-              : t('pages:media.genres.sheet.allGenresPeak', { hour: formatHour(comparePeakHour) })
+              : t('pages:media.genres.sheet.allGenresPeak', {
+                  hour: formatHourOfDay(comparePeakHour),
+                })
           }
           label={t('pages:userDetail.overview.byHour')}
         />

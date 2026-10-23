@@ -30,12 +30,12 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Field, FieldLabel, FieldDescription } from '@/components/ui/field';
 import { AutosaveNumberField } from '@/components/ui/autosave-field';
 import { api } from '@/lib/api';
+import { orderedWeekdays, weekdayName, dateLabel } from '@/lib/dateFormat';
 import { formatBytes } from '@/lib/formatters';
 import { useMaintenanceMode, MAINTENANCE_EVENT } from '@/hooks/useMaintenanceMode';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { SettingsSection } from '@/components/settings/shell/SettingsSection';
 import { BetaBadge } from '@/components/settings/shared/BetaBadge';
-import { dateLabel } from '@/components/settings/shared/dateLabel';
 import { BackupHistory } from './BackupHistory';
 
 const RETENTION_DEBOUNCE_MS = 1000;
@@ -478,16 +478,6 @@ function ScheduleCard() {
     updateMutation.mutate(updated);
   };
 
-  const days = [
-    t('backup.daySun'),
-    t('backup.dayMon'),
-    t('backup.dayTue'),
-    t('backup.dayWed'),
-    t('backup.dayThu'),
-    t('backup.dayFri'),
-    t('backup.daySat'),
-  ];
-
   return (
     <Card>
       <CardHeader>
@@ -570,9 +560,9 @@ function ScheduleCard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {days.map((day, i) => (
-                      <SelectItem key={i} value={String(i)}>
-                        {day}
+                    {orderedWeekdays().map((day) => (
+                      <SelectItem key={day} value={String(day)}>
+                        {weekdayName(day, 'long')}
                       </SelectItem>
                     ))}
                   </SelectContent>

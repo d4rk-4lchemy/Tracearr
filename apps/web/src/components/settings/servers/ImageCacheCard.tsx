@@ -3,7 +3,8 @@ import { HardDrive } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useImageCacheStatus } from '@/hooks/queries';
-import { formatBytes, safeFormatDistanceToNow } from '@/lib/formatters';
+import { formatBytes } from '@/lib/formatters';
+import { safeFormatDistanceToNow } from '@/lib/dateFormat';
 import type { ImageCacheStatus } from '@tracearr/shared';
 
 /** Read back off the payload rather than hardcoded, so the hint can never

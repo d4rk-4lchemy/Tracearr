@@ -1,3 +1,4 @@
+import { UnrecoverableError } from 'bullmq';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { textSize, type NotificationPriority } from '@tracearr/shared';
 
@@ -183,22 +184,50 @@ describe('telegramType.deliver', () => {
     expect(sentBody(f)).not.toHaveProperty('message_thread_id');
   });
 
-  it('throws with the description when telegram rejects the message', async () => {
+  const refuse = (status: number, body: Record<string, unknown>) => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        new Response('{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}', {
-          status: 400,
-        })
-      )
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ ok: false, error_code: status, ...body }), { status })
+        )
     );
-    await expect(
-      telegramType.deliver(
-        { title: 't', message: 'm', silent: false, links: [] },
-        config,
-        deliverCtx
-      )
-    ).rejects.toThrow('chat not found');
+    return telegramType
+      .deliver({ title: 't', message: 'm', silent: false, links: [] }, config, deliverCtx)
+      .then(
+        () => expect.unreachable(),
+        (error: unknown) => error as Error & { retryAfterMs?: number }
+      );
+  };
+
+  it("fails without retrying on a 4xx, worded with telegram's description", async () => {
+    const error = await refuse(400, { description: 'Bad Request: chat not found' });
+    expect(error).toBeInstanceOf(UnrecoverableError);
+    expect(error.message).toBe('My Telegram: 400 Bad Request: chat not found');
+  });
+
+  it('points at the bot token when telegram does not know it', async () => {
+    const error = await refuse(404, { description: 'Not Found' });
+    expect(error.message).toBe('My Telegram: 404 Not Found. Check the bot token.');
+  });
+
+  it('names the new chat id when the group became a supergroup', async () => {
+    const error = await refuse(400, {
+      description: 'Bad Request: group chat was upgraded to a supergroup chat',
+      parameters: { migrate_to_chat_id: -1009876543210 },
+    });
+    expect(error).toBeInstanceOf(UnrecoverableError);
+    expect(error.message).toContain('supergroup with chat ID -1009876543210');
+  });
+
+  it('hands a 429 back with the wait telegram asked for', async () => {
+    const error = await refuse(429, {
+      description: 'Too Many Requests: retry after 35',
+      parameters: { retry_after: 35 },
+    });
+    expect(error).not.toBeInstanceOf(UnrecoverableError);
+    expect(error.retryAfterMs).toBe(35_000);
   });
 
   it('adds one inline keyboard row when links are present and none otherwise', async () => {

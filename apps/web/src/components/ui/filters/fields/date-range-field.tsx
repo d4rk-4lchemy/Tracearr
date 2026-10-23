@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { CalendarIcon, X } from 'lucide-react';
 import type { DateRange, Matcher } from 'react-day-picker';
 
+import { fromIsoDate, toIsoDate } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { selectTriggerClasses } from '@/components/ui/select';
-import { fromIsoDate, toIsoDate } from '../filter-utils';
 import type { DateRangeFieldLabels, DateRangeValue } from '../types';
 
 export interface DateRangeFieldProps {

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import type { HourOfDayStats } from '@tracearr/shared';
-import { getHour12 } from '@/lib/timeFormat';
+import { formatHourOfDay } from '@/lib/dateFormat';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { ChartEmpty } from './ChartEmpty';
 import { buildMediaGroupSeries, stackedTooltipRows } from './chartUtils';
@@ -31,16 +31,6 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
       : [];
     if (stacked && groups.length === 0) return null;
 
-    // Format hour labels based on time format preference
-    const formatHour = (hour: number): string => {
-      if (!getHour12()) {
-        return `${hour.toString().padStart(2, '0')}:00`;
-      }
-      if (hour === 0) return '12am';
-      if (hour === 12) return '12pm';
-      return hour < 12 ? `${hour}am` : `${hour - 12}pm`;
-    };
-
     return {
       chart: {
         type: 'column',
@@ -67,7 +57,7 @@ export function HourOfDayChart({ data, isLoading, height = 250 }: HourOfDayChart
         },
       },
       xAxis: {
-        categories: hours.map(formatHour),
+        categories: hours.map(formatHourOfDay),
         labels: {
           style: {
             color: 'hsl(var(--muted-foreground))',

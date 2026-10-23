@@ -219,7 +219,6 @@ describe('library analytics', () => {
   it.each([
     '/library/watch',
     '/library/patterns',
-    '/library/completion',
     '/library/roi',
     '/library/stale',
     '/library/top-movies',
@@ -261,6 +260,41 @@ describe('media detail for a member', () => {
       executed().some((q) => q.text.includes('NOT EXISTS') && q.params.includes('lib-1'))
     ).toBe(true);
     expect(getSeasonHeat).not.toHaveBeenCalled();
+  });
+
+  it('hides a title with no library copies from a limited member unless their own account played it', async () => {
+    fakeRedis.get.mockImplementation(async (key: string) =>
+      key === REDIS_KEYS.USER_SCOPE('u-member')
+        ? JSON.stringify({
+            serverUserIds: [OWN],
+            serverIds: [SERVER],
+            libraryIds: { [SERVER]: ['lib-1'] },
+          })
+        : null
+    );
+    vi.mocked(db.execute).mockResolvedValue({ rows: [{ hidden: true }] } as never);
+    await build(member);
+
+    expect((await app.inject({ method: 'GET', url: `/library/media/${MEDIA}` })).statusCode).toBe(
+      404
+    );
+    const probe = executed().find((q) => q.text.includes('user_media_plays_daily'));
+    expect(probe?.text).toContain('NOT EXISTS');
+    expect(probe?.text).toContain('merged_into_id');
+    expect(probe?.params).toContain(OWN);
+
+    vi.mocked(db.execute).mockResolvedValue({ rows: [{ hidden: false }] } as never);
+    expect(
+      (await app.inject({ method: 'GET', url: `/library/media/${MEDIA}` })).statusCode
+    ).not.toBe(404);
+    await app.close();
+
+    await build(admin);
+    vi.mocked(db.execute).mockClear();
+    expect(
+      (await app.inject({ method: 'GET', url: `/library/media/${MEDIA}` })).statusCode
+    ).not.toBe(404);
+    expect(executed().some((q) => q.text.includes('user_media_plays_daily'))).toBe(false);
   });
 
   it('limits the platforms panel to the member and caches it for them alone', async () => {

@@ -18,7 +18,8 @@ import { InlineErrorState } from '@/components/library/ErrorState';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { StatCard, formatWatchTime } from '@/components/ui/stat-card';
+import { StatCard } from '@/components/ui/stat-card';
+import { formatWatchTime } from '@/lib/dateFormat';
 import {
   useActiveSessions,
   useEngagementStats,

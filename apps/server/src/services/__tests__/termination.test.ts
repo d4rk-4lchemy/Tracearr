@@ -227,6 +227,7 @@ describe('terminateSession', () => {
       expect(insertChain.values).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: mockSession.id,
+          sessionStartedAt: mockSession.startedAt,
           serverId: mockSession.serverId,
           serverUserId: mockSession.serverUserId,
           trigger: 'manual',

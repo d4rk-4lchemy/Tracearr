@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item';
 import { Switch } from '@/components/ui/switch';
-import { zonedDateLabel } from '@/components/settings/shared/dateLabel';
+import { zonedDateLabel } from '@/lib/dateFormat';
 import { countsLine, outcomeVariant, scheduleSummary, type Translate } from './newsletterFormat';
 
 interface NewsletterRowProps {
@@ -36,7 +36,7 @@ export function NewsletterRow({
   toggling,
   extraActions,
 }: NewsletterRowProps) {
-  const { t, i18n } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common']);
   const { lastSend } = newsletter;
   // i18next's TFunction can't verify keys built from `${section}`/outcome at compile time.
   const translate = t as Translate;
@@ -58,11 +58,11 @@ export function NewsletterRow({
           )}
         </ItemTitle>
         <ItemDescription>
-          {scheduleSummary(newsletter.schedule, newsletter.timezone, translate, i18n.language)}
+          {scheduleSummary(newsletter.schedule, newsletter.timezone, translate)}
           {' · '}
           {newsletter.nextRunAt
             ? t('newsletters.editor.nextRun', {
-                when: zonedDateLabel(newsletter.nextRunAt, newsletter.timezone, i18n.language),
+                when: zonedDateLabel(newsletter.nextRunAt, newsletter.timezone),
                 timezone: newsletter.timezone,
               })
             : t('newsletters.noNextRun')}

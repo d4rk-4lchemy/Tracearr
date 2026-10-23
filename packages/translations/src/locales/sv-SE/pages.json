@@ -526,14 +526,8 @@
         },
         "columns": {
           "hoursPerGb": "",
-          "value": ""
-        },
-        "category": {
-          "low": "",
-          "moderate": "",
-          "high": ""
-        },
-        "deletionSuggested": ""
+          "lastWatched": ""
+        }
       },
       "matchBadge": {
         "exact": "",
@@ -553,7 +547,7 @@
       "peakHour": "Topptimme",
       "viewingHours": "Visningstimmar",
       "peak": "Topp:",
-      "monthlyTrends": "Månatliga trender",
+      "viewingTrend": "",
       "busiest": "",
       "quietest": "Tyst:",
       "bingeHighlights": "Höjdpunkter från sträcktittning",
@@ -575,12 +569,6 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "tiers": {
-          "highlyAddictive": "",
-          "addictive": "",
-          "bingeable": "",
-          "casual": ""
         }
       },
       "percentWatchedValue": "",
@@ -682,8 +670,7 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "uniqueItems_other": ""
+        }
       },
       "growth": {
         "empty": {

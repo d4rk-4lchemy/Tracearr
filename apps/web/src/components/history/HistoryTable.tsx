@@ -38,8 +38,8 @@ import {
   getSessionProgress,
 } from '@/lib/utils';
 import { MediaPageLink } from '@/components/media/MediaPageLink';
-import { formatDuration } from '@/lib/formatters';
 import { playbackBadge } from '@/lib/playbackBadge';
+import { formatDate, formatDuration } from '@/lib/dateFormat';
 import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import {
@@ -54,8 +54,6 @@ import type { ColumnVisibility } from './HistoryFilters';
 import { ServerColumnCell } from '@/components/server';
 import { CatchupIcon } from '@/components/sessions/CatchupIcon';
 import { useServerColorMap } from '@/hooks/useServerColorMap';
-import { format } from 'date-fns';
-import { getTimeFormatString } from '@/lib/timeFormat';
 
 type ShownTier = Exclude<EngagementTier, 'unknown'>;
 
@@ -257,10 +255,13 @@ export const HistoryTableRow = memo(
                 <StateIcon state={session.state} />
                 <div>
                   <div className="text-sm font-medium">
-                    {format(new Date(session.startedAt), 'MMM d, yyyy')}
+                    {formatDate(new Date(session.startedAt), { dateStyle: 'medium' })}
                   </div>
                   <div className="text-muted-foreground text-xs">
-                    {format(new Date(session.startedAt), getTimeFormatString())}
+                    {formatDate(new Date(session.startedAt), {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
                   </div>
                 </div>
               </div>

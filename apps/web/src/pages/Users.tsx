@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { format, formatDistanceToNowStrict, parseISO } from 'date-fns';
+import { formatDistanceToNowStrict } from 'date-fns';
 import { Merge, RotateCcw, User as UserIcon } from 'lucide-react';
 import type { ServerUserWithIdentity, UserSortField } from '@tracearr/shared';
 import {
@@ -54,6 +54,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRowSelection } from '@/hooks/useRowSelection';
 import { useServer } from '@/hooks/useServer';
 import { liveFirst } from '@/lib/servers';
+import { formatFilterDateRange, formatIsoDay } from '@/lib/dateFormat';
 import {
   buildUsersRosterParams,
   ROSTER_ROLES,
@@ -73,8 +74,6 @@ function isUserSortField(id: string): id is UserSortField {
 const getRowId = (row: ServerUserWithIdentity) => row.id;
 
 const columnHelper = createDataTableColumnHelper<ServerUserWithIdentity>();
-
-const formatFilterDate = (isoDate: string) => format(parseISO(isoDate), 'MMM d, yyyy');
 
 function RelativeTimeCell({
   value,
@@ -120,14 +119,7 @@ export function Users() {
   );
 
   const descriptors = useMemo<FilterDescriptor[]>(() => {
-    const formatDateRange = (value: DateRangeValue) => {
-      const from = value.from ? formatFilterDate(value.from) : undefined;
-      const to = value.to ? formatFilterDate(value.to) : undefined;
-      if (from && to) return t('common:filters.dateBetween', { from, to });
-      if (from) return t('common:filters.dateAfter', { date: from });
-      if (to) return t('common:filters.dateBefore', { date: to });
-      return '';
-    };
+    const formatDateRange = (value: DateRangeValue) => formatFilterDateRange(value, t);
     const dateRangeLabels = {
       placeholder: t('common:filters.anyDate'),
       apply: t('common:actions.apply'),
@@ -165,7 +157,7 @@ export function Users() {
         label: t('common:labels.joined'),
         labels: dateRangeLabels,
         formatValue: formatDateRange,
-        formatDate: formatFilterDate,
+        formatDate: formatIsoDay,
       },
       {
         kind: 'dateRange',
@@ -173,7 +165,7 @@ export function Users() {
         label: t('common:labels.lastActivity'),
         labels: dateRangeLabels,
         formatValue: formatDateRange,
-        formatDate: formatFilterDate,
+        formatDate: formatIsoDay,
       },
       {
         kind: 'boolean',

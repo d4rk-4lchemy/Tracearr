@@ -48,6 +48,9 @@ async function findByTitleTolerant(
   const normalized = normalizeTitle(input.title);
   if (!normalized) return undefined;
   const year = input.year ?? 0;
+  // A row without a year (an import that knew only the title) fits any year but yields to a
+  // row whose year fits; among those the oldest wins, so coexisting duplicates keep resolving
+  // to one row.
   const rows = await dbc
     .select()
     .from(media)
@@ -56,10 +59,10 @@ async function findByTitleTolerant(
         eq(media.mediaType, input.mediaType),
         eq(media.normalizedTitle, normalized),
         isNull(media.mergedIntoId),
-        sql`COALESCE(${media.year}, 0) BETWEEN ${year - 1} AND ${year + 1}`
+        sql`(${media.year} IS NULL OR ${media.year} BETWEEN ${year - 1} AND ${year + 1})`
       )
     )
-    .orderBy(asc(media.createdAt), asc(media.id))
+    .orderBy(sql`${media.year} IS NULL`, asc(media.createdAt), asc(media.id))
     .limit(1);
   return rows[0];
 }
@@ -203,6 +206,45 @@ export async function resolveMediaAliases(mediaId: string): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+function episodeNumberKey(input: MatchKeyInput): string | null {
+  return input.mediaType === 'episode' &&
+    input.showMediaId &&
+    input.seasonNumber != null &&
+    input.seasonNumber > 0 &&
+    input.episodeNumber != null
+    ? `episode:${input.showMediaId}:s${input.seasonNumber}e${input.episodeNumber}`
+    : null;
+}
+
+/**
+ * An episode row keyed by show and number predates the provider ids a later sync brings (an
+ * import resolved it before its episode synced). The synced episode adopts that row and
+ * backfills the ids, rather than opening a second row for the same episode, under the advisory
+ * lock an import takes to insert that row. The adoption is refused when both sides carry an
+ * episode title and the titles differ, the one signal that the number is a different ordering
+ * of the same show; untitled rows cannot be told apart.
+ */
+async function adoptNumberKeyedEpisode(
+  tx: Executor & { execute: typeof db.execute },
+  input: MatchKeyInput
+): Promise<MediaRow | undefined> {
+  const numberKey = episodeNumberKey(input);
+  if (!numberKey || !(input.imdbId || input.tmdbId || input.tvdbId)) return undefined;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${numberKey}))`);
+  const [row] = await tx.select().from(media).where(eq(media.matchKey, numberKey));
+  const inputTitle = input.title ? normalizeTitle(input.title) : '';
+  if (
+    !row ||
+    row.mergedIntoId ||
+    providerIdsConflict(input, row) ||
+    (inputTitle && row.normalizedTitle && row.normalizedTitle !== inputTitle)
+  ) {
+    return undefined;
+  }
+  await backfillProviderIds(tx, row, input);
+  return row;
+}
+
 export async function resolveMediaForItem(input: MatchKeyInput): Promise<string> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKeyFor(input)}))`);
@@ -224,6 +266,8 @@ export async function resolveMediaForItem(input: MatchKeyInput): Promise<string>
       await backfillProviderIds(tx, hit, input);
       return hit.id;
     }
+    const adopted = await adoptNumberKeyedEpisode(tx, input);
+    if (adopted) return adopted.id;
 
     const matchKey = buildMediaMatchKey(input);
     const normalizedTitle = input.title ? normalizeTitle(input.title) || null : null;
@@ -429,6 +473,7 @@ async function resolveMediaMisses(inputs: MatchKeyInput[]): Promise<Map<string, 
   const withIdsByType = new Map<string, MatchKeyInput[]>();
   const titleProbeByType = new Map<string, MatchKeyInput[]>();
   const secondChanceByType = new Map<string, MatchKeyInput[]>();
+  const numberKeyAdopt: MatchKeyInput[] = [];
   const titleProbeEligible = (input: MatchKeyInput) =>
     (input.mediaType === 'movie' || input.mediaType === 'show') &&
     !!input.title &&
@@ -480,7 +525,29 @@ async function resolveMediaMisses(inputs: MatchKeyInput[]): Promise<Map<string, 
         const chance = secondChanceByType.get(input.mediaType) ?? [];
         chance.push(input);
         secondChanceByType.set(input.mediaType, chance);
-      } else unresolved.push(input);
+      } else if (episodeNumberKey(input)) numberKeyAdopt.push(input);
+      else unresolved.push(input);
+    }
+  }
+
+  // One read for every number key, then the lock only where a row exists, so a first sync of
+  // a large show library does not open a transaction per new episode.
+  if (numberKeyAdopt.length > 0) {
+    const keys = [...new Set(numberKeyAdopt.map((input) => episodeNumberKey(input) ?? ''))];
+    const present = new Set(
+      (
+        await db
+          .select({ matchKey: media.matchKey })
+          .from(media)
+          .where(inArray(media.matchKey, keys))
+      ).map((row) => row.matchKey)
+    );
+    for (const input of numberKeyAdopt) {
+      const adopted = present.has(episodeNumberKey(input) ?? '')
+        ? await db.transaction((tx) => adoptNumberKeyedEpisode(tx, input))
+        : undefined;
+      if (adopted) out.set(input.ratingKey, adopted.id);
+      else unresolved.push(input);
     }
   }
 
@@ -508,10 +575,14 @@ async function resolveMediaMisses(inputs: MatchKeyInput[]): Promise<Map<string, 
     for (const input of idlessGroup) {
       const normalized = normalizeTitle(input.title!);
       const year = input.year ?? 0;
-      const row = rows.find(
+      // A row without a year (an import that knew only the title) fits any year, as it does
+      // for an id-bearing input, but a row whose year fits comes first; rows arrive oldest first.
+      const fitting = rows.filter(
         (r) =>
-          r.normalizedTitle === normalized && (r.year ?? 0) >= year - 1 && (r.year ?? 0) <= year + 1
+          r.normalizedTitle === normalized &&
+          (r.year == null || (r.year >= year - 1 && r.year <= year + 1))
       );
+      const row = fitting.find((r) => r.year != null) ?? fitting[0];
       if (row) recordHit(row, input);
       else unresolved.push(input);
     }
@@ -758,7 +829,45 @@ export async function reconcileMediaDuplicates(): Promise<number> {
     }
   }
   merges += await reconcileSplitProviderIdRows();
+  merges += await reconcileNumberKeyedEpisodes();
   return merges;
+}
+
+/**
+ * An import that resolved an episode by show and number while the library sync was creating
+ * the same episode by provider id leaves two rows: neither side could see the other's row
+ * before the library item was written. Once the item is there, the number-keyed, id-less row
+ * that no library item holds merges into the item's row, and only when exactly one canonical
+ * row holds that number (two servers keeping their own rows for one number stay apart).
+ */
+async function reconcileNumberKeyedEpisodes(): Promise<number> {
+  const pairs = (await db.execute(
+    sql.raw(`
+      SELECT n.id AS loser, min(em.id::text)::uuid AS winner
+      FROM media n
+      JOIN media sm ON COALESCE(sm.merged_into_id, sm.id) = n.show_media_id
+      JOIN library_items sh ON sh.media_id = sm.id AND sh.media_type = 'show'
+      JOIN library_items e ON e.server_id = sh.server_id AND e.grandparent_rating_key = sh.rating_key
+        AND e.media_type = 'episode' AND e.media_id IS NOT NULL
+        AND n.match_key = 'episode:' || n.show_media_id || ':s' || e.parent_index || 'e' || e.item_index
+      JOIN media em ON em.id = COALESCE((SELECT x.merged_into_id FROM media x WHERE x.id = e.media_id), e.media_id)
+        AND em.merged_into_id IS NULL AND em.id <> n.id
+      WHERE n.media_type = 'episode' AND n.merged_into_id IS NULL
+        AND n.imdb_id IS NULL AND n.tmdb_id IS NULL AND n.tvdb_id IS NULL
+        AND n.match_key LIKE 'episode:%'
+        AND NOT EXISTS (SELECT 1 FROM library_items x WHERE x.media_id = n.id)
+      GROUP BY n.id
+      HAVING count(DISTINCT em.id) = 1
+      ORDER BY n.id
+    `)
+  )) as unknown as { rows: Array<{ loser: string; winner: string }> };
+  const done = new Set<string>();
+  for (const { loser, winner } of pairs.rows) {
+    if (done.has(loser)) continue;
+    await mergeMediaRows(winner, loser);
+    done.add(loser);
+  }
+  return done.size;
 }
 
 async function reconcileSplitProviderIdRows(): Promise<number> {

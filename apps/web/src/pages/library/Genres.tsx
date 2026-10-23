@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Tags } from 'lucide-react';
-import { formatHour, HourStrip, peakHourOf } from '@/components/charts/HourStrip';
+import { HourStrip, peakHourOf } from '@/components/charts/HourStrip';
+import { formatHourOfDay } from '@/lib/dateFormat';
 import { ErrorState } from '@/components/library/ErrorState';
 import { GenreSheet } from '@/components/library/genres/GenreSheet';
 import { GenresTable } from '@/components/library/genres/GenresTable';
@@ -130,7 +131,7 @@ export function LibraryGenres() {
                 <HourStrip
                   data={hourly}
                   peakHour={peakHour}
-                  peakLabel={t('userDetail.overview.peak', { hour: formatHour(peakHour) })}
+                  peakLabel={t('userDetail.overview.peak', { hour: formatHourOfDay(peakHour) })}
                   label={t('userDetail.overview.byHour')}
                 />
               )}

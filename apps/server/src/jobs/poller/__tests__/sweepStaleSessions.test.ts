@@ -20,7 +20,7 @@ vi.mock('../../../db/client.js', () => ({
 
 vi.mock('../../../db/timescale.js', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  getSessionsCompressionHorizon: () => mockCompressionHorizon(),
+  getCachedSessionsCompressionHorizon: () => mockCompressionHorizon(),
 }));
 
 vi.mock('../../../db/schema.js', async (importOriginal) => {

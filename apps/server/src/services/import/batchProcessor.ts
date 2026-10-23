@@ -10,29 +10,17 @@
  * Used by both Tautulli and Jellystat importers.
  */
 
-import { and, between, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { sessions } from '../../db/schema.js';
+import { storedSessionRowById } from '../../db/sessionRow.js';
 import { uncapDecompressionForTx } from '../../db/timescale.js';
+import { resolveImportedPlays } from '../library/importedPlayIdentity.js';
 import { normalizeClient, normalizePlatformName } from '../../utils/platformNormalizer.js';
 import { scrubStringFields } from '../../utils/sanitizeText.js';
 
 // Default chunk sizes
 const DEFAULT_INSERT_CHUNK_SIZE = 500;
 const DEFAULT_UPDATE_CHUNK_SIZE = 10;
-
-/**
- * Match one session by id plus a window on its started_at. started_at is the compression
- * orderby, so without the window an id-only write reads every compressed batch. The minute of
- * slack covers the microseconds a JS Date drops from the stored timestamptz.
- */
-export function sessionRowById(row: { id: string; startedAt: Date }) {
-  const at = row.startedAt.getTime();
-  return and(
-    eq(sessions.id, row.id),
-    between(sessions.startedAt, new Date(at - 60_000), new Date(at + 60_000))
-  );
-}
 
 /**
  * Session insert data type
@@ -97,6 +85,25 @@ function normalizeSessionFields(session: NewSession): NewSession {
 }
 
 /**
+ * Imported plays whose rating key found no library item still get a media identity, the way
+ * a live play does at insert: the rows with none are resolved by title, year and numbers.
+ */
+async function stampImportedIdentity(rows: NewSession[]): Promise<void> {
+  const pending = rows.filter(
+    (row) =>
+      row.mediaId == null &&
+      row.externalSessionId != null &&
+      (row.mediaType === 'movie' || row.mediaType === 'episode')
+  );
+  if (pending.length === 0) return;
+  const { identities } = await resolveImportedPlays(pending);
+  for (const [row, identity] of identities) {
+    row.mediaId = identity.mediaId;
+    row.showMediaId = identity.showMediaId;
+  }
+}
+
+/**
  * Insert sessions in chunks to avoid Drizzle ORM stack overflow
  *
  * Automatically normalizes device/platform fields before insert.
@@ -117,6 +124,7 @@ export async function flushInsertBatch(
   const normalizedSessions = sessionsToInsert.map((s) =>
     scrubStringFields(normalizeSessionFields(s))
   );
+  await stampImportedIdentity(normalizedSessions);
 
   for (let i = 0; i < normalizedSessions.length; i += chunkSize) {
     const chunk = normalizedSessions.slice(i, i + chunkSize);
@@ -163,7 +171,7 @@ export async function flushUpdateBatch(
     await Promise.all(
       chunk.map((update) => {
         const { id, startedAt, ...data } = update;
-        return db.update(sessions).set(data).where(sessionRowById({ id, startedAt }));
+        return db.update(sessions).set(data).where(storedSessionRowById({ id, startedAt }));
       })
     );
 

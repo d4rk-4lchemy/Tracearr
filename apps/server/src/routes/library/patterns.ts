@@ -1,85 +1,36 @@
 /**
  * Library Watch Patterns Route
  *
- * GET /patterns - Analyze viewing patterns including binge behavior, peak times, and seasonal trends
+ * GET /patterns - Binge behavior, peak times and the viewing trend within the selected window.
  *
- * Multi-server support:
- * - Hourly/monthly aggregates: SUM across all accessible servers (events).
- * - Binge shows: deduped by show matchKey (same show on two servers = one journey).
- *   The `primaryServerId` is the server with the most episodes watched in that binge.
- *   The `serverIds` array lists all servers involved.
- *
- * Uses episode_continuity_stats view for binge detection and sessions table for time distribution.
+ * Reads raw sessions, since hour of day and gaps between episodes need timestamps. A session
+ * belongs to its media identity, not the library row it was played from, so plays of a
+ * re-added or removed title still count. Binge shows are keyed by show identity (a merged
+ * alias folds into its winner), so one show on two servers is one row and two shows that
+ * share a title stay apart. `primaryServerId` is the server with the most episodes watched.
  */
 
 import type { FastifyPluginAsync } from 'fastify';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import {
   REDIS_KEYS,
   CACHE_TTL,
+  TIME_MS,
   libraryPatternsQuerySchema,
+  type BingeShow,
+  type HourlyDistribution,
   type LibraryPatternsQueryInput,
+  type PatternsResponse,
+  type TrendBucket,
+  type TrendPoint,
 } from '@tracearr/shared';
-import { countedSessionSql } from '../../constants/index.js';
+import { countedSessionSql, playCountSql } from '../../constants/index.js';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
-import { buildLibraryCacheKey } from './utils.js';
+import { buildLibraryCacheKey, ceilToUtcDay, resolveLibraryWindow } from './utils.js';
 
-/** Show with binge metrics (deduped across servers by show matchKey) */
-interface BingeShow {
-  showTitle: string;
-  /** Server where the most episodes were watched in this binge journey. */
-  primaryServerId: string;
-  thumbPath: string | null;
-  totalEpisodeWatches: number;
-  consecutiveEpisodes: number;
-  consecutivePct: number;
-  avgGapMinutes: number;
-  bingeScore: number;
-  maxEpisodesInOneDay: number;
-  /** All server IDs involved in this binge journey. */
-  serverIds: string[];
-}
-
-/** Hourly viewing distribution */
-interface HourlyDistribution {
-  hour: number;
-  watchCount: number;
-  totalWatchMs: number;
-  pctOfTotal: number;
-}
-
-/** Monthly viewing trends */
-interface MonthlyTrend {
-  month: string;
-  watchCount: number;
-  totalWatchMs: number;
-  uniqueItems: number;
-  avgWatchesPerDay: number;
-}
-
-/** Full patterns response */
-interface PatternsResponse {
-  bingeShows: BingeShow[];
-  peakTimes: {
-    hourlyDistribution: HourlyDistribution[];
-    peakHour: number;
-    peakDayOfWeek: number;
-  };
-  seasonalTrends: {
-    monthlyTrends: MonthlyTrend[];
-    busiestMonth: string;
-    quietestMonth: string;
-  };
-  summary: {
-    totalWatchSessions: number;
-    avgSessionsPerDay: number;
-    bingeSessionsPct: number;
-  };
-}
-
-/** Raw binge row from database */
 interface RawBingeRow {
+  show_media_id: string;
   show_title: string;
   primary_server_id: string;
   thumb_path: string | null;
@@ -89,10 +40,9 @@ interface RawBingeRow {
   avg_gap_minutes: string | null;
   max_episodes_in_one_day: string | null;
   binge_score: string;
-  server_ids: string;
+  server_ids: string[];
 }
 
-/** Raw hourly row from database */
 interface RawHourlyRow {
   hour: string;
   watch_count: string;
@@ -100,31 +50,182 @@ interface RawHourlyRow {
   pct_of_total: string;
 }
 
-/** Raw monthly row from database */
-interface RawMonthlyRow {
-  month: string;
+interface RawTrendRow {
+  start: string;
   watch_count: string;
-  total_watch_ms: string;
-  unique_items: string;
-  avg_watches_per_day: string;
+  total_watch_hours: string;
 }
 
-/** Raw summary row from database */
 interface RawSummaryRow {
   total_watch_sessions: string;
   avg_sessions_per_day: string;
   binge_sessions_pct: string;
 }
 
+type Window = { startDate: Date | null; endDate: Date; lastDay: Date };
+
+function trendBucket(window: Window): TrendBucket {
+  if (!window.startDate) return 'month';
+  const days = (window.endDate.getTime() - window.startDate.getTime()) / TIME_MS.DAY;
+  return days <= 31 ? 'day' : days <= 183 ? 'week' : 'month';
+}
+
+// Counted sessions with a media identity, started within the window, on the selected servers
+// and, when one is given, in a library that holds that title. Sessions are aliased sess.
+function sessionScopeSql(
+  window: Window,
+  serverIds: string[] | undefined,
+  libraryId: string | undefined
+): SQL {
+  const lower = window.startDate
+    ? sql`AND sess.started_at >= ${window.startDate}::timestamptz`
+    : sql``;
+  const library = libraryId
+    ? sql`AND EXISTS (
+        SELECT 1 FROM library_items li
+        WHERE li.media_id = sess.media_id AND li.library_id = ${libraryId}
+          AND li.server_id = sess.server_id
+      )`
+    : sql``;
+  return sql`${countedSessionSql('sess')} AND sess.media_id IS NOT NULL
+    ${lower} AND sess.started_at < ${window.endDate}::timestamptz
+    ${buildMultiServerFragment(serverIds, 'sess.server_id')}
+    ${library}`;
+}
+
+// Gaps only see sessions inside the window, so a binge that began before it starts fresh.
+function buildBingeQuery(scope: SQL, bingeThreshold: number, limit: number): SQL {
+  return sql`
+    WITH eps AS (
+      SELECT sess.server_user_id, sess.server_id, sess.media_id, sess.started_at, sess.thumb_path,
+        COALESCE(sh.merged_into_id, sess.show_media_id) AS show_id,
+        EXTRACT(EPOCH FROM (sess.started_at - LAG(sess.stopped_at) OVER (
+          PARTITION BY sess.server_user_id, COALESCE(sh.merged_into_id, sess.show_media_id)
+          ORDER BY sess.started_at
+        ))) / 60 AS gap_minutes
+      FROM sessions sess
+      LEFT JOIN media sh ON sh.id = sess.show_media_id
+      WHERE ${scope}
+        AND sess.media_type = 'episode'
+        AND sess.show_media_id IS NOT NULL
+        AND sess.stopped_at IS NOT NULL
+    ),
+    per_user AS (
+      SELECT server_user_id, show_id,
+        COUNT(*) AS total_episode_watches,
+        COUNT(*) FILTER (WHERE gap_minutes <= 30) AS consecutive_episodes,
+        100.0 * COUNT(*) FILTER (WHERE gap_minutes <= 30) / NULLIF(COUNT(*) - 1, 0) AS consecutive_pct,
+        AVG(gap_minutes) FILTER (WHERE gap_minutes <= 480) AS avg_gap_minutes
+      FROM eps
+      GROUP BY server_user_id, show_id
+      HAVING COUNT(*) >= 2 AND COUNT(*) FILTER (WHERE gap_minutes <= 30) >= ${bingeThreshold}
+    ),
+    per_user_day AS (
+      SELECT server_user_id, show_id, MAX(episodes) AS max_episodes_in_one_day
+      FROM (
+        SELECT eps.server_user_id, eps.show_id,
+          COUNT(DISTINCT COALESCE(em.merged_into_id, eps.media_id)) AS episodes
+        FROM eps
+        LEFT JOIN media em ON em.id = eps.media_id
+        GROUP BY eps.server_user_id, eps.show_id, date_trunc('day', eps.started_at AT TIME ZONE 'UTC')
+      ) d
+      GROUP BY server_user_id, show_id
+    ),
+    binge_eps AS (
+      SELECT e.* FROM eps e JOIN per_user u USING (server_user_id, show_id)
+    ),
+    server_counts AS (
+      SELECT show_id, server_id, COUNT(*) AS episodes FROM binge_eps GROUP BY show_id, server_id
+    ),
+    per_show AS (
+      SELECT u.show_id,
+        SUM(u.total_episode_watches) AS total_episode_watches,
+        SUM(u.consecutive_episodes) AS consecutive_episodes,
+        ROUND(AVG(u.consecutive_pct)::numeric, 1) AS consecutive_pct,
+        ROUND(AVG(u.avg_gap_minutes)::numeric, 1) AS avg_gap_minutes,
+        MAX(d.max_episodes_in_one_day) AS max_episodes_in_one_day
+      FROM per_user u
+      JOIN per_user_day d USING (server_user_id, show_id)
+      GROUP BY u.show_id
+    ),
+    scored AS (
+      SELECT ps.*,
+        ROUND(
+          LEAST(ps.consecutive_episodes * 5, 40) +
+          LEAST(COALESCE(ps.consecutive_pct, 0), 30) +
+          LEAST(COALESCE(ps.max_episodes_in_one_day, 1) * 6, 30)
+        , 1) AS binge_score
+      FROM per_show ps
+    )
+    SELECT
+      s.show_id::text AS show_media_id,
+      shm.title AS show_title,
+      (SELECT sc.server_id::text FROM server_counts sc WHERE sc.show_id = s.show_id
+        ORDER BY sc.episodes DESC, sc.server_id LIMIT 1) AS primary_server_id,
+      (SELECT be.thumb_path FROM binge_eps be WHERE be.show_id = s.show_id
+        ORDER BY be.thumb_path IS NULL, be.started_at DESC LIMIT 1) AS thumb_path,
+      s.total_episode_watches::text AS total_episode_watches,
+      s.consecutive_episodes::text AS consecutive_episodes,
+      s.consecutive_pct::text AS consecutive_pct,
+      s.avg_gap_minutes::text AS avg_gap_minutes,
+      COALESCE(s.max_episodes_in_one_day, 1)::text AS max_episodes_in_one_day,
+      (SELECT array_agg(sc.server_id::text ORDER BY sc.server_id::text) FROM server_counts sc
+        WHERE sc.show_id = s.show_id) AS server_ids,
+      s.binge_score::text AS binge_score
+    FROM scored s
+    JOIN media shm ON shm.id = s.show_id
+    ORDER BY s.binge_score DESC, shm.title ASC, s.show_id
+    LIMIT ${limit}`;
+}
+
+// One point per bucket from the window's start (or the first session for all time) to its
+// last day, zero-filled, with buckets cut in the request timezone.
+function buildTrendQuery(scope: SQL, window: Window, bucket: TrendBucket, tz: string): SQL {
+  const unit = sql.raw(`'${bucket}'`);
+  const local = (ts: SQL) => sql`date_trunc(${unit}, ${ts} AT TIME ZONE ${tz})`;
+  const first = window.startDate
+    ? local(sql`${window.startDate}::timestamptz`)
+    : sql`(SELECT MIN(bucket) FROM buckets)`;
+  return sql`
+    WITH buckets AS (
+      SELECT ${local(sql`sess.started_at`)} AS bucket,
+        ${playCountSql('sess')} AS watch_count,
+        SUM(sess.duration_ms) AS watch_ms
+      FROM sessions sess
+      WHERE ${scope}
+      GROUP BY 1
+    ),
+    series AS (
+      SELECT generate_series(
+        ${first},
+        ${local(sql`${window.lastDay}::timestamptz`)},
+        ${sql.raw(`INTERVAL '1 ${bucket}'`)}
+      ) AS bucket
+    )
+    SELECT to_char(s.bucket, 'YYYY-MM-DD') AS start,
+      COALESCE(b.watch_count, 0)::text AS watch_count,
+      ROUND(COALESCE(b.watch_ms, 0) / 3600000.0, 2)::text AS total_watch_hours
+    FROM series s
+    LEFT JOIN buckets b ON b.bucket = s.bucket
+    ORDER BY s.bucket`;
+}
+
+/** The earliest bucket with the most plays and the earliest with the fewest; null with no plays. */
+function busiestAndQuietest(points: TrendPoint[]): {
+  busiest: string | null;
+  quietest: string | null;
+} {
+  if (points.every((point) => point.watchCount === 0)) return { busiest: null, quietest: null };
+  let busiest: TrendPoint | undefined;
+  let quietest: TrendPoint | undefined;
+  for (const point of points) {
+    if (!busiest || point.watchCount > busiest.watchCount) busiest = point;
+    if (!quietest || point.watchCount < quietest.watchCount) quietest = point;
+  }
+  return { busiest: busiest?.start ?? null, quietest: quietest?.start ?? null };
+}
+
 export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
-  /**
-   * GET /patterns - Watch pattern analysis
-   *
-   * Analyzes viewing patterns including:
-   * - Binge shows deduped by show identity across servers
-   * - Peak viewing times (hour and day of week) aggregated across servers
-   * - Seasonal trends (monthly patterns) aggregated across servers
-   */
   app.get<{ Querystring: LibraryPatternsQueryInput }>(
     '/patterns',
     { preHandler: [app.requirePermission('insights', 'read')] },
@@ -138,7 +239,6 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
         serverId,
         serverIds: rawServerIds,
         libraryId,
-        periodWeeks,
         includeBinge,
         includePeakTimes,
         includeSeasonalTrends,
@@ -147,20 +247,19 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
         timezone,
       } = query.data;
       const tz = timezone ?? 'UTC';
-      const authUser = request.user;
+      const { startDate, endDate, lastDay, cacheSegment } = resolveLibraryWindow(query.data);
+      // Rounded like rollupDayWindowSql, so a preset starts where the watch summary does
+      const window = { startDate: startDate && ceilToUtcDay(startDate), endDate, lastDay };
+      const bucket = trendBucket(window);
 
-      const resolvedIds = resolveServerIds(authUser, serverId, rawServerIds);
-      // Build fragment for sessions (no table alias needed for raw joins below)
-      const serverFragmentLi = buildMultiServerFragment(resolvedIds, 'li.server_id');
-      // For queries filtering directly on sessions
-      const serverFragmentSess = buildMultiServerFragment(resolvedIds, 'sess.server_id');
+      const resolvedIds = resolveServerIds(request.user, serverId, rawServerIds);
+      const scope = sessionScopeSql(window, resolvedIds, libraryId);
 
-      // Build cache key
       const serverCacheKey = resolvedIds ? resolvedIds.slice().sort().join(',') : 'all';
       const cacheKey = buildLibraryCacheKey(
         REDIS_KEYS.LIBRARY_PATTERNS,
         serverCacheKey,
-        `${libraryId ?? 'all'}-${periodWeeks}-${bingeThreshold}-${limit}-${includeBinge}-${includePeakTimes}-${includeSeasonalTrends}-${tz}`
+        `${libraryId ?? 'all'}-${cacheSegment}-${bingeThreshold}-${limit}-${includeBinge}-${includePeakTimes}-${includeSeasonalTrends}-${tz}`
       );
 
       const cached = await app.redis.get(cacheKey);
@@ -172,15 +271,11 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
         }
       }
 
-      const libraryFilter = libraryId ? sql`AND li.library_id = ${libraryId}` : sql``;
-
       let bingeShows: BingeShow[] = [];
       let hourlyDistribution: HourlyDistribution[] = [];
       let peakHour = 0;
       let peakDayOfWeek = 0;
-      let monthlyTrends: MonthlyTrend[] = [];
-      let busiestMonth = '';
-      let quietestMonth = '';
+      let points: TrendPoint[] = [];
       let totalWatchSessions = 0;
       let avgSessionsPerDay = 0;
       let bingeSessionsPct = 0;
@@ -190,82 +285,9 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
       if (includeBinge) {
         queries.push(
           (async () => {
-            // Binge dedup: group by show matchKey so the same show on two servers
-            // is one row. primary_server_id = server with the most episodes watched.
-            const bingeResult = await db.execute(sql`
-              WITH binge_base AS (
-                SELECT
-                  ecs.show_title,
-                  MAX(ses.server_id::text) AS raw_server_id,
-                  MAX(ses.thumb_path) AS thumb_path,
-                  SUM(ecs.total_episode_watches) AS total_episode_watches,
-                  SUM(ecs.consecutive_episodes) AS consecutive_episodes,
-                  ROUND(AVG(ecs.consecutive_pct)::numeric, 1) AS consecutive_pct,
-                  ROUND(AVG(ecs.avg_gap_minutes)::numeric, 1) AS avg_gap_minutes,
-                  MAX(dsi.max_episodes_in_one_day) AS max_episodes_in_one_day,
-                  -- Collect per-server episode counts to determine primary server
-                  ARRAY_AGG(DISTINCT ses.server_id::text) AS server_ids_arr,
-                  -- Primary server = one with highest episode contribution
-                  (
-                    SELECT s2.server_id::text
-                    FROM (
-                      SELECT ecs2.server_user_id,
-                        MAX(su2.server_id::text) AS server_id,
-                        SUM(ecs2.total_episode_watches) AS ep_count
-                      FROM episode_continuity_stats ecs2
-                      JOIN server_users su2 ON su2.id = ecs2.server_user_id
-                      WHERE ecs2.show_title = ecs.show_title
-                      GROUP BY ecs2.server_user_id
-                    ) s2
-                    ORDER BY s2.ep_count DESC
-                    LIMIT 1
-                  ) AS primary_server_id
-                FROM episode_continuity_stats ecs
-                LEFT JOIN show_engagement_summary ses ON ecs.show_title = ses.show_title
-                  AND ecs.server_user_id = ses.server_user_id
-                LEFT JOIN (
-                  SELECT server_user_id, show_title, MAX(episodes_watched_this_day) AS max_episodes_in_one_day
-                  FROM daily_show_intensity
-                  GROUP BY server_user_id, show_title
-                ) dsi ON ecs.show_title = dsi.show_title AND ecs.server_user_id = dsi.server_user_id
-                WHERE ecs.consecutive_episodes >= ${bingeThreshold}
-                  AND EXISTS (
-                    SELECT 1 FROM sessions sess
-                    JOIN server_users su ON su.id = sess.server_user_id
-                    WHERE sess.server_user_id = ecs.server_user_id
-                      AND sess.grandparent_title = ecs.show_title
-                      AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
-                      ${serverFragmentSess}
-                  )
-                GROUP BY ecs.show_title
-              ),
-              scored AS (
-                SELECT
-                  *,
-                  ROUND(
-                    LEAST(consecutive_episodes * 5, 40) +
-                    LEAST(COALESCE(consecutive_pct, 0), 30) +
-                    LEAST(COALESCE(max_episodes_in_one_day, 1) * 6, 30)
-                  , 1) AS binge_score
-                FROM binge_base
-              )
-              SELECT
-                show_title,
-                COALESCE(primary_server_id, raw_server_id) AS primary_server_id,
-                thumb_path,
-                total_episode_watches::text AS total_episode_watches,
-                consecutive_episodes::text AS consecutive_episodes,
-                consecutive_pct::text AS consecutive_pct,
-                avg_gap_minutes::text AS avg_gap_minutes,
-                COALESCE(max_episodes_in_one_day, 1)::text AS max_episodes_in_one_day,
-                ARRAY_TO_STRING(server_ids_arr, ',') AS server_ids,
-                binge_score::text AS binge_score
-              FROM scored
-              ORDER BY scored.binge_score DESC, show_title ASC
-              LIMIT ${limit}
-            `);
-
+            const bingeResult = await db.execute(buildBingeQuery(scope, bingeThreshold, limit));
             bingeShows = (bingeResult.rows as unknown as RawBingeRow[]).map((row) => ({
+              showMediaId: row.show_media_id,
               showTitle: row.show_title,
               primaryServerId: row.primary_server_id,
               thumbPath: row.thumb_path,
@@ -275,7 +297,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
               avgGapMinutes: parseFloat(row.avg_gap_minutes || '0'),
               bingeScore: parseFloat(row.binge_score),
               maxEpisodesInOneDay: parseInt(row.max_episodes_in_one_day || '1', 10),
-              serverIds: row.server_ids ? row.server_ids.split(',') : [row.primary_server_id],
+              serverIds: row.server_ids,
             }));
           })()
         );
@@ -288,16 +310,10 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
               WITH hourly AS (
                 SELECT
                   EXTRACT(HOUR FROM sess.started_at AT TIME ZONE ${tz})::int AS hour,
-                  COUNT(*) AS watch_count,
+                  ${playCountSql('sess')} AS watch_count,
                   SUM(sess.duration_ms) AS total_watch_ms
                 FROM sessions sess
-                JOIN library_items li ON sess.rating_key = li.rating_key
-                  AND sess.server_id = li.server_id
-                  AND li.removed_at IS NULL
-                WHERE ${countedSessionSql('sess')}
-                  AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
-                  ${serverFragmentLi}
-                  ${libraryFilter}
+                WHERE ${scope}
                 GROUP BY 1
               ),
               total AS (
@@ -330,15 +346,9 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
               SELECT
                 (SELECT EXTRACT(DOW FROM sess.started_at AT TIME ZONE ${tz})::int AS day_of_week
                  FROM sessions sess
-                 JOIN library_items li ON sess.rating_key = li.rating_key
-                   AND sess.server_id = li.server_id
-                   AND li.removed_at IS NULL
-                 WHERE ${countedSessionSql('sess')}
-                   AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
-                   ${serverFragmentLi}
-                   ${libraryFilter}
+                 WHERE ${scope}
                  GROUP BY 1
-                 ORDER BY COUNT(*) DESC
+                 ORDER BY ${playCountSql('sess')} DESC
                  LIMIT 1
                 )::text AS peak_day_of_week
             `);
@@ -352,90 +362,29 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
       if (includeSeasonalTrends) {
         queries.push(
           (async () => {
-            const monthlyResult = await db.execute(sql`
-              WITH monthly AS (
-                SELECT
-                  TO_CHAR(sess.started_at AT TIME ZONE ${tz}, 'YYYY-MM') AS month,
-                  COUNT(*) AS watch_count,
-                  SUM(sess.duration_ms) AS total_watch_ms,
-                  COUNT(DISTINCT li.id) AS unique_items,
-                  COUNT(*)::float / EXTRACT(DAY FROM
-                    (DATE_TRUNC('month', MIN(sess.started_at AT TIME ZONE ${tz})) + INTERVAL '1 month' - INTERVAL '1 day')
-                  ) AS avg_watches_per_day
-                FROM sessions sess
-                JOIN library_items li ON sess.rating_key = li.rating_key
-                  AND sess.server_id = li.server_id
-                  AND li.removed_at IS NULL
-                WHERE ${countedSessionSql('sess')}
-                  AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
-                  ${serverFragmentLi}
-                  ${libraryFilter}
-                GROUP BY 1
-              )
-              SELECT
-                month,
-                watch_count::text AS watch_count,
-                total_watch_ms::text AS total_watch_ms,
-                unique_items::text AS unique_items,
-                ROUND(avg_watches_per_day::numeric, 1)::text AS avg_watches_per_day
-              FROM monthly
-              ORDER BY month
-            `);
-
-            monthlyTrends = (monthlyResult.rows as unknown as RawMonthlyRow[]).map((row) => ({
-              month: row.month,
+            const trendResult = await db.execute(buildTrendQuery(scope, window, bucket, tz));
+            points = (trendResult.rows as unknown as RawTrendRow[]).map((row) => ({
+              start: row.start,
               watchCount: parseInt(row.watch_count, 10),
-              totalWatchMs: parseInt(row.total_watch_ms, 10),
-              uniqueItems: parseInt(row.unique_items, 10),
-              avgWatchesPerDay: parseFloat(row.avg_watches_per_day),
+              totalWatchHours: parseFloat(row.total_watch_hours),
             }));
-
-            if (monthlyTrends.length > 0) {
-              const sorted = [...monthlyTrends].sort((a, b) => b.watchCount - a.watchCount);
-              busiestMonth = sorted[0]?.month ?? '';
-              quietestMonth = sorted[sorted.length - 1]?.month ?? '';
-            }
           })()
         );
       }
 
-      // Summary query (always run) - aggregate across all accessible servers
       queries.push(
         (async () => {
           const summaryResult = await db.execute(sql`
-            WITH session_stats AS (
-              SELECT
-                COUNT(*) AS total_sessions,
-                COUNT(*) FILTER (
-                  WHERE li.media_type = 'episode'
-                    AND (stopped_at - started_at) < INTERVAL '30 minutes'
-                ) AS potential_binge_sessions
-              FROM sessions sess
-              JOIN library_items li ON sess.rating_key = li.rating_key
-                AND sess.server_id = li.server_id
-                AND li.removed_at IS NULL
-              WHERE ${countedSessionSql('sess')}
-                AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
-                ${serverFragmentLi}
-                ${libraryFilter}
-            ),
-            day_count AS (
-              SELECT COUNT(DISTINCT DATE(sess.started_at)) AS days
-              FROM sessions sess
-              JOIN library_items li ON sess.rating_key = li.rating_key
-                AND sess.server_id = li.server_id
-                AND li.removed_at IS NULL
-              WHERE ${countedSessionSql('sess')}
-                AND sess.started_at >= NOW() - INTERVAL '1 week' * ${periodWeeks}
-                ${serverFragmentLi}
-                ${libraryFilter}
-            )
             SELECT
-              s.total_sessions::text AS total_watch_sessions,
-              ROUND((s.total_sessions::numeric / NULLIF(d.days, 0)), 1)::text AS avg_sessions_per_day,
-              ROUND((100.0 * s.potential_binge_sessions / NULLIF(s.total_sessions, 0))::numeric, 1)::text AS binge_sessions_pct
-            FROM session_stats s
-            CROSS JOIN day_count d
+              COUNT(*)::text AS total_watch_sessions,
+              ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT DATE(sess.started_at)), 0), 1)::text
+                AS avg_sessions_per_day,
+              ROUND((100.0 * COUNT(*) FILTER (
+                WHERE sess.media_type = 'episode'
+                  AND (sess.stopped_at - sess.started_at) < INTERVAL '30 minutes'
+              ) / NULLIF(COUNT(*), 0))::numeric, 1)::text AS binge_sessions_pct
+            FROM sessions sess
+            WHERE ${scope}
           `);
 
           const summaryRow = summaryResult.rows[0] as unknown as RawSummaryRow | undefined;
@@ -456,11 +405,7 @@ export const libraryPatternsRoute: FastifyPluginAsync = async (app) => {
           peakHour,
           peakDayOfWeek,
         },
-        seasonalTrends: {
-          monthlyTrends,
-          busiestMonth,
-          quietestMonth,
-        },
+        trend: { bucket, points, ...busiestAndQuietest(points) },
         summary: {
           totalWatchSessions,
           avgSessionsPerDay,

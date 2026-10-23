@@ -3,13 +3,13 @@ import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import type { PlayStats, RangeSeriesPoint, Server } from '@tracearr/shared';
-import { getHour12 } from '@/lib/timeFormat';
 import { ChartSkeleton } from '@/components/ui/skeleton';
+import { axisDateTimeLabelFormats, formatBucketDate, parseChartDate } from '@/lib/dateFormat';
 import { ChartEmpty } from './ChartEmpty';
 import {
   buildMediaGroupSeries,
   buildPerServerSeries,
-  parseChartDate,
+  chartLang,
   sharedTooltipRows,
   stackedTooltipRows,
 } from './chartUtils';
@@ -74,38 +74,13 @@ export function PlaysChart({
       return {};
     }
 
-    const formatTooltipDate = (x: number): string => {
-      const date = new Date(x);
-      if (period === 'all') {
-        return t('labels.weekOf', {
-          date: date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          }),
-        });
-      }
-      if (period === 'year' || period === 'month') {
-        return date.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-        });
-      }
-      // day (hourly) or week (6-hour)
-      return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString('en-US', { hour: 'numeric', hour12: getHour12() })}`;
-    };
+    const formatTooltipDate = (x: number): string =>
+      formatBucketDate(x, period, (date) => t('labels.weekOf', { date }));
 
     const xAxisBase: Highcharts.XAxisOptions = {
       type: 'datetime',
       tickPixelInterval: 120,
-      dateTimeLabelFormats: {
-        hour: { main: getHour12() ? '%l %p' : '%k:%M' },
-        day: { main: '%b %e' },
-        week: { main: '%b %e' },
-        month: { main: `%b '%y` },
-        year: { main: '%Y' },
-      },
+      dateTimeLabelFormats: axisDateTimeLabelFormats(true),
       labels: {
         style: {
           color: 'hsl(var(--muted-foreground))',
@@ -267,6 +242,7 @@ export function PlaysChart({
     }
 
     return {
+      lang: chartLang(),
       chart: {
         type: 'area',
         height,

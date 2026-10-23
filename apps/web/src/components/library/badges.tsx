@@ -4,23 +4,6 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 /**
- * Binge score badge based on score thresholds.
- */
-export function BingeScoreBadge({ score }: { score: number }) {
-  const { t } = useTranslation('pages');
-  if (score >= 80) {
-    return <Badge variant="danger">{t('library.watch.binge.tiers.highlyAddictive')}</Badge>;
-  }
-  if (score >= 60) {
-    return <Badge variant="warning">{t('library.watch.binge.tiers.addictive')}</Badge>;
-  }
-  if (score >= 40) {
-    return <Badge variant="secondary">{t('library.watch.binge.tiers.bingeable')}</Badge>;
-  }
-  return <Badge variant="outline">{t('library.watch.binge.tiers.casual')}</Badge>;
-}
-
-/**
  * Get completion rate badge based on percentage.
  */
 export function getCompletionBadge(rate: number) {

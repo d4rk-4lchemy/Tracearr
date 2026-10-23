@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Eye, Clock, CheckCircle2, Flame, BarChart3 } from 'lucide-react';
 import type { Server } from '@tracearr/shared';
-import { StatCard, formatWatchTime } from '@/components/ui/stat-card';
+import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState, BingeHighlightsTable, MostWatchedSection } from '@/components/library';
@@ -12,39 +12,22 @@ import {
   MonthlyTrendChart,
 } from '@/components/charts';
 import { PerServerCardGrid } from '@/components/server';
-import { useLibraryWatch, useLibraryCompletion, useLibraryPatterns } from '@/hooks/queries';
+import { useLibraryWatch, useLibraryPatterns } from '@/hooks/queries';
 import { useServer } from '@/hooks/useServer';
-import { useTimeRange } from '@/hooks/useTimeRange';
-import { getHour12 } from '@/lib/timeFormat';
-
-function formatPeakHour(hour: number | undefined): string {
-  if (hour === undefined) return '-';
-  const date = new Date(2024, 0, 1, hour);
-  return date.toLocaleTimeString(undefined, { hour: 'numeric', hour12: getHour12() });
-}
-
-function formatPeakDay(day: number | undefined): string {
-  if (day === undefined) return '';
-  // Create a date for the given day of week (Jan 7, 2024 is a Sunday)
-  const refDate = new Date(2024, 0, 7 + day);
-  return refDate.toLocaleDateString(undefined, { weekday: 'long' });
-}
+import { toApiLibraryParams, useTimeRange } from '@/hooks/useTimeRange';
+import { weekdayName, formatWatchTime, formatTrendDate, formatHourOfDay } from '@/lib/dateFormat';
+import type { TimeRangeValue } from '@/components/ui/time-range-picker';
 
 interface ServerCompletionCardProps {
   server: Server;
+  timeRange: TimeRangeValue;
 }
 
-/**
- * Per-server completion donuts used when multiple servers are selected.
- * Fetches movie and episode completion independently for the given server.
- */
-function ServerCompletionCard({ server }: ServerCompletionCardProps) {
+/** Per-server completion donuts used when multiple servers are selected. */
+function ServerCompletionCard({ server, timeRange }: ServerCompletionCardProps) {
   const { t } = useTranslation('common');
-  const movieCompletion = useLibraryCompletion(server.id, null, 'item', 1, 1, 'movie');
-  const tvCompletion = useLibraryCompletion(server.id, null, 'item', 1, 1, 'episode');
-
-  const movieSummary = movieCompletion.data?.summary;
-  const tvSummary = tvCompletion.data?.summary;
+  const watch = useLibraryWatch([server.id], null, toApiLibraryParams(timeRange));
+  const completion = watch.data?.summary.completion;
 
   return (
     <div className="space-y-4">
@@ -53,10 +36,10 @@ function ServerCompletionCard({ server }: ServerCompletionCardProps) {
           {t('media.movie_plural')}
         </p>
         <CompletionDonutChart
-          completed={movieSummary?.completedCount ?? 0}
-          inProgress={movieSummary?.inProgressCount ?? 0}
-          notStarted={movieSummary?.notStartedCount ?? 0}
-          isLoading={movieCompletion.isLoading}
+          completed={completion?.movie.completed ?? 0}
+          inProgress={completion?.movie.inProgress ?? 0}
+          notStarted={completion?.movie.notStarted ?? 0}
+          isLoading={watch.isLoading}
           height={180}
         />
       </div>
@@ -65,10 +48,10 @@ function ServerCompletionCard({ server }: ServerCompletionCardProps) {
           {t('media.tvShows')}
         </p>
         <CompletionDonutChart
-          completed={tvSummary?.completedCount ?? 0}
-          inProgress={tvSummary?.inProgressCount ?? 0}
-          notStarted={tvSummary?.notStartedCount ?? 0}
-          isLoading={tvCompletion.isLoading}
+          completed={completion?.episode.completed ?? 0}
+          inProgress={completion?.episode.inProgress ?? 0}
+          notStarted={completion?.episode.notStarted ?? 0}
+          isLoading={watch.isLoading}
           height={180}
         />
       </div>
@@ -84,29 +67,11 @@ export function LibraryWatch() {
   const isMultiServer = selectedServerIds.length > 1;
   const { value: timeRange } = useTimeRange();
 
-  // Watch data for KPIs - deduped across servers by the backend
-  const watch = useLibraryWatch(selectedServerIds, null, 1, 20);
+  const range = toApiLibraryParams(timeRange);
+  const watch = useLibraryWatch(selectedServerIds, null, range);
+  const patterns = useLibraryPatterns(selectedServerIds, null, range);
 
-  // Completion data for single-server donut layout
-  const movieCompletion = useLibraryCompletion(
-    isMultiServer ? null : (selectedServerIds[0] ?? null),
-    null,
-    'item',
-    1,
-    1,
-    'movie'
-  );
-  const tvCompletion = useLibraryCompletion(
-    isMultiServer ? null : (selectedServerIds[0] ?? null),
-    null,
-    'item',
-    1,
-    1,
-    'episode'
-  );
-
-  // Patterns data for hourly/monthly charts, peak times, binge shows - aggregated across servers
-  const patterns = useLibraryPatterns(selectedServerIds, null, 12); // 12 weeks = ~3 months
+  const summary = watch.data?.summary;
 
   // Show error state with retry
   if (watch.isError || patterns.isError) {
@@ -132,8 +97,7 @@ export function LibraryWatch() {
     );
   }
 
-  // Show empty state if no watch data
-  if (!watch.isLoading && (!watch.data?.items || watch.data.items.length === 0)) {
+  if (!watch.isLoading && summary?.totalItems === 0) {
     return (
       <div className="space-y-6">
         <EmptyState
@@ -145,16 +109,13 @@ export function LibraryWatch() {
     );
   }
 
-  // Total Completed: multi-server uses the deduped completedCount from watch.summary;
-  // single-server sums movie + tv completion summaries for backward compatibility.
-  const totalCompleted = isMultiServer
-    ? (watch.data?.summary.completedCount ?? 0)
-    : (movieCompletion.data?.summary.completedCount ?? 0) +
-      (tvCompletion.data?.summary.completedCount ?? 0);
-
-  const completedIsLoading = isMultiServer
-    ? watch.isLoading
-    : movieCompletion.isLoading || tvCompletion.isLoading;
+  const trend = patterns.data?.trend;
+  // The server reports hour 0 and Sunday as the peak of a range with no plays
+  const peakTimes = patterns.data?.peakTimes;
+  const peak = peakTimes?.hourlyDistribution.some((h) => h.watchCount > 0) ? peakTimes : undefined;
+  const totalCompleted = summary
+    ? summary.completion.movie.completed + summary.completion.episode.completed
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -163,18 +124,18 @@ export function LibraryWatch() {
         <StatCard
           icon={Eye}
           label={t('library.watch.watched')}
-          value={`${watch.data?.summary.watchedCount ?? 0}/${watch.data?.summary.totalItems ?? 0}`}
+          value={`${summary?.watchedCount ?? 0}/${summary?.totalItems ?? 0}`}
           subValue={t('library.watch.percentWatchedValue', {
-            pct: (watch.data?.summary.watchedPct ?? 0).toFixed(0),
+            pct: (summary?.watchedPct ?? 0).toFixed(0),
           })}
           isLoading={watch.isLoading}
         />
         <StatCard
           icon={Clock}
           label={t('library.watch.totalWatchTime')}
-          value={formatWatchTime(watch.data?.summary.totalWatchMs ?? 0)}
+          value={formatWatchTime(summary?.totalWatchMs ?? 0)}
           subValue={t('library.watch.avgPerItemValue', {
-            value: (watch.data?.summary.avgWatchesPerItem ?? 0).toFixed(1),
+            value: (summary?.avgPlaysPerItem ?? 0).toFixed(1),
           })}
           isLoading={watch.isLoading}
         />
@@ -183,13 +144,13 @@ export function LibraryWatch() {
           label={t('library.watch.completed')}
           value={`${totalCompleted}`}
           subValue={t('common:labels.items').toLowerCase()}
-          isLoading={completedIsLoading}
+          isLoading={watch.isLoading}
         />
         <StatCard
           icon={Flame}
           label={t('library.watch.peakHour')}
-          value={formatPeakHour(patterns.data?.peakTimes.peakHour)}
-          subValue={formatPeakDay(patterns.data?.peakTimes.peakDayOfWeek)}
+          value={peak ? formatHourOfDay(peak.peakHour) : '-'}
+          subValue={peak ? weekdayName(peak.peakDayOfWeek, 'long') : ''}
           isLoading={patterns.isLoading}
         />
       </div>
@@ -207,10 +168,10 @@ export function LibraryWatch() {
         // Multi-server: one card per server, each with its own Movies + TV donuts
         <PerServerCardGrid
           servers={selectedServers}
-          renderServer={(server) => <ServerCompletionCard server={server} />}
+          renderServer={(server) => <ServerCompletionCard server={server} timeRange={timeRange} />}
         />
       ) : (
-        // Single-server: original two-donut Movies / TV layout
+        // Single-server: two-donut Movies / TV layout
         <div className="grid gap-6 md:grid-cols-2">
           {/* Left: Movies Completion */}
           <Card>
@@ -221,10 +182,10 @@ export function LibraryWatch() {
             </CardHeader>
             <CardContent>
               <CompletionDonutChart
-                completed={movieCompletion.data?.summary.completedCount ?? 0}
-                inProgress={movieCompletion.data?.summary.inProgressCount ?? 0}
-                notStarted={movieCompletion.data?.summary.notStartedCount ?? 0}
-                isLoading={movieCompletion.isLoading}
+                completed={summary?.completion.movie.completed ?? 0}
+                inProgress={summary?.completion.movie.inProgress ?? 0}
+                notStarted={summary?.completion.movie.notStarted ?? 0}
+                isLoading={watch.isLoading}
                 height={220}
               />
             </CardContent>
@@ -237,10 +198,10 @@ export function LibraryWatch() {
             </CardHeader>
             <CardContent>
               <CompletionDonutChart
-                completed={tvCompletion.data?.summary.completedCount ?? 0}
-                inProgress={tvCompletion.data?.summary.inProgressCount ?? 0}
-                notStarted={tvCompletion.data?.summary.notStartedCount ?? 0}
-                isLoading={tvCompletion.isLoading}
+                completed={summary?.completion.episode.completed ?? 0}
+                inProgress={summary?.completion.episode.inProgress ?? 0}
+                notStarted={summary?.completion.episode.notStarted ?? 0}
+                isLoading={watch.isLoading}
                 height={220}
               />
             </CardContent>
@@ -257,47 +218,43 @@ export function LibraryWatch() {
               <CardTitle className="text-base font-medium">
                 {t('library.watch.viewingHours')}
               </CardTitle>
-              {patterns.data?.peakTimes.peakHour !== undefined && (
+              {peak && (
                 <Badge variant="outline">
-                  {t('library.watch.peak')} {formatPeakHour(patterns.data.peakTimes.peakHour)}
+                  {t('library.watch.peak')} {formatHourOfDay(peak.peakHour)}
                 </Badge>
               )}
             </div>
           </CardHeader>
           <CardContent>
             <HourlyDistributionChart
-              data={patterns.data?.peakTimes.hourlyDistribution}
+              data={peakTimes?.hourlyDistribution}
               isLoading={patterns.isLoading}
               height={220}
             />
           </CardContent>
         </Card>
 
-        {/* Right: Monthly Trends with highlights */}
+        {/* Right: Viewing trend with highlights */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-medium">
-                {t('library.watch.monthlyTrends')}
+                {t('library.watch.viewingTrend')}
               </CardTitle>
-              {patterns.data?.seasonalTrends && (
+              {trend?.busiest && trend.quietest && (
                 <div className="flex gap-2">
                   <Badge variant="success" className="text-xs">
-                    {t('library.watch.busiest')} {patterns.data.seasonalTrends.busiestMonth}
+                    {t('library.watch.busiest')} {formatTrendDate(trend.busiest, trend.bucket)}
                   </Badge>
                   <Badge variant="outline" className="text-xs">
-                    {t('library.watch.quietest')} {patterns.data.seasonalTrends.quietestMonth}
+                    {t('library.watch.quietest')} {formatTrendDate(trend.quietest, trend.bucket)}
                   </Badge>
                 </div>
               )}
             </div>
           </CardHeader>
           <CardContent>
-            <MonthlyTrendChart
-              data={patterns.data?.seasonalTrends.monthlyTrends}
-              isLoading={patterns.isLoading}
-              height={220}
-            />
+            <MonthlyTrendChart trend={trend} isLoading={patterns.isLoading} height={220} />
           </CardContent>
         </Card>
       </div>

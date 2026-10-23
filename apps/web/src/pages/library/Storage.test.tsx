@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { Link, MemoryRouter } from 'react-router';
 import { LibraryStorage } from './Storage';
 
 vi.mock('react-i18next', () => ({
@@ -12,12 +12,16 @@ vi.mock('react-i18next', () => ({
 
 const mockUseLibraryStorageScoped = vi.hoisted(() => vi.fn());
 const mockUseLibraryStale = vi.hoisted(() => vi.fn());
+const mockUseLibraryRoi = vi.hoisted(() =>
+  vi.fn((..._args: unknown[]) => ({ data: undefined, isLoading: false }))
+);
+const mockRoiTable = vi.hoisted(() => vi.fn((_props: unknown) => null));
 const mockUseMultiServerQuery = vi.hoisted(() => vi.fn());
 const mockLibrariesTable = vi.hoisted(() => vi.fn((_props: unknown) => null));
 vi.mock('@/hooks/queries', () => ({
   useLibraryDuplicates: () => ({ data: undefined, isLoading: false, isError: false }),
   useLibraryStale: mockUseLibraryStale,
-  useLibraryRoi: () => ({ data: undefined, isLoading: false }),
+  useLibraryRoi: mockUseLibraryRoi,
   useLibraryStatus: () => ({
     byServer: new Map([['srv-1', { data: { isSynced: true } }]]),
     isLoading: false,
@@ -40,7 +44,7 @@ vi.mock('@/components/library', () => ({
   LibraryEmptyState: () => null,
   DuplicatesTable: () => null,
   StaleContentTabs: () => <div data-testid="stale-tabs" />,
-  RoiTable: () => null,
+  RoiTable: mockRoiTable,
   StorageLibrariesTable: mockLibrariesTable,
 }));
 vi.mock('@/components/charts', () => ({ StoragePredictionChart: () => null }));
@@ -54,6 +58,7 @@ const GB = 1024 ** 3;
 function renderAt(url: string) {
   return render(
     <MemoryRouter initialEntries={[url]}>
+      <Link to="/library/storage?period=year">change range</Link>
       <LibraryStorage />
     </MemoryRouter>
   );
@@ -174,5 +179,18 @@ describe('LibraryStorage', () => {
       start,
       end,
     ]);
+  });
+
+  it('returns the ROI table to page 1 when the range changes', () => {
+    renderAt('/library/storage?period=week');
+    const roiPage = () => mockUseLibraryRoi.mock.lastCall?.[5];
+    const table = () => mockRoiTable.mock.lastCall?.[0] as { onPageChange: (page: number) => void };
+
+    act(() => table().onPageChange(4));
+    expect(roiPage()).toBe(4);
+
+    fireEvent.click(screen.getByText('change range'));
+    expect(mockUseLibraryRoi.mock.lastCall?.[2]).toBe('1y');
+    expect(roiPage()).toBe(1);
   });
 });

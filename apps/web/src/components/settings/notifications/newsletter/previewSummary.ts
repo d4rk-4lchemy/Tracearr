@@ -4,13 +4,8 @@ import type {
   NewsletterSectionCounts,
   NewsletterSections,
 } from '@tracearr/shared';
+import { windowLabel } from '@/lib/dateFormat';
 import { countsLine, type Translate } from '../newsletterFormat';
-
-export function windowLabel(iso: string, locale?: string, timeZone?: string): string {
-  return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric', timeZone }).format(
-    new Date(iso)
-  );
-}
 
 /** Items the fit loop folded into "+N more" lines, across every section. */
 export function heldBack(trimmed: NewsletterSectionCounts): number {
@@ -20,18 +15,13 @@ export function heldBack(trimmed: NewsletterSectionCounts): number {
 }
 
 /** "Send to 42 recipients: 12 movies, 3 shows, 0 albums added between Aug 28 and Sep 4", plus what the size budget folded into "+N more" lines. */
-export function sendSummary(
-  preview: NewsletterPreview,
-  t: Translate,
-  locale?: string,
-  timeZone?: string
-): string {
+export function sendSummary(preview: NewsletterPreview, t: Translate, timeZone?: string): string {
   const union = preview.variants[0];
   const sentence = t('newsletters.editor.send.summary', {
     count: preview.recipients.resolved,
     counts: countsLine(union.counts, t),
-    start: windowLabel(preview.window.start, locale, timeZone),
-    end: windowLabel(preview.window.end, locale, timeZone),
+    start: windowLabel(preview.window.start, timeZone),
+    end: windowLabel(preview.window.end, timeZone),
   });
   const held = heldBack(union.trimmed);
   return held === 0

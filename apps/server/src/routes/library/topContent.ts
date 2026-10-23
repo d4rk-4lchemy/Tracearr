@@ -1,17 +1,14 @@
 /**
  * Library Top Content Routes
  *
- * GET /top-movies - Top movies by plays/watch time with time filtering
- * GET /top-shows - Top TV shows by engagement with binge scoring
+ * GET /top-movies - Top movies by plays, watch time, viewers or completion
+ * GET /top-shows - Top shows by plays, watch time, viewers, completion or binge score
  *
- * Features:
- * - Time period filtering (7d, 30d, 90d, 1y, all, or a custom startDate/endDate)
- * - Multi-server support with serverIds[] query param
- * - Single-server path delegates to DB functions (exact main parity)
- * - Multi-server path uses inlined CTE + match-key dedup with serverIds[]
- * - Per-item serverIds[] for frontend color dots (multi-server path only)
- * - Server-side sorting on all metrics
- * - Pagination support
+ * Both read user_media_plays_daily by media identity within the page's window, the same play
+ * set as ROI, the watch summary and a title page: a play counts once per resume chain, an
+ * episode counts for its show, and a merged alias folds into its winner. Title, year and
+ * poster come from a live library item on the selected servers, falling back to the media row
+ * once every copy is gone. serverIds lists the servers whose plays contributed.
  */
 
 import {
@@ -22,29 +19,36 @@ import {
   type TopMoviesResponse,
   type TopShowsResponse,
 } from '@tracearr/shared';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { db } from '../../db/client.js';
 import { resolveServerIds, buildMultiServerFragment } from '../../utils/serverFiltering.js';
-import { buildLibraryCacheKey, resolveLibraryWindow } from './utils.js';
+import {
+  buildLibraryCacheKey,
+  LI_HAS_KNOWN_IMAGE,
+  resolveLibraryWindow,
+  rollupDayWindowSql,
+} from './utils.js';
 
-/** Raw row returned by get_content_engagement() DB function */
-interface RawMovieRowSingle {
-  rating_key: string;
-  media_title: string;
-  year: number | null;
-  thumb_path: string | null;
-  server_id: string;
-  total_plays: string;
-  total_watch_hours: string;
-  unique_viewers: string;
-  completion_rate: string;
+type SortBy = TopContentQueryInput['sortBy'];
+
+export interface TopContentQuery {
+  window: { startDate: Date | null; endDate: Date };
+  serverIds: string[] | undefined;
+  sortBy: SortBy;
+  sortOrder: 'asc' | 'desc';
+  limit: number;
+  offset: number;
 }
 
-/** Raw row from the inlined multi-server dedup CTE (movies) */
-interface RawMovieRowMulti {
-  match_key: string | null;
-  media_title: string;
+interface RawSummaryRow {
+  summary_titles: string;
+  summary_watch_hours: string;
+}
+
+interface RawTitleRow extends RawSummaryRow {
+  ident: string;
+  title: string;
   year: number | null;
   thumb_path: string | null;
   server_id: string;
@@ -52,830 +56,279 @@ interface RawMovieRowMulti {
   total_plays: string;
   total_watch_hours: string;
   unique_viewers: string;
-  completion_rate: string;
+  completion_rate: string | null;
+  binge_score: string | null;
 }
 
-/** Raw row returned by get_show_engagement() DB function */
-interface RawShowRowSingle {
-  show_title: string;
-  year: number | null;
-  thumb_path: string | null;
-  server_id: string;
-  total_episode_views: string;
-  total_watch_hours: string;
-  unique_viewers: string;
-  avg_completion_rate: string;
-  binge_score: string;
-}
+const SORT_COLUMNS: Record<SortBy, string> = {
+  plays: 'total_plays',
+  watch_hours: 'watched_ms',
+  viewers: 'unique_viewers',
+  completion_rate: 'completion_rate',
+  binge_score: 'binge_score',
+};
 
-/** Raw row from the inlined multi-server dedup CTE (shows) */
-interface RawShowRowMulti {
-  show_title: string;
-  year: number | null;
-  thumb_path: string | null;
-  server_id: string;
-  server_ids: string[];
-  total_episode_views: string;
-  total_watch_hours: string;
-  unique_viewers: string;
-  avg_completion_rate: string;
-  binge_score: string;
+// A chain counts as completed the way the watch summary counts it. The alias joins hash only
+// the merged rows (the partial index on merged_into_id) instead of probing media per play.
+const COMPLETED = sql`(p.any_watched OR p.max_progress_ms >= 0.85 * p.content_duration_ms)`;
+
+function playsCte(type: 'movie' | 'show', input: TopContentQuery): SQL {
+  const window = rollupDayWindowSql(input.window, sql`p.day`);
+  const serverFilter = buildMultiServerFragment(input.serverIds, 'p.server_id');
+  if (type === 'movie') {
+    return sql`
+      SELECT COALESCE(pm.merged_into_id, p.media_id) AS ident,
+        COALESCE(pm.merged_into_id, p.media_id) AS episode,
+        su.user_id, p.server_id, p.chain_id, p.counted, p.watched_ms, p.day, ${COMPLETED} AS completed
+      FROM user_media_plays_daily p
+      JOIN server_users su ON su.id = p.server_user_id
+      LEFT JOIN media pm ON pm.id = p.media_id AND pm.merged_into_id IS NOT NULL
+      WHERE p.media_type = 'movie' ${window} ${serverFilter}`;
+  }
+  return sql`
+      SELECT COALESCE(sh.merged_into_id, p.show_media_id) AS ident,
+        COALESCE(pm.merged_into_id, p.media_id) AS episode,
+        su.user_id, p.server_id, p.chain_id, p.counted, p.watched_ms, p.day, ${COMPLETED} AS completed
+      FROM user_media_plays_daily p
+      JOIN server_users su ON su.id = p.server_user_id
+      LEFT JOIN media pm ON pm.id = p.media_id AND pm.merged_into_id IS NOT NULL
+      LEFT JOIN media sh ON sh.id = p.show_media_id AND sh.merged_into_id IS NOT NULL
+      WHERE p.media_type = 'episode' AND p.show_media_id IS NOT NULL ${window} ${serverFilter}`;
 }
 
 /**
- * For 'all' period, find the earliest engagement data as the start date.
- * Falls back to 2020-01-01 if no data exists.
+ * One row per title ident with at least one counted play in the window, plus the summary over
+ * all of them. Movies and shows share the shape: a movie is a show with one episode, so the
+ * per-viewer episode rollup gives the movie completion rate and the show binge score alike.
  */
-async function resolveStartDate(startDate: Date | null): Promise<Date> {
-  if (startDate) return startDate;
-
-  const result = await db.execute(sql`
-    SELECT MIN(day)::date AS earliest FROM daily_content_engagement
-  `);
-  const earliest = (result.rows[0] as { earliest: string | null })?.earliest;
-  return earliest ? new Date(earliest) : new Date('2020-01-01');
+function topContentCtes(type: 'movie' | 'show', input: TopContentQuery): SQL {
+  return sql`
+    WITH plays AS (${playsCte(type, input)}),
+    viewer_episodes AS (
+      SELECT ident, user_id, episode,
+        COUNT(DISTINCT chain_id) FILTER (WHERE counted) AS plays,
+        SUM(watched_ms) AS watched_ms,
+        BOOL_OR(completed) FILTER (WHERE counted) AS completed,
+        COUNT(DISTINCT day) FILTER (WHERE counted) AS viewing_days
+      FROM plays
+      GROUP BY ident, user_id, episode
+    ),
+    viewer_titles AS (
+      SELECT ident, user_id, SUM(plays) AS plays, SUM(watched_ms) AS watched_ms,
+        COUNT(*) FILTER (WHERE plays > 0) AS episodes_watched,
+        COUNT(*) FILTER (WHERE completed) AS completed_episodes,
+        SUM(viewing_days) AS viewing_days
+      FROM viewer_episodes
+      GROUP BY ident, user_id
+    ),
+    titles AS (
+      SELECT ident, SUM(plays) AS total_plays, SUM(watched_ms) AS watched_ms,
+        COUNT(*) FILTER (WHERE watched_ms > 0) AS unique_viewers,
+        ROUND(100.0 * SUM(completed_episodes) / NULLIF(SUM(episodes_watched), 0), 1) AS completion_rate,
+        LEAST(100, ROUND(
+          40 * (AVG(episodes_watched) * ROUND(100.0 * SUM(completed_episodes) / NULLIF(SUM(episodes_watched), 0), 1) / 100 / 10) +
+          30 * (SUM(viewing_days)::numeric / NULLIF(COUNT(*) FILTER (WHERE watched_ms > 0), 0) * 2) +
+          30 * (SUM(completed_episodes)::numeric / NULLIF(SUM(episodes_watched), 0))
+        , 0)) AS binge_score
+      FROM viewer_titles
+      GROUP BY ident
+      HAVING SUM(plays) > 0
+    ),
+    title_servers AS (
+      SELECT ident, array_agg(DISTINCT server_id::text ORDER BY server_id::text) AS server_ids
+      FROM plays
+      GROUP BY ident
+    ),
+    summary AS (
+      SELECT (SELECT COUNT(*) FROM titles)::text AS summary_titles,
+        COALESCE(ROUND((SELECT SUM(watched_ms) FROM plays) / 3600000.0, 1), 0)::text AS summary_watch_hours
+    )`;
 }
 
+export function buildTopContentQuery(type: 'movie' | 'show', input: TopContentQuery): SQL {
+  const direction = input.sortOrder === 'asc' ? 'ASC' : 'DESC';
+  const sortColumn = SORT_COLUMNS[input.sortBy];
+  const orderBy = (alias: string) =>
+    sql.raw(`${alias}${sortColumn} ${direction} NULLS LAST, ${alias}ident`);
+  const serverFilterOnLi = buildMultiServerFragment(input.serverIds, 'li.server_id');
+  return sql`
+    ${topContentCtes(type, input)}
+    SELECT t.ident::text AS ident,
+      COALESCE(li.title, md.title) AS title,
+      COALESCE(li.year, md.year) AS year,
+      li.thumb_path,
+      COALESCE(li.server_id, ts.server_ids[1]::uuid) AS server_id,
+      ts.server_ids,
+      t.total_plays::text AS total_plays,
+      ROUND(t.watched_ms / 3600000.0, 1)::text AS total_watch_hours,
+      t.unique_viewers::text AS unique_viewers,
+      t.completion_rate::text AS completion_rate,
+      t.binge_score::text AS binge_score,
+      s.*
+    FROM (
+      SELECT * FROM titles ORDER BY ${orderBy('')} LIMIT ${input.limit} OFFSET ${input.offset}
+    ) t
+    JOIN media md ON md.id = t.ident
+    JOIN title_servers ts ON ts.ident = t.ident
+    LEFT JOIN LATERAL (
+      SELECT li.title, li.year, li.thumb_path, li.server_id
+      FROM library_items li
+      WHERE li.removed_at IS NULL AND li.media_type = ${type}
+        AND li.media_id IN (SELECT id FROM media WHERE id = t.ident OR merged_into_id = t.ident)
+        ${serverFilterOnLi}
+      ORDER BY ${LI_HAS_KNOWN_IMAGE} DESC, li.created_at, li.id
+      LIMIT 1
+    ) li ON true
+    CROSS JOIN summary s
+    ORDER BY ${orderBy('t.')}`;
+}
+
+export function buildTopContentSummaryQuery(
+  type: 'movie' | 'show',
+  input: Omit<TopContentQuery, 'sortBy' | 'sortOrder' | 'limit' | 'offset'>
+): SQL {
+  return sql`${topContentCtes(type, { ...input, sortBy: 'plays', sortOrder: 'desc', limit: 0, offset: 0 })}
+    SELECT * FROM summary`;
+}
+
+const toInt = (value: string | null | undefined) => parseInt(value ?? '0', 10) || 0;
+const toFloat = (value: string | null | undefined) => parseFloat(value ?? '0') || 0;
+
+async function queryTopContent(
+  type: 'movie' | 'show',
+  input: TopContentQuery
+): Promise<{ rows: RawTitleRow[]; total: number; totalWatchHours: number }> {
+  const rows = (await db.execute(buildTopContentQuery(type, input)))
+    .rows as unknown as RawTitleRow[];
+  const summary =
+    rows[0] ??
+    ((await db.execute(buildTopContentSummaryQuery(type, input)))
+      .rows[0] as unknown as RawSummaryRow);
+  return {
+    rows,
+    total: toInt(summary.summary_titles),
+    totalWatchHours: toFloat(summary.summary_watch_hours),
+  };
+}
+
+interface TopContentPage {
+  rows: RawTitleRow[];
+  total: number;
+  totalWatchHours: number;
+  page: number;
+  pageSize: number;
+}
+
+function toMovies(r: TopContentPage): TopMoviesResponse {
+  return {
+    items: r.rows.map((row) => ({
+      ratingKey: row.ident,
+      title: row.title,
+      year: row.year,
+      thumbPath: row.thumb_path,
+      serverId: row.server_id,
+      serverIds: row.server_ids,
+      totalPlays: toInt(row.total_plays),
+      totalWatchHours: toFloat(row.total_watch_hours),
+      uniqueViewers: toInt(row.unique_viewers),
+      completionRate: toFloat(row.completion_rate),
+    })),
+    summary: { totalMovies: r.total, totalWatchHours: r.totalWatchHours },
+    pagination: { page: r.page, pageSize: r.pageSize, total: r.total },
+  };
+}
+
+function toShows(r: TopContentPage): TopShowsResponse {
+  return {
+    items: r.rows.map((row) => ({
+      mediaId: row.ident,
+      showTitle: row.title,
+      year: row.year,
+      thumbPath: row.thumb_path,
+      serverId: row.server_id,
+      serverIds: row.server_ids,
+      totalEpisodeViews: toInt(row.total_plays),
+      totalWatchHours: toFloat(row.total_watch_hours),
+      uniqueViewers: toInt(row.unique_viewers),
+      avgCompletionRate: toFloat(row.completion_rate),
+      bingeScore: toFloat(row.binge_score),
+    })),
+    summary: { totalShows: r.total, totalWatchHours: r.totalWatchHours },
+    pagination: { page: r.page, pageSize: r.pageSize, total: r.total },
+  };
+}
+
+const EMPTY_PAGE: Omit<TopContentPage, 'page' | 'pageSize'> = {
+  rows: [],
+  total: 0,
+  totalWatchHours: 0,
+};
+
 export const libraryTopContentRoute: FastifyPluginAsync = async (app) => {
-  /**
-   * GET /top-movies - Top movies by engagement metrics
-   *
-   * Single-server: delegates to get_content_engagement() for exact main parity.
-   * Multi-server: inlined CTE with cross-server dedup by media identity;
-   *   each result includes serverIds[] for all servers that contributed plays.
-   */
-  app.get<{ Querystring: TopContentQueryInput }>(
+  const register = (
+    path: string,
+    type: 'movie' | 'show',
+    cachePrefix: string,
+    ttl: number,
+    toResponse: (page: TopContentPage) => TopMoviesResponse | TopShowsResponse
+  ) => {
+    app.get<{ Querystring: TopContentQueryInput }>(
+      path,
+      { preHandler: [app.requirePermission('insights', 'read')] },
+      async (request, reply) => {
+        const query = topContentQuerySchema.safeParse(request.query);
+        if (!query.success) {
+          return reply.badRequest('Invalid query parameters');
+        }
+
+        const { serverId, serverIds, sortBy, sortOrder, page, pageSize } = query.data;
+        const { startDate, endDate, cacheSegment } = resolveLibraryWindow(query.data);
+        const resolvedIds = resolveServerIds(request.user, serverId, serverIds);
+        if (resolvedIds?.length === 0) {
+          return toResponse({ ...EMPTY_PAGE, page, pageSize });
+        }
+
+        const cacheKey = buildLibraryCacheKey(
+          cachePrefix,
+          resolvedIds ? resolvedIds.slice().sort().join(',') : 'all',
+          `${cacheSegment}-${sortBy}-${sortOrder}-${page}-${pageSize}`
+        );
+        const cached = await app.redis.get(cacheKey);
+        if (cached) {
+          try {
+            return JSON.parse(cached) as TopMoviesResponse | TopShowsResponse;
+          } catch {
+            // Fall through to compute
+          }
+        }
+
+        const result = await queryTopContent(type, {
+          window: { startDate, endDate },
+          serverIds: resolvedIds,
+          sortBy,
+          sortOrder,
+          limit: pageSize,
+          offset: (page - 1) * pageSize,
+        });
+        const response = toResponse({ ...result, page, pageSize });
+        await app.redis.setex(cacheKey, ttl, JSON.stringify(response));
+        return response;
+      }
+    );
+  };
+
+  register(
     '/top-movies',
-    { preHandler: [app.requirePermission('insights', 'read')] },
-    async (request, reply) => {
-      const query = topContentQuerySchema.safeParse(request.query);
-      if (!query.success) {
-        return reply.badRequest('Invalid query parameters');
-      }
-
-      const { serverId, serverIds, sortBy, sortOrder, page, pageSize } = query.data;
-      const { startDate, endDate, cacheSegment } = resolveLibraryWindow(query.data);
-      const authUser = request.user;
-
-      const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-
-      // Empty resolved set means no accessible servers match the requested filter
-      if (resolvedIds?.length === 0) {
-        const empty: TopMoviesResponse = {
-          items: [],
-          summary: { totalMovies: 0, totalWatchHours: 0 },
-          pagination: { page, pageSize, total: 0 },
-        };
-        return empty;
-      }
-
-      // Gate: single server uses the DB function; multi (or owner-all) uses the inlined CTE
-      const singleServer = resolvedIds?.length === 1;
-
-      const serverCacheSegment = resolvedIds ? resolvedIds.slice().sort().join(',') : 'all';
-      const cacheKey = buildLibraryCacheKey(
-        REDIS_KEYS.LIBRARY_TOP_MOVIES,
-        serverCacheSegment,
-        `${cacheSegment}-${sortBy}-${sortOrder}-${page}-${pageSize}`
-      );
-
-      const cached = await app.redis.get(cacheKey);
-      if (cached) {
-        try {
-          return JSON.parse(cached) as TopMoviesResponse;
-        } catch {
-          // Fall through to compute
-        }
-      }
-
-      const effectiveStartDate = await resolveStartDate(startDate);
-      const offset = (page - 1) * pageSize;
-
-      // Movies don't have binge_score - fall back to total_plays
-      const sortColumnMap: Record<string, string> = {
-        plays: 'total_plays',
-        watch_hours: 'total_watch_hours',
-        viewers: 'unique_viewers',
-        completion_rate: 'completion_rate',
-        binge_score: 'total_plays',
-      };
-      const sortColumn = sortColumnMap[sortBy] ?? 'total_plays';
-      const sortDir = sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS FIRST';
-
-      let items: TopMoviesResponse['items'];
-      let total: number;
-      let totalWatchHours: number;
-
-      if (singleServer) {
-        // Single-server path: call the DB function exactly as main does.
-        // resolvedIds[0] is the one server the user scoped to.
-        const filterServerId = resolvedIds[0];
-
-        const itemsResult = await db.execute(sql`
-          SELECT
-            rating_key,
-            media_title,
-            year,
-            thumb_path,
-            server_id,
-            total_plays,
-            total_watch_hours,
-            unique_viewers,
-            completion_rate
-          FROM get_content_engagement(
-            ${effectiveStartDate}::timestamptz,
-            ${endDate}::timestamptz,
-            ${filterServerId}::uuid,
-            'movie'
-          )
-          WHERE media_title IS NOT NULL
-          ORDER BY ${sql.raw(sortColumn)} ${sql.raw(sortDir)}
-          LIMIT ${pageSize} OFFSET ${offset}
-        `);
-
-        items = (itemsResult.rows as unknown as RawMovieRowSingle[]).map((row) => ({
-          ratingKey: row.rating_key,
-          title: row.media_title,
-          year: row.year,
-          thumbPath: row.thumb_path,
-          serverId: row.server_id,
-          serverIds: [row.server_id],
-          totalPlays: parseInt(row.total_plays, 10) || 0,
-          totalWatchHours: parseFloat(row.total_watch_hours) || 0,
-          uniqueViewers: parseInt(row.unique_viewers, 10) || 0,
-          completionRate: parseFloat(row.completion_rate) || 0,
-        }));
-
-        const summaryResult = await db.execute(sql`
-          SELECT
-            COUNT(*) AS total_movies,
-            COALESCE(SUM(total_watch_hours), 0) AS total_watch_hours
-          FROM get_content_engagement(
-            ${effectiveStartDate}::timestamptz,
-            ${endDate}::timestamptz,
-            ${filterServerId}::uuid,
-            'movie'
-          )
-          WHERE media_title IS NOT NULL
-        `);
-
-        const summaryRow = summaryResult.rows[0] as {
-          total_movies: string;
-          total_watch_hours: string;
-        };
-        total = parseInt(summaryRow.total_movies, 10) || 0;
-        totalWatchHours = parseFloat(summaryRow.total_watch_hours) || 0;
-      } else {
-        // Multi-server path: inlined CTE with dedup by media identity.
-        //
-        // Dedup approach: the media_id stamped on sessions (surfaced through the
-        // cagg) keys the collapse, falling back to a normalized-title key for
-        // unidentified content, then to the server-scoped rating key for titleless
-        // rows (rating keys are only unique per server). Rows sharing a key (same
-        // movie on multiple servers) collapse into one row; play counts and watch
-        // time are summed. ARRAY_AGG collects all contributing server IDs.
-        //
-        // unique_viewers is counted by identity (server_users.user_id), computed
-        // separately from the matched titles' raw viewer rows - summing each
-        // server's per-title viewer count would double-count a merged person
-        // who watched the same title on two servers.
-        const serverFilter = buildMultiServerFragment(resolvedIds, 'd.server_id');
-
-        const itemsResult = await db.execute(sql`
-          WITH user_content AS (
-            SELECT
-              d.rating_key,
-              d.server_user_id,
-              su.user_id AS identity_user_id,
-              MAX(d.media_title) AS media_title,
-              MAX(d.content_duration_ms) AS content_duration_ms,
-              MAX(d.thumb_path) AS thumb_path,
-              MAX(d.server_id::text)::uuid AS server_id,
-              -- Fold a merged-loser id to its winner so a duplicate merged after
-              -- the fact still collapses with the winner's rows, mirroring
-              -- value_rollup's alias fold in catalog.ts. am is only null for
-              -- unstamped rows, which fall through to the title/rk keys below.
-              MAX(COALESCE(am.merged_into_id, d.media_id)::text)::uuid AS media_id,
-              MAX(d.year) AS year,
-              SUM(d.watched_ms) AS watched_ms,
-              MAX(d.max_progress_ms) AS max_progress_ms
-            FROM daily_content_engagement d
-            JOIN server_users su ON su.id = d.server_user_id
-            LEFT JOIN media am ON am.id = d.media_id
-            WHERE d.day >= ${effectiveStartDate}::timestamptz
-              AND d.day < ${endDate}::timestamptz
-              AND d.media_type = 'movie'
-              AND (am.id IS NULL OR am.media_type = 'movie')
-              ${serverFilter}
-            GROUP BY d.rating_key, d.server_user_id, su.user_id
-          ),
-          content_agg AS (
-            SELECT
-              uc.server_id,
-              uc.rating_key,
-              MAX(uc.media_title) AS media_title,
-              MAX(uc.thumb_path) AS thumb_path,
-              MAX(uc.media_id::text)::uuid AS media_id,
-              MAX(uc.year) AS year,
-              SUM(CASE
-                WHEN uc.content_duration_ms > 0 THEN
-                  GREATEST(
-                    CASE WHEN COALESCE(uc.max_progress_ms, 0) >= uc.content_duration_ms * 0.85 THEN 1
-                         WHEN uc.watched_ms >= uc.content_duration_ms * 0.85 THEN 1
-                         ELSE 0 END,
-                    FLOOR(uc.watched_ms::float / uc.content_duration_ms)
-                  )
-                ELSE 0
-              END)::bigint AS total_plays,
-              ROUND(SUM(uc.watched_ms) / 3600000.0, 1) AS total_watch_hours,
-              ROUND(100.0 * COUNT(DISTINCT uc.server_user_id) FILTER (
-                WHERE uc.content_duration_ms > 0
-                  AND (COALESCE(uc.max_progress_ms, 0) >= uc.content_duration_ms * 0.85
-                       OR uc.watched_ms >= uc.content_duration_ms * 0.85)
-              ) / NULLIF(COUNT(DISTINCT uc.server_user_id), 0), 1) AS completion_rate
-            FROM user_content uc
-            GROUP BY uc.server_id, uc.rating_key
-          ),
-          with_match_key AS (
-            SELECT
-              ca.*,
-              LOWER(REGEXP_REPLACE(COALESCE(ca.media_title, ''), '[^a-zA-Z0-9]', '', 'g')) AS norm_title,
-              COALESCE(
-                ca.media_id::text,
-                NULLIF('title:' || LOWER(REGEXP_REPLACE(COALESCE(ca.media_title, ''), '[^a-zA-Z0-9]', '', 'g')), 'title:'),
-                'rk:' || ca.server_id::text || ':' || ca.rating_key
-              ) AS match_key
-            FROM content_agg ca
-          ),
-          -- Per (title, year) bucket, hopping to the media_id stamped on ANY row
-          -- sharing that bucket so a stamped and an unstamped copy of the same
-          -- movie collapse together (mirrors show_dedup_map, keyed by year too
-          -- since two different movies can share a title).
-          title_year_raw AS (
-            SELECT norm_title, year, MAX(media_id::text) AS raw_media_id
-            FROM with_match_key
-            WHERE norm_title <> ''
-            GROUP BY norm_title, year
-          ),
-          title_year_counts AS (
-            SELECT
-              norm_title,
-              COUNT(*) FILTER (WHERE year IS NOT NULL) AS non_null_year_count,
-              MAX(year) FILTER (WHERE year IS NOT NULL) AS sole_year
-            FROM title_year_raw
-            GROUP BY norm_title
-          ),
-          -- A null-year bucket folds into the title's one non-null-year bucket;
-          -- with zero or 2+ non-null buckets it stays on its own.
-          title_year_effective AS (
-            SELECT
-              tyr.norm_title,
-              tyr.year AS raw_year,
-              CASE
-                WHEN tyr.year IS NULL AND tyc.non_null_year_count = 1 THEN tyc.sole_year
-                ELSE tyr.year
-              END AS effective_year,
-              tyr.raw_media_id
-            FROM title_year_raw tyr
-            JOIN title_year_counts tyc ON tyc.norm_title = tyr.norm_title
-          ),
-          movie_dedup_map AS (
-            SELECT
-              norm_title,
-              raw_year,
-              COALESCE(
-                MAX(raw_media_id) OVER (PARTITION BY norm_title, effective_year),
-                'title:' || norm_title || ':' || COALESCE(effective_year::text, 'null')
-              ) AS dedup_key
-            FROM title_year_effective
-          ),
-          with_dedup_key AS (
-            SELECT
-              wmk.*,
-              COALESCE(mdm.dedup_key, wmk.match_key) AS dedup_key
-            FROM with_match_key wmk
-            LEFT JOIN movie_dedup_map mdm
-              ON mdm.norm_title = wmk.norm_title AND mdm.raw_year IS NOT DISTINCT FROM wmk.year
-          ),
-          rating_key_dedup_map AS (
-            SELECT server_id, rating_key, dedup_key
-            FROM with_dedup_key
-          ),
-          identity_counts AS (
-            SELECT rkm.dedup_key, COUNT(DISTINCT uc.identity_user_id)::bigint AS unique_viewers
-            FROM user_content uc
-            JOIN rating_key_dedup_map rkm
-              ON rkm.server_id = uc.server_id AND rkm.rating_key = uc.rating_key
-            GROUP BY rkm.dedup_key
-          ),
-          deduped AS (
-            SELECT
-              dedup_key,
-              MAX(media_title) AS media_title,
-              MAX(year) AS year,
-              MAX(thumb_path) AS thumb_path,
-              MIN(server_id::text) AS server_id,
-              ARRAY_AGG(DISTINCT server_id::text) AS server_ids,
-              SUM(total_plays) AS total_plays,
-              ROUND(SUM(total_watch_hours), 1) AS total_watch_hours,
-              ROUND(AVG(completion_rate), 1) AS completion_rate
-            FROM with_dedup_key
-            WHERE media_title IS NOT NULL
-            GROUP BY dedup_key
-          )
-          SELECT
-            d.dedup_key AS match_key,
-            d.media_title,
-            d.year,
-            d.thumb_path,
-            d.server_id,
-            d.server_ids,
-            d.total_plays,
-            d.total_watch_hours,
-            COALESCE(ic.unique_viewers, 0) AS unique_viewers,
-            d.completion_rate
-          FROM deduped d
-          LEFT JOIN identity_counts ic ON ic.dedup_key = d.dedup_key
-          ORDER BY ${sql.raw(sortColumn)} ${sql.raw(sortDir)}
-          LIMIT ${pageSize} OFFSET ${offset}
-        `);
-
-        items = (itemsResult.rows as unknown as RawMovieRowMulti[]).map((row) => ({
-          ratingKey: row.match_key ?? '',
-          title: row.media_title,
-          year: row.year,
-          thumbPath: row.thumb_path,
-          serverId: row.server_id,
-          serverIds: row.server_ids,
-          totalPlays: parseInt(String(row.total_plays), 10) || 0,
-          totalWatchHours: parseFloat(String(row.total_watch_hours)) || 0,
-          uniqueViewers: parseInt(String(row.unique_viewers), 10) || 0,
-          completionRate: parseFloat(String(row.completion_rate)) || 0,
-        }));
-
-        const summaryResult = await db.execute(sql`
-          WITH user_content AS (
-            SELECT
-              d.rating_key,
-              d.server_user_id,
-              MAX(d.media_title) AS media_title,
-              MAX(d.content_duration_ms) AS content_duration_ms,
-              MAX(d.server_id::text)::uuid AS server_id,
-              MAX(COALESCE(am.merged_into_id, d.media_id)::text)::uuid AS media_id,
-              MAX(d.year) AS year,
-              SUM(d.watched_ms) AS watched_ms,
-              MAX(d.max_progress_ms) AS max_progress_ms
-            FROM daily_content_engagement d
-            LEFT JOIN media am ON am.id = d.media_id
-            WHERE d.day >= ${effectiveStartDate}::timestamptz
-              AND d.day < ${endDate}::timestamptz
-              AND d.media_type = 'movie'
-              AND (am.id IS NULL OR am.media_type = 'movie')
-              ${serverFilter}
-            GROUP BY d.rating_key, d.server_user_id
-          ),
-          content_agg AS (
-            SELECT
-              uc.server_id,
-              uc.rating_key,
-              MAX(uc.media_title) AS media_title,
-              MAX(uc.media_id::text)::uuid AS media_id,
-              MAX(uc.year) AS year,
-              ROUND(SUM(uc.watched_ms) / 3600000.0, 1) AS total_watch_hours
-            FROM user_content uc
-            GROUP BY uc.server_id, uc.rating_key
-          ),
-          with_match_key AS (
-            SELECT
-              ca.total_watch_hours,
-              ca.media_id,
-              ca.year,
-              LOWER(REGEXP_REPLACE(COALESCE(ca.media_title, ''), '[^a-zA-Z0-9]', '', 'g')) AS norm_title,
-              COALESCE(
-                ca.media_id::text,
-                NULLIF('title:' || LOWER(REGEXP_REPLACE(COALESCE(ca.media_title, ''), '[^a-zA-Z0-9]', '', 'g')), 'title:'),
-                'rk:' || ca.server_id::text || ':' || ca.rating_key
-              ) AS match_key
-            FROM content_agg ca
-          ),
-          title_year_raw AS (
-            SELECT norm_title, year, MAX(media_id::text) AS raw_media_id
-            FROM with_match_key
-            WHERE norm_title <> ''
-            GROUP BY norm_title, year
-          ),
-          title_year_counts AS (
-            SELECT
-              norm_title,
-              COUNT(*) FILTER (WHERE year IS NOT NULL) AS non_null_year_count,
-              MAX(year) FILTER (WHERE year IS NOT NULL) AS sole_year
-            FROM title_year_raw
-            GROUP BY norm_title
-          ),
-          title_year_effective AS (
-            SELECT
-              tyr.norm_title,
-              tyr.year AS raw_year,
-              CASE
-                WHEN tyr.year IS NULL AND tyc.non_null_year_count = 1 THEN tyc.sole_year
-                ELSE tyr.year
-              END AS effective_year,
-              tyr.raw_media_id
-            FROM title_year_raw tyr
-            JOIN title_year_counts tyc ON tyc.norm_title = tyr.norm_title
-          ),
-          movie_dedup_map AS (
-            SELECT
-              norm_title,
-              raw_year,
-              COALESCE(
-                MAX(raw_media_id) OVER (PARTITION BY norm_title, effective_year),
-                'title:' || norm_title || ':' || COALESCE(effective_year::text, 'null')
-              ) AS dedup_key
-            FROM title_year_effective
-          ),
-          with_dedup_key AS (
-            SELECT
-              wmk.total_watch_hours,
-              COALESCE(mdm.dedup_key, wmk.match_key) AS dedup_key
-            FROM with_match_key wmk
-            LEFT JOIN movie_dedup_map mdm
-              ON mdm.norm_title = wmk.norm_title AND mdm.raw_year IS NOT DISTINCT FROM wmk.year
-          ),
-          deduped AS (
-            SELECT
-              dedup_key,
-              ROUND(SUM(total_watch_hours), 1) AS total_watch_hours
-            FROM with_dedup_key
-            GROUP BY dedup_key
-          )
-          SELECT
-            COUNT(*) AS total_movies,
-            COALESCE(SUM(total_watch_hours), 0) AS total_watch_hours
-          FROM deduped
-        `);
-
-        const summaryRow = summaryResult.rows[0] as {
-          total_movies: string;
-          total_watch_hours: string;
-        };
-        total = parseInt(String(summaryRow.total_movies), 10) || 0;
-        totalWatchHours = parseFloat(String(summaryRow.total_watch_hours)) || 0;
-      }
-
-      const response: TopMoviesResponse = {
-        items,
-        summary: { totalMovies: total, totalWatchHours },
-        pagination: { page, pageSize, total },
-      };
-
-      await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_TOP_MOVIES, JSON.stringify(response));
-
-      return response;
-    }
+    'movie',
+    REDIS_KEYS.LIBRARY_TOP_MOVIES,
+    CACHE_TTL.LIBRARY_TOP_MOVIES,
+    toMovies
   );
-
-  /**
-   * GET /top-shows - Top TV shows by engagement metrics
-   *
-   * Single-server: delegates to get_show_engagement() for exact main parity.
-   * Multi-server: inlined CTE with cross-server dedup by show media identity;
-   *   each result includes serverIds[] for all servers that contributed views.
-   */
-  app.get<{ Querystring: TopContentQueryInput }>(
+  register(
     '/top-shows',
-    { preHandler: [app.requirePermission('insights', 'read')] },
-    async (request, reply) => {
-      const query = topContentQuerySchema.safeParse(request.query);
-      if (!query.success) {
-        return reply.badRequest('Invalid query parameters');
-      }
-
-      const { serverId, serverIds, sortBy, sortOrder, page, pageSize } = query.data;
-      const { startDate, endDate, cacheSegment } = resolveLibraryWindow(query.data);
-      const authUser = request.user;
-
-      const resolvedIds = resolveServerIds(authUser, serverId, serverIds);
-
-      if (resolvedIds?.length === 0) {
-        const empty: TopShowsResponse = {
-          items: [],
-          summary: { totalShows: 0, totalWatchHours: 0 },
-          pagination: { page, pageSize, total: 0 },
-        };
-        return empty;
-      }
-
-      // Gate: single server uses the DB function; multi (or owner-all) uses the inlined CTE
-      const singleServer = resolvedIds?.length === 1;
-
-      const serverCacheSegment = resolvedIds ? resolvedIds.slice().sort().join(',') : 'all';
-      const cacheKey = buildLibraryCacheKey(
-        REDIS_KEYS.LIBRARY_TOP_SHOWS,
-        serverCacheSegment,
-        `${cacheSegment}-${sortBy}-${sortOrder}-${page}-${pageSize}`
-      );
-
-      const cached = await app.redis.get(cacheKey);
-      if (cached) {
-        try {
-          return JSON.parse(cached) as TopShowsResponse;
-        } catch {
-          // Fall through to compute
-        }
-      }
-
-      const effectiveStartDate = await resolveStartDate(startDate);
-      const offset = (page - 1) * pageSize;
-
-      const sortColumnMap: Record<string, string> = {
-        plays: 'total_episode_views',
-        watch_hours: 'total_watch_hours',
-        viewers: 'unique_viewers',
-        completion_rate: 'avg_completion_rate',
-        binge_score: 'binge_score',
-      };
-      const sortColumn = sortColumnMap[sortBy] ?? 'total_episode_views';
-      const sortDir = sortOrder === 'asc' ? 'ASC NULLS LAST' : 'DESC NULLS FIRST';
-
-      let items: TopShowsResponse['items'];
-      let total: number;
-      let totalWatchHours: number;
-
-      if (singleServer) {
-        // Single-server path: call the DB function exactly as main does.
-        const filterServerId = resolvedIds[0];
-
-        const itemsResult = await db.execute(sql`
-          SELECT
-            show_title,
-            year,
-            thumb_path,
-            server_id,
-            total_episode_views,
-            total_watch_hours,
-            unique_viewers,
-            avg_completion_rate,
-            binge_score
-          FROM get_show_engagement(
-            ${effectiveStartDate}::timestamptz,
-            ${endDate}::timestamptz,
-            ${filterServerId}::uuid
-          )
-          WHERE show_title IS NOT NULL
-          ORDER BY ${sql.raw(sortColumn)} ${sql.raw(sortDir)}
-          LIMIT ${pageSize} OFFSET ${offset}
-        `);
-
-        items = (itemsResult.rows as unknown as RawShowRowSingle[]).map((row) => ({
-          showTitle: row.show_title,
-          year: row.year,
-          thumbPath: row.thumb_path,
-          serverId: row.server_id,
-          serverIds: [row.server_id],
-          totalEpisodeViews: parseInt(row.total_episode_views, 10) || 0,
-          totalWatchHours: parseFloat(row.total_watch_hours) || 0,
-          uniqueViewers: parseInt(row.unique_viewers, 10) || 0,
-          avgCompletionRate: parseFloat(row.avg_completion_rate) || 0,
-          bingeScore: parseFloat(row.binge_score) || 0,
-        }));
-
-        const summaryResult = await db.execute(sql`
-          SELECT
-            COUNT(*) AS total_shows,
-            COALESCE(SUM(total_watch_hours), 0) AS total_watch_hours
-          FROM get_show_engagement(
-            ${effectiveStartDate}::timestamptz,
-            ${endDate}::timestamptz,
-            ${filterServerId}::uuid
-          )
-          WHERE show_title IS NOT NULL
-        `);
-
-        const summaryRow = summaryResult.rows[0] as {
-          total_shows: string;
-          total_watch_hours: string;
-        };
-        total = parseInt(summaryRow.total_shows, 10) || 0;
-        totalWatchHours = parseFloat(summaryRow.total_watch_hours) || 0;
-      } else {
-        // Multi-server path: inlined CTE with dedup by show media identity.
-        //
-        // Dedup approach: the show_media_id stamped on sessions (surfaced through
-        // the cagg) keys the collapse, falling back to LOWER + strip non-alphanumeric
-        // on show_title for unidentified shows. Shows sharing a key across servers
-        // collapse into one row; episode views and watch hours are summed.
-        //
-        // unique_viewers is counted by identity (server_users.user_id) via a
-        // separate identity_counts CTE - summing each server's per-show viewer
-        // count would double-count a merged person watching the same show on
-        // two servers. Its keys come from show_dedup_map (per-title, after the
-        // MAX(show_media_id) hop) so they always line up with deduped's keys,
-        // even when a show mixes stamped and unstamped episode rows.
-        const serverFilter = buildMultiServerFragment(resolvedIds, 'd.server_id');
-
-        const itemsResult = await db.execute(sql`
-          WITH user_episodes AS (
-            SELECT
-              d.rating_key,
-              d.server_user_id,
-              MAX(d.show_title) AS show_title,
-              -- Fold a merged-loser show id to its winner, same as the movie
-              -- branch above; am is only null for unstamped episodes.
-              MAX(COALESCE(am.merged_into_id, d.show_media_id)::text)::uuid AS show_media_id,
-              MAX(d.content_duration_ms) AS content_duration_ms,
-              MAX(d.thumb_path) AS thumb_path,
-              MAX(d.server_id::text)::uuid AS server_id,
-              MAX(d.year) AS year,
-              SUM(d.watched_ms) AS watched_ms,
-              MAX(d.max_progress_ms) AS max_progress_ms,
-              COUNT(DISTINCT d.day) AS viewing_days
-            FROM daily_content_engagement d
-            LEFT JOIN media am ON am.id = d.show_media_id
-            WHERE d.day >= ${effectiveStartDate}::timestamptz
-              AND d.day < ${endDate}::timestamptz
-              AND d.show_title IS NOT NULL
-              AND d.media_type = 'episode'
-              AND (am.id IS NULL OR am.media_type = 'show')
-              ${serverFilter}
-            GROUP BY d.rating_key, d.server_user_id
-          ),
-          show_dedup_map AS (
-            SELECT
-              ue.show_title,
-              COALESCE(MAX(ue.show_media_id::text), LOWER(REGEXP_REPLACE(COALESCE(ue.show_title, ''), '[^a-zA-Z0-9]', '', 'g'))) AS dedup_key
-            FROM user_episodes ue
-            GROUP BY ue.show_title
-          ),
-          identity_counts AS (
-            SELECT
-              sdm.dedup_key,
-              COUNT(DISTINCT su.user_id)::bigint AS unique_viewers
-            FROM user_episodes ue
-            JOIN show_dedup_map sdm ON sdm.show_title = ue.show_title
-            JOIN server_users su ON su.id = ue.server_user_id
-            GROUP BY sdm.dedup_key
-          ),
-          user_shows AS (
-            SELECT
-              ue.server_user_id,
-              ue.show_title,
-              MAX(ue.show_media_id::text)::uuid AS show_media_id,
-              MAX(ue.thumb_path) AS thumb_path,
-              MAX(ue.server_id::text)::uuid AS server_id,
-              MAX(ue.year) AS year,
-              COUNT(DISTINCT ue.rating_key) AS episodes_watched,
-              SUM(ue.watched_ms) AS total_watched_ms,
-              SUM(ue.viewing_days) AS total_viewing_days,
-              COUNT(DISTINCT ue.rating_key) FILTER (
-                WHERE ue.content_duration_ms > 0
-                  AND (COALESCE(ue.max_progress_ms, 0) >= ue.content_duration_ms * 0.85
-                       OR ue.watched_ms >= ue.content_duration_ms * 0.85)
-              ) AS completed_episodes
-            FROM user_episodes ue
-            GROUP BY ue.server_user_id, ue.show_title
-          ),
-          show_agg AS (
-            SELECT
-              us.show_title,
-              MAX(us.show_media_id::text)::uuid AS show_media_id,
-              MAX(us.server_id::text)::uuid AS server_id,
-              MAX(us.thumb_path) AS thumb_path,
-              MAX(us.year) AS year,
-              SUM(us.episodes_watched)::bigint AS total_episode_views,
-              ROUND(SUM(us.total_watched_ms) / 3600000.0, 1) AS total_watch_hours,
-              ROUND(100.0 * SUM(us.completed_episodes) / NULLIF(SUM(us.episodes_watched), 0), 1) AS avg_completion_rate,
-              LEAST(100, ROUND(
-                40 * (AVG(us.episodes_watched)::numeric * ROUND(100.0 * SUM(us.completed_episodes) / NULLIF(SUM(us.episodes_watched), 0), 1) / 100 / 10) +
-                30 * (SUM(us.total_viewing_days)::numeric / NULLIF(COUNT(DISTINCT us.server_user_id), 0) * 2) +
-                30 * (SUM(us.completed_episodes)::numeric / NULLIF(SUM(us.episodes_watched), 0))
-              , 0)) AS binge_score
-            FROM user_shows us
-            GROUP BY us.show_title
-          ),
-          deduped AS (
-            SELECT
-              COALESCE(sa.show_media_id::text, LOWER(REGEXP_REPLACE(COALESCE(sa.show_title, ''), '[^a-zA-Z0-9]', '', 'g'))) AS dedup_key,
-              MAX(sa.show_title) AS show_title,
-              MAX(sa.year) AS year,
-              MAX(sa.thumb_path) AS thumb_path,
-              MIN(sa.server_id::text) AS server_id,
-              ARRAY_AGG(DISTINCT sa.server_id::text) AS server_ids,
-              SUM(sa.total_episode_views)::bigint AS total_episode_views,
-              ROUND(SUM(sa.total_watch_hours), 1) AS total_watch_hours,
-              ROUND(AVG(sa.avg_completion_rate), 1) AS avg_completion_rate,
-              ROUND(AVG(sa.binge_score), 0) AS binge_score
-            FROM show_agg sa
-            WHERE sa.show_title IS NOT NULL
-            GROUP BY COALESCE(sa.show_media_id::text, LOWER(REGEXP_REPLACE(COALESCE(sa.show_title, ''), '[^a-zA-Z0-9]', '', 'g')))
-          )
-          SELECT
-            d.show_title,
-            d.year,
-            d.thumb_path,
-            d.server_id,
-            d.server_ids,
-            d.total_episode_views,
-            d.total_watch_hours,
-            COALESCE(ic.unique_viewers, 0) AS unique_viewers,
-            d.avg_completion_rate,
-            d.binge_score
-          FROM deduped d
-          LEFT JOIN identity_counts ic ON ic.dedup_key = d.dedup_key
-          ORDER BY ${sql.raw(sortColumn)} ${sql.raw(sortDir)}
-          LIMIT ${pageSize} OFFSET ${offset}
-        `);
-
-        items = (itemsResult.rows as unknown as RawShowRowMulti[]).map((row) => ({
-          showTitle: row.show_title,
-          year: row.year,
-          thumbPath: row.thumb_path,
-          serverId: row.server_id,
-          serverIds: row.server_ids,
-          totalEpisodeViews: parseInt(String(row.total_episode_views), 10) || 0,
-          totalWatchHours: parseFloat(String(row.total_watch_hours)) || 0,
-          uniqueViewers: parseInt(String(row.unique_viewers), 10) || 0,
-          avgCompletionRate: parseFloat(String(row.avg_completion_rate)) || 0,
-          bingeScore: parseFloat(String(row.binge_score)) || 0,
-        }));
-
-        const summaryResult = await db.execute(sql`
-          WITH user_episodes AS (
-            SELECT
-              d.rating_key,
-              d.server_user_id,
-              MAX(d.show_title) AS show_title,
-              MAX(COALESCE(am.merged_into_id, d.show_media_id)::text)::uuid AS show_media_id,
-              MAX(d.content_duration_ms) AS content_duration_ms,
-              MAX(d.server_id::text)::uuid AS server_id,
-              SUM(d.watched_ms) AS watched_ms,
-              MAX(d.max_progress_ms) AS max_progress_ms,
-              COUNT(DISTINCT d.day) AS viewing_days
-            FROM daily_content_engagement d
-            LEFT JOIN media am ON am.id = d.show_media_id
-            WHERE d.day >= ${effectiveStartDate}::timestamptz
-              AND d.day < ${endDate}::timestamptz
-              AND d.show_title IS NOT NULL
-              AND d.media_type = 'episode'
-              AND (am.id IS NULL OR am.media_type = 'show')
-              ${serverFilter}
-            GROUP BY d.rating_key, d.server_user_id
-          ),
-          user_shows AS (
-            SELECT
-              ue.server_user_id,
-              ue.show_title,
-              MAX(ue.show_media_id::text)::uuid AS show_media_id,
-              MAX(ue.server_id::text)::uuid AS server_id,
-              SUM(ue.watched_ms) AS total_watched_ms,
-              COUNT(DISTINCT ue.rating_key) AS episodes_watched,
-              COUNT(DISTINCT ue.rating_key) FILTER (
-                WHERE ue.content_duration_ms > 0
-                  AND (COALESCE(ue.max_progress_ms, 0) >= ue.content_duration_ms * 0.85
-                       OR ue.watched_ms >= ue.content_duration_ms * 0.85)
-              ) AS completed_episodes
-            FROM user_episodes ue
-            GROUP BY ue.server_user_id, ue.show_title
-          ),
-          show_agg AS (
-            SELECT
-              us.show_title,
-              MAX(us.show_media_id::text)::uuid AS show_media_id,
-              ROUND(SUM(us.total_watched_ms) / 3600000.0, 1) AS total_watch_hours
-            FROM user_shows us
-            GROUP BY us.show_title
-          ),
-          deduped AS (
-            SELECT
-              COALESCE(sa.show_media_id::text, LOWER(REGEXP_REPLACE(COALESCE(sa.show_title, ''), '[^a-zA-Z0-9]', '', 'g'))) AS dedup_key,
-              ROUND(SUM(sa.total_watch_hours), 1) AS total_watch_hours
-            FROM show_agg sa
-            WHERE sa.show_title IS NOT NULL
-            GROUP BY COALESCE(sa.show_media_id::text, LOWER(REGEXP_REPLACE(COALESCE(sa.show_title, ''), '[^a-zA-Z0-9]', '', 'g')))
-          )
-          SELECT
-            COUNT(*) AS total_shows,
-            COALESCE(SUM(total_watch_hours), 0) AS total_watch_hours
-          FROM deduped
-        `);
-
-        const summaryRow = summaryResult.rows[0] as {
-          total_shows: string;
-          total_watch_hours: string;
-        };
-        total = parseInt(String(summaryRow.total_shows), 10) || 0;
-        totalWatchHours = parseFloat(String(summaryRow.total_watch_hours)) || 0;
-      }
-
-      const response: TopShowsResponse = {
-        items,
-        summary: { totalShows: total, totalWatchHours },
-        pagination: { page, pageSize, total },
-      };
-
-      await app.redis.setex(cacheKey, CACHE_TTL.LIBRARY_TOP_SHOWS, JSON.stringify(response));
-
-      return response;
-    }
+    'show',
+    REDIS_KEYS.LIBRARY_TOP_SHOWS,
+    CACHE_TTL.LIBRARY_TOP_SHOWS,
+    toShows
   );
 };

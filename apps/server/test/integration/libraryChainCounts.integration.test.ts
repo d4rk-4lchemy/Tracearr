@@ -7,7 +7,7 @@
  * /library/stale, and the same movie on two servers must collapse to one title
  * in /sessions/history/aggregates and /library/top-movies.
  *
- * Run with: pnpm --filter @tracearr/server test:integration -- libraryChainCounts
+ * Run with: pnpm --filter @tracearr/server test:integration libraryChainCounts
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -108,6 +108,7 @@ interface EpisodeOptions {
   ratingKey: string;
   showTitle: string;
   showMediaId?: string | null;
+  mediaId?: string | null;
   seasonNumber?: number;
   episodeNumber?: number;
   daysAgo?: number;
@@ -123,6 +124,7 @@ async function seedEpisode(opts: EpisodeOptions): Promise<void> {
     mediaType: 'episode',
     grandparentTitle: opts.showTitle,
     showMediaId: opts.showMediaId ?? null,
+    mediaId: opts.mediaId ?? null,
     seasonNumber: opts.seasonNumber ?? 1,
     episodeNumber: opts.episodeNumber ?? 1,
     state: 'stopped',
@@ -152,28 +154,44 @@ describe('library analytics count resume chains once', () => {
     const server = await createTestServer({ type: 'plex' });
     const user = await createTestUser();
     const account = await createTestServerUser({ serverId: server.id, userId: user.id });
-    const item = await createTestLibraryItem({ serverId: server.id, ratingKey: 'rk-watch' });
+    const mediaId = await resolveMediaForItem({
+      mediaType: 'movie',
+      tmdbId: 990_002,
+      title: 'Chain Movie',
+      year: 2020,
+      serverId: server.id,
+      ratingKey: 'rk-watch',
+    });
+    await createTestLibraryItem({ serverId: server.id, ratingKey: 'rk-watch', mediaId });
 
-    await seedChain({ serverId: server.id, serverUserId: account.id, ratingKey: 'rk-watch' });
+    await seedChain({
+      serverId: server.id,
+      serverUserId: account.id,
+      ratingKey: 'rk-watch',
+      mediaId,
+    });
     // Sub-2-minute stray session must not add a play
     await createTestSession({
       serverId: server.id,
       serverUserId: account.id,
       ratingKey: 'rk-watch',
+      mediaId,
       state: 'stopped',
       startedAt: new Date(Date.now() - 86_400_000),
       stoppedAt: new Date(Date.now() - 86_400_000 + 60_000),
       durationMs: 60_000,
     });
+    await db.execute(
+      sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
+    );
 
     app = await buildApp(ownerFor([server.id]));
     const res = await app.inject({ method: 'GET', url: `/library/watch?serverId=${server.id}` });
     expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    const row = body.items.find((i: { id: string }) => i.id === item.id);
-    expect(row).toBeDefined();
-    expect(row.watchCount).toBe(1);
-    expect(row.totalWatchMs).toBe(2 * THIRTY_MIN);
+    const { summary } = JSON.parse(res.body);
+    expect(summary.totalItems).toBe(1);
+    expect(summary.avgPlaysPerItem).toBe(1);
+    expect(summary.totalWatchMs).toBe(2 * THIRTY_MIN);
   });
 
   it('/library/watch multi-server merges by media identity and counts one play per chain', async () => {
@@ -218,31 +236,52 @@ describe('library analytics count resume chains once', () => {
       mediaId,
     });
 
-    app = await buildApp(ownerFor([server1.id, server2.id]));
-    const res = await app.inject({ method: 'GET', url: '/library/watch' });
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    const rows = body.items.filter((i: { serverIds: string[] }) =>
-      i.serverIds.some((s) => s === server1.id || s === server2.id)
+    await db.execute(
+      sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
     );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].watchCount).toBe(2);
-    expect(rows[0].serverIds.sort()).toEqual([server1.id, server2.id].sort());
+
+    app = await buildApp(ownerFor([server1.id, server2.id]));
+    const res = await app.inject({
+      method: 'GET',
+      url: `/library/watch?serverIds=${server1.id}&serverIds=${server2.id}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const { summary } = JSON.parse(res.body);
+    expect(summary.totalItems).toBe(1);
+    expect(summary.watchedCount).toBe(1);
+    expect(summary.avgPlaysPerItem).toBe(2);
   });
 
   it('/library/roi counts a two-session chain as one play', async () => {
     const server = await createTestServer({ type: 'plex' });
     const user = await createTestUser();
     const account = await createTestServerUser({ serverId: server.id, userId: user.id });
+    const mediaId = await resolveMediaForItem({
+      mediaType: 'movie',
+      tmdbId: 990_001,
+      title: 'Chain Movie',
+      year: 2020,
+      serverId: server.id,
+      ratingKey: 'rk-roi',
+    });
     // Size flows through the version row: the roi sizing reads versions
     // (identity-deduped), not the flat column
     const item = await createTestLibraryItem({
       serverId: server.id,
       ratingKey: 'rk-roi',
+      mediaId,
       fileSize: 5368709120,
     });
 
-    await seedChain({ serverId: server.id, serverUserId: account.id, ratingKey: 'rk-roi' });
+    await seedChain({
+      serverId: server.id,
+      serverUserId: account.id,
+      ratingKey: 'rk-roi',
+      mediaId,
+    });
+    await db.execute(
+      sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
+    );
 
     app = await buildApp(ownerFor([server.id]));
     const res = await app.inject({ method: 'GET', url: `/library/roi?serverId=${server.id}` });
@@ -387,7 +426,7 @@ describe('library analytics count resume chains once', () => {
     }
 
     await db.execute(
-      sql`CALL refresh_continuous_aggregate('daily_content_engagement'::regclass, NULL, NULL)`
+      sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
     );
 
     app = await buildApp(ownerFor([server1.id, server2.id]));
@@ -403,7 +442,7 @@ describe('library analytics count resume chains once', () => {
     expect(body.summary.totalMovies).toBe(1);
   });
 
-  it('/library/top-shows multi-server dedups by show identity and by title fallback', async () => {
+  it('/library/top-shows multi-server dedups by show identity, in both the all-servers and the single-server path', async () => {
     const server1 = await createTestServer({ type: 'plex' });
     const server2 = await createTestServer({ type: 'jellyfin' });
     const user = await createTestUser();
@@ -420,12 +459,22 @@ describe('library analytics count resume chains once', () => {
       ratingKey: 'sa-show-plex',
     });
 
+    const episodeId = async (serverId: string, ratingKey: string, episodeNumber: number) =>
+      resolveMediaForItem({
+        mediaType: 'episode',
+        tvdbId: 811_890 + episodeNumber,
+        title: `Episode ${episodeNumber}`,
+        serverId,
+        ratingKey,
+        showMediaId,
+      });
     await seedEpisode({
       serverId: server1.id,
       serverUserId: account1.id,
       ratingKey: 'sa-s1e1',
       showTitle: 'Breaking Bad',
       showMediaId,
+      mediaId: await episodeId(server1.id, 'sa-s1e1', 1),
       episodeNumber: 1,
     });
     await seedEpisode({
@@ -434,6 +483,7 @@ describe('library analytics count resume chains once', () => {
       ratingKey: 'sa-s1e2',
       showTitle: 'Breaking Bad',
       showMediaId,
+      mediaId: await episodeId(server1.id, 'sa-s1e2', 2),
       episodeNumber: 2,
     });
     await seedEpisode({
@@ -442,28 +492,12 @@ describe('library analytics count resume chains once', () => {
       ratingKey: 'sa-s2e1',
       showTitle: 'Breaking Bad (Remux)',
       showMediaId,
-      episodeNumber: 1,
-    });
-
-    // No-identity show: null show_media_id, titles that differ only in case and
-    // punctuation so only the normalized-title fallback key can collapse them.
-    await seedEpisode({
-      serverId: server1.id,
-      serverUserId: account1.id,
-      ratingKey: 'sb-s1e1',
-      showTitle: 'The Office',
-      episodeNumber: 1,
-    });
-    await seedEpisode({
-      serverId: server2.id,
-      serverUserId: account2.id,
-      ratingKey: 'sb-s2e1',
-      showTitle: 'the office!',
+      mediaId: await episodeId(server2.id, 'sa-s2e1', 1),
       episodeNumber: 1,
     });
 
     await db.execute(
-      sql`CALL refresh_continuous_aggregate('daily_content_engagement'::regclass, NULL, NULL)`
+      sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
     );
 
     app = await buildApp(ownerFor([server1.id, server2.id]));
@@ -482,21 +516,8 @@ describe('library analytics count resume chains once', () => {
     expect(identityShow.uniqueViewers).toBe(1);
     expect(typeof identityShow.showTitle).toBe('string');
 
-    const fallbackRows = body.items.filter(
-      (i: { showTitle: string }) =>
-        i.showTitle.toLowerCase().replace(/[^a-z0-9]/g, '') === 'theoffice'
-    );
-    expect(fallbackRows).toHaveLength(1);
-    const fallbackShow = fallbackRows[0];
-    expect(fallbackShow.serverIds.sort()).toEqual([server1.id, server2.id].sort());
-    expect(fallbackShow.totalEpisodeViews).toBe(2);
-    expect(fallbackShow.totalWatchHours).toBeCloseTo(1.0, 5);
-    expect(fallbackShow.uniqueViewers).toBe(1);
+    expect(body.summary.totalShows).toBe(1);
 
-    expect(body.summary.totalShows).toBe(2);
-
-    // Single-server branch delegates to get_show_engagement() and must see only
-    // server1's episodes for the identity-matched show.
     const singleRes = await app.inject({
       method: 'GET',
       url: `/library/top-shows?serverId=${server1.id}`,
@@ -569,14 +590,23 @@ describe('library analytics max-review regressions', () => {
     // Plex rating keys are small sequential integers, so unrelated movies on
     // two servers can share one; they must not merge into a single entry.
     const startedAt = new Date(Date.now() - 3 * 86_400_000);
-    for (const [serverId, accountId, title] of [
-      [server1.id, account1.id, 'First Feature'],
-      [server2.id, account2.id, 'Second Feature'],
+    for (const [serverId, accountId, title, tmdbId] of [
+      [server1.id, account1.id, 'First Feature', 990_101],
+      [server2.id, account2.id, 'Second Feature', 990_102],
     ] as const) {
+      const mediaId = await resolveMediaForItem({
+        mediaType: 'movie',
+        tmdbId,
+        title,
+        year: 2020,
+        serverId,
+        ratingKey: '12345',
+      });
       await createTestSession({
         serverId,
         serverUserId: accountId,
         ratingKey: '12345',
+        mediaId,
         mediaTitle: title,
         mediaType: 'movie',
         state: 'stopped',
@@ -589,7 +619,7 @@ describe('library analytics max-review regressions', () => {
     }
 
     await db.execute(
-      sql`CALL refresh_continuous_aggregate('daily_content_engagement'::regclass, NULL, NULL)`
+      sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
     );
 
     app = await buildApp(ownerFor([server1.id, server2.id]));
@@ -607,98 +637,5 @@ describe('library analytics max-review regressions', () => {
       expect(row.serverIds).toHaveLength(1);
     }
     expect(body.summary.totalMovies).toBe(2);
-  });
-
-  it('/library/top-movies merges the same unstamped movie across servers by title fallback', async () => {
-    const server1 = await createTestServer({ type: 'plex' });
-    const server2 = await createTestServer({ type: 'jellyfin' });
-    const user = await createTestUser();
-    const account1 = await createTestServerUser({ serverId: server1.id, userId: user.id });
-    const account2 = await createTestServerUser({ serverId: server2.id, userId: user.id });
-
-    const startedAt = new Date(Date.now() - 3 * 86_400_000);
-    for (const [serverId, accountId, ratingKey, title] of [
-      [server1.id, account1.id, 'orphan-1', 'Orphan Feature'],
-      [server2.id, account2.id, 'orphan-2', 'orphan feature'],
-    ] as const) {
-      await createTestSession({
-        serverId,
-        serverUserId: accountId,
-        ratingKey,
-        mediaTitle: title,
-        mediaType: 'movie',
-        state: 'stopped',
-        startedAt,
-        stoppedAt: new Date(startedAt.getTime() + 6_600_000),
-        durationMs: 6_600_000,
-        totalDurationMs: TWO_HOURS,
-        progressMs: 6_600_000,
-      });
-    }
-
-    await db.execute(
-      sql`CALL refresh_continuous_aggregate('daily_content_engagement'::regclass, NULL, NULL)`
-    );
-
-    app = await buildApp(ownerFor([server1.id, server2.id]));
-    const res = await app.inject({ method: 'GET', url: '/library/top-movies' });
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    const rows = body.items.filter((i: { serverIds: string[] }) =>
-      i.serverIds.some((s: string) => s === server1.id || s === server2.id)
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].totalPlays).toBe(2);
-    expect(rows[0].serverIds.sort()).toEqual([server1.id, server2.id].sort());
-    expect(body.summary.totalMovies).toBe(1);
-  });
-
-  it('/library/top-shows counts viewers of unstamped episodes when the show is partially stamped', async () => {
-    const server1 = await createTestServer({ type: 'plex' });
-    const server2 = await createTestServer({ type: 'jellyfin' });
-    const personA = await createTestUser();
-    const personB = await createTestUser();
-    const accountA = await createTestServerUser({ serverId: server1.id, userId: personA.id });
-    const accountB = await createTestServerUser({ serverId: server2.id, userId: personB.id });
-
-    const showMediaId = await resolveMediaForItem({
-      mediaType: 'show',
-      tvdbId: 505051,
-      title: 'Half Stamped',
-      serverId: server1.id,
-      ratingKey: 'hs-show',
-    });
-
-    // Person A's episode carries the show identity; person B's episode of the
-    // same show is unstamped, so their viewer bucket only matches through the
-    // shared per-title dedup key.
-    await seedEpisode({
-      serverId: server1.id,
-      serverUserId: accountA.id,
-      ratingKey: 'hs-e1',
-      showTitle: 'Half Stamped',
-      showMediaId,
-      episodeNumber: 1,
-    });
-    await seedEpisode({
-      serverId: server2.id,
-      serverUserId: accountB.id,
-      ratingKey: 'hs-e2',
-      showTitle: 'Half Stamped',
-      episodeNumber: 2,
-    });
-
-    await db.execute(
-      sql`CALL refresh_continuous_aggregate('daily_content_engagement'::regclass, NULL, NULL)`
-    );
-
-    app = await buildApp(ownerFor([server1.id, server2.id]));
-    const res = await app.inject({ method: 'GET', url: '/library/top-shows' });
-    expect(res.statusCode).toBe(200);
-    const body = JSON.parse(res.body);
-    const rows = body.items.filter((i: { showTitle: string }) => i.showTitle === 'Half Stamped');
-    expect(rows).toHaveLength(1);
-    expect(rows[0].totalEpisodeViews).toBe(2);
-    expect(rows[0].uniqueViewers).toBe(2);
   });
 });

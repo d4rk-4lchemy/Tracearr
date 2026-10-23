@@ -1,7 +1,8 @@
-import { and, eq, gte, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { EngineAutomation } from '@tracearr/shared';
 import { db } from '../../../db/client.js';
 import { sessions } from '../../../db/schema.js';
+import { sessionRowById } from '../../../db/sessionRow.js';
 import { getActiveAutomations, onActiveAutomationsRefill } from '../../../jobs/poller/database.js';
 import { broadcastViolations } from '../../../jobs/poller/violations.js';
 import { automationsLogger } from '../../../utils/logger.js';
@@ -103,17 +104,11 @@ function owned(sessionId: string, gen: number): PendingWake | null {
   return entry?.gen === gen ? entry : null;
 }
 
-// started_at is the compression orderby; an id-only read scans every compressed batch.
 function readSession(sessionId: string, startedAt: Date) {
   return db
     .select()
     .from(sessions)
-    .where(
-      and(
-        eq(sessions.id, sessionId),
-        gte(sessions.startedAt, new Date(startedAt.getTime() - 60_000))
-      )
-    )
+    .where(sessionRowById({ id: sessionId, startedAt }))
     .limit(1);
 }
 
