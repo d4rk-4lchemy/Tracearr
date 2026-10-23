@@ -4,11 +4,12 @@
  * Broadcasting for violations created inside session lifecycle transactions.
  */
 
-import { and, eq, gte } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { RunFinishedEvent, ViolationWithDetails } from '@tracearr/shared';
 import { WS_EVENTS } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { servers, serverUsers, sessions, users } from '../../db/schema.js';
+import { sessionRowById } from '../../db/sessionRow.js';
 import type { automationRuns } from '../../db/schema.js';
 import { publishRunFinished, runFinishedOf } from '../../services/automations/runRecorder.js';
 import type { PubSubService } from '../../services/cache.js';
@@ -68,13 +69,7 @@ export async function broadcastViolations(
           .innerJoin(serverUsers, eq(serverUsers.id, sessions.serverUserId))
           .innerJoin(users, eq(serverUsers.userId, users.id))
           .innerJoin(servers, eq(servers.id, sessions.serverId))
-          .where(
-            and(
-              eq(sessions.id, subject.id),
-              // started_at is the compression orderby; an id-only lookup reads every compressed batch
-              gte(sessions.startedAt, new Date(subject.startedAt.getTime() - 60_000))
-            )
-          )
+          .where(sessionRowById(subject))
           .limit(1)
       : await db
           .select(detailFields)

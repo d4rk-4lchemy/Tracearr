@@ -2,13 +2,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { initI18n } from '@tracearr/translations';
 import type { MediaStatsResponse, MediaWatcherEntry } from '@tracearr/shared';
-import {
-  KpiStrip,
-  MemberKpiStrip,
-  averageCompletion,
-  finishedEveryEpisodeCount,
-  formatKpiHours,
-} from './KpiStrip';
+import { KpiStrip, MemberKpiStrip, averageCompletion, finishedEveryEpisodeCount } from './KpiStrip';
 
 beforeAll(async () => {
   await initI18n({ lng: 'en' });
@@ -82,12 +76,6 @@ describe('finishedEveryEpisodeCount', () => {
       watcher({ completionPct: 99 }),
     ];
     expect(finishedEveryEpisodeCount(watchers)).toBe(2);
-  });
-});
-
-describe('formatKpiHours', () => {
-  it('rounds milliseconds down to whole hours', () => {
-    expect(formatKpiHours(655_200_000)).toBe('182h');
   });
 });
 

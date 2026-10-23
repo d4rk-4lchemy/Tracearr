@@ -1,6 +1,5 @@
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
 import { Crown, Eye, Loader2, Pencil } from 'lucide-react';
 import type { ServerUserFullDetail } from '@tracearr/shared';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,6 +28,7 @@ import { TrustScoreBadge } from '@/components/users/TrustScoreBadge';
 import { getAvatarUrl } from '@/components/users/utils';
 import { useViewAs } from '@/hooks/queries/useImpersonation';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/dateFormat';
 import { ROLE_LABEL_KEYS } from '@/components/users/roleLabels';
 
 interface UserDetailHeaderProps {
@@ -133,7 +133,7 @@ export function UserDetailHeader({
             <span>· {t(ROLE_LABEL_KEYS[user.role])}</span>
             <span>
               · {t('common:labels.joined')}{' '}
-              {format(new Date(user.joinedAt ?? user.createdAt), 'MMM d, yyyy')}
+              {formatDate(new Date(user.joinedAt ?? user.createdAt), { dateStyle: 'medium' })}
             </span>
             <span>·</span>
             {servers.map((server) => (

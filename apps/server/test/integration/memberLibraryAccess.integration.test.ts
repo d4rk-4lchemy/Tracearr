@@ -9,11 +9,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   createTestLibraryItem,
   createTestServer,
   createTestServerUser,
+  createTestSession,
   createTestUser,
 } from '@tracearr/test-utils/factories';
 import { db } from '../../src/db/client.js';
@@ -45,6 +46,7 @@ async function addMovie(serverId: string, libraryId: string, title: string): Pro
 async function account(userId: string, serverId: string, libraryIds: string[] | null) {
   const created = await createTestServerUser({ userId, serverId });
   await db.update(serverUsers).set({ libraryIds }).where(eq(serverUsers.id, created.id));
+  return created.id;
 }
 
 describe('member library access', () => {
@@ -53,12 +55,31 @@ describe('member library access', () => {
     const open = await createTestServer();
     const none = await createTestServer();
     const user = await createTestUser();
-    await account(user.id, limited.id, ['movies']);
+    const limitedAccount = await account(user.id, limited.id, ['movies']);
     await account(user.id, open.id, null);
     await account(user.id, none.id, []);
     const heat = await addMovie(limited.id, 'movies', 'Heat');
     const bluey = await addMovie(limited.id, 'kids', 'Bluey');
-    const uncopied = await addMedia('Tenet');
+    // Titles with no library copy anywhere (imported history): a member sees one only when an
+    // account of their own played it.
+    const played = await addMedia('Tenet');
+    await createTestSession({
+      serverId: limited.id,
+      serverUserId: limitedAccount,
+      externalSessionId: 'import-tenet',
+      mediaId: played,
+      mediaType: 'movie',
+      mediaTitle: 'Tenet',
+      ratingKey: 'gone-tenet',
+      durationMs: 3_600_000,
+      totalDurationMs: 3_600_000,
+    });
+    // An earlier file may have materialized the rollup past today, which hides a raw row inserted
+    // since; refresh the whole rollup so the play is visible to the probe.
+    await db.execute(
+      sql`CALL refresh_continuous_aggregate('user_media_plays_daily'::regclass, NULL, NULL)`
+    );
+    const unplayed = await addMedia('Dunkirk');
     await addMovie(open.id, 'kids', 'Ronin');
     await addMovie(none.id, 'movies', 'Up');
 
@@ -91,7 +112,9 @@ describe('member library access', () => {
     ]);
     expect(await hiddenByLibraryLimit(bluey, scope.serverIds, scope)).toBe(true);
     expect(await hiddenByLibraryLimit(heat, scope.serverIds, scope)).toBe(false);
-    expect(await hiddenByLibraryLimit(uncopied, scope.serverIds, scope)).toBe(false);
+    expect(await hiddenByLibraryLimit(played, scope.serverIds, scope)).toBe(false);
+    expect(await hiddenByLibraryLimit(unplayed, scope.serverIds, scope)).toBe(true);
     expect(await hiddenByLibraryLimit(bluey, undefined, 'all')).toBe(false);
+    expect(await hiddenByLibraryLimit(unplayed, undefined, 'all')).toBe(false);
   });
 });

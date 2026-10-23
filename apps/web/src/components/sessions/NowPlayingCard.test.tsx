@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { setTimeFormat } from '@/lib/timeFormat';
+import { setTimeFormat } from '@/lib/dateFormat';
 import { MemoryRouter } from 'react-router';
 import { NowPlayingCard } from './NowPlayingCard';
 import type { ActiveSession } from '@tracearr/shared';
@@ -347,9 +347,9 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     );
     expect(screen.queryByText('Morning News')).toBeNull();
     expect(screen.getByText('Late News')).toBeTruthy();
-    expect(screen.getByText('7:00')).toBeTruthy();
-    expect(screen.getByText('8:00')).toBeTruthy();
-    expect(screen.queryByText('5:30')).toBeNull();
+    expect(screen.getByText('07:00')).toBeTruthy();
+    expect(screen.getByText('08:00')).toBeTruthy();
+    expect(screen.queryByText('05:30')).toBeNull();
     expect(getProgressTranslatePercent(container)).toBeCloseTo(96.667, 2);
   });
 

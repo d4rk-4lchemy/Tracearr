@@ -1,0 +1,14 @@
+{
+  "version": "3.1.1",
+  "date": "2026-10-23",
+  "changes": [
+    {
+      "type": "security",
+      "text": "the Docker images run Node 24.22.1, fixing the Node2Shell Brotli flaw (CVE-2026-111497)"
+    },
+    {
+      "type": "note",
+      "text": "Tracearr never decodes Brotli request bodies; only a configured server sending crafted responses could reach the flaw"
+    }
+  ]
+}

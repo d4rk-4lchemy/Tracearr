@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
 import type { Automation } from '@tracearr/shared';
 import { templateName } from '@/lib/automations';
+import { formatDate } from '@/lib/dateFormat';
 
 /** Where an automation came from: the template behind it, or the one it left. */
 export function ProvenanceLine({ automation }: { automation: Automation }) {
@@ -15,7 +15,7 @@ export function ProvenanceLine({ automation }: { automation: Automation }) {
     if (template.source === 'builtin') {
       return <Line>{t('automations.provenance.builtin', { name, version })}</Line>;
     }
-    const date = format(new Date(template.addedAt), 'PP');
+    const date = formatDate(new Date(template.addedAt), { dateStyle: 'medium' });
 
     if (template.source === 'import') {
       return (

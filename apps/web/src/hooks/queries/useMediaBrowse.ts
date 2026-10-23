@@ -11,12 +11,8 @@ import type {
   ShelvesResponse,
   WatchedState,
 } from '@tracearr/shared';
-import {
-  api,
-  getBrowserTimezone,
-  type MediaHistoryPageResponse,
-  type StatsTimeRange,
-} from '@/lib/api';
+import { api, type MediaHistoryPageResponse, type StatsTimeRange } from '@/lib/api';
+import { browserTimeZone } from '@/lib/dateFormat';
 
 export type CatalogSort = 'title' | 'added' | 'year' | 'plays' | 'watch_time' | 'viewers';
 
@@ -296,7 +292,7 @@ export function useGenres(type: LibraryMediaType, serverIds: string[], timeRange
       'genres',
       type,
       sortedServerIds.join(','),
-      ...(timeRange ? [timeRange, timeRange.timezone ?? getBrowserTimezone()] : []),
+      ...(timeRange ? [timeRange, timeRange.timezone ?? browserTimeZone()] : []),
     ],
     queryFn: () => api.library.genres(type, sortedServerIds, timeRange),
     staleTime: 5 * 60_000,
@@ -321,7 +317,7 @@ export function useGenreDetail(
       type,
       sortedServerIds.join(','),
       timeRange,
-      timeRange.timezone ?? getBrowserTimezone(),
+      timeRange.timezone ?? browserTimeZone(),
     ],
     queryFn: () => api.library.genreDetail(genre, type, sortedServerIds, timeRange),
     staleTime: 5 * 60_000,

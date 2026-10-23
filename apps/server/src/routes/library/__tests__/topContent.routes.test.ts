@@ -51,8 +51,8 @@ describe('GET /library/top-movies and /library/top-shows', () => {
     vi.mocked(db.execute).mockReset();
     vi.mocked(db.execute).mockImplementation((async (query: never) => {
       const text = renderSql(query).sql;
-      return text.includes('AS total_movies') || text.includes('AS total_shows')
-        ? { rows: [{ total_movies: '0', total_shows: '0', total_watch_hours: '0' }] }
+      return text.endsWith('SELECT * FROM summary')
+        ? { rows: [{ summary_titles: '0', summary_watch_hours: '0' }] }
         : { rows: [] };
     }) as never);
   });
@@ -95,9 +95,9 @@ describe('GET /library/top-movies and /library/top-shows', () => {
     const response = await app.inject({ method: 'GET', url: '/library/top-movies?period=all' });
 
     expect(response.statusCode).toBe(200);
-    expect(executed()[0]?.sql).toContain(
-      'MIN(day)::date AS earliest FROM daily_content_engagement'
-    );
+    const first = executed()[0];
+    expect(first?.sql).toContain('FROM user_media_plays_daily p');
+    expect(first?.sql).not.toContain('p.day >=');
     expect(String(redis.setex.mock.calls[0]?.[0])).toContain(':all-plays-desc-1-20');
   });
 });

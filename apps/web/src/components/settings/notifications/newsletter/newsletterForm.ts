@@ -15,7 +15,7 @@ import {
 } from '@tracearr/shared';
 import type { ZodError } from 'zod';
 import type { RichTextChange } from '@/components/ui/rich-text-normalize';
-import { browserTimeZone } from '@/components/settings/shared/TimezoneSelect';
+import { browserTimeZone } from '@/lib/dateFormat';
 
 export type NewsletterFormState = CreateNewsletterInput;
 export type FieldErrors = Partial<Record<keyof NewsletterFormState, string>>;

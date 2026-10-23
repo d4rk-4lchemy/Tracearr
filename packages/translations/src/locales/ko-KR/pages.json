@@ -517,14 +517,8 @@
         },
         "columns": {
           "hoursPerGb": "",
-          "value": ""
-        },
-        "category": {
-          "low": "",
-          "moderate": "",
-          "high": ""
-        },
-        "deletionSuggested": ""
+          "lastWatched": ""
+        }
       },
       "matchBadge": {
         "exact": "",
@@ -544,7 +538,7 @@
       "peakHour": "피크 시간",
       "viewingHours": "시청 시간대",
       "peak": "피크:",
-      "monthlyTrends": "월별 추세",
+      "viewingTrend": "",
       "busiest": "가장 바쁨:",
       "quietest": "가장 한산함:",
       "bingeHighlights": "몰아보기 하이라이트",
@@ -566,12 +560,6 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "tiers": {
-          "highlyAddictive": "",
-          "addictive": "",
-          "bingeable": "",
-          "casual": ""
         }
       },
       "percentWatchedValue": "",
@@ -671,8 +659,7 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "uniqueItems_other": ""
+        }
       },
       "growth": {
         "empty": {

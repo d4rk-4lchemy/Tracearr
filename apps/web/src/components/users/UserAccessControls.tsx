@@ -8,8 +8,7 @@ import { LOGIN_ACCESS, type ServerUserDetail } from '@tracearr/shared';
 import { useSettings, useUpdateUserAccess } from '@/hooks/queries';
 import { useViewAs } from '@/hooks/queries/useImpersonation';
 import { useMutationSaveStatus } from '@/hooks/useMutationSaveStatus';
-import { getTimeFormatString } from '@/lib/timeFormat';
-import { safeFormatDate } from '@/lib/formatters';
+import { safeFormatDate } from '@/lib/dateFormat';
 
 interface UserAccessControlsProps {
   /** The page's user: `id` is the server_users row PATCH /users/:id takes, `userId` the identity impersonation takes. */
@@ -126,7 +125,13 @@ export function UserAccessControls({ user, name }: UserAccessControlsProps) {
             <dd className="text-foreground font-medium">
               {safeFormatDate(
                 user.lastLoginAt,
-                `MMM d, yyyy, ${getTimeFormatString()}`,
+                {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                },
                 t('userDetail.access.never')
               )}
             </dd>

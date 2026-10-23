@@ -6,8 +6,9 @@ import { BarChart3 } from 'lucide-react';
 import { RESOLUTION_LABELS, resolutionBucket, type LibraryQualityResponse } from '@tracearr/shared';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
+import { formatDate, axisDateTimeLabelFormats, parseChartDate } from '@/lib/dateFormat';
 import { RESOLUTION_COLORS } from '@/lib/resolutionColors';
-import { parseChartDate } from './chartUtils';
+import { chartLang } from './chartUtils';
 
 interface QualityTimelineChartProps {
   data: LibraryQualityResponse | undefined;
@@ -32,6 +33,7 @@ export function QualityTimelineChart({ data, isLoading, height = 250 }: QualityT
       .filter((label) => data.data.some((d) => countOf(label, d) > 0));
 
     return {
+      lang: chartLang(),
       chart: {
         type: 'line',
         height,
@@ -64,12 +66,7 @@ export function QualityTimelineChart({ data, isLoading, height = 250 }: QualityT
       xAxis: {
         type: 'datetime',
         tickPixelInterval: 120,
-        dateTimeLabelFormats: {
-          day: { main: '%b %e' },
-          week: { main: '%b %e' },
-          month: { main: `%b '%y` },
-          year: { main: '%Y' },
-        },
+        dateTimeLabelFormats: axisDateTimeLabelFormats(),
         labels: {
           style: {
             color: 'hsl(var(--muted-foreground))',
@@ -137,12 +134,7 @@ export function QualityTimelineChart({ data, isLoading, height = 250 }: QualityT
         shared: true,
         formatter: function () {
           const points = this.points || [];
-          const date = new Date(this.x);
-          const dateStr = date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          });
+          const dateStr = formatDate(this.x, { month: 'short', day: 'numeric', year: 'numeric' });
 
           // Tiers overlap (a 4K+1080p title counts in both), so the
           // denominator is the day's real title count, never the tier sum

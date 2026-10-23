@@ -8,12 +8,6 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@/lib/timeFormat', () => ({
-  getTimeFormat: () => '12h',
-  getDateTimeFormatString: () => 'MMM d, h:mm a',
-  getFullDateTimeFormatString: () => 'MMM d, yyyy, h:mm:ss a',
-}));
-
 function backup(overrides: Partial<BackupListItem> = {}): BackupListItem {
   return {
     filename: 'tracearr-backup-20260830-020000.zip',

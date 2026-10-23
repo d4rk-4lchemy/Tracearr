@@ -1,6 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Clock, ExternalLink, Languages, type LucideIcon } from 'lucide-react';
+import {
+  CalendarDays,
+  CalendarRange,
+  Clock,
+  ExternalLink,
+  Languages,
+  type LucideIcon,
+} from 'lucide-react';
+import { changeLanguage, getCurrentLanguage, languageNames } from '@tracearr/translations';
 import {
   Select,
   SelectContent,
@@ -13,8 +21,24 @@ import { AutosaveSelectField } from '@/components/ui/autosave-field';
 import { SettingsSection } from '@/components/settings/shell/SettingsSection';
 import { useSettings } from '@/hooks/queries';
 import { useDebouncedSave } from '@/hooks/useDebouncedSave';
-import { changeLanguage, getCurrentLanguage, languageNames } from '@tracearr/translations';
-import { getTimeFormat, setTimeFormat, type TimeFormat } from '@/lib/timeFormat';
+import {
+  DATE_REGIONS,
+  getDateRegion,
+  getFormatLocale,
+  getTimeFormat,
+  getWeekStartPref,
+  localeFirstDay,
+  sampleDate,
+  setDateRegion,
+  setTimeFormat,
+  setWeekStartPref,
+  weekdayName,
+  type DateRegion,
+  type TimeFormat,
+  type WeekStartPref,
+} from '@/lib/dateFormat';
+
+const WEEK_START_CHOICES = [1, 0, 6] as const;
 
 function LocaleSelect({
   id,
@@ -61,6 +85,16 @@ export function Locale() {
   const { data: settings } = useSettings();
   const [language, setLanguage] = useState(getCurrentLanguage);
   const [timeFormat, setTimeFormatState] = useState<TimeFormat>(getTimeFormat);
+  const [dateRegion, setDateRegionState] = useState<DateRegion>(getDateRegion);
+  const [weekStart, setWeekStartState] = useState<WeekStartPref>(getWeekStartPref);
+  const regionOptions = useMemo(() => {
+    const regionNames = new Intl.DisplayNames([language], { type: 'region' });
+    return DATE_REGIONS.map((region) => ({
+      value: region,
+      label: `${regionNames.of(region) ?? region} (${sampleDate(language, region)})`,
+    })).sort((a, b) => a.label.localeCompare(b.label, language));
+  }, [language]);
+  const autoFirstDay = localeFirstDay(getFormatLocale());
   const unitSystemField = useDebouncedSave('unitSystem', settings?.unitSystem);
 
   return (
@@ -109,6 +143,48 @@ export function Locale() {
           options={[
             { value: '12h', label: t('general.timeFormat12h') },
             { value: '24h', label: t('general.timeFormat24h') },
+          ]}
+        />
+
+        <LocaleSelect
+          id="dateRegion"
+          icon={CalendarDays}
+          label={t('general.dateFormat')}
+          description={t('general.dateFormatDescription')}
+          value={dateRegion}
+          onChange={(value) => {
+            setDateRegionState(value);
+            setDateRegion(value);
+          }}
+          options={[
+            {
+              value: 'auto',
+              label: `${t('general.automatic')} (${sampleDate(language, 'auto')})`,
+            },
+            ...regionOptions,
+          ]}
+        />
+
+        <LocaleSelect
+          id="weekStart"
+          icon={CalendarRange}
+          label={t('general.weekStart')}
+          description={t('general.weekStartDescription')}
+          value={String(weekStart)}
+          onChange={(value) => {
+            const next = value === 'auto' ? 'auto' : (Number(value) as WeekStartPref);
+            setWeekStartState(next);
+            setWeekStartPref(next);
+          }}
+          options={[
+            {
+              value: 'auto',
+              label: `${t('general.automatic')} (${weekdayName(autoFirstDay, 'long')})`,
+            },
+            ...WEEK_START_CHOICES.map((day) => ({
+              value: String(day),
+              label: weekdayName(day, 'long'),
+            })),
           ]}
         />
 

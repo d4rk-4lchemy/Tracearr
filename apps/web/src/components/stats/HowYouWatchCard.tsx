@@ -12,6 +12,7 @@ import type {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TIER_COLORS } from '@/components/charts/EngagementChart';
 import { SectionHeading } from '@/components/dashboard/SectionHeading';
+import { formatHourOfDay, weekdayName } from '@/lib/dateFormat';
 
 type ViewerType = Exclude<UserBehaviorType, 'inactive'>;
 type ActiveProfile = UserEngagementProfile & { behaviorType: ViewerType };
@@ -59,21 +60,12 @@ export function HowYouWatchCard({
   hourOfDay,
   className,
 }: HowYouWatchCardProps) {
-  const { t, i18n } = useTranslation('pages');
+  const { t } = useTranslation('pages');
 
   const day = busiest(dayOfWeek);
   const hour = busiest(hourOfDay);
-  // 2026-01-04 is a Sunday, so day index 0 to 6 maps straight onto the week
-  const dayName = day
-    ? new Intl.DateTimeFormat(i18n.language, { weekday: 'long' }).format(
-        new Date(2026, 0, 4 + day.day)
-      )
-    : null;
-  const hourName = hour
-    ? new Intl.DateTimeFormat(i18n.language, { hour: 'numeric' }).format(
-        new Date(2026, 0, 4, hour.hour)
-      )
-    : null;
+  const dayName = day ? weekdayName(day.day, 'long') : null;
+  const hourName = hour ? formatHourOfDay(hour.hour) : null;
 
   const tiers = TIER_ORDER.flatMap((tier) => {
     const row = breakdown?.find((b) => b.tier === tier);

@@ -31,16 +31,11 @@ import {
 } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { formatList } from '@/lib/listFormat';
+import { windowLabel } from '@/lib/dateFormat';
 import type { Translate } from '../newsletterFormat';
 import { SendNowDialog } from './SendNowDialog';
 import { previewDraftBody, type NewsletterFormState } from './newsletterForm';
-import {
-  countsListedLine,
-  defaultVariantKey,
-  heldBack,
-  previewVariants,
-  windowLabel,
-} from './previewSummary';
+import { countsListedLine, defaultVariantKey, heldBack, previewVariants } from './previewSummary';
 
 interface NewsletterActionsProps {
   /** Null while the newsletter has not been saved: Preview alone, no send buttons. */
@@ -105,7 +100,7 @@ function VariantSwitcher({
 
 /** Preview renders the form as it is, saved or not; Send test and Send now act on the saved row and wait for a save while the form is dirty. */
 export function NewsletterActions({ newsletter, state, dirty, valid }: NewsletterActionsProps) {
-  const { t, i18n } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common']);
   // The two plural keys below exist as `_one`/`_other`, which the typed TFunction refuses as a base key.
   const translate = t as Translate;
   const { user } = useAuth();
@@ -162,8 +157,8 @@ export function NewsletterActions({ newsletter, state, dirty, valid }: Newslette
             ? 'newsletters.editor.preview.windowSince'
             : 'newsletters.editor.preview.window',
           {
-            start: windowLabel(previewed.window.start, i18n.language, state.timezone),
-            end: windowLabel(previewed.window.end, i18n.language, state.timezone),
+            start: windowLabel(previewed.window.start, state.timezone),
+            end: windowLabel(previewed.window.end, state.timezone),
           }
         )}
       </span>

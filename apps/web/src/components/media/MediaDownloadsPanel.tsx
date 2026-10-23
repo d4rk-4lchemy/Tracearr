@@ -9,7 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { DownloadDevice, DownloadUser, deliveredSize } from '@/components/downloads/DownloadsTable';
-import { safeFormatDistanceToNow } from '@/lib/formatters';
+import { safeFormatDistanceToNow } from '@/lib/dateFormat';
 
 interface MediaDownloadsPanelProps {
   rows: MediaDownloadRow[] | undefined;

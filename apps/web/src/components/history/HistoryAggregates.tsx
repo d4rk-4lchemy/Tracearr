@@ -5,7 +5,8 @@
 
 import { Play, Clock, Users, Film } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { StatCard, formatWatchTime, formatNumber } from '@/components/ui/stat-card';
+import { StatCard, formatNumber } from '@/components/ui/stat-card';
+import { formatWatchTime } from '@/lib/dateFormat';
 import { cn } from '@/lib/utils';
 import type { HistoryAggregates as AggregatesType } from '@tracearr/shared';
 

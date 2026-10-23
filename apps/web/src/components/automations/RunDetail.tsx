@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
 import { Check, ChevronDown, CircleDot, MinusCircle, PencilRuler, X, XCircle } from 'lucide-react';
 import {
   isPlacedLocal,
@@ -37,6 +36,7 @@ import {
   type Translate,
 } from '@/lib/automations';
 import { getMediaDisplay, getMediaLinks } from '@/lib/utils';
+import { formatDate } from '@/lib/dateFormat';
 
 /** Step zero, as the recorder writes it. */
 interface TriggerStep {
@@ -102,7 +102,7 @@ export function RunDetail({ runId, canReplay = false, onOpenChange }: RunDetailP
           <SheetTitle>{t('pages:automations.activity.runTitle')}</SheetTitle>
           <SheetDescription>
             {run
-              ? format(new Date(run.startedAt), 'PPpp')
+              ? formatDate(new Date(run.startedAt), { dateStyle: 'medium', timeStyle: 'medium' })
               : t('pages:automations.activity.runLoading')}
           </SheetDescription>
         </SheetHeader>
@@ -171,14 +171,14 @@ function RunSubjectBlock({ run }: { run: AutomationRun }) {
 
   rows.push({
     label: t('automations.activity.started'),
-    value: format(new Date(run.startedAt), 'PPpp'),
+    value: formatDate(new Date(run.startedAt), { dateStyle: 'medium', timeStyle: 'medium' }),
   });
 
   // The table dropped this column because it repeats Started; the sheet is where it belongs.
   if (run.finishedAt !== null) {
     rows.push({
       label: t('automations.activity.finished'),
-      value: format(new Date(run.finishedAt), 'PPpp'),
+      value: formatDate(new Date(run.finishedAt), { dateStyle: 'medium', timeStyle: 'medium' }),
     });
   }
 

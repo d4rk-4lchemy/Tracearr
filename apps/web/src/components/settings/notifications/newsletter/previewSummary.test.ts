@@ -6,7 +6,6 @@ import {
   heldBack,
   previewVariants,
   sendSummary,
-  windowLabel,
 } from './previewSummary';
 
 const t = (key: string, vars?: Record<string, unknown>) =>
@@ -34,12 +33,8 @@ const preview: NewsletterPreview = {
 };
 
 describe('previewSummary', () => {
-  it('formats a window date as month and day', () => {
-    expect(windowLabel('2026-08-28T12:00:00.000Z', 'en-US', 'UTC')).toBe('Aug 28');
-  });
-
   it('builds the one-sentence confirmation', () => {
-    expect(sendSummary(preview, t, 'en-US', 'UTC')).toBe(
+    expect(sendSummary(preview, t, 'UTC')).toBe(
       'newsletters.editor.send.summary:{"count":42,"counts":"newsletters.counts.movies:{\\"count\\":12}, newsletters.counts.shows:{\\"count\\":3}, newsletters.counts.albums:{\\"count\\":0}","start":"Aug 28","end":"Sep 4"}'
     );
   });
@@ -51,7 +46,7 @@ describe('previewSummary', () => {
         { ...preview.variants[0], trimmed: { movies: 0, shows: 1, albums: 2, mostWatched: 0 } },
       ],
     };
-    expect(sendSummary(trimmed, t, 'en-US', 'UTC')).toBe(
+    expect(sendSummary(trimmed, t, 'UTC')).toBe(
       'newsletters.editor.send.summary:{"count":42,"counts":"newsletters.counts.movies:{\\"count\\":12}, newsletters.counts.shows:{\\"count\\":3}, newsletters.counts.albums:{\\"count\\":0}","start":"Aug 28","end":"Sep 4"} newsletters.editor.send.trimmed:{"count":3}'
     );
   });

@@ -46,8 +46,8 @@ import {
   getSessionProgress,
 } from '@/lib/utils';
 import { imageProxyUrl } from '@/lib/api';
-import { formatDuration } from '@/lib/formatters';
 import { playbackBadge } from '@/lib/playbackBadge';
+import { DATE_TIME_OPTIONS, formatDate, formatDuration } from '@/lib/dateFormat';
 import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { MediaPageLink } from '@/components/media/MediaPageLink';
@@ -67,8 +67,7 @@ import type {
   MediaType,
   ServerType,
 } from '@tracearr/shared';
-import { format, formatDistanceToNow } from 'date-fns';
-import { getDateTimeFormatString } from '@/lib/timeFormat';
+import { formatDistanceToNow } from 'date-fns';
 
 // Accept both SessionWithDetails (history) and ActiveSession (now playing)
 // Both types have the same nested user/server structure
@@ -172,7 +171,6 @@ function SegmentTable({
   segmentCount?: number;
 }) {
   const { t } = useTranslation(['common', 'pages']);
-  const timeFormat = getDateTimeFormatString();
 
   return (
     <div className="text-sm">
@@ -196,15 +194,17 @@ function SegmentTable({
             return (
               <tr key={i} className="border-border/50 border-t">
                 <td className="text-muted-foreground py-1 pr-3">{i + 1}</td>
-                <td className="py-1 pr-3">{format(startDate, timeFormat)}</td>
-                <td className="py-1 pr-3">{stopDate ? format(stopDate, timeFormat) : '—'}</td>
+                <td className="py-1 pr-3">{formatDate(startDate, DATE_TIME_OPTIONS)}</td>
+                <td className="py-1 pr-3">
+                  {stopDate ? formatDate(stopDate, DATE_TIME_OPTIONS) : '-'}
+                </td>
                 <td className="py-1 pr-3 text-right">
                   {formatDuration(seg.durationMs, { style: 'compact' })}
                 </td>
                 <td className="py-1 text-right">
                   {seg.pausedDurationMs > 0
                     ? formatDuration(seg.pausedDurationMs, { style: 'compact' })
-                    : '—'}
+                    : '-'}
                 </td>
               </tr>
             );
@@ -433,7 +433,7 @@ function SessionContent({
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">{t('labels.started')}</span>
                 <span>
-                  {format(new Date(session.startedAt), getDateTimeFormatString())}
+                  {formatDate(new Date(session.startedAt), DATE_TIME_OPTIONS)}
                   <span className="text-muted-foreground ml-1.5 text-xs">
                     ({formatDistanceToNow(new Date(session.startedAt), { addSuffix: true })})
                   </span>
@@ -442,7 +442,7 @@ function SessionContent({
               {session.stoppedAt && (
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">{t('labels.stopped')}</span>
-                  <span>{format(new Date(session.stoppedAt), getDateTimeFormatString())}</span>
+                  <span>{formatDate(new Date(session.stoppedAt), DATE_TIME_OPTIONS)}</span>
                 </div>
               )}
               <div className="flex items-center justify-between">

@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import { PLAYBACK_DECISION_LABEL_KEYS } from '@tracearr/shared';
-import { getHour12 } from '@/lib/timeFormat';
 import { ChartSkeleton } from '@/components/ui/skeleton';
+import { axisDateTimeLabelFormats, formatBucketDate, parseChartDate } from '@/lib/dateFormat';
 import { ChartEmpty } from './ChartEmpty';
-import { parseChartDate } from './chartUtils';
+import { chartLang } from './chartUtils';
 
 interface ConcurrentData {
   hour: string;
@@ -40,6 +40,7 @@ export function ConcurrentChart({
       data.map((d) => [parseChartDate(d.hour), value(d)]);
 
     return {
+      lang: chartLang(),
       chart: {
         type: 'area',
         height,
@@ -72,13 +73,7 @@ export function ConcurrentChart({
       xAxis: {
         type: 'datetime',
         tickPixelInterval: 120,
-        dateTimeLabelFormats: {
-          hour: { main: getHour12() ? '%l %p' : '%k:%M' },
-          day: { main: '%b %e' },
-          week: { main: '%b %e' },
-          month: { main: `%b '%y` },
-          year: { main: '%Y' },
-        },
+        dateTimeLabelFormats: axisDateTimeLabelFormats(true),
         labels: {
           style: {
             color: 'hsl(var(--muted-foreground))',
@@ -132,27 +127,7 @@ export function ConcurrentChart({
         shared: true,
         formatter: function () {
           const points = this.points || [];
-          const date = new Date(this.x);
-
-          let dateStr: string;
-          if (period === 'all') {
-            dateStr = t('labels.weekOf', {
-              date: date.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              }),
-            });
-          } else if (period === 'year' || period === 'month') {
-            dateStr = date.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            });
-          } else {
-            // day (hourly) or week (6-hour)
-            dateStr = `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${date.toLocaleTimeString('en-US', { hour: 'numeric', hour12: getHour12() })}`;
-          }
+          const dateStr = formatBucketDate(this.x, period, (date) => t('labels.weekOf', { date }));
           let html = `<b>${dateStr}</b>`;
 
           let total = 0;

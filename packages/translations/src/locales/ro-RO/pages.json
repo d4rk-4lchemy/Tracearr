@@ -535,14 +535,8 @@
         },
         "columns": {
           "hoursPerGb": "",
-          "value": ""
-        },
-        "category": {
-          "low": "",
-          "moderate": "",
-          "high": ""
-        },
-        "deletionSuggested": ""
+          "lastWatched": ""
+        }
       },
       "matchBadge": {
         "exact": "",
@@ -562,7 +556,7 @@
       "peakHour": "Ora de vârf",
       "viewingHours": "Vizualizare Ore",
       "peak": "Vârf:",
-      "monthlyTrends": "Tendințe lunare",
+      "viewingTrend": "",
       "busiest": "Puternic:",
       "quietest": "Liniște:",
       "bingeHighlights": "Repere maraton",
@@ -584,12 +578,6 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "tiers": {
-          "highlyAddictive": "",
-          "addictive": "",
-          "bingeable": "",
-          "casual": ""
         }
       },
       "percentWatchedValue": "",
@@ -693,8 +681,7 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "uniqueItems_other": ""
+        }
       },
       "growth": {
         "empty": {

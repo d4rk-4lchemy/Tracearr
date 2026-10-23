@@ -24,11 +24,10 @@ import {
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HtmlPreviewDialog } from '@/components/settings/shared/HtmlPreviewDialog';
-import { dateLabel } from '@/components/settings/shared/dateLabel';
+import { dateLabel, windowLabel } from '@/lib/dateFormat';
 import { useNewsletterSend, useNewsletterSendHtml, useRetryFailedSend } from '@/hooks/queries';
 import { formatList } from '@/lib/listFormat';
 import { outcomeVariant, type OutcomeVariant } from '../newsletterFormat';
-import { windowLabel } from './previewSummary';
 
 export function recipientVariant(status: NewsletterRecipientStatus): OutcomeVariant {
   switch (status) {
@@ -86,8 +85,8 @@ export function SendDetailSheet({
               {t(`newsletters.history.trigger.${data.trigger}`)}
               {' · '}
               {t('newsletters.history.window', {
-                start: windowLabel(data.windowStart, i18n.language, timezone),
-                end: windowLabel(data.windowEnd, i18n.language, timezone),
+                start: windowLabel(data.windowStart, timezone),
+                end: windowLabel(data.windowEnd, timezone),
               })}
             </SheetDescription>
           )}

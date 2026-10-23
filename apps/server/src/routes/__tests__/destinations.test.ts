@@ -876,5 +876,39 @@ describe('Destination Routes', () => {
         'discord destination test failed'
       );
     });
+
+    it('logs every address tried when a dual-stack connect fails', async () => {
+      app = await buildTestApp(ownerUser);
+      const warn = vi.spyOn(app.log, 'warn');
+      const cause = Object.assign(
+        new AggregateError([
+          new Error('connect ETIMEDOUT 149.154.167.220:443'),
+          new Error('connect ENETUNREACH 2001:67c:4e8:f004::9:443'),
+        ]),
+        { code: 'ETIMEDOUT' }
+      );
+      mockTest.mockRejectedValue(new Error('test: could not reach api.telegram.org', { cause }));
+
+      await app.inject({
+        method: 'POST',
+        url: '/destinations/test',
+        payload: {
+          type: 'discord',
+          config: { webhookUrl: 'https://discord.com/api/webhooks/1/secret' },
+        },
+      });
+
+      expect(warn).toHaveBeenCalledWith(
+        {
+          code: 'ETIMEDOUT',
+          message: '',
+          errors: [
+            'connect ETIMEDOUT 149.154.167.220:443',
+            'connect ENETUNREACH 2001:67c:4e8:f004::9:443',
+          ],
+        },
+        'discord destination test failed'
+      );
+    });
   });
 });

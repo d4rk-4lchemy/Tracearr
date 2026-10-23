@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TimezoneSelect, browserTimeZone } from './TimezoneSelect';
+import { TimezoneSelect } from './TimezoneSelect';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -24,9 +24,5 @@ describe('TimezoneSelect', () => {
     expect(screen.getByRole('combobox')).toHaveTextContent('US/Eastern');
     await userEvent.click(screen.getByRole('combobox'));
     expect(screen.getByRole('option', { name: /US\/Eastern/ })).toBeInTheDocument();
-  });
-
-  it('reads the browser zone for a new row', () => {
-    expect(browserTimeZone()).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
   });
 });

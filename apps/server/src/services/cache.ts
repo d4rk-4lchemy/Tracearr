@@ -139,12 +139,14 @@ export interface CacheService {
   // Session write retry queue (for failed DB writes during session stop)
   addSessionWriteRetry(
     sessionId: string,
+    startedAt: number,
     stopData: { stoppedAt: number; forceStopped: boolean }
   ): Promise<void>;
   getSessionWriteRetries(): Promise<
     Array<{
       sessionId: string;
       attempts: number;
+      startedAt?: number;
       stopData: { stoppedAt: number; forceStopped: boolean };
     }>
   >;
@@ -701,12 +703,14 @@ export function createCacheService(redis: Redis): CacheService {
     // Session write retry queue methods
     async addSessionWriteRetry(
       sessionId: string,
+      startedAt: number,
       stopData: { stoppedAt: number; forceStopped: boolean }
     ): Promise<void> {
       const key = REDIS_KEYS.SESSION_WRITE_RETRY(sessionId);
       // hsetnx: a re-add for a session already queued must not reset its
       // attempt count back to 1, or MAX_TOTAL_ATTEMPTS never triggers.
       await redis.hsetnx(key, 'attempts', '1');
+      await redis.hset(key, 'startedAt', String(startedAt));
       await redis.hset(key, 'stopData', JSON.stringify(stopData));
       await redis.sadd(REDIS_KEYS.SESSION_WRITE_RETRY_SET, sessionId);
       // Auto-expire after 1 hour (safety net)
@@ -718,6 +722,7 @@ export function createCacheService(redis: Redis): CacheService {
       Array<{
         sessionId: string;
         attempts: number;
+        startedAt?: number;
         stopData: { stoppedAt: number; forceStopped: boolean };
       }>
     > {
@@ -725,6 +730,7 @@ export function createCacheService(redis: Redis): CacheService {
       const results: Array<{
         sessionId: string;
         attempts: number;
+        startedAt?: number;
         stopData: { stoppedAt: number; forceStopped: boolean };
       }> = [];
       // Members whose hash already expired are zombies: srem them here so the
@@ -739,6 +745,7 @@ export function createCacheService(redis: Redis): CacheService {
           results.push({
             sessionId,
             attempts: parseInt(data.attempts, 10),
+            ...(data.startedAt && { startedAt: Number(data.startedAt) }),
             stopData: JSON.parse(data.stopData) as { stoppedAt: number; forceStopped: boolean },
           });
         } else {

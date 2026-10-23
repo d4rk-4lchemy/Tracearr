@@ -2800,122 +2800,30 @@ export interface StaleResponse {
 
 // Library Watch Statistics Response (GET /library/watch)
 
-/**
- * A single "most watched" row returned by the watch endpoint.
- * When multiple servers are in scope, the same title is collapsed
- * into one row (deduped by external ID match key) and serverIds
- * lists every server that has a copy of the title.
- */
-export interface WatchItem {
-  id: string;
-  /** Primary server for this title (lowest sort value when deduped across servers). */
-  serverId: string;
-  serverName: string;
-  libraryId: string;
-  title: string;
-  mediaType: string;
-  year: number | null;
-  fileSize: number | null;
-  resolution: string | null;
-  addedAt: string;
-  /** Total play count summed across all servers for this title. */
-  watchCount: number;
-  /** Total watch duration summed across all servers for this title. */
-  totalWatchMs: number;
-  lastWatchedAt: string | null;
-  /** All server IDs that own a copy of this title (for per-title color dots). */
-  serverIds: string[];
+/** Titles by what happened to them in the window; the three add up to the titles in scope. */
+export interface CompletionCounts {
+  completed: number;
+  inProgress: number;
+  notStarted: number;
 }
 
+/**
+ * Movies and episodes counted one by one by media identity. totalItems and notStarted cover
+ * the titles in scope regardless of the window; everything else is activity in the window.
+ */
 export interface WatchSummary {
-  /** Distinct title count (deduped by external ID). */
   totalItems: number;
-  /** Distinct titles with at least one play (deduped by external ID). */
+  /** Titles with at least one counted play in the window. */
   watchedCount: number;
-  unwatchedCount: number;
   watchedPct: number;
-  /** Sum of all watch durations across all servers. */
   totalWatchMs: number;
-  avgWatchesPerItem: number;
-  /** Distinct titles fully completed (deduped by external ID), if available. */
-  completedCount: number;
+  avgPlaysPerItem: number;
+  completion: { movie: CompletionCounts; episode: CompletionCounts };
 }
 
 export interface WatchResponse {
-  items: WatchItem[];
   summary: WatchSummary;
-  pagination: { page: number; pageSize: number; total: number };
 }
-
-// Library Completion Response (GET /library/completion)
-export type CompletionStatus = 'completed' | 'in_progress' | 'not_started';
-
-export interface CompletionItem {
-  id: string;
-  serverId: string;
-  serverName: string;
-  title: string;
-  mediaType: string;
-  completionPct: number;
-  watchedMs: number;
-  runtimeMs: number;
-  showTitle: string | null;
-  seasonNumber: number | null;
-  episodeNumber: number | null;
-  status: CompletionStatus;
-  lastWatchedAt: string | null;
-}
-
-export interface SeasonCompletion {
-  serverId: string;
-  serverName: string;
-  showTitle: string;
-  seasonNumber: number;
-  totalEpisodes: number;
-  completedEpisodes: number;
-  inProgressEpisodes: number;
-  completionPct: number;
-  status: CompletionStatus;
-}
-
-export interface SeriesCompletion {
-  serverId: string;
-  serverName: string;
-  showTitle: string;
-  totalSeasons: number;
-  completedSeasons: number;
-  totalEpisodes: number;
-  completedEpisodes: number;
-  avgSeasonCompletionPct: number;
-  status: CompletionStatus;
-}
-
-export interface CompletionSummary {
-  totalItems: number;
-  completedCount: number;
-  inProgressCount: number;
-  notStartedCount: number;
-  overallCompletionPct: number;
-}
-
-export interface CompletionPaginationInfo {
-  page: number;
-  pageSize: number;
-  total: number;
-}
-
-export type CompletionResponse =
-  | { items: CompletionItem[]; summary: CompletionSummary; pagination: CompletionPaginationInfo }
-  | {
-      seasons: SeasonCompletion[];
-      summary: CompletionSummary;
-      pagination: CompletionPaginationInfo;
-    }
-  | {
-      series: SeriesCompletion[];
-      summary: CompletionSummary;
-      pagination: CompletionPaginationInfo;
-    };
 
 export type WatchedState = 'watched' | 'partial' | 'unwatched';
 
@@ -3391,6 +3299,8 @@ export interface MediaSeasonHeatResponse {
  * different servers are collapsed into one row (deduped by show matchKey).
  */
 export interface BingeShow {
+  /** Show identity, a merged alias folded into its winner. */
+  showMediaId: string;
   showTitle: string;
   /** Server with the most episodes watched in this binge journey. */
   primaryServerId: string;
@@ -3412,12 +3322,13 @@ export interface HourlyDistribution {
   pctOfTotal: number;
 }
 
-export interface MonthlyTrend {
-  month: string;
+export type TrendBucket = 'day' | 'week' | 'month';
+
+export interface TrendPoint {
+  /** Bucket start in the request timezone, YYYY-MM-DD. */
+  start: string;
   watchCount: number;
-  totalWatchMs: number;
-  uniqueItems: number;
-  avgWatchesPerDay: number;
+  totalWatchHours: number;
 }
 
 export interface PatternsResponse {
@@ -3427,10 +3338,11 @@ export interface PatternsResponse {
     peakHour: number;
     peakDayOfWeek: number;
   };
-  seasonalTrends: {
-    monthlyTrends: MonthlyTrend[];
-    busiestMonth: string;
-    quietestMonth: string;
+  trend: {
+    bucket: TrendBucket;
+    points: TrendPoint[];
+    busiest: string | null;
+    quietest: string | null;
   };
   summary: {
     totalWatchSessions: number;
@@ -3440,26 +3352,23 @@ export interface PatternsResponse {
 }
 
 // Library ROI Response (GET /library/roi)
-export type ValueCategory = 'low_value' | 'moderate_value' | 'high_value';
-
 export interface RoiItem {
   id: string;
+  mediaId: string | null;
   serverId: string;
   serverName: string;
+  /** Every selected server holding a copy of this title. */
+  serverIds: string[];
   title: string;
-  mediaType: string;
+  mediaType: 'movie' | 'show';
   year: number | null;
   fileSizeBytes: number;
   fileSizeGb: number;
   watchCount: number;
-  totalWatchMs: number;
   totalWatchHours: number;
-  lastWatchedAt: string | null;
-  daysSinceLastWatch: number | null;
   watchHoursPerGb: number;
-  valueScore: number;
-  valueCategory: ValueCategory;
-  suggestDeletion: boolean;
+  /** All time, UTC day as YYYY-MM-DD. */
+  lastWatchedAt: string | null;
 }
 
 export interface RoiSummary {
@@ -3467,21 +3376,11 @@ export interface RoiSummary {
   totalStorageGb: number;
   totalWatchHours: number;
   avgWatchHoursPerGb: number;
-  lowValueItems: number;
-  lowValueStorageGb: number;
-  potentialSavingsGb: number;
-}
-
-export interface ValueThresholds {
-  movie: { lowValue: number; highValue: number };
-  episode: { lowValue: number; highValue: number };
-  show: { lowValue: number; highValue: number };
 }
 
 export interface RoiResponse {
   items: RoiItem[];
   summary: RoiSummary;
-  thresholds: ValueThresholds;
   pagination: { page: number; pageSize: number; total: number };
 }
 
@@ -3512,6 +3411,8 @@ export interface TopMoviesResponse {
 }
 
 export interface TopShow {
+  /** Canonical media id of the show, unique per row where titles may repeat. */
+  mediaId: string;
   showTitle: string;
   year: number | null;
   thumbPath: string | null;

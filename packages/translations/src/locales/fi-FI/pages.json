@@ -526,14 +526,8 @@
         },
         "columns": {
           "hoursPerGb": "",
-          "value": ""
-        },
-        "category": {
-          "low": "",
-          "moderate": "",
-          "high": ""
-        },
-        "deletionSuggested": ""
+          "lastWatched": ""
+        }
       },
       "matchBadge": {
         "exact": "",
@@ -553,7 +547,7 @@
       "peakHour": "Huippu Tunti",
       "viewingHours": "Katselemassa Tuntia",
       "peak": "Huippu:",
-      "monthlyTrends": "Kuukausittaiset Suuntaukset",
+      "viewingTrend": "",
       "busiest": "Mutta:",
       "quietest": "Kysely:",
       "bingeHighlights": "Ahmimiskatselun kohokohdat",
@@ -575,12 +569,6 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "tiers": {
-          "highlyAddictive": "",
-          "addictive": "",
-          "bingeable": "",
-          "casual": ""
         }
       },
       "percentWatchedValue": "",
@@ -682,8 +670,7 @@
         "empty": {
           "title": "",
           "description": ""
-        },
-        "uniqueItems_other": ""
+        }
       },
       "growth": {
         "empty": {

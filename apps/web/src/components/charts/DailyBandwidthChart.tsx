@@ -5,6 +5,7 @@ import { HighchartsReact } from 'highcharts-react-official';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 // Direct path, not the charts barrel: that pulls in highcharts-more, which fails to load under jsdom.
 import { ChartEmpty } from '@/components/charts/ChartEmpty';
+import { formatDateString } from '@/lib/dateFormat';
 import type { DailyBandwidthRow, Server } from '@tracearr/shared';
 
 interface DailyBandwidthChartProps {
@@ -33,15 +34,6 @@ export function DailyBandwidthChart({
     // Derive a stable ordered list of unique dates for the category axis
     const dateSet = new Set(data.map((d) => d.date));
     const categories = [...dateSet].sort();
-
-    const formatCategory = (categoryValue: string) => {
-      const date = new Date(
-        categoryValue.includes('T') ? categoryValue : categoryValue + 'T00:00:00'
-      );
-      if (isNaN(date.getTime())) return '';
-      if (period === 'year') return date.toLocaleDateString(undefined, { month: 'short' });
-      return `${date.getMonth() + 1}/${date.getDate()}`;
-    };
 
     let bitrateSeriesArr: Highcharts.SeriesOptionsType[];
 
@@ -134,7 +126,10 @@ export function DailyBandwidthChart({
             const cats = this.axis.categories;
             const categoryValue = typeof this.value === 'number' ? cats[this.value] : this.value;
             if (!categoryValue) return '';
-            return formatCategory(categoryValue);
+            return formatDateString(
+              categoryValue,
+              period === 'year' ? { month: 'short' } : { month: 'numeric', day: 'numeric' }
+            );
           },
           step: Math.ceil(categories.length / 12),
         },
@@ -208,17 +203,14 @@ export function DailyBandwidthChart({
           const points = this.points ?? [];
           const category = points[0]?.category;
           const categoryValue = typeof category === 'string' ? category : undefined;
-          const date = categoryValue
-            ? new Date(categoryValue.includes('T') ? categoryValue : categoryValue + 'T00:00:00')
-            : null;
           const dateStr =
-            date && !isNaN(date.getTime())
-              ? date.toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })
-              : t('common:labels.unknown');
+            (categoryValue &&
+              formatDateString(categoryValue, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })) ||
+            t('common:labels.unknown');
 
           let html = `<b>${dateStr}</b><br/>`;
           for (const point of points) {

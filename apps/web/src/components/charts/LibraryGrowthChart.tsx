@@ -5,8 +5,9 @@ import { HighchartsReact } from 'highcharts-react-official';
 import type { LibraryGrowthResponse, GrowthDataPoint } from '@tracearr/shared';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
+import { formatDate, axisDateTimeLabelFormats, parseChartDate } from '@/lib/dateFormat';
 import { TrendingUp } from 'lucide-react';
-import { parseChartDate } from './chartUtils';
+import { chartLang } from './chartUtils';
 
 interface LibraryGrowthChartProps {
   data: LibraryGrowthResponse | undefined;
@@ -123,6 +124,7 @@ export function LibraryGrowthChart({ data, isLoading, height = 250 }: LibraryGro
     }
 
     return {
+      lang: chartLang(),
       chart: {
         type: 'area',
         height,
@@ -148,12 +150,7 @@ export function LibraryGrowthChart({ data, isLoading, height = 250 }: LibraryGro
       xAxis: {
         type: 'datetime',
         tickPixelInterval: 120,
-        dateTimeLabelFormats: {
-          day: { main: '%b %e' },
-          week: { main: '%b %e' },
-          month: { main: `%b '%y` },
-          year: { main: '%Y' },
-        },
+        dateTimeLabelFormats: axisDateTimeLabelFormats(),
         labels: {
           style: { color: 'hsl(var(--muted-foreground))' },
         },
@@ -184,12 +181,7 @@ export function LibraryGrowthChart({ data, isLoading, height = 250 }: LibraryGro
           const points = this.points;
           if (!points || points.length === 0) return '';
 
-          const date = new Date(this.x);
-          const dateStr = date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          });
+          const dateStr = formatDate(this.x, { month: 'short', day: 'numeric', year: 'numeric' });
 
           let html = `<b>${dateStr}</b>`;
           for (const point of points) {

@@ -4,6 +4,7 @@ import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import type { DayOfWeekStats } from '@tracearr/shared';
 import { ChartSkeleton } from '@/components/ui/skeleton';
+import { orderedWeekdays, weekdayName } from '@/lib/dateFormat';
 import { ChartEmpty } from './ChartEmpty';
 import { buildMediaGroupSeries, stackedTooltipRows } from './chartUtils';
 
@@ -22,8 +23,8 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
       return {};
     }
 
-    const days = [...new Map(data.map((d) => [d.day, d.name]))];
-    const dayIndex = new Map(days.map(([day], index) => [day, index]));
+    const days = orderedWeekdays();
+    const dayIndex = new Map(days.map((day, index) => [day, index]));
     const stacked = data.some((d) => d.mediaType !== undefined);
     const groups = stacked ? buildMediaGroupSeries(data, (d) => dayIndex.get(d.day) ?? d.day) : [];
     if (stacked && groups.length === 0) return null;
@@ -54,7 +55,7 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
         },
       },
       xAxis: {
-        categories: days.map(([, name]) => name),
+        categories: days.map((day) => weekdayName(day, 'short')),
         labels: {
           style: {
             color: 'hsl(var(--muted-foreground))',
@@ -115,7 +116,7 @@ export function DayOfWeekChart({ data, isLoading, height = 250 }: DayOfWeekChart
             {
               type: 'column',
               name: t('labels.plays'),
-              data: data.map((d) => d.count),
+              data: days.map((day) => data.find((d) => d.day === day)?.count ?? 0),
             },
           ],
       responsive: {

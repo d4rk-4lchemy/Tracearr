@@ -1,6 +1,5 @@
-import { format } from 'date-fns';
 import type { MediaRequestEntry, MediaRequestStatus, RequestSeason } from '@tracearr/shared';
-import { formatDuration } from '@/lib/formatters';
+import { formatDate, formatDuration } from '@/lib/dateFormat';
 
 /** i18next's TFunction can't statically verify these dynamically built keys; callers pass their real `t` through this shape. */
 export type Translate = (key: string, vars?: Record<string, unknown>) => string;
@@ -27,13 +26,8 @@ export function formatSeasons(seasons: RequestSeason[] | null, t: Translate): st
     .join(', ');
 }
 
-export function heroRequestLine(
-  entry: MediaRequestEntry,
-  name: string,
-  t: Translate,
-  dateFormat: string
-): string {
-  const date = format(new Date(entry.requestedAt), dateFormat);
+export function heroRequestLine(entry: MediaRequestEntry, name: string, t: Translate): string {
+  const date = formatDate(new Date(entry.requestedAt), { dateStyle: 'medium' });
   const tail = DECLINED_STATUSES.includes(entry.status)
     ? t('requests.wait.declined')
     : entry.waitMs === null

@@ -20,6 +20,10 @@ describe('effectiveFromOf', () => {
     expect(effectiveFromOf('2024-03-01')).toBe('2024-03-01T06:00:00.000Z');
   });
 
+  it('is null for a day that does not exist', () => {
+    expect(effectiveFromOf('2024-02-30')).toBeNull();
+  });
+
   it('round-trips a dated entry to the same instant', () => {
     const effectiveFrom = '2024-03-01T06:00:00.000Z';
     const drafts = toDrafts([

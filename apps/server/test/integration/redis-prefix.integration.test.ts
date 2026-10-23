@@ -131,7 +131,6 @@ describe('Redis Prefix Coverage', () => {
     expect(REDIS_KEYS.LIBRARY_WATCH).toMatch(new RegExp(`^${TEST_PREFIX}`));
     expect(REDIS_KEYS.LIBRARY_ROI).toMatch(new RegExp(`^${TEST_PREFIX}`));
     expect(REDIS_KEYS.LIBRARY_PATTERNS).toMatch(new RegExp(`^${TEST_PREFIX}`));
-    expect(REDIS_KEYS.LIBRARY_COMPLETION).toMatch(new RegExp(`^${TEST_PREFIX}`));
     expect(REDIS_KEYS.LIBRARY_TOP_MOVIES).toMatch(new RegExp(`^${TEST_PREFIX}`));
     expect(REDIS_KEYS.LIBRARY_TOP_SHOWS).toMatch(new RegExp(`^${TEST_PREFIX}`));
     expect(REDIS_KEYS.LIBRARY_CODECS).toMatch(new RegExp(`^${TEST_PREFIX}`));

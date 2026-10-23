@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { SectionHeading } from '@/components/dashboard/SectionHeading';
 import { RequestStatusBadge } from '@/components/requests/RequestStatusBadge';
 import { useMyRequests, useRequestsConfigured } from '@/hooks/queries';
-import { formatCompactAge } from '@/lib/formatters';
+import { formatCompactAge } from '@/lib/dateFormat';
 
 const PAGE_SIZE = 4;
 

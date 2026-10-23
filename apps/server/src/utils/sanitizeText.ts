@@ -40,3 +40,9 @@ export function scrubStringFields<T extends Record<string, unknown>>(record: T):
   }
   return changed ? (out as T) : record;
 }
+
+export const escapeHtml = (text: string): string =>
+  text.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c
+  );

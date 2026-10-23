@@ -9,6 +9,7 @@ vi.mock('react-i18next', () => ({
 vi.mock('@/components/server', () => ({ ServerBadge: () => null }));
 
 const show: BingeShow = {
+  showMediaId: 'show-1',
   showTitle: 'Severance',
   primaryServerId: 'srv-1',
   thumbPath: null,
@@ -46,5 +47,23 @@ describe('BingeHighlightsTable', () => {
     rerender(<BingeHighlightsTable data={[]} />);
     expect(screen.getByText('library.watch.binge.empty.title')).toBeInTheDocument();
     expect(screen.getByText('library.watch.binge.empty.description')).toBeInTheDocument();
+  });
+
+  it('shows the binge score as a number with no tier label', () => {
+    render(<BingeHighlightsTable data={[show]} />);
+    expect(screen.getByText('72')).toBeInTheDocument();
+    expect(screen.queryByText(/Highly Addictive|Bingeable|tiers/)).not.toBeInTheDocument();
+  });
+
+  it('keeps two shows with the same title as separate rows', () => {
+    render(
+      <BingeHighlightsTable
+        data={[
+          { ...show, bingeScore: 72 },
+          { ...show, showMediaId: 'show-2', bingeScore: 41 },
+        ]}
+      />
+    );
+    expect(screen.getAllByText('Severance')).toHaveLength(2);
   });
 });

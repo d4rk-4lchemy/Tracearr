@@ -1,4 +1,5 @@
 import type { ServerLocationEntry } from '@tracearr/shared';
+import { fromIsoDate, toIsoDate } from '@/lib/dateFormat';
 
 export interface LocationDraft {
   key: string;
@@ -18,19 +19,9 @@ export function emptyDraft(date: string | null): LocationDraft {
   return { key: `location-${nextKey}`, date, lat: '', lon: '', country: '', city: '', region: '' };
 }
 
-/** Local midnight of the picked day: a move applies from the start of that day where the owner is. */
-export function effectiveFromOf(date: string): string {
-  return new Date(`${date}T00:00:00`).toISOString();
-}
-
-function dateOf(effectiveFrom: string): string {
-  const d = new Date(effectiveFrom);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-export function todayString(): string {
-  return dateOf(new Date().toISOString());
+/** Local midnight of the picked day: a move applies from the start of that day where the owner is. Null when the day does not parse. */
+export function effectiveFromOf(date: string): string | null {
+  return fromIsoDate(date)?.toISOString() ?? null;
 }
 
 /** Coordinates are stored as float4; six decimals is about 10 cm. */
@@ -40,7 +31,7 @@ export function coordinate(value: number): string {
 
 export function toDrafts(entries: ServerLocationEntry[]): LocationDraft[] {
   return entries.map((entry) => ({
-    ...emptyDraft(entry.effectiveFrom ? dateOf(entry.effectiveFrom) : null),
+    ...emptyDraft(entry.effectiveFrom ? toIsoDate(new Date(entry.effectiveFrom)) : null),
     lat: coordinate(entry.lat),
     lon: coordinate(entry.lon),
     country: entry.country,
@@ -54,6 +45,7 @@ export function toEntries(drafts: LocationDraft[]): ServerLocationEntry[] | null
   for (const draft of drafts) {
     const lat = Number(draft.lat);
     const lon = Number(draft.lon);
+    const effectiveFrom = draft.date === null ? null : effectiveFromOf(draft.date);
     if (
       draft.lat.trim() === '' ||
       draft.lon.trim() === '' ||
@@ -62,12 +54,12 @@ export function toEntries(drafts: LocationDraft[]): ServerLocationEntry[] | null
       Math.abs(lat) > 90 ||
       Math.abs(lon) > 180 ||
       !/^[A-Z]{2}$/.test(draft.country) ||
-      (draft.date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(draft.date))
+      (draft.date !== null && effectiveFrom === null)
     ) {
       return null;
     }
     entries.push({
-      effectiveFrom: draft.date === null ? null : effectiveFromOf(draft.date),
+      effectiveFrom,
       lat,
       lon,
       city: draft.city.trim() || null,

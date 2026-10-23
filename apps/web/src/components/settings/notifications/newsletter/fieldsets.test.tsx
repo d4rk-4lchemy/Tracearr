@@ -150,6 +150,27 @@ describe('ScheduleFields', () => {
     });
   });
 
+  it('lists the weekdays starting at the week start, with unchanged stored values', async () => {
+    localStorage.setItem('tracearr_week_start', '1');
+    const p = props();
+    render(<ScheduleFields {...p} scheduleDirty={false} />);
+    await userEvent.click(screen.getByRole('combobox', { name: 'newsletters.editor.dayOfWeek' }));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ]);
+    await userEvent.click(screen.getByRole('option', { name: 'Sunday' }));
+    expect(p.onChange).toHaveBeenLastCalledWith({
+      schedule: { kind: 'weekly', dayOfWeek: 0, time: '09:00' },
+    });
+    localStorage.clear();
+  });
+
   it('marks the time field invalid when the weekly schedule is rejected', () => {
     const p = { ...props(), errors: { schedule: 'Pick a time' } };
     render(<ScheduleFields {...p} scheduleDirty={false} />);

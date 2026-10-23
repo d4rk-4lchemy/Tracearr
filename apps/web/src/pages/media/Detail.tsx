@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { format } from 'date-fns';
 import { verbKeysFor, type MediaRequestEntry } from '@tracearr/shared';
 import { ApiError } from '@/lib/api';
 import {
@@ -37,9 +36,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { formatDuration } from '@/lib/formatters';
-import { getTimeFormatString } from '@/lib/timeFormat';
 import { cn } from '@/lib/utils';
+import { formatDate, formatDuration } from '@/lib/dateFormat';
 import { getAvatarUrl } from '@/components/users/utils';
 
 const HISTORY_ROW_HEIGHT = 56;
@@ -237,10 +235,13 @@ function HistoryPanel({
                   >
                     <div role="cell" className={HISTORY_CELL_CLASS}>
                       <div className="text-sm">
-                        {format(new Date(row.started_at), 'MMM d, yyyy')}
+                        {formatDate(new Date(row.started_at), { dateStyle: 'medium' })}
                       </div>
                       <div className="text-muted-foreground text-xs">
-                        {format(new Date(row.started_at), getTimeFormatString())}
+                        {formatDate(new Date(row.started_at), {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                        })}
                       </div>
                     </div>
                     {showUser && (

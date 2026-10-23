@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 
+import { formatCustomRange } from '@/lib/dateFormat';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Calendar } from '@/components/ui/calendar';
@@ -59,7 +59,7 @@ export function TimeRangePicker({ value, onChange, className }: TimeRangePickerP
 
   const formatDateRange = () => {
     if (value.startDate && value.endDate) {
-      return `${format(value.startDate, 'MMM d')} - ${format(value.endDate, 'MMM d, yyyy')}`;
+      return formatCustomRange(value.startDate, value.endDate);
     }
     return 'Custom';
   };

@@ -640,32 +640,42 @@ describe('CacheService', () => {
 
   describe('addSessionWriteRetry / getSessionWriteRetries / removeSessionWriteRetry', () => {
     it('records a new retry with attempts starting at 1', async () => {
-      await cache.addSessionWriteRetry('session-1', { stoppedAt: 1000, forceStopped: false });
+      await cache.addSessionWriteRetry('session-1', 5000, { stoppedAt: 1000, forceStopped: false });
 
       const retries = await cache.getSessionWriteRetries();
 
       expect(retries).toEqual([
-        { sessionId: 'session-1', attempts: 1, stopData: { stoppedAt: 1000, forceStopped: false } },
+        {
+          sessionId: 'session-1',
+          attempts: 1,
+          startedAt: 5000,
+          stopData: { stoppedAt: 1000, forceStopped: false },
+        },
       ]);
     });
 
     it('preserves the attempt count across a re-add for the same session (hsetnx)', async () => {
-      await cache.addSessionWriteRetry('session-1', { stoppedAt: 1000, forceStopped: false });
+      await cache.addSessionWriteRetry('session-1', 5000, { stoppedAt: 1000, forceStopped: false });
       await cache.incrementSessionWriteRetry('session-1');
       await cache.incrementSessionWriteRetry('session-1');
 
       // A later failed stop attempt for the same session re-adds it to the queue.
-      await cache.addSessionWriteRetry('session-1', { stoppedAt: 2000, forceStopped: true });
+      await cache.addSessionWriteRetry('session-1', 5000, { stoppedAt: 2000, forceStopped: true });
 
       const retries = await cache.getSessionWriteRetries();
 
       expect(retries).toEqual([
-        { sessionId: 'session-1', attempts: 3, stopData: { stoppedAt: 2000, forceStopped: true } },
+        {
+          sessionId: 'session-1',
+          attempts: 3,
+          startedAt: 5000,
+          stopData: { stoppedAt: 2000, forceStopped: true },
+        },
       ]);
     });
 
     it('sets a TTL on the retry set itself, not just the per-session hash', async () => {
-      await cache.addSessionWriteRetry('session-1', { stoppedAt: 1000, forceStopped: false });
+      await cache.addSessionWriteRetry('session-1', 5000, { stoppedAt: 1000, forceStopped: false });
 
       expect(redis.ttls.get('tracearr:session:write-retry:pending')).toBe(3600);
     });
@@ -682,7 +692,10 @@ describe('CacheService', () => {
     });
 
     it('leaves live members in the set alongside a swept zombie', async () => {
-      await cache.addSessionWriteRetry('live-session', { stoppedAt: 1000, forceStopped: false });
+      await cache.addSessionWriteRetry('live-session', 5000, {
+        stoppedAt: 1000,
+        forceStopped: false,
+      });
       await redis.sadd('tracearr:session:write-retry:pending', 'zombie-session');
 
       const retries = await cache.getSessionWriteRetries();
@@ -693,7 +706,7 @@ describe('CacheService', () => {
     });
 
     it('removes both the hash and the set member', async () => {
-      await cache.addSessionWriteRetry('session-1', { stoppedAt: 1000, forceStopped: false });
+      await cache.addSessionWriteRetry('session-1', 5000, { stoppedAt: 1000, forceStopped: false });
 
       await cache.removeSessionWriteRetry('session-1');
 

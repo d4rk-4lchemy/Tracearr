@@ -34,7 +34,7 @@ import {
   ItemTitle,
 } from '@/components/ui/item';
 import { Skeleton } from '@/components/ui/skeleton';
-import { dateLabel } from '@/components/settings/shared/dateLabel';
+import { dateLabel } from '@/lib/dateFormat';
 import { useAddSuppression, useEmailSuppressions, useRemoveSuppression } from '@/hooks/queries';
 import { NEWSLETTERS_PATH } from './Newsletters';
 

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { format, parseISO } from 'date-fns';
 import { Calendar, CheckCircle2, Clock, Play, Users } from 'lucide-react';
 import { verbKeysFor, type MediaStatsResponse, type MediaWatcherEntry } from '@tracearr/shared';
+import { formatIsoDay, formatKpiHours } from '@/lib/dateFormat';
 import { StatCard, formatNumber } from '@/components/ui/stat-card';
 import { InlineErrorState } from '@/components/library/ErrorState';
 
@@ -15,11 +15,6 @@ interface KpiStripProps {
   watchersLoading: boolean;
   watchersError: boolean;
   onRetryWatchers: () => void;
-}
-
-/** Whole hours only, matching the mockup's "182h" / "36h" kpi values (no day breakdown). */
-export function formatKpiHours(ms: number): string {
-  return `${Math.round(ms / 3_600_000)}h`;
 }
 
 /** Mean of the watchers' non-null completionPct values, rounded; null when nobody has a completion figure yet. */
@@ -212,7 +207,7 @@ export function MemberKpiStrip({
           <StatCard
             icon={Calendar}
             label={t(isArtist ? 'media.detail.kpis.lastPlayed' : 'media.detail.kpis.lastWatched')}
-            value={lastWatchedDay ? format(parseISO(lastWatchedDay), 'MMM d, yyyy') : '-'}
+            value={lastWatchedDay ? formatIsoDay(lastWatchedDay) : '-'}
             variant="kpi"
           />
         </>

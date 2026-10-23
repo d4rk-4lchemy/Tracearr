@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import Highcharts from 'highcharts';
 import { HighchartsReact } from 'highcharts-react-official';
 import type { HourlyDistribution } from '@tracearr/shared';
-import { getHour12 } from '@/lib/timeFormat';
+import { formatHourOfDay } from '@/lib/dateFormat';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Clock } from 'lucide-react';
@@ -13,15 +13,6 @@ interface HourlyDistributionChartProps {
   isLoading?: boolean;
   height?: number;
 }
-
-const formatHour = (hour: number): string => {
-  if (!getHour12()) {
-    return `${hour.toString().padStart(2, '0')}:00`;
-  }
-  if (hour === 0) return '12am';
-  if (hour === 12) return '12pm';
-  return hour < 12 ? `${hour}am` : `${hour - 12}pm`;
-};
 
 export function HourlyDistributionChart({
   data,
@@ -54,7 +45,7 @@ export function HourlyDistributionChart({
         enabled: false,
       },
       xAxis: {
-        categories: data.map((d) => formatHour(d.hour)),
+        categories: data.map((d) => formatHourOfDay(d.hour)),
         labels: {
           rotation: -45,
           style: {

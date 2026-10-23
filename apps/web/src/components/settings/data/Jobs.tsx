@@ -67,7 +67,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { formatDuration } from '@/lib/formatters';
+import { formatDuration } from '@/lib/dateFormat';
 import { SettingsSection } from '@/components/settings/shell/SettingsSection';
 
 interface JobOption {

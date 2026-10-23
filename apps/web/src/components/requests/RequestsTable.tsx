@@ -1,4 +1,3 @@
-import { format } from 'date-fns';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -27,6 +26,7 @@ import { WatchedBadge } from '@/components/media-browse/WatchedBadge';
 import { RequestStatusBadge } from '@/components/requests/RequestStatusBadge';
 import { formatSeasons, formatWait, type Translate } from '@/components/requests/format';
 import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/dateFormat';
 
 const COLUMN_COUNT = 6;
 
@@ -129,7 +129,7 @@ function RequestDataRow({
         <RequestStatusBadge status={row.status} deletedAt={row.deletedAt} />
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {format(new Date(row.requestedAt), 'MMM d, yyyy')}
+        {formatDate(new Date(row.requestedAt), { dateStyle: 'medium' })}
       </TableCell>
       <TableCell className="text-muted-foreground">
         {formatWait(row.waitMs, row.status, t)}

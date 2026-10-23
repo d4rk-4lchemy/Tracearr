@@ -1,5 +1,4 @@
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
 import { ArchiveRestore, Download, MoreHorizontal, Trash2 } from 'lucide-react';
 import type { BackupListItem } from '@tracearr/shared';
 import { Badge } from '@/components/ui/badge';
@@ -29,9 +28,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatBytes } from '@/lib/formatters';
-import { getFullDateTimeFormatString } from '@/lib/timeFormat';
 import { api } from '@/lib/api';
-import { dateLabel } from '@/components/settings/shared/dateLabel';
+import { formatDate, dateLabel } from '@/lib/dateFormat';
 
 interface BackupRow {
   filename: string;
@@ -68,7 +66,7 @@ export function BackupHistory({
   const rows: BackupRow[] = backups.map((item) => ({
     filename: item.filename,
     date: dateLabel(item.createdAt),
-    fullDate: format(new Date(item.createdAt), getFullDateTimeFormatString()),
+    fullDate: formatDate(new Date(item.createdAt), { dateStyle: 'medium', timeStyle: 'medium' }),
     typeLabel: typeLabel(item.type),
     size: formatBytes(item.size, 2),
     version: item.metadata.app.version,

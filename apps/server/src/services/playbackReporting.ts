@@ -13,6 +13,7 @@ import type {
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { batchGetLibraryItemIdentity, type SessionIdentity } from '../jobs/poller/database.js';
+import { importIdentityByKey } from './import/libraryKeyMatch.js';
 import { extractIpFromEndpoint } from '../utils/parsing.js';
 import { normalizeClient } from '../utils/platformNormalizer.js';
 import { parseJellystatPlayMethod } from '../utils/transcodeNormalizer.js';
@@ -199,6 +200,11 @@ export function transformPlaybackReportingRow(
 
   const totalDurationMs = ctx.enrichment?.runtimeMs ?? null;
   const threshold = watchedThresholdFor(ctx.thresholds, mediaType);
+  const identity = importIdentityByKey(ctx.identity, {
+    mediaType,
+    title: mediaTitle,
+    year: ctx.enrichment?.year ?? null,
+  });
   const watched = totalDurationMs != null && durationMs >= totalDurationMs * threshold;
 
   const { videoDecision, audioDecision, isTranscode } = parseJellystatPlayMethod(
@@ -216,13 +222,13 @@ export function transformPlaybackReportingRow(
     sessionKey: `pr-${row.rowid}`,
     externalSessionId: `pr-${row.rowid}`,
     ratingKey: row.itemId,
-    parentRatingKey: ctx.identity?.parentRatingKey ?? null,
-    grandparentRatingKey: ctx.identity?.grandparentRatingKey ?? null,
-    mediaId: ctx.identity?.mediaId ?? null,
-    showMediaId: ctx.identity?.showMediaId ?? null,
-    imdbId: ctx.identity?.imdbId ?? null,
-    tmdbId: ctx.identity?.tmdbId ?? null,
-    tvdbId: ctx.identity?.tvdbId ?? null,
+    parentRatingKey: identity?.parentRatingKey ?? null,
+    grandparentRatingKey: identity?.grandparentRatingKey ?? null,
+    mediaId: identity?.mediaId ?? null,
+    showMediaId: identity?.showMediaId ?? null,
+    imdbId: identity?.imdbId ?? null,
+    tmdbId: identity?.tmdbId ?? null,
+    tvdbId: identity?.tvdbId ?? null,
     state: 'stopped',
     mediaType,
     mediaTitle,

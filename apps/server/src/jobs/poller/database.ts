@@ -61,6 +61,9 @@ export interface SessionIdentity {
   parentRatingKey: string | null;
   grandparentRatingKey: string | null;
   itemMediaType: string;
+  /** The item's own title and year, for an import to tell a reused key from a renamed item. */
+  itemTitle?: string | null;
+  itemYear?: number | null;
 }
 
 /**
@@ -91,6 +94,8 @@ export async function batchGetLibraryItemIdentity(
       grandparentRatingKey: libraryItems.grandparentRatingKey,
       showMediaId: media.showMediaId,
       itemMediaType: libraryItems.mediaType,
+      itemTitle: libraryItems.title,
+      itemYear: libraryItems.year,
     })
     .from(libraryItems)
     .leftJoin(media, eq(media.id, libraryItems.mediaId))
@@ -113,6 +118,8 @@ export async function batchGetLibraryItemIdentity(
       parentRatingKey: r.parentRatingKey,
       grandparentRatingKey: r.grandparentRatingKey,
       itemMediaType: r.itemMediaType,
+      itemTitle: r.itemTitle,
+      itemYear: r.itemYear,
     });
   }
 
@@ -449,14 +456,27 @@ export async function getServerUserIdByExternalId(
  */
 export async function getSessionsTerminatedByViolation(violationId: string): Promise<Session[]> {
   const logRows = await db
-    .select({ sessionId: terminationLogs.sessionId })
+    .select({
+      sessionId: terminationLogs.sessionId,
+      sessionStartedAt: terminationLogs.sessionStartedAt,
+    })
     .from(terminationLogs)
     .where(and(eq(terminationLogs.violationId, violationId), eq(terminationLogs.success, true)));
 
   const ids = [...new Set(logRows.map((r) => r.sessionId))];
   if (ids.length === 0) return [];
 
-  const sessionRows = await db.select().from(sessions).where(inArray(sessions.id, ids));
+  // Floor from the started_at the logs stored, less a day: a kill raised while the session
+  // confirms can log the confirmation time, which the confirmation then moves earlier
+  const startedAts = logRows.flatMap((r) => r.sessionStartedAt?.getTime() ?? []);
+  const floor =
+    startedAts.length === 0
+      ? undefined
+      : gte(sessions.startedAt, new Date(Math.min(...startedAts) - 24 * 60 * 60 * 1000));
+  const sessionRows = await db
+    .select()
+    .from(sessions)
+    .where(and(inArray(sessions.id, ids), floor));
   return sessionRows.map(mapSessionRow);
 }
 

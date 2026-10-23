@@ -12,7 +12,7 @@ import {
   DataTableViewport,
   useDataTable,
 } from '@/components/ui/data-table';
-import { formatWatchTime } from '@/components/ui/stat-card';
+import { formatWatchTime } from '@/lib/dateFormat';
 import { usePagerLabels } from '@/components/users/detail/usePagerLabels';
 import { formatBytes, formatNumber, formatPercent } from '@/lib/formatters';
 import { deltaPercent, formatDelta } from '@/lib/periodWindows';

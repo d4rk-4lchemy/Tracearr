@@ -1,4 +1,4 @@
-import { format, isValid, parseISO } from 'date-fns';
+import { fromIsoDate } from '@/lib/dateFormat';
 import type {
   ActiveFilterChip,
   DateRangeValue,
@@ -7,19 +7,8 @@ import type {
   FilterValue,
 } from './types';
 
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
 export function isIsoDate(value: unknown): value is string {
-  return typeof value === 'string' && ISO_DATE_PATTERN.test(value) && isValid(parseISO(value));
-}
-
-/** Local-time formatting: `toISOString` would shift the day west of UTC. */
-export function toIsoDate(date: Date): string {
-  return format(date, 'yyyy-MM-dd');
-}
-
-export function fromIsoDate(value: string | undefined): Date | undefined {
-  return isIsoDate(value) ? parseISO(value) : undefined;
+  return typeof value === 'string' && fromIsoDate(value) !== undefined;
 }
 
 export function isDateRangeValue(value: FilterValue): value is DateRangeValue {

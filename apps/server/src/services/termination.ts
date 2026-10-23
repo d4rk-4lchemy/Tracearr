@@ -5,9 +5,10 @@
  * Supports both manual (admin-initiated) and automatic (rule-triggered) terminations.
  */
 
-import { and, eq, desc, gte } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminationLogs, sessions } from '../db/schema.js';
+import { sessionRowById } from '../db/sessionRow.js';
 import { createMediaServerClient } from './mediaServer/index.js';
 import { getCacheService, getPubSubService } from './cache.js';
 import { toRuleSession } from './automations/events/contextAssembly.js';
@@ -103,19 +104,24 @@ export async function terminateSession(
     };
   }
 
+  const logBase = {
+    sessionId: session.id,
+    sessionStartedAt: session.startedAt,
+    serverId: session.serverId,
+    serverUserId: session.serverUserId,
+    trigger,
+    triggeredByUserId: triggeredByUserId ?? null,
+    ruleId: ruleId ?? null,
+    violationId: violationId ?? null,
+    reason: reason ?? null,
+  };
+
   // The switch force-stopped the server's streams; anything queued before it ends here.
   if (session.server.historicalAt) {
     const logEntries = await db
       .insert(terminationLogs)
       .values({
-        sessionId: session.id,
-        serverId: session.serverId,
-        serverUserId: session.serverUserId,
-        trigger,
-        triggeredByUserId: triggeredByUserId ?? null,
-        ruleId: ruleId ?? null,
-        violationId: violationId ?? null,
-        reason: reason ?? null,
+        ...logBase,
         success: false,
         errorMessage: 'Server is historical',
       })
@@ -151,14 +157,7 @@ export async function terminateSession(
     const logEntries = await db
       .insert(terminationLogs)
       .values({
-        sessionId: session.id,
-        serverId: session.serverId,
-        serverUserId: session.serverUserId,
-        trigger,
-        triggeredByUserId: triggeredByUserId ?? null,
-        ruleId: ruleId ?? null,
-        violationId: violationId ?? null,
-        reason: reason ?? null,
+        ...logBase,
         success: false,
         errorMessage: 'No session ID available for termination',
       })
@@ -210,13 +209,7 @@ export async function terminateSession(
         durationMs,
         forceStopped: true,
       })
-      .where(
-        and(
-          eq(sessions.id, session.id),
-          // started_at is the compression orderby; an id-only update reads every compressed batch
-          gte(sessions.startedAt, new Date(session.startedAt.getTime() - 60_000))
-        )
-      );
+      .where(sessionRowById(session));
 
     await dispatchSessionStopped(
       toRuleSession(session, { state: 'stopped', stoppedAt: now, durationMs }),
@@ -271,14 +264,7 @@ export async function terminateSession(
   const logEntries = await db
     .insert(terminationLogs)
     .values({
-      sessionId: session.id,
-      serverId: session.serverId,
-      serverUserId: session.serverUserId,
-      trigger,
-      triggeredByUserId: triggeredByUserId ?? null,
-      ruleId: ruleId ?? null,
-      violationId: violationId ?? null,
-      reason: reason ?? null,
+      ...logBase,
       success,
       errorMessage,
     })

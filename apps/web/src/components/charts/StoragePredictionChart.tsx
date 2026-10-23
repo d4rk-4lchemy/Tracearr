@@ -5,7 +5,9 @@ import { HighchartsReact } from 'highcharts-react-official';
 import type { LibraryStorageResponse } from '@tracearr/shared';
 import { ChartSkeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
+import { formatDate } from '@/lib/dateFormat';
 import { TrendingUp } from 'lucide-react';
+import { chartLang } from './chartUtils';
 
 interface StoragePredictionChartProps {
   data: LibraryStorageResponse | undefined;
@@ -193,6 +195,7 @@ export function StoragePredictionChart({
     }
 
     return {
+      lang: chartLang(),
       chart: {
         type: 'area',
         height,
@@ -229,13 +232,13 @@ export function StoragePredictionChart({
             color: 'hsl(var(--muted-foreground))',
           },
           formatter: function () {
-            const date = new Date(this.value);
             // Include year for longer time periods (year/all) to differentiate labels
-            const options: Intl.DateTimeFormatOptions =
+            return formatDate(
+              new Date(this.value),
               period === 'year' || period === 'all'
                 ? { month: 'short', year: '2-digit' }
-                : { month: 'short', day: 'numeric' };
-            return date.toLocaleDateString('en-US', options);
+                : { month: 'short', day: 'numeric' }
+            );
           },
         },
         lineColor: 'hsl(var(--border))',
@@ -287,13 +290,7 @@ export function StoragePredictionChart({
         },
         shared: true,
         formatter: function () {
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-          const date = new Date(this.x as number);
-          const dateStr = date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          });
+          const dateStr = formatDate(this.x, { month: 'short', day: 'numeric', year: 'numeric' });
 
           let html = `<b>${dateStr}</b>`;
           const points = this.points || [];

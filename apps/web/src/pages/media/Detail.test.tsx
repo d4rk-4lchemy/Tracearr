@@ -217,6 +217,18 @@ describe('MediaDetail page', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
+  it('renders a title with no library copies from its media row, not as an error', () => {
+    mockUseMediaDetail.mockReturnValue(detailQuery('movie'));
+
+    renderPage();
+
+    expect(screen.queryByText('media.detail.notFound.title')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Arrival').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('media.detail.hero.removedEverywhere.caption').length
+    ).toBeGreaterThan(0);
+  });
+
   it('paints the hero from a cached stub immediately while every other section stays in its own loading state', () => {
     mockFindCachedMediaStub.mockReturnValue({
       mediaId: 'media-1',

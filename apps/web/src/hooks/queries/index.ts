@@ -234,7 +234,6 @@ export {
   useLibraryDuplicates,
   useLibraryStale,
   useLibraryWatch,
-  useLibraryCompletion,
   useLibraryPatterns,
   useLibraryRoi,
   useTopMovies,

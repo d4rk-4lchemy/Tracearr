@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
 import { ArrowLeft, ArrowUpRight } from 'lucide-react';
 import {
   formatEpisodeLabel,
@@ -19,9 +18,8 @@ import { SessionDetailSheet } from '@/components/history/SessionDetailSheet';
 import { getAvatarUrl } from '@/components/users/utils';
 import { useHistorySessions, type HistoryFilters } from '@/hooks/queries';
 import { imageProxyUrl } from '@/lib/api';
-import { formatDuration } from '@/lib/formatters';
-import { getTimeFormatString } from '@/lib/timeFormat';
 import { getCountryName, getDeviceDisplayName, getMediaDisplay } from '@/lib/utils';
+import { FULL_DATE_TIME_OPTIONS, formatDate, formatDuration } from '@/lib/dateFormat';
 import { locationName } from './locationKey';
 
 const SESSION_ROW_HEIGHT = 56;
@@ -71,7 +69,6 @@ export function LocationPanel({
     .join(' · ');
   const servers = location.servers ?? [];
   const people = location.users;
-  const dateFormat = `MMM d, yyyy ${getTimeFormatString()}`;
 
   return (
     <>
@@ -109,13 +106,13 @@ export function LocationPanel({
             {location.firstActivity && (
               <Detail
                 term={t('map.firstSeen')}
-                value={format(new Date(location.firstActivity), dateFormat)}
+                value={formatDate(new Date(location.firstActivity), FULL_DATE_TIME_OPTIONS)}
               />
             )}
             {location.lastActivity && (
               <Detail
                 term={t('map.lastSeen')}
-                value={format(new Date(location.lastActivity), dateFormat)}
+                value={formatDate(new Date(location.lastActivity), FULL_DATE_TIME_OPTIONS)}
               />
             )}
             {serverNames &&
@@ -341,8 +338,8 @@ function SessionRow({
         <div className="text-muted-foreground truncate text-[11px]">{details}</div>
       </div>
       <div className="text-muted-foreground shrink-0 text-right text-[11px] leading-tight">
-        <div>{format(startedAt, 'MMM d')}</div>
-        <div>{format(startedAt, getTimeFormatString())}</div>
+        <div>{formatDate(startedAt, { month: 'short', day: 'numeric' })}</div>
+        <div>{formatDate(startedAt, { hour: 'numeric', minute: '2-digit' })}</div>
       </div>
     </button>
   );

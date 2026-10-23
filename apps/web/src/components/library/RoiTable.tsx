@@ -1,7 +1,7 @@
 import { BarChart } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { RoiResponse, Server } from '@tracearr/shared';
-import { Badge } from '@/components/ui/badge';
+import type { LibraryRoiQueryInput, RoiResponse, Server } from '@tracearr/shared';
+import { formatIsoDay } from '@/lib/dateFormat';
 import { DataTablePager } from '@/components/ui/data-table';
 import {
   Select,
@@ -18,9 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useServerColorMap } from '@/hooks/useServerColorMap';
 import { ServerColumnCell } from '@/components/server';
-import { ValueCategoryBadge } from '@/components/library';
 import { EmptyState } from '@/components/ui/empty-state';
 import { MediaTypeBadge } from './badges';
 import {
@@ -29,8 +27,8 @@ import {
   type SortOrder,
 } from '@/components/ui/sortable-table-head';
 
-type SortBy = 'watch_hours_per_gb' | 'value_score' | 'file_size' | 'title';
-type MediaTypeFilter = 'all' | 'movie' | 'show' | 'artist';
+type SortBy = LibraryRoiQueryInput['sortBy'];
+type MediaTypeFilter = LibraryRoiQueryInput['mediaType'];
 
 interface RoiTableProps {
   data: RoiResponse | undefined;
@@ -48,7 +46,7 @@ interface RoiTableProps {
 
 /**
  * Table component for displaying ROI (Return on Investment) analysis.
- * Server-side sortable by watch hours, file size, hours per GB, and title.
+ * Server-side sortable by title, file size, watch hours, hours per GB, and last watched.
  */
 export function RoiTable({
   data,
@@ -65,8 +63,6 @@ export function RoiTable({
 }: RoiTableProps) {
   const { t } = useTranslation(['pages', 'common']);
 
-  const colorMap = useServerColorMap();
-
   const handleSort = (field: SortBy) => {
     onSortChange(field, nextSortOrder(field, sortBy, sortOrder, 'asc'));
   };
@@ -80,7 +76,6 @@ export function RoiTable({
         <SelectItem value="all">{t('library.storage.stale.allTypes')}</SelectItem>
         <SelectItem value="movie">{t('common:media.movie_plural')}</SelectItem>
         <SelectItem value="show">{t('common:media.tvShows')}</SelectItem>
-        <SelectItem value="artist">{t('common:media.music')}</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -137,7 +132,14 @@ export function RoiTable({
             >
               {t('common:labels.size')}
             </SortableTableHead>
-            <TableHead>{t('common:labels.watchHours')}</TableHead>
+            <SortableTableHead
+              field="watch_hours"
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSort={handleSort}
+            >
+              {t('common:labels.watchHours')}
+            </SortableTableHead>
             <SortableTableHead
               field="watch_hours_per_gb"
               sortBy={sortBy}
@@ -146,49 +148,45 @@ export function RoiTable({
             >
               {t('library.storage.roi.columns.hoursPerGb')}
             </SortableTableHead>
-            <TableHead>{t('library.storage.roi.columns.value')}</TableHead>
+            <SortableTableHead
+              field="last_watched"
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSort={handleSort}
+            >
+              {t('library.storage.roi.columns.lastWatched')}
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.items.map((item) => {
-            const serverColor = isMultiServer ? (colorMap.get(item.serverId) ?? null) : null;
-            const accentStyle = serverColor
-              ? { boxShadow: `inset 3px 0 0 0 ${serverColor}` }
-              : undefined;
-            const rowServer = isMultiServer
-              ? (selectedServers.find((s) => s.id === item.serverId) ?? null)
-              : null;
-
-            return (
-              <TableRow key={item.id} style={accentStyle}>
+          {data.items.map((item) => (
+            <TableRow key={item.id}>
+              <TableCell>
+                <MediaTypeBadge mediaType={item.mediaType} />
+              </TableCell>
+              <TableCell>
+                <span className="font-medium">{item.title}</span>
+                {item.year && <span className="text-muted-foreground ml-1">({item.year})</span>}
+              </TableCell>
+              {isMultiServer && (
                 <TableCell>
-                  <MediaTypeBadge mediaType={item.mediaType} />
+                  <div className="flex flex-wrap gap-1">
+                    {item.serverIds.map((sid) => {
+                      const server = selectedServers.find((s) => s.id === sid);
+                      if (!server) return null;
+                      return <ServerColumnCell key={sid} server={server} />;
+                    })}
+                  </div>
                 </TableCell>
-                <TableCell>
-                  <span className="font-medium">{item.title}</span>
-                  {item.year && <span className="text-muted-foreground ml-1">({item.year})</span>}
-                </TableCell>
-                {isMultiServer && (
-                  <TableCell>
-                    {rowServer ? (
-                      <ServerColumnCell server={rowServer} />
-                    ) : (
-                      <Badge variant="outline">{item.serverName}</Badge>
-                    )}
-                  </TableCell>
-                )}
-                <TableCell>{item.fileSizeGb.toFixed(1)} GB</TableCell>
-                <TableCell>{item.totalWatchHours.toFixed(1)}</TableCell>
-                <TableCell>{item.watchHoursPerGb.toFixed(2)}</TableCell>
-                <TableCell>
-                  <ValueCategoryBadge
-                    category={item.valueCategory}
-                    suggestDeletion={item.suggestDeletion}
-                  />
-                </TableCell>
-              </TableRow>
-            );
-          })}
+              )}
+              <TableCell>{item.fileSizeGb.toFixed(1)} GB</TableCell>
+              <TableCell>{item.totalWatchHours.toFixed(1)}</TableCell>
+              <TableCell>{item.watchHoursPerGb.toFixed(2)}</TableCell>
+              <TableCell>
+                {item.lastWatchedAt ? formatIsoDay(item.lastWatchedAt) : t('common:labels.never')}
+              </TableCell>
+            </TableRow>
+          ))}
         </TableBody>
       </Table>
 

@@ -243,8 +243,6 @@ export const users = pgTable(
     index('users_aggregate_trust_idx').on(table.aggregateTrustScore.desc(), table.id),
     index('users_first_joined_idx').on(table.firstJoinedAt.desc().nullsLast(), table.id),
     index('users_last_activity_idx').on(table.lastActivityAt.desc().nullsLast(), table.id),
-    // Roster search matches users.name or any account's username
-    index('users_name_trgm_idx').using('gin', sql`${table.name} gin_trgm_ops`),
     check(
       'users_contact_email_lower',
       sql`${table.contactEmail} IS NULL OR ${table.contactEmail} = lower(${table.contactEmail})`
@@ -344,7 +342,6 @@ export const serverUsers = pgTable(
     index('server_users_user_idx').on(table.userId),
     index('server_users_server_idx').on(table.serverId),
     index('server_users_username_idx').on(table.username),
-    index('server_users_username_trgm_idx').using('gin', sql`${table.username} gin_trgm_ops`),
     // For Plex sync matching by plex.tv account ID
     index('server_users_plex_account_idx').on(table.serverId, table.plexAccountId),
     // For account inactivity rule queries
@@ -508,9 +505,6 @@ export const sessions = pgTable(
     subtitleInfo: jsonb('subtitle_info').$type<SubtitleInfo>(),
   },
   (table) => [
-    index('sessions_server_user_time_idx').on(table.serverUserId, table.startedAt),
-    index('sessions_server_time_idx').on(table.serverId, table.startedAt),
-    index('sessions_state_idx').on(table.state),
     // sessions_external_session_idx removed - the only predicates on external_session_id
     // (import cursor CAST, dedup regex) are non-sargable for a btree
     index('sessions_active_lookup_idx').on(table.serverId, table.sessionKey, table.stoppedAt),
@@ -528,9 +522,6 @@ export const sessions = pgTable(
     // Indexes for stats queries
     // sessions_geo_idx and sessions_geo_time_idx removed - every geo predicate carries
     // IS NOT NULL, so idx_sessions_geo_partial in timescale.ts covers them all
-    index('sessions_media_type_idx').on(table.mediaType), // For media type aggregations
-    index('sessions_transcode_idx').on(table.isTranscode), // For quality stats
-    index('sessions_platform_idx').on(table.platform), // For platform stats
     // sessions_top_movies_idx and sessions_top_shows_idx removed - superseded by time-prefixed variants in timescale.ts
     // Covering index for history aggregates queries (server + date range + reference_id for COUNT DISTINCT)
     index('idx_sessions_server_date_ref').on(table.serverId, table.startedAt, table.referenceId),
@@ -782,7 +773,6 @@ export const mobileSessions = pgTable(
   (table) => [
     index('mobile_sessions_user_idx').on(table.userId),
     index('mobile_sessions_device_id_idx').on(table.deviceId),
-    index('mobile_sessions_refresh_token_idx').on(table.refreshTokenHash),
     index('mobile_sessions_expo_push_token_idx').on(table.expoPushToken),
     index('mobile_sessions_ba_session_idx').on(table.betterAuthSessionId),
   ]
@@ -831,7 +821,6 @@ export const notificationPreferences = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('notification_prefs_mobile_session_idx').on(table.mobileSessionId),
     // Validate quiet hours format: HH:MM where HH is 00-23 and MM is 00-59
     check(
       'quiet_hours_start_format',
@@ -1083,6 +1072,8 @@ export const terminationLogs = pgTable(
     // (hypertables don't support foreign key references to their primary key)
     // The relationship is maintained via Drizzle ORM relations
     sessionId: uuid('session_id').notNull(),
+    // Null only on rows whose session was already gone when the column was filled
+    sessionStartedAt: timestamp('session_started_at', { withTimezone: true }),
     serverId: uuid('server_id')
       .notNull()
       .references(() => servers.id, { onDelete: 'cascade' }),

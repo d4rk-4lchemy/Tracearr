@@ -13,6 +13,7 @@ import {
   POLLING_INTERVALS,
   SESSION_LIMITS,
   usernameAsEmail,
+  supportsMediaLibrary,
   type ActiveSession,
   type EngineAutomation,
   type Session,
@@ -20,7 +21,7 @@ import {
 import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db/client.js';
-import { getSessionsCompressionHorizon } from '../../db/timescale.js';
+import { getCachedSessionsCompressionHorizon } from '../../db/timescale.js';
 import {
   servers,
   serverUserExternalAliases,
@@ -28,9 +29,11 @@ import {
   sessions,
   users,
 } from '../../db/schema.js';
+import { sessionRowById } from '../../db/sessionRow.js';
 import { getGeoIPSettings } from '../../routes/settings.js';
 import { isMaintenance } from '../../serverState.js';
 import { isLeader } from '../../services/leaderLease.js';
+import { requestSyncForUnknownKeys } from '../../services/libraryEventSync.js';
 import { isLiveRow } from '../../services/liveServers.js';
 import type { CacheService, PubSubService } from '../../services/cache.js';
 import { geoipService } from '../../services/geoip.js';
@@ -339,18 +342,11 @@ async function resolveVanishedPendingSession(
         return null;
       }
 
-      // A row persisted from this pending entry starts no earlier than the entry; started_at is
-      // the compression orderby, so the bound spares the lookup every older compressed batch.
+      // A row persisted from this pending entry starts no earlier than the entry.
       const [existingById] = await db
         .select({ id: sessions.id })
         .from(sessions)
-        .where(
-          and(
-            eq(sessions.id, stillPending.id),
-            gte(sessions.startedAt, new Date(stillPending.startedAt - 60_000)),
-            isNull(sessions.stoppedAt)
-          )
-        )
+        .where(and(sessionRowById(stillPending), isNull(sessions.stoppedAt)))
         .limit(1);
       if (existingById) {
         await cache.deletePendingSession(serverId, pendingKey);
@@ -403,7 +399,11 @@ async function resolveVanishedPendingSession(
   });
   clearDbWriteTracking(lockResult.insertedSession.id);
   if (stopResult.needsRetry && stopResult.retryData) {
-    await cache.addSessionWriteRetry(lockResult.insertedSession.id, stopResult.retryData);
+    await cache.addSessionWriteRetry(
+      lockResult.insertedSession.id,
+      lockResult.insertedSession.startedAt.getTime(),
+      stopResult.retryData
+    );
   }
 
   console.log(
@@ -479,7 +479,11 @@ async function sweepGracePeriod(
             });
             clearDbWriteTracking(session.id);
             if (needsRetry && retryData && cacheService) {
-              await cacheService.addSessionWriteRetry(session.id, retryData);
+              await cacheService.addSessionWriteRetry(
+                session.id,
+                session.startedAt.getTime(),
+                retryData
+              );
             }
           } else {
             console.log(
@@ -636,13 +640,7 @@ async function resolvePendingSession(
       const [existingById] = await db
         .select({ id: sessions.id })
         .from(sessions)
-        .where(
-          and(
-            eq(sessions.id, updatedData.id),
-            gte(sessions.startedAt, new Date(updatedData.startedAt - 60_000)),
-            isNull(sessions.stoppedAt)
-          )
-        )
+        .where(and(sessionRowById(updatedData), isNull(sessions.stoppedAt)))
         .limit(1);
       if (existingById) {
         // A concurrent caller already persisted this row. The pending entry is
@@ -786,7 +784,11 @@ async function stopMissingSessionsImmediately(
 
     clearDbWriteTracking(activeSession.id);
     if (result.needsRetry && result.retryData && cache) {
-      await cache.addSessionWriteRetry(activeSession.id, result.retryData);
+      await cache.addSessionWriteRetry(
+        activeSession.id,
+        activeSession.startedAt.getTime(),
+        result.retryData
+      );
     }
 
     stoppedSessions.push({
@@ -1102,6 +1104,20 @@ export async function processServerSessions(
     for (const p of processedSessions) {
       p.identity = libraryItemIdentityMap.get(p.ratingKey) ?? null;
     }
+    // Only movies and episodes: live TV keys change per channel, and photos and extras are
+    // never library items, so a sync could not bring them in.
+    if (supportsMediaLibrary(server.type))
+      requestSyncForUnknownKeys(
+        { id: server.id, name: server.name },
+        processedSessions
+          .filter(
+            (p) =>
+              (p.mediaType === 'movie' || p.mediaType === 'episode') &&
+              p.ratingKey &&
+              !libraryItemIdentityMap.has(p.ratingKey)
+          )
+          .map((p) => p.ratingKey)
+      );
 
     // OPTIMIZATION: Batch load sibling server_user ids per identity for cross-server
     // rule aggregation on merged users. One query per poll tick covers every server
@@ -1384,13 +1400,7 @@ export async function processServerSessions(
               const touchResult = await db
                 .update(sessions)
                 .set({ lastSeenAt: new Date() })
-                .where(
-                  and(
-                    eq(sessions.id, existing.id),
-                    gte(sessions.startedAt, new Date(existing.startedAt.getTime() - 60_000)),
-                    isNull(sessions.stoppedAt)
-                  )
-                )
+                .where(and(sessionRowById(existing), isNull(sessions.stoppedAt)))
                 .returning({ id: sessions.id });
 
               if (touchResult.length === 0) {
@@ -1850,18 +1860,10 @@ export async function processServerSessions(
           // resurrect the session into updatedSessions/cache.
           let wasStoppedConcurrently = false;
           if (hasChanges || flushElapsed) {
-            // started_at is the compression orderby; without it an id-only update reads every
-            // compressed batch of the hypertable on each flush
             const updateResult = await db
               .update(sessions)
               .set(updatePayload)
-              .where(
-                and(
-                  eq(sessions.id, existingSession.id),
-                  gte(sessions.startedAt, new Date(existingSession.startedAt.getTime() - 60_000)),
-                  isNull(sessions.stoppedAt)
-                )
-              )
+              .where(and(sessionRowById(existingSession), isNull(sessions.stoppedAt)))
               .returning({ id: sessions.id });
 
             if (updateResult.length === 0) {
@@ -2301,7 +2303,7 @@ export async function forceStopSessions(
       clearDbWriteTracking(row.id);
 
       if (needsRetry && retryData && cacheService) {
-        await cacheService.addSessionWriteRetry(row.id, retryData);
+        await cacheService.addSessionWriteRetry(row.id, row.startedAt.getTime(), retryData);
       }
 
       if (!wasUpdated) continue;
@@ -2354,7 +2356,7 @@ export async function sweepStaleSessions(
     // Uncompressed chunks answer from idx_sessions_open_last_seen whatever their age. Compressed
     // ones have no index on stopped_at, so reading them decompresses all of history: the recurring
     // sweep stays above the horizon and startPoller reads below it once.
-    const horizon = options.includeCompressed ? null : await getSessionsCompressionHorizon();
+    const horizon = options.includeCompressed ? null : await getCachedSessionsCompressionHorizon();
 
     // Find all active sessions that haven't been seen recently
     const staleSessions = await db

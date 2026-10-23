@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { format } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Film, Tv } from 'lucide-react';
@@ -19,6 +18,7 @@ import { InlineErrorState } from '@/components/library/ErrorState';
 import { RequesterCell } from '@/components/requests/RequesterCell';
 import { formatSeasons, formatWait, type Translate } from '@/components/requests/format';
 import { formatBytes } from '@/lib/formatters';
+import { formatDate } from '@/lib/dateFormat';
 
 interface RequestOutcomeTableProps {
   rows: RequestOutcomeRow[] | undefined;
@@ -100,7 +100,8 @@ export function RequestOutcomeTable({
           id: 'requestedAt',
           header: t('pages:requests.outcomes.requested'),
           meta: { numeric: true },
-          cell: (info) => format(new Date(info.row.original.requestedAt), 'MMM d, yyyy'),
+          cell: (info) =>
+            formatDate(new Date(info.row.original.requestedAt), { dateStyle: 'medium' }),
         }),
         columnHelper.accessor((row) => row.fileSizeBytes, {
           id: 'fileSizeBytes',

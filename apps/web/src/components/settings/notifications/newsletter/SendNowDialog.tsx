@@ -15,7 +15,7 @@ interface SendNowDialogProps {
 }
 
 export function SendNowDialog({ newsletterId, name, timezone, onOpenChange }: SendNowDialogProps) {
-  const { t, i18n } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common']);
   const preview = usePreviewNewsletter();
   const send = useSendNewsletter();
   const [summary, setSummary] = useState<NewsletterPreview | null>(null);
@@ -37,7 +37,7 @@ export function SendNowDialog({ newsletterId, name, timezone, onOpenChange }: Se
   const description = summary
     ? nobody
       ? t('newsletters.editor.send.nobody', { missing: summary.recipients.missingEmail })
-      : sendSummary(summary, t as Translate, i18n.language, timezone)
+      : sendSummary(summary, t as Translate, timezone)
     : t('newsletters.editor.send.previewing');
   const confirmLabel = t('newsletters.editor.send.confirm');
 

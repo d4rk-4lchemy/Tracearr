@@ -12,7 +12,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { InlineErrorState } from '@/components/library/ErrorState';
-import { formatDuration } from '@/lib/formatters';
+import { formatDuration } from '@/lib/dateFormat';
 import { formatNumber } from '@/components/ui/stat-card';
 
 interface PlatformPanelProps {

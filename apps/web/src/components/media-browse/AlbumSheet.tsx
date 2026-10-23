@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Clock, Play, Users } from 'lucide-react';
-import { format } from 'date-fns';
 import { verbKeysFor, type AlbumDetailResponse, type AlbumTrack } from '@tracearr/shared';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import {
@@ -21,24 +20,18 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatWatchTime, StatCard } from '@/components/ui/stat-card';
+import { StatCard } from '@/components/ui/stat-card';
 import { useAlbumDetail } from '@/hooks/queries';
 import { formatNumber, formatPercent } from '@/lib/formatters';
 import { deltaPercent } from '@/lib/periodWindows';
 import { cn } from '@/lib/utils';
+import { formatDate, formatUtcDay, formatWatchTime } from '@/lib/dateFormat';
 import { OpenOnServerAction, openOnServerTargets, type HeroServerLookupEntry } from './DetailHero';
 import { buildPosterSrc, PosterArt } from './PosterCard';
 
 const columnHelper = createDataTableColumnHelper<AlbumTrack>();
 
 const getRowId = (track: AlbumTrack) => `${track.index ?? ''}:${track.title.toLowerCase()}`;
-
-/** A UTC day bucket as its calendar date, whatever the browser's zone. */
-function formatUtcDay(iso: string): string {
-  const day = new Date(iso);
-  const local = new Date(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
-  return format(local, local.getFullYear() === new Date().getFullYear() ? 'MMM d' : 'MMM d, yyyy');
-}
 
 function muted(track: AlbumTrack) {
   return track.plays === 0 ? 'text-muted-foreground' : undefined;
@@ -237,7 +230,7 @@ export function AlbumSheet({ albumId, serverIds, serverById, isMember, onClose }
                       t('pages:media.detail.albums.trackCount', { count: album.trackCount }),
                       album.durationMs === null ? null : formatWatchTime(album.durationMs),
                       t('pages:media.detail.hero.availability.added', {
-                        date: format(new Date(album.addedAt), 'MMM d, yyyy'),
+                        date: formatDate(new Date(album.addedAt), { dateStyle: 'medium' }),
                       }),
                     ]
                       .filter(Boolean)

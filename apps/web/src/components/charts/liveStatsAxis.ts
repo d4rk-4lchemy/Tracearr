@@ -4,21 +4,13 @@ import { useEffect, type RefObject } from 'react';
 import type { HighchartsReact } from 'highcharts-react-official';
 import type Highcharts from 'highcharts';
 import { SERVER_STATS_CONFIG } from '@tracearr/shared';
+import { formatDuration } from '@/lib/dateFormat';
 
 export const LIVE_STATS_WINDOW_MS = SERVER_STATS_CONFIG.WINDOW_SECONDS * 1000;
 
 const TICK_MS = 1000;
 const LABEL_STEP_SECONDS = 20;
 const LABEL_STEP_SECONDS_NARROW = 40;
-
-function ageLabel(seconds: number): string {
-  const whole = Math.round(seconds);
-  if (whole <= 0) return 'NOW';
-  if (whole < 60) return `${whole}s`;
-  const minutes = Math.floor(whole / 60);
-  const rest = whole % 60;
-  return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
-}
 
 // Hold the right edge behind real time, the same trick as Grafana's "now
 // delay": without it the newest region is empty until a sample lands, so the
@@ -48,7 +40,8 @@ export function liveStatsTimeAxis(now: number, narrow = false): Highcharts.XAxis
     labels: {
       style: { color: 'hsl(var(--muted-foreground))', fontSize: '10px' },
       formatter() {
-        return ageLabel(((this.axis.max ?? 0) - Number(this.value)) / 1000);
+        const seconds = Math.max(Math.round(((this.axis.max ?? 0) - Number(this.value)) / 1000), 0);
+        return formatDuration(seconds * 1000, { style: 'compact', emptyValue: 'NOW' });
       },
     },
     lineColor: 'hsl(var(--border))',

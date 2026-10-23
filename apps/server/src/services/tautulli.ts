@@ -17,6 +17,7 @@ import {
   enqueueMaintenanceJob,
   enqueueServerLocationSyncIfBehind,
 } from '../jobs/maintenanceQueue.js';
+import { importIdentityByKey } from './import/libraryKeyMatch.js';
 import {
   batchGetLibraryItemIdentity,
   batchResolveMediaByPlexGuid,
@@ -40,7 +41,7 @@ import {
   getServerTrackingStart,
   queryExistingByExternalIds,
   queryExistingByTimeKeys,
-  sessionRowById,
+  storedSessionRowById,
   type SessionUpdate,
   type TimeBounds,
 } from './import/index.js';
@@ -1069,10 +1070,13 @@ export class TautulliService {
         for (const record of validRecords) {
           const ratingKeyStr =
             typeof record.rating_key === 'number' ? String(record.rating_key) : null;
-          const identity = ratingKeyStr ? identityByRatingKey.get(ratingKeyStr) : undefined;
+          const mappedType = mapTautulliMediaType(record);
+          const identity = importIdentityByKey(
+            ratingKeyStr ? identityByRatingKey.get(ratingKeyStr) : undefined,
+            { mediaType: mappedType, title: record.title, year: record.year || null }
+          );
           if (identity !== undefined) continue;
 
-          const mappedType = mapTautulliMediaType(record);
           if (mappedType !== 'movie' && mappedType !== 'episode') continue;
 
           const normalizedGuid = normalizePlexGuid(record.guid);
@@ -1281,7 +1285,10 @@ export class TautulliService {
           // Track this insert to prevent duplicates within this import run
           insertedThisRun.add(referenceIdStr);
 
-          const identity = ratingKeyStr ? identityByRatingKey.get(ratingKeyStr) : undefined;
+          const identity = importIdentityByKey(
+            ratingKeyStr ? identityByRatingKey.get(ratingKeyStr) : undefined,
+            { mediaType, title: record.title, year: record.year || null }
+          );
           const normalizedGuid = identity !== undefined ? null : normalizePlexGuid(record.guid);
           const guidIdentity =
             normalizedGuid && normalizedGuid.mediaType === mediaType
@@ -1848,7 +1855,7 @@ export class TautulliService {
             // to this transaction.
             await uncapDecompressionForTx(tx);
             for (const update of pendingUpdates) {
-              await tx.update(sessions).set(update.data).where(sessionRowById(update));
+              await tx.update(sessions).set(update.data).where(storedSessionRowById(update));
             }
           });
           for (const update of pendingUpdates) {

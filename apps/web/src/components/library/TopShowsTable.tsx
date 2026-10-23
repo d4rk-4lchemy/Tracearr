@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { ServerBadge } from '@/components/server';
 import { EmptyState } from '@/components/ui/empty-state';
-import { BingeScoreBadge, getCompletionBadge } from './badges';
+import { getCompletionBadge } from './badges';
 import {
   SortableTableHead,
   nextSortOrder,
@@ -88,7 +88,7 @@ export function TopShowsTable({
               sortOrder={sortOrder}
               onSort={handleSort}
             >
-              {t('common:media.episode_plural')}
+              {t('common:labels.plays')}
             </SortableTableHead>
             <SortableTableHead
               field="watch_hours"
@@ -126,7 +126,7 @@ export function TopShowsTable({
         </TableHeader>
         <TableBody>
           {data.items.map((item) => (
-            <TableRow key={item.showTitle}>
+            <TableRow key={item.mediaId}>
               <TableCell>
                 <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="gap-1 bg-blue-500/10 text-blue-500">
@@ -152,12 +152,7 @@ export function TopShowsTable({
               <TableCell>{item.totalWatchHours.toFixed(1)}</TableCell>
               <TableCell>{item.uniqueViewers}</TableCell>
               <TableCell>{getCompletionBadge(item.avgCompletionRate)}</TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{item.bingeScore.toFixed(0)}</span>
-                  <BingeScoreBadge score={item.bingeScore} />
-                </div>
-              </TableCell>
+              <TableCell className="font-medium">{item.bingeScore.toFixed(0)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

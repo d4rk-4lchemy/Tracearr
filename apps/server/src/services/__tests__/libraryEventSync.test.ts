@@ -15,7 +15,12 @@ vi.mock('../../jobs/librarySyncQueue.js', () => ({
 
 import { librarySyncService } from '../librarySync.js';
 import { enqueueLibrarySyncFromEvent } from '../../jobs/librarySyncQueue.js';
-import { recordLibraryEvent, clearPendingLibraryEventSyncs } from '../libraryEventSync.js';
+import {
+  recordLibraryEvent,
+  clearPendingLibraryEventSyncs,
+  requestSyncForUnknownKeys,
+  UNKNOWN_KEY_COOLDOWN_MS,
+} from '../libraryEventSync.js';
 
 const tombstoneMock = vi.mocked(librarySyncService.tombstoneItemsByRatingKey);
 const hasItemMock = vi.mocked(librarySyncService.hasActiveItemByRatingKey);
@@ -222,5 +227,31 @@ describe('recordLibraryEvent tombstoning', () => {
         itemId: 'rk-1',
       })
     ).not.toThrow();
+  });
+});
+
+describe('requestSyncForUnknownKeys', () => {
+  it('offers a playing key the library lacks to one targeted sync per cooldown, however many ticks and windows pass', async () => {
+    const server = { id: 'srv-1', name: 'Server 1' };
+    for (let tick = 0; tick < 200; tick++) {
+      requestSyncForUnknownKeys(server, ['rk-unknown']);
+      await vi.advanceTimersByTimeAsync(31_000);
+    }
+
+    expect(hasItemMock).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith('srv-1');
+
+    await vi.advanceTimersByTimeAsync(UNKNOWN_KEY_COOLDOWN_MS);
+    requestSyncForUnknownKeys(server, ['rk-unknown']);
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(enqueueMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips a key the library already holds, like a server refresh event', async () => {
+    hasItemMock.mockResolvedValueOnce(true);
+    requestSyncForUnknownKeys({ id: 'srv-1', name: 'Server 1' }, ['rk-known']);
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(enqueueMock).not.toHaveBeenCalled();
   });
 });

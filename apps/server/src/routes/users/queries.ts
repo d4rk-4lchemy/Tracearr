@@ -2,9 +2,17 @@
 
 import { dispatcharrDeviceIdSql } from '../../services/mediaServer/dispatcharr/deviceIdentity.js';
 import type { UserDevice, AuthUser, UserLocation, MediaDownloadRow } from '@tracearr/shared';
-import { sql, eq, and, inArray, count } from 'drizzle-orm';
+import { sql, eq, and, between, desc, inArray, count, type SQL } from 'drizzle-orm';
 import type { db as defaultDb } from '../../db/client.js';
-import { mediaDownloads, serverUsers } from '../../db/schema.js';
+import {
+  automations,
+  mediaDownloads,
+  servers,
+  serverUsers,
+  sessions,
+  terminationLogs,
+  users,
+} from '../../db/schema.js';
 import { listDownloadRows } from '../../services/downloads/queries.js';
 import { buildServerAccessCondition, hasServerAccess } from '../../utils/serverFiltering.js';
 import { uuidArraySql } from '../../utils/sqlArrays.js';
@@ -374,4 +382,95 @@ export async function queryUserDownloads(
     dbOrTx.select({ count: count() }).from(mediaDownloads).where(where),
   ]);
   return { data, total: totalRow?.count ?? 0 };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const NO_SESSION = {
+  mediaTitle: null,
+  mediaType: null,
+  grandparentTitle: null,
+  seasonNumber: null,
+  episodeNumber: null,
+  year: null,
+  artistName: null,
+  albumName: null,
+};
+
+/**
+ * Termination logs newest first, each carrying the fields of the session it ended, or nulls
+ * when that session is gone. The sessions read is bounded by the started_at the log stored
+ * and the log's own time instead of joined by id alone, which would plan every chunk:
+ * confirmation only ever moves started_at earlier, and no session starts after the log that
+ * ended it, so a day of slack either side keeps every match the plain join would find.
+ */
+export async function queryTerminationHistory(
+  dbOrTx: DbOrTx,
+  where: SQL,
+  page: { limit: number; offset?: number }
+) {
+  const logs = await dbOrTx
+    .select({
+      id: terminationLogs.id,
+      sessionId: terminationLogs.sessionId,
+      sessionStartedAt: terminationLogs.sessionStartedAt,
+      serverId: terminationLogs.serverId,
+      serverName: servers.name,
+      serverUserId: terminationLogs.serverUserId,
+      trigger: terminationLogs.trigger,
+      triggeredByUserId: terminationLogs.triggeredByUserId,
+      triggeredByUsername: users.username,
+      ruleId: terminationLogs.ruleId,
+      ruleName: automations.name,
+      violationId: terminationLogs.violationId,
+      reason: terminationLogs.reason,
+      success: terminationLogs.success,
+      errorMessage: terminationLogs.errorMessage,
+      createdAt: terminationLogs.createdAt,
+    })
+    .from(terminationLogs)
+    .leftJoin(users, eq(terminationLogs.triggeredByUserId, users.id))
+    .leftJoin(automations, eq(terminationLogs.ruleId, automations.id))
+    .leftJoin(servers, eq(terminationLogs.serverId, servers.id))
+    .where(where)
+    .orderBy(desc(terminationLogs.createdAt))
+    .limit(page.limit)
+    .offset(page.offset ?? 0);
+
+  const startedAts = logs.flatMap((log) => log.sessionStartedAt?.getTime() ?? []);
+  const sessionRows =
+    startedAts.length === 0
+      ? []
+      : await dbOrTx
+          .select({
+            id: sessions.id,
+            mediaTitle: sessions.mediaTitle,
+            mediaType: sessions.mediaType,
+            grandparentTitle: sessions.grandparentTitle,
+            seasonNumber: sessions.seasonNumber,
+            episodeNumber: sessions.episodeNumber,
+            year: sessions.year,
+            artistName: sessions.artistName,
+            albumName: sessions.albumName,
+          })
+          .from(sessions)
+          .where(
+            and(
+              inArray(
+                sessions.id,
+                logs.map((log) => log.sessionId)
+              ),
+              between(
+                sessions.startedAt,
+                new Date(Math.min(...startedAts) - DAY_MS),
+                new Date(Math.max(...logs.map((log) => log.createdAt.getTime())) + DAY_MS)
+              )
+            )
+          );
+  const sessionById = new Map(sessionRows.map(({ id, ...fields }) => [id, fields]));
+
+  return logs.map(({ sessionStartedAt: _, ...log }) => ({
+    ...log,
+    ...(sessionById.get(log.sessionId) ?? NO_SESSION),
+  }));
 }

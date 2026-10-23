@@ -1,5 +1,4 @@
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
 import {
   formatMediaTech,
   type MediaAvailabilityEntry,
@@ -19,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { InlineErrorState } from '@/components/library/ErrorState';
 import { formatBytes } from '@/lib/formatters';
+import { formatDate } from '@/lib/dateFormat';
 
 interface CopiesPanelProps {
   availability: MediaAvailabilityEntry[] | undefined;
@@ -150,7 +150,7 @@ export function CopiesPanel({
                       {sizeBytes != null ? formatBytes(sizeBytes, 1, { minUnit: 'GB' }) : '—'}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-right tabular-nums">
-                      {format(new Date(entry.addedAt), 'MMM d, yyyy')}
+                      {formatDate(new Date(entry.addedAt), { dateStyle: 'medium' })}
                     </TableCell>
                   </TableRow>
                 );

@@ -1,8 +1,7 @@
 import { useState, useMemo, lazy, Suspense } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { formatDistanceToNow, format } from 'date-fns';
-import { getFullDateTimeFormatString } from '@/lib/timeFormat';
+import { formatDistanceToNow } from 'date-fns';
 import type {
   ViolationSessionInfo,
   LocationStats,
@@ -37,6 +36,7 @@ import { getAvatarUrl } from '@/components/users/utils';
 import { LocalBadge } from '@/components/sessions/LocalBadge';
 import { fieldLabel, operatorLabel } from '@/lib/automations';
 import { getCountryName, getMediaDisplay, getMediaLinks } from '@/lib/utils';
+import { formatDate } from '@/lib/dateFormat';
 import { locationKey } from '@/components/map/locationKey';
 import { MediaPageLink } from '@/components/media/MediaPageLink';
 import { ServerBadge } from '@/components/server';
@@ -682,10 +682,10 @@ export function ViolationDetail() {
                 ) : violation.data.lastActivityAt ? (
                   <div>
                     <p className="font-medium">
-                      {format(
-                        new Date(violation.data.lastActivityAt as string),
-                        getFullDateTimeFormatString()
-                      )}
+                      {formatDate(new Date(violation.data.lastActivityAt as string), {
+                        dateStyle: 'medium',
+                        timeStyle: 'medium',
+                      })}
                     </p>
                     <p className="text-muted-foreground text-xs">
                       {formatDistanceToNow(new Date(violation.data.lastActivityAt as string), {
@@ -726,7 +726,10 @@ export function ViolationDetail() {
                 {t('pages:violations.detail.created')}
               </p>
               <p className="text-sm font-medium">
-                {format(new Date(violation.createdAt), getFullDateTimeFormatString())}
+                {formatDate(new Date(violation.createdAt), {
+                  dateStyle: 'medium',
+                  timeStyle: 'medium',
+                })}
               </p>
               <p className="text-muted-foreground text-xs">
                 {formatDistanceToNow(new Date(violation.createdAt), { addSuffix: true })}
@@ -738,7 +741,10 @@ export function ViolationDetail() {
                   {t('pages:violations.detail.acknowledged')}
                 </p>
                 <p className="text-sm font-medium">
-                  {format(new Date(violation.acknowledgedAt), getFullDateTimeFormatString())}
+                  {formatDate(new Date(violation.acknowledgedAt), {
+                    dateStyle: 'medium',
+                    timeStyle: 'medium',
+                  })}
                 </p>
                 <p className="text-muted-foreground text-xs">
                   {formatDistanceToNow(new Date(violation.acknowledgedAt), { addSuffix: true })}

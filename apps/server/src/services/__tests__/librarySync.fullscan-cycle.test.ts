@@ -30,7 +30,12 @@ vi.mock('../mediaServer/index.js', () => ({
 }));
 
 vi.mock('../../jobs/sessionIdentityBackfill.js', () => ({
+  IDENTITY_PASSES_VERSION: 1,
   backfillSessionIdentityBatch: vi.fn().mockResolvedValue({ updated: 0, oldest: null }),
+  fullScanFloors: vi.fn().mockResolvedValue(new Map()),
+  unhandledGoneKeyFloors: vi.fn().mockResolvedValue(new Map()),
+  markGoneKeyFloorsHandled: vi.fn().mockResolvedValue(undefined),
+  hasConfirmedAbsentTrackedRows: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('../library/mediaResolutionService.js', () => ({
@@ -313,6 +318,53 @@ describe('LibrarySyncService full-scan cycle', () => {
       expect(await mockRedis.get('tracearr:library:sync:scanversion:srv-1:1')).toBe(current);
     }
   );
+
+  it('records the completed-scan marker only when a full scan completes', async () => {
+    const client = makeMockClient({ totalCount: 100, itemsSinceCount: 0 });
+    mockCreateClient.mockReturnValue(client);
+    await mockRedis.set(
+      'tracearr:library:sync:last:srv-1:1',
+      new Date(Date.now() - 3600000).toISOString()
+    );
+    await mockRedis.set('tracearr:library:sync:count:srv-1:1', '100');
+    await mockRedis.set('tracearr:library:sync:scanversion:srv-1:1', '4');
+    await mockRedis.set(
+      'tracearr:library:sync:fullscan:srv-1:1',
+      new Date(Date.now() - 3600000).toISOString()
+    );
+
+    await service.syncServer('srv-1', undefined, 'scheduled');
+
+    expect(client.getLibraryItemsSince).toHaveBeenCalled();
+    expect(await mockRedis.get('tracearr:library:sync:fullscan:srv-1:1')).not.toBeNull();
+    expect(await mockRedis.get('tracearr:library:sync:fullscan-done:srv-1:1')).toBeNull();
+
+    setupDbSelectMocks(TEST_SERVER);
+    await service.syncServer('srv-1', undefined, 'manual');
+
+    expect(await mockRedis.get('tracearr:library:sync:fullscan-done:srv-1:1')).not.toBeNull();
+  });
+
+  it('stamps the completed-scan marker with the time the scan started listing', async () => {
+    const client = makeMockClient({ totalCount: 100 });
+    client.getLibraryItems.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return { items: [], totalCount: 100 };
+    });
+    mockCreateClient.mockReturnValue(client);
+    const before = Date.now();
+
+    await service.syncServer('srv-1', undefined, 'manual');
+
+    const marker = Date.parse(
+      (await mockRedis.get('tracearr:library:sync:fullscan-done:srv-1:1')) ?? ''
+    );
+    const dueClock = Date.parse(
+      (await mockRedis.get('tracearr:library:sync:fullscan:srv-1:1')) ?? ''
+    );
+    expect(marker).toBeGreaterThanOrEqual(before);
+    expect(dueClock - marker).toBeGreaterThanOrEqual(25);
+  });
 
   it('always forces full scan for manual triggers', async () => {
     const client = makeMockClient({ totalCount: 100 });

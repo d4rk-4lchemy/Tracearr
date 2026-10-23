@@ -46,6 +46,7 @@ import { WS_EVENTS, resolutionDisplayName, RESOLUTION_TIERS } from '@tracearr/sh
 import { sql, isNotNull, isNull, inArray, or, and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { servers, sessions, serverUsers } from '../db/schema.js';
+import { storedSessionRowById } from '../db/sessionRow.js';
 import { normalizeClient, normalizePlatformName } from '../utils/platformNormalizer.js';
 import {
   bucketMembershipColumns,
@@ -53,7 +54,6 @@ import {
   resolutionRankSql,
 } from '../utils/resolutionBuckets.js';
 import { getCacheService, getPubSubService } from '../services/cache.js';
-import { sessionRowById } from '../services/import/batchProcessor.js';
 import { getSetting, setSetting } from '../services/settings.js';
 import { recomputeAllIdentityDates } from '../services/userService.js';
 import {
@@ -68,7 +68,10 @@ import {
   type AggregateRefreshProgress,
   type FailedRefreshBatch,
 } from '../db/timescale.js';
-import { runSessionIdentityBackfillWalk } from './sessionIdentityBackfill.js';
+import {
+  IDENTITY_PASSES_VERSION,
+  runSessionIdentityBackfillWalk,
+} from './sessionIdentityBackfill.js';
 import { runImportDuplicateCleanupWalk } from './importDuplicateCleanup.js';
 import {
   importedHistoryLinkDeps,
@@ -575,7 +578,7 @@ async function processNormalizePlayersJob(
                 device: update.device,
                 platform: update.platform,
               })
-              .where(sessionRowById(update));
+              .where(storedSessionRowById(update));
             totalUpdated++;
           } catch (error) {
             console.error(`[Maintenance] Error updating session ${update.id}:`, error);
@@ -814,7 +817,7 @@ async function processNormalizeCountriesJob(
             await db
               .update(sessions)
               .set({ geoCity: update.geoCity, geoCountry: update.geoCountry })
-              .where(sessionRowById(update));
+              .where(storedSessionRowById(update));
             totalUpdated++;
           } catch (error) {
             console.error(`[Maintenance] Error updating session ${update.id}:`, error);
@@ -1042,7 +1045,7 @@ export async function processFixImportedProgressJob(
                 progressMs: update.progressMs,
                 totalDurationMs: update.totalDurationMs,
               })
-              .where(and(sessionRowById(update), missingBoth))
+              .where(and(storedSessionRowById(update), missingBoth))
               .returning({ id: sessions.id });
             if (written.length > 0) totalUpdated++;
             else totalSkipped++;
@@ -1254,6 +1257,7 @@ async function processBackfillSessionIdentityJob(
     throw error;
   }
   await setSetting('identityBackfillAutoAttempts', 0);
+  await setSetting('identityPassesVersion', IDENTITY_PASSES_VERSION);
   return result;
 }
 
@@ -1836,7 +1840,7 @@ export async function processNormalizeResolutionsJob(
             await db
               .update(sessions)
               .set({ quality: update.quality })
-              .where(sessionRowById(update));
+              .where(storedSessionRowById(update));
             totalUpdated++;
           } catch (error) {
             console.error(`[Maintenance] Error updating session ${update.id}:`, error);
@@ -3437,6 +3441,7 @@ async function processRepairCorruptedChunksJob(
           try {
             // Attempt to decompress the corrupted chunk
             await db.execute(sql.raw(`SELECT decompress_chunk('${chunkFqn}')`));
+            invalidateTimescaleStatusCache();
             totalRepaired++;
             console.log(`[Maintenance] Successfully decompressed corrupted chunk: ${chunkFqn}`);
 

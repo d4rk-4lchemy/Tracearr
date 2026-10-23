@@ -20,6 +20,7 @@ import {
   removeSuppression,
 } from '../services/newsletters/suppressions.js';
 import { getEmailBranding, saveEmailBranding } from '../services/notifications/emailBranding.js';
+import { escapeHtml } from '../utils/sanitizeText.js';
 import { firstIssueMessage } from '../utils/zod.js';
 import { PUBLIC_RATE_LIMIT, page, sendPublicPage } from './publicPage.js';
 
@@ -30,12 +31,6 @@ const INVALID = page(
   'This link is not valid',
   '<p>The unsubscribe link is incomplete or has expired. Reply to the email you received and the sender will remove you.</p>'
 );
-
-const escapeHtml = (text: string): string =>
-  text.replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c
-  );
 
 async function deliveryFor(params: unknown): Promise<DeliveryContext | null> {
   const parsed = tokenParams.safeParse(params);

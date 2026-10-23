@@ -9,20 +9,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { orderedWeekdays, weekdayName, zonedDateLabel } from '@/lib/dateFormat';
 import { TimezoneSelect } from '@/components/settings/shared/TimezoneSelect';
-import { zonedDateLabel } from '@/components/settings/shared/dateLabel';
 import { EditorCard } from './EditorCard';
 import { NEWSLETTER_FIELD_IDS, type FieldsetProps } from './newsletterForm';
 
 const KINDS = ['daily', 'weekly', 'monthly', 'cron'] as const;
-const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
 const DAYS_OF_MONTH = Array.from({ length: 28 }, (_, i) => i + 1);
-
-/** 2026-08-30 is a Sunday, so day 0..6 lands on the matching weekday name. */
-const weekdayName = (day: number, locale: string) =>
-  new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(
-    new Date(Date.UTC(2026, 7, 30 + day))
-  );
 
 const clockOf = (schedule: NewsletterSchedule): string =>
   schedule.kind === 'cron' ? '09:00' : schedule.time;
@@ -54,7 +47,7 @@ export function ScheduleFields({
   /** The schedule or timezone differs from the saved row, so the saved next run no longer applies. */
   scheduleDirty: boolean;
 }) {
-  const { t, i18n } = useTranslation('settings');
+  const { t } = useTranslation('settings');
   const { schedule } = state;
   const setSchedule = (next: NewsletterSchedule) => {
     touch('schedule');
@@ -66,7 +59,7 @@ export function ScheduleFields({
       ? t('newsletters.editor.nextRunPending')
       : nextRunAt
         ? t('newsletters.editor.nextRun', {
-            when: zonedDateLabel(nextRunAt, state.timezone, i18n.language),
+            when: zonedDateLabel(nextRunAt, state.timezone),
             timezone: state.timezone,
           })
         : t('newsletters.noNextRun');
@@ -115,9 +108,9 @@ export function ScheduleFields({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DAYS.map((day) => (
+                {orderedWeekdays().map((day) => (
                   <SelectItem key={day} value={String(day)}>
-                    {weekdayName(day, i18n.language)}
+                    {weekdayName(day, 'long')}
                   </SelectItem>
                 ))}
               </SelectContent>

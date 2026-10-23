@@ -13,7 +13,7 @@ import {
   getMediaLinks,
 } from '@/lib/utils';
 import { imageProxyUrl } from '@/lib/api';
-import { formatDuration } from '@/lib/formatters';
+import { formatDuration } from '@/lib/dateFormat';
 import { playbackBadge } from '@/lib/playbackBadge';
 import { useEstimatedProgress } from '@/hooks/useEstimatedProgress';
 import { useAuth } from '@/hooks/useAuth';
