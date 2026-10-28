@@ -160,6 +160,8 @@
       "brandingSaved": "",
       "suppressionAdded": "",
       "suppressionRemoved": "",
+      "ownerAccountLinked": "",
+      "ownerAccountUnlinked": "",
       "newsletterRetryQueued_one": "",
       "newsletterRetryQueued_other": ""
     },
@@ -169,7 +171,7 @@
       "serverSyncFailed": "Αποτυχία συγχρονισμού διακομιστή",
       "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Αποτυχία ενημέρωσης των ρυθμίσεων",
-      "copyFailed": "Αδυναμία αντιγραφής στο πρόχειρο",
+      "copyManual": "",
       "acknowledgeFailed": "Αποτυχία αναγνώρισης παραβίασης",
       "dismissFailed": "Αποτυχία απόρριψης παραβίασης",
       "authFailed": "Αποτυχία ταυτοποίησης",
@@ -221,7 +223,9 @@
       "newsletterSnapshotFailed": "",
       "brandingSaveFailed": "",
       "suppressionAddFailed": "",
-      "suppressionRemoveFailed": ""
+      "suppressionRemoveFailed": "",
+      "ownerAccountLinkFailed": "",
+      "ownerAccountUnlinkFailed": ""
     },
     "warning": {
       "jobFailed": {

@@ -37,6 +37,11 @@ vi.mock('../../services/librarySync.js', () => ({
   initLibrarySyncRedis: vi.fn(),
   maybeEnqueueImportedHistoryLink: vi.fn(),
   SyncInterruptedError: class SyncInterruptedError extends Error {},
+  LibrariesFailedError: class LibrariesFailedError extends Error {
+    constructor(readonly results: unknown[]) {
+      super('Library sync failed for Movies');
+    }
+  },
 }));
 
 vi.mock('../../services/sync.js', () => ({
@@ -99,6 +104,7 @@ vi.mock('ioredis', () => ({
 
 import { DelayedError, Worker } from 'bullmq';
 import {
+  LibrariesFailedError,
   librarySyncService,
   maybeEnqueueImportedHistoryLink,
   SyncInterruptedError,
@@ -456,6 +462,21 @@ describe('worker processor', () => {
       controller.signal
     );
     expect(job.moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'tok');
+  });
+
+  it('wraps up the libraries that synced before failing the job for the ones that did not', async () => {
+    const failed = new LibrariesFailedError(
+      [fakeSyncResult({ libraryName: 'TV Shows', itemsProcessed: 3 })],
+      []
+    );
+    vi.mocked(librarySyncService.syncServer).mockRejectedValue(failed);
+    const processor = startProcessor();
+
+    await expect(processor(fakeJob({ serverId: 'srv-1', triggeredBy: 'scheduled' }))).rejects.toBe(
+      failed
+    );
+
+    expect(mockRedisScan).toHaveBeenCalled();
   });
 });
 

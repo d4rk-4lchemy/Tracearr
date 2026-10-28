@@ -410,6 +410,10 @@ export const mergeSuggestionDismissalSchema = z
 export const mergeSuggestionPairParamSchema = z.object({ userA: uuidSchema, userB: uuidSchema });
 export const splitServerUserParamSchema = z.object({ id: uuidSchema });
 
+export const ownerLinkBodySchema = z.object({ serverUserId: uuidSchema });
+
+export const ownerLinkParamSchema = z.object({ serverUserId: uuidSchema });
+
 export const USER_SORT_FIELDS = [
   'username',
   'trustScore',
@@ -571,6 +575,11 @@ export const filterOptionsQuerySchema = z
 
 export const sessionIdParamSchema = z.object({
   id: uuidSchema,
+});
+
+// The start the history row already shows, so the detail read opens only the chunks after it
+export const sessionDetailQuerySchema = z.object({
+  startedAt: z.coerce.date().optional(),
 });
 
 // Session termination schema
@@ -763,6 +772,8 @@ export type ViolationRosterFilters = z.infer<typeof violationRosterFilterSchema>
 export const violationQuerySchema = paginationSchema
   .extend(violationRosterFilterSchema.shape)
   .extend(listSortSchema(VIOLATION_SORT_FIELDS).shape);
+
+export const violationCountQuerySchema = violationRosterFilterSchema;
 
 export const violationBulkBodySchema = z.object({
   ids: z.array(uuidSchema).max(1000).optional(),

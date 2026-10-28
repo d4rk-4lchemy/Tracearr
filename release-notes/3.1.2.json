@@ -1,0 +1,96 @@
+{
+  "version": "3.1.2",
+  "date": "2026-10-28",
+  "changes": [
+    {
+      "type": "new",
+      "text": "the owner can link their own Jellyfin or Emby account from Settings → Servers → Connections"
+    },
+    {
+      "type": "fix",
+      "text": "a player left sitting at the end of an episode no longer records a watched play each time it reconnects"
+    },
+    {
+      "type": "fix",
+      "text": "Plexamp playback no longer records every queued track as a download or trips the Download burst policy",
+      "refs": ["#1367"]
+    },
+    {
+      "type": "fix",
+      "text": "Agregarr coming-soon placeholders are no longer stored, so newsletters and library counts skip them"
+    },
+    {
+      "type": "fix",
+      "text": "quality changes no longer use up a sync's 20 media-added alerts when nothing listens for media upgrades"
+    },
+    {
+      "type": "fix",
+      "text": "one library failing to sync, such as a Movies scan timing out on a slow Plex, no longer stops the other libraries"
+    },
+    {
+      "type": "fix",
+      "text": "a Plex item whose full metadata takes too long to load no longer fails its library's sync; it keeps its stored genres"
+    },
+    {
+      "type": "fix",
+      "text": "music duplicates group by MusicBrainz id and no longer pair same-titled tracks from different artists or albums"
+    },
+    {
+      "type": "fix",
+      "text": "duplicate fuzzy matches below 90% show as Likely or Possible instead of Exact"
+    },
+    {
+      "type": "fix",
+      "text": "Stale Content shows the library name and counts plays on merged, re-added and moved titles"
+    },
+    {
+      "type": "fix",
+      "text": "show stats completion rates and binge scores for a date range or a member no longer read low"
+    },
+    {
+      "type": "fix",
+      "text": "newsletter Most Watched no longer counts starts under two minutes as plays"
+    },
+    {
+      "type": "fix",
+      "text": "library status counts respect a member's library access"
+    },
+    {
+      "type": "fix",
+      "text": "Media Overview shelves show a show's total size and best resolution"
+    },
+    {
+      "type": "fix",
+      "text": "copy buttons work when Tracearr is opened over plain HTTP"
+    },
+    {
+      "type": "fix",
+      "text": "the v2 public API's users endpoints return the display name set in Tracearr as identity_name",
+      "refs": ["#1370"]
+    },
+    {
+      "type": "improved",
+      "text": "the date format picker in Settings → General lists the formats themselves instead of countries"
+    },
+    {
+      "type": "improved",
+      "text": "on Unraid, Tracearr warns the owner when its database is on a user share and shows the path to switch to"
+    },
+    {
+      "type": "improved",
+      "text": "History opens faster, and its filter dropdowns stop re-querying on every visit"
+    },
+    {
+      "type": "improved",
+      "text": "violations and a user's violation list open in a fraction of the time"
+    },
+    {
+      "type": "improved",
+      "text": "User detail, season and artist pages and Settings open faster"
+    },
+    {
+      "type": "note",
+      "text": "updating removes the Plex track downloads already recorded, including music downloaded on purpose"
+    }
+  ]
+}

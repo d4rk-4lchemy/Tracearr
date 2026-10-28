@@ -36,7 +36,14 @@ import {
 import { and, desc, eq, gte, inArray, isNotNull, isNull, sql, type SQL } from 'drizzle-orm';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { PLAY_COUNT } from '../constants/index.js';
+import {
+  firstSegmentJoin,
+  groupedPlaysCte,
+  historyMediaTypeDefault,
+  PLAY_COUNT,
+  playCountQuery,
+  readSessionRowOrActive,
+} from '../db/sessions/index.js';
 import { db } from '../db/client.js';
 import {
   automations,
@@ -693,51 +700,30 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
 
     // Build WHERE conditions for raw SQL CTE query
     // Dates are converted to UTC based on the provided timezone
-    const conditions: ReturnType<typeof sql>[] = [];
+    const conditions: SQL[] = [];
     if (serverId) conditions.push(sql`s.server_id = ${serverId}`);
     if (state) conditions.push(sql`s.state = ${state}`);
-    conditions.push(mediaType ? sql`s.media_type = ${mediaType}` : sql`s.media_type <> 'trailer'`);
+    conditions.push(mediaType ? sql`s.media_type = ${mediaType}` : historyMediaTypeDefault());
+    const windowConditions: SQL[] = [];
     if (startDate) {
-      const startUTC = toStartOfDayUTC(startDate, timezone);
-      conditions.push(sql`s.started_at >= ${startUTC}`);
+      windowConditions.push(sql`s.started_at >= ${toStartOfDayUTC(startDate, timezone)}`);
     }
     if (endDate) {
-      const endUTC = toEndOfDayUTC(endDate, timezone);
-      conditions.push(sql`s.started_at <= ${endUTC}`);
+      windowConditions.push(sql`s.started_at <= ${toEndOfDayUTC(endDate, timezone)}`);
     }
-
-    const whereClause =
-      conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+    conditions.push(...windowConditions);
 
     // Get total count of unique plays (grouped by reference_id)
-    const countResult = await db.execute(sql`
-      SELECT COUNT(DISTINCT COALESCE(s.reference_id, s.id))::int as count
-      FROM sessions s
-      ${whereClause}
-    `);
+    const countResult = await db.execute(playCountQuery(conditions));
     const total = (countResult.rows[0] as { count: number })?.count ?? 0;
 
     // Query sessions grouped by reference_id (or id if no reference)
     // This matches the behavior of the internal /sessions/history endpoint
     const result = await db.execute(sql`
-      WITH grouped_sessions AS (
-        SELECT
-          COALESCE(s.reference_id, s.id) as play_id,
-          MIN(s.started_at) as started_at,
-          MAX(s.stopped_at) as stopped_at,
-          SUM(COALESCE(s.duration_ms, 0)) as duration_ms,
-          MAX(s.progress_ms) as progress_ms,
-          MAX(s.total_duration_ms) as total_duration_ms,
-          COUNT(*) as segment_count,
-          BOOL_OR(s.watched) as watched,
-          (array_agg(s.id ORDER BY s.started_at))[1] as first_session_id,
-          (array_agg(s.state ORDER BY s.started_at DESC))[1] as state
-        FROM sessions s
-        ${whereClause}
-        GROUP BY COALESCE(s.reference_id, s.id)
-        ORDER BY MIN(s.started_at) DESC
-        LIMIT ${pageSize} OFFSET ${offset}
-      )
+      WITH grouped_sessions AS (${groupedPlaysCte({
+        where: conditions,
+        orderLimit: sql`ORDER BY MIN(s.started_at) DESC LIMIT ${pageSize} OFFSET ${offset}`,
+      })})
       SELECT
         gs.play_id as id,
         gs.started_at,
@@ -791,11 +777,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         u.name as user_name,
         u.username as user_username
       FROM grouped_sessions gs
-      -- gs.started_at is not a planner-time constant; the InitPlan bounds are what let
-      -- TimescaleDB exclude chunks at runtime
-      JOIN sessions s ON s.id = gs.first_session_id AND s.started_at = gs.started_at
-        AND s.started_at >= (SELECT MIN(started_at) FROM grouped_sessions)
-        AND s.started_at <= (SELECT MAX(started_at) FROM grouped_sessions)
+      ${firstSegmentJoin({ alias: 'gs', boundsFrom: 'grouped_sessions' }, windowConditions)}
       JOIN server_users su ON su.id = s.server_user_id
       JOIN servers sv ON sv.id = s.server_id
       LEFT JOIN users u ON u.id = su.user_id
@@ -1060,17 +1042,20 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
       const activeSession = activeSessions.find((s) => s.id === sessionId);
 
       if (!activeSession) {
-        const dbSession = await db
-          .select({ id: sessions.id, state: sessions.state })
-          .from(sessions)
-          .where(eq(sessions.id, sessionId))
-          .limit(1);
+        const dbSession = await readSessionRowOrActive(sessionId, null, (where) =>
+          db
+            .select({ id: sessions.id, state: sessions.state })
+            .from(sessions)
+            .where(where)
+            .limit(1)
+            .then((rows) => rows[0])
+        );
 
-        if (!dbSession[0]) {
+        if (!dbSession) {
           return reply.notFound('Session not found');
         }
 
-        if (dbSession[0].state === 'stopped') {
+        if (dbSession.state === 'stopped') {
           return reply.conflict('Session already stopped');
         }
 
@@ -1081,6 +1066,7 @@ export const publicRoutes: FastifyPluginAsync = async (app) => {
         sessionId,
         trigger: 'manual',
         reason,
+        sessionStartedAt: activeSession.startedAt,
       });
 
       if (result.outcome === 'server_historical') {

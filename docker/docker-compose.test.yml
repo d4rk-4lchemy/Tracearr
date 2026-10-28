@@ -1,16 +1,16 @@
 # CI/TESTING ONLY - Isolated test databases on different ports
 # NOT for production deployment - see docker/examples/ for deployment configs
 
-version: "3.8"
+version: '3.8'
 
 services:
   timescale-test:
     image: timescale/timescaledb:2.29.1-pg18@sha256:373eb0fee9c0f8e0b4b0d4e74c7d0dd463dce05de6b49982701c4b540e94cba0
-    shm_size: 512mb  # Required for PostgreSQL shared memory (increase for large imports)
+    shm_size: 512mb # Required for PostgreSQL shared memory (increase for large imports)
     # Increase lock table size for large imports (Tautulli imports with many TimescaleDB chunks)
     command: postgres -c max_locks_per_transaction=4096 -c timescaledb.telemetry_level=off -c max_connections=200
     ports:
-      - "5433:5432"  # Different port to avoid conflicts with dev
+      - '5433:5432' # Different port to avoid conflicts with dev
     environment:
       - POSTGRES_USER=test
       - POSTGRES_PASSWORD=test
@@ -19,20 +19,20 @@ services:
       - timescale_test_data:/var/lib/postgresql
       - ./init-test-databases.sql:/docker-entrypoint-initdb.d/01-init-test-databases.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U test -d tracearr_test"]
+      test: ['CMD-SHELL', 'pg_isready -U test -d tracearr_test']
       interval: 5s
       timeout: 3s
       retries: 5
 
   redis-test:
-    image: redis:8-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
-    command: ["redis-server", "--databases", "32"]
+    image: redis:8-alpine@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
+    command: ['redis-server', '--databases', '32']
     ports:
-      - "6380:6379"  # Different port to avoid conflicts with dev
+      - '6380:6379' # Different port to avoid conflicts with dev
     volumes:
       - redis_test_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 5

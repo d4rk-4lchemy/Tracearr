@@ -3,7 +3,7 @@ import Fastify from 'fastify';
 import sensible from '@fastify/sensible';
 import type { Redis } from 'ioredis';
 import { createMockRedis } from '@tracearr/test-utils/mocks';
-import { sessionRoutes } from '../../src/routes/sessions.js';
+import { sessionRoutes } from '../../src/routes/sessions/index.js';
 import { locationsRoutes } from '../../src/routes/stats/locations.js';
 import { describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
@@ -19,7 +19,7 @@ import {
   dispatcharrDeviceIdSql,
   dispatcharrUserAgentSql,
 } from '../../src/services/mediaServer/dispatcharr/deviceIdentity.js';
-import { queryUserDevices } from '../../src/routes/users/queries.js';
+import { queryUserDevices } from '../../src/routes/users/queries/index.js';
 import { batchGetRecentUserSessions } from '../../src/jobs/poller/database.js';
 import { compressSessionChunks } from '../../src/test/compressChunks.js';
 import { permissionGuard } from '../../src/lib/scope.js';

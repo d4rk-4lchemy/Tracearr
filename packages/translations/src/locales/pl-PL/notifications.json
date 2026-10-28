@@ -170,6 +170,8 @@
       "brandingSaved": "Zapisano wygląd wiadomości e-mail",
       "suppressionAdded": "Adres dodany do listy wyciszenia",
       "suppressionRemoved": "Adres usunięty z listy wyciszenia",
+      "ownerAccountLinked": "",
+      "ownerAccountUnlinked": "",
       "newsletterRetryQueued_one": "Ponawianie wysyłki do {{count}} odbiorcy",
       "newsletterRetryQueued_few": "Ponawianie wysyłki do {{count}} odbiorców",
       "newsletterRetryQueued_many": "Ponawianie wysyłki do {{count}} odbiorców",
@@ -181,7 +183,7 @@
       "serverSyncFailed": "Nie udało się zsynchronizować serwera",
       "serverHistoricalFailed": "Nie udało się zmienić statusu serwera",
       "settingsUpdateFailed": "Nie udało się zaktualizować ustawień",
-      "copyFailed": "Nie udało się skopiować do schowka",
+      "copyManual": "",
       "acknowledgeFailed": "Nie udało się potwierdzić naruszenia",
       "dismissFailed": "Nie udało się odrzucić naruszenia",
       "authFailed": "Uwierzytelnianie nie powiodło się",
@@ -233,7 +235,9 @@
       "newsletterSnapshotFailed": "Nie udało się załadować migawki: {{error}}",
       "brandingSaveFailed": "Nie udało się zapisać wyglądu wiadomości e-mail: {{error}}",
       "suppressionAddFailed": "Nie udało się dodać adresu: {{error}}",
-      "suppressionRemoveFailed": "Nie udało się usunąć adresu: {{error}}"
+      "suppressionRemoveFailed": "Nie udało się usunąć adresu: {{error}}",
+      "ownerAccountLinkFailed": "",
+      "ownerAccountUnlinkFailed": ""
     },
     "warning": {
       "jobFailed": {

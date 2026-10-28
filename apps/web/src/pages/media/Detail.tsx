@@ -321,7 +321,6 @@ export function MediaDetail() {
   // A history row's id is its chain id (the chain's first session id), so the
   // existing single-session endpoint resolves it - same as History deep-links.
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const { data: selectedSession } = useSession(selectedSessionId ?? '');
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -360,6 +359,12 @@ export function MediaDetail() {
   const childrenQuery = useMediaChildren(id, mediaLibraryServerIds, isArtist);
   const platformsQuery = useMediaPlatforms(id, mediaLibraryServerIds);
   const historyQuery = useMediaHistory(id, mediaLibraryServerIds);
+  const { data: selectedSession } = useSession(
+    selectedSessionId ?? '',
+    historyQuery.data?.pages
+      .flatMap((page) => page.data)
+      .find((row) => row.id === selectedSessionId)?.started_at
+  );
   const requestsQuery = useMediaRequests(id, mediaLibraryServerIds);
 
   // requestedAt is a fixed-width UTC ISO string from the API, so comparing the

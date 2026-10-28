@@ -7,15 +7,18 @@
  * Run with: pnpm test:integration
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { eq, sql } from 'drizzle-orm';
+import pg from 'pg';
 import { db } from '../../src/db/client.js';
-import { servers } from '../../src/db/schema.js';
+import { servers, serverUsers, users } from '../../src/db/schema.js';
+import { syncServerUsers } from '../../src/services/sync.js';
+import * as revoke from '../../src/lib/revoke.js';
+import * as userService from '../../src/services/userService.js';
 import {
   applyTrustChange,
-  batchSyncUsersFromMediaServer,
   syncUserFromMediaServer,
-  getServerUsersByServer,
   getServerUserByExternalId,
 } from '../../src/services/userService.js';
 import type { MediaUser } from '../../src/services/userService.js';
@@ -123,111 +126,231 @@ describe('userService integration tests', () => {
     });
   });
 
-  describe('batchSyncUsersFromMediaServer', () => {
-    it('should return zeros for empty input', async () => {
-      const result = await batchSyncUsersFromMediaServer(testServerId, []);
+  describe('syncServerUsers', () => {
+    /** Statistics land per backend, ~1 s after it goes idle; the pool spreads one sync over several. */
+    async function counters(): Promise<{ updates: number }> {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await db.execute(sql`SELECT pg_stat_force_next_flush()`);
+      const result = await db.execute<{ updates: string }>(sql`
+        SELECT n_tup_upd AS updates FROM pg_stat_user_tables WHERE relname = 'server_users'
+      `);
+      return { updates: Number(result.rows[0]!.updates) };
+    }
 
-      expect(result.added).toBe(0);
-      expect(result.updated).toBe(0);
-    });
-
-    it('should create multiple new users', async () => {
-      const mediaUsers: MediaUser[] = [
-        { id: `batch-1-${randomUUID().slice(0, 8)}`, username: 'batchuser1', isAdmin: false },
-        { id: `batch-2-${randomUUID().slice(0, 8)}`, username: 'batchuser2', isAdmin: false },
-        { id: `batch-3-${randomUUID().slice(0, 8)}`, username: 'batchuser3', isAdmin: true },
-      ];
-
-      const result = await batchSyncUsersFromMediaServer(testServerId, mediaUsers);
-
-      expect(result.added).toBe(3);
-      expect(result.updated).toBe(0);
-
-      // Verify all users exist in database
-      const serverUsersMap = await getServerUsersByServer(testServerId);
-      expect(serverUsersMap.size).toBe(3);
-      expect(serverUsersMap.get(mediaUsers[0].id)?.username).toBe('batchuser1');
-      expect(serverUsersMap.get(mediaUsers[1].id)?.username).toBe('batchuser2');
-      expect(serverUsersMap.get(mediaUsers[2].id)?.username).toBe('batchuser3');
-    });
-
-    it('should handle mix of new and existing users', async () => {
-      // Create one user first
-      const existingExternalId = `existing-${randomUUID().slice(0, 8)}`;
-      await syncUserFromMediaServer(testServerId, {
-        id: existingExternalId,
-        username: 'existinguser',
-        isAdmin: false,
-      });
-
-      // Now batch sync with mix of existing and new
-      const mediaUsers: MediaUser[] = [
-        { id: existingExternalId, username: 'existinguser-updated', isAdmin: false },
-        { id: `new-1-${randomUUID().slice(0, 8)}`, username: 'newuser1', isAdmin: false },
-        { id: `new-2-${randomUUID().slice(0, 8)}`, username: 'newuser2', isAdmin: false },
-      ];
-
-      const result = await batchSyncUsersFromMediaServer(testServerId, mediaUsers);
-
-      expect(result.added).toBe(2);
-      expect(result.updated).toBe(1);
-
-      // Verify the existing user was updated
-      const updatedUser = await getServerUserByExternalId(testServerId, existingExternalId);
-      expect(updatedUser?.username).toBe('existinguser-updated');
-    });
-
-    it('should handle all existing users (update only)', async () => {
-      // Create users first
-      const externalIds = [
-        `preexist-1-${randomUUID().slice(0, 8)}`,
-        `preexist-2-${randomUUID().slice(0, 8)}`,
-      ];
-
-      for (const extId of externalIds) {
-        await syncUserFromMediaServer(testServerId, {
-          id: extId,
-          username: `user-${extId.slice(0, 8)}`,
-          isAdmin: false,
-        });
-      }
-
-      // Batch sync with updates only
-      const mediaUsers: MediaUser[] = externalIds.map((extId) => ({
-        id: extId,
-        username: `updated-${extId.slice(0, 8)}`,
-        isAdmin: true,
+    it('a second sync of unchanged accounts writes no server_users rows', async () => {
+      const [jellyfin] = await db
+        .insert(servers)
+        .values({
+          name: 'Sync Jellyfin',
+          type: 'jellyfin',
+          url: 'http://localhost:8096',
+          token: 'encrypted-test-token',
+        })
+        .returning();
+      const mediaUsers: MediaUser[] = Array.from({ length: 50 }, (_, i) => ({
+        id: `jf-${i}`,
+        username: `viewer${i}`,
+        isAdmin: i === 0,
+        sharedLibraries: i % 2 === 0 ? ['b', 'a'] : undefined,
+        lastActivityAt: new Date(Date.UTC(2026, 0, 1 + i)),
       }));
 
-      const result = await batchSyncUsersFromMediaServer(testServerId, mediaUsers);
+      const first = await syncServerUsers(jellyfin!.id, mediaUsers);
+      expect(first.added).toBe(50);
+      const before = await counters();
 
-      expect(result.added).toBe(0);
-      expect(result.updated).toBe(2);
+      const queries = vi.spyOn(pg.Client.prototype, 'query');
+      const second = await syncServerUsers(jellyfin!.id, mediaUsers);
+      const statements = queries.mock.calls.length;
+      queries.mockRestore();
+      const after = await counters();
+
+      expect(second).toMatchObject({ added: 0, updated: 50, removed: 0, errors: [] });
+      expect(after.updates - before.updates).toBe(0);
+      // Statements on the sync's own connections; per-account statements would put 50 or more here.
+      expect(statements).toBeLessThan(15);
     });
-  });
 
-  describe('getServerUsersByServer', () => {
-    it('should return empty map for server with no users', async () => {
-      const result = await getServerUsersByServer(testServerId);
-      expect(result.size).toBe(0);
+    it('writes an account whose activity advanced and restates its identity', async () => {
+      const [jellyfin] = await db
+        .insert(servers)
+        .values({ name: 'Sync Jellyfin', type: 'jellyfin', url: 'http://jf', token: 't' })
+        .returning();
+      const seen = new Date(Date.UTC(2026, 0, 1));
+      const later = new Date(Date.UTC(2026, 5, 1));
+      const viewers: MediaUser[] = ['a', 'b'].map((id) => ({
+        id,
+        username: `viewer-${id}`,
+        isAdmin: false,
+        lastActivityAt: seen,
+      }));
+      await syncServerUsers(jellyfin!.id, viewers);
+
+      const second = await syncServerUsers(jellyfin!.id, [
+        { ...viewers[0]!, lastActivityAt: later },
+        viewers[1]!,
+      ]);
+
+      expect(second).toMatchObject({ updated: 2, errors: [] });
+      const rows = await db
+        .select({ externalId: serverUsers.externalId, identityActivity: users.lastActivityAt })
+        .from(serverUsers)
+        .innerJoin(users, eq(users.id, serverUsers.userId))
+        .where(eq(serverUsers.serverId, jellyfin!.id))
+        .orderBy(serverUsers.externalId);
+      expect(rows).toEqual([
+        { externalId: 'a', identityActivity: later },
+        { externalId: 'b', identityActivity: seen },
+      ]);
     });
 
-    it('should return map of all server users keyed by externalId', async () => {
-      // Create some users
-      const mediaUsers: MediaUser[] = [
-        { id: `map-1-${randomUUID().slice(0, 8)}`, username: 'mapuser1', isAdmin: false },
-        { id: `map-2-${randomUUID().slice(0, 8)}`, username: 'mapuser2', isAdmin: true },
-      ];
+    it('keeps the account writes when the identity recount after them fails', async () => {
+      const [jellyfin] = await db
+        .insert(servers)
+        .values({ name: 'Sync Jellyfin', type: 'jellyfin', url: 'http://jf', token: 't' })
+        .returning();
+      const viewer: MediaUser = {
+        id: 'a',
+        username: 'viewer-a',
+        isAdmin: false,
+        lastActivityAt: new Date(Date.UTC(2026, 0, 1)),
+      };
+      await syncServerUsers(jellyfin!.id, [viewer]);
+      const later = new Date(Date.UTC(2026, 5, 1));
+      const recount = vi
+        .spyOn(userService, 'recomputeIdentityAggregates')
+        .mockRejectedValueOnce(new Error('deadlock detected'));
 
-      await batchSyncUsersFromMediaServer(testServerId, mediaUsers);
+      const second = await syncServerUsers(jellyfin!.id, [
+        { ...viewer, username: 'viewer-renamed', lastActivityAt: later },
+      ]);
+      recount.mockRestore();
 
-      const result = await getServerUsersByServer(testServerId);
+      expect(second.updated).toBe(1);
+      expect(second.errors).toEqual(['Failed to recount 1 identities: deadlock detected']);
+      const [row] = await db
+        .select({ username: serverUsers.username, lastActivityAt: serverUsers.lastActivityAt })
+        .from(serverUsers)
+        .where(eq(serverUsers.serverId, jellyfin!.id));
+      expect(row).toEqual({ username: 'viewer-renamed', lastActivityAt: later });
+    });
 
-      expect(result.size).toBe(2);
-      expect(result.has(mediaUsers[0].id)).toBe(true);
-      expect(result.has(mediaUsers[1].id)).toBe(true);
-      expect(result.get(mediaUsers[0].id)?.username).toBe('mapuser1');
-      expect(result.get(mediaUsers[1].id)?.isServerAdmin).toBe(true);
+    it('never moves activity back when the stored value advanced after the accounts loaded', async () => {
+      const [jellyfin] = await db
+        .insert(servers)
+        .values({ name: 'Sync Jellyfin', type: 'jellyfin', url: 'http://jf', token: 't' })
+        .returning();
+      const viewer: MediaUser = {
+        id: 'a',
+        username: 'viewer-a',
+        isAdmin: false,
+        lastActivityAt: new Date(Date.UTC(2026, 0, 1)),
+      };
+      await syncServerUsers(jellyfin!.id, [viewer]);
+      const reported = new Date(Date.UTC(2026, 3, 1));
+      const played = new Date(Date.UTC(2026, 5, 1));
+      const load = userService.loadServerAccounts;
+      const loads = vi
+        .spyOn(userService, 'loadServerAccounts')
+        .mockImplementationOnce(async (serverId) => {
+          const accounts = await load(serverId);
+          await db
+            .update(serverUsers)
+            .set({ lastActivityAt: played })
+            .where(eq(serverUsers.serverId, serverId));
+          return accounts;
+        });
+
+      const second = await syncServerUsers(jellyfin!.id, [{ ...viewer, lastActivityAt: reported }]);
+      loads.mockRestore();
+
+      expect(second.errors).toEqual([]);
+      const [row] = await db
+        .select({ lastActivityAt: serverUsers.lastActivityAt })
+        .from(serverUsers)
+        .where(eq(serverUsers.serverId, jellyfin!.id));
+      expect(row?.lastActivityAt).toEqual(played);
+    });
+
+    it('runs two syncs of one server one after the other, creating each account once', async () => {
+      const [jellyfin] = await db
+        .insert(servers)
+        .values({ name: 'Sync Jellyfin', type: 'jellyfin', url: 'http://jf', token: 't' })
+        .returning();
+      // More than one commit batch, so the lock has to hold across a commit.
+      const viewers: MediaUser[] = Array.from({ length: 260 }, (_, i) => ({
+        id: `new-${i}`,
+        username: `newcomer${i}`,
+        isAdmin: false,
+      }));
+
+      const [first, second] = await Promise.all([
+        syncServerUsers(jellyfin!.id, viewers),
+        syncServerUsers(jellyfin!.id, viewers),
+      ]);
+
+      expect([first.errors, second.errors]).toEqual([[], []]);
+      expect([first.added + second.added, first.updated + second.updated]).toEqual([260, 260]);
+      const rows = await db
+        .select({ externalId: serverUsers.externalId, userId: serverUsers.userId })
+        .from(serverUsers)
+        .where(eq(serverUsers.serverId, jellyfin!.id));
+      expect(rows.map((r) => r.externalId).sort()).toEqual(viewers.map((v) => v.id).sort());
+      expect(new Set(rows.map((r) => r.userId)).size).toBe(260);
+    });
+
+    it('recounts and revokes a committed batch when a later batch fails to commit', async () => {
+      const [jellyfin] = await db
+        .insert(servers)
+        .values({ name: 'Sync Jellyfin', type: 'jellyfin', url: 'http://jf', token: 't' })
+        .returning();
+      const seen = new Date(Date.UTC(2026, 0, 1));
+      const viewers: MediaUser[] = Array.from({ length: 260 }, (_, i) => ({
+        id: `v-${i}`,
+        username: `viewer${i}`,
+        isAdmin: false,
+        lastActivityAt: seen,
+      }));
+      await syncServerUsers(jellyfin!.id, viewers);
+      const later = new Date(Date.UTC(2026, 5, 1));
+      const changed = viewers.map((v, i) => {
+        if (i === 0) return { ...v, isDisabled: true, lastActivityAt: later };
+        if (i === 255) return { ...v, username: 'renamed-in-second-batch' };
+        return v;
+      });
+      const revoked = vi.spyOn(revoke, 'revokeSessionsForServerUsers').mockResolvedValue();
+      const query = pg.Client.prototype.query;
+      let commits = 0;
+      const failing = vi.spyOn(pg.Client.prototype, 'query').mockImplementation(function (
+        this: pg.Client,
+        ...args: unknown[]
+      ) {
+        if (args[0] === 'COMMIT' && ++commits === 2) {
+          return Promise.reject(new Error('connection lost'));
+        }
+        return (query as (...a: unknown[]) => unknown).apply(this, args);
+      } as never);
+
+      const synced = syncServerUsers(jellyfin!.id, changed);
+      await expect(synced).rejects.toThrow('connection lost');
+      failing.mockRestore();
+      const revokedIds = revoked.mock.calls.flatMap(([ids]) => ids);
+      revoked.mockRestore();
+
+      const rows = await db
+        .select({
+          id: serverUsers.id,
+          externalId: serverUsers.externalId,
+          username: serverUsers.username,
+          identityActivity: users.lastActivityAt,
+        })
+        .from(serverUsers)
+        .innerJoin(users, eq(users.id, serverUsers.userId))
+        .where(eq(serverUsers.serverId, jellyfin!.id));
+      const first = rows.find((r) => r.externalId === 'v-0');
+      expect(first?.identityActivity).toEqual(later);
+      expect(revokedIds).toEqual([first?.id]);
+      expect(rows.find((r) => r.externalId === 'v-255')?.username).toBe('viewer255');
     });
   });
 

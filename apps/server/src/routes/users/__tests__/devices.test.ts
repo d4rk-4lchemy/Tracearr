@@ -8,18 +8,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
+import type { SQL } from 'drizzle-orm';
 import type { AuthUser, UserDevice } from '@tracearr/shared';
-import type * as QueriesModule from '../queries.js';
+import type * as QueriesModule from '../queries/index.js';
+import { renderSql } from '../../../test/helpers.js';
 
 vi.mock('../../../db/client.js', () => ({ db: { execute: vi.fn() } }));
 
-vi.mock('../queries.js', async (importActual) => ({
+vi.mock('../queries/index.js', async (importActual) => ({
   ...(await importActual<typeof QueriesModule>()),
   resolveIdentityScopedServerUserIds: vi.fn(),
 }));
 
 import { db } from '../../../db/client.js';
-import { resolveIdentityScopedServerUserIds } from '../queries.js';
+import { resolveIdentityScopedServerUserIds } from '../queries/index.js';
 import { devicesRoutes } from '../devices.js';
 import { permissionGuard } from '../../../lib/scope.js';
 
@@ -153,6 +155,19 @@ describe('GET /users/:id/devices download counts', () => {
       sessionCount: 1,
       downloadCount: 2,
     });
+  });
+
+  it('bounds the sessions read by the page window', async () => {
+    app = await buildTestApp({
+      userId: randomUUID(),
+      username: 'owner',
+      role: 'owner',
+      serverIds: [],
+    });
+    await app.inject({ url: `/users/${id}/devices` });
+    const { sql: query, params } = renderSql(vi.mocked(db.execute).mock.calls[0]![0] as SQL);
+    expect(query).toMatch(/AND started_at >= \$\d+ AND started_at < \$\d+/);
+    expect(params.filter((param) => param instanceof Date)).toHaveLength(2);
   });
 
   it('dates a device by its latest session or download and places a download-only device from the download', async () => {

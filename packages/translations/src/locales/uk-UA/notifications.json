@@ -170,6 +170,8 @@
       "brandingSaved": "",
       "suppressionAdded": "",
       "suppressionRemoved": "",
+      "ownerAccountLinked": "",
+      "ownerAccountUnlinked": "",
       "newsletterRetryQueued_one": "",
       "newsletterRetryQueued_few": "",
       "newsletterRetryQueued_many": "",
@@ -181,7 +183,7 @@
       "serverSyncFailed": "Не вдалося синхронізувати сервер",
       "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Не вдалося оновити налаштування",
-      "copyFailed": "Не вдалося скопіювати в буфер обміну",
+      "copyManual": "",
       "acknowledgeFailed": "Не вдалося підтвердити порушення",
       "dismissFailed": "Не вдалося відхилити порушення",
       "authFailed": "Помилка автентифікації",
@@ -233,7 +235,9 @@
       "newsletterSnapshotFailed": "",
       "brandingSaveFailed": "",
       "suppressionAddFailed": "",
-      "suppressionRemoveFailed": ""
+      "suppressionRemoveFailed": "",
+      "ownerAccountLinkFailed": "",
+      "ownerAccountUnlinkFailed": ""
     },
     "warning": {
       "jobFailed": {

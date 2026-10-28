@@ -27,7 +27,7 @@ vi.mock('../lib/sessionResolver.js', () => ({
 }));
 vi.mock('../lib/redisShared.js', () => ({ getRedis: () => fakeRedis }));
 vi.mock('../db/client.js', () => ({
-  db: { select: vi.fn(), selectDistinct: vi.fn(), execute: vi.fn() },
+  db: { select: vi.fn(), selectDistinct: vi.fn(), execute: vi.fn(), transaction: vi.fn() },
 }));
 vi.mock('../db/prepared.js', () => ({}));
 vi.mock('../services/cache.js', () => ({
@@ -56,11 +56,11 @@ import authPlugin from '../plugins/auth.js';
 import { queryChain, renderSql } from '../test/helpers.js';
 import { registerErrorHandler } from '../utils/errors.js';
 import { automationRoutes } from './automations.js';
-import { sessionRoutes } from './sessions.js';
+import { sessionRoutes } from './sessions/index.js';
 import { settingsRoutes } from './settings.js';
 import { dashboardRoutes } from './stats/dashboard.js';
 import { userRoutes } from './users/index.js';
-import { violationRoutes } from './violations.js';
+import { violationRoutes } from './violations/index.js';
 
 const OWN = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -120,6 +120,8 @@ beforeEach(() => {
   vi.mocked(db.select).mockImplementation(() => queryChain(vi.fn, []));
   vi.mocked(db.selectDistinct).mockImplementation(() => queryChain(vi.fn, []));
   vi.mocked(db.execute).mockResolvedValue({ rows: [] } as never);
+  vi.mocked(db.transaction).mockImplementation(((run: (tx: typeof db) => unknown) =>
+    run(db)) as never);
   activeSessions.splice(
     0,
     activeSessions.length,

@@ -160,6 +160,8 @@
       "brandingSaved": "",
       "suppressionAdded": "",
       "suppressionRemoved": "",
+      "ownerAccountLinked": "",
+      "ownerAccountUnlinked": "",
       "newsletterRetryQueued_one": "",
       "newsletterRetryQueued_other": ""
     },
@@ -169,7 +171,7 @@
       "serverSyncFailed": "Sincronizzazione del server non riuscita",
       "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Impossibile aggiornare le impostazioni",
-      "copyFailed": "Impossibile copiare negli appunti",
+      "copyManual": "",
       "acknowledgeFailed": "Impossibile riconoscere la violazione",
       "dismissFailed": "Impossibile ignorare la violazione",
       "authFailed": "Autenticazione non riuscita",
@@ -221,7 +223,9 @@
       "newsletterSnapshotFailed": "",
       "brandingSaveFailed": "",
       "suppressionAddFailed": "",
-      "suppressionRemoveFailed": ""
+      "suppressionRemoveFailed": "",
+      "ownerAccountLinkFailed": "",
+      "ownerAccountUnlinkFailed": ""
     },
     "warning": {
       "jobFailed": {
