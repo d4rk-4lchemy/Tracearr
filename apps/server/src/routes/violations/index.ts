@@ -2,11 +2,11 @@
  * Violation management routes
  */
 
-import { dispatcharrDeviceIdSql } from '../services/mediaServer/dispatcharr/deviceIdentity.js';
 import type { FastifyPluginAsync } from 'fastify';
-import { eq, and, count, gte, lt, isNull, isNotNull, sql, inArray, type SQL } from 'drizzle-orm';
+import { eq, and, gte, lt, isNull, isNotNull, sql, inArray, type SQL } from 'drizzle-orm';
 import {
   violationBulkBodySchema,
+  violationCountQuerySchema,
   violationIdParamSchema,
   violationQuerySchema,
   violationRosterFilterSchema,
@@ -15,43 +15,33 @@ import {
   type ListResponse,
   type ViolationBulkBody,
   type ViolationRosterFilters,
-  type ViolationSessionInfo,
-  type ViolationSortField,
-  type ViolationWithDetails,
 } from '@tracearr/shared';
-import { db } from '../db/client.js';
-import {
-  automationRuns,
-  automations,
-  serverUsers,
-  sessions,
-  servers,
-  users,
-  ruleActionResults,
-} from '../db/schema.js';
+import { db } from '../../db/client.js';
+import { automationRuns, automations, serverUsers, servers, users } from '../../db/schema.js';
 import {
   hasServerAccess,
   resolveServerIds,
   buildMultiServerCondition,
-} from '../utils/serverFiltering.js';
-import { isLocalSession } from '../utils/localSession.js';
-import { assertInScope, scopeSessions, type Scope } from '../lib/scope.js';
-import { violationAliasConditions } from '../services/automations/aliasFilter.js';
-import { dispatchTrustMoves } from '../services/automations/events/producers.js';
+} from '../../utils/serverFiltering.js';
+import { assertInScope, scopeSessions, type Scope } from '../../lib/scope.js';
+import { runSession, violationAliasConditions } from '../../services/automations/aliasFilter.js';
+import { dispatchTrustMoves } from '../../services/automations/events/producers.js';
 import {
   getServerUserDisplayNames,
   moveTrust,
   recomputeIdentityAggregates,
   type TrustMove,
-} from '../services/userService.js';
-import { resolveAccessibleServerUserIdsForIdentities } from './users/queries.js';
+} from '../../services/userService.js';
+import { resolveAccessibleServerUserIdsForIdentities } from '../users/queries/index.js';
+import { utcDayEnd, utcDayStart } from '../../utils/listQuery.js';
 import {
-  buildOrderBy,
-  utcDayEnd,
-  utcDayStart,
-  type SortDirection,
-  type SortKey,
-} from '../utils/listQuery.js';
+  aliasedRunFilter,
+  buildViolationPageQuery,
+  countViolations,
+  enrichViolations,
+  violationSelect,
+  type EnrichedViolation,
+} from './queries.js';
 
 /** What a trust-score notification says moved the score when a dismissal put it back. */
 const DISMISSED_TRUST_REASON = 'a violation was dismissed';
@@ -75,29 +65,6 @@ function trustAdjustment(action: Action): number | null {
   }
   return null;
 }
-
-/**
- * Sort keys, every branch tiebroken on automationRuns.id by buildOrderBy. Without a
- * unique tiebreak, offset paging over rows sharing a created_at (a poller tick
- * writes several at once) both repeats and drops rows between pages.
- *
- * The severity CASE ranks high above low so DESC means high-first, which is
- * what the column header's descending state has always shown.
- */
-const VIOLATION_SORT_KEYS: Record<ViolationSortField, SortKey> = {
-  createdAt: { key: sql`${automationRuns.createdAt}`, defaultDir: 'desc' },
-  severity: {
-    key: sql`CASE ${automationRuns.severity} WHEN 'high' THEN 3 WHEN 'warning' THEN 2 WHEN 'low' THEN 1 END`,
-    defaultDir: 'desc',
-  },
-  user: { key: sql`lower(coalesce(${users.name}, ${serverUsers.username}))`, defaultDir: 'desc' },
-  rule: { key: sql`lower(${automations.name})`, defaultDir: 'desc' },
-};
-
-/** The run column is nullable; every row this route serves has one, and the wire shape requires it. */
-const ROSTER_SEVERITY = sql<
-  'low' | 'warning' | 'high'
->`coalesce(${automationRuns.severity}, 'warning')`;
 
 interface ViolationRosterConditions {
   /** Nothing can match, so callers skip the query and answer with an empty set. */
@@ -190,18 +157,6 @@ export async function buildViolationRosterConditions(
 }
 
 /**
- * The by-id guard the roster's filters cannot supply: same alias, same dismissed
- * exclusion, so a run this surface does not serve 404s instead of being acted on.
- */
-function aliasedRunFilter(match: SQL) {
-  return and(
-    match,
-    isNull(automationRuns.dismissedAt),
-    ...violationAliasConditions({ requireUser: true })
-  );
-}
-
-/**
  * The id set a bulk action operates on: the explicit ids, or every violation the
  * roster filters match. Both bulk endpoints go through here so neither can
  * resolve selectAll differently from the other.
@@ -232,315 +187,9 @@ async function resolveBulkViolationIds(
   return matching.map((row) => row.id);
 }
 
-/**
- * The flat shape returned by the violation select queries (with joins).
- * Used as input to enrichViolations().
- */
-interface ViolationRow {
-  id: string;
-  ruleId: string;
-  ruleName: string;
-  ruleType: null;
-  serverUserId: string;
-  username: string;
-  userThumb: string | null;
-  identityName: string | null;
-  identityUserId: string;
-  serverId: string;
-  serverName: string;
-  sessionId: string | null;
-  mediaTitle: string | null;
-  mediaType: string | null;
-  grandparentTitle: string | null;
-  mediaId: string | null;
-  showMediaId: string | null;
-  seasonNumber: number | null;
-  episodeNumber: number | null;
-  year: number | null;
-  ipAddress: string | null;
-  geoCity: string | null;
-  geoRegion: string | null;
-  geoCountry: string | null;
-  isLocal: boolean | null;
-  geoContinent: string | null;
-  geoPostal: string | null;
-  geoLat: number | null;
-  geoLon: number | null;
-  playerName: string | null;
-  device: string | null;
-  deviceId: string | null;
-  dispatcharrDeviceId?: string | null;
-  platform: string | null;
-  product: string | null;
-  quality: string | null;
-  startedAt: Date | null;
-  severity: 'low' | 'warning' | 'high';
-  data: Record<string, unknown> | null;
-  createdAt: Date;
-  acknowledgedAt: Date | null;
-}
-
-/**
- * Enrich flat violation rows with related sessions, user history, and action results.
- * Works for both single-item and multi-item arrays.
- */
-async function enrichViolations(violationData: ViolationRow[], scope: Scope) {
-  if (violationData.length === 0) return [];
-
-  // Sessions the runs recorded as related; the ids come from the run's own data.
-  const allRelatedSessionIds = new Set<string>();
-  for (const v of violationData) {
-    for (const id of (v.data?.relatedSessionIds as string[] | undefined) ?? []) {
-      allRelatedSessionIds.add(id);
-    }
-  }
-
-  const sessionsById = new Map<string, ViolationSessionInfo>();
-  if (allRelatedSessionIds.size > 0) {
-    try {
-      const relatedSessionsResult = await db
-        .select({
-          id: sessions.id,
-          mediaTitle: sessions.mediaTitle,
-          mediaType: sessions.mediaType,
-          grandparentTitle: sessions.grandparentTitle,
-          mediaId: sessions.mediaId,
-          showMediaId: sessions.showMediaId,
-          seasonNumber: sessions.seasonNumber,
-          episodeNumber: sessions.episodeNumber,
-          year: sessions.year,
-          ipAddress: sessions.ipAddress,
-          geoCity: sessions.geoCity,
-          geoRegion: sessions.geoRegion,
-          geoCountry: sessions.geoCountry,
-          isLocal: sessions.isLocal,
-          geoContinent: sessions.geoContinent,
-          geoPostal: sessions.geoPostal,
-          geoLat: sessions.geoLat,
-          geoLon: sessions.geoLon,
-          playerName: sessions.playerName,
-          device: sessions.device,
-          deviceId: sessions.deviceId,
-          dispatcharrDeviceId: dispatcharrDeviceIdSql(),
-          platform: sessions.platform,
-          product: sessions.product,
-          quality: sessions.quality,
-          startedAt: sessions.startedAt,
-        })
-        .from(sessions)
-        .where(and(inArray(sessions.id, Array.from(allRelatedSessionIds)), scopeSessions(scope)));
-
-      for (const s of relatedSessionsResult) {
-        sessionsById.set(s.id, { ...s, deviceId: s.deviceId ?? null, isLocal: isLocalSession(s) });
-      }
-    } catch (error) {
-      console.error('[Violations] Failed to batch fetch related sessions by ID:', error);
-      // Continue without related sessions rather than failing the whole list
-    }
-  }
-
-  // Batch fetch action results for all violations
-  const actionResultsByViolation = new Map<
-    string,
-    Array<{
-      actionType: string;
-      success: boolean;
-      skipped: boolean | null;
-      skipReason: string | null;
-      errorMessage: string | null;
-      executedAt: Date;
-    }>
-  >();
-
-  try {
-    const violationIds = violationData.map((v) => v.id);
-    if (violationIds.length > 0) {
-      const actionResults = await db
-        .select({
-          violationId: ruleActionResults.violationId,
-          actionType: ruleActionResults.actionType,
-          success: ruleActionResults.success,
-          skipped: ruleActionResults.skipped,
-          skipReason: ruleActionResults.skipReason,
-          errorMessage: ruleActionResults.errorMessage,
-          executedAt: ruleActionResults.executedAt,
-        })
-        .from(ruleActionResults)
-        .where(inArray(ruleActionResults.violationId, violationIds));
-
-      // Group by violation ID
-      for (const result of actionResults) {
-        if (!result.violationId) continue;
-        const existing = actionResultsByViolation.get(result.violationId) ?? [];
-        existing.push({
-          actionType: result.actionType,
-          success: result.success,
-          skipped: result.skipped,
-          skipReason: result.skipReason,
-          errorMessage: result.errorMessage,
-          executedAt: result.executedAt,
-        });
-        actionResultsByViolation.set(result.violationId, existing);
-      }
-    }
-  } catch (error) {
-    console.error('[Violations] Failed to batch fetch action results:', error);
-  }
-
-  // Transform flat data into nested structure expected by frontend
-  return violationData.map((v) => {
-    const relatedSessions = ((v.data?.relatedSessionIds as string[] | undefined) ?? [])
-      .map((id) => sessionsById.get(id))
-      .filter((s): s is ViolationSessionInfo => s !== undefined);
-
-    return {
-      id: v.id,
-      ruleId: v.ruleId,
-      serverUserId: v.serverUserId,
-      sessionId: v.sessionId,
-      severity: v.severity,
-      data: v.data,
-      createdAt: v.createdAt,
-      acknowledgedAt: v.acknowledgedAt,
-      rule: {
-        id: v.ruleId,
-        name: v.ruleName,
-        type: v.ruleType,
-      },
-      user: {
-        id: v.serverUserId,
-        username: v.username,
-        thumbUrl: v.userThumb,
-        serverId: v.serverId,
-        identityName: v.identityName,
-        userId: v.identityUserId,
-      },
-      server: {
-        id: v.serverId,
-        name: v.serverName,
-      },
-      session: {
-        id: v.sessionId,
-        mediaTitle: v.mediaTitle,
-        mediaType: v.mediaType,
-        grandparentTitle: v.grandparentTitle,
-        mediaId: v.mediaId,
-        showMediaId: v.showMediaId,
-        seasonNumber: v.seasonNumber,
-        episodeNumber: v.episodeNumber,
-        year: v.year,
-        ipAddress: v.ipAddress,
-        geoCity: v.geoCity,
-        geoRegion: v.geoRegion,
-        geoCountry: v.geoCountry,
-        isLocal: isLocalSession(v),
-        geoContinent: v.geoContinent,
-        geoPostal: v.geoPostal,
-        geoLat: v.geoLat,
-        geoLon: v.geoLon,
-        playerName: v.playerName,
-        device: v.device,
-        deviceId: v.deviceId ?? null,
-        dispatcharrDeviceId: v.dispatcharrDeviceId,
-        platform: v.platform,
-        product: v.product,
-        quality: v.quality,
-        startedAt: v.startedAt,
-      },
-      relatedSessions: relatedSessions.length > 0 ? relatedSessions : undefined,
-      actionResults: (() => {
-        const results = actionResultsByViolation.get(v.id);
-        if (!results || results.length === 0) return undefined;
-        return results.map((r) => ({
-          actionType: r.actionType,
-          success: r.success,
-          skipped: r.skipped ?? false,
-          skipReason: r.skipReason ?? undefined,
-          errorMessage: r.errorMessage ?? undefined,
-          executedAt: r.executedAt.toISOString(),
-        }));
-      })(),
-      evidence: v.data?.evidence as ViolationWithDetails['evidence'] | undefined,
-    };
-  });
-}
-
-/**
- * The page query. `where` comes from buildViolationRosterConditions, and the
- * count query below reuses it unchanged.
- */
-function buildViolationPageQuery(params: {
-  where: SQL | undefined;
-  orderBy: ViolationSortField;
-  orderDir: SortDirection | undefined;
-  pageSize: number;
-  offset: number;
-}) {
-  const { where, orderBy, orderDir, pageSize, offset } = params;
-
-  return db
-    .select({
-      id: automationRuns.id,
-      ruleId: automationRuns.automationId,
-      ruleName: automations.name,
-      // The v1 column is gone; the key stays on the wire, always null.
-      ruleType: sql<null>`NULL`,
-      serverUserId: serverUsers.id,
-      username: serverUsers.username,
-      userThumb: serverUsers.thumbUrl,
-      identityName: users.name,
-      identityUserId: serverUsers.userId,
-      serverId: serverUsers.serverId,
-      serverName: servers.name,
-      sessionId: automationRuns.sessionId,
-      // Session details for context
-      mediaTitle: sessions.mediaTitle,
-      mediaType: sessions.mediaType,
-      grandparentTitle: sessions.grandparentTitle,
-      mediaId: sessions.mediaId,
-      showMediaId: sessions.showMediaId,
-      seasonNumber: sessions.seasonNumber,
-      episodeNumber: sessions.episodeNumber,
-      year: sessions.year,
-      ipAddress: sessions.ipAddress,
-      geoCity: sessions.geoCity,
-      geoRegion: sessions.geoRegion,
-      geoCountry: sessions.geoCountry,
-      isLocal: sessions.isLocal,
-      geoContinent: sessions.geoContinent,
-      geoPostal: sessions.geoPostal,
-      geoLat: sessions.geoLat,
-      geoLon: sessions.geoLon,
-      playerName: sessions.playerName,
-      device: sessions.device,
-      deviceId: sessions.deviceId,
-      dispatcharrDeviceId: dispatcharrDeviceIdSql(),
-      platform: sessions.platform,
-      product: sessions.product,
-      quality: sessions.quality,
-      startedAt: sessions.startedAt,
-      severity: ROSTER_SEVERITY,
-      data: automationRuns.data,
-      createdAt: automationRuns.createdAt,
-      acknowledgedAt: automationRuns.acknowledgedAt,
-    })
-    .from(automationRuns)
-    .innerJoin(automations, eq(automationRuns.automationId, automations.id))
-    .innerJoin(serverUsers, eq(automationRuns.serverUserId, serverUsers.id))
-    .leftJoin(users, eq(serverUsers.userId, users.id))
-    .innerJoin(servers, eq(serverUsers.serverId, servers.id))
-    .leftJoin(sessions, eq(automationRuns.sessionId, sessions.id))
-    .where(where)
-    .orderBy(buildOrderBy(VIOLATION_SORT_KEYS, orderBy, orderDir, sql`${automationRuns.id}`))
-    .limit(pageSize)
-    .offset(offset);
-}
-
-/** The list row shape, derived so the envelope cannot drift from the mapper. */
-type EnrichedViolation = Awaited<ReturnType<typeof enrichViolations>>[number];
-
 export const violationRoutes: FastifyPluginAsync = async (app) => {
   const readViolations = { preHandler: [app.requirePermission('violations', 'read')] };
+
   /**
    * GET /violations - List violations with pagination and filters
    *
@@ -572,15 +221,7 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       offset,
     });
 
-    // Counted off the same conditions, minus the joins only the select list
-    // needs. A hand-written copy of these predicates is what let the count
-    // disagree with the page it was counting.
-    const countRows = await db
-      .select({ total: count() })
-      .from(automationRuns)
-      .innerJoin(serverUsers, eq(automationRuns.serverUserId, serverUsers.id))
-      .where(where);
-    const total = countRows[0]?.total ?? 0;
+    const total = await countViolations(where);
 
     const formattedData = await enrichViolations(violationData, request.scope);
 
@@ -588,6 +229,23 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       data: formattedData,
       meta: { page, pageSize, total },
     } satisfies ListResponse<EnrichedViolation>;
+  });
+
+  /**
+   * GET /violations/count - Row count for the same filters GET / accepts
+   */
+  app.get('/count', readViolations, async (request, reply) => {
+    const query = violationCountQuerySchema.safeParse(request.query);
+    if (!query.success) {
+      return reply.badRequest('Invalid query parameters');
+    }
+
+    const roster = await buildViolationRosterConditions(query.data, request.user, request.scope);
+    if (roster.empty) {
+      return { total: 0 };
+    }
+
+    return { total: await countViolations(and(...roster.conditions)) };
   });
 
   /**
@@ -603,57 +261,15 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
     const authUser = request.user;
 
     // Query with server info for access check, including all session fields
+    const runSessionRow = runSession();
     const violationRows = await db
-      .select({
-        id: automationRuns.id,
-        ruleId: automationRuns.automationId,
-        ruleName: automations.name,
-        // The v1 column is gone; the key stays on the wire, always null.
-        ruleType: sql<null>`NULL`,
-        serverUserId: serverUsers.id,
-        username: serverUsers.username,
-        userThumb: serverUsers.thumbUrl,
-        identityName: users.name,
-        identityUserId: serverUsers.userId,
-        serverId: serverUsers.serverId,
-        serverName: servers.name,
-        sessionId: automationRuns.sessionId,
-        mediaTitle: sessions.mediaTitle,
-        mediaType: sessions.mediaType,
-        grandparentTitle: sessions.grandparentTitle,
-        mediaId: sessions.mediaId,
-        showMediaId: sessions.showMediaId,
-        seasonNumber: sessions.seasonNumber,
-        episodeNumber: sessions.episodeNumber,
-        year: sessions.year,
-        ipAddress: sessions.ipAddress,
-        geoCity: sessions.geoCity,
-        geoRegion: sessions.geoRegion,
-        geoCountry: sessions.geoCountry,
-        isLocal: sessions.isLocal,
-        geoContinent: sessions.geoContinent,
-        geoPostal: sessions.geoPostal,
-        geoLat: sessions.geoLat,
-        geoLon: sessions.geoLon,
-        playerName: sessions.playerName,
-        device: sessions.device,
-        deviceId: sessions.deviceId,
-        dispatcharrDeviceId: dispatcharrDeviceIdSql(),
-        platform: sessions.platform,
-        product: sessions.product,
-        quality: sessions.quality,
-        startedAt: sessions.startedAt,
-        severity: ROSTER_SEVERITY,
-        data: automationRuns.data,
-        createdAt: automationRuns.createdAt,
-        acknowledgedAt: automationRuns.acknowledgedAt,
-      })
+      .select(violationSelect(runSessionRow))
       .from(automationRuns)
       .innerJoin(automations, eq(automationRuns.automationId, automations.id))
       .innerJoin(serverUsers, eq(automationRuns.serverUserId, serverUsers.id))
       .leftJoin(users, eq(serverUsers.userId, users.id))
       .innerJoin(servers, eq(serverUsers.serverId, servers.id))
-      .leftJoin(sessions, eq(automationRuns.sessionId, sessions.id))
+      .leftJoinLateral(runSessionRow, sql`true`)
       .where(aliasedRunFilter(eq(automationRuns.id, id)))
       .limit(1);
 
@@ -1030,12 +646,11 @@ export const violationRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // users.totalViolations counts non-dismissed rows, so every affected
-      // identity recomputes, not only the trust-reversed ones. Once per
-      // identity, since a merged person can have several accounts here.
-      const affectedIdentityIds = new Set(stampedViolations.map((v) => v.userId));
-      for (const identityId of affectedIdentityIds) {
-        await recomputeIdentityAggregates(identityId, tx);
-      }
+      // identity recomputes, not only the trust-reversed ones.
+      await recomputeIdentityAggregates(
+        stampedViolations.map((v) => v.userId),
+        tx
+      );
 
       return { dismissedCount: stamped.length, moves: moved };
     });

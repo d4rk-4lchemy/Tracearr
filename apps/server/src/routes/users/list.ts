@@ -10,7 +10,7 @@
  */
 
 import type { FastifyPluginAsync } from 'fastify';
-import { eq, and, sql, inArray, type SQL } from 'drizzle-orm';
+import { eq, sql, inArray, type SQL } from 'drizzle-orm';
 import {
   updateUserSchema,
   updateUserAccessSchema,
@@ -28,10 +28,9 @@ import {
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
 import { isUniqueViolation } from '../../db/pg.js';
-import { serverUsers, sessions, servers, users } from '../../db/schema.js';
+import { serverUsers, servers, users } from '../../db/schema.js';
 import {
   hasServerAccess,
-  buildServerAccessCondition,
   resolveServerIds,
   buildMultiServerFragment,
 } from '../../utils/serverFiltering.js';
@@ -62,8 +61,8 @@ import { getSetting } from '../../services/settings.js';
 import { disconnectUserSockets } from '../../websocket/index.js';
 import { parseDateString } from '../../utils/parsing.js';
 import { representativeAccountOrderSql } from '../../utils/representativeAccount.js';
-import { PLAY_COUNT } from '../../constants/index.js';
 import { VIOLATION_ALIAS_SQL } from '../../services/automations/aliasFilter.js';
+import { identityAccountsWhere, userHistoryWindow, userPlayTotals } from './queries/index.js';
 
 /** What a trust-score notification says moved the score when a person did it by hand. */
 const OWNER_TRUST_REASON = 'changed by an owner';
@@ -420,14 +419,6 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
     const pageUserIds = pageRows.map((row) => row.userId);
     const identityServersByUserId = new Map<string, IdentityServer[]>();
     if (pageUserIds.length > 0) {
-      const identityServerAccessCondition = buildServerAccessCondition(
-        authUser,
-        serverUsers.serverId
-      );
-      const identityWhereClause = identityServerAccessCondition
-        ? and(inArray(serverUsers.userId, pageUserIds), identityServerAccessCondition)
-        : inArray(serverUsers.userId, pageUserIds);
-
       const identityServerRows = await db
         .selectDistinct({
           userId: serverUsers.userId,
@@ -440,7 +431,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
         })
         .from(serverUsers)
         .innerJoin(servers, eq(serverUsers.serverId, servers.id))
-        .where(identityWhereClause);
+        .where(identityAccountsWhere(authUser, pageUserIds));
 
       identityServerRows.sort(
         (a, b) =>
@@ -577,23 +568,9 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
       return reply.forbidden('You do not have access to this user');
     }
 
-    // Get session stats for this server user (count unique plays, not raw rows)
-    const statsResult = await db
-      .select({
-        totalSessions: PLAY_COUNT,
-        totalWatchTime: sql<number>`coalesce(sum(duration_ms), 0)::bigint`,
-      })
-      .from(sessions)
-      .where(eq(sessions.serverUserId, id));
-
-    const stats = statsResult[0];
-
     return {
       ...serverUser,
-      stats: {
-        totalSessions: stats?.totalSessions ?? 0,
-        totalWatchTime: Number(stats?.totalWatchTime ?? 0),
-      },
+      stats: await userPlayTotals(db, [id], userHistoryWindow()),
     };
   });
 
@@ -812,7 +789,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
       const matching = await db.execute(buildUserRosterAccountIdQuery(roster));
       seedIds = (matching.rows as unknown as { id: string }[]).map((row) => row.id);
     } else {
-      seedIds = body.ids!;
+      seedIds = body.ids ?? [];
     }
 
     if (seedIds.length === 0) {
@@ -838,23 +815,18 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
 
     // Expand each touched identity to ALL of their accounts on servers the
     // caller can access, so a merged person's sibling accounts get reset too.
-    const identityAccessCondition = buildServerAccessCondition(authUser, serverUsers.serverId);
-    const identityWhereClause = identityAccessCondition
-      ? and(inArray(serverUsers.userId, affectedIdentityIds), identityAccessCondition)
-      : inArray(serverUsers.userId, affectedIdentityIds);
-
     const accountsToReset = await db
       .select({ id: serverUsers.id })
       .from(serverUsers)
-      .where(identityWhereClause);
+      .where(identityAccountsWhere(authUser, affectedIdentityIds));
 
     const accountIds = accountsToReset.map((a) => a.id);
     if (accountIds.length === 0) {
       return { success: true, updated: 0 };
     }
 
-    // Bulk update trust scores to 100, then recompute each affected identity's
-    // rollup once in the same transaction.
+    // Bulk update trust scores to 100, then recompute the affected identities'
+    // rollups in the same transaction.
     const moves = await db.transaction(async (tx) => {
       const moved = await moveTrust(
         tx,
@@ -862,9 +834,7 @@ export const listRoutes: FastifyPluginAsync = async (app) => {
         inArray(serverUsers.id, accountIds)
       );
 
-      for (const userId of affectedIdentityIds) {
-        await recomputeIdentityAggregates(userId, tx);
-      }
+      await recomputeIdentityAggregates(affectedIdentityIds, tx);
       return moved;
     });
 

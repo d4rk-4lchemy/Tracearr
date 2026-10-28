@@ -1,5 +1,67 @@
 # Tracearr Fork Information
 
+## October 28, 2026 — Tracearr 3.1.2 upstream merge
+
+Upstream `main` at `1a5fde8e4` brings 44 commits after `908871aea`,
+including 3.1.2: bounded/shared session reads and faster history/user/violation
+queries, batched and serialized user sync, chunk-wise normalization,
+range-aware library statistics, MusicBrainz duplicate matching, Plexamp download
+filtering, coming-soon placeholder cleanup, owner Jellyfin/Emby account linking,
+plain-HTTP copy fallbacks and Unraid storage notices. Reconnects parked at the
+end of an episode no longer count watched plays without actual play time.
+Upstream migrations `0120`–`0125`, snapshots and journal remain byte-for-byte
+aligned; the separate Dispatcharr ledger is unchanged.
+
+The session route split carries channel fields, Catch-up classification and
+stable Dispatcharr device identity into the shared history projection/mapper,
+for both started-at and sorted pages. Detail and user recent-play queries keep
+the stable identity alongside provider connection IDs. Violation queries resolve
+it inside the time-bounded run-session lateral and preserve it on related
+sessions. Retired cache APIs stay removed; surviving atomic reads retain date
+hydration and legacy device enrichment, and private Catch-up timestamp state
+remains. SQL-batched identity aggregates supersede the old timestamp conversion
+workaround. Dashboard retains its all-media active-person prepared statement.
+Regression coverage exercises the new history, recent-play and lateral boundaries;
+fork integration imports follow the new query modules.
+
+Dispatcharr auth/settings, leader-owned realtime/polling, pending/Catch-up
+lifecycle and termination, stable device identity, Live TV Activity, uncropped
+artwork/cache markers, library/Seerr exclusions and two-channel versions remain
+intact. New owner account links stay Jellyfin/Emby-only. All 300 fork-only
+localized entries survive unchanged. Exactly PR-only CI and the unchanged
+four-native-build dual-registry release workflow remain. Helm and upstream
+release/insiders workflows are excluded. Both Dockerfiles install pnpm 12.15.0;
+the supervised image adopts `attr` for upstream's storage probe while preserving
+fork metadata, migrations and basemap generation/prefetch. Local agent/merge
+instructions now use Node 24 / pnpm 12.15.0, matching packageManager/Actions.
+Preservation audit: `.tmp/merge-312-preservation-audit.json`.
+
+Validation uses a frozen-lockfile install, cleared Turbo cache and a 4 GB heap
+on the 8 GB LXC. Heavy jobs run sequentially, with at most two Vitest workers
+and Turbo concurrency one; GitHub parallelism is unchanged. Lint, typecheck,
+translations, all five server groups, web, coverage and build pass. The server groups and web
+pass 10,960 tests without skips (unit 2,499; services 4,381; routes 1,396;
+auth 43; security 106; web 2,535). Coverage passes 6,858 tests with 72.92%
+statements, 66.77% branches, 75.11% functions and 74.43% lines, meeting every
+threshold. All changed supported source/JSON/YAML files pass Prettier. Final
+lint/typecheck pass after build. Lint has 701 warnings and zero errors, down eight: nine old assertions are
+removed, and upstream's HTTP clipboard fallback adds the deprecated
+`execCommand` warning. Runtime warnings retain their known classes; services
+and coverage add two listener-warning occurrences each. All 29 locales remain
+in sync. The initial
+lint catches a conflict-marker remnant and unused import, both corrected before
+the complete successful rerun. Initial services catches the fork sync fixture's
+old argument list; it now supplies account maps and asserts the batch context,
+with the catalog exclusion intact, and the complete services rerun passes.
+Logs: `.tmp/merge-312-<job>-20261028.log`; runners:
+`.tmp/validate-merge-312{,-resume,-resume2}.py` and
+`.tmp/finish-merge-312{,-final}.py`. Failed logs remain separate from successful reruns.
+
+Docker integration/E2E are omitted at the user's request. Docker image builds,
+database upgrade execution and live-provider manual smoke are not performed;
+new session/violation/device SQL, migration execution, batched sync locks and
+image package installation remain unverified against running services/images.
+
 ## October 23, 2026 — Tracearr 3.1.1 upstream merge
 
 Upstream `main` at `908871aea` brings 3.1.0/3.1.1: library Watch/ROI/patterns
@@ -554,9 +616,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `908871aea`
-- Last shared upstream commit found during inspection: `e6c1cd9eb` (before merge)
-- Latest upstream commit merged into the current working tree: `908871aea`
+- Source branch/SHA inspected: `main` at `1a5fde8e4`
+- Last shared upstream commit found during inspection: `908871aea` (before merge)
+- Latest upstream commit merged into the current working tree: `1a5fde8e4`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

@@ -7,9 +7,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { and } from 'drizzle-orm';
+import { and, sql } from 'drizzle-orm';
 import { renderSql } from '../../../test/helpers.js';
-import { VIOLATION_ALIAS_SQL, violationAliasConditions } from '../aliasFilter.js';
+import { VIOLATION_ALIAS_SQL, violationAliasConditions, runSession } from '../aliasFilter.js';
 
 function render(conditions: ReturnType<typeof violationAliasConditions>) {
   const fragment = and(...conditions);
@@ -46,5 +46,15 @@ describe('VIOLATION_ALIAS_SQL', () => {
     const { sql } = renderSql(VIOLATION_ALIAS_SQL);
 
     expect(sql.replace(/\s+/g, ' ').trim()).toBe("v.kind = 'policy' AND v.outcome = 'completed'");
+  });
+});
+
+describe('runSession', () => {
+  it('resolves the stable device from the source session inside the time-bounded lateral', () => {
+    const { sql: query } = renderSql(sql`${runSession()}`);
+    expect(query).toContain('sessions.dispatcharr_user_agent');
+    expect(query).toContain('as dispatcharr_device_id');
+    expect(query).toContain('sessions.id = automation_runs.session_id');
+    expect(query).toContain('sessions.started_at = automation_runs.session_started_at');
   });
 });

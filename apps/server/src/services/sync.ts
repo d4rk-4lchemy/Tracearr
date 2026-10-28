@@ -6,13 +6,22 @@
  */
 
 import { eq, and, isNull, isNotNull, inArray, notInArray } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import type pg from 'pg';
+import { createRawPgClient, db, type Executor } from '../db/client.js';
+import * as schema from '../db/schema.js';
 import { servers, serverUsers } from '../db/schema.js';
 import { revokeSessionsForServerUsers } from '../lib/revoke.js';
 import { clearScope } from '../lib/scope.js';
 import { createMediaServerClient, PlexClient, type MediaUser } from './mediaServer/index.js';
-import { syncUserFromMediaServer, type SyncUserOptions } from './userService.js';
 import { supportsMediaLibrary } from '@tracearr/shared';
+import {
+  loadServerAccounts,
+  recomputeIdentityAggregates,
+  syncUserFromMediaServer,
+  type ServerSyncBatch,
+  type SyncUserOptions,
+} from './userService.js';
 import { ensureServerIdentifier } from './serverIdentity.js';
 import { ServerHistoricalError } from './liveServers.js';
 
@@ -31,6 +40,66 @@ export interface SyncOptions {
   syncLibraries?: boolean;
 }
 
+const SYNC_COMMIT_EVERY = 250;
+// A sync queued behind a wedged one gives up rather than waiting forever.
+const SYNC_LOCK_WAIT = '120s';
+
+/**
+ * One user sync per server at a time, across processes. The lock is a session advisory lock on a
+ * connection of its own, so it holds across the batch commits and Postgres drops it if the
+ * process dies. The same connection carries the sync's writes.
+ */
+async function withServerSyncLock<T>(
+  serverId: string,
+  run: (client: pg.Client) => Promise<T>
+): Promise<T> {
+  const client = createRawPgClient('server user sync');
+  await client.connect();
+  try {
+    await client.query(`SET lock_timeout = '${SYNC_LOCK_WAIT}'`);
+    await client.query(`SELECT pg_advisory_lock(hashtext('server_user_sync'), hashtext($1))`, [
+      serverId,
+    ]);
+    return await run(client);
+  } finally {
+    await client.end().catch(() => {
+      /* closing releases the lock and rolls back an open batch */
+    });
+  }
+}
+
+/**
+ * Savepointed writes on the sync's connection. The transaction opens at the first write, so a
+ * server with nothing to change opens none, and `commit` closes it between batches so changed
+ * rows stay locked for one batch, not the whole sync.
+ */
+function batchWriter(client: pg.Client) {
+  const conn = drizzle(client, { schema });
+  let open = false;
+  return {
+    write: async <T>(run: (tx: Executor) => Promise<T>): Promise<T> => {
+      if (!open) {
+        await client.query('BEGIN');
+        open = true;
+      }
+      await client.query('SAVEPOINT account');
+      try {
+        const result = await run(conn);
+        await client.query('RELEASE SAVEPOINT account');
+        return result;
+      } catch (err) {
+        await client.query('ROLLBACK TO SAVEPOINT account');
+        throw err;
+      }
+    },
+    commit: async (): Promise<void> => {
+      if (!open) return;
+      await client.query('COMMIT');
+      open = false;
+    },
+  };
+}
+
 /**
  * Generic user sync - works for both Plex and Jellyfin
  *
@@ -44,7 +113,7 @@ export interface SyncOptions {
  * - Creates new users if not found
  * - Uses externalId for matching
  */
-async function syncServerUsers(
+export async function syncServerUsers(
   serverId: string,
   mediaUsers: MediaUser[],
   options: SyncUserOptions = {}
@@ -56,84 +125,109 @@ async function syncServerUsers(
   restored: number;
   errors: string[];
 }> {
-  const errors: string[] = [];
-  let added = 0;
-  let updated = 0;
-  let skipped = 0;
+  return withServerSyncLock(serverId, async (client) => {
+    const errors: string[] = [];
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
 
-  // Track which external IDs we see from the media server
-  const syncedExternalIds: string[] = [];
-  const lostAccessIds: string[] = [];
+    // Track which external IDs we see from the media server
+    const syncedExternalIds: string[] = [];
 
-  for (const mediaUser of mediaUsers) {
-    syncedExternalIds.push(mediaUser.id);
-    try {
-      const result = await syncUserFromMediaServer(serverId, mediaUser, options);
-      if (result === null) {
-        // Plex sync skipped new user (will be created by poller)
-        skipped++;
-      } else if (result.created) {
-        added++;
-      } else {
-        updated++;
-        if (result.newlyDisabled) lostAccessIds.push(result.serverUser.id);
+    const accounts = await loadServerAccounts(serverId);
+    const recompute = new Set<string>();
+    const clearScopes = new Set<string>();
+    const disabledIds: string[] = [];
+    const writer = batchWriter(client);
+    const batch: ServerSyncBatch = { accounts, write: writer.write, recompute, clearScopes };
+    // A batch's follow-ups run as soon as its writes commit: once committed, the next sync sees
+    // those accounts as unchanged and would never redo them.
+    const commitBatch = async () => {
+      await writer.commit();
+      try {
+        // Outside the batch, so the users rows it locks are never held alongside server_users rows.
+        await recomputeIdentityAggregates([...recompute]);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        errors.push(`Failed to recount ${recompute.size} identities: ${message}`);
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      errors.push(`Failed to sync user ${mediaUser.username}: ${message}`);
+      if (disabledIds.length > 0) await revokeSessionsForServerUsers([...disabledIds]);
+      // After commit, so a scope rebuilt meanwhile reads the new library access.
+      for (const userId of clearScopes) await clearScope(userId);
+      recompute.clear();
+      clearScopes.clear();
+      disabledIds.length = 0;
+    };
+    for (const [index, mediaUser] of mediaUsers.entries()) {
+      syncedExternalIds.push(mediaUser.id);
+      try {
+        const result = await syncUserFromMediaServer(serverId, mediaUser, options, batch);
+        if (result === null) {
+          // Plex sync skipped new user (will be created by poller)
+          skipped++;
+        } else if (result.created) {
+          added++;
+        } else {
+          updated++;
+          if (result.newlyDisabled) disabledIds.push(result.serverUser.id);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        errors.push(`Failed to sync user ${mediaUser.username}: ${message}`);
+      }
+      if ((index + 1) % SYNC_COMMIT_EVERY === 0) await commitBatch();
     }
-  }
+    await commitBatch();
 
-  // For Plex, mediaUser.id is plex.tv account ID (stored as plexAccountId)
-  // For Jellyfin/Emby, mediaUser.id is the server-local ID (stored as externalId)
-  const matchColumn = options.isPlexServer ? serverUsers.plexAccountId : serverUsers.externalId;
+    // For Plex, mediaUser.id is plex.tv account ID (stored as plexAccountId)
+    // For Jellyfin/Emby, mediaUser.id is the server-local ID (stored as externalId)
+    const matchColumn = options.isPlexServer ? serverUsers.plexAccountId : serverUsers.externalId;
 
-  // Mark users not in the server response as removed
-  let removed = 0;
-  if (syncedExternalIds.length > 0) {
-    const removedResult = await db
-      .update(serverUsers)
-      .set({ removedAt: new Date() })
-      .where(
-        and(
-          eq(serverUsers.serverId, serverId),
-          isNull(serverUsers.removedAt),
-          notInArray(matchColumn, syncedExternalIds)
+    // Mark users not in the server response as removed
+    let removed = 0;
+    if (syncedExternalIds.length > 0) {
+      const removedResult = await db
+        .update(serverUsers)
+        .set({ removedAt: new Date() })
+        .where(
+          and(
+            eq(serverUsers.serverId, serverId),
+            isNull(serverUsers.removedAt),
+            notInArray(matchColumn, syncedExternalIds)
+          )
         )
-      )
-      .returning({ id: serverUsers.id });
-    removed = removedResult.length;
-    lostAccessIds.push(...removedResult.map((r) => r.id));
-    if (removed > 0) {
-      console.log(`[Sync] Marked ${removed} users as removed from server ${serverId}`);
+        .returning({ id: serverUsers.id });
+      removed = removedResult.length;
+      if (removed > 0) await revokeSessionsForServerUsers(removedResult.map((r) => r.id));
+      if (removed > 0) {
+        console.log(`[Sync] Marked ${removed} users as removed from server ${serverId}`);
+      }
     }
-  }
 
-  // Restore any previously-removed users that reappeared in this sync
-  let restored = 0;
-  if (syncedExternalIds.length > 0) {
-    const restoredResult = await db
-      .update(serverUsers)
-      .set({ removedAt: null })
-      .where(
-        and(
-          eq(serverUsers.serverId, serverId),
-          isNotNull(serverUsers.removedAt),
-          inArray(matchColumn, syncedExternalIds)
+    // Restore any previously-removed users that reappeared in this sync
+    let restored = 0;
+    if (syncedExternalIds.length > 0) {
+      const restoredResult = await db
+        .update(serverUsers)
+        .set({ removedAt: null })
+        .where(
+          and(
+            eq(serverUsers.serverId, serverId),
+            isNotNull(serverUsers.removedAt),
+            inArray(matchColumn, syncedExternalIds)
+          )
         )
-      )
-      .returning({ userId: serverUsers.userId });
-    restored = restoredResult.length;
-    // A restored account widens its person's scope without revoking anything.
-    for (const userId of new Set(restoredResult.map((r) => r.userId))) await clearScope(userId);
-    if (restored > 0) {
-      console.log(`[Sync] Restored ${restored} previously removed users on server ${serverId}`);
+        .returning({ userId: serverUsers.userId });
+      restored = restoredResult.length;
+      // A restored account widens its person's scope without revoking anything.
+      for (const userId of new Set(restoredResult.map((r) => r.userId))) await clearScope(userId);
+      if (restored > 0) {
+        console.log(`[Sync] Restored ${restored} previously removed users on server ${serverId}`);
+      }
     }
-  }
 
-  await revokeSessionsForServerUsers(lostAccessIds);
-
-  return { added, updated, skipped, removed, restored, errors };
+    return { added, updated, skipped, removed, restored, errors };
+  });
 }
 
 /**

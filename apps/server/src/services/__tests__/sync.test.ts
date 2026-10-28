@@ -12,12 +12,22 @@ vi.mock('../../db/client.js', () => ({
     select: () => ({ from: () => ({ where: () => ({ limit: mockLimit }) }) }),
     update: () => ({ set: () => ({ where: () => ({ returning: mockReturning }) }) }),
   },
+  createRawPgClient: () => ({ connect: vi.fn(), query: vi.fn(), end: vi.fn(async () => {}) }),
 }));
 vi.mock('../mediaServer/index.js', () => ({
   createMediaServerClient: () => ({ getUsers: mockGetUsers, getLibraries: mockGetLibraries }),
   PlexClient: class {},
 }));
-vi.mock('../userService.js', () => ({ syncUserFromMediaServer: vi.fn() }));
+vi.mock('../userService.js', () => ({
+  loadServerAccounts: vi.fn(async () => ({
+    byExternalId: new Map(),
+    byPlexAccountId: new Map(),
+    byUsername: new Map(),
+    usersById: new Map(),
+  })),
+  recomputeIdentityAggregates: vi.fn(),
+  syncUserFromMediaServer: vi.fn(),
+}));
 vi.mock('../serverIdentity.js', () => ({ ensureServerIdentifier: vi.fn() }));
 vi.mock('../../lib/revoke.js', () => ({ revokeSessionsForServerUsers: vi.fn() }));
 vi.mock('../../lib/scope.js', () => ({ clearScope: vi.fn() }));
@@ -76,7 +86,7 @@ describe('syncServer revocation', () => {
 
     await syncServer('srv-1', { syncUsers: true, syncLibraries: false });
 
-    expect(revokeSessionsForServerUsers).toHaveBeenCalledExactlyOnceWith([]);
+    expect(revokeSessionsForServerUsers).not.toHaveBeenCalled();
     expect(clearScope).toHaveBeenCalledExactlyOnceWith('u-back');
   });
 });
@@ -102,7 +112,17 @@ describe('syncServer library access', () => {
     expect(result.usersUpdated).toBe(1);
     expect(result.librariesSynced).toBe(0);
     expect(mockGetLibraries).not.toHaveBeenCalled();
-    expect(syncUserFromMediaServer).toHaveBeenCalledWith('srv-1', users[0], {});
+    expect(syncUserFromMediaServer).toHaveBeenCalledWith(
+      'srv-1',
+      users[0],
+      {},
+      expect.objectContaining({
+        accounts: expect.objectContaining({ byExternalId: expect.any(Map) }),
+        write: expect.any(Function),
+        recompute: expect.any(Set),
+        clearScopes: expect.any(Set),
+      })
+    );
   });
 
   it('names enabled folders by library id, matching Emby folders by Guid only', async () => {

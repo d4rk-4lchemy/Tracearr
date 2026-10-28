@@ -224,6 +224,38 @@ describe('fetchJson', () => {
       expect((error as HttpClientError).service).toBe('API');
     }
   });
+
+  it('passes an abort signal when no timeout is given', async () => {
+    mockFetch.mockResolvedValue(createMockResponse({ body: {} }));
+
+    await fetchJson('https://api.example.com/data');
+
+    expect(mockFetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('passes no signal when timeout is 0', async () => {
+    mockFetch.mockResolvedValue(createMockResponse({ body: {} }));
+
+    await fetchJson('https://api.example.com/data', { timeout: 0 });
+
+    expect(mockFetch.mock.calls[0]?.[1]?.signal).toBeUndefined();
+  });
+
+  it('names the timed-out request by path, never its query', async () => {
+    mockFetch.mockRejectedValue(
+      new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    );
+
+    const error = await fetchJson('http://plex:32400/library/sections/1/all?X-Plex-Token=secret', {
+      service: 'plex',
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DOMException);
+    expect((error as DOMException).name).toBe('TimeoutError');
+    expect((error as DOMException).message).toBe(
+      'plex request to /library/sections/1/all timed out after 30s'
+    );
+  });
 });
 
 describe('fetchText', () => {

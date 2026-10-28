@@ -9,8 +9,9 @@
  * 5. Report progress via callback for real-time updates
  */
 
-import { eq, and, inArray, notInArray, sql, gte, lt, desc, isNull } from 'drizzle-orm';
+import { eq, and, inArray, notInArray, sql, gte, lt, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { latestSnapshotFor } from '../db/librarySnapshots.js';
 import {
   servers,
   libraryItems,
@@ -126,6 +127,18 @@ const REPLACEMENT_LINK_MAX_PER_PASS = 50;
 
 /** If incremental sync returns more than this fraction of total items, fall through to full scan */
 const INCREMENTAL_CAP_RATIO = 0.3;
+
+/**
+ * Agregarr's "coming soon" stand-ins: a trailer saved as the movie, or as S00E00 of the
+ * show, and deleted once the real file lands. The edition names are the three its own
+ * cleanup still recognizes. Migration 0125 removed the rows stored before this existed.
+ */
+const COMING_SOON_PLACEHOLDER =
+  /\{edition-(?:Trailer|Placeholder|Coming Soon)\}\.mp4$|(?:^|[\\/])Season 00[\\/]S00E00\.Trailer\.mp4$/;
+
+function isComingSoonPlaceholder(item: MediaLibraryItem): boolean {
+  return item.filePath != null && COMING_SOON_PLACEHOLDER.test(item.filePath);
+}
 
 /**
  * Incremental sync only returns items whose server updatedAt moved, so two
@@ -423,6 +436,25 @@ export interface SyncResume {
 export class SyncInterruptedError extends Error {}
 
 /**
+ * Some libraries failed after the rest of the run finished. Carries the results so the
+ * caller can still wrap up what did sync; a retry skips the libraries that completed.
+ */
+export class LibrariesFailedError extends Error {
+  constructor(
+    readonly results: SyncResult[],
+    failures: { libraryName: string; error: unknown }[]
+  ) {
+    const detail = failures
+      .map(({ libraryName, error }) =>
+        error instanceof Error ? `${libraryName} (${error.message})` : libraryName
+      )
+      .join(', ');
+    super(`Library sync failed for ${detail}`, { cause: failures[0]?.error });
+    this.name = 'LibrariesFailedError';
+  }
+}
+
+/**
  * Progress callback for real-time updates
  */
 export type OnProgressCallback = (progress: LibrarySyncProgress) => void;
@@ -607,26 +639,38 @@ export class LibrarySyncService {
       });
     }
 
-    // Sync each library
+    // One library failing must not hold back the rest: a server that times out listing
+    // one library would otherwise keep every other library from ever syncing.
+    const failures: { libraryName: string; error: unknown }[] = [];
     for (const [i, library] of libraries.entries()) {
       if (resume?.signal?.aborted) throw new SyncInterruptedError();
       if (resume?.completedLibraryIds.has(library.id)) continue;
 
-      const result = await this.syncLibrary({
-        serverId,
-        serverName: server.name,
-        serverType: server.type,
-        libraryId: library.id,
-        libraryName: library.name,
-        libraryType: library.type,
-        client,
-        onProgress,
-        totalLibraries,
-        processedLibraries: i,
-        startedAt,
-        triggeredBy,
-        mediaRun,
-      });
+      let result: SyncResult;
+      try {
+        result = await this.syncLibrary({
+          serverId,
+          serverName: server.name,
+          serverType: server.type,
+          libraryId: library.id,
+          libraryName: library.name,
+          libraryType: library.type,
+          client,
+          onProgress,
+          totalLibraries,
+          processedLibraries: i,
+          startedAt,
+          triggeredBy,
+          mediaRun,
+        });
+      } catch (error) {
+        console.error(
+          `[LibrarySync] ${library.name} failed, continuing with the other libraries:`,
+          error
+        );
+        failures.push({ libraryName: library.name, error });
+        continue;
+      }
 
       results.push(result);
       await resume?.onLibraryComplete(library.id);
@@ -731,6 +775,7 @@ export class LibrarySyncService {
       }
     }
 
+    if (failures.length > 0) throw new LibrariesFailedError(results, failures);
     return results;
   }
 
@@ -973,24 +1018,34 @@ export class LibrarySyncService {
         const allItems: MediaLibraryItem[] = [];
         const combinedItems = [...newItems, ...newContainers, ...newLeaves];
         let totalSkippedEmpty = 0;
+        const placeholderParents = new Set<string>();
 
         for (let i = 0; i < combinedItems.length; i += BATCH_SIZE) {
           const pageStartedAt = Date.now();
           const batch = combinedItems.slice(i, i + BATCH_SIZE);
           allItems.push(...batch);
-          const { skippedEmpty } = await this.upsertItems(
+          const batchRes = await this.upsertItems(
             serverId,
             libraryId,
             batch,
             touchedMediaIds,
             announce
           );
-          totalSkippedEmpty += skippedEmpty;
+          totalSkippedEmpty += batchRes.skippedEmpty;
+          for (const key of batchRes.placeholderParents) placeholderParents.add(key);
 
           if (i + BATCH_SIZE < combinedItems.length) {
             await paceAfter(pageStartedAt, BATCH_DELAY_MS_INCREMENTAL);
           }
         }
+
+        await this.dropPlaceholderContainers(
+          serverId,
+          libraryId,
+          placeholderParents,
+          touchedMediaIds,
+          announce
+        );
 
         const itemsRemoved = await this.retireReplacedCopies(
           client,
@@ -1081,6 +1136,7 @@ export class LibrarySyncService {
       currentKeys.add(item.ratingKey);
     };
     let totalSkippedEmpty = 0;
+    const placeholderParents = new Set<string>();
 
     // The completed-scan marker carries this time: an item added while the scan runs may
     // be listed or not, so only a play older than the scan's start is known to be absent.
@@ -1117,6 +1173,7 @@ export class LibrarySyncService {
         firstSeenFromAdded
       );
       totalSkippedEmpty += itemsRes.skippedEmpty;
+      for (const key of itemsRes.placeholderParents) placeholderParents.add(key);
 
       processedItems += items.length;
       offset += BATCH_SIZE;
@@ -1195,6 +1252,7 @@ export class LibrarySyncService {
           firstSeenFromAdded
         );
         totalSkippedEmpty += pageRes.skippedEmpty;
+        for (const key of pageRes.placeholderParents) placeholderParents.add(key);
 
         listingProcessed += pageItems.length;
         listingOffset += BATCH_SIZE;
@@ -1248,6 +1306,14 @@ export class LibrarySyncService {
     if (hasArtists && getLeaves) {
       await syncListing((page) => getLeaves(libraryId, page), 'tracks');
     }
+
+    await this.dropPlaceholderContainers(
+      serverId,
+      libraryId,
+      placeholderParents,
+      touchedMediaIds,
+      announce
+    );
 
     // Calculate delta
     const addedKeys = [...currentKeys].filter((k) => !previousKeys.has(k));
@@ -1584,20 +1650,31 @@ export class LibrarySyncService {
     touchedMediaIds?: Set<string>,
     announce?: MediaAnnounce | null,
     firstSeenFromAdded = false
-  ): Promise<{ skippedEmpty: number; collapsedDuplicates: number }> {
-    if (items.length === 0) return { skippedEmpty: 0, collapsedDuplicates: 0 };
-
+  ): Promise<{ skippedEmpty: number; collapsedDuplicates: number; placeholderParents: string[] }> {
     let skippedEmpty = 0;
+    let placeholders = 0;
+    const placeholderParents = new Set<string>();
     const deduped = new Map<string, MediaLibraryItem>();
     for (const item of items) {
       if (!item.ratingKey) {
         skippedEmpty++;
         continue;
       }
+      if (isComingSoonPlaceholder(item)) {
+        placeholders++;
+        if (item.parentRatingKey) placeholderParents.add(item.parentRatingKey);
+        if (item.grandparentRatingKey) placeholderParents.add(item.grandparentRatingKey);
+        continue;
+      }
       deduped.set(item.ratingKey, item);
     }
     const uniqueItems = Array.from(deduped.values());
-    const collapsedDuplicates = items.length - skippedEmpty - uniqueItems.length;
+    const collapsedDuplicates = items.length - skippedEmpty - placeholders - uniqueItems.length;
+    const skipped = {
+      skippedEmpty,
+      collapsedDuplicates,
+      placeholderParents: [...placeholderParents],
+    };
 
     if (skippedEmpty > 0) {
       console.warn(
@@ -1612,7 +1689,7 @@ export class LibrarySyncService {
       );
     }
 
-    if (uniqueItems.length === 0) return { skippedEmpty, collapsedDuplicates };
+    if (uniqueItems.length === 0) return skipped;
 
     const mediaIdByRatingKey = await resolveMediaBatch(
       uniqueItems.map((item) => ({
@@ -1648,6 +1725,10 @@ export class LibrarySyncService {
           uniqueItems.map((item) => item.ratingKey)
         )
       : null;
+
+    const truncatedGenreKeys = uniqueItems
+      .filter((item) => item.genresTruncated)
+      .map((item) => item.ratingKey);
 
     // Bulk upsert with transaction for atomicity
     const firstSeen = new Date();
@@ -1737,7 +1818,10 @@ export class LibrarySyncService {
             parentIndex: sql`excluded.parent_index`,
             itemIndex: sql`excluded.item_index`,
             mediaId: sql`excluded.media_id`,
-            genres: sql`excluded.genres`,
+            // A row whose full genre list could not be read keeps the one it has.
+            genres: truncatedGenreKeys.length
+              ? sql`CASE WHEN excluded.rating_key IN (SELECT jsonb_array_elements_text(${JSON.stringify(truncatedGenreKeys)}::jsonb)) THEN ${libraryItems.genres} ELSE excluded.genres END`
+              : sql`excluded.genres`,
             // Re-synced posters must update; dominant_color is write-once by the image
             // pipeline and deliberately excluded so a sync never nulls or overwrites it.
             thumbPath: sql`excluded.thumb_path`,
@@ -1898,7 +1982,45 @@ export class LibrarySyncService {
       await this.recomputeLatestAddedAt(resolvedIds);
     }
 
-    return { skippedEmpty, collapsedDuplicates };
+    return skipped;
+  }
+
+  /**
+   * Shows and seasons whose only episode is a coming-soon placeholder. Runs once the
+   * library's listings are all in: Plex lists a show before its episodes and its seasons
+   * after them. Dropped rows leave the run's announcements too.
+   */
+  private async dropPlaceholderContainers(
+    serverId: string,
+    libraryId: string,
+    parentKeys: Set<string>,
+    touchedMediaIds: Set<string>,
+    announce: MediaAnnounce | null
+  ): Promise<void> {
+    if (parentKeys.size === 0) return;
+    const result = await db.execute(sql`
+      DELETE FROM library_items c
+      WHERE c.server_id = ${serverId} AND c.library_id = ${libraryId}
+        AND c.media_type IN ('show', 'season')
+        AND c.rating_key IN ${[...parentKeys]}
+        AND NOT EXISTS (
+          SELECT 1 FROM library_items e
+          WHERE e.server_id = c.server_id AND e.media_type = 'episode'
+            AND e.grandparent_rating_key =
+              CASE WHEN c.media_type = 'show' THEN c.rating_key ELSE c.parent_rating_key END
+            AND (c.media_type = 'show' OR e.parent_rating_key = c.rating_key)
+        )
+      RETURNING c.rating_key, c.media_id
+    `);
+    const rows = result.rows as Array<{ rating_key: string; media_id: string | null }>;
+    if (rows.length === 0) return;
+    for (const row of rows) if (row.media_id) touchedMediaIds.add(row.media_id);
+    if (announce) {
+      const dropped = new Set(rows.map((row) => row.rating_key));
+      announce.run.collected = announce.run.collected.filter(
+        (c) => c.libraryId !== libraryId || !dropped.has(c.change.row.ratingKey)
+      );
+    }
   }
 
   /**
@@ -2086,7 +2208,17 @@ export class LibrarySyncService {
       if (keys.every((k) => existing[k] === stats[k])) {
         return { id: existing.id };
       }
-      await db.update(librarySnapshots).set(stats).where(eq(librarySnapshots.id, existing.id));
+      // The day window it was found in, so only that chunk is opened
+      await db
+        .update(librarySnapshots)
+        .set(stats)
+        .where(
+          and(
+            eq(librarySnapshots.id, existing.id),
+            gte(librarySnapshots.snapshotTime, today),
+            lt(librarySnapshots.snapshotTime, tomorrow)
+          )
+        );
       return { id: existing.id };
     }
 
@@ -2230,15 +2362,7 @@ export class LibrarySyncService {
 
     if (existing) return { id: existing.id };
 
-    // Find the most recent snapshot for this library
-    const [latest] = await db
-      .select()
-      .from(librarySnapshots)
-      .where(
-        and(eq(librarySnapshots.serverId, serverId), eq(librarySnapshots.libraryId, libraryId))
-      )
-      .orderBy(desc(librarySnapshots.snapshotTime))
-      .limit(1);
+    const latest = await latestSnapshotFor(serverId, libraryId);
 
     if (!latest) return null;
 

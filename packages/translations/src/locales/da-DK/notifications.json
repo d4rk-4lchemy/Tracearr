@@ -160,6 +160,8 @@
       "brandingSaved": "",
       "suppressionAdded": "",
       "suppressionRemoved": "",
+      "ownerAccountLinked": "",
+      "ownerAccountUnlinked": "",
       "newsletterRetryQueued_one": "",
       "newsletterRetryQueued_other": ""
     },
@@ -169,7 +171,7 @@
       "serverSyncFailed": "Synkronisering af server mislykkedes",
       "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Kunne ikke opdatere indstillinger",
-      "copyFailed": "Kunne ikke kopiere til udklipsholder",
+      "copyManual": "",
       "acknowledgeFailed": "Mislykkedes at anerkende overtrædelse",
       "dismissFailed": "Mislykkedes at afvise overtrædelse",
       "authFailed": "Godkendelse mislykkedes",
@@ -221,7 +223,9 @@
       "newsletterSnapshotFailed": "",
       "brandingSaveFailed": "",
       "suppressionAddFailed": "",
-      "suppressionRemoveFailed": ""
+      "suppressionRemoveFailed": "",
+      "ownerAccountLinkFailed": "",
+      "ownerAccountUnlinkFailed": ""
     },
     "warning": {
       "jobFailed": {

@@ -24,7 +24,7 @@ import {
   createTestRun,
 } from '@tracearr/test-utils/factories';
 import { db } from '../../src/db/client.js';
-import { violationRoutes } from '../../src/routes/violations.js';
+import { violationRoutes } from '../../src/routes/violations/index.js';
 import { users, serverUsers, automationRuns, automations } from '../../src/db/schema.js';
 import { mergeUsers } from '../../src/services/mergeService.js';
 import * as userService from '../../src/services/userService.js';
@@ -383,9 +383,12 @@ describe('DELETE /violations/bulk - person filter', () => {
     const [after] = await db.select().from(users).where(eq(users.id, target.id));
     expect(after?.aggregateTrustScore).toBe(90);
 
-    // One recompute per affected identity, not once per dismissed violation.
+    // One recompute for the whole dismissal, not once per dismissed violation.
     expect(recomputeSpy).toHaveBeenCalledTimes(1);
-    expect(recomputeSpy).toHaveBeenCalledWith(target.id, expect.anything());
+    expect(recomputeSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([target.id]),
+      expect.anything()
+    );
 
     recomputeSpy.mockRestore();
   });

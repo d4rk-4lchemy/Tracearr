@@ -130,6 +130,7 @@ import type {
   MergeSuggestion,
   DismissedMergeSuggestion,
   ServerUserSplitResult,
+  OwnerLinkServer,
   UserSortField,
   UserRosterFilters,
   ListResponse,
@@ -166,6 +167,7 @@ import type {
   UserRangeStats,
   PeopleResponse,
   PeopleRank,
+  StorageWarning,
 } from '@tracearr/shared';
 
 // Re-export shared types needed by frontend components
@@ -986,6 +988,19 @@ class ApiClient {
       this.request<void>(`/users/merge-suggestions/dismissals/${userA}/${userB}`, {
         method: 'DELETE',
       }),
+    ownerLinks: async () => {
+      const response = await this.request<{ data: OwnerLinkServer[] }>('/users/owner-links');
+      return response.data;
+    },
+    linkOwnerAccount: (serverUserId: string) =>
+      this.request<UserMergeResult>('/users/owner-links', {
+        method: 'POST',
+        body: JSON.stringify({ serverUserId }),
+      }),
+    unlinkOwnerAccount: (serverUserId: string) =>
+      this.request<ServerUserSplitResult>(`/users/owner-links/${serverUserId}`, {
+        method: 'DELETE',
+      }),
     requests: (id: string, opts: { scope?: 'identity'; page: number; pageSize: number }) => {
       const searchParams = new URLSearchParams();
       if (opts.scope) searchParams.set('scope', opts.scope);
@@ -1079,7 +1094,11 @@ class ApiClient {
       const query = params.toString();
       return this.request<ActiveSessionsResponse>(`/sessions/active${query ? `?${query}` : ''}`);
     },
-    get: (id: string) => this.request<SessionWithDetails>(`/sessions/${id}`),
+    // startedAt only narrows the server's read to the chunks after it; the id alone works too
+    get: (id: string, startedAt?: Date | string) =>
+      this.request<SessionWithDetails>(
+        `/sessions/${id}${startedAt ? `?startedAt=${new Date(startedAt).toISOString()}` : ''}`
+      ),
     terminate: (id: string, reason?: string) =>
       this.request<{ success: boolean; terminationLogId: string; message: string }>(
         `/sessions/${id}/terminate`,
@@ -1188,6 +1207,8 @@ class ApiClient {
     get: (id: string) => this.request<ViolationWithDetails>(`/violations/${id}`),
     list: (params: ViolationListParams = {}) =>
       this.request<ListResponse<ViolationWithDetails>>(`/violations?${listSearchParams(params)}`),
+    count: (params: Partial<ViolationRosterFilters> = {}) =>
+      this.request<{ total: number }>(`/violations/count?${listSearchParams(params)}`),
     acknowledge: (id: string) =>
       this.request<{ success: boolean; acknowledgedAt: Date | null }>(`/violations/${id}`, {
         method: 'PATCH',
@@ -1974,6 +1995,9 @@ class ApiClient {
       this.request<{ token: string }>('/settings/api-key/regenerate', { method: 'POST' }),
     getIpWarning: () =>
       this.request<{ showWarning: boolean; stateHash: string }>('/settings/ip-warning'),
+    getStorageWarning: () => this.request<StorageWarning>('/settings/storage-warning'),
+    dismissStorageWarning: () =>
+      this.request<void>('/settings/storage-warning/dismiss', { method: 'POST' }),
     getImageCache: () => this.request<ImageCacheStatus>('/settings/image-cache'),
   };
 

@@ -48,7 +48,7 @@ import {
 import { recordServerBandwidthSample, recordServerStatsSample } from './serverLiveStats.js';
 import { pollServerDownloads } from './downloads/activityLogPoll.js';
 import { deliveredFromTranscode } from './downloads/enrich.js';
-import { recordDownload } from './downloads/recorder.js';
+import { isTrack, recordDownload } from './downloads/recorder.js';
 import { recordTranscodePullEvent } from './downloads/transcodePull.js';
 import { getServerUserIdByExternalId } from '../jobs/poller/database.js';
 import { getRedis } from '../lib/redisShared.js';
@@ -600,6 +600,7 @@ export class SSEManager extends EventEmitter {
         if (delivered) lastStaticTranscode = null;
         downloads = downloads
           .then(async () => {
+            if (await isTrack(serverId, ratingKey)) return;
             await recordDownload({
               serverId,
               serverUserId: await getServerUserIdByExternalId(serverId, userId),

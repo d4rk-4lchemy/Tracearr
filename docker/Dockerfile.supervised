@@ -7,7 +7,7 @@ FROM node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054f
 
 # pnpm's install script is what puts its native binary in place. corepack never runs it,
 # and npm 12 blocks it unless allowed, so both leave pnpm's shebang-less fallback shim instead.
-RUN npm install -g --allow-scripts=pnpm pnpm@12.14.0
+RUN npm install -g --allow-scripts=pnpm pnpm@12.15.0
 
 WORKDIR /app
 
@@ -59,7 +59,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g --allow-scripts=pnpm pnpm@12.14.0
+RUN npm install -g --allow-scripts=pnpm pnpm@12.15.0
 
 # Install PostgreSQL 15 + TimescaleDB
 # TimescaleDB 2.28.x is the last line PG15 supports (2.29+ requires PG16+).
@@ -77,6 +77,7 @@ RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmo
         "timescaledb-2-postgresql-15=${TIMESCALEDB_VERSION}" \
         timescaledb-tools \
         timescaledb-toolkit-postgresql-15 \
+        attr \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Tailscale VPN binary (userspace networking, no root required)

@@ -4,7 +4,7 @@ FROM node:24-alpine3.23@sha256:0468540aa58203ff9e40c2aab3907c52644ab818af6176b1c
 
 # pnpm's install script is what puts its native binary in place. corepack never runs it,
 # and npm 12 blocks it unless allowed, so both leave pnpm's shebang-less fallback shim instead.
-RUN npm install -g --allow-scripts=pnpm pnpm@12.14.0
+RUN npm install -g --allow-scripts=pnpm pnpm@12.15.0
 
 WORKDIR /app
 
@@ -38,7 +38,7 @@ RUN pnpm turbo run build --filter=@tracearr/shared --filter=@tracearr/server --f
 # Production stage
 FROM node:24-alpine3.23@sha256:0468540aa58203ff9e40c2aab3907c52644ab818af6176b1c70a026137dc92a2 AS runner
 
-RUN npm install -g --allow-scripts=pnpm pnpm@12.14.0
+RUN npm install -g --allow-scripts=pnpm pnpm@12.15.0
 
 RUN apk upgrade --no-cache && apk add --no-cache postgresql-client
 

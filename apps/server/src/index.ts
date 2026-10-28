@@ -59,11 +59,11 @@ import { serverRoutes } from './routes/servers.js';
 import { serverLocationRoutes } from './routes/serverLocations.js';
 import { userRoutes } from './routes/users/index.js';
 import { serverUserRoutes } from './routes/serverUsers.js';
-import { sessionRoutes } from './routes/sessions.js';
+import { sessionRoutes } from './routes/sessions/index.js';
 import { automationRoutes } from './routes/automations.js';
 import { templateRoutes } from './routes/templates.js';
 import { runRoutes } from './routes/runs.js';
-import { violationRoutes } from './routes/violations.js';
+import { violationRoutes } from './routes/violations/index.js';
 import { statsRoutes } from './routes/stats/index.js';
 import { settingsRoutes } from './routes/settings.js';
 import { importRoutes } from './routes/import.js';
@@ -71,6 +71,7 @@ import { imageRoutes } from './routes/images.js';
 import { startImageCacheSweepTimer, stopImageCacheSweep } from './services/imageCacheSweep.js';
 import { IMAGE_CACHE_DIR } from './services/imageProxy.js';
 import { migrateImageCache } from './services/imageCacheMigration.js';
+import { runStorageCheck } from './services/storageCheck.js';
 import { debugRoutes } from './routes/debug.js';
 import { mobileRoutes } from './routes/mobile.js';
 import { notificationPreferencesRoutes } from './routes/notificationPreferences.js';
@@ -1642,6 +1643,8 @@ async function start() {
     }
     // Initialize claim code for first-time setup security
     initializeClaimCode();
+    // Not awaited: getfattr on a stalled shfs must not hold up the listen.
+    void runStorageCheck();
     await probeOidcAtStartup();
 
     const app = await buildApp();

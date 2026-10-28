@@ -160,6 +160,8 @@
       "brandingSaved": "",
       "suppressionAdded": "",
       "suppressionRemoved": "",
+      "ownerAccountLinked": "",
+      "ownerAccountUnlinked": "",
       "newsletterRetryQueued_one": "",
       "newsletterRetryQueued_other": ""
     },
@@ -169,7 +171,7 @@
       "serverSyncFailed": "Error al sincronizar el servidor",
       "serverHistoricalFailed": "",
       "settingsUpdateFailed": "Error al actualizar ajustes",
-      "copyFailed": "No se ha podido copiar en el portapapeles",
+      "copyManual": "",
       "acknowledgeFailed": "Fallo al reconocer infracción",
       "dismissFailed": "Error al descartar la infracción",
       "authFailed": "Autenticación fallida",
@@ -221,7 +223,9 @@
       "newsletterSnapshotFailed": "",
       "brandingSaveFailed": "",
       "suppressionAddFailed": "",
-      "suppressionRemoveFailed": ""
+      "suppressionRemoveFailed": "",
+      "ownerAccountLinkFailed": "",
+      "ownerAccountUnlinkFailed": ""
     },
     "warning": {
       "jobFailed": {

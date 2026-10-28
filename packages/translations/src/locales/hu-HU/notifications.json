@@ -160,6 +160,8 @@
       "brandingSaved": "",
       "suppressionAdded": "",
       "suppressionRemoved": "",
+      "ownerAccountLinked": "",
+      "ownerAccountUnlinked": "",
       "newsletterRetryQueued_one": "",
       "newsletterRetryQueued_other": ""
     },
@@ -169,7 +171,7 @@
       "serverSyncFailed": "",
       "serverHistoricalFailed": "",
       "settingsUpdateFailed": "",
-      "copyFailed": "",
+      "copyManual": "",
       "acknowledgeFailed": "",
       "dismissFailed": "",
       "authFailed": "",
@@ -221,7 +223,9 @@
       "newsletterSnapshotFailed": "",
       "brandingSaveFailed": "",
       "suppressionAddFailed": "",
-      "suppressionRemoveFailed": ""
+      "suppressionRemoveFailed": "",
+      "ownerAccountLinkFailed": "",
+      "ownerAccountUnlinkFailed": ""
     },
     "warning": {
       "jobFailed": {

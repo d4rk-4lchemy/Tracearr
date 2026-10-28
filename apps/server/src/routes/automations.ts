@@ -45,6 +45,7 @@ import {
 import { db } from '../db/client.js';
 import { isUniqueViolation } from '../db/pg.js';
 import { automationRuns, automations, sessions } from '../db/schema.js';
+import { readSessionRowOrActive } from '../db/sessions/row.js';
 import { scheduleInactivityChecks } from '../jobs/inactivityCheckQueue.js';
 import { invalidateAutomationsCache } from '../jobs/poller/database.js';
 import { violationAliasConditions } from '../services/automations/aliasFilter.js';
@@ -170,12 +171,6 @@ async function countedIdentitiesOf(automationIds: string[]): Promise<string[]> {
       )
     );
   return rows.map((row) => row.serverUserId).filter((id): id is string => id !== null);
-}
-
-async function restateIdentities(serverUserIds: string[]): Promise<void> {
-  for (const serverUserId of serverUserIds) {
-    await recomputeIdentityAggregatesForServerUser(serverUserId);
-  }
 }
 
 /** The scope a materialized definition carries, in the column shape the row stores. */
@@ -377,16 +372,14 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
       const visibleIds = resolveServerIds(request.user, undefined, undefined);
 
       if (sample) {
-        const [row] = await db
-          .select()
-          .from(sessions)
-          .where(
-            and(
-              eq(sessions.id, sample.sessionId),
-              buildMultiServerCondition(visibleIds, sessions.serverId)
-            )
-          )
-          .limit(1);
+        const row = await readSessionRowOrActive(sample.sessionId, sample.startedAt, (where) =>
+          db
+            .select()
+            .from(sessions)
+            .where(and(where, buildMultiServerCondition(visibleIds, sessions.serverId)))
+            .limit(1)
+            .then((rows) => rows[0])
+        );
         if (!row) return reply.notFound('Session not found');
         return await dryRun({ definition, sessions: [toRuleSession(row)], user: request.user });
       }
@@ -678,7 +671,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
 
     const counted = await countedIdentitiesOf([existing.id]);
     await db.delete(automations).where(eq(automations.id, existing.id));
-    await restateIdentities(counted);
+    await recomputeIdentityAggregatesForServerUser(counted);
 
     invalidateAutomationsCache();
     if (needsInactivitySweep(existing)) void scheduleInactivityChecks();
@@ -719,7 +712,7 @@ export const automationRoutes: FastifyPluginAsync = async (app) => {
       .delete(automations)
       .where(inArray(automations.id, parsed.data.ids))
       .returning({ id: automations.id });
-    await restateIdentities(counted);
+    await recomputeIdentityAggregatesForServerUser(counted);
 
     if (deleted.length > 0) invalidateAutomationsCache();
     return { success: true, deleted: deleted.length };

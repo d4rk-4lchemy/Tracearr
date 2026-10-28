@@ -4,22 +4,39 @@ import sensible from '@fastify/sensible';
 import { randomUUID } from 'node:crypto';
 import type { SQL } from 'drizzle-orm';
 import type { AuthUser } from '@tracearr/shared';
-import type * as QueriesModule from '../queries.js';
+import type * as QueriesModule from '../queries/index.js';
 import { queryChain, renderSql } from '../../../test/helpers.js';
 
 vi.mock('../../../db/client.js', () => ({
   db: { select: vi.fn(), execute: vi.fn() },
 }));
 
-vi.mock('../queries.js', async (importActual) => ({
+vi.mock('../queries/index.js', async (importActual) => ({
   ...(await importActual<typeof QueriesModule>()),
   resolveIdentityScopedServerUserIds: vi.fn(),
 }));
 
 import { db } from '../../../db/client.js';
-import { resolveIdentityScopedServerUserIds } from '../queries.js';
+import { resolveIdentityScopedServerUserIds } from '../queries/index.js';
 import { sessionsRoutes } from '../sessions.js';
 import { permissionGuard } from '../../../lib/scope.js';
+
+async function buildTestApp(): Promise<FastifyInstance> {
+  const authUser: AuthUser = {
+    userId: randomUUID(),
+    username: 'owner',
+    role: 'owner',
+    serverIds: [],
+  };
+  const app = Fastify({ logger: false });
+  await app.register(sensible);
+  app.decorate('authenticate', async (request: any) => {
+    request.user = authUser;
+  });
+  app.decorate('requirePermission', permissionGuard(app));
+  await app.register(sessionsRoutes, { prefix: '/users' });
+  return app;
+}
 
 describe('GET /users/:id/sessions', () => {
   let app: FastifyInstance;
@@ -32,19 +49,7 @@ describe('GET /users/:id/sessions', () => {
     const serverUserId = randomUUID();
     const mediaId = randomUUID();
     const showMediaId = randomUUID();
-    const authUser: AuthUser = {
-      userId: randomUUID(),
-      username: 'owner',
-      role: 'owner',
-      serverIds: [],
-    };
-    app = Fastify({ logger: false });
-    await app.register(sensible);
-    app.decorate('authenticate', async (request: any) => {
-      request.user = authUser;
-    });
-    app.decorate('requirePermission', permissionGuard(app));
-    await app.register(sessionsRoutes, { prefix: '/users' });
+    app = await buildTestApp();
 
     vi.mocked(resolveIdentityScopedServerUserIds).mockResolvedValue({
       ids: [serverUserId],
@@ -52,7 +57,14 @@ describe('GET /users/:id/sessions', () => {
     vi.mocked(db.select).mockReturnValue(queryChain(vi.fn, [{ count: 1 }]));
     vi.mocked(db.execute).mockResolvedValue({
       rows: [
-        { id: randomUUID(), segment_count: '1', media_id: mediaId, show_media_id: showMediaId },
+        {
+          id: randomUUID(),
+          segment_count: '1',
+          media_id: mediaId,
+          show_media_id: showMediaId,
+          device_id: 'connection-1',
+          dispatcharr_device_id: 'dispatcharr:v1:tv',
+        },
       ],
     } as never);
 
@@ -64,5 +76,27 @@ describe('GET /users/:id/sessions', () => {
     const [row] = response.json().data;
     expect(row.mediaId).toBe(mediaId);
     expect(row.showMediaId).toBe(showMediaId);
+    expect(row.deviceId).toBe('connection-1');
+    expect(row.dispatcharrDeviceId).toBe('dispatcharr:v1:tv');
+    expect(query).toContain('s.dispatcharr_user_agent');
+  });
+
+  it('bounds the join back to sessions by the page window', async () => {
+    const serverUserId = randomUUID();
+    app = await buildTestApp();
+    vi.mocked(resolveIdentityScopedServerUserIds).mockResolvedValue({
+      ids: [serverUserId],
+    } as never);
+    vi.mocked(db.select).mockReturnValue(queryChain(vi.fn, [{ count: 0 }]));
+    vi.mocked(db.execute).mockResolvedValue({ rows: [] } as never);
+
+    await app.inject({ method: 'GET', url: `/users/${serverUserId}/sessions` });
+
+    const { sql: query } = renderSql(vi.mocked(db.execute).mock.calls.at(-1)![0] as SQL);
+    const join = query
+      .replace(/\s+/g, ' ')
+      .match(/JOIN sessions s ON s\.id = gs\.first_session_id.*?JOIN servers/)?.[0];
+    expect(join).toMatch(/s\.started_at >= \$\d+/);
+    expect(join).toMatch(/s\.started_at <= \$\d+/);
   });
 });

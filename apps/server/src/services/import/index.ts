@@ -8,14 +8,10 @@
 // Deduplication
 export {
   type ExistingSession,
-  type DeduplicationResult,
-  type DeduplicationConfig,
   type TimeBounds,
   queryExistingByExternalIds,
   queryExistingByTimeKeys,
   createTimeKey,
-  deduplicateBatch,
-  createDeduplicationContext,
 } from './deduplication.js';
 
 // User Mapping
@@ -37,7 +33,7 @@ export {
   createInsertBatchCollector,
   createUpdateBatchCollector,
 } from './batchProcessor.js';
-export { storedSessionRowById } from '../../db/sessionRow.js';
+export { storedSessionRowById } from '../../db/sessions/row.js';
 
 // Progress Tracking
 export {

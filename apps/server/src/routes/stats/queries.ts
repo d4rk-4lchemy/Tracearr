@@ -21,7 +21,8 @@ import {
   type QualityStats,
 } from '@tracearr/shared';
 import { db } from '../../db/client.js';
-import { countedSessionSql, ACTIVITY_MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
+import { ACTIVITY_MEDIA_TYPE_SQL_FILTER } from '../../constants/index.js';
+import { countedSessionSql } from '../../db/sessions/rules.js';
 import { playbackDecisionSql } from '../../utils/playbackDecisionSql.js';
 
 /** Movies and episodes only, unless the caller counts every media type like the plays aggregate. */
