@@ -14,6 +14,10 @@
     },
     {
       "type": "improved",
+      "text": "Plex setup now accepts your server's own plex.direct address and only refuses Plex relay addresses"
+    },
+    {
+      "type": "improved",
       "text": "mobile pushes replace instead of stacking: a stream's stop replaces its start, a server back up replaces its outage"
     },
     {
