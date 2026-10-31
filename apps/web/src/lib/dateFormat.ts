@@ -183,9 +183,15 @@ const formatters = new Map<string, Intl.DateTimeFormat>();
 
 export function formatDate(date: Date | number, options: Intl.DateTimeFormatOptions): string {
   const locale = getFormatLocale();
-  const withHour12 =
+  const hour12 = getHour12();
+  const withHour12: Intl.DateTimeFormatOptions =
     options.hour !== undefined || options.timeStyle !== undefined
-      ? { ...options, hour12: getHour12() }
+      ? {
+          ...options,
+          hour12,
+          // Forcing hour12 off drops the locale's own padding, so en-GB would show 8:05.
+          ...(!hour12 && options.hour !== undefined && { hour: '2-digit' }),
+        }
       : options;
   const key = `${locale}|${JSON.stringify(withHour12)}`;
   let formatter = formatters.get(key);
@@ -472,7 +478,7 @@ export function axisDateTimeLabelFormats(
       hour: {
         main: getHour12()
           ? { hour: 'numeric', hour12: true }
-          : { hour: 'numeric', minute: '2-digit', hour12: false },
+          : { hour: '2-digit', minute: '2-digit', hour12: false },
       },
     }),
   } satisfies Record<string, { main: Intl.DateTimeFormatOptions }>;

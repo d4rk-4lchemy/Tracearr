@@ -6,6 +6,11 @@
       "type": "fix",
       "text": "newsletter posters and logo now load in the browser view and preview when Tracearr runs under BASE_PATH",
       "refs": ["#1391"]
+    },
+    {
+      "type": "fix",
+      "text": "the 24-hour clock now shows a leading zero on hours before 10, such as 08:05",
+      "refs": ["#1392"]
     }
   ]
 }
