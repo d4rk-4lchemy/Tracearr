@@ -66,6 +66,35 @@ const serverThreadId = (serverId: string | undefined): string | undefined =>
   serverId ? `server:${threadHash(serverId)}` : undefined;
 const userThreadId = (serverUserId: string): string => `user:${threadHash(serverUserId)}`;
 
+// Hashed like threadId because it also travels outside the encrypted data. A push with the
+// same key replaces the one already shown: a stream's stop replaces its start, a server
+// coming back replaces its outage, a person's latest trust score replaces the last one.
+const collapseKey = (kind: 'stream' | 'server' | 'trust', id: string): string =>
+  `${kind}:${threadHash(id)}`;
+
+type PushDevice = Pick<SessionWithPrefs, 'expoPushToken' | 'deviceSecret' | 'platform'>;
+
+/**
+ * TTL for an expendable push: a stream that may have ended, a sync that is stale on arrival.
+ * An offline iPhone holds one notification per app, and FCM treats notification messages as
+ * collapsible under the package name, so a stored stream push can displace a stored alert. 0 means the
+ * push is delivered now or dropped, never stored. Visible pushes are high priority, which FCM
+ * delivers through Doze, so a zero TTL does not lose them on a sleeping Android phone.
+ */
+const EXPENDABLE_TTL_SECONDS = 0;
+
+// iOS features the highest score when it summarizes notifications (0 to 1).
+const RELEVANCE = {
+  serverDown: 1,
+  violation: { high: 1, warning: 0.8, low: 0.6 },
+  newDevice: 0.8,
+  trustDropped: 0.6,
+  serverUp: 0.5,
+  trustRose: 0.3,
+  text: 0.3,
+  stream: 0.2,
+} as const;
+
 const MAX_PENDING_RECEIPTS = 10000;
 const MAX_TOKENS_TO_REMOVE = 1000;
 const RECEIPT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour - receipts older than this are stale
@@ -131,17 +160,18 @@ interface SessionWithPrefs {
  * Supports rich notifications with subtitle and image
  */
 export function buildPushMessage(
-  token: string,
-  deviceSecret: string | null,
+  device: PushDevice,
   notification: {
     title: string;
     subtitle?: string; // iOS subtitle, shown below title
     body: string;
     data?: Record<string, unknown>;
-    priority?: 'default' | 'high';
     channelId?: string;
     categoryId?: string;
     threadId?: string; // iOS groups notifications that share one
+    collapseKey?: string; // replaces a shown push with the same key
+    expendable?: boolean;
+    relevanceScore?: number;
     badge?: number;
     sound?: 'default' | null;
     imageUrl?: string | null; // Rich notification image URL (must be HTTPS)
@@ -149,37 +179,45 @@ export function buildPushMessage(
 ): ExpoPushMessage {
   // Encrypt data payload if device has a secret
   const data = notification.data
-    ? (pushEncryptionService.encryptIfEnabled(notification.data, deviceSecret) as Record<
+    ? (pushEncryptionService.encryptIfEnabled(notification.data, device.deviceSecret) as Record<
         string,
         unknown
       >)
     : undefined;
 
   const message: ExpoPushMessage = {
-    to: token,
+    to: device.expoPushToken,
     title: notification.title,
     body: notification.body,
     data,
-    priority: notification.priority ?? 'default',
+    // Expo's default is high on iOS but normal on Android, where Doze holds normal pushes back.
+    priority: 'high',
     channelId: notification.channelId,
     categoryId: notification.categoryId,
     threadId: notification.threadId,
     badge: notification.badge,
     sound: notification.sound === undefined ? 'default' : notification.sound,
+    relevanceScore: notification.relevanceScore,
   };
+
+  // On iOS collapseId replaces in transit and on screen. On Android it is an FCM collapse key,
+  // and FCM stores four per device, keeping an arbitrary four; tag replaces on screen instead.
+  if (notification.collapseKey) {
+    if (device.platform === 'ios') message.collapseId = notification.collapseKey;
+    else message.tag = notification.collapseKey;
+  }
+  if (notification.expendable) message.ttl = EXPENDABLE_TTL_SECONDS;
 
   // Add subtitle for iOS (Android will show it as part of body)
   if (notification.subtitle) {
     message.subtitle = notification.subtitle;
   }
 
-  // Add rich notification image if URL is HTTPS
-  // Note: Requires Notification Service Extension on iOS to display images
+  // iOS shows the image only through the app's Notification Service Extension, which runs
+  // only on a mutable push. Android shows it as is.
   if (notification.imageUrl?.startsWith('https://')) {
-    // Expo richContent format expects { image: url } not { url: url }
-    (message as ExpoPushMessage & { richContent?: { image: string } }).richContent = {
-      image: notification.imageUrl,
-    };
+    message.richContent = { image: notification.imageUrl };
+    message.mutableContent = true;
   }
 
   // Expo rejects a message over 4096 bytes as MessageTooBig, which only surfaces in a log.
@@ -621,7 +659,7 @@ export class PushNotificationService {
         : null;
 
     const messages = activeSessions.map((session) =>
-      buildPushMessage(session.expoPushToken, session.deviceSecret, {
+      buildPushMessage(session, {
         title: override?.title ?? serverName,
         subtitle: `${SEVERITY_LEVELS[severity].label} Violation`,
         body:
@@ -639,10 +677,10 @@ export class PushNotificationService {
           serverId: violation.server?.id,
           ...(activeSessionId && { sessionId: activeSessionId }),
         },
-        priority: severity === 'high' ? 'high' : 'default',
         channelId: 'violations',
         categoryId: PUSH_CATEGORY.VIOLATION,
         threadId: serverThreadId(serverId),
+        relevanceScore: RELEVANCE.violation[severity],
         badge: 1,
         sound: severity === 'high' ? 'default' : undefined,
         imageUrl,
@@ -699,7 +737,7 @@ export class PushNotificationService {
     const identityUserId = await getIdentityUserId(session.serverUserId);
 
     const messages = activeSessions.map((s) =>
-      buildPushMessage(s.expoPushToken, s.deviceSecret, {
+      buildPushMessage(s, {
         title: override?.title ?? serverName,
         subtitle: 'Now Playing',
         body:
@@ -716,10 +754,12 @@ export class PushNotificationService {
           mediaType: session.mediaType,
           serverId: session.server.id,
         },
-        priority: 'default',
         channelId: 'sessions',
         categoryId: PUSH_CATEGORY.STREAM,
         threadId: serverThreadId(session.server.id),
+        collapseKey: collapseKey('stream', session.id),
+        expendable: true,
+        relevanceScore: RELEVANCE.stream,
         imageUrl,
       })
     );
@@ -774,7 +814,7 @@ export class PushNotificationService {
     const identityUserId = await getIdentityUserId(session.serverUserId);
 
     const messages = activeSessions.map((s) =>
-      buildPushMessage(s.expoPushToken, s.deviceSecret, {
+      buildPushMessage(s, {
         title: override?.title ?? serverName,
         subtitle: 'Stream Ended',
         body:
@@ -790,10 +830,12 @@ export class PushNotificationService {
           mediaTitle: session.mediaTitle,
           serverId: session.server.id,
         },
-        priority: 'default',
         channelId: 'sessions',
         categoryId: PUSH_CATEGORY.STREAM,
         threadId: serverThreadId(session.server.id),
+        collapseKey: collapseKey('stream', session.id),
+        expendable: true,
+        relevanceScore: RELEVANCE.stream,
         imageUrl,
       })
     );
@@ -843,7 +885,7 @@ export class PushNotificationService {
     const imageUrl = buildLogoUrl(externalUrl);
 
     const messages = activeSessions.map((s) =>
-      buildPushMessage(s.expoPushToken, s.deviceSecret, {
+      buildPushMessage(s, {
         title: override?.title ?? serverName,
         subtitle: 'Server Alert',
         body: override?.body ?? 'Connection lost',
@@ -852,10 +894,11 @@ export class PushNotificationService {
           serverName,
           serverId,
         },
-        priority: 'high',
         channelId: 'alerts',
         categoryId: PUSH_CATEGORY.SERVER,
         threadId: serverThreadId(serverId),
+        collapseKey: collapseKey('server', serverId),
+        relevanceScore: RELEVANCE.serverDown,
         sound: 'default',
         imageUrl,
       })
@@ -895,15 +938,15 @@ export class PushNotificationService {
     const where = payload.location ? ` from ${payload.location}` : '';
 
     const messages = activeSessions.map((s) =>
-      buildPushMessage(s.expoPushToken, s.deviceSecret, {
+      buildPushMessage(s, {
         title: override?.title ?? payload.userName,
         subtitle: 'New Device',
         body: override?.body ?? `${payload.deviceName}${where}`,
         data: { ...payload, type: 'new_device' },
-        priority: 'high',
         channelId: 'alerts',
         categoryId: PUSH_CATEGORY.NEW_DEVICE,
         threadId: userThreadId(payload.serverUserId),
+        relevanceScore: RELEVANCE.newDevice,
         sound: 'default',
         imageUrl,
       })
@@ -949,15 +992,16 @@ export class PushNotificationService {
     const move = `${dropped ? 'Dropped' : 'Rose'} from ${String(payload.previousScore)} to ${String(payload.newScore)}`;
 
     const messages = activeSessions.map((s) =>
-      buildPushMessage(s.expoPushToken, s.deviceSecret, {
+      buildPushMessage(s, {
         title: override?.title ?? payload.userName,
         subtitle: 'Trust Score',
         body: override?.body ?? `${move}${why}`,
         data: { ...payload, type: 'trust_score_changed' },
-        priority: dropped ? 'high' : 'default',
         channelId: 'alerts',
         categoryId: PUSH_CATEGORY.TRUST_SCORE_CHANGED,
         threadId: userThreadId(payload.serverUserId),
+        collapseKey: collapseKey('trust', payload.serverUserId),
+        relevanceScore: dropped ? RELEVANCE.trustDropped : RELEVANCE.trustRose,
         imageUrl,
       })
     );
@@ -996,24 +1040,15 @@ export class PushNotificationService {
         to: session.expoPushToken,
         data: encryptedData,
         // Silent notification settings
-        _contentAvailable: true, // iOS background fetch flag
+        contentAvailable: true, // iOS background fetch flag
         priority: 'normal', // Don't wake device aggressively
+        ttl: EXPENDABLE_TTL_SECONDS,
         // No sound, title, or body = silent
       };
     });
 
     await sendPushNotifications(messages);
     console.log(`[Push] Sent ${messages.length} silent data_sync notifications`);
-  }
-
-  /**
-   * Trigger a data sync push for dashboard stats refresh
-   */
-  async triggerStatsSync(): Promise<void> {
-    await this.sendSilentNotification({
-      syncType: 'stats',
-      timestamp: Date.now(),
-    });
   }
 
   /**
@@ -1117,7 +1152,7 @@ export class PushNotificationService {
     const imageUrl = buildLogoUrl(externalUrl);
 
     const messages = activeSessions.map((s) =>
-      buildPushMessage(s.expoPushToken, s.deviceSecret, {
+      buildPushMessage(s, {
         title: override?.title ?? serverName,
         subtitle: 'Server Alert',
         body: override?.body ?? 'Back online',
@@ -1126,10 +1161,11 @@ export class PushNotificationService {
           serverName,
           serverId,
         },
-        priority: 'default',
         channelId: 'alerts',
         categoryId: PUSH_CATEGORY.SERVER,
         threadId: serverThreadId(serverId),
+        collapseKey: collapseKey('server', serverId),
+        relevanceScore: RELEVANCE.serverUp,
         imageUrl,
       })
     );
@@ -1191,13 +1227,13 @@ export class PushNotificationService {
     const imageUrl = buildLogoUrl(externalUrl);
 
     const messages = activeSessions.map((s) =>
-      buildPushMessage(s.expoPushToken, s.deviceSecret, {
+      buildPushMessage(s, {
         title,
         subtitle,
         body,
         data,
-        priority: 'default',
         channelId: 'alerts',
+        relevanceScore: RELEVANCE.text,
         imageUrl,
       })
     );

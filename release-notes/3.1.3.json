@@ -11,6 +11,18 @@
       "type": "fix",
       "text": "the 24-hour clock now shows a leading zero on hours before 10, such as 08:05",
       "refs": ["#1392"]
+    },
+    {
+      "type": "improved",
+      "text": "mobile pushes replace instead of stacking: a stream's stop replaces its start, a server back up replaces its outage"
+    },
+    {
+      "type": "fix",
+      "text": "an iPhone that was offline now gets the alert it missed instead of a stale stream notification"
+    },
+    {
+      "type": "fix",
+      "text": "Android phones in standby now get push notifications right away instead of when the screen next wakes"
     }
   ]
 }
