@@ -1,5 +1,56 @@
 # Tracearr Fork Information
 
+## October 31, 2026 — Tracearr 3.1.3 upstream merge
+
+Upstream `main` at `f71256768` brings seven commits after `1a5fde8e4`,
+including 3.1.3: Jellyfin/Emby restarts after termination no longer stay hidden,
+Plex connection selection ranks local/direct URLs and rejects relay addresses,
+push notifications gain collapse/TTL/priority and iOS image handling, browser
+newsletters respect BASE_PATH, and 24-hour clocks zero-pad hours.
+Upstream and fork migration histories are unchanged and remain separate.
+
+Composite termination cooldowns adopt upstream's per-server hash keyed by the
+full poller connection identity. Dispatcharr retains its five-minute connection
+cooldown instead of the Jellyfin/Emby position heuristic: Live TV can report
+zero and Catch-up progress is estimated. Empty snapshots do not release its
+cooldown early. Polling and authoritative realtime share this check and retain
+immediate missing-session stops. Regression tests cover zero progress in both
+paths, independent parallel connections, expiry and empty snapshots; termination
+and Catch-up rollover fixtures use the new cache API.
+
+Dispatcharr auth/settings, leader-owned realtime/polling, pending/Catch-up
+lifecycle, stable device identity, Live TV Activity, uncropped artwork/cache
+markers, library/Seerr exclusions and two-channel versions remain intact.
+All 300 fork-only localized entries survive unchanged. Exactly the unchanged
+PR-only CI and four-native-build dual-registry release workflow remain; Helm
+changes are excluded. Both Dockerfiles remain unchanged.
+Preservation audit: `.tmp/merge-313-preservation-audit.json`.
+
+Full non-Docker CI-equivalent validation passes with Node 24 / pnpm 12.15.0,
+a frozen-lockfile install, cleared Turbo cache and a 4 GB heap. Heavy jobs run
+sequentially on the 8 GB LXC with at most two Vitest workers and Turbo
+concurrency one; GitHub parallelism is unchanged. Lint, typecheck, translations,
+all five server groups, web, coverage and build pass. Server groups plus web
+pass 10,984 tests without skips (unit 2,499; services 4,398; routes 1,396;
+auth 49; security 106; web 2,536). Coverage passes 6,881 tests with 72.97%
+statements, 66.88% branches, 75.15% functions and 74.47% lines, meeting every
+threshold. Lint has 699 warnings and zero errors, down two: upstream removes
+two poller non-null assertions, with no new normalized diagnostics.
+Runtime warnings retain known classes; services and coverage each add one
+listener-warning occurrence for the new cooldown suite. All 29 locales remain
+in sync. Initial typecheck catches a missing progress field in a fork-only
+termination fixture's expected payload; the corrected full typecheck passes.
+Logs: `.tmp/merge-313-<job>-20261031.log`; sequential runners:
+`.tmp/validate-merge-313{,-resume}.py` and `.tmp/finish-merge-313.py`.
+Initial failed typecheck remains separate from successful reruns.
+All 95 changed supported source/JSON files pass Prettier; final full lint and
+typecheck pass again after build.
+
+Docker integration/E2E are omitted at the user's request. Docker image builds,
+database upgrade execution and live-provider manual smoke are not performed;
+the new Redis cooldown hash and actual provider restart/termination behavior
+remain unverified against running services/providers.
+
 ## October 28, 2026 — Tracearr 3.1.2 upstream merge
 
 Upstream `main` at `1a5fde8e4` brings 44 commits after `908871aea`,
@@ -616,9 +667,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `1a5fde8e4`
-- Last shared upstream commit found during inspection: `908871aea` (before merge)
-- Latest upstream commit merged into the current working tree: `1a5fde8e4`
+- Source branch/SHA inspected: `main` at `f71256768`
+- Last shared upstream commit found during inspection: `1a5fde8e4` (before merge)
+- Latest upstream commit merged into the current working tree: `f71256768`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

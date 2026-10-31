@@ -81,6 +81,8 @@ function outsideData(message: ExpoPushMessage | undefined): string {
   return JSON.stringify(visible);
 }
 
+const IOS = { expoPushToken: 'ExponentPushToken[x]', deviceSecret: null, platform: 'ios' } as const;
+
 const session = createMockActiveSession({
   server: { id: SERVER_ID, name: 'Living Room', type: 'plex' },
 });
@@ -215,7 +217,8 @@ describe('silent sessions sync', () => {
     const message = sent[0];
     expect(message).toMatchObject({
       to: 'ExponentPushToken[ios-1]',
-      _contentAvailable: true,
+      contentAvailable: true,
+      ttl: 0,
       data: { type: 'data_sync', syncType: 'sessions' },
     });
     expect(message).not.toHaveProperty('title');
@@ -248,9 +251,68 @@ describe('silent sessions sync', () => {
   });
 });
 
+describe('replacing a shown push', () => {
+  it("replaces a stream's start with its stop, and never stores either for an offline iPhone", async () => {
+    await pushNotificationService.notifySessionStarted(session);
+    await pushNotificationService.notifySessionStopped(session);
+
+    const [start, stop] = sent;
+    const key = `stream:${hashSha256(session.id).slice(0, 32)}`;
+    for (const message of [start, stop]) {
+      expect(message).toMatchObject({ collapseId: key, ttl: 0 });
+      expect(message).not.toHaveProperty('tag');
+      expect(outsideData(message)).not.toContain(session.id);
+    }
+  });
+
+  it('replaces by tag on Android and sends high so Doze does not hold it past its zero TTL', async () => {
+    rows[0] = device({ expoPushToken: 'ExponentPushToken[android-1]', platform: 'android' });
+    await pushNotificationService.notifySessionStarted(session);
+
+    const key = `stream:${hashSha256(session.id).slice(0, 32)}`;
+    expect(sent[0]).toMatchObject({ tag: key, ttl: 0, priority: 'high' });
+    expect(sent[0]).not.toHaveProperty('collapseId');
+  });
+
+  it('replaces an outage with the recovery and ranks the outage first', async () => {
+    rows[0] = device({ onServerDown: true, onServerUp: true });
+    await pushNotificationService.notifyServerDown('Living Room', SERVER_ID);
+    await pushNotificationService.notifyServerUp('Living Room', SERVER_ID);
+
+    const [down, up] = sent;
+    expect(down?.collapseId).toBe(up?.collapseId);
+    expect(down?.relevanceScore).toBeGreaterThan(up?.relevanceScore ?? 1);
+    expect(down?.ttl).toBeUndefined();
+  });
+});
+
+describe('buildPushMessage image', () => {
+  it('lets the iOS extension attach an https image', () => {
+    const message = buildPushMessage(IOS, {
+      title: 'Title',
+      body: 'Body',
+      imageUrl: 'https://tracearr.example/api/v1/images/proxy?server=s',
+    });
+    expect(message).toMatchObject({
+      richContent: { image: 'https://tracearr.example/api/v1/images/proxy?server=s' },
+      mutableContent: true,
+    });
+  });
+
+  it('sends neither for an http image', () => {
+    const message = buildPushMessage(IOS, {
+      title: 'Title',
+      body: 'Body',
+      imageUrl: 'http://192.168.1.2:3000/api/v1/images/logo',
+    });
+    expect(message).not.toHaveProperty('richContent');
+    expect(message).not.toHaveProperty('mutableContent');
+  });
+});
+
 describe('buildPushMessage size', () => {
   it('cuts the body so the whole message fits in 4096 bytes', () => {
-    const message = buildPushMessage('ExponentPushToken[x]', null, {
+    const message = buildPushMessage(IOS, {
       title: 'Title',
       body: '😀'.repeat(1024),
       data: { type: 'test' },

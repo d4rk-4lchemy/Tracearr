@@ -2144,6 +2144,7 @@
         "reset": "",
         "tls": "",
         "http": "",
+        "relay": "",
         "unknown": ""
       },
       "connectionsReachable": "",

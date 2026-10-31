@@ -266,7 +266,8 @@ function createCacheService(pendingData: PendingSessionData | null) {
     removeActiveSession: vi.fn().mockResolvedValue(undefined),
     removeUserSession: vi.fn().mockResolvedValue(undefined),
     hasTerminationCooldown: vi.fn().mockResolvedValue(false),
-    hasTerminationCooldownComposite: vi.fn().mockResolvedValue(false),
+    getTerminationCooldownsComposite: vi.fn().mockResolvedValue(new Map()),
+    clearTerminationCooldownsComposite: vi.fn(),
     addSessionWriteRetry: vi.fn().mockResolvedValue(undefined),
     invalidateDashboardStatsCache: vi.fn().mockResolvedValue(undefined),
   };

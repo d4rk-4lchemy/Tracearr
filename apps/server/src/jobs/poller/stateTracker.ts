@@ -384,6 +384,23 @@ export function shouldGroupWithPreviousSession(
 // Playback Confirmation (Rule Evaluation Delay)
 // ============================================================================
 
+// A restart resumes where the kill left off, a few seconds behind where a leftover would be.
+const KILL_RESTART_TOLERANCE_MS = 5_000;
+
+/**
+ * Whether a Jellyfin/Emby report after a kill is still the killed playback. The server keeps
+ * advancing a playback whose client never reported the stop, one second per second unless it was
+ * paused, so a report at or past that point is the leftover; one behind it started again.
+ */
+export function isLeftoverOfKill(
+  kill: { killedAt: number; positionMs: number; paused: boolean },
+  progressMs: number,
+  now: number
+): boolean {
+  const expectedMs = kill.positionMs + (kill.paused ? 0 : now - kill.killedAt);
+  return progressMs >= expectedMs - KILL_RESTART_TOLERANCE_MS;
+}
+
 /**
  * Check if playback has been confirmed for rule evaluation.
  *

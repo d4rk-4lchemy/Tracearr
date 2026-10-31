@@ -5,6 +5,9 @@ vi.mock('../../imageProxy.js', () => ({
     `/api/v1/images/proxy?server=${o.serverId}&url=${encodeURIComponent(o.path)}&v=${o.version ?? ''}`,
 }));
 
+const basePath = vi.hoisted(() => ({ value: '' }));
+vi.mock('../../../lib/basePath.js', () => ({ getBasePath: () => basePath.value }));
+
 import { digestForBrowser } from '../snapshot.js';
 
 const html = [
@@ -32,6 +35,17 @@ describe('digestForBrowser', () => {
     expect(out).toContain('Unsubscribe links are only in the email itself.');
     expect(out).toContain('<p style="m">Sent by Tracearr for Movies.</p>');
     expect(out).toContain('<p style="a">Hi</p>');
+  });
+
+  it('prefixes image urls with the base path', () => {
+    basePath.value = '/tracearr';
+    try {
+      const out = digestForBrowser(html, posters);
+      expect(out).toContain('src="/tracearr/api/v1/images/logo"');
+      expect(out).toContain('src="/tracearr/api/v1/images/proxy?server=s1&url=%2Ft%2F1&v=v1"');
+    } finally {
+      basePath.value = '';
+    }
   });
 
   it('leaves a snapshot without placeholders alone apart from the image rewrites', () => {
