@@ -1,0 +1,36 @@
+{
+  "version": "3.1.3",
+  "date": "2026-10-31",
+  "changes": [
+    {
+      "type": "fix",
+      "text": "newsletter posters and logo now load in the browser view and preview when Tracearr runs under BASE_PATH",
+      "refs": ["#1391"]
+    },
+    {
+      "type": "fix",
+      "text": "the 24-hour clock now shows a leading zero on hours before 10, such as 08:05",
+      "refs": ["#1392"]
+    },
+    {
+      "type": "improved",
+      "text": "Plex setup now accepts your server's own plex.direct address and only refuses Plex relay addresses"
+    },
+    {
+      "type": "improved",
+      "text": "mobile pushes replace instead of stacking: a stream's stop replaces its start, a server back up replaces its outage"
+    },
+    {
+      "type": "fix",
+      "text": "an iPhone that was offline now gets the alert it missed instead of a stale stream notification"
+    },
+    {
+      "type": "fix",
+      "text": "Android phones in standby now get push notifications right away instead of when the screen next wakes"
+    },
+    {
+      "type": "improved",
+      "text": "improved Jellyfin and Emby stream reporting"
+    }
+  ]
+}

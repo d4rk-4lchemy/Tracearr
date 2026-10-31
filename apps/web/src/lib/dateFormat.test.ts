@@ -156,6 +156,13 @@ describe('formatHourOfDay', () => {
     expect(formatHourOfDay(0)).toBe('00:00');
     expect(formatHourOfDay(13)).toBe('13:00');
   });
+
+  it('pads single-digit hours on the 24-hour clock in regions that would not', () => {
+    setDateRegion('GB');
+    setTimeFormat('24h');
+    expect(formatHourOfDay(8)).toBe('08:00');
+    expect(formatClock('08:05')).toBe('08:05');
+  });
 });
 
 describe('formatIsoDay', () => {

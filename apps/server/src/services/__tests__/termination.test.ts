@@ -102,7 +102,10 @@ function mockDbInsertChain(logId: string = randomUUID()) {
 describe('terminateSession', () => {
   // Mock services
   const mockCacheService = {
+    getSessionById: vi.fn().mockResolvedValue(null),
     removeActiveSession: vi.fn().mockResolvedValue(undefined),
+    setTerminationCooldown: vi.fn().mockResolvedValue(undefined),
+    setTerminationCooldownComposite: vi.fn().mockResolvedValue(undefined),
   };
 
   const mockPubSubService = {
@@ -115,6 +118,8 @@ describe('terminateSession', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCacheService.getSessionById.mockResolvedValue(null);
+    mockCacheService.removeActiveSession.mockResolvedValue(undefined);
 
     // Default: services are available
     vi.mocked(getCacheService).mockReturnValue(mockCacheService as never);
@@ -281,6 +286,17 @@ describe('terminateSession', () => {
       });
 
       expect(mockCacheService.removeActiveSession).toHaveBeenCalledWith(mockSession.id);
+    });
+
+    it('holds nothing off, since the server has no leftover to report', async () => {
+      const mockSession = createMockSession({ ratingKey: 'item-1' });
+      mockSessionFindFirst.mockResolvedValue(mockSession);
+      mockMediaClient.terminateSession.mockRejectedValue(new Error('Session not found'));
+
+      await terminateSession({ sessionId: mockSession.id, trigger: 'manual' });
+
+      expect(mockCacheService.setTerminationCooldown).not.toHaveBeenCalled();
+      expect(mockCacheService.setTerminationCooldownComposite).not.toHaveBeenCalled();
     });
 
     it('should still broadcast stop event when session already gone', async () => {
@@ -560,6 +576,27 @@ describe('terminateSession', () => {
       );
     });
 
+    it('records where a killed Jellyfin playback stood, under the key the poller builds', async () => {
+      const mockSession = createMockSession({
+        server: { type: 'jellyfin', url: 'http://localhost:8096', token: 'jellyfin-token' },
+        sessionKey: 'jellyfin-session-key',
+        deviceId: 'firestick-1',
+        ratingKey: 'item-1',
+        progressMs: 590_000,
+      });
+      mockSessionFindFirst.mockResolvedValue(mockSession);
+      mockCacheService.getSessionById.mockResolvedValue({ progressMs: 600_000, state: 'paused' });
+      mockMediaClient.terminateSession.mockResolvedValue(true);
+
+      await terminateSession({ sessionId: mockSession.id, trigger: 'manual' });
+
+      expect(mockCacheService.setTerminationCooldownComposite).toHaveBeenCalledWith(
+        mockSession.serverId,
+        `${mockSession.serverId}:${mockSession.serverUserId}:firestick-1:item-1`,
+        { killedAt: expect.any(Number), positionMs: 600_000, paused: true }
+      );
+    });
+
     it('should use sessionKey for Emby servers', async () => {
       const mockSession = createMockSession({
         server: {
@@ -610,6 +647,7 @@ describe('terminateSession', () => {
   it('terminates and cools down the Dispatcharr connection, never the logical device', async () => {
     const cooldown = vi.fn().mockResolvedValue(undefined);
     vi.mocked(getCacheService).mockReturnValue({
+      getSessionById: vi.fn().mockResolvedValue(null),
       removeActiveSession: vi.fn().mockResolvedValue(undefined),
       setTerminationCooldownComposite: cooldown,
     } as never);
@@ -629,9 +667,8 @@ describe('terminateSession', () => {
     expect(mockMediaClient.terminateSession).toHaveBeenCalledWith('channel:client-1', undefined);
     expect(cooldown).toHaveBeenCalledWith(
       session.serverId,
-      session.serverUserId,
-      'client-1',
-      'channel'
+      `${session.serverId}:${session.serverUserId}:client-1:channel`,
+      { killedAt: expect.any(Number), positionMs: 0, paused: false }
     );
   });
 

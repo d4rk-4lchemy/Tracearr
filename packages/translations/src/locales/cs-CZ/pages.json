@@ -2216,6 +2216,7 @@
         "reset": "",
         "tls": "",
         "http": "",
+        "relay": "",
         "unknown": ""
       },
       "connectionsReachable": "{{reachable}} z {{total}} kontaktů dosažitelné",

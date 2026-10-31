@@ -2055,7 +2055,7 @@ export interface TerminationLogWithDetails {
 
 // Reachability error categorization for a tested Plex connection
 export type PlexConnectionErrorCode =
-  'timeout' | 'dns' | 'refused' | 'unreachable' | 'reset' | 'tls' | 'http' | 'unknown';
+  'timeout' | 'dns' | 'refused' | 'unreachable' | 'reset' | 'tls' | 'http' | 'relay' | 'unknown';
 
 export interface PlexConnectionError {
   code: PlexConnectionErrorCode;
