@@ -13,6 +13,7 @@ import { getCacheService, getPubSubService } from './cache.js';
 import { toRuleSession } from './automations/events/contextAssembly.js';
 import { dispatchSessionStopped } from './automations/events/producers.js';
 import { clearDbWriteTracking } from '../jobs/poller/dbWriteThrottle.js';
+import { buildCompositeKey } from '../jobs/poller/stateTracker.js';
 
 // ============================================================================
 // Types
@@ -215,10 +216,12 @@ export async function terminateSession(
     const cacheService = getCacheService();
     if (cacheService) {
       try {
+        const live = await cacheService.getSessionById(session.id);
         await cacheService.removeActiveSession(session.id);
 
-        // Cooldown prevents re-creating this session if it reappears in polls
-        if (session.ratingKey) {
+        // Keeps the server's leftover report of the killed playback from being re-created.
+        // A session the server no longer had leaves nothing behind to hold off.
+        if (outcome === 'terminated' && session.ratingKey) {
           if (session.server.type === 'plex') {
             await cacheService.setTerminationCooldown(
               session.serverId,
@@ -228,9 +231,19 @@ export async function terminateSession(
           } else {
             await cacheService.setTerminationCooldownComposite(
               session.serverId,
-              session.serverUserId,
-              session.deviceId || session.sessionKey,
-              session.ratingKey
+              buildCompositeKey({
+                serverType: session.server.type,
+                serverId: session.serverId,
+                externalUserId: session.serverUserId,
+                deviceId: session.deviceId,
+                ratingKey: session.ratingKey,
+                sessionKey: session.sessionKey,
+              }),
+              {
+                killedAt: now.getTime(),
+                positionMs: (live ?? session).progressMs ?? 0,
+                paused: (live ?? session).state === 'paused',
+              }
             );
           }
         }

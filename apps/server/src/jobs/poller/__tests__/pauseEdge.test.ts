@@ -236,7 +236,8 @@ describe('poller pause edge', () => {
       getPendingSession: vi.fn().mockResolvedValue(null),
       withSessionCreateLock: vi.fn().mockImplementation(async (_s, _k, op) => op()),
       hasTerminationCooldown: vi.fn().mockResolvedValue(false),
-      hasTerminationCooldownComposite: vi.fn().mockResolvedValue(false),
+      getTerminationCooldownsComposite: vi.fn().mockResolvedValue(new Map()),
+      clearTerminationCooldownsComposite: vi.fn(),
     };
 
     initializePoller(
@@ -311,6 +312,7 @@ describe('poller pause edge', () => {
         getAllActiveSessions: vi.fn().mockResolvedValue([]),
         getPendingSession: vi.fn().mockResolvedValue(pending),
         setPendingSession: vi.fn(),
+        getTerminationCooldownsComposite: vi.fn().mockResolvedValue(new Map()),
       } as unknown as Parameters<typeof initializePoller>[0],
       { publish: vi.fn(), subscribe: vi.fn() } as unknown as Parameters<typeof initializePoller>[1]
     );

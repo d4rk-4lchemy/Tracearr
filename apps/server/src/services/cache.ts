@@ -13,6 +13,18 @@ import { PUBLIC_CHANNEL_EVENTS, publishPublicEvent } from './publicEvents/channe
 
 const cacheLogger = createLogger('Cache');
 
+/** Where a Jellyfin/Emby playback stood when Tracearr killed it. */
+export interface TerminationCooldown {
+  killedAt: number;
+  positionMs: number;
+  paused: boolean;
+}
+
+// Jellyfin and Emby clear a playback when the client reports the stop. A client that never does
+// stays listed until the server's idle sweep, which on Jellyfin runs every 5 minutes for playbacks
+// silent more than 5 minutes, so up to 10.
+const TERMINATION_COOLDOWN_COMPOSITE_SECONDS = 15 * 60;
+
 export interface CacheService {
   // Active sessions (atomic SET-based operations)
   addActiveSession(session: ActiveSession): Promise<void>;
@@ -75,16 +87,11 @@ export interface CacheService {
   hasTerminationCooldown(serverId: string, sessionKey: string, ratingKey: string): Promise<boolean>;
   setTerminationCooldownComposite(
     serverId: string,
-    serverUserId: string,
-    deviceId: string,
-    ratingKey: string
+    sessionKey: string,
+    kill: TerminationCooldown
   ): Promise<void>;
-  hasTerminationCooldownComposite(
-    serverId: string,
-    serverUserId: string,
-    deviceId: string,
-    ratingKey: string
-  ): Promise<boolean>;
+  getTerminationCooldownsComposite(serverId: string): Promise<Map<string, TerminationCooldown>>;
+  clearTerminationCooldownsComposite(serverId: string, sessionKeys: string[]): Promise<void>;
 
   // Pending sessions (Redis-first, not yet in DB)
   // Sessions stay here until 30s confirmation threshold, then persist to DB
@@ -462,32 +469,39 @@ export function createCacheService(redis: Redis): CacheService {
 
     async setTerminationCooldownComposite(
       serverId: string,
-      serverUserId: string,
-      deviceId: string,
-      ratingKey: string
+      sessionKey: string,
+      kill: TerminationCooldown
     ): Promise<void> {
-      const cooldownKey = REDIS_KEYS.TERMINATION_COOLDOWN_COMPOSITE(
-        serverId,
-        serverUserId,
-        deviceId,
-        ratingKey
-      );
-      await redis.setex(cooldownKey, 300, '1');
+      const key = REDIS_KEYS.TERMINATION_COOLDOWNS_COMPOSITE(serverId);
+      await redis
+        .multi()
+        .hset(key, sessionKey, JSON.stringify(kill))
+        .expire(key, TERMINATION_COOLDOWN_COMPOSITE_SECONDS)
+        .exec();
     },
 
-    async hasTerminationCooldownComposite(
+    async getTerminationCooldownsComposite(
+      serverId: string
+    ): Promise<Map<string, TerminationCooldown>> {
+      const key = REDIS_KEYS.TERMINATION_COOLDOWNS_COMPOSITE(serverId);
+      const cutoff = Date.now() - TERMINATION_COOLDOWN_COMPOSITE_SECONDS * 1000;
+      const live = new Map<string, TerminationCooldown>();
+      const expired: string[] = [];
+      for (const [sessionKey, value] of Object.entries(await redis.hgetall(key))) {
+        const kill = JSON.parse(value) as TerminationCooldown;
+        if (kill.killedAt > cutoff) live.set(sessionKey, kill);
+        else expired.push(sessionKey);
+      }
+      if (expired.length > 0) await redis.hdel(key, ...expired);
+      return live;
+    },
+
+    async clearTerminationCooldownsComposite(
       serverId: string,
-      serverUserId: string,
-      deviceId: string,
-      ratingKey: string
-    ): Promise<boolean> {
-      const cooldownKey = REDIS_KEYS.TERMINATION_COOLDOWN_COMPOSITE(
-        serverId,
-        serverUserId,
-        deviceId,
-        ratingKey
-      );
-      return (await redis.exists(cooldownKey)) === 1;
+      sessionKeys: string[]
+    ): Promise<void> {
+      if (sessionKeys.length === 0) return;
+      await redis.hdel(REDIS_KEYS.TERMINATION_COOLDOWNS_COMPOSITE(serverId), ...sessionKeys);
     },
 
     // Pending sessions (Redis-first architecture)

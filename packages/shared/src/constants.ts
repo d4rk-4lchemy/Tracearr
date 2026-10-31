@@ -320,13 +320,9 @@ export const REDIS_KEYS = {
     `${_redisPrefix}session:lock:${serverId}:${sessionKey}`,
   TERMINATION_COOLDOWN: (serverId: string, sessionKey: string, ratingKey: string) =>
     `${_redisPrefix}termination:cooldown:${serverId}:${sessionKey}:${ratingKey}`,
-  TERMINATION_COOLDOWN_COMPOSITE: (
-    serverId: string,
-    serverUserId: string,
-    deviceId: string,
-    ratingKey: string
-  ) =>
-    `${_redisPrefix}termination:cooldown:composite:${serverId}:${serverUserId}:${deviceId}:${ratingKey}`,
+  // Hash of Jellyfin/Emby kills on one server, field = the poller's session key
+  TERMINATION_COOLDOWNS_COMPOSITE: (serverId: string) =>
+    `${_redisPrefix}termination:cooldown:composite:${serverId}`,
   // Per-action cooldown on one target. The key string keeps its v1 shape so
   // cooldowns already armed in Redis stay honoured.
   ACTION_COOLDOWN: (automationId: string, targetId: string) =>

@@ -242,7 +242,8 @@ describe('poller confirms a pending session with the confirming user recent-sess
     setPendingSession: ReturnType<typeof vi.fn>;
     withSessionCreateLock: ReturnType<typeof vi.fn>;
     hasTerminationCooldown: ReturnType<typeof vi.fn>;
-    hasTerminationCooldownComposite: ReturnType<typeof vi.fn>;
+    getTerminationCooldownsComposite: ReturnType<typeof vi.fn>;
+    clearTerminationCooldownsComposite: ReturnType<typeof vi.fn>;
     addActiveSession: ReturnType<typeof vi.fn>;
     addUserSession: ReturnType<typeof vi.fn>;
     removeActiveSession: ReturnType<typeof vi.fn>;
@@ -299,7 +300,8 @@ describe('poller confirms a pending session with the confirming user recent-sess
       setPendingSession: vi.fn(),
       withSessionCreateLock: vi.fn().mockImplementation(async (_s, _k, op) => op()),
       hasTerminationCooldown: vi.fn().mockResolvedValue(false),
-      hasTerminationCooldownComposite: vi.fn().mockResolvedValue(false),
+      getTerminationCooldownsComposite: vi.fn().mockResolvedValue(new Map()),
+      clearTerminationCooldownsComposite: vi.fn(),
       addActiveSession: vi.fn(),
       addUserSession: vi.fn(),
       removeActiveSession: vi.fn(),

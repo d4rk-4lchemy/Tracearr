@@ -23,6 +23,10 @@
     {
       "type": "fix",
       "text": "Android phones in standby now get push notifications right away instead of when the screen next wakes"
+    },
+    {
+      "type": "improved",
+      "text": "improved Jellyfin and Emby stream reporting"
     }
   ]
 }

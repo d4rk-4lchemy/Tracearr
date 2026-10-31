@@ -396,8 +396,7 @@ describe('adaptive polling', () => {
 
 describe('termination cooldown composite keys', () => {
   it('cooldown key includes user, device, and content — not session.Id', () => {
-    // The composite cooldown uses serverUserId + deviceId + ratingKey
-    // This means a restart (new session.Id) still hits the cooldown
+    // A Jellyfin/Emby kill is recorded under this key: user, device and item, not session.Id
     const compositeKey1 = buildCompositeKey({
       serverType: 'jellyfin',
       serverId: 'srv-1',
@@ -416,7 +415,6 @@ describe('termination cooldown composite keys', () => {
       sessionKey: 'new-session-after-restart',
     });
 
-    // Same composite key = same cooldown applies
     expect(compositeKey1).toBe(compositeKey2);
   });
 

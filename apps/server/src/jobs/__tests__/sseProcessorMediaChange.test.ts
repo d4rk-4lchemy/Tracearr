@@ -294,7 +294,8 @@ const mockCacheService = {
   withSessionCreateLock: vi.fn(),
   hasTerminationCooldown: vi.fn().mockResolvedValue(false),
   setTerminationCooldown: vi.fn(),
-  hasTerminationCooldownComposite: vi.fn().mockResolvedValue(false),
+  getTerminationCooldownsComposite: vi.fn().mockResolvedValue(new Map()),
+  clearTerminationCooldownsComposite: vi.fn(),
   setTerminationCooldownComposite: vi.fn(),
   // Pending session methods for delayed rule evaluation
   getPendingSession: vi.fn().mockResolvedValue(null),
