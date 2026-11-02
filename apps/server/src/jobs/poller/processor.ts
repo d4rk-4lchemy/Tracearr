@@ -2218,7 +2218,10 @@ async function pollServers(): Promise<void> {
           serverWithToken,
           activeAutomations,
           cachedSessionKeys,
-          cachedSessions
+          cachedSessions,
+          // /dvr is a full snapshot, so a missing entry is a real stop. Skip the
+          // two-poll grace period. A failed request still throws and stops nothing.
+          { immediateStops: server.type === 'channels_dvr' }
         );
 
         // Track health state and notify on transitions (with consecutive-failure threshold)

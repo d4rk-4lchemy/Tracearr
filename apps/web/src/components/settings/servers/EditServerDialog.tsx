@@ -70,6 +70,7 @@ export function EditServerDialog({
   const [seededServer, setSeededServer] = useState<Server | null>(null);
   const isPlexServer = server?.type === 'plex';
   const isDispatcharr = server?.type === 'dispatcharr';
+  const isChannelsDvr = server?.type === 'channels_dvr';
   const [dispatcharr, setDispatcharr] = useState(emptyDispatcharrForm);
   const locked = !!server?.historicalAt;
   const {
@@ -134,7 +135,7 @@ export function EditServerDialog({
   const hasNameChange = server ? editName.trim() !== server.name : false;
   const hasUrlChange = server && !locked ? manualUrl.trim() !== server.url : false;
   const hasPublicUrlChange =
-    server && !isPlexServer && !isDispatcharr
+    server && !isPlexServer && !isDispatcharr && !isChannelsDvr
       ? manualPublicUrl.trim() !== (server.publicUrl ?? '')
       : false;
   const hasColorChange = server ? editColor !== (server.color ?? '') : false;
@@ -151,7 +152,9 @@ export function EditServerDialog({
       ? Boolean(dispatcharr.token.trim())
       : Boolean(dispatcharr.username.trim()) && Boolean(dispatcharr.password));
   const hasApiKeyChange =
-    server && !isPlexServer && !isDispatcharr && !locked ? editApiKey.trim().length > 0 : false;
+    server && !isPlexServer && !isDispatcharr && !isChannelsDvr && !locked
+      ? editApiKey.trim().length > 0
+      : false;
   const hasServerChange =
     hasNameChange ||
     hasUrlChange ||
@@ -259,12 +262,14 @@ export function EditServerDialog({
                   id="edit-url"
                   value={manualUrl}
                   onChange={(e) => setManualUrl(e.target.value)}
-                  placeholder="http://192.168.1.100:8096"
+                  placeholder={
+                    isChannelsDvr ? 'http://192.168.1.100:8089' : 'http://192.168.1.100:8096'
+                  }
                   disabled={locked}
                 />
                 {locked && <FieldDescription>{t('servers.resumeFirst')}</FieldDescription>}
               </Field>
-              {!isDispatcharr && (
+              {!isDispatcharr && !isChannelsDvr && (
                 <>
                   <Field>
                     <FieldLabel htmlFor="edit-public-url">{t('servers.publicUrl')}</FieldLabel>

@@ -20,6 +20,7 @@ import {
 import { db } from '../db/client.js';
 import { servers, libraryItems } from '../db/schema.js';
 import { assertSafeProbeUrl, SsrfBlockedError } from '../utils/ssrf.js';
+import { getChannelLogoUrl, parseChannelLogoPath } from './mediaServer/channelsDvr/logos.js';
 import { cacheWriteAllowed, noteCacheWrite } from './imageCacheGuard.js';
 
 // libvips defaults its thread pool to the core count, so one background
@@ -436,9 +437,9 @@ const IMAGE_PATH_ALLOWLIST: Record<(typeof servers.$inferSelect)['type'], RegExp
   // Dispatcharr VOD metadata can provide other relative logo/poster routes.
   // Requests remain pinned to the configured origin and carry no auth headers.
   dispatcharr: /^\/[^/].*/,
-  // Channels DVR's activity feed does not provide poster paths. Keep image
-  // requests disabled until a supported, origin-pinned image route exists.
-  channels_dvr: /(?!)/,
+  // Channels DVR's activity feed has no artwork. The only route used is the
+  // preview frame of a played file, pinned to /dvr/files/<numeric id>/preview.jpg.
+  channels_dvr: /^\/dvr\/files\/\d+\/preview\.jpg$/,
 };
 
 export function buildUpstreamRequest(
@@ -470,6 +471,12 @@ export function buildUpstreamRequest(
   // authentication header through the public image proxy.
   if (server.type === 'dispatcharr') {
     return { imageUrl: `${baseUrl}${imagePath}`, headers: {} };
+  }
+
+  // Channels DVR has no authentication on the local network, so send nothing
+  // beyond Accept. Its preview frames are not resizable via query parameters.
+  if (server.type === 'channels_dvr') {
+    return { imageUrl: `${baseUrl}${imagePath}`, headers: { Accept: 'image/*' } };
   }
 
   const headers: Record<string, string> = { Accept: 'image/*' };
@@ -597,14 +604,25 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
   try {
     // Inside the try so a blocked path degrades to the fallback image like any
     // other upstream failure, instead of escaping as a 500.
-    const candidates = [
-      buildUpstreamRequest(server, effectiveImagePath, {
-        width,
-        height,
-        preserveAspectRatio: fallback === 'poster',
-      }),
-      ...(resizedOnly ? [] : [buildUpstreamRequest(server, effectiveImagePath)]),
-    ];
+    // A Channels DVR live-channel logo is looked up server-side from the guide, so the
+    // client only ever names a channel number, never the URL that gets fetched.
+    const logoChannel =
+      server.type === 'channels_dvr' ? parseChannelLogoPath(effectiveImagePath) : null;
+    let candidates: Array<{ imageUrl: string; headers: Record<string, string> }>;
+    if (logoChannel !== null) {
+      const logoUrl = await getChannelLogoUrl(server.url, logoChannel);
+      if (!logoUrl) throw new Error(`No guide logo for Channels DVR channel ${logoChannel}`);
+      candidates = [{ imageUrl: logoUrl, headers: { Accept: 'image/*' } }];
+    } else {
+      candidates = [
+        buildUpstreamRequest(server, effectiveImagePath, {
+          width,
+          height,
+          preserveAspectRatio: fallback === 'poster',
+        }),
+        ...(resizedOnly ? [] : [buildUpstreamRequest(server, effectiveImagePath)]),
+      ];
+    }
     let imageBuffer: Buffer | null = null;
     let lastError: unknown = null;
     for (const { imageUrl, headers } of candidates) {

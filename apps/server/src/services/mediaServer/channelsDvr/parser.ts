@@ -18,6 +18,7 @@
  */
 
 import type { MediaSession } from '../types.js';
+import { channelLogoPath } from './logos.js';
 
 export interface DispatcharrArtworkSession {
   serverId: string;
@@ -295,6 +296,13 @@ export function toMediaSession(parsed: ParsedWatchActivity): MediaSession {
   const displayName = parsed.clientName ?? parsed.ipAddress ?? 'Unknown device';
   const userId = channelsDvrUserId(parsed);
   const isLive = parsed.kind === 'live';
+  const logoPath = isLive && parsed.sourceId ? channelLogoPath(parsed.sourceId) : null;
+  // For recordings and imported videos the activity key carries the DVR file id,
+  // and every file has a preview frame at /dvr/files/<id>/preview.jpg.
+  const fileId =
+    parsed.kind === 'recording' && parsed.sourceId && /^\d+$/.test(parsed.sourceId)
+      ? parsed.sourceId
+      : undefined;
 
   const base: MediaSession = {
     // Activity keys are unique per active stream and disappear when it stops.
@@ -306,6 +314,9 @@ export function toMediaSession(parsed: ParsedWatchActivity): MediaSession {
       type: isLive ? 'live' : parsed.show ? 'episode' : 'movie',
       // Channels DVR does not report duration or position in the activity feed.
       durationMs: 0,
+      ...(fileId ? { thumbPath: `/dvr/files/${fileId}/preview.jpg` } : {}),
+      // Live channels without Dispatcharr artwork fall back to the guide logo.
+      ...(isLive && logoPath ? { thumbPath: logoPath } : {}),
     },
     playback: { state: 'playing', positionMs: 0, progressPercent: 0 },
     player: {

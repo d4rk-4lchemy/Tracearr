@@ -915,9 +915,22 @@ describe('buildUpstreamRequest', () => {
     );
   });
 
-  it('rejects image requests for Channels DVR because its activity feed has no image paths', () => {
+  it('allows only file preview frames for Channels DVR, with no auth headers', () => {
+    const server = { ...baseServer, type: 'channels_dvr' } as never;
+    const { imageUrl, headers } = buildUpstreamRequest(server, '/dvr/files/4880/preview.jpg');
+    expect(new URL(imageUrl).pathname).toBe('/dvr/files/4880/preview.jpg');
+    expect(headers).toEqual({ Accept: 'image/*' });
+  });
+
+  it.each([
+    '/poster.jpg',
+    '/dvr/files/abc/preview.jpg',
+    '/dvr/files/4880/preview.jpg?x=1',
+    '/dvr/files/4880/../../settings',
+    '/dvr/files/4880',
+  ])('rejects other Channels DVR image paths: %s', (imagePath) => {
     expect(() =>
-      buildUpstreamRequest({ ...baseServer, type: 'channels_dvr' } as never, '/poster.jpg')
+      buildUpstreamRequest({ ...baseServer, type: 'channels_dvr' } as never, imagePath)
     ).toThrow(SsrfBlockedError);
   });
 

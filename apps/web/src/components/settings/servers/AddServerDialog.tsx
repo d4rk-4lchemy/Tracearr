@@ -251,7 +251,11 @@ export function AddServerDialog({
                 <FieldLabel htmlFor="serverUrl">{t('servers.serverUrl')}</FieldLabel>
                 <Input
                   id="serverUrl"
-                  placeholder={t('servers.serverUrlPlaceholder')}
+                  placeholder={
+                    serverType === 'channels_dvr'
+                      ? 'http://192.168.1.100:8089'
+                      : t('servers.serverUrlPlaceholder')
+                  }
                   value={serverUrl}
                   onChange={(e) => onServerUrlChange(e.target.value)}
                 />

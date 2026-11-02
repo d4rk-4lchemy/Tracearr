@@ -30,6 +30,18 @@ describe('Channels DVR parser', () => {
     expect(s!.mediaId).toBe('4880');
   });
 
+  it('uses the file preview as artwork for recordings and the guide logo route for live streams', () => {
+    const sessions = parseSessionsFromDvr(
+      dvr({
+        '6-file-4880-10.0.0.90':
+          'Watching recording Beat Bobby Flay S26E02 The Dynamic Duo 2020-08-23-1900.mpg from 10.0.0.90.',
+        '6-stream-M3U-mlbradiofeeds-1429-10.100.12.98': 'Watching ch1429 MLBTV.WSH from iPad.',
+      })
+    );
+    expect(sessions[0]!.media.thumbPath).toBe('/dvr/files/4880/preview.jpg');
+    expect(sessions[1]!.media.thumbPath).toBe('/dvr/guide/channels/1429/logo');
+  });
+
   it('maps a live stream and uses the client name as the user when present', () => {
     const [s] = parseSessionsFromDvr(
       dvr({
