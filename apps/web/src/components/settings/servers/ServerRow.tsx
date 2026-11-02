@@ -164,7 +164,12 @@ export function ServerRow({
 
             {server.type !== 'plex' && !historical && (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                {!connectionStatus ? (
+                {server.type === 'channels_dvr' ? (
+                  <span className="flex items-center gap-1">
+                    <Radio className="text-muted-foreground h-3 w-3" aria-hidden="true" />
+                    <span className="text-muted-foreground">{t('servers.pollingMode')}</span>
+                  </span>
+                ) : !connectionStatus ? (
                   <span className="text-muted-foreground">{t('servers.checkingConnection')}</span>
                 ) : connectionStatus.mode === 'realtime' ? (
                   <span className="text-muted-foreground flex items-center gap-1">
@@ -193,12 +198,12 @@ export function ServerRow({
                     </button>
                   </span>
                 )}
-                {connectionStatus?.pluginVersion && (
+                {server.type !== 'channels_dvr' && connectionStatus?.pluginVersion && (
                   <span className="text-muted-foreground">
                     {t('servers.pluginVersion', { version: connectionStatus.pluginVersion })}
                   </span>
                 )}
-                {connectionStatus?.pluginUpdateAvailable && (
+                {server.type !== 'channels_dvr' && connectionStatus?.pluginUpdateAvailable && (
                   <button
                     type="button"
                     className="text-warning inline-flex items-center gap-1 hover:underline"
@@ -246,7 +251,7 @@ export function ServerRow({
         </Item>
       </TooltipProvider>
 
-      {server.type !== 'plex' && realtimeDialog && (
+      {server.type !== 'plex' && server.type !== 'channels_dvr' && realtimeDialog && (
         <RealtimeSetupDialog
           server={server}
           open
