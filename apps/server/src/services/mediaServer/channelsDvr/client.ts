@@ -1,4 +1,5 @@
 import { fetchJson } from '../../../utils/http.js';
+import { channelsDvrArtworkPath, isChannelsDvrItemId } from './artwork.js';
 import type {
   IMediaServerClient,
   MediaLibrary,
@@ -18,8 +19,11 @@ import { channelsDvrUserId, parseDvrActivity, parseWatchActivity, toMediaSession
  * See parser.ts for the caveats on the data format.
  */
 export class ChannelsDvrClient implements IMediaServerClient {
+  private static readonly ARTWORK_CACHE_TTL_MS = 10 * 60 * 1000;
+
   public readonly serverType = 'channels_dvr' as const;
   private readonly baseUrl: string;
+  private readonly artworkCache = new Map<string, { path: string | null; expiresAt: number }>();
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/+$/, '');
@@ -33,15 +37,95 @@ export class ChannelsDvrClient implements IMediaServerClient {
     });
   }
 
+  private async getLibraryItem(path: string): Promise<Record<string, unknown> | null> {
+    try {
+      const data = await fetchJson<unknown>(`${this.baseUrl}${path}`, {
+        headers: { Accept: 'application/json' },
+        service: 'channels-dvr',
+        timeout: 10000,
+      });
+      return data && typeof data === 'object' && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Resolve a recording's primary artwork using the documented Channels
+   * library API. The activity feed only identifies the file, so metadata is
+   * looked up by that ID and cached to avoid polling the API on every cycle.
+   */
+  private async getRecordingArtwork(
+    parsed: NonNullable<ReturnType<typeof parseWatchActivity>>
+  ): Promise<string | null> {
+    if (parsed.kind !== 'recording' || !isChannelsDvrItemId(parsed.sourceId)) return null;
+
+    const fileId = parsed.sourceId;
+    const cacheKey = `${parsed.show ? 'episode' : 'movie'}:${fileId}`;
+    const cached = this.artworkCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.path;
+
+    let artworkPath: string | null = null;
+
+    if (parsed.show) {
+      const episode = await this.getLibraryItem(`/api/v1/episodes/${fileId}`);
+      const showId = typeof episode?.show_id === 'string' ? episode.show_id : undefined;
+
+      // Prefer the parent show's poster over an episode still/frame. The
+      // episode image is retained as a fallback when show art is unavailable.
+      if (isChannelsDvrItemId(showId)) {
+        const show = await this.getLibraryItem(`/api/v1/shows/${showId}`);
+        artworkPath = channelsDvrArtworkPath(this.baseUrl, show?.image_url);
+      }
+      artworkPath ??= channelsDvrArtworkPath(this.baseUrl, episode?.image_url);
+    } else {
+      // Movies includes feature films, including locally imported movies.
+      // Videos is the fallback for imported items that Channels classifies
+      // separately from its movie library.
+      const movie = await this.getLibraryItem(`/api/v1/movies/${fileId}`);
+      artworkPath = channelsDvrArtworkPath(this.baseUrl, movie?.image_url);
+      if (!artworkPath) {
+        const video = await this.getLibraryItem(`/api/v1/videos/${fileId}`);
+        artworkPath = channelsDvrArtworkPath(this.baseUrl, video?.image_url);
+      }
+    }
+
+    // Cache misses too, so a missing artwork record does not cause repeated
+    // metadata requests during every session poll. The session parser keeps
+    // its /dvr/files/<id>/preview.jpg fallback in that case.
+    this.artworkCache.set(cacheKey, {
+      path: artworkPath,
+      expiresAt: Date.now() + ChannelsDvrClient.ARTWORK_CACHE_TTL_MS,
+    });
+    if (this.artworkCache.size > 500) {
+      for (const [key, value] of this.artworkCache) {
+        if (value.expiresAt <= Date.now()) this.artworkCache.delete(key);
+      }
+    }
+
+    return artworkPath;
+  }
+
   async getSessions(sessionKey?: string): Promise<MediaSession[]> {
     const data = await this.getDvrStatus();
-    const sessions: MediaSession[] = [];
+    const parsedSessions = [];
     for (const entry of parseDvrActivity(data)) {
       if (sessionKey && entry.key !== sessionKey) continue;
       const parsed = parseWatchActivity(entry);
-      if (parsed) sessions.push(toMediaSession(parsed));
+      if (parsed) parsedSessions.push(parsed);
     }
-    return sessions;
+
+    return Promise.all(
+      parsedSessions.map(async (parsed) => {
+        const session = toMediaSession(parsed);
+        const artworkPath = await this.getRecordingArtwork(parsed);
+        return artworkPath
+          ? { ...session, media: { ...session.media, thumbPath: artworkPath } }
+          : session;
+      })
+    );
   }
 
   /**

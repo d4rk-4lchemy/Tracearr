@@ -915,11 +915,18 @@ describe('buildUpstreamRequest', () => {
     );
   });
 
-  it('allows only file preview frames for Channels DVR, with no auth headers', () => {
+  it('allows Channels DVR preview frames and poster artwork, with no auth headers', () => {
     const server = { ...baseServer, type: 'channels_dvr' } as never;
     const { imageUrl, headers } = buildUpstreamRequest(server, '/dvr/files/4880/preview.jpg');
     expect(new URL(imageUrl).pathname).toBe('/dvr/files/4880/preview.jpg');
     expect(headers).toEqual({ Accept: 'image/*' });
+
+    expect(
+      new URL(buildUpstreamRequest(server, '/tmsimg/assets/poster.jpg?w=720&h=540').imageUrl).pathname
+    ).toBe('/tmsimg/assets/poster.jpg');
+    expect(
+      new URL(buildUpstreamRequest(server, '/dvr/uploads/125/content').imageUrl).pathname
+    ).toBe('/dvr/uploads/125/content');
   });
 
   it.each([
@@ -928,6 +935,8 @@ describe('buildUpstreamRequest', () => {
     '/dvr/files/4880/preview.jpg?x=1',
     '/dvr/files/4880/../../settings',
     '/dvr/files/4880',
+    '/tmsimg/../../settings',
+    'https://tmsimg.fancybits.co/assets/poster.jpg',
   ])('rejects other Channels DVR image paths: %s', (imagePath) => {
     expect(() =>
       buildUpstreamRequest({ ...baseServer, type: 'channels_dvr' } as never, imagePath)
