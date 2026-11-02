@@ -899,6 +899,7 @@ export const SERVER_TYPE_BRAND_COLORS: Record<string, string> = {
   jellyfin: '#895FDD',
   emby: '#39C668',
   dispatcharr: '#14B8A6',
+  channels_dvr: '#0EA5E9',
 };
 
 /** Pick best color for a server given its type and colors already used by other servers */

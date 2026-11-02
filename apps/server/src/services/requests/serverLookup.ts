@@ -11,7 +11,9 @@ export async function findServerByMachineId(
     .where(eq(servers.machineIdentifier, machineId))
     .limit(1);
   const row = rows[0];
-  return row && row.type !== 'dispatcharr' ? { id: row.id, type: row.type } : null;
+  return row && row.type !== 'dispatcharr' && row.type !== 'channels_dvr'
+    ? { id: row.id, type: row.type }
+    : null;
 }
 
 export async function serverTypeById(id: string): Promise<'plex' | 'jellyfin' | 'emby' | null> {
@@ -21,7 +23,7 @@ export async function serverTypeById(id: string): Promise<'plex' | 'jellyfin' | 
     .where(eq(servers.id, id))
     .limit(1);
   const type = rows[0]?.type;
-  return type && type !== 'dispatcharr' ? type : null;
+  return type && type !== 'dispatcharr' && type !== 'channels_dvr' ? type : null;
 }
 
 export async function findServerById(
@@ -38,5 +40,5 @@ export async function findServerById(
     .where(eq(servers.id, id))
     .limit(1);
   const row = rows[0];
-  return row && row.type !== 'dispatcharr' ? row : null;
+  return row && row.type !== 'dispatcharr' && row.type !== 'channels_dvr' ? row : null;
 }

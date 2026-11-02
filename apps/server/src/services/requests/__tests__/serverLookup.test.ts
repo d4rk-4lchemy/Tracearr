@@ -15,15 +15,18 @@ import { findServerById, findServerByMachineId, serverTypeById } from '../server
 describe('Seerr server eligibility', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('excludes Dispatcharr from matching, linking, and request resolution', async () => {
-    rows.mockResolvedValue([
-      { id: 'tv', name: 'TV', machineIdentifier: 'shared-machine', type: 'dispatcharr' },
-    ]);
+  it.each(['dispatcharr', 'channels_dvr'] as const)(
+    'excludes %s from matching, linking, and request resolution',
+    async (type) => {
+      rows.mockResolvedValue([
+        { id: 'tv', name: 'TV', machineIdentifier: 'shared-machine', type },
+      ]);
 
-    expect(await findServerByMachineId('shared-machine')).toBeNull();
-    expect(await findServerById('tv')).toBeNull();
-    expect(await serverTypeById('tv')).toBeNull();
-  });
+      expect(await findServerByMachineId('shared-machine')).toBeNull();
+      expect(await findServerById('tv')).toBeNull();
+      expect(await serverTypeById('tv')).toBeNull();
+    }
+  );
 
   it.each(['plex', 'jellyfin', 'emby'])('retains %s matching and linking', async (type) => {
     const server = { id: 'media', name: 'Media', machineIdentifier: 'machine', type };

@@ -90,6 +90,7 @@ function ServerDashboard({ actions }: { actions?: ReactNode }) {
         jellyfin: 'Jellyfin',
         emby: 'Emby',
         dispatcharr: 'Dispatcharr',
+        channels_dvr: 'Channels DVR',
       }[singleServer.type]
     : undefined;
 

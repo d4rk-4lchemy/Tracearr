@@ -402,7 +402,8 @@ export async function runImportDuplicateCleanupWalk(deps: {
   const rows = await db.select({ id: servers.id, type: servers.type }).from(servers);
   for (const row of rows) {
     // Dispatcharr has no supported history importer or matching import-key format.
-    if (row.type === 'dispatcharr') continue;
+    // Channels DVR is sessions-only and does not have imported history rows.
+    if (row.type === 'dispatcharr' || row.type === 'channels_dvr') continue;
     const cutoff = await getServerTrackingStart(row.id);
     if (!cutoff) continue;
     const server: DuplicateCleanupServer = { id: row.id, type: row.type, cutoff };

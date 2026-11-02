@@ -94,7 +94,7 @@ export function mapHistoryRow(row: HistoryRow) {
     server: {
       id: row.server_id,
       name: row.server_name,
-      type: row.server_type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
+      type: row.server_type as 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr',
     },
     sessionKey: row.session_key,
     state: row.state,

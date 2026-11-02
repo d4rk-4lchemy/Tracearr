@@ -1,0 +1,244 @@
+/**
+ * Channels DVR parser
+ *
+ * Channels DVR has no documented endpoint for "who is watching". The only
+ * source is the undocumented `GET /dvr` response, whose `activity` object maps
+ * an opaque key to a human-readable sentence, e.g.
+ *
+ *   "6-file-4880-10.0.0.90": "Watching recording Beat Bobby Flay S26E02 ... from 10.0.0.90."
+ *   "6-stream-M3U-mlbradiofeeds-1429-10.100.12.98": "Watching ch1429 MLBTV.WSH from iPad."
+ *
+ * The same map also carries non-viewing work (recording, commercial detection,
+ * guide updates), so entries are filtered to "Watching" lines only. Because the
+ * format is not a stable contract, every extraction here is best-effort and the
+ * parser never throws on unexpected input.
+ *
+ * Channels DVR has no user accounts, so the "user" is the client device (its
+ * name when the server reports one, otherwise its IP address).
+ */
+
+import type { MediaSession } from '../types.js';
+
+export interface ChannelsDvrActivityEntry {
+  key: string;
+  text: string;
+}
+
+export interface ParsedWatchActivity {
+  key: string;
+  kind: 'recording' | 'live';
+  /** Title as written by the server (file name stripped of date/extension for recordings) */
+  title: string;
+  /** Client device name when present in the text, otherwise undefined */
+  clientName?: string;
+  ipAddress?: string;
+  /** Channel number for live streams, file id for recordings */
+  sourceId?: string;
+  /** Live only: programme text after the channel name, when the line has one */
+  programme?: string;
+  show?: { title: string; season: number; episode: number; episodeTitle?: string };
+}
+
+const IPV4_AT_END = /(\d{1,3}(?:\.\d{1,3}){3})$/;
+const IPV4_ANYWHERE = /\b(\d{1,3}(?:\.\d{1,3}){3})\b/;
+const WATCHING_PREFIX = /^\s*watching\b\s*/i;
+const SXXEYY = /\bS(\d{1,3})E(\d{1,4})\b/i;
+const STATS_TAIL = /:\s*buf=.*$/i;
+const FILE_DATE_SUFFIX = /\s+\d{4}-\d{2}-\d{2}-\d{4}(?:\.\w{2,4})?$/;
+const FILE_EXTENSION = /\.(?:mpg|mpeg|ts|mp4|mkv|m4v|avi)$/i;
+
+/** Pull the activity object out of a `/dvr` response. */
+export function parseDvrActivity(data: unknown): ChannelsDvrActivityEntry[] {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
+  const activity = (data as { activity?: unknown }).activity;
+  if (!activity || typeof activity !== 'object' || Array.isArray(activity)) return [];
+
+  const entries: ChannelsDvrActivityEntry[] = [];
+  for (const [key, value] of Object.entries(activity as Record<string, unknown>)) {
+    if (typeof value !== 'string') continue;
+    const text = value.trim();
+    if (key && text) entries.push({ key, text });
+  }
+  return entries;
+}
+
+/** Key shape: `<n>-file-<fileId>-<ip>` or `<n>-stream-<source...>-<channel>-<ip>`. */
+function parseKey(key: string): {
+  kind: 'recording' | 'live' | null;
+  sourceId?: string;
+  ipAddress?: string;
+} {
+  const ipMatch = IPV4_AT_END.exec(key);
+  const ipAddress = ipMatch?.[1];
+  const withoutIp = ipMatch ? key.slice(0, ipMatch.index).replace(/-$/, '') : key;
+  const parts = withoutIp.split('-');
+
+  if (parts.length >= 3 && parts[1] === 'file') {
+    return { kind: 'recording', sourceId: parts.slice(2).join('-') || undefined, ipAddress };
+  }
+  if (parts.length >= 3 && parts[1] === 'stream') {
+    // Channel is the last segment once the IP is removed.
+    return { kind: 'live', sourceId: parts[parts.length - 1] || undefined, ipAddress };
+  }
+  return { kind: null, ipAddress };
+}
+
+function cleanRecordingTitle(raw: string): string {
+  return raw.replace(FILE_EXTENSION, '').replace(FILE_DATE_SUFFIX, '').trim();
+}
+
+/**
+ * Parse one activity entry. Returns null for anything that is not a viewer
+ * (recording jobs, processing, guide refresh, unknown text).
+ */
+export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatchActivity | null {
+  if (!WATCHING_PREFIX.test(entry.text)) return null;
+
+  const keyInfo = parseKey(entry.key);
+  let body = entry.text.replace(WATCHING_PREFIX, '');
+
+  // "Watching recording X ..." is a library playback; anything else is live TV.
+  let kind: 'recording' | 'live' = keyInfo.kind ?? 'live';
+  if (/^recording\b/i.test(body)) {
+    kind = 'recording';
+    body = body.replace(/^recording\b\s*/i, '');
+  } else if (keyInfo.kind === null) {
+    kind = 'live';
+  }
+
+  let clientName: string | undefined;
+  let ipAddress = keyInfo.ipAddress;
+
+  // Live lines end with player stats: ": buf=0% drop=0% timeouts=0 ..."
+  body = body.replace(STATS_TAIL, '').trim();
+
+  // The client is whatever follows the LAST " from " (or " on "), so titles that
+  // contain those words are not cut short.
+  const sepIdx = Math.max(
+    body.toLowerCase().lastIndexOf(' from '),
+    body.toLowerCase().lastIndexOf(' on ')
+  );
+  if (sepIdx >= 0) {
+    const who = body
+      .slice(sepIdx)
+      .replace(/^\s+(?:from|on)\s+/i, '')
+      .replace(/\.$/, '')
+      .trim();
+    body = body.slice(0, sepIdx).trim();
+    const ipInWho = IPV4_ANYWHERE.exec(who);
+    if (ipInWho && who === ipInWho[1]) {
+      ipAddress = ipAddress ?? ipInWho[1];
+    } else if (who) {
+      clientName = who;
+    }
+  }
+
+  // Live text often leads with the channel number ("ch1429 MLBTV.WSH").
+  let title = kind === 'recording' ? cleanRecordingTitle(body) : body.trim();
+  let programme: string | undefined;
+  if (kind === 'live') {
+    title = title.replace(/^ch(?:annel)?\s*[\w.]+\s+/i, '').trim() || title;
+    // "NFL Game Pass 11: Chiefs vs Broncos @ ..." -> channel + programme
+    const colon = title.indexOf(': ');
+    if (colon > 0) {
+      programme = title.slice(colon + 2).trim() || undefined;
+      title = title.slice(0, colon).trim();
+    }
+  }
+  if (!title) return null;
+
+  const showMatch = kind === 'recording' ? SXXEYY.exec(title) : null;
+  const show = showMatch
+    ? {
+        title: title.slice(0, showMatch.index).trim() || title,
+        season: Number.parseInt(showMatch[1]!, 10),
+        episode: Number.parseInt(showMatch[2]!, 10),
+        episodeTitle: title.slice(showMatch.index + showMatch[0].length).trim() || undefined,
+      }
+    : undefined;
+
+  return {
+    key: entry.key,
+    kind,
+    title,
+    clientName,
+    ipAddress,
+    sourceId: keyInfo.sourceId,
+    programme,
+    show,
+  };
+}
+
+function isPrivateIp(ip: string): boolean {
+  const [a, b] = ip.split('.').map((n) => Number.parseInt(n, 10)) as [number, number];
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
+}
+
+/** Stable per-device identity: the reported name, else the IP. */
+export function channelsDvrUserId(parsed: ParsedWatchActivity): string {
+  return (parsed.clientName ?? parsed.ipAddress ?? 'unknown').trim().toLowerCase();
+}
+
+export function toMediaSession(parsed: ParsedWatchActivity): MediaSession {
+  const ip = parsed.ipAddress ?? '0.0.0.0';
+  const displayName = parsed.clientName ?? parsed.ipAddress ?? 'Unknown device';
+  const userId = channelsDvrUserId(parsed);
+  const isLive = parsed.kind === 'live';
+
+  const base: MediaSession = {
+    // Activity keys are unique per active stream and disappear when it stops.
+    sessionKey: parsed.key,
+    mediaId: parsed.sourceId ?? parsed.key,
+    user: { id: userId, username: displayName },
+    media: {
+      title: parsed.programme ?? parsed.show?.episodeTitle ?? parsed.title,
+      type: isLive ? 'live' : parsed.show ? 'episode' : 'movie',
+      // Channels DVR does not report duration or position in the activity feed.
+      durationMs: 0,
+    },
+    playback: { state: 'playing', positionMs: 0, progressPercent: 0 },
+    player: {
+      name: displayName,
+      deviceId: userId,
+      product: 'Channels',
+      platform: 'Channels DVR',
+    },
+    network: { ipAddress: ip, isLocal: isPrivateIp(ip) },
+    quality: {
+      bitrate: 0,
+      isTranscode: false,
+      videoDecision: 'directplay',
+      audioDecision: 'directplay',
+    },
+  };
+
+  if (isLive) {
+    base.live = {
+      channelTitle: parsed.title,
+      ...(parsed.sourceId ? { channelIdentifier: parsed.sourceId } : {}),
+    };
+  }
+  if (parsed.show) {
+    base.episode = {
+      showTitle: parsed.show.title,
+      seasonNumber: parsed.show.season,
+      episodeNumber: parsed.show.episode,
+    };
+  }
+  return base;
+}
+
+export function parseSessionsFromDvr(data: unknown): MediaSession[] {
+  const sessions: MediaSession[] = [];
+  for (const entry of parseDvrActivity(data)) {
+    const parsed = parseWatchActivity(entry);
+    if (parsed) sessions.push(toMediaSession(parsed));
+  }
+  return sessions;
+}

@@ -89,7 +89,7 @@ export function getMediaDisplay(media: MediaDisplayFields): {
   title: string;
   subtitle: string | null;
 } {
-  const unifiedLiveTv = ['jellyfin', 'emby', 'dispatcharr'].includes(media.serverType ?? '');
+  const unifiedLiveTv = ['jellyfin', 'emby', 'dispatcharr', 'channels_dvr'].includes(media.serverType ?? '');
   if (media.mediaType === 'live' && unifiedLiveTv) {
     const channelTitle = media.channelTitle?.trim() || (media.mediaTitle ?? '');
     const programmeTitle = media.mediaTitle?.trim() || null;

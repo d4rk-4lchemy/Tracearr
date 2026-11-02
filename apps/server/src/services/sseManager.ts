@@ -84,7 +84,7 @@ export interface SSEManagerEvents {
 interface ServerConnection {
   serverId: string;
   serverName: string;
-  serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+  serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
   // Retained for diagnosing a Jellyfin/Emby plugin endpoint reported as unsupported.
   url: string;
   token: string;
@@ -277,11 +277,13 @@ export class SSEManager extends EventEmitter {
   async addServer(
     serverId: string,
     serverName: string,
-    serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
+    serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr',
     url: string,
     token: string,
     ignoreAnonymousStreams = true
   ): Promise<void> {
+    // Channels DVR has no event stream; it is covered by the regular REST poller.
+    if (serverType === 'channels_dvr') return;
     if (this.pendingOperations.has(serverId)) {
       console.log(`[SSEManager] Operation already in progress for ${serverName}, skipping`);
       return;
@@ -637,7 +639,7 @@ export class SSEManager extends EventEmitter {
   private buildConnectionStatus(
     serverId: string,
     serverName: string,
-    serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
+    serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr',
     status: SSEConnectionStatus
   ): ServerConnectionStatus {
     const state = status.state;
@@ -806,8 +808,14 @@ export class SSEManager extends EventEmitter {
    */
   private diagnoseUnsupported(serverId: string): void {
     const connection = this.connections.get(serverId);
-    if (!connection || connection.serverType === 'plex' || connection.serverType === 'dispatcharr')
+    if (
+      !connection ||
+      connection.serverType === 'plex' ||
+      connection.serverType === 'dispatcharr' ||
+      connection.serverType === 'channels_dvr'
+    ) {
       return;
+    }
     if (this.pluginProbesInFlight.has(serverId)) return;
 
     const now = Date.now();

@@ -249,7 +249,7 @@ async function handleFirstMisses(
 
     const cachedActiveSession = activeSessions.find((s) => {
       const sType = (serverTypeMap.get(s.serverId) ?? 'plex') as
-        'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+        'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
       return (
         buildCompositeKey({
           serverType: sType,

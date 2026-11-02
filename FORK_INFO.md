@@ -1,5 +1,13 @@
 # Tracearr Fork Information
 
+## November 1, 2026 — Channels DVR (experimental)
+
+Adds a `channels_dvr` server type: sessions only, polled from the undocumented
+`GET /dvr` `activity` map (no auth, no realtime, no termination, no library).
+See `apps/server/src/services/mediaServer/channelsDvr/`. Server type is a varchar,
+so no migration is needed. Typecheck and Vitest were not run (no node_modules or
+network when this was written); only the parser was exercised against fixtures.
+
 ## October 31, 2026 — Tracearr 3.1.3 upstream merge
 
 Upstream `main` at `f71256768` brings seven commits after `1a5fde8e4`,

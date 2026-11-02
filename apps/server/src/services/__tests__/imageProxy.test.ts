@@ -889,6 +889,12 @@ describe('buildUpstreamRequest', () => {
     );
   });
 
+  it('rejects image requests for Channels DVR because its activity feed has no image paths', () => {
+    expect(() =>
+      buildUpstreamRequest({ ...baseServer, type: 'channels_dvr' } as never, '/poster.jpg')
+    ).toThrow(SsrfBlockedError);
+  });
+
   it('fetches the Plex source for uncropped posters without the fill transcoder', () => {
     const server = { ...baseServer, type: 'plex' } as never;
     const { imageUrl } = buildUpstreamRequest(server, '/library/metadata/1/thumb/2', {

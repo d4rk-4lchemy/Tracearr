@@ -163,7 +163,7 @@ describe('supportsWatchHistory', () => {
 
 describe('IMediaServerClient Interface Compliance', () => {
   const createTestClient = (
-    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr'
+    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr'
   ): IMediaServerClient => {
     const urls = {
       plex: 'http://plex.local:32400',

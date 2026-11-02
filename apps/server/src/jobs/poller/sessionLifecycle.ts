@@ -176,7 +176,7 @@ export interface BuildActiveSessionInput {
   server: {
     id: string;
     name: string;
-    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
   };
 
   /** Optional overrides for update scenarios */
@@ -306,7 +306,7 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
     server: { id: server.id, name: server.name, type: server.type },
 
     // Termination capability - Plex requires Session.id, some clients (like Plexamp) don't provide it
-    canTerminate: server.type !== 'plex' || !!processed.plexSessionId,
+    canTerminate: server.type === 'channels_dvr' ? false : server.type !== 'plex' || !!processed.plexSessionId,
   };
 }
 
@@ -436,7 +436,7 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
     server: { id: server.id, name: server.name, type: server.type },
 
     // Termination capability
-    canTerminate: server.type !== 'plex' || !!processed.plexSessionId,
+    canTerminate: server.type === 'channels_dvr' ? false : server.type !== 'plex' || !!processed.plexSessionId,
 
     // Unconfirmed; excludeUncountableSessions drops this from rule evaluation
     pending: true,

@@ -24,6 +24,7 @@ import {
   JellyfinClient,
   EmbyClient,
   DispatcharrClient,
+  ChannelsDvrClient,
 } from '../services/mediaServer/index.js';
 import { getServerLiveStats, getServerResourceStats } from '../services/serverLiveStats.js';
 import { syncServer } from '../services/sync.js';
@@ -51,6 +52,8 @@ function normalizeDispatcharrAuth(input: {
   password?: string;
 }): string | undefined {
   const { type, token, username, password } = input;
+  // Channels DVR has no auth; the column is NOT NULL, so store a fixed placeholder.
+  if (type === 'channels_dvr') return token?.trim() || 'none';
   if (type !== 'dispatcharr') return token;
   return !token && username && password
     ? DispatcharrClient.encodeCredentialToken(username, password)
@@ -62,7 +65,7 @@ function getFirstRow<T>(rows: T[]): T | null {
 }
 
 async function verifyServerAccess(params: {
-  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
   token: string;
   url: string;
 }): Promise<
@@ -117,6 +120,17 @@ async function verifyServerAccess(params: {
                 ? 400
                 : 403,
           message: adminCheck.message,
+        };
+  }
+
+  if (type === 'channels_dvr') {
+    const reachable = await new ChannelsDvrClient({ url, token }).testConnection();
+    return reachable
+      ? { ok: true }
+      : {
+          ok: false,
+          statusCode: 503,
+          message: 'Could not read the Channels DVR /dvr status. Check the URL and port (default 8089).',
         };
   }
 

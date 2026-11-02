@@ -43,7 +43,7 @@ export const isOwner = (role: UserRole): boolean => role === 'owner';
 export const isActive = (role: UserRole): boolean => canLogin(role);
 
 // Server types
-export type ServerType = 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+export type ServerType = 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
 export type DispatcharrAuthMode = 'token' | 'credentials';
 
 export interface Server {
@@ -1638,7 +1638,7 @@ export interface UserFilterOption {
 export interface ServerFilterOption {
   id: string;
   name: string;
-  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
 }
 
 /**
@@ -1743,7 +1743,7 @@ export interface MobilePairResponse {
   server: {
     id: string;
     name: string;
-    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
   };
   user: {
     userId: string;

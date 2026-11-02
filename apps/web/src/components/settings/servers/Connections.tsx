@@ -69,7 +69,7 @@ export function Connections() {
   const [historicalId, setHistoricalId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editServer, setEditServer] = useState<Server | null>(null);
-  const [serverType, setServerType] = useState<'plex' | 'jellyfin' | 'emby' | 'dispatcharr'>(
+  const [serverType, setServerType] = useState<'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr'>(
     'plex'
   );
   const [dispatcharr, setDispatcharr] = useState(emptyDispatcharrForm);
@@ -197,7 +197,9 @@ export function Connections() {
 
   const handleAddServer = async () => {
     const hasAuth =
-      serverType === 'dispatcharr'
+      serverType === 'channels_dvr'
+        ? true
+        : serverType === 'dispatcharr'
         ? dispatcharr.mode === 'token'
           ? Boolean(dispatcharr.token.trim())
           : Boolean(dispatcharr.username.trim()) && Boolean(dispatcharr.password)
@@ -211,6 +213,18 @@ export function Connections() {
     setConnectError(null);
 
     try {
+      if (serverType === 'channels_dvr') {
+        await api.servers.create({
+          type: 'channels_dvr',
+          name: serverName,
+          url: serverUrl,
+          ignoreAnonymousStreams: false,
+        });
+        await refetch();
+        setShowAddDialog(false);
+        resetAddForm();
+        return;
+      }
       if (serverType === 'dispatcharr') {
         await api.servers.create({
           type: 'dispatcharr',
@@ -311,7 +325,7 @@ export function Connections() {
                   isDraggable={isOwner}
                   isOwner={isOwner}
                   requestService={
-                    isOwner && server.type !== 'dispatcharr' && !requestServicesLoading
+                    isOwner && server.type !== 'dispatcharr' && server.type !== 'channels_dvr' && !requestServicesLoading
                       ? { service: requestServices?.find((s) => s.serverId === server.id) }
                       : undefined
                   }

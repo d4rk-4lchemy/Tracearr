@@ -6,7 +6,7 @@
 
 import { executeRawSql } from '../db/pool.js';
 
-export type ServerType = 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+export type ServerType = 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
 
 export interface ServerData {
   id?: string;

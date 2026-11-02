@@ -33,7 +33,7 @@ function getGuard(serverId: string): { running: boolean; pending: PendingSnapsho
 
 function buildCachedSessionKeys(
   cachedSessions: ActiveSession[],
-  serverTypeMap: Map<string, 'plex' | 'jellyfin' | 'emby' | 'dispatcharr'>
+  serverTypeMap: Map<string, 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr'>
 ): Set<string> {
   return new Set(
     cachedSessions.map((session) => {

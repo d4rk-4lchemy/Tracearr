@@ -130,6 +130,11 @@ describe('latestVersionFor', () => {
     );
   });
 
+  it('does not request a vendor feed for Channels DVR', async () => {
+    await expect(latestVersionFor('channels_dvr')).resolves.toBeNull();
+    expect(mockFetchJson).not.toHaveBeenCalled();
+  });
+
   it('returns null when the feed cannot be read', async () => {
     mockFetchJson.mockRejectedValue(new Error('network'));
 

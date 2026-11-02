@@ -38,8 +38,10 @@ export interface AddServerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isOwner: boolean;
-  serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
-  onServerTypeChange: (type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr') => void;
+  serverType: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
+  onServerTypeChange: (
+    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr'
+  ) => void;
   dispatcharr?: DispatcharrForm;
   onDispatcharrChange?: (value: DispatcharrForm) => void;
   serverUrl: string;
@@ -158,6 +160,7 @@ export function AddServerDialog({
                 <SelectItem value="jellyfin">Jellyfin</SelectItem>
                 <SelectItem value="emby">Emby</SelectItem>
                 <SelectItem value="dispatcharr">Dispatcharr</SelectItem>
+                <SelectItem value="channels_dvr">Channels DVR</SelectItem>
               </SelectContent>
             </Select>
           </Field>
@@ -257,11 +260,13 @@ export function AddServerDialog({
                     ? t('servers.serverUrlHelpJellyfin')
                     : serverType === 'dispatcharr'
                       ? 'Dispatcharr base URL, for example http://dispatcharr.local:9191'
-                      : t('servers.serverUrlHelpEmby')}
+                      : serverType === 'channels_dvr'
+                        ? 'Channels DVR base URL, for example http://channels.local:8089'
+                        : t('servers.serverUrlHelpEmby')}
                 </FieldDescription>
               </Field>
 
-              {serverType !== 'dispatcharr' && (
+              {serverType !== 'dispatcharr' && serverType !== 'channels_dvr' && (
                 <Field>
                   <FieldLabel htmlFor="publicUrl">{t('servers.publicUrl')}</FieldLabel>
                   <Input
@@ -289,7 +294,7 @@ export function AddServerDialog({
                 onDispatcharrChange && (
                   <DispatcharrFields value={dispatcharr} onChange={onDispatcharrChange} />
                 )
-              ) : (
+              ) : serverType === 'channels_dvr' ? null : (
                 <Field>
                   <FieldLabel htmlFor="apiKey">{t('common:labels.apiKey')}</FieldLabel>
                   <Input

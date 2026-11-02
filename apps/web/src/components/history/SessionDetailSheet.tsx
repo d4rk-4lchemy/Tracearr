@@ -83,6 +83,7 @@ const SERVER_CONFIG: Record<ServerType, { label: string; color: string }> = {
   jellyfin: { label: 'Jellyfin', color: 'text-purple-500' },
   emby: { label: 'Emby', color: 'text-green-500' },
   dispatcharr: { label: 'Dispatcharr', color: 'text-teal-500' },
+  channels_dvr: { label: 'Channels DVR', color: 'text-sky-500' },
 };
 
 const STATE_CONFIG = {

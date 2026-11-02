@@ -75,7 +75,7 @@ function makeMockRedis(): Redis {
 function setupDbSelectMocks(mockServer: {
   id: string;
   name: string;
-  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr';
+  type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr';
   url: string;
   token: string;
 }) {

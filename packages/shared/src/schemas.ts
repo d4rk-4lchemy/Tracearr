@@ -12,7 +12,7 @@ import { PLAYBACK_DECISIONS } from './playbackDecision.js';
 // ============================================================================
 
 /** Server types supported by Tracearr */
-const SERVER_TYPES = ['plex', 'jellyfin', 'emby', 'dispatcharr'] as const;
+const SERVER_TYPES = ['plex', 'jellyfin', 'emby', 'dispatcharr', 'channels_dvr'] as const;
 export const serverTypeSchema = z.enum(SERVER_TYPES);
 export type ServerType = z.infer<typeof serverTypeSchema>;
 
@@ -217,6 +217,9 @@ export const createServerSchema = z
       }
       return;
     }
+
+    // Channels DVR's local API is unauthenticated, so there is no token to require.
+    if (data.type === 'channels_dvr') return;
 
     if (!data.token?.trim()) {
       ctx.addIssue({

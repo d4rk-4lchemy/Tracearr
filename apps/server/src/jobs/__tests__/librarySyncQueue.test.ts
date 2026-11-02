@@ -7,7 +7,7 @@ vi.mock('../../serverState.js', () => ({
 const { mockDbServers, mockIsLiveServer } = vi.hoisted(() => ({
   mockDbServers: vi.fn(
     async (): Promise<
-      Array<{ id: string; name: string; type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' }>
+      Array<{ id: string; name: string; type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr' }>
     > => []
   ),
   mockIsLiveServer: vi.fn(async (_id: string) => true),
@@ -842,7 +842,7 @@ describe('library sync worker - imported history link hand-off', () => {
 
   /** Fires the worker's completed handler for a finished sync of a server of `type`. */
   async function complete(
-    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr',
+    type: 'plex' | 'jellyfin' | 'emby' | 'dispatcharr' | 'channels_dvr',
     returnvalue: unknown
   ) {
     mockDbServers.mockResolvedValue([{ id: 'srv-1', name: 'Test Server', type }]);

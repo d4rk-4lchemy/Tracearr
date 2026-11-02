@@ -21,6 +21,7 @@ import { PlexClient } from './plex/client.js';
 import { JellyfinClient } from './jellyfin/client.js';
 import { EmbyClient } from './emby/client.js';
 import { DispatcharrClient } from './dispatcharr/client.js';
+import { ChannelsDvrClient } from './channelsDvr/client.js';
 import type {
   IMediaServerClient,
   IMediaServerClientWithHistory,
@@ -67,6 +68,8 @@ export function createMediaServerClient(options: CreateClientOptions): IMediaSer
       return new EmbyClient(config);
     case 'dispatcharr':
       return new DispatcharrClient(config);
+    case 'channels_dvr':
+      return new ChannelsDvrClient(config);
     default:
       throw new Error(`Unknown media server type: ${options.type as string}`);
   }
@@ -106,6 +109,7 @@ export { PlexClient } from './plex/client.js';
 export { JellyfinClient } from './jellyfin/client.js';
 export { EmbyClient } from './emby/client.js';
 export { DispatcharrClient } from './dispatcharr/client.js';
+export { ChannelsDvrClient } from './channelsDvr/client.js';
 
 // Plex-specific types
 export type { PlexServerResource, PlexServerConnection } from './plex/parser.js';
@@ -121,3 +125,4 @@ export * as plexParser from './plex/parser.js';
 export * as jellyfinParser from './jellyfin/parser.js';
 export * as embyParser from './emby/parser.js';
 export * as dispatcharrParser from './dispatcharr/parser.js';
+export * as channelsDvrParser from './channelsDvr/parser.js';

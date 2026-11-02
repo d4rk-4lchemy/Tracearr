@@ -418,6 +418,9 @@ const IMAGE_PATH_ALLOWLIST: Record<(typeof servers.$inferSelect)['type'], RegExp
   // Dispatcharr VOD metadata can provide other relative logo/poster routes.
   // Requests remain pinned to the configured origin and carry no auth headers.
   dispatcharr: /^\/[^/].*/,
+  // Channels DVR's activity feed does not provide poster paths. Keep image
+  // requests disabled until a supported, origin-pinned image route exists.
+  channels_dvr: /(?!)/,
 };
 
 export function buildUpstreamRequest(
