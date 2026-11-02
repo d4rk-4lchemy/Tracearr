@@ -129,6 +129,9 @@ let cacheService: CacheService | null = null;
 let pubSubService: PubSubService | null = null;
 let previousPollHadSessions = false;
 let currentPollIntervalMs: number = POLLING_INTERVALS.SESSIONS_IDLE;
+// Last time each server was polled; used to keep non-Channels servers on their own
+// cadence when a Channels DVR server makes the shared timer tick faster.
+const lastServerPollAt = new Map<string, number>();
 
 registerLiveTvEpgPollTrigger((serverId) => {
   void triggerServerPoll(serverId);
@@ -2142,6 +2145,21 @@ async function pollServers(): Promise<void> {
       return;
     }
 
+    // Channels DVR has no push events, so it is polled on a faster idle cadence. The
+    // timer is shared, so other servers are throttled back to the cadence they would
+    // have had without it.
+    const hasChannelsDvr = serversNeedingPoll.some((server) => server.type === 'channels_dvr');
+    const otherServerIntervalMs = previousPollHadSessions
+      ? POLLING_INTERVALS.SESSIONS_ACTIVE
+      : POLLING_INTERVALS.SESSIONS_IDLE;
+    const tickStartMs = Date.now();
+    const serversDueForPoll = serversNeedingPoll.filter((server) => {
+      if (!hasChannelsDvr || server.type === 'channels_dvr') return true;
+      const last = lastServerPollAt.get(server.id) ?? 0;
+      return tickStartMs - last >= otherServerIntervalMs - currentPollIntervalMs / 2;
+    });
+    for (const server of serversDueForPoll) lastServerPollAt.set(server.id, tickStartMs);
+
     // Get cached session keys from atomic SET-based cache
     const cachedSessions = cacheService ? await cacheService.getAllActiveSessions() : [];
 
@@ -2177,7 +2195,7 @@ async function pollServers(): Promise<void> {
 
     // Process each server with health tracking
     const pollStartedAt = Date.now();
-    await runWithConcurrency(serversNeedingPoll, SERVER_POLL_CONCURRENCY, async (server) => {
+    await runWithConcurrency(serversDueForPoll, SERVER_POLL_CONCURRENCY, async (server) => {
       const serverWithToken = server as ServerWithToken;
 
       if (!acquireServerLock(server.id)) {
@@ -2281,10 +2299,11 @@ async function pollServers(): Promise<void> {
       allUpdatedSessions.length > 0 ||
       cachedSessionsOnPolledServers.length > allStoppedSessions.length;
 
-    if (hasActiveSessions !== previousPollHadSessions && pollingInterval) {
-      const newInterval = hasActiveSessions
-        ? POLLING_INTERVALS.SESSIONS_ACTIVE
+    if (pollingInterval) {
+      const idleIntervalMs = hasChannelsDvr
+        ? Math.min(POLLING_INTERVALS.SESSIONS_IDLE, POLLING_INTERVALS.SESSIONS_IDLE_CHANNELS_DVR)
         : POLLING_INTERVALS.SESSIONS_IDLE;
+      const newInterval = hasActiveSessions ? POLLING_INTERVALS.SESSIONS_ACTIVE : idleIntervalMs;
 
       if (newInterval !== currentPollIntervalMs) {
         clearInterval(pollingInterval);
@@ -2516,6 +2535,7 @@ export function stopPoller(): void {
   missedPollTracking.clear();
   resetDbWriteThrottle();
   previousPollHadSessions = false;
+  lastServerPollAt.clear();
   currentPollIntervalMs = POLLING_INTERVALS.SESSIONS_IDLE;
 }
 

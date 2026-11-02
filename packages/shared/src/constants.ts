@@ -486,6 +486,8 @@ export const JWT_CONFIG = {
 export const POLLING_INTERVALS = {
   SESSIONS_ACTIVE: 3000,
   SESSIONS_IDLE: 10000,
+  /** Idle cadence while a Channels DVR server is polled; other servers keep SESSIONS_IDLE */
+  SESSIONS_IDLE_CHANNELS_DVR: 3000,
   /** @deprecated Use SESSIONS_ACTIVE */
   SESSIONS: 7000,
   STATS_REFRESH: 60000,

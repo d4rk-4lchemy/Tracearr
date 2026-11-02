@@ -189,6 +189,23 @@ export interface BuildActiveSessionInput {
 }
 
 /**
+ * Channels DVR reports no playback position, so the parser emits 0 and the
+ * web estimator would restart from 0 on every poll. Use time since the session
+ * was first seen (minus paused time) as the position instead.
+ */
+export function getChannelsDvrElapsedMs(
+  serverType: string,
+  startedAt: Date | string | number,
+  pausedDurationMs: number | null | undefined,
+  now: number = Date.now()
+): number | null {
+  if (serverType !== 'channels_dvr') return null;
+  const started = new Date(startedAt).getTime();
+  if (!Number.isFinite(started)) return null;
+  return Math.max(0, now - started - (pausedDurationMs ?? 0));
+}
+
+/**
  * Build an ActiveSession object for cache and broadcast.
  */
 export function buildActiveSession(input: BuildActiveSessionInput): ActiveSession {
@@ -233,7 +250,16 @@ export function buildActiveSession(input: BuildActiveSessionInput): ActiveSessio
 
     // Progress
     totalDurationMs: processed.totalDurationMs || null,
-    progressMs: processed.progressMs || null,
+    progressMs:
+      getChannelsDvrElapsedMs(
+        server.type,
+        session.startedAt,
+        overrides?.pausedDurationMs !== undefined
+          ? overrides.pausedDurationMs
+          : session.pausedDurationMs
+      ) ||
+      processed.progressMs ||
+      null,
     progressUpdatedAt: new Date(),
 
     // Pause tracking (can be overridden for updates)
@@ -363,7 +389,10 @@ export function buildPendingActiveSession(pendingData: PendingSessionData): Acti
 
     // Progress
     totalDurationMs: processed.totalDurationMs || null,
-    progressMs: processed.progressMs || null,
+    progressMs:
+      getChannelsDvrElapsedMs(server.type, pendingData.startedAt, pendingData.pausedDurationMs) ||
+      processed.progressMs ||
+      null,
 
     // Pause tracking
     lastPausedAt: pendingData.lastPausedAt ? new Date(pendingData.lastPausedAt) : null,
