@@ -141,7 +141,9 @@ export function AddServerDialog({
           <DialogDescription>
             {serverType === 'plex'
               ? t('servers.addServerDialogDescPlex')
-              : t('servers.addServerDialogDescOther')}
+              : serverType === 'channels_dvr'
+                ? 'Connect a Channels DVR server.'
+                : t('servers.addServerDialogDescOther')}
           </DialogDescription>
         </DialogHeader>
 
@@ -265,7 +267,7 @@ export function AddServerDialog({
                     : serverType === 'dispatcharr'
                       ? 'Dispatcharr base URL, for example http://dispatcharr.local:9191'
                       : serverType === 'channels_dvr'
-                        ? 'Channels DVR base URL, for example http://channels.local:8089'
+                        ? 'The URL where your Channels DVR server is accessible'
                         : t('servers.serverUrlHelpEmby')}
                 </FieldDescription>
               </Field>

@@ -192,7 +192,11 @@ export function EditServerDialog({
       >
         <DialogHeader>
           <DialogTitle>{t('servers.editServer')}</DialogTitle>
-          <DialogDescription>{t('servers.editServerDesc')}</DialogDescription>
+            <DialogDescription>
+              {isChannelsDvr
+                ? 'Update the server name or connection URL.'
+                : t('servers.editServerDesc')}
+            </DialogDescription>
         </DialogHeader>
 
         <FieldGroup className="py-4">
