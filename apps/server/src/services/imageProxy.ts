@@ -106,6 +106,24 @@ export function normalizeDispatcharrImagePath(imagePath: string | null | undefin
   }
 }
 
+/**
+ * Parse a Dispatcharr image reference embedded in another server's session.
+ * The UUID selects the configured Dispatcharr server; the path is still
+ * validated and origin-pinned by buildUpstreamRequest before it is fetched.
+ */
+export function parseDispatcharrImageReference(
+  imagePath: string
+): { serverId: string; imagePath: string } | null {
+  const match =
+    /^dispatcharr:\/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(\/[^\r\n]*)$/i.exec(
+      imagePath
+    );
+
+  if (!match?.[1] || !match[2] || match[2].startsWith('//')) return null;
+
+  return { serverId: match[1], imagePath: match[2] };
+}
+
 interface ProxyOptions {
   serverId: string;
   imagePath: string;
@@ -509,6 +527,7 @@ interface MissPipelineArgs {
   cachePath: string;
   shardDir: string;
   resizedOnly: boolean;
+  requireDispatcharr?: boolean;
 }
 
 /**
@@ -536,10 +555,20 @@ async function getServerRow(serverId: string): Promise<typeof servers.$inferSele
 }
 
 async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
-  const { serverId, imagePath, width, height, fallback, cachePath, shardDir, resizedOnly } = args;
+  const {
+    serverId,
+    imagePath,
+    width,
+    height,
+    fallback,
+    cachePath,
+    shardDir,
+    resizedOnly,
+    requireDispatcharr = false,
+  } = args;
 
   const server = await getServerRow(serverId);
-  if (!server || server.historicalAt) {
+  if (!server || server.historicalAt || (requireDispatcharr && server.type !== 'dispatcharr')) {
     return {
       data: getFallbackImage(fallback, width, height),
       contentType: 'image/svg+xml',
@@ -723,11 +752,14 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
     [POSTER_IMAGE_SIZE, SQUARE_POSTER_SIZE].some(
       (size) => width === size.width && height === size.height
     );
+  const dispatcharrReference = parseDispatcharrImageReference(imagePath);
+  const sourceServerId = dispatcharrReference?.serverId ?? serverId;
+  const sourceImagePath = dispatcharrReference?.imagePath ?? imagePath;
   const effectiveVersion = isPoster ? posterVersionFor(imagePath) : version;
 
   const { fileName, shard, versioned } = buildCacheKeyInfo(
-    serverId,
-    imagePath,
+    sourceServerId,
+    sourceImagePath,
     width,
     height,
     effectiveVersion
@@ -743,14 +775,15 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
   let pipelinePromise = inFlightMisses.get(fileName);
   if (!pipelinePromise) {
     pipelinePromise = runMissPipeline({
-      serverId,
-      imagePath,
+      serverId: sourceServerId,
+      imagePath: sourceImagePath,
       width,
       height,
       fallback,
       cachePath,
       shardDir,
       resizedOnly,
+      requireDispatcharr: Boolean(dispatcharrReference),
     }).finally(() => {
       inFlightMisses.delete(fileName);
     });
@@ -758,7 +791,7 @@ export async function proxyImage(options: ProxyOptions): Promise<ProxyResult> {
   }
 
   if (!lqip || !versioned) return pipelinePromise;
-  return raceWithLqipFallback(pipelinePromise, serverId, imagePath);
+  return raceWithLqipFallback(pipelinePromise, sourceServerId, sourceImagePath);
 }
 
 /**
@@ -838,9 +871,10 @@ export function posterCacheFileName(
   thumbPath: string,
   size: { width: number; height: number } = POSTER_IMAGE_SIZE
 ): { fileName: string; shard: string } {
+  const dispatcharrReference = parseDispatcharrImageReference(thumbPath);
   const { fileName, shard } = buildCacheKeyInfo(
-    serverId,
-    thumbPath,
+    dispatcharrReference?.serverId ?? serverId,
+    dispatcharrReference?.imagePath ?? thumbPath,
     size.width,
     size.height,
     posterVersionFor(thumbPath)

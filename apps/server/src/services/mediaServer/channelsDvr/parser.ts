@@ -19,6 +19,111 @@
 
 import type { MediaSession } from '../types.js';
 
+export interface DispatcharrArtworkSession {
+  serverId: string;
+  ipAddress: string | null;
+  channelTitle: string | null;
+  channelThumb: string | null;
+}
+
+function normalizeArtworkIp(ip: string | null | undefined): string {
+  return (ip ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^::ffff:/, '')
+    .replace(/^\[|\]$/g, '');
+}
+
+function normalizeArtworkChannel(title: string | null | undefined): string {
+  return (title ?? '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+/**
+ * Attach Dispatcharr channel artwork to matching Channels DVR live sessions.
+ * Channels DVR reports the viewer's IP in its activity key. Dispatcharr
+ * reports the Channels DVR server's IP as its client IP, so the configured
+ * Channels DVR server URL is used for correlation instead.
+ *
+ * If multiple Dispatcharr viewers match the same channel, artwork is only
+ * attached when they all resolve to the same server and logo path.
+ */
+export function attachDispatcharrChannelArtwork(
+  channelsDvrSessions: MediaSession[],
+  channelsDvrServerUrl: string,
+  dispatcharrSessions: DispatcharrArtworkSession[]
+): MediaSession[] {
+  let channelsDvrServerIp: string;
+
+  try {
+    channelsDvrServerIp = normalizeArtworkIp(new URL(channelsDvrServerUrl).hostname);
+  } catch {
+    return channelsDvrSessions;
+  }
+
+  if (!channelsDvrServerIp) return channelsDvrSessions;
+
+  const candidates = dispatcharrSessions.filter(
+    (session) =>
+      normalizeArtworkIp(session.ipAddress) === channelsDvrServerIp &&
+      Boolean(session.channelTitle?.trim()) &&
+      Boolean(session.channelThumb?.trim())
+  );
+
+  if (candidates.length === 0) return channelsDvrSessions;
+
+  return channelsDvrSessions.map((session) => {
+    if (session.media.type !== 'live' || !session.live?.channelTitle) return session;
+
+    const title = normalizeArtworkChannel(session.live.channelTitle);
+    if (!title) return session;
+
+    const matches = candidates.filter(
+      (candidate) => normalizeArtworkChannel(candidate.channelTitle) === title
+    );
+    if (matches.length === 0) return session;
+
+    const artworkSources = new Map<string, DispatcharrArtworkSession>();
+    for (const match of matches) {
+      const path = match.channelThumb!.trim();
+      artworkSources.set(`${match.serverId}\0${path}`, match);
+    }
+
+    // Multiple clients on the same channel are fine if the artwork source
+    // agrees. Conflicting sources are ambiguous, so leave the session alone.
+    if (artworkSources.size !== 1) return session;
+
+    const [match] = artworkSources.values();
+    if (!match) return session;
+
+    const logoPath = match.channelThumb!.trim();
+    let normalizedLogoPath: string;
+
+    try {
+      const logoUrl = new URL(logoPath);
+      normalizedLogoPath =
+        logoUrl.protocol === 'http:' || logoUrl.protocol === 'https:'
+          ? `${logoUrl.pathname}${logoUrl.search}`
+          : logoPath.startsWith('/')
+            ? logoPath
+            : `/${logoPath}`;
+    } catch {
+      normalizedLogoPath = logoPath.startsWith('/') ? logoPath : `/${logoPath}`;
+    }
+
+    return {
+      ...session,
+      live: {
+        ...session.live,
+        channelThumb: `dispatcharr://${match.serverId}${normalizedLogoPath}`,
+      },
+    };
+  });
+}
+
 export interface ChannelsDvrActivityEntry {
   key: string;
   text: string;

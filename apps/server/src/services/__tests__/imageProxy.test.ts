@@ -55,6 +55,7 @@ import {
   buildLqipPlaceholder,
   buildUpstreamRequest,
   normalizeDispatcharrImagePath,
+  parseDispatcharrImageReference,
   persistDominantColorIfNeeded,
   _resetServerRowCacheForTests,
 } from '../imageProxy.js';
@@ -115,6 +116,31 @@ describe('normalizeDispatcharrImagePath', () => {
       '/api/channels/logos/1/cache/'
     );
     expect(normalizeDispatcharrImagePath(' ')).toBeNull();
+  });
+});
+
+describe('parseDispatcharrImageReference', () => {
+  it('extracts the Dispatcharr server UUID and relative logo path', () => {
+    const serverId = '11111111-1111-4111-8111-111111111111';
+
+    expect(
+      parseDispatcharrImageReference(
+        `dispatcharr://${serverId}/api/channels/logos/210/cache/`
+      )
+    ).toEqual({
+      serverId,
+      imagePath: '/api/channels/logos/210/cache/',
+    });
+  });
+
+  it('rejects malformed references and protocol-relative paths', () => {
+    expect(parseDispatcharrImageReference('dispatcharr://not-a-uuid/logo.png')).toBeNull();
+    expect(
+      parseDispatcharrImageReference(
+        'dispatcharr://11111111-1111-4111-8111-111111111111//evil.example/logo.png'
+      )
+    ).toBeNull();
+    expect(parseDispatcharrImageReference('/api/channels/logos/210/cache/')).toBeNull();
   });
 });
 

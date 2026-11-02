@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  attachDispatcharrChannelArtwork,
   parseSessionsFromDvr,
   parseDvrActivity,
   parseWatchActivity,
@@ -55,6 +56,111 @@ describe('Channels DVR parser', () => {
     expect(s!.live).toEqual({ channelTitle: 'NFL Game Pass 11', channelIdentifier: '210' });
     expect(s!.media.title).toBe('Kansas City Chiefs vs Denver Broncos @ Nov 01 04:25 PM ET');
     expect(s!.sessionKey).toBe('6-stream-M3U-DispatcharrHLS-210-192.168.30.8');
+  });
+
+
+  it('matches artwork independently when Channels DVR users watch different channels', () => {
+    const sessions = parseSessionsFromDvr(
+      dvr({
+        '6-stream-M3U-DispatcharrHLS-210-192.168.30.8':
+          'Watching ch210 NFL Game Pass 11 from Living Room Apple TV',
+        '6-stream-M3U-DispatcharrHLS-220-192.168.30.9':
+          'Watching ch220 ESPN from Bedroom Apple TV',
+      })
+    );
+
+    const matched = attachDispatcharrChannelArtwork(sessions, 'http://192.168.30.241:8089', [
+      {
+        serverId: '11111111-1111-4111-8111-111111111111',
+        ipAddress: '192.168.30.241',
+        channelTitle: 'NFL Game Pass 11',
+        channelThumb: '/api/channels/logos/210/cache/',
+      },
+      {
+        serverId: '11111111-1111-4111-8111-111111111111',
+        ipAddress: '192.168.30.241',
+        channelTitle: 'ESPN',
+        channelThumb: '/api/channels/logos/220/cache/',
+      },
+    ]);
+
+    expect(matched[0]!.live?.channelThumb).toBe(
+      'dispatcharr://11111111-1111-4111-8111-111111111111/api/channels/logos/210/cache/'
+    );
+    expect(matched[1]!.live?.channelThumb).toBe(
+      'dispatcharr://11111111-1111-4111-8111-111111111111/api/channels/logos/220/cache/'
+    );
+    // The viewer IPs remain the Channels DVR clients, not the DVR server.
+    expect(matched[0]!.network.ipAddress).toBe('192.168.30.8');
+    expect(matched[1]!.network.ipAddress).toBe('192.168.30.9');
+  });
+
+  it('strips the Dispatcharr server origin from absolute channel logo URLs', () => {
+    const sessions = parseSessionsFromDvr(
+      dvr({
+        '6-stream-M3U-DispatcharrHLS-210-192.168.30.8':
+          'Watching ch210 NFL Game Pass 11 from Living Room Apple TV',
+      })
+    );
+
+    const matched = attachDispatcharrChannelArtwork(sessions, 'http://192.168.30.241:8089', [
+      {
+        serverId: 'd24c475b-1469-496a-9eb4-b5385f20dd86',
+        ipAddress: '192.168.30.241',
+        channelTitle: 'NFL Game Pass 11',
+        channelThumb: 'http://192.168.30.241:9191/api/channels/logos/245/cache/',
+      },
+    ]);
+
+    expect(matched[0]!.live?.channelThumb).toBe(
+      'dispatcharr://d24c475b-1469-496a-9eb4-b5385f20dd86/api/channels/logos/245/cache/'
+    );
+  });
+
+  it('does not match artwork from a Dispatcharr session on a different server IP', () => {
+    const sessions = parseSessionsFromDvr(
+      dvr({
+        '6-stream-M3U-DispatcharrHLS-210-192.168.30.8':
+          'Watching ch210 NFL Game Pass 11 from Living Room Apple TV',
+      })
+    );
+
+    const matched = attachDispatcharrChannelArtwork(sessions, 'http://192.168.30.241:8089', [
+      {
+        serverId: '11111111-1111-4111-8111-111111111111',
+        ipAddress: '192.168.30.242',
+        channelTitle: 'NFL Game Pass 11',
+        channelThumb: '/api/channels/logos/210/cache/',
+      },
+    ]);
+
+    expect(matched[0]!.live?.channelThumb).toBeUndefined();
+  });
+
+  it('leaves artwork unchanged when matching Dispatcharr sessions conflict', () => {
+    const sessions = parseSessionsFromDvr(
+      dvr({
+        '6-stream-M3U-DispatcharrHLS-210-192.168.30.8':
+          'Watching ch210 NFL Game Pass 11 from Living Room Apple TV',
+      })
+    );
+
+    const matched = attachDispatcharrChannelArtwork(sessions, 'http://192.168.30.241:8089', [
+      {
+        serverId: '11111111-1111-4111-8111-111111111111',
+        ipAddress: '192.168.30.241',
+        channelTitle: 'NFL Game Pass 11',
+        channelThumb: '/api/channels/logos/210/cache/',
+      },
+      {
+        serverId: '22222222-2222-4222-8222-222222222222',
+        ipAddress: '192.168.30.241',
+        channelTitle: 'NFL Game Pass 11',
+        channelThumb: '/api/channels/logos/210/cache/',
+      },
+    ]);
+
+    expect(matched[0]!.live?.channelThumb).toBeUndefined();
   });
 
   it('ignores non-viewing activity and malformed input', () => {

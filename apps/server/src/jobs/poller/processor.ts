@@ -37,6 +37,7 @@ import { requestSyncForUnknownKeys } from '../../services/libraryEventSync.js';
 import { isLiveRow } from '../../services/liveServers.js';
 import type { CacheService, PubSubService, TerminationCooldown } from '../../services/cache.js';
 import { geoipService } from '../../services/geoip.js';
+import { attachDispatcharrChannelArtwork } from '../../services/mediaServer/channelsDvr/parser.js';
 import { createMediaServerClient } from '../../services/mediaServer/index.js';
 import type { MediaSession } from '../../services/mediaServer/types.js';
 import { resolveSessionGeo, type SessionGeo } from '../../services/serverLocations.js';
@@ -833,7 +834,30 @@ export async function processServerSessions(
     const mediaSessions = options.mediaSessions ?? (await client.getSessions());
     sseManager.nudgeReconnect(server.id);
 
-    const processedSessions = mediaSessions.map((s) => mapMediaSession(s, server.type));
+    // Channels DVR identifies the viewer's IP, while Dispatcharr identifies
+    // the Channels DVR server's IP. Correlate against the configured DVR URL,
+    // then match each viewer's channel independently.
+    const dispatcharrArtworkSessions = activeSessions
+      .filter(
+        (session) =>
+          session.server.type === 'dispatcharr' &&
+          session.dispatcharrPlaybackKind === 'live' &&
+          Boolean(session.channelTitle?.trim()) &&
+          Boolean(session.channelThumb?.trim())
+      )
+      .map((session) => ({
+        serverId: session.serverId,
+        ipAddress: session.ipAddress,
+        channelTitle: session.channelTitle,
+        channelThumb: session.channelThumb,
+      }));
+
+    const sessionsWithArtwork =
+      server.type === 'channels_dvr'
+        ? attachDispatcharrChannelArtwork(mediaSessions, server.url, dispatcharrArtworkSessions)
+        : mediaSessions;
+
+    const processedSessions = sessionsWithArtwork.map((s) => mapMediaSession(s, server.type));
 
     const killCooldowns =
       server.type !== 'plex' && cacheService
