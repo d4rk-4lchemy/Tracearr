@@ -1,5 +1,6 @@
 <p align="center">
-  <b>This is AI slopped fork of Tracearr (https://github.com/connorgallopo/Tracearr), that allows tracking of Dispatcharr streams.</b><br/>
+  <b>This is a fork of Tracearr (https://github.com/connorgallopo/Tracearr) that adds Dispatcharr and Channels DVR integrations.
+  </b><br/>
   <i>Do with it whatever you want, there is no guarantee it will work</i> ¯\_(ツ)_/¯<br/><br/>
 </p>
 
@@ -20,11 +21,30 @@
 - Live TV card is aligned to Dispatcharr needs, showing speed threshold, watchtime,
 - Stream details for Live TV shows bitrate, codecs and video resolution,
 - Support for Catch-Up (Timeshift) sessions, with small badge and custom card.
+- Support for Channels DVR servers, with automatic active session detection,
+- Tracks Live TV streams and playback of recorded movies and shows,
+- Identifies viewers by client device name or IP address,
+- Displays channel logos and recording artwork.
+
+**Channels DVR Integration:**
+
+Connect your Channels DVR server using its base URL and port `8089` (for example, `http://192.168.1.100:8089`). No authentication credentials are required.
+
+The integration monitors active sessions for Live TV and recorded content. Channels DVR does not provide individual user accounts, so Tracearr identifies viewers using their client device name or IP address.
+
+**Current Limitations:**
+- Playback history and library browsing are not supported.
+- Session termination is not supported.
+- Session detection relies on Channels DVR's undocumented `/dvr` activity endpoint, so compatibility may be affected by changes to that endpoint.
 
 **Docker images:**
 
 - `darkalchemy2137/distracearr:latest` or `ghcr.io/d4rk-4lchemy/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` or `ghcr.io/d4rk-4lchemy/distracearr:supervised` - supervised image
+- `ghcr.io/write-erase/tracearr:channels-dvr` - standalone test image with Dispatcharr and Channels DVR support.
+- `ghcr.io/write-erase/tracearr:supervised-channels-dvr` - supervised test image with Dispatcharr and Channels DVR support.
+
+The Channels DVR images are test builds from the `channels-dvr` branch and are published for both AMD64 and ARM64. They are separate from the existing stable image tags.
 
 I tested it on **Supervised image**, so keep that in mind.
 You can also build your own Docker image.<br>
