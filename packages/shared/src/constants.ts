@@ -394,7 +394,7 @@ export const CACHE_TTL = {
   // tick can't serve an entry that already missed a sample.
   SERVER_STATS_RESOURCES: 4,
   SERVER_STATS_BANDWIDTH: 1,
-  SERVER_STATS_CHANNELS_DVR: 5, // under the 6s sample spacing, like the Plex entries above
+  SERVER_STATS_CHANNELS_DVR: 3, // under the 6s sample spacing, like the Plex entries above
   LOCATION_FILTERS: 300, // 5 minutes - filter options change infrequently
   VERSION_CHECK: 21600, // 6 hours - version check interval
   // Library statistics

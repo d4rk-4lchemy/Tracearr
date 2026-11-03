@@ -293,28 +293,37 @@ function shiftPoints<T extends { at: number }>(points: T[], shift: number): T[] 
   return shift === 0 ? points : points.map((p) => ({ ...p, at: p.at + shift }));
 }
 
+// The poller ticks about every 3s, so a 5s lock lands one sample on every second
+// tick (about 6s apart, the spacing the chart and the 26-entry buffer assume)
+const CHANNELS_DVR_SAMPLE_LOCK_SECONDS = 5;
+
 /**
- * Channels DVR has no push plugin, so fetch /system when the dashboard asks and
- * add it to the rolling buffer. The micro-cache keeps concurrent viewers to one
- * sample per tick, and only a fresh fetch is recorded.
+ * Channels DVR has no push plugin, so its /system stats are sampled by the poller
+ * every tick and by the live-stats route. A short Redis lock keeps that to one
+ * fetch per interval however many callers ask, and the chart no longer depends on
+ * a dashboard being open to keep its history continuous.
  */
-async function sampleChannelsDvr(redis: Redis, server: ServerRow): Promise<void> {
+export async function sampleChannelsDvrStats(
+  redis: Redis,
+  server: Pick<ServerRow, 'id' | 'url'>
+): Promise<void> {
   try {
-    await cachedFetch(
-      redis,
+    const claimed = await redis.set(
       REDIS_KEYS.SERVER_STATS_CHANNELS_DVR_FETCH(server.id),
-      CACHE_TTL.SERVER_STATS_CHANNELS_DVR,
-      async () => {
-        const sample = await fetchSystemStats(server.url);
-        if (sample) {
-          await recordServerStatsSample(redis, server.id, sample, {
-            allowNullProcessCpu: true,
-            allowNullProcessMemory: true,
-          });
-        }
-        return sample !== null;
-      }
+      '1',
+      'EX',
+      CHANNELS_DVR_SAMPLE_LOCK_SECONDS,
+      'NX'
     );
+    if (claimed !== 'OK') return;
+
+    const sample = await fetchSystemStats(server.url);
+    if (sample) {
+      await recordServerStatsSample(redis, server.id, sample, {
+        allowNullProcessCpu: true,
+        allowNullProcessMemory: true,
+      });
+    }
   } catch {
     // Unreachable or no /system document: the chart simply stops advancing
   }
@@ -322,7 +331,7 @@ async function sampleChannelsDvr(redis: Redis, server: ServerRow): Promise<void>
 
 export async function getServerLiveStats(redis: Redis, server: ServerRow) {
   if (server.type === 'channels_dvr') {
-    await sampleChannelsDvr(redis, server);
+    await sampleChannelsDvrStats(redis, server);
   }
 
   if (server.type !== 'plex') {

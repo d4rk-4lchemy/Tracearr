@@ -35,6 +35,8 @@ import { isMaintenance } from '../../serverState.js';
 import { isLeader } from '../../services/leaderLease.js';
 import { requestSyncForUnknownKeys } from '../../services/libraryEventSync.js';
 import { isLiveRow } from '../../services/liveServers.js';
+import { getRedis } from '../../lib/redisShared.js';
+import { sampleChannelsDvrStats } from '../../services/serverLiveStats.js';
 import type { CacheService, PubSubService, TerminationCooldown } from '../../services/cache.js';
 import { geoipService } from '../../services/geoip.js';
 import { attachDispatcharrChannelArtwork } from '../../services/mediaServer/channelsDvr/parser.js';
@@ -2159,6 +2161,15 @@ async function pollServers(): Promise<void> {
       return tickStartMs - last >= otherServerIntervalMs - currentPollIntervalMs / 2;
     });
     for (const server of serversDueForPoll) lastServerPollAt.set(server.id, tickStartMs);
+
+    // Channels DVR has no push events, so sample its /system stats on the poller's
+    // schedule, not only when a dashboard asks. Not awaited: a slow /system must
+    // never hold up session polling.
+    if (hasChannelsDvr) {
+      for (const server of serversNeedingPoll) {
+        if (server.type === 'channels_dvr') void sampleChannelsDvrStats(getRedis(), server);
+      }
+    }
 
     // Get cached session keys from atomic SET-based cache
     const cachedSessions = cacheService ? await cacheService.getAllActiveSessions() : [];

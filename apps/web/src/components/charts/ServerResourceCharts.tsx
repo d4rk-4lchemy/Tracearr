@@ -78,6 +78,16 @@ function AverageChip({ color, value }: { color: string; value: number | null | u
   );
 }
 
+// Sources that report no process figure (Channels DVR has no process CPU) fall
+// back to the host figure in the per-server view so they still draw a line
+function multiKeyFor(
+  s: ResourceMultiSeries,
+  processKey: ProcessKey,
+  hostKey: HostKey
+): ProcessKey | HostKey {
+  return s.data.some((p) => p[processKey] != null) ? processKey : hostKey;
+}
+
 function ResourceChart({
   title,
   icon,
@@ -107,12 +117,18 @@ function ResourceChart({
 
     // Host metrics belong to the box: N co-hosted servers, N identical lines
     const series: Highcharts.SeriesOptionsType[] = isMulti
-      ? multiSeries.map((s) => ({
-          type: 'line' as const,
-          name: s.serverName,
-          color: s.color,
-          data: withGaps(pointsFor(s.data, processKey), gap),
-        }))
+      ? multiSeries.map((s) => {
+          const key = multiKeyFor(s, processKey, hostKey);
+          return {
+            type: 'line' as const,
+            name:
+              key === processKey
+                ? s.serverName
+                : `${s.serverName} (${t('dashboard.resources.system')})`,
+            color: s.color,
+            data: withGaps(pointsFor(s.data, key), gap),
+          };
+        })
       : [
           {
             type: 'area',
@@ -288,7 +304,8 @@ function ResourceChart({
         <div className="text-muted-foreground mt-1 flex flex-wrap justify-end gap-4 pr-2 text-xs">
           {isMulti ? (
             multiSeries.map((s) => {
-              const values = s.data.map((p) => p[processKey]).filter((v): v is number => v != null);
+              const key = multiKeyFor(s, processKey, hostKey);
+              const values = s.data.map((p) => p[key]).filter((v): v is number => v != null);
               const avg =
                 values.length > 0
                   ? Math.round(values.reduce((sum, v) => sum + v, 0) / values.length)
