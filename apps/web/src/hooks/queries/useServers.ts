@@ -486,9 +486,7 @@ export function useServerLiveStats(serverId: string | undefined, enabled: boolea
           hostCpu: averageOf(recentStats.map((p) => p.hostCpuUtilization)),
           processCpu: averageOf(recentStats.map((p) => p.processCpuUtilization)),
           hostMemory: averageOf(recentStats.map((p) => p.hostMemoryUtilization)),
-          processMemory: Math.round(
-            recentStats.reduce((sum, p) => sum + p.processMemoryUtilization, 0) / recentStats.length
-          ),
+          processMemory: averageOf(recentStats.map((p) => p.processMemoryUtilization)),
         }
       : null;
 

@@ -45,7 +45,7 @@ interface ServerResourceChartsProps {
     hostCpu: number | null;
     processCpu: number | null;
     hostMemory: number | null;
-    processMemory: number;
+    processMemory: number | null;
   } | null;
   /** One per-server line each; host metrics are dropped in this mode */
   multiSeries?: ResourceMultiSeries[];

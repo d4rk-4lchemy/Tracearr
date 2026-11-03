@@ -164,14 +164,18 @@ export async function recordServerStatsSample(
   redis: Redis,
   serverId: string,
   sample: PluginStatsSample,
-  options: { allowNullProcessCpu?: boolean } = {}
+  options: {
+    allowNullProcessCpu?: boolean;
+    allowNullProcessMemory?: boolean;
+  } = {}
 ): Promise<void> {
   // Process metrics are the floor; host metrics stay null on non-Linux
   // hosts and chart as gaps rather than dropping the whole sample.
   // Channels DVR reports no process CPU, so it opts out of that one check.
   if (
     (sample.processCpuUtilization == null && !options.allowNullProcessCpu) ||
-    sample.processMemoryUtilization == null
+    (sample.processMemoryUtilization == null &&
+      (!options.allowNullProcessMemory || sample.hostMemoryUtilization == null))
   ) {
     return;
   }
@@ -303,7 +307,10 @@ async function sampleChannelsDvr(redis: Redis, server: ServerRow): Promise<void>
       async () => {
         const sample = await fetchSystemStats(server.url);
         if (sample) {
-          await recordServerStatsSample(redis, server.id, sample, { allowNullProcessCpu: true });
+          await recordServerStatsSample(redis, server.id, sample, {
+            allowNullProcessCpu: true,
+            allowNullProcessMemory: true,
+          });
         }
         return sample !== null;
       }

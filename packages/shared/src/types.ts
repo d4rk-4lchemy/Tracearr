@@ -1051,8 +1051,8 @@ export interface ServerResourceDataPoint {
   processCpuUtilization: number | null;
   /** System-wide memory utilization percentage; null when the source cannot see the host */
   hostMemoryUtilization: number | null;
-  /** Media server process memory utilization percentage */
-  processMemoryUtilization: number;
+  /** Media server process memory utilization percentage; null when unavailable */
+  processMemoryUtilization: number | null;
 }
 
 export interface ServerResourceStats {
