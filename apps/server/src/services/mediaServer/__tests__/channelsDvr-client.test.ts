@@ -55,6 +55,7 @@ describe('Channels DVR session artwork', () => {
     // The next poll can use the completed guide refresh without another request.
     const [nextSession] = await channelsClient.getSessions();
     expect(nextSession?.media.thumbPath).toBe('/tmsimg/assets/p31385280_b_h9_aa.jpg');
+    expect(nextSession?.media.title).toBe('My Media Server Program');
     expect(fetchJson).toHaveBeenCalledTimes(3);
   });
 
