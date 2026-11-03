@@ -57,7 +57,7 @@ describe('Channels DVR session artwork', () => {
     const [nextSession] = await channelsClient.getSessions();
     expect(nextSession?.media.thumbPath).toBe('/tmsimg/assets/p31385280_b_h9_aa.jpg');
     expect(nextSession?.media.title).toBe('My Media Server Program');
-    expect(fetchJson).toHaveBeenCalledTimes(5);
+    expect(fetchJson).toHaveBeenCalledTimes(6);
   });
 
   it('uses registered Channels DVR client metadata for the matching playback device', async () => {
@@ -123,7 +123,7 @@ describe('Channels DVR session artwork', () => {
     expect(session?.media.thumbPath).toBe('/tmsimg/assets/p7895187_b_h9_aa.jpg?w=720&h=540');
     expect(session?.player.name).toBe('iPad');
     expect(session?.user.username).toBe('iPad');
-    expect(fetchJson).toHaveBeenCalledTimes(4);
+    expect(fetchJson).toHaveBeenCalledTimes(5);
   });
 
   it('uses the parent show poster for episode playback', async () => {
@@ -152,6 +152,7 @@ describe('Channels DVR session artwork', () => {
         },
       } as never)
       .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({} as never)
       .mockResolvedValueOnce({ image_url: 'https://tmsimg.fancybits.co/assets/movie.jpg?w=480&h=720' } as never);
 
     const [session] = await client().getSessions();
