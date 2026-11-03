@@ -40,15 +40,6 @@ function getCardMediaDisplay(session: ActiveSession): { title: string; subtitle:
     if (session.server.type === 'plex') return { title: session.mediaTitle, subtitle: null };
     const channelTitle = session.channelTitle?.trim() || session.mediaTitle;
     const programTitle = session.mediaTitle?.trim() || null;
-    if (session.server.type === 'channels_dvr') {
-      return {
-        title:
-          programTitle && programTitle !== channelTitle
-            ? `${channelTitle} - ${programTitle}`
-            : channelTitle,
-        subtitle: null,
-      };
-    }
     const subtitle = programTitle && programTitle !== channelTitle ? programTitle : null;
     return { title: channelTitle, subtitle };
   }
@@ -338,15 +329,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
 
             {/* Middle: Title */}
             <div className="mt-2">
-              <h3
-                className={cn(
-                  'text-sm leading-tight font-semibold',
-                  session.mediaType === 'live' && session.server.type === 'channels_dvr'
-                    ? 'line-clamp-2'
-                    : 'truncate'
-                )}
-                title={title}
-              >
+              <h3 className="truncate text-sm leading-tight font-semibold">
                 <MediaPageLink to={mediaLinks.title}>{title}</MediaPageLink>
               </h3>
               {subtitle && (
