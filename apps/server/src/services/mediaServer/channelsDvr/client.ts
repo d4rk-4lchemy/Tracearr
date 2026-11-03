@@ -1,5 +1,6 @@
-import { fetchJson } from '../../../utils/http.js';
+import { fetchJson, fetchText } from '../../../utils/http.js';
 import { channelsDvrArtworkPath, isChannelsDvrItemId } from './artwork.js';
+import { parseChannelsDvrStreamDetails } from './streamDetails.js';
 import type {
   IMediaServerClient,
   MediaLibrary,
@@ -46,6 +47,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
   private readonly fileDetailsCache = new Map<string, { data: Record<string, unknown> | null; expiresAt: number }>();
   private guideCache: { data: unknown; expiresAt: number } | null = null;
   private clientInfoCache: { data: ChannelsDvrClientInfo[]; expiresAt: number } | null = null;
+  private streamLogCache: { data: string; expiresAt: number } | null = null;
   private guideRefresh: Promise<unknown> | null = null;
   private static readonly GUIDE_WAIT_TIMEOUT_MS = 1500;
 
@@ -84,6 +86,27 @@ export class ChannelsDvrClient implements IMediaServerClient {
       // Device metadata is optional; never let this endpoint hide playback sessions.
       this.clientInfoCache = { data: [], expiresAt: Date.now() + 60_000 };
       return [];
+    }
+  }
+
+  /** Fetch recent playback diagnostics from Channels DVR's own log. */
+  private async getStreamLog(): Promise<string> {
+    if (this.streamLogCache && this.streamLogCache.expiresAt > Date.now()) {
+      return this.streamLogCache.data;
+    }
+
+    try {
+      const data = await fetchText(`${this.baseUrl}/log?n=10000`, {
+        headers: { Accept: 'text/plain' },
+        service: 'channels-dvr',
+        timeout: 10000,
+      });
+      this.streamLogCache = { data, expiresAt: Date.now() + 5000 };
+      return data;
+    } catch {
+      // Stream diagnostics are optional and must never hide active sessions.
+      this.streamLogCache = { data: '', expiresAt: Date.now() + 5000 };
+      return '';
     }
   }
 
@@ -297,6 +320,9 @@ export class ChannelsDvrClient implements IMediaServerClient {
       (parsed) => parsed.kind === 'live' && Boolean(parsed.sourceId)
     );
     const guide = hasLiveChannel ? await this.getGuideDataForSession() : null;
+    const streamDetails = hasLiveChannel
+      ? parseChannelsDvrStreamDetails(await this.getStreamLog())
+      : new Map();
 
     return Promise.all(
       parsedSessions.map(async (parsed) => {
@@ -331,6 +357,47 @@ export class ChannelsDvrClient implements IMediaServerClient {
               },
             }
           : session;
+        const streamInfo =
+          parsed.kind === 'live' && parsed.sourceId && sessionIp
+            ? streamDetails.get(`${parsed.sourceId}|${sessionIp}`)
+            : undefined;
+        const sessionWithStream = streamInfo
+          ? {
+              ...sessionWithClient,
+              quality: {
+                ...sessionWithClient.quality,
+                ...(streamInfo.sourceBitrateKbps !== undefined
+                  ? { bitrate: streamInfo.sourceBitrateKbps }
+                  : {}),
+                isTranscode: streamInfo.encoder ? streamInfo.encoder !== 'remux' : false,
+                videoDecision: streamInfo.encoder
+                  ? streamInfo.encoder === 'remux' ? 'copy' : 'transcode'
+                  : 'unknown',
+                // The log reports the configured output codec, but not the
+                // original audio codec, so an audio decision cannot be inferred.
+                audioDecision: 'unknown',
+                ...(streamInfo.videoCodec ? { sourceVideoCodec: streamInfo.videoCodec } : {}),
+                ...(streamInfo.width !== undefined ? { videoWidth: streamInfo.width } : {}),
+                ...(streamInfo.height !== undefined ? { videoHeight: streamInfo.height } : {}),
+                ...(streamInfo.sourceBitrateKbps !== undefined
+                  ? { sourceVideoDetails: { bitrate: streamInfo.sourceBitrateKbps } }
+                  : {}),
+                ...(streamInfo.encoder === 'remux' && streamInfo.videoCodec
+                  ? {
+                      streamVideoCodec: streamInfo.videoCodec,
+                      streamVideoDetails: {
+                        ...(streamInfo.width !== undefined ? { width: streamInfo.width } : {}),
+                        ...(streamInfo.height !== undefined ? { height: streamInfo.height } : {}),
+                        ...(streamInfo.outputBitrateKbps !== undefined
+                          ? { bitrate: streamInfo.outputBitrateKbps }
+                          : {}),
+                      },
+                    }
+                  : {}),
+                ...(streamInfo.audioCodec ? { streamAudioCodec: streamInfo.audioCodec } : {}),
+              },
+            }
+          : sessionWithClient;
         const fileDetails =
           parsed.kind === 'recording' && isChannelsDvrItemId(parsed.sourceId)
             ? await this.getRecordingFileDetails(parsed.sourceId)
@@ -362,10 +429,10 @@ export class ChannelsDvrClient implements IMediaServerClient {
           seasonNumber !== undefined &&
           episodeNumber !== undefined;
         if (!liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) {
-          return sessionWithClient;
+          return sessionWithStream;
         }
         return {
-          ...sessionWithClient,
+          ...sessionWithStream,
           ...(hasFileEpisode && seasonNumber !== undefined && episodeNumber !== undefined
             ? { episode: { showTitle: fileShowTitle, seasonNumber, episodeNumber } }
             : {}),
