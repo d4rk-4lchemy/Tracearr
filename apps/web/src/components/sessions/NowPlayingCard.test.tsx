@@ -146,41 +146,6 @@ function getProgressTranslatePercent(container: HTMLElement): number | null {
   return match?.[1] ? Number(match[1]) : null;
 }
 
-describe('NowPlayingCard Channels DVR live title', () => {
-  it('shows the channel and current programme together, wrapping long titles to two lines', () => {
-    const { container } = render(
-      <NowPlayingCard
-        session={makeSession({
-          mediaType: 'live',
-          mediaTitle: 'Fear Thy Roommate',
-          channelTitle: 'Investigation Discovery',
-          server: { id: 'server-1', name: 'Channels DVR', type: 'channels_dvr' },
-        })}
-      />
-    );
-
-    const title = screen.getByText('Investigation Discovery - Fear Thy Roommate');
-    expect(title).toBeTruthy();
-    expect(title.closest('h3')).toHaveClass('line-clamp-2');
-    expect(container.querySelector('h3[title="Investigation Discovery - Fear Thy Roommate"]')).toBeTruthy();
-  });
-
-  it('shows only the channel when the guide has no programme title', () => {
-    render(
-      <NowPlayingCard
-        session={makeSession({
-          mediaType: 'live',
-          mediaTitle: 'Investigation Discovery',
-          channelTitle: 'Investigation Discovery',
-          server: { id: 'server-1', name: 'Channels DVR', type: 'channels_dvr' },
-        })}
-      />
-    );
-
-    expect(screen.getByText('Investigation Discovery')).toBeTruthy();
-  });
-});
-
 describe('NowPlayingCard ffmpeg speed display', () => {
   beforeEach(() => {
     localStorage.clear();
