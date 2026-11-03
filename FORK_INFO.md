@@ -1,12 +1,16 @@
 # Tracearr Fork Information
 
-## November 1, 2026 — Channels DVR (experimental)
+## November 3, 2026 — Channels DVR integration
 
-Adds a `channels_dvr` server type: sessions only, polled from the undocumented
-`GET /dvr` `activity` map (no auth, no realtime, no termination, no library).
-See `apps/server/src/services/mediaServer/channelsDvr/`. Server type is a varchar,
-so no migration is needed. Typecheck and Vitest were not run (no node_modules or
-network when this was written); only the parser was exercised against fixtures.
+Adds a `channels_dvr` server type: live sessions polled from the undocumented
+`GET /dvr` activity map (no auth, no realtime, no termination, no library).
+Elapsed time counts from when a session is first seen, since Channels DVR reports
+no position. Polls every 3s when idle and stops sessions as soon as they leave
+/dvr. Artwork: recording posters from the library API and live channel logos from
+/dvr/guide/channels. Dashboard CPU/RAM from `GET /system`: host CPU is an estimate
+(1-minute load / core count, capped at 100%) and covers the whole host, not only
+Channels DVR; RAM is Channels DVR's own process memory. Server type is a varchar,
+so no migration is needed.
 
 ## October 31, 2026 — Tracearr 3.1.3 upstream merge
 
