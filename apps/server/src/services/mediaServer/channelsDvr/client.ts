@@ -25,6 +25,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
   public readonly serverType = 'channels_dvr' as const;
   private readonly baseUrl: string;
   private readonly artworkCache = new Map<string, { path: string | null; expiresAt: number }>();
+  private readonly fileDetailsCache = new Map<string, { data: Record<string, unknown> | null; expiresAt: number }>();
   private guideCache: { data: unknown; expiresAt: number } | null = null;
   private guideRefresh: Promise<unknown> | null = null;
   private static readonly GUIDE_WAIT_TIMEOUT_MS = 1500;
@@ -165,6 +166,19 @@ export class ChannelsDvrClient implements IMediaServerClient {
     }
   }
 
+  /** Fetch DVR file metadata, which includes programme and episode details. */
+  private async getRecordingFileDetails(fileId: string): Promise<Record<string, unknown> | null> {
+    const cached = this.fileDetailsCache.get(fileId);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+
+    const data = await this.getLibraryItem(`/dvr/files/${fileId}`);
+    this.fileDetailsCache.set(fileId, {
+      data,
+      expiresAt: Date.now() + ChannelsDvrClient.ARTWORK_CACHE_TTL_MS,
+    });
+    return data;
+  }
+
   /**
    * Resolve a recording's primary artwork using the documented Channels
    * library API. The activity feed only identifies the file, so metadata is
@@ -240,18 +254,37 @@ export class ChannelsDvrClient implements IMediaServerClient {
     return Promise.all(
       parsedSessions.map(async (parsed) => {
         const session = toMediaSession(parsed);
+        const fileDetails =
+          parsed.kind === 'recording' && isChannelsDvrItemId(parsed.sourceId)
+            ? await this.getRecordingFileDetails(parsed.sourceId)
+            : null;
+        const airing = fileDetails?.Airing && typeof fileDetails.Airing === 'object'
+          ? (fileDetails.Airing as Record<string, unknown>)
+          : null;
+        const fileShowTitle = typeof airing?.Title === 'string' ? airing.Title.trim() : '';
+        const episodeTitle = typeof airing?.EpisodeTitle === 'string' ? airing.EpisodeTitle.trim() : '';
+        const seasonNumber = typeof airing?.SeasonNumber === 'number' ? airing.SeasonNumber : parsed.show?.season;
+        const episodeNumber = typeof airing?.EpisodeNumber === 'number' ? airing.EpisodeNumber : parsed.show?.episode;
+        const fileDuration = typeof fileDetails?.Duration === 'number' ? fileDetails.Duration : null;
+        const fileArtwork = channelsDvrArtworkPath(this.baseUrl, airing?.Image);
         const liveAiring =
           parsed.kind === 'live' && parsed.sourceId
             ? this.getLiveAiring(guide, parsed.sourceId)
             : null;
-        const artworkPath = liveAiring?.artworkPath ??
+        const artworkPath = liveAiring?.artworkPath ?? fileArtwork ??
           (parsed.kind === 'recording' ? await this.getRecordingArtwork(parsed) : null);
-        if (!liveAiring?.programTitle && !artworkPath) return session;
+        const hasFileEpisode = Boolean(fileShowTitle && episodeTitle);
+        if (!liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) return session;
         return {
           ...session,
+          ...(hasFileEpisode && seasonNumber !== undefined && episodeNumber !== undefined
+            ? { episode: { showTitle: fileShowTitle, seasonNumber, episodeNumber } }
+            : {}),
           media: {
             ...session.media,
             ...(liveAiring?.programTitle ? { title: liveAiring.programTitle } : {}),
+            ...(hasFileEpisode ? { title: `${episodeTitle} - S${String(seasonNumber ?? 0).padStart(2, '0')}E${String(episodeNumber ?? 0).padStart(2, '0')}` } : {}),
+            ...(fileDuration !== null ? { durationMs: Math.round(fileDuration * 1000) } : {}),
             ...(artworkPath ? { thumbPath: artworkPath } : {}),
           },
         };
