@@ -259,6 +259,7 @@ describe('Channels DVR session artwork', () => {
         },
       } as never)
       .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never);
 
     vi.mocked(fetchText).mockResolvedValueOnce([
