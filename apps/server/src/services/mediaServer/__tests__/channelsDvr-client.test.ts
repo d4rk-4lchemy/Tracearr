@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../utils/http.js', () => ({ fetchJson: vi.fn() }));
+vi.mock('../../../utils/http.js', () => ({ fetchJson: vi.fn(), fetchText: vi.fn() }));
 
-import { fetchJson } from '../../../utils/http.js';
+import { fetchJson, fetchText } from '../../../utils/http.js';
 import { ChannelsDvrClient } from '../channelsDvr/client.js';
 
 const BASE = 'http://channels.local:8089';
 const client = () => new ChannelsDvrClient({ url: BASE, token: 'none' });
 
 describe('Channels DVR session artwork', () => {
-  beforeEach(() => vi.mocked(fetchJson).mockReset());
+  beforeEach(() => {
+    vi.mocked(fetchJson).mockReset();
+    vi.mocked(fetchText).mockReset().mockResolvedValue('');
+  });
 
 
   it('returns virtual-channel sessions when guide artwork is delayed', async () => {
@@ -183,5 +186,46 @@ describe('Channels DVR session artwork', () => {
     expect(session?.media.thumbPath).toBe('/tmsimg/assets/imported-video.jpg');
     expect(fetchJson).toHaveBeenCalledTimes(5);
   });
+
+  it('maps Channels DVR HLS probe and encoder logs to live stream details without an upstream tuner dependency', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        activity: {
+          '6-stream-M3U-AnyTuner-1-192.168.30.9':
+            'Watching ch1 ABC KOCO from iPad: buf=0% drop=0%',
+        },
+      } as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([] as never);
+
+    vi.mocked(fetchText).mockResolvedValueOnce([
+      '2026/11/03 12:00:38.672772 [HLS] Starting live stream for channel 1 from 192.168.30.9',
+      '2026/11/03 12:00:39.936010 [HLS] Session ch1-dANY-ip192.168.30.9 started in 1.263s',
+      '2026/11/03 12:00:40.096451 [HLS] Probed live stream in 1.423s: h264 1920x1080 progressive 8098867bps',
+      '2026/11/03 12:00:40.097300 [ENC] Starting encoder for ch1 in /channels-data/Streaming/sessions/ch1-dANY-ip192.168.30.9-4215598824/encoder-1-2811138658 at 1 (0.466000) (encoder=remux, acodec=aac, bitrate=8098, segment_size=0.01)',
+    ].join('\n'));
+
+    const [session] = await client().getSessions();
+
+    expect(session?.quality).toMatchObject({
+      bitrate: 8099,
+      isTranscode: false,
+      videoDecision: 'copy',
+      audioDecision: 'unknown',
+      sourceVideoCodec: 'h264',
+      videoWidth: 1920,
+      videoHeight: 1080,
+      sourceVideoDetails: { bitrate: 8099 },
+      streamVideoCodec: 'h264',
+      streamVideoDetails: { width: 1920, height: 1080, bitrate: 8098 },
+      streamAudioCodec: 'aac',
+    });
+    expect(session?.quality.sourceAudioCodec).toBeUndefined();
+    expect(fetchText).toHaveBeenCalledWith(
+      `${BASE}/log?n=10000`,
+      expect.objectContaining({ service: 'channels-dvr' })
+    );
+  });
+
 });
 
