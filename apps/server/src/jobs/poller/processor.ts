@@ -2157,7 +2157,10 @@ async function pollServers(): Promise<void> {
     const tickStartMs = Date.now();
     const serversDueForPoll = serversNeedingPoll.filter((server) => {
       if (!hasChannelsDvr || server.type === 'channels_dvr') return true;
-      const last = lastServerPollAt.get(server.id) ?? 0;
+      const last = lastServerPollAt.get(server.id);
+      // A server with no recorded poll has never been polled, so it is due
+      // immediately. This also keeps fake clocks starting at 0 from skipping it.
+      if (last === undefined) return true;
       return tickStartMs - last >= otherServerIntervalMs - currentPollIntervalMs / 2;
     });
     for (const server of serversDueForPoll) lastServerPollAt.set(server.id, tickStartMs);
