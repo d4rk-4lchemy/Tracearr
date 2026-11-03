@@ -845,7 +845,7 @@ export async function processServerSessions(
     const dispatcharrArtworkSessions = activeSessions
       .filter(
         (session) =>
-          session.server.type === 'dispatcharr' &&
+          session.server?.type === 'dispatcharr' &&
           session.dispatcharrPlaybackKind === 'live' &&
           Boolean(session.channelTitle?.trim()) &&
           Boolean(session.channelThumb?.trim())
