@@ -61,7 +61,7 @@ describe('StreamDetailsPanel without technical stream metadata', () => {
 
     expect(screen.getByText('pages:history.stream.video')).toBeTruthy();
     expect(screen.getByText('pages:history.stream.audio')).toBeTruthy();
-    expect(screen.getAllByText('playback.directplay')).toHaveLength(2);
+    expect(screen.getAllByText('playback.directPlay')).toHaveLength(2);
     expect(screen.queryByText('pages:history.stream.noDetails')).toBeNull();
   });
 });
