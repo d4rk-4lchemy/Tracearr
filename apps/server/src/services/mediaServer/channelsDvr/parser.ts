@@ -256,7 +256,7 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
 
   const sxxeyyMatch = kind === 'recording' ? SXXEYY.exec(title) : null;
   const seasonEpisodeMatch =
-    kind === 'recording' ? /\\s+-\\s+Season\\s+(\\d{1,3}),\\s*Episode\\s+(\\d{1,4})\\s*$/i.exec(title) : null;
+    kind === 'recording' ? /\s+-\s+Season\s+(\d{1,3}),\s*Episode\s+(\d{1,4})\s*$/i.exec(title) : null;
   const show = sxxeyyMatch
     ? {
         title: title.slice(0, sxxeyyMatch.index).trim() || title,
