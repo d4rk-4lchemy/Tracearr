@@ -20,10 +20,12 @@ import { channelsDvrUserId, parseDvrActivity, parseWatchActivity, toMediaSession
  */
 export class ChannelsDvrClient implements IMediaServerClient {
   private static readonly ARTWORK_CACHE_TTL_MS = 10 * 60 * 1000;
+  private static readonly GUIDE_CACHE_TTL_MS = 60 * 1000;
 
   public readonly serverType = 'channels_dvr' as const;
   private readonly baseUrl: string;
   private readonly artworkCache = new Map<string, { path: string | null; expiresAt: number }>();
+  private guideCache: { data: unknown; expiresAt: number } | null = null;
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/+$/, '');
@@ -35,6 +37,66 @@ export class ChannelsDvrClient implements IMediaServerClient {
       service: 'channels-dvr',
       timeout: 10000,
     });
+  }
+
+  /**
+   * Read the Channels DVR guide once per cache interval. The guide contains
+   * the current airing and its TMS image for each channel.
+   */
+  private async getGuideData(): Promise<unknown> {
+    if (this.guideCache && this.guideCache.expiresAt > Date.now()) {
+      return this.guideCache.data;
+    }
+
+    let data: unknown = null;
+    try {
+      data = await fetchJson<unknown>(`${this.baseUrl}/devices/ANY/guide`, {
+        headers: { Accept: 'application/json' },
+        service: 'channels-dvr',
+        timeout: 10000,
+      });
+    } catch {
+      // Guide artwork is optional. A guide failure must not hide live sessions.
+    }
+
+    this.guideCache = {
+      data,
+      expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
+    };
+    return data;
+  }
+
+  /** Find the image for the airing currently active on the requested channel. */
+  private getLiveArtwork(guide: unknown, channelNumber: string): string | null {
+    if (!Array.isArray(guide)) return null;
+
+    const now = Date.now() / 1000;
+    for (const entry of guide) {
+      if (!entry || typeof entry !== 'object') continue;
+      const channel = (entry as { Channel?: unknown }).Channel;
+      const airings = (entry as { Airings?: unknown }).Airings;
+      if (!channel || typeof channel !== 'object' || !Array.isArray(airings)) continue;
+
+      const number = (channel as { Number?: unknown }).Number;
+      if (String(number ?? '') !== channelNumber) continue;
+
+      for (const airing of airings) {
+        if (!airing || typeof airing !== 'object') continue;
+        const item = airing as { Time?: unknown; Duration?: unknown; Image?: unknown };
+        if (
+          typeof item.Time !== 'number' ||
+          typeof item.Duration !== 'number' ||
+          item.Time > now ||
+          item.Time + item.Duration <= now
+        ) {
+          continue;
+        }
+
+        return channelsDvrArtworkPath(this.baseUrl, item.Image);
+      }
+    }
+
+    return null;
   }
 
   private async getLibraryItem(path: string): Promise<Record<string, unknown> | null> {
@@ -117,10 +179,20 @@ export class ChannelsDvrClient implements IMediaServerClient {
       if (parsed) parsedSessions.push(parsed);
     }
 
+    // One guide request serves every live session in this poll. The short
+    // cache avoids re-downloading the full guide on every frequent poll.
+    const hasLiveChannel = parsedSessions.some(
+      (parsed) => parsed.kind === 'live' && Boolean(parsed.sourceId)
+    );
+    const guide = hasLiveChannel ? await this.getGuideData() : null;
+
     return Promise.all(
       parsedSessions.map(async (parsed) => {
         const session = toMediaSession(parsed);
-        const artworkPath = await this.getRecordingArtwork(parsed);
+        const artworkPath =
+          parsed.kind === 'live' && parsed.sourceId
+            ? this.getLiveArtwork(guide, parsed.sourceId)
+            : await this.getRecordingArtwork(parsed);
         return artworkPath
           ? { ...session, media: { ...session.media, thumbPath: artworkPath } }
           : session;

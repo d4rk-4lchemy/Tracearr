@@ -11,6 +11,35 @@ const client = () => new ChannelsDvrClient({ url: BASE, token: 'none' });
 describe('Channels DVR session artwork', () => {
   beforeEach(() => vi.mocked(fetchJson).mockReset());
 
+
+  it('uses the current guide program artwork for live TV sessions', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        activity: {
+          '6-stream-M3U-DispatcharrMPEGTS-1-192.168.30.9':
+            'Watching ch1 ABC KOCO from iPad: buf=0% drop=0%',
+        },
+      } as never)
+      .mockResolvedValueOnce([
+        {
+          Channel: { Number: '1', Name: 'ABC KOCO' },
+          Airings: [
+            {
+              Time: Math.floor(Date.now() / 1000) - 60,
+              Duration: 3600,
+              Title: 'KOCO 5 News at 9am',
+              Image: 'https://ebyl.tmsimg.com/assets/p31385280_b_h9_aa.jpg',
+            },
+          ],
+        },
+      ] as never);
+
+    const [session] = await client().getSessions();
+
+    expect(session?.media.thumbPath).toBe('/tmsimg/assets/p31385280_b_h9_aa.jpg');
+    expect(fetchJson).toHaveBeenCalledTimes(2);
+  });
+
   it('uses the parent show poster for episode playback', async () => {
     vi.mocked(fetchJson)
       .mockResolvedValueOnce({
@@ -45,3 +74,22 @@ describe('Channels DVR session artwork', () => {
   });
 
   it('uses imported video artwork when the item is not classified as a movie', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        activity: {
+          '6-file-7777-10.0.0.90':
+            'Watching recording Imported video 2022-01-01-1200.mpg from 10.0.0.90.',
+        },
+      } as never)
+      .mockResolvedValueOnce({} as never)
+      .mockResolvedValueOnce({
+        image_url: 'https://tmsimg.fancybits.co/assets/imported-video.jpg',
+      } as never);
+
+    const [session] = await client().getSessions();
+
+    expect(session?.media.thumbPath).toBe('/tmsimg/assets/imported-video.jpg');
+    expect(fetchJson).toHaveBeenCalledTimes(3);
+  });
+});
+
