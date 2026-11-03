@@ -38,7 +38,7 @@ export function channelsDvrArtworkPath(baseUrl: string, raw: unknown): string | 
   // Channels DVR's own /tmsimg proxy rather than allowing arbitrary CDN hosts.
   if (
     imageUrl.protocol === 'https:' &&
-    imageUrl.hostname === 'tmsimg.fancybits.co' &&
+    (imageUrl.hostname === 'tmsimg.fancybits.co' || imageUrl.hostname === 'ebyl.tmsimg.com') &&
     imageUrl.port === '' &&
     /^\/assets\/[A-Za-z0-9._/-]+$/.test(imageUrl.pathname) &&
     /^[?&=A-Za-z0-9._-]*$/.test(imageUrl.search)

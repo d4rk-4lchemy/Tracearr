@@ -229,6 +229,7 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
       .slice(sepIdx)
       .replace(/^\s+(?:from|on)\s+/i, '')
       .replace(/\.$/, '')
+      .replace(/\s+at\s+\d+(?:\.\d+)?s$/i, '')
       .trim();
     body = body.slice(0, sepIdx).trim();
     const ipInWho = IPV4_ANYWHERE.exec(who);
@@ -253,15 +254,23 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
   }
   if (!title) return null;
 
-  const showMatch = kind === 'recording' ? SXXEYY.exec(title) : null;
-  const show = showMatch
+  const sxxeyyMatch = kind === 'recording' ? SXXEYY.exec(title) : null;
+  const seasonEpisodeMatch =
+    kind === 'recording' ? /\s+-\s+Season\s+(\d{1,3}),\s*Episode\s+(\d{1,4})\s*$/i.exec(title) : null;
+  const show = sxxeyyMatch
     ? {
-        title: title.slice(0, showMatch.index).trim() || title,
-        season: Number.parseInt(showMatch[1]!, 10),
-        episode: Number.parseInt(showMatch[2]!, 10),
-        episodeTitle: title.slice(showMatch.index + showMatch[0].length).trim() || undefined,
+        title: title.slice(0, sxxeyyMatch.index).trim() || title,
+        season: Number.parseInt(sxxeyyMatch[1]!, 10),
+        episode: Number.parseInt(sxxeyyMatch[2]!, 10),
+        episodeTitle: title.slice(sxxeyyMatch.index + sxxeyyMatch[0].length).trim() || undefined,
       }
-    : undefined;
+    : seasonEpisodeMatch
+      ? {
+          title: title.slice(0, seasonEpisodeMatch.index).trim() || title,
+          season: Number.parseInt(seasonEpisodeMatch[1]!, 10),
+          episode: Number.parseInt(seasonEpisodeMatch[2]!, 10),
+        }
+      : undefined;
 
   return {
     key: entry.key,

@@ -1,5 +1,6 @@
-import { fetchJson } from '../../../utils/http.js';
+import { fetchJson, fetchText } from '../../../utils/http.js';
 import { channelsDvrArtworkPath, isChannelsDvrItemId } from './artwork.js';
+import { parseChannelsDvrStreamDetails } from './streamDetails.js';
 import type {
   IMediaServerClient,
   MediaLibrary,
@@ -18,12 +19,37 @@ import { channelsDvrUserId, parseDvrActivity, parseWatchActivity, toMediaSession
  * authentication on the local network, so `config.token` is unused.
  * See parser.ts for the caveats on the data format.
  */
+interface ChannelsDvrClientInfo {
+  id?: string;
+  machine_id?: string;
+  hostname?: string;
+  alias?: string;
+  device?: string;
+  platform?: string;
+  app_bundle?: string;
+  app_build?: string;
+  local_ip?: string;
+  remote_ip?: string;
+  connected?: boolean;
+}
+
+function normalizeClientIp(value: string | undefined): string {
+  return (value ?? '').trim().toLowerCase().replace(/^::ffff:/, '').replace(/^\[|\]$/g, '');
+}
+
 export class ChannelsDvrClient implements IMediaServerClient {
   private static readonly ARTWORK_CACHE_TTL_MS = 10 * 60 * 1000;
+  private static readonly GUIDE_CACHE_TTL_MS = 60 * 1000;
 
   public readonly serverType = 'channels_dvr' as const;
   private readonly baseUrl: string;
   private readonly artworkCache = new Map<string, { path: string | null; expiresAt: number }>();
+  private readonly fileDetailsCache = new Map<string, { data: Record<string, unknown> | null; expiresAt: number }>();
+  private guideCache: { data: unknown; expiresAt: number } | null = null;
+  private clientInfoCache: { data: ChannelsDvrClientInfo[]; expiresAt: number } | null = null;
+  private streamLogCache: { data: string; expiresAt: number } | null = null;
+  private guideRefresh: Promise<unknown> | null = null;
+  private static readonly GUIDE_WAIT_TIMEOUT_MS = 1500;
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/+$/, '');
@@ -35,6 +61,162 @@ export class ChannelsDvrClient implements IMediaServerClient {
       service: 'channels-dvr',
       timeout: 10000,
     });
+  }
+
+  /** Fetch the DVR's registered client records, cached to avoid polling on every session refresh. */
+  private async getClientInfo(): Promise<ChannelsDvrClientInfo[]> {
+    if (this.clientInfoCache && this.clientInfoCache.expiresAt > Date.now()) {
+      return this.clientInfoCache.data;
+    }
+
+    try {
+      const data = await fetchJson<unknown>(`${this.baseUrl}/dvr/clients/info`, {
+        headers: { Accept: 'application/json' },
+        service: 'channels-dvr',
+        timeout: 10000,
+      });
+      const clients = Array.isArray(data)
+        ? data.filter((item): item is ChannelsDvrClientInfo =>
+            Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+          )
+        : [];
+      this.clientInfoCache = { data: clients, expiresAt: Date.now() + 60_000 };
+      return clients;
+    } catch {
+      // Device metadata is optional; never let this endpoint hide playback sessions.
+      this.clientInfoCache = { data: [], expiresAt: Date.now() + 60_000 };
+      return [];
+    }
+  }
+
+  /** Fetch recent playback diagnostics from Channels DVR's own log. */
+  private async getStreamLog(): Promise<string> {
+    if (this.streamLogCache && this.streamLogCache.expiresAt > Date.now()) {
+      return this.streamLogCache.data;
+    }
+
+    try {
+      const data = await fetchText(`${this.baseUrl}/log?n=10000`, {
+        headers: { Accept: 'text/plain' },
+        service: 'channels-dvr',
+        timeout: 10000,
+      });
+      this.streamLogCache = { data, expiresAt: Date.now() + 5000 };
+      return data;
+    } catch {
+      // Stream diagnostics are optional and must never hide active sessions.
+      this.streamLogCache = { data: '', expiresAt: Date.now() + 5000 };
+      return '';
+    }
+  }
+
+  /**
+   * Return cached guide data or share a single in-flight refresh.
+   * Callers apply a short wait limit so guide artwork cannot stall sessions.
+   */
+  private getGuideData(): Promise<unknown> {
+    if (this.guideCache && this.guideCache.expiresAt > Date.now()) {
+      return Promise.resolve(this.guideCache.data);
+    }
+
+    if (!this.guideRefresh) {
+      this.guideRefresh = fetchJson<unknown>(`${this.baseUrl}/devices/ANY/guide`, {
+        headers: { Accept: 'application/json' },
+        service: 'channels-dvr',
+        timeout: 10000,
+      })
+        .then(
+          (data) => {
+            this.guideCache = {
+              data,
+              expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
+            };
+            return data;
+          },
+          () => {
+            // Guide artwork is optional. A guide failure must not hide live sessions.
+            this.guideCache = {
+              data: null,
+              expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
+            };
+            return null;
+          }
+        )
+        .finally(() => {
+          this.guideRefresh = null;
+        });
+    }
+
+    // Serve stale data while a refresh is in flight, if available.
+    return this.guideCache?.data != null
+      ? Promise.resolve(this.guideCache.data)
+      : this.guideRefresh;
+  }
+
+  /** Wait briefly for guide art, but never let it hold up live-session polling. */
+  private async getGuideDataForSession(): Promise<unknown> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this.getGuideData(),
+        new Promise<null>((resolve) => {
+          timeout = setTimeout(() => resolve(null), ChannelsDvrClient.GUIDE_WAIT_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  /** Find the current programme title and image for a channel. */
+  private getLiveAiring(
+    guide: unknown,
+    channelNumber: string
+  ): { artworkPath: string | null; programTitle: string | null } | null {
+    if (!Array.isArray(guide)) return null;
+
+    const now = Date.now() / 1000;
+    for (const entry of guide) {
+      if (!entry || typeof entry !== 'object') continue;
+      const channel = (entry as { Channel?: unknown }).Channel;
+      const airings = (entry as { Airings?: unknown }).Airings;
+      if (!channel || typeof channel !== 'object' || !Array.isArray(airings)) continue;
+
+      const number = (channel as { Number?: unknown }).Number;
+      if (String(number ?? '') !== channelNumber) continue;
+
+      for (const airing of airings) {
+        if (!airing || typeof airing !== 'object') continue;
+        const item = airing as {
+          Time?: unknown;
+          Duration?: unknown;
+          Image?: unknown;
+          Title?: unknown;
+          EpisodeTitle?: unknown;
+        };
+        if (
+          typeof item.Time !== 'number' ||
+          typeof item.Duration !== 'number' ||
+          item.Time > now ||
+          item.Time + item.Duration <= now
+        ) {
+          continue;
+        }
+
+        const programTitle =
+          typeof item.EpisodeTitle === 'string' && item.EpisodeTitle.trim()
+            ? item.EpisodeTitle.trim()
+            : typeof item.Title === 'string' && item.Title.trim()
+              ? item.Title.trim()
+              : null;
+        return {
+          artworkPath: channelsDvrArtworkPath(this.baseUrl, item.Image),
+          programTitle,
+        };
+      }
+    }
+
+    return null;
   }
 
   private async getLibraryItem(path: string): Promise<Record<string, unknown> | null> {
@@ -50,6 +232,19 @@ export class ChannelsDvrClient implements IMediaServerClient {
     } catch {
       return null;
     }
+  }
+
+  /** Fetch DVR file metadata, which includes programme and episode details. */
+  private async getRecordingFileDetails(fileId: string): Promise<Record<string, unknown> | null> {
+    const cached = this.fileDetailsCache.get(fileId);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+
+    const data = await this.getLibraryItem(`/dvr/files/${fileId}`);
+    this.fileDetailsCache.set(fileId, {
+      data,
+      expiresAt: Date.now() + ChannelsDvrClient.ARTWORK_CACHE_TTL_MS,
+    });
+    return data;
   }
 
   /**
@@ -117,13 +312,138 @@ export class ChannelsDvrClient implements IMediaServerClient {
       if (parsed) parsedSessions.push(parsed);
     }
 
+    const clients = parsedSessions.length > 0 ? await this.getClientInfo() : [];
+
+    // One guide request serves every live session in this poll. The short
+    // cache avoids re-downloading the full guide on every frequent poll.
+    const hasLiveChannel = parsedSessions.some(
+      (parsed) => parsed.kind === 'live' && Boolean(parsed.sourceId)
+    );
+    const guide = hasLiveChannel ? await this.getGuideDataForSession() : null;
+    const streamDetails = hasLiveChannel
+      ? parseChannelsDvrStreamDetails(await this.getStreamLog())
+      : new Map();
+
     return Promise.all(
       parsedSessions.map(async (parsed) => {
         const session = toMediaSession(parsed);
-        const artworkPath = await this.getRecordingArtwork(parsed);
-        return artworkPath
-          ? { ...session, media: { ...session.media, thumbPath: artworkPath } }
+        const sessionIp = normalizeClientIp(parsed.ipAddress);
+        const matchingClient = sessionIp
+          ? clients
+              .filter((client) =>
+                normalizeClientIp(client.local_ip) === sessionIp ||
+                normalizeClientIp(client.remote_ip) === sessionIp
+              )
+              .sort((a, b) => {
+                const connected = Number(Boolean(b.connected)) - Number(Boolean(a.connected));
+                if (connected !== 0) return connected;
+                return Number(normalizeClientIp(b.local_ip) === sessionIp) -
+                  Number(normalizeClientIp(a.local_ip) === sessionIp);
+              })[0]
+          : undefined;
+        const clientProduct = matchingClient
+          ? `${matchingClient.app_bundle?.endsWith('.beta') ? 'Channels Beta' : 'Channels'}${matchingClient.app_build ? ` v${matchingClient.app_build}` : ''}`
+          : undefined;
+        const sessionWithClient = matchingClient
+          ? {
+              ...session,
+              player: {
+                ...session.player,
+                name: matchingClient.hostname || matchingClient.alias || session.player.name,
+                deviceId: matchingClient.machine_id || matchingClient.id || session.player.deviceId,
+                ...(matchingClient.device ? { device: matchingClient.device } : {}),
+                ...(matchingClient.platform ? { platform: matchingClient.platform } : {}),
+                ...(clientProduct ? { product: clientProduct } : {}),
+              },
+            }
           : session;
+        const streamInfo =
+          parsed.kind === 'live' && parsed.sourceId && sessionIp
+            ? streamDetails.get(`${parsed.sourceId}|${sessionIp}`)
+            : undefined;
+        const sessionWithStream = streamInfo
+          ? {
+              ...sessionWithClient,
+              quality: {
+                ...sessionWithClient.quality,
+                ...(streamInfo.sourceBitrateKbps !== undefined
+                  ? { bitrate: streamInfo.sourceBitrateKbps }
+                  : {}),
+                isTranscode: streamInfo.encoder ? streamInfo.encoder !== 'remux' : false,
+                videoDecision: streamInfo.encoder
+                  ? streamInfo.encoder === 'remux' ? 'copy' : 'transcode'
+                  : 'unknown',
+                // The log reports the configured output codec, but not the
+                // original audio codec, so an audio decision cannot be inferred.
+                audioDecision: 'unknown',
+                ...(streamInfo.videoCodec ? { sourceVideoCodec: streamInfo.videoCodec } : {}),
+                ...(streamInfo.width !== undefined ? { videoWidth: streamInfo.width } : {}),
+                ...(streamInfo.height !== undefined ? { videoHeight: streamInfo.height } : {}),
+                ...(streamInfo.sourceBitrateKbps !== undefined
+                  ? { sourceVideoDetails: { bitrate: streamInfo.sourceBitrateKbps } }
+                  : {}),
+                ...(streamInfo.encoder === 'remux' && streamInfo.videoCodec
+                  ? {
+                      streamVideoCodec: streamInfo.videoCodec,
+                      streamVideoDetails: {
+                        ...(streamInfo.width !== undefined ? { width: streamInfo.width } : {}),
+                        ...(streamInfo.height !== undefined ? { height: streamInfo.height } : {}),
+                        ...(streamInfo.outputBitrateKbps !== undefined
+                          ? { bitrate: streamInfo.outputBitrateKbps }
+                          : {}),
+                      },
+                    }
+                  : {}),
+                ...(streamInfo.audioCodec ? { streamAudioCodec: streamInfo.audioCodec } : {}),
+              },
+            }
+          : sessionWithClient;
+        const fileDetails =
+          parsed.kind === 'recording' && isChannelsDvrItemId(parsed.sourceId)
+            ? await this.getRecordingFileDetails(parsed.sourceId)
+            : null;
+        const airing = fileDetails?.Airing && typeof fileDetails.Airing === 'object'
+          ? (fileDetails.Airing as Record<string, unknown>)
+          : null;
+        const fileShowTitle =
+          (typeof airing?.Title === 'string' ? airing.Title.trim() : '') || parsed.show?.title || '';
+        const episodeTitle =
+          (typeof airing?.EpisodeTitle === 'string' ? airing.EpisodeTitle.trim() : '') ||
+          parsed.show?.episodeTitle || '';
+        const seasonNumber =
+          typeof airing?.SeasonNumber === 'number' ? airing.SeasonNumber : parsed.show?.season;
+        const episodeNumber =
+          typeof airing?.EpisodeNumber === 'number' ? airing.EpisodeNumber : parsed.show?.episode;
+        const fileDuration = typeof fileDetails?.Duration === 'number' ? fileDetails.Duration : null;
+        const fileArtwork = channelsDvrArtworkPath(this.baseUrl, airing?.Image);
+        const liveAiring =
+          parsed.kind === 'live' && parsed.sourceId
+            ? this.getLiveAiring(guide, parsed.sourceId)
+            : null;
+        const artworkPath =
+          liveAiring?.artworkPath ??
+          fileArtwork ??
+          (parsed.kind === 'recording' ? await this.getRecordingArtwork(parsed) : null);
+        const hasFileEpisode =
+          Boolean(fileShowTitle && episodeTitle) &&
+          seasonNumber !== undefined &&
+          episodeNumber !== undefined;
+        if (!liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) {
+          return sessionWithStream;
+        }
+        return {
+          ...sessionWithStream,
+          ...(hasFileEpisode && seasonNumber !== undefined && episodeNumber !== undefined
+            ? { episode: { showTitle: fileShowTitle, seasonNumber, episodeNumber } }
+            : {}),
+          media: {
+            ...session.media,
+            ...(liveAiring?.programTitle ? { title: liveAiring.programTitle } : {}),
+            ...(hasFileEpisode ? { title: episodeTitle } : {}),
+            ...(fileDuration !== null ? { durationMs: Math.round(fileDuration * 1000) } : {}),
+            ...(artworkPath ? { thumbPath: artworkPath } : {}),
+          },
+        };
       })
     );
   }
