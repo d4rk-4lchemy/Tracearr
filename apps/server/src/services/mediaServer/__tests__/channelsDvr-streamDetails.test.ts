@@ -43,6 +43,21 @@ describe('Channels DVR stream log parser', () => {
     });
   });
 
+  it('keeps encoder decisions matched to each client when two viewers start the same channel', () => {
+    const log = [
+      '2026/11/03 12:00:00 [HLS] Starting live stream for channel 1 from 192.168.30.9',
+      '2026/11/03 12:00:00 [HLS] Starting live stream for channel 1 from 12.75.44.97',
+      '2026/11/03 12:00:01 [HLS] Session ch1-dANY-localA started in 1s',
+      '2026/11/03 12:00:01 [HLS] Session ch1-dANY-remoteB started in 1s',
+      '2026/11/03 12:00:02 [ENC] Starting encoder for ch1 in /channels-data/Streaming/sessions/ch1-dANY-localA-111/encoder-1 (0) (encoder=remux, acodec=aac, bitrate=8000)',
+      '2026/11/03 12:00:02 [ENC] Starting encoder for ch1 in /channels-data/Streaming/sessions/ch1-dANY-remoteB-222/encoder-1 (0) (encoder=h264_vaapi, codec=h264, acodec=aac, bitrate=2000)',
+    ].join('\\n');
+
+    const details = parseChannelsDvrStreamDetails(log);
+    expect(details.get('1|192.168.30.9')?.encoder).toBe('remux');
+    expect(details.get('1|12.75.44.97')?.encoder).toBe('h264_vaapi');
+  });
+
   it('does not carry an earlier successful probe into a later cancelled attempt', () => {
     const log = [
       '2026/11/03 12:00:38.672772 [HLS] Starting live stream for channel 1 from 192.168.30.9',
