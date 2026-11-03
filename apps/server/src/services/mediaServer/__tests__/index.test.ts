@@ -170,6 +170,7 @@ describe('IMediaServerClient Interface Compliance', () => {
       jellyfin: 'http://jellyfin.local:8096',
       emby: 'http://emby.local:8096',
       dispatcharr: 'http://dispatcharr.local:9191',
+      channels_dvr: 'http://channels.local:8089',
     };
     return createMediaServerClient({
       type,
