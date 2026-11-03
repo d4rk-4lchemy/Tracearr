@@ -30,7 +30,7 @@ describe('Channels DVR session artwork', () => {
     vi.mocked(fetchJson)
       .mockResolvedValueOnce(dvrStatus as never)
       .mockResolvedValueOnce([{ hostname: 'Apple TV', local_ip: '192.168.30.9' }] as never)
-      .mockImplementationOnce(() => guideRequest as never
+      .mockImplementationOnce(() => guideRequest as never)
       .mockResolvedValueOnce(dvrStatus as never);
 
     const channelsClient = client();
