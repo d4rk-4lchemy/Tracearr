@@ -440,7 +440,7 @@ const IMAGE_PATH_ALLOWLIST: Record<(typeof servers.$inferSelect)['type'], RegExp
   // Channels artwork is fetched only from the configured server: playback
   // previews, uploaded art, and the server's TMS image proxy.
   channels_dvr:
-    /^\/(?:dvr\/files\/\d+\/preview\.jpg|dvr\/uploads\/\d+\/content|tmsimg\/assets\/[A-Za-z0-9._/-]+(?:\\?w=\\d+&h=\\d+)?)$/,
+    /^\/(?:dvr\/files\/\d+\/preview\.jpg|dvr\/uploads\/\d+\/content|tmsimg\/assets\/[A-Za-z0-9._/-]+(?:\?w=\d+&h=\d+)?)$/,
 };
 
 export function buildUpstreamRequest(
