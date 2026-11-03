@@ -33,7 +33,7 @@ interface ChannelsDvrClientInfo {
 }
 
 function normalizeClientIp(value: string | undefined): string {
-  return (value ?? '').trim().toLowerCase().replace(/^::ffff:/, '').replace(/^\\[|\\]$/g, '');
+  return (value ?? '').trim().toLowerCase().replace(/^::ffff:/, '').replace(/^\[|\]$/g, '');
 }
 
 export class ChannelsDvrClient implements IMediaServerClient {
