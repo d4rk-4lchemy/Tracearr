@@ -26,7 +26,8 @@ export class ChannelsDvrClient implements IMediaServerClient {
   private readonly baseUrl: string;
   private readonly artworkCache = new Map<string, { path: string | null; expiresAt: number }>();
   private guideCache: { data: unknown; expiresAt: number } | null = null;
-  private guideRefresh: Promise<void> | null = null;
+  private guideRefresh: Promise<unknown> | null = null;
+  private static readonly GUIDE_WAIT_TIMEOUT_MS = 1500;
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/+$/, '');
@@ -41,40 +42,61 @@ export class ChannelsDvrClient implements IMediaServerClient {
   }
 
   /**
-   * Return cached guide data and refresh it in the background when stale.
-   * Session polling must never wait for this optional artwork request.
+   * Return cached guide data or share a single in-flight refresh.
+   * Callers apply a short wait limit so guide artwork cannot stall sessions.
    */
-  private getGuideData(): unknown {
-    if (!this.guideCache || this.guideCache.expiresAt <= Date.now()) {
-      if (!this.guideRefresh) {
-        this.guideRefresh = fetchJson<unknown>(`${this.baseUrl}/devices/ANY/guide`, {
-          headers: { Accept: 'application/json' },
-          service: 'channels-dvr',
-          timeout: 10000,
-        })
-          .then(
-            (data) => {
-              this.guideCache = {
-                data,
-                expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
-              };
-            },
-            () => {
-              // Guide artwork is optional. A guide failure must not hide live sessions.
-              this.guideCache = {
-                data: null,
-                expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
-              };
-            }
-          )
-          .finally(() => {
-            this.guideRefresh = null;
-          });
-      }
+  private getGuideData(): Promise<unknown> {
+    if (this.guideCache && this.guideCache.expiresAt > Date.now()) {
+      return Promise.resolve(this.guideCache.data);
     }
 
-    // Use stale data while a refresh is in flight, if available.
-    return this.guideCache?.data ?? null;
+    if (!this.guideRefresh) {
+      this.guideRefresh = fetchJson<unknown>(`${this.baseUrl}/devices/ANY/guide`, {
+        headers: { Accept: 'application/json' },
+        service: 'channels-dvr',
+        timeout: 10000,
+      })
+        .then(
+          (data) => {
+            this.guideCache = {
+              data,
+              expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
+            };
+            return data;
+          },
+          () => {
+            // Guide artwork is optional. A guide failure must not hide live sessions.
+            this.guideCache = {
+              data: null,
+              expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
+            };
+            return null;
+          }
+        )
+        .finally(() => {
+          this.guideRefresh = null;
+        });
+    }
+
+    // Serve stale data while a refresh is in flight, if available.
+    return this.guideCache?.data != null
+      ? Promise.resolve(this.guideCache.data)
+      : this.guideRefresh;
+  }
+
+  /** Wait briefly for guide art, but never let it hold up live-session polling. */
+  private async getGuideDataForSession(): Promise<unknown> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this.getGuideData(),
+        new Promise<null>((resolve) => {
+          timeout = setTimeout(() => resolve(null), ChannelsDvrClient.GUIDE_WAIT_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   /** Find the image for the airing currently active on the requested channel. */
@@ -195,7 +217,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
     const hasLiveChannel = parsedSessions.some(
       (parsed) => parsed.kind === 'live' && Boolean(parsed.sourceId)
     );
-    const guide = hasLiveChannel ? this.getGuideData() : null;
+    const guide = hasLiveChannel ? await this.getGuideDataForSession() : null;
 
     return Promise.all(
       parsedSessions.map(async (parsed) => {
