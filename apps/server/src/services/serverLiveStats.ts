@@ -13,6 +13,7 @@ import {
   SERVER_STATS_CONFIG,
 } from '@tracearr/shared';
 import type { ServerBandwidthDataPoint, ServerResourceDataPoint } from '@tracearr/shared';
+import { fetchSystemStats } from './mediaServer/channelsDvr/system.js';
 import { PlexClient } from './mediaServer/plex/client.js';
 import type { PlexBandwidthStats, PlexStatisticsDataPoint } from './mediaServer/plex/parser.js';
 
@@ -162,11 +163,16 @@ function headTimestamp(entry: string | null): number | null {
 export async function recordServerStatsSample(
   redis: Redis,
   serverId: string,
-  sample: PluginStatsSample
+  sample: PluginStatsSample,
+  options: { allowNullProcessCpu?: boolean } = {}
 ): Promise<void> {
   // Process metrics are the floor; host metrics stay null on non-Linux
-  // hosts and chart as gaps rather than dropping the whole sample
-  if (sample.processCpuUtilization == null || sample.processMemoryUtilization == null) {
+  // hosts and chart as gaps rather than dropping the whole sample.
+  // Channels DVR reports no process CPU, so it opts out of that one check.
+  if (
+    (sample.processCpuUtilization == null && !options.allowNullProcessCpu) ||
+    sample.processMemoryUtilization == null
+  ) {
     return;
   }
 
@@ -283,7 +289,35 @@ function shiftPoints<T extends { at: number }>(points: T[], shift: number): T[] 
   return shift === 0 ? points : points.map((p) => ({ ...p, at: p.at + shift }));
 }
 
+/**
+ * Channels DVR has no push plugin, so fetch /system when the dashboard asks and
+ * add it to the rolling buffer. The micro-cache keeps concurrent viewers to one
+ * sample per tick, and only a fresh fetch is recorded.
+ */
+async function sampleChannelsDvr(redis: Redis, server: ServerRow): Promise<void> {
+  try {
+    await cachedFetch(
+      redis,
+      REDIS_KEYS.SERVER_STATS_CHANNELS_DVR_FETCH(server.id),
+      CACHE_TTL.SERVER_STATS_CHANNELS_DVR,
+      async () => {
+        const sample = await fetchSystemStats(server.url);
+        if (sample) {
+          await recordServerStatsSample(redis, server.id, sample, { allowNullProcessCpu: true });
+        }
+        return sample !== null;
+      }
+    );
+  } catch {
+    // Unreachable or no /system document: the chart simply stops advancing
+  }
+}
+
 export async function getServerLiveStats(redis: Redis, server: ServerRow) {
+  if (server.type === 'channels_dvr') {
+    await sampleChannelsDvr(redis, server);
+  }
+
   if (server.type !== 'plex') {
     const [statistics, bandwidth] = await Promise.all([
       getPluginServerStats(redis, server.id),

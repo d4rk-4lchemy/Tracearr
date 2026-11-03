@@ -43,7 +43,7 @@ interface ServerResourceChartsProps {
   isLoading?: boolean;
   averages?: {
     hostCpu: number | null;
-    processCpu: number;
+    processCpu: number | null;
     hostMemory: number | null;
     processMemory: number;
   } | null;
@@ -59,7 +59,7 @@ interface ResourceChartProps extends Omit<ServerResourceChartsProps, 'averages'>
   icon: React.ReactNode;
   processKey: ProcessKey;
   hostKey: HostKey;
-  processAvg?: number;
+  processAvg?: number | null;
   hostAvg?: number | null;
 }
 
@@ -95,6 +95,8 @@ function ResourceChart({
   const chartRef = useRef<HighchartsReact.RefObject | null>(null);
   const isMulti = !!multiSeries && multiSeries.length > 0;
   const hasData = isMulti ? multiSeries.some((s) => s.data.length > 0) : !!data?.length;
+  // Channels DVR reports no process CPU: skip the empty process series and chip
+  const hasProcessSeries = (data ?? []).some((p) => p[processKey] != null);
 
   useSlidingWindow(chartRef, clockSkewMs);
 
@@ -139,6 +141,9 @@ function ResourceChart({
             },
           },
         ];
+
+    // Single-server view, no process figures: draw only the host line
+    const visibleSeries = !isMulti && !hasProcessSeries ? series.slice(1) : series;
 
     const values = series.flatMap((s) =>
       ((s as { data?: [number, number | null][] }).data ?? [])
@@ -201,7 +206,7 @@ function ResourceChart({
         style: { color: 'hsl(var(--popover-foreground))', fontSize: '11px' },
         formatter: nearestPointTooltip((y) => `${Math.round(y)}%`),
       },
-      series,
+      series: visibleSeries,
       responsive: {
         rules: [
           {
@@ -218,7 +223,18 @@ function ResourceChart({
         ],
       },
     };
-  }, [data, processKey, hostKey, multiSeries, isMulti, hasData, processLabel, clockSkewMs, t]);
+  }, [
+    data,
+    processKey,
+    hostKey,
+    multiSeries,
+    isMulti,
+    hasData,
+    hasProcessSeries,
+    processLabel,
+    clockSkewMs,
+    t,
+  ]);
 
   const header = (
     <CardHeader>
@@ -281,7 +297,7 @@ function ResourceChart({
             })
           ) : (
             <>
-              <AverageChip color={COLORS.process} value={processAvg} />
+              {hasProcessSeries && <AverageChip color={COLORS.process} value={processAvg} />}
               <AverageChip color={COLORS.system} value={hostAvg} />
             </>
           )}

@@ -136,6 +136,8 @@ export const REDIS_KEYS = {
     `${_redisPrefix}tracearr:servers:${serverId}:stats:samples`,
   SERVER_STATS_BANDWIDTH_SAMPLES: (serverId: string) =>
     `${_redisPrefix}tracearr:servers:${serverId}:stats:bandwidth:samples`,
+  SERVER_STATS_CHANNELS_DVR_FETCH: (serverId: string) =>
+    `${_redisPrefix}tracearr:servers:${serverId}:stats:channels-dvr`,
   DOWNLOAD_CURSOR: (serverId: string) =>
     `${_redisPrefix}tracearr:servers:${serverId}:downloads:cursor`,
   SYNC_CURSOR: (serverId: string) =>
@@ -392,6 +394,7 @@ export const CACHE_TTL = {
   // tick can't serve an entry that already missed a sample.
   SERVER_STATS_RESOURCES: 4,
   SERVER_STATS_BANDWIDTH: 1,
+  SERVER_STATS_CHANNELS_DVR: 5, // under the 6s sample spacing, like the Plex entries above
   LOCATION_FILTERS: 300, // 5 minutes - filter options change infrequently
   VERSION_CHECK: 21600, // 6 hours - version check interval
   // Library statistics
