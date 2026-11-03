@@ -261,20 +261,32 @@ export class ChannelsDvrClient implements IMediaServerClient {
         const airing = fileDetails?.Airing && typeof fileDetails.Airing === 'object'
           ? (fileDetails.Airing as Record<string, unknown>)
           : null;
-        const fileShowTitle = typeof airing?.Title === 'string' ? airing.Title.trim() : '';
-        const episodeTitle = typeof airing?.EpisodeTitle === 'string' ? airing.EpisodeTitle.trim() : '';
-        const seasonNumber = typeof airing?.SeasonNumber === 'number' ? airing.SeasonNumber : parsed.show?.season;
-        const episodeNumber = typeof airing?.EpisodeNumber === 'number' ? airing.EpisodeNumber : parsed.show?.episode;
+        const fileShowTitle =
+          (typeof airing?.Title === 'string' ? airing.Title.trim() : '') || parsed.show?.title || '';
+        const episodeTitle =
+          (typeof airing?.EpisodeTitle === 'string' ? airing.EpisodeTitle.trim() : '') ||
+          parsed.show?.episodeTitle || '';
+        const seasonNumber =
+          typeof airing?.SeasonNumber === 'number' ? airing.SeasonNumber : parsed.show?.season;
+        const episodeNumber =
+          typeof airing?.EpisodeNumber === 'number' ? airing.EpisodeNumber : parsed.show?.episode;
         const fileDuration = typeof fileDetails?.Duration === 'number' ? fileDetails.Duration : null;
         const fileArtwork = channelsDvrArtworkPath(this.baseUrl, airing?.Image);
         const liveAiring =
           parsed.kind === 'live' && parsed.sourceId
             ? this.getLiveAiring(guide, parsed.sourceId)
             : null;
-        const artworkPath = liveAiring?.artworkPath ?? fileArtwork ??
+        const artworkPath =
+          liveAiring?.artworkPath ??
+          fileArtwork ??
           (parsed.kind === 'recording' ? await this.getRecordingArtwork(parsed) : null);
-        const hasFileEpisode = Boolean(fileShowTitle && episodeTitle);
-        if (!liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) return session;
+        const hasFileEpisode =
+          Boolean(fileShowTitle && episodeTitle) &&
+          seasonNumber !== undefined &&
+          episodeNumber !== undefined;
+        if (!liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) {
+          return session;
+        }
         return {
           ...session,
           ...(hasFileEpisode && seasonNumber !== undefined && episodeNumber !== undefined
@@ -283,7 +295,11 @@ export class ChannelsDvrClient implements IMediaServerClient {
           media: {
             ...session.media,
             ...(liveAiring?.programTitle ? { title: liveAiring.programTitle } : {}),
-            ...(hasFileEpisode ? { title: `${episodeTitle} - S${String(seasonNumber ?? 0).padStart(2, '0')}E${String(episodeNumber ?? 0).padStart(2, '0')}` } : {}),
+            ...(hasFileEpisode
+              ? {
+                  title: `${episodeTitle} - S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`,
+                }
+              : {}),
             ...(fileDuration !== null ? { durationMs: Math.round(fileDuration * 1000) } : {}),
             ...(artworkPath ? { thumbPath: artworkPath } : {}),
           },
