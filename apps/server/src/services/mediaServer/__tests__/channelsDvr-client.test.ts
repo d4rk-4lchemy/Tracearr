@@ -57,7 +57,7 @@ describe('Channels DVR session artwork', () => {
     const [nextSession] = await channelsClient.getSessions();
     expect(nextSession?.media.thumbPath).toBe('/tmsimg/assets/p31385280_b_h9_aa.jpg');
     expect(nextSession?.media.title).toBe('My Media Server Program');
-    expect(fetchJson).toHaveBeenCalledTimes(6);
+    expect(fetchJson).toHaveBeenCalledTimes(5);
   });
 
   it('uses registered Channels DVR client metadata for the matching playback device', async () => {
@@ -123,7 +123,7 @@ describe('Channels DVR session artwork', () => {
     expect(session?.media.thumbPath).toBe('/tmsimg/assets/p7895187_b_h9_aa.jpg?w=720&h=540');
     expect(session?.player.name).toBe('iPad');
     expect(session?.user.username).toBe('iPad');
-    expect(fetchJson).toHaveBeenCalledTimes(5);
+    expect(fetchJson).toHaveBeenCalledTimes(6);
   });
 
   it('uses the parent show poster for episode playback', async () => {
@@ -134,6 +134,8 @@ describe('Channels DVR session artwork', () => {
             'Watching recording Beat Bobby Flay S26E02 The Dynamic Duo 2020-08-23-1900.mpg from 10.0.0.90.',
         },
       } as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({} as never)
       .mockResolvedValueOnce({ show_id: '183983', image_url: 'https://tmsimg.fancybits.co/assets/episode.jpg' } as never)
       .mockResolvedValueOnce({ image_url: 'https://tmsimg.fancybits.co/assets/show.jpg?w=720&h=540' } as never);
 
@@ -169,6 +171,8 @@ describe('Channels DVR session artwork', () => {
             'Watching recording Imported video 2022-01-01-1200.mpg from 10.0.0.90.',
         },
       } as never)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce({} as never)
       .mockResolvedValueOnce({} as never)
       .mockResolvedValueOnce({} as never)
       .mockResolvedValueOnce({
