@@ -59,6 +59,37 @@ describe('Channels DVR session artwork', () => {
     expect(fetchJson).toHaveBeenCalledTimes(3);
   });
 
+  it('uses DVR file airing metadata for virtual-channel episode playback', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        activity: {
+          '6-file-378-192.168.30.9':
+            'Watching Home Improvement - Season 6, Episode 24 from iPad at 0s',
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        Duration: 1353.897,
+        Airing: {
+          Title: 'Home Improvement',
+          EpisodeTitle: 'Taps',
+          SeasonNumber: 6,
+          EpisodeNumber: 24,
+          Image: 'https://tmsimg.fancybits.co/assets/p7895187_b_h9_aa.jpg?w=720&h=540',
+        },
+      } as never);
+
+    const [session] = await client().getSessions();
+
+    expect(session?.media.type).toBe('episode');
+    expect(session?.media.title).toBe('Taps - S06E24');
+    expect(session?.episode).toEqual({ showTitle: 'Home Improvement', seasonNumber: 6, episodeNumber: 24 });
+    expect(session?.media.durationMs).toBe(1353897);
+    expect(session?.media.thumbPath).toBe('/tmsimg/assets/p7895187_b_h9_aa.jpg?w=720&h=540');
+    expect(session?.player.name).toBe('iPad');
+    expect(session?.user.username).toBe('iPad');
+    expect(fetchJson).toHaveBeenCalledTimes(2);
+  });
+
   it('uses the parent show poster for episode playback', async () => {
     vi.mocked(fetchJson)
       .mockResolvedValueOnce({
@@ -100,6 +131,7 @@ describe('Channels DVR session artwork', () => {
             'Watching recording Imported video 2022-01-01-1200.mpg from 10.0.0.90.',
         },
       } as never)
+      .mockResolvedValueOnce({} as never)
       .mockResolvedValueOnce({} as never)
       .mockResolvedValueOnce({
         image_url: 'https://tmsimg.fancybits.co/assets/imported-video.jpg',
