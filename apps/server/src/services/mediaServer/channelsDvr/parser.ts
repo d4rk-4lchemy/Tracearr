@@ -234,7 +234,7 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
       .replace(/^\s+(?:from|on)\s+/i, '')
       .replace(/\.$/, '')
       .replace(/\s+at\s+\d+(?:\.\d+)?s$/i, '')
-      .replace(/\s+\(Transcoder Running\b.*\)$/i, '')
+      .replace(/\s+\((?:Transcoder Running\b.*)?\)\s*$/i, '')
       .trim();
     body = body.slice(0, sepIdx).trim();
     const ipInWho = IPV4_ANYWHERE.exec(who);
