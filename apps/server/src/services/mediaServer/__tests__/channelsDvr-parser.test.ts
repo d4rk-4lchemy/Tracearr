@@ -92,9 +92,14 @@ describe('Channels DVR parser', () => {
       key: '7-ch17-dANY-transcoding',
       text: "Watching ch17 from Joe's iPhone (Transcoder Running at 2mbps: 1m36s @ 1.06x (66.79fps)): buf=0% drop=0%",
     });
+    const starting = parseWatchActivity({
+      key: '7-ch17-dANY-starting',
+      text: "Watching ch17 from Joe's iPhone (Transcoder starting at 2mbps): buf=0% drop=0%",
+    });
 
     expect(empty?.clientName).toBe("Joe's iPhone");
     expect(transcoding?.clientName).toBe("Joe's iPhone");
+    expect(starting?.clientName).toBe("Joe's iPhone");
   });
 
   it('parses a real Dispatcharr-sourced live line with a stats tail', () => {
