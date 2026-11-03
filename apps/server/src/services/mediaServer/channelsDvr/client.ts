@@ -99,8 +99,11 @@ export class ChannelsDvrClient implements IMediaServerClient {
     }
   }
 
-  /** Find the image for the airing currently active on the requested channel. */
-  private getLiveArtwork(guide: unknown, channelNumber: string): string | null {
+  /** Find the current programme title and image for a channel. */
+  private getLiveAiring(
+    guide: unknown,
+    channelNumber: string
+  ): { artworkPath: string | null; programTitle: string | null } | null {
     if (!Array.isArray(guide)) return null;
 
     const now = Date.now() / 1000;
@@ -115,7 +118,13 @@ export class ChannelsDvrClient implements IMediaServerClient {
 
       for (const airing of airings) {
         if (!airing || typeof airing !== 'object') continue;
-        const item = airing as { Time?: unknown; Duration?: unknown; Image?: unknown };
+        const item = airing as {
+          Time?: unknown;
+          Duration?: unknown;
+          Image?: unknown;
+          Title?: unknown;
+          EpisodeTitle?: unknown;
+        };
         if (
           typeof item.Time !== 'number' ||
           typeof item.Duration !== 'number' ||
@@ -125,7 +134,16 @@ export class ChannelsDvrClient implements IMediaServerClient {
           continue;
         }
 
-        return channelsDvrArtworkPath(this.baseUrl, item.Image);
+        const programTitle =
+          typeof item.EpisodeTitle === 'string' && item.EpisodeTitle.trim()
+            ? item.EpisodeTitle.trim()
+            : typeof item.Title === 'string' && item.Title.trim()
+              ? item.Title.trim()
+              : null;
+        return {
+          artworkPath: channelsDvrArtworkPath(this.baseUrl, item.Image),
+          programTitle,
+        };
       }
     }
 
@@ -222,13 +240,21 @@ export class ChannelsDvrClient implements IMediaServerClient {
     return Promise.all(
       parsedSessions.map(async (parsed) => {
         const session = toMediaSession(parsed);
-        const artworkPath =
+        const liveAiring =
           parsed.kind === 'live' && parsed.sourceId
-            ? this.getLiveArtwork(guide, parsed.sourceId)
-            : await this.getRecordingArtwork(parsed);
-        return artworkPath
-          ? { ...session, media: { ...session.media, thumbPath: artworkPath } }
-          : session;
+            ? this.getLiveAiring(guide, parsed.sourceId)
+            : null;
+        const artworkPath = liveAiring?.artworkPath ??
+          (parsed.kind === 'recording' ? await this.getRecordingArtwork(parsed) : null);
+        if (!liveAiring?.programTitle && !artworkPath) return session;
+        return {
+          ...session,
+          media: {
+            ...session.media,
+            ...(liveAiring?.programTitle ? { title: liveAiring.programTitle } : {}),
+            ...(artworkPath ? { thumbPath: artworkPath } : {}),
+          },
+        };
       })
     );
   }
