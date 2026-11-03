@@ -26,6 +26,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
   private readonly baseUrl: string;
   private readonly artworkCache = new Map<string, { path: string | null; expiresAt: number }>();
   private guideCache: { data: unknown; expiresAt: number } | null = null;
+  private guideRefresh: Promise<void> | null = null;
 
   constructor(config: MediaServerConfig) {
     this.baseUrl = config.url.replace(/\/+$/, '');
@@ -40,30 +41,40 @@ export class ChannelsDvrClient implements IMediaServerClient {
   }
 
   /**
-   * Read the Channels DVR guide once per cache interval. The guide contains
-   * the current airing and its TMS image for each channel.
+   * Return cached guide data and refresh it in the background when stale.
+   * Session polling must never wait for this optional artwork request.
    */
-  private async getGuideData(): Promise<unknown> {
-    if (this.guideCache && this.guideCache.expiresAt > Date.now()) {
-      return this.guideCache.data;
+  private getGuideData(): unknown {
+    if (!this.guideCache || this.guideCache.expiresAt <= Date.now()) {
+      if (!this.guideRefresh) {
+        this.guideRefresh = fetchJson<unknown>(`${this.baseUrl}/devices/ANY/guide`, {
+          headers: { Accept: 'application/json' },
+          service: 'channels-dvr',
+          timeout: 10000,
+        })
+          .then(
+            (data) => {
+              this.guideCache = {
+                data,
+                expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
+              };
+            },
+            () => {
+              // Guide artwork is optional. A guide failure must not hide live sessions.
+              this.guideCache = {
+                data: null,
+                expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
+              };
+            }
+          )
+          .finally(() => {
+            this.guideRefresh = null;
+          });
+      }
     }
 
-    let data: unknown = null;
-    try {
-      data = await fetchJson<unknown>(`${this.baseUrl}/devices/ANY/guide`, {
-        headers: { Accept: 'application/json' },
-        service: 'channels-dvr',
-        timeout: 10000,
-      });
-    } catch {
-      // Guide artwork is optional. A guide failure must not hide live sessions.
-    }
-
-    this.guideCache = {
-      data,
-      expiresAt: Date.now() + ChannelsDvrClient.GUIDE_CACHE_TTL_MS,
-    };
-    return data;
+    // Use stale data while a refresh is in flight, if available.
+    return this.guideCache?.data ?? null;
   }
 
   /** Find the image for the airing currently active on the requested channel. */
@@ -184,7 +195,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
     const hasLiveChannel = parsedSessions.some(
       (parsed) => parsed.kind === 'live' && Boolean(parsed.sourceId)
     );
-    const guide = hasLiveChannel ? await this.getGuideData() : null;
+    const guide = hasLiveChannel ? this.getGuideData() : null;
 
     return Promise.all(
       parsedSessions.map(async (parsed) => {
