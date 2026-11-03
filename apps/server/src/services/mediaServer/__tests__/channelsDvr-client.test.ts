@@ -26,6 +26,7 @@ describe('Channels DVR session artwork', () => {
 
     vi.mocked(fetchJson)
       .mockResolvedValueOnce(dvrStatus as never)
+      .mockResolvedValueOnce([] as never)
       .mockImplementationOnce(() => guideRequest as never)
       .mockResolvedValueOnce(dvrStatus as never);
 
@@ -56,7 +57,41 @@ describe('Channels DVR session artwork', () => {
     const [nextSession] = await channelsClient.getSessions();
     expect(nextSession?.media.thumbPath).toBe('/tmsimg/assets/p31385280_b_h9_aa.jpg');
     expect(nextSession?.media.title).toBe('My Media Server Program');
-    expect(fetchJson).toHaveBeenCalledTimes(3);
+    expect(fetchJson).toHaveBeenCalledTimes(5);
+  });
+
+  it('uses registered Channels DVR client metadata for the matching playback device', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        activity: {
+          '6-file-378-192.168.30.9':
+            'Watching Home Improvement - Season 6, Episode 24 from iPad at 0s',
+        },
+      } as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'b7bfc53adc025d77',
+          machine_id: '9F5A5EE9-EE9D-5DE7-A841-C2DF1CD42F31',
+          hostname: 'iPad',
+          device: 'iPad8,6',
+          platform: 'iPadOS 27.2',
+          app_bundle: 'com.getchannels.dvr.beta',
+          app_build: '10.29.54',
+          local_ip: '192.168.30.9',
+          connected: true,
+        },
+      ] as never);
+
+    const [session] = await client().getSessions();
+
+    expect(session?.player).toMatchObject({
+      name: 'iPad',
+      deviceId: '9F5A5EE9-EE9D-5DE7-A841-C2DF1CD42F31',
+      device: 'iPad8,6',
+      platform: 'iPadOS 27.2',
+      product: 'Channels Beta v10.29.54',
+    });
+    expect(session?.network.ipAddress).toBe('192.168.30.9');
   });
 
   it('uses DVR file airing metadata for virtual-channel episode playback', async () => {
@@ -67,6 +102,7 @@ describe('Channels DVR session artwork', () => {
             'Watching Home Improvement - Season 6, Episode 24 from iPad at 0s',
         },
       } as never)
+      .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce({
         Duration: 1353.897,
         Airing: {
@@ -81,13 +117,13 @@ describe('Channels DVR session artwork', () => {
     const [session] = await client().getSessions();
 
     expect(session?.media.type).toBe('episode');
-    expect(session?.media.title).toBe('Taps - S06E24');
+    expect(session?.media.title).toBe('Taps');
     expect(session?.episode).toEqual({ showTitle: 'Home Improvement', seasonNumber: 6, episodeNumber: 24 });
     expect(session?.media.durationMs).toBe(1353897);
     expect(session?.media.thumbPath).toBe('/tmsimg/assets/p7895187_b_h9_aa.jpg?w=720&h=540');
     expect(session?.player.name).toBe('iPad');
     expect(session?.user.username).toBe('iPad');
-    expect(fetchJson).toHaveBeenCalledTimes(2);
+    expect(fetchJson).toHaveBeenCalledTimes(4);
   });
 
   it('uses the parent show poster for episode playback', async () => {
@@ -104,7 +140,7 @@ describe('Channels DVR session artwork', () => {
     const [session] = await client().getSessions();
 
     expect(session?.media.thumbPath).toBe('/tmsimg/assets/show.jpg?w=720&h=540');
-    expect(fetchJson).toHaveBeenCalledTimes(3);
+    expect(fetchJson).toHaveBeenCalledTimes(4);
   });
 
   it('uses movie poster art instead of the preview frame', async () => {
@@ -115,6 +151,7 @@ describe('Channels DVR session artwork', () => {
             'Watching recording Indiana Jones and the Last Crusade 2021-09-02-0019.mpg from 10.0.0.90.',
         },
       } as never)
+      .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce({ image_url: 'https://tmsimg.fancybits.co/assets/movie.jpg?w=480&h=720' } as never);
 
     const [session] = await client().getSessions();
