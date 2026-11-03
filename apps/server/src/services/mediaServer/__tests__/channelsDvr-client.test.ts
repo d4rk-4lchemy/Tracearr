@@ -29,7 +29,7 @@ describe('Channels DVR session artwork', () => {
 
     vi.mocked(fetchJson)
       .mockResolvedValueOnce(dvrStatus as never)
-      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([{ hostname: 'Apple TV', local_ip: '192.168.30.9' }] as never)
       .mockImplementationOnce(() => guideRequest as never)
       .mockResolvedValueOnce(dvrStatus as never);
 
@@ -105,7 +105,7 @@ describe('Channels DVR session artwork', () => {
             'Watching Home Improvement - Season 6, Episode 24 from iPad at 0s',
         },
       } as never)
-      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([{ hostname: 'iPad', local_ip: '192.168.30.9' }] as never)
       .mockResolvedValueOnce({
         Duration: 1353.897,
         Airing: {
@@ -258,6 +258,7 @@ describe('Channels DVR session artwork', () => {
             'Watching ch1 ABC KOCO from iPad: buf=0% drop=0%',
         },
       } as never)
+      .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never)
       .mockResolvedValueOnce([] as never);
 
