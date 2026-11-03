@@ -31,6 +31,7 @@ interface ChannelsDvrClientInfo {
   local_ip?: string;
   remote_ip?: string;
   connected?: boolean;
+  seen_from?: string;
 }
 
 function normalizeClientIp(value: string | undefined): string {
@@ -172,7 +173,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
   private getLiveAiring(
     guide: unknown,
     channelNumber: string
-  ): { artworkPath: string | null; programTitle: string | null } | null {
+  ): { channelTitle: string | null; artworkPath: string | null; programTitle: string | null } | null {
     if (!Array.isArray(guide)) return null;
 
     const now = Date.now() / 1000;
@@ -182,8 +183,12 @@ export class ChannelsDvrClient implements IMediaServerClient {
       const airings = (entry as { Airings?: unknown }).Airings;
       if (!channel || typeof channel !== 'object' || !Array.isArray(airings)) continue;
 
-      const number = (channel as { Number?: unknown }).Number;
-      if (String(number ?? '') !== channelNumber) continue;
+      const channelInfo = channel as { Number?: unknown; Name?: unknown };
+      if (String(channelInfo.Number ?? '') !== channelNumber) continue;
+      const channelTitle =
+        typeof channelInfo.Name === 'string' && channelInfo.Name.trim()
+          ? channelInfo.Name.trim()
+          : null;
 
       for (const airing of airings) {
         if (!airing || typeof airing !== 'object') continue;
@@ -210,10 +215,12 @@ export class ChannelsDvrClient implements IMediaServerClient {
               ? item.Title.trim()
               : null;
         return {
+          channelTitle,
           artworkPath: channelsDvrArtworkPath(this.baseUrl, item.Image),
           programTitle,
         };
       }
+      return { channelTitle, artworkPath: null, programTitle: null };
     }
 
     return null;
@@ -328,7 +335,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
       parsedSessions.map(async (parsed) => {
         const session = toMediaSession(parsed);
         const sessionIp = normalizeClientIp(parsed.ipAddress);
-        const matchingClient = sessionIp
+        const matchingClientByIp = sessionIp
           ? clients
               .filter((client) =>
                 normalizeClientIp(client.local_ip) === sessionIp ||
@@ -341,12 +348,38 @@ export class ChannelsDvrClient implements IMediaServerClient {
                   Number(normalizeClientIp(a.local_ip) === sessionIp);
               })[0]
           : undefined;
+        const normalizedClientName = (parsed.clientName ?? '').trim().toLowerCase();
+        const matchingClient =
+          matchingClientByIp ??
+          (normalizedClientName
+            ? clients
+                .filter((client) =>
+                  [client.hostname, client.alias].some(
+                    (name) => typeof name === 'string' && name.trim().toLowerCase() === normalizedClientName
+                  )
+                )
+                .sort((a, b) => Number(Boolean(b.connected)) - Number(Boolean(a.connected)))[0]
+            : undefined);
         const clientProduct = matchingClient
           ? `${matchingClient.app_bundle?.endsWith('.beta') ? 'Channels Beta' : 'Channels'}${matchingClient.app_build ? ` v${matchingClient.app_build}` : ''}`
           : undefined;
+        const displayIp = matchingClient
+          ? matchingClient.seen_from === 'remote'
+            ? matchingClient.remote_ip
+            : matchingClient.seen_from === 'local'
+              ? matchingClient.local_ip
+              : parsed.ipAddress
+          : parsed.ipAddress;
+        const streamIp = normalizeClientIp(displayIp);
         const sessionWithClient = matchingClient
           ? {
               ...session,
+              network: {
+                ...session.network,
+                ...(displayIp ? { ipAddress: displayIp } : {}),
+                ...(matchingClient.seen_from === 'remote' ? { isLocal: false } : {}),
+                ...(matchingClient.seen_from === 'local' ? { isLocal: true } : {}),
+              },
               player: {
                 ...session.player,
                 name: matchingClient.hostname || matchingClient.alias || session.player.name,
@@ -358,8 +391,8 @@ export class ChannelsDvrClient implements IMediaServerClient {
             }
           : session;
         const streamInfo =
-          parsed.kind === 'live' && parsed.sourceId && sessionIp
-            ? streamDetails.get(`${parsed.sourceId}|${sessionIp}`)
+          parsed.kind === 'live' && parsed.sourceId && streamIp
+            ? streamDetails.get(`${parsed.sourceId}|${streamIp}`)
             : undefined;
         const sessionWithStream = streamInfo
           ? {
@@ -428,11 +461,14 @@ export class ChannelsDvrClient implements IMediaServerClient {
           Boolean(fileShowTitle && episodeTitle) &&
           seasonNumber !== undefined &&
           episodeNumber !== undefined;
-        if (!liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) {
+        if (!liveAiring?.channelTitle && !liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) {
           return sessionWithStream;
         }
         return {
           ...sessionWithStream,
+          ...(liveAiring?.channelTitle && sessionWithStream.live
+            ? { live: { ...sessionWithStream.live, channelTitle: liveAiring.channelTitle } }
+            : {}),
           ...(hasFileEpisode && seasonNumber !== undefined && episodeNumber !== undefined
             ? { episode: { showTitle: fileShowTitle, seasonNumber, episodeNumber } }
             : {}),

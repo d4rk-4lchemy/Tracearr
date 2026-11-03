@@ -187,6 +187,69 @@ describe('Channels DVR session artwork', () => {
     expect(fetchJson).toHaveBeenCalledTimes(5);
   });
 
+  it('resolves cellular live sessions to the registered client and guide metadata', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce({
+        activity: {
+          '7-ch17-dANY-1050cb66a9c4':
+            "Watching ch17 from Joe's iPhone (Transcoder Running at 2mbps: 1m36s @ 1.06x (66.79fps)): buf=0% drop=0%",
+        },
+      } as never)
+      .mockResolvedValueOnce([
+        {
+          id: 'ab56002786c1e0ce',
+          machine_id: '1C39359C-88C7-48B0-A724-98E1DC5D1DAB',
+          hostname: "Joe's iPhone",
+          alias: "Joe's iPhone",
+          device: 'iPhone18,2',
+          platform: 'iOS 27.2',
+          app_bundle: 'com.getchannels.dvr.beta',
+          app_build: '10.29.54',
+          local_ip: '192.168.30.5',
+          remote_ip: '12.75.44.97',
+          seen_from: 'remote',
+          connected: true,
+        },
+      ] as never)
+      .mockResolvedValueOnce([
+        {
+          Channel: { Number: '17', Name: 'CW' },
+          Airings: [{
+            Time: Math.floor(Date.now() / 1000) - 60,
+            Duration: 3600,
+            Title: 'The CW Program',
+            Image: 'https://tmsimg.fancybits.co/assets/cw-program.jpg',
+          }],
+        },
+      ] as never);
+    vi.mocked(fetchText).mockResolvedValueOnce([
+      '2026/11/03 13:30:06.813360 [HLS] Starting live stream for channel 17 from 12.75.44.97',
+      '2026/11/03 13:30:06.917974 [HLS] Session ch17-dANY-1050cb66a9c4 started in 104.428162ms',
+      '2026/11/03 13:30:07.069823 [HLS] Probed live stream in 256.399248ms: h264 1920x1080 progressive 3812286bps',
+      '2026/11/03 13:30:07.073557 [ENC] Starting encoder for ch17 in /channels-data/Streaming/sessions/ch17-dANY-1050cb66a9c4-204794225/encoder-1-94592179 at 1 (0.050000) (encoder=h264_vaapi, codec=h264, acodec=aac, resolution=720, deinterlacer=hardware, bitrate=2094, segment_size=0.01)',
+    ].join('\n'));
+    const [session] = await client().getSessions();
+    expect(session?.player).toMatchObject({
+      name: "Joe's iPhone",
+      deviceId: '1C39359C-88C7-48B0-A724-98E1DC5D1DAB',
+      device: 'iPhone18,2',
+      platform: 'iOS 27.2',
+      product: 'Channels Beta v10.29.54',
+    });
+    expect(session?.network).toEqual({ ipAddress: '12.75.44.97', isLocal: false });
+    expect(session?.live?.channelTitle).toBe('CW');
+    expect(session?.media.title).toBe('The CW Program');
+    expect(session?.media.thumbPath).toBe('/tmsimg/assets/cw-program.jpg');
+    expect(session?.quality).toMatchObject({
+      isTranscode: true,
+      videoDecision: 'transcode',
+      sourceVideoCodec: 'h264',
+      videoWidth: 1920,
+      videoHeight: 1080,
+      streamAudioCodec: 'aac',
+    });
+  });
+
   it('maps Channels DVR HLS probe and encoder logs to live stream details without an upstream tuner dependency', async () => {
     vi.mocked(fetchJson)
       .mockResolvedValueOnce({

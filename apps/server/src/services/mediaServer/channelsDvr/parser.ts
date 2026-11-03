@@ -174,6 +174,10 @@ function parseKey(key: string): {
   sourceId?: string;
   ipAddress?: string;
 } {
+  // Cellular HLS activity keys carry an opaque session ID, not an IP.
+  const hlsSession = key.match(/^\d+-ch(\d+)-dANY-.+$/i);
+  if (hlsSession) return { kind: 'live', sourceId: hlsSession[1] };
+
   const ipMatch = IPV4_AT_END.exec(key);
   const ipAddress = ipMatch?.[1];
   const withoutIp = ipMatch ? key.slice(0, ipMatch.index).replace(/-$/, '') : key;
@@ -230,6 +234,7 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
       .replace(/^\s+(?:from|on)\s+/i, '')
       .replace(/\.$/, '')
       .replace(/\s+at\s+\d+(?:\.\d+)?s$/i, '')
+      .replace(/\s+\(Transcoder Running\b.*\)$/i, '')
       .trim();
     body = body.slice(0, sepIdx).trim();
     const ipInWho = IPV4_ANYWHERE.exec(who);

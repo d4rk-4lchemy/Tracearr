@@ -69,6 +69,20 @@ describe('Channels DVR parser', () => {
     expect(s!.network.ipAddress).toBe('10.100.12.98');
   });
 
+  it('parses cellular HLS activity with an opaque key and transcoder status', () => {
+    const [session] = parseSessionsFromDvr(
+      dvr({
+        '7-ch17-dANY-1050cb66a9c4':
+          "Watching ch17 from Joe's iPhone (Transcoder Running at 2mbps: 1m36s @ 1.06x (66.79fps)): buf=0% drop=0%",
+      })
+    );
+    expect(session?.media.type).toBe('live');
+    expect(session?.live?.channelIdentifier).toBe('17');
+    expect(session?.player.name).toBe("Joe's iPhone");
+    expect(session?.network.ipAddress).toBe('0.0.0.0');
+    expect(session?.sessionKey).toBe('7-ch17-dANY-1050cb66a9c4');
+  });
+
   it('parses a real Dispatcharr-sourced live line with a stats tail', () => {
     const [s] = parseSessionsFromDvr(
       dvr({
