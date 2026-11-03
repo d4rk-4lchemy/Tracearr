@@ -54,10 +54,16 @@ export function parseChannelsDvrStreamDetails(
         const key = sessionKey(channelNumber, ipAddress);
         if (!details.has(key)) details.set(key, { channelNumber, ipAddress });
       } else {
+        // Channels DVR uses opaque session IDs (dANY) instead of IPs in these
+        // log lines. When multiple clients start the same channel together,
+        // pair each session-start with the oldest unmatched stream-start.
+        // This preserves the per-client IP association for the encoder log,
+        // whose session path contains the opaque ID.
         const starts = pendingStarts.get(channelNumber) ?? [];
-        if (starts.length === 1) sessionKeys.set(channelNumber + '|' + suffix, starts[0]!);
+        const [startKey, ...remainingStarts] = starts;
+        if (startKey) sessionKeys.set(channelNumber + '|' + suffix, startKey);
+        pendingStarts.set(channelNumber, remainingStarts);
       }
-      pendingStarts.set(channelNumber, []);
       continue;
     }
 
