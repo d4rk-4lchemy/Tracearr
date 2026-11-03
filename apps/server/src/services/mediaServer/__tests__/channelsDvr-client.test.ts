@@ -12,32 +12,50 @@ describe('Channels DVR session artwork', () => {
   beforeEach(() => vi.mocked(fetchJson).mockReset());
 
 
-  it('uses the current guide program artwork for live TV sessions', async () => {
+  it('returns virtual-channel sessions without waiting for guide artwork', async () => {
+    let resolveGuide!: (value: unknown) => void;
+    const guideRequest = new Promise((resolve) => {
+      resolveGuide = resolve;
+    });
+    const dvrStatus = {
+      activity: {
+        '6-stream-M3U-MyMediaServer-123-192.168.30.9':
+          'Watching ch123 My Virtual Channel from Apple TV: buf=0% drop=0%',
+      },
+    };
+
     vi.mocked(fetchJson)
-      .mockResolvedValueOnce({
-        activity: {
-          '6-stream-M3U-DispatcharrMPEGTS-1-192.168.30.9':
-            'Watching ch1 ABC KOCO from iPad: buf=0% drop=0%',
-        },
-      } as never)
-      .mockResolvedValueOnce([
-        {
-          Channel: { Number: '1', Name: 'ABC KOCO' },
-          Airings: [
-            {
-              Time: Math.floor(Date.now() / 1000) - 60,
-              Duration: 3600,
-              Title: 'KOCO 5 News at 9am',
-              Image: 'https://ebyl.tmsimg.com/assets/p31385280_b_h9_aa.jpg',
-            },
-          ],
-        },
-      ] as never);
+      .mockResolvedValueOnce(dvrStatus as never)
+      .mockImplementationOnce(() => guideRequest as never)
+      .mockResolvedValueOnce(dvrStatus as never);
 
-    const [session] = await client().getSessions();
+    const channelsClient = client();
 
-    expect(session?.media.thumbPath).toBe('/tmsimg/assets/p31385280_b_h9_aa.jpg');
-    expect(fetchJson).toHaveBeenCalledTimes(2);
+    // This must resolve even though the guide request is still pending.
+    const [firstSession] = await channelsClient.getSessions();
+    expect(firstSession?.media.type).toBe('live');
+    expect(firstSession?.live?.channelTitle).toBe('My Virtual Channel');
+    expect(firstSession?.media.thumbPath).not.toContain('p31385280_b_h9_aa.jpg');
+
+    resolveGuide([
+      {
+        Channel: { Number: '123', Name: 'My Virtual Channel' },
+        Airings: [
+          {
+            Time: Math.floor(Date.now() / 1000) - 60,
+            Duration: 3600,
+            Title: 'My Media Server Program',
+            Image: 'https://ebyl.tmsimg.com/assets/p31385280_b_h9_aa.jpg',
+          },
+        ],
+      },
+    ]);
+    await guideRequest;
+
+    // The next poll can use the completed guide refresh without another request.
+    const [nextSession] = await channelsClient.getSessions();
+    expect(nextSession?.media.thumbPath).toBe('/tmsimg/assets/p31385280_b_h9_aa.jpg');
+    expect(fetchJson).toHaveBeenCalledTimes(3);
   });
 
   it('uses the parent show poster for episode playback', async () => {
