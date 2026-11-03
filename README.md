@@ -41,8 +41,6 @@ The integration monitors active sessions for Live TV and recorded content. Chann
 
 - `darkalchemy2137/distracearr:latest` or `ghcr.io/d4rk-4lchemy/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` or `ghcr.io/d4rk-4lchemy/distracearr:supervised` - supervised image
-- `ghcr.io/write-erase/tracearr:channels-dvr` - standalone test image with Dispatcharr and Channels DVR support.
-- `ghcr.io/write-erase/tracearr:supervised-channels-dvr` - supervised test image with Dispatcharr and Channels DVR support.
 
 The Channels DVR images are test builds from the `channels-dvr` branch and are published for both AMD64 and ARM64. They are separate from the existing stable image tags.
 
