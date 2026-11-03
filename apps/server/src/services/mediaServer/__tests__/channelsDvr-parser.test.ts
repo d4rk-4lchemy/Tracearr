@@ -83,6 +83,20 @@ describe('Channels DVR parser', () => {
     expect(session?.sessionKey).toBe('7-ch17-dANY-1050cb66a9c4');
   });
 
+  it('removes empty or populated transient transcoder parentheses from cellular client names', () => {
+    const empty = parseWatchActivity({
+      key: '7-ch17-dANY-empty',
+      text: "Watching ch17 from Joe's iPhone (): buf=0% drop=0%",
+    });
+    const transcoding = parseWatchActivity({
+      key: '7-ch17-dANY-transcoding',
+      text: "Watching ch17 from Joe's iPhone (Transcoder Running at 2mbps: 1m36s @ 1.06x (66.79fps)): buf=0% drop=0%",
+    });
+
+    expect(empty?.clientName).toBe("Joe's iPhone");
+    expect(transcoding?.clientName).toBe("Joe's iPhone");
+  });
+
   it('parses a real Dispatcharr-sourced live line with a stats tail', () => {
     const [s] = parseSessionsFromDvr(
       dvr({
