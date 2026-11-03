@@ -12,7 +12,7 @@ describe('Channels DVR session artwork', () => {
   beforeEach(() => vi.mocked(fetchJson).mockReset());
 
 
-  it('returns virtual-channel sessions without waiting for guide artwork', async () => {
+  it('returns virtual-channel sessions when guide artwork is delayed', async () => {
     let resolveGuide!: (value: unknown) => void;
     const guideRequest = new Promise((resolve) => {
       resolveGuide = resolve;
