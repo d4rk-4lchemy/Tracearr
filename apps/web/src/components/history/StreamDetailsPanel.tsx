@@ -261,11 +261,37 @@ export function StreamDetailsPanel({
     transcodeInfo && (transcodeInfo.hwDecoding || transcodeInfo.hwEncoding);
   const ffmpegSpeed = transcodeInfo?.speed;
 
-  // If no details at all, show a simple message
+  // Direct playback can have a known playback decision even when Channels
+  // provides no HLS probe data (codec, resolution, or bitrate).
   if (!hasVideoDetails && !hasAudioDetails) {
+    if (!videoDecision && !audioDecision) {
+      return (
+        <div className="text-muted-foreground py-2 text-sm">
+          {t('pages:history.stream.noDetails')}
+        </div>
+      );
+    }
+
+    const videoBadge = decisionBadge(videoDecision);
+    const audioBadge = decisionBadge(audioDecision);
     return (
-      <div className="text-muted-foreground py-2 text-sm">
-        {t('pages:history.stream.noDetails')}
+      <div className="space-y-2 py-2">
+        {videoDecision && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{t('pages:history.stream.video')}</span>
+            <Badge variant={videoBadge.variant} className="text-xs">
+              {videoBadge.label}
+            </Badge>
+          </div>
+        )}
+        {audioDecision && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{t('pages:history.stream.audio')}</span>
+            <Badge variant={audioBadge.variant} className="text-xs">
+              {audioBadge.label}
+            </Badge>
+          </div>
+        )}
       </div>
     );
   }
