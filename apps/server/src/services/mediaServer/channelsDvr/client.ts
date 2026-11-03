@@ -31,6 +31,7 @@ interface ChannelsDvrClientInfo {
   local_ip?: string;
   remote_ip?: string;
   connected?: boolean;
+  seen_from?: string;
 }
 
 function normalizeClientIp(value: string | undefined): string {
@@ -63,9 +64,9 @@ export class ChannelsDvrClient implements IMediaServerClient {
     });
   }
 
-  /** Fetch the DVR's registered client records, cached to avoid polling on every session refresh. */
-  private async getClientInfo(): Promise<ChannelsDvrClientInfo[]> {
-    if (this.clientInfoCache && this.clientInfoCache.expiresAt > Date.now()) {
+  /** Fetch registered clients, keeping this cache short because new sessions register asynchronously. */
+  private async getClientInfo(forceRefresh = false): Promise<ChannelsDvrClientInfo[]> {
+    if (!forceRefresh && this.clientInfoCache && this.clientInfoCache.expiresAt > Date.now()) {
       return this.clientInfoCache.data;
     }
 
@@ -80,11 +81,13 @@ export class ChannelsDvrClient implements IMediaServerClient {
             Boolean(item) && typeof item === 'object' && !Array.isArray(item)
           )
         : [];
-      this.clientInfoCache = { data: clients, expiresAt: Date.now() + 60_000 };
+      // A 60-second cache can preserve an incomplete client list long after a
+      // newly connected phone has registered. Refresh frequently during playback.
+      this.clientInfoCache = { data: clients, expiresAt: Date.now() + 2000 };
       return clients;
     } catch {
       // Device metadata is optional; never let this endpoint hide playback sessions.
-      this.clientInfoCache = { data: [], expiresAt: Date.now() + 60_000 };
+      this.clientInfoCache = { data: [], expiresAt: Date.now() + 1000 };
       return [];
     }
   }
@@ -172,7 +175,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
   private getLiveAiring(
     guide: unknown,
     channelNumber: string
-  ): { artworkPath: string | null; programTitle: string | null } | null {
+  ): { channelTitle: string | null; artworkPath: string | null; programTitle: string | null } | null {
     if (!Array.isArray(guide)) return null;
 
     const now = Date.now() / 1000;
@@ -182,8 +185,12 @@ export class ChannelsDvrClient implements IMediaServerClient {
       const airings = (entry as { Airings?: unknown }).Airings;
       if (!channel || typeof channel !== 'object' || !Array.isArray(airings)) continue;
 
-      const number = (channel as { Number?: unknown }).Number;
-      if (String(number ?? '') !== channelNumber) continue;
+      const channelInfo = channel as { Number?: unknown; Name?: unknown };
+      if (String(channelInfo.Number ?? '') !== channelNumber) continue;
+      const channelTitle =
+        typeof channelInfo.Name === 'string' && channelInfo.Name.trim()
+          ? channelInfo.Name.trim()
+          : null;
 
       for (const airing of airings) {
         if (!airing || typeof airing !== 'object') continue;
@@ -210,10 +217,12 @@ export class ChannelsDvrClient implements IMediaServerClient {
               ? item.Title.trim()
               : null;
         return {
+          channelTitle,
           artworkPath: channelsDvrArtworkPath(this.baseUrl, item.Image),
           programTitle,
         };
       }
+      return { channelTitle, artworkPath: null, programTitle: null };
     }
 
     return null;
@@ -312,7 +321,25 @@ export class ChannelsDvrClient implements IMediaServerClient {
       if (parsed) parsedSessions.push(parsed);
     }
 
-    const clients = parsedSessions.length > 0 ? await this.getClientInfo() : [];
+    let clients = parsedSessions.length > 0 ? await this.getClientInfo() : [];
+
+    // Channels DVR can publish the HLS activity before its registered client
+    // record is ready. If a named device cannot be matched, bypass the cache
+    // and fetch the client list again instead of retaining incomplete metadata.
+    const hasUnmatchedNamedClient = parsedSessions.some((parsed) => {
+      const name = (parsed.clientName ?? '').trim().toLowerCase();
+      return Boolean(
+        name &&
+        !clients.some((client) =>
+          [client.hostname, client.alias].some(
+            (candidate) => typeof candidate === 'string' && candidate.trim().toLowerCase() === name
+          )
+        )
+      );
+    });
+    if (hasUnmatchedNamedClient) {
+      clients = await this.getClientInfo(true);
+    }
 
     // One guide request serves every live session in this poll. The short
     // cache avoids re-downloading the full guide on every frequent poll.
@@ -328,7 +355,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
       parsedSessions.map(async (parsed) => {
         const session = toMediaSession(parsed);
         const sessionIp = normalizeClientIp(parsed.ipAddress);
-        const matchingClient = sessionIp
+        const matchingClientByIp = sessionIp
           ? clients
               .filter((client) =>
                 normalizeClientIp(client.local_ip) === sessionIp ||
@@ -341,12 +368,38 @@ export class ChannelsDvrClient implements IMediaServerClient {
                   Number(normalizeClientIp(a.local_ip) === sessionIp);
               })[0]
           : undefined;
+        const normalizedClientName = (parsed.clientName ?? '').trim().toLowerCase();
+        const matchingClient =
+          matchingClientByIp ??
+          (normalizedClientName
+            ? clients
+                .filter((client) =>
+                  [client.hostname, client.alias].some(
+                    (name) => typeof name === 'string' && name.trim().toLowerCase() === normalizedClientName
+                  )
+                )
+                .sort((a, b) => Number(Boolean(b.connected)) - Number(Boolean(a.connected)))[0]
+            : undefined);
         const clientProduct = matchingClient
           ? `${matchingClient.app_bundle?.endsWith('.beta') ? 'Channels Beta' : 'Channels'}${matchingClient.app_build ? ` v${matchingClient.app_build}` : ''}`
           : undefined;
+        const displayIp = matchingClient
+          ? matchingClient.seen_from === 'remote'
+            ? matchingClient.remote_ip
+            : matchingClient.seen_from === 'local'
+              ? matchingClient.local_ip
+              : parsed.ipAddress
+          : parsed.ipAddress;
+        const streamIp = normalizeClientIp(displayIp);
         const sessionWithClient = matchingClient
           ? {
               ...session,
+              network: {
+                ...session.network,
+                ...(displayIp ? { ipAddress: displayIp } : {}),
+                ...(matchingClient.seen_from === 'remote' ? { isLocal: false } : {}),
+                ...(matchingClient.seen_from === 'local' ? { isLocal: true } : {}),
+              },
               player: {
                 ...session.player,
                 name: matchingClient.hostname || matchingClient.alias || session.player.name,
@@ -358,8 +411,8 @@ export class ChannelsDvrClient implements IMediaServerClient {
             }
           : session;
         const streamInfo =
-          parsed.kind === 'live' && parsed.sourceId && sessionIp
-            ? streamDetails.get(`${parsed.sourceId}|${sessionIp}`)
+          parsed.kind === 'live' && parsed.sourceId && streamIp
+            ? streamDetails.get(`${parsed.sourceId}|${streamIp}`)
             : undefined;
         const sessionWithStream = streamInfo
           ? {
@@ -428,11 +481,14 @@ export class ChannelsDvrClient implements IMediaServerClient {
           Boolean(fileShowTitle && episodeTitle) &&
           seasonNumber !== undefined &&
           episodeNumber !== undefined;
-        if (!liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) {
+        if (!liveAiring?.channelTitle && !liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) {
           return sessionWithStream;
         }
         return {
           ...sessionWithStream,
+          ...(liveAiring?.channelTitle && sessionWithStream.live
+            ? { live: { ...sessionWithStream.live, channelTitle: liveAiring.channelTitle } }
+            : {}),
           ...(hasFileEpisode && seasonNumber !== undefined && episodeNumber !== undefined
             ? { episode: { showTitle: fileShowTitle, seasonNumber, episodeNumber } }
             : {}),

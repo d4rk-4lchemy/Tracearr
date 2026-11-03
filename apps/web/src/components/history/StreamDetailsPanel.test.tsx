@@ -33,3 +33,35 @@ describe('StreamDetailsPanel speed placement', () => {
     expect(screen.getAllByText('pages:history.stream.speed')).toHaveLength(1);
   });
 });
+
+
+describe('StreamDetailsPanel without technical stream metadata', () => {
+  it('shows the playback decision when codec and resolution details are unavailable', () => {
+    render(
+      <StreamDetailsPanel
+        sourceVideoCodec={null}
+        sourceAudioCodec={null}
+        sourceAudioChannels={null}
+        sourceVideoWidth={null}
+        sourceVideoHeight={null}
+        streamVideoCodec={null}
+        streamAudioCodec={null}
+        sourceVideoDetails={null}
+        sourceAudioDetails={null}
+        streamVideoDetails={null}
+        streamAudioDetails={null}
+        transcodeInfo={null}
+        subtitleInfo={null}
+        videoDecision="directplay"
+        audioDecision="directplay"
+        bitrate={0}
+        serverType="channels_dvr"
+      />
+    );
+
+    expect(screen.getByText('pages:history.stream.video')).toBeTruthy();
+    expect(screen.getByText('pages:history.stream.audio')).toBeTruthy();
+    expect(screen.getAllByText('playback.directplay')).toHaveLength(2);
+    expect(screen.queryByText('pages:history.stream.noDetails')).toBeNull();
+  });
+});
