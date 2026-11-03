@@ -120,7 +120,7 @@ describe('Channels DVR session artwork', () => {
     const [session] = await client().getSessions();
 
     expect(session?.media.thumbPath).toBe('/tmsimg/assets/movie.jpg?w=480&h=720');
-    expect(fetchJson).toHaveBeenCalledTimes(2);
+    expect(fetchJson).toHaveBeenCalledTimes(3);
   });
 
   it('uses imported video artwork when the item is not classified as a movie', async () => {
@@ -140,7 +140,7 @@ describe('Channels DVR session artwork', () => {
     const [session] = await client().getSessions();
 
     expect(session?.media.thumbPath).toBe('/tmsimg/assets/imported-video.jpg');
-    expect(fetchJson).toHaveBeenCalledTimes(3);
+    expect(fetchJson).toHaveBeenCalledTimes(4);
   });
 });
 
