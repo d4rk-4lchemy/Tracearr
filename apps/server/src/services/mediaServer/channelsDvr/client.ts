@@ -18,6 +18,24 @@ import { channelsDvrUserId, parseDvrActivity, parseWatchActivity, toMediaSession
  * authentication on the local network, so `config.token` is unused.
  * See parser.ts for the caveats on the data format.
  */
+interface ChannelsDvrClientInfo {
+  id?: string;
+  machine_id?: string;
+  hostname?: string;
+  alias?: string;
+  device?: string;
+  platform?: string;
+  app_bundle?: string;
+  app_build?: string;
+  local_ip?: string;
+  remote_ip?: string;
+  connected?: boolean;
+}
+
+function normalizeClientIp(value: string | undefined): string {
+  return (value ?? '').trim().toLowerCase().replace(/^::ffff:/, '').replace(/^\\[|\\]$/g, '');
+}
+
 export class ChannelsDvrClient implements IMediaServerClient {
   private static readonly ARTWORK_CACHE_TTL_MS = 10 * 60 * 1000;
   private static readonly GUIDE_CACHE_TTL_MS = 60 * 1000;
@@ -27,6 +45,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
   private readonly artworkCache = new Map<string, { path: string | null; expiresAt: number }>();
   private readonly fileDetailsCache = new Map<string, { data: Record<string, unknown> | null; expiresAt: number }>();
   private guideCache: { data: unknown; expiresAt: number } | null = null;
+  private clientInfoCache: { data: ChannelsDvrClientInfo[]; expiresAt: number } | null = null;
   private guideRefresh: Promise<unknown> | null = null;
   private static readonly GUIDE_WAIT_TIMEOUT_MS = 1500;
 
@@ -40,6 +59,32 @@ export class ChannelsDvrClient implements IMediaServerClient {
       service: 'channels-dvr',
       timeout: 10000,
     });
+  }
+
+  /** Fetch the DVR's registered client records, cached to avoid polling on every session refresh. */
+  private async getClientInfo(): Promise<ChannelsDvrClientInfo[]> {
+    if (this.clientInfoCache && this.clientInfoCache.expiresAt > Date.now()) {
+      return this.clientInfoCache.data;
+    }
+
+    try {
+      const data = await fetchJson<unknown>(`${this.baseUrl}/dvr/clients/info`, {
+        headers: { Accept: 'application/json' },
+        service: 'channels-dvr',
+        timeout: 10000,
+      });
+      const clients = Array.isArray(data)
+        ? data.filter((item): item is ChannelsDvrClientInfo =>
+            Boolean(item) && typeof item === 'object' && !Array.isArray(item)
+          )
+        : [];
+      this.clientInfoCache = { data: clients, expiresAt: Date.now() + 60_000 };
+      return clients;
+    } catch {
+      // Device metadata is optional; never let this endpoint hide playback sessions.
+      this.clientInfoCache = { data: [], expiresAt: Date.now() + 60_000 };
+      return [];
+    }
   }
 
   /**
@@ -244,6 +289,8 @@ export class ChannelsDvrClient implements IMediaServerClient {
       if (parsed) parsedSessions.push(parsed);
     }
 
+    const clients = parsedSessions.length > 0 ? await this.getClientInfo() : [];
+
     // One guide request serves every live session in this poll. The short
     // cache avoids re-downloading the full guide on every frequent poll.
     const hasLiveChannel = parsedSessions.some(
@@ -254,6 +301,36 @@ export class ChannelsDvrClient implements IMediaServerClient {
     return Promise.all(
       parsedSessions.map(async (parsed) => {
         const session = toMediaSession(parsed);
+        const sessionIp = normalizeClientIp(parsed.ipAddress);
+        const matchingClient = sessionIp
+          ? clients
+              .filter((client) =>
+                normalizeClientIp(client.local_ip) === sessionIp ||
+                normalizeClientIp(client.remote_ip) === sessionIp
+              )
+              .sort((a, b) => {
+                const connected = Number(Boolean(b.connected)) - Number(Boolean(a.connected));
+                if (connected !== 0) return connected;
+                return Number(normalizeClientIp(b.local_ip) === sessionIp) -
+                  Number(normalizeClientIp(a.local_ip) === sessionIp);
+              })[0]
+          : undefined;
+        const clientProduct = matchingClient
+          ? `${matchingClient.app_bundle?.endsWith('.beta') ? 'Channels Beta' : 'Channels'}${matchingClient.app_build ? ` v${matchingClient.app_build}` : ''}`
+          : undefined;
+        const sessionWithClient = matchingClient
+          ? {
+              ...session,
+              player: {
+                ...session.player,
+                name: matchingClient.hostname || matchingClient.alias || session.player.name,
+                deviceId: matchingClient.machine_id || matchingClient.id || session.player.deviceId,
+                ...(matchingClient.device ? { device: matchingClient.device } : {}),
+                ...(matchingClient.platform ? { platform: matchingClient.platform } : {}),
+                ...(clientProduct ? { product: clientProduct } : {}),
+              },
+            }
+          : session;
         const fileDetails =
           parsed.kind === 'recording' && isChannelsDvrItemId(parsed.sourceId)
             ? await this.getRecordingFileDetails(parsed.sourceId)
@@ -285,10 +362,10 @@ export class ChannelsDvrClient implements IMediaServerClient {
           seasonNumber !== undefined &&
           episodeNumber !== undefined;
         if (!liveAiring?.programTitle && !artworkPath && !hasFileEpisode && fileDuration === null) {
-          return session;
+          return sessionWithClient;
         }
         return {
-          ...session,
+          ...sessionWithClient,
           ...(hasFileEpisode && seasonNumber !== undefined && episodeNumber !== undefined
             ? { episode: { showTitle: fileShowTitle, seasonNumber, episodeNumber } }
             : {}),
@@ -297,7 +374,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
             ...(liveAiring?.programTitle ? { title: liveAiring.programTitle } : {}),
             ...(hasFileEpisode
               ? {
-                  title: `${episodeTitle} - S${String(seasonNumber).padStart(2, '0')}E${String(episodeNumber).padStart(2, '0')}`,
+                  title: episodeTitle,
                 }
               : {}),
             ...(fileDuration !== null ? { durationMs: Math.round(fileDuration * 1000) } : {}),
