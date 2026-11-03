@@ -64,9 +64,9 @@ export class ChannelsDvrClient implements IMediaServerClient {
     });
   }
 
-  /** Fetch the DVR's registered client records, cached to avoid polling on every session refresh. */
-  private async getClientInfo(): Promise<ChannelsDvrClientInfo[]> {
-    if (this.clientInfoCache && this.clientInfoCache.expiresAt > Date.now()) {
+  /** Fetch registered clients, keeping this cache short because new sessions register asynchronously. */
+  private async getClientInfo(forceRefresh = false): Promise<ChannelsDvrClientInfo[]> {
+    if (!forceRefresh && this.clientInfoCache && this.clientInfoCache.expiresAt > Date.now()) {
       return this.clientInfoCache.data;
     }
 
@@ -81,11 +81,13 @@ export class ChannelsDvrClient implements IMediaServerClient {
             Boolean(item) && typeof item === 'object' && !Array.isArray(item)
           )
         : [];
-      this.clientInfoCache = { data: clients, expiresAt: Date.now() + 60_000 };
+      // A 60-second cache can preserve an incomplete client list long after a
+      // newly connected phone has registered. Refresh frequently during playback.
+      this.clientInfoCache = { data: clients, expiresAt: Date.now() + 2000 };
       return clients;
     } catch {
       // Device metadata is optional; never let this endpoint hide playback sessions.
-      this.clientInfoCache = { data: [], expiresAt: Date.now() + 60_000 };
+      this.clientInfoCache = { data: [], expiresAt: Date.now() + 1000 };
       return [];
     }
   }
@@ -319,7 +321,25 @@ export class ChannelsDvrClient implements IMediaServerClient {
       if (parsed) parsedSessions.push(parsed);
     }
 
-    const clients = parsedSessions.length > 0 ? await this.getClientInfo() : [];
+    let clients = parsedSessions.length > 0 ? await this.getClientInfo() : [];
+
+    // Channels DVR can publish the HLS activity before its registered client
+    // record is ready. If a named device cannot be matched, bypass the cache
+    // and fetch the client list again instead of retaining incomplete metadata.
+    const hasUnmatchedNamedClient = parsedSessions.some((parsed) => {
+      const name = (parsed.clientName ?? '').trim().toLowerCase();
+      return Boolean(
+        name &&
+        !clients.some((client) =>
+          [client.hostname, client.alias].some(
+            (candidate) => typeof candidate === 'string' && candidate.trim().toLowerCase() === name
+          )
+        )
+      );
+    });
+    if (hasUnmatchedNamedClient) {
+      clients = await this.getClientInfo(true);
+    }
 
     // One guide request serves every live session in this poll. The short
     // cache avoids re-downloading the full guide on every frequent poll.
