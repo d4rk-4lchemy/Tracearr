@@ -42,6 +42,20 @@ describe('Channels DVR parser', () => {
     expect(sessions[1]!.media.thumbPath).toBe('/dvr/guide/channels/1429/logo');
   });
 
+  it('parses virtual-channel episode metadata and strips the activity time from the client name', () => {
+    const [session] = parseSessionsFromDvr(
+      dvr({
+        '6-file-378-192.168.30.9':
+          'Watching Home Improvement - Season 6, Episode 24 from iPad at 0s',
+      })
+    );
+
+    expect(session?.media.type).toBe('episode');
+    expect(session?.episode).toEqual({ showTitle: 'Home Improvement', seasonNumber: 6, episodeNumber: 24 });
+    expect(session?.user.username).toBe('iPad');
+    expect(session?.player.name).toBe('iPad');
+  });
+
   it('maps a live stream and uses the client name as the user when present', () => {
     const [s] = parseSessionsFromDvr(
       dvr({
