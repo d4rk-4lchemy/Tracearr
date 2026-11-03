@@ -372,11 +372,7 @@ export class ChannelsDvrClient implements IMediaServerClient {
           media: {
             ...session.media,
             ...(liveAiring?.programTitle ? { title: liveAiring.programTitle } : {}),
-            ...(hasFileEpisode
-              ? {
-                  title: episodeTitle,
-                }
-              : {}),
+            ...(hasFileEpisode ? { title: episodeTitle } : {}),
             ...(fileDuration !== null ? { durationMs: Math.round(fileDuration * 1000) } : {}),
             ...(artworkPath ? { thumbPath: artworkPath } : {}),
           },
