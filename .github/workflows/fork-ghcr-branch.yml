@@ -4,6 +4,7 @@ name: Fork branch test images
 on:
   push:
     branches:
+      - main
       - channels-dvr
   workflow_dispatch:
 
@@ -73,8 +74,8 @@ jobs:
           platforms: linux/${{ matrix.target.arch }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            APP_VERSION=channels-dvr
-            APP_TAG=${{ matrix.variant.name == 'supervised' && 'supervised-channels-dvr' || 'channels-dvr' }}
+            APP_VERSION=${{ github.ref_name == 'main' && 'main' || 'channels-dvr' }}
+            APP_TAG=${{ matrix.variant.name == 'supervised' && (github.ref_name == 'main' && 'supervised-latest' || 'supervised-dev') || (github.ref_name == 'main' && 'latest' || 'dev') }}
             APP_COMMIT=${{ github.sha }}
             APP_BUILD_DATE=${{ steps.metadata.outputs.build-date }}
             APP_FORK_REPO=${{ env.FORK_REPO }}
@@ -83,7 +84,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ env.FORK_REPO }}
             org.opencontainers.image.url=https://github.com/${{ env.FORK_REPO }}
             org.opencontainers.image.vendor=write-erase
-            org.opencontainers.image.version=channels-dvr
+            org.opencontainers.image.version=${{ github.ref_name == 'main' && 'main' || 'channels-dvr' }}
 
       - name: Save image digest
         shell: bash
@@ -92,7 +93,7 @@ jobs:
         run: |
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           mkdir -p "$RUNNER_TEMP/digests"
-          printf '%s\n' "$DIGEST" > "$RUNNER_TEMP/digests/digest"
+          printf '%s\\n' "$DIGEST" > "$RUNNER_TEMP/digests/digest"
 
       - name: Upload image digest
         uses: actions/upload-artifact@v4
@@ -133,6 +134,7 @@ jobs:
         shell: bash
         env:
           COMMIT_SHA: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.ref_name }}
         run: |
           short_sha="${COMMIT_SHA:0:12}"
 
@@ -143,23 +145,39 @@ jobs:
             [[ "$amd64" =~ ^sha256:[0-9a-f]{64}$ ]]
             [[ "$arm64" =~ ^sha256:[0-9a-f]{64}$ ]]
 
-            if [[ "$variant" == "standalone" ]]; then
-              tag="channels-dvr"
+            if [[ "$BRANCH_NAME" == "main" ]]; then
+              if [[ "$variant" == "supervised" ]]; then
+                tag="supervised-latest"
+              else
+                tag="latest"
+              fi
             else
-              tag="supervised-channels-dvr"
+              if [[ "$variant" == "supervised" ]]; then
+                tag="supervised-dev"
+              else
+                tag="dev"
+              fi
             fi
 
-            docker buildx imagetools create \
-              --tag "$IMAGE:$tag" \
-              --tag "$IMAGE:$tag-$short_sha" \
-              "$IMAGE@$amd64" \
+            docker buildx imagetools create \\
+              --tag "$IMAGE:$tag" \\
+              --tag "$IMAGE:$tag-$short_sha" \\
+              "$IMAGE@$amd64" \\
               "$IMAGE@$arm64"
           done
 
       - name: Verify published architectures
         shell: bash
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
         run: |
-          for tag in channels-dvr supervised-channels-dvr; do
+          if [[ "$BRANCH_NAME" == "main" ]]; then
+            tags="latest supervised-latest"
+          else
+            tags="dev supervised-dev"
+          fi
+
+          for tag in $tags; do
             echo "Checking $IMAGE:$tag"
             docker buildx imagetools inspect "$IMAGE:$tag" --raw |
               jq -e '
