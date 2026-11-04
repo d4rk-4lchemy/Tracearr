@@ -93,7 +93,7 @@ jobs:
         run: |
           [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           mkdir -p "$RUNNER_TEMP/digests"
-          printf '%s\\n' "$DIGEST" > "$RUNNER_TEMP/digests/digest"
+          printf '%s\n' "$DIGEST" > "$RUNNER_TEMP/digests/digest"
 
       - name: Upload image digest
         uses: actions/upload-artifact@v4
