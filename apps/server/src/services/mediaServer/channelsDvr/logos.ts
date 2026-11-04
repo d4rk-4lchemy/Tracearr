@@ -16,6 +16,7 @@ const CHANNEL_NUMBER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
 const LOGO_ROUTE = /^\/dvr\/guide\/channels\/([A-Za-z0-9][A-Za-z0-9._-]{0,31})\/logo$/;
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const LOCAL_LOGO_PREFIXES = ['/tmsimg/', '/dvr/uploads/'];
+const DISPATCHARR_LOGO_PATH = /^\/api\/channels\/logos\/\d+\/cache\/?$/;
 
 const guideCache = new Map<string, { at: number; logos: Map<string, string> }>();
 
@@ -97,7 +98,11 @@ async function assertPublicHttpsUrl(url: URL): Promise<void> {
  * Turn a guide `Image` value into a fetchable URL. Paths on the Channels DVR
  * server itself are origin-pinned; anything else must pass the public-host checks.
  */
-export async function resolveLogoUrl(baseUrl: string, raw: string): Promise<string> {
+export async function resolveLogoUrl(
+  baseUrl: string,
+  raw: string,
+  trustedDispatcharrOrigins: readonly string[] = []
+): Promise<string> {
   const base = new URL(baseUrl);
   if (raw.startsWith('/') && !raw.startsWith('//')) {
     if (!LOCAL_LOGO_PREFIXES.some((prefix) => raw.startsWith(prefix))) {
@@ -114,13 +119,20 @@ export async function resolveLogoUrl(baseUrl: string, raw: string): Promise<stri
     }
     return target.href;
   }
+  if (trustedDispatcharrOrigins.includes(target.origin)) {
+    if (target.username || target.password || target.search || target.hash || !DISPATCHARR_LOGO_PATH.test(target.pathname)) {
+      throw new SsrfBlockedError('Unsupported configured Dispatcharr channel logo URL');
+    }
+    return target.href;
+  }
   await assertPublicHttpsUrl(target);
   return target.href;
 }
 
 export async function getChannelLogoUrl(
   baseUrl: string,
-  channelNumber: string
+  channelNumber: string,
+  trustedDispatcharrOrigins: readonly string[] = []
 ): Promise<string | null> {
   const base = baseUrl.replace(/\/+$/, '');
   let entry = guideCache.get(base);
@@ -134,5 +146,5 @@ export async function getChannelLogoUrl(
     guideCache.set(base, entry);
   }
   const raw = entry.logos.get(channelNumber);
-  return raw ? resolveLogoUrl(base, raw) : null;
+  return raw ? resolveLogoUrl(base, raw, trustedDispatcharrOrigins) : null;
 }

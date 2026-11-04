@@ -549,9 +549,18 @@ interface MissPipelineArgs {
 // short TTL means a token rotation takes at most 30s to reach this path.
 const SERVER_ROW_TTL_MS = 30_000;
 const serverRowCache = new Map<string, { row: typeof servers.$inferSelect | null; at: number }>();
+let dispatcharrServerCache: { rows: (typeof servers.$inferSelect)[]; at: number } | null = null;
 
 export function _resetServerRowCacheForTests(): void {
   serverRowCache.clear();
+  dispatcharrServerCache = null;
+}
+
+async function getConfiguredDispatcharrServers(): Promise<(typeof servers.$inferSelect)[]> {
+  if (dispatcharrServerCache && Date.now() - dispatcharrServerCache.at < SERVER_ROW_TTL_MS) return dispatcharrServerCache.rows;
+  const rows = await db.select().from(servers).where(and(eq(servers.type, 'dispatcharr'), isNull(servers.historicalAt))).limit(100);
+  dispatcharrServerCache = { rows, at: Date.now() };
+  return rows;
 }
 
 async function getServerRow(serverId: string): Promise<typeof servers.$inferSelect | null> {
@@ -611,9 +620,19 @@ async function runMissPipeline(args: MissPipelineArgs): Promise<ProxyResult> {
       server.type === 'channels_dvr' ? parseChannelLogoPath(effectiveImagePath) : null;
     let candidates: Array<{ imageUrl: string; headers: Record<string, string> }>;
     if (logoChannel !== null) {
-      const logoUrl = await getChannelLogoUrl(server.url, logoChannel);
+      const dispatcharrServers = await getConfiguredDispatcharrServers();
+      const trustedOrigins = dispatcharrServers.flatMap((item) => {
+        try { return [new URL(item.url).origin]; } catch { return []; }
+      });
+      const logoUrl = await getChannelLogoUrl(server.url, logoChannel, trustedOrigins);
       if (!logoUrl) throw new Error(`No guide logo for Channels DVR channel ${logoChannel}`);
-      candidates = [{ imageUrl: logoUrl, headers: { Accept: 'image/*' } }];
+      const target = new URL(logoUrl);
+      const trustedServer = dispatcharrServers.find((item) => {
+        try { return new URL(item.url).origin === target.origin; } catch { return false; }
+      });
+      candidates = trustedServer
+        ? [buildUpstreamRequest(trustedServer, `${target.pathname}${target.search}`)]
+        : [{ imageUrl: logoUrl, headers: { Accept: 'image/*' } }];
     } else {
       candidates = [
         buildUpstreamRequest(server, effectiveImagePath, {
