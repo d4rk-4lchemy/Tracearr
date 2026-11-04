@@ -25,6 +25,8 @@ vi.mock('node:fs/promises', () => ({
   mkdir: vi.fn(),
 }));
 
+vi.mock('../../utils/http.js', () => ({ fetchJson: vi.fn() }));
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(),
@@ -46,6 +48,8 @@ import { readFile, writeFile, rename, stat, unlink, mkdir } from 'node:fs/promis
 import { SsrfBlockedError } from '../../utils/ssrf.js';
 import sharp from 'sharp';
 import { db } from '../../db/client.js';
+import { fetchJson } from '../../utils/http.js';
+import { _resetChannelLogoCacheForTests } from '../mediaServer/channelsDvr/logos.js';
 import { cacheWriteAllowed } from '../imageCacheGuard.js';
 import {
   proxyImage,
@@ -86,6 +90,7 @@ function mockUpdateChain() {
 afterEach(() => {
   vi.clearAllMocks();
   _resetServerRowCacheForTests();
+  _resetChannelLogoCacheForTests();
 });
 
 describe('posterVersionFor', () => {
@@ -1176,6 +1181,21 @@ describe('resizedOnly (background warms)', () => {
       expect(String(fetchSpy.mock.calls[0]?.[0])).not.toContain('/photo/:/transcode');
     }
   );
+
+  it('fetches a Dispatcharr-hosted Channels DVR guide logo through the configured Dispatcharr server', async () => {
+    const channelsServer = { id: 'channels-server', type: 'channels_dvr', url: 'http://192.168.30.241:8089', token: '', historicalAt: null };
+    const dispatcharrServer = { id: 'dispatcharr-server', type: 'dispatcharr', url: 'http://192.168.30.241:9191', token: '', historicalAt: null };
+    const chain = (rows: unknown[]) => ({ from: vi.fn().mockReturnThis(), where: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue(rows) });
+    vi.mocked(db.select).mockReturnValueOnce(chain([channelsServer]) as never).mockReturnValueOnce(chain([dispatcharrServer]) as never).mockReturnValue(chain([]) as never);
+    vi.mocked(fetchJson).mockResolvedValueOnce({ '10': { Number: '10', Image: 'http://192.168.30.241:9191/api/channels/logos/1174/cache/' } } as never);
+    const png = await sharp({ create: { width: 8, height: 8, channels: 3, background: { r: 1, g: 2, b: 3 } } }).png().toBuffer();
+    fetchSpy.mockResolvedValue(new Response(png, { status: 200, headers: { 'content-type': 'image/png' } }));
+    const result = await proxyImage({ serverId: 'channels-server', imagePath: '/dvr/guide/channels/10/logo', width: 360, height: 540, fallback: 'poster', resizedOnly: true });
+    expect(result.contentType).toBe('image/webp');
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe('http://192.168.30.241:9191/api/channels/logos/1174/cache/');
+    expect((fetchSpy.mock.calls[0]?.[1] as RequestInit).redirect).toBe('manual');
+  });
 
   it('treats a redirect from the media server as a failed fetch instead of following it', async () => {
     fetchSpy.mockResolvedValue(

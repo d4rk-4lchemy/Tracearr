@@ -67,6 +67,14 @@ describe('resolveLogoUrl', () => {
     await expect(resolveLogoUrl(BASE, '//evil.example/x.png')).rejects.toThrow();
   });
 
+  it('allows a configured Dispatcharr origin only for its channel-logo cache endpoint', async () => {
+    const trustedOrigins = ['http://192.168.1.50:9191'];
+    await expect(resolveLogoUrl(BASE, 'http://192.168.1.50:9191/api/channels/logos/1174/cache/', trustedOrigins)).resolves.toBe('http://192.168.1.50:9191/api/channels/logos/1174/cache/');
+    await expect(resolveLogoUrl(BASE, 'http://192.168.1.50:9191/api/core/settings/', trustedOrigins)).rejects.toThrow(SsrfBlockedError);
+    await expect(resolveLogoUrl(BASE, 'http://192.168.1.51:9191/api/channels/logos/1174/cache/', trustedOrigins)).rejects.toThrow(SsrfBlockedError);
+    await expect(resolveLogoUrl(BASE, 'http://192.168.1.50:9191/api/channels/logos/1174/cache/?next=/settings', trustedOrigins)).rejects.toThrow(SsrfBlockedError);
+  });
+
   it('allows https logos on public hostnames', async () => {
     await expect(resolveLogoUrl(BASE, 'https://cdn.iptvboss.pro/logos/USA/ABCKOCO.us.png')).resolves.toBe(
       'https://cdn.iptvboss.pro/logos/USA/ABCKOCO.us.png'
