@@ -159,10 +159,10 @@ jobs:
               fi
             fi
 
-            docker buildx imagetools create \\
-              --tag "$IMAGE:$tag" \\
-              --tag "$IMAGE:$tag-$short_sha" \\
-              "$IMAGE@$amd64" \\
+            docker buildx imagetools create \
+              --tag "$IMAGE:$tag" \
+              --tag "$IMAGE:$tag-$short_sha" \
+              "$IMAGE@$amd64" \
               "$IMAGE@$arm64"
           done
 
