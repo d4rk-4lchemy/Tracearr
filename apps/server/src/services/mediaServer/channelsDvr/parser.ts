@@ -22,6 +22,7 @@ import { channelLogoPath } from './logos.js';
 
 export interface DispatcharrArtworkSession {
   serverId: string;
+  username?: string | null;
   ipAddress: string | null;
   channelTitle: string | null;
   channelThumb: string | null;
@@ -69,6 +70,7 @@ export function attachDispatcharrChannelArtwork(
 
   const candidates = dispatcharrSessions.filter(
     (session) =>
+      session.username?.trim().toLowerCase() !== 'anonymous' &&
       normalizeArtworkIp(session.ipAddress) === channelsDvrServerIp &&
       Boolean(session.channelTitle?.trim()) &&
       Boolean(session.channelThumb?.trim())
