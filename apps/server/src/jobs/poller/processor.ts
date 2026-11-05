@@ -852,6 +852,7 @@ export async function processServerSessions(
       )
       .map((session) => ({
         serverId: session.serverId,
+        username: session.username,
         ipAddress: session.ipAddress,
         channelTitle: session.channelTitle,
         channelThumb: session.channelThumb,
