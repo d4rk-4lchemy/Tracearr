@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - dev
   workflow_dispatch:
 
 permissions:
@@ -62,7 +63,9 @@ jobs:
       - name: Set build metadata
         id: metadata
         shell: bash
-        run: echo "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          echo "build-timestamp=$(date -u -d '${{ github.run_started_at }}' +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push image by digest
         id: build
@@ -133,7 +136,10 @@ jobs:
         shell: bash
         env:
           BRANCH_NAME: ${{ github.ref_name }}
+          RUN_STARTED_AT: ${{ github.run_started_at }}
         run: |
+          BUILD_TIMESTAMP="$(date -u -d "$RUN_STARTED_AT" +%Y%m%d%H%M%S)"
+
           for variant in standalone supervised; do
             amd64="$(cat "$RUNNER_TEMP/digests/digests-$variant-amd64/digest")"
             arm64="$(cat "$RUNNER_TEMP/digests/digests-$variant-arm64/digest")"
@@ -159,17 +165,32 @@ jobs:
               --tag "$IMAGE:$tag" \
               "$IMAGE@$amd64" \
               "$IMAGE@$arm64"
+
+            if [[ "$BRANCH_NAME" != "main" ]]; then
+              if [[ "$variant" == "supervised" ]]; then
+                timestamp_tag="supervised-v$BUILD_TIMESTAMP"
+              else
+                timestamp_tag="v$BUILD_TIMESTAMP"
+              fi
+
+              docker buildx imagetools create \
+                --tag "$IMAGE:$timestamp_tag" \
+                "$IMAGE@$amd64" \
+                "$IMAGE@$arm64"
+            fi
           done
 
       - name: Verify published architectures
         shell: bash
         env:
           BRANCH_NAME: ${{ github.ref_name }}
+          RUN_STARTED_AT: ${{ github.run_started_at }}
         run: |
           if [[ "$BRANCH_NAME" == "main" ]]; then
             tags="latest supervised-latest"
           else
-            tags="dev supervised-dev"
+            BUILD_TIMESTAMP="$(date -u -d "$RUN_STARTED_AT" +%Y%m%d%H%M%S)"
+            tags="dev supervised-dev v$BUILD_TIMESTAMP supervised-v$BUILD_TIMESTAMP"
           fi
 
           for tag in $tags; do
