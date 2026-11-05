@@ -35,7 +35,8 @@
     "cli": "node dist/scripts/cli.js",
     "backup": "tsx scripts/backup.ts",
     "openapi:dump": "tsx scripts/generate-openapi.ts",
-    "templates:fingerprint": "tsx scripts/template-fingerprints.ts"
+    "templates:fingerprint": "tsx scripts/template-fingerprints.ts",
+    "purge-channels-dvr": "node dist/scripts/purge-channels-dvr.js"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.0.0",

@@ -10,8 +10,14 @@
 > [!NOTE]  
 > If you want to have "Server Resources" charts populated for Dispatcharr in Tracearr, you need to install this Dispatcharr plugin and align your Docker Compose file according to its README: [Tracearr SSE Metrics](https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics)
 
-> [!NOTE] 
-> If you ever want to switch back from this fork to the official image, but you have already added a Dispatcharr server and stored data from its sessions, run the following command **while you are still using this forked image**.<br>`docker exec -it {distracearr_container_name} node apps/server/dist/scripts/purge-dispatcharr.js`<br>After running the command, you can stop this container and replace the image with the official one.
+> [!NOTE]  
+> If you ever want to switch back from this fork to the official image, but you have already added a Dispatcharr or Channels DVR server and stored data from its sessions, run the corresponding command **while you are still using this forked image**. After running the appropriate command, you can stop this container and replace the image with the official Tracearr image.
+
+**To remove Dispatcharr data:**
+`docker exec -it {distracearr_container_name} node apps/server/dist/scripts/purge-dispatcharr.js`
+
+**To remove Channels DVR data:**
+`docker exec -it {distracearr_container_name} node apps/server/dist/scripts/purge-channels-dvr.js`
 
 **What's New:**
 - Support for Dispatcharr servers, with Login/Password (for WebSocket integration) or API Key auth,
@@ -37,14 +43,21 @@ The integration monitors active sessions for Live TV and recorded content. Chann
 - Session termination is not supported.
 - Session detection relies on Channels DVR's undocumented `/dvr` activity endpoint, so compatibility may be affected by changes to that endpoint.
 
-**Docker images:**
+**Production Docker images:**
 
 - `darkalchemy2137/distracearr:latest` or `ghcr.io/d4rk-4lchemy/distracearr:latest` - standalone Tracearr, so you also need to deploy `timescale` and `redis`
 - `darkalchemy2137/distracearr:supervised` or `ghcr.io/d4rk-4lchemy/distracearr:supervised` - supervised image
-- `ghcr.io/write-erase/tracearr:channels-dvr` - standalone test image with Dispatcharr and Channels DVR support.
-- `ghcr.io/write-erase/tracearr:supervised-channels-dvr` - supervised test image with Dispatcharr and Channels DVR support.
+- `ghcr.io/write-erase/tracearr:latest` - Standalone Tracearr image with Dispatcharr and Channels DVR support, so you also need to deploy `timescale` and `redis`.
+- `ghcr.io/write-erase/tracearr:supervised-latest` - Supervised Tracearr image with Dispatcharr and Channels DVR support.
 
-The Channels DVR images are test builds from the `channels-dvr` branch and are published for both AMD64 and ARM64. They are separate from the existing stable image tags.
+The write-erase/tracearr images above are builds from the `main` branch and are published for both AMD64 and ARM64.
+
+**Development Docker images:**
+
+- `ghcr.io/write-erase/tracearr:dev` - Standalone Tracearr image with Dispatcharr and Channels DVR support, so you also need to deploy `timescale` and `redis`.
+- `ghcr.io/write-erase/tracearr:supervised-dev` - Supervised Tracearr image with Dispatcharr and Channels DVR support.
+
+The write-erase/tracearr images above are builds from the `dev` branch and are published for both AMD64 and ARM64.
 
 I tested it on **Supervised image**, so keep that in mind.
 You can also build your own Docker image.<br>
