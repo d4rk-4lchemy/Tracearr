@@ -12,11 +12,16 @@
     "scripts/cli.ts",
     "scripts/reset-password.ts",
     "scripts/purge-dispatcharr.ts",
+    "scripts/purge-channels-dvr.ts",
     "scripts/migrate.ts",
     "scripts/createForkMigration.ts",
     "scripts/unsupportedDbCommand.ts",
     "scripts/imageCacheSweepScale.ts",
     "scripts/lib/**/*"
   ],
-  "exclude": ["node_modules", "dist", "scripts/__tests__"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "scripts/__tests__"
+  ]
 }
