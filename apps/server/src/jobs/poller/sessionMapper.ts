@@ -27,7 +27,7 @@ const VALID_MEDIA_TYPES = new Set<string>(MEDIA_TYPES);
  * Using lookup table makes it easy to add new media types
  */
 const THUMB_PATH_RESOLVERS: Record<string, (session: MediaSession) => string> = {
-  live: (s) => s.live?.channelThumb ?? s.media.thumbPath ?? '',
+  live: (s) => s.media.thumbPath ?? s.live?.channelThumb ?? '',
   episode: (s) => s.episode?.showThumbPath ?? s.media.thumbPath ?? '',
   movie: (s) => s.media.thumbPath ?? '',
   track: (s) => s.media.thumbPath ?? '',

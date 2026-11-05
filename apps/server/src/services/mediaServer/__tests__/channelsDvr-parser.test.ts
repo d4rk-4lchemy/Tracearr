@@ -154,6 +154,36 @@ describe('Channels DVR parser', () => {
     expect(matched[1]!.network.ipAddress).toBe('192.168.30.9');
   });
 
+  it('ignores anonymous Dispatcharr sessions when matching channel artwork', () => {
+    const sessions = parseSessionsFromDvr(
+      dvr({
+        '6-stream-M3U-DispatcharrHLS-210-192.168.30.8':
+          'Watching ch210 NFL Game Pass 11 from Living Room Apple TV',
+      })
+    );
+
+    const matched = attachDispatcharrChannelArtwork(sessions, 'http://192.168.30.241:8089', [
+      {
+        serverId: '11111111-1111-4111-8111-111111111111',
+        username: 'Anonymous',
+        ipAddress: '192.168.30.241',
+        channelTitle: 'NFL Game Pass 11',
+        channelThumb: '/api/channels/logos/999/cache/',
+      },
+      {
+        serverId: '11111111-1111-4111-8111-111111111111',
+        username: 'Living Room',
+        ipAddress: '192.168.30.241',
+        channelTitle: 'NFL Game Pass 11',
+        channelThumb: '/api/channels/logos/210/cache/',
+      },
+    ]);
+
+    expect(matched[0]!.live?.channelThumb).toBe(
+      'dispatcharr://11111111-1111-4111-8111-111111111111/api/channels/logos/210/cache/'
+    );
+  });
+
   it('strips the Dispatcharr server origin from absolute channel logo URLs', () => {
     const sessions = parseSessionsFromDvr(
       dvr({
