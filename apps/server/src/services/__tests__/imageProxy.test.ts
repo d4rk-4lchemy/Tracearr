@@ -935,6 +935,15 @@ describe('buildUpstreamRequest', () => {
   });
 
   it.each([
+    '/tmsimg/assets/poster.jpg?foo=bar',
+    '/tmsimg/assets/poster.jpg?width=720&height=540&quality=90',
+    '/tmsimg/assets/poster.jpg?w=720&h=540&format=webp',
+  ])('allows safe Channels DVR TMS artwork query parameters: %s', (imagePath) => {
+    const server = { ...baseServer, type: 'channels_dvr' } as never;
+    expect(() => buildUpstreamRequest(server, imagePath)).not.toThrow();
+  });
+
+  it.each([
     '/poster.jpg',
     '/dvr/files/abc/preview.jpg',
     '/dvr/files/4880/preview.jpg?x=1',

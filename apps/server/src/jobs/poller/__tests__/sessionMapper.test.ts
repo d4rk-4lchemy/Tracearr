@@ -244,16 +244,30 @@ describe('sessionMapper', () => {
         expect(result.thumbPath).toBe('/show/poster.jpg');
       });
 
-      it('should use channelThumb for live TV', () => {
+      it('should prefer program artwork over channelThumb for live TV', () => {
         const session = createBaseMediaSession({
-          media: { title: 'Live', type: 'live', durationMs: 0, thumbPath: '/media/thumb.jpg' },
+          media: { title: 'Live', type: 'live', durationMs: 0, thumbPath: '/program/artwork.jpg' },
           live: {
             channelTitle: 'ESPN',
             channelThumb: '/channel/espn.jpg',
           },
         });
 
-        const result = mapMediaSession(session, 'jellyfin');
+        const result = mapMediaSession(session, 'channels_dvr');
+
+        expect(result.thumbPath).toBe('/program/artwork.jpg');
+      });
+
+      it('should use channelThumb as a fallback when live TV has no program artwork', () => {
+        const session = createBaseMediaSession({
+          media: { title: 'Live', type: 'live', durationMs: 0 },
+          live: {
+            channelTitle: 'ESPN',
+            channelThumb: '/channel/espn.jpg',
+          },
+        });
+
+        const result = mapMediaSession(session, 'channels_dvr');
 
         expect(result.thumbPath).toBe('/channel/espn.jpg');
       });
