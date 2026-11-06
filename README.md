@@ -10,17 +10,19 @@
 > [!NOTE]  
 > If you want to have "Server Resources" charts populated for Dispatcharr in Tracearr, you need to install this Dispatcharr plugin and align your Docker Compose file according to its README: [Tracearr SSE Metrics](https://github.com/d4rk-4lchemy/Tracearr-SSE-Metrics)
 
-
 > [!NOTE]  
-> If you ever want to switch back from this fork to the official image, but you have already added a Dispatcharr <!--or Channels DVR--> server and stored data from its sessions, run the corresponding command **while you are still using this forked image**. After running the appropriate command, you can stop this container and replace the image with the official Tracearr image.
+> If you ever want to switch back from this fork to the official image, but you have already added a Dispatcharr or Channels DVR server and stored data from its sessions, run the corresponding command **while you are still using this forked image**. After running the appropriate command, you can stop this container and replace the image with the official Tracearr image.
 
 **To remove Dispatcharr data:**
 
 `docker exec -it {distracearr_container_name} node apps/server/dist/scripts/purge-dispatcharr.js`
-<!--
+
 **To remove Channels DVR data:**
+
 `docker exec -it {distracearr_container_name} node apps/server/dist/scripts/purge-channels-dvr.js`
--->
+
+Add `-y` to either command to skip the confirmation prompt. If you used both integrations, run both commands.
+
 **What's New:**
 - Support for Dispatcharr servers, with Login/Password (for WebSocket integration) or API Key auth,
 - Shows currently running Live TV streams, as well as VOD Movies or VOD Shows,

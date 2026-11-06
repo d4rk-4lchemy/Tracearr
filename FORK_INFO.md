@@ -5,7 +5,7 @@
 Adds a `channels_dvr` server type: sessions only, polled from the undocumented
 `GET /dvr` `activity` map (no auth, no realtime, no termination, no library).
 See `apps/server/src/services/mediaServer/channelsDvr/`. Server type is a varchar,
-so no migration is needed. Typecheck and Vitest were not run (no node_modules or
+so no migration is needed. `purge-channels-dvr` (`apps/server/scripts/purge-channels-dvr.ts`) deletes every `channels_dvr` server (all related rows cascade) and its server-scoped Redis keys before switching back to the official image; it never alters the schema, because Dispatcharr's fork columns are owned by `purge-dispatcharr`. Typecheck and Vitest were not run (no node_modules or
 network when this was written); only the parser was exercised against fixtures.
 
 ## October 31, 2026 — Tracearr 3.1.3 upstream merge

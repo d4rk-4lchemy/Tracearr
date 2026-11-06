@@ -321,7 +321,12 @@ async function scanRedisKeys(pattern: string): Promise<string[]> {
   return keys;
 }
 
-async function cleanupDispatcharrRedis(serverIds: string[]): Promise<void> {
+/**
+ * Removes every Redis trace of the given servers: health/connection keys,
+ * cached active/pending sessions, and any extra key patterns the caller knows
+ * the provider owns. Shared by the per-provider purge commands.
+ */
+async function cleanupServerRedis(serverIds: string[], extraScanPatterns: string[]): Promise<void> {
   if (serverIds.length === 0) return;
 
   const redis = getRedis();
@@ -390,10 +395,9 @@ async function cleanupDispatcharrRedis(serverIds: string[]): Promise<void> {
     await redis.srem(REDIS_KEYS.PENDING_SESSION_IDS, ...pendingMembersToRemove);
   }
 
-  const dispatcharrKeys = await scanRedisKeys(
-    `${process.env.REDIS_PREFIX ?? ''}tracearr:dispatcharr:*`
-  );
-  for (const key of dispatcharrKeys) keysToDelete.add(key);
+  for (const pattern of extraScanPatterns) {
+    for (const key of await scanRedisKeys(pattern)) keysToDelete.add(key);
+  }
 
   if (keysToDelete.size > 0) {
     await redis.del(...keysToDelete);
@@ -427,8 +431,9 @@ export async function purgeDispatcharrCommand(): Promise<PurgeDispatcharrResult>
 
   let redisWarning: string | null = null;
   try {
-    await cleanupDispatcharrRedis(
-      (deletedServers as PurgedDispatcharrServer[]).map((server) => server.id)
+    await cleanupServerRedis(
+      (deletedServers as PurgedDispatcharrServer[]).map((server) => server.id),
+      [`${process.env.REDIS_PREFIX ?? ''}tracearr:dispatcharr:*`]
     );
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -436,4 +441,57 @@ export async function purgeDispatcharrCommand(): Promise<PurgeDispatcharrResult>
   }
 
   return { servers: deletedServers as PurgedDispatcharrServer[], redisWarning };
+}
+
+export interface PurgedChannelsDvrServer {
+  id: string;
+  name: string;
+  url: string;
+}
+
+export interface PurgeChannelsDvrResult {
+  servers: PurgedChannelsDvrServer[];
+  redisWarning: string | null;
+}
+
+export async function listChannelsDvrServers(): Promise<PurgedChannelsDvrServer[]> {
+  return db
+    .select({ id: servers.id, name: servers.name, url: servers.url })
+    .from(servers)
+    .where(eq(servers.type, 'channels_dvr'))
+    .orderBy(asc(servers.createdAt));
+}
+
+/**
+ * Removes every Channels DVR server before a forked install goes back to the
+ * official Tracearr image.
+ *
+ * Channels DVR adds no fork-owned columns or tables: `servers.type` is a plain
+ * varchar and the fork-migrations ledger has nothing for it. Deleting the
+ * server rows is therefore the whole database job - sessions, server users,
+ * violations, rules, termination logs and library rows all cascade from
+ * `servers`. Fork columns that belong to Dispatcharr are deliberately left
+ * alone, because Dispatcharr may still be in use; purge-dispatcharr owns them.
+ */
+export async function purgeChannelsDvrCommand(): Promise<PurgeChannelsDvrResult> {
+  const deletedServers: PurgedChannelsDvrServer[] = await db
+    .delete(servers)
+    .where(eq(servers.type, 'channels_dvr'))
+    .returning({ id: servers.id, name: servers.name, url: servers.url });
+
+  let redisWarning: string | null = null;
+  try {
+    const prefix = process.env.REDIS_PREFIX ?? '';
+    await cleanupServerRedis(
+      deletedServers.map((server) => server.id),
+      // Per-server stats samples, the Channels DVR /system fetch lock, download
+      // cursors and anything else namespaced under the server id.
+      deletedServers.map((server) => `${prefix}tracearr:servers:${server.id}:*`)
+    );
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    redisWarning = `Redis cleanup failed after database purge: ${reason}`;
+  }
+
+  return { servers: deletedServers, redisWarning };
 }
