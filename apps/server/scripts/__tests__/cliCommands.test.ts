@@ -45,7 +45,8 @@ describe('admin cli commands', () => {
     await db.execute(sql`
       ALTER TABLE "sessions"
         ADD COLUMN IF NOT EXISTS "dispatcharr_playback_kind" varchar(20),
-        ADD COLUMN IF NOT EXISTS "progress_estimated" boolean DEFAULT false NOT NULL
+        ADD COLUMN IF NOT EXISTS "progress_estimated" boolean DEFAULT false NOT NULL,
+        ADD COLUMN IF NOT EXISTS "dispatcharr_user_agent" text
     `);
     await getRedis().flushall();
   });
@@ -537,6 +538,9 @@ describe('admin cli commands', () => {
       await redis.set(REDIS_KEYS.PENDING_SESSION(dispatcharr.id, 'pending-1'), '{}', 'EX', 300);
       await redis.set(REDIS_KEYS.SERVER_HEALTH(dispatcharr.id), 'true', 'EX', 600);
 
+      // Simulate an install that has run the fork migrations.
+      await db.execute(sql`CREATE SCHEMA IF NOT EXISTS tracearr_fork`);
+
       const result = await purgeDispatcharrCommand();
 
       expect(result.redisWarning).toBeNull();
@@ -575,10 +579,18 @@ describe('admin cli commands', () => {
             'ignore_anonymous_streams',
             'dispatcharr_live_history_threshold_seconds',
             'dispatcharr_playback_kind',
-            'progress_estimated'
+            'progress_estimated',
+            'dispatcharr_user_agent'
           )
       `);
       expect(forkColumns.rows).toEqual([]);
+
+      // The fork migration ledger must go too, or returning to the fork would
+      // skip re-adding the columns dropped above.
+      const forkLedger = await db.execute<{ schema: string | null }>(sql`
+        SELECT to_regnamespace('tracearr_fork')::text AS schema
+      `);
+      expect(forkLedger.rows[0]?.schema).toBeNull();
 
       expect(await redis.smembers(REDIS_KEYS.ACTIVE_SESSION_IDS)).toEqual([plexActiveId]);
       expect(await redis.get(REDIS_KEYS.SESSION_BY_ID(dispatcharrActiveId))).toBeNull();

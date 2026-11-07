@@ -595,12 +595,17 @@ export async function restoreDatabase(
 
   const pgEnv = parseDatabaseUrl(databaseUrl);
 
-  // Step 1: Clean the database — drop extensions, all schemas, then recreate public
+  // Step 1: Clean the database — drop extensions, all schemas, then recreate public.
+  // tracearr_fork holds the fork's migration ledger. pg_dump captures it, so it must
+  // be dropped here: otherwise pg_restore fails on "schema already exists", and a
+  // surviving stale ledger would make the fork migrations skip columns that the
+  // restored (or rebuilt) tables are missing.
   const cleanupSql = `
     DROP EXTENSION IF EXISTS timescaledb_toolkit CASCADE;
     DROP EXTENSION IF EXISTS timescaledb CASCADE;
     DROP EXTENSION IF EXISTS pg_trgm CASCADE;
     DROP SCHEMA IF EXISTS drizzle CASCADE;
+    DROP SCHEMA IF EXISTS tracearr_fork CASCADE;
     DROP SCHEMA public CASCADE;
     CREATE SCHEMA public;
     GRANT ALL ON SCHEMA public TO "${pgEnv.PGUSER}";

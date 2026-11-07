@@ -423,8 +423,14 @@ export async function purgeDispatcharrCommand(): Promise<PurgeDispatcharrResult>
     await tx.execute(sql`
       ALTER TABLE "sessions"
         DROP COLUMN IF EXISTS "dispatcharr_playback_kind",
-        DROP COLUMN IF EXISTS "progress_estimated"
+        DROP COLUMN IF EXISTS "progress_estimated",
+        DROP COLUMN IF EXISTS "dispatcharr_user_agent"
     `);
+    // The fork migration ledger lives in its own schema. Dropping the columns
+    // above while leaving the ledger would make this fork skip re-adding them
+    // if the install ever returns to it. Clearing it lets the idempotent fork
+    // migrations re-run on the next start. The official image never reads it.
+    await tx.execute(sql`DROP SCHEMA IF EXISTS tracearr_fork CASCADE`);
 
     return deleted;
   });
