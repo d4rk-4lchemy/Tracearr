@@ -27,6 +27,8 @@ import {
   enableLocalLoginCommand,
   listDispatcharrServers,
   purgeDispatcharrCommand,
+  listChannelsDvrServers,
+  purgeChannelsDvrCommand,
 } from '../lib/commands.js';
 
 describe('admin cli commands', () => {
@@ -43,7 +45,8 @@ describe('admin cli commands', () => {
     await db.execute(sql`
       ALTER TABLE "sessions"
         ADD COLUMN IF NOT EXISTS "dispatcharr_playback_kind" varchar(20),
-        ADD COLUMN IF NOT EXISTS "progress_estimated" boolean DEFAULT false NOT NULL
+        ADD COLUMN IF NOT EXISTS "progress_estimated" boolean DEFAULT false NOT NULL,
+        ADD COLUMN IF NOT EXISTS "dispatcharr_user_agent" text
     `);
     await getRedis().flushall();
   });
@@ -535,6 +538,9 @@ describe('admin cli commands', () => {
       await redis.set(REDIS_KEYS.PENDING_SESSION(dispatcharr.id, 'pending-1'), '{}', 'EX', 300);
       await redis.set(REDIS_KEYS.SERVER_HEALTH(dispatcharr.id), 'true', 'EX', 600);
 
+      // Simulate an install that has run the fork migrations.
+      await db.execute(sql`CREATE SCHEMA IF NOT EXISTS tracearr_fork`);
+
       const result = await purgeDispatcharrCommand();
 
       expect(result.redisWarning).toBeNull();
@@ -573,10 +579,18 @@ describe('admin cli commands', () => {
             'ignore_anonymous_streams',
             'dispatcharr_live_history_threshold_seconds',
             'dispatcharr_playback_kind',
-            'progress_estimated'
+            'progress_estimated',
+            'dispatcharr_user_agent'
           )
       `);
       expect(forkColumns.rows).toEqual([]);
+
+      // The fork migration ledger must go too, or returning to the fork would
+      // skip re-adding the columns dropped above.
+      const forkLedger = await db.execute<{ schema: string | null }>(sql`
+        SELECT to_regnamespace('tracearr_fork')::text AS schema
+      `);
+      expect(forkLedger.rows[0]?.schema).toBeNull();
 
       expect(await redis.smembers(REDIS_KEYS.ACTIVE_SESSION_IDS)).toEqual([plexActiveId]);
       expect(await redis.get(REDIS_KEYS.SESSION_BY_ID(dispatcharrActiveId))).toBeNull();
@@ -605,6 +619,153 @@ describe('admin cli commands', () => {
       expect(result.redisWarning).toMatch(/redis unavailable/i);
       expect(
         await db.select({ id: servers.id }).from(servers).where(eq(servers.id, dispatcharr.id))
+      ).toHaveLength(0);
+    });
+  });
+
+  describe('purgeChannelsDvrCommand', () => {
+    it('does nothing when there are no Channels DVR servers', async () => {
+      await createTestServer({ type: 'plex', name: 'Plex' });
+
+      expect(await listChannelsDvrServers()).toEqual([]);
+
+      const result = await purgeChannelsDvrCommand();
+      expect(result).toEqual({ servers: [], redisWarning: null });
+
+      const remainingServers = await db
+        .select({ id: servers.id, type: servers.type })
+        .from(servers);
+      expect(remainingServers).toHaveLength(1);
+      expect(remainingServers[0]?.type).toBe('plex');
+    });
+
+    it('deletes Channels DVR servers and cascaded rows while preserving every other server', async () => {
+      const user = await createTestUser({ role: 'owner', username: 'owner' });
+      const channelsDvr = await createTestServer({ type: 'channels_dvr', name: 'Channels DVR' });
+      const dispatcharr = await createTestServer({ type: 'dispatcharr', name: 'Dispatcharr' });
+      const plex = await createTestServer({ type: 'plex', name: 'Plex' });
+      const channelsUser = await createTestServerUser({
+        userId: user.id,
+        serverId: channelsDvr.id,
+      });
+      const dispatcharrUser = await createTestServerUser({
+        userId: user.id,
+        serverId: dispatcharr.id,
+      });
+      await createTestSession({
+        serverId: channelsDvr.id,
+        serverUserId: channelsUser.id,
+        sessionKey: 'channels-session',
+      });
+      await createTestSession({
+        serverId: dispatcharr.id,
+        serverUserId: dispatcharrUser.id,
+        sessionKey: 'dispatcharr-session',
+      });
+
+      expect(await listChannelsDvrServers()).toEqual([
+        { id: channelsDvr.id, name: channelsDvr.name, url: channelsDvr.url },
+      ]);
+
+      const redis = getRedis();
+      const channelsActiveId = crypto.randomUUID();
+      const dispatcharrActiveId = crypto.randomUUID();
+      await redis.sadd(REDIS_KEYS.ACTIVE_SESSION_IDS, channelsActiveId, dispatcharrActiveId);
+      await redis.set(
+        REDIS_KEYS.SESSION_BY_ID(channelsActiveId),
+        JSON.stringify({ id: channelsActiveId, serverId: channelsDvr.id }),
+        'EX',
+        150
+      );
+      await redis.set(
+        REDIS_KEYS.SESSION_BY_ID(dispatcharrActiveId),
+        JSON.stringify({ id: dispatcharrActiveId, serverId: dispatcharr.id }),
+        'EX',
+        150
+      );
+      await redis.sadd(REDIS_KEYS.PENDING_SESSION_IDS, `${channelsDvr.id}:pending-1`);
+      await redis.set(REDIS_KEYS.PENDING_SESSION(channelsDvr.id, 'pending-1'), '{}', 'EX', 300);
+      await redis.set(REDIS_KEYS.SERVER_HEALTH(channelsDvr.id), 'true', 'EX', 600);
+      await redis.set(REDIS_KEYS.SERVER_STATS_CHANNELS_DVR_FETCH(channelsDvr.id), '1', 'EX', 60);
+      await redis.set(REDIS_KEYS.SERVER_STATS_SAMPLES(channelsDvr.id), '[]', 'EX', 60);
+      await redis.set(REDIS_KEYS.SERVER_STATS_SAMPLES(dispatcharr.id), '[]', 'EX', 60);
+
+      const result = await purgeChannelsDvrCommand();
+
+      expect(result.redisWarning).toBeNull();
+      expect(result.servers).toEqual([
+        { id: channelsDvr.id, name: channelsDvr.name, url: channelsDvr.url },
+      ]);
+
+      expect(
+        await db.select({ id: servers.id }).from(servers).where(eq(servers.id, channelsDvr.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select({ id: servers.id }).from(servers).where(eq(servers.id, dispatcharr.id))
+      ).toHaveLength(1);
+      expect(
+        await db.select({ id: servers.id }).from(servers).where(eq(servers.id, plex.id))
+      ).toHaveLength(1);
+      expect(
+        await db.select().from(serverUsers).where(eq(serverUsers.serverId, channelsDvr.id))
+      ).toHaveLength(0);
+      expect(
+        await db.select().from(serverUsers).where(eq(serverUsers.serverId, dispatcharr.id))
+      ).toHaveLength(1);
+      expect(
+        await db
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(eq(sessions.serverId, channelsDvr.id))
+      ).toHaveLength(0);
+      expect(
+        await db
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(eq(sessions.serverId, dispatcharr.id))
+      ).toHaveLength(1);
+
+      // Dispatcharr's fork columns belong to purge-dispatcharr and must survive.
+      const forkColumns = await db.execute<{ column_name: string }>(sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND (
+            (table_name = 'servers' AND column_name = 'ignore_anonymous_streams')
+            OR (table_name = 'sessions' AND column_name = 'dispatcharr_playback_kind')
+          )
+      `);
+      expect(forkColumns.rows).toHaveLength(2);
+
+      expect(await redis.smembers(REDIS_KEYS.ACTIVE_SESSION_IDS)).toEqual([dispatcharrActiveId]);
+      expect(await redis.get(REDIS_KEYS.SESSION_BY_ID(channelsActiveId))).toBeNull();
+      expect(await redis.get(REDIS_KEYS.SESSION_BY_ID(dispatcharrActiveId))).not.toBeNull();
+      expect(await redis.get(REDIS_KEYS.PENDING_SESSION(channelsDvr.id, 'pending-1'))).toBeNull();
+      expect(await redis.smembers(REDIS_KEYS.PENDING_SESSION_IDS)).toEqual([]);
+      expect(await redis.get(REDIS_KEYS.SERVER_HEALTH(channelsDvr.id))).toBeNull();
+      expect(
+        await redis.get(REDIS_KEYS.SERVER_STATS_CHANNELS_DVR_FETCH(channelsDvr.id))
+      ).toBeNull();
+      expect(await redis.get(REDIS_KEYS.SERVER_STATS_SAMPLES(channelsDvr.id))).toBeNull();
+      expect(await redis.get(REDIS_KEYS.SERVER_STATS_SAMPLES(dispatcharr.id))).not.toBeNull();
+    });
+
+    it('keeps the database purge committed when Redis cleanup fails', async () => {
+      const channelsDvr = await createTestServer({ type: 'channels_dvr', name: 'Channels DVR' });
+      const redis = getRedis();
+      const smembersSpy = vi
+        .spyOn(redis, 'smembers')
+        .mockRejectedValueOnce(new Error('redis unavailable'));
+
+      const result = await purgeChannelsDvrCommand();
+
+      smembersSpy.mockRestore();
+      expect(result.servers).toEqual([
+        { id: channelsDvr.id, name: channelsDvr.name, url: channelsDvr.url },
+      ]);
+      expect(result.redisWarning).toMatch(/redis unavailable/i);
+      expect(
+        await db.select({ id: servers.id }).from(servers).where(eq(servers.id, channelsDvr.id))
       ).toHaveLength(0);
     });
   });

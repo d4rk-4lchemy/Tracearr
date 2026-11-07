@@ -32,6 +32,7 @@
     "db:studio": "drizzle-kit studio --config=drizzle.config.cjs",
     "reset-password": "node dist/scripts/reset-password.js",
     "purge-dispatcharr": "node dist/scripts/purge-dispatcharr.js",
+    "purge-channels-dvr": "node dist/scripts/purge-channels-dvr.js",
     "cli": "node dist/scripts/cli.js",
     "backup": "tsx scripts/backup.ts",
     "openapi:dump": "tsx scripts/generate-openapi.ts",
