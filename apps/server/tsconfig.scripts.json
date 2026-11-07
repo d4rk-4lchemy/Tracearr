@@ -19,9 +19,5 @@
     "scripts/imageCacheSweepScale.ts",
     "scripts/lib/**/*"
   ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "scripts/__tests__"
-  ]
+  "exclude": ["node_modules", "dist", "scripts/__tests__"]
 }

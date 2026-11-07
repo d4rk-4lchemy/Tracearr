@@ -2,9 +2,13 @@
 /**
  * Channels DVR data purge script.
  *
- * Removes every Channels DVR server and its server-scoped data before
- * switching a forked install back to the official Tracearr image.
- * Shared Tracearr identities and other media-server integrations are preserved.
+ * Removes every Channels DVR server from the database before switching a forked
+ * install back to the official Tracearr image. Related data is deleted through
+ * existing database cascades.
+ *
+ * Channels DVR needs no schema cleanup (it adds no fork columns), so unlike
+ * purge-dispatcharr this script never alters tables. Run purge-dispatcharr
+ * separately if you also added a Dispatcharr server.
  *
  * Usage:
  *   Interactive:
@@ -55,17 +59,13 @@ async function main(): Promise<void> {
     const channelsDvrServers = await listChannelsDvrServers();
 
     if (channelsDvrServers.length === 0) {
-      console.log('No Channels DVR servers found. No database changes were necessary.\n');
+      console.log('No Channels DVR servers found. Nothing to purge.\n');
       return;
     }
 
-    console.log('This will permanently delete all Channels DVR servers and their server-scoped data.');
+    console.log('This will permanently delete all Channels DVR servers and related data.');
     console.log(
-      'Deleted data includes Channels DVR sessions, server users, locations, library rows, ' +
-        'server-scoped automations and runs, termination logs, downloads, and related Redis cache entries.'
-    );
-    console.log(
-      'Shared Tracearr identities, other media servers, and unrelated server data will be preserved.'
+      'Deleted data includes Channels DVR users, sessions, violations, rules, logs, and library rows.'
     );
     console.log('\nChannels DVR servers that will be deleted:');
     for (const server of channelsDvrServers) {
@@ -86,11 +86,11 @@ async function main(): Promise<void> {
       console.log();
     }
 
-    const result = await purgeChannelsDvrCommand(channelsDvrServers.map((server) => server.id));
+    const result = await purgeChannelsDvrCommand();
     console.log(`Deleted ${result.servers.length} Channels DVR server(s).`);
     if (result.redisWarning) {
       console.warn(`WARNING: ${result.redisWarning}`);
-      console.warn('The database purge succeeded, but some Redis cache entries may remain until refreshed or expired.');
+      console.warn('Database purge succeeded; stale Redis entries should expire automatically.');
     }
     console.log('Stop this forked container before starting the official Tracearr image.\n');
   } catch (error) {

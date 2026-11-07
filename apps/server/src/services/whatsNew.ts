@@ -22,9 +22,12 @@ export async function seedWhatsNewLastSeen(): Promise<void> {
 }
 
 export async function getWhatsNewState(): Promise<WhatsNewState> {
+  const lastSeenVersion = await getSetting('whatsNewLastSeenVersion');
+
   return {
     runningVersion: normalizeVersion(getCurrentVersion()),
-    lastSeenVersion: await getSetting('whatsNewLastSeenVersion'),
+    lastSeenVersion:
+      lastSeenVersion === null ? null : String(lastSeenVersion),
   };
 }
 
