@@ -538,8 +538,8 @@ describe('NowPlayingCard ffmpeg speed display', () => {
     }
   );
 
-  it.each(['dispatcharr', 'plex', 'jellyfin', 'emby'] as const)(
-    'keeps live artwork square and the outer card rounded for %s',
+  it.each(['dispatcharr', 'plex', 'jellyfin', 'emby', 'channels_dvr'] as const)(
+    'uses provider-specific live artwork rounding and keeps the outer card rounded for %s',
     (type) => {
       const { container } = render(
         <NowPlayingCard
@@ -549,7 +549,12 @@ describe('NowPlayingCard ffmpeg speed display', () => {
           })}
         />
       );
-      expect(container.querySelector('img[src*="images/proxy"]')).not.toHaveClass('rounded-lg');
+      const poster = container.querySelector('img[src*="images/proxy"]');
+      if (type === 'channels_dvr') {
+        expect(poster).toHaveClass('rounded-lg');
+      } else {
+        expect(poster).not.toHaveClass('rounded-lg');
+      }
       expect(container.firstElementChild).toHaveClass('rounded-xl');
     }
   );

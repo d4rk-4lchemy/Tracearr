@@ -225,7 +225,7 @@ export function NowPlayingCard({ session, onClick }: NowPlayingCardProps) {
                       // A separate alpha mask leaves these pixels too bright during hover scaling.
                       'block h-auto max-h-28 w-auto max-w-20 transition-[filter]',
                       isPaused ? 'brightness-50' : 'group-hover:brightness-50',
-                      session.mediaType !== 'live' && 'rounded-lg'
+                      (session.mediaType !== 'live' || session.server.type === 'channels_dvr') && 'rounded-lg'
                     )}
                     loading="lazy"
                   />
