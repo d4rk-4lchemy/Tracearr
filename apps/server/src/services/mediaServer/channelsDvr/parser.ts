@@ -228,6 +228,7 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
 
   // The client is whatever follows the LAST " from " (or " on "), so titles that
   // contain those words are not cut short.
+  let videoDecision: 'copy' | 'transcode' | undefined;
   const sepIdx = Math.max(
     body.toLowerCase().lastIndexOf(' from '),
     body.toLowerCase().lastIndexOf(' on ')
@@ -239,8 +240,8 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
       .replace(/\.$/, '')
       .trim();
     const playbackMode = who.match(/\((Remux|Transcoder)\b[^)]*\)\s*$/i);
-    const videoDecision = playbackMode
-      ? playbackMode[1]!.toLowerCase() === 'remux' ? 'copy' as const : 'transcode' as const
+    videoDecision = playbackMode
+      ? playbackMode[1]!.toLowerCase() === 'remux' ? 'copy' : 'transcode'
       : undefined;
     // The elapsed time and speed in this suffix change on every poll. Strip
     // both playback modes before using the client name as a stable identity.
