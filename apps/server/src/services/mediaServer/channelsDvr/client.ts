@@ -422,10 +422,12 @@ export class ChannelsDvrClient implements IMediaServerClient {
                 ...(streamInfo.sourceBitrateKbps !== undefined
                   ? { bitrate: streamInfo.sourceBitrateKbps }
                   : {}),
-                isTranscode: streamInfo.encoder ? streamInfo.encoder !== 'remux' : false,
+                isTranscode: streamInfo.encoder
+                  ? streamInfo.encoder !== 'remux'
+                  : sessionWithClient.quality.isTranscode,
                 videoDecision: streamInfo.encoder
                   ? streamInfo.encoder === 'remux' ? 'copy' : 'transcode'
-                  : 'unknown',
+                  : sessionWithClient.quality.videoDecision,
                 // The log reports the configured output codec, but not the
                 // original audio codec, so an audio decision cannot be inferred.
                 audioDecision: 'unknown',
