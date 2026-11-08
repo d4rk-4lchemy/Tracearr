@@ -179,7 +179,14 @@ export function mapMediaSession(
   const clientName = session.player.product || session.player.platform || '';
   const deviceHint = session.player.device || '';
   const normalized = normalizeClient(clientName, deviceHint, serverType);
-  const platform = normalized.platform;
+  // Channels DVR supplies the actual operating-system version in platform
+  // (for example, "tvOS 27.2"). Do not replace it with the app product name.
+  const platform =
+    serverType === 'channels_dvr'
+      ? session.player.platform && session.player.platform !== 'Channels DVR'
+        ? session.player.platform
+        : 'Unknown'
+      : normalized.platform;
   const device = normalized.device;
 
   // Map media type using lookup table
