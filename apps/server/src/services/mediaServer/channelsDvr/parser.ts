@@ -239,13 +239,19 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
       .replace(/^\s+(?:from|on)\s+/i, '')
       .replace(/\.$/, '')
       .trim();
-    const playbackMode = who.match(/\((Remux|Transcoder)\b[^)]*\)\s*$/i);
+    // Channels DVR nests the FPS in parentheses, so match the complete
+    // trailing playback status rather than stopping at the first closing paren.
+    const playbackMode = who.match(/\((Remux|Transcoder)\b.*\)\s*$/i);
     videoDecision = playbackMode
       ? playbackMode[1]!.toLowerCase() === 'remux' ? 'copy' : 'transcode'
       : undefined;
-    // The elapsed time and speed in this suffix change on every poll. Strip
-    // both playback modes before using the client name as a stable identity.
-    who = who.replace(/\s*\((?:Remux|Transcoder)\b[^)]*\)\s*$/i, '').trim();
+    // Strip transient playback status and elapsed-time suffixes before using
+    // the client name as a stable identity. Older recording lines use "at 0s".
+    who = who
+      .replace(/\s*\((?:Remux|Transcoder)\b.*\)\s*$/i, '')
+      .replace(/\s*\(\s*\)\s*$/i, '')
+      .replace(/\s+at\s+\d+(?:\.\d+)?s$/i, '')
+      .trim();
     body = body.slice(0, sepIdx).trim();
     const ipInWho = IPV4_ANYWHERE.exec(who);
     if (ipInWho && who === ipInWho[1]) {
