@@ -83,6 +83,22 @@ describe('Channels DVR parser', () => {
     expect(session?.sessionKey).toBe('7-ch17-dANY-1050cb66a9c4');
   });
 
+  it('parses Remux activity as copy and keeps the Apple TV name stable', () => {
+    const parsed = parseWatchActivity({
+      key: '7-ch234-dANY-26688a6db1d2',
+      text: "Watching ch234 from Craig's Apple TV (Remux Starting: 15m19s @ 1.01x (60.53fps)): buf=0% drop=0%",
+    });
+
+    expect(parsed?.clientName).toBe("Craig's Apple TV");
+    expect(parsed?.videoDecision).toBe('copy');
+    const [session] = parseSessionsFromDvr(dvr({
+      '7-ch234-dANY-26688a6db1d2':
+        "Watching ch234 from Craig's Apple TV (Remux Starting: 15m19s @ 1.01x (60.53fps)): buf=0% drop=0%",
+    }));
+    expect(session?.player.name).toBe("Craig's Apple TV");
+    expect(session?.quality).toMatchObject({ isTranscode: false, videoDecision: 'copy' });
+  });
+
   it('removes empty or populated transient transcoder parentheses from cellular client names', () => {
     const empty = parseWatchActivity({
       key: '7-ch17-dANY-empty',

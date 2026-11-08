@@ -144,6 +144,8 @@ export interface ParsedWatchActivity {
   sourceId?: string;
   /** Live only: programme text after the channel name, when the line has one */
   programme?: string;
+  /** Live only: playback mode reported in the activity suffix. */
+  videoDecision?: 'copy' | 'transcode';
   show?: { title: string; season: number; episode: number; episodeTitle?: string };
 }
 
@@ -226,17 +228,29 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
 
   // The client is whatever follows the LAST " from " (or " on "), so titles that
   // contain those words are not cut short.
+  let videoDecision: 'copy' | 'transcode' | undefined;
   const sepIdx = Math.max(
     body.toLowerCase().lastIndexOf(' from '),
     body.toLowerCase().lastIndexOf(' on ')
   );
   if (sepIdx >= 0) {
-    const who = body
+    let who = body
       .slice(sepIdx)
       .replace(/^\s+(?:from|on)\s+/i, '')
       .replace(/\.$/, '')
+      .trim();
+    // Channels DVR nests the FPS in parentheses, so match the complete
+    // trailing playback status rather than stopping at the first closing paren.
+    const playbackMode = who.match(/\((Remux|Transcoder)\b.*\)\s*$/i);
+    videoDecision = playbackMode
+      ? playbackMode[1]!.toLowerCase() === 'remux' ? 'copy' : 'transcode'
+      : undefined;
+    // Strip transient playback status and elapsed-time suffixes before using
+    // the client name as a stable identity. Older recording lines use "at 0s".
+    who = who
+      .replace(/\s*\((?:Remux|Transcoder)\b.*\)\s*$/i, '')
+      .replace(/\s*\(\s*\)\s*$/i, '')
       .replace(/\s+at\s+\d+(?:\.\d+)?s$/i, '')
-      .replace(/\s+\((?:Transcoder\b.*)?\)\s*$/i, '')
       .trim();
     body = body.slice(0, sepIdx).trim();
     const ipInWho = IPV4_ANYWHERE.exec(who);
@@ -287,6 +301,7 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
     ipAddress,
     sourceId: keyInfo.sourceId,
     programme,
+    videoDecision,
     show,
   };
 }
@@ -344,8 +359,8 @@ export function toMediaSession(parsed: ParsedWatchActivity): MediaSession {
     network: { ipAddress: ip, isLocal: isPrivateIp(ip) },
     quality: {
       bitrate: 0,
-      isTranscode: false,
-      videoDecision: 'directplay',
+      isTranscode: parsed.videoDecision === 'transcode',
+      videoDecision: parsed.videoDecision ?? 'directplay',
       audioDecision: 'directplay',
     },
   };
