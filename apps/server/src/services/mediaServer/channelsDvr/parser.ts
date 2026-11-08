@@ -144,6 +144,8 @@ export interface ParsedWatchActivity {
   sourceId?: string;
   /** Live only: programme text after the channel name, when the line has one */
   programme?: string;
+  /** Live only: playback mode reported in the activity suffix. */
+  videoDecision?: 'copy' | 'transcode';
   show?: { title: string; season: number; episode: number; episodeTitle?: string };
 }
 
@@ -231,13 +233,18 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
     body.toLowerCase().lastIndexOf(' on ')
   );
   if (sepIdx >= 0) {
-    const who = body
+    let who = body
       .slice(sepIdx)
       .replace(/^\s+(?:from|on)\s+/i, '')
       .replace(/\.$/, '')
-      .replace(/\s+at\s+\d+(?:\.\d+)?s$/i, '')
-      .replace(/\s+\((?:Transcoder\b.*)?\)\s*$/i, '')
       .trim();
+    const playbackMode = who.match(/\((Remux|Transcoder)\b[^)]*\)\s*$/i);
+    const videoDecision = playbackMode
+      ? playbackMode[1]!.toLowerCase() === 'remux' ? 'copy' as const : 'transcode' as const
+      : undefined;
+    // The elapsed time and speed in this suffix change on every poll. Strip
+    // both playback modes before using the client name as a stable identity.
+    who = who.replace(/\s*\((?:Remux|Transcoder)\b[^)]*\)\s*$/i, '').trim();
     body = body.slice(0, sepIdx).trim();
     const ipInWho = IPV4_ANYWHERE.exec(who);
     if (ipInWho && who === ipInWho[1]) {
@@ -287,6 +294,7 @@ export function parseWatchActivity(entry: ChannelsDvrActivityEntry): ParsedWatch
     ipAddress,
     sourceId: keyInfo.sourceId,
     programme,
+    videoDecision,
     show,
   };
 }
@@ -344,8 +352,8 @@ export function toMediaSession(parsed: ParsedWatchActivity): MediaSession {
     network: { ipAddress: ip, isLocal: isPrivateIp(ip) },
     quality: {
       bitrate: 0,
-      isTranscode: false,
-      videoDecision: 'directplay',
+      isTranscode: parsed.videoDecision === 'transcode',
+      videoDecision: parsed.videoDecision ?? 'directplay',
       audioDecision: 'directplay',
     },
   };
