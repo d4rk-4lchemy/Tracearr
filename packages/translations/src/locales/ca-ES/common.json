@@ -61,6 +61,7 @@
     "playing": "S'està reproduïnt",
     "paused": "En pausa",
     "buffering": "Emmagatzemant a la memòria intermèdia",
+    "endsAt": "",
     "stopped": "Aturat",
     "directPlay": "Reproducció directa",
     "directStream": "Transmissió directa",
@@ -69,7 +70,7 @@
     "hwTranscode": "Transcodificació HW",
     "burnIn": "Incrustació",
     "watched": "Vist",
-    "played": ""
+    "played": "Reproduït"
   },
   "severity": {
     "low": "Reduïda",
@@ -134,7 +135,7 @@
     "serverOwner": "Propietari del servidor",
     "resolution": "Resolució",
     "watchTime": "Temps de visionament",
-    "listenTime": "",
+    "listenTime": "Temps d'escolta",
     "pausedTime": "Temps en pausa",
     "sessionDetails": "Detalls de la sessió",
     "recentSessions": "Sessions recents",
@@ -155,12 +156,12 @@
     "transcodeReason": "Raó per a la transcodificació",
     "loadMore": "Veure més",
     "playback": "Reproducció",
-    "plays": "",
-    "weekOf": "",
-    "viewers": "",
-    "watchHours": "",
-    "completion": "",
-    "serverLegend": ""
+    "plays": "Reproduccions",
+    "weekOf": "Setmana del {{date}}",
+    "viewers": "Espectadors",
+    "watchHours": "Hores de reproducció",
+    "completion": "Finalització",
+    "serverLegend": "Llegenda del servidor"
   },
   "search": {
     "searchUsers": "Cerca d'usuaris...",
@@ -193,7 +194,7 @@
     "episode_plural": "Episodis",
     "track": "Pista",
     "track_plural": "Pistes",
-    "artist_plural": "",
+    "artist_plural": "Artistes",
     "liveTV": "TV en directe",
     "photo": "Foto",
     "tv": "TV",
@@ -218,7 +219,8 @@
     "user_other": "{{count}} usuaris",
     "session_one": "{{count}} sessió",
     "session_other": "{{count}} sessions",
-    "download_other": "",
+    "download_one": "{{count}} baixada",
+    "download_other": "{{count}} baixades",
     "stream_one": "{{count}} transmissió",
     "stream_other": "{{count}} transmissions",
     "server_one": "{{count}} servidor",
@@ -241,12 +243,12 @@
     "location_other": "{{count}} ubicacions",
     "device_one": "{{count}} dispositiu",
     "device_other": "{{count}} dispositius",
-    "channel_one": "",
-    "channel_other": "",
     "play_one": "{{count}} reproducció",
     "play_other": "{{count}} reproduccions",
     "segment_one": "{{count}} segment",
-    "segment_other": "{{count}} segments"
+    "segment_other": "{{count}} segments",
+    "channel_one": "",
+    "channel_other": ""
   },
   "messages": {
     "noChangesDetected": "No s'han detectat canvis"
@@ -268,8 +270,8 @@
     "noJobHistory": "Encara no hi ha historial de tasques",
     "noSessionsFound": "No s'ha trobat cap sessió",
     "noUserData": "No hi ha dades d'usuari disponibles",
-    "noPlayData": "",
-    "noLocationData": ""
+    "noPlayData": "No hi ha dades de reproducció disponibles",
+    "noLocationData": "No hi ha dades de localització disponibles"
   },
   "confirmations": {
     "unsavedChanges": "Teniu canvis no desats. Esteu segur que voleu marxar?"

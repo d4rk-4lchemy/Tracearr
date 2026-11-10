@@ -521,8 +521,8 @@
     "newVersion": "Нова версія",
     "versionAvailable": "{{version}} доступно",
     "beforeUpdating": "",
-    "upstreamAhead": "",
-    "upstreamAheadDescription": ""
+    "upstreamAheadDescription": "",
+    "upstreamAhead": ""
   },
   "whatsNew": {
     "title": "",

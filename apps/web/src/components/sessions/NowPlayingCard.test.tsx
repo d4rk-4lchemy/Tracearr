@@ -2,6 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setTimeFormat } from '@/lib/dateFormat';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { NowPlayingCard } from './NowPlayingCard';
 import type { ActiveSession } from '@tracearr/shared';
@@ -671,6 +672,12 @@ describe('NowPlayingCard transcoder bar and buffering', () => {
   it('draws nothing when the transcoder is behind the playhead', () => {
     renderCard({ progressMs: 720_000, transcodeInfo: { maxOffsetAvailable: 300 } });
     expect(screen.queryByTestId('progress-buffered')).toBeNull();
+  });
+
+  it('shows when a playing stream ends on hovering its remaining time', async () => {
+    renderCard({ state: 'playing', progressMs: 600_000 });
+    await userEvent.hover(screen.getByText(/^-\d/));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('playback.endsAt');
   });
 
   it('labels a buffering session', () => {

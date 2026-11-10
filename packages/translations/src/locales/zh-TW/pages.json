@@ -102,8 +102,8 @@
     "unknownQuality": "",
     "othersStreaming_other": "",
     "vodPlays": "",
-    "vodWatchTime": "",
     "tvSessions": "",
+    "vodWatchTime": "",
     "tvWatchTime": ""
   },
   "yourStats": {
@@ -548,7 +548,7 @@
       "quietest": "",
       "bingeHighlights": "",
       "bingeHighlightsDesc": "",
-      "bingeSessions": "",
+      "consecutivePlays": "",
       "noData": "",
       "noDataDesc": "",
       "failedToLoad": "",
@@ -559,7 +559,8 @@
           "show": "",
           "servers": "",
           "consecutive": "",
-          "bingeScore": "",
+          "people": "",
+          "episodesPerViewer": "",
           "maxPerDay": ""
         },
         "empty": {
@@ -1260,6 +1261,7 @@
         "sessionPaused": "",
         "sessionHeldFor": "",
         "sessionHeldForTotal": "",
+        "sessionWatched": "",
         "accountInactiveFor": "",
         "accountNewDevice": "",
         "accountTrustChanged": "",
@@ -2024,6 +2026,10 @@
         },
         "sessionHeldFor": {
           "label": "",
+          "description": "",
+          "synonyms": ""
+        },
+        "sessionWatched": {
           "description": "",
           "synonyms": ""
         },
@@ -2805,6 +2811,7 @@
         "libraryAll": "",
         "yearFromLabel": "",
         "yearToLabel": "",
+        "addedLabel": "",
         "sizeGbMinLabel": "",
         "sizeGbMaxLabel": "",
         "sizeChipAtLeast": "",

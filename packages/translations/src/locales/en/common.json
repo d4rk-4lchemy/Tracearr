@@ -61,6 +61,7 @@
     "playing": "Playing",
     "paused": "Paused",
     "buffering": "Buffering",
+    "endsAt": "Ends at {{time}}",
     "stopped": "Stopped",
     "directPlay": "Direct Play",
     "directStream": "Direct Stream",
@@ -242,12 +243,12 @@
     "location_other": "{{count}} locations",
     "device_one": "{{count}} device",
     "device_other": "{{count}} devices",
-    "channel_one": "{{count}} channel",
-    "channel_other": "{{count}} channels",
     "play_one": "{{count}} play",
     "play_other": "{{count}} plays",
     "segment_one": "{{count}} segment",
-    "segment_other": "{{count}} segments"
+    "segment_other": "{{count}} segments",
+    "channel_one": "{{count}} channel",
+    "channel_other": "{{count}} channels"
   },
   "messages": {
     "noChangesDetected": "No changes detected"

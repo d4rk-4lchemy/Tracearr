@@ -10,7 +10,12 @@
 
 import { and, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { WatchedState } from '@tracearr/shared';
-import { countedSessionSql } from '../../db/sessions/rules.js';
+import {
+  countedSessionSql,
+  countedViewersSql,
+  lastDaysWindow,
+  rollupDayWindowSql,
+} from '../../db/sessions/rules.js';
 import { db } from '../../db/client.js';
 import { media, servers } from '../../db/schema.js';
 import { buildMultiServerFragment, serverIdCondition } from '../../utils/serverFiltering.js';
@@ -30,7 +35,6 @@ import {
   idList,
   runHistoryPage,
   STATS_WINDOWS,
-  windowDayFilter,
   type StatsWindowKey,
 } from '../../routes/publicV2/shared.js';
 
@@ -620,6 +624,8 @@ export async function getChildren(
 }
 
 export interface SeasonHeatEpisodeRow {
+  media_id: string;
+  title: string;
   episode_number: number | null;
   watched_state: WatchedState;
 }
@@ -677,7 +683,9 @@ export async function getSeasonHeat(
     season_number: s.season_number,
     title: s.title,
     year: s.year,
-    episodes: seasonEpisodes[i]!.map((e) => ({
+    episodes: (seasonEpisodes[i] ?? []).map((e) => ({
+      media_id: e.id,
+      title: e.title,
       episode_number: e.episode_number,
       watched_state: watchedStates.get(e.id) ?? 'unwatched',
     })),
@@ -740,10 +748,10 @@ export async function getMediaStats(
               s.server_id,
               COUNT(DISTINCT COALESCE(s.reference_id, s.id)) FILTER (WHERE ${countedSessionSql('s')}) AS plays,
               SUM(CASE WHEN ${countedSessionSql('s')} THEN s.duration_ms ELSE 0 END) AS watch_time_ms,
-              COUNT(DISTINCT su.user_id) FILTER (WHERE ${countedSessionSql('s')})::int AS unique_users
+              ${countedViewersSql(countedSessionSql('s'))}::int AS unique_users
             FROM sessions s
             JOIN server_users su ON su.id = s.server_user_id
-            WHERE ${scopeFilter}${windowDayFilter(sql`s.started_at`, win.days)} ${serverFragment}
+            WHERE ${scopeFilter}${rollupDayWindowSql(lastDaysWindow(win.days), sql`s.started_at`)} ${serverFragment}
             GROUP BY GROUPING SETS ((s.server_id), ())
           `)
       : await db.execute(sql`
@@ -751,10 +759,10 @@ export async function getMediaStats(
               p.server_id,
               COUNT(DISTINCT p.chain_id) FILTER (WHERE p.counted) AS plays,
               SUM(p.watched_ms) AS watch_time_ms,
-              COUNT(DISTINCT su.user_id) FILTER (WHERE p.watched_ms > 0)::int AS unique_users
+              ${countedViewersSql(sql`p.counted`)}::int AS unique_users
             FROM user_media_plays_daily p
             JOIN server_users su ON su.id = p.server_user_id
-            WHERE ${scopeFilter}${windowDayFilter(sql`p.day`, win.days)} ${serverFragment}
+            WHERE ${scopeFilter}${rollupDayWindowSql(lastDaysWindow(win.days), sql`p.day`)} ${serverFragment}
             GROUP BY GROUPING SETS ((p.server_id), ())
           `);
 
@@ -843,12 +851,12 @@ export async function getMediaWatchers(args: GetMediaWatchersArgs): Promise<Medi
         CASE WHEN MAX(s.progress_ms) IS NULL OR COALESCE(MAX(s.total_duration_ms), 0) = 0 THEN NULL
              ELSE LEAST(100, round(100.0 * MAX(s.progress_ms) / MAX(s.total_duration_ms), 1))
         END::float8 AS completion_pct,
-        MAX((s.started_at AT TIME ZONE 'utc')::date)::text AS last_watched_day,
+        MAX((s.started_at AT TIME ZONE 'utc')::date) FILTER (WHERE ${countedSessionSql('s')})::text AS last_watched_day,
         COUNT(DISTINCT s.media_id) FILTER (WHERE ${countedSessionSql('s')})::int AS distinct_episodes_watched
       FROM sessions s
       JOIN server_users su ON su.id = s.server_user_id
       LEFT JOIN users u ON u.id = su.user_id
-      WHERE ${sql.join(scopeSessionConditions(scope), sql` AND `)}${windowDayFilter(sql`s.started_at`, days)} ${serverFilter} ${authFragment}
+      WHERE ${sql.join(scopeSessionConditions(scope), sql` AND `)}${rollupDayWindowSql(lastDaysWindow(days), sql`s.started_at`)} ${serverFilter} ${authFragment}
       GROUP BY s.server_user_id, su.user_id, su.server_id, su.username, u.name, COALESCE(u.thumbnail, su.thumb_url)
       HAVING COUNT(DISTINCT COALESCE(s.reference_id, s.id)) FILTER (WHERE ${countedSessionSql('s')}) > 0
       ORDER BY watch_time_ms DESC, s.server_user_id
@@ -874,12 +882,12 @@ export async function getMediaWatchers(args: GetMediaWatchersArgs): Promise<Medi
         CASE WHEN MAX(p.max_progress_ms) IS NULL OR COALESCE(MAX(p.content_duration_ms), 0) = 0 THEN NULL
              ELSE LEAST(100, round(100.0 * MAX(p.max_progress_ms) / MAX(p.content_duration_ms), 1))
         END::float8 AS completion_pct,
-        MAX((p.day AT TIME ZONE 'utc')::date)::text AS last_watched_day,
+        MAX((p.day AT TIME ZONE 'utc')::date) FILTER (WHERE p.counted)::text AS last_watched_day,
         COUNT(DISTINCT p.media_id) FILTER (WHERE p.counted)::int AS distinct_episodes_watched
       FROM user_media_plays_daily p
       JOIN server_users su ON su.id = p.server_user_id
       LEFT JOIN users u ON u.id = su.user_id
-      WHERE ${scopeFilter}${windowDayFilter(sql`p.day`, days)} ${serverFilter} ${authFragment}
+      WHERE ${scopeFilter}${rollupDayWindowSql(lastDaysWindow(days), sql`p.day`)} ${serverFilter} ${authFragment}
       GROUP BY p.server_user_id, su.user_id, su.server_id, su.username, u.name, COALESCE(u.thumbnail, su.thumb_url)
       HAVING BOOL_OR(p.counted)
       ORDER BY watch_time_ms DESC, p.server_user_id

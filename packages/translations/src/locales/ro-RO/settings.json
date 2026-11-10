@@ -517,8 +517,8 @@
     "newVersion": "Versiune nouă",
     "versionAvailable": "{{version}} disponibil",
     "beforeUpdating": "",
-    "upstreamAhead": "",
-    "upstreamAheadDescription": ""
+    "upstreamAheadDescription": "",
+    "upstreamAhead": ""
   },
   "whatsNew": {
     "title": "",

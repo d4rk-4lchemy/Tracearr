@@ -991,7 +991,7 @@ export const updateSettingsSchema = z.object({
   // Media browsing: warm poster caches for a server after its library sync completes
   imagePrecacheEnabled: z.boolean().optional(),
   // Media browsing: server whose poster wins when a title exists on multiple servers
-  preferredPosterServerId: z.string().uuid().nullable().optional(),
+  preferredPosterServerId: z.uuid().nullable().optional(),
   // Members see anonymous counts of other people's activity
   memberServerActivity: z.boolean().optional(),
 });
@@ -1234,30 +1234,6 @@ export const engagementQuerySchema = z
     serverId: uuidSchema.optional(),
     serverIds: serverIdsQuerySchema,
     timezone: timezoneSchema,
-    // Engagement-specific filters
-    mediaType: mediaTypeSchema.optional(),
-    limit: z.coerce.number().int().positive().max(100).default(10),
-  })
-  .refine(dateValidationRefinements.customPeriodRequiresDates.refinement, {
-    message: dateValidationRefinements.customPeriodRequiresDates.message,
-  })
-  .refine(dateValidationRefinements.startBeforeEnd.refinement, {
-    message: dateValidationRefinements.startBeforeEnd.message,
-  });
-
-// Show stats query schema
-export const showsQuerySchema = z
-  .object({
-    period: statPeriodSchema.default('month'),
-    startDate: z.iso.datetime().optional(),
-    endDate: z.iso.datetime().optional(),
-    serverId: uuidSchema.optional(),
-    serverIds: serverIdsQuerySchema,
-    timezone: timezoneSchema,
-    limit: z.coerce.number().int().positive().max(100).default(20),
-    orderBy: z
-      .enum(['totalEpisodeViews', 'totalWatchHours', 'bingeScore', 'uniqueViewers'])
-      .default('totalEpisodeViews'),
   })
   .refine(dateValidationRefinements.customPeriodRequiresDates.refinement, {
     message: dateValidationRefinements.customPeriodRequiresDates.message,
@@ -1345,6 +1321,9 @@ export const catalogQuerySchema = z.object({
   videoCodec: z.string().max(50).optional(),
   audioCodec: z.string().max(50).optional(),
   audioChannels: z.string().max(20).optional(),
+  /** Calendar days, inclusive. A show matches on an episode that arrived in the window. */
+  addedAfter: listDateBoundSchema,
+  addedBefore: listDateBoundSchema,
 });
 
 // A custom window on a library period endpoint: both dates or neither; with them the period
@@ -1480,7 +1459,7 @@ export const topContentQuerySchema = withCustomWindow(
     period: z.enum(['7d', '30d', '90d', '1y', 'all']).default('30d'),
     ...customWindowFields,
     sortBy: z
-      .enum(['plays', 'watch_hours', 'viewers', 'completion_rate', 'binge_score'])
+      .enum(['plays', 'watch_hours', 'viewers', 'completion_rate', 'episodes_per_viewer'])
       .default('plays'),
     sortOrder: z.enum(['asc', 'desc']).default('desc'),
     page: z.coerce.number().int().positive().default(1),
@@ -1560,4 +1539,3 @@ export type ImportJobStatus = z.infer<typeof importJobStatusSchema>;
 
 // Engagement types
 export type EngagementQueryInput = z.infer<typeof engagementQuerySchema>;
-export type ShowsQueryInput = z.infer<typeof showsQuerySchema>;

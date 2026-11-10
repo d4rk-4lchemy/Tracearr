@@ -1,5 +1,69 @@
 # Tracearr Fork Information
 
+## November 10, 2026 — Tracearr 3.1.7 upstream merge
+
+Upstream `main` at `0d9efff12` brings 61 commits after `f71256768`, including
+3.1.4–3.1.7: counted-viewer and binge statistics, ranked public top media,
+added-date browsing, latest-segment History ordering, watched automations,
+push switches backed by senders, unrounded Dashboard watch/listen time,
+Now Playing end-time tooltips, and parent poster/base-path corrections.
+Upstream and fork migration histories are unchanged and remain separate.
+
+The server-access reconciliation retains Dispatcharr token/credentials
+normalization, admin verification and editing without the unsupported provider
+identity gate. Provider error replies stay outside verification try blocks.
+Dashboard keeps separate TV metrics and all-media active-person counts beside
+upstream's new watch/listen millisecond totals. The public v1 daily route keeps
+TV sessions/channels/hours while excluding internal millisecond/listen fields;
+its OpenAPI removes only the nonexistent daily timestamp. The strict fork
+contract is regenerated and reviewed for that correction, todaySessions,
+identity_name and the new top-media endpoint; its comparator is unchanged.
+
+Dispatcharr auth/settings, leader-owned realtime/polling, pending/Catch-up
+lifecycle, independent connection termination, stable device identity,
+Live TV Activity, uncropped artwork/cache markers, library/Seerr exclusions
+and two-channel versions remain intact. All 300 fork-only localized entries
+survive unchanged. Crowdin's new no-trailing-newline convention is retained.
+Exactly PR-only CI and the unchanged four-native-build dual-registry release
+workflow remain; Helm, Vouch, Husky hooks and upstream release/issue automation
+stay excluded. The fork image metadata/migrations and builder basemap
+fetch/prefetch remain in both Dockerfiles.
+
+CI, package engines and both Docker images adopt Node 26 / pnpm 12.16.1;
+AGENTS.md and MERGE_INSTRUCTION.md use the matching local invocation. npm 12
+requires `--allow-scripts=node,pnpm` for the temporary tools. An incomplete npx
+cache initially used global Node 24 and caused a pnpm Exec format error in
+Turbo; recreating that task-owned cache with the allowance gives verified
+Node 26.13.0 / pnpm 12.16.1. Those initial/interrupted logs are not CI results.
+Preservation audit: `.tmp/merge-317-preservation-audit.json`.
+
+Full non-Docker CI-equivalent validation passes with the verified toolchain,
+a frozen-lockfile install, cleared Turbo cache and a 4 GB heap. Heavy jobs run
+sequentially with at most two Vitest workers and Turbo concurrency one under
+the documented 8 GB local-host budget; GitHub parallelism is unchanged.
+Lint, typecheck, translations, all five server groups, web, coverage and build
+pass. Server groups plus web total 11,000 passing tests without skips (unit
+2,502; services 4,406; routes 1,391; auth 49; security 106; web 2,546).
+Coverage passes 6,884 tests with 72.69% statements, 66.68% branches, 74.70%
+functions and 74.20% lines, meeting every threshold. All 29 locales are in sync.
+All 203 changed supported non-Crowdin source/JSON/YAML files pass Prettier;
+final full lint/typecheck pass after formatting/build. Shared adds 473 passing
+tests. Final lint has 204 warnings and zero errors, down 495 from 699 with no
+new normalized diagnostics. Upstream rule configuration and cleanup explain
+the reduction; no additional fork rule suppression is introduced. Delta:
+`.tmp/merge-317-lint-warning-delta.json`.
+Runtime warning counts match the October 31 baseline, including listener
+warnings, Vite native-config and large web chunks. The public daily-response
+regression also supplies internal time fields and verifies they do not leak.
+The new upstream Overview test's mock chart button receives an accessible
+label. Final lint/format results and logs are recorded in the local warning
+reference; logs use `.tmp/merge-317-<job>-20261110.log`.
+
+Docker integration/E2E are omitted at the user's request. Docker image builds,
+database upgrade execution and live-provider manual smoke are not performed;
+new History/library SQL, push reconciliation and actual provider/network/Redis
+behavior remain unverified against running services/providers/images.
+
 ## October 31, 2026 — Tracearr 3.1.3 upstream merge
 
 Upstream `main` at `f71256768` brings seven commits after `1a5fde8e4`,
@@ -667,9 +731,9 @@ pushed or release created in this validation.
 - Fork working tree: `/home/dev/work/Tracearr`
 - Fork branch: `develop`
 - Source repository checkout: `/tmp/Tracearr`
-- Source branch/SHA inspected: `main` at `f71256768`
-- Last shared upstream commit found during inspection: `1a5fde8e4` (before merge)
-- Latest upstream commit merged into the current working tree: `f71256768`
+- Source branch/SHA inspected: `main` at `0d9efff12`
+- Last shared upstream commit found during inspection: `f71256768` (before merge)
+- Latest upstream commit merged into the current working tree: `0d9efff12`
 - Temporary comparison ref used locally: `source-tmp/main`
 
 Useful commands for re-checking this later:

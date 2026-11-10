@@ -97,8 +97,8 @@ function buildTvChannelsQuery(
 }
 
 /** Milliseconds as hours to one decimal place */
-function toHours(ms: number | string | undefined): number {
-  return Math.round((Number(ms ?? 0) / TIME_MS.HOUR) * 10) / 10;
+function toHours(ms: number): number {
+  return Math.round((ms / TIME_MS.HOUR) * 10) / 10;
 }
 
 /**
@@ -176,11 +176,11 @@ async function computeDashboardStats(
 
   let todayPlays: number;
   let todaySessions: number;
-  let watchTimeHours: number;
+  let watchTimeMs: number;
+  let listenTimeMs: number;
   let tvSessions: number;
   let tvChannels: number;
   let tvWatchTimeHours: number;
-  let listenTimeHours: number;
   let alertsLast24h: number;
   let activeUsersToday: number;
 
@@ -219,8 +219,8 @@ async function computeDashboardStats(
 
     todaySessions = todayPlaysResult[0]?.count ?? 0;
     todayPlays = (validatedPlaysResult.rows[0] as { count: number })?.count ?? 0;
-    watchTimeHours =
-      Math.round((Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
+    watchTimeMs = Number(watchTimeResult[0]?.totalMs ?? 0);
+    listenTimeMs = Number(watchTimeResult[0]?.listenMs ?? 0);
     tvSessions = (tvSessionsResult.rows[0] as { count: number })?.count ?? 0;
     tvChannels = (tvChannelsResult.rows[0] as { count: number })?.count ?? 0;
     tvWatchTimeHours =
@@ -229,7 +229,6 @@ async function computeDashboardStats(
           (1000 * 60 * 60)) *
           10
       ) / 10;
-    listenTimeHours = toHours(watchTimeResult[0]?.listenMs);
     alertsLast24h = alertsResult[0]?.count ?? 0;
     activeUsersToday = activeUsersResult[0]?.count ?? 0;
   } else {
@@ -330,8 +329,8 @@ async function computeDashboardStats(
 
     todaySessions = todaySessionsResult[0]?.count ?? 0;
     todayPlays = (validatedPlaysResult.rows[0] as { count: number })?.count ?? 0;
-    watchTimeHours =
-      Math.round((Number(watchTimeResult[0]?.totalMs ?? 0) / (1000 * 60 * 60)) * 10) / 10;
+    watchTimeMs = Number(watchTimeResult[0]?.totalMs ?? 0);
+    listenTimeMs = Number(watchTimeResult[0]?.listenMs ?? 0);
     tvSessions = (tvSessionsResult.rows[0] as { count: number })?.count ?? 0;
     tvChannels = (tvChannelsResult.rows[0] as { count: number })?.count ?? 0;
     tvWatchTimeHours =
@@ -340,7 +339,6 @@ async function computeDashboardStats(
           (1000 * 60 * 60)) *
           10
       ) / 10;
-    listenTimeHours = toHours(watchTimeResult[0]?.listenMs);
     alertsLast24h = alertsResult[0]?.count ?? 0;
     activeUsersToday = activeUsersResult[0]?.count ?? 0;
   }
@@ -349,8 +347,10 @@ async function computeDashboardStats(
     activeStreams,
     todayPlays,
     todaySessions,
-    watchTimeHours,
-    listenTimeHours,
+    watchTimeHours: toHours(watchTimeMs),
+    listenTimeHours: toHours(listenTimeMs),
+    watchTimeMs,
+    listenTimeMs,
     tvSessions,
     tvChannels,
     tvWatchTimeHours,

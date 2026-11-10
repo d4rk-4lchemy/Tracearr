@@ -339,7 +339,6 @@ const StatsTodayResponse = z
       .number()
       .int()
       .openapi({ description: 'Distinct users active today across all media types', example: 8 }),
-    timestamp: z.iso.datetime(),
   })
   .openapi('StatsTodayResponse');
 

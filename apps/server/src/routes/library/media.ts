@@ -39,6 +39,7 @@ import {
   memberCacheSegment,
   seesServerActivity,
   type Scope,
+  serverCacheSegment,
 } from '../../lib/scope.js';
 import { decodeCursor } from '../../utils/cursor.js';
 import { cursorPage, cursorPaginationSchema } from '../publicV2/shared.js';
@@ -81,7 +82,7 @@ const mediaServerQuerySchema = z.object({
 });
 
 function mediaCacheKey(id: string, segment: string, serverIds: string[] | undefined): string {
-  const scope = serverIds !== undefined ? [...serverIds].sort().join(',') : 'all';
+  const scope = serverCacheSegment(serverIds);
   return REDIS_KEYS.LIBRARY_MEDIA_DETAIL(`${id}:${segment}:${scope}`);
 }
 
@@ -216,6 +217,8 @@ function toSeasonHeatSeason(r: SeasonHeatSeasonRow): SeasonHeatSeason {
     watchedCount,
     watchedPct: episodeCount > 0 ? (watchedCount / episodeCount) * 100 : 0,
     episodes: r.episodes.map((e) => ({
+      mediaId: e.media_id,
+      title: e.title,
       episodeNumber: e.episode_number,
       watchedState: e.watched_state,
     })),
@@ -400,7 +403,7 @@ export const libraryMediaRoute: FastifyPluginAsync = async (app) => {
     const lensUserId = request.scope === 'all' ? null : request.scope.userId;
     const cacheKey = mediaCacheKey(
       canonical.id,
-      `season-heat${memberCacheSegment(request.scope)}`,
+      `season-heat-v2${memberCacheSegment(request.scope)}`,
       resolvedIds
     );
     const cached = await readCache<MediaSeasonHeatResponse>(app.redis, cacheKey);

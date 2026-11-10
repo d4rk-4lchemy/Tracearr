@@ -521,8 +521,8 @@
     "newVersion": "Nová verze",
     "versionAvailable": "{{version}} k dispozici",
     "beforeUpdating": "",
-    "upstreamAhead": "",
-    "upstreamAheadDescription": ""
+    "upstreamAheadDescription": "",
+    "upstreamAhead": ""
   },
   "whatsNew": {
     "title": "",
